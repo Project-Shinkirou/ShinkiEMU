@@ -188,14 +188,13 @@ fn reserve_native_path(
     name: &str,
     directory: bool,
 ) -> Result<()> {
-    let parts: Vec<_> = name.split('/').collect();
-    let mut current = String::new();
-    for (index, part) in parts.iter().enumerate() {
+    let mut current = String::with_capacity(name.len());
+    for part in name.split('/') {
         if !current.is_empty() {
             current.push('/');
         }
         current.push_str(part);
-        let is_directory = index + 1 != parts.len() || directory;
+        let is_directory = current.len() != name.len() || directory;
         let key = current.to_lowercase();
         if let Some((original, previous_directory)) = seen.get(&key) {
             if original != &current || !previous_directory || !is_directory {
@@ -517,6 +516,17 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
     }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     let mut missing = Vec::new();
+    if let Some(id) = core {
+        let core = inv.core(id)?;
+        match crate::sources::verify(inv, core, false) {
+            Ok(directory) => {
+                if let Some(source) = &core.source {
+                    println!("source: {id} @ {} ({})", source.rev, directory.display());
+                }
+            }
+            Err(error) => missing.push(format!("{error:#}")),
+        }
+    }
     for tool in &t.tools {
         if matches!(tool.as_str(), "cmake" | "ninja")
             && !(selected.ffmpeg || selected.native_vcpkg || selected.renpy)
@@ -1013,6 +1023,9 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
     if !matches!(target_spec.platform.as_str(), "windows" | "android") {
         bail!("no dependency preparation path for blocked target {target}");
     }
+    if let Some(id) = core {
+        crate::sources::prepare(inv, inv.core(id)?)?;
+    }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     let pins = lock(inv)?;
     prepare_native_inputs(inv, &pins, selected)?;
@@ -1188,6 +1201,23 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
             command.arg(format!("--overlay-ports={}", overlay.display()));
         }
         run(&mut command)?;
+    }
+    Ok(())
+}
+
+pub fn prepare_all(inv: &Inventory, target: &str) -> Result<()> {
+    inv.target(target)?;
+    let mut prepared = false;
+    for core in &inv.cores {
+        if let Some(reason) = inv.blocked(&core.id, target)? {
+            eprintln!("{}: blocked: {reason}", core.id);
+            continue;
+        }
+        prepare(inv, target, Some(&core.id))?;
+        prepared = true;
+    }
+    if !prepared {
+        bail!("no standalone core supports {target}; select Manager prerequisites instead");
     }
     Ok(())
 }

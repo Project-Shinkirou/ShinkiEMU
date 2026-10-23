@@ -5221,7 +5221,7 @@ checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -7137,7 +7137,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -8049,7 +8049,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-build"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3#cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3"
+source = "git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=035155c78761768bc088169a4eca982f82e9d577#035155c78761768bc088169a4eca982f82e9d577"
 dependencies = [
  "anyhow",
  "cc",
@@ -8301,13 +8301,13 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
 dependencies = [
  "anyhow",
  "parking_lot",
  "rfvp",
  "shinki-emu-abi",
- "shinki-emu-build 0.1.0 (git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3)",
+ "shinki-emu-build 0.1.0 (git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=035155c78761768bc088169a4eca982f82e9d577)",
  "winit",
 ]
 
@@ -11629,7 +11629,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
 dependencies = [
  "byteorder",
  "log 0.4.34",

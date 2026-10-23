@@ -19,7 +19,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
 branch = "shinki"
-rev = "dcc3d9f44376d6065391884688ee44842d96b170"
+rev = "bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -62,7 +62,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
 branch = "shinki"
-rev = "345bf082efd32fd944e975f53d1e84fa2909e1b0"
+rev = "073265967346fe9fc0e80fbec053db1036b6c028"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -105,7 +105,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
 branch = "shinki"
-rev = "87c6209dc24d6e2b2380eacbc2603f6bee2c3d16"
+rev = "5059dabaac011a00588ce8bef41d3c320e8b575c"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -187,7 +187,7 @@ publish_blocked = "crates/pal-vm/src/font.rs embeds default.ttf (MS PGothic, (c)
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
 branch = "shinki"
-rev = "6e86c616405d6c05f7c92d762ee0bd0a44a195ca"
+rev = "7355936c0a62349765127c310abd8b742093ba67"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -230,7 +230,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
-rev = "6f192b4758cd48795c12bc0e535996dd5f9b7e6f"
+rev = "c2ae6b19be09d4ddcbfef273b80ebf07e2aea105"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -273,7 +273,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
 branch = "shinki"
-rev = "d308520c331cb460b523bf6c5e01c8aaf36a6bad"
+rev = "dee3d09449c4ec951c22e9b0dc4c9f9694262b77"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -355,7 +355,7 @@ publish_blocked = "Distribution review must close corresponding-source, third-pa
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
 branch = "shinki"
-rev = "5ce0c4f55b5f69bbbca0478ced121bf31a0d0851"
+rev = "64988513ba6c518cef6cabd2ac6d0bf2c3fc5e77"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -398,7 +398,7 @@ publish_blocked = "Installed Resources include NotoSansCJKjp-Regular/Bold.otf wi
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki"
-rev = "991ece88c27736ffccb516ba1ff132fc1fcafc73"
+rev = "ee84f47ec5c38035646b863d8283993e9d43418a"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."
@@ -441,7 +441,7 @@ publish_blocked = "Distribution review must close corresponding-source, third-pa
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
-rev = "fea2918fa2a5f47c4cda1e7a5f02b84f45f23e00"
+rev = "d4e2b77b4c4def6f7997c9506ff198918eb3991a"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Embedded core adapter and distributable native dependency closure have not been ported to Linux."

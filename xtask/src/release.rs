@@ -219,6 +219,12 @@ pub fn run(
     if component != "manager" {
         inv.core(component)?;
     }
+    let core_source = if component == "manager" {
+        None
+    } else {
+        inv.core(component)?.source.as_ref()
+    };
+    let source_identity = serde_json::to_value(core_source)?;
     semver::Version::parse(version)?;
     let tag = if component == "manager" {
         format!("manager-v{version}")
@@ -257,6 +263,13 @@ pub fn run(
         bail!("release requires committed product/fork sources so corresponding-source archives match the binaries");
     }
     if !record_path.exists() {
+        let receipt = crate::build::load_receipt(inv, target, component)?;
+        let expected_source = core_source
+            .map(|source| source.rev.as_str())
+            .unwrap_or(&commit);
+        if receipt.source_dirty || receipt.source_commit != expected_source {
+            bail!("release requires a clean build receipt at the configured source revision; rebuild after committing/pinning sources");
+        }
         package::atomic_directory(&root, |work| {
             let staged = work.join("package");
             let package_dir = package::package(inv, target, component, version, &staged)?;
@@ -298,6 +311,7 @@ pub fn run(
                 ""
             };
             let record = json!({"schema":"shinki.emu.release.v1","component":component,"version":version,"target":target,"platform":platform,"source_commit":commit,
+            "adapter_commit":receipt.source_commit,"source_dirty":receipt.source_dirty,"core_source":core_source,
             "archive":{"name":filename,"sha256":package::sha256(&archive)?,"size":fs::metadata(&archive)?.len()},
             "sources":{"name":source.file_name().unwrap().to_string_lossy(),"sha256":package::sha256(&source)?,"size":fs::metadata(&source)?.len()},
             "publish_blocked":publish_blocked});
@@ -310,6 +324,9 @@ pub fn run(
     }
     let requested: Value = serde_json::from_slice(&fs::read(&record_path)?)?;
     validate_record(&requested, &root, component, version)?;
+    if requested["core_source"] != source_identity {
+        bail!("release record core source differs from the configured pin");
+    }
     if requested["source_commit"] != commit {
         bail!("release record does not match the checked-out source commit");
     }
@@ -341,6 +358,9 @@ pub fn run(
         }
         let record: Value = serde_json::from_slice(&fs::read(path)?)?;
         validate_record(&record, &directory, component, version)?;
+        if record["core_source"] != source_identity {
+            bail!("release platform core source differs from the configured pin");
+        }
         if record["source_commit"] != commit {
             bail!("release platforms come from different product revisions");
         }
@@ -461,6 +481,17 @@ fn validate_record(record: &Value, root: &Path, component: &str, version: &str) 
         .context("release source commit")?;
     if commit.len() != 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
         bail!("release source revision must be an exact Git commit");
+    }
+    if record["source_dirty"] != false {
+        bail!("release receipt has dirty or incomplete source provenance");
+    }
+    let expected_adapter = if record["core_source"].is_null() {
+        &record["source_commit"]
+    } else {
+        &record["core_source"]["rev"]
+    };
+    if &record["adapter_commit"] != expected_adapter {
+        bail!("release adapter revision differs from its pinned source");
     }
     for key in ["archive", "sources"] {
         let name = record[key]["name"]

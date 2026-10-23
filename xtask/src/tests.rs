@@ -104,6 +104,7 @@ fn result(temp: &Path) -> BuildResult {
             }],
         }),
         source_commit: "fixture".into(),
+        source_dirty: false,
         toolchain: "rustc".into(),
         features: vec![],
         target_dir: temp.to_owned(),

@@ -58,7 +58,7 @@ slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu"
 winit.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "dcc3d9f44376d6065391884688ee44842d96b170" }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "bf5fb9ead2cce6abd711e9e294fc893192c8caf6" }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.

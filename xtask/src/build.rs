@@ -1,4 +1,4 @@
-use crate::{cores::Inventory, dependencies};
+use crate::{cores::Inventory, dependencies, sources};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,6 +18,7 @@ pub struct BuildResult {
     pub library: PathBuf,
     pub core_build: Option<CoreBuildManifest>,
     pub source_commit: String,
+    pub source_dirty: bool,
     pub toolchain: String,
     pub features: Vec<String>,
     pub target_dir: PathBuf,
@@ -126,6 +127,17 @@ pub fn execute(
     if !manifest.is_file() {
         bail!("adapter manifest missing: {}", manifest.display());
     }
+    let source_state = if action == "build" {
+        let directory = if let Some(core) = core {
+            core.source_directory(&inv.root)?
+        } else {
+            inv.root.clone()
+        };
+        let state = sources::state(&directory)?;
+        Some((directory, state))
+    } else {
+        None
+    };
     let package = core
         .map(|c| c.package.as_str())
         .unwrap_or("shinki-emu-manager");
@@ -322,22 +334,10 @@ pub fn execute(
         libraries.remove(0)
     };
     crate::binary::inspect(&library, target, core.is_some())?;
-    let source = if manifest.starts_with(inv.root.join("ThirdParty")) {
-        manifest
-            .ancestors()
-            .find(|p| p.parent() == Some(inv.root.join("ThirdParty").as_path()))
-            .context("fork root")?
-    } else {
-        inv.root.as_path()
-    };
-    let source_commit = String::from_utf8(dependencies::capture(
-        Command::new("git")
-            .arg("-C")
-            .arg(source)
-            .args(["rev-parse", "HEAD"]),
-    )?)?
-    .trim()
-    .to_owned();
+    let (source_directory, before) = source_state.context("build source state missing")?;
+    let after = sources::state(&source_directory)?;
+    let source_commit = before.commit;
+    let source_dirty = before.dirty || after.dirty || after.commit != source_commit;
     let toolchain = String::from_utf8(dependencies::capture(Command::new("rustc").arg("-Vv"))?)?;
     let result = BuildResult {
         component: component.into(),
@@ -346,6 +346,7 @@ pub fn execute(
         library,
         core_build,
         source_commit,
+        source_dirty,
         toolchain,
         features,
         target_dir,

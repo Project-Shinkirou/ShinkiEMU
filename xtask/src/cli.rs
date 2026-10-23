@@ -21,6 +21,16 @@ pub struct TargetCore {
 }
 
 #[derive(Args)]
+pub struct DependencyOptions {
+    #[arg(long)]
+    pub target: String,
+    #[arg(long, conflicts_with = "all_cores")]
+    pub core: Option<String>,
+    #[arg(long)]
+    pub all_cores: bool,
+}
+
+#[derive(Args)]
 #[group(required = true, multiple = false)]
 pub struct Selection {
     #[arg(long)]
@@ -50,7 +60,7 @@ pub struct Build {
 #[derive(Subcommand)]
 pub enum Command {
     Doctor(TargetCore),
-    Deps(TargetCore),
+    Deps(DependencyOptions),
     Matrix {
         #[arg(long)]
         json: bool,

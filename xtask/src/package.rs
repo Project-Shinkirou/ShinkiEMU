@@ -320,7 +320,7 @@ fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
     let info = binary::inspect(&result.library, &result.target, result.core_build.is_some())?;
     let provenance = serde_json::json!({
         "schema":"shinki.emu.build_identity.v1","component":result.component,"target":result.target,
-        "profile":result.profile,"source_commit":result.source_commit,"toolchain":result.toolchain,
+        "profile":result.profile,"source_commit":result.source_commit,"source_dirty":result.source_dirty,"toolchain":result.toolchain,
         "features":result.features,"abi":result.core_build.as_ref().map(|m|m.abi.as_str()),
         "artifact_kind":result.core_build.as_ref().map(|m|m.artifact_kind.as_str()).unwrap_or("manager"),
         "library":result.library.file_name().and_then(|s|s.to_str()),
@@ -1075,8 +1075,11 @@ pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .into_owned();
         entries.push((path, format!("downloads/{name}")));
     }
-    // All adapter/product source is included at the exact recorded revision via git archive.
-    let temp = tempfile::tempdir()?;
+    // Product and selected fork sources are bound to public repository revisions.
+    let temporary = inv.root.join(".work/tmp");
+    fs::create_dir_all(&temporary)?;
+    plain(&temporary)?;
+    let temp = tempfile::tempdir_in(&temporary)?;
     let product = temp.path().join("ShinkiEMU.tar");
     dependencies::run(
         std::process::Command::new("git")
@@ -1086,23 +1089,37 @@ pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .arg(&product),
     )?;
     entries.push((product, "ShinkiEMU.tar".into()));
+    let product_commit = String::from_utf8(dependencies::capture(
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&inv.root)
+            .args(["rev-parse", "HEAD"]),
+    )?)?
+    .trim()
+    .to_owned();
+    let mut references = serde_json::json!({
+        "product": {"repo":"https://github.com/Project-Shinkirou/ShinkiEMU","rev":product_commit},
+        "core": null
+    });
     if component != "manager" {
-        let c = inv.core(component)?;
-        if c.manifest.starts_with("ThirdParty") {
-            let repo = inv
-                .root
-                .join(c.manifest.components().take(2).collect::<PathBuf>());
+        let core = inv.core(component)?;
+        if let Some(source) = &core.source {
+            let repository = crate::sources::verify(inv, core, true)?;
             let archive = temp.path().join(format!("{}.tar", slug(component)));
             dependencies::run(
                 std::process::Command::new("git")
                     .arg("-C")
-                    .arg(repo)
-                    .args(["archive", "--format=tar", "HEAD", "-o"])
+                    .arg(repository)
+                    .args(["archive", "--format=tar", &source.rev, "-o"])
                     .arg(&archive),
             )?;
             entries.push((archive, format!("{}.tar", slug(component))));
+            references["core"] = serde_json::to_value(source)?;
         }
     }
+    let reference_file = temp.path().join("source-references.json");
+    fs::write(&reference_file, serde_json::to_vec_pretty(&references)?)?;
+    entries.push((reference_file, "source-references.json".into()));
     zip_entries(&entries, out)
 }
 

@@ -7,6 +7,7 @@ mod dependencies;
 mod metadata;
 mod package;
 mod release;
+mod sources;
 #[cfg(test)]
 mod tests;
 use anyhow::{bail, Result};
@@ -44,17 +45,29 @@ fn run() -> Result<()> {
             dependencies::doctor(&inv, &args.target, args.core.as_deref())?
         }
         cli::Command::Deps(args) => {
-            dependencies::prepare(&inv, &args.target, args.core.as_deref())?
+            if args.all_cores {
+                dependencies::prepare_all(&inv, &args.target)?;
+            } else {
+                dependencies::prepare(&inv, &args.target, args.core.as_deref())?;
+            }
         }
         cli::Command::Build(args) => {
             inv.target(&args.target)?;
             if args.all_cores {
+                let mut built = false;
                 for core in &inv.cores {
                     if let Some(reason) = inv.blocked(&core.id, &args.target)? {
                         eprintln!("{}: blocked: {reason}", core.id);
                         continue;
                     }
                     build::execute(&inv, &args.target, &core.id, "build", args.release)?;
+                    built = true;
+                }
+                if !built {
+                    bail!(
+                        "no standalone core supports {}; select --manager for static integrations",
+                        args.target
+                    );
                 }
             } else {
                 let component = if args.manager {
