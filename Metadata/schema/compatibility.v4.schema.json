@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "CompatibilityEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "pattern": "^(x86_64|aarch64)$",
+          "type": "string"
+        },
+        "emulator": {
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "type": "string"
+        },
+        "emulator_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issue": {
+          "format": "uint64",
+          "minimum": 1.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "manager_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "maxLength": 1024,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "pattern": "^(windows|linux|macos|android|ios|ohos)$",
+          "type": "string"
+        },
+        "release_id": {
+          "pattern": "^r[0-9]{1,63}$",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/CompatibilityStatus"
+        },
+        "updated_at_unix_ms": {
+          "format": "int64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "variant": {
+          "pattern": "^(desktop|device|simulator)$",
+          "type": "string"
+        },
+        "vn_id": {
+          "pattern": "^v[0-9]{1,63}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "architecture",
+        "emulator",
+        "platform",
+        "release_id",
+        "status",
+        "updated_at_unix_ms",
+        "variant",
+        "vn_id"
+      ],
+      "type": "object"
+    },
+    "CompatibilityStatus": {
+      "enum": [
+        "perfect",
+        "completable",
+        "flawed",
+        "boot_only",
+        "unplayable"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/definitions/CompatibilityEntry"
+      },
+      "type": "array"
+    },
+    "generated_at_unix_ms": {
+      "format": "int64",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "schema": {
+      "pattern": "^shinki\\.emu\\.compatibility\\.v4$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entries",
+    "generated_at_unix_ms",
+    "schema"
+  ],
+  "title": "CompatibilityDatabase",
+  "type": "object"
+}

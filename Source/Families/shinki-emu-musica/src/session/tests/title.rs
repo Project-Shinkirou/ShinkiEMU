@@ -1,0 +1,313 @@
+use super::*;
+use crate::{MusicaLaunchMode, MusicaSystemPage};
+pub(super) fn game(root: &std::path::Path) {
+    game_with_title_case(root, false);
+}
+
+fn game_with_lowercase_title(root: &std::path::Path) {
+    game_with_title_case(root, true);
+}
+
+fn game_with_title_case(root: &std::path::Path, lowercase_title: bool) {
+    fixture::game(
+        root,
+        b".setglobal custom = custom + 1\r\n.message 1   First\r\n.setglobal AYAME_CLEAR = 1\r\n.end\r\n",
+    );
+    let mut assets = Vec::new();
+    for (name, w, h) in [
+        ("saveloadBase.png", 1280, 720),
+        ("saveloadLoad.png", 352, 48),
+        ("saveloadSelect.png", 344, 98),
+        ("saveloadButtons.png", 356, 48),
+        ("notsaved.png", 106, 60),
+        ("configBase.png", 1280, 720),
+        ("knob.png", 15, 25),
+        ("checkmark.png", 21, 32),
+        ("circle.png", 74, 74),
+    ] {
+        assets.push((
+            name.to_owned(),
+            png(
+                w,
+                h,
+                if name == "knob.png" {
+                    [200, 100, 50, 255]
+                } else {
+                    [20, 30, 40, 255]
+                },
+            ),
+        ));
+    }
+    for page in 0..10 {
+        assets.push((
+            format!("saveload_Page{page}.png"),
+            png(208, 48, [30, 40, 50, 255]),
+        ));
+    }
+    for name in ["BGMTest.wav", "VOICEtest.wav", "SEtest.wav"] {
+        assets.push((name.to_owned(), fixture::wave()));
+    }
+    for variant in 0..3 {
+        let stem = if lowercase_title {
+            format!("topmenu{variant}")
+        } else {
+            format!("topMenu{variant}")
+        };
+        let over = if lowercase_title {
+            format!("{stem}over")
+        } else {
+            format!("{stem}Over")
+        };
+        assets.push((
+            format!("{stem}.png"),
+            png(1280, 720, [20 + variant * 20, 30, 40, 255]),
+        ));
+        assets.push((format!("{over}.png"), png(1280, 720, [100, 150, 200, 255])));
+    }
+    fixture::assets(
+        root,
+        "sys",
+        &assets
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_slice()))
+            .collect::<Vec<_>>(),
+    );
+}
+pub(super) fn png(w: u32, h: u32, color: [u8; 4]) -> Vec<u8> {
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(w, h, image::Rgba(color))
+        .write_to(&mut out, image::ImageFormat::Png)
+        .unwrap();
+    out.into_inner()
+}
+pub(super) fn title_request(root: &std::path::Path) -> OpenRequest {
+    let mut req = request(root, Sink::default());
+    req.configuration
+        .iter_mut()
+        .find(|entry| entry.id == "launch_mode")
+        .unwrap()
+        .value = ConfigValue::Enum("title".into());
+    req
+}
+
+fn omit_texture_overrides(root: &std::path::Path) {
+    let profile_path = root.join(MUSICA_KEY_FILE);
+    let mut key: toml::Table =
+        toml::from_str(&std::fs::read_to_string(&profile_path).unwrap()).unwrap();
+    key.remove("texture_overrides");
+    std::fs::write(&profile_path, toml::to_string_pretty(&key).unwrap()).unwrap();
+}
+
+fn single_pixel_ani() -> Vec<u8> {
+    let mut bytes = vec![0, 1, 1, 0, 0, 0, 0, 0, b'f', 0];
+    for value in [1u16, 1, 32, 0, 0] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend([32, 96, 224, 255]);
+    bytes
+}
+
+fn single_pixel_sqz() -> Vec<u8> {
+    use std::io::Write;
+
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(&[32, 96, 224, 255]).unwrap();
+    let frame = encoder.finish().unwrap();
+    let mut bytes = b"SQZ1".to_vec();
+    for value in [
+        32u32,
+        1,
+        1,
+        1,
+        36,
+        frame.len() as u32,
+        36,
+        frame.len() as u32,
+    ] {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes.extend(frame);
+    bytes
+}
+
+#[test]
+fn native_gpu_title_without_texture_overrides_starts_loads_returns_and_exits() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    game(root.path());
+    omit_texture_overrides(root.path());
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(title_request(root.path())).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    assert_eq!(&session.scene.pixels[..4], &[20, 30, 40, 255]);
+    session.advance(500_000_000, &[]).unwrap();
+    assert_eq!(session.vm.state().instruction_count, 0);
+    session
+        .advance(
+            0,
+            &[
+                key(KeyCode::ArrowDown),
+                RuntimeEvent::PointerButton {
+                    button: PointerButton::Primary,
+                    state: KeyState::Pressed,
+                },
+            ],
+        )
+        .unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    session.advance(0, &[key(KeyCode::ArrowUp)]).unwrap();
+    session
+        .advance(0, &[RuntimeEvent::PointerMove { x: 1100.0, y: 80.0 }])
+        .unwrap();
+    let pixel = ((80 * 1280 + 1100) * 4) as usize;
+    assert_eq!(
+        &session.scene.pixels[pixel..pixel + 4],
+        &[100, 150, 200, 255]
+    );
+    session.advance(0, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Load);
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "First");
+    session.save(20).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    assert!(!session.finished);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    session
+        .advance(0, &[key(KeyCode::ArrowDown), key(KeyCode::Enter)])
+        .unwrap();
+    session
+        .advance(
+            0,
+            &[
+                key(KeyCode::ArrowRight),
+                key(KeyCode::ArrowRight),
+                key(KeyCode::Enter),
+            ],
+        )
+        .unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::None);
+    assert_eq!(session.vm.state().launch_mode, MusicaLaunchMode::Title);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    assert_eq!(session.message.as_ref().unwrap().0, "First");
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    let previous_reads = session.vm.state().read_message_identities.clone();
+    let previous_tick = session.vm.state().fixed_tick;
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().global_variables["custom"], 2);
+    assert_eq!(session.vm.state().read_message_identities, previous_reads);
+    assert!(session.vm.state().fixed_tick > previous_tick);
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    session
+        .advance(0, &[key(KeyCode::ArrowUp), key(KeyCode::Enter)])
+        .unwrap();
+    assert!(session.finished);
+    Box::new(session).close().unwrap();
+}
+
+#[test]
+fn native_gpu_lowercase_title_without_texture_overrides_starts_and_enters_story() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    game_with_lowercase_title(root.path());
+    omit_texture_overrides(root.path());
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(title_request(root.path())).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    assert_eq!(&session.scene.pixels[..4], &[20, 30, 40, 255]);
+    session.advance(500_000_000, &[]).unwrap();
+    session
+        .advance(0, &[RuntimeEvent::PointerMove { x: 1100.0, y: 80.0 }])
+        .unwrap();
+    session.advance(0, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Load);
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "First");
+    Box::new(session).close().unwrap();
+}
+
+#[test]
+fn native_gpu_session_container_images_without_texture_overrides_render() {
+    let _lock = PROVIDER_SESSION.lock();
+    for (name, payload) in [
+        ("BG.ANI", single_pixel_ani()),
+        ("BG.SQZ", single_pixel_sqz()),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let source = format!(".stage * {name} 2 3\r\n.end\r\n");
+        fixture::game(root.path(), source.as_bytes());
+        fixture::asset(root.path(), "bg", name, &payload);
+        omit_texture_overrides(root.path());
+        let mut provider = fixture::provider();
+        let mut opened = provider
+            .open(request(root.path(), Sink::default()))
+            .unwrap();
+        opened.session.advance(16_666_667, &[]).unwrap();
+        let mut frame = Capture(Vec::new());
+        frame
+            .read(opened.session.acquire_frame(None).unwrap())
+            .unwrap();
+        let pixel = (3 * 1280 + 2) * 4;
+        assert_eq!(&frame.0[pixel..pixel + 4], &[224, 96, 32, 255]);
+        opened.session.close().unwrap();
+    }
+}
+
+#[test]
+fn native_gpu_title_config_returns_and_missing_art_fails_explicitly() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    game(root.path());
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(title_request(root.path())).unwrap();
+    session
+        .advance(
+            0,
+            &[
+                key(KeyCode::ArrowDown),
+                key(KeyCode::ArrowDown),
+                key(KeyCode::Enter),
+            ],
+        )
+        .unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Config);
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
+    Box::new(session).close().unwrap();
+    let missing = tempfile::tempdir().unwrap();
+    fixture::game(missing.path(), b".end\r\n");
+    assert!(provider
+        .open_session(title_request(missing.path()))
+        .is_err());
+    let opened = provider
+        .open(request(missing.path(), Sink::default()))
+        .unwrap();
+    opened.session.close().unwrap();
+}
+
+#[test]
+fn native_gpu_config_preferences_survive_session_load_without_restoring_slot_settings() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    fixture::game(root.path(), b".message 1   First\r\n.end\r\n");
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
+        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.save(20).unwrap();
+    let mut config = session.vm.config().clone();
+    config.message_speed_auto_play = 10;
+    config.se_volume = 35;
+    config.character_voice_enabled[2] = false;
+    config.text_shadow = false;
+    session.vm.set_config(config.clone()).unwrap();
+    session.load(20).unwrap();
+    assert_eq!(session.vm.config(), &config);
+    Box::new(session).close().unwrap();
+}

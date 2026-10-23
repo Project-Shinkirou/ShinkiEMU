@@ -1,0 +1,383 @@
+use crate::{cores::Inventory, dependencies};
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use shinki_emu_build::CoreBuildManifest;
+use std::{
+    fs,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildResult {
+    pub component: String,
+    pub target: String,
+    pub profile: String,
+    pub library: PathBuf,
+    pub core_build: Option<CoreBuildManifest>,
+    pub source_commit: String,
+    pub toolchain: String,
+    pub features: Vec<String>,
+    pub target_dir: PathBuf,
+}
+fn receipt_path(inv: &Inventory, target: &str, component: &str) -> PathBuf {
+    inv.root
+        .join(".work/build")
+        .join(target)
+        .join(format!("{component}.json"))
+}
+
+fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<PathBuf> {
+    let standard = inv.root.join(".work/target").join(target).join(component);
+    let explicit = std::env::var_os("SHINKI_EMU_TARGET_ROOT").map(PathBuf::from);
+    // Leave headroom for shaderc/CMake's nested source and object filenames.
+    if explicit.is_none() && (!cfg!(windows) || standard.as_os_str().len() <= 60) {
+        return Ok(standard);
+    }
+    let repository = fs::canonicalize(&inv.root)?;
+    let owner = serde_json::json!({
+        "repository": repository, "target": target, "component": component
+    });
+    let identity = hex::encode(Sha256::digest(serde_json::to_vec(&owner)?));
+    let short_root = if let Some(root) = explicit {
+        std::path::absolute(root)?
+    } else {
+        let root = repository
+            .ancestors()
+            .last()
+            .context("repository volume root")?;
+        root.join(".shinki-targets")
+    };
+    let directory = short_root.join(&identity[..24]);
+    fs::create_dir_all(&directory).with_context(|| {
+        format!("cannot create isolated short target {}; set SHINKI_EMU_TARGET_ROOT to a writable short directory", directory.display())
+    })?;
+    crate::package::plain(&directory)?;
+    let marker = directory.join("owner.json");
+    if marker.exists() {
+        let actual: serde_json::Value = serde_json::from_slice(&fs::read(&marker)?)?;
+        if actual != owner {
+            bail!(
+                "short target directory belongs to another build: {}",
+                directory.display()
+            );
+        }
+    } else {
+        let file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(marker)?;
+        serde_json::to_writer_pretty(file, &owner)?;
+    }
+    Ok(directory)
+}
+pub fn load_receipt(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
+    inv.require_supported(component, target)?;
+    let path = receipt_path(inv, target, component);
+    let r: BuildResult = serde_json::from_slice(&fs::read(&path).with_context(|| {
+        format!(
+            "missing {}; run cargo xtask build --target {target} --{} --release",
+            path.display(),
+            if component == "manager" {
+                "manager".into()
+            } else {
+                format!("core {component}")
+            }
+        )
+    })?)?;
+    if r.target != target || r.component != component {
+        bail!("build receipt component/target mismatch");
+    }
+    crate::package::plain(&r.library)?;
+    Ok(r)
+}
+pub fn cargo_metadata(inv: &Inventory, target: &str) -> Result<serde_json::Value> {
+    Ok(serde_json::from_slice(&dependencies::capture(
+        Command::new("cargo").current_dir(&inv.root).args([
+            "metadata",
+            "--locked",
+            "--format-version",
+            "1",
+            "--filter-platform",
+            target,
+        ]),
+    )?)?)
+}
+pub fn execute(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    action: &str,
+    release: bool,
+) -> Result<Option<BuildResult>> {
+    inv.require_supported(component, target)?;
+    let core = if component == "manager" {
+        None
+    } else {
+        Some(inv.core(component)?)
+    };
+    let manifest = core
+        .map(|c| inv.root.join(&c.manifest))
+        .unwrap_or_else(|| inv.root.join("Cargo.toml"));
+    if !manifest.is_file() {
+        bail!("adapter manifest missing: {}", manifest.display());
+    }
+    let package = core
+        .map(|c| c.package.as_str())
+        .unwrap_or("shinki-emu-manager");
+    let features = core.map(|c| c.features.clone()).unwrap_or_default();
+    let target_dir = target_directory(inv, target, component)?;
+    let metadata: serde_json::Value = serde_json::from_slice(&dependencies::capture(
+        Command::new("cargo")
+            .current_dir(&inv.root)
+            .args([
+                "metadata",
+                "--locked",
+                "--format-version",
+                "1",
+                "--no-deps",
+                "--manifest-path",
+            ])
+            .arg(&manifest),
+    )?)?;
+    let package_id = metadata["packages"]
+        .as_array()
+        .context("cargo packages")?
+        .iter()
+        .find(|p| p["name"] == package)
+        .and_then(|p| p["id"].as_str())
+        .with_context(|| format!("package {package} absent from {}", manifest.display()))?;
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&inv.root);
+    if target.contains("android") && component == "manager" {
+        cmd.args([
+            "ndk",
+            "-t",
+            if target.starts_with("aarch64") {
+                "arm64-v8a"
+            } else {
+                "x86_64"
+            },
+            "-P",
+            "26",
+        ]);
+    }
+    cmd.args([action, "--locked", "--manifest-path"])
+        .arg(&manifest)
+        .args([
+            "-p",
+            package,
+            "--message-format=json-render-diagnostics",
+            "--target-dir",
+        ])
+        .arg(&target_dir);
+    if !(target.contains("android") && component == "manager") {
+        cmd.args(["--target", target]);
+    }
+    if release {
+        cmd.arg("--release");
+    }
+    if core.is_some() || target.contains("android") {
+        cmd.arg("--lib");
+    } else {
+        cmd.args(["--bin", "shinki-emu-manager"]);
+    }
+    if !features.is_empty() {
+        cmd.arg("--features").arg(features.join(","));
+    }
+    dependencies::apply_environment(inv, target, &mut cmd)?;
+    if core.is_some_and(|c| c.artifact_kind == "native-shared") {
+        cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
+        cmd.env(
+            "SHINKI_EMU_NATIVE_DOWNLOADS",
+            inv.root.join(".work/native-downloads"),
+        );
+        let installed = inv
+            .root
+            .join(".work/native-vcpkg")
+            .join(component)
+            .join("installed");
+        if installed.is_dir() {
+            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed)
+                .env("SHINKI_EMU_VCPKG_TRIPLET", "x64-windows");
+        }
+    }
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()?;
+    let output = child.stdout.take().context("Cargo stdout")?;
+    let mut libraries = Vec::new();
+    let mut manifests = Vec::new();
+    let mut parse_error = None;
+    for line in BufReader::new(output).lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => {
+                parse_error = Some(anyhow::Error::from(e));
+                break;
+            }
+        };
+        let value: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("{line}");
+                continue;
+            }
+        };
+        if value["reason"] == "compiler-message" {
+            if let Some(s) = value["message"]["rendered"].as_str() {
+                eprint!("{s}");
+            }
+        }
+        if value["package_id"] != package_id {
+            continue;
+        }
+        if value["reason"] == "compiler-artifact" {
+            if core.is_none() && !target.contains("android") {
+                if let Some(s) = value["executable"].as_str() {
+                    libraries.push(PathBuf::from(s));
+                }
+            } else if value["target"]["crate_types"]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "cdylib"))
+            {
+                for f in value["filenames"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_str())
+                {
+                    let p = Path::new(f);
+                    if p.extension()
+                        .is_some_and(|s| s == "dll" || s == "so" || s == "dylib")
+                    {
+                        libraries.push(p.to_owned());
+                    }
+                }
+            }
+        }
+        if value["reason"] == "build-script-executed" {
+            if let Some(dir) = value["out_dir"].as_str() {
+                let path = Path::new(dir).join("core-build.json");
+                if path.is_file() {
+                    match fs::read(&path)
+                        .map_err(anyhow::Error::from)
+                        .and_then(|bytes| {
+                            serde_json::from_slice::<CoreBuildManifest>(&bytes)
+                                .map_err(anyhow::Error::from)
+                        }) {
+                        Ok(m) => manifests.push(m),
+                        Err(e) => parse_error = Some(e),
+                    }
+                }
+            }
+        }
+    }
+    let status = child.wait()?;
+    if let Some(e) = parse_error {
+        return Err(e);
+    }
+    if !status.success() {
+        bail!("Cargo {action} failed for {component}/{target}: {status}");
+    }
+    if action != "build" {
+        return Ok(None);
+    }
+    libraries.sort();
+    libraries.dedup();
+    let core_build = if core.is_some() {
+        if manifests.len() != 1 {
+            bail!(
+                "expected one core-build.json from {package}'s build-script-executed, found {}",
+                manifests.len()
+            );
+        }
+        let m = manifests.remove(0);
+        m.validate()?;
+        if m.plugin_id != component
+            || m.target != target
+            || m.profile != if release { "release" } else { "debug" }
+            || Some(m.artifact_kind.as_str()) != core.map(|c| c.artifact_kind.as_str())
+        {
+            bail!("core-build manifest does not match requested build");
+        }
+        Some(m)
+    } else {
+        None
+    };
+    let library = if let Some(native) = core_build.as_ref().and_then(|m| m.native_library.as_ref())
+    {
+        native.clone()
+    } else {
+        if libraries.len() != 1 {
+            bail!("Cargo did not report exactly one dynamic library/executable for {package}: {libraries:?}");
+        }
+        libraries.remove(0)
+    };
+    crate::binary::inspect(&library, target, core.is_some())?;
+    let source = if manifest.starts_with(inv.root.join("ThirdParty")) {
+        manifest
+            .ancestors()
+            .find(|p| p.parent() == Some(inv.root.join("ThirdParty").as_path()))
+            .context("fork root")?
+    } else {
+        inv.root.as_path()
+    };
+    let source_commit = String::from_utf8(dependencies::capture(
+        Command::new("git")
+            .arg("-C")
+            .arg(source)
+            .args(["rev-parse", "HEAD"]),
+    )?)?
+    .trim()
+    .to_owned();
+    let toolchain = String::from_utf8(dependencies::capture(Command::new("rustc").arg("-Vv"))?)?;
+    let result = BuildResult {
+        component: component.into(),
+        target: target.into(),
+        profile: if release { "release" } else { "debug" }.into(),
+        library,
+        core_build,
+        source_commit,
+        toolchain,
+        features,
+        target_dir,
+    };
+    let path = receipt_path(inv, target, component);
+    fs::create_dir_all(path.parent().unwrap())?;
+    fs::write(path, serde_json::to_vec_pretty(&result)?)?;
+    Ok(Some(result))
+}
+pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&inv.root).args(["test", "--locked"]);
+    if let Some(c) = core {
+        let c = inv.core(c)?;
+        cmd.arg("--manifest-path")
+            .arg(inv.root.join(&c.manifest))
+            .args(["-p", &c.package]);
+        if !c.features.is_empty() {
+            cmd.arg("--features").arg(c.features.join(","));
+        }
+        cmd.arg("--target-dir")
+            .arg(inv.root.join(".work/test").join(&c.id));
+    } else if manager {
+        cmd.args(["-p", "shinki-emu-manager"])
+            .arg("--target-dir")
+            .arg(inv.root.join(".work/test/manager"));
+    } else {
+        cmd.args(["-p", "xtask", "-p", "shinki-emu-build"]);
+    }
+    if core.is_some() || manager {
+        let version = String::from_utf8(dependencies::capture(Command::new("rustc").arg("-vV"))?)?;
+        let host = version
+            .lines()
+            .find_map(|s| s.strip_prefix("host: "))
+            .context("rustc host triple")?;
+        dependencies::apply_environment(inv, host, &mut cmd)?;
+    }
+    dependencies::run(&mut cmd)
+}

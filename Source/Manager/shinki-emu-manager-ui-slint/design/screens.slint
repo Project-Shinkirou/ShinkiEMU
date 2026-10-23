@@ -1,0 +1,404 @@
+// Design review states for the Manager UI (plan 7.4). Not compiled into the product.
+// Render from the worktree root (phone states 360x640, others 1280x800):
+// slint-viewer --style material -L material=Emulator/Source/Manager/shinki-emu-manager-ui-slint/material-1.1.0/material.slint --component <Name> --size <WxH> --screenshot .tmp/emu-manager-design/<Name>.png Emulator/Source/Manager/shinki-emu-manager-ui-slint/design/screens.slint
+//
+// Every state sets the globals in `init` unconditionally: slint-viewer does not
+// compile in preview mode, so `Platform.uses-mock-data` would stay false here.
+
+import {
+    ManagerWindow, App, Network, Library, Selection, GameSettings, Patch, Settings, Cores, Notices,
+    Dialogs, Filters, Session, Onboarding, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
+} from "../ui/main.slint";
+
+global Mock {
+    out property <[GameCard]> games: [
+        { id: "g1", title: "星之终途", subtitle: "FVP · RFVP", cover: @image-url("cover.svg"), tint: #6a4cff, ready: true, play-time: "12 小时", last-played: "昨天", compat: "perfect" },
+        { id: "g2", title: "樱之刻 —在樱之森下漫步—", subtitle: "Musica · Shinki Musica", version: "初回限定版", tint: #c06080, ready: true, play-time: "3 小时", last-played: "3 天前", compat: "completable" },
+        { id: "g11", title: "樱之刻 —在樱之森下漫步—", subtitle: "Musica · Shinki Musica", version: "SakuraNoToki_DL", tint: #c06080, ready: true, play-time: "20 分钟", last-played: "上周", compat: "completable" },
+        { id: "g3", title: "Summer Pockets", subtitle: "SiglusEngine · siglus-rs", tint: #3a8fd0, ready: false, problem: "需要选择模拟器", compat: "" },
+        { id: "g4", title: "月に寄りそう乙女の作法", subtitle: "SoftPAL · Sena", tint: #d0a040, ready: true, play-time: "40 分钟", last-played: "上周", compat: "flawed" },
+        { id: "g5", title: "白色相簿2", subtitle: "Artemis · Art3m1s", tint: #8090b0, ready: true, compat: "boot_only" },
+        { id: "g6", title: "千恋＊万花", subtitle: "KiriKiri · KiriKiri2", tint: #e07060, ready: true, compat: "unplayable" },
+        { id: "g7", title: "魔女的夜宴", subtitle: "KiriKiri · KiriKiri2", tint: #7050a0, ready: true, compat: "unknown" },
+        { id: "g8", title: "灰色的果实", subtitle: "Ethornell / BGI · ethornell-rs", tint: #50a080, ready: true, compat: "perfect" },
+        { id: "g9", title: "Rewrite", subtitle: "SiglusEngine · siglus-rs", tint: #40a0c0, ready: true, play-time: "26 小时", last-played: "2 周前", compat: "completable" },
+        { id: "g10", title: "サクラノ詩 －櫻の森の上を舞う－", subtitle: "Musica · Shinki Musica", tint: #d07090, ready: true, play-time: "54 小时", last-played: "1 个月前", compat: "perfect" },
+    ];
+
+    out property <[PatchGame]> patch-games: [
+        { id: "g1", title: "星之终途", subtitle: "FVP · RFVP", linked: true, cover: @image-url("cover.svg"), tint: #6a4cff },
+        { id: "g2", title: "樱花萌放", subtitle: "FVP · RFVP", linked: true, tint: #c06080 },
+        { id: "g3", title: "Summer Pockets", subtitle: "SiglusEngine", linked: false, tint: #3a8fd0 },
+        { id: "g4", title: "夏空的英仙座", subtitle: "Musica · Shinki Musica", linked: true, tint: #d0a040 },
+        { id: "g5", title: "eden*", subtitle: "Musica · Shinki Musica", linked: false, tint: #8090b0 },
+        { id: "g6", title: "千恋＊万花", subtitle: "KiriKiri · KiriKiri2", linked: true, tint: #e07060 },
+    ];
+
+    out property <[CoreInfo]> cores: [
+        { id: "shinki.emu.musica", name: "Shinki Musica", engine: "Musica", version: "0.2.0", state: "loaded", source: "bundled", capabilities: ["CPU 画面", "可调渲染分辨率", "文本钩子"], removable: false, update-version: "0.2.1" },
+        { id: "rfvp", name: "RFVP", engine: "FVP", version: "0.2.0", state: "loaded", source: "user", capabilities: ["CPU 画面"], removable: true },
+        { id: "kirikiroid2-web", name: "KiriKiri2", engine: "KiriKiri", version: "0.1.9", state: "failed", source: "bundled", message: "无法加载核心文件：缺少 avcodec-57.dll", removable: false },
+        { id: "sena-rs", name: "Sena", engine: "SoftPAL", version: "0.2.0", state: "pending-update", source: "user", message: "重启后更新到 0.2.1" },
+        { id: "ethornell-rs", name: "ethornell-rs", engine: "Ethornell / BGI", version: "0.2.0", state: "available", source: "online" },
+    ];
+
+    out property <[ConfigField]> game-fields: [
+        { key: "script_encoding", label: "脚本编码", description: "读取脚本时使用的文字编码。汉化版通常为 GBK，日文原版为 Shift-JIS；选错会导致对话乱码或脚本无法解析，修改后需要重新启动游戏才会生效。", group: "脚本", kind: "enum", value: "gbk", display-value: "GBK（简体中文）", options: ["Shift-JIS（日文原版）", "GBK（简体中文）"], option-values: ["shift_jis", "gbk"], overridden: true },
+        { key: "launch_mode", label: "启动方式", group: "脚本", kind: "enum", value: "title", display-value: "标题菜单启动", options: ["直接进入脚本", "标题菜单启动"], option-values: ["direct", "title"] },
+        { key: "bgm_volume", label: "背景音乐音量", description: "初始音量。", group: "初始音量设置", kind: "integer", value: "80", min: 0, max: 100, step: 1, unit: "%" },
+        { key: "voice", label: "播放语音", group: "初始语音设置", kind: "bool", value: "true" },
+        { key: "profile_file", label: "密钥文件（key.toml）", description: "相对游戏目录的路径。", group: "文件", kind: "file", value: "key.toml", error: "密钥文件格式不正确" },
+        { key: "entry_script", label: "入口脚本", group: "高级", kind: "string", value: "start.sc", advanced: true },
+    ];
+
+    out property <[EngineAction]> actions: [
+        { control: 1, label: "快速存档", icon: "quick-save" },
+        { control: 2, label: "快速读档", icon: "quick-load" },
+        { control: 3, label: "自动播放", icon: "auto" },
+        { control: 4, label: "快进", icon: "skip" },
+        { control: 5, label: "历史记录", icon: "backlog" },
+    ];
+
+    public function base(dark: bool) {
+        App.appearance.theme-mode = dark ? "dark" : "light";
+        App.version = "0.2.0";
+        App.build = "a8de46595";
+        App.page = "library";
+        Network.allowed = true;
+        Network.sync-status = "已同步 · 3 分钟前";
+        Network.source = "https://project-shinkirou.github.io/data/shinkiemu/v1/";
+        Settings.roots = ["D:\\Games\\VN", "E:\\Galgame\\Collection 2024"];
+    }
+
+    public function library(dark: bool) {
+        self.base(dark);
+        Library.games = self.games;
+        Library.prepare-state = "ready";
+        Library.prepare-label = "刷新资料库";
+        Library.prepare-progress = -1;
+    }
+
+    public function selection() {
+        Selection.game = {
+            id: "g2", title: "樱之刻 —在樱之森下漫步—", engine: "Musica", emulator: "Shinki Musica · 0.2.0",
+            emulator-id: "shinki.emu.musica", launchable: true, play-time: "3 小时", last-played: "3 天前",
+            developer: "枕", release-date: "2015-04-24", platforms: "Windows",
+            description: "以樱花为主题的视觉小说，讲述画家草薙直哉与周围人们的故事。剧情从主人公回到故乡的美术学校开始，围绕一幅未完成的壁画，几代人的过去与约定逐渐浮现。",
+            tags: "剧情, 艺术", aliases: "Sakura no Toki",
+        };
+        Selection.tint = #c06080;
+        Selection.emulator-choices = [{ id: "shinki.emu.musica", label: "Shinki Musica" }, { id: "other", label: "其他实现" }];
+        Selection.compat = { status: "completable", notes: "全程可通关，个别视频音画不同步。", updated: "2026-10-01", release-id: "r12345", emulator-label: "Shinki Musica 0.2.0", report-url: "https://github.com/Project-Shinkirou/ShinkiEMU/issues/new", hint: "" };
+        Selection.releases = [{ id: "r12345", label: "r12345 · 初回限定版" }, { id: "r12346", label: "r12346 · 通常版" }];
+        Selection.pinned-release = "r12345";
+        Selection.other-versions = [{ id: "g11", label: "SakuraNoToki_DL" }];
+        Selection.history = [{ started: "2026-10-17 21:30", duration: "1 小时 20 分钟", ended-by: "正常退出" }, { started: "2026-10-15 20:00", duration: "1 小时 40 分钟", ended-by: "" }];
+        Selection.bangumi = { status: "doing", rating: 8, note: "" };
+        Library.selected-id = "g2";
+        Library.detail-open = true;
+    }
+
+    public function game-settings(dark: bool, section: string) {
+        self.base(dark);
+        App.page = "game-settings";
+        GameSettings.game-id = "g10";
+        GameSettings.title = "サクラノ詩 －櫻の森の上を舞う－";
+        GameSettings.section = section;
+        GameSettings.emulator-choices = [{ id: "shinki.emu.musica", label: "Shinki Musica · 0.2.0" }, { id: "rfvp", label: "RFVP · 0.2.0" }];
+        GameSettings.emulator-id = "shinki.emu.musica";
+        GameSettings.render-supported = true;
+        GameSettings.render-options = [{ id: "default", label: "跟随模拟器默认" }, { id: "adaptive", label: "适应窗口" }, { id: "preset-1080", label: "1080p · 1920×1080" }, { id: "custom", label: "自定义…" }];
+        GameSettings.render-mode = "preset-1080";
+        GameSettings.render-min = "320×180";
+        GameSettings.render-max = "16384×16384";
+        GameSettings.render-note = "上次实际生效 1920×1080";
+        GameSettings.recommended-available = true;
+        GameSettings.recommended-summary = "简体中文汉化版：GBK 脚本编码，叠加显示翻译。";
+        GameSettings.fields = self.game-fields;
+    }
+
+    public function patch(dark: bool) {
+        self.base(dark);
+        App.page = "patch";
+        Library.cover-loading = true;
+        Patch.games = self.patch-games;
+    }
+
+    public function settings(dark: bool, category: string) {
+        self.base(dark);
+        App.page = "settings";
+        App.settings-category = category;
+        Settings.compat-summary = "共 128 条兼容性记录，涉及 96 个发行版本";
+        Settings.bangumi-token-saved = true;
+        Settings.excluded = [{ id: "g9", title: "サクラノ詩 -櫻の森の上を舞う-", location: "D:\\Games\\VN\\SakuraNoUta" }];
+        Settings.translation = { provider: "openai", base-url: "https://api.openai.com/v1", openai-api: "responses", model: "gpt-4.1-mini", language: "zh-CN", timeout-s: 15, custom-prompt: "", context-segments: 8, context-chars: 6000 };
+        Settings.secret-saved = true;
+        Settings.translation-enabled = true;
+        Settings.models = ["gpt-4.1", "gpt-4.1-mini", "gpt-4o-mini"];
+        Settings.translation-status = "连接正常 · 312 ms · 3 个模型";
+        Cores.updates-available = 1;
+    }
+
+    public function cores-page(dark: bool) {
+        self.base(dark);
+        App.page = "cores";
+        Cores.items = self.cores;
+        Cores.restart-required = true;
+        Cores.updates-available = 1;
+        Cores.default-plugin = "shinki.emu.musica";
+        Cores.default-render = {
+            supported: true,
+            options: [{ id: "default", label: "核心默认" }, { id: "adaptive", label: "适应窗口" }, { id: "preset-1080", label: "1080p · 1920×1080" }, { id: "custom", label: "自定义…" }],
+            mode: "preset-1080",
+            min: "320×180",
+            max: "16384×16384",
+        };
+        Cores.default-fields = [
+            { key: "script_encoding", label: "脚本编码", description: "汉化版通常为 GBK。", group: "脚本", kind: "enum", value: "shift_jis", display-value: "Shift-JIS（日文原版）", options: ["Shift-JIS（日文原版）", "GBK（简体中文）"], option-values: ["shift_jis", "gbk"], overridden: true },
+            { key: "voice_volume", label: "语音音量", group: "播放", kind: "integer", value: "80", min: 0, max: 100, step: 1, unit: "%" },
+        ];
+    }
+
+    public function filters-page(dark: bool) {
+        self.base(dark);
+        App.page = "filters";
+        Cores.updates-available = 1;
+        Filters.preset = "anime4k";
+        Filters.fields = [
+            { key: "scale", label: "放大倍数", group: "", kind: "float", value: "2", min: 1, max: 4, step: 0.5, unit: "×" },
+            { key: "strength", label: "强度", description: "数值越高，线条修复越明显。", group: "", kind: "float", value: "0.6", min: 0, max: 1, step: 0.05 },
+        ];
+    }
+
+    public function session(phase: string) {
+        self.library(true);
+        Session.title = "樱之刻 —在樱之森下漫步—";
+        Session.launch-title = "樱之刻 —在樱之森下漫步—";
+        Session.launch-cover = @image-url("cover.svg");
+        Session.frame = @image-url("frame.svg");
+        Session.output-aspect = 1.7777;
+        Session.native-width = 1280;
+        Session.native-height = 720;
+        Session.raster-width = 1280;
+        Session.raster-height = 720;
+        Session.content-width = 1280;
+        Session.content-height = 720;
+        Session.actions = self.actions;
+        Selection.game.engine = "Musica";
+        Selection.game.emulator = "Shinki Musica · 0.2.0";
+        Filters.preset = "sharpen";
+        Session.phase = phase;
+        Session.active = true;
+    }
+}
+
+// ---- Library ----
+
+export component LibraryUnprepared inherits ManagerWindow {
+    init => {
+        Mock.base(false);
+        Library.prepare-state = "unprepared";
+        Library.prepare-label = "准备";
+    }
+}
+
+export component LibraryPreparing inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        Library.prepare-state = "scanning";
+        Library.prepare-progress = 0.62;
+        Library.prepare-detail = "已扫描 128 个目录，发现 10 部作品";
+        Library.can-cancel-prepare = true;
+    }
+}
+
+export component LibraryGridDark inherits ManagerWindow {
+    init => { Mock.library(true); }
+}
+
+export component LibraryListLight inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        App.appearance.view-mode = "list";
+        Library.sort = "recent";
+    }
+}
+
+export component LibraryEmpty inherits ManagerWindow {
+    init => {
+        Mock.base(false);
+        Settings.roots = [];
+        Library.prepare-state = "ready";
+        Library.prepare-label = "刷新资料库";
+    }
+}
+
+// ---- Detail ----
+
+export component DetailDocked inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        Mock.selection();
+    }
+}
+
+export component DetailPhoneSheet inherits ManagerWindow {
+    init => {
+        Mock.library(true);
+        Mock.selection();
+    }
+}
+
+// ---- Game settings ----
+
+export component GameSettingsEmulator inherits ManagerWindow {
+    init => { Mock.game-settings(false, "emulator"); }
+}
+
+// ---- Patch ----
+
+export component PatchSelectGame inherits ManagerWindow {
+    init => {
+        Mock.patch(false);
+        Patch.game = self.mock-game;
+        Patch.step = 1;
+    }
+    property <PatchGame> mock-game: { id: "g4", title: "夏空的英仙座", subtitle: "Musica · Shinki Musica", linked: true };
+}
+
+export component PatchRecipes inherits ManagerWindow {
+    init => {
+        Mock.patch(true);
+        Patch.game = { id: "g4", title: "夏空的英仙座", subtitle: "Musica · Shinki Musica", linked: true };
+        Patch.cover = @image-url("cover.svg");
+        Patch.step = 2;
+        Patch.recipes = [{ id: "musica-perseus-cn", title: "夏空的英仙座旧补丁离线转换", recommended: true }, { id: "musica-perseus-alt", title: "夏空的英仙座 繁體中文補丁", recommended: false }];
+        Patch.state = { script: "musica-perseus-cn", patch-directory: "D:\\Games\\夏空のペルセウス", can-start: true };
+    }
+}
+
+// ---- Settings ----
+
+export component SettingsNetwork inherits ManagerWindow {
+    init => { Mock.settings(true, "network"); }
+}
+
+export component SettingsTranslation inherits ManagerWindow {
+    init => { Mock.settings(false, "translation"); }
+}
+
+export component SettingsAbout inherits ManagerWindow {
+    init => { Mock.settings(false, "about"); }
+}
+
+// Phone deep link into 关于: single-pane content with a back arrow.
+export component SettingsAboutPhone inherits ManagerWindow {
+    init => { Mock.settings(true, "about"); }
+}
+
+// ---- Cores and filters (top-level pages) ----
+
+export component CoresWide inherits ManagerWindow {
+    init => { Mock.cores-page(false); }
+}
+
+export component CoresPhone inherits ManagerWindow {
+    init => { Mock.cores-page(true); }
+}
+
+export component FiltersWide inherits ManagerWindow {
+    init => { Mock.filters-page(true); }
+}
+
+export component FiltersPhone inherits ManagerWindow {
+    init => { Mock.filters-page(false); }
+}
+
+// Deep link into one category: single-pane content with a back arrow.
+export component SettingsPhone inherits ManagerWindow {
+    init => { Mock.settings(true, "translation"); }
+}
+
+// Phone library: the app bar carries every other sidebar page.
+export component LibraryPhone inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        Cores.updates-available = 1;
+    }
+}
+
+// ---- Onboarding ----
+
+export component OnboardingDisclaimer inherits ManagerWindow {
+    init => {
+        Mock.base(false);
+        App.page = "onboarding";
+        Onboarding.step = 0;
+    }
+}
+
+export component OnboardingDisclaimerPhone inherits ManagerWindow {
+    init => {
+        Mock.base(true);
+        App.page = "onboarding";
+        Onboarding.step = 0;
+    }
+}
+
+export component OnboardingRoots inherits ManagerWindow {
+    init => {
+        Mock.base(false);
+        App.page = "onboarding";
+        Onboarding.step = 1;
+        Onboarding.roots = ["D:\\Games\\VN"];
+    }
+}
+
+export component OnboardingPrepare inherits ManagerWindow {
+    init => {
+        Mock.base(true);
+        App.page = "onboarding";
+        Onboarding.step = 4;
+        Library.prepare-state = "scanning";
+        Library.prepare-progress = -1;
+        Library.prepare-detail = "已扫描 1,280 个目录，发现 12 部作品";
+        Library.can-cancel-prepare = true;
+    }
+}
+
+// ---- Game view ----
+
+export component GameLaunching inherits ManagerWindow {
+    init => { Mock.session("opening"); }
+}
+
+export component GameMenuFocused inherits ManagerWindow {
+    init => {
+        Mock.session("running");
+        Session.menu-page = "main";
+        Session.menu-open = true;
+    }
+}
+
+// ---- Overlays ----
+
+export component FatalDialog inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        Dialogs.fatal-title = "模拟器核心意外停止";
+        Dialogs.fatal-detail = "Shinki Musica 在读取 data02.paz 时崩溃。存档不受影响；可以重试，或在“核心”页查看日志。";
+        Dialogs.fatal-code = "SHINKI_EMU_CORE_PANIC";
+        Dialogs.fatal-retryable = true;
+        Dialogs.fatal-active = true;
+    }
+}
+
+export component SnackbarUndo inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        App.appearance.reduce-motion = true;
+        Notices.snackbar-text = "已从资料库移除《魔女的夜宴》";
+        Notices.snackbar-action = "撤销";
+        Notices.snackbar-serial += 1;
+    }
+}

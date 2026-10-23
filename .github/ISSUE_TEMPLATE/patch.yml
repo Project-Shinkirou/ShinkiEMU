@@ -1,0 +1,118 @@
+name: Patch submission
+description: Submit a recipe or authorized patch link; no automatic execution
+body:
+  - type: markdown
+    attributes:
+      value: Do not include keys, game text, commercial assets or saves. Reports require maintainer review.
+  - type: input
+    id: id
+    attributes:
+      label: Patch id
+    validations:
+      required: true
+  - type: input
+    id: title_zh
+    attributes:
+      label: Title (zh-CN)
+    validations:
+      required: true
+  - type: input
+    id: title_en
+    attributes:
+      label: Title (en)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+    validations:
+      required: true
+  - type: input
+    id: vn_ids
+    attributes:
+      label: VNDB vIDs
+    validations:
+      required: true
+  - type: input
+    id: release_ids
+    attributes:
+      label: VNDB rIDs
+    validations:
+      required: false
+  - type: input
+    id: emulators
+    attributes:
+      label: Cores
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - recipe
+        - external
+        - hosted
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source URL
+    validations:
+      required: false
+  - type: input
+    id: license
+    attributes:
+      label: License
+    validations:
+      required: true
+  - type: input
+    id: authorization
+    attributes:
+      label: Authorization URL
+    validations:
+      required: false
+  - type: textarea
+    id: summary_zh
+    attributes:
+      label: Summary (zh-CN)
+    validations:
+      required: true
+  - type: textarea
+    id: summary_en
+    attributes:
+      label: Summary (en)
+    validations:
+      required: true
+  - type: input
+    id: artifact
+    attributes:
+      label: Artifact URL
+    validations:
+      required: false
+  - type: input
+    id: sha256
+    attributes:
+      label: SHA256
+    validations:
+      required: false
+  - type: input
+    id: size
+    attributes:
+      label: Size (bytes)
+    validations:
+      required: false
+  - type: input
+    id: file_name
+    attributes:
+      label: File name
+    validations:
+      required: false
+  - type: input
+    id: script
+    attributes:
+      label: Recipe script
+    validations:
+      required: false

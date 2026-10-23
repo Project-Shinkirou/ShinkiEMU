@@ -1,0 +1,5 @@
+target/
+/.work/
+/.tmp/
+__pycache__/
+*.pyc

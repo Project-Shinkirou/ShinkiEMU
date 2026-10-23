@@ -1,0 +1,224 @@
+use super::*;
+use crate::{audio::MoviePcm, scene::core_error};
+use shinki_emu_sdk::video::*;
+use std::{
+    collections::VecDeque,
+    sync::{atomic::Ordering, Arc},
+};
+
+const BATCH_PACKETS: usize = 4;
+const AUDIO_PACKET_BYTES: usize = 64 * 1024;
+const VIDEO_BYTES: usize = 64 * 1024 * 1024;
+const MAX_ENCODED_BYTES: u64 = 512 * 1024 * 1024;
+
+pub(crate) struct Movie {
+    decoder: VideoDecoderWorker,
+    audio: Option<Arc<MoviePcm>>,
+    frames: VecDeque<(VideoFramePacket, roukaku_byte_source::OwnedByteBuffer)>,
+    video_bytes: usize,
+    position: u64,
+    duration: u64,
+    has_audio: bool,
+    initialized: bool,
+    pending: bool,
+    eof: bool,
+    remainder_ns: u64,
+    presented: Option<VideoFramePacket>,
+}
+impl Movie {
+    pub fn open(archive: &Arc<MusicaMountedVfs>, state: &MusicaMovieState) -> SessionResult<Self> {
+        let stat = archive.stat(&state.resource_uri).map_err(core_error)?;
+        if stat.size == 0 || stat.size > MAX_ENCODED_BYTES {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_MOVIE_RESOURCE",
+                "movie exceeds encoded byte budget",
+            ));
+        }
+        let archive = archive.clone();
+        let uri = state.resource_uri.clone();
+        let decoder = VideoDecoderWorker::open_file(
+            move |stop| {
+                let mut file = tempfile::Builder::new()
+                    .prefix("shinki-musica-movie-")
+                    .tempfile()
+                    .map_err(|cause| {
+                        crate::CoreError::invalid("SHINKI_EMU_MUSICA_MOVIE_FILE", cause.to_string())
+                    })?;
+                archive.write_movie(&uri, &mut file, MAX_ENCODED_BYTES, stop)?;
+                Ok(file)
+            },
+            FfmpegStreamLimits {
+                max_encoded_bytes: MAX_ENCODED_BYTES as usize,
+                max_audio_packet_bytes: AUDIO_PACKET_BYTES,
+                ..Default::default()
+            },
+            Some(FfmpegAudioOutputFormat {
+                sample_rate: 48000,
+                channels: 2,
+            }),
+        )
+        .map_err(core_error)?;
+        tracing::info!(
+            event = "shinki.emu.musica.movie.open",
+            position_us = state.continuation_pts
+        );
+        Ok(Self {
+            decoder,
+            audio: None,
+            frames: VecDeque::new(),
+            video_bytes: 0,
+            position: state.continuation_pts,
+            duration: 0,
+            has_audio: false,
+            initialized: false,
+            pending: true,
+            eof: false,
+            remainder_ns: 0,
+            presented: None,
+        })
+    }
+    fn start_audio(&mut self, host: &Audio, generation: u64) -> SessionResult<()> {
+        if self.has_audio {
+            let audio = Arc::new(MoviePcm::new(generation, self.position)?);
+            host.set_movie(Some(audio.clone()))?;
+            self.audio = Some(audio);
+        }
+        self.initialized = true;
+        Ok(())
+    }
+    pub fn advance(
+        &mut self,
+        host: &Audio,
+        elapsed_ns: u64,
+        paused: bool,
+    ) -> SessionResult<Option<TextureFrame>> {
+        if let Some(audio) = &self.audio {
+            audio.paused.store(paused, Ordering::Release);
+        }
+        if self.pending {
+            if let Some(result) = self.decoder.poll().map_err(core_error)? {
+                self.pending = false;
+                match result {
+                    DecodeCompletion::Opened(config) => {
+                        if !config.has_video || self.position >= config.duration_us {
+                            return Err(error(
+                                "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
+                                "movie has no video or invalid saved position",
+                            ));
+                        }
+                        self.duration = config.duration_us;
+                        self.has_audio = config.has_audio;
+                        if self.position != 0 {
+                            self.decoder
+                                .request_seek(self.position)
+                                .map_err(core_error)?;
+                            self.pending = true;
+                        } else {
+                            self.start_audio(host, 1)?;
+                        }
+                    }
+                    DecodeCompletion::Seeked { generation } => {
+                        self.start_audio(host, generation)?
+                    }
+                    DecodeCompletion::Packets { packets, eof } => {
+                        self.eof = eof;
+                        for packet in packets {
+                            match packet {
+                                DecodedMediaPacket::Audio { packet, samples } => {
+                                    self.audio
+                                        .as_ref()
+                                        .ok_or_else(|| {
+                                            error(
+                                                "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
+                                                "unexpected audio packet",
+                                            )
+                                        })?
+                                        .push(packet, samples)?;
+                                }
+                                DecodedMediaPacket::Video { packet, bgra8 } => {
+                                    self.video_bytes += bgra8.len();
+                                    self.frames.push_back((packet, bgra8));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if self.initialized
+            && !self.pending
+            && !self.eof
+            && self.frames.len() + BATCH_PACKETS <= 16
+            && self.video_bytes < VIDEO_BYTES
+            && self
+                .audio
+                .as_ref()
+                .map(|a| a.can_buffer(BATCH_PACKETS * AUDIO_PACKET_BYTES / 4, BATCH_PACKETS))
+                .transpose()?
+                .unwrap_or(true)
+        {
+            // Reserve space for all four results, including worst-case PCM packets.
+            self.decoder
+                .request_next(BATCH_PACKETS, VIDEO_BYTES)
+                .map_err(core_error)?;
+            self.pending = true;
+        }
+        let audio_drained = self
+            .audio
+            .as_ref()
+            .map(|a| a.drained())
+            .transpose()?
+            .unwrap_or(true);
+        if self.initialized && !paused {
+            if let Some(audio) = &self.audio {
+                self.position = self.position.max(audio.position_us());
+            }
+            // Silent movies, and the video tail after audio EOS, use the host clock.
+            if (!self.has_audio && (!self.frames.is_empty() || self.eof))
+                || (self.eof && audio_drained)
+            {
+                let ns = self.remainder_ns + elapsed_ns;
+                self.position = self.position.saturating_add(ns / 1000).min(self.duration);
+                self.remainder_ns = ns % 1000;
+            }
+        }
+        if !paused
+            && self
+                .frames
+                .front()
+                .is_some_and(|(p, _)| p.pts_us <= self.position)
+        {
+            let (packet, bytes) = self.frames.pop_front().unwrap();
+            self.video_bytes -= bytes.len();
+            let mut rgba = bytes.as_ref().to_vec();
+            for pixel in rgba.as_chunks_mut::<4>().0 {
+                pixel.swap(0, 2);
+            }
+            let frame = TextureFrame {
+                width: packet.width,
+                height: packet.height,
+                rgba8: rgba.into(),
+            };
+            self.presented = Some(packet);
+            return Ok(Some(frame));
+        }
+        Ok(None)
+    }
+    pub fn presented_packet(&self) -> Option<&VideoFramePacket> {
+        self.presented.as_ref()
+    }
+    pub fn position_us(&self) -> u64 {
+        self.position
+    }
+    pub fn ended(&self) -> bool {
+        self.eof && self.frames.is_empty() && self.position >= self.duration
+    }
+    pub fn close(self, host: &Audio) -> SessionResult<()> {
+        let audio = host.set_movie(None);
+        let decoder = self.decoder.close().map_err(core_error);
+        audio?;
+        decoder?;
+        tracing::info!(event = "shinki.emu.musica.movie.close");
+        Ok(())
+    }
+}

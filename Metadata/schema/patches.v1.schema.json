@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "PatchArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "file_name": {
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "maximum": 1073741824.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "sha256",
+        "size",
+        "url"
+      ],
+      "type": "object"
+    },
+    "PatchCatalogEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PatchArtifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorization_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "emulators": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "issue_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/definitions/PatchKind"
+        },
+        "license": {
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PatchRecipe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "title": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "version": {
+          "type": "string"
+        },
+        "vn_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "emulators",
+        "id",
+        "kind",
+        "license",
+        "release_ids",
+        "summary",
+        "title",
+        "version",
+        "vn_ids"
+      ],
+      "type": "object"
+    },
+    "PatchKind": {
+      "enum": [
+        "recipe",
+        "external",
+        "hosted"
+      ],
+      "type": "string"
+    },
+    "PatchRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "script"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/definitions/PatchCatalogEntry"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "pattern": "^shinki\\.emu\\.patches\\.v1$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entries",
+    "schema"
+  ],
+  "title": "PatchCatalog",
+  "type": "object"
+}

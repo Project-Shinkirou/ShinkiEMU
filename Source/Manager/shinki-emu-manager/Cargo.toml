@@ -1,0 +1,79 @@
+[package]
+name = "shinki-emu-manager"
+version = "0.1.0-beta.2"
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+doctest = false
+
+[[bin]]
+name = "shinki-emu-manager"
+path = "src/bin_main.rs"
+
+[dependencies]
+shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
+shinki-emu-manager-ui-slint = { path = "../shinki-emu-manager-ui-slint" }
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
+shinki-emu-patch = { path = "../../Tools/shinki-emu-patch" }
+shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
+mlua.workspace = true
+shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
+shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
+roukaku-observability = { workspace = true }
+roukaku-media-core = { workspace = true }
+clap.workspace = true
+serde.workspace = true
+crossbeam-channel.workspace = true
+ctrlc.workspace = true
+naga = { version = "30", features = ["spv-in", "wgsl-out"] }
+tokio.workspace = true
+directories.workspace = true
+pollster.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+parking_lot = "0.12.5"
+serde_json.workspace = true
+zip = { version = "=9.0.5", default-features = false, features = ["deflate"] }
+sha2.workspace = true
+slint = { workspace = true, features = ["std", "compat-1-2", "accessibility", "unstable-wgpu-30"] }
+thiserror.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+url.workspace = true
+hassle-rs = "=0.12.0"
+wgpu = { version = "30", features = ["static-dxc"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Console"] }
+
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+gilrs = { workspace = true, features = ["wgi"] }
+rfd.workspace = true
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-winit-030"] }
+winit.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+shinki-emu-rfvp = { path = "../../../ThirdParty/rfvp/crates/shinki-emu-rfvp" }
+# Slint gates winit/femtovg out of its Android graph; the Manager renders
+# through the android-activity backend with the wgpu-30 Skia renderer, and the
+# NativeActivity glue is the single activity backend linked into the process.
+slint = { workspace = true, features = ["backend-android-activity-06"] }
+android-activity = { version = "=0.6.1", default-features = false, features = ["native-activity"] }
+jni = "=0.22.4"
+ndk = { version = "=0.9.0", default-features = false }
+libc.workspace = true
+# reqwest's rustls backend verifies certificates through the platform
+# verifier, which needs the activity context on Android (`platform::android`).
+rustls-platform-verifier = "=0.7.0"
+
+[build-dependencies]
+sha2.workspace = true
+
+[dev-dependencies]
+crc32fast = "1.5"
+flate2.workspace = true

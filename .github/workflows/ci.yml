@@ -1,0 +1,116 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - id: matrix
+        shell: bash
+        run: echo "matrix=$(cargo xtask matrix --json)" >> "$GITHUB_OUTPUT"
+  tools:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: cargo fmt --check
+      - run: cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings
+      - run: cargo test --locked -p xtask -p shinki-emu-build
+      - run: cargo xtask metadata validate
+  component:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      OHOS_SDK_NATIVE: ${{ vars.OHOS_SDK_NATIVE }}
+      ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - uses: actions/setup-java@v4
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+      - name: Select Android SDK
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          sdkmanager 'ndk;30.0.15729638' 'platforms;android-36' 'build-tools;36.0.0'
+          "ANDROID_NDK_HOME=$env:ANDROID_HOME/ndk/30.0.15729638" >> $env:GITHUB_ENV
+      - name: Prepare declared-supported target
+        if: matrix.status == 'supported'
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup target add $env:TARGET
+          if ($env:COMPONENT -eq 'manager') {
+            cargo xtask deps --target $env:TARGET
+          } else {
+            cargo xtask deps --target $env:TARGET --core $env:COMPONENT
+          }
+      - name: Build or report blocked
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+        run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-${{ matrix.component }}-${{ matrix.target }}
+          path: .work/ci-report.json
+          if-no-files-found: error
+      - name: Select real distributable artifact
+        id: artifact
+        env:
+          REPORT: .work/ci-report.json
+        run: |
+          $report = Get-Content -Raw $env:REPORT | ConvertFrom-Json
+          if ($null -ne $report.artifact) { "path=$($report.artifact)" >> $env:GITHUB_OUTPUT }
+      - uses: actions/upload-artifact@v4
+        if: steps.artifact.outputs.path != ''
+        with:
+          name: ${{ matrix.component }}-${{ matrix.target }}
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error

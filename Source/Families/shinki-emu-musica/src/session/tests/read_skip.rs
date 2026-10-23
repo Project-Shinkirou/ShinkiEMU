@@ -1,0 +1,74 @@
+use super::*;
+#[test]
+fn native_gpu_read_skip_stops_on_unread_and_restores_mode() {
+    let _session = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    fixture::game(
+        root.path(),
+        b".label repeat\r\n.message 1  speaker First\r\n.goto repeat\r\n",
+    );
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
+        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(0, &[key(KeyCode::S)]).unwrap();
+    session.advance(100_000_000, &[]).unwrap();
+    session.save(0).unwrap();
+    let storage = crate::storage::Storage::new(root.path()).unwrap();
+    let saved = storage.read(0).unwrap();
+    assert!(MusicaVm::decode_native_save(&saved.vm)
+        .unwrap()
+        .read_message_identities
+        .is_empty());
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    session.save(0).unwrap();
+    let read = storage.read(0).unwrap();
+    let state = MusicaVm::decode_native_save(&read.vm).unwrap();
+    assert_eq!(state.read_message_identities.len(), 1);
+    assert_eq!(state.system_ui.play_mode, crate::MusicaPlayMode::Skip);
+    let before = state.backlog.len();
+    session.advance(100_000_000, &[]).unwrap();
+    session.advance(0, &[key(KeyCode::S)]).unwrap();
+    session.load(0).unwrap();
+    session.advance(100_000_000, &[]).unwrap();
+    session.save(0).unwrap();
+    let after = MusicaVm::decode_native_save(&storage.read(0).unwrap().vm).unwrap();
+    assert!(after.backlog.len() > before);
+    assert_eq!(after.read_message_identities.len(), 1);
+    assert_eq!(after.system_ui.play_mode, crate::MusicaPlayMode::Skip);
+    Box::new(session).close().unwrap();
+}
+
+#[test]
+fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
+    let _session = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    fixture::game(root.path(), b".message 1  speaker Before\r\n.setglobal REN_CLEAR = 1\r\n.message 2  speaker After\r\n.end\r\n");
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
+        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.save(20).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    session.load(20).unwrap();
+    assert_eq!(session.vm.state().global_variables["REN_CLEAR"], 1);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    Box::new(session).close().unwrap();
+    let (_, session) = provider
+        .open_session(request(root.path(), Sink::default()))
+        .unwrap();
+    assert_eq!(session.vm.state().global_variables["REN_CLEAR"], 1);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    Box::new(session).close().unwrap();
+    let path = root
+        .path()
+        .join(".shinki-musica/saves/global-progress.json");
+    std::fs::write(&path, b"damaged").unwrap();
+    assert!(provider
+        .open_session(request(root.path(), Sink::default()))
+        .is_err());
+    assert_eq!(std::fs::read(path).unwrap(), b"damaged");
+}

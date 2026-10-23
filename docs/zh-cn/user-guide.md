@@ -1,0 +1,36 @@
+---
+title: 用户指南
+description: 安装 Manager、管理原生核心并查看对应平台的运行报告。
+---
+
+# 用户指南
+
+## 安装与启动
+
+从 [ShinkiEMU Releases](https://github.com/Project-Shinkirou/ShinkiEMU/releases) 下载符合平台和架构的 Manager 产物。桌面包完整解压到可写目录后，运行 `shinki-emu-manager`（Windows 为 `.exe`）。保留同包依赖、许可证和资源。桌面命令 `shinki-emu-manager --help` 显示帮助；不带子命令启动图形界面。
+
+只下载 Release 中实际存在的附件。构建情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)。Android 的 debug 签名 CI APK 是测试包；iOS 真机和模拟器产物需要区分，库文件也不是可安装的 IPA。
+
+## 添加游戏与安装核心
+
+在设置中添加合法取得的游戏安装目录，再扫描游戏库。选择游戏后，确认识别到的核心和游戏专用配置，再启动会话。探测命中只说明格式得到识别；加密资源仍可能需要私有配置，密钥应始终留在本机。
+
+先在设置中允许联网，再同步元数据或下载核心。进入核心管理页，刷新目录，选择当前平台的核心进行安装或更新。目录记录版本、ABI、下载地址和哈希。更新涉及已加载的库时，先结束会话，再按界面提示重启 Manager。保留完整核心目录中的 `core.json`、依赖、可选的 `Resources/` 和许可证；单独复制 DLL 不构成完整安装。
+
+## 兼容性与元数据
+
+默认元数据源为：
+
+`https://project-shinkirou.github.io/data/shinkiemu/v1/`
+
+设置页提供联网许可和手动同步。损坏或未通过校验的快照不会覆盖有效缓存。查看报告时，应同时匹配 VNDB 发行版 rID、核心、平台、架构及 desktop/device/simulator 变体。其他平台或架构的结论不能套用到当前环境。可通过 [issue 表单](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new/choose)提交可复现的观察。
+
+## 补丁
+
+经过审查的 **Luau 配方**用于离线文件转换，只有用户明确选择后才运行。应用前查看适用范围，使用独立输出目录并保留备份；提交 issue 不会执行其中的脚本。**external（外部）**和 **hosted（托管）**补丁只显示链接或下载入口，Manager 不执行附件。下载前核对许可、授权依据、适用发行版和 SHA256。发行版列表为空表示“发行版本未限定”，不代表所有版本均已验证。贡献方式见 [Metadata](metadata.md)。
+
+## 数据与存档
+
+ShinkiEMU 使用新的平台应用数据目录，可从设置中打开。桌面可用 `SHINKI_EMU_DATA_DIR` 指定绝对路径；Android 使用应用私有目录。更名前的应用数据库、缓存和产品自有存档不自动导入。此次切换不改动原游戏安装和原商业存档。
+
+存档规则由核心决定。例如 Musica 使用 `.shinki-musica`，ReMinori 要求单独的保存根目录。两个核心属于同一家族，也不能据此交换存档。备份数据、更换核心或移动存档目录前，先关闭活动会话。

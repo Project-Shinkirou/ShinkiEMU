@@ -1,0 +1,25 @@
+[package]
+name = "shinki-emu-manager-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
+libloading.workspace = true
+parking_lot = "0.12.5"
+shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
+rusqlite.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }

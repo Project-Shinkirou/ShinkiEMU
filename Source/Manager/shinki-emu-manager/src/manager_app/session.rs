@@ -1,0 +1,242 @@
+use super::*;
+use shinki_emu_manager::window_service::WindowBridge;
+use shinki_emu_manager_core::model::FramePoll;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct NativeFailure {
+    pub(super) message: String,
+    pub(super) can_retry: bool,
+}
+pub(super) struct SessionServices {
+    pub(super) text: Option<TextReplacementBridge>,
+    pub(super) modal: Option<ModalBridge>,
+    pub(super) window: Option<WindowBridge>,
+    pub(super) cancellation: shinki_emu_manager_core::NativeCancellation,
+}
+pub(super) struct ActiveFamilySession {
+    session_epoch: u64,
+    session: Option<NativeSession>,
+    text: Option<TextReplacementBridge>,
+    modal: Option<ModalBridge>,
+    window: Option<WindowBridge>,
+    mailbox: FrameMailbox,
+    pub(super) status: FamilyStatus,
+    next_poll: Instant,
+    pub(super) failure: Option<NativeFailure>,
+    pub(super) surface: shinki_emu_manager_core::SurfaceRecord,
+}
+impl ActiveFamilySession {
+    pub(super) fn open(
+        game_config: (
+            &GameRecord,
+            Vec<shinki_emu_manager_core::model::ConfigEntry>,
+            u64,
+        ),
+        candidate: &FamilyProbeCandidate,
+        registry: &mut FamilyProviderRegistry,
+        mailbox: FrameMailbox,
+        initial_window: WindowState,
+        render_extent: Option<(u32, u32)>,
+        services: SessionServices,
+    ) -> Result<Self, String> {
+        let (game, configuration, epoch) = game_config;
+        if candidate.descriptor.family_id != candidate.report.family_id
+            || game.family_id.as_deref() != Some(candidate.report.family_id.as_str())
+        {
+            return Err("SHINKI_EMU_FAMILY_BINDING_MISMATCH".into());
+        }
+        mailbox.activate(epoch).map_err(|e| e.to_string())?;
+        let mut host = shinki_emu_manager_core::no_host_services(&services.cancellation);
+        if let Some(text) = &services.text {
+            host.text = text.sink();
+        }
+        if let Some(window) = &services.window {
+            host.window = window.sink();
+        }
+        let opened = (|| {
+            // Probes use canonical directories; preserve stored aliases without
+            // changing the native identity between probing and opening.
+            let path = fs::canonicalize(&game.location)
+                .map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_INVALID".to_owned())?;
+            let game_path = path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned();
+            registry
+                .open_selected(
+                    candidate,
+                    NativeOpenRequest {
+                        game_path,
+                        configuration,
+                        session_epoch: epoch,
+                        initial_window,
+                        host,
+                        cancellation: services.cancellation,
+                        render_extent,
+                    },
+                )
+                .map_err(|error| error.to_string())
+        })();
+        let session = match opened {
+            Ok(session) => session,
+            Err(error) => {
+                if let Some(text) = &services.text {
+                    let _ = text.close();
+                }
+                if let Some(window) = &services.window {
+                    window.close();
+                }
+                if let Some(modal) = &services.modal {
+                    modal.cancel_pending();
+                }
+                return Err(error);
+            }
+        };
+        let surface = session.surface();
+        let mut active = Self {
+            surface,
+            session_epoch: epoch,
+            session: Some(session),
+            text: services.text,
+            modal: services.modal,
+            window: services.window,
+            mailbox,
+            status: FamilyStatus::Running,
+            next_poll: Instant::now(),
+            failure: None,
+        };
+        if let Err(error) = active.poll() {
+            let cleanup = active.close();
+            return Err(cleanup
+                .err()
+                .map_or(error.clone(), |e| format!("{error}; {e}")));
+        }
+        Ok(active)
+    }
+    pub(super) fn epoch(&self) -> u64 {
+        self.session_epoch
+    }
+    pub(super) fn wake_deadline(&self) -> Instant {
+        self.next_poll
+    }
+    pub(super) fn input(&mut self, events: &[FamilyEvent]) -> Result<(), String> {
+        if events.iter().any(|event| matches!(event, FamilyEvent::Control { command } if *command == shinki_emu_abi::CONTROL_RETRY)) { self.failure = None; }
+        let displayed = self.mailbox.displayed_identity()?;
+        let session = self.session.as_mut().ok_or("SHINKI_EMU_CORE_CLOSED")?;
+        let result = session.input(events, displayed);
+        self.unless_finished("input", result)
+    }
+    pub(super) fn control(&mut self, control: u32) -> Result<(), String> {
+        let session = self.session.as_mut().ok_or("SHINKI_EMU_CORE_CLOSED")?;
+        let result = session.control(control);
+        self.unless_finished("control", result)
+    }
+    /// A core may finish between the host's last poll and a queued input or
+    /// control; it then rejects the call. The rejected batch belongs to a game
+    /// that has already ended, so it is dropped and the session closes as
+    /// finished instead of failing.
+    fn unless_finished(
+        &mut self,
+        operation: &'static str,
+        result: shinki_emu_manager_core::model::FamilyResult<()>,
+    ) -> Result<(), String> {
+        let Err(error) = result else {
+            return Ok(());
+        };
+        let session = self.session.as_mut().ok_or("SHINKI_EMU_CORE_CLOSED")?;
+        if !session.poisoned()
+            && session
+                .state()
+                .is_ok_and(|state| state.state == shinki_emu_abi::SESSION_FINISHED)
+        {
+            tracing::info!(event = "shinki.emu.native.finished_input_dropped", operation, diagnostic_code = %error.code());
+            self.status = FamilyStatus::Finished;
+            return Ok(());
+        }
+        Err(error.to_string())
+    }
+    pub(super) fn poisoned(&self) -> bool {
+        self.session.as_ref().is_some_and(NativeSession::poisoned)
+    }
+    /// Host cadence only controls observation; native producer owns all game time.
+    pub(super) fn poll(&mut self) -> Result<bool, String> {
+        let session = self.session.as_mut().ok_or("SHINKI_EMU_CORE_CLOSED")?;
+        let state = session.state().map_err(|e| e.to_string())?;
+        let failure_changed = if state.state == shinki_emu_abi::SESSION_FAILED {
+            let can_retry = state.flags & shinki_emu_abi::SESSION_CAN_RETRY != 0;
+            let code = String::from_utf8_lossy(&state.error.code[..state.error.code_len as usize]);
+            let message =
+                String::from_utf8_lossy(&state.error.message[..state.error.message_len as usize]);
+            let changed = self.failure.as_ref().is_none_or(|failure| {
+                failure.can_retry != can_retry
+                    || failure
+                        .message
+                        .strip_prefix(code.as_ref())
+                        .and_then(|suffix| suffix.strip_prefix(": "))
+                        != Some(message.as_ref())
+            });
+            if changed {
+                tracing::error!(event = "shinki.emu.native.session_failed", operation = "state", diagnostic_code = %code, message = %message, can_retry);
+                self.failure = Some(NativeFailure {
+                    message: format!("{code}: {message}"),
+                    can_retry,
+                });
+            }
+            self.next_poll = Instant::now() + Duration::from_millis(10);
+            return Ok(changed);
+        } else {
+            self.failure.take().is_some()
+        };
+        self.status = match state.state {
+            shinki_emu_abi::SESSION_RUNNING => FamilyStatus::Running,
+            shinki_emu_abi::SESSION_PAUSED | shinki_emu_abi::SESSION_WAITING => FamilyStatus::Waiting,
+            shinki_emu_abi::SESSION_FINISHED => FamilyStatus::Finished,
+            _ => return Err("SHINKI_EMU_CORE_STATE".into()),
+        };
+        let after = self.mailbox.identity()?;
+        let polled = session.acquire_frame(after).map_err(|e| e.to_string())?;
+        let ready = matches!(&polled, FramePoll::Ready(_));
+        if let FramePoll::Ready(frame) = polled {
+            self.mailbox.publish(frame).map_err(|e| e.to_string())?;
+        }
+        self.next_poll = Instant::now() + Duration::from_millis(2);
+        Ok(ready || failure_changed)
+    }
+    pub(super) fn close(&mut self) -> Result<(), String> {
+        // Native cancellation is independent of ordinary controls and wakes all
+        // synchronous services before worker joins. CPU leases outlive close.
+        if let Some(session) = &self.session {
+            session.cancel();
+        }
+        let text_result = self
+            .text
+            .as_ref()
+            .map_or(Ok(()), |text| text.close().map_err(|e| e.to_string()));
+        if let Some(window) = &self.window {
+            window.close();
+        }
+        if let Some(modal) = &self.modal {
+            modal.cancel_pending();
+        }
+        let frame_result = self.mailbox.clear(self.session_epoch);
+        let core_result = self.session.take().map_or(Ok(()), |mut session| {
+            session.close().map_err(|e| e.to_string())
+        });
+        self.text.take();
+        self.window.take();
+        self.modal.take();
+        let errors: Vec<_> = [text_result, frame_result, core_result]
+            .into_iter()
+            .filter_map(Result::err)
+            .collect();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+}
+impl Drop for ActiveFamilySession {
+    fn drop(&mut self) {
+        if let Err(error) = self.close() {
+            tracing::error!(event = "shinki.emu.session.cleanup_failed", error);
+        }
+    }
+}

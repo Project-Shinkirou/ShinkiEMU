@@ -1,0 +1,109 @@
+use super::*;
+use crate::modal_service::{ModalPresentation, ModalUiUpdate};
+use shinki_emu_manager_core::model::ModalResponse;
+use std::{cell::RefCell, rc::Rc};
+
+pub(super) type ModalUiState = Rc<RefCell<Option<ModalPresentation>>>;
+
+pub(super) fn install<C: ManagerController>(
+    adapter: &Rc<SlintManagerAdapter>,
+    controller: &Rc<RefCell<C>>,
+) -> ModalUiState {
+    let state: ModalUiState = Rc::new(RefCell::new(None));
+    let selected = state.clone();
+    let target = controller.clone();
+    let weak = adapter.window().as_weak();
+    adapter
+        .window()
+        .global::<Dialogs>()
+        .on_modal_submit(move |button, value| {
+            let Some(presentation) = selected.borrow().as_ref().cloned() else {
+                return;
+            };
+            let Some(window) = weak.upgrade() else {
+                return;
+            };
+            let Ok(button_index) = u32::try_from(button) else {
+                report_error(&window, "SHINKI_EMU_FAMILY_MODAL_RESPONSE");
+                return;
+            };
+            let text = if presentation.request.initial_text.is_some() {
+                Some(value.as_str().into())
+            } else {
+                None
+            };
+            match target.borrow_mut().respond_modal(
+                presentation.id,
+                ModalResponse::Submitted { button_index, text },
+            ) {
+                Ok(()) => {
+                    selected.borrow_mut().take();
+                    window.global::<Dialogs>().set_modal_active(false);
+                }
+                Err(error) => report_error(&window, &error),
+            }
+        });
+    let selected = state.clone();
+    let target = controller.clone();
+    let weak = adapter.window().as_weak();
+    adapter
+        .window()
+        .global::<Dialogs>()
+        .on_modal_cancel(move || {
+            let Some(presentation) = selected.borrow_mut().take() else {
+                return;
+            };
+            let result = target
+                .borrow_mut()
+                .respond_modal(presentation.id, ModalResponse::Cancelled);
+            if let Some(window) = weak.upgrade() {
+                window.global::<Dialogs>().set_modal_active(false);
+                if let Err(error) = result {
+                    report_error(&window, &error);
+                }
+            }
+        });
+    state
+}
+
+pub(super) fn service<C: ManagerController>(
+    window: &shinki_emu_manager_ui_slint::ManagerWindow,
+    controller: &Rc<RefCell<C>>,
+    state: &ModalUiState,
+) {
+    let dialogs = window.global::<Dialogs>();
+    loop {
+        let update = controller.borrow_mut().take_modal_update();
+        match update {
+            Some(ModalUiUpdate::Show(presentation)) => {
+                let request = &presentation.request;
+                dialogs.set_modal_caption(request.caption.as_str().into());
+                dialogs.set_modal_message(request.message.as_str().into());
+                dialogs.set_modal_has_input(request.initial_text.is_some());
+                dialogs.set_modal_text(match &request.initial_text {
+                    Some(text) => text.as_str().into(),
+                    None => slint::SharedString::default(),
+                });
+                let buttons: Vec<slint::SharedString> = request
+                    .buttons
+                    .iter()
+                    .map(|label| label.as_str().into())
+                    .collect();
+                dialogs.set_modal_buttons(slint::ModelRc::new(slint::VecModel::from(buttons)));
+                state.replace(Some(presentation));
+                dialogs.set_modal_active(true);
+            }
+            Some(ModalUiUpdate::Dismiss(id)) => {
+                if state
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|presentation| presentation.id == id)
+                {
+                    state.borrow_mut().take();
+                    dialogs.set_modal_active(false);
+                }
+            }
+            None => break,
+        }
+    }
+}

@@ -1,0 +1,54 @@
+import { MaterialPalette, MaterialText, MaterialTypography } from "@material";
+
+// The one disclaimer text, shown by onboarding and 关于. Edit it only here.
+export global Disclaimer {
+    out property <[string]> lines: [
+        "ShinkiEMU 是独立开发的开源工具，与各游戏及游戏引擎的开发商、发行商和其他权利人没有隶属、授权或认可关系。",
+        "ShinkiEMU 不附带任何游戏内容。请只使用你合法拥有的游戏副本。",
+        "文中提及的游戏名、引擎名和商标归各自权利人所有。",
+        "本软件按所附开源许可证“现状”提供，不作任何明示或暗示的担保。",
+        "补丁和翻译可能修改游戏文件。应用前请备份，使用风险由你自行承担。",
+    ];
+}
+
+// One bulleted line. The text sits directly in a VerticalLayout so its wrapped
+// height reaches the parent; inside a HorizontalLayout it reports one line only.
+component DisclaimerLine {
+    in property <string> text;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    Rectangle {
+        x: 0px;
+        y: 8px;
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: MaterialPalette.primary;
+    }
+
+    l := VerticalLayout {
+        padding-left: 18px;
+        MaterialText {
+            text: root.text;
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+    }
+}
+
+// Bulleted rendering of `Disclaimer.lines`; the caller supplies the surface.
+export component DisclaimerText {
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: "免责声明";
+
+    l := VerticalLayout {
+        spacing: 12px;
+        for line in Disclaimer.lines : DisclaimerLine { text: line; }
+    }
+}

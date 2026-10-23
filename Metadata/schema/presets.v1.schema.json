@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Preset": {
+      "additionalProperties": false,
+      "properties": {
+        "configuration": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "emulator": {
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "type": "string"
+        },
+        "patch": {
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "release_id": {
+          "pattern": "^r[0-9]{1,63}$",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "vn_id": {
+          "pattern": "^v[0-9]{1,63}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "configuration",
+        "emulator",
+        "release_id",
+        "summary",
+        "vn_id"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/definitions/Preset"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "pattern": "^shinki\\.emu\\.presets\\.v1$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entries",
+    "schema"
+  ],
+  "title": "PresetDatabase",
+  "type": "object"
+}

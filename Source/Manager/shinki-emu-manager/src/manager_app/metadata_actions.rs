@@ -1,0 +1,255 @@
+use super::*;
+
+impl ShinkiEmuManagerController {
+    pub(super) fn search_metadata(
+        &mut self,
+        provider: &str,
+        query: &str,
+    ) -> Result<ManagerViewModel, String> {
+        let provider = Self::metadata_provider(provider)?;
+        let game = self.selected_game()?;
+        self.queue_metadata(
+            &game,
+            provider,
+            MetadataCommandKind::Search(MetadataSearchQuery {
+                title: query.trim().into(),
+                aliases: Vec::new(),
+                developer: None,
+                release_date: None,
+                limit: 10,
+            }),
+            "search",
+        )?;
+        self.match_candidates
+            .retain(|_, (game_id, _)| game_id != &game.game_id);
+        self.metadata_status
+            .insert(game.game_id, "正在搜索…".into());
+        self.diagnostic.clear();
+        self.model()
+    }
+
+    pub(super) fn refresh_metadata(&mut self, provider: &str) -> Result<ManagerViewModel, String> {
+        let game = self.selected_game()?;
+        let provider = Self::metadata_provider(provider)?;
+        let record = self
+            .metadata_record(&game.game_id, provider)?
+            .ok_or_else(|| "SHINKI_EMU_METADATA_NOT_LINKED".to_owned())?;
+        self.link_external_id(provider.as_str(), &record.remote_id)
+    }
+
+    pub(super) fn accept_match(&mut self, candidate_id: &str) -> Result<ManagerViewModel, String> {
+        let (game_id, record) = self
+            .match_candidates
+            .get(candidate_id)
+            .cloned()
+            .ok_or_else(|| "SHINKI_EMU_METADATA_MATCH_NOT_PENDING".to_owned())?;
+        if self.selected_case_id.as_deref() != Some(game_id.as_str()) {
+            return Err("SHINKI_EMU_METADATA_MATCH_GAME_MISMATCH".into());
+        }
+        let game = self.game(&game_id)?;
+        self.queue_metadata(
+            &game,
+            record.provider,
+            MetadataCommandKind::Fetch(record.remote_id),
+            "manual",
+        )?;
+        self.model()
+    }
+
+    pub(super) fn unlink_identity(&mut self, provider: &str) -> Result<ManagerViewModel, String> {
+        let game = self.selected_game()?;
+        let provider = Self::metadata_provider(provider)?;
+        if self
+            .pending_metadata
+            .values()
+            .any(|pending| pending.game_id.as_deref() == Some(game.game_id.as_str()))
+        {
+            return Err("SHINKI_EMU_METADATA_REQUEST_PENDING".into());
+        }
+        self.library
+            .remove_external_identity(&game.game_id, provider.as_str())
+            .map_err(|error| error.to_string())?;
+        if provider == MetadataProviderId::Vndb {
+            self.mark_auto_link_attempted(&game.game_id)?;
+        }
+        self.metadata_status
+            .insert(game.game_id, "已解除关联".into());
+        self.model()
+    }
+
+    pub(super) fn link_external_id(
+        &mut self,
+        provider: &str,
+        remote_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        let provider = Self::metadata_provider(provider)?;
+        let remote_id = remote_id.trim();
+        if remote_id.is_empty() || remote_id.len() > 256 || remote_id.contains('\0') {
+            return Err("SHINKI_EMU_METADATA_REMOTE_ID_INVALID".into());
+        }
+        let game = self.selected_game()?;
+        self.queue_metadata(
+            &game,
+            provider,
+            MetadataCommandKind::Fetch(remote_id.into()),
+            "manual",
+        )?;
+        self.model()
+    }
+
+    pub(super) fn set_network_allowed(
+        &mut self,
+        enabled: bool,
+    ) -> Result<ManagerViewModel, String> {
+        self.library
+            .set_app_state(NETWORK_ALLOWED_KEY, &enabled)
+            .map_err(|error| error.to_string())?;
+        let enabling = enabled && !self.network_allowed;
+        self.network_allowed = enabled;
+        if !enabled {
+            self.auto_link_queue.clear();
+        }
+        if enabling {
+            self.enqueue_auto_link()?;
+            return self.sync_metadata();
+        }
+        self.model()
+    }
+
+    pub(super) fn set_sensitive_covers(
+        &mut self,
+        enabled: bool,
+    ) -> Result<ManagerViewModel, String> {
+        self.library
+            .set_app_state(SENSITIVE_COVERS_KEY, &enabled)
+            .map_err(|error| error.to_string())?;
+        self.sensitive_covers = enabled;
+        self.model()
+    }
+
+    pub(super) fn save_bangumi_token(&mut self, token: &str) -> Result<ManagerViewModel, String> {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err("SHINKI_EMU_BANGUMI_TOKEN_REQUIRED".into());
+        }
+        ManagerSecretStore::open()
+            .map_err(|error| error.to_string())?
+            .store(BANGUMI_SECRET_REFERENCE, token)
+            .map_err(|error| error.to_string())?;
+        self.metadata_tokens
+            .insert(MetadataProviderId::Bangumi.as_str().into(), token.into());
+        self.metadata_tokens_loaded = true;
+        self.model()
+    }
+
+    pub(super) fn clear_bangumi_token(&mut self) -> Result<ManagerViewModel, String> {
+        let store = ManagerSecretStore::open().map_err(|error| error.to_string())?;
+        if store.resolve(BANGUMI_SECRET_REFERENCE).is_ok() {
+            store
+                .delete(BANGUMI_SECRET_REFERENCE)
+                .map_err(|error| error.to_string())?;
+        }
+        self.metadata_tokens
+            .remove(MetadataProviderId::Bangumi.as_str());
+        self.metadata_tokens_loaded = true;
+        self.model()
+    }
+
+    pub(super) fn update_bangumi_play_status(
+        &mut self,
+        status: &str,
+        rating: i32,
+        note: &str,
+    ) -> Result<ManagerViewModel, String> {
+        let status_value = match status {
+            "wish" => BangumiPlayStatus::Wish,
+            "doing" => BangumiPlayStatus::Doing,
+            "collect" => BangumiPlayStatus::Collect,
+            "on_hold" => BangumiPlayStatus::OnHold,
+            "dropped" => BangumiPlayStatus::Dropped,
+            _ => return Err("SHINKI_EMU_BANGUMI_PLAY_STATUS_INVALID".into()),
+        };
+        let rating = if rating == 0 {
+            None
+        } else {
+            Some(u8::try_from(rating).map_err(|_| "SHINKI_EMU_BANGUMI_RATING_INVALID")?)
+        };
+        let game = self.selected_game()?;
+        let identity = self
+            .library
+            .external_identities(&game.game_id)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|identity| identity.provider == "bangumi")
+            .ok_or_else(|| "SHINKI_EMU_BANGUMI_IDENTITY_REQUIRED".to_owned())?;
+        let subject_id = identity
+            .remote_id
+            .parse::<u32>()
+            .map_err(|_| "SHINKI_EMU_BANGUMI_REMOTE_ID_INVALID".to_owned())?;
+        let update = BangumiPlayUpdate {
+            subject_id,
+            status: status_value,
+            rating,
+            note: (!note.trim().is_empty()).then(|| note.trim().into()),
+            private: true,
+        };
+        update.validate().map_err(|error| error.to_string())?;
+        self.queue_metadata(
+            &game,
+            MetadataProviderId::Bangumi,
+            MetadataCommandKind::SyncBangumi(update),
+            "play",
+        )?;
+        self.bangumi_play_status = status.into();
+        self.bangumi_rating = i32::from(rating.unwrap_or_default());
+        self.bangumi_note = note.into();
+        self.model()
+    }
+
+    pub(super) fn fetch_releases(&mut self) -> Result<ManagerViewModel, String> {
+        let game = self.selected_game()?;
+        let identity = self
+            .library
+            .external_identities(&game.game_id)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|identity| identity.provider == "vndb")
+            .ok_or_else(|| "SHINKI_EMU_VNDB_IDENTITY_REQUIRED".to_owned())?;
+        self.queue_metadata(
+            &game,
+            MetadataProviderId::Vndb,
+            MetadataCommandKind::FetchReleases(identity.remote_id),
+            "releases",
+        )?;
+        self.model()
+    }
+
+    pub(super) fn pin_release(&mut self, release_id: &str) -> Result<ManagerViewModel, String> {
+        let game = self.selected_game()?;
+        if release_id.is_empty() {
+            self.library
+                .set_game_release(&game.game_id, None)
+                .map_err(|error| error.to_string())?;
+            self.pinned_releases.remove(&game.game_id);
+            self.diagnostic.clear();
+            return self.model();
+        }
+        let Some(release) = self.releases.get(&game.game_id).and_then(|values| {
+            values
+                .iter()
+                .find(|(id, _)| id == release_id)
+                .map(|(id, title)| GameRelease {
+                    release_id: id.clone(),
+                    title: title.clone(),
+                })
+        }) else {
+            return Err("SHINKI_EMU_VNDB_RELEASE_INVALID".into());
+        };
+        self.library
+            .set_game_release(&game.game_id, Some(&release))
+            .map_err(|error| error.to_string())?;
+        self.pinned_releases.insert(game.game_id, release);
+        self.diagnostic.clear();
+        self.model()
+    }
+}

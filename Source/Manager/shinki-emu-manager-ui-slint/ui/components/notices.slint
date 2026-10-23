@@ -1,0 +1,198 @@
+import { MaterialPalette, MaterialText, MaterialTypography, OutlinedCard, IconButton, TextButton, Icon } from "@material";
+import { Notices, Notice } from "../globals.slint";
+import { Icons } from "../icons.slint";
+import { Theme } from "../theme.slint";
+
+component NoticeCard {
+    in property <Notice> notice;
+    property <bool> error: root.notice.severity == "error";
+
+    min-height: body.min-height;
+    preferred-height: body.preferred-height;
+
+    OutlinedCard {
+        width: 100%;
+        height: 100%;
+    }
+
+    Rectangle {
+        border-radius: 12px;
+        background: root.error ? MaterialPalette.error-container.with-alpha(0.55) : transparent;
+    }
+
+    body := HorizontalLayout {
+        padding-left: 16px;
+        padding-top: 12px;
+        padding-bottom: 8px;
+        padding-right: 4px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: start;
+            padding-top: 2px;
+            Icon {
+                width: 20px;
+                source: root.error ? Icons.error : root.notice.severity == "warning" ? Icons.warning : Icons.info;
+                colorize: root.error ? MaterialPalette.error : MaterialPalette.primary;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            MaterialText {
+                text: root.notice.title;
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.on-surface;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            if root.notice.detail != "" : MaterialText {
+                text: root.notice.detail;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                max-height: 60px;
+                overflow: clip;
+            }
+            if root.notice.code != "" : MaterialText {
+                text: "错误代码 " + root.notice.code;
+                style: MaterialTypography.label-small;
+                color: MaterialPalette.on-surface-variant;
+            }
+            HorizontalLayout {
+                alignment: start;
+                TextButton {
+                    text: "查看日志";
+                    clicked => { Notices.view-logs(root.notice.core); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: start;
+            IconButton {
+                icon: Icons.close;
+                tooltip: "关闭";
+                clicked => { Notices.dismiss(root.notice.id); }
+            }
+        }
+    }
+}
+
+export component NoticeStack {
+    in property <length> bottom-inset: 16px;
+
+    property <length> card-width: min(420px, root.width - 32px);
+
+    stack := VerticalLayout {
+        x: 16px;
+        y: root.height - root.bottom-inset - self.preferred-height;
+        width: root.card-width;
+        height: self.preferred-height;
+        spacing: 8px;
+        alignment: end;
+
+        for notice[index] in Notices.items : NoticeCard {
+            visible: index < 3;
+            height: index < 3 ? self.preferred-height : 0px;
+            notice: notice;
+        }
+
+        if Notices.items.length > 3 : MaterialText {
+            text: "另有 " + (Notices.items.length - 3) + " 条通知";
+            style: MaterialTypography.label-medium;
+            color: MaterialPalette.on-surface-variant;
+        }
+    }
+}
+
+export component SnackbarHost {
+    in property <length> bottom-inset: 16px;
+
+    property <int> serial: Notices.snackbar-serial;
+    property <bool> shown;
+    property <string> text;
+    property <string> action;
+
+    changed serial => {
+        if Notices.snackbar-text != "" {
+            root.text = Notices.snackbar-text;
+            root.action = Notices.snackbar-action;
+            root.shown = true;
+            timer.restart();
+        }
+    }
+
+    timer := Timer {
+        interval: 4s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.shown = false;
+        }
+    }
+
+    bar := Rectangle {
+        width: min(560px, max(344px, layout.preferred-width), root.width - 32px);
+        height: layout.preferred-height;
+        x: (root.width - self.width) / 2;
+        y: root.shown ? root.height - root.bottom-inset - self.height : root.height + 8px;
+        visible: root.shown || self.y < root.height;
+        border-radius: 4px;
+        background: MaterialPalette.inverse-surface;
+        drop-shadow-blur: 8px;
+        drop-shadow-offset-y: 3px;
+        drop-shadow-color: MaterialPalette.shadow-30;
+        accessible-role: AccessibleRole.text;
+        accessible-label: root.text;
+
+        animate y {
+            duration: Theme.motion-medium;
+            easing: Theme.motion-easing;
+        }
+
+        TouchArea { }
+
+        layout := HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 8px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            spacing: 4px;
+
+            MaterialText {
+                horizontal-stretch: 1;
+                min-height: 36px;
+                text: root.text;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.inverse-on-surface;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+
+            if root.action != "" : TextButton {
+                horizontal-stretch: 0;
+                text: root.action;
+                inverse: true;
+                clicked => {
+                    root.shown = false;
+                    timer.running = false;
+                    Notices.snackbar-action-clicked();
+                }
+            }
+
+            IconButton {
+                horizontal-stretch: 0;
+                icon: Icons.close;
+                inverse: true;
+                tooltip: "关闭";
+                clicked => {
+                    root.shown = false;
+                    timer.running = false;
+                }
+            }
+        }
+    }
+}

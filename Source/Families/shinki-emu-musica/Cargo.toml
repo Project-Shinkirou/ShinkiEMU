@@ -1,0 +1,57 @@
+[package]
+name = "shinki-emu-musica"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+doctest = false
+
+[features]
+default = []
+ffmpeg-vcpkg = ["shinki-emu-sdk/video-ffmpeg", "shinki-emu-sdk/subtitle"]
+dynamic-plugin-export = []
+
+[dependencies]
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
+cpal.workspace = true
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "device-audio", "runtime"] }
+roukaku-platform = { workspace = true }
+roukaku-platform-common = { workspace = true }
+pollster.workspace = true
+roukaku-core = { workspace = true }
+roukaku-byte-source = { workspace = true }
+shinki-emu-musica-keys = { path = "../shinki-emu-musica-keys" }
+roukaku-text = { workspace = true }
+roukaku-media-core = { workspace = true }
+blowfish.workspace = true
+crc32fast = "1.5"
+encoding_rs.workspace = true
+flate2.workspace = true
+fontdb.workspace = true
+image.workspace = true
+lru.workspace = true
+png = "=0.18.1"
+kira.workspace = true
+postcard.workspace = true
+rc4.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml = "1.1"
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
+
+time = { workspace = true, features = ["local-offset"] }
+tempfile.workspace = true
+
+[dev-dependencies]
+parking_lot = "0.12"
+
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }

@@ -1,0 +1,188 @@
+name: Component release
+on:
+  push:
+    tags: ['manager-v*', 'core-*-v*']
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'manager or exact plugin_id (case-sensitive)'
+        required: true
+        default: manager
+      version:
+        description: Semver version
+        required: true
+        default: 0.1.0-beta.1
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.component }}
+  cancel-in-progress: false
+env:
+  CARGO_INCREMENTAL: '0'
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      component: ${{ steps.select.outputs.component }}
+      version: ${{ steps.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - id: select
+        shell: pwsh
+        env:
+          INPUT_COMPONENT: ${{ inputs.component }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $matrix = cargo xtask matrix --json | ConvertFrom-Json
+          $component = $env:INPUT_COMPONENT
+          $version = $env:INPUT_VERSION
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -match '^manager-v(.+)$') {
+              $component = 'manager'; $version = $Matches[1]
+            } else {
+              $candidates = @($matrix.include.component | Sort-Object -Unique | Where-Object { $_ -ne 'manager' })
+              $matched = @($candidates | Where-Object {
+                $slug = $_.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
+                $env:GITHUB_REF_NAME.StartsWith("core-$slug-v")
+              })
+              if ($matched.Count -ne 1) { throw 'Tag does not identify one core' }
+              $component = $matched[0]
+              $slug = $component.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
+              $version = $env:GITHUB_REF_NAME.Substring("core-$slug-v".Length)
+            }
+          }
+          $rows = @($matrix.include | Where-Object { $_.component -ceq $component })
+          if ($rows.Count -eq 0) { throw 'Unknown or empty component matrix' }
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw 'Invalid semantic version' }
+          "matrix=$(@{include=$rows} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
+          "component=$component" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+  build:
+    needs: select
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      SHINKI_EMU_CI_VERSION: ${{ needs.select.outputs.version }}
+      OHOS_SDK_NATIVE: ${{ vars.OHOS_SDK_NATIVE }}
+      ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - uses: actions/setup-java@v4
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+      - name: Android SDK
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          sdkmanager 'ndk;30.0.15729638' 'platforms;android-36' 'build-tools;36.0.0'
+          "ANDROID_NDK_HOME=$env:ANDROID_HOME/ndk/30.0.15729638" >> $env:GITHUB_ENV
+      - name: Prepare supported build
+        if: matrix.status == 'supported'
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup target add $env:TARGET
+          if ($env:COMPONENT -eq 'manager') { cargo xtask deps --target $env:TARGET }
+          else { cargo xtask deps --target $env:TARGET --core $env:COMPONENT }
+      - name: Build and package
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+          SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
+          SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
+          SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
+          SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
+          SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
+      - name: Prepare Release files without publishing
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+          VERSION: ${{ needs.select.outputs.version }}
+          SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
+          SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
+          SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
+          SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
+          SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $report = Get-Content -Raw .work/ci-report.json | ConvertFrom-Json
+          if ($null -ne $report.artifact) {
+            cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:VERSION
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-report-${{ matrix.target }}
+          path: .work/ci-report.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: matrix.status == 'supported'
+        with:
+          name: release-files-${{ matrix.target }}
+          path: .work/release/
+          include-hidden-files: true
+          if-no-files-found: ignore
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [select, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-files-*
+          path: .work/release/
+          merge-multiple: true
+      - name: Publish only actual successfully aggregated platforms
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ needs.select.outputs.component }}
+          VERSION: ${{ needs.select.outputs.version }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $matrix = cargo xtask matrix --json | ConvertFrom-Json
+          $published = 0
+          foreach ($row in $matrix.include | Where-Object { $_.component -ceq $env:COMPONENT -and $_.status -eq 'supported' }) {
+            $slug = $env:COMPONENT.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
+            $tag = if ($env:COMPONENT -eq 'manager') { "manager-v$env:VERSION" } else { "core-$slug-v$env:VERSION" }
+            if (Test-Path ".work/release/$tag/$($row.target)/package") {
+              cargo xtask release --component $env:COMPONENT --target $row.target --version $env:VERSION --publish
+              $published++
+            }
+          }
+          if ($published -eq 0) { throw 'No publishable artifact; no Release created' }

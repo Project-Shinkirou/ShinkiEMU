@@ -1,0 +1,467 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+mod encoding;
+mod parser;
+pub use encoding::ScriptEncoding;
+#[cfg(test)]
+use parser::tokenize_operands;
+use parser::{parse_line, tokenize_operands_with_encoding};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::MUSICA_SCRIPT_IR_SCHEMA;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SourceSpan {
+    pub offset: u64,
+    pub length: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ScCommand {
+    pub encoding: ScriptEncoding,
+    pub ordinal: u32,
+    pub opcode: String,
+    pub known: bool,
+    pub span: SourceSpan,
+    pub raw_operands: Vec<u8>,
+    pub operands: Vec<ScOperand>,
+    pub control_flow: ScControlFlow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScOperand {
+    Integer { value: i64 },
+    Boolean { value: bool },
+    Operator { value: String },
+    Symbol { value: String },
+    Text { value: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScControlFlow {
+    Next,
+    Label { id: String },
+    Jump { target: String },
+    ConditionalJump { target: String },
+    Chain { target: String },
+    Return,
+    Terminate,
+    Choice { targets: Vec<String> },
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScLineKind {
+    Command { command: ScCommand },
+    Comment,
+    Blank,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ScLine {
+    pub language_guard: Option<char>,
+    pub span: SourceSpan,
+    pub raw: Vec<u8>,
+    pub kind: ScLineKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ScScript {
+    pub schema: String,
+    pub encoding: ScriptEncoding,
+    pub lines: Vec<ScLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ScOpcodeSpec {
+    pub name: String,
+    pub control_flow: ScControlFlowKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScControlFlowKind {
+    Next,
+    LabelSymbol {
+        operand: usize,
+    },
+    JumpSymbol {
+        operand: usize,
+    },
+    ConditionalJumpSymbol {
+        operand: usize,
+    },
+    ChainSymbol {
+        operand: usize,
+    },
+    Return,
+    Terminate,
+    ChoiceSymbols {
+        operands: Vec<usize>,
+    },
+    /// One to four source-preserving `display:label` options.
+    ChoicePairs,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScOpcodeCatalog {
+    specs: BTreeMap<String, ScOpcodeSpec>,
+}
+
+impl ScOpcodeCatalog {
+    pub fn insert(
+        &mut self,
+        opcode: impl Into<String>,
+        spec: ScOpcodeSpec,
+    ) -> Result<(), ScParseError> {
+        let opcode = opcode.into().to_ascii_lowercase();
+        if !safe_symbol(&opcode) || self.specs.insert(opcode.clone(), spec).is_some() {
+            return Err(ScParseError::DuplicateOpcode(opcode));
+        }
+        Ok(())
+    }
+
+    /// Catalog entries whose syntax was verified across the authorized 89-file sample.
+    /// Includes the display/label select form integrated from the Musica core.
+    pub fn observed_musica() -> Self {
+        let mut catalog = Self::default();
+        for opcode in [
+            "message",
+            "transition",
+            "stage",
+            "panel",
+            "playbgm",
+            "playbgm2",
+            "char",
+            "playse",
+            "wait",
+            "playse2",
+            "pragma",
+            "setglobal",
+            "set",
+            "playse3",
+            "playse4",
+            "deletevar",
+            "effect",
+            "movie",
+            "playvoice",
+            "shakescreen",
+            "endscroll",
+            "vscroll",
+            "scrollxf",
+            "effect2",
+            "hscroll",
+            "scroll",
+        ] {
+            catalog
+                .insert(
+                    opcode,
+                    ScOpcodeSpec {
+                        name: opcode.into(),
+                        control_flow: ScControlFlowKind::Next,
+                    },
+                )
+                .expect("static Musica opcode catalog is unique");
+        }
+        for (opcode, control_flow) in [
+            ("label", ScControlFlowKind::LabelSymbol { operand: 0 }),
+            ("goto", ScControlFlowKind::JumpSymbol { operand: 0 }),
+            (
+                "if",
+                ScControlFlowKind::ConditionalJumpSymbol { operand: 3 },
+            ),
+            ("chain", ScControlFlowKind::ChainSymbol { operand: 0 }),
+            ("end", ScControlFlowKind::Terminate),
+            ("select", ScControlFlowKind::ChoicePairs),
+        ] {
+            catalog
+                .insert(
+                    opcode,
+                    ScOpcodeSpec {
+                        name: opcode.into(),
+                        control_flow,
+                    },
+                )
+                .expect("static Musica opcode catalog is unique");
+        }
+        catalog
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ScParseError {
+    #[error("SHINKI_EMU_MUSICA_SC_ENCODING at offset {0}")]
+    Encoding(usize),
+    #[error("SHINKI_EMU_MUSICA_SC_DUPLICATE_OPCODE: {0}")]
+    DuplicateOpcode(String),
+    #[error("SHINKI_EMU_MUSICA_SC_DUPLICATE_LABEL: {0}")]
+    DuplicateLabel(String),
+    #[error("SHINKI_EMU_MUSICA_SC_INVALID_TARGET: {0}")]
+    InvalidTarget(String),
+    #[error("SHINKI_EMU_MUSICA_SC_OPERAND_SCHEMA at offset {0}")]
+    OperandSchema(usize),
+    #[error("SHINKI_EMU_MUSICA_SC_SOURCE_INVARIANT at offset {0}")]
+    SourceInvariant(usize),
+}
+
+/// Parses the observed CP932, CRLF-oriented `.command operands` source form.
+/// Every source line and newline is retained verbatim for lossless round-trip.
+pub fn parse_sc(bytes: &[u8], catalog: &ScOpcodeCatalog) -> Result<ScScript, ScParseError> {
+    parse_sc_with_encoding(bytes, catalog, ScriptEncoding::ShiftJis)
+}
+
+pub fn parse_sc_with_encoding(
+    bytes: &[u8],
+    catalog: &ScOpcodeCatalog,
+    encoding: ScriptEncoding,
+) -> Result<ScScript, ScParseError> {
+    let mut cursor = 0usize;
+    let mut ordinal = 0u32;
+    let mut lines = Vec::new();
+    while cursor < bytes.len() {
+        let end = bytes[cursor..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(bytes.len(), |relative| cursor + relative + 1);
+        let raw = &bytes[cursor..end];
+        let logical_end = raw
+            .strip_suffix(b"\r\n")
+            .or_else(|| raw.strip_suffix(b"\n"))
+            .map_or(raw.len(), <[u8]>::len);
+        let logical = &raw[..logical_end];
+        if encoding.decode(logical).is_none() {
+            return Err(ScParseError::Encoding(cursor));
+        }
+        let span = SourceSpan {
+            offset: cursor as u64,
+            length: u32::try_from(raw.len()).map_err(|_| ScParseError::SourceInvariant(cursor))?,
+        };
+        let (kind, language_guard) = parse_line(logical, span, ordinal, catalog, encoding)?;
+        if matches!(kind, ScLineKind::Command { .. }) {
+            ordinal = ordinal
+                .checked_add(1)
+                .ok_or(ScParseError::SourceInvariant(cursor))?;
+        }
+        lines.push(ScLine {
+            span,
+            raw: raw.to_vec(),
+            kind,
+            language_guard,
+        });
+        cursor = end;
+    }
+    validate_cfg(&lines)?;
+    Ok(ScScript {
+        schema: MUSICA_SCRIPT_IR_SCHEMA.into(),
+        encoding,
+        lines,
+    })
+}
+
+pub fn encode_sc(script: &ScScript) -> Result<Vec<u8>, ScParseError> {
+    let mut bytes = Vec::new();
+    for line in &script.lines {
+        if line.span.offset != bytes.len() as u64 || line.span.length as usize != line.raw.len() {
+            return Err(ScParseError::SourceInvariant(bytes.len()));
+        }
+        bytes.extend_from_slice(&line.raw);
+    }
+    Ok(bytes)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ScCensus {
+    pub file_count: u64,
+    pub line_count: u64,
+    pub command_count: u64,
+    pub opcode_counts: BTreeMap<String, u64>,
+    pub opcode_arity_counts: BTreeMap<String, BTreeMap<u32, u64>>,
+    pub opcode_whitespace_arity_counts: BTreeMap<String, BTreeMap<u32, u64>>,
+    pub opcode_operand_kind_counts: BTreeMap<String, BTreeMap<u32, BTreeMap<String, u64>>>,
+    pub operand_size_counts: BTreeMap<u32, u64>,
+    pub unknown_opcode_count: u64,
+}
+
+impl ScCensus {
+    pub fn from_scripts<'a>(scripts: impl IntoIterator<Item = &'a ScScript>) -> Self {
+        let mut result = Self {
+            file_count: 0,
+            line_count: 0,
+            command_count: 0,
+            opcode_counts: BTreeMap::new(),
+            opcode_arity_counts: BTreeMap::new(),
+            opcode_whitespace_arity_counts: BTreeMap::new(),
+            opcode_operand_kind_counts: BTreeMap::new(),
+            operand_size_counts: BTreeMap::new(),
+            unknown_opcode_count: 0,
+        };
+        for script in scripts {
+            result.file_count += 1;
+            result.line_count += script.lines.len() as u64;
+            for line in &script.lines {
+                let ScLineKind::Command { command } = &line.kind else {
+                    continue;
+                };
+                result.command_count += 1;
+                *result
+                    .opcode_counts
+                    .entry(command.opcode.clone())
+                    .or_default() += 1;
+                *result
+                    .opcode_arity_counts
+                    .entry(command.opcode.clone())
+                    .or_default()
+                    .entry(command.operands.len() as u32)
+                    .or_default() += 1;
+                let whitespace_arity = command
+                    .raw_operands
+                    .split(|byte| matches!(byte, b' ' | b'\t'))
+                    .filter(|part| !part.is_empty())
+                    .count() as u32;
+                *result
+                    .opcode_whitespace_arity_counts
+                    .entry(command.opcode.clone())
+                    .or_default()
+                    .entry(whitespace_arity)
+                    .or_default() += 1;
+                let positions = result
+                    .opcode_operand_kind_counts
+                    .entry(command.opcode.clone())
+                    .or_default();
+                for (position, operand) in command.operands.iter().enumerate() {
+                    *positions
+                        .entry(position as u32)
+                        .or_default()
+                        .entry(operand.kind_name().into())
+                        .or_default() += 1;
+                }
+                *result
+                    .operand_size_counts
+                    .entry(command.raw_operands.len() as u32)
+                    .or_default() += 1;
+                if !command.known {
+                    result.unknown_opcode_count += 1;
+                }
+            }
+        }
+        result
+    }
+}
+
+impl ScOperand {
+    fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Integer { .. } => "integer",
+            Self::Boolean { .. } => "boolean",
+            Self::Operator { .. } => "operator",
+            Self::Symbol { .. } => "symbol",
+            Self::Text { .. } => "text",
+        }
+    }
+}
+
+pub fn disassemble_sc(script: &ScScript) -> Result<String, ScParseError> {
+    let mut output = String::new();
+    for line in &script.lines {
+        let Some(decoded) = script.encoding.decode(
+            line.raw
+                .strip_suffix(b"\r\n")
+                .or_else(|| line.raw.strip_suffix(b"\n"))
+                .unwrap_or(&line.raw),
+        ) else {
+            return Err(ScParseError::Encoding(line.span.offset as usize));
+        };
+        output.push_str(&format!("{:08x}: {decoded}\n", line.span.offset));
+    }
+    Ok(output)
+}
+
+fn validate_cfg(lines: &[ScLine]) -> Result<(), ScParseError> {
+    let mut labels = BTreeSet::new();
+    for command in commands(lines) {
+        if let ScControlFlow::Label { id } = &command.control_flow {
+            if !labels.insert(id.clone()) {
+                return Err(ScParseError::DuplicateLabel(id.clone()));
+            }
+        }
+    }
+    for command in commands(lines) {
+        // Native CommandGoto accepts a script-local name even when absent.
+        // Its executor leaves the already-advanced PC unchanged on lookup miss.
+        // Conditional branches and choices retain their own strict contracts.
+        if command.opcode == "goto" {
+            continue;
+        }
+        let targets: Vec<&String> = match &command.control_flow {
+            ScControlFlow::Jump { target } | ScControlFlow::ConditionalJump { target } => {
+                vec![target]
+            }
+            ScControlFlow::Choice { targets } => targets.iter().collect(),
+            _ => Vec::new(),
+        };
+        for target in targets {
+            if !labels.contains(target) {
+                return Err(ScParseError::InvalidTarget(target.clone()));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn commands(lines: &[ScLine]) -> impl Iterator<Item = &ScCommand> {
+    lines.iter().filter_map(|line| match &line.kind {
+        ScLineKind::Command { command } => Some(command),
+        _ => None,
+    })
+}
+
+fn safe_symbol(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-' | b'/' | b'\\')
+        })
+}
+
+/// Musica script transfer syntax, shared by parser, VM and native session.
+pub(crate) fn chain_target_parts(target: &str) -> Option<(&str, Option<&str>)> {
+    let (file, label) = target
+        .split_once('#')
+        .map_or((target, None), |(file, label)| (file, Some(label)));
+    let plain = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 256
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    };
+    if !plain(file)
+        || !file.to_ascii_lowercase().ends_with(".sc")
+        || file.contains("..")
+        || label.is_some_and(|label| !plain(label))
+    {
+        return None;
+    }
+    Some((file, label))
+}
+
+#[cfg(test)]
+#[path = "script/tests.rs"]
+mod tests;
+
+impl ScCommand {
+    pub(crate) fn tokens(&self) -> Result<Vec<String>, ScParseError> {
+        tokenize_operands_with_encoding(
+            &self.raw_operands,
+            self.span.offset as usize,
+            self.encoding,
+        )
+    }
+}

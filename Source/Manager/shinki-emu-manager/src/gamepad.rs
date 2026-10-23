@@ -1,0 +1,482 @@
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use shinki_emu_manager_core::GamepadInput;
+use shinki_emu_manager_core::InputMapping;
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, SyncSender},
+        Arc, Mutex,
+    },
+    thread,
+    time::Duration,
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GameInput {
+    pub(crate) control: String,
+    pub(crate) pressed: bool,
+    pub(crate) value: f32,
+    /// Physical button; `None` for stick directions.
+    pub(crate) button: Option<shinki_emu_manager_core::GamepadInput>,
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+pub(crate) type GameInputWake = std::sync::Arc<dyn Fn() + Send + Sync + 'static>;
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+pub(crate) struct GameInputPump {
+    batches: Option<Receiver<Result<Vec<GameInput>, String>>>,
+    mapping: Arc<Mutex<InputMapping>>,
+    wake: Arc<Mutex<Option<GameInputWake>>>,
+    stop: Arc<AtomicBool>,
+    worker: Option<thread::JoinHandle<()>>,
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl GameInputPump {
+    pub(crate) fn new(mapping: InputMapping) -> Result<Self, String> {
+        let mapping = Arc::new(Mutex::new(mapping));
+        let worker_mapping = Arc::clone(&mapping);
+        let wake = Arc::new(Mutex::new(None));
+        let worker_wake = Arc::clone(&wake);
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let (batch_tx, batches) = mpsc::sync_channel(32);
+        let worker = thread::Builder::new()
+            .name("shinki-manager-gamepad".to_string())
+            .spawn(move || {
+                gamepad_worker(worker_mapping, worker_wake, worker_stop, batch_tx.clone())
+            })
+            .map_err(|_| "SHINKI_EMU_GAMEPAD_WORKER_CREATE")?;
+        Ok(Self {
+            batches: Some(batches),
+            mapping,
+            wake,
+            stop,
+            worker: Some(worker),
+        })
+    }
+
+    /// Replace the active mapping, re-tuning stick hysteresis.
+    pub(crate) fn set_mapping(&mut self, mapping: InputMapping) -> Result<(), String> {
+        *self
+            .mapping
+            .lock()
+            .map_err(|_| "SHINKI_EMU_GAMEPAD_MAPPING_LOCK")? = mapping;
+        Ok(())
+    }
+
+    /// Installs the host event-loop wake used by the worker.  The worker never
+    /// touches UI state; it only signals that a bounded batch is ready so the
+    /// host can drain it on its own thread.
+    pub(crate) fn set_wake(&mut self, wake: GameInputWake) -> Result<(), String> {
+        *self
+            .wake
+            .lock()
+            .map_err(|_| "SHINKI_EMU_GAMEPAD_WAKE_LOCK")? = Some(wake.clone());
+        // The worker can receive a device event during startup before the
+        // host installs its callback. One explicit wake closes that race; the
+        // UI still drains only the bounded channel and never starts polling.
+        wake();
+        Ok(())
+    }
+
+    pub(crate) fn poll(&mut self) -> Result<Vec<GameInput>, String> {
+        let mut output = Vec::new();
+        let Some(batches) = self.batches.as_ref() else {
+            return Err("SHINKI_EMU_GAMEPAD_CLOSED".into());
+        };
+        loop {
+            match batches.try_recv() {
+                Ok(batch) => output.extend(batch?),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    return Err("SHINKI_EMU_GAMEPAD_WORKER_STOPPED".into());
+                }
+            }
+        }
+        Ok(output)
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl Drop for GameInputPump {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        // Dropping the receiver releases a worker blocked by a full bounded
+        // queue, so shutdown never relies on a spin/yield polling loop.
+        self.batches = None;
+        if let Some(worker) = self.worker.take() {
+            if worker.join().is_err() {
+                tracing::error!(
+                    event = "shinki.emu.input.gamepad_worker_panic",
+                    diagnostic_code = "SHINKI_EMU_GAMEPAD_WORKER_PANIC"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn gamepad_worker(
+    mapping: Arc<Mutex<InputMapping>>,
+    wake: Arc<Mutex<Option<GameInputWake>>>,
+    stop: Arc<AtomicBool>,
+    batches: SyncSender<Result<Vec<GameInput>, String>>,
+) {
+    let mut backend = match gilrs::Gilrs::new() {
+        Ok(backend) => backend,
+        Err(error) => {
+            send_gamepad_batch(
+                &batches,
+                &wake,
+                &stop,
+                Err(format!("SHINKI_EMU_GAMEPAD_BACKEND_UNAVAILABLE:{error}")),
+            );
+            return;
+        }
+    };
+    let initial = match mapping.lock() {
+        Ok(value) => value.clone(),
+        Err(_) => {
+            send_gamepad_batch(
+                &batches,
+                &wake,
+                &stop,
+                Err("SHINKI_EMU_GAMEPAD_MAPPING_POISONED".to_owned()),
+            );
+            return;
+        }
+    };
+    let (press, release) = initial.deadzone.thresholds();
+    let mut left_x = DirectionalAxis::new(press, release);
+    let mut left_y = DirectionalAxis::new(press, release);
+    while !stop.load(Ordering::Acquire) {
+        let Some(event) = backend.next_event_blocking(Some(Duration::from_millis(250))) else {
+            continue;
+        };
+        let current_mapping = match mapping.lock() {
+            Ok(value) => value.clone(),
+            Err(_) => {
+                send_gamepad_batch(
+                    &batches,
+                    &wake,
+                    &stop,
+                    Err("SHINKI_EMU_GAMEPAD_MAPPING_POISONED".to_owned()),
+                );
+                return;
+            }
+        };
+        if !current_mapping.gamepad_enabled {
+            continue;
+        }
+        let mut output = Vec::new();
+        process_gamepad_event(
+            &current_mapping,
+            &mut left_x,
+            &mut left_y,
+            event,
+            &mut output,
+        );
+        if !output.is_empty() {
+            send_gamepad_batch(&batches, &wake, &stop, Ok(output));
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn send_gamepad_batch(
+    batches: &SyncSender<Result<Vec<GameInput>, String>>,
+    wake: &Arc<Mutex<Option<GameInputWake>>>,
+    stop: &AtomicBool,
+    batch: Result<Vec<GameInput>, String>,
+) {
+    if stop.load(Ordering::Acquire) || batches.send(batch).is_err() {
+        return;
+    }
+    let callback = wake.lock().ok().and_then(|guard| guard.clone());
+    if let Some(callback) = callback {
+        callback();
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn process_gamepad_event(
+    mapping: &InputMapping,
+    left_x: &mut DirectionalAxis,
+    left_y: &mut DirectionalAxis,
+    event: gilrs::Event,
+    output: &mut Vec<GameInput>,
+) {
+    use gilrs::{Axis, EventType};
+    match event.event {
+        EventType::ButtonPressed(button, _) | EventType::ButtonReleased(button, _) => {
+            let Some(input) = pad_button(button) else {
+                return;
+            };
+            let pressed = matches!(event.event, EventType::ButtonPressed(..));
+            // Unbound buttons still reach the session menu; an empty control skips the game.
+            output.push(GameInput {
+                control: mapping.gamepad.get(&input).cloned().unwrap_or_default(),
+                pressed,
+                value: if pressed { 1.0 } else { 0.0 },
+                button: Some(input),
+            });
+        }
+        EventType::AxisChanged(Axis::LeftStickX, value, _) => {
+            let negative = mapping.gamepad.get(&GamepadInput::LeftStickLeft).cloned();
+            let positive = mapping.gamepad.get(&GamepadInput::LeftStickRight).cloned();
+            left_x.update(value, negative, positive, output);
+        }
+        EventType::AxisChanged(Axis::LeftStickY, value, _) => {
+            let negative = mapping.gamepad.get(&GamepadInput::LeftStickDown).cloned();
+            let positive = mapping.gamepad.get(&GamepadInput::LeftStickUp).cloned();
+            left_y.update(value, negative, positive, output);
+        }
+        _ => {}
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn pad_button(button: gilrs::Button) -> Option<GamepadInput> {
+    use gilrs::Button;
+    Some(match button {
+        Button::South => GamepadInput::South,
+        Button::East => GamepadInput::East,
+        Button::North => GamepadInput::North,
+        Button::West => GamepadInput::West,
+        Button::Start => GamepadInput::Start,
+        Button::Select => GamepadInput::Select,
+        Button::DPadUp => GamepadInput::DpadUp,
+        Button::DPadDown => GamepadInput::DpadDown,
+        Button::DPadLeft => GamepadInput::DpadLeft,
+        Button::DPadRight => GamepadInput::DpadRight,
+        Button::LeftTrigger => GamepadInput::LeftShoulder,
+        Button::RightTrigger => GamepadInput::RightShoulder,
+        Button::LeftTrigger2 => GamepadInput::LeftTrigger,
+        Button::RightTrigger2 => GamepadInput::RightTrigger,
+        Button::LeftThumb => GamepadInput::LeftThumb,
+        Button::RightThumb => GamepadInput::RightThumb,
+        _ => return None,
+    })
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+#[derive(Debug)]
+struct DirectionalAxis {
+    press_threshold: f32,
+    release_threshold: f32,
+    negative_pressed: bool,
+    positive_pressed: bool,
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl DirectionalAxis {
+    fn new(press_threshold: f32, release_threshold: f32) -> Self {
+        Self {
+            press_threshold,
+            release_threshold,
+            negative_pressed: false,
+            positive_pressed: false,
+        }
+    }
+
+    fn update(
+        &mut self,
+        value: f32,
+        negative_control: Option<String>,
+        positive_control: Option<String>,
+        output: &mut Vec<GameInput>,
+    ) {
+        if !value.is_finite() {
+            tracing::warn!(
+                event = "shinki.emu.input.gamepad_axis_rejected",
+                diagnostic_code = "SHINKI_EMU_GAMEPAD_AXIS_INVALID"
+            );
+            return;
+        }
+        let negative = if self.negative_pressed {
+            value <= -self.release_threshold
+        } else {
+            value <= -self.press_threshold
+        };
+        let positive = if self.positive_pressed {
+            value >= self.release_threshold
+        } else {
+            value >= self.press_threshold
+        };
+        update_button(
+            &mut self.negative_pressed,
+            negative,
+            negative_control,
+            output,
+        );
+        update_button(
+            &mut self.positive_pressed,
+            positive,
+            positive_control,
+            output,
+        );
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn update_button(
+    previous: &mut bool,
+    next: bool,
+    control: Option<String>,
+    output: &mut Vec<GameInput>,
+) {
+    if *previous == next {
+        return;
+    }
+    *previous = next;
+    if let Some(control) = control {
+        output.push(GameInput {
+            control,
+            pressed: next,
+            value: if next { 1.0 } else { 0.0 },
+            button: None,
+        });
+    }
+}
+
+/// Gamepad pump for platforms without a gamepad backend (Android today).
+///
+/// NativeActivity owns the input queue and Slint's android-activity backend
+/// consumes it: D-pad keys reach Slint as arrow keys, other controller
+/// buttons and sticks are dropped. There is no separate device stream to
+/// read, so the pump starts, accepts mappings and wake callbacks, and never
+/// produces game input. Forwarding gamepads to cores is desktop-only for now.
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+pub(crate) struct GameInputPump;
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+impl GameInputPump {
+    pub(crate) fn new(_mapping: InputMapping) -> Result<Self, String> {
+        Ok(Self)
+    }
+
+    /// No device stream consumes the mapping.
+    pub(crate) fn set_mapping(&mut self, _mapping: InputMapping) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// No worker ever needs to wake the host.
+    pub(crate) fn set_wake(
+        &mut self,
+        _wake: std::sync::Arc<dyn Fn() + Send + Sync + 'static>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub(crate) fn poll(&mut self) -> Result<Vec<GameInput>, String> {
+        Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directional_axis_uses_hysteresis_and_ordered_edges() {
+        let mut axis = DirectionalAxis::new(0.55, 0.35);
+        let mut output = Vec::new();
+        axis.update(
+            -0.7,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        axis.update(
+            -0.4,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        axis.update(
+            0.0,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        axis.update(
+            0.8,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        axis.update(
+            -0.8,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        assert_eq!(
+            output,
+            vec![
+                GameInput {
+                    control: "arrow_left".into(),
+                    pressed: true,
+                    value: 1.0,
+                    button: None,
+                },
+                GameInput {
+                    control: "arrow_left".into(),
+                    pressed: false,
+                    value: 0.0,
+                    button: None,
+                },
+                GameInput {
+                    control: "arrow_right".into(),
+                    pressed: true,
+                    value: 1.0,
+                    button: None,
+                },
+                GameInput {
+                    control: "arrow_left".into(),
+                    pressed: true,
+                    value: 1.0,
+                    button: None,
+                },
+                GameInput {
+                    control: "arrow_right".into(),
+                    pressed: false,
+                    value: 0.0,
+                    button: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn directional_axis_rejects_non_finite_values_without_state_change() {
+        let mut axis = DirectionalAxis::new(0.55, 0.35);
+        let mut output = Vec::new();
+        axis.update(
+            f32::NAN,
+            Some("arrow_left".into()),
+            Some("arrow_right".into()),
+            &mut output,
+        );
+        assert!(output.is_empty());
+        assert!(!axis.negative_pressed);
+        assert!(!axis.positive_pressed);
+    }
+
+    #[test]
+    fn unmapped_direction_emits_nothing_but_tracks_state() {
+        let mut axis = DirectionalAxis::new(0.55, 0.35);
+        let mut output = Vec::new();
+        axis.update(-0.7, None, Some("arrow_right".into()), &mut output);
+        assert!(output.is_empty());
+        assert!(axis.negative_pressed);
+        // Releasing the unmapped direction also emits nothing.
+        axis.update(0.0, None, Some("arrow_right".into()), &mut output);
+        assert!(output.is_empty());
+        assert!(!axis.negative_pressed);
+    }
+}

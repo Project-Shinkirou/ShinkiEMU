@@ -1,0 +1,66 @@
+[package]
+name = "shinki-emu-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+runtime = ["dep:serde", "dep:shinki-emu-abi"]
+video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile"]
+subtitle = ["dep:roukaku-subtitle"]
+audio = ["dep:kira", "dep:symphonia"]
+device-audio = ["runtime", "dep:rubato", "dep:cpal", "dep:roukaku-platform", "dep:roukaku-platform-common"]
+default = ["text", "image", "archive", "cache"]
+archive = ["dep:roukaku-core", "dep:roukaku-byte-source", "dep:serde", "dep:serde_json", "dep:schemars"]
+cache = ["dep:roukaku-core", "dep:lru", "dep:windows"]
+text = ["dep:roukaku-core", "dep:roukaku-text"]
+image = ["dep:image", "dep:lru"]
+
+[dependencies]
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", optional = true }
+cpal = { workspace = true, optional = true }
+roukaku-platform = { workspace = true, optional = true }
+roukaku-platform-common = { workspace = true, optional = true }
+tracing.workspace = true
+roukaku-media = { workspace = true, optional = true }
+roukaku-subtitle = { workspace = true, optional = true }
+kira = { workspace = true, optional = true }
+symphonia = { workspace = true, optional = true }
+rubato = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+thiserror.workspace = true
+roukaku-byte-source = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+lru = { workspace = true, optional = true }
+roukaku-core = { workspace = true, optional = true }
+roukaku-media-core = { workspace = true }
+roukaku-text = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization"] }
+
+[[test]]
+name = "texture_cache"
+required-features = ["image"]
+
+[[test]]
+name = "profile"
+required-features = ["archive"]
+
+[[test]]
+name = "video_worker"
+required-features = ["video-ffmpeg"]
+
+[[test]]
+name = "video_pcm"
+required-features = ["video-ffmpeg"]
+
+[[test]]
+name = "subtitle_scene"
+required-features = ["subtitle"]

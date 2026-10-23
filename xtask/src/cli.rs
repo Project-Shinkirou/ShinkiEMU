@@ -1,0 +1,103 @@
+use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(
+    name = "cargo xtask",
+    about = "ShinkiEMU build, packaging, release and metadata tools",
+    disable_help_subcommand = true
+)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Args)]
+pub struct TargetCore {
+    #[arg(long)]
+    pub target: String,
+    #[arg(long)]
+    pub core: Option<String>,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+pub struct Selection {
+    #[arg(long)]
+    pub core: Option<String>,
+    #[arg(long)]
+    pub manager: bool,
+}
+impl Selection {
+    pub fn component(&self) -> &str {
+        self.core.as_deref().unwrap_or("manager")
+    }
+}
+
+#[derive(Args)]
+pub struct Build {
+    #[arg(long)]
+    pub target: String,
+    #[arg(long, conflicts_with_all=["manager", "all_cores"])]
+    pub core: Option<String>,
+    #[arg(long, conflicts_with = "all_cores")]
+    pub manager: bool,
+    #[arg(long)]
+    pub all_cores: bool,
+    #[arg(long)]
+    pub release: bool,
+}
+#[derive(Subcommand)]
+pub enum Command {
+    Doctor(TargetCore),
+    Deps(TargetCore),
+    Matrix {
+        #[arg(long)]
+        json: bool,
+    },
+    Build(Build),
+    Check {
+        #[arg(long)]
+        target: String,
+        #[command(flatten)]
+        selection: Selection,
+    },
+    Test {
+        #[arg(long, conflicts_with = "manager")]
+        core: Option<String>,
+        #[arg(long)]
+        manager: bool,
+    },
+    Package {
+        #[arg(long)]
+        target: String,
+        #[command(flatten)]
+        selection: Selection,
+        #[arg(long)]
+        version: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    Release {
+        #[arg(long)]
+        component: String,
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        version: String,
+        #[arg(long)]
+        publish: bool,
+    },
+    Metadata {
+        #[command(subcommand)]
+        cmd: crate::metadata::MetadataCommand,
+    },
+    Ci {
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        component: String,
+        #[arg(long)]
+        report: PathBuf,
+    },
+}

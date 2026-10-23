@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://project-shinkirou.github.io/
+    about: Build and usage documentation

@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "IndexedFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 256,
+          "pattern": "^(?!index\\.json$)(?!.*\\.\\.)[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "maximum": 8388608.0,
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "files": {
+      "items": {
+        "$ref": "#/definitions/IndexedFile"
+      },
+      "type": "array"
+    },
+    "generated_at_unix_ms": {
+      "format": "int64",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "schema": {
+      "pattern": "^shinki\\.emu\\.metadata\\.index\\.v1$",
+      "type": "string"
+    },
+    "source_commit": {
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "files",
+    "generated_at_unix_ms",
+    "schema",
+    "source_commit"
+  ],
+  "title": "MetadataIndex",
+  "type": "object"
+}

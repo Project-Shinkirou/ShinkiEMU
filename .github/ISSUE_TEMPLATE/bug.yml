@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a Manager or core problem
+body:
+  - type: markdown
+    attributes:
+      value: Do not include keys, game text, commercial assets or saves. Reports require maintainer review.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+    validations:
+      required: true

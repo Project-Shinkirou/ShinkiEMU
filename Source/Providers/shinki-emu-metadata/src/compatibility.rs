@@ -1,0 +1,368 @@
+//! ShinkiEMU compatibility database (`compatibility.json` in the ShinkiEMU
+//! metadata repository).
+//!
+//! Reports are keyed by release, core, platform, architecture and variant.
+//! Rust DTOs are the schema source of truth.
+
+use std::collections::BTreeSet;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::fields::{
+    is_bounded_multiline, is_bounded_text, is_known_core_id, is_platform, is_vndb_release_id,
+    is_vndb_vn_id, MAX_ENTRIES,
+};
+
+pub const COMPATIBILITY_SCHEMA_VERSION: &str = "shinki.emu.compatibility.v4";
+const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
+const MAX_NOTES_CHARS: usize = 1024;
+const MAX_VERSION_CHARS: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CompatibilityStatus {
+    Perfect,
+    Completable,
+    Flawed,
+    BootOnly,
+    Unplayable,
+}
+
+impl CompatibilityStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Perfect => "perfect",
+            Self::Completable => "completable",
+            Self::Flawed => "flawed",
+            Self::BootOnly => "boot_only",
+            Self::Unplayable => "unplayable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompatibilityEntry {
+    #[schemars(regex(pattern = r"^v[0-9]{1,63}$"))]
+    pub vn_id: String,
+    #[schemars(regex(pattern = r"^r[0-9]{1,63}$"))]
+    pub release_id: String,
+    #[schemars(regex(pattern = r"^[A-Za-z0-9._-]{1,128}$"))]
+    pub emulator: String,
+    pub status: CompatibilityStatus,
+    #[schemars(length(max = 1024))]
+    pub notes: Option<String>,
+    #[schemars(length(min = 1, max = 64))]
+    pub emulator_version: Option<String>,
+    #[schemars(length(min = 1, max = 64))]
+    pub manager_version: Option<String>,
+    #[schemars(regex(pattern = r"^(windows|linux|macos|android|ios|ohos)$"))]
+    pub platform: String,
+    #[schemars(regex(pattern = r"^(x86_64|aarch64)$"))]
+    pub architecture: String,
+    #[schemars(regex(pattern = r"^(desktop|device|simulator)$"))]
+    pub variant: String,
+    #[schemars(range(min = 1))]
+    pub issue: Option<u64>,
+    #[schemars(range(min = 0))]
+    pub updated_at_unix_ms: i64,
+}
+
+impl CompatibilityEntry {
+    pub fn validate(&self) -> Result<(), CompatibilityError> {
+        if !is_vndb_vn_id(&self.vn_id) {
+            return Err(CompatibilityError::SchemaMismatch("vn_id"));
+        }
+        if !is_vndb_release_id(&self.release_id) {
+            return Err(CompatibilityError::SchemaMismatch("release_id"));
+        }
+        if !is_known_core_id(&self.emulator) {
+            return Err(CompatibilityError::SchemaMismatch("emulator"));
+        }
+        if !is_platform(&self.platform) {
+            return Err(CompatibilityError::SchemaMismatch("platform"));
+        }
+        if !matches!(self.architecture.as_str(), "x86_64" | "aarch64") {
+            return Err(CompatibilityError::SchemaMismatch("architecture"));
+        }
+        let valid_variant = match self.platform.as_str() {
+            "windows" | "linux" | "macos" => self.variant == "desktop",
+            _ => matches!(self.variant.as_str(), "device" | "simulator"),
+        };
+        if !valid_variant {
+            return Err(CompatibilityError::SchemaMismatch("variant"));
+        }
+        if self.updated_at_unix_ms < 0 {
+            return Err(CompatibilityError::SchemaMismatch("updated_at_unix_ms"));
+        }
+        if self
+            .notes
+            .as_deref()
+            .is_some_and(|notes| !is_bounded_multiline(notes, MAX_NOTES_CHARS))
+        {
+            return Err(CompatibilityError::ResponseBounds("notes"));
+        }
+        if self
+            .emulator_version
+            .as_deref()
+            .is_some_and(|version| !is_bounded_text(version, 1, MAX_VERSION_CHARS))
+        {
+            return Err(CompatibilityError::ResponseBounds("emulator_version"));
+        }
+        if self
+            .manager_version
+            .as_deref()
+            .is_some_and(|version| !is_bounded_text(version, 1, MAX_VERSION_CHARS))
+        {
+            return Err(CompatibilityError::ResponseBounds("manager_version"));
+        }
+        if self.issue == Some(0) {
+            return Err(CompatibilityError::SchemaMismatch("issue"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompatibilityDatabase {
+    #[schemars(regex(pattern = r"^shinki\.emu\.compatibility\.v4$"))]
+    pub schema: String,
+    #[schemars(range(min = 0))]
+    pub generated_at_unix_ms: i64,
+    pub entries: Vec<CompatibilityEntry>,
+}
+
+impl CompatibilityDatabase {
+    pub fn validate(&self) -> Result<(), CompatibilityError> {
+        if self.schema != COMPATIBILITY_SCHEMA_VERSION {
+            return Err(CompatibilityError::SchemaMismatch("schema"));
+        }
+        if self.generated_at_unix_ms < 0 {
+            return Err(CompatibilityError::SchemaMismatch("generated_at_unix_ms"));
+        }
+        if self.entries.len() > MAX_ENTRIES {
+            return Err(CompatibilityError::ResponseBounds("entries"));
+        }
+        let mut keys = BTreeSet::new();
+        for entry in &self.entries {
+            entry.validate()?;
+            if !keys.insert((
+                &entry.release_id,
+                &entry.emulator,
+                &entry.platform,
+                &entry.architecture,
+                &entry.variant,
+            )) {
+                return Err(CompatibilityError::Duplicate(format!(
+                    "{}/{}",
+                    entry.release_id, entry.emulator
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn entry(
+        &self,
+        release_id: &str,
+        emulator: &str,
+        platform: &str,
+        architecture: &str,
+        variant: &str,
+    ) -> Option<&CompatibilityEntry> {
+        self.entries.iter().find(|entry| {
+            entry.release_id == release_id
+                && entry.emulator == emulator
+                && entry.platform == platform
+                && entry.architecture == architecture
+                && entry.variant == variant
+        })
+    }
+}
+
+pub fn parse_compatibility_database(
+    bytes: &[u8],
+) -> Result<CompatibilityDatabase, CompatibilityError> {
+    if bytes.len() > MAX_PAYLOAD_BYTES {
+        return Err(CompatibilityError::ResponseBounds("payload"));
+    }
+    let database: CompatibilityDatabase = serde_json::from_value(
+        crate::parse_unique_json(bytes).map_err(|_| CompatibilityError::SchemaMismatch("json"))?,
+    )
+    .map_err(|_| CompatibilityError::SchemaMismatch("json"))?;
+    database.validate()?;
+    Ok(database)
+}
+
+#[derive(Debug, Error)]
+pub enum CompatibilityError {
+    #[error("SHINKI_EMU_COMPATIBILITY_SCHEMA_MISMATCH: {0}")]
+    SchemaMismatch(&'static str),
+    #[error("SHINKI_EMU_COMPATIBILITY_RESPONSE_BOUNDS: {0}")]
+    ResponseBounds(&'static str),
+    #[error("SHINKI_EMU_COMPATIBILITY_DUPLICATE: {0}")]
+    Duplicate(String),
+}
+
+pub fn compatibility_json_schema() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(CompatibilityDatabase))
+        .expect("serializable JSON schema")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(release_id: &str, emulator: &str, status: CompatibilityStatus) -> CompatibilityEntry {
+        CompatibilityEntry {
+            vn_id: "v17".into(),
+            release_id: release_id.into(),
+            emulator: emulator.into(),
+            status,
+            notes: Some("通关无异常。".into()),
+            emulator_version: Some("0.2.0".into()),
+            manager_version: Some("0.2.0".into()),
+            platform: "windows".into(),
+            architecture: "x86_64".into(),
+            variant: "desktop".into(),
+            issue: Some(12),
+            updated_at_unix_ms: 1_700_000_000_000,
+        }
+    }
+
+    fn sample_database() -> CompatibilityDatabase {
+        CompatibilityDatabase {
+            schema: COMPATIBILITY_SCHEMA_VERSION.to_owned(),
+            generated_at_unix_ms: 1_700_000_000_000,
+            entries: vec![
+                entry("r123", "shinki.emu.musica", CompatibilityStatus::Perfect),
+                entry("r123", "sena-rs", CompatibilityStatus::Flawed),
+                entry("r456", "shinki.emu.musica", CompatibilityStatus::BootOnly),
+            ],
+        }
+    }
+
+    #[test]
+    fn serde_round_trip_preserves_database() {
+        let database = sample_database();
+        let json = serde_json::to_string(&database).unwrap();
+        let parsed = parse_compatibility_database(json.as_bytes()).unwrap();
+        assert_eq!(parsed, database);
+        assert_eq!(
+            parsed
+                .entry("r123", "sena-rs", "windows", "x86_64", "desktop")
+                .unwrap()
+                .status,
+            CompatibilityStatus::Flawed
+        );
+    }
+
+    #[test]
+    fn optional_fields_may_be_omitted() {
+        let json = br#"{"schema":"shinki.emu.compatibility.v4","generated_at_unix_ms":1,
+            "entries":[{"vn_id":"v1","release_id":"r2","emulator":"rfvp",
+            "status":"completable","platform":"linux","architecture":"x86_64","variant":"desktop","updated_at_unix_ms":3}]}"#;
+        let database = parse_compatibility_database(json).unwrap();
+        assert_eq!(database.entries[0].notes, None);
+        assert_eq!(database.entries[0].issue, None);
+    }
+
+    #[test]
+    fn duplicate_release_and_emulator_is_rejected() {
+        let mut database = sample_database();
+        database.entries.push(entry(
+            "r123",
+            "shinki.emu.musica",
+            CompatibilityStatus::Unplayable,
+        ));
+        let error = database.validate().unwrap_err();
+        assert!(matches!(error, CompatibilityError::Duplicate(_)));
+    }
+
+    #[test]
+    fn identity_fields_are_validated() {
+        for (mutate, field) in [
+            (
+                (|entry: &mut CompatibilityEntry| entry.vn_id = "1234".into())
+                    as fn(&mut CompatibilityEntry),
+                "vn_id",
+            ),
+            (|entry| entry.release_id = "v17".into(), "release_id"),
+            (|entry| entry.release_id = String::new(), "release_id"),
+            (|entry| entry.emulator = "Shinki Musica".into(), "emulator"),
+            (|entry| entry.platform = "dos".into(), "platform"),
+            (|entry| entry.issue = Some(0), "issue"),
+        ] {
+            let mut database = sample_database();
+            mutate(&mut database.entries[0]);
+            assert!(
+                matches!(database.validate(), Err(CompatibilityError::SchemaMismatch(found)) if found == field),
+                "{field}"
+            );
+        }
+        let mut database = sample_database();
+        database.entries[0].notes = Some("x".repeat(1025));
+        assert!(matches!(
+            database.validate(),
+            Err(CompatibilityError::ResponseBounds("notes"))
+        ));
+    }
+
+    #[test]
+    fn parse_rejects_schema_mismatch_unknown_fields_and_malformed_json() {
+        let mut database = sample_database();
+        database.schema = "shinki.emu.compatibility.v2".into();
+        let bytes = serde_json::to_vec(&database).unwrap();
+        assert!(matches!(
+            parse_compatibility_database(&bytes),
+            Err(CompatibilityError::SchemaMismatch("schema"))
+        ));
+        let mut value = serde_json::to_value(sample_database()).unwrap();
+        value["entries"][0]["reporter"] = "tester".into();
+        assert!(matches!(
+            parse_compatibility_database(&serde_json::to_vec(&value).unwrap()),
+            Err(CompatibilityError::SchemaMismatch("json"))
+        ));
+        assert!(matches!(
+            parse_compatibility_database(b"{not-json"),
+            Err(CompatibilityError::SchemaMismatch("json"))
+        ));
+    }
+
+    #[test]
+    fn platforms_coexist_but_full_key_cannot_repeat() {
+        let mut database = sample_database();
+        let mut linux = database.entries[0].clone();
+        linux.platform = "linux".into();
+        database.entries.push(linux.clone());
+        database.validate().unwrap();
+        assert!(database
+            .entry("r123", "shinki.emu.musica", "macos", "aarch64", "desktop")
+            .is_none());
+        database.entries.push(linux);
+        assert!(matches!(
+            database.validate(),
+            Err(CompatibilityError::Duplicate(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_negative_dates_and_invalid_target_combinations() {
+        for mutate in [
+            (|e: &mut CompatibilityEntry| e.updated_at_unix_ms = -1) as fn(&mut CompatibilityEntry),
+            |e| e.architecture = "arm".into(),
+            |e| e.variant = "device".into(),
+            |e| e.emulator = "reminori".into(),
+        ] {
+            let mut db = sample_database();
+            mutate(&mut db.entries[0]);
+            assert!(db.validate().is_err());
+        }
+        let mut db = sample_database();
+        db.generated_at_unix_ms = -1;
+        assert!(db.validate().is_err());
+    }
+}
