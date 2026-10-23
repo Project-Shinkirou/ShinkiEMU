@@ -1662,7 +1662,6 @@ impl CmvsSession {
                 );
             }
             {
-                
                 let hotspot = self
                     .pc_hotspots
                     .entry((self.vm.current_frame, self.vm.program_counter))

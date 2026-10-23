@@ -14,6 +14,7 @@ pub struct Core {
     pub manifest: PathBuf,
     pub package: String,
     pub features: Vec<String>,
+    pub dependencies: Vec<String>,
     pub artifact_kind: String,
     pub resources: Vec<String>,
     pub licenses: Vec<String>,
@@ -22,6 +23,59 @@ pub struct Core {
     pub static_manager_targets: Vec<String>,
     pub blocked: Vec<Blocked>,
     pub publish_blocked: String,
+    pub source: Option<CoreSource>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoreSource {
+    pub repo: String,
+    pub branch: String,
+    pub rev: String,
+}
+
+impl Core {
+    pub fn source_directory(&self, repository: &Path) -> Result<PathBuf> {
+        if self.source.is_none() {
+            return Ok(repository.to_owned());
+        }
+        let relative = self
+            .manifest
+            .strip_prefix("ThirdParty")
+            .context("external core manifests must be under ThirdParty")?;
+        let directory = relative
+            .components()
+            .next()
+            .context("external core directory missing")?;
+        Ok(repository.join("ThirdParty").join(directory.as_os_str()))
+    }
+}
+
+impl CoreSource {
+    fn validate(&self) -> Result<()> {
+        let repository = self
+            .repo
+            .strip_prefix("https://github.com/Project-Shinkirou/")
+            .context("external core source must be an organization GitHub repository")?;
+        crate::package::portable(repository)?;
+        if repository.contains('/') {
+            bail!("core source must name one GitHub repository");
+        }
+        crate::package::portable(&self.branch)?;
+        if self.branch.contains("..") || self.branch.split('/').any(|part| part.ends_with(".lock"))
+        {
+            bail!("invalid source branch");
+        }
+        if self.rev.len() != 40
+            || !self
+                .rev
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            bail!("core source revision must be an exact lowercase 40-hex commit");
+        }
+        Ok(())
+    }
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Blocked {
@@ -111,6 +165,13 @@ impl Inventory {
             }
             crate::package::portable(&c.id)?;
             crate::package::portable(&c.manifest.to_string_lossy().replace('\\', "/"))?;
+            if c.manifest.starts_with("ThirdParty") != c.source.is_some() {
+                bail!("external core {} needs a pinned source declaration; in-repo cores must not have one", c.id);
+            }
+            if let Some(source) = &c.source {
+                source.validate()?;
+                c.source_directory(&self.root)?;
+            }
             let mut seen = BTreeSet::new();
             for t in &c.supported_targets {
                 self.target(t)?;

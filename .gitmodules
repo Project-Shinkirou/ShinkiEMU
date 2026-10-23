@@ -1,40 +1,4 @@
-[submodule "rfvp"]
-	path = ThirdParty/rfvp
-	url = https://github.com/Project-Shinkirou/rfvp.git
-	branch = shinki
-[submodule "siglus_rs"]
-	path = ThirdParty/siglus_rs
-	url = https://github.com/Project-Shinkirou/siglus_rs.git
-	branch = shinki
-[submodule "art3m1s-core"]
-	path = ThirdParty/art3m1s-core
-	url = https://github.com/Project-Shinkirou/art3m1s-core.git
-	branch = shinki
-[submodule "sena-rs"]
-	path = ThirdParty/sena-rs
-	url = https://github.com/Project-Shinkirou/sena-rs.git
-	branch = shinki
-[submodule "ethornell-rs"]
-	path = ThirdParty/ethornell-rs
-	url = https://github.com/Project-Shinkirou/ethornell-rs.git
-	branch = shinki
-[submodule "kirikiri2"]
-	path = ThirdParty/kirikiri2
-	url = https://github.com/Project-Shinkirou/kirikiroid2-web.git
-	branch = shinki
 [submodule "cpal"]
 	path = ThirdParty/cpal
 	url = https://github.com/Project-Shinkirou/cpal.git
 	branch = native-owner-0.15.3
-[submodule "ReMinori"]
-	path = ThirdParty/ReMinori
-	url = https://github.com/Project-Shinkirou/ReMinori.git
-	branch = shinki
-[submodule "impacto"]
-	path = ThirdParty/impacto
-	url = https://github.com/Project-Shinkirou/impacto.git
-	branch = shinki
-[submodule "renpy"]
-	path = ThirdParty/renpy
-	url = https://github.com/Project-Shinkirou/renpy.git
-	branch = shinki

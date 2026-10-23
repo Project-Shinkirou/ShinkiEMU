@@ -510,28 +510,37 @@ pub fn verify_core(dir: &Path) -> Result<CorePackage> {
     Ok(m)
 }
 fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
-    let mut dirs = vec![
-        result
-            .library
-            .parent()
-            .context("library parent")?
-            .to_owned(),
-        inv.root
-            .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin"),
-        dependencies::subtitle_install(inv, &result.target)?.join("bin"),
-        inv.root.join(".work/dxc"),
-    ];
+    let selected = dependencies::needs(inv, &result.target, &result.component)?;
+    let mut dirs = vec![result
+        .library
+        .parent()
+        .context("library parent")?
+        .to_owned()];
+    if selected.ffmpeg {
+        dirs.push(
+            inv.root
+                .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin"),
+        );
+    }
+    if selected.subtitle {
+        dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("bin"));
+    }
+    if selected.dxc {
+        dirs.push(inv.root.join(".work/dxc"));
+    }
     if let Some(native) = &result.core_build {
         if let Some(p) = &native.native_library {
             dirs.push(p.parent().context("native library parent")?.to_owned());
         }
     }
-    dirs.push(
-        inv.root
-            .join(".work/native-vcpkg")
-            .join(&result.component)
-            .join("installed/x64-windows/bin"),
-    );
+    if selected.native_vcpkg {
+        dirs.push(
+            inv.root
+                .join(".work/native-vcpkg")
+                .join(&result.component)
+                .join("installed/x64-windows/bin"),
+        );
+    }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
     if let Some(redist) = std::env::var_os("VCToolsRedistDir") {
         let root = PathBuf::from(redist).join("x64");
@@ -553,7 +562,9 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         } else {
             "linux-x86_64"
         };
-        dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("lib"));
+        if selected.subtitle {
+            dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("lib"));
+        }
         dirs.push(
             ndk.join("toolchains/llvm/prebuilt")
                 .join(host)
@@ -564,8 +575,9 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     Ok(dirs)
 }
 fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, String)>> {
+    let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
-    if result.target.contains("windows") || result.target.contains("android") {
+    if selected.subtitle {
         let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
         for port in [
             "libass", "freetype", "fribidi", "harfbuzz", "brotli", "bzip2", "libpng", "zlib",
@@ -581,7 +593,7 @@ fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, Strin
         .join(".work/native-vcpkg")
         .join(&result.component)
         .join("installed/x64-windows/share");
-    if native_share.is_dir() {
+    if selected.native_vcpkg && native_share.is_dir() {
         for item in fs::read_dir(native_share)? {
             let path = item?.path().join("copyright");
             if path.is_file() {
@@ -718,13 +730,15 @@ pub fn package(
                     dep.file_name().unwrap().to_string_lossy().into_owned(),
                 ));
             }
-            for name in [
-                "dxcompiler.dll",
-                "dxil.dll",
-                "LICENSE-MS.txt",
-                "LICENSE-LLVM.txt",
-            ] {
-                entries.push((inv.root.join(".work/dxc").join(name), name.into()));
+            if dependencies::needs(inv, target, component)?.dxc {
+                for name in [
+                    "dxcompiler.dll",
+                    "dxil.dll",
+                    "LICENSE-MS.txt",
+                    "LICENSE-LLVM.txt",
+                ] {
+                    entries.push((inv.root.join(".work/dxc").join(name), name.into()));
+                }
             }
             entries.extend(licenses(inv, &result)?);
             entries.extend(metadata_entries(inv, temp.path())?);
@@ -767,10 +781,7 @@ pub fn package(
                 .licenses
                 .push(BuildAsset { source, dest });
         }
-        if matches!(
-            component,
-            "shinki.emu.musica" | "shinki.emu.cmvs" | "art3m1s-core"
-        ) {
+        if dependencies::needs(inv, target, component)?.ffmpeg {
             result
                 .core_build
                 .as_mut()
@@ -960,17 +971,17 @@ fn package_android(
 
 /// Include original vcpkg archives and exact ports/patches for relinking.
 pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path) -> Result<()> {
-    let needs_ffmpeg = matches!(
-        component,
-        "shinki.emu.musica" | "shinki.emu.cmvs" | "art3m1s-core" | "kirikiroid2-web" | "renpy"
-    );
+    let selected = dependencies::needs(inv, target, component)?;
     let mut entries = vec![];
     let vcpkg = inv.root.join(".work/vcpkg");
-    let mut ports = vec!["fribidi"];
-    if needs_ffmpeg {
+    let mut ports = Vec::new();
+    if selected.subtitle {
+        ports.push("fribidi");
+    }
+    if selected.ffmpeg || component == "kirikiroid2-web" {
         ports.push("ffmpeg");
     }
-    let downloads = vcpkg.join("downloads");
+    let downloads = inv.root.join(".work/vcpkg-downloads");
     let mut hashes = std::collections::BTreeMap::new();
     let mut required = BTreeSet::new();
     for port in ports {
@@ -1027,25 +1038,27 @@ pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         entries.push((spdx, format!("provenance/{port}.spdx.json")));
     }
     // Match the installed package's real source hashes, not a filename/version guess.
-    for item in fs::read_dir(&downloads)? {
-        let path = item?.path();
-        if !path.is_file() {
-            continue;
-        }
-        plain(&path)?;
-        let mut file = fs::File::open(&path)?;
-        let mut digest = sha2::Sha512::new();
-        let mut bytes = [0u8; 64 * 1024];
-        loop {
-            let count = file.read(&mut bytes)?;
-            if count == 0 {
-                break;
+    if !required.is_empty() {
+        for item in fs::read_dir(&downloads)? {
+            let path = item?.path();
+            if !path.is_file() {
+                continue;
             }
-            digest.update(&bytes[..count]);
-        }
-        let hash = hex::encode(digest.finalize());
-        if required.contains(&hash) {
-            hashes.entry(hash).or_insert(path);
+            plain(&path)?;
+            let mut file = fs::File::open(&path)?;
+            let mut digest = sha2::Sha512::new();
+            let mut bytes = [0u8; 64 * 1024];
+            loop {
+                let count = file.read(&mut bytes)?;
+                if count == 0 {
+                    break;
+                }
+                digest.update(&bytes[..count]);
+            }
+            let hash = hex::encode(digest.finalize());
+            if required.contains(&hash) {
+                hashes.entry(hash).or_insert(path);
+            }
         }
     }
     for hash in required {

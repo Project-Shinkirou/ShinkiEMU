@@ -1,4 +1,4 @@
-use crate::{build, cores::Inventory, dependencies, package};
+use crate::{build, cores::Inventory, package};
 use anyhow::Result;
 use serde::Serialize;
 use std::{fs, io::Write, path::Path};
@@ -30,7 +30,6 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         Ok(())
     } else {
         (|| -> Result<()> {
-            dependencies::doctor(inv, target, Some(component).filter(|s| *s != "manager"))?;
             let built = build::execute(inv, target, component, "build", true)?
                 .expect("build returns artifact");
             report.status = "built";

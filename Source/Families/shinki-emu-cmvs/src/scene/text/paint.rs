@@ -1,8 +1,6 @@
 use super::*;
 use crate::CmvsNativeTextGlyph;
-use roukaku_media_core::{
-    GlyphBitmap, GlyphBitmapFormat, GlyphInstance,
-};
+use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, GlyphInstance};
 
 #[derive(Default)]
 pub(super) struct NativePaint {

@@ -7,6 +7,7 @@ cargo xtask --help
 cargo xtask matrix --json
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
+cargo xtask deps --target x86_64-pc-windows-msvc --all-cores
 cargo xtask build --target x86_64-pc-windows-msvc --manager --release
 cargo xtask build --target x86_64-pc-windows-msvc --all-cores --release
 cargo xtask check --target x86_64-pc-windows-msvc --core rfvp
@@ -18,9 +19,15 @@ cargo xtask metadata build --out .work/metadata-snapshot
 cargo xtask ci --target aarch64-apple-ios --component manager --report .work/ios-report.json
 ```
 
-`build/cores.toml` owns core identity, manifest, features, license inputs and supported/blocked targets. `build/targets.toml` owns target identity, runner and Manager support. `matrix` emits every combination, including blocked rows. Runner labels are from [GitHub's hosted runner reference](https://docs.github.com/actions/reference/runners/github-hosted-runners): macOS Intel uses `macos-15-intel`, arm64 uses `macos-15`.
+`build/cores.toml` owns core identity, pinned external source repository/branch/revision, manifest, features, native prerequisites, license inputs and supported/blocked targets. `build/targets.toml` owns target identity, runner and Manager support. `matrix` emits every combination, including blocked rows. Runner labels are from [GitHub's hosted runner reference](https://docs.github.com/actions/reference/runners/github-hosted-runners): macOS Intel uses `macos-15-intel`, arm64 uses `macos-15`.
 
-`doctor` inspects installed tools and dependency trees and fails on missing prerequisites. It does not install anything. `deps` is the explicit network/preparation command: pinned vcpkg, separate subtitle/FFmpeg installations, locked DXC runtime/licenses and a private cargo-ndk installation. It resolves the subtitle manifest from the exact RoukakuEngine Git revision in Cargo metadata, not a neighboring checkout. Android requires JDK 17, SDK 36 and NDK 30.0.15729638. No command installs system packages.
+`doctor` inspects installed tools, source revisions and the selected component's dependency trees; missing prerequisites fail without installation. `deps` is the explicit network/preparation command. No selection means Manager prerequisites; `--core` prepares that core, and `--all-cores` prepares supported cores individually. External core repositories are ignored working checkouts rather than product submodules. `deps` clones/fetches the configured fork and checks out its exact pinned commit, initializes that fork's own submodules, and refuses local modifications instead of resetting them. CPAL remains a small product submodule; vendored mlua remains tracked.
+
+Native requirements are scoped per component. Only consumers prepare the pinned vcpkg subtitle/FFmpeg trees or DXC runtime. Subtitle sources come from Cargo's exact RoukakuEngine Git revision, not a neighboring checkout. Android uses JDK 17, SDK 36, NDK 30.0.15729638 and private cargo-ndk 4.1.2. No command installs system packages.
+
+Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7 NuGet development tree, Cython 3.2.4 cp312 Windows wheel, Cython source-license files and SDL 2.0.20 headers. Python and Cython are installed only into `.work/native-downloads/python`; no system interpreter or developer cache is used. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE`.
+
+Every native download is SHA256-pinned in `build/dependencies.toml`. Extraction is staged, rejects unsafe paths/links/collisions, and publishes only a complete tree. A local verification record binds every file to the archive recipe. A verified existing tree is reused without downloading; modified trees fail without overwriting their files. Bytecode writes are disabled for the task-owned build interpreter so builds do not mutate the verified installation.
 
 Each core is built through its own manifest and lockfile into `.work/target/<target>/<plugin_id>`. On Windows, long prefixes use a short directory on the checkout's volume, isolated by repository/target/component hash and checked against an owner record. Set `SHINKI_EMU_TARGET_ROOT` to choose a writable short root. The build receipt in `.work/build` records the actual target directory, Cargo JSON artifact, build-script `OUT_DIR/core-build.json`, revision, toolchain and features. Native adapters must use `shinki-emu-build` and record the actual CMake DLL, resources and licenses. An absent manifest, incorrect ABI/architecture, missing query export or failed supported build is an error.
 

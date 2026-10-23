@@ -13,9 +13,7 @@ pub(super) fn execute(
     ops: &[crate::command::native_table::NativeMicroOp],
     values: &[(crate::CmvsPs2aCommandStackWordKind, u32)],
 ) -> Result<Option<CmvsPs2aVmAction>, CoreError> {
-    use crate::command::native_table::{
-        NativeMicroMacro, NativeMicroOp, NativeMicroSrc,
-    };
+    use crate::command::native_table::{NativeMicroMacro, NativeMicroOp, NativeMicroSrc};
     let mut regs = [0u32; 8];
     for (i, (_, v)) in values.iter().take(8).enumerate() {
         regs[i] = *v;

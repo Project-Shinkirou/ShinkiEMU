@@ -627,7 +627,9 @@ pub(super) fn execute_command(
 fn count_tagged_stack_words(state: &CmvsPs2aVmState) -> usize {
     state
         .stack_bytes
-        .as_chunks::<4>().0.iter()
+        .as_chunks::<4>()
+        .0
+        .iter()
         .take((state.stack_cursor_bytes / 4) as usize)
         .filter(|chunk| {
             let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);

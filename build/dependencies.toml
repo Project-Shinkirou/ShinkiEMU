@@ -7,3 +7,69 @@ subtitle_windows_triplet = "x64-windows-static-md-dynbidi"
 ffmpeg_windows_triplet = "x64-windows"
 bison_url = "https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip"
 bison_sha256 = "8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135"
+
+[native.libatrac9]
+version = "efca2e3af35562a09a9bb6deed90e45b4b824dc4"
+url = "https://codeload.github.com/Thealexbarney/LibAtrac9/tar.gz/efca2e3af35562a09a9bb6deed90e45b4b824dc4"
+sha256 = "84463f04d92692f14c9a77fb36fb3d521222e4acabed50d21e8cac7536158db7"
+file_name = "libatrac9-efca2e3af35562a09a9bb6deed90e45b4b824dc4.tar.gz"
+format = "tar-gz"
+strip_prefix = "LibAtrac9-efca2e3af35562a09a9bb6deed90e45b4b824dc4"
+required = ["C/src", "LICENSE"]
+
+[native.magic_enum]
+version = "591b64351ea8442f8b8fa044ff335d6943e8e6e0"
+url = "https://codeload.github.com/Neargye/magic_enum/tar.gz/591b64351ea8442f8b8fa044ff335d6943e8e6e0"
+sha256 = "05d4362925aac4d8af9ba3d8d57dcae05496b805bf40512dc57ce35a71e9da96"
+file_name = "magic_enum-591b64351ea8442f8b8fa044ff335d6943e8e6e0.tar.gz"
+format = "tar-gz"
+strip_prefix = "magic_enum-591b64351ea8442f8b8fa044ff335d6943e8e6e0"
+required = ["CMakeLists.txt", "include", "LICENSE"]
+
+[native.renpy-sdk]
+version = "8.5.3.26051504"
+url = "https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.zip"
+sha256 = "ff57648f9c04f27e381c48af6d8e3ee3cdec296bed4d3831f47f09b0a71b505e"
+file_name = "renpy-8.5.3-sdk.zip"
+format = "zip"
+strip_prefix = "renpy-8.5.3-sdk"
+include = ["lib/py3-windows-x86_64", "lib/python3.12", "renpy/vc_version.py", "LICENSE.txt"]
+required = ["lib/py3-windows-x86_64/libpython3.12.dll", "lib/py3-windows-x86_64/librenpython.dll", "lib/python3.12", "renpy/vc_version.py", "LICENSE.txt"]
+
+[native.python]
+version = "3.12.7"
+url = "https://api.nuget.org/v3-flatcontainer/python/3.12.7/python.3.12.7.nupkg"
+sha256 = "149dd298e0b7a82250ca019471770fff079874088a4e8501ca20922d7df3a6ac"
+file_name = "python.3.12.7.nupkg"
+format = "zip"
+strip_prefix = "tools"
+required = ["python.exe", "python312.dll", "include/Python.h", "libs/python312.lib", "LICENSE.txt"]
+
+[native.cython]
+version = "3.2.4"
+url = "https://files.pythonhosted.org/packages/bb/f3/4275cd3ea0a4cf4606f9b92e7f8766478192010b95a7f516d1b7cf22cb10/cython-3.2.4-cp312-cp312-win_amd64.whl"
+sha256 = "767b143704bdd08a563153448955935844e53b852e54afdc552b43902ed1e235"
+file_name = "cython-3.2.4-cp312-cp312-win_amd64.whl"
+format = "zip"
+strip_prefix = ""
+required = ["Cython/__init__.py", "cython.py"]
+
+[native.cython-license]
+version = "3.2.4"
+url = "https://files.pythonhosted.org/packages/91/85/7574c9cd44b69a27210444b6650f6477f56c75fee1b70d7672d3e4166167/cython-3.2.4.tar.gz"
+sha256 = "84226ecd313b233da27dc2eb3601b4f222b8209c3a7216d8733b031da1dc64e6"
+file_name = "cython-3.2.4.tar.gz"
+format = "tar-gz"
+strip_prefix = "cython-3.2.4"
+include = ["LICENSE.txt", "COPYING.txt"]
+required = ["LICENSE.txt", "COPYING.txt"]
+
+[native.sdl2]
+version = "2.0.20"
+url = "https://github.com/libsdl-org/SDL/releases/download/release-2.0.20/SDL2-devel-2.0.20-VC.zip"
+sha256 = "5b1512ca6c9d2427bd2147da01e5e954241f8231df12f54a7074dccde416df18"
+file_name = "SDL2-devel-2.0.20-VC.zip"
+format = "zip"
+strip_prefix = "SDL2-2.0.20"
+include = ["include", "COPYING.txt"]
+required = ["include/SDL.h", "COPYING.txt"]

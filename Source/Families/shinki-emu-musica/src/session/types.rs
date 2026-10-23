@@ -26,7 +26,6 @@ impl PcmFormatSpec {
     }
 }
 
-
 /// In-process PCM output used by deterministic runtime tests. Production owners open their own device.
 pub trait AudioSink: Send + Sync {
     fn configure(&self, format: PcmFormatSpec) -> SessionResult<()>;

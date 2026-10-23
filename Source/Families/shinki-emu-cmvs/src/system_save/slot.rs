@@ -202,7 +202,9 @@ pub fn deserialize_prog_state(stream: &[u8]) -> Result<CmvsSlotState, CoreError>
                     return Err(save_error("coroutine record table has an invalid length"));
                 }
                 state.records = payload
-                    .as_chunks::<28>().0.iter()
+                    .as_chunks::<28>()
+                    .0
+                    .iter()
                     .map(|chunk| {
                         std::array::from_fn(|i| {
                             u32::from_le_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap())
@@ -219,13 +221,17 @@ pub fn deserialize_prog_state(stream: &[u8]) -> Result<CmvsSlotState, CoreError>
             }
             TAG_VALUE_STACK if payload.len().is_multiple_of(4) => {
                 state.value_stack = payload
-                    .as_chunks::<4>().0.iter()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|chunk| u32::from_le_bytes(*chunk))
                     .collect();
             }
             TAG_FRAME_STACK if payload.len().is_multiple_of(4) => {
                 state.frame_bases = payload
-                    .as_chunks::<4>().0.iter()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|chunk| u32::from_le_bytes(*chunk))
                     .collect();
             }

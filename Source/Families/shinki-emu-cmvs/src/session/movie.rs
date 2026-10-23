@@ -282,7 +282,12 @@ impl MoviePlayer {
 #[cfg(feature = "video-ffmpeg")]
 fn bgra_to_rgba(bgra8: &[u8]) -> Vec<u8> {
     let mut rgba = vec![0_u8; bgra8.len()];
-    for (dst, src) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(bgra8.as_chunks::<4>().0) {
+    for (dst, src) in rgba
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(bgra8.as_chunks::<4>().0)
+    {
         dst[0] = src[2];
         dst[1] = src[1];
         dst[2] = src[0];

@@ -1235,11 +1235,7 @@ fn execute_instruction(
                     // `Control(AbsoluteJump { .. })` → `AbsoluteJump`.
                     let inner = text
                         .split_once('(')
-                        .and_then(|(_, rest)| {
-                            rest.trim_start()
-                                .split([' ', '{'])
-                                .next()
-                        })
+                        .and_then(|(_, rest)| rest.trim_start().split([' ', '{']).next())
                         .unwrap_or("");
                     if inner.is_empty() {
                         text.split('(').next().unwrap_or("?").to_string()

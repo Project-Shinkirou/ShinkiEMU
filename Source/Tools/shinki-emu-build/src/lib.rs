@@ -128,6 +128,42 @@ fn run(command: &mut Command) -> Result<()> {
     Ok(())
 }
 
+/// Keep native build/download caches and temporary files in an owned work tree.
+pub fn configure_native_environment(work_root: &Path, command: &mut Command) -> Result<()> {
+    let work_root = std::path::absolute(work_root)?;
+    let binary_cache = work_root.join("vcpkg-binary-cache");
+    let downloads = work_root.join("vcpkg-downloads");
+    let temporary = work_root.join("tmp");
+    for directory in [&binary_cache, &downloads, &temporary] {
+        for ancestor in directory.ancestors() {
+            match fs::symlink_metadata(ancestor) {
+                Ok(metadata) => {
+                    if metadata.file_type().is_symlink() {
+                        bail!("linked native cache path: {}", ancestor.display());
+                    }
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::fs::MetadataExt;
+                        if metadata.file_attributes() & 0x400 != 0 {
+                            bail!("reparse native cache path: {}", ancestor.display());
+                        }
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        fs::create_dir_all(directory)?;
+    }
+    command
+        .env("VCPKG_DEFAULT_BINARY_CACHE", binary_cache)
+        .env("VCPKG_DOWNLOADS", downloads)
+        .env("VCPKG_MAX_CONCURRENCY", "4")
+        .env("TEMP", &temporary)
+        .env("TMP", temporary);
+    Ok(())
+}
+
 /// Configure an OUT_DIR-owned native tree, then build the requested real targets.
 /// Cross builds must supply an explicit CMake toolchain; no host/target guessing.
 pub fn configure_cmake(
@@ -149,10 +185,15 @@ pub fn configure_cmake(
         "CMAKE_TOOLCHAIN_FILE",
         "CC",
         "CXX",
+        "PATH",
+        "LIB",
+        "INCLUDE",
+        "VCToolsInstallDir",
         "VCPKG_ROOT",
         "BISON_EXECUTABLE",
         "SHINKI_EMU_VCPKG_INSTALLED",
         "SHINKI_EMU_VCPKG_TRIPLET",
+        "SHINKI_EMU_NATIVE_DOWNLOADS",
         "HOST",
         "TARGET",
     ] {
@@ -169,7 +210,17 @@ pub fn configure_cmake(
         bail!("cross CMake build {host} -> {target} requires CMAKE_TOOLCHAIN_FILE");
     }
     let cmake = env::var_os("CMAKE").unwrap_or_else(|| "cmake".into());
+    let work_root = if let Some(downloads) = env::var_os("SHINKI_EMU_NATIVE_DOWNLOADS") {
+        PathBuf::from(downloads)
+            .parent()
+            .context("native downloads work root")?
+            .to_owned()
+    } else {
+        PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?).join("host-cache")
+    };
     let mut configure = Command::new(&cmake);
+    configure_native_environment(&work_root, &mut configure)?;
+    configure.env("VCPKG_DISABLE_METRICS", "1");
     configure
         .arg("-S")
         .arg(source)
@@ -185,6 +236,21 @@ pub fn configure_cmake(
         .arg("-DVCPKG_MANIFEST_INSTALL=OFF");
     if let Some(generator) = env::var_os("CMAKE_GENERATOR") {
         configure.arg("-G").arg(generator);
+    } else if cfg!(windows)
+        && target.ends_with("windows-msvc")
+        && env::var_os("VCToolsInstallDir").is_some()
+        && env::var_os("LIB").is_some()
+        && env::var_os("INCLUDE").is_some()
+    {
+        if let Some(ninja) = env::var_os("PATH").and_then(|paths| {
+            env::split_paths(&paths)
+                .map(|directory| directory.join("ninja.exe"))
+                .find(|path| path.is_file())
+        }) {
+            configure
+                .args(["-G", "Ninja"])
+                .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
+        }
     }
     if let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE") {
         configure.arg(format!(
@@ -210,6 +276,8 @@ pub fn configure_cmake(
     }
     run(&mut configure)?;
     let mut build = Command::new(cmake);
+    configure_native_environment(&work_root, &mut build)?;
+    build.env("VCPKG_DISABLE_METRICS", "1");
     build
         .arg("--build")
         .arg(&out)
@@ -268,9 +336,12 @@ pub fn generate_import_library(dll: &Path, out_dir: &Path, target: &str) -> Resu
         bail!("unsafe DLL export name");
     }
     fs::create_dir_all(out_dir)?;
-    let stem = dll.file_stem().context("DLL has no stem")?;
-    let definition = out_dir.join(stem).with_extension("def");
-    let library = out_dir.join(stem).with_extension("lib");
+    let stem = dll
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .context("DLL has no UTF-8 stem")?;
+    let definition = out_dir.join(format!("{stem}.def"));
+    let library = out_dir.join(format!("{stem}.lib"));
     fs::write(
         &definition,
         format!("LIBRARY {name}\nEXPORTS\n{}\n", exports.join("\n")),
@@ -318,5 +389,48 @@ mod tests {
         let path = write_core_build_manifest_to(&manifest, &temp.path().join("out")).unwrap();
         let decoded: CoreBuildManifest = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         decoded.validate().unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn dotted_dll_import_library_links_and_executes_a_real_consumer() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("dependency.rs");
+        fs::write(&source, "#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->! {loop{}}\n#[no_mangle] pub extern \"C\" fn dependency_answer()->u32 {42}\n").unwrap();
+        let dll = temp.path().join("libpython3.12.dll");
+        let status = Command::new("rustc")
+            .arg(&source)
+            .args([
+                "--crate-type",
+                "cdylib",
+                "-C",
+                "panic=abort",
+                "-C",
+                "link-arg=/NOENTRY",
+                "-o",
+            ])
+            .arg(&dll)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let host = Command::new("rustc").arg("-vV").output().unwrap();
+        let version = String::from_utf8(host.stdout).unwrap();
+        let target = version
+            .lines()
+            .find_map(|line| line.strip_prefix("host: "))
+            .unwrap();
+        let imports = temp.path().join("imports");
+        generate_import_library(&dll, &imports, target).unwrap();
+        let consumer = temp.path().join("consumer.rs");
+        fs::write(&consumer, "#[link(name=\"libpython3.12\")] extern \"C\" {fn dependency_answer()->u32;}\nfn main(){if unsafe {dependency_answer()} != 42 {std::process::exit(2);}}\n").unwrap();
+        let executable = temp.path().join("consumer.exe");
+        let status = Command::new("rustc")
+            .arg(&consumer)
+            .arg(format!("-Lnative={}", imports.display()))
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert!(Command::new(&executable).status().unwrap().success());
     }
 }

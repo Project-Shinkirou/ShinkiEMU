@@ -130,7 +130,8 @@ pub(super) fn run_value_expression(
                 // side effect and skips the store instead of blocking
                 // (intcode pc 76836 relies on this shape). An empty
                 // operand list reads two zero slots natively: a full no-op.
-                if let (Some((source_tag, source_payload)), target) = (entries.pop(), entries.pop()) {
+                if let (Some((source_tag, source_payload)), target) = (entries.pop(), entries.pop())
+                {
                     append_value_entry_to_buffer(state, source_tag, source_payload)?;
                     if let Some((target_tag, target_payload)) = target {
                         materialize_message_buffer(state, target_tag, target_payload)?;

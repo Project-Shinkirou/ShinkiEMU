@@ -385,7 +385,7 @@ fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
         "public port with a local patch",
     )
     .unwrap();
-    let downloads = temp.path().join(".work/vcpkg/downloads");
+    let downloads = temp.path().join(".work/vcpkg-downloads");
     fs::create_dir_all(&downloads).unwrap();
     let upstream = downloads.join("public-source.tar.gz");
     fs::write(&upstream, b"public synthetic upstream archive").unwrap();

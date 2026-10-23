@@ -113,6 +113,8 @@ pub fn execute(
     release: bool,
 ) -> Result<Option<BuildResult>> {
     inv.require_supported(component, target)?;
+    dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
+    let selected = dependencies::needs(inv, target, component)?;
     let core = if component == "manager" {
         None
     } else {
@@ -187,9 +189,11 @@ pub fn execute(
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
     }
-    dependencies::apply_environment(inv, target, &mut cmd)?;
+    dependencies::apply_environment(inv, target, component, &mut cmd)?;
     if core.is_some_and(|c| c.artifact_kind == "native-shared") {
-        cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
+        if selected.native_vcpkg {
+            cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
+        }
         cmd.env(
             "SHINKI_EMU_NATIVE_DOWNLOADS",
             inv.root.join(".work/native-downloads"),
@@ -377,7 +381,7 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
             .lines()
             .find_map(|s| s.strip_prefix("host: "))
             .context("rustc host triple")?;
-        dependencies::apply_environment(inv, host, &mut cmd)?;
+        dependencies::apply_environment(inv, host, core.unwrap_or("manager"), &mut cmd)?;
     }
     dependencies::run(&mut cmd)
 }

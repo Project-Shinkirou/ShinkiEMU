@@ -5221,6 +5221,7 @@ checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -7136,6 +7137,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.6.0"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -8045,6 +8047,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-build"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3#cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3"
+dependencies = [
+ "anyhow",
+ "cc",
+ "object",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "shinki-emu-cmvs"
 version = "0.1.0"
 dependencies = [
@@ -8069,7 +8083,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shinki-emu-abi",
- "shinki-emu-build",
+ "shinki-emu-build 0.1.0",
  "shinki-emu-sdk",
  "tempfile",
  "tracing",
@@ -8213,7 +8227,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shinki-emu-abi",
- "shinki-emu-build",
+ "shinki-emu-build 0.1.0",
  "shinki-emu-musica-keys",
  "shinki-emu-sdk",
  "tempfile",
@@ -8287,11 +8301,13 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
 dependencies = [
  "anyhow",
  "parking_lot",
  "rfvp",
  "shinki-emu-abi",
+ "shinki-emu-build 0.1.0 (git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=cb8d9dd22d7d0ab129085b324c94d6dc81fa19e3)",
  "winit",
 ]
 
@@ -11613,6 +11629,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=dcc3d9f44376d6065391884688ee44842d96b170#dcc3d9f44376d6065391884688ee44842d96b170"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -11752,8 +11769,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "cc",
  "chrono",
  "clap",
+ "flate2",
  "hex",
  "libc",
  "object",
@@ -11762,8 +11781,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "shinki-emu-build",
+ "shinki-emu-build 0.1.0",
  "shinki-emu-metadata",
+ "tar",
  "tempfile",
  "toml 0.8.23",
  "walkdir",
