@@ -148,20 +148,7 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status == 'supported'
         shell: bash
         run: |
-          archive=$(jq -er '.artifact' .work/ci-report.json)
-          work=$(mktemp -d "${TMPDIR:-/tmp}/shinki-linux-smoke.XXXXXX")
-          trap 'rm -rf "$work"' EXIT
-          unzip -q "$archive" -d "$work"
-          mkdir -p "$work/state"/{data,config,cache,runtime}
-          chmod 700 "$work/state/runtime"
-          export XDG_DATA_HOME="$work/state/data" XDG_CONFIG_HOME="$work/state/config"
-          export XDG_CACHE_HOME="$work/state/cache" XDG_RUNTIME_DIR="$work/state/runtime"
-          set +e
-          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 15s "$work/shinki-emu-manager" > "$work/manager.log" 2>&1
-          status=$?
-          set -e
-          cat "$work/manager.log"
-          test "$status" -eq 124
+          bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"
       - name: Prepare Release files without publishing
         env:
           TARGET: ${{ matrix.target }}

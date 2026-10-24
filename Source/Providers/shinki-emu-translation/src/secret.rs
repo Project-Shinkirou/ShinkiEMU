@@ -39,8 +39,21 @@ impl PlatformSecretStore {
             .map_err(|_| TranslationError::SecretUnavailable)
     }
 
+    #[cfg(not(target_os = "ios"))]
     fn entry(&self, reference: &str) -> Result<keyring::Entry, TranslationError> {
         keyring::Entry::new(&self.service, reference)
+            .map_err(|_| TranslationError::SecretUnavailable)
+    }
+
+    #[cfg(target_os = "ios")]
+    fn entry(&self, reference: &str) -> Result<keyring_core::Entry, TranslationError> {
+        static STORE: std::sync::Once = std::sync::Once::new();
+        STORE.call_once(|| {
+            if let Ok(store) = apple_native_keyring_store::protected::Store::new() {
+                keyring_core::set_default_store(store);
+            }
+        });
+        keyring_core::Entry::new(&self.service, reference)
             .map_err(|_| TranslationError::SecretUnavailable)
     }
 }

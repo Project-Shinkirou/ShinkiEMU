@@ -82,9 +82,13 @@ pub fn command(root: &Path, target: &str) -> Result<Command> {
     } else {
         Command::new("cargo")
     };
-    command
-        .env("MACOSX_DEPLOYMENT_TARGET", "13.0")
-        .env("IPHONEOS_DEPLOYMENT_TARGET", "16.0");
+    // Only the target's own variable: clang treats a set IPHONEOS_DEPLOYMENT_TARGET
+    // as an iOS target for compiles without an explicit `-target` (aws-lc-sys probes).
+    if target.ends_with("darwin") {
+        command.env("MACOSX_DEPLOYMENT_TARGET", "13.0");
+    } else {
+        command.env("IPHONEOS_DEPLOYMENT_TARGET", "16.0");
+    }
     Ok(command)
 }
 

@@ -8350,8 +8350,10 @@ dependencies = [
 name = "shinki-emu-translation"
 version = "0.1.0"
 dependencies = [
+ "apple-native-keyring-store",
  "futures-util",
  "keyring",
+ "keyring-core",
  "reqwest 0.13.4",
  "schemars",
  "serde",
