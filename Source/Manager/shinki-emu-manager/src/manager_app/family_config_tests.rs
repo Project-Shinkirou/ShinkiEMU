@@ -4,7 +4,7 @@ fn configuration_provider(
     configure: impl FnOnce(&mut crate::test_native::Fixture),
 ) -> shinki_emu_manager_core::LoadedFamilyPlugin {
     let mut fixture =
-        crate::test_native::Fixture::new("config-test-plugin", "config-test-family", "config.test");
+        crate::test_native::Fixture::new(PLUGIN, "config-test-family", "config.test");
     fixture.config = true;
     configure(&mut fixture);
     crate::test_native::install(0, fixture)
@@ -13,7 +13,7 @@ fn configuration_provider(
 fn configuration_candidate() -> FamilyProbeCandidate {
     FamilyProbeCandidate {
         report: shinki_emu_manager_core::FamilyProbeReport {
-            plugin_id: "config-test-plugin".into(),
+            plugin_id: PLUGIN.into(),
             family_id: "config-test-family".into(),
             game_id: "fixture-game".into(),
             format: "config.test".into(),
@@ -21,12 +21,12 @@ fn configuration_candidate() -> FamilyProbeCandidate {
         },
         descriptor: FamilyPluginDescriptor {
             family_id: "config-test-family".into(),
-            plugin_id: "config-test-plugin".into(),
+            plugin_id: PLUGIN.into(),
             abi_fingerprint: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
             version: "1.0.0".into(),
             capabilities: vec![shinki_emu_manager_core::FamilyCapability::CpuFrame],
             supported_formats: vec!["config.test".into()],
-            display_name: "config-test-plugin".into(),
+            display_name: PLUGIN.into(),
             family_name: "config-test-family".into(),
             render: None,
         },
@@ -58,7 +58,7 @@ pub(in crate::manager_app) fn configured_controller(
     let deadline = Instant::now() + Duration::from_secs(5);
     while controller
         .registry
-        .descriptor("config-test-plugin")
+        .descriptor(PLUGIN)
         .is_none()
     {
         controller.poll_platform().unwrap();
@@ -147,7 +147,8 @@ fn form_parses_full_width_numeric_values_and_rejects_non_finite_or_wrong_enum() 
     );
 }
 
-const PLUGIN: &str = "config-test-plugin";
+// Presets only accept catalogued core ids, so the fixture core borrows one.
+const PLUGIN: &str = "shinki.emu.musica";
 
 fn overrides(controller: &ShinkiEmuManagerController, game_id: &str) -> Vec<ConfigEntry> {
     controller.library.family_overrides(PLUGIN, game_id).unwrap()
