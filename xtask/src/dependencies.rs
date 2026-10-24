@@ -845,6 +845,7 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
 }
 fn vcpkg_command(inv: &Inventory, executable: &Path) -> Result<Command> {
     let mut command = Command::new(executable);
+    command.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
     shinki_emu_build::configure_native_environment(&inv.root.join(".work"), &mut command)?;
     Ok(command)
 }

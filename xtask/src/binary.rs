@@ -249,6 +249,7 @@ fn system(name: &str, target: &str) -> bool {
                 "cfgmgr32.dll",
                 "dwmapi.dll",
                 "uxtheme.dll",
+                "d3d9.dll",
                 "d3d11.dll",
                 "d3d12.dll",
                 "dxgi.dll",

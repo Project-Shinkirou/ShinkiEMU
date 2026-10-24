@@ -50,7 +50,7 @@ fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<Pa
     } else {
         repository.join(".work/t")
     };
-    let directory = short_root.join(&identity[..24]);
+    let directory = short_root.join(&identity[..12]);
     fs::create_dir_all(&directory).with_context(|| {
         format!("cannot create isolated short target {}; set SHINKI_EMU_TARGET_ROOT to a writable short directory", directory.display())
     })?;
