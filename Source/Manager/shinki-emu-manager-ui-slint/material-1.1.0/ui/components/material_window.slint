@@ -5,6 +5,10 @@ import { MaterialPalette } from "../styling/material_palette.slint";
 
 export global MaterialWindowAdapter {
     in property <bool> disable_hover;
+    // Touch density (ShinkiEMU addition): set by the host on touch-first
+    // platforms. Interactive components then reserve >= 48px hit targets;
+    // with `false` every size stays at the upstream desktop value.
+    in_out property <bool> touch;
 }
 
 export component MaterialWindow inherits Window {

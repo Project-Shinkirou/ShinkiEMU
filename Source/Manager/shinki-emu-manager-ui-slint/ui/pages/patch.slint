@@ -14,11 +14,13 @@ component StepDot {
     in property <bool> active;
     in property <bool> done;
     in property <bool> reachable;
+    // Short windows hide the caption; the app bar names the active step instead.
+    in property <bool> show-label: true;
     callback activate();
 
     horizontal-stretch: 1;
-    min-width: 40px;
-    height: 56px;
+    min-width: max(48px, Theme.touch-target);
+    height: root.show-label ? 56px : 48px;
     accessible-role: tab;
     accessible-label: "第 " + root.number + " 步：" + root.label;
     accessible-enabled: root.reachable;
@@ -74,7 +76,7 @@ component StepDot {
                 }
             }
         }
-        MaterialText {
+        if root.show-label : MaterialText {
             text: root.label;
             style: MaterialTypography.label-medium;
             color: root.active ? MaterialPalette.primary : MaterialPalette.on-surface-variant;
@@ -241,6 +243,64 @@ component PatchGameRow {
     }
 }
 
+component StepRow {
+    in property <int> step;
+    in property <bool> locked;
+    in property <bool> has-game;
+    in property <bool> has-script;
+    in property <bool> has-output;
+    in property <bool> show-label: true;
+    callback go(target: int);
+
+    HorizontalLayout {
+        spacing: 0px;
+        StepDot {
+            number: 1;
+            label: "选择游戏";
+            show-label: root.show-label;
+            active: root.step == 1;
+            done: root.has-game && root.step != 1;
+            reachable: !root.locked;
+            activate => { root.go(1); }
+        }
+        StepDot {
+            number: 2;
+            label: "选择补丁";
+            show-label: root.show-label;
+            active: root.step == 2;
+            done: root.has-script && root.step != 2;
+            reachable: !root.locked && root.has-game;
+            activate => { root.go(2); }
+        }
+        StepDot {
+            number: 3;
+            label: "目录";
+            show-label: root.show-label;
+            active: root.step == 3;
+            done: root.has-output && root.step != 3;
+            reachable: !root.locked && root.has-game && root.has-script;
+            activate => { root.go(3); }
+        }
+        StepDot {
+            number: 4;
+            label: "执行";
+            show-label: root.show-label;
+            active: root.step == 4;
+            done: root.step == 5;
+            reachable: !root.locked && root.has-game && root.has-script && root.has-output;
+            activate => { root.go(4); }
+        }
+        StepDot {
+            number: 5;
+            label: "完成";
+            show-label: root.show-label;
+            active: root.step == 5;
+            done: false;
+            reachable: false;
+        }
+    }
+}
+
 export component PatchPage {
     in property <bool> compact;
 
@@ -249,6 +309,12 @@ export component PatchPage {
     property <length> column: min(root.width - 2 * root.pad, 760px);
     property <length> column-x: (root.width - root.column) / 2;
     property <bool> narrow: root.column < 480px;
+    // Landscape phones: the stepper moves into the app bar and the footer slims down
+    // so the step body keeps at least half of the height.
+    property <bool> short: root.height < 480px;
+    property <bool> inline-steps: root.short && root.width >= 560px;
+    property <length> steps-width: 5 * 48px;
+    property <[string]> step-labels: ["选择游戏", "选择补丁", "目录", "执行", "完成"];
 
     property <bool> locked: Patch.state.running;
     property <bool> failed: Patch.state.error != "";
@@ -312,9 +378,23 @@ export component PatchPage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: "补丁";
+        title: root.short ? "补丁 · " + root.step-labels[root.step - 1] : "补丁";
         leading-button: root.compact ? { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true } : { };
         leading-button-clicked => { App.page = "library"; }
+    }
+
+    if root.inline-steps : StepRow {
+        x: root.column-x + root.column - root.steps-width;
+        y: (root.bar-height - 48px) / 2;
+        width: root.steps-width;
+        height: 48px;
+        step: root.step;
+        locked: root.locked;
+        has-game: root.has-game;
+        has-script: root.has-script;
+        has-output: root.has-output;
+        show-label: false;
+        go(target) => { root.go(target); }
     }
 
     header := VerticalLayout {
@@ -323,51 +403,18 @@ export component PatchPage {
         width: root.column;
         height: self.preferred-height;
         spacing: Theme.space-md;
-        padding-bottom: Theme.space-md;
+        padding-bottom: root.short ? Theme.space-sm : Theme.space-md;
 
-        Panel {
+        if !root.inline-steps : Panel {
             inset: Theme.space-sm;
-            HorizontalLayout {
-                spacing: 0px;
-                StepDot {
-                    number: 1;
-                    label: "选择游戏";
-                    active: root.step == 1;
-                    done: root.has-game && root.step != 1;
-                    reachable: !root.locked;
-                    activate => { root.go(1); }
-                }
-                StepDot {
-                    number: 2;
-                    label: "选择补丁";
-                    active: root.step == 2;
-                    done: root.has-script && root.step != 2;
-                    reachable: !root.locked && root.has-game;
-                    activate => { root.go(2); }
-                }
-                StepDot {
-                    number: 3;
-                    label: "目录";
-                    active: root.step == 3;
-                    done: root.has-output && root.step != 3;
-                    reachable: !root.locked && root.has-game && root.has-script;
-                    activate => { root.go(3); }
-                }
-                StepDot {
-                    number: 4;
-                    label: "执行";
-                    active: root.step == 4;
-                    done: root.step == 5;
-                    reachable: !root.locked && root.has-game && root.has-script && root.has-output;
-                    activate => { root.go(4); }
-                }
-                StepDot {
-                    number: 5;
-                    label: "完成";
-                    active: root.step == 5;
-                    done: false;
-                    reachable: false;
-                }
+            StepRow {
+                step: root.step;
+                locked: root.locked;
+                has-game: root.has-game;
+                has-script: root.has-script;
+                has-output: root.has-output;
+                show-label: !root.short;
+                go(target) => { root.go(target); }
             }
         }
 
@@ -386,7 +433,7 @@ export component PatchPage {
     }
 
     property <bool> footer-shown: root.step <= 3 || (root.step == 4 && !root.locked);
-    property <length> footer-height: root.footer-shown ? 64px : 0px;
+    property <length> footer-height: !root.footer-shown ? 0px : root.short ? 48px : 64px;
     property <length> body-y: root.bar-height + header.height;
     property <length> body-height: root.height - root.body-y - root.footer-height;
 
@@ -715,8 +762,8 @@ export component PatchPage {
         y: root.height - root.footer-height;
         width: root.column;
         height: root.footer-height;
-        padding-top: Theme.space-sm;
-        padding-bottom: Theme.space-md;
+        padding-top: root.short ? 4px : Theme.space-sm;
+        padding-bottom: root.short ? 4px : Theme.space-md;
         spacing: Theme.space-sm;
 
         if root.step > 1 : TextButton {

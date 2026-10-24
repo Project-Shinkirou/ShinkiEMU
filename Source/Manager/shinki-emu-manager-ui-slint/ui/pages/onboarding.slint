@@ -241,7 +241,9 @@ export component OnboardingPage {
     property <int> step: clamp(Onboarding.step, 0, 4);
     property <bool> phone: root.width < 600px;
     property <length> pad: root.phone ? 16px : 32px;
-    property <length> footer-height: 80px;
+    // Landscape phones: a slimmer footer and tighter vertical rhythm keep the step content above half the height.
+    property <bool> short: root.height < 480px;
+    property <length> footer-height: root.short ? 56px : 80px;
 
     function go(next: int) {
         Onboarding.step = clamp(next, 0, 4);
@@ -256,7 +258,7 @@ export component OnboardingPage {
 
     keys := FocusScope {
         key-pressed(event) => {
-            if event.text == Key.Escape {
+            if event.text == Key.Escape || event.text == Key.Back {
                 root.finish();
                 return accept;
             }
@@ -276,12 +278,15 @@ export component OnboardingPage {
 
         HorizontalLayout {
             width: sv.visible-width;
-            padding: root.pad;
+            padding-left: root.pad;
+            padding-right: root.pad;
+            padding-top: root.short ? 16px : root.pad;
+            padding-bottom: root.short ? 16px : root.pad;
             alignment: center;
 
             VerticalLayout {
                 width: min(600px, sv.visible-width - 2 * root.pad);
-                spacing: 32px;
+                spacing: root.short ? 16px : 32px;
                 alignment: start;
 
                 HorizontalLayout {

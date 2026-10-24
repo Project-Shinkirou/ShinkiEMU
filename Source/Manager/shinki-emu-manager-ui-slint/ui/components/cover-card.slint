@@ -555,7 +555,7 @@ export component SortHeader {
     in property <bool> active;
     callback clicked();
 
-    height: 40px;
+    height: Theme.control-height;
     accessible-role: button;
     accessible-label: root.label + (root.active ? "（当前排序）" : "");
     accessible-action-default => { root.clicked(); }

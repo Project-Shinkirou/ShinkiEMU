@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { MaterialScheme } from "@material";
+import { MaterialScheme, MaterialStyleMetrics } from "@material";
 import { App } from "./globals.slint";
 
 export struct Accent {
@@ -14,6 +14,16 @@ export global Theme {
     out property <color> seed: Palette.accent-background;
     out property <bool> dark: App.dark;
     out property <bool> compact-density: App.appearance.density == "compact";
+
+    // Touch density: `MaterialWindowAdapter.touch`, set by the Rust adapter on
+    // Android/iOS. Desktop values are unchanged; touch raises hit targets to 48px.
+    out property <bool> touch: MaterialStyleMetrics.touch;
+    // Minimum hit target: 0px on desktop (no extra constraint), 48px on touch.
+    out property <length> touch-target: MaterialStyleMetrics.touch-target;
+    // Height of a button, icon button, segmented control or clickable header.
+    out property <length> control-height: MaterialStyleMetrics.button-size;
+    // Height reserved for a row of Material chips.
+    out property <length> chip-row-height: max(32px, MaterialStyleMetrics.touch-target);
 
     out property <length> space-xs: 4px;
     out property <length> space-sm: compact-density ? 4px : 8px;

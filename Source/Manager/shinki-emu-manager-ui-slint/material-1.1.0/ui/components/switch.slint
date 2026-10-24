@@ -20,7 +20,8 @@ export component Switch {
     callback checked_state_changed(checked: bool);
 
     min_width: MaterialStyleMetrics.size_52;
-    min_height: MaterialStyleMetrics.size_32;
+    // Touch: the 32px track stays centred in a 48px hit target.
+    min_height: max(MaterialStyleMetrics.size_32, MaterialStyleMetrics.touch_target);
 
     accessible-enabled: root.enabled;
     accessible-checkable: true;
@@ -33,6 +34,8 @@ export component Switch {
         enabled: root.enabled;
 
         background_layer := Rectangle {
+            y: (touch_area.height - self.height) / 2;
+            height: MaterialStyleMetrics.touch ? MaterialStyleMetrics.size_32 : touch_area.height;
             background: root.checked ? MaterialPalette.primary : MaterialPalette.surface_container_highest;
             border_radius: self.height / 2;
             border_width: root.checked ? 0 : 2px;
@@ -41,7 +44,7 @@ export component Switch {
             state_layer := StateLayer {
                 x: indicator.x + (indicator.width - self.width) / 2;
                 width: self.height;
-                height: root.height + MaterialStyleMetrics.size_8;
+                height: background_layer.height + MaterialStyleMetrics.size_8;
                 border_radius: self.height / 2;
                 has_hover: touch_area.has_hover;
                 has_focus: touch_area.has_focus;

@@ -1,7 +1,16 @@
 // Copyright © SixtyFPS GmbH <info@slint.dev>
 // SPDX-License-Identifier: MIT
 
+import { MaterialWindowAdapter } from "../components/material_window.slint";
+
 export global MaterialStyleMetrics {
+    // touch density (ShinkiEMU addition, see MaterialWindowAdapter.touch)
+    out property <bool> touch: MaterialWindowAdapter.touch;
+    // Minimum hit target on touch; 0px (no extra constraint) on desktop.
+    out property <length> touch_target: root.touch ? 48px : 0px;
+    // Default button/icon-button size: 40px desktop, 48px touch.
+    out property <length> button_size: max(root.touch_target, 40px);
+
     // sizes
     out property <length> size_1: 1px;
     out property <length> size_2: 2px;

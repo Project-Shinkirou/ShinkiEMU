@@ -96,7 +96,7 @@ export component DetailPanel {
         width: 100%;
         height: 100%;
         key-pressed(event) => {
-            if event.text == Key.Escape {
+            if event.text == Key.Escape || event.text == Key.Back {
                 root.close();
                 return accept;
             }
@@ -463,16 +463,16 @@ export component DetailPanel {
                             SectionTitle { text: "Bangumi"; }
                             // Five segments do not fit a narrow panel; scroll them horizontally there.
                             status-flick := Flickable {
-                                height: 40px;
+                                height: Theme.control-height;
                                 content-width: max(self.width, status-seg.min-width);
-                                content-height: 40px;
+                                content-height: Theme.control-height;
                                 interactive: status-seg.min-width > self.width;
 
                                 status-seg := Segments {
                                     x: 0px;
                                     y: 0px;
                                     width: max(self.min-width, min(status-flick.width, self.preferred-width));
-                                    height: 40px;
+                                    height: Theme.control-height;
                                     label: "Bangumi 状态";
                                     items: ["想玩", "在玩", "玩过", "搁置", "抛弃"];
                                     index: root.bangumi-index(Selection.bangumi.status);

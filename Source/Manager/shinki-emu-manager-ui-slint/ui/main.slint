@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { MaterialWindow, MaterialWindowAdapter, MaterialPalette, NavigationRail, SmallAppBar } from "@material";
+import { MaterialWindow, MaterialWindowAdapter, MaterialPalette, NavigationRail, NavigationBar, NavigationItem, SmallAppBar } from "@material";
 import { Theme } from "./theme.slint";
 import { Icons } from "./icons.slint";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./globals.slint";
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
 import { LogsOverlay, EngineModal, FatalOverlay } from "./components/dialogs.slint";
+import { CompactRail } from "./components/compact-rail.slint";
 import { LibraryPage } from "./pages/library.slint";
 import { GameSettingsPage } from "./pages/game-settings.slint";
 import { PatchPage } from "./pages/patch.slint";
@@ -30,7 +31,7 @@ export {
 export component ManagerWindow inherits MaterialWindow {
     title: Session.active && Session.title != "" ? Session.title : "ShinkiEMU";
     min-width: 360px;
-    min-height: 640px;
+    min-height: 360px;
     preferred-width: 1280px;
     preferred-height: 800px;
 
@@ -38,12 +39,21 @@ export component ManagerWindow inherits MaterialWindow {
     property <length> usable-y: root.safe-area-insets.top;
     property <length> usable-width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
     property <length> usable-height: root.height - root.safe-area-insets.top - root.safe-area-insets.bottom;
+    // Phone portrait: bottom navigation bar. Medium widths and short heights
+    // (landscape phones): compact rail. Expanded windows: the stock rail.
     property <bool> compact: root.usable-width < 600px;
+    property <bool> medium: root.usable-width < 840px || root.usable-height < 480px;
     property <bool> onboarding: App.page == "onboarding";
     property <bool> show-rail: !root.compact && !root.onboarding;
+    property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active;
     property <bool> show-library-bar: root.compact && App.page == "library";
     property <length> rail-width: 80px;
     property <length> bar-height: 64px;
+    property <length> bottom-nav-height: 80px;
+    property <length> nav-bottom: root.show-bottom-nav ? root.bottom-nav-height : 0px;
+    // Set by the navigation widgets so a page switch they caused keeps focus on
+    // the activated item instead of moving it to the root key scope.
+    property <bool> nav-driven;
 
     function apply-theme() {
         Palette.color-scheme = App.dark ? ColorScheme.dark : ColorScheme.light;
@@ -53,7 +63,12 @@ export component ManagerWindow inherits MaterialWindow {
         };
     }
 
-    init => { root.apply-theme(); }
+    init => {
+        root.apply-theme();
+        // Pages that focus themselves (library) do so when they are created,
+        // after this; everything else falls back to the root key scope.
+        keys.focus();
+    }
     property <bool> watch-dark: App.dark;
     changed watch-dark => { root.apply-theme(); }
     property <color> watch-seed: Theme.seed;
@@ -65,17 +80,27 @@ export component ManagerWindow inherits MaterialWindow {
         if !Session.active {
             Session.menu-open = false;
             Session.menu-page = "main";
+            keys.focus();
         }
         root.covers-changed();
     }
     property <bool> watch-menu-open: Session.menu-open;
     changed watch-menu-open => { Session.pointer-state-changed(); }
     property <bool> watch-modal: Dialogs.modal-active;
-    changed watch-modal => { Session.pointer-state-changed(); }
+    changed watch-modal => {
+        Session.pointer-state-changed();
+        if !Dialogs.modal-active { keys.focus(); }
+    }
     property <bool> watch-fatal: Dialogs.fatal-active;
-    changed watch-fatal => { Session.pointer-state-changed(); }
+    changed watch-fatal => {
+        Session.pointer-state-changed();
+        if !Dialogs.fatal-active { keys.focus(); }
+    }
     property <bool> watch-logs: Logs.open;
-    changed watch-logs => { Session.pointer-state-changed(); }
+    changed watch-logs => {
+        Session.pointer-state-changed();
+        if !Logs.open { keys.focus(); }
+    }
     property <float> watch-pointer-x: Session.pointer-x;
     changed watch-pointer-x => { Session.pointer-state-changed(); }
     property <float> watch-pointer-y: Session.pointer-y;
@@ -88,6 +113,20 @@ export component ManagerWindow inherits MaterialWindow {
     // Sidebar order: 游戏库 / 补丁 / 核心 / 滤镜 / 设置. Pages outside it (game settings) keep 游戏库 selected.
     property <[string]> nav-pages: ["library", "patch", "cores", "filters", "settings"];
     property <int> page-index: App.page == "patch" ? 1 : App.page == "cores" ? 2 : App.page == "filters" ? 3 : App.page == "settings" ? 4 : 0;
+    property <[NavigationItem]> nav-items: [
+        { icon: Icons.library-books, text: "游戏库" },
+        { icon: Icons.build, text: "补丁" },
+        { icon: Icons.memory, text: "核心", badge: Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
+        { icon: Icons.filter-vintage, text: "滤镜" },
+        { icon: Icons.settings, text: "设置" },
+    ];
+
+    function navigate(index: int) {
+        if root.nav-pages[index] != App.page {
+            root.nav-driven = true;
+            App.page = root.nav-pages[index];
+        }
+    }
 
     function covers-changed() {
         Library.cover-demand(-1, "", false, "");
@@ -101,6 +140,14 @@ export component ManagerWindow inherits MaterialWindow {
     property <string> watch-page: App.page;
     changed watch-page => {
         rail.current-index = root.page-index;
+        mid-rail.current-index = root.page-index;
+        bottom-nav.current-index = root.page-index;
+        // The control that changed the page usually belonged to the old page
+        // and is gone, which would leave nothing focused for Android Back.
+        if !root.nav-driven && App.page != "library" {
+            keys.focus();
+        }
+        root.nav-driven = false;
         Settings.cancel-capture();
         GameSettings.cancel-capture();
         root.covers-changed();
@@ -110,137 +157,199 @@ export component ManagerWindow inherits MaterialWindow {
     property <bool> watch-cover-loading: Library.cover-loading;
     changed watch-cover-loading => { root.covers-changed(); }
 
-    rail := NavigationRail {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.rail-width;
-        height: root.usable-height;
-        visible: root.show-rail;
-        alignment: start;
-        current-index: root.page-index;
-        items: [
-            { icon: Icons.library-books, text: "游戏库" },
-            { icon: Icons.build, text: "补丁" },
-            { icon: Icons.memory, text: "核心", badge: Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
-            { icon: Icons.filter-vintage, text: "滤镜" },
-            { icon: Icons.settings, text: "设置" },
-        ];
-        index-changed(index) => { App.page = root.nav-pages[index]; }
-    }
+    // Back handling of last resort: anything focused below gets the key first
+    // (dialogs, detail sheet, settings sub-pages, game view). Rejecting Back
+    // here lets Android close the activity, so only accept it when the app
+    // has somewhere to go back to.
+    keys := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        focus-on-tab-navigation: false;
 
-    if root.show-library-bar : SmallAppBar {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.bar-height;
-        title: "游戏库";
-        // Phones: every sidebar page except 游戏库 itself, in sidebar order.
-        trailing-buttons: [
-            { icon: Icons.build, tooltip: "补丁", enabled: true },
-            { icon: Icons.memory, tooltip: Cores.updates-available > 0 ? "核心（" + Cores.updates-available + " 个可更新）" : "核心", enabled: true },
-            { icon: Icons.filter-vintage, tooltip: "滤镜", enabled: true },
-            { icon: Icons.settings, tooltip: "设置", enabled: true },
-        ];
-        trailing-button-clicked(index) => { App.page = root.nav-pages[index + 1]; }
-    }
-
-    pages := Rectangle {
-        x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
-        y: root.usable-y + (root.show-library-bar ? root.bar-height : 0px);
-        width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
-        height: root.usable-height - (root.show-library-bar ? root.bar-height : 0px);
-        clip: true;
-
-        if App.page == "library" : LibraryPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
+        key-pressed(event) => {
+            if event.text != Key.Back {
+                return reject;
+            }
+            if Logs.open {
+                Logs.open = false;
+                return accept;
+            }
+            if Dialogs.fatal-active {
+                return accept;
+            }
+            if Dialogs.modal-active {
+                Dialogs.modal-cancel();
+                return accept;
+            }
+            if Session.active {
+                Session.menu-open = !Session.menu-open;
+                return accept;
+            }
+            if App.page == "library" && Library.detail-open {
+                Library.detail-open = false;
+                return accept;
+            }
+            if App.page != "library" && !root.onboarding {
+                App.page = "library";
+                return accept;
+            }
+            reject
         }
-        if App.page == "game-settings" : GameSettingsPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
-        }
-        if App.page == "patch" : PatchPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
-        }
-        if App.page == "cores" : CoresPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
-        }
-        if App.page == "filters" : FiltersPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
-        }
-        if App.page == "settings" : SettingsPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-            compact: root.compact;
-        }
-        if App.page == "onboarding" : OnboardingPage {
-            x: 0px;
-            y: 0px;
-            width: pages.width;
-            height: pages.height;
-        }
-    }
 
-    if Session.active : GameView {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
-    }
+        rail := NavigationRail {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.rail-width;
+            height: root.usable-height;
+            visible: root.show-rail && !root.medium;
+            alignment: start;
+            current-index: root.page-index;
+            items: root.nav-items;
+            index-changed(index) => { root.navigate(index); }
+        }
 
-    SnackbarHost {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
-    }
+        mid-rail := CompactRail {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.rail-width;
+            height: root.usable-height;
+            visible: root.show-rail && root.medium;
+            current-index: root.page-index;
+            items: root.nav-items;
+            index-changed(index) => { root.navigate(index); }
+        }
 
-    NoticeStack {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
-        bottom-inset: root.compact && Notices.snackbar-text != "" ? 88px : 16px;
-    }
+        if root.show-library-bar : SmallAppBar {
+            // SmallAppBar pads only 4px; match the 16px page headers.
+            x: root.usable-x + 12px;
+            y: root.usable-y;
+            width: root.usable-width - 12px;
+            height: root.bar-height;
+            title: "游戏库";
+        }
 
-    if Logs.open : LogsOverlay {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
-    }
+        pages := Rectangle {
+            x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
+            y: root.usable-y + (root.show-library-bar ? root.bar-height : 0px);
+            width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
+            height: root.usable-height - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
+            clip: true;
 
-    if Dialogs.modal-active : EngineModal {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
-    }
+            if App.page == "library" : LibraryPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "game-settings" : GameSettingsPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "patch" : PatchPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "cores" : CoresPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "filters" : FiltersPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "settings" : SettingsPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "onboarding" : OnboardingPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+            }
+        }
 
-    if Dialogs.fatal-active : FatalOverlay {
-        x: root.usable-x;
-        y: root.usable-y;
-        width: root.usable-width;
-        height: root.usable-height;
+        // Bottom bar plus the gesture/navigation inset below it, painted in
+        // the bar colour across the full window width.
+        Rectangle {
+            x: 0px;
+            y: root.usable-y + root.usable-height - root.bottom-nav-height;
+            width: root.width;
+            height: root.height - self.y;
+            visible: root.show-bottom-nav;
+            background: MaterialPalette.surface-container;
+        }
+
+        bottom-nav := NavigationBar {
+            x: root.usable-x;
+            y: root.usable-y + root.usable-height - root.bottom-nav-height;
+            width: root.usable-width;
+            height: root.bottom-nav-height;
+            visible: root.show-bottom-nav;
+            current-index: root.page-index;
+            items: root.nav-items;
+            index-changed(index) => { root.navigate(index); }
+        }
+
+        if Session.active : GameView {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
+        }
+
+        SnackbarHost {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height - root.nav-bottom;
+        }
+
+        NoticeStack {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height - root.nav-bottom;
+            bottom-inset: root.compact && Notices.snackbar-text != "" ? 88px : 16px;
+        }
+
+        if Logs.open : LogsOverlay {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
+        }
+
+        if Dialogs.modal-active : EngineModal {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
+        }
+
+        if Dialogs.fatal-active : FatalOverlay {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
+        }
     }
 }

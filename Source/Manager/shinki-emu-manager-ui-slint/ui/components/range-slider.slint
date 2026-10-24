@@ -1,4 +1,5 @@
 import { MaterialPalette } from "@material";
+import { Theme } from "../theme.slint";
 
 export component RangeSlider {
     in property <float> minimum: 0;
@@ -17,7 +18,7 @@ export component RangeSlider {
     property <int> stop-count: root.step > 0 && root.span / root.step <= 40 ? round(root.span / root.step) + 1 : 0;
 
     min-width: 120px;
-    min-height: 44px;
+    min-height: max(44px, Theme.touch-target);
     horizontal-stretch: 1;
     vertical-stretch: 0;
     forward-focus: focus;

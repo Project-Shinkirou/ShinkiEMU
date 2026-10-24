@@ -75,7 +75,8 @@ component SectionItem {
     }
 }
 
-export component GameSettingsPage {
+// The page is the focus ancestor of its sections, so unhandled Escape/Back from any field goes back.
+export component GameSettingsPage inherits FocusScope {
     in property <bool> compact;
 
     property <bool> narrow: root.width < 840px;
@@ -99,6 +100,16 @@ export component GameSettingsPage {
         GameSettings.cancel-capture();
         GameSettings.close();
         App.page = "library";
+    }
+
+    focus-on-tab-navigation: false;
+    init => { self.focus(); }
+    key-pressed(event) => {
+        if event.text == Key.Escape || event.text == Key.Back {
+            root.back();
+            return accept;
+        }
+        reject
     }
 
     Rectangle {

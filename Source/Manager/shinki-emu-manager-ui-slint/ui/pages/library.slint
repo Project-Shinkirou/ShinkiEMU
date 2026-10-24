@@ -156,6 +156,14 @@ export component LibraryPage {
     property <bool> preparing: Library.prepare-state == "loading-cores" || Library.prepare-state == "scanning";
     property <bool> banner-shown: root.preparing || Library.prepare-state == "failed";
     property <bool> list-columns: !root.narrow && !root.compact;
+    // Optional list columns drop in priority order so the title keeps >= 200px:
+    // row chrome (padding 20 + cover 36 + play button + 2 gaps) is 80px + play, each column adds width + 12px.
+    property <length> play-col: max(40px, Theme.control-height);
+    property <length> list-room: root.avail - 80px - root.play-col - 200px;
+    property <length> compat-col: root.list-columns && root.list-room >= 124px ? 112px : 0px;
+    property <length> last-col: root.compat-col > 0px && root.list-room >= 248px ? 112px : 0px;
+    property <length> time-col: root.last-col > 0px && root.list-room >= 356px ? 96px : 0px;
+    property <length> engine-col: root.time-col > 0px && root.list-room >= 528px ? 160px : 0px;
 
     animate content-w {
         duration: Theme.motion-medium;
@@ -237,7 +245,7 @@ export component LibraryPage {
                 search.select-all();
                 return accept;
             }
-            if event.text == Key.Escape && root.detail-shown {
+            if (event.text == Key.Escape || event.text == Key.Back) && root.detail-shown {
                 Library.detail-open = false;
                 return accept;
             }
@@ -370,9 +378,9 @@ export component LibraryPage {
 
                 // Compatibility filter chips (single select).
                 chips-flick := Flickable {
-                    height: 32px;
+                    height: Theme.chip-row-height;
                     content-width: chips.preferred-width;
-                    content-height: 32px;
+                    content-height: Theme.chip-row-height;
                     interactive: chips.preferred-width > self.width;
 
                     chips := HorizontalLayout {
@@ -524,7 +532,7 @@ export component LibraryPage {
                         x: 0px;
                         y: 0px;
                         width: parent.width;
-                        height: 40px;
+                        height: Theme.control-height;
                         padding-left: 12px;
                         padding-right: 8px;
                         spacing: 12px;
@@ -536,38 +544,40 @@ export component LibraryPage {
                             active: Library.sort == "title";
                             clicked => { root.choose-sort("title"); }
                         }
-                        MaterialText {
-                            width: 160px;
+                        if root.engine-col > 0px : MaterialText {
+                            width: root.engine-col;
                             text: "引擎 · 模拟器";
                             style: MaterialTypography.label-large;
                             color: MaterialPalette.on-surface-variant;
                             vertical-alignment: center;
+                            overflow: elide;
                         }
-                        MaterialText {
-                            width: 112px;
+                        if root.compat-col > 0px : MaterialText {
+                            width: root.compat-col;
                             text: "兼容性";
                             style: MaterialTypography.label-large;
                             color: MaterialPalette.on-surface-variant;
                             vertical-alignment: center;
+                            overflow: elide;
                         }
-                        SortHeader {
-                            width: 96px;
+                        if root.time-col > 0px : SortHeader {
+                            width: root.time-col;
                             label: "游玩时长";
                             active: Library.sort == "play_time";
                             clicked => { root.choose-sort("play_time"); }
                         }
-                        SortHeader {
-                            width: 112px;
+                        if root.last-col > 0px : SortHeader {
+                            width: root.last-col;
                             label: "上次游玩";
                             active: Library.sort == "recent";
                             clicked => { root.choose-sort("recent"); }
                         }
-                        Rectangle { width: 40px; }
+                        Rectangle { width: root.play-col; }
                     }
 
                     list := ScrollView {
                         x: 0px;
-                        y: root.list-columns ? 41px : 0px;
+                        y: root.list-columns ? Theme.control-height + 1px : 0px;
                         width: parent.width;
                         height: parent.height - self.y;
                         visible: !root.grid-mode && Library.games.length > 0;
@@ -581,10 +591,10 @@ export component LibraryPage {
                                 game: game;
                                 selected: game.id == Library.selected-id;
                                 compact-row: !root.list-columns;
-                                engine-width: root.list-columns ? 160px : 0px;
-                                compat-width: root.list-columns ? 112px : 0px;
-                                time-width: root.list-columns ? 96px : 0px;
-                                last-width: root.list-columns ? 112px : 0px;
+                                engine-width: root.engine-col;
+                                compat-width: root.compat-col;
+                                time-width: root.time-col;
+                                last-width: root.last-col;
                                 focus-wanted: index == root.focus-index;
                                 cover-needed: Library.cover-loading && !root.grid-mode
                                     && self.y + self.height >= -list.content-y - self.height
@@ -611,7 +621,7 @@ export component LibraryPage {
 
                     Rectangle {
                         x: 0px;
-                        y: 40px;
+                        y: Theme.control-height;
                         width: parent.width;
                         height: 1px;
                         visible: !root.grid-mode && Library.games.length > 0 && root.list-columns;

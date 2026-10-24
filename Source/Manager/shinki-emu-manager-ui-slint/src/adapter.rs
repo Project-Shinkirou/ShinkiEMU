@@ -98,6 +98,9 @@ impl SlintManagerAdapter {
     fn bind_models(&self) {
         let window = &self.window;
         window
+            .global::<crate::MaterialWindowAdapter>()
+            .set_touch(cfg!(any(target_os = "android", target_os = "ios")));
+        window
             .global::<Library>()
             .set_games(ModelRc::from(self.games.clone()));
         window

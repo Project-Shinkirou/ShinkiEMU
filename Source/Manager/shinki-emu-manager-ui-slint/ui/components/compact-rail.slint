@@ -1,0 +1,51 @@
+import { MaterialPalette } from "@material";
+import { BaseNavigation } from "../../material-1.1.0/ui/components/base_navigation.slint";
+import { NavigationItemTemplate } from "../../material-1.1.0/ui/components/navigation_bar.slint";
+
+// Navigation rail for medium widths and short (landscape phone) heights.
+// Same `items` / `current-index` / `index-changed` contract as Material's
+// NavigationRail, but without its fixed 44/56px top/bottom padding: five
+// labelled 56px items fit a 360px-high window, and the column scrolls when
+// the window is shorter still.
+export component CompactRail inherits BaseNavigation {
+    property <length> item-height: 56px;
+
+    min-width: 80px;
+
+    Rectangle {
+        background: MaterialPalette.surface;
+    }
+
+    Flickable {
+        width: root.width;
+        height: root.height;
+        content-width: root.width;
+        content-height: max(root.height, column.preferred-height);
+        interactive: column.preferred-height > root.height;
+
+        column := VerticalLayout {
+            width: root.width;
+            height: max(root.height, self.preferred-height);
+            alignment: start;
+            padding-top: 8px;
+            padding-bottom: 8px;
+
+            for item[index] in root.items : NavigationItemTemplate {
+                height: root.item-height;
+                icon: item.icon;
+                selected_icon: item.selected_icon;
+                text: item.text;
+                index: index;
+                selected: index == root.current-index;
+                show_badge: item.show_badge;
+                badge: item.badge;
+                navitem_padding_top: 4px;
+                navitem_padding_bottom: 4px;
+
+                clicked => {
+                    root.select(index);
+                }
+            }
+        }
+    }
+}

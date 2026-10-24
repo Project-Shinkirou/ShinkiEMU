@@ -1,5 +1,6 @@
 import { MaterialPalette, MaterialText, MaterialTypography, Icon } from "@material";
 import { Icons } from "../icons.slint";
+import { Theme } from "../theme.slint";
 
 // Material 3 segmented button that always shows the stored index; a click is
 // reported via `selected`. Used instead of Material 1.1.0's SegmentedButton,
@@ -17,8 +18,8 @@ export component Segments {
 
     min-width: root.items.length * 64px;
     preferred-width: root.natural-width;
-    min-height: 40px;
-    max-height: 40px;
+    min-height: Theme.control-height;
+    max-height: Theme.control-height;
     horizontal-stretch: 0;
     accessible-role: list;
     accessible-label: root.label;
