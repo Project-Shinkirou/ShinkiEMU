@@ -11,7 +11,9 @@ chmod 700 "$work/state/runtime"
 export XDG_DATA_HOME="$work/state/data" XDG_CONFIG_HOME="$work/state/config"
 export XDG_CACHE_HOME="$work/state/cache" XDG_RUNTIME_DIR="$work/state/runtime"
 set +e
-LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 15s "$work/shinki-emu-manager" > "$work/manager.log" 2>&1
+# Hosted runners have no GPU: the only adapters are Mesa's software GL and
+# lavapipe Vulkan, which Slint uses only when CPU adapters are allowed.
+LIBGL_ALWAYS_SOFTWARE=1 SLINT_WGPU_CPU=1 xvfb-run -a timeout 15s "$work/shinki-emu-manager" > "$work/manager.log" 2>&1
 status=$?
 set -e
 cat "$work/manager.log"
