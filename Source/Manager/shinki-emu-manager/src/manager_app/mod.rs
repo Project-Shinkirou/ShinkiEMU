@@ -228,10 +228,11 @@ pub(super) fn run_application() -> Result<(), Box<dyn std::error::Error>> {
         }
         Ok(())
     })();
-    if result.is_err() {
+    if let Err(error) = &result {
         tracing::error!(
             event = "shinki.emu.manager.fatal",
-            diagnostic_code = "SHINKI_EMU_MANAGER_STARTUP_FAILED"
+            diagnostic_code = "SHINKI_EMU_MANAGER_STARTUP_FAILED",
+            error = %error
         );
     }
     result

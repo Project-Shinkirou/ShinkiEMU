@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf, process::Command};
+use std::{env, process::Command};
 
 use sha2::{Digest, Sha256};
 
@@ -44,7 +44,6 @@ fn main() {
         "cargo:rustc-env=SHINKI_EMU_TARGET={}",
         env::var("TARGET").expect("SHINKI_EMU_MANAGER_BUILD_TARGET_MISSING")
     );
-    configure_static_ios_registration();
     for name in [
         "SHINKI_EMU_FAMILY_SIGNER_ID",
         "SHINKI_EMU_FAMILY_PUBLIC_KEY_HEX",
@@ -56,35 +55,6 @@ fn main() {
         );
     }
     println!("cargo:rerun-if-env-changed=RUSTC");
-}
-
-fn configure_static_ios_registration() {
-    let output = PathBuf::from(env::var_os("OUT_DIR").expect("SHINKI_EMU_OUT_DIR_MISSING"))
-        .join("shinki-emu-rfvp-static-manifest.json");
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("ios") {
-        fs::write(output, b"{}").expect("SHINKI_EMU_STATIC_MANIFEST_STUB_WRITE_FAILED");
-        return;
-    }
-    let manifest_path = env::var("SHINKI_EMU_RFVP_STATIC_MANIFEST")
-        .expect("SHINKI_EMU_RFVP_STATIC_MANIFEST_MISSING");
-    let archive_path =
-        env::var("SHINKI_EMU_RFVP_STATIC_ARCHIVE").expect("SHINKI_EMU_RFVP_STATIC_ARCHIVE_MISSING");
-    let manifest = fs::read(&manifest_path).expect("SHINKI_EMU_RFVP_STATIC_MANIFEST_READ_FAILED");
-    let archive = fs::read(&archive_path).expect("SHINKI_EMU_RFVP_STATIC_ARCHIVE_READ_FAILED");
-    assert!(
-        !manifest.is_empty() && manifest.len() <= 1024 * 1024,
-        "SHINKI_EMU_RFVP_STATIC_MANIFEST_BOUNDS"
-    );
-    assert!(!archive.is_empty(), "SHINKI_EMU_RFVP_STATIC_ARCHIVE_EMPTY");
-    fs::write(output, manifest).expect("SHINKI_EMU_RFVP_STATIC_MANIFEST_COPY_FAILED");
-    println!(
-        "cargo:rustc-env=SHINKI_EMU_RFVP_STATIC_BINARY_HASH=sha256:{}",
-        hex_sha256(&archive)
-    );
-    println!("cargo:rerun-if-changed={manifest_path}");
-    println!("cargo:rerun-if-changed={archive_path}");
-    println!("cargo:rerun-if-env-changed=SHINKI_EMU_RFVP_STATIC_MANIFEST");
-    println!("cargo:rerun-if-env-changed=SHINKI_EMU_RFVP_STATIC_ARCHIVE");
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
