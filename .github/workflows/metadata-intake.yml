@@ -25,6 +25,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          submodules: true
       - run: rustup show
       - name: Invalidate approval when the body changes
         if: github.event.action == 'edited'
@@ -122,6 +123,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          submodules: true
       - run: rustup show
       - name: Validate metadata with trusted main tooling
         shell: bash
