@@ -227,6 +227,7 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
                 "kernelbase.dll",
                 "user32.dll",
                 "gdi32.dll",
+                "gdiplus.dll",
                 "gdi32full.dll",
                 "advapi32.dll",
                 "shell32.dll",
