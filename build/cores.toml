@@ -230,16 +230,16 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
-rev = "e1c2421262cc9f7aa8ee67986ce3e7d65af175f6"
+rev = "f6bb8ca5721016d1fd56864381587cbcb9af29a1"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "The native Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner paths are implemented, but the pinned installation under .work/native-vcpkg/kirikiroid2-web/installed/x64-linux-dynamic is incomplete. No Linux core artifact, ELF package closure or Manager load has been verified."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner live on the fork branch linux-port (860c1d4f), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; Apple targets and their native owner build are not adapted."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; Apple targets and their native owner build are not adapted."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -248,13 +248,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; Apple targets and their native owner build are not adapted."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; Apple targets and their native owner build are not adapted."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; Apple targets and their native owner build are not adapted."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -404,13 +404,13 @@ branch = "shinki"
 rev = "207b37c4a5544956db0c7f6e191f2bad85a479ac"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "The native Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path are implemented, but the pinned installation under .work/native-vcpkg/impacto/installed/x64-linux-dynamic is incomplete. No Linux core artifact, ELF package closure or Manager load has been verified."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork branch linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -419,13 +419,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only matching native Windows x64/MSVC or Linux x64/GNU HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
