@@ -105,8 +105,12 @@ pub fn write_core_build_manifest(manifest: &CoreBuildManifest) -> Result<PathBuf
 pub fn write_core_build_manifest_to(manifest: &CoreBuildManifest, out: &Path) -> Result<PathBuf> {
     manifest.validate()?;
     fs::create_dir_all(out)?;
+    let output_root = dunce::canonicalize(out)?;
     for asset in manifest.resources.iter().chain(&manifest.licenses) {
-        println!("cargo:rerun-if-changed={}", asset.source.display());
+        let input = dunce::canonicalize(&asset.source)?;
+        if !input.starts_with(&output_root) {
+            println!("cargo:rerun-if-changed={}", input.display());
+        }
     }
     let path = out.join("core-build.json");
     let mut bytes = serde_json::to_vec_pretty(manifest)?;
@@ -130,7 +134,8 @@ fn run(command: &mut Command) -> Result<()> {
 
 /// Keep native build/download caches and temporary files in an owned work tree.
 pub fn configure_native_environment(work_root: &Path, command: &mut Command) -> Result<()> {
-    let work_root = std::path::absolute(work_root)?;
+    let absolute = std::path::absolute(work_root)?;
+    let work_root = dunce::simplified(&absolute);
     let binary_cache = work_root.join("vcpkg-binary-cache");
     let downloads = work_root.join("vcpkg-downloads");
     let temporary = work_root.join("tmp");
@@ -173,7 +178,10 @@ pub fn configure_cmake(
 ) -> Result<PathBuf> {
     let host = env::var("HOST").context("HOST is required")?;
     let target = env::var("TARGET").context("TARGET is required")?;
-    let out = PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?).join("native");
+    let source =
+        dunce::canonicalize(source).context("canonicalizing native CMake source directory")?;
+    let output = PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?);
+    let out = dunce::simplified(&output).join("native");
     let profile = if env::var("PROFILE")? == "release" {
         "Release"
     } else {
@@ -255,7 +263,7 @@ pub fn configure_cmake(
     if let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE") {
         configure.arg(format!(
             "-DCMAKE_TOOLCHAIN_FILE={}",
-            toolchain.to_string_lossy()
+            dunce::simplified(Path::new(&toolchain)).display()
         ));
     }
     if let Some(installed) = env::var_os("SHINKI_EMU_VCPKG_INSTALLED") {
@@ -266,13 +274,19 @@ pub fn configure_cmake(
                 installed.display()
             );
         }
-        configure.arg(format!("-DVCPKG_INSTALLED_DIR={}", installed.display()));
+        configure.arg(format!(
+            "-DVCPKG_INSTALLED_DIR={}",
+            dunce::simplified(&installed).display()
+        ));
     }
     if let Ok(triplet) = env::var("SHINKI_EMU_VCPKG_TRIPLET") {
         configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
     }
     for (key, value) in definitions {
-        configure.arg(format!("-D{key}={value}"));
+        configure.arg(format!(
+            "-D{key}={}",
+            dunce::simplified(Path::new(value)).display()
+        ));
     }
     run(&mut configure)?;
     let mut build = Command::new(cmake);
@@ -432,5 +446,74 @@ mod tests {
             .unwrap();
         assert!(status.success());
         assert!(Command::new(&executable).status().unwrap().success());
+    }
+}
+
+#[cfg(test)]
+mod cargo_regressions {
+    use super::*;
+
+    #[test]
+    fn unchanged_generated_assets_leave_the_real_cargo_library_fresh() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("src")).unwrap();
+        fs::write(temp.path().join("Cargo.toml"), format!(
+            "[package]\nname=\"generated-asset-fixture\"\nversion=\"0.1.0\"\nedition=\"2021\"\nbuild=\"build.rs\"\n[lib]\ncrate-type=[\"cdylib\"]\n[workspace]\n[build-dependencies]\nshinki-emu-build={{path={:?}}}\n",
+            env!("CARGO_MANIFEST_DIR")
+        )).unwrap();
+        fs::write(
+            temp.path().join("LICENSE"),
+            "Public synthetic fixture: CC0-1.0\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("src/lib.rs"),
+            "include!(concat!(env!(\"OUT_DIR\"), \"/generated.rs\"));\n",
+        )
+        .unwrap();
+        fs::write(temp.path().join("build.rs"), r##"
+use shinki_emu_build::{BuildAsset, CoreBuildManifest, write_core_build_manifest};
+fn main() {
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    let generated = out.join("generated.rs");
+    std::fs::write(&generated, "#[no_mangle] pub extern \"C\" fn generated_answer()->u32 {42}\n").unwrap();
+    let mut manifest = CoreBuildManifest::new("fixture", "rust-cdylib").unwrap();
+    manifest.resources.push(BuildAsset {source: generated, dest: "Resources/generated.rs".into()});
+    manifest.licenses.push(BuildAsset {
+        source: std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("LICENSE"),
+        dest: "licenses/fixture/LICENSE".into(),
+    });
+    write_core_build_manifest(&manifest).unwrap();
+}
+"##).unwrap();
+        let cargo = |args: &[&str]| {
+            let output = Command::new(env!("CARGO"))
+                .current_dir(temp.path())
+                .args(args)
+                .env("CARGO_TARGET_DIR", temp.path().join("target"))
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            output.stdout
+        };
+        cargo(&["generate-lockfile", "--offline"]);
+        let first = cargo(&["build", "--locked", "--offline", "--message-format=json"]);
+        let second = cargo(&["build", "--locked", "--offline", "--message-format=json"]);
+        let library = |bytes: &[u8]| {
+            String::from_utf8_lossy(bytes)
+                .lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .find(|message| {
+                    message["reason"] == "compiler-artifact"
+                        && message["target"]["name"] == "generated_asset_fixture"
+                })
+                .expect("Cargo must report the actual generated library")
+        };
+        assert_eq!(library(&first)["fresh"], false);
+        assert_eq!(library(&second)["fresh"], true);
     }
 }

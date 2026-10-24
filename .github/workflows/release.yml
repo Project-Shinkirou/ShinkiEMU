@@ -31,7 +31,7 @@ jobs:
         with:
           submodules: true
           lfs: true
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
       - id: select
         shell: pwsh
         env:
@@ -82,7 +82,7 @@ jobs:
         with:
           submodules: true
           lfs: true
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
         with:
@@ -92,14 +92,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
       - name: Android SDK
         if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        shell: bash
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          sdkmanager 'ndk;30.0.15729638' 'platforms;android-36' 'build-tools;36.0.0'
-          "ANDROID_NDK_HOME=$env:ANDROID_HOME/ndk/30.0.15729638" >> $env:GITHUB_ENV
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          set +o pipefail
+          yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses > /dev/null
+          set -o pipefail
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-36' 'build-tools;36.0.0' 'ndk;30.0.15729638'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.15729638" >> "$GITHUB_ENV"
       - name: Prepare supported build
         if: matrix.status == 'supported'
         env:
@@ -161,7 +164,7 @@ jobs:
         with:
           submodules: true
           lfs: true
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
       - uses: actions/download-artifact@v4
         with:
           pattern: release-files-*

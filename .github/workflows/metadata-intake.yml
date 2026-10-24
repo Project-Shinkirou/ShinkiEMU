@@ -25,7 +25,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
       - name: Invalidate approval when the body changes
         if: github.event.action == 'edited'
         shell: bash
@@ -122,7 +122,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
       - name: Validate metadata with trusted main tooling
         shell: bash
         run: |

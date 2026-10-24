@@ -31,25 +31,24 @@ fn receipt_path(inv: &Inventory, target: &str, component: &str) -> PathBuf {
 }
 
 fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<PathBuf> {
-    let standard = inv.root.join(".work/target").join(target).join(component);
+    let standard = dunce::simplified(&inv.root)
+        .join(".work/target")
+        .join(target)
+        .join(component);
     let explicit = std::env::var_os("SHINKI_EMU_TARGET_ROOT").map(PathBuf::from);
     // Leave headroom for shaderc/CMake's nested source and object filenames.
     if explicit.is_none() && (!cfg!(windows) || standard.as_os_str().len() <= 60) {
         return Ok(standard);
     }
-    let repository = fs::canonicalize(&inv.root)?;
+    let repository = dunce::canonicalize(&inv.root)?;
     let owner = serde_json::json!({
         "repository": repository, "target": target, "component": component
     });
     let identity = hex::encode(Sha256::digest(serde_json::to_vec(&owner)?));
     let short_root = if let Some(root) = explicit {
-        std::path::absolute(root)?
+        dunce::simplified(&std::path::absolute(root)?).to_owned()
     } else {
-        let root = repository
-            .ancestors()
-            .last()
-            .context("repository volume root")?;
-        root.join(".shinki-targets")
+        repository.join(".work/t")
     };
     let directory = short_root.join(&identity[..24]);
     fs::create_dir_all(&directory).with_context(|| {

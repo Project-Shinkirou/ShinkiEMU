@@ -768,25 +768,48 @@ fn dxc(inv: &Inventory) -> Result<()> {
         Ok(())
     })
 }
-/// Locate the exact Cargo-resolved shared source, not an adjacent developer checkout.
-fn subtitle_source(inv: &Inventory, target: &str) -> Result<PathBuf> {
-    let value: serde_json::Value = serde_json::from_slice(&capture(
-        Command::new("cargo").current_dir(&inv.root).args([
-            "metadata",
-            "--locked",
-            "--format-version",
-            "1",
-            "--filter-platform",
-            target,
-        ]),
-    )?)?;
+/// Resolve subtitle inputs from the selected consumer's locked manifest/features.
+fn subtitle_source(inv: &Inventory, target: &str, component: Option<&str>) -> Result<PathBuf> {
+    let mut command = Command::new("cargo");
+    command.current_dir(&inv.root).args([
+        "metadata",
+        "--locked",
+        "--format-version",
+        "1",
+        "--filter-platform",
+        target,
+    ]);
+    if let Some(id) = component {
+        let core = inv.core(id)?;
+        command
+            .arg("--manifest-path")
+            .arg(inv.root.join(&core.manifest));
+        if !core.features.is_empty() {
+            command.arg("--features").arg(
+                core.features
+                    .iter()
+                    .map(|feature| format!("{}/{feature}", core.package))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+        }
+    }
+    let value: serde_json::Value = serde_json::from_slice(&capture(&mut command)?)?;
     let packages = value["packages"]
         .as_array()
         .context("cargo metadata packages")?;
-    let package = packages
+    let mut candidates = packages
         .iter()
-        .find(|p| p["name"] == "roukaku-subtitle")
-        .context("pinned roukaku-subtitle missing in Cargo resolution")?;
+        .filter(|package| package["name"] == "roukaku-subtitle");
+    let package = candidates.next().with_context(|| {
+        format!(
+            "pinned roukaku-subtitle missing in selected consumer {} for {target}",
+            component.unwrap_or("manager")
+        )
+    })?;
+    if candidates.next().is_some() {
+        bail!("selected consumer resolves multiple roukaku-subtitle sources");
+    }
     let source=package["source"].as_str().context("roukaku-subtitle must resolve from the pinned RoukakuEngine git revision, not a local patch")?;
     if !source.starts_with("git+https://github.com/Project-Shinkirou/RoukakuEngine")
         || source.rsplit('#').next().is_none_or(|s| s.len() != 40)
@@ -1108,7 +1131,7 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
         run(&mut bootstrap)?;
     }
     if selected.subtitle {
-        let subtitle = subtitle_source(inv, target)?;
+        let subtitle = subtitle_source(inv, target, core)?;
         let triplet = if target_spec.platform == "android" {
             if target_spec.architecture == "aarch64" {
                 "arm64-android-dynbidi"

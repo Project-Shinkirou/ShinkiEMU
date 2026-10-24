@@ -11,6 +11,7 @@ base64 = "0.22"
 cc = "1"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["std", "clock", "serde"] }
+dunce = "1"
 flate2 = "1"
 hex = "0.4"
 libc = "0.2"

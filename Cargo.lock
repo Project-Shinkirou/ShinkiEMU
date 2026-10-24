@@ -8040,6 +8040,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cc",
+ "dunce",
  "object",
  "serde",
  "serde_json",
@@ -11772,6 +11773,7 @@ dependencies = [
  "cc",
  "chrono",
  "clap",
+ "dunce",
  "flate2",
  "hex",
  "libc",
