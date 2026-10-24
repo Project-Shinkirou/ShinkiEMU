@@ -162,7 +162,24 @@ pub fn execute(
         .find(|p| p["name"] == package)
         .and_then(|p| p["id"].as_str())
         .with_context(|| format!("package {package} absent from {}", manifest.display()))?;
-    let mut cmd = Command::new("cargo");
+    let android_abi = if target.contains("android") && component == "manager" {
+        Some(if target.starts_with("aarch64") {
+            "arm64-v8a"
+        } else {
+            "x86_64"
+        })
+    } else {
+        None
+    };
+    let ndk_output = target_dir.join("ndk-output");
+    if android_abi.is_some() && action == "build" && ndk_output.exists() {
+        fs::remove_dir_all(&ndk_output)?;
+    }
+    let mut cmd = if crate::apple::supported(target) {
+        crate::apple::command(&inv.root, target)?
+    } else {
+        Command::new("cargo")
+    };
     cmd.current_dir(&inv.root);
     if target.contains("android") && component == "manager" {
         cmd.args([
@@ -176,6 +193,9 @@ pub fn execute(
             "-P",
             "26",
         ]);
+        if action == "build" {
+            cmd.arg("--output-dir").arg(&ndk_output);
+        }
     }
     cmd.args([action, "--locked", "--manifest-path"])
         .arg(&manifest)
@@ -215,8 +235,14 @@ pub fn execute(
             .join(component)
             .join("installed");
         if installed.is_dir() {
-            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed)
-                .env("SHINKI_EMU_VCPKG_TRIPLET", "x64-windows");
+            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed).env(
+                "SHINKI_EMU_VCPKG_TRIPLET",
+                if target == "x86_64-unknown-linux-gnu" {
+                    "x64-linux-dynamic"
+                } else {
+                    "x64-windows"
+                },
+            );
         }
     }
     let mut child = cmd
@@ -301,6 +327,27 @@ pub fn execute(
     if action != "build" {
         return Ok(None);
     }
+    if let Some(abi) = android_abi {
+        // cargo-ndk 4.1.2 consumes Cargo's compiler-artifact messages itself.
+        // Its explicit output directory contains the libraries copied from those
+        // messages; never guess a target/<profile> path.
+        let library_target = metadata["packages"]
+            .as_array()
+            .context("cargo packages")?
+            .iter()
+            .find(|p| p["id"] == package_id)
+            .and_then(|p| p["targets"].as_array())
+            .and_then(|targets| {
+                targets.iter().find(|t| {
+                    t["crate_types"]
+                        .as_array()
+                        .is_some_and(|types| types.iter().any(|t| t == "cdylib"))
+                })
+            })
+            .and_then(|t| t["name"].as_str())
+            .context("Android Manager cdylib target missing")?;
+        libraries.push(ndk_output.join(abi).join(format!("lib{library_target}.so")));
+    }
     libraries.sort();
     libraries.dedup();
     let core_build = if core.is_some() {
@@ -350,6 +397,16 @@ pub fn execute(
         features,
         target_dir,
     };
+    if component == "manager" && target.contains("android") {
+        let generated = result.target_dir.join("android-inputs");
+        if generated.exists() {
+            fs::remove_dir_all(&generated)?;
+        }
+        crate::package::atomic_directory(&generated, |stage| {
+            crate::package::android_inputs(inv, &result, stage)
+        })?;
+        println!("Android JNI/AAR/assets: {}", generated.display());
+    }
     let path = receipt_path(inv, target, component);
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, serde_json::to_vec_pretty(&result)?)?;

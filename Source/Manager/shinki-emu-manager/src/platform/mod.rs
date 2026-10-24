@@ -9,12 +9,16 @@ use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod desktop;
 #[cfg(target_os = "android")]
 use android as imp;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use desktop as imp;
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(target_os = "ios")]
+use ios as imp;
 
 /// A file type offered by a file picker.
 #[derive(Clone, Copy, Debug)]

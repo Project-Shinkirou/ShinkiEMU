@@ -149,13 +149,18 @@ fn checkout_pin(core: &Core, directory: &Path) -> Result<()> {
 }
 
 /// Prepare one exact source revision without replacing dirty or unrelated trees.
-pub fn prepare(inv: &Inventory, core: &Core) -> Result<()> {
+pub fn prepare(inv: &Inventory, core: &Core, allow_dirty: bool) -> Result<()> {
     let Some(source) = &core.source else {
         return Ok(());
     };
     let directory = core.source_directory(&inv.root)?;
     if fs::symlink_metadata(&directory).is_ok() {
         checkout_root(&directory)?;
+        if allow_dirty && revision(&directory)? == source.rev && modified(&directory)? {
+            // Native dependencies can be prepared for unpublished adapter work.
+            // Do not check out, fetch, or rewrite any part of this source tree.
+            return verify_at(core, &directory, false);
+        }
         require_clean(&directory)?;
         return checkout_pin(core, &directory);
     }
@@ -234,7 +239,7 @@ mod tests {
     #[test]
     fn source_checkout_uses_pinned_commit_and_preserves_dirty_work_before_update() {
         let (_temp, inv, mut core, _upstream, first, second) = fixture();
-        prepare(&inv, &core).unwrap();
+        prepare(&inv, &core, false).unwrap();
         let directory = verify(&inv, &core, true).unwrap();
         assert_eq!(revision(&directory).unwrap(), first);
         assert_eq!(
@@ -242,15 +247,22 @@ mod tests {
             "first public source\n"
         );
         fs::write(directory.join("payload.txt"), "user's unpublished change\n").unwrap();
+        assert!(prepare(&inv, &core, false).is_err());
+        prepare(&inv, &core, true).unwrap();
+        assert_eq!(
+            fs::read_to_string(directory.join("payload.txt")).unwrap(),
+            "user's unpublished change\n"
+        );
         core.source.as_mut().unwrap().rev = second.clone();
-        assert!(prepare(&inv, &core).is_err());
+        assert!(prepare(&inv, &core, false).is_err());
+        assert!(prepare(&inv, &core, true).is_err());
         assert_eq!(revision(&directory).unwrap(), first);
         assert_eq!(
             fs::read_to_string(directory.join("payload.txt")).unwrap(),
             "user's unpublished change\n"
         );
         fs::write(directory.join("payload.txt"), "first public source\n").unwrap();
-        prepare(&inv, &core).unwrap();
+        prepare(&inv, &core, false).unwrap();
         assert_eq!(revision(&directory).unwrap(), second);
         assert_eq!(
             fs::read_to_string(directory.join("payload.txt")).unwrap(),
@@ -267,7 +279,8 @@ mod tests {
         let directory = core.source_directory(&inv.root).unwrap();
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("user.txt"), "keep this folder").unwrap();
-        assert!(prepare(&inv, &core).is_err());
+        assert!(prepare(&inv, &core, false).is_err());
+        assert!(prepare(&inv, &core, true).is_err());
         assert_eq!(revision(&inv.root).unwrap(), product_head);
         assert_eq!(
             fs::read_to_string(directory.join("user.txt")).unwrap(),

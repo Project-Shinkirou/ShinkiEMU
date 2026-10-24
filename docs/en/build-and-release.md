@@ -40,15 +40,100 @@ Select exactly one of `--manager`, `--core` and `--all-cores` for build. Check t
 
 Each core owns a real `build.rs`. It validates target inputs and records `core-build.json` in Cargo's `OUT_DIR`. C++ adapters drive their native CMake builds; pure Rust cores are compiled by Cargo. Build scripts do not recursively run Cargo or publish releases. xtask reads `compiler-artifact` and `build-script-executed` JSON, not guessed target paths. Components build independently under `.work/target/<target>/<component>`; receipts are under `.work/build/`. Do not combine Artemis's Lua 5.1 graph and Manager's Luau graph with a workspace-wide all-features build.
 
+### Linux desktop
+
+Use the repository's pinned Rust 1.98.0 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
+
+```sh
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+cargo xtask deps --target x86_64-unknown-linux-gnu
+cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
+cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
+cargo xtask build --target x86_64-unknown-linux-gnu --all-cores --release
+cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-beta.1 --out .work/linux-manager
+cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version 0.1.0-beta.1 --out .work/linux-siglus
+cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
+```
+
+Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix --json`; declared blocked cores produce no binary artifact.
+The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfig, udev and ALSA ABI libraries. Install their runtime packages on the destination system and provide an X11 or Wayland desktop with a graphics driver.
+
+RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
+
+For unreliable archive downloads, preseed `.work/vcpkg-downloads` with the exact pinned source/tool archives. Transfer with resumable chunks or `rsync --partial`; vcpkg still checks each archive's SHA512 against its selected versioned port. Do not substitute a distribution libass/FFmpeg for the pinned native build.
+
+`deps` rejects edited fork checkouts by default. For unpublished adapter work, pass `--allow-dirty-sources`: the checkout must already be at the inventory's exact revision, and source preparation performs no fetch, checkout or submodule update on that dirty tree. Build receipts record source dirtiness; `release` refuses dirty sources and dirty receipts.
+
+Linux CI and release jobs also unpack the reported Manager ZIP and launch it under Xvfb with isolated user-data directories. The process must remain alive for 15 seconds; an early exit fails the job.
+
+### Android Manager test APK
+
+Use JDK 17 (`JAVA_HOME` and its `bin` on `PATH`), Android SDK platform 36, build-tools 36.0.0, NDK 30.0.15729638 and cargo-ndk 4.1.2. Set `ANDROID_HOME` to the SDK root and `ANDROID_NDK_HOME` to its `ndk/30.0.15729638` directory. NDK revisions with the matching build number and a `-beta2` suffix are accepted. Obtain missing SDK packages explicitly with that SDK's `sdkmanager --sdk_root=<sdk> --channel=3 "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.15729638"`. Keep `CARGO_HOME`, `CARGO_TARGET_DIR`, `TEMP`/`TMP` and `GRADLE_USER_HOME` on a drive with enough space.
+
+```sh
+rustup target add aarch64-linux-android x86_64-linux-android
+cargo xtask deps --target aarch64-linux-android
+cargo xtask deps --target x86_64-linux-android
+cargo xtask build --target aarch64-linux-android --manager --release
+cargo xtask build --target x86_64-linux-android --manager --release
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
+```
+
+Each build uses `cargo ndk` with `--locked`, statically links RFVP and stages the JNI runtime closure, verifier AAR, metadata and licenses under its recorded target directory's `android-inputs/`. Packaging requires release receipts for **both** triples from the same source commit. Gradle then creates a universal APK containing `arm64-v8a`, `x86_64` and `assets/metadata/`; xtask checks its signature and every native library's dependency closure. Without signing secrets the output is `ShinkiEMU-<version>-android-universal-debug-signed.apk`: a debug-signed CI test APK, not a release installer. The test key is generated inside `GRADLE_USER_HOME`.
+
+After the first Gradle dependency download, set `SHINKI_EMU_GRADLE_OFFLINE=1` to pass `--offline`; use a new package output directory each time. `cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` builds both ABIs and reports the actual APK path. CI prepares dependencies for both triples before invoking the same command.
+
+Known runtime issue: SwiftShader/software-Vulkan emulators render only the first frame with stock Slint 1.18.1; use `-gpu host` or a device. A separate one-Text/one-Timer app reproduced the stalled updates in five cold launches. The same Manager test APK rendered its CJK onboarding and icons in five host-GPU cold launches. Build/package success does not establish game compatibility.
+
+### Apple Manager: native macOS and Linux-hosted cross
+
+Native CI keeps the macOS runners from `build/targets.toml` and invokes Cargo/Xcode. On Linux, `build` and `check` select cross 0.2.5 and the private image configured in `Cross.toml`. The Apple triples are `x86_64-apple-darwin`, `aarch64-apple-darwin`, `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` and `x86_64-apple-ios` (simulators). Deployment minima are macOS 13.0 and iOS 16.0.
+
+Obtain Xcode from the [Mac App Store](https://apps.apple.com/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/all/) under Apple's license. Expand an official Xcode `.xip` on macOS using `xip --expand`, select that Xcode installation and accept its license there. Command Line Tools alone do not provide iOS SDKs. On that Mac:
+
+```sh
+for sdk in macosx iphoneos iphonesimulator; do
+  tar -C "$(xcrun --sdk "$sdk" --show-sdk-path)" -cJf "$sdk.sdk.tar.xz" .
+done
+```
+
+Transfer the archives privately and extract each into a separate directory on Linux. `SHINKI_APPLE_SDK_DIR` points directly to the extracted SDK contents (`SDKSettings.json`, `System/`, `usr/`), not its parent or an archive. Use `macosx` for Darwin, `iphoneos` for the device and `iphonesimulator` for both simulators. The pipeline never downloads SDKs from mirrors. Keep SDKs and SDK-containing images out of Git and public registries.
+
+Keep the checkout, `CARGO_HOME`, `RUSTUP_HOME`, `CARGO_TARGET_DIR` and tools under a dedicated directory such as `~/shinkirou-apple/`. Install Rust 1.98.0 and the selected Rust targets explicitly, then install cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`) with `cargo +1.98.0 install --locked --root "$HOME/shinkirou-apple/tools"`. Add its `bin` to `PATH`. Image construction requires at least 8 GiB free on `/` and never evicts user files or images. From this repository:
+
+Docker needs Buildx/BuildKit (`docker buildx version`). A private plugin can live at `$DOCKER_CONFIG/cli-plugins/docker-buildx` without sudo or changing the user's Docker configuration. The official [Buildx v0.38.1 Linux x86_64 asset](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) has SHA256 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`; verify the digest before granting execute permission.
+
+```sh
+export DOCKER_CONFIG="$HOME/shinkirou-apple/docker"
+export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/macosx.sdk"
+cargo xtask apple-image --target aarch64-apple-darwin
+cargo xtask deps --target aarch64-apple-darwin
+cargo xtask build --target aarch64-apple-darwin --manager --release
+cargo xtask package --target aarch64-apple-darwin --manager --version 0.1.0-beta.1 --out .work/macos-manager
+export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/iphonesimulator.sdk"
+cargo xtask apple-image --target aarch64-apple-ios-sim
+cargo xtask build --target aarch64-apple-ios-sim --manager --release
+cargo xtask package --target aarch64-apple-ios-sim --manager --version 0.1.0-beta.1 --out .work/ios-simulator-manager
+```
+
+Repeat image preparation for each selected triple with its matching SDK. Images pin Rust, osxcross, and vcpkg inputs, provide LLVM/LLD, C/C++, CMake and Apple triplets, and keep host compilers separate from target compilers. Native dependency licenses are exported to `.work/apple-native/<target>`; only the same image identity can reuse that export. Missing SDK/image/target inputs fail in `doctor`; supported-target compile errors stay failures.
+
+macOS packaging produces a real `ShinkiEMU-adhoc.app` with its executable in `Contents/MacOS`, metadata/licenses in `Contents/Resources`, and a ZIP from `ci`/`release`. The iOS Manager uses Slint's winit/UIKit backend and Metal renderer on the main thread. Native Files pickers retain security-scoped authorization and bookmarks; application data lives in the app's Library sandbox. iOS process restart requires the user to close and reopen the app. The shared platform activates an actual AVAudioSession for playback; installing arbitrary downloaded core binaries on iOS is not enabled by compiling the Manager. Core-specific embedding/build blockers remain in the inventory.
+
+Simulator packages contain a `simulator-test.app`; device packaging creates a clearly named `adhoc-device-test.ipa` with `Payload/*.app`, and `ci` reports that IPA path. Packaging checks thin Mach-O architecture, device/simulator platform and system/bundled dependency closure before signing copied files. Linux uses `rcodesign sign` and verifies every Mach-O; native macOS uses `codesign`. Ad-hoc signatures are real but provide no Apple provisioning, notarization or App Store identity. Device installation needs valid Apple signing/provisioning; these are test/integration artifacts, not production installers. Release names include the iOS device/simulator variant to avoid collisions.
+
+For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `llvm-objdump --macho --dylibs-used --private-headers <executable>` and `rcodesign verify <executable>` output. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
+
 ## Matrix and CI
 
-`matrix --json` reads the authoritative manifests and emits each core and Manager across nine target triples. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Android RFVP static-in-Manager integration is distinct from standalone dynamic-core packaging.
+`matrix --json` reads the authoritative manifests and emits each core and Manager across all declared target triples, including both iOS simulator architectures. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Android RFVP static-in-Manager integration is distinct from standalone dynamic-core packaging.
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-Declared unsupported combinations produce `blocked`, a reason and `artifact: null`. Missing native iOS/OpenHarmony hosts are not fixed by installing an SDK; OpenHarmony also requires `OHOS_SDK_NATIVE`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations but does not hide supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
+Declared unsupported combinations produce `blocked`, a concrete reason and `artifact: null`. Apple core rows retain their source-level embedding/native-dependency restrictions; OpenHarmony requires both its native host adaptation and `OHOS_SDK_NATIVE`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations but does not hide supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
 
 ## Package and release
 

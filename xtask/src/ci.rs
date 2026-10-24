@@ -1,5 +1,5 @@
 use crate::{build, cores::Inventory, package};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Serialize;
 use std::{fs, io::Write, path::Path};
 #[derive(Serialize)]
@@ -30,6 +30,14 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         Ok(())
     } else {
         (|| -> Result<()> {
+            if component == "manager" && target.contains("android") {
+                let other = if target == "aarch64-linux-android" {
+                    "x86_64-linux-android"
+                } else {
+                    "aarch64-linux-android"
+                };
+                build::execute(inv, other, component, "build", true)?;
+            }
             let built = build::execute(inv, target, component, "build", true)?
                 .expect("build returns artifact");
             report.status = "built";
@@ -45,9 +53,21 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             }
             let out = inv.root.join(".work/ci").join(target).join(component);
             let staged = package::package(inv, target, component, &version, &out)?;
-            let archive = out.with_extension("zip");
-            package::zip_entries(&package::tree(&staged)?, &archive)?;
-            report.artifact = Some(archive);
+            if component == "manager" && target.contains("android") {
+                let record: serde_json::Value =
+                    serde_json::from_slice(&fs::read(staged.join("android.json"))?)?;
+                let apk = record["apk"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Android package APK missing"))?;
+                package::portable(apk)?;
+                report.artifact = Some(staged.join(apk));
+            } else if component == "manager" && target == "aarch64-apple-ios" {
+                report.artifact = Some(staged.join(format!(
+                    "ShinkiEMU-{version}-{target}-adhoc-device-test.ipa"
+                )));
+            } else {
+                report.artifact = Some(archive_package(&staged, &out)?);
+            }
             Ok(())
         })()
     };
@@ -79,4 +99,46 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
     }
     println!("{}", serde_json::to_string(&report)?);
     result
+}
+
+fn archive_package(staged: &Path, out: &Path) -> Result<std::path::PathBuf> {
+    let mut name = out
+        .file_name()
+        .context("CI package output name")?
+        .to_os_string();
+    name.push(".zip");
+    let archive = out.with_file_name(name);
+    package::zip_entries(&package::tree(staged)?, &archive)?;
+    Ok(archive)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn dotted_core_ids_keep_independent_archive_contents() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut artifacts = Vec::new();
+        for (core, contents) in [
+            ("shinki.emu.musica", b"musica".as_slice()),
+            ("shinki.emu.cmvs", b"cmvs".as_slice()),
+        ] {
+            let staged = temp.path().join(core);
+            fs::create_dir(&staged).unwrap();
+            fs::write(staged.join("core.bin"), contents).unwrap();
+            artifacts.push((archive_package(&staged, &staged).unwrap(), contents));
+        }
+        for (artifact, expected) in artifacts {
+            let mut archive = zip::ZipArchive::new(fs::File::open(artifact).unwrap()).unwrap();
+            let mut actual = Vec::new();
+            archive
+                .by_name("core.bin")
+                .unwrap()
+                .read_to_end(&mut actual)
+                .unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
 }

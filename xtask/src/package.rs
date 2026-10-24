@@ -239,9 +239,20 @@ pub fn zip_entries(entries: &[(PathBuf, String)], out: &Path) -> Result<()> {
             if !seen.insert(name.to_ascii_lowercase()) {
                 bail!("duplicate archive path");
             }
+            #[cfg(unix)]
+            let permissions = {
+                use std::os::unix::fs::PermissionsExt;
+                if fs::metadata(&source)?.permissions().mode() & 0o111 != 0 {
+                    0o755
+                } else {
+                    0o644
+                }
+            };
+            #[cfg(not(unix))]
+            let permissions = 0o644;
             let opt = zip::write::SimpleFileOptions::default()
                 .last_modified_time(zip::DateTime::default())
-                .unix_permissions(0o644)
+                .unix_permissions(permissions)
                 .compression_method(if name.starts_with("downloads/") {
                     zip::CompressionMethod::Stored
                 } else {
@@ -325,6 +336,7 @@ fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
         "artifact_kind":result.core_build.as_ref().map(|m|m.artifact_kind.as_str()).unwrap_or("manager"),
         "library":result.library.file_name().and_then(|s|s.to_str()),
         "sha256":sha256(&result.library)?,"native_dependencies":info.dependencies,"runtime_search_paths":info.rpaths,
+        "system_dependencies":info.dependencies.iter().filter(|name| binary::system(name, &result.target)).collect::<Vec<_>>(),
         "macho_code_signature_present":info.signed
     });
     fs::write(path, serde_json::to_vec_pretty(&provenance)?)?;
@@ -418,6 +430,24 @@ pub fn stage_core(
             .context("native install directory")?;
         for item in fs::read_dir(directory)? {
             let path = item?.path();
+            if result.target == "x86_64-unknown-linux-gnu"
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        let soname = name
+                            .find(".so.")
+                            .and_then(|offset| {
+                                name[offset + 4..]
+                                    .find('.')
+                                    .map(|end| &name[..offset + 4 + end])
+                            })
+                            .unwrap_or(name);
+                        binary::system(soname, &result.target)
+                    })
+            {
+                continue;
+            }
             if path.is_file() && is_runtime(&path) && path != result.library {
                 add_runtime(path.clone())?;
                 roots.push(path);
@@ -517,13 +547,19 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         .context("library parent")?
         .to_owned()];
     if selected.ffmpeg {
-        dirs.push(
+        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
+            dependencies::linux_runtime(inv, &result.target, "ffmpeg")
+        } else {
             inv.root
-                .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin"),
-        );
+                .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin")
+        });
     }
     if selected.subtitle {
-        dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("bin"));
+        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
+            dependencies::linux_runtime(inv, &result.target, "subtitle")
+        } else {
+            dependencies::subtitle_install(inv, &result.target)?.join("bin")
+        });
     }
     if selected.dxc {
         dirs.push(inv.root.join(".work/dxc"));
@@ -534,12 +570,14 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         }
     }
     if selected.native_vcpkg {
-        dirs.push(
+        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
+            dependencies::linux_runtime(inv, &result.target, &result.component)
+        } else {
             inv.root
                 .join(".work/native-vcpkg")
                 .join(&result.component)
-                .join("installed/x64-windows/bin"),
-        );
+                .join("installed/x64-windows/bin")
+        });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
     if let Some(redist) = std::env::var_os("VCToolsRedistDir") {
@@ -577,7 +615,22 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
 fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, String)>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
-    if selected.subtitle {
+    if selected.subtitle && result.target == "x86_64-unknown-linux-gnu" {
+        let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
+        for entry in fs::read_dir(share)? {
+            let entry = entry?;
+            let copyright = entry.path().join("copyright");
+            if copyright.is_file() {
+                entries.push((
+                    copyright,
+                    format!(
+                        "licenses/subtitle/{}/copyright",
+                        entry.file_name().to_string_lossy()
+                    ),
+                ));
+            }
+        }
+    } else if selected.subtitle {
         let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
         for port in [
             "libass", "freetype", "fribidi", "harfbuzz", "brotli", "bzip2", "libpng", "zlib",
@@ -592,7 +645,11 @@ fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, Strin
         .root
         .join(".work/native-vcpkg")
         .join(&result.component)
-        .join("installed/x64-windows/share");
+        .join(if result.target == "x86_64-unknown-linux-gnu" {
+            "installed/x64-linux-dynamic/share"
+        } else {
+            "installed/x64-windows/share"
+        });
     if selected.native_vcpkg && native_share.is_dir() {
         for item in fs::read_dir(native_share)? {
             let path = item?.path().join("copyright");
@@ -743,9 +800,33 @@ pub fn package(
             entries.extend(licenses(inv, &result)?);
             entries.extend(metadata_entries(inv, temp.path())?);
             copy_entries(&entries, stage)?;
+            drop(temp);
             fs::create_dir(stage.join("cores"))?;
             fs::write(stage.join("README.md"),format!("# ShinkiEMU {version}\n\nRun shinki-emu-manager. Install separately released cores from Project-Shinkirou/ShinkiEMU.\n"))?;
             write_provenance(&result, &stage.join("build.json"))?;
+            if crate::apple::supported(target) {
+                let app = crate::apple::bundle(
+                    stage,
+                    target,
+                    "shinki-emu-manager",
+                    "ShinkiEMU",
+                    "org.shinkirou.shinkiemu",
+                    version,
+                )?;
+                if target == "aarch64-apple-ios" {
+                    let payload_stage = tempfile::tempdir_in(stage)?;
+                    let payload = payload_stage.path().join("Payload");
+                    fs::create_dir(&payload)?;
+                    fs::rename(
+                        &app,
+                        payload.join(app.file_name().context("iOS app filename")?),
+                    )?;
+                    let ipa = stage.join(format!(
+                        "ShinkiEMU-{version}-{target}-adhoc-device-test.ipa"
+                    ));
+                    zip_entries(&tree(payload_stage.path())?, &ipa)?;
+                }
+            }
             Ok(())
         })?;
         Ok(out.to_owned())
@@ -790,15 +871,172 @@ pub fn package(
                 .unwrap()
                 .licenses
                 .push(BuildAsset {
-                    source: inv
-                        .root
-                        .join(".work/vcpkg-ffmpeg/installed/x64-windows/share/ffmpeg/copyright"),
+                    source: if target == "x86_64-unknown-linux-gnu" {
+                        dependencies::linux_install(inv, target, "ffmpeg")
+                            .join("share/ffmpeg/copyright")
+                    } else {
+                        inv.root
+                            .join(".work/vcpkg-ffmpeg/installed/x64-windows/share/ffmpeg/copyright")
+                    },
                     dest: "licenses/ffmpeg/copyright".into(),
                 });
         }
         stage_core(&result, version, out, &search_dirs(inv, &result)?)
     }
 }
+const ANDROID_TARGETS: [(&str, &str); 2] = [
+    ("aarch64-linux-android", "arm64-v8a"),
+    ("x86_64-linux-android", "x86_64"),
+];
+
+/// Collect only the runtime closure of this ABI, not libraries from the host PATH.
+pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path) -> Result<()> {
+    let abi = ANDROID_TARGETS
+        .iter()
+        .find(|(target, _)| *target == result.target)
+        .map(|(_, abi)| *abi)
+        .context("unsupported Android ABI")?;
+    let temp = tempfile::tempdir()?;
+    let metadata = metadata_entries(inv, temp.path())?;
+    let mut entries = vec![(
+        result.library.clone(),
+        format!("jniLibs/{abi}/libshinki_emu_manager.so"),
+    )];
+    for dep in binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)? {
+        let name = format!(
+            "jniLibs/{abi}/{}",
+            dep.file_name().unwrap().to_string_lossy()
+        );
+        entries.push((dep, name));
+    }
+    let meta = build::cargo_metadata(inv, &result.target)?;
+    let verifier = meta["packages"]
+        .as_array()
+        .context("cargo packages")?
+        .iter()
+        .find(|p| p["name"] == "rustls-platform-verifier-android")
+        .context("rustls-platform-verifier Android package missing")?;
+    let maven = Path::new(verifier["manifest_path"].as_str().context("AAR manifest")?)
+        .parent()
+        .context("AAR package parent")?
+        .join("maven");
+    let mut aars = 0;
+    for (source, name) in tree(&maven)? {
+        if name.ends_with(".aar") {
+            aars += 1;
+            let name = format!("libs/{}", source.file_name().unwrap().to_string_lossy());
+            entries.push((source, name));
+        }
+    }
+    if aars == 0 {
+        bail!("rustls-platform-verifier Android AAR missing");
+    }
+    let mut bundled = vec!["THIRD_PARTY_NOTICES.md".to_owned()];
+    entries.push((
+        inv.root.join("THIRD_PARTY_NOTICES.md"),
+        "assets/THIRD_PARTY_NOTICES.md".into(),
+    ));
+    let ndk = dependencies::ndk_root(inv)?;
+    for notice in ["NOTICE", "NOTICE.toolchain"] {
+        let name = format!("licenses/android-ndk/{notice}");
+        bundled.push(name.clone());
+        entries.push((ndk.join(notice), format!("assets/{name}")));
+    }
+    for (source, name) in metadata.into_iter().chain(licenses(inv, result)?) {
+        bundled.push(name.clone());
+        entries.push((source, format!("assets/{name}")));
+    }
+    for core in &inv.cores {
+        if !core.static_manager_targets.contains(&result.target) {
+            continue;
+        }
+        let package = meta["packages"]
+            .as_array()
+            .context("cargo packages")?
+            .iter()
+            .find(|package| package["name"] == core.package)
+            .with_context(|| format!("statically linked package {} missing", core.package))?;
+        let checkout = core.source_directory(&inv.root)?;
+        let checkout_relative = checkout.strip_prefix(&inv.root)?;
+        let manifest_relative = core.manifest.strip_prefix(checkout_relative)?;
+        let mut source_root = PathBuf::from(
+            package["manifest_path"]
+                .as_str()
+                .context("static core manifest")?,
+        );
+        for _ in manifest_relative.components() {
+            source_root.pop();
+        }
+        for license in &core.licenses {
+            let relative = Path::new(license).strip_prefix(checkout_relative)?;
+            let name = format!(
+                "licenses/{}/{}",
+                core.id,
+                relative.to_string_lossy().replace('\\', "/")
+            );
+            bundled.push(name.clone());
+            entries.push((source_root.join(relative), format!("assets/{name}")));
+        }
+    }
+    copy_entries(&entries, stage)?;
+    bundled.sort();
+    fs::write(
+        stage.join("assets/bundled.manifest"),
+        bundled.join("\n") + "\n",
+    )?;
+    Ok(())
+}
+
+fn prepare_android_debug_key() -> Result<()> {
+    let home = std::env::var_os("GRADLE_USER_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                .map(|home| PathBuf::from(home).join(".gradle"))
+        })
+        .context("set GRADLE_USER_HOME for the Android test signing key")?;
+    fs::create_dir_all(&home)?;
+    let key = home.join("shinkiemu-debug.keystore");
+    if key.exists() {
+        return plain(&key);
+    }
+    let temp = tempfile::tempdir_in(&home)?;
+    let generated = temp.path().join("debug.keystore");
+    let java = PathBuf::from(std::env::var_os("JAVA_HOME").context("set JAVA_HOME to JDK 17")?);
+    let keytool = java.join("bin").join(if cfg!(windows) {
+        "keytool.exe"
+    } else {
+        "keytool"
+    });
+    dependencies::run(
+        std::process::Command::new(keytool)
+            .args(["-genkeypair", "-noprompt", "-storetype", "JKS", "-keystore"])
+            .arg(&generated)
+            .args([
+                "-storepass",
+                "android",
+                "-keypass",
+                "android",
+                "-alias",
+                "androiddebugkey",
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "2048",
+                "-validity",
+                "10000",
+                "-dname",
+                "CN=Android Debug,O=Android,C=US",
+            ]),
+    )?;
+    // Publish the complete test key without overwriting a concurrent creator's key.
+    match fs::hard_link(&generated, &key) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => plain(&key),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn package_android(
     inv: &Inventory,
     result: &BuildResult,
@@ -826,6 +1064,9 @@ fn package_android(
     if (signed && present != 3) || (!signed && present != 0) {
         bail!("Android release signing requires the keystore and all three password/alias variables; partial signing configuration is an error");
     }
+    if !signed {
+        prepare_android_debug_key()?;
+    }
     let private_key = if let Some(encoded) = encoded {
         let key = tempfile::NamedTempFile::new()?;
         fs::write(
@@ -843,70 +1084,30 @@ fn package_android(
         plain(key)?;
     }
     atomic_directory(out, |stage| {
-        let temp = tempfile::tempdir_in(stage)?;
-        let metadata = metadata_entries(inv, temp.path())?;
-        let abi = if result.target.starts_with("aarch64") {
-            "arm64-v8a"
-        } else {
-            "x86_64"
-        };
-        let mut entries = vec![(
-            result.library.clone(),
-            format!("jniLibs/{abi}/libshinki_emu_manager.so"),
-        )];
-        for dep in binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)? {
-            entries.push((
-                dep.clone(),
-                format!(
-                    "jniLibs/{abi}/{}",
-                    dep.file_name().unwrap().to_string_lossy()
-                ),
-            ));
-        }
-        let meta = build::cargo_metadata(inv, &result.target)?;
-        let mut aars = vec![];
-        for p in meta["packages"].as_array().context("cargo packages")? {
-            if p["name"] == "rustls-platform-verifier-android" {
-                let parent = Path::new(
-                    p["manifest_path"]
-                        .as_str()
-                        .context("AAR package manifest")?,
-                )
-                .parent()
-                .unwrap();
-                for (s, n) in tree(&parent.join("maven"))? {
-                    if n.ends_with(".aar") {
-                        aars.push((
-                            s.clone(),
-                            format!("libs/{}", s.file_name().unwrap().to_string_lossy()),
-                        ));
+        for (target, _) in ANDROID_TARGETS {
+            let built = if target == result.target {
+                result.clone()
+            } else {
+                build::load_receipt(inv, target, "manager")?
+            };
+            if built.profile != "release" || built.source_commit != result.source_commit {
+                bail!("both Android ABIs require release builds from the same source commit");
+            }
+            let inputs = tempfile::tempdir()?;
+            android_inputs(inv, &built, inputs.path())?;
+            // Shared metadata/AAR/license bytes must be identical for both ABIs.
+            for (source, name) in tree(inputs.path())? {
+                let destination = stage.join(&name);
+                if destination.exists() {
+                    if sha256(&source)? != sha256(&destination)? {
+                        bail!("Android ABI inputs disagree: {name}");
                     }
+                } else {
+                    copy_entries(&[(source, name)], stage)?;
                 }
             }
+            write_provenance(&built, &stage.join(format!("build-{target}.json")))?;
         }
-        if aars.is_empty() {
-            bail!("rustls-platform-verifier Android AAR missing");
-        }
-        entries.extend(aars);
-        let mut bundled = vec!["THIRD_PARTY_NOTICES.md".to_owned()];
-        entries.push((
-            inv.root.join("THIRD_PARTY_NOTICES.md"),
-            "assets/THIRD_PARTY_NOTICES.md".into(),
-        ));
-        for (s, n) in metadata {
-            bundled.push(n.clone());
-            entries.push((s, format!("assets/{n}")));
-        }
-        for (source, name) in licenses(inv, result)? {
-            bundled.push(name.clone());
-            entries.push((source, format!("assets/{name}")));
-        }
-        copy_entries(&entries, stage)?;
-        bundled.sort();
-        fs::write(
-            stage.join("assets/bundled.manifest"),
-            bundled.join("\n") + "\n",
-        )?;
         let gradle = inv.root.join("Platforms/Android").join(if cfg!(windows) {
             "gradlew.bat"
         } else {
@@ -930,9 +1131,12 @@ fn package_android(
             .env("SHINKI_EMU_ANDROID_VERSION_NAME", version)
             .env(
                 "SHINKI_EMU_ANDROID_GENERATED_ROOT",
-                fs::canonicalize(stage)?,
+                dunce::canonicalize(stage)?,
             )
-            .env("SHINKI_EMU_ANDROID_ABI", abi);
+            .env("SHINKI_EMU_ANDROID_ABI", "arm64-v8a,x86_64");
+        if std::env::var_os("SHINKI_EMU_GRADLE_OFFLINE").is_some_and(|value| value == "1") {
+            cmd.arg("--offline");
+        }
         if let Some(key) = &key {
             cmd.env("SHINKI_EMU_ANDROID_KEYSTORE", key);
         }
@@ -949,8 +1153,7 @@ fn package_android(
                 fs::copy(
                     &source,
                     stage.join(format!(
-                        "ShinkiEMU-{version}-{}-{}-signed.apk",
-                        slug(&result.target),
+                        "ShinkiEMU-{version}-android-universal-{}-signed.apk",
                         if signed { "release" } else { "debug" }
                     )),
                 )?;
@@ -959,16 +1162,89 @@ fn package_android(
         if apks != 1 {
             bail!("Gradle must produce exactly one signed APK");
         }
+        let apk = tree(stage)?
+            .into_iter()
+            .find(|(_, name)| name.ends_with(".apk"))
+            .context("signed APK missing")?
+            .0;
+        verify_android_apk(&apk)?;
         fs::write(
             stage.join("android.json"),
-            serde_json::to_vec_pretty(
-                &serde_json::json!({"schema":"shinki.emu.android_package.v1","target":result.target,"signing":if signed{"release"}else{"debug-test"}}),
-            )?,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "shinki.emu.android_package.v1",
+                "target": result.target,
+                "targets": ANDROID_TARGETS.map(|(target, _)| target),
+                "abis": ["arm64-v8a", "x86_64"],
+                "signing": if signed { "release" } else { "debug-test" },
+                "apk": apk.file_name().unwrap().to_string_lossy(),
+                "sha256": sha256(&apk)?,
+                "size": fs::metadata(&apk)?.len()
+            }))?,
         )?;
         write_provenance(result, &stage.join("build.json"))?;
         Ok(())
     })?;
     Ok(out.to_owned())
+}
+
+fn verify_android_apk(apk: &Path) -> Result<()> {
+    let sdk = std::env::var_os("ANDROID_HOME")
+        .or_else(|| std::env::var_os("ANDROID_SDK_ROOT"))
+        .map(PathBuf::from)
+        .context("set ANDROID_HOME")?;
+    let signer = sdk.join("build-tools/36.0.0").join(if cfg!(windows) {
+        "apksigner.bat"
+    } else {
+        "apksigner"
+    });
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("cmd");
+        command.arg("/c");
+        command
+    } else {
+        std::process::Command::new("sh")
+    };
+    dependencies::run(
+        command
+            .arg(signer)
+            .args(["verify", "--verbose", "--print-certs"])
+            .arg(apk),
+    )?;
+    let extracted = tempfile::tempdir()?;
+    let mut archive = zip::ZipArchive::new(fs::File::open(apk)?)?;
+    let mut metadata = false;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let name = entry.name().to_owned();
+        metadata |= name == "assets/metadata/index.json";
+        if name.starts_with("lib/") && name.ends_with(".so") {
+            portable(&name)?;
+            let destination = extracted.path().join(&name);
+            fs::create_dir_all(destination.parent().unwrap())?;
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(destination)?;
+            io::copy(&mut entry, &mut output)?;
+        }
+    }
+    for (target, abi) in ANDROID_TARGETS {
+        let dir = extracted.path().join("lib").join(abi);
+        let manager = dir.join("libshinki_emu_manager.so");
+        binary::inspect(&manager, target, false)?;
+        for (library, name) in tree(&dir)? {
+            if name.ends_with(".so") {
+                let info = binary::inspect(&library, target, false)?;
+                println!("APK {abi}/{name} NEEDED: {:?}", info.dependencies);
+                let closure = binary::closure(&library, std::slice::from_ref(&dir), target)?;
+                println!("APK {abi}/{name}: {} bundled dependencies; remaining NEEDED entries are Android system libraries", closure.len());
+            }
+        }
+    }
+    if !metadata {
+        bail!("APK metadata snapshot missing");
+    }
+    Ok(())
 }
 
 /// Include original vcpkg archives and exact ports/patches for relinking.
@@ -997,6 +1273,8 @@ pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         }
         let installed = if port == "fribidi" {
             dependencies::subtitle_install(inv, target)?
+        } else if target == "x86_64-unknown-linux-gnu" {
+            dependencies::linux_install(inv, target, "ffmpeg")
         } else if component == "kirikiroid2-web" {
             inv.root
                 .join(".work/native-vcpkg/kirikiroid2-web/installed/x64-windows")

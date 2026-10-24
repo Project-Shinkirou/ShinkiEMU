@@ -26,6 +26,12 @@ val generatedRoot = layout.projectDirectory.dir(
 android {
     namespace = "org.shinkirou.shinkiemu"
     compileSdk = 36
+    buildToolsVersion = "36.0.0"
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
     defaultConfig {
         applicationId = "org.shinkirou.shinkiemu"
@@ -42,6 +48,11 @@ android {
             abiFilters += providers.environmentVariable("SHINKI_EMU_ANDROID_ABI")
                 .orElse("arm64-v8a,x86_64").get().split(",")
         }
+    }
+
+    signingConfigs.getByName("debug") {
+        // Keep the generated test key beside the Gradle cache, not in ~/.android.
+        storeFile = gradle.gradleUserHomeDir.resolve("shinkiemu-debug.keystore")
     }
 
     if (missingReleaseSigning.isEmpty()) {
@@ -79,9 +90,8 @@ android {
 
     packaging {
         jniLibs {
-            // The family trust chain reads libshinki_emu_rfvp.so back from
-            // nativeLibraryDir to verify its hash before loading, which needs
-            // real extracted files instead of an `apk!lib` virtual path.
+            // NativeActivity and dladdr need ordinary extracted filesystem paths.
+            // RFVP is statically linked into the Manager library.
             useLegacyPackaging = true
         }
     }

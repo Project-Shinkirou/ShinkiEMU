@@ -45,6 +45,7 @@ pub(crate) struct NativeNeeds {
     pub impacto_sources: bool,
     pub renpy: bool,
     pub bison: bool,
+    pub gstreamer: bool,
 }
 
 pub(crate) fn needs(inv: &Inventory, target: &str, component: &str) -> Result<NativeNeeds> {
@@ -63,6 +64,7 @@ pub(crate) fn needs(inv: &Inventory, target: &str, component: &str) -> Result<Na
             "impacto-sources" => result.impacto_sources = true,
             "renpy" => result.renpy = true,
             "bison" => result.bison = true,
+            "gstreamer" => result.gstreamer = target == "x86_64-unknown-linux-gnu",
             other => bail!("unknown native dependency requirement {other} for {component}"),
         }
     }
@@ -514,6 +516,9 @@ pub fn ndk_root(inv: &Inventory) -> Result<PathBuf> {
 }
 pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
     let t = inv.target(target)?;
+    if crate::apple::supported(target) {
+        crate::apple::preflight(target)?;
+    }
     if let Some(c) = core {
         inv.require_supported(c, target)?;
     }
@@ -531,6 +536,9 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         }
     }
     for tool in &t.tools {
+        if crate::apple::cross_host(target) && tool == "xcrun" {
+            continue;
+        }
         if matches!(tool.as_str(), "cmake" | "ninja")
             && !(selected.ffmpeg || selected.native_vcpkg || selected.renpy)
         {
@@ -589,6 +597,47 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
                 ));
             } else {
                 println!("dependency: {}", p.display());
+            }
+        }
+    }
+    if t.platform == "linux" {
+        for package in ["alsa", "libudev", "fontconfig", "xkbcommon"] {
+            if capture(Command::new("pkg-config").args(["--exists", package])).is_err() {
+                missing.push(format!("Linux development package providing {package}.pc"));
+            }
+        }
+        if selected.gstreamer {
+            for package in [
+                "glib-2.0 >= 2.56",
+                "gstreamer-1.0 >= 1.14",
+                "gstreamer-app-1.0 >= 1.14",
+                "gstreamer-video-1.0 >= 1.14",
+            ] {
+                if capture(Command::new("pkg-config").args(["--exists", package])).is_err() {
+                    missing.push(format!("Linux development package providing {package}"));
+                }
+            }
+        }
+        if selected.subtitle || selected.ffmpeg {
+            for tool in ["cmake", "ninja", "nasm", "patchelf"] {
+                if executable(tool).is_none() {
+                    missing.push(tool.to_owned());
+                }
+            }
+            for (needed, kind, pc) in [
+                (selected.subtitle, "subtitle", "libass.pc"),
+                (selected.ffmpeg, "ffmpeg", "libavcodec.pc"),
+            ] {
+                if needed
+                    && !linux_install(inv, target, kind)
+                        .join("lib/pkgconfig")
+                        .join(pc)
+                        .is_file()
+                {
+                    missing.push(format!(
+                        "pinned Linux {kind} installation (cargo xtask deps --target {target})"
+                    ));
+                }
             }
         }
     }
@@ -832,12 +881,16 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
     let l = lock(inv)?;
     Ok(if target.contains("android") {
         inv.root
-            .join(".work/vcpkg-subtitle/installed")
+            .join(".work/vcpkg-subtitle")
+            .join(target)
+            .join("installed")
             .join(if target.starts_with("aarch64") {
                 "arm64-android-dynbidi"
             } else {
                 "x64-android-dynbidi"
             })
+    } else if target == "x86_64-unknown-linux-gnu" {
+        linux_install(inv, target, "subtitle")
     } else {
         env::var_os("ROUKAKU_SUBTITLE_VCPKG_ROOT")
             .map(PathBuf::from)
@@ -845,6 +898,56 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
             .join("installed")
             .join(l.subtitle_windows_triplet)
     })
+}
+
+pub(crate) fn linux_install(inv: &Inventory, target: &str, kind: &str) -> PathBuf {
+    inv.root
+        .join(format!(".work/vcpkg-{kind}"))
+        .join(target)
+        .join("installed/x64-linux-dynamic")
+}
+
+pub(crate) fn linux_runtime(inv: &Inventory, target: &str, kind: &str) -> PathBuf {
+    inv.root.join(".work/linux-runtime").join(target).join(kind)
+}
+
+fn prepare_linux_runtime(inv: &Inventory, target: &str, kind: &str) -> Result<()> {
+    let install = linux_install(inv, target, kind);
+    let runtime = linux_runtime(inv, target, kind);
+    prepare_linux_runtime_tree(&install, &runtime, target)
+}
+
+fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> Result<()> {
+    package::plain(&install.join("lib"))?;
+    let root = fs::canonicalize(install.join("lib"))?;
+    fs::create_dir_all(runtime)?;
+    package::plain(runtime)?;
+    for entry in fs::read_dir(&root)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if !name.to_string_lossy().contains(".so") {
+            continue;
+        }
+        // vcpkg's versioned SONAME links are build inputs, not package links.
+        // Materialize only files resolving inside this pinned installation.
+        let source = fs::canonicalize(entry.path())?;
+        if !source.starts_with(&root) || !source.is_file() {
+            bail!(
+                "Linux runtime link escapes its prepared library tree: {}",
+                entry.path().display()
+            );
+        }
+        let output = runtime.join(name);
+        if fs::symlink_metadata(&output).is_ok() {
+            package::plain(&output)?;
+        }
+        fs::copy(source, &output)?;
+        run(Command::new("patchelf")
+            .args(["--set-rpath", "$ORIGIN"])
+            .arg(&output))?;
+        crate::binary::inspect(&output, target, false)?;
+    }
+    Ok(())
 }
 fn vcpkg_command(inv: &Inventory, executable: &Path) -> Result<Command> {
     let mut command = Command::new(executable);
@@ -971,6 +1074,35 @@ pub fn apply_environment(
                 .env("PYTHONDONTWRITEBYTECODE", "1");
         }
     }
+    if target == "x86_64-unknown-linux-gnu" && selected.bison {
+        cmd.env(
+            "BISON_EXECUTABLE",
+            executable("bison").context("Linux Bison is missing")?,
+        );
+    }
+    if target == "x86_64-unknown-linux-gnu" && (selected.subtitle || selected.ffmpeg) {
+        let mut paths = Vec::new();
+        if selected.subtitle {
+            paths.push(subtitle.join("lib/pkgconfig"));
+        }
+        if selected.ffmpeg {
+            paths.push(linux_install(inv, target, "ffmpeg").join("lib/pkgconfig"));
+        }
+        cmd.env("PKG_CONFIG_PATH", env::join_paths(paths)?);
+        let existing = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_else(|_| {
+            env::var("RUSTFLAGS")
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join("\x1f")
+        });
+        let flags = if existing.is_empty() {
+            "-C\x1flink-arg=-Wl,-rpath,$ORIGIN".to_owned()
+        } else {
+            format!("{existing}\x1f-C\x1flink-arg=-Wl,-rpath,$ORIGIN")
+        };
+        cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
+    }
     if target.contains("android") {
         let ndk = ndk_root(inv)?;
         for var in [
@@ -985,21 +1117,35 @@ pub fn apply_environment(
         }
         cmd.env_remove("PKG_CONFIG_PATH")
             .env_remove("PKG_CONFIG_SYSROOT_DIR");
+        cmd.env(
+            "ROUKAKU_SUBTITLE_VCPKG_ROOT",
+            subtitle
+                .parent()
+                .and_then(Path::parent)
+                .context("Android subtitle root")?,
+        );
         cmd.env("ANDROID_NDK_HOME", &ndk)
             .env("ANDROID_NDK_ROOT", ndk)
             .env("PKG_CONFIG_ALLOW_CROSS", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
         let pkg_config = if let Some(path) = env::var_os("PKG_CONFIG") {
             PathBuf::from(path)
-        } else if let Some(path) = executable("pkgconf").or_else(|| executable("pkg-config")) {
-            path
-        } else {
+        } else if cfg!(windows) {
+            // Use vcpkg's native Windows pkgconf, not an unrelated Perl/MSYS
+            // wrapper from PATH (which can drop or rewrite cross include flags).
             let tools = inv.root.join(".work/vcpkg-downloads/tools/msys2");
             walkdir::WalkDir::new(&tools)
                 .into_iter()
                 .filter_map(|e| e.ok())
-                .find(|e| e.file_name() == "pkgconf.exe" && e.file_type().is_file())
+                .find(|e| {
+                    e.file_type().is_file()
+                        && e.path().ends_with("mingw64/bin/pkgconf.exe")
+                })
                 .map(|e| e.path().to_owned())
+                .context("vcpkg's native pkgconf is missing; run cargo xtask deps for this Android target")?
+        } else {
+            executable("pkgconf")
+                .or_else(|| executable("pkg-config"))
                 .context("pkg-config is required for Android subtitle dependencies")?
         };
         cmd.env("PKG_CONFIG", pkg_config);
@@ -1042,24 +1188,43 @@ pub fn apply_environment(
     }
     Ok(())
 }
-pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
+pub fn prepare(
+    inv: &Inventory,
+    target: &str,
+    core: Option<&str>,
+    allow_dirty_sources: bool,
+) -> Result<()> {
     let target_spec = inv.target(target)?;
     if let Some(core) = core {
         inv.require_supported(core, target)?;
     }
-    if !matches!(target_spec.platform.as_str(), "windows" | "android") {
+    if crate::apple::supported(target) {
+        if let Some(id) = core {
+            crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
+        }
+        return doctor(inv, target, core);
+    }
+    if !matches!(
+        target_spec.platform.as_str(),
+        "windows" | "android" | "linux"
+    ) {
         bail!("no dependency preparation path for blocked target {target}");
     }
     if let Some(id) = core {
-        crate::sources::prepare(inv, inv.core(id)?)?;
+        crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
     }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
+    if target_spec.platform == "linux"
+        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
+    {
+        return doctor(inv, target, core);
+    }
     let pins = lock(inv)?;
     prepare_native_inputs(inv, &pins, selected)?;
     if selected.dxc {
         dxc(inv)?;
     }
-    if selected.bison {
+    if selected.bison && target_spec.platform == "windows" {
         let archive = inv.root.join(".work/downloads/win_flex_bison-2.5.25.zip");
         download(&pins.bison_url, &pins.bison_sha256, &archive)?;
         let out = inv.root.join(".work/bison");
@@ -1142,10 +1307,21 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
             } else {
                 "x64-android-dynbidi"
             }
+        } else if target_spec.platform == "linux" {
+            "x64-linux-dynamic"
         } else {
             &pins.subtitle_windows_triplet
         };
-        let install = inv.root.join(".work/vcpkg-subtitle/installed");
+        // vcpkg manifest mode removes packages for other triplets from an install root.
+        // Keep each Android ABI independent, including from desktop dependency trees.
+        let install = if matches!(target_spec.platform.as_str(), "android" | "linux") {
+            inv.root
+                .join(".work/vcpkg-subtitle")
+                .join(target)
+                .join("installed")
+        } else {
+            inv.root.join(".work/vcpkg-subtitle/installed")
+        };
         fs::create_dir_all(install.parent().unwrap())?;
         let mut command = vcpkg_command(inv, &binary)?;
         command
@@ -1171,9 +1347,16 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
             vcpkg.join(".vcpkg-root"),
             install.parent().unwrap().join(".vcpkg-root"),
         )?;
+        if target_spec.platform == "linux" {
+            prepare_linux_runtime(inv, target, "subtitle")?;
+        }
     }
     if selected.ffmpeg {
-        let ff = inv.root.join(".work/vcpkg-ffmpeg");
+        let ff = if target_spec.platform == "linux" {
+            inv.root.join(".work/vcpkg-ffmpeg").join(target)
+        } else {
+            inv.root.join(".work/vcpkg-ffmpeg")
+        };
         fs::create_dir_all(&ff)?;
         run(vcpkg_command(inv, &binary)?
             .arg("install")
@@ -1182,7 +1365,14 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
                 "--x-manifest-root={}",
                 inv.root.join("build/vcpkg/ffmpeg").display()
             ))
-            .args(["--triplet", &pins.ffmpeg_windows_triplet])
+            .args([
+                "--triplet",
+                if target_spec.platform == "linux" {
+                    "x64-linux-dynamic"
+                } else {
+                    &pins.ffmpeg_windows_triplet
+                },
+            ])
             .arg(format!(
                 "--x-install-root={}",
                 ff.join("installed").display()
@@ -1192,6 +1382,9 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
                 "--clean-packages-after-build",
             ])
             .env("VCPKG_DISABLE_METRICS", "1"))?;
+        if target_spec.platform == "linux" {
+            prepare_linux_runtime(inv, target, "ffmpeg")?;
+        }
         fs::copy(vcpkg.join(".vcpkg-root"), ff.join(".vcpkg-root"))?;
     }
     if selected.native_vcpkg {
@@ -1218,7 +1411,11 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
             .arg(format!("--x-install-root={}", installed.display()))
             .args([
                 "--triplet",
-                "x64-windows",
+                if target_spec.platform == "linux" {
+                    "x64-linux-dynamic"
+                } else {
+                    "x64-windows"
+                },
                 "--clean-buildtrees-after-build",
                 "--clean-packages-after-build",
             ])
@@ -1228,11 +1425,18 @@ pub fn prepare(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> 
             command.arg(format!("--overlay-ports={}", overlay.display()));
         }
         run(&mut command)?;
+        if target_spec.platform == "linux" {
+            prepare_linux_runtime_tree(
+                &installed.join("x64-linux-dynamic"),
+                &linux_runtime(inv, target, &native.id),
+                target,
+            )?;
+        }
     }
     Ok(())
 }
 
-pub fn prepare_all(inv: &Inventory, target: &str) -> Result<()> {
+pub fn prepare_all(inv: &Inventory, target: &str, allow_dirty_sources: bool) -> Result<()> {
     inv.target(target)?;
     let mut prepared = false;
     for core in &inv.cores {
@@ -1240,7 +1444,7 @@ pub fn prepare_all(inv: &Inventory, target: &str) -> Result<()> {
             eprintln!("{}: blocked: {reason}", core.id);
             continue;
         }
-        prepare(inv, target, Some(&core.id))?;
+        prepare(inv, target, Some(&core.id), allow_dirty_sources)?;
         prepared = true;
     }
     if !prepared {
@@ -1349,5 +1553,47 @@ mod native_tests {
             .next()
             .is_none());
         assert_eq!(package::sha256(&archive).unwrap(), before);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_runtime_links_cannot_copy_files_outside_the_pinned_installation() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let mut inv =
+            Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        inv.root = temp.path().to_owned();
+        let target = "x86_64-unknown-linux-gnu";
+        let lib = linux_install(&inv, target, "subtitle").join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        let outside = temp.path().join("private.so");
+        fs::write(&outside, b"not a redistributable input").unwrap();
+        symlink(&outside, lib.join("libass.so.9")).unwrap();
+        assert!(prepare_linux_runtime(&inv, target, "subtitle").is_err());
+        assert_eq!(fs::read(&outside).unwrap(), b"not a redistributable input");
+        assert!(fs::read_dir(linux_runtime(&inv, target, "subtitle"))
+            .unwrap()
+            .next()
+            .is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_runtime_copy_rejects_dangling_output_links() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let mut inv =
+            Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        inv.root = temp.path().to_owned();
+        let target = "x86_64-unknown-linux-gnu";
+        let lib = linux_install(&inv, target, "subtitle").join("lib");
+        let runtime = linux_runtime(&inv, target, "subtitle");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(lib.join("libass.so.9"), b"synthetic source").unwrap();
+        let outside = temp.path().join("must-not-be-created");
+        symlink(&outside, runtime.join("libass.so.9")).unwrap();
+        assert!(prepare_linux_runtime(&inv, target, "subtitle").is_err());
+        assert!(!outside.exists());
     }
 }

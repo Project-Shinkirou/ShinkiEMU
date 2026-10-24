@@ -173,15 +173,15 @@ zstd = "0.13"
 anyhow = "1"
 ndk-sys = "0.6.0"
 oboe = "0.6.1"
-roukaku-byte-source = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-media = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-platform = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
-roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "ba28948b5dd00188fe53a24881a64dcaf0c69e2a" }
+roukaku-byte-source = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-media = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-platform = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
+roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "341d3dc8d5ed79170cc7b3b197f8f65093356a9f" }
 
 # External cores statically linked on Android resolve the ABI from this
 # repository's Git URL; map that source back onto the workspace member.

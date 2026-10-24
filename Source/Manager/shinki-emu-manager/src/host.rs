@@ -448,7 +448,21 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     settings.device_memory_hints = wgpu::MemoryHints::Performance;
     // The final-frame effects use compute and storage textures; Slint's UI-only
     // WebGL2 defaults expose neither capability.
-    settings.device_required_limits = wgpu::Limits::default();
+    #[cfg(not(target_os = "android"))]
+    {
+        settings.device_required_limits = wgpu::Limits::default();
+    }
+    #[cfg(target_os = "android")]
+    {
+        // Keep desktop-class compute and texture budgets; only the uniform
+        // buffer baseline differs on Android. Slint negotiates texture
+        // resolution against the selected adapter's limits.
+        settings.device_required_limits = wgpu::Limits {
+            max_uniform_buffer_binding_size: wgpu::Limits::downlevel_defaults()
+                .max_uniform_buffer_binding_size,
+            ..wgpu::Limits::default()
+        };
+    }
     settings.device_required_features |= crate::effects::FilterEngine::required_features();
     let selector = slint::BackendSelector::new();
     // Android has only the android-activity backend, installed by `android_main`;

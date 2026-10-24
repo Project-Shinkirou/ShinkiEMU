@@ -87,11 +87,25 @@ jobs:
         if: runner.os == 'Windows'
         with:
           arch: x64
+      - name: Linux desktop prerequisites
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.status == 'supported'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+          sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
       - uses: actions/setup-java@v4
         if: contains(matrix.target, 'android') && matrix.status == 'supported'
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+      - name: Android native build prerequisites
+        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm pkg-config
       - name: Android SDK
         if: contains(matrix.target, 'android') && matrix.status == 'supported'
         shell: bash
@@ -101,7 +115,7 @@ jobs:
           set +o pipefail
           yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses > /dev/null
           set -o pipefail
-          "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-36' 'build-tools;36.0.0' 'ndk;30.0.15729638'
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" --channel=3 'platforms;android-36' 'build-tools;36.0.0' 'ndk;30.0.15729638'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.15729638" >> "$GITHUB_ENV"
       - name: Prepare supported build
         if: matrix.status == 'supported'
@@ -111,7 +125,14 @@ jobs:
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           rustup target add $env:TARGET
-          if ($env:COMPONENT -eq 'manager') { cargo xtask deps --target $env:TARGET }
+          if ($env:COMPONENT -eq 'manager') {
+            cargo xtask deps --target $env:TARGET
+            if ($env:TARGET.Contains('android')) {
+              $other = if ($env:TARGET -eq 'aarch64-linux-android') { 'x86_64-linux-android' } else { 'aarch64-linux-android' }
+              rustup target add $other
+              cargo xtask deps --target $other
+            }
+          }
           else { cargo xtask deps --target $env:TARGET --core $env:COMPONENT }
       - name: Build and package
         env:
@@ -123,6 +144,24 @@ jobs:
           SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
           SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
+      - name: Smoke packaged Linux Manager
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status == 'supported'
+        shell: bash
+        run: |
+          archive=$(jq -er '.artifact' .work/ci-report.json)
+          work=$(mktemp -d "${TMPDIR:-/tmp}/shinki-linux-smoke.XXXXXX")
+          trap 'rm -rf "$work"' EXIT
+          unzip -q "$archive" -d "$work"
+          mkdir -p "$work/state"/{data,config,cache,runtime}
+          chmod 700 "$work/state/runtime"
+          export XDG_DATA_HOME="$work/state/data" XDG_CONFIG_HOME="$work/state/config"
+          export XDG_CACHE_HOME="$work/state/cache" XDG_RUNTIME_DIR="$work/state/runtime"
+          set +e
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 15s "$work/shinki-emu-manager" > "$work/manager.log" 2>&1
+          status=$?
+          set -e
+          cat "$work/manager.log"
+          test "$status" -eq 124
       - name: Prepare Release files without publishing
         env:
           TARGET: ${{ matrix.target }}

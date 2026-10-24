@@ -52,7 +52,12 @@ pub(super) fn program_file() -> Result<PathBuf, String> {
 }
 
 pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
-    Some(program_file().ok()?.parent()?.to_path_buf())
+    let parent = program_file().ok()?.parent()?.to_path_buf();
+    #[cfg(target_os = "macos")]
+    if parent.file_name().is_some_and(|name| name == "MacOS") {
+        return Some(parent.parent()?.join("Resources"));
+    }
+    Some(parent)
 }
 
 pub(super) fn restart() -> Result<(), String> {

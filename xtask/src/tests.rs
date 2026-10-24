@@ -278,6 +278,33 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
     fs::write(dir.join(&m.library), "corrupt").unwrap();
     assert!(verify_core(&dir).is_err());
 }
+#[cfg(unix)]
+#[test]
+fn desktop_archive_preserves_executables_without_executable_notices() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let executable = temp.path().join("manager");
+    let notice = temp.path().join("NOTICE");
+    fs::write(&executable, b"public synthetic executable").unwrap();
+    fs::write(&notice, b"public synthetic notice").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o751)).unwrap();
+    fs::set_permissions(&notice, fs::Permissions::from_mode(0o640)).unwrap();
+    let archive = temp.path().join("package.zip");
+    zip_entries(
+        &[(executable, "manager".into()), (notice, "NOTICE".into())],
+        &archive,
+    )
+    .unwrap();
+    let mut zip = zip::ZipArchive::new(fs::File::open(archive).unwrap()).unwrap();
+    assert_eq!(
+        zip.by_name("manager").unwrap().unix_mode().unwrap() & 0o777,
+        0o755
+    );
+    assert_eq!(
+        zip.by_name("NOTICE").unwrap().unix_mode().unwrap() & 0o777,
+        0o644
+    );
+}
 #[test]
 fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
     let t = tempfile::tempdir().unwrap();
@@ -435,9 +462,9 @@ fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
     let out = temp.path().join("sources.zip");
     // Explicitly use the test installation, not a developer override.
     let target = "aarch64-linux-android";
-    let android = temp
-        .path()
-        .join(".work/vcpkg-subtitle/installed/arm64-android-dynbidi/share/fribidi");
+    let android = temp.path().join(
+        ".work/vcpkg-subtitle/aarch64-linux-android/installed/arm64-android-dynbidi/share/fribidi",
+    );
     fs::create_dir_all(&android).unwrap();
     fs::copy(
         share.join("vcpkg.spdx.json"),

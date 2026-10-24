@@ -15,7 +15,7 @@ pub(super) const VNDB_LINK_HINT: &str = "先关联 VNDB 作品";
 
 fn host_compatibility_target() -> (&'static str, &'static str, &'static str) {
     let platform = if cfg!(target_env = "ohos") { "ohos" } else { std::env::consts::OS };
-    let variant = if cfg!(all(target_os = "ios", target_abi = "sim")) { "simulator" }
+    let variant = if cfg!(all(target_os = "ios", any(target_abi = "sim", target_arch = "x86_64"))) { "simulator" }
         else if matches!(platform, "windows" | "linux" | "macos") { "desktop" } else { "device" };
     (platform, std::env::consts::ARCH, variant)
 }

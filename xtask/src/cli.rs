@@ -28,6 +28,9 @@ pub struct DependencyOptions {
     pub core: Option<String>,
     #[arg(long)]
     pub all_cores: bool,
+    /// Reuse unpublished fork edits only when HEAD exactly matches its source pin.
+    #[arg(long)]
+    pub allow_dirty_sources: bool,
 }
 
 #[derive(Args)]
@@ -59,6 +62,11 @@ pub struct Build {
 }
 #[derive(Subcommand)]
 pub enum Command {
+    /// Build a private Apple cross image from SHINKI_APPLE_SDK_DIR.
+    AppleImage {
+        #[arg(long)]
+        target: String,
+    },
     Doctor(TargetCore),
     Deps(DependencyOptions),
     Matrix {

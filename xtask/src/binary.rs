@@ -217,9 +217,9 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     Ok(info)
 }
 
-fn system(name: &str, target: &str) -> bool {
-    let n = name.to_ascii_lowercase();
+pub(crate) fn system(name: &str, target: &str) -> bool {
     if target.contains("windows") {
+        let n = name.to_ascii_lowercase();
         return n.starts_with("api-ms-win-")
             || n.starts_with("ext-ms-win-")
             || [
@@ -302,6 +302,7 @@ fn system(name: &str, target: &str) -> bool {
             .contains(&n.as_str());
     }
     if target.contains("android") {
+        let n = name.to_ascii_lowercase();
         return [
             "libc.so",
             "libm.so",
@@ -334,6 +335,23 @@ fn system(name: &str, target: &str) -> bool {
         "ld-linux-x86-64.so.2",
         "ld-linux-aarch64.so.1",
         "libgcc_s.so.1",
+        // Linux desktop ABI supplied by the supported distribution, not bundled
+        // from the developer machine. Keep versioned SONAMEs explicit.
+        "libstdc++.so.6",
+        "libssl.so.3",
+        "libcrypto.so.3",
+        "libfontconfig.so.1",
+        "libudev.so.1",
+        "libasound.so.2",
+        // RFVP's Linux video-sys backend uses the distribution media stack.
+        "libgstreamer-1.0.so.0",
+        "libgstapp-1.0.so.0",
+        "libgstbase-1.0.so.0",
+        "libgstvideo-1.0.so.0",
+        "libglib-2.0.so.0",
+        "libgobject-2.0.so.0",
+        "libgio-2.0.so.0",
+        "libgmodule-2.0.so.0",
     ]
     .contains(&name)
 }

@@ -1,3 +1,4 @@
+mod apple;
 mod binary;
 mod build;
 mod ci;
@@ -25,6 +26,7 @@ fn run() -> Result<()> {
         .expect("xtask repository root");
     let inv = cores::Inventory::load(root)?;
     match cli.command {
+        cli::Command::AppleImage { target } => apple::image(root, &target)?,
         cli::Command::Matrix { json } => {
             let matrix = inv.matrix()?;
             if json {
@@ -46,9 +48,14 @@ fn run() -> Result<()> {
         }
         cli::Command::Deps(args) => {
             if args.all_cores {
-                dependencies::prepare_all(&inv, &args.target)?;
+                dependencies::prepare_all(&inv, &args.target, args.allow_dirty_sources)?;
             } else {
-                dependencies::prepare(&inv, &args.target, args.core.as_deref())?;
+                dependencies::prepare(
+                    &inv,
+                    &args.target,
+                    args.core.as_deref(),
+                    args.allow_dirty_sources,
+                )?;
             }
         }
         cli::Command::Build(args) => {

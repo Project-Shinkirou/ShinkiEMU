@@ -273,11 +273,19 @@ pub fn run(
         package::atomic_directory(&root, |work| {
             let staged = work.join("package");
             let package_dir = package::package(inv, target, component, version, &staged)?;
-            let platform = format!(
-                "{}-{}",
-                inv.target(target)?.platform,
-                inv.target(target)?.architecture
-            );
+            let platform = if inv.target(target)?.platform == "ios" {
+                format!(
+                    "ios-{}-{}-test",
+                    inv.target(target)?.architecture,
+                    inv.target(target)?.variant
+                )
+            } else {
+                format!(
+                    "{}-{}",
+                    inv.target(target)?.platform,
+                    inv.target(target)?.architecture
+                )
+            };
             let filename = format!(
                 "shinki-emu-{}-{}-{version}-{platform}.zip",
                 if component == "manager" {
