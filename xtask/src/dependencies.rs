@@ -497,9 +497,12 @@ pub fn ndk_root(inv: &Inventory) -> Result<PathBuf> {
         .context("set ANDROID_NDK_HOME or ANDROID_HOME")?;
     let props = fs::read_to_string(root.join("source.properties"))
         .context("NDK source.properties missing")?;
+    // Pre-release NDKs carry a suffix (`30.0.15729638-beta2`); the build number is the identity.
     if !props.lines().any(|s| {
-        s.split_once('=')
-            .is_some_and(|(k, v)| k.trim() == "Pkg.Revision" && v.trim() == l.android_ndk_version)
+        s.split_once('=').is_some_and(|(k, v)| {
+            k.trim() == "Pkg.Revision"
+                && v.trim().split('-').next() == Some(l.android_ndk_version.as_str())
+        })
     }) {
         bail!(
             "NDK {} required at {}",
