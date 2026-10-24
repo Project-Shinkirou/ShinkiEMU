@@ -264,6 +264,8 @@ fn system(name: &str, target: &str) -> bool {
                 "powrprof.dll",
                 "hid.dll",
                 "avrt.dll",
+                "mmdevapi.dll",
+                "avicap32.dll",
                 "propsys.dll",
                 "mf.dll",
                 "mfplat.dll",

@@ -763,7 +763,9 @@ pub fn package(
         }
         // Manifest-owned license assets take precedence over inventory duplicates.
         let mut seen = BTreeSet::new();
-        m.licenses.retain(|a| seen.insert(a.source.clone()));
+        m.licenses.retain(|a| {
+            seen.insert(dunce::canonicalize(&a.source).unwrap_or_else(|_| a.source.clone()))
+        });
         for path in &c.resources {
             m.resources.push(BuildAsset {
                 source: inv.root.join(path),
