@@ -236,7 +236,12 @@ impl Inventory {
                 include.push(MatrixRow {
                     target: t.triple.clone(),
                     component: component.into(),
-                    runner: t.runner.clone(),
+                    // A blocked row only records its report; it needs no target host.
+                    runner: if reason.is_some() {
+                        "ubuntu-24.04".into()
+                    } else {
+                        t.runner.clone()
+                    },
                     platform: t.platform.clone(),
                     architecture: t.architecture.clone(),
                     variant: t.variant.clone(),
