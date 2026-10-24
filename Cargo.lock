@@ -5221,7 +5221,7 @@ checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=b55c6f9c0ef06495602570eae3cfdd393ccc7db5#b55c6f9c0ef06495602570eae3cfdd393ccc7db5"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -6149,7 +6149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7137,7 +7137,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=b55c6f9c0ef06495602570eae3cfdd393ccc7db5#b55c6f9c0ef06495602570eae3cfdd393ccc7db5"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -8050,10 +8050,11 @@ dependencies = [
 [[package]]
 name = "shinki-emu-build"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=035155c78761768bc088169a4eca982f82e9d577#035155c78761768bc088169a4eca982f82e9d577"
+source = "git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=9cd899babbb54cbc84c3e9fbddfe192c2f9200c8#9cd899babbb54cbc84c3e9fbddfe192c2f9200c8"
 dependencies = [
  "anyhow",
  "cc",
+ "dunce",
  "object",
  "serde",
  "serde_json",
@@ -8302,13 +8303,13 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=b55c6f9c0ef06495602570eae3cfdd393ccc7db5#b55c6f9c0ef06495602570eae3cfdd393ccc7db5"
 dependencies = [
  "anyhow",
  "parking_lot",
  "rfvp",
  "shinki-emu-abi",
- "shinki-emu-build 0.1.0 (git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=035155c78761768bc088169a4eca982f82e9d577)",
+ "shinki-emu-build 0.1.0 (git+https://github.com/Project-Shinkirou/ShinkiEMU?rev=9cd899babbb54cbc84c3e9fbddfe192c2f9200c8)",
  "winit",
 ]
 
@@ -11003,7 +11004,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -11630,7 +11631,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=bf5fb9ead2cce6abd711e9e294fc893192c8caf6#bf5fb9ead2cce6abd711e9e294fc893192c8caf6"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=b55c6f9c0ef06495602570eae3cfdd393ccc7db5#b55c6f9c0ef06495602570eae3cfdd393ccc7db5"
 dependencies = [
  "byteorder",
  "log 0.4.34",

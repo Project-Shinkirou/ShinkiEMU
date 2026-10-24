@@ -279,6 +279,8 @@ fn system(name: &str, target: &str) -> bool {
                 "dbgcore.dll",
                 "msimg32.dll",
                 "comdlg32.dll",
+                "comctl32.dll",
+                "uiautomationcore.dll",
                 "wtsapi32.dll",
                 "netapi32.dll",
                 "wintrust.dll",
