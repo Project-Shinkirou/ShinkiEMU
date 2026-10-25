@@ -32,6 +32,8 @@ pub struct CoreSource {
     pub repo: String,
     pub branch: String,
     pub rev: String,
+    /// Original upstream project this organization fork tracks.
+    pub upstream: String,
 }
 
 impl Core {
@@ -73,6 +75,19 @@ impl CoreSource {
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
             bail!("core source revision must be an exact lowercase 40-hex commit");
+        }
+        let upstream = self
+            .upstream
+            .strip_prefix("https://github.com/")
+            .context("core upstream must be a GitHub repository URL")?;
+        let mut parts = upstream.split('/');
+        let (Some(owner), Some(name), None) = (parts.next(), parts.next(), parts.next()) else {
+            bail!("core upstream must name one GitHub owner/repository");
+        };
+        crate::package::portable(owner)?;
+        crate::package::portable(name)?;
+        if owner.eq_ignore_ascii_case("Project-Shinkirou") {
+            bail!("core upstream must be the original project, not the organization fork");
         }
         Ok(())
     }

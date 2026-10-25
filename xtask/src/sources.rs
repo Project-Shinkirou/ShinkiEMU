@@ -1214,6 +1214,7 @@ mod tests {
             repo: source.to_string_lossy().into_owned(),
             branch: "shinki".into(),
             rev: first.clone(),
+            upstream: "https://github.com/xmoezzz/rfvp".into(),
         });
         (temp, inv, core, source, first, second)
     }
