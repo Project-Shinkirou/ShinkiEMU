@@ -612,7 +612,7 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     }
     Ok(dirs)
 }
-fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, String)>> {
+fn licenses(inv: &Inventory, result: &BuildResult, scratch: &Path) -> Result<Vec<(PathBuf, String)>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
     if selected.subtitle && result.target == "x86_64-unknown-linux-gnu" {
@@ -669,10 +669,6 @@ fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, Strin
     if result.component == "manager" {
         entries.extend([
             (
-                inv.root.join("ThirdParty/mlua/LICENSE"),
-                "licenses/mlua/LICENSE".into(),
-            ),
-            (
                 inv.root
                     .join("Source/Manager/shinki-emu-manager-ui-slint/material-1.1.0/LICENSE.md"),
                 "licenses/slint-material/LICENSE.md".into(),
@@ -683,24 +679,10 @@ fn licenses(inv: &Inventory, result: &BuildResult) -> Result<Vec<(PathBuf, Strin
                 "licenses/material-symbols/LICENSE".into(),
             ),
         ]);
-        let metadata = build::cargo_metadata(inv, &result.target)?;
-        let packages = metadata["packages"]
-            .as_array()
-            .context("cargo metadata packages")?;
-        let name = "luau0-src";
-        let package = packages
-            .iter()
-            .find(|package| package["name"] == name)
-            .with_context(|| format!("locked {name} source missing"))?;
-        let manifest = Path::new(
-            package["manifest_path"]
-                .as_str()
-                .context("source manifest")?,
-        );
-        entries.push((
-            manifest.parent().unwrap().join("LICENSE"),
-            format!("licenses/{name}/LICENSE"),
-        ));
+        entries.extend(crate::rust_licenses::entries(
+            &build::cargo_metadata(inv, &result.target)?,
+            scratch,
+        )?);
     }
     Ok(entries)
 }
@@ -797,7 +779,7 @@ pub fn package(
                     entries.push((inv.root.join(".work/dxc").join(name), name.into()));
                 }
             }
-            entries.extend(licenses(inv, &result)?);
+            entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
             copy_entries(&entries, stage)?;
             drop(temp);
@@ -856,7 +838,7 @@ pub fn package(
                 ),
             });
         }
-        for (source, dest) in licenses(inv, &result)? {
+        for (source, dest) in licenses(inv, &result, out)? {
             result
                 .core_build
                 .as_mut()
@@ -942,7 +924,7 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
         bundled.push(name.clone());
         entries.push((ndk.join(notice), format!("assets/{name}")));
     }
-    for (source, name) in metadata.into_iter().chain(licenses(inv, result)?) {
+    for (source, name) in metadata.into_iter().chain(licenses(inv, result, temp.path())?) {
         bundled.push(name.clone());
         entries.push((source, format!("assets/{name}")));
     }

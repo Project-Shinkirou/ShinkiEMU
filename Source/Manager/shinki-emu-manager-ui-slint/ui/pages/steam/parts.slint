@@ -1,0 +1,426 @@
+import { MaterialPalette, MaterialText, MaterialTypography, TextButton, CheckBox, CheckState, Icon, CircularProgressIndicator } from "@material";
+import { Steam, SteamGame, SteamDepot, SteamTransfer } from "../../globals.slint";
+import { Icons } from "../../icons.slint";
+import { Theme } from "../../theme.slint";
+import { StatusChip } from "../settings/common.slint";
+import { PrepareProgress } from "../library.slint";
+
+export global SteamText {
+    public pure function transfer-active(state: string) -> bool {
+        return state == "preparing" || state == "downloading" || state == "verifying" || state == "cancelling";
+    }
+
+    public pure function transfer-title(state: string) -> string {
+        return state == "preparing" ? "正在准备下载"
+            : state == "downloading" ? "正在下载"
+            : state == "verifying" ? "正在校验文件"
+            : state == "cancelling" ? "正在取消"
+            : state == "cancelled" ? "已取消"
+            : state == "complete" ? "下载完成"
+            : state == "error" ? "下载失败"
+            : "";
+    }
+}
+
+// Centred icon, title and body for loading / empty / error states.
+export component StateMessage {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> body;
+    in property <bool> busy;
+    in property <bool> error;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    accessible-role: text;
+    accessible-label: root.title;
+    accessible-description: root.body;
+
+    l := VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        padding: 24px;
+
+        HorizontalLayout {
+            alignment: center;
+            if root.busy : CircularProgressIndicator {
+                width: 48px;
+                height: 48px;
+                indeterminate: true;
+            }
+            if !root.busy : Icon {
+                width: 40px;
+                height: 40px;
+                source: root.icon;
+                colorize: root.error ? MaterialPalette.error : MaterialPalette.on-surface-variant;
+            }
+        }
+        MaterialText {
+            text: root.title;
+            style: MaterialTypography.title-medium;
+            color: root.error ? MaterialPalette.error : MaterialPalette.on-surface;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        if root.body != "" : MaterialText {
+            text: root.body;
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        @children
+    }
+}
+
+// Tonal error card with an icon; used for login and library failures.
+export component ErrorBanner {
+    in property <string> title;
+    in property <string> text;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.title == "" ? root.text : root.title + "。" + root.text;
+
+    Rectangle {
+        border-radius: 12px;
+        background: MaterialPalette.error-container;
+    }
+
+    l := HorizontalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            Icon {
+                width: 24px;
+                height: 24px;
+                source: Icons.error;
+                colorize: MaterialPalette.on-error-container;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            if root.title != "" : MaterialText {
+                text: root.title;
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.on-error-container;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            MaterialText {
+                text: root.text;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-error-container;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+    }
+}
+
+// Installed / update badges of an owned game.
+export component GameBadges {
+    in property <SteamGame> game;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    min-width: l.min-width;
+    preferred-width: l.preferred-width;
+    horizontal-stretch: 0;
+
+    l := HorizontalLayout {
+        spacing: 6px;
+        if root.game.update-available : StatusChip {
+            text: "有可用更新";
+            background: MaterialPalette.tertiary-container;
+            foreground: MaterialPalette.on-tertiary-container;
+        }
+        if root.game.installed : StatusChip {
+            text: "已安装";
+        }
+    }
+}
+
+// One owned game in the list.
+export component SteamGameRow {
+    in property <SteamGame> game;
+    in property <bool> selected;
+    callback activate();
+
+    min-height: max(64px, Theme.touch-target, l.min-height);
+    preferred-height: max(64px, l.preferred-height);
+    forward-focus: keys;
+    accessible-role: list-item;
+    accessible-label: root.game.name;
+    accessible-description: root.detail-line;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.activate(); }
+
+    property <string> detail-line: root.game.size + (root.game.size != "" && root.game.platforms != "" ? " · " : "") + root.game.platforms;
+
+    Rectangle {
+        border-radius: 12px;
+        background: root.selected ? MaterialPalette.secondary-container : transparent;
+        border-width: keys.has-focus ? 2px : 0px;
+        border-color: MaterialPalette.secondary;
+    }
+
+    Rectangle {
+        border-radius: 12px;
+        background: touch.pressed ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-press)
+            : touch.has-hover ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-hover)
+            : transparent;
+    }
+
+    l := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 12px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            MaterialText {
+                text: root.game.name;
+                style: MaterialTypography.title-medium;
+                color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface;
+                overflow: elide;
+            }
+            if root.detail-line != "" : MaterialText {
+                text: root.detail-line;
+                style: MaterialTypography.body-medium;
+                color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
+                overflow: elide;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GameBadges { game: root.game; }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            keys.focus();
+            root.activate();
+        }
+    }
+
+    keys := FocusScope {
+        x: 0px;
+        width: 0px;
+        key-pressed(event) => {
+            if event.text == " " || event.text == "\n" {
+                root.activate();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// Depot with a checkbox that always shows the stored selection; the whole row
+// toggles, and the checkbox itself never sees the click.
+export component DepotRow {
+    in property <SteamDepot> depot;
+    in property <bool> enabled: true;
+
+    property <string> title: root.depot.language != "" && root.depot.name == "" ? root.depot.language : root.depot.name;
+    property <string> detail: (root.depot.platform != "" ? root.depot.platform + " · " : "")
+        + (root.depot.language != "" && root.depot.name != "" ? root.depot.language + " · " : "")
+        + root.depot.size;
+
+    function toggle() {
+        if root.enabled {
+            Steam.select-depot(root.depot.depot-id, !root.depot.selected);
+        }
+    }
+
+    min-height: max(56px, Theme.touch-target, l.min-height);
+    preferred-height: max(56px, l.preferred-height);
+    forward-focus: keys;
+    accessible-role: checkbox;
+    accessible-label: root.title;
+    accessible-description: root.detail;
+    accessible-checkable: true;
+    accessible-checked: root.depot.selected;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.toggle(); }
+
+    Rectangle {
+        background: touch.pressed ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-press)
+            : touch.has-hover ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-hover)
+            : transparent;
+        border-width: keys.has-focus ? 2px : 0px;
+        border-color: MaterialPalette.secondary;
+        border-radius: 8px;
+    }
+
+    l := HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 16px;
+        spacing: 4px;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            CheckBox {
+                check-state: root.depot.selected ? CheckState.checked : CheckState.unchecked;
+                enabled: root.enabled;
+                accessible-role: none;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            MaterialText {
+                text: root.title;
+                style: MaterialTypography.body-large;
+                color: root.enabled ? MaterialPalette.on-surface : MaterialPalette.on-surface.with-alpha(0.38);
+                overflow: elide;
+            }
+            MaterialText {
+                text: root.detail != "" ? root.detail : "内容仓库 " + root.depot.depot-id;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                overflow: elide;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            keys.focus();
+            root.toggle();
+        }
+    }
+
+    keys := FocusScope {
+        x: 0px;
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == " " || event.text == "\n" {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// Download / verify progress: state, bar, bytes, files, speed and ETA.
+export component TransferPanel {
+    in property <SteamTransfer> transfer;
+    // Prefix the title with the game name (list strip).
+    in property <bool> show-name;
+
+    property <bool> active: SteamText.transfer-active(root.transfer.state);
+    property <bool> failed: root.transfer.state == "error";
+    // Amounts and rate on separate lines so narrow widths never split "MB/s".
+    property <string> amounts: root.transfer.bytes
+        + (root.transfer.files != "" ? (root.transfer.bytes != "" ? " · " : "") + root.transfer.files : "");
+    property <string> rate: !root.active ? ""
+        : root.transfer.speed + (root.transfer.eta != "" ? (root.transfer.speed != "" ? " · " : "") + root.transfer.eta : "");
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    vertical-stretch: 0;
+    accessible-role: groupbox;
+    accessible-label: SteamText.transfer-title(root.transfer.state);
+
+    Rectangle {
+        border-radius: 16px;
+        background: root.failed ? MaterialPalette.error-container : MaterialPalette.surface-container-high;
+    }
+
+    l := VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                MaterialText {
+                    text: SteamText.transfer-title(root.transfer.state)
+                        + (root.transfer.progress >= 0 && root.active ? " · " + round(root.transfer.progress * 100) + "%" : "");
+                    style: MaterialTypography.title-small;
+                    color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface;
+                    overflow: elide;
+                }
+                if root.show-name && root.transfer.name != "" : MaterialText {
+                    text: root.transfer.name;
+                    style: MaterialTypography.body-medium;
+                    color: MaterialPalette.on-surface-variant;
+                    overflow: elide;
+                }
+            }
+            if root.active : VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                TextButton {
+                    text: "取消";
+                    enabled: root.transfer.state != "cancelling";
+                    clicked => { Steam.cancel(); }
+                }
+            }
+        }
+
+        if root.active || root.transfer.state == "complete" : PrepareProgress {
+            progress: root.transfer.state == "complete" ? 1 : root.transfer.state == "cancelling" ? -1 : root.transfer.progress;
+        }
+
+        if root.amounts != "" || root.rate != "" : VerticalLayout {
+            spacing: 2px;
+            if root.amounts != "" : MaterialText {
+                text: root.amounts;
+                style: MaterialTypography.body-medium;
+                color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            if root.rate != "" : MaterialText {
+                text: root.rate;
+                style: MaterialTypography.body-medium;
+                color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+        if root.transfer.status != "" : MaterialText {
+            text: root.transfer.status;
+            style: MaterialTypography.body-medium;
+            color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        if root.transfer.error != "" : MaterialText {
+            text: root.transfer.error;
+            style: MaterialTypography.body-medium;
+            color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.error;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+    }
+}

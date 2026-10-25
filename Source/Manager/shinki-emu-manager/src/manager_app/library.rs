@@ -74,7 +74,10 @@ impl ShinkiEmuManagerController {
         Ok(PathBuf::from(self.game(game_id)?.location))
     }
 
-    pub(super) fn remove_from_library(&mut self, game_id: &str) -> Result<ManagerViewModel, String> {
+    pub(super) fn remove_from_library(
+        &mut self,
+        game_id: &str,
+    ) -> Result<ManagerViewModel, String> {
         if self
             .active
             .as_ref()
@@ -214,6 +217,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             diagnostic_severity: "info",
             plugin_errors: BTreeMap::new(),
+            steam: steam::SteamRuntime::new(&data_dir),
             data_dir,
             extensions: None,
             game_roots,

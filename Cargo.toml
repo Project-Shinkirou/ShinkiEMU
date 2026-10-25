@@ -13,6 +13,7 @@ members = [
     "Source/Manager/shinki-emu-manager-core",
     "Source/Providers/shinki-emu-translation",
     "Source/Providers/shinki-emu-metadata",
+    "Source/Providers/shinki-emu-steam",
     "Source/Manager/shinki-emu-manager-ui-slint",
     "Source/Manager/shinki-emu-manager",
 ]

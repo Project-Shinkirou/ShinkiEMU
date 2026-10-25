@@ -12,7 +12,7 @@ import { CoverCard, GameListRow, SortHeader, GameMenu, GameNav } from "../compon
 import { DetailPanel } from "./detail.slint";
 
 // Linear progress that also animates while the total is unknown (Material's indicator stays static).
-component PrepareProgress {
+export component PrepareProgress {
     in property <float> progress;
 
     property <bool> indeterminate: root.progress < 0;
@@ -303,7 +303,7 @@ export component LibraryPage {
                         horizontal-stretch: 0;
                         icon: root.narrow ? @image-url("") : Icons.add;
                         text: "添加游戏";
-                        clicked => { Library.add-directory(); }
+                        clicked => { App.page = "add-game"; }
                     }
                 }
 
@@ -658,7 +658,7 @@ export component LibraryPage {
                             FilledButton {
                                 icon: Icons.add;
                                 text: "添加游戏";
-                                clicked => { Library.add-directory(); }
+                                clicked => { App.page = "add-game"; }
                             }
                         }
                         if Library.prepare-state != "unprepared" && Library.query == "" && Settings.roots.length > 0 && root.local-filter != "all" && !root.preparing : EmptyState {
@@ -675,7 +675,7 @@ export component LibraryPage {
                             OutlineButton {
                                 icon: Icons.add;
                                 text: "添加游戏";
-                                clicked => { Library.add-directory(); }
+                                clicked => { App.page = "add-game"; }
                             }
                         }
                     }

@@ -36,6 +36,8 @@ mod modals;
 mod pointer;
 #[path = "host_settings_callbacks.rs"]
 mod settings_callbacks;
+#[path = "host_steam_callbacks.rs"]
+mod steam_callbacks;
 #[path = "host_window_commands.rs"]
 mod window_commands;
 #[path = "host_events.rs"]
@@ -85,6 +87,10 @@ pub trait ShinkiUnderlayRenderer: 'static {
 }
 
 pub trait ManagerController: 'static {
+    fn steam_action(
+        &mut self,
+        action: shinki_emu_manager_ui_slint::SteamAction,
+    ) -> Result<ManagerViewModel, String>;
     fn game_fullscreen(&self) -> bool {
         false
     }
@@ -627,6 +633,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     game_callbacks::install(&wiring, &renderer, &runtime_schedule);
     settings_callbacks::install(&wiring, &restart);
     library_callbacks::install(&wiring);
+    steam_callbacks::install(&wiring);
     {
         let close_controller = controller.clone();
         let close_adapter = std::rc::Rc::downgrade(&adapter);

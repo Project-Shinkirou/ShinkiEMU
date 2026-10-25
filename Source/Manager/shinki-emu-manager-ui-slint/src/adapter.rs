@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use slint::{
+    ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+};
 
 use crate::{
     covers, list_model::ListModel, notices, App, Appearance, AppearanceViewModel, BangumiProgress,
@@ -10,7 +12,9 @@ use crate::{
     GamepadBindingViewModel, Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel,
     Network, Notices, Onboarding, Patch, PatchGame, PatchGameViewModel, PatchState,
     PatchStateViewModel, PlaySession, PlaySessionViewModel, Recipe, RecipeViewModel, RenderState,
-    RenderViewModel, SelectedGame, Selection, Session, Settings, TranslationForm,
+    RenderViewModel, SelectedGame, Selection, Session, Settings, Steam, SteamAction, SteamDepot,
+    SteamDepotViewModel, SteamGame, SteamGameViewModel, SteamLoadState, SteamLoginState,
+    SteamTransfer, SteamTransferState, SteamTransferViewModel, TranslationForm,
     TranslationFormViewModel,
 };
 
@@ -40,6 +44,12 @@ pub struct SlintManagerAdapter {
     filter_fields: Rc<VecModel<ConfigField>>,
     actions: ListModel<EngineActionViewModel, EngineAction>,
     onboarding_roots: ListModel<String, SharedString>,
+    steam_games: ListModel<SteamGameViewModel, SteamGame>,
+    steam_depots: ListModel<SteamDepotViewModel, SteamDepot>,
+    steam_language_depots: ListModel<SteamDepotViewModel, SteamDepot>,
+    steam_branches: ListModel<ChoiceViewModel, Choice>,
+    cached_steam_depots: RefCell<Vec<SteamDepotViewModel>>,
+    cached_steam_qr: RefCell<String>,
     cached_games: RefCell<Vec<GameCardViewModel>>,
     cached_patch_games: RefCell<Vec<PatchGameViewModel>>,
     cached_game_fields: RefCell<Vec<ConfigFieldViewModel>>,
@@ -79,6 +89,12 @@ impl SlintManagerAdapter {
             filter_fields: Rc::new(VecModel::default()),
             actions: ListModel::new(engine_action),
             onboarding_roots: ListModel::strings(),
+            steam_games: ListModel::new(steam_game),
+            steam_depots: ListModel::new(steam_depot),
+            steam_language_depots: ListModel::new(steam_depot),
+            steam_branches: ListModel::new(choice),
+            cached_steam_depots: RefCell::default(),
+            cached_steam_qr: RefCell::default(),
             cached_games: RefCell::default(),
             cached_patch_games: RefCell::default(),
             cached_game_fields: RefCell::default(),
@@ -142,6 +158,12 @@ impl SlintManagerAdapter {
         window
             .global::<Onboarding>()
             .set_roots(self.onboarding_roots.model());
+
+        let steam = window.global::<Steam>();
+        steam.set_games(self.steam_games.model());
+        steam.set_depots(self.steam_depots.model());
+        steam.set_language_depots(self.steam_language_depots.model());
+        steam.set_branches(self.steam_branches.model());
     }
 
     fn install_internal_callbacks(&self) {
@@ -189,6 +211,72 @@ impl SlintManagerAdapter {
         &self.window
     }
 
+    /// Routes every `Steam` UI callback to one handler as a [`SteamAction`].
+    /// `ChooseLibraryRoot` is emitted as-is; the host owns the folder picker.
+    pub fn set_on_steam_action(&self, handler: impl Fn(SteamAction) + 'static) {
+        let handler = Rc::new(handler);
+        let steam = self.window.global::<Steam>();
+        let h = handler.clone();
+        steam.on_open(move || h(SteamAction::Open));
+        let h = handler.clone();
+        steam.on_login(move |account, password| {
+            h(SteamAction::Login {
+                account: account.trim().to_owned(),
+                password: password.as_str().to_owned(),
+            })
+        });
+        let h = handler.clone();
+        steam.on_qr_login(move || h(SteamAction::QrLogin));
+        let h = handler.clone();
+        steam.on_import_local(move || h(SteamAction::ImportLocal));
+        let h = handler.clone();
+        steam.on_submit_guard(move |code| {
+            h(SteamAction::SubmitGuard {
+                code: code.trim().to_owned(),
+            })
+        });
+        let h = handler.clone();
+        steam.on_logout(move || h(SteamAction::Logout));
+        let h = handler.clone();
+        steam.on_refresh_library(move || h(SteamAction::RefreshLibrary));
+        let h = handler.clone();
+        steam.on_search(move |query| {
+            h(SteamAction::Search {
+                query: query.as_str().to_owned(),
+            })
+        });
+        let h = handler.clone();
+        // Ids travel through Slint `int` as the u32 bit pattern.
+        steam.on_select_game(move |app_id| {
+            h(SteamAction::SelectGame {
+                app_id: app_id as u32,
+            })
+        });
+        let h = handler.clone();
+        steam.on_select_depot(move |depot_id, selected| {
+            h(SteamAction::SelectDepot {
+                depot_id: depot_id as u32,
+                selected,
+            })
+        });
+        let h = handler.clone();
+        steam.on_select_branch(move |branch, password| {
+            h(SteamAction::SelectBranch {
+                branch: branch.as_str().to_owned(),
+                password: password.as_str().to_owned(),
+            })
+        });
+        let h = handler.clone();
+        steam.on_choose_library_root(move || h(SteamAction::ChooseLibraryRoot));
+        let h = handler.clone();
+        steam.on_download(move || h(SteamAction::Download));
+        let h = handler.clone();
+        steam.on_cancel(move || h(SteamAction::Cancel));
+        let h = handler.clone();
+        steam.on_check_updates(move || h(SteamAction::CheckUpdates));
+        steam.on_verify(move || handler(SteamAction::Verify));
+    }
+
     pub fn set_session_active(&self, active: bool) {
         self.window.global::<Session>().set_active(active);
     }
@@ -210,6 +298,7 @@ impl SlintManagerAdapter {
         self.apply_filters(model);
         self.apply_session(model);
         self.onboarding_roots.update(&model.onboarding.roots);
+        self.apply_steam(model);
     }
 
     fn apply_app(&self, model: &ManagerViewModel) {
@@ -426,6 +515,217 @@ impl SlintManagerAdapter {
         session.set_action_message(view.action_message.as_str().into());
         session.set_action_serial(view.action_serial as i32);
     }
+
+    fn apply_steam(&self, model: &ManagerViewModel) {
+        let steam = self.window.global::<Steam>();
+        let view = &model.steam;
+        steam.set_login_state(login_state(view.login_state).into());
+        steam.set_account_name(view.account_name.as_str().into());
+        steam.set_can_import_local(view.can_import_local);
+        if *self.cached_steam_qr.borrow() != view.qr_url {
+            steam.set_qr(qr_image(&view.qr_url));
+            view.qr_url
+                .clone_into(&mut self.cached_steam_qr.borrow_mut());
+        }
+        steam.set_guard_hint(view.guard_hint.as_str().into());
+        steam.set_status(view.status.as_str().into());
+        steam.set_error(view.error.as_str().into());
+        steam.set_library_state(load_state(view.library_state).into());
+        self.steam_games.update(&view.games);
+        steam.set_query(view.query.as_str().into());
+
+        steam.set_selected_app_id(view.selected_app_id as i32);
+        let selected = view
+            .games
+            .iter()
+            .find(|game| game.app_id == view.selected_app_id && view.selected_app_id != 0);
+        steam.set_selected(selected.map(steam_game).unwrap_or_default());
+
+        if *self.cached_steam_depots.borrow() != view.depots {
+            let (languages, content): (Vec<_>, Vec<_>) = view
+                .depots
+                .iter()
+                .cloned()
+                .partition(|depot| !depot.language.is_empty());
+            self.steam_depots.update(&content);
+            self.steam_language_depots.update(&languages);
+            let (count, bytes) = view
+                .depots
+                .iter()
+                .filter(|depot| depot.selected)
+                .fold((0i32, 0u64), |(count, bytes), depot| {
+                    (count + 1, bytes.saturating_add(depot.size_bytes))
+                });
+            steam.set_selected_depot_count(count);
+            steam.set_selected_size(size_text(bytes).into());
+            view.depots
+                .clone_into(&mut self.cached_steam_depots.borrow_mut());
+        }
+        self.steam_branches.update(&view.branches);
+        steam.set_selected_branch(view.selected_branch.as_str().into());
+        // Presence only: the branch password itself never goes back into the UI.
+        steam.set_branch_password_set(!view.branch_password.is_empty());
+        steam.set_library_root(view.library_root.as_str().into());
+        let name = view
+            .games
+            .iter()
+            .find(|game| game.app_id == view.transfer.app_id)
+            .map_or("", |game| game.name.as_str());
+        steam.set_transfer(steam_transfer(&view.transfer, name));
+    }
+}
+
+fn login_state(state: SteamLoginState) -> &'static str {
+    match state {
+        SteamLoginState::SignedOut => "signed-out",
+        SteamLoginState::Connecting => "connecting",
+        SteamLoginState::EmailCode => "email-code",
+        SteamLoginState::MobileCode => "mobile-code",
+        SteamLoginState::MobileConfirmation => "mobile-confirmation",
+        SteamLoginState::QrCode => "qr-code",
+        SteamLoginState::SignedIn => "signed-in",
+        SteamLoginState::Error => "error",
+    }
+}
+
+fn load_state(state: SteamLoadState) -> &'static str {
+    match state {
+        SteamLoadState::Idle => "idle",
+        SteamLoadState::Loading => "loading",
+        SteamLoadState::Ready => "ready",
+        SteamLoadState::Error => "error",
+    }
+}
+
+fn transfer_state(state: SteamTransferState) -> &'static str {
+    match state {
+        SteamTransferState::Idle => "idle",
+        SteamTransferState::Preparing => "preparing",
+        SteamTransferState::Downloading => "downloading",
+        SteamTransferState::Verifying => "verifying",
+        SteamTransferState::Cancelling => "cancelling",
+        SteamTransferState::Cancelled => "cancelled",
+        SteamTransferState::Complete => "complete",
+        SteamTransferState::Error => "error",
+    }
+}
+
+fn steam_game(value: &SteamGameViewModel) -> SteamGame {
+    SteamGame {
+        app_id: value.app_id as i32,
+        name: value.name.as_str().into(),
+        size: size_text(value.size_bytes).into(),
+        platforms: value.platforms.join(" · ").into(),
+        languages: value.languages.join(" · ").into(),
+        installed: value.installed,
+        update_available: value.update_available,
+    }
+}
+
+fn steam_depot(value: &SteamDepotViewModel) -> SteamDepot {
+    SteamDepot {
+        depot_id: value.depot_id as i32,
+        name: value.name.as_str().into(),
+        platform: value.platform.as_str().into(),
+        language: value.language.as_str().into(),
+        size: size_text(value.size_bytes).into(),
+        selected: value.selected,
+    }
+}
+
+fn steam_transfer(value: &SteamTransferViewModel, name: &str) -> SteamTransfer {
+    let bytes = match (value.bytes_done, value.bytes_total) {
+        (_, 0) if value.bytes_done == 0 => String::new(),
+        (done, 0) => byte_text(done),
+        (done, total) => format!("{} / {}", byte_text(done), byte_text(total)),
+    };
+    let files = match (value.files_done, value.files_total) {
+        (0, 0) => String::new(),
+        (done, 0) => format!("{done} 个文件"),
+        (done, total) => format!("{done} / {total} 个文件"),
+    };
+    let speed = if value.speed_bytes_per_second == 0 {
+        String::new()
+    } else {
+        format!("{}/s", byte_text(value.speed_bytes_per_second))
+    };
+    SteamTransfer {
+        state: transfer_state(value.state).into(),
+        app_id: value.app_id as i32,
+        name: name.into(),
+        bytes: bytes.into(),
+        files: files.into(),
+        speed: speed.into(),
+        eta: eta_text(value.eta_seconds).into(),
+        progress: value.progress.map_or(-1.0, |p| p.clamp(0.0, 1.0)),
+        status: value.status.as_str().into(),
+        error: value.error.as_str().into(),
+    }
+}
+
+/// Size of a game or depot; empty while unknown.
+fn size_text(bytes: u64) -> String {
+    if bytes == 0 {
+        String::new()
+    } else {
+        byte_text(bytes)
+    }
+}
+
+/// Binary units labelled like Windows Explorer and the Steam client ("4.1 GB").
+fn byte_text(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if value >= 100.0 {
+        format!("{value:.0} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// Remaining time; empty while unknown.
+fn eta_text(seconds: u64) -> String {
+    let (hours, minutes, seconds) = (seconds / 3600, seconds % 3600 / 60, seconds % 60);
+    match (hours, minutes, seconds) {
+        (0, 0, 0) => String::new(),
+        (0, 0, s) => format!("剩余 {s} 秒"),
+        (0, m, s) => format!("剩余 {m} 分 {s} 秒"),
+        (h, m, _) => format!("剩余 {h} 小时 {m} 分"),
+    }
+}
+
+/// One pixel per module; the page scales it with nearest-neighbour filtering
+/// and supplies the white quiet zone.
+fn qr_image(url: &str) -> Image {
+    if url.is_empty() {
+        return Image::default();
+    }
+    let Ok(code) = qrcodegen::QrCode::encode_text(url, qrcodegen::QrCodeEcc::Medium) else {
+        // The challenge URL is a login secret; never log it.
+        tracing::warn!(
+            event = "shinki.emu.manager.steam.qr_failed",
+            length = url.len()
+        );
+        return Image::default();
+    };
+    let size = code.size();
+    let side = size as u32;
+    let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(side, side);
+    let dark = Rgba8Pixel::new(0, 0, 0, 255);
+    let light = Rgba8Pixel::new(255, 255, 255, 255);
+    for (index, pixel) in pixels.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((index as i32) % size, (index as i32) / size);
+        *pixel = if code.get_module(x, y) { dark } else { light };
+    }
+    Image::from_rgba8(pixels)
 }
 
 fn strings(values: &[String]) -> ModelRc<SharedString> {
@@ -597,5 +897,45 @@ fn engine_action(value: &EngineActionViewModel) -> EngineAction {
         control: value.control,
         label: value.label.as_str().into(),
         icon: value.icon.as_str().into(),
+    }
+}
+
+#[cfg(test)]
+mod steam_tests {
+    use super::*;
+
+    #[test]
+    fn steam_sizes_and_eta_are_readable() {
+        assert_eq!(size_text(0), "");
+        assert_eq!(byte_text(512), "512 B");
+        assert_eq!(byte_text(4_402_341_478), "4.1 GB");
+        assert_eq!(byte_text(125_829_120), "120 MB");
+        assert_eq!(eta_text(0), "");
+        assert_eq!(eta_text(138), "剩余 2 分 18 秒");
+        assert_eq!(eta_text(3_900), "剩余 1 小时 5 分");
+    }
+
+    #[test]
+    fn transfer_without_totals_omits_unknown_facts() {
+        let transfer = steam_transfer(
+            &SteamTransferViewModel {
+                state: SteamTransferState::Preparing,
+                ..Default::default()
+            },
+            "",
+        );
+        assert_eq!(transfer.state, "preparing");
+        assert_eq!(transfer.bytes, "");
+        assert_eq!(transfer.files, "");
+        assert_eq!(transfer.speed, "");
+        assert_eq!(transfer.progress, -1.0);
+    }
+
+    #[test]
+    fn qr_is_one_pixel_per_module() {
+        let image = qr_image("https://s.team/q/1/1234567890123456789");
+        let size = image.size();
+        assert!(size.width >= 21 && size.width == size.height);
+        assert_eq!(qr_image("").size().width, 0);
     }
 }

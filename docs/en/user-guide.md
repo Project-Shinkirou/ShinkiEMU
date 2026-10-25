@@ -17,6 +17,16 @@ In Settings, add the directories containing your legally obtained game installat
 
 Allow networking in Settings before synchronizing metadata or downloading cores. In the core management page, refresh the catalog and install or update the desired core for your platform. The catalog supplies the version, ABI, download URL and hash. Complete the session and restart Manager when an update requires replacing a loaded library. Keep the whole core directory, including `core.json`, dependencies, `Resources/` when present and licenses; a DLL copied alone is not an installation.
 
+## Steam downloads
+
+Open **Add game → Steam downloads** after allowing network access in Settings. Sign in with an account and password, a Steam Guard email/mobile code or mobile confirmation, or scan the locally rendered QR code with Steam's mobile app. Desktop platforms can also import a cached Steam client login; mobile platforms use password or QR login. Passwords are never persisted. Refresh tokens live in the platform secret store: Windows Credential Manager, Linux secret service, Apple Keychain (macOS/iOS), or AndroidKeyStore-backed encrypted app storage. Sign out removes the saved login.
+
+**QR login** requests a fresh Steam challenge without an account name or password. The code appears once Steam responds; approve it in the mobile app to finish signing in. Cancel stops the pending request without completing login.
+
+Search your owned games, select a game, choose depots and a branch, then select a writable library folder. Windows depots are selected by default even on mobile; choose language depots separately. A downloaded game is added to Manager and probed for compatible cores. Download availability does not imply that a core supports the game's engine.
+
+**Check updates** compares installed depot manifests with Steam. Download again to apply a delta update; **Verify and repair** checks and repairs installed files. Cancellation preserves the interrupted-install marker and waits for outstanding writes; retrying resumes verified local chunks. Keep each game's `.DepotDownloader` directory: it records installed manifests and the metadata needed for delta reuse.
+
 ## Compatibility and metadata
 
 The default metadata source is:

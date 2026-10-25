@@ -40,6 +40,8 @@ build 必须在 `--manager`、`--core`、`--all-cores` 中选一项。check 选�
 
 每个核心的 `build.rs` 校验本核心的目标和输入，在 Cargo `OUT_DIR` 写入 `core-build.json`。C++ 适配通过它驱动真实 CMake 构建，纯 Rust 核心仍由 Cargo 编译。构建脚本不递归运行 Cargo，也不发布 Release。xtask 从 `compiler-artifact` 和 `build-script-executed` JSON 读取真实产物，不猜测 target 路径。各组件使用 `.work/target/<target>/<component>`，构建记录写入 `.work/build/`。Artemis 的 Lua 5.1 与 Manager 的 Luau 依赖图保持独立，不执行混合全工作区的 all-features 构建。
 
+Manager 在创建网络客户端和工作线程前，仅初始化一次进程级 Rustls 加密实现，选择与 reqwest 0.13 和平台证书校验栈一致的 AWS-LC。VNDB 当前使用的 reqwest 0.12 还会启用 ring，不能依靠 feature 自动判断默认实现。Steam 等 provider 自身不安装进程级默认实现。
+
 ### Linux 桌面
 
 使用仓库固定的 Rust 1.98.0 工具链。在 Ubuntu 22.04/24.04 上显式安装原生开发包：
@@ -146,6 +148,8 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc --version 0
 ```
 
 输出目录必须尚不存在。打包拒绝不安全路径、链接、冲突、缺许可、架构错误、缺 query 导出和原生依赖不完整的输入。核心包包含库、资源、依赖、许可证、构建来源及带哈希的 `core.json`；源码包保留适用的对应源码与重链接输入。
+
+Manager 打包会收集经目标平台筛选的 Cargo 依赖闭包（普通依赖和构建依赖，不含仅供测试的依赖边）。各 crate 声明的 `license_file`、源码根目录中的 `LICENSE*`、`COPYING*`、`NOTICE*` 文件及同类许可目录的内容，放在 `licenses/rust/<名称>-<版本>/`，同目录的 `package.json` 记录 SPDX 表达式和文本来源。crate 未提供文件时，打包器从固定的 `spdx` 0.13.6 内置离线数据库中，取得 SPDX License List 3.29.0 的标准文本，将表达式引用的全部许可和例外条款写为 `LICENSE-<SPDX>`。来源版本与压缩包 SHA256 记录在 `build/dependencies.toml`，并与 Cargo 固定依赖核对；打包时不下载许可文本。无法识别的回补标识符，或既无许可文件也无表达式的 crate，都会使打包失败。Material 组件、图标及原生依赖的许可单独收集。
 
 Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。不带 `--publish` 时只准备本地产物。发布需要 `--publish` 及 `GH_TOKEN` 或 `GITHUB_TOKEN`；只上传真实成功的平台产物，拒绝空 Release 和同名不同内容的附件。核心发布在核对远端字节后，向 `Metadata/engines/cores/` 提议目录更新 PR。Manager 与核心独立发布；标签不会绕过分发限制，也不会把 Android debug 签名测试包变成正式安装包。
 

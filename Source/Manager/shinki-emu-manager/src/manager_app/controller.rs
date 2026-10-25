@@ -1,6 +1,13 @@
 use super::*;
 
 impl ManagerController for ShinkiEmuManagerController {
+    fn steam_action(
+        &mut self,
+        action: shinki_emu_manager_ui_slint::SteamAction,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::steam_action(self, action)
+    }
+
     fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::prepare_library(self)
     }
@@ -313,7 +320,9 @@ impl ManagerController for ShinkiEmuManagerController {
             .and_then(|active| active.pending_icon.take())
     }
 
-    fn take_game_pointer(&mut self) -> Option<shinki_emu_manager_core::model::FamilyPointerRequest> {
+    fn take_game_pointer(
+        &mut self,
+    ) -> Option<shinki_emu_manager_core::model::FamilyPointerRequest> {
         self.active
             .as_mut()
             .filter(|active| active.closing.is_none())

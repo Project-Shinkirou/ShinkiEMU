@@ -8,7 +8,63 @@
 import {
     ManagerWindow, App, Network, Library, Selection, GameSettings, Patch, Settings, Cores, Notices,
     Dialogs, Filters, Session, Onboarding, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
+    Steam, SteamGame, SteamDepot,
 } from "../ui/main.slint";
+
+// Steam sub-page of 添加游戏. Names and sizes are illustrative text only.
+global SteamMock {
+    out property <[SteamGame]> games: [
+        { app-id: 1135690, name: "Summer Pockets", size: "6.2 GB", platforms: "Windows", languages: "日语", installed: true, update-available: true },
+        { app-id: 2048050, name: "サクラノ詩 －櫻の森の上を舞う－", size: "7.9 GB", platforms: "Windows", languages: "日语 · 英语 · 简体中文", installed: true },
+        { app-id: 1144400, name: "千恋＊万花", size: "4.1 GB", platforms: "Windows", languages: "日语 · 英语 · 简体中文" },
+        { app-id: 1302240, name: "白色相簿2", size: "9.6 GB", platforms: "Windows", languages: "日语" },
+        { app-id: 888790, name: "Rewrite", size: "5.4 GB", platforms: "Windows · macOS", languages: "日语 · 英语" },
+        { app-id: 1579380, name: "魔女的夜宴", size: "3.2 GB", platforms: "Windows", languages: "日语 · 英语 · 简体中文" },
+    ];
+
+    public function signed-out(dark: bool) {
+        Mock.base(dark);
+        App.page = "steam";
+        Steam.login-state = "signed-out";
+        Steam.can-import-local = true;
+    }
+
+    public function library(dark: bool) {
+        Mock.base(dark);
+        App.page = "steam";
+        Steam.login-state = "signed-in";
+        Steam.account-name = "shinki_player";
+        Steam.library-state = "ready";
+        Steam.games = self.games;
+        Steam.library-root = "D:\\Games\\Steam";
+    }
+
+    public function select(detail-open: bool) {
+        Steam.selected-app-id = 1144400;
+        Steam.selected = self.games[2];
+        Steam.depots = [
+            { depot-id: 1144401, name: "千恋＊万花 Content", platform: "Windows", size: "4.0 GB", selected: true },
+            { depot-id: 1144402, name: "千恋＊万花 Mac", platform: "macOS", size: "4.0 GB" },
+        ];
+        Steam.language-depots = [
+            { depot-id: 1144403, language: "简体中文", size: "120 MB", selected: true },
+            { depot-id: 1144404, language: "英语", size: "96 MB" },
+        ];
+        Steam.selected-depot-count = 2;
+        Steam.selected-size = "4.1 GB";
+        Steam.branches = [{ id: "public", label: "public（默认）" }, { id: "beta", label: "beta" }];
+        Steam.selected-branch = "public";
+        Steam.detail-open = detail-open;
+    }
+
+    public function downloading() {
+        Steam.transfer = {
+            state: "downloading", app-id: 1144400, name: "千恋＊万花",
+            bytes: "1.6 GB / 4.1 GB", files: "812 / 2 140 个文件", speed: "18.4 MB/s", eta: "剩余 2 分 18 秒",
+            progress: 0.39, status: "正在下载内容仓库 1144401",
+        };
+    }
+}
 
 global Mock {
     out property <[GameCard]> games: [
@@ -400,5 +456,126 @@ export component SnackbarUndo inherits ManagerWindow {
         Notices.snackbar-text = "已从资料库移除《魔女的夜宴》";
         Notices.snackbar-action = "撤销";
         Notices.snackbar-serial += 1;
+    }
+}
+
+// ---- 添加游戏 / Steam 下载 ----
+
+export component AddGame inherits ManagerWindow {
+    init => {
+        Mock.library(false);
+        App.page = "add-game";
+    }
+}
+
+export component SteamSignedOut inherits ManagerWindow {
+    init => { SteamMock.signed-out(false); }
+}
+
+// Mobile: no local Steam client import; a failed attempt shows its error.
+export component SteamSignedOutError inherits ManagerWindow {
+    init => {
+        SteamMock.signed-out(true);
+        Steam.can-import-local = false;
+        Steam.login-state = "error";
+        Steam.account-name = "shinki_player";
+        Steam.error = "账户名或密码不正确。";
+    }
+}
+
+export component SteamEmailCode inherits ManagerWindow {
+    init => {
+        SteamMock.signed-out(false);
+        Steam.login-state = "email-code";
+        Steam.account-name = "shinki_player";
+        Steam.guard-hint = "验证码已发送到 s***@example.com。";
+    }
+}
+
+export component SteamMobileConfirmation inherits ManagerWindow {
+    init => {
+        SteamMock.signed-out(true);
+        Steam.login-state = "mobile-confirmation";
+        Steam.account-name = "shinki_player";
+    }
+}
+
+export component SteamConnecting inherits ManagerWindow {
+    init => {
+        SteamMock.signed-out(false);
+        Steam.login-state = "connecting";
+        Steam.status = "正在连接 Steam 服务器…";
+    }
+}
+
+// QR challenge before the adapter has rendered the code.
+export component SteamQrPending inherits ManagerWindow {
+    init => {
+        SteamMock.signed-out(false);
+        Steam.login-state = "qr-code";
+        Steam.status = "正在等待扫码…";
+    }
+}
+
+export component SteamLibraryLoading inherits ManagerWindow {
+    init => {
+        SteamMock.library(false);
+        Steam.games = [];
+        Steam.library-state = "loading";
+    }
+}
+
+export component SteamLibraryEmpty inherits ManagerWindow {
+    init => {
+        SteamMock.library(true);
+        Steam.games = [];
+    }
+}
+
+export component SteamLibraryError inherits ManagerWindow {
+    init => {
+        SteamMock.library(false);
+        Steam.games = [];
+        Steam.library-state = "error";
+        Steam.error = "网络连接失败，请检查连接后重试";
+    }
+}
+
+// Desktop master-detail with a running download of the selected game.
+export component SteamDownloading inherits ManagerWindow {
+    init => {
+        SteamMock.library(false);
+        SteamMock.select(false);
+        SteamMock.downloading();
+    }
+}
+
+// Installed game with an update, beta branch selected (password pending).
+export component SteamDetailBeta inherits ManagerWindow {
+    init => {
+        SteamMock.library(true);
+        SteamMock.select(false);
+        Steam.selected-app-id = 1135690;
+        Steam.selected = SteamMock.games[0];
+        Steam.selected-branch = "beta";
+        Steam.transfer = { state: "error", app-id: 1135690, name: "Summer Pockets", progress: -1, error: "分支密码不正确。" };
+    }
+}
+
+// Phone: list with the running transfer strip.
+export component SteamListPhone inherits ManagerWindow {
+    init => {
+        SteamMock.library(false);
+        SteamMock.select(false);
+        SteamMock.downloading();
+    }
+}
+
+// Phone: the selected game as a full-screen sheet.
+export component SteamDetailPhone inherits ManagerWindow {
+    init => {
+        SteamMock.library(false);
+        SteamMock.select(true);
+        SteamMock.downloading();
     }
 }
