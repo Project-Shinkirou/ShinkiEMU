@@ -1,7 +1,7 @@
 use crate::runtime::{SessionError, SessionResult};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 fn error(code: &str, message: &str) -> SessionError {
     SessionError::invalid(code, message)
@@ -93,7 +93,7 @@ impl NativeAudioOutput {
                 return Err(error(
                     "SHINKI_EMU_AUDIO_FORMAT",
                     "unsupported native sample format",
-                ))
+                ));
             }
         }
         .map_err(|_| error("SHINKI_EMU_AUDIO_STREAM", "native stream creation failed"))?;

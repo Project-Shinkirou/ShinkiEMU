@@ -1,9 +1,9 @@
 use sha2::{Digest, Sha256};
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 fn put32(bytes: &mut [u8], offset: usize, value: u32) {
@@ -130,10 +130,7 @@ fn pe_pointer_pairs_preserve_raw_identity_and_strict_gbk_targets() {
             .find(|row| row["source_hash"] == raw_hash(source))
             .unwrap();
         assert_eq!(row["text"], target);
-        assert_eq!(
-            row["source_sha256"],
-            format!("{:x}", Sha256::digest(source))
-        );
+        assert_eq!(row["source_sha256"], hex::encode(Sha256::digest(source)));
     }
     assert_eq!(fs::read(source_path).unwrap(), original);
     assert_eq!(fs::read(patch_path).unwrap(), patch);
@@ -174,7 +171,7 @@ fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
     let table: serde_json::Value =
         serde_json::from_slice(&fs::read(result.output.join("names.json")).unwrap()).unwrap();
     let hash = raw_hash(b"speaker");
-    let sha = format!("{:x}", Sha256::digest(b"speaker"));
+    let sha = hex::encode(Sha256::digest(b"speaker"));
     assert_eq!(
         table["names"],
         serde_json::json!([

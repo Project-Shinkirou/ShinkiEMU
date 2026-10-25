@@ -1,8 +1,8 @@
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const ACR_MODULE: &str = include_str!("../../../../Metadata/patches/common/musica_acr.luau");

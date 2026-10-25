@@ -34,8 +34,18 @@ pub(super) fn execute_scroll_xf(
     state: &mut MusicaRuntimeState,
 ) -> Result<Option<MusicaVmEvent>, MusicaRuntimeError> {
     let tokens = command.tokens().map_err(|_| MusicaRuntimeError::ScrollXf)?;
-    let [start_width, start_height, end_width, end_height, start_x, start_y, end_x, end_y, duration, easing] =
-        tokens.as_slice()
+    let [
+        start_width,
+        start_height,
+        end_width,
+        end_height,
+        start_x,
+        start_y,
+        end_x,
+        end_y,
+        duration,
+        easing,
+    ] = tokens.as_slice()
     else {
         return Err(MusicaRuntimeError::ScrollXf);
     };
@@ -169,7 +179,7 @@ fn interpolate_scroll_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(
             "musica:/scr/xf.sc".into(),
@@ -182,7 +192,9 @@ mod tests {
     #[test]
     fn scrollxf_easing_restore_and_force_finish() {
         for (easing, extent, offset) in [(0, 12, 4), (1, 14, 2), (2, 10, 6)] {
-            let source=format!(".stage * BG.png 0 0\r\n.scrollxf 16 16 8 8 0 0 8 8 100 {easing}\r\n.endscroll true\r\n.end\r\n");
+            let source = format!(
+                ".stage * BG.png 0 0\r\n.scrollxf 16 16 8 8 0 0 8 8 100 {easing}\r\n.endscroll true\r\n.end\r\n"
+            );
             let mut original = vm(source.as_bytes());
             original.step(1).unwrap();
             original.step(2).unwrap();

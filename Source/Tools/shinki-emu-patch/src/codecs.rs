@@ -5,20 +5,20 @@
 //! `inflate` retains exact output lengths; `inflate_bounded` accepts any actual
 //! size up to its limit and rejects truncation, trailing bytes and extra streams.
 use crate::{
+    PatchError, PatchErrorKind,
     buffer::{self, BoundedWriter},
     error::check_cancelled,
     storage::scratch,
-    PatchError, PatchErrorKind,
 };
 use blowfish::{
-    cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit, StreamCipher},
     Blowfish,
+    cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit, StreamCipher},
 };
 use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use mlua::{Buffer, Lua, Table, Value};
 use std::{
     io::Write,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const CHUNK: usize = 1024 * 1024;

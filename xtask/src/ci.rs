@@ -13,10 +13,11 @@ struct Report<'a> {
 }
 pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Result<()> {
     let mut blocked = inv.blocked(component, target)?.map(str::to_owned);
-    if target.contains("ohos") && std::env::var_os("OHOS_SDK_NATIVE").is_none() {
-        if let Some(reason) = blocked.as_mut() {
-            reason.push_str(" Missing prerequisite: OHOS_SDK_NATIVE.");
-        }
+    if target.contains("ohos")
+        && std::env::var_os("OHOS_SDK_NATIVE").is_none()
+        && let Some(reason) = blocked.as_mut()
+    {
+        reason.push_str(" Missing prerequisite: OHOS_SDK_NATIVE.");
     }
     let mut report = Report {
         schema: "shinki.emu.ci.v1",

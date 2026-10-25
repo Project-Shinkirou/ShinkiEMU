@@ -31,13 +31,14 @@ fn fixture() -> &'static Fixture {
             ("lib", "so")
         };
         let dep_source = dir.path().join("dependency.rs");
-        fs::write(&dep_source,"#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->!{loop{}}\n#[no_mangle] pub extern \"C\" fn dep_value()->u32 {42}\n").unwrap();
+        fs::write(&dep_source,"#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->!{loop{}}\n#[unsafe(no_mangle)] pub extern \"C\" fn dep_value()->u32 {42}\n").unwrap();
         let dependency = dir
             .path()
             .join(format!("{prefix}shinki_fixture_dep.{suffix}"));
         let mut cmd = Command::new("rustc");
         cmd.arg(&dep_source)
             .args([
+                "--edition=2024",
                 "--crate-name",
                 "shinki_fixture_dep",
                 "--crate-type",
@@ -56,13 +57,19 @@ fn fixture() -> &'static Fixture {
             shinki_emu_build::generate_import_library(&dependency, dir.path(), &target).unwrap();
         }
         let source = dir.path().join("core.rs");
-        fs::write(&source,"#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->!{loop{}}\n#[link(name=\"shinki_fixture_dep\")] extern \"C\" {fn dep_value()->u32;}\n#[no_mangle] pub unsafe extern \"C\" fn shinki_emu_query()->u32 {dep_value()}\n").unwrap();
+        fs::write(&source,"#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->!{loop{}}\n#[link(name=\"shinki_fixture_dep\")] unsafe extern \"C\" {fn dep_value()->u32;}\n#[unsafe(no_mangle)] pub unsafe extern \"C\" fn shinki_emu_query()->u32 {unsafe {dep_value()}}\n").unwrap();
         let library = dir
             .path()
             .join(format!("{prefix}shinki_emu_fixture.{suffix}"));
         let mut cmd = Command::new("rustc");
         cmd.arg(source)
-            .args(["--crate-type", "cdylib", "-C", "panic=abort"])
+            .args([
+                "--edition=2024",
+                "--crate-type",
+                "cdylib",
+                "-C",
+                "panic=abort",
+            ])
             .arg(format!("-Lnative={}", dir.path().display()))
             .arg("-o")
             .arg(&library);
@@ -130,14 +137,16 @@ fn paths_reject_traversal_ads_devices_and_collisions() {
         assert!(portable(bad).is_err(), "{bad}");
     }
     let out = temp.path().join("out");
-    assert!(atomic_directory(&out, |stage| copy_entries(
-        &[
-            (source.clone(), "File".into()),
-            (source.clone(), "file".into())
-        ],
-        stage
-    ))
-    .is_err());
+    assert!(
+        atomic_directory(&out, |stage| copy_entries(
+            &[
+                (source.clone(), "File".into()),
+                (source.clone(), "file".into())
+            ],
+            stage
+        ))
+        .is_err()
+    );
     assert!(!out.exists());
     assert_eq!(fs::read_to_string(source).unwrap(), "original");
 }
@@ -150,36 +159,42 @@ fn atomic_publication_preserves_existing_and_racing_outputs_and_cleans_staging()
     assert!(atomic_directory(&out, |_| panic!("existing output must not stage")).is_err());
     assert_eq!(fs::read_to_string(out.join("user")).unwrap(), "keep");
     let race = t.path().join("race");
-    assert!(atomic_directory(&race, |stage| {
-        fs::write(stage.join("ours"), "ours")?;
-        fs::create_dir(&race)?;
-        fs::write(race.join("theirs"), "theirs")?;
-        Ok(())
-    })
-    .is_err());
+    assert!(
+        atomic_directory(&race, |stage| {
+            fs::write(stage.join("ours"), "ours")?;
+            fs::create_dir(&race)?;
+            fs::write(race.join("theirs"), "theirs")?;
+            Ok(())
+        })
+        .is_err()
+    );
     assert_eq!(fs::read_to_string(race.join("theirs")).unwrap(), "theirs");
     assert!(!race.join("ours").exists());
     let failed = t.path().join("failed");
-    assert!(atomic_directory(&failed, |stage| {
-        fs::write(stage.join("partial"), "partial")?;
-        anyhow::bail!("intentional failure")
-    })
-    .is_err());
+    assert!(
+        atomic_directory(&failed, |stage| {
+            fs::write(stage.join("partial"), "partial")?;
+            anyhow::bail!("intentional failure")
+        })
+        .is_err()
+    );
     assert!(!failed.exists());
-    assert!(!fs::read_dir(t.path()).unwrap().any(|e| e
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .starts_with(".shinki-stage-")));
+    assert!(!fs::read_dir(t.path()).unwrap().any(|e| {
+        e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".shinki-stage-")
+    }));
 }
 #[test]
 fn real_binary_dependency_arch_and_export_validation() {
     let f = fixture();
     let info = binary::inspect(&f.library, &f.target, true).unwrap();
-    assert!(info
-        .dependencies
-        .iter()
-        .any(|d| d.contains("shinki_fixture_dep")));
+    assert!(
+        info.dependencies
+            .iter()
+            .any(|d| d.contains("shinki_fixture_dep"))
+    );
     assert!(binary::closure(&f.library, &[], &f.target).is_err());
     let closure = binary::closure(&f.library, &[f._dir.path().to_owned()], &f.target).unwrap();
     assert!(closure.contains(&f.dependency));
@@ -221,11 +236,12 @@ fn delay_imports_participate_in_dependency_closure() {
     assert!(status.success());
     let bytes = fs::read(&library).unwrap();
     let file = object::read::pe::PeFile64::parse(bytes.as_slice()).unwrap();
-    assert!(file
-        .data_directories()
-        .delay_load_import_table(file.data(), &file.section_table())
-        .unwrap()
-        .is_some());
+    assert!(
+        file.data_directories()
+            .delay_load_import_table(file.data(), &file.section_table())
+            .unwrap()
+            .is_some()
+    );
     assert!(binary::closure(&library, &[], &f.target).is_err());
     assert!(
         binary::closure(&library, &[f._dir.path().to_owned()], &f.target)
@@ -311,13 +327,15 @@ fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
     let f = fixture();
     let mut r = result(t.path());
     r.core_build.as_mut().unwrap().licenses.clear();
-    assert!(stage_core(
-        &r,
-        "1.0.0",
-        &t.path().join("no-license"),
-        &[f._dir.path().to_owned()]
-    )
-    .is_err());
+    assert!(
+        stage_core(
+            &r,
+            "1.0.0",
+            &t.path().join("no-license"),
+            &[f._dir.path().to_owned()]
+        )
+        .is_err()
+    );
     assert!(!t.path().join("no-license").exists());
     let r = result(t.path());
     let dir = stage_core(
@@ -383,11 +401,20 @@ fn matrix_covers_each_core_and_target_without_accepting_unknown_keys() {
     let matrix = inv.matrix().unwrap();
     for core in &inv.cores {
         for target in &inv.targets {
-            assert!(matrix
-                .include
-                .iter()
-                .any(|r| r.component == core.id && r.target == target.triple));
+            assert!(
+                matrix
+                    .include
+                    .iter()
+                    .any(|r| r.component == core.id && r.target == target.triple)
+            );
         }
+    }
+    for target in &inv.targets {
+        assert!(
+            inv.blocked("shinki.emu.cmvs", &target.triple)
+                .unwrap()
+                .is_some()
+        );
     }
     assert!(inv.blocked("unknown", &inv.targets[0].triple).is_err());
     assert!(inv.blocked("manager", "unknown").is_err());
@@ -431,34 +458,40 @@ fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
     )
     .unwrap();
     fs::write(temp.path().join("PUBLIC.txt"), "public source fixture").unwrap();
-    assert!(Command::new("git")
-        .arg("init")
-        .arg(temp.path())
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("git")
-        .arg("-C")
-        .arg(temp.path())
-        .args(["add", "PUBLIC.txt"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("git")
-        .arg("-C")
-        .arg(temp.path())
-        .args([
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "-m",
-            "public source"
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("git")
+            .arg("init")
+            .arg(temp.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(temp.path())
+            .args(["add", "PUBLIC.txt"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(temp.path())
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-m",
+                "public source"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
     let out = temp.path().join("sources.zip");
     // Explicitly use the test installation, not a developer override.
     let target = "aarch64-linux-android";
@@ -532,10 +565,12 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
     let core = stage_core(&result, "1.0.0", &output, std::slice::from_ref(&native)).unwrap();
     let manifest = verify_core(&core).unwrap();
     assert!(manifest.files.iter().any(|file| file.path == optional));
-    assert!(manifest
-        .files
-        .iter()
-        .any(|file| file.path == format!("Resources/{extension}")));
+    assert!(
+        manifest
+            .files
+            .iter()
+            .any(|file| file.path == format!("Resources/{extension}"))
+    );
     fs::write(resources.join(extension), b"invalid native extension").unwrap();
     let rejected = temp.path().join("rejected");
     assert!(stage_core(&result, "1.0.0", &rejected, &[native]).is_err());

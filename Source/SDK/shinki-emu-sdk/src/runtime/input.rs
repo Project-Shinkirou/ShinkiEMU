@@ -1,5 +1,5 @@
 use super::{
-    descriptor::{SessionError, SessionResult, MAX_EVENTS_PER_ADVANCE, MAX_TEXT_BYTES},
+    descriptor::{MAX_EVENTS_PER_ADVANCE, MAX_TEXT_BYTES, SessionError, SessionResult},
     validate_window_size,
 };
 

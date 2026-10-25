@@ -1,7 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "definitions": {
+  "$defs": {
     "CompatibilityEntry": {
       "additionalProperties": false,
       "properties": {
@@ -23,7 +21,7 @@
         },
         "issue": {
           "format": "uint64",
-          "minimum": 1.0,
+          "minimum": 1,
           "type": [
             "integer",
             "null"
@@ -53,11 +51,11 @@
           "type": "string"
         },
         "status": {
-          "$ref": "#/definitions/CompatibilityStatus"
+          "$ref": "#/$defs/CompatibilityStatus"
         },
         "updated_at_unix_ms": {
           "format": "int64",
-          "minimum": 0.0,
+          "minimum": 0,
           "type": "integer"
         },
         "variant": {
@@ -70,14 +68,14 @@
         }
       },
       "required": [
-        "architecture",
-        "emulator",
-        "platform",
+        "vn_id",
         "release_id",
+        "emulator",
         "status",
-        "updated_at_unix_ms",
+        "platform",
+        "architecture",
         "variant",
-        "vn_id"
+        "updated_at_unix_ms"
       ],
       "type": "object"
     },
@@ -92,16 +90,18 @@
       "type": "string"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
     "entries": {
       "items": {
-        "$ref": "#/definitions/CompatibilityEntry"
+        "$ref": "#/$defs/CompatibilityEntry"
       },
       "type": "array"
     },
     "generated_at_unix_ms": {
       "format": "int64",
-      "minimum": 0.0,
+      "minimum": 0,
       "type": "integer"
     },
     "schema": {
@@ -110,9 +110,9 @@
     }
   },
   "required": [
-    "entries",
+    "schema",
     "generated_at_unix_ms",
-    "schema"
+    "entries"
   ],
   "title": "CompatibilityDatabase",
   "type": "object"

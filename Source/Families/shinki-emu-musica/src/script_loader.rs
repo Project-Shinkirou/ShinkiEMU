@@ -1,7 +1,6 @@
 use crate::{
-    parse_sc_with_encoding,
+    MusicaMountedVfs, ScOpcodeCatalog, ScScript, ScriptEncoding, parse_sc_with_encoding,
     scene::{error, read_asset},
-    MusicaMountedVfs, ScOpcodeCatalog, ScScript, ScriptEncoding,
 };
 use roukaku_core::Hash256;
 use shinki_emu_sdk::runtime::SessionResult;
@@ -307,16 +306,20 @@ mod tests {
             &paths,
         )
         .unwrap();
-        assert!(archive
-            .manifest()
-            .entries
-            .iter()
-            .any(|entry| entry.uri == "musica:/scr/test.sc"));
-        assert!(!archive
-            .manifest()
-            .entries
-            .iter()
-            .any(|entry| entry.uri.contains("cnscr")));
+        assert!(
+            archive
+                .manifest()
+                .entries
+                .iter()
+                .any(|entry| entry.uri == "musica:/scr/test.sc")
+        );
+        assert!(
+            !archive
+                .manifest()
+                .entries
+                .iter()
+                .any(|entry| entry.uri.contains("cnscr"))
+        );
         assert_eq!(
             read_expanded_script(&archive, "musica:/scr/TEST.sc").unwrap(),
             b"; loose\r\n; fallback\r\n.end\r\n"
@@ -339,12 +342,14 @@ mod tests {
             scr_archive: "../escape.paz".into(),
             ..Default::default()
         };
-        assert!(crate::mount_musica_with_resources(
-            root.path(),
-            std::path::Path::new("key.toml"),
-            &invalid
-        )
-        .is_err());
+        assert!(
+            crate::mount_musica_with_resources(
+                root.path(),
+                std::path::Path::new("key.toml"),
+                &invalid
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ mod checkpoint;
 mod position;
 mod slot;
 mod state;
-pub use slot::{export_slot, EdenSlotExport};
+pub use slot::{EdenSlotExport, export_slot};
 mod write_checkpoint;
 pub use checkpoint::{EdenCheckpoint, EdenHistoryMessage};
 pub use position::EdenMessagePosition;
@@ -16,7 +16,7 @@ mod checkpoint_tests;
 mod tests;
 use crate::CoreError;
 use encoding_rs::{Encoding, GBK, SHIFT_JIS, WINDOWS_1252};
-use flate2::{write::ZlibEncoder, Compression, Decompress, FlushDecompress, Status};
+use flate2::{Compression, Decompress, FlushDecompress, Status, write::ZlibEncoder};
 use std::io::Write;
 
 const MAX_CONTAINER: usize = 16 * 1024 * 1024;

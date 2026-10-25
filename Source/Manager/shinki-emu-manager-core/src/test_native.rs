@@ -5,8 +5,8 @@ use shinki_emu_manager_core::LoadedFamilyPlugin;
 use std::{
     cell::RefCell,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     },
     thread::{JoinHandle, ThreadId},
     time::Duration,

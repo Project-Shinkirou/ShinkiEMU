@@ -1,7 +1,7 @@
 use crate::scene::error;
 use shinki_emu_abi as abi;
 use shinki_emu_sdk::runtime::SessionResult;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub(crate) use shinki_emu_sdk::native::ServiceContext;
 #[derive(Clone)]

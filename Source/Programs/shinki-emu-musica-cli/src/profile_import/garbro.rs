@@ -7,7 +7,7 @@ use std::{
 
 use flate2::read::ZlibDecoder;
 use shinki_emu_musica_keys::{
-    MusicaArchiveKey, MusicaKeyFile, MUSICA_KEY_SCHEMA, REQUIRED_ARCHIVE_ROLES,
+    MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
 };
 
 use super::garbro_nrbf::{NrbfGraph, NrbfValue};

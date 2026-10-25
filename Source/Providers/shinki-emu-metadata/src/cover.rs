@@ -146,15 +146,19 @@ mod tests {
 
     #[test]
     fn rejects_untrusted_or_non_https_cover_hosts() {
-        assert!(validate_cover_url(
-            MetadataProviderId::Vndb,
-            &Url::parse("http://t.vndb.org/a.jpg").unwrap()
-        )
-        .is_err());
-        assert!(validate_cover_url(
-            MetadataProviderId::Bangumi,
-            &Url::parse("https://example.com/a.jpg").unwrap()
-        )
-        .is_err());
+        assert!(
+            validate_cover_url(
+                MetadataProviderId::Vndb,
+                &Url::parse("http://t.vndb.org/a.jpg").unwrap()
+            )
+            .is_err()
+        );
+        assert!(
+            validate_cover_url(
+                MetadataProviderId::Bangumi,
+                &Url::parse("https://example.com/a.jpg").unwrap()
+            )
+            .is_err()
+        );
     }
 }

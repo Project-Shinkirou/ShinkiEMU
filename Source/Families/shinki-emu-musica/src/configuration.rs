@@ -237,7 +237,7 @@ impl MusicaConfigState {
                 MusicaConfigChange::Present
             }
             MusicaConfigControl::Apply | MusicaConfigControl::Cancel => {
-                return Err(MusicaRuntimeError::State)
+                return Err(MusicaRuntimeError::State);
             }
         };
         validate_config_state(draft)?;

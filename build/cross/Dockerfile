@@ -1,13 +1,20 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 # SDK input is a BuildKit local named context, never an unofficial download.
-FROM rust:1.98.0-trixie
+FROM rust:1.99.1-trixie
 ARG TARGET
 ARG SDK_VERSION
 ARG OSXCROSS_REV=27d21e4977c9751d01199c7a226a6faf494c3dd9
+ARG NASM_VERSION=3.02
+ARG NASM_SHA256=87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang lld llvm cmake ninja-build pkg-config git curl ca-certificates \
-    make g++ zlib1g-dev libxml2-dev libssl-dev xz-utils bzip2 patch autoconf automake libtool nasm \
+    make g++ zlib1g-dev libxml2-dev libssl-dev xz-utils bzip2 patch autoconf automake libtool \
     && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.xz" -o /tmp/nasm.tar.xz \
+    && echo "${NASM_SHA256}  /tmp/nasm.tar.xz" | sha256sum -c - \
+    && tar -xJf /tmp/nasm.tar.xz -C /tmp \
+    && (cd /tmp/nasm-${NASM_VERSION} && ./configure --prefix=/usr/local && make -j4 && make install) \
+    && rm -rf /tmp/nasm.tar.xz /tmp/nasm-${NASM_VERSION}
 COPY --from=apple-sdk . /input-sdk/
 COPY build/cross/build-toolchain.sh /tmp/build-toolchain.sh
 COPY build/cross/toolchain.cmake /opt/apple/toolchain.cmake
@@ -34,10 +41,8 @@ RUN case "$TARGET" in \
       x86_64-apple-ios) triplet=x64-ios-sim-cross ;; \
       *) exit 1 ;; \
     esac \
-    && git init /opt/apple/vcpkg \
-    && git -C /opt/apple/vcpkg remote add origin https://github.com/microsoft/vcpkg.git \
-    && git -C /opt/apple/vcpkg fetch --depth=1 origin 664933b8d385dfc01f4e0cdff4c7c74e71f6a740 \
-    && git -C /opt/apple/vcpkg checkout --detach FETCH_HEAD \
+    && git clone https://github.com/microsoft/vcpkg.git /opt/apple/vcpkg \
+    && git -C /opt/apple/vcpkg checkout --detach 0c2a9ace1964b818b15f7ae50ba1c42404918a7b \
     && /opt/apple/vcpkg/bootstrap-vcpkg.sh -disableMetrics \
     && /opt/apple/vcpkg/vcpkg install --x-manifest-root=/opt/apple/deps \
        --x-install-root=/opt/apple/installed --overlay-triplets=/opt/apple/triplets \

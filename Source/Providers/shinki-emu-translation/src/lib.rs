@@ -260,9 +260,11 @@ mod tests {
         let context = prompt.find("CONTEXT:\n").unwrap();
         let current = prompt.find("CURRENT:\n").unwrap();
         assert!(style < context && context < current);
-        assert!(!build_prompt(&profile(), &request)
-            .unwrap()
-            .contains("STYLE:"));
+        assert!(
+            !build_prompt(&profile(), &request)
+                .unwrap()
+                .contains("STYLE:")
+        );
     }
 
     #[test]

@@ -85,13 +85,13 @@ impl WindowCommand {
         if let Self::SetIcon(icon) = self {
             return icon.validate();
         }
-        if let Self::SetTitle(title) = self {
-            if title.len() > MAX_WINDOW_TITLE_BYTES || title.chars().any(char::is_control) {
-                return Err(SessionError::invalid(
-                    "SHINKI_EMU_FAMILY_WINDOW_TITLE",
-                    "window title exceeds its UTF-8 bound or contains control characters",
-                ));
-            }
+        if let Self::SetTitle(title) = self
+            && (title.len() > MAX_WINDOW_TITLE_BYTES || title.chars().any(char::is_control))
+        {
+            return Err(SessionError::invalid(
+                "SHINKI_EMU_FAMILY_WINDOW_TITLE",
+                "window title exceeds its UTF-8 bound or contains control characters",
+            ));
         }
         Ok(())
     }

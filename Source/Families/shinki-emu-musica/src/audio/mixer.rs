@@ -181,10 +181,10 @@ impl Mixer {
             Err(cause) if cause.code() == "SHINKI_EMU_AUDIO_CANCELLED" => return Ok(None),
             Err(cause) => return Err(crate::scene::core_error(cause)),
         };
-        if let Some(mut previous) = self.sounds.remove(&id) {
-            if let Some(h) = &mut previous.handle {
-                h.stop(immediate());
-            }
+        if let Some(mut previous) = self.sounds.remove(&id)
+            && let Some(h) = &mut previous.handle
+        {
+            h.stop(immediate());
         }
         self.sounds.insert(
             id,

@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fields::{
-    is_bounded_text, is_known_core_id, is_plugin_id, is_vndb_release_id, is_vndb_vn_id, MAX_ENTRIES,
-};
 use crate::MetadataError;
+use crate::fields::{
+    MAX_ENTRIES, is_bounded_text, is_known_core_id, is_plugin_id, is_vndb_release_id, is_vndb_vn_id,
+};
 
 pub const PRESET_DATABASE_SCHEMA_VERSION: &str = "shinki.emu.presets.v1";
 const MAX_SUMMARY_CHARS: usize = 120;

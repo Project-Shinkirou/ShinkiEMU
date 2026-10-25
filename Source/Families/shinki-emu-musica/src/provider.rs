@@ -1,19 +1,19 @@
 use crate::session::types::{OpenRequest, OpenResponse};
 use crate::{
+    MusicaVm, ScriptEncoding,
     audio::Audio,
     profile::mount_musica_with_resources,
-    scene::{core_error, error, Scene},
+    scene::{Scene, core_error, error},
     session::MusicaSession,
     storage::Storage,
-    MusicaVm, ScriptEncoding,
 };
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
 use shinki_emu_sdk::runtime::*;
 use std::{
     path::{Component, Path},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 mod eden;
@@ -500,7 +500,7 @@ impl MusicaProvider {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_CONFIG",
                     "invalid translation mode",
-                ))
+                ));
             }
         };
         let configured_font =

@@ -19,7 +19,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
 branch = "shinki"
-rev = "2ea2b388236234d50eddc6557fb63f97c0ef9be0"
+rev = "18c226bf39ebb64a20cb1515c986b21ea1457ad2"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "RFVP selects native-video/audio plus libass (ThirdParty/rfvp/crates/shinki-emu-rfvp/Cargo.toml:18); its Apple SDK-backed native build and Mach-O runtime closure are unavailable without a licensed SDK."
@@ -62,7 +62,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
 branch = "shinki"
-rev = "b647e942235646e50eaacf9226027a23a4e96c6c"
+rev = "faeeb33da68877025ba2ca03f3530973469fc537"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "siglus_scene_vm/Cargo.toml:15-18 enables native-audio through kira/cpal; the CoreAudio SDK-backed adapter build and Mach-O closure cannot be validated without a licensed Apple SDK."
@@ -105,7 +105,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
 branch = "shinki"
-rev = "7d1f2669e69197aaed7d40b4920ee82114bb826a"
+rev = "bc8c17a9b3c7ac7f6a3e20ce6d301f5dff4ebe5f"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "Artemis core features require FFmpeg, but xtask dependencies.rs has no Apple FFmpeg preparation/runtime-closure path; only Windows and Linux native trees are prepared."
@@ -187,7 +187,7 @@ publish_blocked = "crates/pal-vm/src/font.rs embeds default.ttf (MS PGothic, (c)
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
 branch = "shinki"
-rev = "c1cb6fcde1fa63cd0a5b9d7447efcb8a04170b5e"
+rev = "962ba72dc937c0e692852d0414ea277c33f255fc"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
@@ -276,7 +276,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
 branch = "shinki"
-rev = "24af94ee20abe34c4f3adf01ffd07f6936170d7a"
+rev = "61e63d94bb4ca7bc28521bc304bf7ffffcd7c311"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
@@ -314,32 +314,38 @@ dependencies = ["ffmpeg"]
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = []
 publish_blocked = ""
 [[cores.blocked]]
+target = "x86_64-pc-windows-msvc"
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
+[[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "CMVS selects video-ffmpeg (Source/Families/shinki-emu-cmvs/Cargo.toml:12); xtask has no Apple FFmpeg dependency preparation/runtime-closure path for its movie decoder."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "CMVS selects video-ffmpeg (Source/Families/shinki-emu-cmvs/Cargo.toml:12); xtask has no Apple FFmpeg dependency preparation/runtime-closure path for its movie decoder."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "CMVS selects video-ffmpeg (Source/Families/shinki-emu-cmvs/Cargo.toml:12); xtask has no Apple FFmpeg dependency preparation/runtime-closure path for its movie decoder."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "CMVS selects video-ffmpeg (Source/Families/shinki-emu-cmvs/Cargo.toml:12); xtask has no Apple FFmpeg dependency preparation/runtime-closure path for its movie decoder."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "CMVS selects video-ffmpeg (Source/Families/shinki-emu-cmvs/Cargo.toml:12); xtask has no Apple FFmpeg dependency preparation/runtime-closure path for its movie decoder."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+reason = "CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。"
 
 [[cores]]
 id = "ReMinori"

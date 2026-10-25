@@ -1,13 +1,13 @@
 use crate::{
-    paths::{relative, AuthorizedRoot},
-    storage::{scratch, TaskFile},
     PatchError, PatchErrorKind,
+    paths::{AuthorizedRoot, relative},
+    storage::{TaskFile, scratch},
 };
 use roukaku_byte_source::{ByteRange, DEFAULT_MAX_RANGE_BYTES};
 use serde::Deserialize;
 use std::{
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{parse_sc, ScOpcodeCatalog};
+use crate::{ScOpcodeCatalog, parse_sc};
 
 fn machine(source: &[u8]) -> MusicaVm {
     MusicaVm::new(
@@ -34,15 +34,21 @@ fn movie_cursor_restores_and_completion_clears_the_media_wait() {
         123456
     );
     let before = restored.state().clone();
-    assert!(restored
-        .update_movie_position("musica.movie.1", &movie.fence_id, 200000)
-        .is_err());
-    assert!(restored
-        .update_movie_position(&movie.media_id, "old-fence", 200000)
-        .is_err());
-    assert!(restored
-        .update_movie_position(&movie.media_id, &movie.fence_id, 123455)
-        .is_err());
+    assert!(
+        restored
+            .update_movie_position("musica.movie.1", &movie.fence_id, 200000)
+            .is_err()
+    );
+    assert!(
+        restored
+            .update_movie_position(&movie.media_id, "old-fence", 200000)
+            .is_err()
+    );
+    assert!(
+        restored
+            .update_movie_position(&movie.media_id, &movie.fence_id, 123455)
+            .is_err()
+    );
     assert!(restored.resolve_wait("old-fence").is_err());
     assert_eq!(restored.state(), &before);
     restored.resolve_wait(&movie.fence_id).unwrap();

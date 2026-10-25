@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // Release signing material comes only from the environment. Blank values count as
@@ -25,8 +24,11 @@ val generatedRoot = layout.projectDirectory.dir(
 
 android {
     namespace = "org.shinkirou.shinkiemu"
-    compileSdk = 36
-    buildToolsVersion = "36.0.0"
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
+    buildToolsVersion = "37.0.0"
+    ndkVersion = "30.0.16248370"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,7 +38,7 @@ android {
     defaultConfig {
         applicationId = "org.shinkirou.shinkiemu"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = providers.environmentVariable("SHINKI_EMU_ANDROID_VERSION_CODE")
             .orElse("1")
             .get()
@@ -84,8 +86,8 @@ android {
     }
 
     sourceSets.getByName("main") {
-        jniLibs.srcDir(generatedRoot.dir("jniLibs"))
-        assets.srcDir(generatedRoot.dir("assets"))
+        jniLibs.directories.add(generatedRoot.dir("jniLibs").asFile.absolutePath)
+        assets.directories.add(generatedRoot.dir("assets").asFile.absolutePath)
     }
 
     packaging {
@@ -120,13 +122,37 @@ gradle.taskGraph.whenReady {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(27)
+    compilerOptions.jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+}
+
+abstract class RustlsVersion : ValueSource<String, RustlsVersion.Params> {
+    interface Params : ValueSourceParameters {
+        val lockFile: RegularFileProperty
+    }
+
+    override fun obtain(): String {
+        val lines = parameters.lockFile.get().asFile.readLines()
+        val nameIndex = lines.indexOfFirst {
+            it.trim() == "name = \"rustls-platform-verifier-android\""
+        }
+        val version = if (nameIndex < 0) null else lines.drop(nameIndex + 1)
+            .firstOrNull { it.trimStart().startsWith("version = ") }
+            ?.substringAfter('"', "")
+            ?.substringBefore('"', "")
+            ?.takeIf { it.isNotEmpty() }
+        return version ?: error("rustls-platform-verifier-android not found in Cargo.lock")
+    }
+}
+
+val rustlsPlatformVerifierVersion = providers.of(RustlsVersion::class.java) {
+    parameters.lockFile.set(rootProject.layout.projectDirectory.file("../../Cargo.lock"))
 }
 
 dependencies {
-    // Java/Kotlin side of native crates, staged by cargo xtask package.
-    // (rustls-platform-verifier's org.rustls.platformverifier.CertificateVerifier,
-    // called through JNI). Minify stays off; enabling it needs
-    // `-keep class org.rustls.platformverifier.** { *; }`.
-    implementation(fileTree(generatedRoot.dir("libs")) { include("*.aar") })
+    // The Kotlin verifier component must match Cargo's resolved Android shim.
+    // Minify stays off; enabling it also requires keeping its JNI-referenced classes.
+    implementation(rustlsPlatformVerifierVersion.map {
+        "org.rustls:rustls-platform-verifier:$it"
+    })
 }

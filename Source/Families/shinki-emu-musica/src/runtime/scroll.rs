@@ -365,7 +365,7 @@ pub(super) fn execute_end_scroll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(
             "musica:/scr/scroll.sc".into(),
@@ -408,10 +408,12 @@ mod tests {
             let scroll = original.state().axis_scroll.as_ref().unwrap();
             assert!(scroll.completed);
             assert_eq!(scroll.current, target);
-            assert!(original
-                .advance_axis_scroll_clock(10_000_000)
-                .unwrap()
-                .is_none());
+            assert!(
+                original
+                    .advance_axis_scroll_clock(10_000_000)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
     #[test]

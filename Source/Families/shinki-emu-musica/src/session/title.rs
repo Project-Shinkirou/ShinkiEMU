@@ -101,13 +101,12 @@ impl MusicaSession {
                 button: PointerButton::Primary,
                 state: KeyState::Pressed,
             } => {
-                if let Some((x, y)) = self.pointer {
-                    if let Some(focus) =
+                if let Some((x, y)) = self.pointer
+                    && let Some(focus) =
                         crate::runtime::title::focus_at(self.vm.title_variant(), x, y)
-                    {
-                        self.vm.set_title_focus(focus).map_err(vm_error)?;
-                        self.activate_title()?;
-                    }
+                {
+                    self.vm.set_title_focus(focus).map_err(vm_error)?;
+                    self.activate_title()?;
                 }
             }
             RuntimeEvent::WindowFocused { .. }

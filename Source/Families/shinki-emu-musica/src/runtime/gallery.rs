@@ -34,14 +34,13 @@ pub(crate) fn bgm_uri(focus: u32) -> Result<String, MusicaRuntimeError> {
     Ok(format!("musica:/bgm/BGM{track:03}.ogg"))
 }
 pub(super) fn validate(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
-    if let Some(count) = count(&state.system_ui.page) {
-        if state.launch_mode != MusicaLaunchMode::Title
+    if let Some(count) = count(&state.system_ui.page)
+        && (state.launch_mode != MusicaLaunchMode::Title
             || state.wait.is_some()
             || state.terminal
-            || state.system_ui.focus_index >= count
-        {
-            return Err(MusicaRuntimeError::State);
-        }
+            || state.system_ui.focus_index >= count)
+    {
+        return Err(MusicaRuntimeError::State);
     }
     Ok(())
 }

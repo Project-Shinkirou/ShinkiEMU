@@ -2,6 +2,7 @@
 name = "shinki-emu-manager"
 version = "0.1.0-beta.2"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 build = "build.rs"
 
@@ -28,15 +29,15 @@ clap.workspace = true
 serde.workspace = true
 crossbeam-channel.workspace = true
 ctrlc.workspace = true
-naga = { version = "30", features = ["spv-in", "wgsl-out"] }
+naga = { version = "30.0.1", features = ["spv-in", "wgsl-out"] }
 tokio.workspace = true
 directories.workspace = true
 pollster.workspace = true
 reqwest.workspace = true
 semver.workspace = true
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 serde_json.workspace = true
-zip = { version = "=9.0.5", default-features = false, features = ["deflate"] }
+zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
 sha2.workspace = true
 slint = { workspace = true, features = ["std", "compat-1-2", "accessibility", "unstable-wgpu-30"] }
 thiserror.workspace = true
@@ -44,10 +45,10 @@ tempfile.workspace = true
 tracing.workspace = true
 url.workspace = true
 hassle-rs = "=0.12.0"
-wgpu = { version = "30", features = ["static-dxc"] }
+wgpu = { version = "30.0.1", features = ["static-dxc"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Console"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Console"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 gilrs = { workspace = true, features = ["wgi"] }
@@ -61,7 +62,7 @@ winit.workspace = true
 [target.'cfg(target_os = "ios")'.dependencies]
 roukaku-platform.workspace = true
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "2ea2b388236234d50eddc6557fb63f97c0ef9be0" }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "18c226bf39ebb64a20cb1515c986b21ea1457ad2" }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.
@@ -72,11 +73,12 @@ ndk = { version = "=0.9.0", default-features = false }
 libc.workspace = true
 # reqwest's rustls backend verifies certificates through the platform
 # verifier, which needs the activity context on Android (`platform::android`).
-rustls-platform-verifier = "=0.7.0"
+rustls-platform-verifier = "=0.7.1"
 
 [build-dependencies]
 sha2.workspace = true
 
 [dev-dependencies]
-crc32fast = "1.5"
+hex.workspace = true
+crc32fast = "1.5.3"
 flate2.workspace = true

@@ -14,7 +14,7 @@ mod localization;
 mod message;
 mod subtitles;
 pub use localization::{
-    musica_display_cstr_hash, musica_display_hash, MusicaTranslationTable, TranslationMode,
+    MusicaTranslationTable, TranslationMode, musica_display_cstr_hash, musica_display_hash,
 };
 mod paz;
 mod profile;
@@ -24,7 +24,7 @@ mod runtime;
 pub use message::*;
 mod script;
 mod script_loader;
-pub use script_loader::{read_expanded_script, validate_musica_script, ScriptValidation};
+pub use script_loader::{ScriptValidation, read_expanded_script, validate_musica_script};
 mod text_renderer;
 
 pub use archive::*;
@@ -45,7 +45,7 @@ mod native;
 pub use native::musica_query;
 
 #[cfg(test)]
-pub(crate) use provider::{musica_descriptor, MusicaProvider};
+pub(crate) use provider::{MusicaProvider, musica_descriptor};
 
 #[cfg(test)]
 mod test_fixture;

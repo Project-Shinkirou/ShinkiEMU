@@ -3,15 +3,15 @@ use std::{cell::RefCell, rc::Rc};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::{
-    covers, list_model::ListModel, notices, App, Appearance, AppearanceViewModel, BangumiProgress,
-    BangumiViewModel, Choice, ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel,
-    CoreInfo, CoreViewModel, Cores, EngineAction, EngineActionViewModel, Excluded,
-    ExcludedViewModel, Filters, GameCard, GameCardViewModel, GameSettings, GamepadBinding,
-    GamepadBindingViewModel, Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel,
-    Network, Notices, Onboarding, Patch, PatchGame, PatchGameViewModel, PatchState,
-    PatchStateViewModel, PlaySession, PlaySessionViewModel, Recipe, RecipeViewModel, RenderState,
-    RenderViewModel, SelectedGame, Selection, Session, Settings, TranslationForm,
-    TranslationFormViewModel,
+    App, Appearance, AppearanceViewModel, BangumiProgress, BangumiViewModel, Choice,
+    ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreInfo, CoreViewModel, Cores,
+    EngineAction, EngineActionViewModel, Excluded, ExcludedViewModel, Filters, GameCard,
+    GameCardViewModel, GameSettings, GamepadBinding, GamepadBindingViewModel, Library,
+    ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel, Network, Notices, Onboarding,
+    Patch, PatchGame, PatchGameViewModel, PatchState, PatchStateViewModel, PlaySession,
+    PlaySessionViewModel, Recipe, RecipeViewModel, RenderState, RenderViewModel, SelectedGame,
+    Selection, Session, Settings, TranslationForm, TranslationFormViewModel, covers,
+    list_model::ListModel, notices,
 };
 
 pub struct SlintManagerAdapter {

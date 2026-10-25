@@ -17,10 +17,12 @@ fn native_gpu_read_skip_stops_on_unread_and_restores_mode() {
     session.save(0).unwrap();
     let storage = crate::storage::Storage::new(root.path()).unwrap();
     let saved = storage.read(0).unwrap();
-    assert!(MusicaVm::decode_native_save(&saved.vm)
-        .unwrap()
-        .read_message_identities
-        .is_empty());
+    assert!(
+        MusicaVm::decode_native_save(&saved.vm)
+            .unwrap()
+            .read_message_identities
+            .is_empty()
+    );
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     session.save(0).unwrap();
     let read = storage.read(0).unwrap();
@@ -67,8 +69,10 @@ fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
         .path()
         .join(".shinki-musica/saves/global-progress.json");
     std::fs::write(&path, b"damaged").unwrap();
-    assert!(provider
-        .open_session(request(root.path(), Sink::default()))
-        .is_err());
+    assert!(
+        provider
+            .open_session(request(root.path(), Sink::default()))
+            .is_err()
+    );
     assert_eq!(std::fs::read(path).unwrap(), b"damaged");
 }

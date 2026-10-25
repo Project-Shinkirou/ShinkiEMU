@@ -1,10 +1,10 @@
-use crate::{error::check_cancelled, PatchError, PatchErrorKind};
-use roukaku_byte_source::{ByteRange, AUDIT_CHUNK_BYTES, DEFAULT_MAX_RANGE_BYTES};
+use crate::{PatchError, PatchErrorKind, error::check_cancelled};
+use roukaku_byte_source::{AUDIT_CHUNK_BYTES, ByteRange, DEFAULT_MAX_RANGE_BYTES};
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 pub(crate) const MAX_EXACT_INTEGER: u64 = (1_u64 << 53) - 1;
@@ -145,14 +145,14 @@ impl TaskFile {
             ));
         }
         check_cancelled(cancelled)?;
-        Ok(format!("{:x}", digest.finalize()))
+        Ok(hex::encode(digest.finalize()))
     }
 
     pub(crate) fn close(&mut self) -> Result<(), PatchError> {
-        if let Some(file) = self.file.take() {
-            if self.writable {
-                file.sync_all()?;
-            }
+        if let Some(file) = self.file.take()
+            && self.writable
+        {
+            file.sync_all()?;
         }
         Ok(())
     }
@@ -222,7 +222,7 @@ pub(crate) fn copy(source: &mut TaskFile, output: &mut TaskFile) -> Result<Strin
         ));
     }
     output.truncate(length)?;
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(hex::encode(digest.finalize()))
 }
 
 #[cfg(test)]

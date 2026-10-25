@@ -52,16 +52,15 @@ pub enum ModalResponse {
 impl ModalResponse {
     pub fn validate_for_request(&self, request: &ModalRequest) -> FamilyResult<()> {
         request.validate()?;
-        if let Self::Submitted { button_index, text } = self {
-            if *button_index as usize >= request.buttons.len()
+        if let Self::Submitted { button_index, text } = self
+            && (*button_index as usize >= request.buttons.len()
                 || text.is_some() != request.initial_text.is_some()
-                || matches!(text, Some(text) if !valid_text(text, MAX_MODAL_TEXT_BYTES))
-            {
-                return Err(FamilyError::invalid(
-                    "SHINKI_EMU_FAMILY_MODAL_RESPONSE",
-                    "modal response does not match its request",
-                ));
-            }
+                || matches!(text, Some(text) if !valid_text(text, MAX_MODAL_TEXT_BYTES)))
+        {
+            return Err(FamilyError::invalid(
+                "SHINKI_EMU_FAMILY_MODAL_RESPONSE",
+                "modal response does not match its request",
+            ));
         }
         Ok(())
     }

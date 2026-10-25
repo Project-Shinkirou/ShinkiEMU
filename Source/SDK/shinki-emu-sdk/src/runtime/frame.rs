@@ -15,7 +15,7 @@ static NEXT_SESSION_EPOCH: AtomicU64 = AtomicU64::new(1);
 /// Allocate an epoch for in-process runtime callers and synthetic inputs.
 pub fn allocate_session_epoch() -> SessionResult<u64> {
     NEXT_SESSION_EPOCH
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             value.checked_add(1)
         })
         .map_err(|_| invalid("SHINKI_EMU_FAMILY_SESSION_EPOCH", "session epoch exhausted"))

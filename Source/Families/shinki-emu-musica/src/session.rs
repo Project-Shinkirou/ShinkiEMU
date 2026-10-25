@@ -12,11 +12,11 @@ mod persistence;
 mod save_pages;
 mod title;
 use crate::{
+    MusicaMountedVfs, MusicaVm, MusicaVmEvent, MusicaWaitState,
     audio::Audio,
     provider::SessionLease,
-    scene::{error, Scene},
+    scene::{Scene, error},
     storage::{Snapshot, Storage},
-    MusicaMountedVfs, MusicaVm, MusicaVmEvent, MusicaWaitState,
 };
 use roukaku_core::Hash256;
 use shinki_emu_sdk::runtime::*;
@@ -280,10 +280,10 @@ impl MusicaSession {
                 }
                 RuntimeEvent::PointerMove { x, y } => {
                     self.pointer = Some((*x, *y));
-                    if let Some((labels, _)) = self.vm.choice_display().map_err(vm_error)? {
-                        if let Some(index) = crate::text_renderer::choice_at(labels.len(), *x, *y) {
-                            choice_dirty |= self.vm.focus_choice(index).map_err(vm_error)?;
-                        }
+                    if let Some((labels, _)) = self.vm.choice_display().map_err(vm_error)?
+                        && let Some(index) = crate::text_renderer::choice_at(labels.len(), *x, *y)
+                    {
+                        choice_dirty |= self.vm.focus_choice(index).map_err(vm_error)?;
                     }
                 }
                 RuntimeEvent::PointerButton {

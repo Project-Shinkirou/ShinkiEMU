@@ -29,7 +29,7 @@ type FilterChange<'a, C> = dyn Fn(&mut C, FilterApply<'_>) -> Result<ManagerView
 fn wire<C: ManagerController, R: ShinkiUnderlayRenderer>(
     wiring: &Wiring<C>,
     renderer: &std::rc::Rc<std::cell::RefCell<R>>,
-) -> impl Fn(Option<&str>, &FilterChange<'_, C>) + Clone {
+) -> impl Fn(Option<&str>, &FilterChange<'_, C>) + Clone + use<C, R> {
     let wiring = wiring.clone();
     let renderer = renderer.clone();
     move |field, change| {

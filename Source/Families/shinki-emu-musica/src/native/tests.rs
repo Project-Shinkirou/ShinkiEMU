@@ -103,11 +103,11 @@ fn descriptor_declares_v3_presentation_and_render_extent() {
         Ok("Shinki Musica")
     );
     assert_eq!(unsafe { descriptor.family_name.text(64) }, Ok("Musica"));
-    assert!(fields.iter().all(
-        |field| ["render_width", "render_height"]
+    assert!(fields.iter().all(|field| {
+        ["render_width", "render_height"]
             .iter()
             .all(|id| unsafe { field.id.text(128) } != Ok(*id))
-    ));
+    }));
     assert_eq!(
         field("profile_file").flags,
         abi::CONFIG_FLAG_FILE_PATH | abi::CONFIG_FLAG_GAME_RELATIVE

@@ -268,11 +268,10 @@ fn action_error_keeps_the_session_open() {
     harness.owner.action(epoch, 0x1002).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let update = loop {
-        if let Some(update) = harness.owner.take_update(epoch) {
-            if update.action_error.is_some() || update.closed {
+        if let Some(update) = harness.owner.take_update(epoch)
+            && (update.action_error.is_some() || update.closed) {
                 break update;
             }
-        }
         assert!(Instant::now() < deadline, "action error did not arrive");
         let _ = harness.wake.recv_timeout(Duration::from_millis(10));
     };

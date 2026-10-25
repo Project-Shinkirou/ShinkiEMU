@@ -62,18 +62,26 @@ fn diagnostics_preserve_typed_values_bound_debug_and_reject_sink_replacement() {
         .unwrap();
     assert_eq!(record.message, "diagnostic text");
     assert_eq!(record.dropped, 1);
-    assert!(record
-        .fields
-        .contains(&("number".into(), FIELD_U64, 0, 7, 0.0)));
-    assert!(record
-        .fields
-        .contains(&("signed".into(), FIELD_I64, -2, 0, 0.0)));
-    assert!(record
-        .fields
-        .contains(&("real".into(), FIELD_F64, 0, 0, 0.5)));
-    assert!(record
-        .fields
-        .contains(&("truth".into(), FIELD_BOOL, 0, 1, 0.0)));
+    assert!(
+        record
+            .fields
+            .contains(&("number".into(), FIELD_U64, 0, 7, 0.0))
+    );
+    assert!(
+        record
+            .fields
+            .contains(&("signed".into(), FIELD_I64, -2, 0, 0.0))
+    );
+    assert!(
+        record
+            .fields
+            .contains(&("real".into(), FIELD_F64, 0, 0, 0.5))
+    );
+    assert!(
+        record
+            .fields
+            .contains(&("truth".into(), FIELD_BOOL, 0, 1, 0.0))
+    );
     static ANOTHER_SINK: u8 = 0;
     let replaced = Diagnostics {
         context: (&ANOTHER_SINK as *const u8).cast_mut().cast(),

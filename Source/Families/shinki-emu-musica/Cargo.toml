@@ -2,6 +2,7 @@
 name = "shinki-emu-musica"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 build = "build.rs"
 
@@ -27,7 +28,7 @@ shinki-emu-musica-keys = { path = "../shinki-emu-musica-keys" }
 roukaku-text = { workspace = true }
 roukaku-media-core = { workspace = true }
 blowfish.workspace = true
-crc32fast = "1.5"
+crc32fast = "1.5.3"
 encoding_rs.workspace = true
 flate2.workspace = true
 fontdb.workspace = true
@@ -40,7 +41,7 @@ rc4.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-toml = "1.1"
+toml = "1.1.8"
 sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -50,7 +51,7 @@ time = { workspace = true, features = ["local-offset"] }
 tempfile.workspace = true
 
 [dev-dependencies]
-parking_lot = "0.12"
+parking_lot = "0.13.0"
 
 
 [build-dependencies]

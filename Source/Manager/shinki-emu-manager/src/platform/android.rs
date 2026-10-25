@@ -14,7 +14,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ffi::{c_void, CStr, CString},
+    ffi::{CStr, CString, c_void},
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
@@ -23,15 +23,14 @@ use std::{
 };
 
 use jni::{
-    jni_sig, jni_str,
+    Env, EnvUnowned, JavaVM, jni_sig, jni_str,
     objects::{JObject, JString, JValue},
     refs::LoaderContext,
     strings::JNIStr,
-    Env, EnvUnowned, JavaVM,
 };
 use slint::android::{
-    android_activity::{MainEvent, PollEvent},
     AndroidApp,
+    android_activity::{MainEvent, PollEvent},
 };
 
 use super::{FileFilter, PickDone};

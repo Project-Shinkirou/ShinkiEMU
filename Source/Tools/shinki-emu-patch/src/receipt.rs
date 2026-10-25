@@ -1,15 +1,15 @@
 use crate::{
+    OutputProfile, PatchError, PatchErrorKind, PatchProgress,
     error::check_cancelled,
     paths::AuthorizedRoot,
     storage::TaskFile,
     vm::{Execution, InputRecord, ScriptRecord},
-    OutputProfile, PatchError, PatchErrorKind, PatchProgress,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{self, BufReader, Read, Write},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 pub(crate) const RECEIPT_FILE: &str = "shinki-patch-result.json";
@@ -93,7 +93,7 @@ pub(crate) fn write(
                     return Err(PatchError::new(
                         PatchErrorKind::Path,
                         "output contains a link or nonregular entry",
-                    ))
+                    ));
                 }
             }
         }

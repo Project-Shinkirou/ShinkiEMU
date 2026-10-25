@@ -11,7 +11,7 @@ const SCALE_SOURCE: &str = include_str!("../../../../../Assets/Effects/Builtin/s
 const SHARPEN_SOURCE: &str = include_str!("../../../../../Assets/Effects/Builtin/sharpen.hlsl");
 
 pub const MAGPIE_REVISION: &str = "3396e1e000bbab050d098032dac04ba0250683ad";
-pub const DXC_VERSION: &str = "1.8.2502";
+pub const DXC_VERSION: &str = "1.9.2609";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterPreset {

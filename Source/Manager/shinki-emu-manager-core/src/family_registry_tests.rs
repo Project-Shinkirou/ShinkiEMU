@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
+    SessionMenuEntry,
     model::ProbeRequest,
     test_native::{self, Fixture},
-    SessionMenuEntry,
 };
 use std::path::Path;
 
@@ -117,10 +117,12 @@ fn subdirectory_with_two_family_libraries_is_a_layout_error() {
     assert!(discovery.libraries.is_empty());
     let failed: Vec<_> = discovery.errors.iter().map(|error| &error.path).collect();
     assert_eq!(failed, [&empty, &directory]);
-    assert!(discovery
-        .errors
-        .iter()
-        .all(|error| error.error.diagnostic_code() == "SHINKI_EMU_CORE_LAYOUT"));
+    assert!(
+        discovery
+            .errors
+            .iter()
+            .all(|error| error.error.diagnostic_code() == "SHINKI_EMU_CORE_LAYOUT")
+    );
 }
 
 #[test]

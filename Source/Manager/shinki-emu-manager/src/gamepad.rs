@@ -5,9 +5,9 @@ use shinki_emu_manager_core::InputMapping;
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use std::{
     sync::{
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, SyncSender},
-        Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -108,13 +108,13 @@ impl Drop for GameInputPump {
         // Dropping the receiver releases a worker blocked by a full bounded
         // queue, so shutdown never relies on a spin/yield polling loop.
         self.batches = None;
-        if let Some(worker) = self.worker.take() {
-            if worker.join().is_err() {
-                tracing::error!(
-                    event = "shinki.emu.input.gamepad_worker_panic",
-                    diagnostic_code = "SHINKI_EMU_GAMEPAD_WORKER_PANIC"
-                );
-            }
+        if let Some(worker) = self.worker.take()
+            && worker.join().is_err()
+        {
+            tracing::error!(
+                event = "shinki.emu.input.gamepad_worker_panic",
+                diagnostic_code = "SHINKI_EMU_GAMEPAD_WORKER_PANIC"
+            );
         }
     }
 }

@@ -1,7 +1,7 @@
 use shinki_emu_abi::*;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 fn integer(value: i64) -> ConfigValue {
@@ -399,14 +399,16 @@ fn configuration_rejects_unknown_duplicate_and_out_of_range_values() {
             number: 1920.0,
             ..integer(0)
         };
-        assert!(validate_config(
-            &fields,
-            &[ConfigEntry {
-                value: wrong_type,
-                ..entry
-            }]
-        )
-        .is_err());
+        assert!(
+            validate_config(
+                &fields,
+                &[ConfigEntry {
+                    value: wrong_type,
+                    ..entry
+                }]
+            )
+            .is_err()
+        );
         let invalid_default = ConfigField {
             default_value: integer(7681),
             ..field()

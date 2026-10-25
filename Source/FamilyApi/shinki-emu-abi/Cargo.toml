@@ -1,9 +1,9 @@
 [package]
 name = "shinki-emu-abi"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.92"
+rust-version = "1.99"
 
 [lib]
 doctest = false
@@ -13,9 +13,9 @@ default = []
 diagnostic-bridge = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-log"]
 
 [dependencies]
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"], optional = true }
+tracing = { version = "0.1.44", optional = true }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"], optional = true }
 tracing-log = { version = "0.2", optional = true }
 
 [dev-dependencies]
-parking_lot = "0.12"
+parking_lot = "0.13.0"

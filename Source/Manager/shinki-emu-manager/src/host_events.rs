@@ -3,12 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 use shinki_emu_manager_core::model::WindowState;
 #[cfg(not(target_os = "android"))]
 use shinki_emu_manager_core::model::{FamilyEvent, KeyCode, KeyModifiers, KeyState};
-use shinki_emu_manager_ui_slint::{report_error, App, SlintManagerAdapter};
+use shinki_emu_manager_ui_slint::{App, SlintManagerAdapter, report_error};
 #[cfg(not(target_os = "android"))]
 use shinki_emu_manager_ui_slint::{GameSettings, ManagerViewModel, ManagerWindow, Settings};
+use slint::ComponentHandle;
 #[cfg(not(target_os = "android"))]
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-use slint::ComponentHandle;
 #[cfg(not(target_os = "android"))]
 use winit::event::{ElementState, WindowEvent};
 
@@ -223,7 +223,7 @@ pub(super) fn install<C: ManagerController>(
     pointer: Rc<RefCell<super::pointer::HostPointer>>,
     _gamepad: Rc<RefCell<GameInputPump>>,
 ) {
-    use crate::platform::android::{set_lifecycle_handler, LifecycleEvent};
+    use crate::platform::android::{LifecycleEvent, set_lifecycle_handler};
     let weak_adapter = Rc::downgrade(adapter);
     let weak_controller = Rc::downgrade(&controller);
     let weak_pointer = Rc::downgrade(&pointer);

@@ -1,4 +1,4 @@
-use crate::{fields::*, MetadataError, CORE_RELEASE_URL_PREFIX};
+use crate::{CORE_RELEASE_URL_PREFIX, MetadataError, fields::*};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -115,16 +115,15 @@ impl PatchCatalogEntry {
                 return Err(invalid());
             }
         }
-        if let Some(a) = &self.artifact {
-            if !https(&a.url)
+        if let Some(a) = &self.artifact
+            && (!https(&a.url)
                 || !is_sha256_hex(&a.sha256)
                 || a.size == 0
                 || a.size > MAX_PATCH_ARTIFACT_BYTES
                 || !is_safe_metadata_relative_path(&a.file_name)
-                || a.file_name.contains('/')
-            {
-                return Err(invalid());
-            }
+                || a.file_name.contains('/'))
+        {
+            return Err(invalid());
         }
         match self.kind {
             PatchKind::Recipe => {

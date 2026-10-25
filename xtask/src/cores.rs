@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -166,7 +166,10 @@ impl Inventory {
             crate::package::portable(&c.id)?;
             crate::package::portable(&c.manifest.to_string_lossy().replace('\\', "/"))?;
             if c.manifest.starts_with("ThirdParty") != c.source.is_some() {
-                bail!("external core {} needs a pinned source declaration; in-repo cores must not have one", c.id);
+                bail!(
+                    "external core {} needs a pinned source declaration; in-repo cores must not have one",
+                    c.id
+                );
             }
             if let Some(source) = &c.source {
                 source.validate()?;

@@ -3,16 +3,16 @@ use shinki_emu_manager_core::InputMapping;
 use std::{
     cell::Cell,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Instant,
 };
 
 pub(super) use shinki_emu_manager_ui_slint::{
-    describe_error, report_error, App, Cores, Dialogs, Filters, GameSettings, Library, Logs,
-    ManagerViewModel, Network, Notices, Onboarding, Patch, Selection, Session, Settings,
-    SlintManagerAdapter,
+    App, Cores, Dialogs, Filters, GameSettings, Library, Logs, ManagerViewModel, Network, Notices,
+    Onboarding, Patch, Selection, Session, Settings, SlintManagerAdapter, describe_error,
+    report_error,
 };
 use slint::ComponentHandle;
 use thiserror::Error;
@@ -587,16 +587,16 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                     session.set_title(title);
                 }
                 let icon = controller.borrow_mut().take_game_icon();
-                if icon.is_some() || !controller.borrow().is_game_active() {
-                    if let Err(error) = window_commands::set_icon(window.window(), icon) {
-                        terminate_game(&controller, &adapter, &window, error);
-                    }
+                if (icon.is_some() || !controller.borrow().is_game_active())
+                    && let Err(error) = window_commands::set_icon(window.window(), icon)
+                {
+                    terminate_game(&controller, &adapter, &window, error);
                 }
                 let pointer_request = controller.borrow_mut().take_game_pointer();
-                if let Some(request) = pointer_request {
-                    if let Err(error) = pointer::HostPointer::apply(&pointer, &window, request) {
-                        terminate_game(&controller, &adapter, &window, error);
-                    }
+                if let Some(request) = pointer_request
+                    && let Err(error) = pointer::HostPointer::apply(&pointer, &window, request)
+                {
+                    terminate_game(&controller, &adapter, &window, error);
                 }
                 let request = controller.borrow_mut().take_window_request();
                 if let Some(request) = request {
@@ -714,11 +714,10 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                         match event_gamepad.borrow_mut().poll() {
                             Ok(events) => {
                                 let session = window.global::<Session>();
-                                if !session.get_active() && update_pad_state(&mut pad_pressed.borrow_mut(), &events) {
-                                    if let Some(adapter) = event_adapter.upgrade() {
+                                if !session.get_active() && update_pad_state(&mut pad_pressed.borrow_mut(), &events)
+                                    && let Some(adapter) = event_adapter.upgrade() {
                                         adapter.set_pad_state(&pad_pressed.borrow());
                                     }
-                                }
                                 if session.get_active() && session.get_menu_open() {
                                     let keys: Vec<_> = events
                                         .iter()

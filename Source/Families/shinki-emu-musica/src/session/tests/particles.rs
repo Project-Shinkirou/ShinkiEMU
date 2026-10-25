@@ -31,11 +31,13 @@ fn native_gpu_particle_family_save_restore_and_pause() {
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
     let saved = capture.0.clone();
-    assert!(saved
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .any(|pixel| pixel[..3] != [0, 0, 0]));
+    assert!(
+        saved
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[..3] != [0, 0, 0])
+    );
     opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
     opened.session.advance(64_000_000, &[]).unwrap();
     capture

@@ -112,11 +112,10 @@ impl MetadataRuntime {
         // Close the startup race: a completion may have been queued before the
         // UI installed its wake callback.  One explicit edge lets the host
         // drain it without reintroducing a timer.
-        if let Ok(current) = self.wake.lock() {
-            if let Some(callback) = current.as_ref() {
+        if let Ok(current) = self.wake.lock()
+            && let Some(callback) = current.as_ref() {
                 callback();
             }
-        }
     }
 
     pub fn submit(&self, command: MetadataCommand) -> Result<(), String> {

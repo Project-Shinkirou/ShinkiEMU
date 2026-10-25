@@ -1,5 +1,5 @@
 use super::*;
-use crate::{parse_musica_message_markup, MusicaMessageControl};
+use crate::{MusicaMessageControl, parse_musica_message_markup};
 pub(super) fn execute_message(
     command: &ScCommand,
     state: &mut MusicaRuntimeState,
@@ -283,16 +283,15 @@ pub(super) fn validate_state(state: &MusicaRuntimeState) -> Result<(), MusicaRun
             return Err(MusicaRuntimeError::Character);
         }
     }
-    if let Some(MusicaWaitState::Voice { stream_id, .. }) = &state.wait {
-        if *stream_id != 4
+    if let Some(MusicaWaitState::Voice { stream_id, .. }) = &state.wait
+        && (*stream_id != 4
             || state.message.is_none()
             || !state
                 .audio
                 .get(stream_id)
-                .is_some_and(|voice| voice.bus == "voice" && !voice.looped)
-        {
-            return Err(MusicaRuntimeError::State);
-        }
+                .is_some_and(|voice| voice.bus == "voice" && !voice.looped))
+    {
+        return Err(MusicaRuntimeError::State);
     }
     Ok(())
 }

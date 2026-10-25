@@ -1,4 +1,4 @@
-use shinki_emu_build::{write_core_build_manifest, BuildAsset, CoreBuildManifest};
+use shinki_emu_build::{BuildAsset, CoreBuildManifest, write_core_build_manifest};
 use std::{env, path::PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     for input in ["HOST", "TARGET", "PROFILE"] {

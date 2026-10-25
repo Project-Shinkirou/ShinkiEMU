@@ -2,7 +2,7 @@
 mod fixtures;
 
 use fixtures::PublicOverlay;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -33,7 +33,7 @@ fn apply(fixture: &PublicOverlay) -> Command {
 }
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn fingerprints(root: &Path) -> BTreeMap<PathBuf, String> {
@@ -66,11 +66,13 @@ fn failure(output: Output, code: i32, diagnostic: &str) {
 
 fn assert_no_staging(root: &Path) {
     for entry in fs::read_dir(root).unwrap() {
-        assert!(!entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".shinki-patch-staging-"));
+        assert!(
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".shinki-patch-staging-")
+        );
     }
 }
 
@@ -160,9 +162,11 @@ fn golden_pe_overlay_converts_complete_bytes_and_keeps_all_inputs_unchanged() {
             {"path":"zero.dat", "size":0, "sha256":digest(&[])},
         ])
     );
-    assert!(!String::from_utf8(receipt_bytes)
-        .unwrap()
-        .contains(&root.to_string_lossy().to_string()));
+    assert!(
+        !String::from_utf8(receipt_bytes)
+            .unwrap()
+            .contains(&root.to_string_lossy().to_string())
+    );
     assert_no_staging(&root);
 }
 

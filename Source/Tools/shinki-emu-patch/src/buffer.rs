@@ -1,8 +1,8 @@
 //! Borrow Luau buffers only while its VM is locked. Native operations must not
 //! call back into Lua or retain the borrowed slice; no intermediate to_vec copy.
 use crate::{
-    storage::{TaskFile, MAX_EXACT_INTEGER},
     PatchError, PatchErrorKind,
+    storage::{MAX_EXACT_INTEGER, TaskFile},
 };
 use mlua::{Buffer, Lua, Value};
 use roukaku_byte_source::{ByteRange, DEFAULT_MAX_RANGE_BYTES};
@@ -59,7 +59,7 @@ pub(crate) fn integer(value: Value) -> mlua::Result<u64> {
             return Err(mlua::Error::external(PatchError::new(
                 PatchErrorKind::Bounds,
                 "expected a nonnegative exact integer",
-            )))
+            )));
         }
     };
     if !number.is_finite()
@@ -217,10 +217,12 @@ mod tests {
         })
         .unwrap();
         assert_eq!(count, 4);
-        assert!(input(&lua, lua.create_buffer([]).unwrap(), |bytes| Ok(
-            bytes.is_empty()
-        ))
-        .unwrap());
+        assert!(
+            input(&lua, lua.create_buffer([]).unwrap(), |bytes| Ok(
+                bytes.is_empty()
+            ))
+            .unwrap()
+        );
         assert_eq!(buffer.to_vec(), [0, 1, 255, 0]);
     }
 

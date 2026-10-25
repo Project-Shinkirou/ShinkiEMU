@@ -31,7 +31,9 @@ pub(crate) fn export(
     // If publication fails, any new PNG remains explicit and no existing file is replaced.
     super::private_output::write_new_private(&thumbnail, &save.thumbnail_png)?;
     super::private_output::write_new_private(output, &bytes)?;
-    println!("Exported one native eden message checkpoint and its captured thumbnail into new files. Original-game readback was not performed.");
+    println!(
+        "Exported one native eden message checkpoint and its captured thumbnail into new files. Original-game readback was not performed."
+    );
     Ok(())
 }
 pub(crate) fn inspect(
@@ -44,7 +46,11 @@ pub(crate) fn inspect(
     if EdenSave::decode(&encoded, save.edition, save.encoding)? != save {
         return Err("save container roundtrip failed".into());
     }
-    println!("Native container decoded and roundtripped: {} variables, {} backlog records. VM restoration was not performed.",save.variables.len(),save.backlog.len());
+    println!(
+        "Native container decoded and roundtripped: {} variables, {} backlog records. VM restoration was not performed.",
+        save.variables.len(),
+        save.backlog.len()
+    );
     Ok(())
 }
 
@@ -58,7 +64,10 @@ pub(crate) fn check_restore(
     let save = read(file, edition, encoding)?;
     let archive = shinki_emu_musica::mount_musica(game_dir, profile)?;
     let (vm, _) = shinki_emu_musica::MusicaVm::from_eden_save(&save, &archive, 1)?;
-    println!("Native VM checkpoint restored: {} backlog records. Device playback and native export were not performed.", vm.state().backlog.len());
+    println!(
+        "Native VM checkpoint restored: {} backlog records. Device playback and native export were not performed.",
+        vm.state().backlog.len()
+    );
     Ok(())
 }
 

@@ -20,18 +20,20 @@
 - Upstream: <https://github.com/google/material-design-icons>（`49d4db35df873165d6bd6ba09b063c7dafbac2f4`），`symbols/web/<name>/materialsymbolsrounded/<name>_24px.svg`，原样保存在 `Source/Manager/shinki-emu-manager-ui-slint/ui/icons/`。
 - License: Apache-2.0。上游 `LICENSE` 为 Apache License 2.0 原文，未填写单独的版权行；完整文本见 `ui/icons/LICENSE`，运行包复制为 `licenses/material-symbols/LICENSE`。
 
-## mlua 0.10.5
+## mlua 0.12.2
 
-- Upstream: <https://github.com/mlua-rs/mlua/tree/v0.10.5>，MIT；完整许可和源码保存在 `ThirdParty/mlua`。
-- 本地回补仅修改 `src/state/raw.rs` 的数字分类：要求浮点数与整数精确相等，并保留 IEEE 负零；不以 epsilon 将极小非零值转成 `0`。修复同时用于严格文件范围和 JSON/TOML 数值转换，Luau 运行时版本、API 与执行队列不变。
+- Upstream: <https://github.com/mlua-rs/mlua/tree/v0.12.2>，MIT；使用 Cargo.lock 固定的 crates.io 源码。
+- 上游通过浮点位模式比较实现精确数字分类，保留 IEEE 负零，不以 epsilon 将极小非零值转成 `0`；旧的 0.10.5 本地回补已删除。
 - Luau 不区分整数和同值的整值浮点字面量；数据编码保留数值，不保证保留原 TOML 数字字面量的类型拼写。
-- 本地包在 `licenses/mlua/LICENSE` 包含此 MIT 许可；固定依赖由 ShinkiEMU lockfile 和源码路径复现。
+- 运行包从锁定的 mlua 源码复制完整 MIT 许可到 `licenses/mlua/LICENSE`。
 
-## Luau 663 / luau0-src 0.12.3
+- mlua-sys 0.13.0 使用官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`（MIT）：发布版仍只识别最大字节码版本 11，Luau 744 默认生成 13、支持到 14，会在 `Lua::new` 加载内置 require 时失败。该修复将识别上限同步为 14，Luau 编译器和 mlua 版本不降级。绑定使用上游仓库根目录的完整 MIT 许可，运行包复制为 `licenses/mlua-sys/LICENSE`。
 
-- Upstream: <https://github.com/luau-lang/luau>，MIT；ShinkiEMU lockfile 固定 `luau0-src 0.12.3+luau663`。
-- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/luau/LICENSE`。
-- 打包器从 `CARGO_HOME` 下该精确版本的源码读取许可，也可通过 `--luau-license` 指定同一来源；源码许可缺失时打包失败，不生成替代文本。
+## Luau 744 / luau0-src 0.22.1
+
+- Upstream: <https://github.com/luau-lang/luau>，MIT；ShinkiEMU lockfile 固定 `luau0-src 0.22.1+luau744`。
+- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/luau0-src/LICENSE`。
+- 打包器通过锁定的 Cargo metadata 定位精确版本源码并读取许可；源码许可缺失时打包失败，不生成替代文本。
 
 ## aPLib 通用解码
 
@@ -59,7 +61,7 @@ freely, subject to the following restrictions:
 
 ## ASS 字幕依赖
 
-`roukaku-subtitle` 使用 <https://github.com/libass/libass> 的 libass 0.17.4#1（ISC），原生依赖安装在独立 vcpkg 树中，使用 overlay triplet `x64-windows-static-md-dynbidi`（RoukakuEngine 的 `Engine/Source/Runtime/roukaku-subtitle/triplets/`）：libass、FreeType、HarfBuzz、Brotli、bzip2、libpng、zlib 静态链接，只有 FriBidi 构建为 DLL。RFVP 原生源码的 manifest 与独立 lockfile 固定共享实现 `Project-Shinkirou/RoukakuEngine`；Kira 另行固定。打包时显式指定该实际安装的 `share/`，逐字保留以下 `copyright` 文件到 `licenses/subtitle/<port>/copyright`：
+`roukaku-subtitle` 使用 <https://github.com/libass/libass> 的 libass 0.17.5（ISC），原生依赖安装在独立 vcpkg 树中，使用 overlay triplet `x64-windows-static-md-dynbidi`（RoukakuEngine 的 `Engine/Source/Runtime/roukaku-subtitle/triplets/`）：libass、FreeType、HarfBuzz、Brotli、bzip2、libpng、zlib 静态链接，只有 FriBidi 构建为 DLL。RFVP 原生源码的 manifest 与独立 lockfile 固定共享实现 `Project-Shinkirou/RoukakuEngine`；Kira 另行固定。打包时显式指定该实际安装的 `share/`，逐字保留以下 `copyright` 文件到 `licenses/subtitle/<port>/copyright`：
 
 - libass（ISC）、FreeType（本产品选择 FreeType License）、HarfBuzz（Old MIT 及其附带条款）；
 - FriBidi（LGPL-2.1）、Brotli（MIT）、bzip2、libpng、zlib。
@@ -155,14 +157,14 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 ## DirectX Shader Compiler
 
 - Upstream: <https://github.com/microsoft/DirectXShaderCompiler>
-- Fixed version: `1.8.2502`.
+- Fixed version: `1.9.2609`.
 - 应用的 HLSL 编译路径使用固定版本 DXC；分发编译器时一并保留官方发行包中的许可证和第三方说明。
 
 ## 原生音频依赖
 
 - CPAL 0.18.2：<https://github.com/RustAudio/cpal/releases/tag/v0.18.2>，Apache-2.0，Musica 的原生设备 owner 使用该版本；Manager 不再拥有核心 PCM 输出。
 - CPAL 0.15.3：`Project-Shinkirou/cpal@ecfda841a9140d60bbec1630d47ca91f1a77b8f3`，保留 WASAPI 关闭修复并将 ALSA 依赖对齐到 0.11。完整源码与 Apache-2.0 许可位于 `ThirdParty/cpal`。
-- Kira 保留各核心原版本，独立 fork 修复 decoder/device worker 的显式关闭。Musica/Artemis 使用 0.12.2 `7d8961b20bce2ab8fd43b4bb34150d7e2898785c`；RFVP 使用 0.10.8 `d2f10db15d9c451c7b2fd33043ae7732e75bee5d`；Siglus 嵌套 0.9.6 `a299b42690094a71885f6ed97dc504c4038da9a7`；Sena 使用 0.12.1 `523790dbb7ddea5ca432f375a9f3180923f2ea1e`；Ethornell 使用 0.8.7 `da8668fcd5e543eec2e9ea9871b310276e09fdc5`。来源均为 <https://github.com/Project-Shinkirou/kira>，保留 MIT/Apache-2.0 文本和修改说明。
+- 自有 Musica 使用 crates.io Kira 0.12.5，关闭默认 backend，由 SDK 的 CPU mixer 和 CPAL owner 输出。外部核心保持各自固定的 Kira fork：Artemis 使用 0.12.2 `7d8961b20bce2ab8fd43b4bb34150d7e2898785c`；RFVP 使用 0.10.8 `d2f10db15d9c451c7b2fd33043ae7732e75bee5d`；Siglus 嵌套 0.9.6 `a299b42690094a71885f6ed97dc504c4038da9a7`；Sena 使用 0.12.1 `523790dbb7ddea5ca432f375a9f3180923f2ea1e`；Ethornell 使用 0.8.7 `da8668fcd5e543eec2e9ea9871b310276e09fdc5`。fork 来源为 <https://github.com/Project-Shinkirou/kira>，保留 MIT/Apache-2.0 文本和修改说明。
 
 ## 其他原生核心
 

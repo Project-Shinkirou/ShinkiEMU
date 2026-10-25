@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fields::{is_bounded_text, is_plugin_id, is_sha256_hex, MAX_ENTRIES};
 use crate::MetadataError;
+use crate::fields::{MAX_ENTRIES, is_bounded_text, is_plugin_id, is_sha256_hex};
 
 pub const CORE_CATALOG_SCHEMA_VERSION: &str = "shinki.emu.cores.v1";
 pub const CORE_RELEASE_URL_PREFIX: &str =
@@ -219,13 +219,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(latest.version, "0.10.0+public.1");
-        assert!(parsed
-            .latest(
-                "shinki.emu.musica",
-                "windows-x86_64",
-                "shinki.emu.native.c.v2"
-            )
-            .is_none());
+        assert!(
+            parsed
+                .latest(
+                    "shinki.emu.musica",
+                    "windows-x86_64",
+                    "shinki.emu.native.c.v2"
+                )
+                .is_none()
+        );
     }
 
     #[test]
@@ -241,9 +243,11 @@ mod tests {
                 .plugin_id,
             "ReMinori"
         );
-        assert!(parsed
-            .latest("reminori", "windows-x86_64", "shinki.emu.native.c.v3")
-            .is_none());
+        assert!(
+            parsed
+                .latest("reminori", "windows-x86_64", "shinki.emu.native.c.v3")
+                .is_none()
+        );
     }
 
     #[test]

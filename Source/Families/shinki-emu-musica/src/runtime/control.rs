@@ -44,7 +44,7 @@ pub(super) fn execute_pragma(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
 
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(

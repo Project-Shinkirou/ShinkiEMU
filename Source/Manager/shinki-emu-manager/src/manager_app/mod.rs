@@ -201,21 +201,19 @@ pub(super) fn run_application() -> Result<(), Box<dyn std::error::Error>> {
     });
     let emit_guard = std::sync::Arc::downgrade(&_observability);
     shinki_emu_manager_core::set_diagnostic_emit(move |record| {
-        if let Some(guard) = emit_guard.upgrade() {
-            if let Err(error) =
+        if let Some(guard) = emit_guard.upgrade()
+            && let Err(error) =
                 guard.record_external(record.level, &record.target, &record.event, record.fields)
             {
                 tracing::error!(event = "shinki.emu.diagnostics.record_failed", error = %error);
             }
-        }
     });
     let flush_guard = std::sync::Arc::downgrade(&_observability);
     shinki_emu_manager_core::set_diagnostic_flush(move || {
-        if let Some(guard) = flush_guard.upgrade() {
-            if let Err(error) = guard.flush() {
+        if let Some(guard) = flush_guard.upgrade()
+            && let Err(error) = guard.flush() {
                 tracing::error!(event = "shinki.emu.diagnostics.flush_failed", error = %error);
             }
-        }
     });
     let result = (|| {
         let mailbox = FrameMailbox::new();

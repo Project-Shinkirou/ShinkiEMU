@@ -1,5 +1,5 @@
 use super::*;
-use crate::{storage::SAVE_PAGE_WIDTH, MusicaSystemPage};
+use crate::{MusicaSystemPage, storage::SAVE_PAGE_WIDTH};
 
 impl MusicaSession {
     pub(super) fn is_save_page(&self) -> bool {
@@ -53,31 +53,29 @@ impl MusicaSession {
             if self.vm.state().system_ui.page == MusicaSystemPage::None
                 && self.vm.state().wait.is_some()
                 && !self.finished
-            {
-                if let RuntimeEvent::Key {
+                && let RuntimeEvent::Key {
                     code: KeyCode::F6 | KeyCode::F8,
                     state: KeyState::Pressed,
                     ..
                 } = event
-                {
-                    self.cancel_text()?;
-                    self.gameplay_frame = Some(self.scene.pixels.clone());
-                    if matches!(
-                        event,
-                        RuntimeEvent::Key {
-                            code: KeyCode::F6,
-                            ..
-                        }
-                    ) {
-                        self.vm.open_save_page().map_err(vm_error)?;
-                    } else {
-                        self.vm.open_load_page().map_err(vm_error)?;
+            {
+                self.cancel_text()?;
+                self.gameplay_frame = Some(self.scene.pixels.clone());
+                if matches!(
+                    event,
+                    RuntimeEvent::Key {
+                        code: KeyCode::F6,
+                        ..
                     }
-                    self.clear_input();
-                    self.refresh_save_cards()?;
-                    tracing::debug!(event = "shinki.emu.musica.save_page.opened", page = ?self.vm.state().system_ui.page);
-                    return Ok(true);
+                ) {
+                    self.vm.open_save_page().map_err(vm_error)?;
+                } else {
+                    self.vm.open_load_page().map_err(vm_error)?;
                 }
+                self.clear_input();
+                self.refresh_save_cards()?;
+                tracing::debug!(event = "shinki.emu.musica.save_page.opened", page = ?self.vm.state().system_ui.page);
+                return Ok(true);
             }
             return Ok(false);
         }

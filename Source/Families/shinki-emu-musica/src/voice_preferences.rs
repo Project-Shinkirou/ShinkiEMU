@@ -76,7 +76,7 @@ impl VoicePreferences {
                     return Err(SessionError::invalid(
                         "SHINKI_EMU_MUSICA_CONFIG",
                         "voice preference is missing or invalid",
-                    ))
+                    ));
                 }
             };
         }

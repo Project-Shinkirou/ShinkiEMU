@@ -1,5 +1,5 @@
 use super::*;
-use crate::{mount_musica, parse_sc, MusicaVm, ScOpcodeCatalog};
+use crate::{MusicaVm, ScOpcodeCatalog, mount_musica, parse_sc};
 use roukaku_core::Hash256;
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
 
@@ -376,14 +376,18 @@ fn crossfade_transition_and_sqz_animated_foreground_render_native_layers() {
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [255, 0, 0, 255]);
     // One native interval later the SQZ advances to the blue frame and loops.
-    assert!(machine
-        .advance_image_animation_clock(1_000_000_000)
-        .unwrap());
+    assert!(
+        machine
+            .advance_image_animation_clock(1_000_000_000)
+            .unwrap()
+    );
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [0, 0, 255, 255]);
-    assert!(machine
-        .advance_image_animation_clock(1_000_000_000)
-        .unwrap());
+    assert!(
+        machine
+            .advance_image_animation_clock(1_000_000_000)
+            .unwrap()
+    );
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [255, 0, 0, 255]);
 }
@@ -634,12 +638,14 @@ fn scrollxf_gpu_crops_translates_and_accepts_empty_extent() {
     assert_eq!(scene.pixels, cropped);
     vm.step(3).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    assert!(scene
-        .pixels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|pixel| pixel == &[0, 0, 0, 255]));
+    assert!(
+        scene
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel == &[0, 0, 0, 255])
+    );
 }
 
 #[test]
@@ -859,21 +865,25 @@ fn moving_shared_asset_reuses_gpu_pixels_and_reappears_after_release() {
         }
     }
     scene.submit(Vec::new()).unwrap();
-    assert!(scene
-        .pixels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|pixel| *pixel == [0, 0, 0, 255]));
+    assert!(
+        scene
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| *pixel == [0, 0, 0, 255])
+    );
     let mut commands = Vec::new();
     scene
         .layer(&mut commands, "musica:/bg/BG.png", 0, 0, 1.0)
         .unwrap();
     scene.submit(commands).unwrap();
-    assert!(scene
-        .pixels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|pixel| *pixel == [255, 0, 0, 255]));
+    assert!(
+        scene
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| *pixel == [255, 0, 0, 255])
+    );
 }

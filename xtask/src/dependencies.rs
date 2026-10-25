@@ -1,5 +1,5 @@
 use crate::{cores::Inventory, package};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -156,7 +156,10 @@ fn verify_native_tree(out: &Path, identity: &serde_json::Value) -> Result<()> {
         || record.layers != *identity
         || record.files != native_files(out)?
     {
-        bail!("native dependency tree differs from its pinned inputs: {}; remove that owned tree before explicit re-preparation", out.display());
+        bail!(
+            "native dependency tree differs from its pinned inputs: {}; remove that owned tree before explicit re-preparation",
+            out.display()
+        );
     }
     Ok(())
 }
@@ -254,7 +257,7 @@ fn extract_native_archive(
             let mut zip = zip::ZipArchive::new(fs::File::open(input)?)?;
             for index in 0..zip.len() {
                 let mut entry = zip.by_index(index)?;
-                let name = entry.name().to_owned();
+                let name = entry.name()?.into_owned();
                 let directory = entry.is_dir();
                 let linked = entry.is_symlink();
                 extract(&name, directory, linked, &mut entry)?;
@@ -497,22 +500,20 @@ pub fn ndk_root(inv: &Inventory) -> Result<PathBuf> {
                 .map(|p| PathBuf::from(p).join("ndk").join(&l.android_ndk_version))
         })
         .context("set ANDROID_NDK_HOME or ANDROID_HOME")?;
+    validate_ndk_revision(&root, &l.android_ndk_version)?;
+    Ok(root)
+}
+
+fn validate_ndk_revision(root: &Path, required: &str) -> Result<()> {
     let props = fs::read_to_string(root.join("source.properties"))
         .context("NDK source.properties missing")?;
-    // Pre-release NDKs carry a suffix (`30.0.15729638-beta2`); the build number is the identity.
     if !props.lines().any(|s| {
-        s.split_once('=').is_some_and(|(k, v)| {
-            k.trim() == "Pkg.Revision"
-                && v.trim().split('-').next() == Some(l.android_ndk_version.as_str())
-        })
+        s.split_once('=')
+            .is_some_and(|(k, v)| k.trim() == "Pkg.Revision" && v.trim() == required)
     }) {
-        bail!(
-            "NDK {} required at {}",
-            l.android_ndk_version,
-            root.display()
-        );
+        bail!("NDK {required} required at {}", root.display());
     }
-    Ok(root)
+    Ok(())
 }
 pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
     let t = inv.target(target)?;
@@ -560,10 +561,15 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         missing.push(format!("rustup target add {target}"));
     }
     if t.platform == "windows" {
-        if let Some(compiler) = cc::windows_registry::find_tool(target, "cl.exe") {
-            println!("MSVC: {}", compiler.path().display());
-        } else if env::var_os("VCToolsInstallDir").is_none() && executable("cl").is_none() {
-            missing.push("MSVC x64 compiler/build tools".into());
+        match cc::windows_registry::find_tool(target, "cl.exe") {
+            Some(compiler) => {
+                println!("MSVC: {}", compiler.path().display());
+            }
+            _ => {
+                if env::var_os("VCToolsInstallDir").is_none() && executable("cl").is_none() {
+                    missing.push("MSVC x64 compiler/build tools".into());
+                }
+            }
         }
         let mut paths = Vec::new();
         if selected.subtitle {
@@ -671,16 +677,18 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
                     String::from_utf8_lossy(&output.stderr)
                 );
                 if !output.status.success()
-                    || !version
-                        .lines()
-                        .any(|line| line.contains("version \"17.") || line.contains("openjdk 17."))
+                    || !version.lines().any(|line| {
+                        line.contains("version \"27\"")
+                            || line.contains("version \"27.")
+                            || line.contains("openjdk 27.")
+                    })
                 {
-                    missing.push("JDK 17".into());
+                    missing.push("JDK 27".into());
                 } else {
-                    println!("Java: {}", version.lines().next().unwrap_or("JDK 17"));
+                    println!("Java: {}", version.lines().next().unwrap_or("JDK 27"));
                 }
             }
-            Err(_) => missing.push("JDK 17".into()),
+            Err(_) => missing.push("JDK 27".into()),
         }
         if selected.subtitle
             && !subtitle_install(inv, target)?
@@ -787,16 +795,19 @@ fn dxc(inv: &Inventory) -> Result<()> {
     let out = inv.root.join(".work/dxc");
     let members = [
         value("library")?,
-        "bin/x64/dxil.dll",
+        value("validator")?,
         "LICENSE-MS.txt",
         "LICENSE-LLVM.txt",
+        "LICENCE-MIT.txt",
     ];
     let archive = inv.root.join(".work/downloads").join(value("asset")?);
     download(value("url")?, value("sha256")?, &archive)?;
     if out.exists() {
         let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
         for name in &members {
-            let mut input = zip.by_name(name)?;
+            let mut input = zip
+                .by_name(name)
+                .with_context(|| format!("locked DXC archive lacks {name}"))?;
             let dest = out.join(Path::new(name).file_name().unwrap());
             package::plain(&dest)?;
             let mut expected = Vec::new();
@@ -810,7 +821,9 @@ fn dxc(inv: &Inventory) -> Result<()> {
     package::atomic_directory(&out, |stage| {
         let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
         for name in &members {
-            let mut source = zip.by_name(name)?;
+            let mut source = zip
+                .by_name(name)
+                .with_context(|| format!("locked DXC archive lacks {name}"))?;
             if source.is_symlink() {
                 bail!("linked DXC member");
             }
@@ -949,8 +962,9 @@ fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> R
     }
     Ok(())
 }
-fn vcpkg_command(inv: &Inventory, executable: &Path) -> Result<Command> {
+fn vcpkg_install_command(inv: &Inventory, executable: &Path) -> Result<Command> {
     let mut command = Command::new(executable);
+    command.arg("install");
     command.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
     shinki_emu_build::configure_native_environment(&inv.root.join(".work"), &mut command)?;
     Ok(command)
@@ -1163,7 +1177,10 @@ pub fn apply_environment(
                     if let Some(version) = name
                         .to_str()
                         .and_then(|s| s.strip_prefix("android-"))
-                        .and_then(|s| s.parse::<u32>().ok())
+                        .and_then(|s| {
+                            let (major, minor) = s.split_once('.').unwrap_or((s, "0"));
+                            Some((major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?))
+                        })
                     {
                         let jar = item.path().join("android.jar");
                         if jar.is_file() {
@@ -1323,11 +1340,13 @@ pub fn prepare(
             inv.root.join(".work/vcpkg-subtitle/installed")
         };
         fs::create_dir_all(install.parent().unwrap())?;
-        let mut command = vcpkg_command(inv, &binary)?;
+        let mut command = vcpkg_install_command(inv, &binary)?;
         command
-            .arg("install")
             .arg("--x-wait-for-lock")
-            .arg(format!("--x-manifest-root={}", subtitle.display()))
+            .arg(format!(
+                "--x-manifest-root={}",
+                inv.root.join("build/vcpkg/subtitle").display()
+            ))
             .arg(format!(
                 "--overlay-triplets={}",
                 subtitle.join("triplets").display()
@@ -1358,8 +1377,7 @@ pub fn prepare(
             inv.root.join(".work/vcpkg-ffmpeg")
         };
         fs::create_dir_all(&ff)?;
-        run(vcpkg_command(inv, &binary)?
-            .arg("install")
+        run(vcpkg_install_command(inv, &binary)?
             .arg("--x-wait-for-lock")
             .arg(format!(
                 "--x-manifest-root={}",
@@ -1403,9 +1421,8 @@ pub fn prepare(
             .join(".work/native-vcpkg")
             .join(&native.id)
             .join("installed");
-        let mut command = vcpkg_command(inv, &binary)?;
+        let mut command = vcpkg_install_command(inv, &binary)?;
         command
-            .arg("install")
             .arg("--x-wait-for-lock")
             .arg(format!("--x-manifest-root={}", source.display()))
             .arg(format!("--x-install-root={}", installed.display()))
@@ -1457,6 +1474,22 @@ pub fn prepare_all(inv: &Inventory, target: &str, allow_dirty_sources: bool) -> 
 mod native_tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn ndk_requires_the_exact_stable_revision() {
+        let temp = tempfile::tempdir().unwrap();
+        let properties = temp.path().join("source.properties");
+        for revision in ["30.0.16248370-beta2", "30.0.15729638", "29.0.14206865"] {
+            fs::write(&properties, format!("Pkg.Revision = {revision}\n")).unwrap();
+            assert!(validate_ndk_revision(temp.path(), "30.0.16248370").is_err());
+        }
+        fs::write(
+            &properties,
+            "Pkg.Desc = Android NDK\nPkg.Revision = 30.0.16248370\n",
+        )
+        .unwrap();
+        validate_ndk_revision(temp.path(), "30.0.16248370").unwrap();
+    }
 
     fn cached_zip(root: &Path, entries: &[(&str, &[u8])]) -> (PathBuf, NativeArchive) {
         let archive = root.join(".work/downloads/fixture.zip");
@@ -1544,14 +1577,18 @@ mod native_tests {
         }];
         assert!(prepare_native_tree(temp.path(), "fixture", &layers, None).is_err());
         assert!(!temp.path().join(".work/native-downloads/fixture").exists());
-        assert!(!temp
-            .path()
-            .join(".work/native-downloads/escaped.txt")
-            .exists());
-        assert!(fs::read_dir(temp.path().join(".work/native-downloads"))
-            .unwrap()
-            .next()
-            .is_none());
+        assert!(
+            !temp
+                .path()
+                .join(".work/native-downloads/escaped.txt")
+                .exists()
+        );
+        assert!(
+            fs::read_dir(temp.path().join(".work/native-downloads"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
         assert_eq!(package::sha256(&archive).unwrap(), before);
     }
 
@@ -1571,10 +1608,12 @@ mod native_tests {
         symlink(&outside, lib.join("libass.so.9")).unwrap();
         assert!(prepare_linux_runtime(&inv, target, "subtitle").is_err());
         assert_eq!(fs::read(&outside).unwrap(), b"not a redistributable input");
-        assert!(fs::read_dir(linux_runtime(&inv, target, "subtitle"))
-            .unwrap()
-            .next()
-            .is_none());
+        assert!(
+            fs::read_dir(linux_runtime(&inv, target, "subtitle"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[cfg(target_os = "linux")]

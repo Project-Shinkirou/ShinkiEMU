@@ -1,4 +1,4 @@
-use crate::{borrowed_array, Bytes, Status, INVALID_ARGUMENT};
+use crate::{Bytes, INVALID_ARGUMENT, Status, borrowed_array};
 
 pub const MAX_CONFIG_FIELDS: usize = 128;
 pub const MAX_CONFIG_TEXT: usize = 4096;

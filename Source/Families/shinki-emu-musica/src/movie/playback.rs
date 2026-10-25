@@ -3,7 +3,7 @@ use crate::{audio::MoviePcm, scene::core_error};
 use shinki_emu_sdk::video::*;
 use std::{
     collections::VecDeque,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 const BATCH_PACKETS: usize = 4;

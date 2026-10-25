@@ -6,7 +6,7 @@
 
 use std::{path::Path, time::Duration};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use shinki_emu_translation::TranslationProfile;
@@ -290,10 +290,10 @@ impl Library {
                  WHERE type='table'
                    AND name NOT LIKE 'sqlite_%'",
             )?;
-            let records = statement
+
+            statement
                 .query_map([], |row| row.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            records
+                .collect::<Result<Vec<_>, _>>()?
         };
         for table in tables {
             let escaped = table.replace('"', "\"\"");

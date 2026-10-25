@@ -1,5 +1,5 @@
 //! Host-side build support. This crate never invokes Cargo or downloads tools.
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use object::Object;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -249,16 +249,15 @@ pub fn configure_cmake(
         && env::var_os("VCToolsInstallDir").is_some()
         && env::var_os("LIB").is_some()
         && env::var_os("INCLUDE").is_some()
-    {
-        if let Some(ninja) = env::var_os("PATH").and_then(|paths| {
+        && let Some(ninja) = env::var_os("PATH").and_then(|paths| {
             env::split_paths(&paths)
                 .map(|directory| directory.join("ninja.exe"))
                 .find(|path| path.is_file())
-        }) {
-            configure
-                .args(["-G", "Ninja"])
-                .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
-        }
+        })
+    {
+        configure
+            .args(["-G", "Ninja"])
+            .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
     }
     if let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE") {
         configure.arg(format!(
@@ -332,11 +331,12 @@ pub fn generate_import_library(dll: &Path, out_dir: &Path, target: &str) -> Resu
     {
         bail!("unsafe DLL filename");
     }
-    let mut exports: Vec<String> = file
-        .exports()?
-        .iter()
-        .map(|e| std::str::from_utf8(e.name()).map(str::to_owned))
-        .collect::<std::result::Result<_, _>>()?;
+    let mut exports = Vec::new();
+    for export in file.exports()? {
+        if let object::read::NameOrOrdinal::Name(name) = export?.name() {
+            exports.push(std::str::from_utf8(name)?.to_owned());
+        }
+    }
     exports.sort();
     exports.dedup();
     if exports.is_empty() {
@@ -409,10 +409,11 @@ mod tests {
     fn dotted_dll_import_library_links_and_executes_a_real_consumer() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("dependency.rs");
-        fs::write(&source, "#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->! {loop{}}\n#[no_mangle] pub extern \"C\" fn dependency_answer()->u32 {42}\n").unwrap();
+        fs::write(&source, "#![no_std]\n#[panic_handler] fn panic(_: &core::panic::PanicInfo)->! {loop{}}\n#[unsafe(no_mangle)] pub extern \"C\" fn dependency_answer()->u32 {42}\n").unwrap();
         let dll = temp.path().join("libpython3.12.dll");
         let status = Command::new("rustc")
             .arg(&source)
+            .arg("--edition=2024")
             .args([
                 "--crate-type",
                 "cdylib",
@@ -435,10 +436,11 @@ mod tests {
         let imports = temp.path().join("imports");
         generate_import_library(&dll, &imports, target).unwrap();
         let consumer = temp.path().join("consumer.rs");
-        fs::write(&consumer, "#[link(name=\"libpython3.12\")] extern \"C\" {fn dependency_answer()->u32;}\nfn main(){if unsafe {dependency_answer()} != 42 {std::process::exit(2);}}\n").unwrap();
+        fs::write(&consumer, "#[link(name=\"libpython3.12\")] unsafe extern \"C\" {fn dependency_answer()->u32;}\nfn main(){if unsafe {dependency_answer()} != 42 {std::process::exit(2);}}\n").unwrap();
         let executable = temp.path().join("consumer.exe");
         let status = Command::new("rustc")
             .arg(&consumer)
+            .arg("--edition=2024")
             .arg(format!("-Lnative={}", imports.display()))
             .arg("-o")
             .arg(&executable)
@@ -458,7 +460,7 @@ mod cargo_regressions {
         let temp = tempfile::tempdir().unwrap();
         fs::create_dir(temp.path().join("src")).unwrap();
         fs::write(temp.path().join("Cargo.toml"), format!(
-            "[package]\nname=\"generated-asset-fixture\"\nversion=\"0.1.0\"\nedition=\"2021\"\nbuild=\"build.rs\"\n[lib]\ncrate-type=[\"cdylib\"]\n[workspace]\n[build-dependencies]\nshinki-emu-build={{path={:?}}}\n",
+            "[package]\nname=\"generated-asset-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\nbuild=\"build.rs\"\n[lib]\ncrate-type=[\"cdylib\"]\n[workspace]\n[build-dependencies]\nshinki-emu-build={{path={:?}}}\n",
             env!("CARGO_MANIFEST_DIR")
         )).unwrap();
         fs::write(
@@ -476,7 +478,7 @@ use shinki_emu_build::{BuildAsset, CoreBuildManifest, write_core_build_manifest}
 fn main() {
     let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let generated = out.join("generated.rs");
-    std::fs::write(&generated, "#[no_mangle] pub extern \"C\" fn generated_answer()->u32 {42}\n").unwrap();
+    std::fs::write(&generated, "#[unsafe(no_mangle)] pub extern \"C\" fn generated_answer()->u32 {42}\n").unwrap();
     let mut manifest = CoreBuildManifest::new("fixture", "rust-cdylib").unwrap();
     manifest.resources.push(BuildAsset {source: generated, dest: "Resources/generated.rs".into()});
     manifest.licenses.push(BuildAsset {

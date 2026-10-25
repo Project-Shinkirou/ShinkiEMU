@@ -1,25 +1,25 @@
 use crate::session::types::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use crate::{
-    scene::{error, read_asset},
     MusicaAudioCommand, MusicaMountedVfs,
+    scene::{error, read_asset},
 };
 use kira::{
+    AudioManager, AudioManagerSettings, Decibels, Panning, Tween,
     backend::{Backend, Renderer},
     sound::{
-        static_sound::{StaticSoundData, StaticSoundHandle},
         PlaybackState,
+        static_sound::{StaticSoundData, StaticSoundHandle},
     },
-    AudioManager, AudioManagerSettings, Decibels, Panning, Tween,
 };
 use serde::{Deserialize, Serialize};
-use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use shinki_emu_sdk::NativeAudioOutput;
+use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use std::{
     collections::BTreeMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{sync_channel, Receiver, SyncSender, TrySendError},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, SyncSender, TrySendError, sync_channel},
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -115,12 +115,11 @@ impl Audio {
                 if let Some(cause) = &error {
                     let _ = ready_tx.try_send(Err(cause.clone()));
                 }
-                if error.is_some() {
-                    if let Ok(mut slot) = f.lock() {
-                        if slot.is_none() {
-                            *slot = error;
-                        }
-                    }
+                if error.is_some()
+                    && let Ok(mut slot) = f.lock()
+                    && slot.is_none()
+                {
+                    *slot = error;
                 }
             })
             .map_err(|_| {
@@ -256,15 +255,15 @@ impl Audio {
     }
     fn fail_request(&self, failure: SessionError) -> SessionError {
         self.stop.store(true, Ordering::Release);
-        if let Ok(mut slot) = self.failure.lock() {
-            if slot.is_none() {
-                *slot = Some(failure.clone());
-            }
+        if let Ok(mut slot) = self.failure.lock()
+            && slot.is_none()
+        {
+            *slot = Some(failure.clone());
         }
-        if let Some(sink) = &self.sink {
-            if let Err(cancel_error) = sink.cancel() {
-                return cancel_error;
-            }
+        if let Some(sink) = &self.sink
+            && let Err(cancel_error) = sink.cancel()
+        {
+            return cancel_error;
         }
         failure
     }
@@ -398,7 +397,7 @@ fn run(
                 return Err(error(
                     "SHINKI_EMU_MUSICA_AUDIO_CLOSED",
                     "audio output closed unexpectedly",
-                ))
+                ));
             }
         }
     }

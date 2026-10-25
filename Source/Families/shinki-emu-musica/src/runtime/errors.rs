@@ -8,15 +8,15 @@ pub enum MusicaRuntimeError {
     ProgramCounter,
     #[error("SHINKI_EMU_MUSICA_RUNTIME_LABEL: branch label is missing or duplicated")]
     Label,
-    #[error(
-        "SHINKI_EMU_MUSICA_RUNTIME_OPERAND: command operands do not match the verified schema"
-    )]
+    #[error("SHINKI_EMU_MUSICA_RUNTIME_OPERAND: command operands do not match the verified schema")]
     Operand,
     #[error(
         "SHINKI_EMU_MUSICA_RUNTIME_OPCODE: command `{opcode}` at ordinal {ordinal} is not verified"
     )]
     UnsupportedOpcode { opcode: String, ordinal: u32 },
-    #[error("SHINKI_EMU_MUSICA_RUNTIME_NON_YIELDING_CYCLE: command execution repeated a control state without yielding")]
+    #[error(
+        "SHINKI_EMU_MUSICA_RUNTIME_NON_YIELDING_CYCLE: command execution repeated a control state without yielding"
+    )]
     NonYieldingCycle,
     #[error("SHINKI_EMU_MUSICA_RUNTIME_WAIT: runtime is awaiting an unresolved token")]
     Waiting,

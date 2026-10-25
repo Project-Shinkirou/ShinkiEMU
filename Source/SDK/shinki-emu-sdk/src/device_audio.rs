@@ -2,8 +2,8 @@
 //! Mono/stereo sources use the front channels; additional device channels stay
 //! silent. Downmix precedes resampling, expansion follows it. Storage is reused.
 use rubato::{
-    audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, PolynomialDegree,
-    Resampler, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+    Async, FixedAsync, PolynomialDegree, Resampler, SincInterpolationParameters,
+    SincInterpolationType, WindowFunction, audioadapter_buffers::direct::SequentialSliceOfVecs,
 };
 
 const BLOCK_FRAMES: usize = 1024;
@@ -315,9 +315,11 @@ mod tests {
     #[test]
     fn unsupported_channel_layout_and_nonfinite_samples_fail() {
         assert!(NativeAudioConverter::new(48000, 6, 48000, 2).is_err());
-        assert!(NativeAudioConverter::new(48000, 2, 44100, 2)
-            .unwrap()
-            .convert(&[f32::NAN, 0.0], |_| Ok(()))
-            .is_err());
+        assert!(
+            NativeAudioConverter::new(48000, 2, 44100, 2)
+                .unwrap()
+                .convert(&[f32::NAN, 0.0], |_| Ok(()))
+                .is_err()
+        );
     }
 }

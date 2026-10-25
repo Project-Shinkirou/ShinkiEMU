@@ -95,18 +95,20 @@ mod tests {
                 .message_line_index,
             1
         );
-        assert!(save
-            .validate_message_position("different.sc", &script)
-            .is_err());
+        assert!(
+            save.validate_message_position("different.sc", &script)
+                .is_err()
+        );
         for pc in ["0", "1", "3", "999999", "-1"] {
             save.variables
                 .iter_mut()
                 .find(|v| v.name == "script_Pointer")
                 .unwrap()
                 .value = pc.into();
-            assert!(save
-                .validate_message_position("fixture.sc", &script)
-                .is_err());
+            assert!(
+                save.validate_message_position("fixture.sc", &script)
+                    .is_err()
+            );
         }
     }
 }

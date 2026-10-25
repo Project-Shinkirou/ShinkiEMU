@@ -4,16 +4,16 @@ use std::{
 };
 
 use futures_util::StreamExt;
-use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION};
+use reqwest::header::{AUTHORIZATION, HeaderName, HeaderValue};
 use serde_json::Value;
 
 use crate::{
+    MAX_CONTEXT_CHARS, MAX_LISTED_MODELS, MAX_RESPONSE_BYTES,
     model::{
         ConnectionTestResult, OpenAiApi, SecretResolver, TranslationError, TranslationProfile,
         TranslationProvider, TranslationRequest, TranslationResult,
     },
     prompt::{build_prompt, prompt_segment_count},
-    MAX_CONTEXT_CHARS, MAX_LISTED_MODELS, MAX_RESPONSE_BYTES,
 };
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";

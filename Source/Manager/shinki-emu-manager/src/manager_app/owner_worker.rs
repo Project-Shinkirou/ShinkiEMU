@@ -157,8 +157,8 @@ pub(super) fn run(
                 }
             }
             Ok(Command::Action { epoch, control }) => {
-                if let Some(session) = active.as_mut().filter(|session| session.epoch() == epoch) {
-                    if let Err(error) = session.control(control) {
+                if let Some(session) = active.as_mut().filter(|session| session.epoch() == epoch)
+                    && let Err(error) = session.control(control) {
                         if session.poisoned() {
                             finish(&mut active, Some(error), &shared);
                         } else {
@@ -170,7 +170,6 @@ pub(super) fn run(
                         }
                         notify(&wake);
                     }
-                }
             }
             Ok(Command::Close { epoch, events }) => {
                 if let Some(session) = active.as_mut().filter(|session| session.epoch() == epoch) {

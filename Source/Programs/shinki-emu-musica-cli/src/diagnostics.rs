@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand, ValueEnum};
 use shinki_emu_musica::{
-    mount_musica_with_resources, validate_musica_script, MusicaResourcePaths, ScriptEncoding,
+    MusicaResourcePaths, ScriptEncoding, mount_musica_with_resources, validate_musica_script,
 };
 use std::path::PathBuf;
 

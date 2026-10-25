@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 fn info(stride: u32, alpha: FrameAlpha) -> FrameInfo {

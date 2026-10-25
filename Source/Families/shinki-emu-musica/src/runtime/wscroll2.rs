@@ -134,7 +134,7 @@ fn wscroll2_visible_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(
             "musica:/scr/test.sc".into(),
@@ -190,7 +190,9 @@ mod tests {
             "WScroll2 sync:walk.txt 60",
             "WScroll2 sync:../walk.txt 60 1",
         ] {
-            let source = format!(".stage BG.png BG.png 0 0\r\n.effect WScroll2 sync:walk.txt 60 8\r\n.effect {command}\r\n");
+            let source = format!(
+                ".stage BG.png BG.png 0 0\r\n.effect WScroll2 sync:walk.txt 60 8\r\n.effect {command}\r\n"
+            );
             let mut machine = vm(source.as_bytes());
             machine.step(1).unwrap();
             machine.step(2).unwrap();

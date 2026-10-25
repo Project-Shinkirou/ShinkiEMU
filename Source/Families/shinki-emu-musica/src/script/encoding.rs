@@ -82,12 +82,14 @@ mod tests {
             assert_eq!(ScriptEncoding::detect(b".end\r\n", primary), primary);
             let bad = b".message 1   \x81\r\n.end\r\n";
             let selected = ScriptEncoding::detect(bad, primary);
-            assert!(crate::parse_sc_with_encoding(
-                bad,
-                &crate::ScOpcodeCatalog::observed_musica(),
-                selected
-            )
-            .is_err());
+            assert!(
+                crate::parse_sc_with_encoding(
+                    bad,
+                    &crate::ScOpcodeCatalog::observed_musica(),
+                    selected
+                )
+                .is_err()
+            );
         }
     }
 }

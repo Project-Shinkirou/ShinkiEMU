@@ -3,8 +3,8 @@ use shinki_emu_abi as abi;
 use std::{
     ffi::c_void,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 struct State {

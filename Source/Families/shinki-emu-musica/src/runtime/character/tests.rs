@@ -1,5 +1,5 @@
 use super::*;
-use crate::{parse_sc, ScOpcodeCatalog};
+use crate::{ScOpcodeCatalog, parse_sc};
 #[test]
 fn character_stage_retention_and_native_restore() {
     let source = b".char load -1 Stand.png\r\n.char pos 1 16 4\r\n.stage * * 0 0\r\n.char keep 1\r\n.stage * * 0 0\r\n.stage * * 0 0\r\n.end\r\n";

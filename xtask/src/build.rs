@@ -1,5 +1,5 @@
 use crate::{cores::Inventory, dependencies, sources};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::CoreBuildManifest;
@@ -268,10 +268,10 @@ pub fn execute(
                 continue;
             }
         };
-        if value["reason"] == "compiler-message" {
-            if let Some(s) = value["message"]["rendered"].as_str() {
-                eprint!("{s}");
-            }
+        if value["reason"] == "compiler-message"
+            && let Some(s) = value["message"]["rendered"].as_str()
+        {
+            eprint!("{s}");
         }
         if value["package_id"] != package_id {
             continue;
@@ -300,19 +300,19 @@ pub fn execute(
                 }
             }
         }
-        if value["reason"] == "build-script-executed" {
-            if let Some(dir) = value["out_dir"].as_str() {
-                let path = Path::new(dir).join("core-build.json");
-                if path.is_file() {
-                    match fs::read(&path)
-                        .map_err(anyhow::Error::from)
-                        .and_then(|bytes| {
-                            serde_json::from_slice::<CoreBuildManifest>(&bytes)
-                                .map_err(anyhow::Error::from)
-                        }) {
-                        Ok(m) => manifests.push(m),
-                        Err(e) => parse_error = Some(e),
-                    }
+        if value["reason"] == "build-script-executed"
+            && let Some(dir) = value["out_dir"].as_str()
+        {
+            let path = Path::new(dir).join("core-build.json");
+            if path.is_file() {
+                match fs::read(&path)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| {
+                        serde_json::from_slice::<CoreBuildManifest>(&bytes)
+                            .map_err(anyhow::Error::from)
+                    }) {
+                    Ok(m) => manifests.push(m),
+                    Err(e) => parse_error = Some(e),
                 }
             }
         }
@@ -375,7 +375,9 @@ pub fn execute(
         native.clone()
     } else {
         if libraries.len() != 1 {
-            bail!("Cargo did not report exactly one dynamic library/executable for {package}: {libraries:?}");
+            bail!(
+                "Cargo did not report exactly one dynamic library/executable for {package}: {libraries:?}"
+            );
         }
         libraries.remove(0)
     };
@@ -405,7 +407,7 @@ pub fn execute(
         crate::package::atomic_directory(&generated, |stage| {
             crate::package::android_inputs(inv, &result, stage)
         })?;
-        println!("Android JNI/AAR/assets: {}", generated.display());
+        println!("Android JNI/assets: {}", generated.display());
     }
     let path = receipt_path(inv, target, component);
     fs::create_dir_all(path.parent().unwrap())?;

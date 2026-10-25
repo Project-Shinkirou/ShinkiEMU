@@ -1,9 +1,9 @@
 use blowfish::{
-    cipher::{BlockCipherEncrypt, KeyInit},
     Blowfish,
+    cipher::{BlockCipherEncrypt, KeyInit},
 };
 use shinki_emu_musica_keys::{
-    MusicaArchiveKey, MusicaKeyFile, MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, REQUIRED_ARCHIVE_ROLES,
+    MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
 };
 use std::{collections::BTreeMap, io::Cursor, path::Path};
 const KEY: &[u8] = b"public-fixture-key";

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{runtime::gallery, MusicaSystemPage as Page};
+use crate::{MusicaSystemPage as Page, runtime::gallery};
 
 #[test]
 fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {

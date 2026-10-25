@@ -2,7 +2,7 @@
 //! the Manager; credential bytes stay in the platform keyring and never enter
 //! logs, reports, or the translation cache.
 
-use crate::model::{validate_secret_reference, SecretResolver, TranslationError};
+use crate::model::{SecretResolver, TranslationError, validate_secret_reference};
 
 const MAX_SECRET_BYTES: usize = 16 * 1024;
 

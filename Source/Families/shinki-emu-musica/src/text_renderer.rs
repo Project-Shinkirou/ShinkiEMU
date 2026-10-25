@@ -495,14 +495,17 @@ mod tests {
         };
         assert!(text.scene.frame(&[region(), region()]).is_err());
         let commands = text.commands(Some(("日本語", None)), None).unwrap();
-        assert!(!commands
-            .iter()
-            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. })));
-        assert!(text
-            .commands(None, None)
-            .unwrap()
-            .iter()
-            .any(|command| matches!(command, SceneCommand::ReleaseResource { .. })));
+        assert!(
+            !commands
+                .iter()
+                .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
+        );
+        assert!(
+            text.commands(None, None)
+                .unwrap()
+                .iter()
+                .any(|command| matches!(command, SceneCommand::ReleaseResource { .. }))
+        );
     }
     #[test]
     #[ignore = "requires a hardware GPU"]
@@ -696,9 +699,11 @@ mod tests {
         .unwrap();
         let first_raster = Extent2D::new(1280, 720);
         let (first, first_commands) = render_text(&mut text, &mut gpu, 1, 1.0, first_raster);
-        assert!(first_commands
-            .iter()
-            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. })));
+        assert!(
+            first_commands
+                .iter()
+                .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
+        );
         let reference = alpha_bounds(&first, first_raster.width, first_raster.height)
             .expect("first GPU text frame must contain visible glyphs");
 
@@ -729,9 +734,11 @@ mod tests {
         }
 
         let release_commands = text.commands(None, None).unwrap();
-        assert!(release_commands
-            .iter()
-            .any(|command| matches!(command, SceneCommand::ReleaseResource { .. })));
+        assert!(
+            release_commands
+                .iter()
+                .any(|command| matches!(command, SceneCommand::ReleaseResource { .. }))
+        );
         let cleared = gpu
             .render(&SceneFrame {
                 sequence: 7,
@@ -765,11 +772,13 @@ mod tests {
             rgba: [0, 0, 0, 192],
         });
         assert!(text.scene.frame(&[region]).is_err());
-        assert!(!text
-            .commands(Some(("Outline", None)), None)
-            .unwrap()
-            .iter()
-            .any(|c| matches!(c, SceneCommand::UploadGlyph { .. })));
+        assert!(
+            !text
+                .commands(Some(("Outline", None)), None)
+                .unwrap()
+                .iter()
+                .any(|c| matches!(c, SceneCommand::UploadGlyph { .. }))
+        );
     }
 
     #[test]
@@ -779,8 +788,10 @@ mod tests {
         let commands = text
             .commands(Some(("日本語の文字", Some("話者"))), None)
             .unwrap();
-        assert!(commands
-            .iter()
-            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. })));
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
+        );
     }
 }

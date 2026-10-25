@@ -73,14 +73,16 @@ fn voice_preferences_are_typed_and_resolved_from_descriptor() {
     for prefix in ["ren", "sui", "aya", "tou", "mot", "other"] {
         assert!(preferences.enabled(&format!("musica:/voice/{prefix}-test.ogg")));
     }
-    assert!(resolve_config(
-        &descriptor.configuration,
-        &[ConfigEntry {
-            id: "voice_aya".into(),
-            value: ConfigValue::String("false".into())
-        }]
-    )
-    .is_err());
+    assert!(
+        resolve_config(
+            &descriptor.configuration,
+            &[ConfigEntry {
+                id: "voice_aya".into(),
+                value: ConfigValue::String("false".into())
+            }]
+        )
+        .is_err()
+    );
 }
 
 #[test]

@@ -712,8 +712,12 @@ fn execute_control(
             Ok(None)
         }
         "if" => {
-            let [ScOperand::Symbol { value: key }, ScOperand::Operator { value: operator }, ScOperand::Integer { value }, ScOperand::Symbol { value: target }] =
-                command.operands.as_slice()
+            let [
+                ScOperand::Symbol { value: key },
+                ScOperand::Operator { value: operator },
+                ScOperand::Integer { value },
+                ScOperand::Symbol { value: target },
+            ] = command.operands.as_slice()
             else {
                 return Err(MusicaRuntimeError::Operand);
             };
@@ -815,14 +819,18 @@ fn evaluate_assignment<'a>(
     state: &MusicaRuntimeState,
 ) -> Result<(&'a str, i64), MusicaRuntimeError> {
     match operands {
-        [ScOperand::Symbol { value: key }, ScOperand::Operator { value: assign }, rhs]
-            if assign == "=" =>
-        {
-            Ok((key, resolve_integer(rhs, state)?))
-        }
-        [ScOperand::Symbol { value: key }, ScOperand::Operator { value: assign }, left, ScOperand::Operator { value: operator }, right]
-            if assign == "=" =>
-        {
+        [
+            ScOperand::Symbol { value: key },
+            ScOperand::Operator { value: assign },
+            rhs,
+        ] if assign == "=" => Ok((key, resolve_integer(rhs, state)?)),
+        [
+            ScOperand::Symbol { value: key },
+            ScOperand::Operator { value: assign },
+            left,
+            ScOperand::Operator { value: operator },
+            right,
+        ] if assign == "=" => {
             let left = resolve_integer(left, state)?;
             let right = resolve_integer(right, state)?;
             let value = match operator.as_str() {
@@ -929,11 +937,7 @@ pub(crate) fn validate_transition_and_animations(
                 if stage.transition.resource.is_none() {
                     return Err(MusicaRuntimeError::State);
                 }
-                if transition.method == 1 {
-                    512
-                } else {
-                    256
-                }
+                if transition.method == 1 { 512 } else { 256 }
             }
             _ => return Err(MusicaRuntimeError::State),
         };

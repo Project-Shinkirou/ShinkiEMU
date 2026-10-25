@@ -3,8 +3,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
     thread::JoinHandle,
     time::SystemTime,
@@ -241,12 +241,11 @@ impl<T: CoverRow> CoverModel<T> {
                 if !worker_shared.current(&request) {
                     continue;
                 }
-                if let Decoded::Failed(code) = &decoded {
-                    if diagnostics < 16 {
+                if let Decoded::Failed(code) = &decoded
+                    && diagnostics < 16 {
                         tracing::warn!(target: "shinki.emu.cover", code = *code, "Cover thumbnail unavailable");
                         diagnostics += 1;
                     }
-                }
                 let weak = window.clone();
                 if slint::invoke_from_event_loop(move || {
                     if let Some(window) = weak.upgrade() {
@@ -345,10 +344,10 @@ impl<T: CoverRow> CoverModel<T> {
                 desired.extend(visible.values().filter_map(|id| indices.get(id).copied()));
             }
             let selected = T::selected(window);
-            if !selected.is_empty() {
-                if let Some(row) = self.indices.borrow().get(selected.as_str()) {
-                    desired.insert(*row);
-                }
+            if !selected.is_empty()
+                && let Some(row) = self.indices.borrow().get(selected.as_str())
+            {
+                desired.insert(*row);
             }
         }
         let removed = {

@@ -1,4 +1,4 @@
-use crate::{Bytes, Status, INVALID_ARGUMENT, STALE_CONTEXT};
+use crate::{Bytes, INVALID_ARGUMENT, STALE_CONTEXT, Status};
 use std::ffi::c_void;
 
 pub const SURFACE_CPU: u32 = 1;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{parse_sc, ScOpcodeCatalog};
+use crate::{ScOpcodeCatalog, parse_sc};
 
 #[test]
 fn particle_mechanisms_roundtrip_through_native_save_and_finish_fading() {

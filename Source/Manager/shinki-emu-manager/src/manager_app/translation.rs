@@ -113,13 +113,12 @@ impl ShinkiEmuManagerController {
             }
             return Err(error.to_string());
         }
-        if !secret.is_empty() {
-            if let Some(previous) = previous {
+        if !secret.is_empty()
+            && let Some(previous) = previous {
                 store
                     .delete(&previous.secret_reference)
                     .map_err(|_| "SHINKI_EMU_TRANSLATION_SAVED_OLD_SECRET_CLEANUP_FAILED")?;
             }
-        }
         self.translation_status = "翻译配置已保存".into();
         self.model()
     }

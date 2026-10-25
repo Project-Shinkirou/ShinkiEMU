@@ -349,19 +349,19 @@ impl<'a> Parser<'a> {
         };
         if let (Some(expected), NrbfValue::Ref(id)) = (&expected, &value) {
             self.expected.push((*id, expected.clone()));
-        } else if !matches!(value, NrbfValue::Null) {
-            if let Some(expected) = &expected {
-                let valid = matches!(
-                    (expected, &value),
-                    (ExpectedValue::String, NrbfValue::String(_))
-                        | (ExpectedValue::Array, NrbfValue::Array(_))
-                );
-                if !valid {
-                    return Err(NrbfError(match expected {
-                        ExpectedValue::String => "SHINKI_EMU_NRBF_MEMBER_TYPE_STRING",
-                        ExpectedValue::Array => "SHINKI_EMU_NRBF_MEMBER_TYPE_ARRAY",
-                    }));
-                }
+        } else if !matches!(value, NrbfValue::Null)
+            && let Some(expected) = &expected
+        {
+            let valid = matches!(
+                (expected, &value),
+                (ExpectedValue::String, NrbfValue::String(_))
+                    | (ExpectedValue::Array, NrbfValue::Array(_))
+            );
+            if !valid {
+                return Err(NrbfError(match expected {
+                    ExpectedValue::String => "SHINKI_EMU_NRBF_MEMBER_TYPE_STRING",
+                    ExpectedValue::Array => "SHINKI_EMU_NRBF_MEMBER_TYPE_ARRAY",
+                }));
             }
         }
         Ok(value)

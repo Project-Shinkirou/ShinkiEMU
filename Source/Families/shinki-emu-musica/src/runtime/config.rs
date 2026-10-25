@@ -102,12 +102,14 @@ mod tests {
         assert_eq!(vm.config().message_speed_auto_play, 50);
         assert!(vm.voice_preferences().character_voice_enabled[0]);
         let before = vm.config_for_presentation().unwrap().clone();
-        assert!(vm
-            .apply_config_control(MusicaConfigControl::BgmVolume(101))
-            .is_err());
-        assert!(vm
-            .apply_config_control(MusicaConfigControl::ToggleCharacterVoice(5))
-            .is_err());
+        assert!(
+            vm.apply_config_control(MusicaConfigControl::BgmVolume(101))
+                .is_err()
+        );
+        assert!(
+            vm.apply_config_control(MusicaConfigControl::ToggleCharacterVoice(5))
+                .is_err()
+        );
         assert_eq!(vm.config_for_presentation().unwrap(), &before);
         vm.apply_config_control(MusicaConfigControl::Cancel)
             .unwrap();

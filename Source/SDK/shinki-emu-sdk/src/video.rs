@@ -10,8 +10,9 @@ pub use roukaku_media::{
 mod pcm;
 pub use pcm::{PcmMixResult, PcmQueue};
 use std::sync::{
+    Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc,
+    mpsc,
 };
 use std::thread::JoinHandle;
 

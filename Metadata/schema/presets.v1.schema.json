@@ -1,7 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "definitions": {
+  "$defs": {
     "Preset": {
       "additionalProperties": false,
       "properties": {
@@ -37,19 +35,21 @@
         }
       },
       "required": [
-        "configuration",
-        "emulator",
+        "vn_id",
         "release_id",
+        "emulator",
         "summary",
-        "vn_id"
+        "configuration"
       ],
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
     "entries": {
       "items": {
-        "$ref": "#/definitions/Preset"
+        "$ref": "#/$defs/Preset"
       },
       "type": "array"
     },
@@ -59,8 +59,8 @@
     }
   },
   "required": [
-    "entries",
-    "schema"
+    "schema",
+    "entries"
   ],
   "title": "PresetDatabase",
   "type": "object"

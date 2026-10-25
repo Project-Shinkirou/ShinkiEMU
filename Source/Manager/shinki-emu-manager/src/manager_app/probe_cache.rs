@@ -212,11 +212,10 @@ impl ProbeCache {
     ) -> Result<(Vec<FamilyProbeCandidate>, bool), String> {
         let canonical = fs::canonicalize(path).map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
         let path = canonical.as_path();
-        if reuse {
-            if let Some(candidates) = self.get(path, registry) {
+        if reuse
+            && let Some(candidates) = self.get(path, registry) {
                 return Ok((candidates, true));
             }
-        }
         self.entries.remove(path);
         let before = self.inventory.as_ref().and_then(|_| game_stamp(path));
         let game_path = path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?;
@@ -234,8 +233,8 @@ impl ProbeCache {
             FamilyProbeSelection::Selected(candidate) => vec![*candidate],
             FamilyProbeSelection::RequiresUserChoice(candidates) => candidates,
         };
-        if !candidates.is_empty() && candidates.len() <= MAX_CANDIDATES {
-            if let Some(stamp) = before.filter(|before| game_stamp(path).as_ref() == Some(before)) {
+        if !candidates.is_empty() && candidates.len() <= MAX_CANDIDATES
+            && let Some(stamp) = before.filter(|before| game_stamp(path).as_ref() == Some(before)) {
                 if self.entries.len() >= MAX_ENTRIES {
                     self.entries.pop_first();
                 }
@@ -247,7 +246,6 @@ impl ProbeCache {
                     },
                 );
             }
-        }
         Ok((candidates, false))
     }
 

@@ -9,8 +9,8 @@ use clap::{Parser, Subcommand};
 use roukaku_core::Hash256;
 use serde::Serialize;
 use shinki_emu_musica::{
-    mount_musica, parse_audio_resource_spec, parse_sc, MusicaAniArchive, MusicaSqzArchive,
-    ScCensus, ScLineKind, ScOpcodeCatalog, ScOperand, ScScript, MAX_ENTRY_BYTES,
+    MAX_ENTRY_BYTES, MusicaAniArchive, MusicaSqzArchive, ScCensus, ScLineKind, ScOpcodeCatalog,
+    ScOperand, ScScript, mount_musica, parse_audio_resource_spec, parse_sc,
 };
 
 mod diagnostics;

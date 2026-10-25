@@ -8,14 +8,14 @@ use std::{
 };
 
 use crate::archive::{
-    validate_archive_directory_uri, validate_archive_uri, validate_decrypt_output,
-    validate_decrypt_request, ArchiveEntry, ArchiveManifest, ArchiveNode, ArchiveNodeKind,
-    ArchiveReadResult, ArchiveSource, ArchiveStat, ArchiveStream, PazDecryptDescriptor,
-    PazDecryptPhase, PazDecryptRequest, PazDecryptTransport, ARCHIVE_MANIFEST_SCHEMA,
-    ARCHIVE_MAX_READ_BYTES, PAZ_DECRYPT_CHUNK_BYTES, PAZ_DECRYPT_MAX_BATCH_BYTES,
+    ARCHIVE_MANIFEST_SCHEMA, ARCHIVE_MAX_READ_BYTES, ArchiveEntry, ArchiveManifest, ArchiveNode,
+    ArchiveNodeKind, ArchiveReadResult, ArchiveSource, ArchiveStat, ArchiveStream,
+    PAZ_DECRYPT_CHUNK_BYTES, PAZ_DECRYPT_MAX_BATCH_BYTES, PazDecryptDescriptor, PazDecryptPhase,
+    PazDecryptRequest, PazDecryptTransport, validate_archive_directory_uri, validate_archive_uri,
+    validate_decrypt_output, validate_decrypt_request,
 };
-use blowfish::cipher::{BlockCipherDecrypt, KeyInit};
 use blowfish::Blowfish;
+use blowfish::cipher::{BlockCipherDecrypt, KeyInit};
 use encoding_rs::SHIFT_JIS;
 use flate2::read::ZlibDecoder;
 use rc4::{Rc4, StreamCipher};
@@ -1302,7 +1302,7 @@ fn discover_parts(base: &Path, game_root: &Path) -> Result<Vec<ArchivePart>, Paz
                 return Err(error(
                     "SHINKI_EMU_MUSICA_MULTIPART_OPEN",
                     "PAZ multipart volume cannot be inspected",
-                ))
+                ));
             }
         }
     }

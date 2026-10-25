@@ -1,9 +1,9 @@
 use sha2::{Digest, Sha256};
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const HELPER: &str = include_str!("../../../../Metadata/patches/common/yorino_entry.luau");
@@ -150,18 +150,18 @@ impl Fixture {
             let bytes = format!("public opaque native resource for {role}").into_bytes();
             fs::write(source.join(path), &bytes).unwrap();
             inputs.push(format!(
-                "{{path={path:?},role={role:?},size={},sha256=\"{:x}\"}}",
+                "{{path={path:?},role={role:?},size={},sha256=\"{}\"}}",
                 bytes.len(),
-                Sha256::digest(&bytes)
+                hex::encode(Sha256::digest(&bytes))
             ));
         }
         for path in ["bg.pazA", "st.pazA"] {
             let bytes = b"public opaque split resource";
             fs::write(source.join(path), bytes).unwrap();
             inputs.push(format!(
-                "{{path={path:?},size={},sha256=\"{:x}\"}}",
+                "{{path={path:?},size={},sha256=\"{}\"}}",
                 bytes.len(),
-                Sha256::digest(bytes)
+                hex::encode(Sha256::digest(bytes))
             ));
         }
         let (bitmaps, mut crcs) = cnbg(images);
@@ -172,9 +172,9 @@ impl Fixture {
         ] {
             fs::write(patch.join(path), &bytes).unwrap();
             inputs.push(format!(
-                "{{path={path:?},patch=true,size={},sha256=\"{:x}\"}}",
+                "{{path={path:?},patch=true,size={},sha256=\"{}\"}}",
                 bytes.len(),
-                Sha256::digest(&bytes)
+                hex::encode(Sha256::digest(&bytes))
             ));
         }
         if bad_crc {
@@ -208,8 +208,14 @@ impl Fixture {
             b"public save must remain private and untouched",
         )
         .unwrap();
-        let edition = format!("{{names={names},dialogue={dialogue},width=2,height=2,inputs={{{}}},background_crc32={{{}}},coverage={{status='fifteen_name_use_sites_unlocated',row_index_base=0,unlocated_name_rows={{28,29,30,31,32,33,34,35,36,37,38,39,40,41,42}}}}}}",
-            inputs.join(","), crcs.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
+        let edition = format!(
+            "{{names={names},dialogue={dialogue},width=2,height=2,inputs={{{}}},background_crc32={{{}}},coverage={{status='fifteen_name_use_sites_unlocated',row_index_base=0,unlocated_name_rows={{28,29,30,31,32,33,34,35,36,37,38,39,40,41,42}}}}}}",
+            inputs.join(","),
+            crcs.iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
         let mut snapshots = Vec::new();
         for dir in [source.clone(), patch.clone(), source.join("savedata")] {
             for entry in fs::read_dir(dir).unwrap() {
@@ -310,7 +316,9 @@ fn all_28402_rows_and_40_backgrounds_survive_with_native_aliases_and_specific_co
         .to_rgba8();
         assert_eq!(
             image.as_raw(),
-            &[255, 0, 0, 0, 0, 255, 0, 32, 0, 0, 255, 127, 255, 255, 255, 255]
+            &[
+                255, 0, 0, 0, 0, 255, 0, 32, 0, 0, 255, 127, 255, 255, 255, 255
+            ]
         );
     }
     for (path, _) in ROLES {
@@ -345,11 +353,13 @@ fn final_background_crc_failure_rolls_back_all_copied_archives_and_generated_ima
         PatchErrorKind::Integrity
     );
     assert!(!root.path().join("output").exists());
-    assert!(!fs::read_dir(root.path()).unwrap().any(|e| e
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .contains("staging")));
+    assert!(
+        !fs::read_dir(root.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("staging"))
+    );
 }
 
 #[test]
@@ -367,10 +377,7 @@ fn missing_eighth_key_role_never_publishes_partial_output() {
 fn changed_pinned_source_fingerprint_is_rejected_without_touching_any_input() {
     let root = tempfile::tempdir().unwrap();
     let mut fixture = Fixture::new(root.path(), 3, 5, 2, false, false);
-    let fingerprint = format!(
-        "{:x}",
-        Sha256::digest(b"public opaque native resource for bg")
-    );
+    let fingerprint = hex::encode(Sha256::digest(b"public opaque native resource for bg"));
     fixture.edition = fixture.edition.replacen(&fingerprint, &"0".repeat(64), 1);
     assert_eq!(
         fixture.run().err().unwrap().kind(),

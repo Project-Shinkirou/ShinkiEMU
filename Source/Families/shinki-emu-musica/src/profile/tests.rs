@@ -1,6 +1,6 @@
 use super::*;
 use roukaku_core::Hash256;
-use shinki_emu_musica_keys::{MusicaArchiveKey, MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA};
+use shinki_emu_musica_keys::{MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, MusicaArchiveKey};
 use std::fs::File;
 
 fn key_file() -> MusicaKeyFile {

@@ -137,7 +137,7 @@ impl Scene {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_GALLERY_STATE",
                     "invalid gallery page",
-                ))
+                ));
             }
         }
         self.submit(commands)

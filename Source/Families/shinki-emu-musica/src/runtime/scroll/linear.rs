@@ -213,7 +213,7 @@ pub(super) fn validate_linear_scroll_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(
             "musica:/scr/linear.sc".into(),

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{profile::MusicaTextureOverrides, MusicaAniArchive, MusicaSqzArchive};
+use crate::{MusicaAniArchive, MusicaSqzArchive, profile::MusicaTextureOverrides};
 use shinki_emu_sdk::ArchiveNodeKind;
 use std::{
     fs::{self, File},

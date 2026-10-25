@@ -79,11 +79,10 @@ pub(super) fn resolve_render_extent(
 
 fn validate_for(support: Option<&RenderSupport>, pref: &RenderPreference) -> Result<(), String> {
     pref.validate()?;
-    if let RenderPreference::Custom { width, height } = *pref {
-        if !support.is_some_and(|support| support.contains((width, height))) {
+    if let RenderPreference::Custom { width, height } = *pref
+        && !support.is_some_and(|support| support.contains((width, height))) {
             return Err(RENDER_UNSUPPORTED.into());
         }
-    }
     Ok(())
 }
 

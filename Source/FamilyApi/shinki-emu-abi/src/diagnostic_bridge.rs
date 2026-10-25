@@ -2,10 +2,10 @@
 use crate::*;
 use std::{fmt, mem::MaybeUninit, sync::OnceLock};
 use tracing::{
-    field::{Field, Visit},
     Event, Level, Subscriber,
+    field::{Field, Visit},
 };
-use tracing_subscriber::{layer::Context, prelude::*, Layer};
+use tracing_subscriber::{Layer, layer::Context, prelude::*};
 
 const MAX_FIELDS: usize = 32;
 const MAX_TEXT: usize = 4096;
@@ -114,7 +114,7 @@ impl<S: Subscriber> Layer<S> for Bridge {
             field_count: visitor.count,
         };
         // SAFETY: initialized process-lifetime callback; every span lives for call.
-        unsafe { self.0 .0.emit.unwrap()(self.0 .0.context, &record) };
+        unsafe { self.0.0.emit.unwrap()(self.0.0.context, &record) };
     }
 }
 #[derive(Clone, Copy)]

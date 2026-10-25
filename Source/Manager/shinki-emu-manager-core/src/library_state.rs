@@ -5,11 +5,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::{de::DeserializeOwned, Serialize};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::{
-    validate_id, Library, LibraryError, MAX_LOCATION_BYTES, MAX_METADATA_BYTES, MAX_TITLE_CHARS,
+    Library, LibraryError, MAX_LOCATION_BYTES, MAX_METADATA_BYTES, MAX_TITLE_CHARS, validate_id,
 };
 
 const MAX_RELEASE_ID_CHARS: usize = 64;

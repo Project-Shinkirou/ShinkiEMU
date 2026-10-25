@@ -317,7 +317,7 @@ fn raw_to_rgba(
             return Err(invalid(
                 "SHINKI_EMU_MUSICA_IMAGE_BPP",
                 "raw image bit depth is unsupported",
-            ))
+            ));
         }
     }
     RgbaImage::from_raw(width, height, rgba).ok_or_else(|| {

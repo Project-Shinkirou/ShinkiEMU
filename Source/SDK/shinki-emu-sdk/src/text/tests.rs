@@ -61,15 +61,19 @@ fn measuring_shares_layout_without_consuming_glyph_lifecycle() {
         rgba: [255; 4],
         outline: None,
     };
-    assert!(scene
-        .frame(std::slice::from_ref(&region))
-        .unwrap()
-        .iter()
-        .any(|command| matches!(command, SceneCommand::UploadGlyph { .. })));
-    assert!(!scene
-        .frame(&[region])
-        .unwrap()
-        .iter()
-        .any(|command| matches!(command, SceneCommand::UploadGlyph { .. })));
+    assert!(
+        scene
+            .frame(std::slice::from_ref(&region))
+            .unwrap()
+            .iter()
+            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
+    );
+    assert!(
+        !scene
+            .frame(&[region])
+            .unwrap()
+            .iter()
+            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
+    );
     assert!(!scene.clear().is_empty());
 }

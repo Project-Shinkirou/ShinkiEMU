@@ -11,7 +11,7 @@ mod patches;
 mod presets;
 mod sync;
 mod vndb;
-pub use fields::{is_known_core_id, KNOWN_CORE_IDS};
+pub use fields::{KNOWN_CORE_IDS, is_known_core_id};
 pub use json::parse_unique_json;
 pub use patches::*;
 
@@ -47,26 +47,26 @@ mod bangumi;
 #[cfg(not(target_os = "android"))]
 pub use bangumi::{BangumiProvider, BangumiProviderConfig};
 pub use compatibility::{
-    compatibility_json_schema, parse_compatibility_database, CompatibilityDatabase,
-    CompatibilityEntry, CompatibilityError, CompatibilityStatus, COMPATIBILITY_SCHEMA_VERSION,
+    COMPATIBILITY_SCHEMA_VERSION, CompatibilityDatabase, CompatibilityEntry, CompatibilityError,
+    CompatibilityStatus, compatibility_json_schema, parse_compatibility_database,
 };
 pub use cores::{
-    parse_core_catalog, CoreCatalog, CoreCatalogEntry, CORE_CATALOG_SCHEMA_VERSION,
-    CORE_RELEASE_URL_PREFIX, MAX_CORE_PACKAGE_BYTES,
+    CORE_CATALOG_SCHEMA_VERSION, CORE_RELEASE_URL_PREFIX, CoreCatalog, CoreCatalogEntry,
+    MAX_CORE_PACKAGE_BYTES, parse_core_catalog,
 };
 pub use cover::{CoverFetcher, CoverPolicy};
 pub use index::{
-    parse_metadata_index, IndexedFile, MetadataIndex, MAX_METADATA_FILE_BYTES,
-    MAX_METADATA_TOTAL_BYTES, METADATA_INDEX_FILE, METADATA_INDEX_SCHEMA_VERSION,
+    IndexedFile, MAX_METADATA_FILE_BYTES, MAX_METADATA_TOTAL_BYTES, METADATA_INDEX_FILE,
+    METADATA_INDEX_SCHEMA_VERSION, MetadataIndex, parse_metadata_index,
 };
 pub use license::{MetadataLicenseManifest, ReleaseUse};
 pub use matcher::{
-    match_metadata, normalize_title, unique_exact_match, MatchInput, MATCHER_VERSION,
+    MATCHER_VERSION, MatchInput, match_metadata, normalize_title, unique_exact_match,
 };
 pub use model::*;
-pub use presets::{parse_preset_database, Preset, PresetDatabase, PRESET_DATABASE_SCHEMA_VERSION};
-pub use sync::{MetadataSyncClient, SyncOutcome, DEFAULT_METADATA_BASE_URL};
-pub use vndb::{plain_description, VndbProvider, VndbProviderConfig};
+pub use presets::{PRESET_DATABASE_SCHEMA_VERSION, Preset, PresetDatabase, parse_preset_database};
+pub use sync::{DEFAULT_METADATA_BASE_URL, MetadataSyncClient, SyncOutcome};
+pub use vndb::{VndbProvider, VndbProviderConfig, plain_description};
 
 #[allow(async_fn_in_trait)]
 pub trait MetadataProvider: Send + Sync {

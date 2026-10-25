@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    mount_musica, parse_sc, profile::mount_musica_with_texture_overrides, MusicaVm, ScOpcodeCatalog,
+    MusicaVm, ScOpcodeCatalog, mount_musica, parse_sc, profile::mount_musica_with_texture_overrides,
 };
 use roukaku_core::Hash256;
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;

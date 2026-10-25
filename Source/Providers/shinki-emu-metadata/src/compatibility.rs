@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::fields::{
-    is_bounded_multiline, is_bounded_text, is_known_core_id, is_platform, is_vndb_release_id,
-    is_vndb_vn_id, MAX_ENTRIES,
+    MAX_ENTRIES, is_bounded_multiline, is_bounded_text, is_known_core_id, is_platform,
+    is_vndb_release_id, is_vndb_vn_id,
 };
 
 pub const COMPATIBILITY_SCHEMA_VERSION: &str = "shinki.emu.compatibility.v4";
@@ -339,9 +339,11 @@ mod tests {
         linux.platform = "linux".into();
         database.entries.push(linux.clone());
         database.validate().unwrap();
-        assert!(database
-            .entry("r123", "shinki.emu.musica", "macos", "aarch64", "desktop")
-            .is_none());
+        assert!(
+            database
+                .entry("r123", "shinki.emu.musica", "macos", "aarch64", "desktop")
+                .is_none()
+        );
         database.entries.push(linux);
         assert!(matches!(
             database.validate(),

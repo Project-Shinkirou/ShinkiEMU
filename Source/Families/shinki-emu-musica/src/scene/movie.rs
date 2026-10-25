@@ -1,5 +1,5 @@
 use super::*;
-use shinki_emu_sdk::{video::VideoFramePacket, AssScene};
+use shinki_emu_sdk::{AssScene, video::VideoFramePacket};
 
 const MOVIE_TEXTURES: [&str; 2] = ["musica.movie.retained.0", "musica.movie.retained.1"];
 #[derive(Default)]

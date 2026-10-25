@@ -16,13 +16,12 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn close_active(&mut self, reason: PlaySessionEndReason) -> Result<(), String> {
-        if let Some(active) = self.active.as_mut() {
-            if active.closing.is_none() {
+        if let Some(active) = self.active.as_mut()
+            && active.closing.is_none() {
                 self.registry
                     .close(active.epoch, std::mem::take(&mut self.pending_events))?;
                 active.closing = Some(reason);
             }
-        }
         self.clear_input_state();
         Ok(())
     }

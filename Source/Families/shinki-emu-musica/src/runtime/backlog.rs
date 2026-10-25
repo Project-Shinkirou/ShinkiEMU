@@ -234,9 +234,10 @@ mod tests {
                 1 => state.backlog_bytes += 1,
                 _ => state.backlog[0].text.push('!'),
             }
-            assert!(vm
-                .restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
-                .is_err());
+            assert!(
+                vm.restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
+                    .is_err()
+            );
             assert_eq!(vm.encode_native_save().unwrap(), saved);
         }
         vm.move_backlog(-1).unwrap();

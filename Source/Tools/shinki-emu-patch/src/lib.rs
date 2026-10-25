@@ -10,7 +10,7 @@ mod receipt;
 mod storage;
 mod transaction;
 mod vm;
-pub use catalog::{list_recipes, RecipeListing};
+pub use catalog::{RecipeListing, list_recipes};
 pub use error::{PatchError, PatchErrorKind};
 pub use receipt::read_output_profile;
 

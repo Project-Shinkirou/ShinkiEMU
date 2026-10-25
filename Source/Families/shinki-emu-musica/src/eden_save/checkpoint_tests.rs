@@ -225,9 +225,10 @@ fn native_restore_failure_keeps_active_state_and_rejects_unmodeled_fields() {
         } else {
             save.variables.push(field(name, value));
         }
-        assert!(vm
-            .restore_eden_save(&save, |_| panic!("no history read expected"), 1)
-            .is_err());
+        assert!(
+            vm.restore_eden_save(&save, |_| panic!("no history read expected"), 1)
+                .is_err()
+        );
         assert_eq!(vm.encode_native_save().unwrap(), original);
     }
     let mut save = checkpoint_fixture();
@@ -236,9 +237,10 @@ fn native_restore_failure_keeps_active_state_and_rejects_unmodeled_fields() {
         .find(|f| f.name == "L3")
         .unwrap()
         .value = "changed".into();
-    assert!(vm
-        .restore_eden_save(&save, |_| panic!("no history read expected"), 1)
-        .is_err());
+    assert!(
+        vm.restore_eden_save(&save, |_| panic!("no history read expected"), 1)
+            .is_err()
+    );
     assert_eq!(vm.encode_native_save().unwrap(), original);
 }
 

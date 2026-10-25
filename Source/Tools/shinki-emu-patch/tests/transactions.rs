@@ -1,11 +1,11 @@
 use sha2::{Digest, Sha256};
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -81,16 +81,18 @@ impl Fixture {
     }
 
     fn no_staging(&self) {
-        assert!(!fs::read_dir(self.root.path()).unwrap().any(|entry| entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".shinki-patch-staging-")));
+        assert!(!fs::read_dir(self.root.path()).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".shinki-patch-staging-")
+        }));
     }
 }
 
 fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 #[test]

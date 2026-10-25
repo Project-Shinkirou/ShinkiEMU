@@ -14,8 +14,8 @@ The authoritative build inventory is `build/cores.toml` at the repository root. 
 
 Each core's `build.rs` validates its own native inputs and writes `core-build.json`. Native CMake targets remain real shared libraries. xtask builds each component through its recorded manifest and collects Cargo-reported outputs. Ren’Py packages need the matching official runtime and `Resources/`, not just a core DLL.
 
-Artemis 保留 Lua 5.1，与 Manager 的 Luau 依赖图分开。CPAL/Kira 保留按版本维护的来源分支；`mlua/` 保存产品使用的回补及完整 MIT 许可。不得把所有 fork 合并成一个 workspace-wide all-features 构建。
+Artemis 保留 Lua 5.1，与 Manager 的 Luau 依赖图分开。CPAL 保留产品的原生音频修复；mlua 0.12.2 已包含精确数字分类，使用 crates.io 版本，删除旧回补。不得把所有 fork 合并成一个 workspace-wide all-features 构建。
 
-Artemis's Lua 5.1 graph remains independent of Manager's Luau graph. CPAL/Kira retain version-specific source branches, and `mlua/` retains the product's local fixes and complete MIT license.
+Artemis's Lua 5.1 graph remains independent of Manager's Luau graph. CPAL retains the product's native-audio fixes. Registry mlua 0.12.2 includes exact numeric classification and replaces the old vendored backport.
 
 构建命令见[中文文档](../docs/zh-cn/build-and-release.md) / [English guide](../docs/en/build-and-release.md)，格式与行为见[核心资料](../docs/zh-cn/index.md)。许可和分发义务见[第三方声明](../THIRD_PARTY_NOTICES.md)，历史来源见 [ORIGINS](../ORIGINS.md)。构建成功不代表附件已获分发许可或游戏已验证可玩。

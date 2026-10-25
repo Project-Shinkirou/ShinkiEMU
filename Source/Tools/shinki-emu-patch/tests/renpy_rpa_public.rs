@@ -1,18 +1,18 @@
 //! Public pickle/zlib fixtures, including synthetic RPC2 containers.
 //! No commercial source or payload bytes.
-use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use serde_pickle::{
-    value::{HashableValue, Value},
     DeOptions, SerOptions,
+    value::{HashableValue, Value},
 };
 use sha2::{Digest, Sha256};
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     collections::BTreeMap,
     fs,
     io::{Read, Write},
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const KEY: u32 = 0x8f31a2c5;
@@ -74,7 +74,7 @@ fn normalize(
     let hash = if wrong_hash {
         "0".repeat(64)
     } else {
-        format!("{:x}", Sha256::digest(input))
+        hex::encode(Sha256::digest(input))
     };
     let abort = if abort_after {
         "ctx.fail('INTEGRITY', 'public transaction abort')"
@@ -228,11 +228,13 @@ fn rejects(input: Vec<u8>, expected: PatchErrorKind, wrong_hash: bool, abort_aft
         fs::read(root.path().join("source/game/public.rpa")).unwrap(),
         input
     );
-    assert!(!fs::read_dir(root.path()).unwrap().any(|entry| entry
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .starts_with(".shinki-patch-staging-")));
+    assert!(!fs::read_dir(root.path()).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".shinki-patch-staging-")
+    }));
 }
 
 #[test]
@@ -240,22 +242,86 @@ fn rejects_wrong_root_duplicate_paths_unsafe_paths_and_chunk_types_transactional
     // Each compressed pickle is independently serialized by CPython. The labels
     // describe semantic errors, rather than relying on host codec roundtrips.
     let cases = [
-        ("root-list", "789c6b608d9da20700050601a5", PatchErrorKind::UnsupportedInput),
-        ("str-bytes-duplicate", "789c6b609d6ac90001b553347a588a137353a7c44ee9623db2c8b09fa18bf52d886a9b92e88c21f3062a53aa0700fa2f1878", PatchErrorKind::Integrity),
-        ("traversal", "789c6b609daacc0001b5537a38f5f4f4538b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac07002ca50f14", PatchErrorKind::UnsupportedInput),
-        ("absolute", "789c6b609daac80001b5537ad8f5538b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac07001b590eb4", PatchErrorKind::UnsupportedInput),
-        ("backslash", "789c6b609daac20001b5537ab852328b62528b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac0700508c1026", PatchErrorKind::UnsupportedInput),
-        ("invalid-utf8", "789c6b609d2acd0001b5539c19ff4f899dd2c57a6491613f4317eb5b10d53625b1580f00d4d60cbe", PatchErrorKind::UnsupportedInput),
-        ("integer-key", "789c6b609d2ac90001b553bc9962a774b11e5964d8cfd0c5fa1644b54d492cd60300acab0b32", PatchErrorKind::UnsupportedInput),
-        ("chunks-tuple", "789c6b609d2acb0001b5537a58d2327352a774b11e5964d8cfd0c5fa1644b54d699d52ac0700e7130d74", PatchErrorKind::UnsupportedInput),
-        ("chunk-int", "789c6b609d2ac00001b5537a58d2327352a7c44ef1664f2cd6030055ff0745", PatchErrorKind::UnsupportedInput),
-        ("arity-four", "789c6b609daac40001b5537a58d2327352a7c44ed1e8623db2c8b09fa18bf52d88f2f36628999258ac070027440e61", PatchErrorKind::UnsupportedInput),
-        ("bool-coordinate", "789c6b609d2ac10001b5537a58d2327352a7c44ee9e8627dbbc8b09fa16d4a62b11e00abde0b7b", PatchErrorKind::UnsupportedInput),
-        ("negative-coordinate", "789c6b609d2ac30001b5537a58d2327352a7c44ef1fa0f045dac6f1719f633b44d492cd60300fc1a0f3d", PatchErrorKind::UnsupportedInput),
-        ("coordinate-overflow", "789c6b609d2ac70001b5537a58d2327352a7c44ee96205093076b1be5d64d8cfd03625b1580f00d4550b89", PatchErrorKind::Bounds),
-        ("string-prefix", "789c6b609daace0001b5537a58d2327352a7c44ee9623db2c8b09fa18bf52d88ea612b284a4dcbac98d23e25b1580f0083a6116c", PatchErrorKind::UnsupportedInput),
-        ("header-overlap", "789c6b609d2ac70001b5537a58d2327352a7c44ee9623db2c8b09fa18bf509886a9b9258ac0700f5c30da5", PatchErrorKind::Bounds),
-        ("index-overlap", "789c6b609d2ac70001b5537a58d2327352a7c44ee9623dbec8b09fa18bd50a44b54d492cd60300ef520cfe", PatchErrorKind::Bounds),
+        (
+            "root-list",
+            "789c6b608d9da20700050601a5",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "str-bytes-duplicate",
+            "789c6b609d6ac90001b553347a588a137353a7c44ee9623db2c8b09fa18bf52d886a9b92e88c21f3062a53aa0700fa2f1878",
+            PatchErrorKind::Integrity,
+        ),
+        (
+            "traversal",
+            "789c6b609daacc0001b5537a38f5f4f4538b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac07002ca50f14",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "absolute",
+            "789c6b609daac80001b5537ad8f5538b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac07001b590eb4",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "backslash",
+            "789c6b609daac20001b5537ab852328b62528b93130b52a7c44ee9623db2c8b09fa18bf52d886a9b9258ac0700508c1026",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "invalid-utf8",
+            "789c6b609d2acd0001b5539c19ff4f899dd2c57a6491613f4317eb5b10d53625b1580f00d4d60cbe",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "integer-key",
+            "789c6b609d2ac90001b553bc9962a774b11e5964d8cfd0c5fa1644b54d492cd60300acab0b32",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "chunks-tuple",
+            "789c6b609d2acb0001b5537a58d2327352a774b11e5964d8cfd0c5fa1644b54d699d52ac0700e7130d74",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "chunk-int",
+            "789c6b609d2ac00001b5537a58d2327352a7c44ef1664f2cd6030055ff0745",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "arity-four",
+            "789c6b609daac40001b5537a58d2327352a7c44ed1e8623db2c8b09fa18bf52d88f2f36628999258ac070027440e61",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "bool-coordinate",
+            "789c6b609d2ac10001b5537a58d2327352a7c44ee9e8627dbbc8b09fa16d4a62b11e00abde0b7b",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "negative-coordinate",
+            "789c6b609d2ac30001b5537a58d2327352a7c44ef1fa0f045dac6f1719f633b44d492cd60300fc1a0f3d",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "coordinate-overflow",
+            "789c6b609d2ac70001b5537a58d2327352a7c44ee96205093076b1be5d64d8cfd03625b1580f00d4550b89",
+            PatchErrorKind::Bounds,
+        ),
+        (
+            "string-prefix",
+            "789c6b609daace0001b5537a58d2327352a7c44ee9623db2c8b09fa18bf52d88ea612b284a4dcbac98d23e25b1580f0083a6116c",
+            PatchErrorKind::UnsupportedInput,
+        ),
+        (
+            "header-overlap",
+            "789c6b609d2ac70001b5537a58d2327352a7c44ee9623db2c8b09fa18bf509886a9b9258ac0700f5c30da5",
+            PatchErrorKind::Bounds,
+        ),
+        (
+            "index-overlap",
+            "789c6b609d2ac70001b5537a58d2327352a7c44ee9623dbec8b09fa18bd50a44b54d492cd60300ef520cfe",
+            PatchErrorKind::Bounds,
+        ),
     ];
     for (_label, compressed, kind) in cases {
         rejects(archive(compressed), kind, false, false);
@@ -302,7 +368,10 @@ fn sha_gate_and_failure_after_copy_never_publish_or_modify_source() {
 fn empty_dictionary_and_zero_length_bytes_prefix_remain_valid() {
     for (compressed, empty) in [
         ("789c6b60ad9da20700056601c5", true),
-        ("789c6b609daaca0001b5537a38aa528bf2f59232f3a6c44ee9623dbac8b09fa18bf53988726698d23e25b1580f005c0f1013", false),
+        (
+            "789c6b609daaca0001b5537a38aa528bf2f59232f3a6c44ee9623dbac8b09fa18bf53988726698d23e25b1580f005c0f1013",
+            false,
+        ),
     ] {
         let root = tempfile::tempdir().unwrap();
         let input = archive(compressed);
@@ -314,9 +383,15 @@ fn empty_dictionary_and_zero_length_bytes_prefix_remain_valid() {
             assert!(index.is_empty());
         } else {
             let key = HashableValue::String("zero.bin".into());
-            assert_eq!(index[&key], Value::List(vec![
-                coordinates(34, 0, Some(Value::Bytes(Vec::new())), false),
-            ]));
+            assert_eq!(
+                index[&key],
+                Value::List(vec![coordinates(
+                    34,
+                    0,
+                    Some(Value::Bytes(Vec::new())),
+                    false
+                ),])
+            );
             assert!(standard_read(&output, &index[&key]).is_empty());
         }
     }
@@ -472,7 +547,7 @@ fn seed_conversion_recipe(root: &Path, input: &[u8], member: &[u8], wrong_member
     ] {
         fs::write(root.join("source").join(path), b"public excluded file").unwrap();
     }
-    let archive_hash = format!("{:x}", Sha256::digest(input));
+    let archive_hash = hex::encode(Sha256::digest(input));
     // Run the shipped recipe with public edition identities substituted only
     // inside this isolated fixture. Production pins and conversion code stay intact.
     let recipe = include_str!("../../../../Metadata/patches/renpy-himanatsu.luau")
@@ -493,7 +568,7 @@ fn seed_conversion_recipe(root: &Path, input: &[u8], member: &[u8], wrong_member
     let member_hash = if wrong_member_hash {
         "0".repeat(64)
     } else {
-        format!("{:x}", Sha256::digest(member))
+        hex::encode(Sha256::digest(member))
     };
     let recipe = recipe
         .replace(
@@ -502,7 +577,7 @@ fn seed_conversion_recipe(root: &Path, input: &[u8], member: &[u8], wrong_member
         )
         .replace(
             "2c75b53935137167151018c0f2245d03b262f5faa66e9d46be24d0de0f3ddf7f",
-            &format!("{:x}", Sha256::digest(public_python().as_bytes())),
+            &hex::encode(Sha256::digest(public_python().as_bytes())),
         );
     fs::write(root.join("scripts/renpy-himanatsu.luau"), recipe).unwrap();
     fs::write(
@@ -592,11 +667,13 @@ fn rejects_conversion(member: &[u8], target: &str, wrong_member_hash: bool, kind
             input
         );
     }
-    assert!(!fs::read_dir(root.path()).unwrap().any(|entry| entry
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .starts_with(".shinki-patch-staging-")));
+    assert!(!fs::read_dir(root.path()).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".shinki-patch-staging-")
+    }));
 }
 
 #[test]

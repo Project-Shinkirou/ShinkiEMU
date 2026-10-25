@@ -198,7 +198,7 @@ pub(super) fn execute(
         WindowCommand::Size { .. }
         | WindowCommand::Position { .. }
         | WindowCommand::Visibility(_) => {
-            return Err("SHINKI_EMU_WINDOW_COMMAND_UNSUPPORTED".into())
+            return Err("SHINKI_EMU_WINDOW_COMMAND_UNSUPPORTED".into());
         }
         WindowCommand::Minimized(value) => native.set_minimized(*value),
         WindowCommand::QueryState => {}

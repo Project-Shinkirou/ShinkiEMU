@@ -1,5 +1,5 @@
 use super::*;
-use crate::{storage::Storage, MusicaSystemPage};
+use crate::{MusicaSystemPage, storage::Storage};
 
 fn game(root: &std::path::Path) {
     fixture::game(

@@ -1,10 +1,9 @@
 use crate::{
-    buffer,
+    OutputProfile, PatchError, PatchErrorKind, PatchProgress, PatchRequest, buffer,
     error::check_cancelled,
     paths::AuthorizedRoot,
     storage::{self, TaskFile},
     transaction::Transaction,
-    OutputProfile, PatchError, PatchErrorKind, PatchProgress, PatchRequest,
 };
 use mlua::{
     Buffer, Function, Lua, LuaOptions, LuaSerdeExt, RegistryKey, StdLib, Table, UserData,
@@ -16,7 +15,7 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[derive(Serialize)]
@@ -207,11 +206,11 @@ impl Scripts {
             }
             self.hashes
                 .borrow_mut()
-                .insert(path.to_owned(), format!("{:x}", hash.finalize()));
+                .insert(path.to_owned(), hex::encode(hash.finalize()));
             let value = lua
                 .load(&bytes)
                 .set_name(format!("@{path}"))
-                .set_mode(mlua::ChunkMode::Text)
+                .set_mode(mlua::chunk::ChunkMode::Text)
                 .eval::<Value>()?;
             let key = lua.create_registry_value(value.clone())?;
             self.cache.borrow_mut().insert(path.to_owned(), key);
@@ -312,7 +311,7 @@ pub(crate) fn execute(
                     return Err(mlua::Error::external(PatchError::new(
                         PatchErrorKind::Script,
                         "entry script must return a recipe table",
-                    )))
+                    )));
                 }
             };
             let id = text(recipe.get::<Value>("id")?)?;
@@ -573,7 +572,7 @@ fn context(lua: &Lua, files: Rc<Files>, scripts: Rc<Scripts>) -> mlua::Result<Ta
                     return Err(mlua::Error::external(PatchError::new(
                         PatchErrorKind::Script,
                         "unknown failure category",
-                    )))
+                    )));
                 }
             };
             Err(mlua::Error::external(PatchError::new(kind, message)))

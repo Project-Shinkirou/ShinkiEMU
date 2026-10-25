@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use reqwest::header::{ETAG, IF_NONE_MATCH};
 use reqwest::StatusCode;
+use reqwest::header::{ETAG, IF_NONE_MATCH};
 use sha2::{Digest, Sha256};
 
-use crate::index::{
-    parse_metadata_index, MetadataIndex, MAX_METADATA_FILE_BYTES, METADATA_INDEX_FILE,
-};
 use crate::MetadataError;
+use crate::index::{
+    MAX_METADATA_FILE_BYTES, METADATA_INDEX_FILE, MetadataIndex, parse_metadata_index,
+};
 
 pub const DEFAULT_METADATA_BASE_URL: &str =
     "https://project-shinkirou.github.io/data/shinkiemu/v1/";

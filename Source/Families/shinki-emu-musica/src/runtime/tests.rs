@@ -1,4 +1,4 @@
-use crate::{parse_sc, ScOpcodeCatalog};
+use crate::{ScOpcodeCatalog, parse_sc};
 
 use super::*;
 
@@ -26,9 +26,10 @@ fn choice_restores_focus_and_commits_the_selected_label() {
     assert!(vm.restore_native_save(&saved, 0).is_err());
     assert_eq!(vm.state(), &before);
     corrupt.choice.as_mut().unwrap().selected_index = Some(9);
-    assert!(vm
-        .restore_native_save(&postcard::to_allocvec(&corrupt).unwrap(), 3)
-        .is_err());
+    assert!(
+        vm.restore_native_save(&postcard::to_allocvec(&corrupt).unwrap(), 3)
+            .is_err()
+    );
     assert_eq!(vm.state(), &before);
 }
 
@@ -55,10 +56,12 @@ fn musica_crossfade_reuses_timeline_and_empty_effect_releases_primary_slot() {
         assert!(vm.state().effect.is_none());
         assert_eq!(vm.advance_effect_clock(100_000_000).unwrap(), None);
         let save = vm.encode_native_save().unwrap();
-        assert!(MusicaVm::decode_native_save(&save)
-            .unwrap()
-            .effect
-            .is_none());
+        assert!(
+            MusicaVm::decode_native_save(&save)
+                .unwrap()
+                .effect
+                .is_none()
+        );
     }
 }
 

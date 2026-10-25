@@ -23,7 +23,7 @@ impl Storage {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_PROGRESS_READ",
                     "global progress could not be read",
-                ))
+                ));
             }
         };
         let mut bytes = Vec::new();

@@ -1,19 +1,19 @@
 use blowfish::{
-    cipher::{BlockCipherEncrypt, KeyInit},
     Blowfish,
+    cipher::{BlockCipherEncrypt, KeyInit},
 };
-use flate2::{write::ZlibEncoder, Compression};
+use flate2::{Compression, write::ZlibEncoder};
 use md5::{Digest, Md5};
 use rc4::{Rc4, StreamCipher};
 use sha2::Sha256;
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     io::{Cursor, Write},
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -34,7 +34,7 @@ fn put32(bytes: &mut [u8], at: usize, value: u32) {
     bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
 }
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 fn crc16(bytes: &[u8]) -> u16 {
     bytes.iter().fold(0u16, |mut crc, byte| {
@@ -351,7 +351,10 @@ impl Fixture {
         let aligned = sys_bytes.len();
         let mut sys = vec![0u8; 8];
         sys.extend(sys_bytes);
-        let key = format!("schema = 'shinki.emu.musica.keys.v2'\npaz_version = 2\nrc4_skip_crc = true\n[archive_keys.sys]\ndata_key_hex = '{}'\n[archive_keys.sys.type_passwords]\npng = 'public-password'\n[texture_overrides]\n'musica:/sys/unchanged.png' = 'independent.png'\n", hex(SYS_KEY));
+        let key = format!(
+            "schema = 'shinki.emu.musica.keys.v2'\npaz_version = 2\nrc4_skip_crc = true\n[archive_keys.sys]\ndata_key_hex = '{}'\n[archive_keys.sys.type_passwords]\npng = 'public-password'\n[texture_overrides]\n'musica:/sys/unchanged.png' = 'independent.png'\n",
+            hex(SYS_KEY)
+        );
         fs::write(source.join("key.toml"), &key).unwrap();
         fs::write(source.join("public.exe"), &wrapper).unwrap();
         fs::write(source.join("public.mys"), &package).unwrap();

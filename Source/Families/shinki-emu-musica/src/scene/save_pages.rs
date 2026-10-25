@@ -1,5 +1,5 @@
 use super::*;
-use crate::{storage::SaveCard, MusicaSystemPage};
+use crate::{MusicaSystemPage, storage::SaveCard};
 
 impl Scene {
     pub fn render_save_page(
@@ -15,7 +15,7 @@ impl Scene {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_SAVE_PAGE",
                     "invalid save/load page",
-                ))
+                ));
             }
         };
         if focus >= crate::storage::SAVE_MAX_SLOTS || (self.width, self.height) != (1280, 720) {

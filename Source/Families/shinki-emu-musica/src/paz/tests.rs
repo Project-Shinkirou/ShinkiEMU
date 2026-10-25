@@ -193,9 +193,10 @@ fn v0_fixture_mounts_all_roles_and_reads_across_a_volume_boundary() {
     }
     let root = vfs.read_dir("musica:/").unwrap();
     assert_eq!(root.len(), REQUIRED_ARCHIVE_ROLES.len());
-    assert!(root
-        .iter()
-        .all(|node| node.kind == ArchiveNodeKind::Directory));
+    assert!(
+        root.iter()
+            .all(|node| node.kind == ArchiveNodeKind::Directory)
+    );
     let read = vfs.read_range("musica:/scr/scr.bin", 3, 4).unwrap();
     assert_eq!(read.bytes.as_slice(), b"ture");
     assert!(!read.cache_hit);
@@ -309,9 +310,11 @@ fn movie_spooling_preserves_range_limit_and_streams_large_payloads() {
         stop: &stop,
         cancel: false,
     };
-    assert!(archive
-        .write_movie(uri, &mut output, length - 1, &stop)
-        .is_err());
+    assert!(
+        archive
+            .write_movie(uri, &mut output, length - 1, &stop)
+            .is_err()
+    );
     assert_eq!(output.bytes, 0);
     archive
         .write_movie(uri, &mut output, length, &stop)

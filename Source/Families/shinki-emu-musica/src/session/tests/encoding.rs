@@ -30,11 +30,13 @@ fn native_gpu_gbk_script_guards_chain_choices_and_restore() {
     let mut capture = Capture(Vec::new());
     capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let dialogue = capture.0.clone();
-    assert!(dialogue
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .any(|pixel| pixel[..3] != [0, 0, 0]));
+    assert!(
+        dialogue
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[..3] != [0, 0, 0])
+    );
     session.advance(0, &[key(KeyCode::F5)]).unwrap();
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     let (labels, _) = session.vm.choice_display().unwrap().unwrap();

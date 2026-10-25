@@ -139,14 +139,16 @@ mod tests {
             [0.4, 0.0, 1.0]
         );
         for value in [-1, 101] {
-            assert!(resolve_config(
-                &descriptor.configuration,
-                &[ConfigEntry {
-                    id: "se_volume".into(),
-                    value: ConfigValue::Integer(value)
-                }]
-            )
-            .is_err());
+            assert!(
+                resolve_config(
+                    &descriptor.configuration,
+                    &[ConfigEntry {
+                        id: "se_volume".into(),
+                        value: ConfigValue::Integer(value)
+                    }]
+                )
+                .is_err()
+            );
         }
         assert!(AudioPreferences::resolve(&[]).is_err());
         for (uri, index) in [

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{runtime::gallery, MusicaSystemPage};
+use crate::{MusicaSystemPage, runtime::gallery};
 impl MusicaSession {
     fn activate_gallery(&mut self) -> SessionResult<()> {
         let focus = self.vm.state().system_ui.focus_index;
@@ -15,7 +15,7 @@ impl MusicaSession {
                         return Err(error(
                             "SHINKI_EMU_MUSICA_GALLERY_FOCUS",
                             "invalid Memories focus",
-                        ))
+                        ));
                     }
                 };
                 self.vm.set_gallery_page(page, 0).map_err(vm_error)

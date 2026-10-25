@@ -2,7 +2,7 @@ use crate::{
     cores::{Core, Inventory},
     dependencies, package,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -33,7 +33,10 @@ fn checkout_root(directory: &Path) -> Result<()> {
         git(directory).args(["rev-parse", "--show-toplevel"]),
     )?)?;
     if fs::canonicalize(reported.trim())? != fs::canonicalize(directory)? {
-        bail!("{} is not the root of the requested fork checkout; refusing to operate on its parent repository", directory.display());
+        bail!(
+            "{} is not the root of the requested fork checkout; refusing to operate on its parent repository",
+            directory.display()
+        );
     }
     Ok(())
 }
@@ -63,7 +66,10 @@ pub fn state(directory: &Path) -> Result<SourceState> {
 
 fn require_clean(directory: &Path) -> Result<()> {
     if modified(directory)? {
-        bail!("fork checkout {} contains local modifications; commit or move them before explicit deps preparation (nothing was reset)", directory.display());
+        bail!(
+            "fork checkout {} contains local modifications; commit or move them before explicit deps preparation (nothing was reset)",
+            directory.display()
+        );
     }
     Ok(())
 }
@@ -219,7 +225,7 @@ mod tests {
                 .arg(&source),
         )
         .unwrap();
-        fs::write(source.join("Cargo.toml"), "[package]\nname = \"public-source-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        fs::write(source.join("Cargo.toml"), "[package]\nname = \"public-source-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
         let first = commit(&source, "first public source\n");
         let second = commit(&source, "second public source\n");
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();

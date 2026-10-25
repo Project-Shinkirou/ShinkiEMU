@@ -18,7 +18,7 @@ impl Storage {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_QUICK_CURSOR_READ",
                     "quick save cursor could not be read",
-                ))
+                ));
             }
         };
         let mut bytes = Vec::new();

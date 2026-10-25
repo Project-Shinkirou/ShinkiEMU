@@ -465,18 +465,16 @@ pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
             continue;
         }
         let had_old = target.exists();
-        if had_old {
-            if let Err(error) = fs::rename(&target, &old) {
+        if had_old
+            && let Err(error) = fs::rename(&target, &old) {
                 failures.push(failure(stem, &error));
                 continue;
             }
-        }
         if let Err(error) = fs::rename(pending.join(stem), &target) {
-            if had_old {
-                if let Err(restore) = fs::rename(&old, &target) {
+            if had_old
+                && let Err(restore) = fs::rename(&old, &target) {
                     failures.push(failure(stem, &restore));
                 }
-            }
             failures.push(failure(stem, &error));
             continue;
         }

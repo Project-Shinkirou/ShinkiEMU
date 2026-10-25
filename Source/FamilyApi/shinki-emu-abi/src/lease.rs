@@ -1,4 +1,4 @@
-use crate::{FrameIdentity, FrameSurface, Status, SurfaceInfo, FRAME_READY, INVALID_ARGUMENT};
+use crate::{FRAME_READY, FrameIdentity, FrameSurface, INVALID_ARGUMENT, Status, SurfaceInfo};
 
 /// Validated immutable CPU storage. Moving this owner never copies pixels.
 /// The module contract requires CPU release to be thread-safe and independent

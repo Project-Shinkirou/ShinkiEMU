@@ -1,7 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "definitions": {
+  "$defs": {
     "CoreCatalogEntry": {
       "additionalProperties": false,
       "properties": {
@@ -43,8 +41,8 @@
         },
         "size": {
           "format": "uint64",
-          "maximum": 536870912.0,
-          "minimum": 1.0,
+          "maximum": 536870912,
+          "minimum": 1,
           "type": "integer"
         },
         "url": {
@@ -58,25 +56,27 @@
         }
       },
       "required": [
-        "abi",
+        "plugin_id",
         "display_name",
         "family_name",
-        "license",
+        "version",
+        "abi",
         "platform",
-        "plugin_id",
-        "release_tag",
+        "url",
         "sha256",
         "size",
-        "url",
-        "version"
+        "license",
+        "release_tag"
       ],
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
     "entries": {
       "items": {
-        "$ref": "#/definitions/CoreCatalogEntry"
+        "$ref": "#/$defs/CoreCatalogEntry"
       },
       "type": "array"
     },
@@ -86,8 +86,8 @@
     }
   },
   "required": [
-    "entries",
-    "schema"
+    "schema",
+    "entries"
   ],
   "title": "CoreCatalog",
   "type": "object"

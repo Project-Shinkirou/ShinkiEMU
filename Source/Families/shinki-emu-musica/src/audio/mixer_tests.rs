@@ -38,9 +38,11 @@ fn restore_rejects_cursor_beyond_asset_without_changing_live_audio() {
         assert_eq!(failure.code.as_str(), "SHINKI_EMU_MUSICA_AUDIO_SNAPSHOT");
         assert_eq!(postcard::to_allocvec(&mixer.snapshot()).unwrap(), before);
     }
-    assert!(rendered(&mut mixer, 512)
-        .iter()
-        .any(|sample| sample.abs() > 0.001));
+    assert!(
+        rendered(&mut mixer, 512)
+            .iter()
+            .any(|sample| sample.abs() > 0.001)
+    );
 }
 
 #[test]
@@ -64,14 +66,18 @@ fn cancelled_empty_restore_cannot_clear_the_live_mixer() {
     mixer.play(1, 0.5, 0.0, true, 0).unwrap();
     rendered(&mut mixer, 512);
     let before = postcard::to_allocvec(&mixer.snapshot()).unwrap();
-    assert!(mixer
-        .restore(Vec::new(), &archive, &AtomicBool::new(true))
-        .unwrap()
-        .is_none());
+    assert!(
+        mixer
+            .restore(Vec::new(), &archive, &AtomicBool::new(true))
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(postcard::to_allocvec(&mixer.snapshot()).unwrap(), before);
-    assert!(rendered(&mut mixer, 512)
-        .iter()
-        .any(|sample| sample.abs() > 0.001));
+    assert!(
+        rendered(&mut mixer, 512)
+            .iter()
+            .any(|sample| sample.abs() > 0.001)
+    );
 }
 
 #[test]
@@ -80,19 +86,23 @@ fn cancelled_load_keeps_the_existing_stream_and_playback() {
     mixer.play(1, 0.5, 0.0, true, 0).unwrap();
     rendered(&mut mixer, 512);
     let before = postcard::to_allocvec(&mixer.snapshot()).unwrap();
-    assert!(mixer
-        .load(
-            1,
-            "musica:/bgm/not-present.ogg",
-            &archive,
-            &AtomicBool::new(true)
-        )
-        .unwrap()
-        .is_none());
+    assert!(
+        mixer
+            .load(
+                1,
+                "musica:/bgm/not-present.ogg",
+                &archive,
+                &AtomicBool::new(true)
+            )
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(postcard::to_allocvec(&mixer.snapshot()).unwrap(), before);
-    assert!(rendered(&mut mixer, 512)
-        .iter()
-        .any(|sample| sample.abs() > 0.001));
+    assert!(
+        rendered(&mut mixer, 512)
+            .iter()
+            .any(|sample| sample.abs() > 0.001)
+    );
 }
 
 #[test]
@@ -149,9 +159,11 @@ fn restored_fade_out_stops_at_remaining_sample_boundary() {
     assert!(restored.snapshot()[0].playing);
     rendered(&mut restored, 1);
     assert!(!restored.snapshot()[0].playing);
-    assert!(rendered(&mut restored, 512)
-        .iter()
-        .all(|s| s.abs() < 0.00001));
+    assert!(
+        rendered(&mut restored, 512)
+            .iter()
+            .all(|s| s.abs() < 0.00001)
+    );
 }
 
 #[test]
@@ -161,9 +173,11 @@ fn invalid_fade_does_not_replace_current_mixer() {
     rendered(&mut mixer, 512);
     let mut snapshot = mixer.snapshot();
     snapshot[0].fade.as_mut().unwrap().frames = 0;
-    assert!(mixer
-        .restore(snapshot, &archive, &AtomicBool::new(false))
-        .is_err());
+    assert!(
+        mixer
+            .restore(snapshot, &archive, &AtomicBool::new(false))
+            .is_err()
+    );
     assert_eq!(mixer.snapshot()[0].fade.as_ref().unwrap().elapsed, 512);
     assert!(rendered(&mut mixer, 512).iter().any(|s| s.abs() > 0.0001));
 }

@@ -102,18 +102,20 @@ fn native_crop_and_coordinate_overflow_fail_without_saturation() {
     assert!(offsets.placement(8, 8, 32, 0, 14).is_err());
     assert!(offsets.placement(8, 8, 32, i32::MIN, 6).is_err());
     assert!(offsets.placement(8, 8, u32::MAX, 0, 6).is_err());
-    assert!(Offsets {
-        left: -20,
-        ..offsets
-    }
-    .placement(8, 8, 32, 0, 6)
-    .is_err());
+    assert!(
+        Offsets {
+            left: -20,
+            ..offsets
+        }
+        .placement(8, 8, 32, 0, 6)
+        .is_err()
+    );
 }
 
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn native_stand_gpu_uses_metadata_crop_and_restore_without_changing_cached_pixels() {
-    use crate::{mount_musica, parse_sc, MusicaVm, ScOpcodeCatalog};
+    use crate::{MusicaVm, ScOpcodeCatalog, mount_musica, parse_sc};
     use roukaku_core::Hash256;
     use shinki_emu_musica_keys::MUSICA_KEY_FILE;
     let root = tempfile::tempdir().unwrap();

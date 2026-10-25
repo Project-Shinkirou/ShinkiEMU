@@ -150,7 +150,7 @@ fn parse_wscroll2_sync(bytes: &[u8]) -> SessionResult<Vec<i32>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{mount_musica, parse_sc, MusicaVm, ScOpcodeCatalog};
+    use crate::{MusicaVm, ScOpcodeCatalog, mount_musica, parse_sc};
     use roukaku_core::Hash256;
     use shinki_emu_musica_keys::MUSICA_KEY_FILE;
     #[test]

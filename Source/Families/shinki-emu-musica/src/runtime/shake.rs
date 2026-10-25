@@ -162,7 +162,7 @@ fn next_firefly_random(state: &mut u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse_sc, ScOpcodeCatalog};
+    use crate::{ScOpcodeCatalog, parse_sc};
     fn vm(source: &[u8]) -> MusicaVm {
         MusicaVm::new(
             "musica:/scr/shake.sc".into(),
@@ -181,10 +181,12 @@ mod tests {
                 original.step(1).unwrap(),
                 Some(MusicaVmEvent::ScreenShake(_))
             ));
-            assert!(original
-                .advance_screen_shake_clock(29_000_000)
-                .unwrap()
-                .is_none());
+            assert!(
+                original
+                    .advance_screen_shake_clock(29_000_000)
+                    .unwrap()
+                    .is_none()
+            );
             let mut restored = vm(source.as_bytes());
             restored
                 .restore_native_save(&original.encode_native_save().unwrap(), 2)
@@ -203,10 +205,12 @@ mod tests {
             );
             assert_eq!(original.step(2).unwrap(), Some(MusicaVmEvent::Terminal));
             assert!(original.state().screen_shake.is_none());
-            assert!(original
-                .advance_screen_shake_clock(100_000_000)
-                .unwrap()
-                .is_none());
+            assert!(
+                original
+                    .advance_screen_shake_clock(100_000_000)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
     #[test]

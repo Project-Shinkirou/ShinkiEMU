@@ -1,4 +1,4 @@
-use flate2::{write::ZlibEncoder, Compression};
+use flate2::{Compression, write::ZlibEncoder};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -40,7 +40,7 @@ fn slot(text: &[u8]) -> Vec<u8> {
     bytes
 }
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 impl PublicOverlay {

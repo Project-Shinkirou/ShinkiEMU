@@ -1,13 +1,13 @@
 use serde_pickle::{
-    value::{HashableValue as Key, Value},
     DeOptions,
+    value::{HashableValue as Key, Value},
 };
-use shinki_emu_patch::{apply, PatchError, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchError, PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -229,9 +229,11 @@ local result = buffer.create(0)
 "#
     );
     assert!(run(b"\x80\x05\x97\x98.", &body).unwrap().is_empty());
-    assert!(run(b"\x80\x05\x96\x02\0\0\0\0\0\0\0\xff\0.", &body)
-        .unwrap()
-        .is_empty());
+    assert!(
+        run(b"\x80\x05\x96\x02\0\0\0\0\0\0\0\xff\0.", &body)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

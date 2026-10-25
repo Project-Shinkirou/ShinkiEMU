@@ -117,9 +117,10 @@ mod tests {
             } else {
                 state.message.as_mut().unwrap().read_identity = Hash256::from_sha256(b"invalid");
             }
-            assert!(vm
-                .restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
-                .is_err());
+            assert!(
+                vm.restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
+                    .is_err()
+            );
             assert_eq!(vm.encode_native_save().unwrap(), saved);
         }
     }

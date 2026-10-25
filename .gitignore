@@ -4,6 +4,5 @@ target/
 __pycache__/
 *.pyc
 /ThirdParty/*
-!/ThirdParty/mlua/
 !/ThirdParty/README.md
 !/ThirdParty/cpal/

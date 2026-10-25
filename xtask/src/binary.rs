@@ -1,11 +1,11 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use object::{
+    Object, ObjectKind,
     read::{
         elf::{Dyn, FileHeader, ProgramHeader},
         macho::MachHeader,
         pe::ImageNtHeaders,
     },
-    Object, ObjectKind,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -56,25 +56,25 @@ fn elf<'a, E: FileHeader>(
         };
         let entries = &entries[..entries
             .iter()
-            .position(|entry| entry.tag32(endian) == Some(object::elf::DT_NULL))
+            .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
             .context("ELF dynamic segment lacks DT_NULL")?];
         if !entries.iter().any(|entry| {
             matches!(
-                entry.tag32(endian),
-                Some(object::elf::DT_NEEDED | object::elf::DT_RUNPATH | object::elf::DT_RPATH)
+                entry.tag(endian),
+                object::elf::DT_NEEDED | object::elf::DT_RUNPATH | object::elf::DT_RPATH
             )
         }) {
             continue;
         }
         let address: u64 = entries
             .iter()
-            .find(|entry| entry.tag32(endian) == Some(object::elf::DT_STRTAB))
+            .find(|entry| entry.tag(endian) == object::elf::DT_STRTAB)
             .context("ELF dynamic string table address missing")?
             .d_val(endian)
             .into();
         let size: u64 = entries
             .iter()
-            .find(|entry| entry.tag32(endian) == Some(object::elf::DT_STRSZ))
+            .find(|entry| entry.tag(endian) == object::elf::DT_STRSZ)
             .context("ELF dynamic string table size missing")?
             .d_val(endian)
             .into();
@@ -93,12 +93,12 @@ fn elf<'a, E: FileHeader>(
         let data = data.context("ELF dynamic strings are not in a loadable segment")?;
         let strings = object::read::StringTable::new(data, 0, size);
         for entry in entries {
-            match entry.tag32(endian) {
-                Some(object::elf::DT_NEEDED) => {
+            match entry.tag(endian) {
+                object::elf::DT_NEEDED => {
                     info.dependencies
                         .insert(text(entry.string(endian, strings)?)?);
                 }
-                Some(object::elf::DT_RUNPATH | object::elf::DT_RPATH) => {
+                object::elf::DT_RUNPATH | object::elf::DT_RPATH => {
                     info.rpaths.extend(
                         text(entry.string(endian, strings)?)?
                             .split(':')
@@ -162,14 +162,20 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     {
         bail!("{}: not a target executable/shared library", path.display());
     }
-    if require_query
-        && (file.kind() != ObjectKind::Dynamic
-            || !file.exports()?.iter().any(|e| {
-                e.name() == b"shinki_emu_query"
-                    || (format == object::BinaryFormat::MachO && e.name() == b"_shinki_emu_query")
-            }))
-    {
-        bail!("{} lacks shinki_emu_query", path.display());
+    if require_query {
+        let mut has_query = false;
+        if file.kind() == ObjectKind::Dynamic {
+            for export in file.exports()? {
+                let export = export?;
+                if let object::read::NameOrOrdinal::Name(name) = export.name() {
+                    has_query |= name == b"shinki_emu_query"
+                        || (format == object::BinaryFormat::MachO && name == b"_shinki_emu_query");
+                }
+            }
+        }
+        if !has_query {
+            bail!("{} lacks shinki_emu_query", path.display());
+        }
     }
     let mut info = BinaryInfo {
         dependencies: BTreeSet::new(),

@@ -1,10 +1,10 @@
 //! Public, independently encoded format-3 directory/aPLib fixtures.
 //! CRCs below are fixture expectations, not invented Enigma wire fields.
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 fn u32le(out: &mut Vec<u8>, value: u32) {

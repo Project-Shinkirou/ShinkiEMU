@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use rusqlite::{OptionalExtension, Transaction};
 use shinki_emu_translation::{OpenAiApi, TranslationProvider};
 
-use super::{state::write_app_state, LibraryError, TranslationProfile, STATE_SCHEMA_SQL};
+use super::{LibraryError, STATE_SCHEMA_SQL, TranslationProfile, state::write_app_state};
 use crate::{
     model::{ConfigEntry, ConfigValue},
     work_settings::{GameSettings, RenderPreference},
@@ -160,12 +160,12 @@ fn rename_plugins(transaction: &Transaction<'_>) -> Result<(), LibraryError> {
     let rows = {
         let mut statement =
             transaction.prepare("SELECT game_id, settings_json FROM game_settings")?;
-        let rows = statement
+
+        statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows
+            .collect::<Result<Vec<_>, _>>()?
     };
     for (game_id, raw) in rows {
         let Ok(mut settings) = serde_json::from_str::<GameSettings>(&raw) else {
@@ -255,17 +255,16 @@ fn migrate_family_configuration(transaction: &Transaction<'_>) -> Result<(), Lib
         if let Some(&(plugin_id, width_id, height_id)) = RENDER_FIELD_PLUGINS
             .iter()
             .find(|(plugin_id, _, _)| *plugin_id == row.plugin_id)
+            && let Some(preference) = take_render_extent(&mut row.entries, width_id, height_id)
         {
-            if let Some(preference) = take_render_extent(&mut row.entries, width_id, height_id) {
-                if row.game_id.is_empty() {
-                    write_app_state(
-                        transaction,
-                        &format!("render.default.{plugin_id}"),
-                        &preference,
-                    )?;
-                } else {
-                    set_game_render(transaction, &row.game_id, preference)?;
-                }
+            if row.game_id.is_empty() {
+                write_app_state(
+                    transaction,
+                    &format!("render.default.{plugin_id}"),
+                    &preference,
+                )?;
+            } else {
+                set_game_render(transaction, &row.game_id, preference)?;
             }
         }
         row.changed = row.entries.len() != before;
@@ -502,10 +501,12 @@ CREATE TABLE plugin_installation (
             [enumerated("script_encoding", "gbk")]
         );
         assert_eq!(library.game_settings("plain").unwrap(), None);
-        assert!(library
-            .family_overrides("shinki.emu.musica", "plain")
-            .unwrap()
-            .is_empty());
+        assert!(
+            library
+                .family_overrides("shinki.emu.musica", "plain")
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(
             library.family_overrides("shinki.emu.musica", "").unwrap(),
             [
@@ -734,9 +735,11 @@ CREATE TABLE plugin_installation (
     #[test]
     fn every_upgrade_path_matches_a_fresh_schema_7() {
         let fresh = schema_shape(&Library::in_memory().unwrap());
-        assert!(fresh
-            .iter()
-            .any(|line| line.starts_with("table external_identity:") && !line.contains("UNIQUE")));
+        assert!(
+            fresh.iter().any(
+                |line| line.starts_with("table external_identity:") && !line.contains("UNIQUE")
+            )
+        );
         for old in [legacy_schema_5(4), legacy_schema_5(5), legacy_schema_6()] {
             assert_ne!(schema_shape(&old), fresh);
             let upgraded = upgrade(old);

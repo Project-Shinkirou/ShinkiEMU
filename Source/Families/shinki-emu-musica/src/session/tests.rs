@@ -1,12 +1,12 @@
 use super::types::*;
 use crate::test_fixture as fixture;
-use crate::{audio::Audio, mount_musica, scene::core_error, MusicaVm};
+use crate::{MusicaVm, audio::Audio, mount_musica, scene::core_error};
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
 use shinki_emu_sdk::runtime::*;
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -304,12 +304,14 @@ fn native_gpu_crossfade_clear_removes_the_previous_effect_frame() {
     frame
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
-    assert!(frame
-        .0
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|pixel| *pixel == [0, 0, 0, 255]));
+    assert!(
+        frame
+            .0
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| *pixel == [0, 0, 0, 255])
+    );
     opened.session.close().unwrap();
 }
 #[test]
@@ -321,12 +323,14 @@ fn native_family_advances_real_archive_scene_audio_input_save_restore_and_close(
         b".stage * BG.png 0 0\r\n.playBGM tone.ogg[50,-100]\r\n.message 1   Hello\r\n.end\r\n",
     );
     let mut provider = fixture::provider();
-    assert!(provider
-        .probe(ProbeRequest {
-            game_path: root.path().to_str().unwrap().into()
-        })
-        .unwrap()
-        .is_some());
+    assert!(
+        provider
+            .probe(ProbeRequest {
+                game_path: root.path().to_str().unwrap().into()
+            })
+            .unwrap()
+            .is_some()
+    );
     let sink = Sink::default();
     let mut opened = provider.open(request(root.path(), sink.clone())).unwrap();
     assert_eq!(
@@ -355,12 +359,14 @@ fn native_family_advances_real_archive_scene_audio_input_save_restore_and_close(
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
     let dialogue = frame.0.clone();
-    assert!(dialogue
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .skip(528 * 1280)
-        .any(|p| p[0] > 0));
+    assert!(
+        dialogue
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .skip(528 * 1280)
+            .any(|p| p[0] > 0)
+    );
     opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
     assert_eq!(
         opened

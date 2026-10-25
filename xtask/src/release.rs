@@ -1,10 +1,10 @@
 use crate::{
-    cores::{slug, Inventory},
+    cores::{Inventory, slug},
     dependencies, package,
 };
-use anyhow::{bail, Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde_json::{json, Value};
+use anyhow::{Context, Result, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::{Value, json};
 use std::{env, fs, io::Read, path::Path};
 const API: &str = "https://api.github.com/repos/Project-Shinkirou/ShinkiEMU";
 struct GitHub {
@@ -260,7 +260,9 @@ pub fn run(
             .args(["status", "--porcelain", "--untracked-files=all"]),
     )?;
     if !dirty.is_empty() {
-        bail!("release requires committed product/fork sources so corresponding-source archives match the binaries");
+        bail!(
+            "release requires committed product/fork sources so corresponding-source archives match the binaries"
+        );
     }
     if !record_path.exists() {
         let receipt = crate::build::load_receipt(inv, target, component)?;
@@ -268,7 +270,9 @@ pub fn run(
             .map(|source| source.rev.as_str())
             .unwrap_or(&commit);
         if receipt.source_dirty || receipt.source_commit != expected_source {
-            bail!("release requires a clean build receipt at the configured source revision; rebuild after committing/pinning sources");
+            bail!(
+                "release requires a clean build receipt at the configured source revision; rebuild after committing/pinning sources"
+            );
         }
         package::atomic_directory(&root, |work| {
             let staged = work.join("package");
@@ -400,7 +404,10 @@ pub fn run(
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let notes=format!("{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nSource bundles contain exact product/fork revisions, original vcpkg downloads, ports and patches for relinking. Android debug-signed test APKs remain Actions artifacts.\n",blocked.join("\n"));
+    let notes = format!(
+        "{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nSource bundles contain exact product/fork revisions, original vcpkg downloads, ports and patches for relinking. Android debug-signed test APKs remain Actions artifacts.\n",
+        blocked.join("\n")
+    );
     let gh = GitHub::new()?;
     let existing = gh.get_optional(&format!("{API}/releases/tags/{tag}"))?;
     let created = existing.is_none();

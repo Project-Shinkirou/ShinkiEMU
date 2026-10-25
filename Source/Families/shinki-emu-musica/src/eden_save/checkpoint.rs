@@ -121,10 +121,10 @@ impl EdenSave {
         for name in ["eff_Count", "eff_Param", "eff_Speed", "frameParam"] {
             fields.expect(name, "-1")?;
         }
-        if let Some(method) = fields.0.remove("eff_Method") {
-            if method != "end" {
-                return Err(unsupported());
-            }
+        if let Some(method) = fields.0.remove("eff_Method")
+            && method != "end"
+        {
+            return Err(unsupported());
         }
         fields.expect("font_Color", "16777215")?;
         fields.expect("font_FontSize", "22")?;

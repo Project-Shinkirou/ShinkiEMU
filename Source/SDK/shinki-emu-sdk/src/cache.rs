@@ -291,17 +291,17 @@ pub fn enforce_private_directory_permissions(path: &Path) -> Result<(), Plaintex
 fn restrict_windows_path(path: &Path, _directory: bool) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::{
-        core::PCWSTR,
         Win32::{
-            Foundation::{LocalFree, HLOCAL},
+            Foundation::{HLOCAL, LocalFree},
             Security::{
                 Authorization::{
                     ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
                 },
-                SetFileSecurityW, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-                PSECURITY_DESCRIPTOR,
+                DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+                PSECURITY_DESCRIPTOR, SetFileSecurityW,
             },
         },
+        core::PCWSTR,
     };
 
     let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();

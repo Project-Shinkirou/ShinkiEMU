@@ -1,9 +1,9 @@
-use super::{validate_dimensions, FamilyError, FamilyResult};
+use super::{FamilyError, FamilyResult, validate_dimensions};
 use std::{
     fmt,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 static NEXT_SESSION_EPOCH: AtomicU64 = AtomicU64::new(1);
@@ -11,7 +11,7 @@ static NEXT_SESSION_EPOCH: AtomicU64 = AtomicU64::new(1);
 /// Allocate in the host, then pass the value into the family open request.
 pub fn allocate_session_epoch() -> FamilyResult<u64> {
     NEXT_SESSION_EPOCH
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             value.checked_add(1)
         })
         .map_err(|_| invalid("SHINKI_EMU_FAMILY_SESSION_EPOCH", "session epoch exhausted"))

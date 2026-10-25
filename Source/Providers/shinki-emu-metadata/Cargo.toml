@@ -2,6 +2,7 @@
 name = "shinki-emu-metadata"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [lib]
@@ -11,7 +12,8 @@ doctest = false
 hex.workspace = true
 image.workspace = true
 reqwest.workspace = true
-reqwest12 = { package = "reqwest", version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
+# bangumi-api 0.1.2 and vn 0.11.2 expose reqwest 0.12 types in their public API.
+reqwest12 = { package = "reqwest", version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
 schemars.workspace = true
 semver.workspace = true
 serde.workspace = true
@@ -32,7 +34,7 @@ vn.workspace = true
 bangumi-api.workspace = true
 
 [dev-dependencies]
-parking_lot = "0.12"
+parking_lot = "0.13.0"
 rcgen.workspace = true
 tokio = { workspace = true, features = ["io-util", "net"] }
 tokio-rustls.workspace = true

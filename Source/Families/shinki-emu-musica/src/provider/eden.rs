@@ -1,6 +1,6 @@
 use super::*;
-use crate::eden_save::{EdenEdition, EdenSave, EdenSaveEncoding};
 use crate::MusicaMountedVfs;
+use crate::eden_save::{EdenEdition, EdenSave, EdenSaveEncoding};
 use std::io::Read;
 
 pub(super) fn edition_field() -> MusicaField {
@@ -50,7 +50,7 @@ pub(super) fn read_import(
             return Err(error(
                 "SHINKI_EMU_EDEN_SAVE_EDITION",
                 "native import edition is invalid",
-            ))
+            ));
         }
     };
     let encoding = match encoding {

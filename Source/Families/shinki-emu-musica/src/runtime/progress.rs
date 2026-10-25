@@ -59,9 +59,10 @@ mod tests {
         assert!(MusicaVm::decode_native_save(&bytes).is_err());
         assert!(vm.restore_native_save(&bytes, 1).is_err());
         assert_eq!(vm.encode_native_save().unwrap(), saved);
-        assert!(vm
-            .merge_verified_gallery_unlocks(&[Hash256::from_sha256(b"UNKNOWN")])
-            .is_err());
+        assert!(
+            vm.merge_verified_gallery_unlocks(&[Hash256::from_sha256(b"UNKNOWN")])
+                .is_err()
+        );
         vm.merge_verified_gallery_unlocks(&[Hash256::from_sha256(b"TOHKA_CLEAR")])
             .unwrap();
         assert_eq!(vm.state().global_variables["TOHKA_CLEAR"], 1);

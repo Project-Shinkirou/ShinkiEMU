@@ -1,7 +1,7 @@
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use clap::{Subcommand, ValueEnum};
-use serde::{de::DeserializeOwned, Serialize};
-use serde_json::{json, Value};
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use shinki_emu_metadata::*;
 use std::{
@@ -537,7 +537,9 @@ mod tests {
         }
     }
     fn event(path: &Path, platform: &str) {
-        let body = format!("### VNDB vID\r\n\r\nv1\r\n### VNDB rID\r\nr2\r\n### Core\r\nReMinori\r\n### Status\r\nflawed\r\n### Platform\r\n{platform}\r\n### Architecture\r\nx86_64\r\n### Variant\r\ndesktop\r\n### Core version\r\n0.1.0\r\n### Manager version\r\n0.1.0\r\n### Notes / reproduction\r\n_No response_\r\n");
+        let body = format!(
+            "### VNDB vID\r\n\r\nv1\r\n### VNDB rID\r\nr2\r\n### Core\r\nReMinori\r\n### Status\r\nflawed\r\n### Platform\r\n{platform}\r\n### Architecture\r\nx86_64\r\n### Variant\r\ndesktop\r\n### Core version\r\n0.1.0\r\n### Manager version\r\n0.1.0\r\n### Notes / reproduction\r\n_No response_\r\n"
+        );
         fs::write(
             path,
             pretty(
@@ -582,11 +584,13 @@ mod tests {
         assert_eq!(a, b);
         let out = t.path().join("out");
         write_new_tree(&out, &a).unwrap();
-        assert!(write_new_tree(
-            &out,
-            &BTreeMap::from([("cores.json".into(), b"bad".to_vec())])
-        )
-        .is_err());
+        assert!(
+            write_new_tree(
+                &out,
+                &BTreeMap::from([("cores.json".into(), b"bad".to_vec())])
+            )
+            .is_err()
+        );
         assert_eq!(fs::read(out.join("cores.json")).unwrap(), a["cores.json"]);
         // Exercise the public build path with a real source commit, including index hashes.
         for args in [
@@ -602,12 +606,14 @@ mod tests {
                 "public fixture",
             ],
         ] {
-            assert!(Command::new("git")
-                .args(args)
-                .current_dir(&r)
-                .status()
-                .unwrap()
-                .success());
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&r)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
         }
         let first = t.path().join("snapshot-a");
         let second = t.path().join("snapshot-b");
@@ -671,12 +677,26 @@ mod tests {
         let r = t.path().join("root");
         root(&r);
         let fields = [
-            ("Patch id", "public-test"), ("Title (zh-CN)", "公开测试"), ("Title (en)", "Public test"),
-            ("Version", "1.0.0"), ("VNDB vIDs", "v1"), ("Cores", "ReMinori"), ("Kind", "hosted"),
-            ("License", "MIT"), ("Summary (zh-CN)", "公开测试附件"), ("Summary (en)", "Public test attachment"),
-            ("Artifact URL", "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/patch-public-test-v1.0.0/test.bin"),
-            ("SHA256", "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"),
-            ("Size (bytes)", "1"), ("File name", "test.bin"),
+            ("Patch id", "public-test"),
+            ("Title (zh-CN)", "公开测试"),
+            ("Title (en)", "Public test"),
+            ("Version", "1.0.0"),
+            ("VNDB vIDs", "v1"),
+            ("Cores", "ReMinori"),
+            ("Kind", "hosted"),
+            ("License", "MIT"),
+            ("Summary (zh-CN)", "公开测试附件"),
+            ("Summary (en)", "Public test attachment"),
+            (
+                "Artifact URL",
+                "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/patch-public-test-v1.0.0/test.bin",
+            ),
+            (
+                "SHA256",
+                "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+            ),
+            ("Size (bytes)", "1"),
+            ("File name", "test.bin"),
         ];
         let body: String = fields
             .iter()

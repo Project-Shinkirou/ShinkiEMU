@@ -1,5 +1,5 @@
 use crate::runtime::{KeyCode, KeyModifiers, KeyState, PointerButton, RuntimeEvent};
-use crate::{native::ServiceContext, StageCanvas};
+use crate::{StageCanvas, native::ServiceContext};
 use shinki_emu_abi as abi;
 
 /// Own ordered input values before handing them to the core worker.
@@ -68,10 +68,10 @@ pub unsafe fn translate(
                 };
                 let raster = [event.x as f32, event.y as f32];
                 if !canvas.contains_raster_point(raster) {
-                    if state == KeyState::Released {
-                        if let Some(button) = button {
-                            events.push(RuntimeEvent::PointerButton { button, state });
-                        }
+                    if state == KeyState::Released
+                        && let Some(button) = button
+                    {
+                        events.push(RuntimeEvent::PointerButton { button, state });
                     }
                     continue;
                 }

@@ -1,9 +1,9 @@
-use shinki_emu_patch::{apply, PatchErrorKind, PatchRequest};
+use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -89,18 +89,10 @@ fn put32(bytes: &mut [u8], at: usize, value: u32) {
     bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
 }
 fn section_table(plus: bool) -> usize {
-    if plus {
-        0x188
-    } else {
-        0x178
-    }
+    if plus { 0x188 } else { 0x178 }
 }
 fn directory_table(plus: bool) -> usize {
-    if plus {
-        0x108
-    } else {
-        0xf8
-    }
+    if plus { 0x108 } else { 0xf8 }
 }
 
 fn image(plus: bool) -> Vec<u8> {

@@ -4,12 +4,12 @@ use std::{
 };
 
 use crate::{
+    DEFAULT_CACHE_CHARS, DEFAULT_CACHE_ENTRIES,
     model::{
         SecretResolver, TranslationError, TranslationProfile, TranslationRequest, TranslationResult,
     },
     prompt::prompt_segment_count,
     transport::TranslationClient,
-    DEFAULT_CACHE_CHARS, DEFAULT_CACHE_ENTRIES,
 };
 
 #[derive(Debug, Clone)]
@@ -67,10 +67,9 @@ impl TranslationSessionCache {
             .entries
             .iter()
             .position(|entry| entry.current_text == current_text)
+            && let Some(old) = self.entries.remove(index)
         {
-            if let Some(old) = self.entries.remove(index) {
-                self.chars = self.chars.saturating_sub(old.char_cost);
-            }
+            self.chars = self.chars.saturating_sub(old.char_cost);
         }
         while self.entries.len() >= self.max_entries
             || self.chars.saturating_add(char_cost) > self.max_chars

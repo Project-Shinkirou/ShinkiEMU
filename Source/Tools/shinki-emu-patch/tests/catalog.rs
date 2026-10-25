@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
-use shinki_emu_patch::{list_recipes, PatchErrorKind};
+use serde_json::{Value, json};
+use shinki_emu_patch::{PatchErrorKind, list_recipes};
 use std::fs;
 
 fn listing(records: Value) -> Result<Vec<shinki_emu_patch::RecipeListing>, PatchErrorKind> {

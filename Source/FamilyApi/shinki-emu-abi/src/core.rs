@@ -1,6 +1,6 @@
 use crate::{
     Bytes, ConfigEntry, ConfigField, Diagnostics, Error, Extent, FrameIdentity, FrameSurface,
-    Header, HostServices, Session, Status, SurfaceInfo, INVALID_ARGUMENT, UNSUPPORTED,
+    Header, HostServices, INVALID_ARGUMENT, Session, Status, SurfaceInfo, UNSUPPORTED,
 };
 use std::ffi::c_void;
 

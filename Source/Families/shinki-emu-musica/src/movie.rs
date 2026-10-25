@@ -1,4 +1,4 @@
-use crate::{audio::Audio, scene::error, MusicaMountedVfs, MusicaMovieState};
+use crate::{MusicaMountedVfs, MusicaMovieState, audio::Audio, scene::error};
 use roukaku_media_core::TextureFrame;
 use shinki_emu_sdk::runtime::SessionResult;
 

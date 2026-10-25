@@ -1,7 +1,7 @@
 use crate::CoreError;
 use kira::{
-    sound::static_sound::{StaticSoundData, StaticSoundSettings},
     Frame,
+    sound::static_sound::{StaticSoundData, StaticSoundSettings},
 };
 use std::{
     io::Cursor,
@@ -9,9 +9,9 @@ use std::{
 };
 use symphonia::core::{
     audio::{
+        Audio, AudioBuffer, GenericAudioBufferRef,
         conv::{FromSample, IntoSample},
         sample::Sample,
-        Audio, AudioBuffer, GenericAudioBufferRef,
     },
     codecs::CodecParameters,
     formats::TrackType,
@@ -79,7 +79,7 @@ pub fn decode_audio(
             return Err(fail());
         }
         macro_rules! append {
-            ($buffer:expr) => {
+            ($buffer:expr_2021) => {
                 append_frames($buffer, &mut frames, max_frames)?
             };
         }

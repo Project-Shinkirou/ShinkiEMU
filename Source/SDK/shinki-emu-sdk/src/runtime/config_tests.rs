@@ -68,14 +68,16 @@ fn rejects_unknown_duplicate_mismatched_and_out_of_bounds_values() {
         ("mode", ConfigValue::Enum("c".into())),
         ("mode", ConfigValue::String("a".into())),
     ] {
-        assert!(resolve_config(
-            &schema,
-            &[ConfigEntry {
-                id: id.into(),
-                value
-            }]
-        )
-        .is_err());
+        assert!(
+            resolve_config(
+                &schema,
+                &[ConfigEntry {
+                    id: id.into(),
+                    value
+                }]
+            )
+            .is_err()
+        );
     }
     let entry = ConfigEntry {
         id: "count".into(),

@@ -1,6 +1,6 @@
 mod config;
 use crate::{
-    profile::MusicaTextureOverrides, MusicaMountedVfs, MusicaRuntimeState, MusicaTextRenderer,
+    MusicaMountedVfs, MusicaRuntimeState, MusicaTextRenderer, profile::MusicaTextureOverrides,
 };
 use roukaku_byte_source::OwnedByteBuffer;
 use roukaku_media_core::{BlendMode, Extent2D, MaskRevealMode, RectI, SceneCommand, TextureFrame};

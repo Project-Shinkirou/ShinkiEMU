@@ -9,9 +9,9 @@ pub mod window_service;
 extern crate self as shinki_emu_manager;
 
 pub use host::{
-    close_requested, run_manager, run_manager_with_initial_state, CloseDecision, ConfigPathPick,
-    FilterApply, HostError, HostExit, HostWake, KeyCaptureState, ManagerController,
-    ShinkiUnderlayRenderer, SnackbarOutcome, StageTextureUpdate, WgpuFrameContext,
+    CloseDecision, ConfigPathPick, FilterApply, HostError, HostExit, HostWake, KeyCaptureState,
+    ManagerController, ShinkiUnderlayRenderer, SnackbarOutcome, StageTextureUpdate,
+    WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
 };
 
 // Android loads the Manager as a cdylib through NativeActivity; the

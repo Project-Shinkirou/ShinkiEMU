@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use shinki_emu_musica_keys::{
-    MusicaArchiveKey, MusicaKeyFile, MUSICA_KEY_SCHEMA, REQUIRED_ARCHIVE_ROLES,
+    MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},

@@ -7,8 +7,8 @@ use thiserror::Error;
 use tokio::task::AbortHandle;
 
 use crate::{
-    model::{TranslationError, TranslationRequest, TranslationResult, TranslationSegment},
     TranslationSession,
+    model::{TranslationError, TranslationRequest, TranslationResult, TranslationSegment},
 };
 
 const MAX_INFLIGHT_REQUESTS: usize = 8;
@@ -150,13 +150,12 @@ impl<R: crate::SecretResolver + ?Sized + 'static> AsyncTranslationService<R> {
             .state
             .lock()
             .expect("translation service mutex poisoned");
-        if let Some(entry) = state.requests.get_mut(&request_id) {
-            if entry.generation == service_generation
-                && matches!(entry.state, TranslationPoll::Pending)
-            {
-                entry.abort = Some(abort_handle);
-                return Ok(());
-            }
+        if let Some(entry) = state.requests.get_mut(&request_id)
+            && entry.generation == service_generation
+            && matches!(entry.state, TranslationPoll::Pending)
+        {
+            entry.abort = Some(abort_handle);
+            return Ok(());
         }
         abort.abort();
         Ok(())
@@ -346,12 +345,14 @@ mod tests {
                 .unwrap();
             service.reset();
         }
-        assert!(service
-            .state
-            .lock()
-            .expect("translation service mutex poisoned")
-            .requests
-            .is_empty());
+        assert!(
+            service
+                .state
+                .lock()
+                .expect("translation service mutex poisoned")
+                .requests
+                .is_empty()
+        );
     }
 
     #[test]

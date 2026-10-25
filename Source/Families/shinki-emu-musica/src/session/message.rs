@@ -36,10 +36,9 @@ impl MusicaSession {
                     }
                     if let Some((translated, name_hit)) =
                         speaker_hash.and_then(|hash| table.lookup(hash))
+                        && (name_hit || self.translation_mode == crate::TranslationMode::Replace)
                     {
-                        if name_hit || self.translation_mode == crate::TranslationMode::Replace {
-                            *speaker = Some(translated.to_owned());
-                        }
+                        *speaker = Some(translated.to_owned());
                     }
                 }
                 self.scene.set_translation_overlay(
@@ -149,10 +148,10 @@ impl MusicaSession {
         };
         if let Some(table) = table {
             for (label, hash) in labels.iter_mut().zip(vm.choice_display_hashes()) {
-                if let Some((translated, name_hit)) = table.lookup(hash) {
-                    if name_hit || mode == crate::TranslationMode::Replace {
-                        *label = translated.to_owned();
-                    }
+                if let Some((translated, name_hit)) = table.lookup(hash)
+                    && (name_hit || mode == crate::TranslationMode::Replace)
+                {
+                    *label = translated.to_owned();
                 }
             }
         }
@@ -197,7 +196,7 @@ impl MusicaSession {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_AUDIO_DURATION",
                     "voice duration request failed or timed out",
-                ))
+                ));
             }
         }
         Ok(())

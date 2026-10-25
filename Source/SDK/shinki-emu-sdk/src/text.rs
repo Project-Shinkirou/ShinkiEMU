@@ -160,10 +160,10 @@ impl TextScene {
 }
 
 fn scale_layout(region: &TextSceneLayout, scale: f32) -> Result<TextSceneLayout, MediaError> {
-    if let Some(outline) = region.outline {
-        if !(1..=8).contains(&outline.radius) || outline.rgba[3] == 0 {
-            return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
-        }
+    if let Some(outline) = region.outline
+        && (!(1..=8).contains(&outline.radius) || outline.rgba[3] == 0)
+    {
+        return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
     }
     let mut request = region.request.clone();
     request.constraint.max_width = scale_f32(request.constraint.max_width, scale)?;

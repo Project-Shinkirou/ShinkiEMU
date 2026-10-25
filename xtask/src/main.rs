@@ -11,7 +11,7 @@ mod release;
 mod sources;
 #[cfg(test)]
 mod tests;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 fn main() {
     if let Err(error) = run() {

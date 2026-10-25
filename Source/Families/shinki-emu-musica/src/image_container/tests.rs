@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use flate2::{write::ZlibEncoder, Compression};
+use flate2::{Compression, write::ZlibEncoder};
 
 use super::*;
 

@@ -61,12 +61,14 @@ fn save_card_crops_content_before_resizing_the_thumbnail() {
     }
     let card = SaveCard::capture(1280, 720, width, height, &rgba).unwrap();
     let thumbnail = card.texture().unwrap();
-    assert!(thumbnail
-        .rgba8
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .all(|pixel| *pixel == [255, 32, 16, 255]));
+    assert!(
+        thumbnail
+            .rgba8
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| *pixel == [255, 32, 16, 255])
+    );
 }
 
 #[test]
@@ -179,9 +181,11 @@ fn foreign_and_damaged_manual_slots_are_preserved() {
     );
     assert_eq!(std::fs::read(&path).unwrap(), original);
     std::fs::write(&path, b"damaged save").unwrap();
-    assert!(storage
-        .write(20, &snapshot(b"first", "replacement"))
-        .is_err());
+    assert!(
+        storage
+            .write(20, &snapshot(b"first", "replacement"))
+            .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), b"damaged save");
     storage
         .write(21, &snapshot(b"first", "independent"))
@@ -235,9 +239,11 @@ fn quick_cursor_is_bounded_persistent_and_rejects_foreign_or_corrupt_data() {
     let path = storage.named_path("quick-cursor.json", false).unwrap();
     let original = std::fs::read(&path).unwrap();
     assert!(storage.write_quick_cursor(game, 10).is_err());
-    assert!(storage
-        .write_quick_cursor(Hash256::from_sha256(b"other"), 0)
-        .is_err());
+    assert!(
+        storage
+            .write_quick_cursor(Hash256::from_sha256(b"other"), 0)
+            .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), original);
     std::fs::write(&path, b"corrupt cursor").unwrap();
     assert!(storage.write_quick_cursor(game, 0).is_err());
@@ -254,9 +260,11 @@ fn gallery_progress_preserves_damaged_foreign_and_monotonic_state() {
     storage.write_progress(game, &unlocks).unwrap();
     assert_eq!(storage.progress(game).unwrap(), unlocks);
     assert!(storage.write_progress(game, &[]).is_err());
-    assert!(storage
-        .write_progress(Hash256::from_sha256(b"other"), &unlocks)
-        .is_err());
+    assert!(
+        storage
+            .write_progress(Hash256::from_sha256(b"other"), &unlocks)
+            .is_err()
+    );
     assert_eq!(storage.progress(game).unwrap(), unlocks);
     let path = storage.named_path("global-progress.json", false).unwrap();
     fs::write(&path, b"damaged").unwrap();

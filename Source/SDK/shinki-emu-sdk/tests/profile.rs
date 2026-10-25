@@ -94,7 +94,9 @@ fn explicit_external_profile_keeps_game_root_and_exact_source_identity() {
         read_configured_profile_bytes(game.path(), Path::new("missing.json"), 64).unwrap_err();
     assert_eq!(error.code(), "SHINKI_EMU_PROFILE_MISSING");
     assert!(error.to_string().contains("configure"));
-    assert!(!error
-        .to_string()
-        .contains(&source.to_string_lossy().to_string()));
+    assert!(
+        !error
+            .to_string()
+            .contains(&source.to_string_lossy().to_string())
+    );
 }

@@ -3,7 +3,7 @@
 //! Windows requires owner ACLs and native file IDs. Linux/Android require procfs
 //! for handle paths and kernel/filesystem RENAME_NOREPLACE support; macOS uses
 //! F_GETPATH and RENAME_EXCL. Unsupported native operations fail without fallback.
-use crate::{error::check_cancelled, PatchError, PatchErrorKind, PatchRequest};
+use crate::{PatchError, PatchErrorKind, PatchRequest, error::check_cancelled};
 use cap_std::{ambient_authority, fs::Dir};
 use std::{
     ffi::OsString,
@@ -198,17 +198,20 @@ impl Drop for Transaction {
         if self.published {
             return;
         }
-        if let Some(staging) = self.staging.take() {
-            if let Err(error) = cleanup(staging) {
-                // Preserve a useful diagnostic without a private path or error
-                // string (some OS errors carry the path that caused them).
-                eprintln!(
-                    "SHINKI_EMU_PATCH_CLEANUP_FAILED (os_code={:?})",
-                    error.raw_os_error()
-                );
+        match self.staging.take() {
+            Some(staging) => {
+                if let Err(error) = cleanup(staging) {
+                    // Preserve a useful diagnostic without a private path or error
+                    // string (some OS errors carry the path that caused them).
+                    eprintln!(
+                        "SHINKI_EMU_PATCH_CLEANUP_FAILED (os_code={:?})",
+                        error.raw_os_error()
+                    );
+                }
             }
-        } else {
-            eprintln!("SHINKI_EMU_PATCH_CLEANUP_FAILED (identity unavailable)");
+            _ => {
+                eprintln!("SHINKI_EMU_PATCH_CLEANUP_FAILED (identity unavailable)");
+            }
         }
     }
 }
@@ -311,7 +314,7 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::{
         Foundation::HANDLE,
-        Storage::FileSystem::{FileIdInfo, GetFileInformationByHandleEx, FILE_ID_INFO},
+        Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
     };
     let mut info = FILE_ID_INFO::default();
     unsafe {
@@ -349,7 +352,7 @@ fn final_path_handle(handle: std::os::windows::io::RawHandle) -> io::Result<Path
     use std::os::windows::ffi::OsStringExt;
     use windows::Win32::{
         Foundation::HANDLE,
-        Storage::FileSystem::{GetFinalPathNameByHandleW, GETFINALPATHNAMEBYHANDLE_FLAGS},
+        Storage::FileSystem::{GETFINALPATHNAMEBYHANDLE_FLAGS, GetFinalPathNameByHandleW},
     };
     let mut buffer = vec![0u16; 512];
     loop {
@@ -427,9 +430,8 @@ fn wide(path: &Path) -> io::Result<Vec<u16>> {
 #[cfg(windows)]
 fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use windows::{
-        core::PCWSTR,
         Win32::{
-            Foundation::{LocalFree, HLOCAL},
+            Foundation::{HLOCAL, LocalFree},
             Security::{
                 Authorization::{
                     ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -438,6 +440,7 @@ fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
             },
             Storage::FileSystem::CreateDirectoryW,
         },
+        core::PCWSTR,
     };
     let path = wide(&final_dir_path(parent)?.join(name))?;
     // OW is Owner Rights. OI+CI make the owner-only ACE inherited by every
@@ -491,12 +494,12 @@ fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
 fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use std::os::windows::{fs::MetadataExt, io::FromRawHandle};
     use windows::{
-        core::PCWSTR,
         Win32::Storage::FileSystem::{
             CreateFileW, DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
             FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES,
             OPEN_EXISTING,
         },
+        core::PCWSTR,
     };
     let path = wide(&final_dir_path(parent)?.join(name))?;
     let handle = unsafe {
@@ -525,8 +528,8 @@ fn set_staging_hidden(directory: &Dir, hidden: bool) -> io::Result<()> {
     use windows::Win32::{
         Foundation::HANDLE,
         Storage::FileSystem::{
-            FileBasicInfo, SetFileInformationByHandle, FILE_ATTRIBUTE_DIRECTORY,
-            FILE_ATTRIBUTE_HIDDEN, FILE_BASIC_INFO,
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_BASIC_INFO, FileBasicInfo,
+            SetFileInformationByHandle,
         },
     };
     let info = FILE_BASIC_INFO {
@@ -575,8 +578,8 @@ fn rename_noreplace_after(
     before: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     use windows::{
+        Win32::Storage::FileSystem::{MOVE_FILE_FLAGS, MoveFileExW},
         core::PCWSTR,
-        Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS},
     };
     let from = wide(&final_dir_path(from_dir)?.join(from))?;
     let to = wide(&final_dir_path(to_dir)?.join(to))?;
@@ -668,7 +671,7 @@ fn cleanup(directory: Dir) -> io::Result<()> {
         use windows::Win32::{
             Foundation::HANDLE,
             Storage::FileSystem::{
-                FileDispositionInfo, SetFileInformationByHandle, FILE_DISPOSITION_INFO,
+                FILE_DISPOSITION_INFO, FileDispositionInfo, SetFileInformationByHandle,
             },
         };
         let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
@@ -788,15 +791,17 @@ mod tests {
         }
 
         fn assert_no_staging(&self) {
-            assert!(!std::fs::read_dir(self.directory.path())
-                .unwrap()
-                .any(|entry| {
-                    entry
-                        .unwrap()
-                        .file_name()
-                        .to_string_lossy()
-                        .starts_with(".shinki-patch-staging-")
-                }));
+            assert!(
+                !std::fs::read_dir(self.directory.path())
+                    .unwrap()
+                    .any(|entry| {
+                        entry
+                            .unwrap()
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".shinki-patch-staging-")
+                    })
+            );
         }
     }
 
@@ -1012,10 +1017,12 @@ mod tests {
         symlink(&fixture.request.source, &original_name).unwrap();
         drop(transaction);
         assert!(!moved.exists());
-        assert!(std::fs::symlink_metadata(original_name)
-            .unwrap()
-            .file_type()
-            .is_symlink());
+        assert!(
+            std::fs::symlink_metadata(original_name)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         fixture.assert_inputs();
     }
 
@@ -1024,16 +1031,20 @@ mod tests {
     fn windows_staging_and_parent_are_pinned_against_rename() {
         let fixture = Fixture::new();
         let transaction = Transaction::new(&fixture.request).unwrap();
-        assert!(std::fs::rename(
-            transaction.staging_path(),
-            fixture.directory.path().join("substitute")
-        )
-        .is_err());
-        assert!(std::fs::rename(
-            fixture.directory.path(),
-            fixture.directory.path().with_extension("renamed")
-        )
-        .is_err());
+        assert!(
+            std::fs::rename(
+                transaction.staging_path(),
+                fixture.directory.path().join("substitute")
+            )
+            .is_err()
+        );
+        assert!(
+            std::fs::rename(
+                fixture.directory.path(),
+                fixture.directory.path().with_extension("renamed")
+            )
+            .is_err()
+        );
         drop(transaction);
         fixture.assert_inputs();
         fixture.assert_no_staging();
@@ -1043,12 +1054,13 @@ mod tests {
     fn assert_owner_acl(file: &File, protected: bool) {
         use std::os::windows::io::AsRawHandle;
         use windows::Win32::{
-            Foundation::{LocalFree, HANDLE, HLOCAL},
+            Foundation::{HANDLE, HLOCAL, LocalFree},
             Security::{
+                ACCESS_ALLOWED_ACE, ACL,
                 Authorization::{GetSecurityInfo, SE_FILE_OBJECT},
-                CreateWellKnownSid, EqualSid, GetAce, GetSecurityDescriptorControl,
-                WinCreatorOwnerRightsSid, ACCESS_ALLOWED_ACE, ACL, DACL_SECURITY_INFORMATION,
-                PSECURITY_DESCRIPTOR, PSID, SE_DACL_PROTECTED,
+                CreateWellKnownSid, DACL_SECURITY_INFORMATION, EqualSid, GetAce,
+                GetSecurityDescriptorControl, PSECURITY_DESCRIPTOR, PSID, SE_DACL_PROTECTED,
+                WinCreatorOwnerRightsSid,
             },
         };
         unsafe {

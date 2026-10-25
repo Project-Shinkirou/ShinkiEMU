@@ -7,9 +7,17 @@ description: Cargo 编排、核心构建脚本、打包及明确的 blocked 状�
 
 ## 输入与依赖
 
-克隆仓库时递归取得子模块，并准备 Rust/Cargo 和目标平台的原生工具链。Windows 原生构建需要 x64 MSVC 开发者环境、CMake、Ninja 和 Git。Android 使用 JDK 17、NDK 30.0.15729638 和 cargo-ndk 4.1.2。工具版本与下载输入在 `build/dependencies.toml`；核心 manifest、features、许可在 `build/cores.toml`；目标与 runner 定义在 `build/targets.toml`。
+克隆仓库时递归取得子模块，并准备 Rust/Cargo 和目标平台的原生工具链。Windows 原生构建需要 x64 MSVC 开发者环境、CMake、Ninja 和 Git。Android 使用 JDK 27、NDK 30.0.16248370 和 cargo-ndk 4.1.2。工具版本与下载输入在 `build/dependencies.toml`；核心 manifest、features、许可在 `build/cores.toml`；目标与 runner 定义在 `build/targets.toml`。
 
 Ren’Py 另需固定的官方 SDK，设置 `RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE`，并准备与 CPython 3.12.7 匹配的官方 Cython 3.2.4 编译器。这些属于上游编译和运行依赖。SDK 输入以 fork 的 `shinki/sdk.json` 为准。
+
+工作区统一使用 Rust 2024 edition，最低 Rust 版本为 1.99，固定工具链为 Rust 1.99.1。Android 打包使用 Gradle 9.8.2、AGP 9.4.1 内置 Kotlin、JDK 27、platform 37.2、build-tools 37.0.0 和稳定版 NDK r30（30.0.16248370）。CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。所有目标均标为 blocked，工作区不包含该 crate。
+
+原生库固定 vcpkg baseline `0c2a9ace1964b818b15f7ae50ba1c42404918a7b`，对应 FFmpeg 9.0.2#2、libass 0.17.5、HarfBuzz 14.6.0、FriBidi 1.0.17、FreeType 2.14.3。CI 使用 NASM 3.02，DXC 固定为 1.9.2609。构建运行在 JDK 27 上，Java/Kotlin 字节码仍以 JVM 17 为目标，保持 Android 兼容性。RoukakuEngine 固定到已发布 revision `3598c63cea7d952d31499c94b1577233d370dc26`，外部核心来源由独立任务合入。Bangumi/VNDB SDK 的公开 API 仍要求 reqwest 0.12 类型，因此保留最新补丁版 0.12.28，应用自己的 HTTP 请求使用 0.13.5。Ren’Py 的 CPython/Cython/SDL 输入继续匹配其固定 SDK 的 ABI。Android 静态核心通过来源 patch 共用工作区的 ABI 与构建辅助库，不再解析第二份同版本的构建辅助包。
+
+mlua 0.12.2 的 mlua-sys 0.13.0 固定到官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`。发布版在 `Lua::new` 中会拒绝当前 Luau 744 生成的字节码；上游修复将识别上限从 11 同步为 14。
+
+Windows 交叉构建使用固定 Engine revision 中的 Android triplet，通过 Windows 扩展绝对路径前缀同时满足 Meson 1.12 的 POSIX 目标路径检查和本机暂存要求。Java 27 的运行支持见 [Gradle 9.8.2 兼容矩阵](https://docs.gradle.org/9.8.2/userguide/compatibility.html)；[Android JDK 指南](https://developer.android.com/build/jdks) 要求 JDK 不低于 AGP 的最低版本（AGP 9.4 为 17）。
 
 从仓库根目录执行：
 
@@ -42,7 +50,7 @@ build 必须在 `--manager`、`--core`、`--all-cores` 中选一项。check 选�
 
 ### Linux 桌面
 
-使用仓库固定的 Rust 1.98.0 工具链。在 Ubuntu 22.04/24.04 上显式安装原生开发包：
+使用仓库固定的 Rust 1.99.1 工具链。在 Ubuntu 22.04/24.04 上显式安装原生开发包：
 
 ```sh
 sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
@@ -69,7 +77,7 @@ Linux CI 与发布任务还会解压报告中的 Manager ZIP，使用独立用�
 
 ### Android Manager 测试 APK
 
-使用 JDK 17（设置 `JAVA_HOME`，将其 `bin` 加入 `PATH`）、Android SDK platform 36、build-tools 36.0.0、NDK 30.0.15729638 和 cargo-ndk 4.1.2。`ANDROID_HOME` 指向 SDK 根目录，`ANDROID_NDK_HOME` 指向其中的 `ndk/30.0.15729638`。构建号匹配且带 `-beta2` 后缀的 NDK revision 也可使用。缺少 SDK 包时，显式调用该 SDK 的 `sdkmanager --sdk_root=<sdk> --channel=3 "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.15729638"`。将 `CARGO_HOME`、`CARGO_TARGET_DIR`、`TEMP`/`TMP` 和 `GRADLE_USER_HOME` 放在空间充足的磁盘上。
+使用 JDK 27（设置 `JAVA_HOME`，将其 `bin` 加入 `PATH`）、Android SDK platform 37.2、build-tools 37.0.0、NDK 30.0.16248370 和 cargo-ndk 4.1.2。`ANDROID_HOME` 指向 SDK 根目录，`ANDROID_NDK_HOME` 指向其中的 `ndk/30.0.16248370`。构建只接受清单固定的稳定版 NDK revision。缺少 SDK 包时，显式调用该 SDK 的 `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"`。将 `CARGO_HOME`、`CARGO_TARGET_DIR`、`TEMP`/`TMP` 和 `GRADLE_USER_HOME` 放在空间充足的磁盘上。
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
@@ -80,7 +88,7 @@ cargo xtask build --target x86_64-linux-android --manager --release
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
 ```
 
-每次构建都以 `cargo ndk --locked` 编译，静态链接 RFVP，并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、证书验证器 AAR、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。
+每次构建都以 `cargo ndk --locked` 编译，静态链接 RFVP，并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
 
 首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 会先为两个三元组准备依赖，再运行同一命令。
 
@@ -100,7 +108,7 @@ done
 
 私下传输归档，在 Linux 上分别解压。`SHINKI_APPLE_SDK_DIR` 直接指向含 `SDKSettings.json`、`System/`、`usr/` 的 SDK 内容目录，不能指向父目录或归档。Darwin 使用 `macosx`，设备使用 `iphoneos`，两个模拟器使用 `iphonesimulator`。流水线不从镜像站下载 SDK。SDK 和含 SDK 的镜像不得进入 Git 或公共镜像仓库。
 
-把源码、`CARGO_HOME`、`RUSTUP_HOME`、`CARGO_TARGET_DIR` 和工具都放在专用目录，例如 `~/shinkirou-apple/`。显式安装 Rust 1.98.0 及所选 Rust target，再通过 `cargo +1.98.0 install --locked --root "$HOME/shinkirou-apple/tools"` 安装 cross 0.2.5 和 apple-codesign 0.29.0（提供 `rcodesign`），将工具目录的 `bin` 加入 `PATH`。创建镜像要求 `/` 至少剩余 8 GiB，不会删除用户文件或镜像。在本仓库执行：
+把源码、`CARGO_HOME`、`RUSTUP_HOME`、`CARGO_TARGET_DIR` 和工具都放在专用目录，例如 `~/shinkirou-apple/`。显式安装 Rust 1.99.1 及所选 Rust target，再通过 `cargo +1.99.1 install --locked --root "$HOME/shinkirou-apple/tools"` 安装 cross 0.2.5 和 apple-codesign 0.29.0（提供 `rcodesign`），将工具目录的 `bin` 加入 `PATH`。创建镜像要求 `/` 至少剩余 8 GiB，不会删除用户文件或镜像。在本仓库执行：
 
 Docker 需要 Buildx/BuildKit（用 `docker buildx version` 检查）。私有插件可放在 `$DOCKER_CONFIG/cli-plugins/docker-buildx`，无需 sudo，也不改用户原有 Docker 配置。[Buildx v0.38.1 官方 Linux x86_64 附件](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) 的 SHA256 为 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`，核对后再赋予执行权限。
 

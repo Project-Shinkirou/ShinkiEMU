@@ -11,9 +11,9 @@ use std::{
 
 use shinki_emu_manager_core::model::FamilyPointerRequest;
 use shinki_emu_manager_ui_slint::{Dialogs, ManagerWindow, Session, SlintManagerAdapter};
+use slint::ComponentHandle;
 #[cfg(not(target_os = "android"))]
 use slint::winit_030::WinitWindowAccessor;
-use slint::ComponentHandle;
 #[cfg(not(target_os = "android"))]
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 #[cfg(not(target_os = "android"))]

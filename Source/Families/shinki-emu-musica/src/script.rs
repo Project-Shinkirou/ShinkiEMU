@@ -386,10 +386,10 @@ pub fn disassemble_sc(script: &ScScript) -> Result<String, ScParseError> {
 fn validate_cfg(lines: &[ScLine]) -> Result<(), ScParseError> {
     let mut labels = BTreeSet::new();
     for command in commands(lines) {
-        if let ScControlFlow::Label { id } = &command.control_flow {
-            if !labels.insert(id.clone()) {
-                return Err(ScParseError::DuplicateLabel(id.clone()));
-            }
+        if let ScControlFlow::Label { id } = &command.control_flow
+            && !labels.insert(id.clone())
+        {
+            return Err(ScParseError::DuplicateLabel(id.clone()));
         }
     }
     for command in commands(lines) {

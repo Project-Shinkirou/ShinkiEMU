@@ -109,7 +109,7 @@ class MainActivity : NativeActivity() {
     /** Hide or show the mouse pointer over the activity window. */
     fun setPointerHidden(hidden: Boolean) {
         runOnUiThread {
-            val type = if (hidden) PointerIcon.TYPE_NULL else PointerIcon.TYPE_DEFAULT
+            val type = if (hidden) PointerIcon.TYPE_NULL else PointerIcon.TYPE_ARROW
             window.decorView.pointerIcon = PointerIcon.getSystemIcon(this, type)
         }
     }

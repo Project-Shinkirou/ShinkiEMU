@@ -1,5 +1,5 @@
 use super::*;
-use crate::{parse_sc, ScOpcodeCatalog};
+use crate::{ScOpcodeCatalog, parse_sc};
 
 fn vm(source: &[u8]) -> MusicaVm {
     MusicaVm::new(
@@ -177,9 +177,11 @@ fn armed_transition_snapshots_previous_stage_with_native_duration() {
     );
     let mut restored = vm(source);
     restored.restore_native_save(&saved, 4).unwrap();
-    assert!(!restored
-        .advance_transition_clock(active.duration_ns)
-        .unwrap());
+    assert!(
+        !restored
+            .advance_transition_clock(active.duration_ns)
+            .unwrap()
+    );
     assert!(restored.state().transition_active.is_none());
 }
 
@@ -247,9 +249,11 @@ fn image_animation_clock_advances_and_loops() {
         .get("musica:/bg/loop.png")
         .unwrap();
     assert_eq!(animation.frame_index, 1);
-    assert!(machine
-        .advance_image_animation_clock(23 * interval)
-        .unwrap());
+    assert!(
+        machine
+            .advance_image_animation_clock(23 * interval)
+            .unwrap()
+    );
     let animation = machine
         .state()
         .image_animations
@@ -311,9 +315,11 @@ fn ani_patch_clock_walks_eye_sequence_and_flaps_mouth_on_level() {
     assert_eq!(patch.characters[0].mouth_state, 0);
 
     // The default sequence (2) opens with (0, 10): one tick arms the walker.
-    assert!(machine
-        .advance_ani_patch_clock(10_000_000, None, None)
-        .unwrap());
+    assert!(
+        machine
+            .advance_ani_patch_clock(10_000_000, None, None)
+            .unwrap()
+    );
     let patch = machine
         .state()
         .ani_patches

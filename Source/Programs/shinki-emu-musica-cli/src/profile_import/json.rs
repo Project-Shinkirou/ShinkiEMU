@@ -1,8 +1,8 @@
 use serde::{
-    de::{MapAccess, Visitor},
     Deserialize, Deserializer,
+    de::{MapAccess, Visitor},
 };
-use shinki_emu_musica_keys::{MusicaArchiveKey, MusicaKeyFile, MUSICA_KEY_SCHEMA};
+use shinki_emu_musica_keys::{MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile};
 use std::{collections::BTreeMap, fmt, fs::File, io::Read, marker::PhantomData, path::Path};
 
 const PROFILE_SCHEMA: &str = "shinki.emu.musica.profile.v1";
@@ -124,8 +124,8 @@ fn decode(bytes: &[u8]) -> Result<MusicaKeyFile, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
-    use shinki_emu_musica_keys::{load_musica_key_file, REQUIRED_ARCHIVE_ROLES};
+    use serde_json::{Value, json};
+    use shinki_emu_musica_keys::{REQUIRED_ARCHIVE_ROLES, load_musica_key_file};
 
     fn fixture() -> Value {
         let roles = REQUIRED_ARCHIVE_ROLES.into_iter().enumerate().map(|(index, role)| {
@@ -202,10 +202,11 @@ mod tests {
         let key = decode(&serde_json::to_vec(&value).unwrap()).unwrap();
         assert!(key.rc4_skip_crc);
         assert!(key.texture_overrides.is_empty());
-        assert!(key
-            .archive_keys
-            .values()
-            .all(|role| role.archive_xor.is_none() && role.video_key_hex.is_none()));
+        assert!(
+            key.archive_keys
+                .values()
+                .all(|role| role.archive_xor.is_none() && role.video_key_hex.is_none())
+        );
     }
 
     #[test]

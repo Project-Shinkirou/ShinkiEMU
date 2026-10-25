@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use super::{game_from_row, GameRecord, Library, LibraryError};
+use super::{GameRecord, Library, LibraryError, game_from_row};
 use crate::{
+    ExternalIdentityRecord, MetadataSnapshotRecord, PlayStats,
     metadata::{external_identity_from_row, metadata_snapshot_from_row},
     play::play_stats_from_row,
-    ExternalIdentityRecord, MetadataSnapshotRecord, PlayStats,
 };
 
 /// Library records read from one database snapshot, without provider JSON parsing.
@@ -39,10 +39,10 @@ impl Library {
                  WHERE game_id NOT IN (SELECT game_id FROM excluded_game)
                  ORDER BY title COLLATE NOCASE, game_id",
             )?;
-            let games = statement
+
+            statement
                 .query_map([], game_from_row)?
-                .collect::<Result<Vec<_>, _>>()?;
-            games
+                .collect::<Result<Vec<_>, _>>()?
         };
         let play_stats = {
             let mut statement = transaction.prepare(
@@ -53,10 +53,10 @@ impl Library {
                     ON session.game_id=game.game_id AND session.end_unix_ms IS NOT NULL
                  GROUP BY game.game_id",
             )?;
-            let play_stats = statement
+
+            statement
                 .query_map([], |row| Ok((row.get(3)?, play_stats_from_row(row)?)))?
-                .collect::<Result<BTreeMap<_, _>, _>>()?;
-            play_stats
+                .collect::<Result<BTreeMap<_, _>, _>>()?
         };
         let identities = {
             let mut statement = transaction.prepare(

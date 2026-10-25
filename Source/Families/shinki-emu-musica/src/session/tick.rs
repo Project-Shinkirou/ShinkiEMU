@@ -107,7 +107,7 @@ impl MusicaSession {
                     return Err(error(
                         "SHINKI_EMU_MUSICA_WAIT_UNSUPPORTED",
                         "script requires an unimplemented media or provider wait",
-                    ))
+                    ));
                 }
             };
             if ready {

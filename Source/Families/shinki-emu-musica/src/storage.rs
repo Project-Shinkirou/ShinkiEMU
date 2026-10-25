@@ -79,7 +79,7 @@ impl Storage {
                     return Err(error(
                         "SHINKI_EMU_MUSICA_SAVE_PATH",
                         "save directory could not be inspected",
-                    ))
+                    ));
                 }
             }
         }
@@ -89,7 +89,7 @@ impl Storage {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_SAVE_PATH",
                     "save slot is not a native regular file",
-                ))
+                ));
             }
             Ok(_) => {}
             Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
@@ -97,7 +97,7 @@ impl Storage {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_SAVE_PATH",
                     "save slot could not be inspected",
-                ))
+                ));
             }
         }
         Ok(path)

@@ -2,8 +2,8 @@
 use crate::runtime;
 use shinki_emu_abi as abi;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 pub struct ServiceContext {
     pub session: u64,
@@ -20,21 +20,20 @@ unsafe impl Send for ServiceContext {}
 unsafe impl Sync for ServiceContext {}
 impl ServiceContext {
     pub fn is_cancelled(&self) -> bool {
-        if let Some(service) = self.host_cancel {
-            if service
+        if let Some(service) = self.host_cancel
+            && service
                 .is_cancelled
                 .is_some_and(|check| unsafe { check(service.context, self.session) } != 0)
-                && !self.cancelled.swap(true, Ordering::AcqRel)
-            {
-                self.invalidate();
-            }
+            && !self.cancelled.swap(true, Ordering::AcqRel)
+        {
+            self.invalidate();
         }
         self.cancelled.load(Ordering::Acquire)
     }
     pub fn invalidate(&self) {
         let next = match self
             .epoch
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |epoch| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |epoch| {
                 epoch.checked_add(1)
             }) {
             Ok(previous) => previous + 1,
@@ -43,15 +42,15 @@ impl ServiceContext {
                 epoch
             }
         };
-        if let Some(service) = self.text {
-            if let Some(invalidate) = service.invalidate {
-                unsafe { invalidate(service.context, self.session, next) };
-            }
+        if let Some(service) = self.text
+            && let Some(invalidate) = service.invalidate
+        {
+            unsafe { invalidate(service.context, self.session, next) };
         }
-        if let Some(service) = self.window {
-            if let Some(invalidate) = service.invalidate {
-                unsafe { invalidate(service.context, self.session, next) };
-            }
+        if let Some(service) = self.window
+            && let Some(invalidate) = service.invalidate
+        {
+            unsafe { invalidate(service.context, self.session, next) };
         }
     }
     pub fn cancel(&self) {
@@ -122,7 +121,7 @@ pub fn lease_cpu<T: Clone + Send + Sync + 'static>(
     bytes: fn(&T) -> &[u8],
 ) -> Option<abi::CpuLease> {
     count
-        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+        .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
             (n < 3).then_some(n + 1)
         })
         .ok()?;

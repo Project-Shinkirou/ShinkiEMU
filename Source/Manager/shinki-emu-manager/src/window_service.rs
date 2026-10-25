@@ -1,4 +1,4 @@
-use crate::{modal_service::ModalBridge, HostWake};
+use crate::{HostWake, modal_service::ModalBridge};
 use parking_lot::{Condvar, Mutex};
 use shinki_emu_abi as abi;
 use shinki_emu_manager_core::model::{
@@ -7,8 +7,8 @@ use shinki_emu_manager_core::model::{
 use std::{
     ffi::c_void,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 #[derive(Debug, Clone)]

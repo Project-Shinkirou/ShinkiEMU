@@ -123,13 +123,13 @@ pub(super) fn validate_texture_metadata(
     upscale: bool,
 ) -> Result<(), String> {
     for texture in &effect.textures {
-        if let Some(format) = &texture.format {
-            if format != "R16G16B16A16_FLOAT" {
-                return Err(format!(
-                    "SHINKI_EMU_EFFECT_TEXTURE_FORMAT_UNSUPPORTED_{}",
-                    texture.name
-                ));
-            }
+        if let Some(format) = &texture.format
+            && format != "R16G16B16A16_FLOAT"
+        {
+            return Err(format!(
+                "SHINKI_EMU_EFFECT_TEXTURE_FORMAT_UNSUPPORTED_{}",
+                texture.name
+            ));
         }
         let expected_factor = if upscale && texture.name == "OUTPUT" {
             2

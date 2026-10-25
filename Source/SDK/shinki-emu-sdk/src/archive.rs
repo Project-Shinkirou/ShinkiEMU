@@ -4,7 +4,7 @@ use std::{
 };
 
 use roukaku_byte_source::OwnedByteBuffer;
-use roukaku_core::{is_safe_symbol as safe_symbol, Hash256};
+use roukaku_core::{Hash256, is_safe_symbol as safe_symbol};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

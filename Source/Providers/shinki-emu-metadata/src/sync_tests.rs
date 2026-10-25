@@ -261,9 +261,11 @@ async fn tampered_file_is_rejected_with_hash_mismatch() {
         .await
         .unwrap_err();
     assert!(matches!(&error, MetadataError::HashMismatch(path) if path == "presets.json"));
-    assert!(error
-        .to_string()
-        .starts_with("SHINKI_EMU_METADATA_HASH_MISMATCH"));
+    assert!(
+        error
+            .to_string()
+            .starts_with("SHINKI_EMU_METADATA_HASH_MISMATCH")
+    );
 }
 
 #[tokio::test]

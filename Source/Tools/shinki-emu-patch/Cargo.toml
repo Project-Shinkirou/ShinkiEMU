@@ -2,6 +2,7 @@
 name = "shinki-emu-patch"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [lib]
@@ -10,9 +11,10 @@ doctest = false
 [dependencies]
 roukaku-byte-source = { workspace = true }
 shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
-cap-std = "=4.0.2"
-cap-fs-ext = "=4.0.2"
+cap-std = "=4.0.3"
+cap-fs-ext = "=4.0.3"
 dunce.workspace = true
+hex.workspace = true
 flate2.workspace = true
 sha2.workspace = true
 serde.workspace = true
@@ -21,14 +23,13 @@ mlua.workspace = true
 encoding_rs.workspace = true
 blowfish.workspace = true
 rc4.workspace = true
-crc32fast = "1.5"
-md-5 = "0.10"
-image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
-toml = "1.1"
-toml_parser = "=1.1.2"
+crc32fast = "1.5.3"
+md-5 = "0.11.0"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "png"] }
+toml = "1.1.8"
+toml_parser = "=1.1.5"
 serde-pickle = "=1.2.0"
 repugnant-pickle = { version = "=0.0.1", default-features = false }
-nom = "=7.1.3"
 tempfile.workspace = true
 
 [target.'cfg(windows)'.dependencies]

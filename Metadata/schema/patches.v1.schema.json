@@ -1,7 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "definitions": {
+  "$defs": {
     "PatchArtifact": {
       "additionalProperties": false,
       "properties": {
@@ -14,8 +12,8 @@
         },
         "size": {
           "format": "uint64",
-          "maximum": 1073741824.0,
-          "minimum": 1.0,
+          "maximum": 1073741824,
+          "minimum": 1,
           "type": "integer"
         },
         "url": {
@@ -23,10 +21,10 @@
         }
       },
       "required": [
-        "file_name",
+        "url",
         "sha256",
         "size",
-        "url"
+        "file_name"
       ],
       "type": "object"
     },
@@ -36,7 +34,7 @@
         "artifact": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PatchArtifact"
+              "$ref": "#/$defs/PatchArtifact"
             },
             {
               "type": "null"
@@ -65,7 +63,7 @@
           ]
         },
         "kind": {
-          "$ref": "#/definitions/PatchKind"
+          "$ref": "#/$defs/PatchKind"
         },
         "license": {
           "type": "string"
@@ -73,7 +71,7 @@
         "recipe": {
           "anyOf": [
             {
-              "$ref": "#/definitions/PatchRecipe"
+              "$ref": "#/$defs/PatchRecipe"
             },
             {
               "type": "null"
@@ -115,15 +113,15 @@
         }
       },
       "required": [
-        "emulators",
         "id",
-        "kind",
-        "license",
-        "release_ids",
-        "summary",
         "title",
         "version",
-        "vn_ids"
+        "vn_ids",
+        "release_ids",
+        "emulators",
+        "kind",
+        "license",
+        "summary"
       ],
       "type": "object"
     },
@@ -148,10 +146,12 @@
       "type": "object"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
     "entries": {
       "items": {
-        "$ref": "#/definitions/PatchCatalogEntry"
+        "$ref": "#/$defs/PatchCatalogEntry"
       },
       "type": "array"
     },
@@ -161,8 +161,8 @@
     }
   },
   "required": [
-    "entries",
-    "schema"
+    "schema",
+    "entries"
   ],
   "title": "PatchCatalog",
   "type": "object"

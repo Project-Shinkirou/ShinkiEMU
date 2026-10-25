@@ -7,7 +7,7 @@ mod notices;
 slint::include_modules!();
 
 pub use adapter::SlintManagerAdapter;
-pub use notices::{describe_error, report_error, ErrorText};
+pub use notices::{ErrorText, describe_error, report_error};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ManagerViewModel {

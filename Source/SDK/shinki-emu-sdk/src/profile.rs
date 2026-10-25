@@ -73,7 +73,10 @@ fn read_profile_bytes(
     };
     let path = path.canonicalize().map_err(profile_io_error)?;
     if (confined || !profile_path.is_absolute()) && !path.starts_with(&root) {
-        return Err(CoreError::invalid("SHINKI_EMU_PROFILE_PATH", "relative profile paths must stay inside the game directory; select an absolute private profile path explicitly"));
+        return Err(CoreError::invalid(
+            "SHINKI_EMU_PROFILE_PATH",
+            "relative profile paths must stay inside the game directory; select an absolute private profile path explicitly",
+        ));
     }
     if !std::fs::metadata(&path)
         .map_err(profile_io_error)?
@@ -96,7 +99,10 @@ fn read_profile_bytes(
             )
         })?;
     if bytes.len() as u64 > max_bytes {
-        return Err(CoreError::invalid("SHINKI_EMU_PROFILE_BOUND", "profile exceeds the core's size limit; select the private profile rather than an archive or scheme database"));
+        return Err(CoreError::invalid(
+            "SHINKI_EMU_PROFILE_BOUND",
+            "profile exceeds the core's size limit; select the private profile rather than an archive or scheme database",
+        ));
     }
     let hash = Hash256::from_sha256(&bytes);
     Ok((bytes, hash, root))
@@ -104,9 +110,18 @@ fn read_profile_bytes(
 
 fn profile_io_error(cause: std::io::Error) -> CoreError {
     match cause.kind() {
-        ErrorKind::NotFound => CoreError::invalid("SHINKI_EMU_PROFILE_MISSING", "private profile is missing; configure an existing profile or import the selected game's scheme before launching"),
-        ErrorKind::PermissionDenied => CoreError::invalid("SHINKI_EMU_PROFILE_PERMISSION", "private profile access was denied; grant this user read access or select a readable private copy"),
-        _ => CoreError::invalid("SHINKI_EMU_PROFILE_OPEN", "private profile could not be opened; check the selected file and storage availability"),
+        ErrorKind::NotFound => CoreError::invalid(
+            "SHINKI_EMU_PROFILE_MISSING",
+            "private profile is missing; configure an existing profile or import the selected game's scheme before launching",
+        ),
+        ErrorKind::PermissionDenied => CoreError::invalid(
+            "SHINKI_EMU_PROFILE_PERMISSION",
+            "private profile access was denied; grant this user read access or select a readable private copy",
+        ),
+        _ => CoreError::invalid(
+            "SHINKI_EMU_PROFILE_OPEN",
+            "private profile could not be opened; check the selected file and storage availability",
+        ),
     }
 }
 

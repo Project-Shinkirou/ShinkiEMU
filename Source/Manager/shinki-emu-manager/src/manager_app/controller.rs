@@ -62,8 +62,8 @@ impl ManagerController for ShinkiEmuManagerController {
         request: &shinki_emu_manager::window_service::WindowPresentation,
         result: Result<shinki_emu_manager::window_service::WindowOutcome, String>,
     ) -> Result<(), String> {
-        if let Ok(outcome) = &result {
-            if let Some(active) = self
+        if let Ok(outcome) = &result
+            && let Some(active) = self
                 .active
                 .as_mut()
                 .filter(|active| active.epoch == request.session_epoch)
@@ -77,7 +77,6 @@ impl ManagerController for ShinkiEmuManagerController {
                     active.fullscreen = outcome.fullscreen != shinki_emu_abi::FULLSCREEN_WINDOWED;
                 }
             }
-        }
         self.registry.respond_window(request, result)
     }
     fn native_failure(&self) -> Option<(&str, bool)> {

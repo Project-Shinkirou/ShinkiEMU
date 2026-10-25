@@ -242,8 +242,8 @@ impl ShinkiEmuManagerController {
                 }
             }
         }
-        if loaded {
-            if let Some(pending) = self.prepare_scan_pending.take().filter(|_| self.cores_ready()) {
+        if loaded
+            && let Some(pending) = self.prepare_scan_pending.take().filter(|_| self.cores_ready()) {
                 let scan = match pending {
                     PendingScan::Full => self
                         .scan_roots()
@@ -255,7 +255,6 @@ impl ShinkiEmuManagerController {
                     self.diagnostic_severity = "error";
                 }
             }
-        }
         Ok(changed)
     }
 

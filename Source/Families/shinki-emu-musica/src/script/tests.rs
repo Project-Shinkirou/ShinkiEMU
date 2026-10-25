@@ -116,11 +116,13 @@ fn absent_goto_is_native_script_local_fallthrough_not_a_filtered_command() {
     assert!(
         matches!(vm.step(1).unwrap(), Some(crate::MusicaVmEvent::Message { text, .. }) if text == "Reached")
     );
-    assert!(parse_sc(
-        b".select Text:absent\r\n.end\r\n",
-        &ScOpcodeCatalog::observed_musica()
-    )
-    .is_err());
+    assert!(
+        parse_sc(
+            b".select Text:absent\r\n.end\r\n",
+            &ScOpcodeCatalog::observed_musica()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -213,12 +215,14 @@ fn gbk_script_round_trips_and_disassembles_without_replacement() {
     };
     assert_eq!(command.tokens().unwrap(), ["2", "", "姓名", "中文剧情"]);
     for encoding in [ScriptEncoding::ShiftJis, ScriptEncoding::Gbk] {
-        assert!(parse_sc_with_encoding(
-            b".message 1   \x81",
-            &ScOpcodeCatalog::observed_musica(),
-            encoding
-        )
-        .is_err());
+        assert!(
+            parse_sc_with_encoding(
+                b".message 1   \x81",
+                &ScOpcodeCatalog::observed_musica(),
+                encoding
+            )
+            .is_err()
+        );
     }
 }
 
@@ -235,9 +239,11 @@ fn native_save_rejects_a_different_script_encoding() {
         .unwrap()
     };
     let saved = make(ScriptEncoding::ShiftJis).encode_native_save().unwrap();
-    assert!(make(ScriptEncoding::Gbk)
-        .restore_native_save(&saved, 1)
-        .is_err());
+    assert!(
+        make(ScriptEncoding::Gbk)
+            .restore_native_save(&saved, 1)
+            .is_err()
+    );
 }
 
 #[test]

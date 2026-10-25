@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fields::is_sha256_hex;
 use crate::MetadataError;
+use crate::fields::is_sha256_hex;
 
 pub const METADATA_INDEX_SCHEMA_VERSION: &str = "shinki.emu.metadata.index.v1";
 pub const METADATA_INDEX_FILE: &str = "index.json";
@@ -144,12 +144,16 @@ mod tests {
             10,
         )]);
         let parsed = parse_metadata_index(&serde_json::to_vec(&source).unwrap()).unwrap();
-        assert!(parsed
-            .file("engines/cores/ReMinori/windows-x86_64/1.0.0.json")
-            .is_some());
-        assert!(parsed
-            .file("engines/cores/reminori/windows-x86_64/1.0.0.json")
-            .is_none());
+        assert!(
+            parsed
+                .file("engines/cores/ReMinori/windows-x86_64/1.0.0.json")
+                .is_some()
+        );
+        assert!(
+            parsed
+                .file("engines/cores/reminori/windows-x86_64/1.0.0.json")
+                .is_none()
+        );
         assert!(matches!(
             index(vec![file("patches/a.luau", 1), file("patches/A.luau", 1)]).validate(),
             Err(MetadataError::Duplicate(_))

@@ -1,6 +1,6 @@
+use crate::CoreError;
 #[cfg(feature = "ffmpeg-vcpkg")]
 use crate::resources::read_resource;
-use crate::CoreError;
 use roukaku_core::Hash256;
 use std::{path::Path, sync::Arc};
 
@@ -181,7 +181,7 @@ pub(crate) fn video_color(
             return Err(CoreError::invalid(
                 "SHINKI_EMU_MUSICA_SUBTITLE_COLOR",
                 "video matrix or range is absent or unsupported",
-            ))
+            ));
         }
     })
 }

@@ -1,7 +1,7 @@
 use super::family_loader::text;
 use crate::{
-    model::*, FamilyCapability, FamilyPluginDescriptor, RenderSupport,
-    INDEPENDENT_FAMILY_ABI_FINGERPRINT,
+    FamilyCapability, FamilyPluginDescriptor, INDEPENDENT_FAMILY_ABI_FINGERPRINT, RenderSupport,
+    model::*,
 };
 use shinki_emu_abi as abi;
 

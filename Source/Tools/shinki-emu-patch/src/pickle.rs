@@ -31,17 +31,17 @@
 //! budgets and MARK nesting (64), without constructing an object graph. Textual
 //! UNICODE is rejected because the borrowed parser exposes its escaped spelling.
 use crate::{
+    PatchError, PatchErrorKind,
     buffer::{self, BoundedWriter},
     error::check_cancelled,
-    PatchError, PatchErrorKind,
 };
 use mlua::{Buffer, Lua, Table, Value};
 use repugnant_pickle::{ops::PickleOp as Op, parsers::parse_op};
-use serde_pickle::{value::Value as PyValue, DeOptions, SerOptions};
+use serde_pickle::{DeOptions, SerOptions, value::Value as PyValue};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     io::{self, Read, Write},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const MAX_DEPTH: usize = 64;
@@ -237,8 +237,8 @@ fn scan_strings(bytes: &[u8], cancelled: &AtomicBool) -> Result<Vec<String>, Pat
         // The mature parser borrows all arguments and validates Unicode UTF-8.
         // Bound even its UTF-8/newline scan before inspecting any opcode.
         let window = &input[..input.len().min(MAX_ATOM + 16)];
-        let (rest, op) = parse_op::<nom::error::Error<&[u8]>>(window)
-            .map_err(|_| codec("invalid or oversized pickle opcode"))?;
+        let (rest, op) =
+            parse_op::<()>(window).map_err(|_| codec("invalid or oversized pickle opcode"))?;
         let consumed = window.len() - rest.len();
         let next = position + consumed;
         if frame_end.is_some_and(|end| next > end) {
@@ -427,8 +427,8 @@ fn admit(bytes: &[u8], cancelled: &AtomicBool) -> Result<usize, PatchError> {
         // parse_op is nonrecursive and borrows counted strings/bytes. Cap its
         // slice too: even its UTF-8 validation cannot scan an unbounded atom.
         let window = &input[..input.len().min(MAX_ATOM + 16)];
-        let (rest, op) = parse_op::<nom::error::Error<&[u8]>>(window)
-            .map_err(|_| codec("invalid or oversized pickle opcode"))?;
+        let (rest, op) =
+            parse_op::<()>(window).map_err(|_| codec("invalid or oversized pickle opcode"))?;
         let consumed = window.len() - rest.len();
         let next = position + consumed;
         if frame_end.is_some_and(|end| next > end) {
@@ -851,10 +851,10 @@ impl LuaTree<'_> {
                     return Err(invalid());
                 }
                 let value = PyValue::Int(text.parse().map_err(|_| invalid())?);
-                if let PyValue::Int(integer) = &value {
-                    if integer.to_signed_bytes_le().len() > MAX_INT_BYTES {
-                        return Err(bounds().into());
-                    }
+                if let PyValue::Int(integer) = &value
+                    && integer.to_signed_bytes_le().len() > MAX_INT_BYTES
+                {
+                    return Err(bounds().into());
                 }
                 self.budget.storage(bytes.len() * 8)?;
                 Ok(value)

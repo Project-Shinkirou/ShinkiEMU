@@ -2,9 +2,9 @@
 //! Native blocks/output are capped at 64MiB; TOML additionally checks the
 //! mature parser's derived token/event/value scratch-allocation upper bounds.
 use crate::{
-    buffer::{self, bounded, BoundedWriter, MAX_NATIVE_BYTES},
-    error::check_cancelled,
     PatchError, PatchErrorKind,
+    buffer::{self, BoundedWriter, MAX_NATIVE_BYTES, bounded},
+    error::check_cancelled,
 };
 use encoding_rs::{DecoderResult, EncoderResult, Encoding, GBK, SHIFT_JIS};
 use image::{DynamicImage, ImageDecoder, ImageEncoder, ImageFormat, ImageReader, Limits};
@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fmt,
     io::{self, BufReader, Cursor, Read, Seek, SeekFrom, Write},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const CHUNK: usize = 1024 * 1024;
@@ -49,7 +49,7 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
     let flag = cancelled.clone();
     encoding.set(
         "decode",
-        lua.create_function(move |lua, (bytes, name): (Buffer, mlua::String)| {
+        lua.create_function(move |lua, (bytes, name): (Buffer, mlua::LuaString)| {
             let encoding = TextEncoding::parse(&name.as_bytes()).map_err(mlua::Error::external)?;
             let text = buffer::input(lua, bytes, |bytes| decode_text(bytes, encoding, &flag))?;
             lua.create_string(&text)
@@ -58,17 +58,20 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
     let flag = cancelled.clone();
     encoding.set(
         "encode",
-        lua.create_function(move |lua, (text, name): (mlua::String, mlua::String)| {
-            let encoding = TextEncoding::parse(&name.as_bytes()).map_err(mlua::Error::external)?;
-            let bytes = text.as_bytes();
-            bounded(bytes.len()).map_err(mlua::Error::external)?;
-            let text = strict_utf8(&bytes, &flag).map_err(mlua::Error::external)?;
-            if matches!(encoding, TextEncoding::Utf8) {
-                return buffer::output(lua, &bytes);
-            }
-            let encoded = encode_text(text, encoding, &flag).map_err(mlua::Error::external)?;
-            buffer::output(lua, &encoded)
-        })?,
+        lua.create_function(
+            move |lua, (text, name): (mlua::LuaString, mlua::LuaString)| {
+                let encoding =
+                    TextEncoding::parse(&name.as_bytes()).map_err(mlua::Error::external)?;
+                let bytes = text.as_bytes();
+                bounded(bytes.len()).map_err(mlua::Error::external)?;
+                let text = strict_utf8(&bytes, &flag).map_err(mlua::Error::external)?;
+                if matches!(encoding, TextEncoding::Utf8) {
+                    return buffer::output(lua, &bytes);
+                }
+                let encoded = encode_text(text, encoding, &flag).map_err(mlua::Error::external)?;
+                buffer::output(lua, &encoded)
+            },
+        )?,
     )?;
     ctx.set("encoding", encoding)?;
 
@@ -76,7 +79,7 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
     let flag = cancelled.clone();
     json.set(
         "decode",
-        lua.create_function(move |lua, text: mlua::String| {
+        lua.create_function(move |lua, text: mlua::LuaString| {
             let bytes = text.as_bytes();
             bounded(bytes.len()).map_err(mlua::Error::external)?;
             check_cancelled(&flag).map_err(mlua::Error::external)?;
@@ -115,7 +118,7 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
     let flag = cancelled.clone();
     toml.set(
         "decode",
-        lua.create_function(move |lua, text: mlua::String| {
+        lua.create_function(move |lua, text: mlua::LuaString| {
             let bytes = text.as_bytes();
             bounded(bytes.len()).map_err(mlua::Error::external)?;
             let text = strict_utf8(&bytes, &flag).map_err(mlua::Error::external)?;
@@ -328,9 +331,16 @@ fn toml_budget(text: &str, cancelled: &AtomicBool) -> Result<(), PatchError> {
 fn toml_allocation(bytes: Option<usize>) -> Result<(), PatchError> {
     match bytes {
         Some(bytes) if bytes <= MAX_NATIVE_BYTES => Ok(()),
-        Some(bytes) => Err(PatchError::new(PatchErrorKind::Memory,
-            format!("TOML parser allocation upper bound is {bytes} bytes; limit is {MAX_NATIVE_BYTES} bytes"))),
-        None => Err(PatchError::new(PatchErrorKind::Memory, "TOML parser allocation upper bound overflows")),
+        Some(bytes) => Err(PatchError::new(
+            PatchErrorKind::Memory,
+            format!(
+                "TOML parser allocation upper bound is {bytes} bytes; limit is {MAX_NATIVE_BYTES} bytes"
+            ),
+        )),
+        None => Err(PatchError::new(
+            PatchErrorKind::Memory,
+            "TOML parser allocation upper bound overflows",
+        )),
     }
 }
 
@@ -519,7 +529,7 @@ fn strict_utf8<'a>(bytes: &'a [u8], cancelled: &AtomicBool) -> Result<&'a str, P
                     PatchErrorKind::Codec,
                     "invalid UTF-8 data",
                     cause,
-                ))
+                ));
             }
         }
     }
@@ -647,7 +657,7 @@ fn encode_text(
                     .map_err(|cause| text_io(cause, "text encoding failed"))?;
                 match result {
                     EncoderResult::Unmappable(_) => {
-                        return Err(codec("text is not representable in the requested encoding"))
+                        return Err(codec("text is not representable in the requested encoding"));
                     }
                     EncoderResult::InputEmpty if position == text.len() => break,
                     _ => {}
@@ -716,7 +726,9 @@ impl<'de> Visitor<'de> for LuaData<'_> {
             .lua
             .create_table()
             .map_err(|_| de::Error::custom("Lua data allocation failed"))?;
-        table.set_metatable(Some(self.lua.array_metatable()));
+        table
+            .set_metatable(Some(self.lua.array_metatable()))
+            .map_err(|_| de::Error::custom("Lua data allocation failed"))?;
         let mut index = 1_usize;
         while let Some(value) = values.next_element_seed(LuaData {
             lua: self.lua,
@@ -993,16 +1005,13 @@ fn decode_image(bytes: &[u8], cancelled: &AtomicBool) -> Result<(u32, u32, Vec<u
             "only PNG and BMP images are supported",
         ));
     };
-    let failure = |_| {
-        if let Err(error) = check_cancelled(cancelled) {
-            error
-        } else {
-            PatchError::with_source(
-                PatchErrorKind::Codec,
-                "image decoding failed",
-                Diagnostic::stage("image decoding"),
-            )
-        }
+    let failure = |_| match check_cancelled(cancelled) {
+        Err(error) => error,
+        _ => PatchError::with_source(
+            PatchErrorKind::Codec,
+            "image decoding failed",
+            Diagnostic::stage("image decoding"),
+        ),
     };
     let reader = BufReader::new(CheckedReader::new(bytes, cancelled));
     let mut reader = ImageReader::with_format(reader, format);
@@ -1227,10 +1236,12 @@ mod tests {
             .remove("integral_float")
             .unwrap();
         assert_eq!(actual, expected);
-        assert!(actual["negative_zero"]
-            .as_float()
-            .unwrap()
-            .is_sign_negative());
+        assert!(
+            actual["negative_zero"]
+                .as_float()
+                .unwrap()
+                .is_sign_negative()
+        );
         let infinities: String = lua
             .load(
                 r#"
@@ -1396,19 +1407,21 @@ mod tests {
         lua.globals()
             .set("oversized", lua.create_buffer(&excessive).unwrap())
             .unwrap();
-        assert!(lua
-            .load("return ctx.image.decode(oversized)")
-            .eval::<Value>()
-            .is_err());
+        assert!(
+            lua.load("return ctx.image.decode(oversized)")
+                .eval::<Value>()
+                .is_err()
+        );
         let mut corrupt = red_png();
         corrupt[45] ^= 1;
         lua.globals()
             .set("corrupt", lua.create_buffer(&corrupt).unwrap())
             .unwrap();
-        assert!(lua
-            .load("return ctx.image.decode(corrupt)")
-            .eval::<Value>()
-            .is_err());
+        assert!(
+            lua.load("return ctx.image.decode(corrupt)")
+                .eval::<Value>()
+                .is_err()
+        );
     }
 
     #[test]
