@@ -472,10 +472,10 @@ fn native_sources(
             _ => inv.core(component)?.source_directory(&inv.root)?.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/"),
         };
         commands.push_str(&format!(
-            "& $vcpkg install --vcpkg-root=\".work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"{manifest}\" --x-install-root=\"{install_root}\" --overlay-ports=\"native/ports/{group}\""
+            "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\" --overlay-ports=\"$PWD/native/ports/{group}\""
         ));
         if *group == "subtitle" {
-            commands.push_str(" --overlay-triplets=\"native/subtitle-triplets\"");
+            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\"");
         }
         commands.push('\n');
     }
@@ -678,7 +678,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     let mut instructions = format!(
         "# Rebuild {component} for {target}\n\nProduct commit: {product_commit}. Exact core revision: see source-references.json.\n\
          Unpack source.tar into a new directory and run these commands there in a developer PowerShell (Windows) or the equivalent shell on the target OS.\n\
-         Prerequisites: the Rust toolchain in rust-toolchain.toml, the {target} standard library, the system C/C++ compiler/SDK, CMake and Ninja. Build tools and OS SDKs are system prerequisites.\n\
+         Prerequisites: the Rust toolchain in rust-toolchain.toml, the {target} standard library, the system C/C++ compiler/SDK, CMake and Ninja. Build tools and OS SDKs are system prerequisites. Before disconnecting, provision vcpkg's pinned build-tool archives in .work/vcpkg-downloads (Windows Meson uses python-3.14.7-embed-amd64.zip; NASM 3.01, Ninja 1.13.2, CMake 4.4.3 and MSYS2 tools may also be needed). The pinned vcpkg scripts record and verify their hashes. These toolchain inputs are separate from the bundled library sources.\n\
          Cargo uses .cargo/config.toml and vendor/, including exact pinned Git dependencies. No registry or Git network access is needed. Keep Cargo.lock unchanged.\n\n```powershell\n\
          $env:CARGO_NET_OFFLINE = 'true'\n\
          $env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
