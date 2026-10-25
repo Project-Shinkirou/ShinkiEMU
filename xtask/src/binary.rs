@@ -118,7 +118,9 @@ fn macho<'a, M: MachHeader>(
     let e = file.endian();
     let mut it = file.macho_header().load_commands(e, file.data(), 0)?;
     while let Some(c) = it.next()? {
-        if let Some(d) = c.dylib()? {
+        if c.cmd() != object::macho::LC_ID_DYLIB
+            && let Some(d) = c.dylib()?
+        {
             info.dependencies.insert(text(c.string(e, d.dylib.name)?)?);
         }
         if c.cmd() == object::macho::LC_RPATH {

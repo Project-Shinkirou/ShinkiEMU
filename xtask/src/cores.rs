@@ -193,8 +193,58 @@ impl Inventory {
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
-                if !target.manager_supported || target.platform != "android" {
+                if !target.manager_supported
+                    || !matches!(target.platform.as_str(), "android" | "ios")
+                {
                     bail!("invalid static Manager integration");
+                }
+            }
+        }
+        self.validate_static_dependencies()?;
+        Ok(())
+    }
+    fn validate_static_dependencies(&self) -> Result<()> {
+        let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(
+            self.root
+                .join("Source/Manager/shinki-emu-manager/Cargo.toml"),
+        )?)?;
+        for platform in ["android", "ios"] {
+            let key = format!("cfg(target_os = \"{platform}\")");
+            let dependencies = manifest["target"][&key]["dependencies"]
+                .as_table()
+                .context("Manager target dependencies")?;
+            for core in &self.cores {
+                let embedded = self.targets.iter().any(|target| {
+                    target.platform == platform
+                        && core.static_manager_targets.contains(&target.triple)
+                });
+                let dependency = dependencies.get(&core.package);
+                if !embedded {
+                    if dependency.is_some() {
+                        bail!("Manager {platform} depends on non-static core {}", core.id);
+                    }
+                    continue;
+                }
+                let source = core.source.as_ref().context("static core source")?;
+                let dependency = dependency.with_context(|| {
+                    format!("Manager {platform} is missing static core {}", core.id)
+                })?;
+                if dependency.get("git").and_then(toml::Value::as_str) != Some(&source.repo)
+                    || dependency.get("rev").and_then(toml::Value::as_str) != Some(&source.rev)
+                    || dependency.get("features").is_some_and(|features| {
+                        features
+                            .as_array()
+                            .is_none_or(|features| !features.is_empty())
+                    })
+                    || dependency
+                        .get("default-features")
+                        .and_then(toml::Value::as_bool)
+                        == Some(true)
+                {
+                    bail!(
+                        "Manager {platform} static core {} pin/features differ from inventory",
+                        core.id
+                    );
                 }
             }
         }
@@ -258,5 +308,36 @@ impl Inventory {
             }
         }
         Ok(Matrix { include })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_manager_pins_and_declared_integrations_cannot_drift() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inventory = Inventory::load(root).unwrap();
+        let mut changed = inventory.clone();
+        changed
+            .cores
+            .iter_mut()
+            .find(|core| core.id == "rfvp")
+            .unwrap()
+            .source
+            .as_mut()
+            .unwrap()
+            .rev = "0".repeat(40);
+        assert!(changed.validate_static_dependencies().is_err());
+        let mut changed = inventory;
+        changed
+            .cores
+            .iter_mut()
+            .find(|core| core.id == "rfvp")
+            .unwrap()
+            .static_manager_targets
+            .clear();
+        assert!(changed.validate_static_dependencies().is_err());
     }
 }

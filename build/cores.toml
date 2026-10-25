@@ -13,19 +13,13 @@ dependencies = ["subtitle", "gstreamer"]
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/rfvp/LICENSE", "ThirdParty/rfvp/crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "ThirdParty/rfvp/crates/shinki-emu-rfvp/MODIFICATIONS.md"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
-branch = "shinki"
-rev = "18c226bf39ebb64a20cb1515c986b21ea1457ad2"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "RFVP selects native-video/audio plus libass (ThirdParty/rfvp/crates/shinki-emu-rfvp/Cargo.toml:18); its Apple SDK-backed native build and Mach-O runtime closure are unavailable without a licensed SDK."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "RFVP selects native-video/audio plus libass (ThirdParty/rfvp/crates/shinki-emu-rfvp/Cargo.toml:18); its Apple SDK-backed native build and Mach-O runtime closure are unavailable without a licensed SDK."
+branch = "shinki-apple"
+rev = "7c241b477fb10efd981b20af67b1fb9745ec97fe"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -34,13 +28,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "RFVP native-video/audio/libass need an iOS SDK-backed build; its static_manager_targets currently contain Android only, so no iOS embedded-core registration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "RFVP native-video/audio/libass need an iOS SDK-backed build; its static_manager_targets currently contain Android only, so no iOS embedded-core registration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "RFVP native-video/audio/libass need an iOS SDK-backed build; its static_manager_targets currently contain Android only, so no iOS embedded-core registration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -57,18 +51,13 @@ dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
-branch = "shinki"
-rev = "faeeb33da68877025ba2ca03f3530973469fc537"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "siglus_scene_vm/Cargo.toml:15-18 enables native-audio through kira/cpal; the CoreAudio SDK-backed adapter build and Mach-O closure cannot be validated without a licensed Apple SDK."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "siglus_scene_vm/Cargo.toml:15-18 enables native-audio through kira/cpal; the CoreAudio SDK-backed adapter build and Mach-O closure cannot be validated without a licensed Apple SDK."
+branch = "shinki-apple"
+rev = "2436c25fc966306e03cdada833b507eec97b51c4"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -77,13 +66,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Siglus enables kira/cpal native-audio in siglus_scene_vm/Cargo.toml:15-18; no static iOS Manager registration or iOS core signing/install integration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Siglus enables kira/cpal native-audio in siglus_scene_vm/Cargo.toml:15-18; no static iOS Manager registration or iOS core signing/install integration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Siglus enables kira/cpal native-audio in siglus_scene_vm/Cargo.toml:15-18; no static iOS Manager registration or iOS core signing/install integration is configured."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -182,18 +171,13 @@ dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/sena-rs/LICENSE-MPL-2.0", "docs/licenses/sena-rs/MS-PGothic.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
-branch = "shinki"
-rev = "962ba72dc937c0e692852d0414ea277c33f255fc"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+branch = "shinki-apple"
+rev = "696a83ccaf096d3dd49c3c9a7c1f948c35acfed8"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -202,13 +186,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -271,18 +255,13 @@ dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
-branch = "shinki"
-rev = "61e63d94bb4ca7bc28521bc304bf7ffffcd7c311"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+branch = "shinki-apple"
+rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -291,13 +270,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -354,23 +333,18 @@ family_name = "Musica"
 license = "AGPL-3.0-only"
 manifest = "ThirdParty/ReMinori/crates/shinki/Cargo.toml"
 package = "shinki-emu-ReMinori"
-features = []
+features = ["dynamic-plugin-export"]
 dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
-branch = "shinki"
-rev = "14e4045553ed599e12a361d66c106d7fe4111e9e"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+branch = "shinki-apple"
+rev = "595b3e337e29fd4e3b711b45d02a7237459b01f8"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
@@ -379,13 +353,13 @@ target = "x86_64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."

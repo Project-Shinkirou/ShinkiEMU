@@ -50,22 +50,31 @@ pub(crate) struct NativeNeeds {
 
 pub(crate) fn needs(inv: &Inventory, target: &str, component: &str) -> Result<NativeNeeds> {
     let mut result = NativeNeeds::default();
-    if component == "manager" {
+    let manager = component == "manager";
+    if manager {
         result.dxc = target.contains("windows");
-        result.subtitle = target.contains("android");
-        return Ok(result);
+    } else {
+        inv.core(component)?;
     }
-    for requirement in &inv.core(component)?.dependencies {
-        match requirement.as_str() {
-            "subtitle" => result.subtitle = true,
-            "ffmpeg" => result.ffmpeg = true,
-            "dxc" => result.dxc = true,
-            "native-vcpkg" => result.native_vcpkg = true,
-            "impacto-sources" => result.impacto_sources = true,
-            "renpy" => result.renpy = true,
-            "bison" => result.bison = true,
-            "gstreamer" => result.gstreamer = target == "x86_64-unknown-linux-gnu",
-            other => bail!("unknown native dependency requirement {other} for {component}"),
+    for core in inv.cores.iter().filter(|core| {
+        if manager {
+            core.static_manager_targets.iter().any(|t| t == target)
+        } else {
+            core.id == component
+        }
+    }) {
+        for requirement in &core.dependencies {
+            match requirement.as_str() {
+                "subtitle" => result.subtitle = true,
+                "ffmpeg" => result.ffmpeg = true,
+                "dxc" => result.dxc = true,
+                "native-vcpkg" => result.native_vcpkg = true,
+                "impacto-sources" => result.impacto_sources = true,
+                "renpy" => result.renpy = true,
+                "bison" => result.bison = true,
+                "gstreamer" => result.gstreamer = target == "x86_64-unknown-linux-gnu",
+                other => bail!("unknown native dependency requirement {other} for {component}"),
+            }
         }
     }
     Ok(result)
@@ -606,6 +615,18 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             }
         }
     }
+    if crate::apple::supported(target) && selected.subtitle {
+        let pc = subtitle_install(inv, target)?.join("lib/pkgconfig/libass.pc");
+        if !pc.is_file() {
+            missing.push(format!(
+                "{} (cargo xtask deps --target {target})",
+                pc.display()
+            ));
+        }
+        if executable("pkg-config").is_none() {
+            missing.push("pkg-config for the pinned Apple subtitle installation".into());
+        }
+    }
     if t.platform == "linux" {
         for package in ["alsa", "libudev", "fontconfig", "xkbcommon"] {
             if capture(Command::new("pkg-config").args(["--exists", package])).is_err() {
@@ -890,6 +911,17 @@ fn subtitle_source(inv: &Inventory, target: &str, component: Option<&str>) -> Re
     .context("subtitle parent")?
     .to_owned())
 }
+pub(crate) fn apple_subtitle_triplet(target: &str) -> Option<&'static str> {
+    match target {
+        "aarch64-apple-darwin" => Some("arm64-osx"),
+        "x86_64-apple-darwin" => Some("x64-osx"),
+        "aarch64-apple-ios" => Some("arm64-ios"),
+        "aarch64-apple-ios-sim" => Some("arm64-ios-simulator"),
+        "x86_64-apple-ios" => Some("x64-ios"),
+        _ => None,
+    }
+}
+
 pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
     let l = lock(inv)?;
     Ok(if target.contains("android") {
@@ -904,6 +936,12 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
             })
     } else if target == "x86_64-unknown-linux-gnu" {
         linux_install(inv, target, "subtitle")
+    } else if let Some(triplet) = apple_subtitle_triplet(target) {
+        inv.root
+            .join(".work/vcpkg-subtitle")
+            .join(target)
+            .join("installed")
+            .join(triplet)
     } else {
         env::var_os("ROUKAKU_SUBTITLE_VCPKG_ROOT")
             .map(PathBuf::from)
@@ -1088,6 +1126,23 @@ pub fn apply_environment(
                 .env("PYTHONDONTWRITEBYTECODE", "1");
         }
     }
+    if crate::apple::supported(target) && selected.subtitle {
+        // Apple triplets statically link the complete libass closure, including
+        // pkg-config's private libraries and system frameworks.
+        for var in [
+            "PKG_CONFIG_PATH",
+            "PKG_CONFIG_LIBDIR",
+            "PKG_CONFIG_SYSROOT_DIR",
+        ] {
+            cmd.env_remove(var)
+                .env_remove(format!("{var}_{target}"))
+                .env_remove(format!("{var}_{}", target.replace('-', "_")))
+                .env_remove(format!("TARGET_{var}"));
+        }
+        cmd.env("PKG_CONFIG_ALLOW_CROSS", "1")
+            .env("PKG_CONFIG_ALL_STATIC", "1")
+            .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
+    }
     if target == "x86_64-unknown-linux-gnu" && selected.bison {
         cmd.env(
             "BISON_EXECUTABLE",
@@ -1239,22 +1294,25 @@ pub fn prepare(
     if let Some(core) = core {
         inv.require_supported(core, target)?;
     }
+    let selected = needs(inv, target, core.unwrap_or("manager"))?;
     if crate::apple::supported(target) {
-        if let Some(id) = core {
-            crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
+        crate::apple::preflight(target)?;
+        if selected.subtitle && !cfg!(target_os = "macos") {
+            bail!("Apple libass preparation requires a native macOS host with Xcode");
         }
-        return doctor(inv, target, core);
     }
     if !matches!(
         target_spec.platform.as_str(),
-        "windows" | "android" | "linux"
+        "windows" | "android" | "linux" | "macos" | "ios"
     ) {
         bail!("no dependency preparation path for blocked target {target}");
     }
     if let Some(id) = core {
         crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
     }
-    let selected = needs(inv, target, core.unwrap_or("manager"))?;
+    if crate::apple::supported(target) && !selected.subtitle {
+        return doctor(inv, target, core);
+    }
     if target_spec.platform == "linux"
         && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
     {
@@ -1350,12 +1408,14 @@ pub fn prepare(
             }
         } else if target_spec.platform == "linux" {
             "x64-linux-dynamic"
+        } else if let Some(triplet) = apple_subtitle_triplet(target) {
+            triplet
         } else {
             &pins.subtitle_windows_triplet
         };
         // vcpkg manifest mode removes packages for other triplets from an install root.
-        // Keep each Android ABI independent, including from desktop dependency trees.
-        let install = if matches!(target_spec.platform.as_str(), "android" | "linux") {
+        // Keep each target independent, including device and simulator SDKs.
+        let install = if target_spec.platform != "windows" {
             inv.root
                 .join(".work/vcpkg-subtitle")
                 .join(target)
@@ -1384,6 +1444,13 @@ pub fn prepare(
             .env("VCPKG_DISABLE_METRICS", "1");
         if target_spec.platform == "android" {
             command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
+        }
+        if crate::apple::supported(target) {
+            if target.ends_with("darwin") {
+                command.env("MACOSX_DEPLOYMENT_TARGET", "13.0");
+            } else {
+                command.env("IPHONEOS_DEPLOYMENT_TARGET", "16.0");
+            }
         }
         run(&mut command)?;
         fs::copy(

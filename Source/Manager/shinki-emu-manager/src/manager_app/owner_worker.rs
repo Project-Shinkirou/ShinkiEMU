@@ -1,6 +1,5 @@
 use super::owner::{
-    BackgroundEvent, BackgroundSender, Command, Commands, PrepareProgress, Update,
-    collect_metadata,
+    BackgroundEvent, BackgroundSender, Command, Commands, PrepareProgress, Update, collect_metadata,
 };
 use super::*;
 use crossbeam_channel::RecvTimeoutError;
@@ -102,10 +101,16 @@ pub(super) fn run(
                 let result = if active.is_some() {
                     Err("SHINKI_EMU_FAMILY_SESSION_ALREADY_ACTIVE".into())
                 } else {
-                    probe_worker::scan(&registry, &mut cache, request, &cancelled, &mut |progress| {
-                        let _ = results.send(BackgroundEvent::Progress(progress));
-                        notify(&wake);
-                    })
+                    probe_worker::scan(
+                        &registry,
+                        &mut cache,
+                        request,
+                        &cancelled,
+                        &mut |progress| {
+                            let _ = results.send(BackgroundEvent::Progress(progress));
+                            notify(&wake);
+                        },
+                    )
                 };
                 let _ = results.send(BackgroundEvent::Scanned(kind, result));
                 notify(&wake);
@@ -158,18 +163,19 @@ pub(super) fn run(
             }
             Ok(Command::Action { epoch, control }) => {
                 if let Some(session) = active.as_mut().filter(|session| session.epoch() == epoch)
-                    && let Err(error) = session.control(control) {
-                        if session.poisoned() {
-                            finish(&mut active, Some(error), &shared);
-                        } else {
-                            let mut update = shared.lock();
-                            if update.epoch == epoch {
-                                update.action_error = Some(error);
-                                update.dirty = true;
-                            }
+                    && let Err(error) = session.control(control)
+                {
+                    if session.poisoned() {
+                        finish(&mut active, Some(error), &shared);
+                    } else {
+                        let mut update = shared.lock();
+                        if update.epoch == epoch {
+                            update.action_error = Some(error);
+                            update.dirty = true;
                         }
-                        notify(&wake);
                     }
+                    notify(&wake);
+                }
             }
             Ok(Command::Close { epoch, events }) => {
                 if let Some(session) = active.as_mut().filter(|session| session.epoch() == epoch) {
@@ -259,17 +265,32 @@ pub(super) fn service_due(
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
+    ("rfvp", shinki_emu_rfvp::shinki_emu_query),
+    #[cfg(target_os = "ios")]
+    ("siglus_rs", shinki_emu_siglus_rs::query),
+    #[cfg(target_os = "ios")]
+    ("sena-rs", shinki_emu_sena_rs::QUERY),
+    #[cfg(target_os = "ios")]
+    ("ethornell-rs", shinki_emu_ethornell_rs::QUERY),
+    #[cfg(target_os = "ios")]
+    ("ReMinori", shinki_emu_ReMinori::shinki_emu_query),
+];
+
 fn initialize(
     registry: &mut FamilyProviderRegistry,
     directories: &[PathBuf],
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<BTreeMap<String, String>, String> {
-    #[cfg(target_os = "android")]
-    unsafe { registry.register_static(shinki_emu_rfvp::shinki_emu_query) }
-        .map_err(|error| error.to_string())?;
-    #[cfg_attr(target_os = "android", allow(unused_mut))]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    for (id, query) in STATIC_CORES {
+        unsafe { registry.register_static(*query) }.map_err(|error| error.to_string())?;
+        tracing::info!(event = "shinki.emu.core.static_registered", core = id);
+    }
+    #[cfg_attr(any(target_os = "android", target_os = "ios"), allow(unused_mut))]
     let mut errors = BTreeMap::new();
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let discovery = shinki_emu_manager_core::discover_core_directories(directories)
             .map_err(|error| error.to_string())?;
@@ -287,7 +308,7 @@ fn initialize(
             errors.insert(stem, diagnostic);
         }
     }
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let _ = (directories, progress);
     Ok(errors)
 }

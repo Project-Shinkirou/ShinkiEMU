@@ -199,3 +199,6 @@ mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f4
 
 [patch."https://github.com/Project-Shinkirou/cpal.git"]
 cpal = { path = "ThirdParty/cpal" }
+
+[patch."https://github.com/ruffle-rs/rust-flash-lso"]
+flash-lso = { git = "https://github.com/Project-Shinkirou/rust-flash-lso", rev = "5573168345ef2d92d01ee0766bab29acf89584c0" }

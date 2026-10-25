@@ -421,6 +421,63 @@ fn matrix_covers_each_core_and_target_without_accepting_unknown_keys() {
 }
 
 #[test]
+fn macho_identity_is_not_a_runtime_dependency() {
+    let temp = tempfile::tempdir().unwrap();
+    let name = b"@rpath/libexample.dylib\0";
+    let size = (24 + name.len() + 7) & !7;
+    for (command, expected_dependencies) in [
+        (object::macho::LC_ID_DYLIB, 0),
+        (object::macho::LC_LOAD_DYLIB, 1),
+    ] {
+        let mut bytes = Vec::new();
+        for word in [
+            object::macho::MH_MAGIC_64,
+            object::macho::CPU_TYPE_ARM64.0,
+            0,
+            object::macho::MH_DYLIB.0,
+            1,
+            size as u32,
+            0,
+            0,
+            command.0,
+            size as u32,
+            24,
+            0,
+            0,
+            0,
+        ] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.extend_from_slice(name);
+        bytes.resize(32 + size, 0);
+        let path = temp.path().join("libexample.dylib");
+        fs::write(&path, bytes).unwrap();
+        let info = binary::inspect(&path, "aarch64-apple-darwin", false).unwrap();
+        assert_eq!(info.dependencies.len(), expected_dependencies);
+    }
+}
+
+#[test]
+fn apple_subtitle_installs_isolate_architectures_and_platforms() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let inventory = Inventory::load(root).unwrap();
+    let mut installs = std::collections::BTreeSet::new();
+    for target in inventory
+        .targets
+        .iter()
+        .filter(|t| crate::apple::supported(&t.triple))
+    {
+        let install = crate::dependencies::subtitle_install(&inventory, &target.triple).unwrap();
+        assert!(installs.insert(install));
+        let needs = crate::dependencies::needs(&inventory, &target.triple, "rfvp").unwrap();
+        assert!(needs.subtitle);
+        assert!(!needs.gstreamer);
+        let manager = crate::dependencies::needs(&inventory, &target.triple, "manager").unwrap();
+        assert_eq!(manager.subtitle, target.platform == "ios");
+    }
+}
+
+#[test]
 fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
     use sha2::Digest;
     let temp = tempfile::tempdir().unwrap();

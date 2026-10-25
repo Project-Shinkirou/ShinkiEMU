@@ -560,6 +560,8 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     if selected.subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, "subtitle")
+        } else if crate::apple::supported(&result.target) {
+            dependencies::subtitle_install(inv, &result.target)?.join("lib")
         } else {
             dependencies::subtitle_install(inv, &result.target)?.join("bin")
         });
@@ -622,7 +624,9 @@ fn licenses(
 ) -> Result<Vec<(PathBuf, String)>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
-    if selected.subtitle && result.target == "x86_64-unknown-linux-gnu" {
+    if selected.subtitle
+        && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
+    {
         let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
         for entry in fs::read_dir(share)? {
             let entry = entry?;
@@ -795,6 +799,7 @@ pub fn package(
             }
             entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
+            entries.extend(static_core_entries(inv, &result, temp.path())?);
             copy_entries(&entries, stage)?;
             drop(temp);
             fs::create_dir(stage.join("cores"))?;
@@ -891,6 +896,71 @@ pub fn package(
         stage_core(&result, version, out, &search_dirs(inv, &result)?)
     }
 }
+/// Resolve license inputs from the actual Cargo checkouts used for embedding.
+fn static_core_entries(
+    inv: &Inventory,
+    result: &BuildResult,
+    scratch: &Path,
+) -> Result<Vec<(PathBuf, String)>> {
+    if !inv
+        .cores
+        .iter()
+        .any(|core| core.static_manager_targets.contains(&result.target))
+    {
+        return Ok(Vec::new());
+    }
+    let meta = build::cargo_metadata(inv, &result.target)?;
+    let mut entries = Vec::new();
+    let mut embedded = Vec::new();
+    for core in &inv.cores {
+        if !core.static_manager_targets.contains(&result.target) {
+            continue;
+        }
+        let package = meta["packages"]
+            .as_array()
+            .context("cargo packages")?
+            .iter()
+            .find(|package| package["name"] == core.package)
+            .with_context(|| format!("statically linked package {} missing", core.package))?;
+        let checkout = core.source_directory(&inv.root)?;
+        let checkout_relative = checkout.strip_prefix(&inv.root)?;
+        let manifest_relative = core.manifest.strip_prefix(checkout_relative)?;
+        let mut source_root = PathBuf::from(
+            package["manifest_path"]
+                .as_str()
+                .context("static core manifest")?,
+        );
+        for _ in manifest_relative.components() {
+            source_root.pop();
+        }
+        for license in &core.licenses {
+            let path = Path::new(license);
+            if let Ok(relative) = path.strip_prefix(checkout_relative) {
+                entries.push((
+                    source_root.join(relative),
+                    format!(
+                        "licenses/{}/{}",
+                        core.id,
+                        relative.to_string_lossy().replace('\\', "/")
+                    ),
+                ));
+            } else {
+                // Some inventory assets belong to the product, not the fork.
+                entries.push((inv.root.join(path), license.clone()));
+            }
+        }
+        embedded.push(serde_json::json!({
+            "id": core.id,
+            "package": core.package,
+            "source": core.source,
+        }));
+    }
+    let manifest = scratch.join("embedded-cores.json");
+    fs::write(&manifest, serde_json::to_vec_pretty(&embedded)?)?;
+    entries.push((manifest, "embedded-cores.json".into()));
+    Ok(entries)
+}
+
 const ANDROID_TARGETS: [(&str, &str); 2] = [
     ("aarch64-linux-android", "arm64-v8a"),
     ("x86_64-linux-android", "x86_64"),
@@ -916,7 +986,6 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
         );
         entries.push((dep, name));
     }
-    let meta = build::cargo_metadata(inv, &result.target)?;
     let mut bundled = vec!["THIRD_PARTY_NOTICES.md".to_owned()];
     entries.push((
         inv.root.join("THIRD_PARTY_NOTICES.md"),
@@ -931,41 +1000,10 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
     for (source, name) in metadata
         .into_iter()
         .chain(licenses(inv, result, temp.path())?)
+        .chain(static_core_entries(inv, result, temp.path())?)
     {
         bundled.push(name.clone());
         entries.push((source, format!("assets/{name}")));
-    }
-    for core in &inv.cores {
-        if !core.static_manager_targets.contains(&result.target) {
-            continue;
-        }
-        let package = meta["packages"]
-            .as_array()
-            .context("cargo packages")?
-            .iter()
-            .find(|package| package["name"] == core.package)
-            .with_context(|| format!("statically linked package {} missing", core.package))?;
-        let checkout = core.source_directory(&inv.root)?;
-        let checkout_relative = checkout.strip_prefix(&inv.root)?;
-        let manifest_relative = core.manifest.strip_prefix(checkout_relative)?;
-        let mut source_root = PathBuf::from(
-            package["manifest_path"]
-                .as_str()
-                .context("static core manifest")?,
-        );
-        for _ in manifest_relative.components() {
-            source_root.pop();
-        }
-        for license in &core.licenses {
-            let relative = Path::new(license).strip_prefix(checkout_relative)?;
-            let name = format!(
-                "licenses/{}/{}",
-                core.id,
-                relative.to_string_lossy().replace('\\', "/")
-            );
-            bundled.push(name.clone());
-            entries.push((source_root.join(relative), format!("assets/{name}")));
-        }
     }
     copy_entries(&entries, stage)?;
     bundled.sort();

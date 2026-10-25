@@ -973,6 +973,14 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             ));
             if target.contains("linux") {
                 instructions.push_str(&format!("$env:PKG_CONFIG_PATH = \"$PWD/{prefix}/installed/x64-linux-dynamic/lib/pkgconfig\"\n"));
+            } else if dependencies::apple_subtitle_triplet(target).is_some() {
+                let relative = install
+                    .strip_prefix(&inv.root)?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                instructions.push_str(&format!(
+                    "$env:PKG_CONFIG_ALLOW_CROSS = '1'\n$env:PKG_CONFIG_ALL_STATIC = '1'\n$env:PKG_CONFIG_LIBDIR = \"$PWD/{relative}/lib/pkgconfig\"\n"
+                ));
             }
         }
         if dependencies::needs(inv, target, component)?.ffmpeg {
