@@ -10257,6 +10257,7 @@ dependencies = [
  "jni 0.22.4",
  "libc",
  "mlua",
+ "naga 26.0.0",
  "naga 30.0.1",
  "ndk 0.9.0",
  "parking_lot 0.13.0",
