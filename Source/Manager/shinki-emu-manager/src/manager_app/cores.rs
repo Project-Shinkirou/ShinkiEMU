@@ -1,7 +1,7 @@
 use super::*;
 use crate::core_package::{self, PendingKind};
 use shinki_emu_manager_core::{FamilyCapability, INDEPENDENT_FAMILY_ABI_FINGERPRINT};
-use shinki_emu_manager_ui_slint::{describe_error, CoreViewModel, CoresViewModel};
+use shinki_emu_manager_ui_slint::{CoreViewModel, CoresViewModel, describe_error};
 use shinki_emu_metadata::CoreCatalogEntry;
 use std::io::{self, BufRead, Seek, SeekFrom};
 
@@ -24,7 +24,8 @@ fn capability_label(capability: FamilyCapability) -> &'static str {
     match capability {
         FamilyCapability::CpuFrame => "软件渲染",
         FamilyCapability::RenderExtent => "可调渲染分辨率",
-        FamilyCapability::TextReplacement => "支持实时翻译",
+        FamilyCapability::TextReplacement => "实时翻译",
+        FamilyCapability::AsyncTextReplacement => "非阻塞翻译",
     }
 }
 
@@ -124,7 +125,9 @@ impl ShinkiEmuManagerController {
                     id: plugin_id.unwrap_or_else(|| stem.clone()),
                     name,
                     engine,
-                    version: manifest.map(|manifest| manifest.version).unwrap_or_default(),
+                    version: manifest
+                        .map(|manifest| manifest.version)
+                        .unwrap_or_default(),
                     state: "pending-install".into(),
                     source: "user".into(),
                     removable: true,
@@ -410,7 +413,6 @@ fn render_log_line(value: &serde_json::Value) -> String {
         format!("{rendered} {}", pairs.join(" "))
     }
 }
-
 
 #[cfg(test)]
 mod tests {

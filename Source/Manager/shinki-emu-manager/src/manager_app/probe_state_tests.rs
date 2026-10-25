@@ -140,7 +140,10 @@ fn core_loading_preserves_cached_library_bindings_until_an_explicit_scan() {
     assert_eq!(pending.library.prepare_state, "loading-cores");
     assert_eq!(pending.library.games.len(), 1);
     assert_eq!(pending.library.games[0].problem, "正在准备资料库");
-    assert_eq!(app.prepare_library().unwrap_err(), "SHINKI_EMU_PREPARE_BUSY");
+    assert_eq!(
+        app.prepare_library().unwrap_err(),
+        "SHINKI_EMU_PREPARE_BUSY"
+    );
     settle_background(&mut app);
     assert_eq!(
         app.game(&id).unwrap().family_id.as_deref(),
@@ -761,7 +764,10 @@ fn removed_games_stay_hidden_across_scans_until_undone() {
         stats
     );
     assert!(app.model().unwrap().settings.excluded.is_empty());
-    assert_eq!(app.undo_remove().unwrap_err(), "SHINKI_EMU_UNDO_UNAVAILABLE");
+    assert_eq!(
+        app.undo_remove().unwrap_err(),
+        "SHINKI_EMU_UNDO_UNAVAILABLE"
+    );
 
     app.remove_from_library(&g2).unwrap();
     match app.snackbar_action().unwrap() {
@@ -812,7 +818,10 @@ fn prepare_loads_cores_then_scans_every_root_automatically() {
     while wakes.try_recv().is_ok() {}
     let pending = app.prepare_library().unwrap();
     assert_eq!(pending.library.prepare_state, "loading-cores");
-    assert!(matches!(app.startup_state, background::StartupState::Loading));
+    assert!(matches!(
+        app.startup_state,
+        background::StartupState::Loading
+    ));
     app.registry
         .register_provider(move || provider("test-a", 9_000))
         .unwrap();
@@ -988,8 +997,12 @@ fn onboarding_roots_persist_without_loading_cores() {
     let root = tempfile::tempdir().unwrap();
     let path = game(root.path());
     let open = || {
-        ShinkiEmuManagerController::open_library(root.path().into(), FrameMailbox::new(), Vec::new())
-            .unwrap()
+        ShinkiEmuManagerController::open_library(
+            root.path().into(),
+            FrameMailbox::new(),
+            Vec::new(),
+        )
+        .unwrap()
     };
     let mut app = open();
     assert!(!app.onboarding_completed().unwrap());
@@ -998,12 +1011,167 @@ fn onboarding_roots_persist_without_loading_cores() {
     assert_eq!(model.settings.roots, model.onboarding.roots);
     assert!(!app.cores_started());
     assert!(app.library.list_games().unwrap().is_empty());
+    let start = Instant::now();
+    app.acknowledge_notice(true).unwrap();
+    for step in 0..=80 {
+        app.notice_presented(start + Duration::from_millis(step * 100), true)
+            .unwrap();
+    }
     app.finish_onboarding().unwrap();
     drop(app);
     let mut app = open();
     assert!(app.onboarding_completed().unwrap());
     let model = app.remove_library_root(path.to_str().unwrap()).unwrap();
     assert!(model.onboarding.roots.is_empty());
+}
+
+#[test]
+fn onboarding_requires_checked_notice_and_eight_seconds_of_visible_frames() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        app.finish_onboarding().unwrap_err(),
+        "SHINKI_EMU_NOTICE_ACKNOWLEDGEMENT_REQUIRED"
+    );
+    let start = Instant::now();
+    app.acknowledge_notice(true).unwrap();
+    for step in 0..80 {
+        app.notice_presented(start + Duration::from_millis(step * 100), true)
+            .unwrap();
+    }
+    assert!(app.finish_onboarding().is_err());
+    app.notice_presented(start + Duration::from_secs(8), true)
+        .unwrap();
+    assert!(app.finish_onboarding().is_ok());
+    let record = app
+        .library
+        .app_state::<shinki_emu_manager::resale_notice::Acknowledgement>(
+            shinki_emu_manager::resale_notice::ACK_KEY,
+        )
+        .unwrap()
+        .unwrap();
+    assert!(record.is_current());
+    assert_eq!(record.visible_millis, 8000);
+    drop(app);
+    let app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(app.onboarding_completed().unwrap());
+}
+
+#[test]
+fn changed_notice_digest_requires_reading_and_acknowledgement_again() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    app.library
+        .set_app_state(ONBOARDING_COMPLETED_KEY, &true)
+        .unwrap();
+    app.library
+        .set_app_state(
+            shinki_emu_manager::resale_notice::ACK_KEY,
+            &shinki_emu_manager::resale_notice::Acknowledgement {
+                digest: "previous notice".into(),
+                visible_millis: 8000,
+                acknowledged_unix_millis: 1,
+            },
+        )
+        .unwrap();
+    drop(app);
+    let mut app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(!app.onboarding_completed().unwrap());
+    assert_eq!(app.model().unwrap().resale_notice.remaining_seconds, 8);
+    assert!(app.finish_onboarding().is_err());
+    app.acknowledge_notice(true).unwrap();
+    assert!(app.finish_onboarding().is_err());
+}
+
+#[test]
+fn dwell_without_checkbox_cannot_finish_and_unchecking_revokes_ack() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    let start = Instant::now();
+    for step in 0..=80 {
+        app.notice_presented(start + Duration::from_millis(step * 100), true)
+            .unwrap();
+    }
+    assert!(app.finish_onboarding().is_err());
+    app.acknowledge_notice(true).unwrap();
+    assert!(app.finish_onboarding().is_ok());
+    app.acknowledge_notice(false).unwrap();
+    assert!(app.finish_onboarding().is_err());
+    drop(app);
+    let app = ShinkiEmuManagerController::open_library(
+        root.path().into(),
+        FrameMailbox::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(!app.onboarding_completed().unwrap());
+}
+
+#[test]
+fn missing_hidden_and_undersized_notice_images_cannot_finish_onboarding() {
+    use shinki_emu_manager::resale_notice::slot_is_readable;
+    use shinki_emu_manager_ui_slint::{NoticeClipRect, NoticeSlotRect};
+    let root = tempfile::tempdir().unwrap();
+    let mut app = ShinkiEmuManagerController::open_library(
+        root.path().into(), FrameMailbox::new(), Vec::new(),
+    ).unwrap();
+    app.acknowledge_notice(true).unwrap();
+    let full = NoticeSlotRect {
+        x: 20.0, y: 20.0, width: 320.0, height: 300.0,
+        clip: Some(NoticeClipRect { x: 0.0, y: 0.0, width: 360.0, height: 700.0 }),
+    };
+    let start = Instant::now();
+    for (phase, (visible, slot)) in [
+        (true, NoticeSlotRect::default()),
+        (false, full),
+        (true, NoticeSlotRect { width: 100.0, ..full }),
+        (true, NoticeSlotRect { height: 100.0, ..full }),
+        (true, NoticeSlotRect { y: -100.0, ..full }),
+    ].into_iter().enumerate() {
+        for frame in 0..=100 {
+            app.notice_presented(
+                start + Duration::from_millis((phase as u64 * 101 + frame) * 100),
+                slot_is_readable(visible, slot, (320.0, 300.0), (360.0, 700.0)),
+            ).unwrap();
+        }
+        assert_eq!(app.notice_state().remaining_seconds, 8);
+        assert!(app.finish_onboarding().is_err());
+        assert!(!app.onboarding_completed().unwrap());
+    }
+    let resume = start + Duration::from_secs(60);
+    for frame in 0..=80 {
+        app.notice_presented(
+            resume + Duration::from_millis(frame * 100),
+            slot_is_readable(true, full, (320.0, 300.0), (360.0, 700.0)),
+        ).unwrap();
+    }
+    app.finish_onboarding().unwrap();
+    assert!(app.onboarding_completed().unwrap());
 }
 
 #[test]

@@ -1,0 +1,296 @@
+import {
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, TextField, FilledButton, TonalButton,
+    OutlineButton, TextButton, IconButton, Icon,
+} from "@material";
+import { Steam } from "../../globals.slint";
+import { Icons } from "../../icons.slint";
+import { ChoiceSelect, SupportingText } from "../../components/select.slint";
+import { GameBadges, DepotRow, TransferPanel, SteamText } from "./parts.slint";
+
+component Section {
+    in property <string> title;
+    in property <string> description;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    l := VerticalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            spacing: 2px;
+            padding-left: 4px;
+            padding-right: 4px;
+            MaterialText {
+                text: root.title;
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.primary;
+            }
+            if root.description != "" : MaterialText {
+                text: root.description;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+        Rectangle {
+            border-radius: 16px;
+            background: MaterialPalette.surface-container-low;
+            border-width: 1px;
+            border-color: MaterialPalette.outline-variant;
+            clip: true;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 8px;
+                @children
+            }
+        }
+    }
+}
+
+// Selected owned game: depots, languages, branch, library folder, actions and
+// progress. `sheet` draws it as a full-screen phone sheet with its own back arrow.
+export component SteamDetail {
+    in property <bool> sheet;
+    callback close();
+
+    property <bool> busy: SteamText.transfer-active(Steam.transfer.state);
+    // Progress of another game blocks starting this one; the backend runs one transfer.
+    property <bool> this-transfer: Steam.transfer.app-id == Steam.selected.app-id && Steam.transfer.state != "idle";
+    property <bool> needs-branch-password: Steam.selected-branch != "" && Steam.selected-branch != "public";
+    property <bool> can-download: !root.busy && Steam.selected-depot-count > 0 && Steam.library-root != "";
+    property <length> pad: root.sheet ? 16px : 24px;
+
+    init => { keys.focus(); }
+
+    TouchArea { }
+
+    Rectangle {
+        background: MaterialPalette.surface;
+    }
+
+    keys := FocusScope {
+        width: 100%;
+        height: 100%;
+        key-pressed(event) => {
+            if root.sheet && (event.text == Key.Escape || event.text == Key.Back) {
+                root.close();
+                return accept;
+            }
+            reject
+        }
+
+        sv := ScrollView {
+            width: 100%;
+            height: 100%;
+
+            HorizontalLayout {
+                width: sv.visible-width;
+                padding-left: root.pad;
+                padding-right: root.pad;
+                padding-top: root.sheet ? 4px : 16px;
+                padding-bottom: 32px;
+                alignment: start;
+
+                VerticalLayout {
+                    width: min(680px, sv.visible-width - 2 * root.pad);
+                    spacing: 20px;
+                    alignment: start;
+
+                    // Header: name, facts and badges.
+                    HorizontalLayout {
+                        spacing: 8px;
+                        if root.sheet : VerticalLayout {
+                            alignment: start;
+                            horizontal-stretch: 0;
+                            IconButton {
+                                icon: Icons.arrow-back;
+                                tooltip: "返回游戏列表";
+                                clicked => { root.close(); }
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 6px;
+                            padding-top: root.sheet ? 8px : 0px;
+                            MaterialText {
+                                text: Steam.selected.name;
+                                style: root.sheet ? MaterialTypography.title-large : MaterialTypography.headline-small;
+                                color: MaterialPalette.on-surface;
+                                wrap: word-wrap;
+                                overflow: clip;
+                            }
+                            MaterialText {
+                                text: "App ID " + Steam.selected.app-id
+                                    + (Steam.selected.size != "" ? " · " + Steam.selected.size : "")
+                                    + (Steam.selected.platforms != "" ? " · " + Steam.selected.platforms : "");
+                                style: MaterialTypography.body-medium;
+                                color: MaterialPalette.on-surface-variant;
+                                wrap: word-wrap;
+                                overflow: clip;
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                GameBadges { game: Steam.selected; }
+                            }
+                        }
+                    }
+
+                    if root.this-transfer : TransferPanel {
+                        transfer: Steam.transfer;
+                    }
+
+                    Section {
+                        title: "内容仓库";
+                        description: Steam.depots.length == 0 ? "正在读取内容仓库…" : "默认选中 Windows 版本。";
+                        for depot in Steam.depots : DepotRow {
+                            depot: depot;
+                            enabled: !root.busy;
+                        }
+                    }
+
+                    if Steam.language-depots.length > 0 : Section {
+                        title: "语言";
+                        description: "额外下载的语言内容。";
+                        for depot in Steam.language-depots : DepotRow {
+                            depot: depot;
+                            enabled: !root.busy;
+                        }
+                    }
+
+                    if Steam.branches.length > 0 : VerticalLayout {
+                        spacing: 12px;
+                        ChoiceSelect {
+                            label: "分支";
+                            choices: Steam.branches;
+                            value: Steam.selected-branch;
+                            enabled: !root.busy;
+                            selected(id) => { Steam.select-branch(id, ""); }
+                        }
+                        if root.needs-branch-password : HorizontalLayout {
+                            spacing: 8px;
+                            branch-password := TextField {
+                                horizontal-stretch: 1;
+                                label: "分支密码";
+                                input-type: InputType.password;
+                                enabled: !root.busy;
+                                supporting-text: Steam.branch-password-set ? "已输入分支密码" : "测试分支需要密码时填写；不会保存。";
+                                accepted(text) => {
+                                    if text != "" {
+                                        Steam.select-branch(Steam.selected-branch, text);
+                                        self.text = "";
+                                    }
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: start;
+                                horizontal-stretch: 0;
+                                padding-top: 8px;
+                                TonalButton {
+                                    text: "应用";
+                                    enabled: !root.busy && branch-password.text != "";
+                                    clicked => {
+                                        Steam.select-branch(Steam.selected-branch, branch-password.text);
+                                        branch-password.text = "";
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Library folder: path plus a platform folder picker.
+                    VerticalLayout {
+                        spacing: 4px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            TextField {
+                                horizontal-stretch: 1;
+                                label: "游戏库目录";
+                                text: Steam.library-root;
+                                read-only: true;
+                                leading-icon: Icons.folder-open;
+                            }
+                            VerticalLayout {
+                                alignment: start;
+                                horizontal-stretch: 0;
+                                padding-top: 8px;
+                                OutlineButton {
+                                    text: "选择…";
+                                    enabled: !root.busy;
+                                    clicked => { Steam.choose-library-root(); }
+                                }
+                            }
+                        }
+                        if Steam.library-root == "" : SupportingText {
+                            text: "请选择下载到哪个文件夹。";
+                            error: true;
+                        }
+                    }
+
+                    // Actions; wraps to a column on narrow sheets.
+                    if !root.sheet : HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        if root.busy && root.this-transfer : OutlineButton {
+                            text: "取消";
+                            enabled: Steam.transfer.state != "cancelling";
+                            clicked => { Steam.cancel(); }
+                        }
+                        if Steam.selected.installed : OutlineButton {
+                            icon: Icons.build;
+                            text: "校验并修复";
+                            enabled: !root.busy;
+                            clicked => { Steam.verify(); }
+                        }
+                        if Steam.selected.installed : TonalButton {
+                            icon: Icons.refresh;
+                            text: "检查更新";
+                            enabled: !root.busy;
+                            clicked => { Steam.check-updates(); }
+                        }
+                        FilledButton {
+                            icon: Icons.download;
+                            text: Steam.selected.update-available ? "下载更新" : "下载";
+                            enabled: root.can-download;
+                            clicked => { Steam.download(); }
+                        }
+                    }
+                    if root.sheet : VerticalLayout {
+                        spacing: 8px;
+                        FilledButton {
+                            icon: Icons.download;
+                            text: Steam.selected.update-available ? "下载更新" : "下载";
+                            enabled: root.can-download;
+                            clicked => { Steam.download(); }
+                        }
+                        if root.busy && root.this-transfer : OutlineButton {
+                            text: "取消";
+                            enabled: Steam.transfer.state != "cancelling";
+                            clicked => { Steam.cancel(); }
+                        }
+                        if Steam.selected.installed : TonalButton {
+                            icon: Icons.refresh;
+                            text: "检查更新";
+                            enabled: !root.busy;
+                            clicked => { Steam.check-updates(); }
+                        }
+                        if Steam.selected.installed : OutlineButton {
+                            icon: Icons.build;
+                            text: "校验并修复";
+                            enabled: !root.busy;
+                            clicked => { Steam.verify(); }
+                        }
+                    }
+                    if Steam.selected-depot-count > 0 : MaterialText {
+                        text: "已选 " + Steam.selected-depot-count + " 个内容仓库" + (Steam.selected-size != "" ? "，共 " + Steam.selected-size : "");
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                        horizontal-alignment: root.sheet ? left : right;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,318 @@
+import {
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, TextField, FilledButton, TonalButton,
+    OutlineButton, TextButton, CircularProgressIndicator, HorizontalDivider, Icon,
+} from "@material";
+import { Steam } from "../../globals.slint";
+import { Icons } from "../../icons.slint";
+import { ErrorBanner } from "./parts.slint";
+
+// Rounded section card of the login column.
+component LoginCard {
+    in property <string> title;
+    in property <string> description;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    Rectangle {
+        border-radius: 16px;
+        background: MaterialPalette.surface-container-low;
+        border-width: 1px;
+        border-color: MaterialPalette.outline-variant;
+    }
+
+    l := VerticalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        if root.title != "" || root.description != "" : VerticalLayout {
+            spacing: 4px;
+            if root.title != "" : MaterialText {
+                text: root.title;
+                style: MaterialTypography.title-medium;
+                color: MaterialPalette.on-surface;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            if root.description != "" : MaterialText {
+                text: root.description;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+
+        @children
+    }
+}
+
+// Account + password form. The password lives only in this field and is
+// cleared right after it is handed to the callback.
+component PasswordForm {
+    in property <bool> enabled: true;
+
+    property <bool> ready: account.text != "" && password.text != "";
+
+    function submit() {
+        if root.ready && root.enabled {
+            Steam.login(account.text, password.text);
+            password.text = "";
+        }
+    }
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    l := VerticalLayout {
+        spacing: 12px;
+
+        account := TextField {
+            label: "Steam 账户名";
+            text: Steam.account-name;
+            enabled: root.enabled;
+            input-type: InputType.text;
+            accepted => { password.focus(); }
+        }
+        password := TextField {
+            label: "密码";
+            enabled: root.enabled;
+            input-type: InputType.password;
+            supporting-text: "密码只用于本次登录；登录凭据保存在系统凭据库中。";
+            accepted => { root.submit(); }
+        }
+        HorizontalLayout {
+            alignment: end;
+            FilledButton {
+                text: "登录";
+                enabled: root.ready && root.enabled;
+                clicked => { root.submit(); }
+            }
+        }
+    }
+}
+
+// Steam Guard: email or mobile authenticator code.
+component GuardForm {
+    in property <bool> email;
+
+    function submit() {
+        if code.text != "" {
+            Steam.submit-guard(code.text);
+            code.text = "";
+        }
+    }
+
+    init => { code.focus(); }
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    l := VerticalLayout {
+        spacing: 12px;
+
+        code := TextField {
+            label: root.email ? "邮箱验证码" : "手机令牌验证码";
+            input-type: InputType.text;
+            supporting-text: Steam.guard-hint != "" ? Steam.guard-hint
+                : root.email ? "Steam 已向你的邮箱发送验证码。" : "打开 Steam 手机应用，输入令牌中显示的验证码。";
+            accepted => { root.submit(); }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            TextButton {
+                text: "取消";
+                clicked => { Steam.logout(); }
+            }
+            FilledButton {
+                text: "提交";
+                enabled: code.text != "";
+                clicked => { root.submit(); }
+            }
+        }
+    }
+}
+
+// Spinner + message for a pending step that only offers cancel.
+component PendingStep {
+    in property <string> title;
+    in property <string> body;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    l := VerticalLayout {
+        spacing: 16px;
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                CircularProgressIndicator {
+                    width: 40px;
+                    height: 40px;
+                    indeterminate: true;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 4px;
+                MaterialText {
+                    text: root.title;
+                    style: MaterialTypography.title-medium;
+                    color: MaterialPalette.on-surface;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+                if root.body != "" : MaterialText {
+                    text: root.body;
+                    style: MaterialTypography.body-medium;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            TextButton {
+                text: "取消";
+                clicked => { Steam.logout(); }
+            }
+        }
+    }
+}
+
+// Signed-out and pending login states of the Steam sub-page.
+export component SteamLogin {
+    in property <bool> compact;
+
+    property <string> state: Steam.login-state;
+    property <bool> choosing: root.state == "signed-out" || root.state == "error";
+    property <length> pad: root.compact ? 16px : 24px;
+
+    sv := ScrollView {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+
+        HorizontalLayout {
+            width: sv.visible-width;
+            padding-left: root.pad;
+            padding-right: root.pad;
+            padding-top: 8px;
+            padding-bottom: 32px;
+            alignment: center;
+
+            VerticalLayout {
+                width: min(520px, sv.visible-width - 2 * root.pad);
+                spacing: 16px;
+                alignment: start;
+
+                if root.choosing : MaterialText {
+                    text: "登录 Steam 后可以下载你已拥有的游戏。";
+                    style: MaterialTypography.body-large;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+
+                if Steam.error != "" : ErrorBanner {
+                    title: "登录失败";
+                    text: Steam.error;
+                }
+
+                if root.choosing : LoginCard {
+                    title: "账户密码登录";
+                    PasswordForm { }
+                }
+
+                if root.choosing : LoginCard {
+                    title: "其他登录方式";
+                    VerticalLayout {
+                        spacing: 8px;
+                        TonalButton {
+                            icon: Icons.qr-code;
+                            text: "扫码登录";
+                            clicked => { Steam.qr-login(); }
+                        }
+                        if Steam.can-import-local : OutlineButton {
+                            icon: Icons.upload-file;
+                            text: "导入 Steam 客户端登录";
+                            clicked => { Steam.import-local(); }
+                        }
+                    }
+                }
+
+                if root.state == "connecting" : LoginCard {
+                    PendingStep {
+                        title: "正在连接 Steam";
+                        body: Steam.status;
+                    }
+                }
+
+                if root.state == "email-code" || root.state == "mobile-code" : LoginCard {
+                    title: "Steam 令牌验证";
+                    description: Steam.account-name != "" ? "账户：" + Steam.account-name : "";
+                    GuardForm { email: root.state == "email-code"; }
+                }
+
+                if root.state == "mobile-confirmation" : LoginCard {
+                    PendingStep {
+                        title: "请在 Steam 手机应用中确认";
+                        body: Steam.guard-hint != "" ? Steam.guard-hint : "在手机上批准这次登录后会自动继续。";
+                    }
+                }
+
+                if root.state == "qr-code" : LoginCard {
+                    title: "扫码登录";
+                    description: "用 Steam 手机应用扫描二维码并确认登录。";
+
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 232px;
+                            height: 232px;
+                            border-radius: 12px;
+                            // Quiet zone stays white in dark mode so the code scans.
+                            background: white;
+                            accessible-role: image;
+                            accessible-label: "Steam 登录二维码";
+
+                            if Steam.qr.width > 0 : Image {
+                                width: 200px;
+                                height: 200px;
+                                source: Steam.qr;
+                                image-rendering: pixelated;
+                                image-fit: contain;
+                            }
+                            if Steam.qr.width == 0 : CircularProgressIndicator {
+                                width: 40px;
+                                height: 40px;
+                                indeterminate: true;
+                            }
+                        }
+                    }
+                    if Steam.status != "" : MaterialText {
+                        text: Steam.status;
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        TextButton {
+                            text: "取消";
+                            clicked => { Steam.logout(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

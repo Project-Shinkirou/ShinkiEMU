@@ -7,5 +7,5 @@ style = "both"
 sys_includes = ["stdint.h", "stddef.h"]
 
 [export]
-include = ["CoreApi", "Query", "CpuLease", "FrameSurface", "OpenRequest", "OpenResult", "SessionState", "Descriptor", "RenderExtentSupport", "ProbeResult", "InputEvent", "ConfigField", "ConfigEntry", "Diagnostics", "HostServices", "ModuleOwnerApi", "SessionMenuApi", "SessionMenuItem"]
+include = ["CoreApi", "Query", "CpuLease", "FrameSurface", "OpenRequest", "OpenRequestTextV1", "AsyncTextServiceV1", "OpenResult", "SessionState", "Descriptor", "RenderExtentSupport", "ProbeResult", "InputEvent", "ConfigField", "ConfigEntry", "Diagnostics", "HostServices", "ModuleOwnerApi", "SessionMenuApi", "SessionMenuItem"]
 prefix = "ShinkiEmu"

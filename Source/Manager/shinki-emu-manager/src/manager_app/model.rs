@@ -166,7 +166,8 @@ impl ShinkiEmuManagerController {
                 let stats = play_stats
                     .get(&game.game_id)
                     .ok_or("SHINKI_EMU_LIBRARY_SNAPSHOT_STATS")?;
-                let mut view = self.selection_view(game, metadata.as_ref(), linked, stats, now_ms)?;
+                let mut view =
+                    self.selection_view(game, metadata.as_ref(), linked, stats, now_ms)?;
                 if let Some((vn_id, _)) = versions.get(&game.game_id) {
                     view.other_versions = versions
                         .iter()
@@ -264,6 +265,8 @@ impl ShinkiEmuManagerController {
             },
             session: self.session_view()?,
             onboarding: OnboardingViewModel { roots },
+            resale_notice: self.notice_reading.view(),
+            steam: self.steam.view(),
         })
     }
 
@@ -301,11 +304,10 @@ impl ShinkiEmuManagerController {
             for game in copies {
                 let label = match self.pinned_releases.get(&game.game_id) {
                     Some(release) if !release.title.is_empty() => release.title.clone(),
-                    _ => Path::new(&game.location)
-                        .file_name()
-                        .map_or_else(|| game.location.clone(), |name| {
-                            name.to_string_lossy().into_owned()
-                        }),
+                    _ => Path::new(&game.location).file_name().map_or_else(
+                        || game.location.clone(),
+                        |name| name.to_string_lossy().into_owned(),
+                    ),
                 };
                 labels.insert(game.game_id.clone(), (vn_id.to_owned(), label));
             }

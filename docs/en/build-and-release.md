@@ -48,6 +48,8 @@ Select exactly one of `--manager`, `--core` and `--all-cores` for build. Check t
 
 Each core owns a real `build.rs`. It validates target inputs and records `core-build.json` in Cargo's `OUT_DIR`. C++ adapters drive their native CMake builds; pure Rust cores are compiled by Cargo. Build scripts do not recursively run Cargo or publish releases. xtask reads `compiler-artifact` and `build-script-executed` JSON, not guessed target paths. Components build independently under `.work/target/<target>/<component>`; receipts are under `.work/build/`. Do not combine Artemis's Lua 5.1 graph and Manager's Luau graph with a workspace-wide all-features build.
 
+Manager initializes the process-wide Rustls crypto provider once, before creating network clients or workers. It selects AWS-LC, matching reqwest 0.13 and platform certificate verification; VNDB's current reqwest 0.12 dependency also enables ring, so automatic feature-based selection is ambiguous. Steam and the other providers do not install a process default themselves.
+
 ### Linux desktop
 
 Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
@@ -154,6 +156,10 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc --version 0
 ```
 
 Output directories must be new. Packaging rejects unsafe paths, links, collisions, missing licenses, wrong architectures, missing query exports and unresolved native dependencies. A core package includes the library, resources, dependencies, licenses, provenance and hashed `core.json`. Source bundles retain applicable corresponding-source/relinking inputs.
+
+Manager packages collect the target-filtered Cargo dependency closure (normal and build dependencies, excluding test-only edges). Each crate's declared `license_file`, source-root `LICENSE*`, `COPYING*`, and `NOTICE*` files, and matching license-directory contents ship under `licenses/rust/<name>-<version>/`, alongside `package.json` recording its SPDX expression and text provenance. If the crate supplies no file, every license and exception referenced by its SPDX expression is included as `LICENSE-<SPDX>` using the offline canonical SPDX License List 3.29.0 texts embedded in pinned `spdx` 0.13.6. The source version and archive SHA256 are recorded in `build/dependencies.toml` and checked against the Cargo pins; packaging does not fetch license texts. Unknown fallback identifiers, or a crate with neither files nor an expression, fail packaging. Material components, icons and native dependency notices are collected separately.
+
+Source notice discovery also includes nested asset licenses and font-paired text notices, preserving their relative paths without copying the fonts themselves. Git workspace members inherit provided checkout-root license files when their package directory has none, retaining upstream copyright notices before considering canonical SPDX texts.
 
 Release tags are `manager-v<semver>` or `core-<slug>-v<semver>`. Slugs lowercase plugin_id and replace dots/underscores with hyphens (`ReMinori` → `reminori`); the plugin_id itself is unchanged. Release without `--publish` prepares local artifacts. Publishing requires `--publish` and `GH_TOKEN` or `GITHUB_TOKEN`; it uploads real successful targets and refuses an empty release or a changed same-name asset. Core publication verifies remote bytes before proposing a catalog PR under `Metadata/engines/cores/`. Manager releases are independent of core releases. Distribution restrictions and debug-signed Android test APKs cannot be bypassed by tagging.
 

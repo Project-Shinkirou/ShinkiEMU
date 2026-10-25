@@ -8,6 +8,7 @@ mod dependencies;
 mod metadata;
 mod package;
 mod release;
+mod rust_licenses;
 mod sources;
 #[cfg(test)]
 mod tests;

@@ -23,8 +23,11 @@ shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 mlua.workspace = true
 shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
+shinki-emu-steam = { path = "../../Providers/shinki-emu-steam" }
 roukaku-observability = { workspace = true }
 roukaku-media-core = { workspace = true }
+roukaku-core.workspace = true
+roukaku-text.workspace = true
 clap.workspace = true
 serde.workspace = true
 crossbeam-channel.workspace = true
@@ -34,16 +37,19 @@ tokio.workspace = true
 directories.workspace = true
 pollster.workspace = true
 reqwest.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 semver.workspace = true
 parking_lot = "0.13.0"
 serde_json.workspace = true
 zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
 sha2.workspace = true
+hex.workspace = true
 slint = { workspace = true, features = ["std", "compat-1-2", "accessibility", "unstable-wgpu-30"] }
 thiserror.workspace = true
 tempfile.workspace = true
 tracing.workspace = true
 url.workspace = true
+zeroize.workspace = true
 hassle-rs = "=0.12.0"
 wgpu = { version = "30.0.1", features = ["static-dxc"] }
 
@@ -79,6 +85,5 @@ rustls-platform-verifier = "=0.7.1"
 sha2.workspace = true
 
 [dev-dependencies]
-hex.workspace = true
 crc32fast = "1.5.3"
 flate2.workspace = true

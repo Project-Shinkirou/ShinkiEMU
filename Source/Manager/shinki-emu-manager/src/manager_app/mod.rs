@@ -9,6 +9,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use metadata_runtime::{MetadataCommand, MetadataCommandKind, MetadataPayload, MetadataRuntime};
+use platform_secret::ManagerSecretStore;
 use shinki_emu_manager::modal_service::ModalBridge;
 use shinki_emu_manager::{run_manager_with_initial_state, HostExit, HostWake, ManagerController};
 use shinki_emu_manager_core::model::{
@@ -27,11 +29,7 @@ use shinki_emu_metadata::{
     CompatibilityEntry, CoverAsset, MetadataProviderId, MetadataRecord, MetadataSearchQuery,
     DEFAULT_METADATA_BASE_URL,
 };
-use shinki_emu_translation::{
-    OpenAiApi, SecretResolver, TranslationProfile, TranslationProvider,
-};
-use metadata_runtime::{MetadataCommand, MetadataCommandKind, MetadataPayload, MetadataRuntime};
-use platform_secret::ManagerSecretStore;
+use shinki_emu_translation::{OpenAiApi, SecretResolver, TranslationProfile, TranslationProvider};
 use stage_renderer::{FrameMailbox, ManagerStageRenderer};
 
 const MAX_SCAN_DIRECTORIES: usize = 4_096;
@@ -71,6 +69,7 @@ mod session;
 #[cfg(test)]
 mod session_finish_tests;
 mod snackbar;
+mod steam;
 mod support;
 mod translation;
 mod view_fields;
@@ -88,6 +87,7 @@ struct PendingMetadata {
 
 struct ShinkiEmuManagerController {
     library: Library,
+    notice_reading: shinki_emu_manager::resale_notice::Reading,
     registry: owner::FamilyOwner,
     candidates: BTreeMap<String, FamilyProbeCandidate>,
     startup_state: background::StartupState,
@@ -156,6 +156,7 @@ struct ShinkiEmuManagerController {
     scan_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     last_excluded: Option<String>,
     key_capture: Option<input::KeyCapture>,
+    steam: steam::SteamRuntime,
 }
 
 impl Drop for ShinkiEmuManagerController {
@@ -178,7 +179,19 @@ impl Drop for ShinkiEmuManagerController {
     }
 }
 
+fn initialize_network_crypto() {
+    static INITIALIZE: std::sync::Once = std::sync::Once::new();
+    INITIALIZE.call_once(|| {
+        // reqwest 0.13/platform-verifier uses AWS-LC. VNDB's vn-core still
+        // enables reqwest 0.12's ring backend, so feature inference is ambiguous.
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        }
+    });
+}
+
 pub(super) fn run_application() -> Result<(), Box<dyn std::error::Error>> {
+    initialize_network_crypto();
     shinki_emu_manager::startup::begin();
     let data_dir = platform_data_dir()?;
     fs::create_dir_all(&data_dir)?;

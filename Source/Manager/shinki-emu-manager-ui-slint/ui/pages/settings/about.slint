@@ -1,9 +1,10 @@
 import { MaterialPalette, MaterialText, MaterialTypography, Icon, HorizontalDivider, StateLayerArea } from "@material";
 import { AboutSlint } from "std-widgets.slint";
-import { App, Onboarding } from "../../globals.slint";
+import { App, Onboarding, ResaleNoticeState } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { PageScroll, SettingGroup } from "./common.slint";
 import { DisclaimerText } from "../../components/disclaimer.slint";
+import { ResaleNoticeSlot } from "../../components/resale-notice.slint";
 
 component LinkRow {
     in property <string> text;
@@ -73,6 +74,20 @@ component LinkRow {
 export component AboutSection inherits PageScroll {
     title: "关于";
 
+    property <{x: length, y: length, width: length, height: length}> viewport: {
+        x: root.viewport-x,
+        y: root.viewport-y,
+        width: root.viewport-width,
+        height: root.viewport-height,
+    };
+
+    function report-viewport() {
+        ResaleNoticeState.report-about-clip(root.viewport.x, root.viewport.y, root.viewport.width, root.viewport.height);
+    }
+
+    init => { root.report-viewport(); }
+    changed viewport => { root.report-viewport(); }
+
     SettingGroup {
         HorizontalLayout {
             spacing: 16px;
@@ -105,6 +120,24 @@ export component AboutSection inherits PageScroll {
                     overflow: clip;
                 }
             }
+        }
+    }
+
+    // Rust-rasterized notice, with the same title style as SettingGroup.
+    VerticalLayout {
+        spacing: 8px;
+        HorizontalLayout {
+            padding-left: 4px;
+            padding-right: 4px;
+            MaterialText {
+                text: "防倒卖声明";
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.primary;
+            }
+        }
+        ResaleNoticeSlot {
+            about: true;
+            wide: root.width >= 600px;
         }
     }
 

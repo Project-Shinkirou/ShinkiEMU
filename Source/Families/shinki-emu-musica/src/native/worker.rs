@@ -11,6 +11,7 @@ pub(super) struct Launch {
     pub configuration: Vec<shinki_emu_sdk::runtime::ConfigEntry>,
     pub render_extent: abi::Extent,
     pub window: abi::WindowState,
+    pub replacement: Option<text::TextBridge>,
 }
 pub(super) fn run(
     graphics_owner: owner::GraphicsOwner,
@@ -24,6 +25,7 @@ pub(super) fn run(
         configuration,
         render_extent,
         window,
+        replacement,
     } = launch;
     let request = OpenRequest {
         game_path: path,
@@ -39,11 +41,7 @@ pub(super) fn run(
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;
-        owner.open_native_session(
-            request,
-            render_extent,
-            Some(text::TextBridge(services.clone())),
-        )?
+        owner.open_native_session(request, render_extent, replacement)?
     };
     serve(session, window.suspended != 0, services, commands, ready)
 }

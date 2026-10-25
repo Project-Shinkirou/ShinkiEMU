@@ -2,10 +2,18 @@ use super::*;
 impl MusicaSession {
     pub(super) fn tick(&mut self) -> SessionResult<bool> {
         if self.pending.is_some() {
+            if self.vm.fast_forward_active() {
+                return self.skip_translation();
+            }
             let event = self.semantic_event(None)?;
-            let changed = self.apply_event(event)?;
-            self.update_pause()?;
-            return Ok(changed);
+            if event.is_none() {
+                let tick =
+                    self.vm.state().fixed_tick.checked_add(1).ok_or_else(|| {
+                        error("SHINKI_EMU_MUSICA_TICK", "tick counter overflowed")
+                    })?;
+                self.vm.advance_waiting_tick(tick).map_err(vm_error)?;
+            }
+            return self.apply_event(event);
         }
         let visual_completion = matches!(
             self.vm.state().wait,
@@ -124,19 +132,8 @@ impl MusicaSession {
             }
         }
         let event = self.vm.step(tick).map_err(vm_error)?;
-        let hooked = self
-            .replacement
-            .as_ref()
-            .is_some_and(|service| service.0.text.is_some())
-            && matches!(
-                event,
-                Some(MusicaVmEvent::Message { .. } | MusicaVmEvent::Choice)
-            );
         let event = self.semantic_event(event)?;
         let changed = self.apply_event(event)?;
-        if hooked {
-            self.update_pause()?;
-        }
         Ok(changed || visual_completion)
     }
 
