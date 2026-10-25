@@ -39,6 +39,8 @@ pub const CORE_ERROR: Status = 6;
 pub const PANICKED: Status = 7;
 pub const NO_MATCH: Status = 8;
 pub const STALE_CONTEXT: Status = 9;
+/// The nonblocking text service has not completed this request.
+pub const PENDING: Status = 10;
 pub type Session = *mut c_void;
 
 #[repr(C)]

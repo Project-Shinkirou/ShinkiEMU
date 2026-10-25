@@ -26,6 +26,17 @@ Only C-layout values cross the boundary: versioned headers, bounded borrowed spa
 
 Ordinary ABI calls are serialized on the host's owner thread. The core's native owner drives its own VM, render/audio scheduling and resource lifetimes. Manager supplies input, control and host services; there is no host advance callback. Cancellation and epoch checks reject late results from obsolete sessions or output generations.
 
+## Text replacement levels
+
+The descriptor capability bits are the source of truth: no `CAP_TEXT_HOOK` means **none**; `CAP_TEXT_HOOK` alone means **synchronous**; `CAP_TEXT_HOOK | CAP_ASYNC_TEXT` means **async-v1**. `CAP_ASYNC_TEXT` without the hook bit is invalid. The nine pinned external cores currently declare none; external cores may adopt synchronous replacement without changing their scheduling model. Ownership defines SDK cores: Musica is SDK-owned; Artemis remains external despite using SDK audio. CMVS is maintained separately.
+
+ABI version remains **3**. `OpenRequestTextV1` embeds the unchanged base `OpenRequest` and appends a pointer to `AsyncTextServiceV1` (version 1 and explicit size). The host sets the base header size to cover the wrapper. Cores read the tail only when that size covers the wrapper, then validate the service version, size and callbacks. A null pointer disables replacement. Base-only external binaries keep using the unchanged `HostServices.text` synchronous callbacks. An async-v1 core never falls back to the synchronous path.
+
+`submit` copies bounded text items before returning; `poll` returns `PENDING` immediately until completion. Only text advance waits: rendering, animations, input and audio keep running. Results retain the replacement semantics, item IDs and `(session_epoch, context_epoch, request_id)` identity. Request IDs increase within a context. Repeating an unacknowledged submit is idempotent. `CAPACITY` reports the required caller-owned buffers without executing the provider or extensions twice; completed output remains available until `acknowledge`. `cancel` retires only the matching request, while `invalidate` advances the context and discards old requests, source context and provider cache. Callbacks may not wait for network or script completion.
+
+Manager uses the provider's `AsyncTranslationService` behind both paths; the synchronous compatibility callback waits for the same result. Musica submits once and polls with retained buffers from its native pump, without suspending audio. Enter, Space, primary click or Ctrl skips pending translation and displays the original replacement input; the input is consumed so it does not also advance that line. Skip mode also skips pending translation. Skip, load, rollback and close discard late completions; retries retain the failed text event and identity without rerunning the VM.
+
+
 ## CPU surface leases
 
 A Ready `FrameSurface` carries actual dimensions, stride, pixel/color/row metadata, identity and one immutable CPU lease. Validate the metadata and epoch before adopting it. Pending and Unchanged frames do not carry pixel ownership. Preserve the declared raster/logical geometry and color interpretation.

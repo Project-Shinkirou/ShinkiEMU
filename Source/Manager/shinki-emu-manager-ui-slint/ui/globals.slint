@@ -1,3 +1,5 @@
+import { MaterialPalette } from "@material";
+
 export struct Appearance {
     theme-mode: string,
     density: string,
@@ -505,4 +507,179 @@ export global Onboarding {
     callback add-root();
     callback remove-root(string);
     callback finish();
+}
+
+// Rust owns and rasterizes the bilingual text. Slint displays the images and
+// reports their geometry; Rust validates visibility and runs the dwell clock.
+export global ResaleNoticeState {
+    in property <bool> checked;
+    in property <int> remaining-seconds: 8;
+    in property <bool> acknowledged;
+    in property <image> onboarding-image;
+    in property <image> about-image;
+    out property <bool> dark: App.dark;
+    out property <color> surface-color: MaterialPalette.surface-container-low;
+    out property <color> on-surface-color: MaterialPalette.on-surface;
+    // Measured raster heights (padding included) for the current slot widths.
+    in property <length> onboarding-content-height: 340px;
+    in property <length> about-content-height: 340px;
+
+    // Image rectangles in logical window coordinates. Missing images report zero.
+    out property <length> onboarding-x;
+    out property <length> onboarding-y;
+    out property <length> onboarding-width;
+    out property <length> onboarding-height;
+    out property <length> about-x;
+    out property <length> about-y;
+    out property <length> about-width;
+    out property <length> about-height;
+    // Visible viewport of the scroll area holding each image.
+    out property <length> onboarding-clip-x;
+    out property <length> onboarding-clip-y;
+    out property <length> onboarding-clip-width;
+    out property <length> onboarding-clip-height;
+    out property <length> about-clip-x;
+    out property <length> about-clip-y;
+    out property <length> about-clip-width;
+    out property <length> about-clip-height;
+
+    // Set by the settings page: false while a narrow window shows the category
+    // list although the selected category is still 关于.
+    property <bool> about-open;
+    property <bool> covered: Session.active || Logs.open || Dialogs.modal-active || Dialogs.fatal-active;
+
+    // True only while some part of the slot is on screen and not under an overlay.
+    // Reports from pages that are gone are masked by the routing checks.
+    out property <bool> onboarding-visible: App.page == "onboarding" && Onboarding.step == 0 && !self.covered
+        && self.overlaps(self.onboarding-x, self.onboarding-y, self.onboarding-width, self.onboarding-height,
+            self.onboarding-clip-x, self.onboarding-clip-y, self.onboarding-clip-width, self.onboarding-clip-height);
+    out property <bool> about-visible: App.page == "settings" && App.settings-category == "about" && self.about-open && !self.covered
+        && self.overlaps(self.about-x, self.about-y, self.about-width, self.about-height,
+            self.about-clip-x, self.about-clip-y, self.about-clip-width, self.about-clip-height);
+
+    // Rust records the checkbox, then acknowledges only after the dwell completes.
+    callback acknowledge(bool);
+
+    pure function overlaps(ax: length, ay: length, aw: length, ah: length, bx: length, by: length, bw: length, bh: length) -> bool {
+        aw > 0px && ah > 0px && bw > 0px && bh > 0px && ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah
+    }
+
+    public function report-onboarding-slot(x: length, y: length, width: length, height: length) {
+        self.onboarding-x = x;
+        self.onboarding-y = y;
+        self.onboarding-width = width;
+        self.onboarding-height = height;
+    }
+
+    public function report-onboarding-clip(x: length, y: length, width: length, height: length) {
+        self.onboarding-clip-x = x;
+        self.onboarding-clip-y = y;
+        self.onboarding-clip-width = width;
+        self.onboarding-clip-height = height;
+    }
+
+    public function report-about-slot(x: length, y: length, width: length, height: length) {
+        self.about-x = x;
+        self.about-y = y;
+        self.about-width = width;
+        self.about-height = height;
+    }
+
+    public function report-about-clip(x: length, y: length, width: length, height: length) {
+        self.about-clip-x = x;
+        self.about-clip-y = y;
+        self.about-clip-width = width;
+        self.about-clip-height = height;
+    }
+
+    public function report-about-open(open: bool) {
+        self.about-open = open;
+    }
+}
+
+// Owned Steam game. `app-id` carries the u32 bit pattern; sizes are preformatted.
+export struct SteamGame {
+    app-id: int,
+    name: string,
+    size: string,
+    platforms: string,
+    languages: string,
+    installed: bool,
+    update-available: bool,
+}
+
+export struct SteamDepot {
+    depot-id: int,
+    name: string,
+    platform: string,
+    language: string,
+    size: string,
+    selected: bool,
+}
+
+// `state`: idle | preparing | downloading | verifying | cancelling | cancelled | complete | error.
+// `progress` is -1 while the total is unknown.
+export struct SteamTransfer {
+    state: string,
+    app-id: int,
+    // Name of the game being transferred (looked up in `games`).
+    name: string,
+    bytes: string,
+    files: string,
+    speed: string,
+    eta: string,
+    progress: float,
+    status: string,
+    error: string,
+}
+
+// Steam sub-page of 添加游戏. Secrets (password, guard code, branch password)
+// only travel through the callbacks; the model never sends them back.
+export global Steam {
+    // signed-out | connecting | email-code | mobile-code | mobile-confirmation | qr-code | signed-in | error
+    in-out property <string> login-state: "signed-out";
+    in-out property <string> account-name;
+    in-out property <bool> can-import-local;
+    // QR code of the Steam challenge URL, rendered locally by the adapter.
+    in-out property <image> qr;
+    in-out property <string> guard-hint;
+    in-out property <string> status;
+    in-out property <string> error;
+    // idle | loading | ready | error
+    in-out property <string> library-state: "idle";
+    in-out property <[SteamGame]> games;
+    in-out property <string> query;
+    in-out property <int> selected-app-id;
+    // Row of `games` matching `selected-app-id`; app-id 0 when none.
+    in-out property <SteamGame> selected;
+    // Content depots (no language) and independent language depots, split by the adapter.
+    in-out property <[SteamDepot]> depots;
+    in-out property <[SteamDepot]> language-depots;
+    // Count and total size of the selected depots of both lists.
+    in-out property <int> selected-depot-count;
+    in-out property <string> selected-size;
+    in-out property <[Choice]> branches;
+    in-out property <string> selected-branch;
+    in-out property <bool> branch-password-set;
+    in-out property <string> library-root;
+    in-out property <SteamTransfer> transfer: { state: "idle", progress: -1 };
+    // UI-only: phone shows the selected game as a full-screen sheet.
+    in-out property <bool> detail-open;
+
+    callback open();
+    callback login(string, string);
+    callback qr-login();
+    callback import-local();
+    callback submit-guard(string);
+    callback logout();
+    callback refresh-library();
+    callback search(string);
+    callback select-game(int);
+    callback select-depot(int, bool);
+    callback select-branch(string, string);
+    callback choose-library-root();
+    callback download();
+    callback cancel();
+    callback check-updates();
+    callback verify();
 }

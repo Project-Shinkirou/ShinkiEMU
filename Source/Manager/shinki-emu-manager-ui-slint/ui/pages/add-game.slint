@@ -1,0 +1,179 @@
+import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, ScrollView, Icon } from "@material";
+import { App, Library, Steam } from "../globals.slint";
+import { Icons } from "../icons.slint";
+import { Theme } from "../theme.slint";
+
+// One way of adding games: a full-width clickable card.
+export component SourceTile {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+    callback activate();
+
+    min-height: max(88px, Theme.touch-target, l.min-height);
+    preferred-height: max(88px, l.preferred-height);
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: root.title;
+    accessible-description: root.description;
+    accessible-action-default => { root.activate(); }
+
+    Rectangle {
+        border-radius: 16px;
+        background: MaterialPalette.surface-container-low;
+        border-width: keys.has-focus ? 2px : 1px;
+        border-color: keys.has-focus ? MaterialPalette.primary : MaterialPalette.outline-variant;
+    }
+
+    Rectangle {
+        border-radius: 16px;
+        background: touch.pressed ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-press)
+            : touch.has-hover ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-hover)
+            : transparent;
+    }
+
+    l := HorizontalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                background: MaterialPalette.primary-container;
+                Icon {
+                    width: 24px;
+                    height: 24px;
+                    source: root.icon;
+                    colorize: MaterialPalette.on-primary-container;
+                }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            MaterialText {
+                text: root.title;
+                style: MaterialTypography.title-medium;
+                color: MaterialPalette.on-surface;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            MaterialText {
+                text: root.description;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                width: 24px;
+                height: 24px;
+                source: Icons.chevron-right;
+                colorize: MaterialPalette.on-surface-variant;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            keys.focus();
+            root.activate();
+        }
+    }
+
+    keys := FocusScope {
+        x: 0px;
+        width: 0px;
+        key-pressed(event) => {
+            if event.text == " " || event.text == "\n" {
+                root.activate();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// 添加游戏: pick an existing local folder or download an owned Steam game.
+export component AddGamePage {
+    in property <bool> compact;
+
+    property <length> bar-height: 64px;
+    property <length> pad: root.compact ? 16px : 24px;
+
+    Rectangle {
+        background: MaterialPalette.surface;
+    }
+
+    SmallAppBar {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.bar-height;
+        title: "添加游戏";
+        leading-button: { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true };
+        leading-button-clicked => { App.page = "library"; }
+    }
+
+    sv := ScrollView {
+        x: 0px;
+        y: root.bar-height;
+        width: root.width;
+        height: root.height - root.bar-height;
+
+        HorizontalLayout {
+            width: sv.visible-width;
+            padding-left: root.pad;
+            padding-right: root.pad;
+            padding-top: 8px;
+            padding-bottom: 32px;
+            alignment: start;
+
+            VerticalLayout {
+                width: min(640px, sv.visible-width - 2 * root.pad);
+                spacing: 12px;
+                alignment: start;
+
+                MaterialText {
+                    text: "选择游戏的来源。";
+                    style: MaterialTypography.body-large;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+
+                SourceTile {
+                    icon: Icons.folder-open;
+                    title: "本地目录";
+                    description: "选择电脑或设备上已有的游戏文件夹，ShinkiEMU 会识别其中的作品。";
+                    activate => {
+                        // The scan reports its progress on the library page.
+                        App.page = "library";
+                        Library.add-directory();
+                    }
+                }
+
+                SourceTile {
+                    icon: Icons.download;
+                    title: "Steam 下载";
+                    description: "登录 Steam，下载你已拥有的游戏到游戏库目录。";
+                    activate => {
+                        App.page = "steam";
+                        Steam.open();
+                    }
+                }
+            }
+        }
+    }
+}

@@ -107,6 +107,7 @@ impl ShinkiEmuManagerController {
         let enabling = enabled && !self.network_allowed;
         self.network_allowed = enabled;
         if !enabled {
+            self.steam.suspend()?;
             self.auto_link_queue.clear();
         }
         if enabling {

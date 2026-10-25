@@ -2,6 +2,11 @@
 
 本文件随 ShinkiEMU Windows 应用分发。发布包还需包含活动依赖的完整许可证文本；以下条目记录需要单独保留的来源与归因。
 
+## steamroom / steamroom-client 0.3.0
+
+- Upstream: <https://github.com/landaire/steamroom>; published crates pinned to `0.3.0`, by Lander Brandt.
+- License: MIT OR Apache-2.0. Manager uses this clean-room Steam protocol and depot downloader implementation, not DepotDownloader binaries or GPL code. Distribution must retain both crates' upstream license texts and the licenses of their resolved dependency closure.
+
 ## Slint 1.18.1
 
 - Copyright © SixtyFPS GmbH.
@@ -25,15 +30,15 @@
 - Upstream: <https://github.com/mlua-rs/mlua/tree/v0.12.2>，MIT；使用 Cargo.lock 固定的 crates.io 源码。
 - 上游通过浮点位模式比较实现精确数字分类，保留 IEEE 负零，不以 epsilon 将极小非零值转成 `0`；旧的 0.10.5 本地回补已删除。
 - Luau 不区分整数和同值的整值浮点字面量；数据编码保留数值，不保证保留原 TOML 数字字面量的类型拼写。
-- 运行包从锁定的 mlua 源码复制完整 MIT 许可到 `licenses/mlua/LICENSE`。
+- 运行包从锁定的 mlua 源码复制完整 MIT 许可到 `licenses/rust/mlua-0.12.2/LICENSE`。
 
-- mlua-sys 0.13.0 使用官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`（MIT）：发布版仍只识别最大字节码版本 11，Luau 744 默认生成 13、支持到 14，会在 `Lua::new` 加载内置 require 时失败。该修复将识别上限同步为 14，Luau 编译器和 mlua 版本不降级。绑定使用上游仓库根目录的完整 MIT 许可，运行包复制为 `licenses/mlua-sys/LICENSE`。
+- mlua-sys 0.13.0 使用官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`（MIT）：发布版仍只识别最大字节码版本 11，Luau 744 默认生成 13、支持到 14，会在 `Lua::new` 加载内置 require 时失败。该修复将识别上限同步为 14，Luau 编译器和 mlua 版本不降级。绑定使用上游仓库根目录的完整 MIT 许可，运行包复制为 `licenses/rust/mlua-sys-0.13.0/LICENSE`。
 
 ## Luau 744 / luau0-src 0.22.1
 
 - Upstream: <https://github.com/luau-lang/luau>，MIT；ShinkiEMU lockfile 固定 `luau0-src 0.22.1+luau744`。
-- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/luau0-src/LICENSE`。
-- 打包器通过锁定的 Cargo metadata 定位精确版本源码并读取许可；源码许可缺失时打包失败，不生成替代文本。
+- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/rust/luau0-src-0.22.1+luau744/LICENSE`。
+- 打包器通过目标平台筛选的 `cargo metadata` 定位精确版本源码，与 Manager 完整 Rust 依赖闭包一起收集许可文件和 SPDX 声明；Git workspace 的仓库根目录许可也按原文保留，不生成替代许可文本。
 
 ## aPLib 通用解码
 

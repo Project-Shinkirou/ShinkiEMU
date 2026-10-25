@@ -8,6 +8,9 @@ pub const CAP_CPU_SURFACE: u64 = 1;
 pub const CAP_TEXT_HOOK: u64 = 4;
 pub const CAP_LIVE_CONFIGURATION: u64 = 8;
 pub const CAP_RENDER_EXTENT: u64 = 16;
+/// Text replacement uses the nonblocking v1 host service. Requires CAP_TEXT_HOOK.
+/// CAP_TEXT_HOOK without this bit explicitly selects synchronous replacement.
+pub const CAP_ASYNC_TEXT: u64 = 32;
 pub const MAX_DISPLAY_NAME_BYTES: usize = 64;
 pub const MAX_RENDER_EXTENT: u32 = 16384;
 pub const RENDER_PRESERVE_ASPECT: u32 = 1;
@@ -94,6 +97,9 @@ impl Descriptor {
         if !self.header.accepts::<Self>() || self.capabilities & CAP_CPU_SURFACE == 0 {
             return Err(UNSUPPORTED);
         }
+        if self.capabilities & CAP_ASYNC_TEXT != 0 && self.capabilities & CAP_TEXT_HOOK == 0 {
+            return Err(UNSUPPORTED);
+        }
         for name in [self.display_name, self.family_name] {
             let text = unsafe { name.text(MAX_DISPLAY_NAME_BYTES)? };
             if text.is_empty() || text.chars().any(char::is_control) {
@@ -139,6 +145,33 @@ pub struct OpenRequest {
     /// `CAP_RENDER_EXTENT` and must lie within the declared min/max; otherwise
     /// open fails with INVALID_ARGUMENT.
     pub render_extent: Extent,
+}
+/// Additive v1 host-service extension. The base OpenRequest layout is unchanged,
+/// so ABI v3 cores compiled against the base continue to work. Read this tail
+/// only when base.header.size covers this entire struct. A null service disables
+/// replacement; SDK-owned asynchronous cores must never fall back to sync text.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OpenRequestTextV1 {
+    pub base: OpenRequest,
+    pub text_async: *const crate::AsyncTextServiceV1,
+}
+impl OpenRequest {
+    /// # Safety
+    /// The allocation must contain at least header.size readable bytes.
+    pub unsafe fn async_text(&self) -> Result<Option<crate::AsyncTextServiceV1>, Status> {
+        if !self.header.accepts::<OpenRequestTextV1>() {
+            return Ok(None);
+        }
+        let extended = unsafe { &*(self as *const Self).cast::<OpenRequestTextV1>() };
+        let Some(service) = (unsafe { extended.text_async.as_ref() }) else {
+            return Ok(None);
+        };
+        if !service.validate() {
+            return Err(INVALID_ARGUMENT);
+        }
+        Ok(Some(*service))
+    }
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

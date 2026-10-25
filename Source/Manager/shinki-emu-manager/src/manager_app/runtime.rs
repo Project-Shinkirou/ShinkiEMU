@@ -139,11 +139,13 @@ impl ShinkiEmuManagerController {
         let owner_changed = self.poll_owner()?;
         let connection_changed = self.poll_connection_test();
         let metadata_changed = self.poll_metadata()?;
+        let steam_changed = self.poll_steam()?;
         if background_changed
             || patch_changed
             || owner_changed
             || metadata_changed
             || connection_changed
+            || steam_changed
         {
             Ok(Some(self.model()?))
         } else {
@@ -153,6 +155,7 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn set_host_wake(&mut self, wake: HostWake) {
         self.registry.set_wake(wake.clone());
+        self.steam.set_wake(wake.clone());
         self.host_wake = Some(wake.clone());
         self.metadata.set_wake(wake);
     }

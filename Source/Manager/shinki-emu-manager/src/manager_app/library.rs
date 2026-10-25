@@ -56,25 +56,42 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn onboarding_completed(&self) -> Result<bool, String> {
-        Ok(self
-            .library
-            .app_state::<bool>(ONBOARDING_COMPLETED_KEY)
-            .map_err(|error| error.to_string())?
-            .unwrap_or(false))
+        Ok(self.notice_reading.view().acknowledged
+            && self
+                .library
+                .app_state::<bool>(ONBOARDING_COMPLETED_KEY)
+                .map_err(|error| error.to_string())?
+                .unwrap_or(false))
     }
 
     pub(super) fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String> {
+        if !self.notice_reading.view().acknowledged {
+            return Err("SHINKI_EMU_NOTICE_ACKNOWLEDGEMENT_REQUIRED".into());
+        }
         self.library
             .set_app_state(ONBOARDING_COMPLETED_KEY, &true)
             .map_err(|error| error.to_string())?;
         self.model()
     }
 
+    pub(super) fn persist_notice_acknowledgement(&mut self) -> Result<(), String> {
+        if let Some(record) = self.notice_reading.pending_record(unix_time_ms()?) {
+            self.library
+                .set_app_state(shinki_emu_manager::resale_notice::ACK_KEY, &record)
+                .map_err(|error| error.to_string())?;
+            self.notice_reading.recorded();
+        }
+        Ok(())
+    }
+
     pub(super) fn game_location(&self, game_id: &str) -> Result<PathBuf, String> {
         Ok(PathBuf::from(self.game(game_id)?.location))
     }
 
-    pub(super) fn remove_from_library(&mut self, game_id: &str) -> Result<ManagerViewModel, String> {
+    pub(super) fn remove_from_library(
+        &mut self,
+        game_id: &str,
+    ) -> Result<ManagerViewModel, String> {
         if self
             .active
             .as_ref()
@@ -203,8 +220,17 @@ impl ShinkiEmuManagerController {
             .app_state::<bool>(SENSITIVE_COVERS_KEY)
             .map_err(|error| error.to_string())?
             .unwrap_or(false);
+        let notice_record = library
+            .app_state::<Option<shinki_emu_manager::resale_notice::Acknowledgement>>(
+                shinki_emu_manager::resale_notice::ACK_KEY,
+            )
+            .map_err(|error| error.to_string())?
+            .flatten();
         let mut controller = Self {
             library,
+            notice_reading: shinki_emu_manager::resale_notice::Reading::restored(
+                notice_record.as_ref(),
+            ),
             registry,
             candidates: BTreeMap::new(),
             startup_state: background::StartupState::Waiting,
@@ -214,6 +240,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             diagnostic_severity: "info",
             plugin_errors: BTreeMap::new(),
+            steam: steam::SteamRuntime::new(&data_dir),
             data_dir,
             extensions: None,
             game_roots,

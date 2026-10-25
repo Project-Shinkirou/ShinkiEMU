@@ -697,3 +697,181 @@ fn macho_load_commands_require_relocatable_rpaths_and_a_complete_closure() {
     fs::write(&library, synthetic_macho("/developer/private")).unwrap();
     assert!(binary::inspect(&library, "x86_64-apple-darwin", false).is_err());
 }
+
+#[test]
+fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
+    use serde_json::json;
+    let temp = tempfile::tempdir().unwrap();
+    let mut packages = Vec::new();
+    for (id, name, version, license, license_file) in [
+        ("manager", "shinki-emu-manager", "1.0.0", Some("MIT"), None),
+        (
+            "direct",
+            "steamroom",
+            "0.3.0",
+            Some("MIT OR Apache-2.0"),
+            Some("legal/custom.txt"),
+        ),
+        ("transitive", "steamroom-client", "0.3.0", None, None),
+        (
+            "build",
+            "generator",
+            "1.0.0",
+            Some("(Apache-2.0 WITH LLVM-exception) AND (MIT OR BSD-3-Clause)"),
+            None,
+        ),
+        ("old", "steamroom", "0.2.0", Some("MIT/Apache-2.0"), None),
+        ("dev", "test-only", "1.0.0", None, None),
+        ("other", "other-platform", "1.0.0", None, None),
+    ] {
+        let root = temp.path().join(id);
+        fs::create_dir_all(root.join("legal")).unwrap();
+        packages.push(json!({
+            "id": id, "name": name, "version": version, "license": license,
+            "license_file": license_file, "manifest_path": root.join("Cargo.toml")
+        }));
+    }
+    fs::write(
+        temp.path().join("direct/legal/custom.txt"),
+        "custom license",
+    )
+    .unwrap();
+    for filename in ["LICENSE-MIT", "COPYING.txt", "NOTICE", "license-apache"] {
+        fs::write(temp.path().join("direct").join(filename), filename).unwrap();
+    }
+    fs::write(temp.path().join("transitive/LICENSE"), "transitive license").unwrap();
+    fs::create_dir(temp.path().join("transitive/LICENSES")).unwrap();
+    fs::write(
+        temp.path()
+            .join("transitive/LICENSES/LicenseRef-Custom.txt"),
+        "original custom license",
+    )
+    .unwrap();
+    fs::write(temp.path().join("direct/README.md"), "not a license").unwrap();
+    let git_checkout = temp.path().join("git-workspace");
+    fs::create_dir_all(git_checkout.join(".git")).unwrap();
+    fs::create_dir_all(git_checkout.join("crates/binding")).unwrap();
+    fs::write(
+        git_checkout.join("LICENSE"),
+        "MIT license text with the upstream workspace copyright\n",
+    )
+    .unwrap();
+    packages.push(json!({
+        "id": "binding", "name": "binding", "version": "1.0.0", "license": "MIT",
+        "license_file": null, "source": "git+https://example.org/workspace#revision",
+        "manifest_path": git_checkout.join("crates/binding/Cargo.toml")
+    }));
+    let dep = |pkg: &str, kind: Option<&str>| {
+        json!({
+            "pkg": pkg, "dep_kinds": [{"kind": kind, "target": null}]
+        })
+    };
+    let mut metadata = json!({
+        "packages": packages,
+        "resolve": {"nodes": [
+            {"id": "manager", "deps": [dep("direct", None), dep("build", Some("build")), dep("binding", None), dep("dev", Some("dev"))]},
+            {"id": "direct", "deps": [dep("transitive", None), dep("old", None)]},
+            {"id": "transitive", "deps": [dep("direct", None)]},
+            {"id": "build", "deps": []},
+            {"id": "old", "deps": []},
+            {"id": "dev", "deps": []},
+            {"id": "other", "deps": []},
+            {"id": "binding", "deps": []}
+        ]}
+    });
+    let scratch = temp.path().join("scratch");
+    let entries = crate::rust_licenses::entries(&metadata, &scratch).unwrap();
+    let output = temp.path().join("package");
+    fs::create_dir(&output).unwrap();
+    copy_entries(&entries, &output).unwrap();
+    assert_eq!(
+        fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0/custom.txt")).unwrap(),
+        "custom license"
+    );
+    for filename in ["LICENSE-MIT", "COPYING.txt", "NOTICE", "license-apache"] {
+        assert_eq!(
+            fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0").join(filename))
+                .unwrap(),
+            filename
+        );
+    }
+    assert!(
+        output
+            .join("licenses/rust/steamroom-0.2.0/package.json")
+            .is_file()
+    );
+    assert!(
+        output
+            .join("licenses/rust/steamroom-0.2.0/LICENSE-MIT")
+            .is_file()
+    );
+    assert!(
+        output
+            .join("licenses/rust/steamroom-0.2.0/LICENSE-Apache-2.0")
+            .is_file()
+    );
+    assert!(
+        output
+            .join("licenses/rust/steamroom-client-0.3.0/LICENSE")
+            .is_file()
+    );
+    assert_eq!(
+        fs::read_to_string(
+            output.join("licenses/rust/steamroom-client-0.3.0/LICENSES/LicenseRef-Custom.txt")
+        )
+        .unwrap(),
+        "original custom license"
+    );
+    let record: serde_json::Value = serde_json::from_slice(
+        &fs::read(output.join("licenses/rust/generator-1.0.0/package.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(record["text_origin"], "canonical-spdx");
+    assert!(record["canonical_text_source"]["sha256"].is_string());
+    for id in ["Apache-2.0", "LLVM-exception", "MIT", "BSD-3-Clause"] {
+        let path = output.join(format!("licenses/rust/generator-1.0.0/LICENSE-{id}"));
+        assert!(fs::metadata(path).unwrap().len() > 100);
+    }
+    assert!(
+        !output
+            .join("licenses/rust/steamroom-0.3.0/LICENSE-Apache-2.0")
+            .exists()
+    );
+    assert_eq!(
+        fs::read_dir(output.join("licenses/rust")).unwrap().count(),
+        6
+    );
+    assert_eq!(
+        sha256(&output.join("licenses/rust/binding-1.0.0/LICENSE")).unwrap(),
+        sha256(&git_checkout.join("LICENSE")).unwrap()
+    );
+    assert!(
+        !output
+            .join("licenses/rust/binding-1.0.0/LICENSE-MIT")
+            .exists()
+    );
+    assert!(
+        !output
+            .join("licenses/rust/steamroom-0.3.0/README.md")
+            .exists()
+    );
+    metadata["packages"][3]["license"] = json!(null);
+    let error = crate::rust_licenses::entries(&metadata, &scratch)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("generator-1.0.0"), "{error}");
+    for unknown in [
+        "Not-A-License",
+        "MIT OR LicenseRef-Unknown",
+        "Apache-2.0 WITH AdditionRef-Unknown",
+    ] {
+        metadata["packages"][3]["license"] = json!(unknown);
+        assert!(
+            crate::rust_licenses::entries(&metadata, &scratch).is_err(),
+            "{unknown}"
+        );
+    }
+    metadata["packages"][3]["license"] = json!("Apache-2.0");
+    metadata["packages"][1]["license_file"] = json!("missing.txt");
+    assert!(crate::rust_licenses::entries(&metadata, &scratch).is_err());
+}
