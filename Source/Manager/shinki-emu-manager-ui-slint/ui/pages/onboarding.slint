@@ -1,10 +1,11 @@
 import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, TonalButton, OutlineButton, TextButton, LinearProgressIndicator, HorizontalDivider, Icon, ScrollView } from "@material";
-import { App, Library, Network, Onboarding } from "../globals.slint";
+import { App, Library, Network, Onboarding, ResaleNoticeState } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { SettingGroup, SwitchRow } from "./settings/common.slint";
 import { PathRow, EmptyLine } from "./settings/roots.slint";
 import { ThemeChooser, CoverSizeChooser } from "./settings/appearance.slint";
 import { DisclaimerText } from "../components/disclaimer.slint";
+import { ResaleNoticeSlot, ResaleNoticeAck } from "../components/resale-notice.slint";
 
 component StepDots {
     in property <int> step;
@@ -71,6 +72,8 @@ component StepHeader {
 }
 
 component DisclaimerStep {
+    in property <bool> wide: true;
+
     min-height: l.min-height;
     preferred-height: l.preferred-height;
 
@@ -80,6 +83,11 @@ component DisclaimerStep {
             icon: Icons.info;
             title: "开始之前";
             description: "请先阅读以下说明。以后可以在 设置→关于 再次查看。";
+        }
+        VerticalLayout {
+            spacing: 8px;
+            ResaleNoticeSlot { wide: root.wide; }
+            ResaleNoticeAck { }
         }
         SettingGroup {
             DisclaimerText { }
@@ -254,12 +262,33 @@ export component OnboardingPage {
         App.page = "library";
     }
 
+    // The host keeps onboarding on step 0 and rejects finishing until the
+    // notice is acknowledged; leaving early from here would desync the page.
+    property <bool> can-leave: root.step != 0 || ResaleNoticeState.acknowledged;
+
+    // Scroll viewport used by Rust to validate that the complete image is visible.
+    property <{x: length, y: length, width: length, height: length}> viewport: {
+        x: sv.absolute-position.x,
+        y: sv.absolute-position.y,
+        width: sv.visible-width,
+        height: sv.visible-height,
+    };
+
+    function report-viewport() {
+        ResaleNoticeState.report-onboarding-clip(root.viewport.x, root.viewport.y, root.viewport.width, root.viewport.height);
+    }
+
+    init => { root.report-viewport(); }
+    changed viewport => { root.report-viewport(); }
+
     forward-focus: keys;
 
     keys := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape || event.text == Key.Back {
-                root.finish();
+                if root.can-leave {
+                    root.finish();
+                }
                 return accept;
             }
             reject
@@ -305,7 +334,7 @@ export component OnboardingPage {
                     }
                 }
 
-                if root.step == 0 : DisclaimerStep { }
+                if root.step == 0 : DisclaimerStep { wide: !root.phone; }
                 if root.step == 1 : RootsStep { }
                 if root.step == 2 : NetworkStep { }
                 if root.step == 3 : AppearanceStep { }
@@ -336,6 +365,7 @@ export component OnboardingPage {
                     horizontal-stretch: 0;
                     TextButton {
                         text: "跳过引导";
+                        enabled: root.can-leave;
                         clicked => { root.finish(); }
                     }
                 }
@@ -355,8 +385,11 @@ export component OnboardingPage {
                     alignment: center;
                     horizontal-stretch: 0;
                     FilledButton {
-                        text: root.step == 4 ? "完成" : "下一步";
+                        text: root.step == 4 ? "完成"
+                            : root.step == 0 && !ResaleNoticeState.acknowledged && ResaleNoticeState.remaining-seconds > 0 ? "下一步（" + ResaleNoticeState.remaining-seconds + " 秒）"
+                            : "下一步";
                         icon: root.step == 4 ? Icons.check : @image-url("");
+                        enabled: root.step != 0 || ResaleNoticeState.acknowledged;
                         clicked => {
                             if root.step == 4 {
                                 root.finish();

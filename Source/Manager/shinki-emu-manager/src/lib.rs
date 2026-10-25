@@ -3,6 +3,7 @@ mod gamepad;
 mod host;
 pub mod modal_service;
 pub mod platform;
+pub mod resale_notice;
 pub mod startup;
 pub mod window_service;
 

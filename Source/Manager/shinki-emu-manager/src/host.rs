@@ -32,6 +32,8 @@ mod modals;
 // Desktop drives the native window through winit; Android's NativeActivity
 // surface has no winit window, so these modules gate their winit code and
 // provide Android implementations of the same functions.
+#[path = "host_notice.rs"]
+mod notice;
 #[path = "host_pointer.rs"]
 mod pointer;
 #[path = "host_settings_callbacks.rs"]
@@ -165,6 +167,9 @@ pub trait ManagerController: 'static {
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String>;
     fn onboarding_completed(&self) -> Result<bool, String>;
     fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String>;
+    fn notice_presented(&mut self, now: Instant, visible: bool) -> Result<(), String>;
+    fn acknowledge_notice(&mut self, checked: bool) -> Result<ManagerViewModel, String>;
+    fn notice_state(&self) -> shinki_emu_manager_ui_slint::ResaleNoticeViewModel;
     fn game_location(&self, game_id: &str) -> Result<std::path::PathBuf, String>;
     fn data_dir(&self) -> &std::path::Path;
     fn model(&self) -> Result<ManagerViewModel, String>;
@@ -627,6 +632,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     game_callbacks::install(&wiring, &renderer, &runtime_schedule);
     settings_callbacks::install(&wiring, &restart);
     library_callbacks::install(&wiring);
+    let notice_host = notice::install(&adapter, &controller).map_err(HostError::Renderer)?;
     {
         let close_controller = controller.clone();
         let close_adapter = std::rc::Rc::downgrade(&adapter);
@@ -657,6 +663,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     let initial_window_pending = std::cell::Cell::new(true);
     let first_ui_frame_pending = std::cell::Cell::new(true);
     let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
+    let frame_notice = notice_host.clone();
     adapter.window().window().set_rendering_notifier(move |state, api| {
         let slint::GraphicsAPI::WGPU30 { device, queue, .. } = api else {
             record_fatal(&fatal_error_callback, "rendering notifier did not provide WGPU 30".into());
@@ -765,6 +772,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                 Ok(())
             },
             slint::RenderingState::AfterRendering => {
+                if let Some(window) = event_window.upgrade() {
+                    frame_notice.presented(&window, &event_controller)?;
+                }
                 if first_ui_frame_pending.replace(false) {
                     crate::startup::mark("first_ui_frame_rendered");
                     let weak = event_window.clone();
@@ -806,6 +816,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     crate::startup::mark("window_show_returned");
     let run_result = adapter.window().run();
     runtime_timer.stop();
+    notice_host.stop();
     runtime_schedule.borrow_mut().take();
     let shutdown_result = controller.borrow_mut().leave_game();
     // A notifier can be torn down only when the window is dropped. Drain the
