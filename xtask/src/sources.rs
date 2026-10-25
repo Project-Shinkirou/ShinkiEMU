@@ -601,7 +601,7 @@ fn native_sources(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\" --overlay-ports=\"$PWD/native/ports/{group}\""
         ));
         if *group == "subtitle" {
-            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\"");
+            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
         }
         commands.push('\n');
         if *group != "native" {

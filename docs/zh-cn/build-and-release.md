@@ -133,7 +133,7 @@ macOS 包含真实的 `ShinkiEMU-adhoc.app`，可执行文件位于 `Contents/Ma
 
 RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动态核心，并在 iOS 真机和两种模拟器架构的 Manager 中静态注册。iOS 不加载下载的核心 dylib；Android 仍只静态集成 RFVP。构建会核对 Manager 依赖与 `build/cores.toml` 的提交 pin，安装包包含 `embedded-cores.json` 和各静态核心的许可文件。
 
-RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`；pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
+RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
 
 模拟器包包含 `simulator-test.app`；设备打包生成带 `Payload/*.app` 的 `adhoc-device-test.ipa`，`ci` 报告该 IPA 的真实路径。打包先校验单架构 Mach-O、设备/模拟器平台以及系统/随包依赖闭包，再签署副本。Linux 使用 `rcodesign sign` 并逐个验证 Mach-O，原生 macOS 使用 `codesign`。ad-hoc 签名是真实签名，但不提供 Apple provisioning、公证或 App Store 身份。设备安装仍需有效的 Apple 签名及 provisioning，这些产物用于测试与集成，不是正式安装包。Release 名称包含 iOS 的设备/模拟器 variant，避免同架构附件重名。
 

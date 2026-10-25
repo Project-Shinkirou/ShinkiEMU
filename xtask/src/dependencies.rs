@@ -1435,6 +1435,10 @@ pub fn prepare(
                 "--overlay-triplets={}",
                 subtitle.join("triplets").display()
             ))
+            .arg(format!(
+                "--overlay-triplets={}",
+                inv.root.join("build/vcpkg/apple-triplets").display()
+            ))
             .args(["--triplet", triplet])
             .arg(format!("--x-install-root={}", install.display()))
             .args([
@@ -1445,12 +1449,10 @@ pub fn prepare(
         if target_spec.platform == "android" {
             command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
         }
-        if crate::apple::supported(target) {
-            if target.ends_with("darwin") {
-                command.env("MACOSX_DEPLOYMENT_TARGET", "13.0");
-            } else {
-                command.env("IPHONEOS_DEPLOYMENT_TARGET", "16.0");
-            }
+        // Apple deployment targets come from build/vcpkg/apple-triplets. Never
+        // export them here: they would also retarget the macOS host triplet.
+        for var in ["MACOSX_DEPLOYMENT_TARGET", "IPHONEOS_DEPLOYMENT_TARGET"] {
+            command.env_remove(var);
         }
         run(&mut command)?;
         fs::copy(
