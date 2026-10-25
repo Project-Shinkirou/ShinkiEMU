@@ -13,7 +13,7 @@ pub const ACK_KEY: &str = "onboarding.resale_notice";
 pub const REQUIRED_DWELL: Duration = Duration::from_secs(8);
 
 pub fn digest() -> String {
-    format!("{:x}", Sha256::digest(TEXT.as_bytes()))
+    hex::encode(Sha256::digest(TEXT.as_bytes()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

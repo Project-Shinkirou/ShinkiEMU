@@ -166,10 +166,9 @@ impl Session {
                     for packet in steamroom::client::multi::unpack_multi(&incoming.body)? {
                         if let Ok(PacketHeader::Protobuf { header, body }) =
                             PacketHeader::parse(&packet)
+                            && header.emsg == expected
                         {
-                            if header.emsg == expected {
-                                matches.push(body);
-                            }
+                            matches.push(body);
                         }
                     }
                     if !matches.is_empty() {

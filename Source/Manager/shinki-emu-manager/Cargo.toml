@@ -43,6 +43,7 @@ parking_lot = "0.13.0"
 serde_json.workspace = true
 zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
 sha2.workspace = true
+hex.workspace = true
 slint = { workspace = true, features = ["std", "compat-1-2", "accessibility", "unstable-wgpu-30"] }
 thiserror.workspace = true
 tempfile.workspace = true
@@ -84,6 +85,5 @@ rustls-platform-verifier = "=0.7.1"
 sha2.workspace = true
 
 [dev-dependencies]
-hex.workspace = true
 crc32fast = "1.5.3"
 flate2.workspace = true

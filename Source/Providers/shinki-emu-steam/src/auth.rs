@@ -99,22 +99,22 @@ fn capture(packet: &[u8], wire: &Mutex<WireState>, depth: usize) {
             }
         }
     } else if header.emsg == EMsg::CLIENT_LICENSE_LIST {
-        if let Ok(list) = CMsgClientLicenseList::decode(&*body) {
-            if list.eresult == Some(1) {
-                wire.lock().unwrap_or_else(|e| e.into_inner()).licenses = Some(
-                    list.licenses
-                        .into_iter()
-                        .filter_map(|l| l.package_id.map(|id| (id, l.access_token.unwrap_or(0))))
-                        .collect(),
-                );
-            }
+        if let Ok(list) = CMsgClientLicenseList::decode(&*body)
+            && list.eresult == Some(1)
+        {
+            wire.lock().unwrap_or_else(|e| e.into_inner()).licenses = Some(
+                list.licenses
+                    .into_iter()
+                    .filter_map(|l| l.package_id.map(|id| (id, l.access_token.unwrap_or(0))))
+                    .collect(),
+            );
         }
-    } else if header.emsg == EMsg::CLIENT_LOG_ON_RESPONSE {
-        if let Ok(header) = header.decode_header() {
-            let mut state = wire.lock().unwrap_or_else(|e| e.into_inner());
-            state.steam_id = header.steamid;
-            state.session_id = header.client_sessionid;
-        }
+    } else if header.emsg == EMsg::CLIENT_LOG_ON_RESPONSE
+        && let Ok(header) = header.decode_header()
+    {
+        let mut state = wire.lock().unwrap_or_else(|e| e.into_inner());
+        state.steam_id = header.steamid;
+        state.session_id = header.client_sessionid;
     }
 }
 

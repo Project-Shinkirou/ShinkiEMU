@@ -390,12 +390,11 @@ impl Worker {
     async fn execute(&mut self, action: SteamAction) -> Result<(), provider::Error> {
         match action {
             SteamAction::Open => {
-                if self.session.is_none() {
-                    if let Some(login) = self.secrets.load()? {
+                if self.session.is_none()
+                    && let Some(login) = self.secrets.load()? {
                         self.authenticate(provider::LoginMethod::Token(login))
                             .await?;
                     }
-                }
             }
             SteamAction::Login { account, password } => {
                 self.authenticate(provider::LoginMethod::Credentials {
@@ -775,13 +774,12 @@ impl ShinkiEmuManagerController {
             self.steam.imports.push_back(path);
             changed = true;
         }
-        if self.active.is_none() && !self.startup_busy() && self.patch_job.is_none() {
-            if let Some(path) = self.steam.imports.front().cloned() {
+        if self.active.is_none() && !self.startup_busy() && self.patch_job.is_none()
+            && let Some(path) = self.steam.imports.front().cloned() {
                 self.add_game_directory(&path)?;
                 self.steam.imports.pop_front();
                 changed = true;
             }
-        }
         Ok(changed)
     }
 }

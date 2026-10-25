@@ -175,6 +175,8 @@ Ren'Py requires `.work/renpy-build` at `7bfab40c1174f622f644b24669afd5fb167fbb79
 
 Sena retains the upstream embedded MS PGothic font under the approved upstream-distribution policy. `licenses/sena-rs/MS-PGothic.txt` records that upstream supplies no documented redistribution grant; the MPL license does not replace the font's terms.
 
+Source notice discovery also includes nested asset licenses and font-paired text notices, preserving their relative paths without copying the fonts themselves. Git workspace members inherit provided checkout-root license files when their package directory has none, retaining upstream copyright notices before considering canonical SPDX texts.
+
 Release tags are `manager-v<semver>` or `core-<slug>-v<semver>`. Slugs lowercase plugin_id and replace dots/underscores with hyphens (`ReMinori` → `reminori`); the plugin_id itself is unchanged. Release without `--publish` prepares local artifacts. Publishing requires `--publish` and `GH_TOKEN` or `GITHUB_TOKEN`; it uploads real successful targets and refuses an empty release or a changed same-name asset. Core publication verifies remote bytes before proposing a catalog PR under `Metadata/engines/cores/`. Manager releases are independent of core releases. Distribution restrictions and debug-signed Android test APKs cannot be bypassed by tagging.
 
 Metadata commands are described in [Metadata](metadata.md); native package requirements in [Core ABI](core-abi.md).

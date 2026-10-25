@@ -730,6 +730,23 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     )
     .unwrap();
     fs::write(temp.path().join("direct/README.md"), "not a license").unwrap();
+    let fonts = temp.path().join("transitive/fonts");
+    fs::create_dir(&fonts).unwrap();
+    for name in [
+        "UFL.txt",
+        "OFL.txt",
+        "emoji-mit-license.txt",
+        "ExampleFont.txt",
+    ] {
+        fs::write(fonts.join(name), format!("provided font license: {name}\n")).unwrap();
+    }
+    fs::write(fonts.join("ExampleFont.ttf"), b"public font fixture").unwrap();
+    fs::create_dir(temp.path().join("build/src")).unwrap();
+    fs::write(
+        temp.path().join("build/src/license.rs"),
+        "pub struct License;\n",
+    )
+    .unwrap();
     let git_checkout = temp.path().join("git-workspace");
     fs::create_dir_all(git_checkout.join(".git")).unwrap();
     fs::create_dir_all(git_checkout.join("crates/binding")).unwrap();
@@ -811,6 +828,32 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         .unwrap(),
         "original custom license"
     );
+    for name in [
+        "UFL.txt",
+        "OFL.txt",
+        "emoji-mit-license.txt",
+        "ExampleFont.txt",
+    ] {
+        assert_eq!(
+            sha256(
+                &output
+                    .join("licenses/rust/steamroom-client-0.3.0/fonts")
+                    .join(name)
+            )
+            .unwrap(),
+            sha256(&fonts.join(name)).unwrap()
+        );
+    }
+    assert!(
+        !output
+            .join("licenses/rust/steamroom-client-0.3.0/fonts/ExampleFont.ttf")
+            .exists()
+    );
+    assert!(
+        !output
+            .join("licenses/rust/generator-1.0.0/src/license.rs")
+            .exists()
+    );
     let record: serde_json::Value = serde_json::from_slice(
         &fs::read(output.join("licenses/rust/generator-1.0.0/package.json")).unwrap(),
     )
@@ -885,7 +928,11 @@ fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
         "original named-font copyright",
     )
     .unwrap();
-    fs::write(root.join("fonts/Font.ttf"), "font data is not a notice").unwrap();
+    fs::write(
+        root.join("fonts/Hack-Regular.ttf"),
+        "font data is not a notice",
+    )
+    .unwrap();
     let metadata = serde_json::json!({
         "packages": [{
             "id":"font-core", "name":"font-core", "version":"1.0.0",
@@ -909,7 +956,7 @@ fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
     assert!(notices.join("LICENSE-MIT").is_file());
     assert!(notices.join("LICENSE-Apache-2.0").is_file());
     assert!(!notices.join("LICENSE-OFL-1.1").exists());
-    assert!(!notices.join("fonts/Font.ttf").exists());
+    assert!(!notices.join("fonts/Hack-Regular.ttf").exists());
     fs::remove_file(root.join("fonts/UFL.txt")).unwrap();
     assert!(
         crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("missing"))

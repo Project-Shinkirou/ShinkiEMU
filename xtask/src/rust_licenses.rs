@@ -95,41 +95,69 @@ fn canonical_texts(
     Ok(texts)
 }
 
-fn source_license_files(root: &Path, files: &mut BTreeMap<PathBuf, String>) -> Result<()> {
-    for item in
-        fs::read_dir(root).with_context(|| format!("reading licenses in {}", root.display()))?
-    {
-        let item = item?;
-        let name = item
-            .file_name()
-            .to_str()
-            .context("UTF-8 source filename")?
-            .to_owned();
-        let filename = name.to_ascii_uppercase();
-        if ["LICENSE", "COPYING", "COPYRIGHT", "NOTICE"]
+fn license_name(name: &str) -> bool {
+    if name.rsplit_once('.').is_some_and(|(_, extension)| {
+        ["rs", "py", "c", "cc", "cpp", "h", "hpp"]
             .iter()
-            .any(|prefix| filename.starts_with(prefix))
-        {
-            crate::package::plain(&item.path())?;
-            if item.file_type()?.is_file() {
-                files.insert(dunce::canonicalize(item.path())?, name);
-            } else if item.file_type()?.is_dir() {
-                for (file, relative) in crate::package::tree(&item.path())? {
-                    files.insert(dunce::canonicalize(file)?, format!("{name}/{relative}"));
+            .any(|source| extension.eq_ignore_ascii_case(source))
+    }) {
+        return false;
+    }
+    ["LICENSE", "LICENCE", "COPYING", "NOTICE", "COPYRIGHT"]
+        .iter()
+        .any(|prefix| {
+            name.get(..prefix.len())
+                .is_some_and(|value| value.eq_ignore_ascii_case(prefix))
+        })
+        || ["OFL.txt", "UFL.txt"]
+            .iter()
+            .any(|value| name.eq_ignore_ascii_case(value))
+        || (name.ends_with(".txt")
+            && ["license", "licence"].iter().any(|word| {
+                name.as_bytes()
+                    .windows(word.len())
+                    .any(|value| value.eq_ignore_ascii_case(word.as_bytes()))
+            }))
+}
+
+fn source_license_files(
+    root: &Path,
+    recursive: bool,
+    files: &mut BTreeMap<PathBuf, String>,
+) -> Result<()> {
+    let entries = walkdir::WalkDir::new(root)
+        .min_depth(1)
+        .max_depth(if recursive { usize::MAX } else { 1 })
+        .into_iter()
+        .filter_entry(|entry| entry.file_name() != ".git");
+    for item in entries {
+        let item = item.with_context(|| format!("reading licenses in {}", root.display()))?;
+        let relative = item.path().strip_prefix(root)?;
+        let name = item.file_name().to_str().context("UTF-8 source filename")?;
+        if item.file_type().is_dir() {
+            if !recursive && license_name(name) {
+                for (file, path) in crate::package::tree(item.path())? {
+                    files.insert(dunce::canonicalize(file)?, format!("{name}/{path}"));
                 }
             }
-        } else if filename == "FONTS" && item.file_type()?.is_dir() {
-            // Embedded font licenses often use OFL.txt/UFL.txt or the font's
-            // own name, rather than a LICENSE prefix.
-            for (file, relative) in crate::package::tree(&item.path())? {
-                if file.extension().and_then(|s| s.to_str()).is_some_and(|s| {
-                    ["txt", "md", "rst"]
-                        .iter()
-                        .any(|extension| s.eq_ignore_ascii_case(extension))
-                }) {
-                    files.insert(dunce::canonicalize(file)?, format!("{name}/{relative}"));
-                }
-            }
+            continue;
+        }
+        let in_license_path = relative
+            .components()
+            .any(|part| part.as_os_str().to_str().is_some_and(license_name));
+        let font_notice = name.ends_with(".txt")
+            && ["ttf", "otf", "woff", "woff2"]
+                .iter()
+                .any(|extension| item.path().with_extension(extension).is_file());
+        if in_license_path || font_notice {
+            crate::package::plain(item.path())?;
+            files.insert(
+                dunce::canonicalize(item.path())?,
+                relative
+                    .to_str()
+                    .context("UTF-8 license path")?
+                    .replace('\\', "/"),
+            );
         }
     }
     Ok(())
@@ -148,7 +176,6 @@ pub(crate) fn metadata(
     command.current_dir(&inv.root).args([
         "metadata",
         "--locked",
-        "--offline",
         "--format-version",
         "1",
         "--filter-platform",
@@ -173,7 +200,6 @@ pub(crate) fn metadata(
         &mut command,
     )?)?)
 }
-
 /// Metadata must be resolved with `--filter-platform` for the packaged target.
 /// Follow normal and build edges, including proc macros, but not test-only edges.
 pub(crate) fn entries(
@@ -262,7 +288,7 @@ pub(crate) fn entries(
                 .to_owned();
             files.insert(dunce::canonicalize(file)?, name);
         }
-        source_license_files(root, &mut files)?;
+        source_license_files(root, true, &mut files)?;
         if files.is_empty()
             && p["source"]
                 .as_str()
@@ -271,14 +297,14 @@ pub(crate) fn entries(
         {
             // Git workspace crates can keep their provided copyright/license at
             // the checkout root (for example mlua-sys), outside the crate directory.
-            source_license_files(checkout, &mut files)?;
+            source_license_files(checkout, false, &mut files)?;
         }
         if files.is_empty()
             && p["source"].is_null()
             && let Some(workspace) = metadata["workspace_root"].as_str()
             && root.starts_with(workspace)
         {
-            source_license_files(Path::new(workspace), &mut files)?;
+            source_license_files(Path::new(workspace), false, &mut files)?;
         }
         let expression = p["license"].as_str().filter(|s| !s.trim().is_empty());
         let mut canonical = false;
