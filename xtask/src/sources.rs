@@ -478,6 +478,13 @@ fn native_sources(
             commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\"");
         }
         commands.push('\n');
+        if *group != "native" {
+            let prefix = installed.parent().and_then(Path::parent).context("isolated vcpkg prefix")?
+                .strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
+            commands.push_str(&format!(
+                "Copy-Item \"$PWD/.work/vcpkg/.vcpkg-root\" \"$PWD/{prefix}/.vcpkg-root\"\n"
+            ));
+        }
     }
     collect_archives(&inv.root.join(".work/vcpkg-downloads"), &root.join(".work/vcpkg-downloads"), required)?;
     if selected.subtitle {
@@ -768,7 +775,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .replace("```powershell", "```sh")
             .replace("$env:", "export ")
             .replace(" = ", "=")
-            .replace("& $vcpkg ", "\"$vcpkg\" ");
+            .replace("& $vcpkg ", "\"$vcpkg\" ")
+            .replace("Copy-Item ", "cp ");
     }
     let readme = temp.path().join("BUILD-FROM-SOURCE.md");
     fs::write(&readme, &instructions)?;
