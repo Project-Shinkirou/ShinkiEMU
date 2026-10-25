@@ -23,8 +23,8 @@ cargo xtask build --target x86_64-pc-windows-msvc --manager --release
 cargo xtask build --target x86_64-pc-windows-msvc --core rfvp --release
 ```
 
-- 文档：[中文](docs/zh-cn/index.md) / [English](docs/en/index.md)
-- 构建与发布：[中文](docs/zh-cn/build-and-release.md) / [English](docs/en/build-and-release.md)
+- 文档：[中文](docs/zh-cn/index.md) / [English](docs/en/index.md) / [日本語](docs/ja/index.md)
+- 构建与发布：[中文](docs/zh-cn/build-and-release.md) / [English](docs/en/build-and-release.md) / [日本語](docs/ja/build-and-release.md)
 - [贡献 / Contributing](CONTRIBUTING.md)
 - [来源 / Origins](ORIGINS.md) · [第三方声明 / Third-party notices](THIRD_PARTY_NOTICES.md)
 

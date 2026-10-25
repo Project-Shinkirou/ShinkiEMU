@@ -18,4 +18,4 @@ Artemis 保留 Lua 5.1，与 Manager 的 Luau 依赖图分开。CPAL/Kira 保留
 
 Artemis's Lua 5.1 graph remains independent of Manager's Luau graph. CPAL/Kira retain version-specific source branches, and `mlua/` retains the product's local fixes and complete MIT license.
 
-构建命令见[中文文档](../docs/zh-cn/build-and-release.md) / [English guide](../docs/en/build-and-release.md)，格式与行为见[核心资料](../docs/zh-cn/index.md)。许可和分发义务见[第三方声明](../THIRD_PARTY_NOTICES.md)，历史来源见 [ORIGINS](../ORIGINS.md)。构建成功不代表附件已获分发许可或游戏已验证可玩。
+构建命令见[中文文档](../docs/zh-cn/build-and-release.md) / [English guide](../docs/en/build-and-release.md) / [日本語ガイド](../docs/ja/build-and-release.md)，格式与行为见[核心资料](../docs/zh-cn/index.md)。许可和分发义务见[第三方声明](../THIRD_PARTY_NOTICES.md)，历史来源见 [ORIGINS](../ORIGINS.md)。构建成功不代表附件已获分发许可或游戏已验证可玩。
