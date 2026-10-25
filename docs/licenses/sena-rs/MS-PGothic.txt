@@ -1,0 +1,5 @@
+Sena's embedded fallback font
+
+crates/pal-vm/src/default.ttf is MS PGothic, attributed to Ricoh/RYOBI and supplied by Microsoft. ShinkiEMU retains the same font blob shipped by upstream sena-rs, including upstream's binary releases.
+
+Upstream documents no redistribution grant from Microsoft, Ricoh or RYOBI for this font. ShinkiEMU follows upstream's distribution policy; this notice records the unresolved font rights and grants no additional permission. The core's MPL-2.0 license does not replace the font's terms.

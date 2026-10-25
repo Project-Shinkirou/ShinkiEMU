@@ -424,104 +424,50 @@ fn matrix_covers_each_core_and_target_without_accepting_unknown_keys() {
 fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
     use sha2::Digest;
     let temp = tempfile::tempdir().unwrap();
-    let original = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let mut inv = Inventory::load(original).unwrap();
-    inv.root = temp.path().to_owned();
-    fs::create_dir_all(temp.path().join("build")).unwrap();
-    fs::copy(
-        original.join("build/dependencies.toml"),
-        temp.path().join("build/dependencies.toml"),
-    )
-    .unwrap();
-    let port = temp.path().join(".work/vcpkg/ports/fribidi");
-    fs::create_dir_all(&port).unwrap();
-    fs::write(
-        port.join("portfile.cmake"),
-        "public port with a local patch",
-    )
-    .unwrap();
-    let downloads = temp.path().join(".work/vcpkg-downloads");
-    fs::create_dir_all(&downloads).unwrap();
-    let upstream = downloads.join("public-source.tar.gz");
-    fs::write(&upstream, b"public synthetic upstream archive").unwrap();
-    let share = temp
-        .path()
-        .join(".work/vcpkg-subtitle/installed/x64-windows-static-md-dynbidi/share/fribidi");
-    fs::create_dir_all(&share).unwrap();
+    let downloads = temp.path().join("downloads");
+    fs::create_dir(&downloads).unwrap();
+    let upstream = downloads.join("source.tar.gz");
+    fs::write(&upstream, b"upstream source archive").unwrap();
+    let required = [hex::encode(sha2::Sha512::digest(fs::read(&upstream).unwrap()))]
+        .into_iter().collect();
+    let output = temp.path().join("output");
+    crate::sources::collect_archives(&downloads, &output, required).unwrap();
+    assert_eq!(fs::read(output.join("source.tar.gz")).unwrap(), fs::read(&upstream).unwrap());
+    let required = [hex::encode(sha2::Sha512::digest(fs::read(&upstream).unwrap()))]
+        .into_iter().collect::<std::collections::BTreeSet<_>>();
+    fs::write(&upstream, b"same filename, changed contents").unwrap();
+    assert!(crate::sources::collect_archives(&downloads, &temp.path().join("changed"), required.clone()).is_err());
+    fs::remove_file(&upstream).unwrap();
+    assert!(crate::sources::collect_archives(&downloads, &temp.path().join("missing"), required).is_err());
+    let port = temp.path().join("port");
+    fs::create_dir(&port).unwrap();
+    fs::write(port.join("portfile.cmake"), "original recipe").unwrap();
     let provenance = serde_json::json!({
-        "packages":[{"SPDXID":"SPDXRef-resource-0","checksums":[{"algorithm":"SHA512","checksumValue":hex::encode(sha2::Sha512::digest(fs::read(&upstream).unwrap()))}]}],
         "files":[{"SPDXID":"SPDXRef-port-file-0","fileName":"./portfile.cmake","checksums":[{"algorithm":"SHA256","checksumValue":sha256(&port.join("portfile.cmake")).unwrap()}]}]
     });
-    fs::write(
-        share.join("vcpkg.spdx.json"),
-        serde_json::to_vec(&provenance).unwrap(),
-    )
-    .unwrap();
-    fs::write(temp.path().join("PUBLIC.txt"), "public source fixture").unwrap();
-    assert!(
-        Command::new("git")
-            .arg("init")
-            .arg(temp.path())
-            .status()
-            .unwrap()
-            .success()
-    );
-    assert!(
-        Command::new("git")
-            .arg("-C")
-            .arg(temp.path())
-            .args(["add", "PUBLIC.txt"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    assert!(
-        Command::new("git")
-            .arg("-C")
-            .arg(temp.path())
-            .args([
-                "-c",
-                "user.name=Fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-                "commit",
-                "-m",
-                "public source"
-            ])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let out = temp.path().join("sources.zip");
-    // Explicitly use the test installation, not a developer override.
-    let target = "aarch64-linux-android";
-    let android = temp.path().join(
-        ".work/vcpkg-subtitle/aarch64-linux-android/installed/arm64-android-dynbidi/share/fribidi",
-    );
-    fs::create_dir_all(&android).unwrap();
-    fs::copy(
-        share.join("vcpkg.spdx.json"),
-        android.join("vcpkg.spdx.json"),
-    )
-    .unwrap();
-    source_bundle(&inv, "manager", target, &out).unwrap();
-    let original_hash = sha256(&out).unwrap();
-    let mut zip = zip::ZipArchive::new(fs::File::open(&out).unwrap()).unwrap();
-    let mut archive_bytes = Vec::new();
-    std::io::Read::read_to_end(
-        &mut zip.by_name("downloads/public-source.tar.gz").unwrap(),
-        &mut archive_bytes,
-    )
-    .unwrap();
-    assert_eq!(archive_bytes, fs::read(&upstream).unwrap());
-    drop(zip);
-    fs::write(&upstream, b"modified archive with the same filename").unwrap();
-    let failed = temp.path().join("wrong-source.zip");
-    assert!(source_bundle(&inv, "manager", target, &failed).is_err());
-    assert!(!failed.exists());
-    assert_eq!(sha256(&out).unwrap(), original_hash);
-    fs::write(port.join("portfile.cmake"), "changed port recipe").unwrap();
-    assert!(source_bundle(&inv, "manager", target, &temp.path().join("wrong-port.zip")).is_err());
+    verify_port_sources(&provenance, &port).unwrap();
+    fs::write(port.join("portfile.cmake"), "different recipe").unwrap();
+    assert!(verify_port_sources(&provenance, &port).is_err());
+}
+
+#[test]
+fn vendor_closure_rejects_missing_and_modified_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let vendor = temp.path().join("vendor");
+    assert!(crate::sources::verify_vendor(&vendor).is_err());
+    let package = vendor.join("dependency-1.0.0");
+    fs::create_dir_all(&package).unwrap();
+    assert!(crate::sources::verify_vendor(&vendor).is_err());
+    let source = package.join("lib.rs");
+    fs::write(&source, "pub const VALUE: usize = 42;").unwrap();
+    fs::write(package.join(".cargo-checksum.json"), serde_json::to_vec(&serde_json::json!({
+        "files": {"lib.rs": sha256(&source).unwrap()}, "package": null
+    })).unwrap()).unwrap();
+    crate::sources::verify_vendor(&vendor).unwrap();
+    fs::write(&source, "changed source").unwrap();
+    assert!(crate::sources::verify_vendor(&vendor).is_err());
+    fs::remove_file(&source).unwrap();
+    assert!(crate::sources::verify_vendor(&vendor).is_err());
 }
 
 #[test]
@@ -704,7 +650,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     let temp = tempfile::tempdir().unwrap();
     let mut packages = Vec::new();
     for (id, name, version, license, license_file) in [
-        ("manager", "shinki-emu-manager", "1.0.0", Some("MIT"), None),
+        ("manager", "shinki-emu-test-core", "1.0.0", Some("MIT"), None),
         (
             "direct",
             "steamroom",
@@ -736,7 +682,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         "custom license",
     )
     .unwrap();
-    for filename in ["LICENSE-MIT", "COPYING.txt", "NOTICE", "license-apache"] {
+    for filename in ["LICENSE-MIT", "COPYING.txt", "COPYRIGHT", "NOTICE", "license-apache"] {
         fs::write(temp.path().join("direct").join(filename), filename).unwrap();
     }
     fs::write(temp.path().join("transitive/LICENSE"), "transitive license").unwrap();
@@ -780,7 +726,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         ]}
     });
     let scratch = temp.path().join("scratch");
-    let entries = crate::rust_licenses::entries(&metadata, &scratch).unwrap();
+    let entries = crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).unwrap();
     let output = temp.path().join("package");
     fs::create_dir(&output).unwrap();
     copy_entries(&entries, &output).unwrap();
@@ -788,7 +734,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0/custom.txt")).unwrap(),
         "custom license"
     );
-    for filename in ["LICENSE-MIT", "COPYING.txt", "NOTICE", "license-apache"] {
+    for filename in ["LICENSE-MIT", "COPYING.txt", "COPYRIGHT", "NOTICE", "license-apache"] {
         assert_eq!(
             fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0").join(filename))
                 .unwrap(),
@@ -856,7 +802,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
             .exists()
     );
     metadata["packages"][3]["license"] = json!(null);
-    let error = crate::rust_licenses::entries(&metadata, &scratch)
+    let error = crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch)
         .unwrap_err()
         .to_string();
     assert!(error.contains("generator-1.0.0"), "{error}");
@@ -867,11 +813,11 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     ] {
         metadata["packages"][3]["license"] = json!(unknown);
         assert!(
-            crate::rust_licenses::entries(&metadata, &scratch).is_err(),
+            crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).is_err(),
             "{unknown}"
         );
     }
     metadata["packages"][3]["license"] = json!("Apache-2.0");
     metadata["packages"][1]["license_file"] = json!("missing.txt");
-    assert!(crate::rust_licenses::entries(&metadata, &scratch).is_err());
+    assert!(crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).is_err());
 }

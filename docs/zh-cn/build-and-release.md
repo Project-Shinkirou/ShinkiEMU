@@ -157,7 +157,15 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc --version 0
 
 输出目录必须尚不存在。打包拒绝不安全路径、链接、冲突、缺许可、架构错误、缺 query 导出和原生依赖不完整的输入。核心包包含库、资源、依赖、许可证、构建来源及带哈希的 `core.json`；源码包保留适用的对应源码与重链接输入。
 
-Manager 打包会收集经目标平台筛选的 Cargo 依赖闭包（普通依赖和构建依赖，不含仅供测试的依赖边）。各 crate 声明的 `license_file`、源码根目录中的 `LICENSE*`、`COPYING*`、`NOTICE*` 文件及同类许可目录的内容，放在 `licenses/rust/<名称>-<版本>/`，同目录的 `package.json` 记录 SPDX 表达式和文本来源。crate 未提供文件时，打包器从固定的 `spdx` 0.13.6 内置离线数据库中，取得 SPDX License List 3.29.0 的标准文本，将表达式引用的全部许可和例外条款写为 `LICENSE-<SPDX>`。来源版本与压缩包 SHA256 记录在 `build/dependencies.toml`，并与 Cargo 固定依赖核对；打包时不下载许可文本。无法识别的回补标识符，或既无许可文件也无表达式的 crate，都会使打包失败。Material 组件、图标及原生依赖的许可单独收集。
+Manager 和各独立核心包都会按所选 manifest、package、features 和目标平台收集自己的 Cargo 依赖闭包（普通依赖和构建依赖，不含仅供测试的依赖边）。各 crate 声明的 `license_file`、源码根目录中的 `LICENSE*`、`COPYING*`、`COPYRIGHT*`、`NOTICE*` 文件及同类许可目录的内容，放在 `licenses/rust/<名称>-<版本>/`，同目录的 `package.json` 记录 SPDX 表达式和文本来源。成员 crate 没有许可文件时，也会查找 Git checkout 或 workspace 根目录的原始声明。仍无文件时，打包器从固定的 `spdx` 0.13.6 内置离线数据库中，取得 SPDX License List 3.29.0 的标准文本，将表达式引用的全部许可和例外条款写为 `LICENSE-<SPDX>`。来源版本与压缩包 SHA256 记录在 `build/dependencies.toml`，并与 Cargo 固定依赖核对；打包时不下载许可文本。无法识别的回补标识符，或既无许可文件也无表达式的 crate，都会使打包失败。Material 组件、图标及原生依赖的许可单独收集。
+
+`shinki-emu-<slug>-<版本>-<平台>-sources.zip` 包含 `source.tar` 和 `BUILD-FROM-SOURCE.md`。将 TAR 解压到新目录后，按说明离线构建。包内保留指定提交的产品源码、指定提交且递归展开子模块的核心 fork、必需的产品路径依赖子模块、锁文件对应的 Cargo vendor 源码（含 Git 依赖）及 `.cargo/config.toml` 源替换配置。发布前会在解压后的目录运行 `cargo metadata --offline --frozen`；缺失源码或 vendor 校验失败会中止打包。
+
+原生依赖收集覆盖所选安装树中的全部 vcpkg port，不再只收 FriBidi/FFmpeg。`native/ports/<分组>/` 保存经安装时 SPDX SHA256 核对的配方和补丁，`.work/vcpkg-downloads/` 保存经 SPDX SHA512 核对的实际源码压缩包，`native/vcpkg.tar` 保存固定版本的构建脚本。Impacto 另外保留 LibAtrac9/magic_enum 的固定源码输入，mspack 随 fork 源码交付；KiriKiri 的 libbpg、minizip 和 layerExImage 子模块也保留在源码快照中。
+
+Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；对应文件放在 `.work/downloads/`。源码包还包含可读的 chardet/certifi 源码、离线组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
+
+Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `licenses/sena-rs/MS-PGothic.txt` 记录上游没有提供明确再分发授权，核心的 MPL 许可不替代字体本身的条款。
 
 Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。不带 `--publish` 时只准备本地产物。发布需要 `--publish` 及 `GH_TOKEN` 或 `GITHUB_TOKEN`；只上传真实成功的平台产物，拒绝空 Release 和同名不同内容的附件。核心发布在核对远端字节后，向 `Metadata/engines/cores/` 提议目录更新 PR。Manager 与核心独立发布；标签不会绕过分发限制，也不会把 Android debug 签名测试包变成正式安装包。
 

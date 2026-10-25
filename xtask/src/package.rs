@@ -1,7 +1,7 @@
 use crate::{
     binary,
     build::{self, BuildResult},
-    cores::{Inventory, slug},
+    cores::Inventory,
     dependencies,
 };
 use anyhow::{Context, Result, bail};
@@ -252,6 +252,7 @@ pub fn zip_entries(entries: &[(PathBuf, String)], out: &Path) -> Result<()> {
             let permissions = 0o644;
             let opt = zip::write::SimpleFileOptions::default()
                 .last_modified_time(zip::DateTime::default())
+                .large_file(fs::metadata(&source)?.len() >= u64::from(u32::MAX))
                 .unix_permissions(permissions)
                 .compression_method(if name.starts_with("downloads/") {
                     zip::CompressionMethod::Stored
@@ -685,11 +686,17 @@ fn licenses(
                 "licenses/material-symbols/LICENSE".into(),
             ),
         ]);
-        entries.extend(crate::rust_licenses::entries(
-            &build::cargo_metadata(inv, &result.target)?,
-            scratch,
-        )?);
     }
+    let package = if result.component == "manager" {
+        "shinki-emu-manager"
+    } else {
+        &inv.core(&result.component)?.package
+    };
+    entries.extend(crate::rust_licenses::entries(
+        &crate::rust_licenses::metadata(inv, &result.target, &result.component)?,
+        package,
+        scratch,
+    )?);
     Ok(entries)
 }
 fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(PathBuf, String)>> {
@@ -825,6 +832,9 @@ pub fn package(
         })?;
         Ok(out.to_owned())
     } else {
+        let temporary = inv.root.join(".work/tmp");
+        fs::create_dir_all(&temporary)?;
+        let scratch = tempfile::tempdir_in(&temporary)?;
         let c = inv.core(component)?;
         let m = result
             .core_build
@@ -833,7 +843,10 @@ pub fn package(
         for path in &c.licenses {
             m.licenses.push(BuildAsset {
                 source: inv.root.join(path),
-                dest: format!("licenses/{}/{}", c.id, path.replace('/', "_")),
+                dest: path.find("licenses/").map_or_else(
+                    || format!("licenses/{}/{}", c.id, path.replace('/', "_")),
+                    |offset| path[offset..].to_owned(),
+                ),
             });
         }
         // Manifest-owned license assets take precedence over inventory duplicates.
@@ -850,7 +863,7 @@ pub fn package(
                 ),
             });
         }
-        for (source, dest) in licenses(inv, &result, out)? {
+        for (source, dest) in licenses(inv, &result, scratch.path())? {
             result
                 .core_build
                 .as_mut()
@@ -1228,163 +1241,12 @@ fn verify_android_apk(apk: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Include original vcpkg archives and exact ports/patches for relinking.
+/// Collect the locked Rust, recursive Git and native corresponding-source closure.
 pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path) -> Result<()> {
-    let selected = dependencies::needs(inv, target, component)?;
-    let mut entries = vec![];
-    let vcpkg = inv.root.join(".work/vcpkg");
-    let mut ports = Vec::new();
-    if selected.subtitle {
-        ports.push("fribidi");
-    }
-    if selected.ffmpeg || component == "kirikiroid2-web" {
-        ports.push("ffmpeg");
-    }
-    let downloads = inv.root.join(".work/vcpkg-downloads");
-    let mut hashes = std::collections::BTreeMap::new();
-    let mut required = BTreeSet::new();
-    for port in ports {
-        let dir = if component == "kirikiroid2-web" && port == "ffmpeg" {
-            inv.root.join("ThirdParty/kirikiri2/vcpkg/ports/ffmpeg")
-        } else {
-            vcpkg.join("ports").join(port)
-        };
-        if !dir.join("portfile.cmake").is_file() {
-            bail!("missing corresponding-source port {}", dir.display());
-        }
-        let installed = if port == "fribidi" {
-            dependencies::subtitle_install(inv, target)?
-        } else if target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_install(inv, target, "ffmpeg")
-        } else if component == "kirikiroid2-web" {
-            inv.root
-                .join(".work/native-vcpkg/kirikiroid2-web/installed/x64-windows")
-        } else {
-            inv.root.join(".work/vcpkg-ffmpeg/installed/x64-windows")
-        };
-        let spdx = installed.join("share").join(port).join("vcpkg.spdx.json");
-        plain(&spdx)?;
-        let record: serde_json::Value = serde_json::from_slice(&fs::read(&spdx)?)?;
-        verify_port_sources(&record, &dir)?;
-        let mut port_hashes = Vec::new();
-        for package in record["packages"]
-            .as_array()
-            .context("vcpkg SPDX packages")?
-        {
-            if !package["SPDXID"]
-                .as_str()
-                .is_some_and(|id| id.starts_with("SPDXRef-resource-"))
-            {
-                continue;
-            }
-            let checksum = package["checksums"]
-                .as_array()
-                .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA512"))
-                .and_then(|c| c["checksumValue"].as_str())
-                .context("source resource lacks SHA512 provenance")?;
-            if checksum.len() != 128 || !checksum.bytes().all(|b| b.is_ascii_hexdigit()) {
-                bail!("invalid vcpkg source checksum");
-            }
-            port_hashes.push(checksum.to_ascii_lowercase());
-        }
-        if port_hashes.is_empty() {
-            bail!("{port} has no recorded source resources");
-        }
-        required.extend(port_hashes);
-        entries.extend(
-            tree(&dir)?
-                .into_iter()
-                .map(|(p, n)| (p, format!("ports/{port}/{n}"))),
-        );
-        entries.push((spdx, format!("provenance/{port}.spdx.json")));
-    }
-    // Match the installed package's real source hashes, not a filename/version guess.
-    if !required.is_empty() {
-        for item in fs::read_dir(&downloads)? {
-            let path = item?.path();
-            if !path.is_file() {
-                continue;
-            }
-            plain(&path)?;
-            let mut file = fs::File::open(&path)?;
-            let mut digest = sha2::Sha512::new();
-            let mut bytes = [0u8; 64 * 1024];
-            loop {
-                let count = file.read(&mut bytes)?;
-                if count == 0 {
-                    break;
-                }
-                digest.update(&bytes[..count]);
-            }
-            let hash = hex::encode(digest.finalize());
-            if required.contains(&hash) {
-                hashes.entry(hash).or_insert(path);
-            }
-        }
-    }
-    for hash in required {
-        let path = hashes.remove(&hash).with_context(|| {
-            format!(
-                "corresponding source archive {hash} missing from {}",
-                downloads.display()
-            )
-        })?;
-        let name = path
-            .file_name()
-            .context("source archive name")?
-            .to_string_lossy()
-            .into_owned();
-        entries.push((path, format!("downloads/{name}")));
-    }
-    // Product and selected fork sources are bound to public repository revisions.
-    let temporary = inv.root.join(".work/tmp");
-    fs::create_dir_all(&temporary)?;
-    plain(&temporary)?;
-    let temp = tempfile::tempdir_in(&temporary)?;
-    let product = temp.path().join("ShinkiEMU.tar");
-    dependencies::run(
-        std::process::Command::new("git")
-            .arg("-C")
-            .arg(&inv.root)
-            .args(["archive", "--format=tar", "HEAD", "-o"])
-            .arg(&product),
-    )?;
-    entries.push((product, "ShinkiEMU.tar".into()));
-    let product_commit = String::from_utf8(dependencies::capture(
-        std::process::Command::new("git")
-            .arg("-C")
-            .arg(&inv.root)
-            .args(["rev-parse", "HEAD"]),
-    )?)?
-    .trim()
-    .to_owned();
-    let mut references = serde_json::json!({
-        "product": {"repo":"https://github.com/Project-Shinkirou/ShinkiEMU","rev":product_commit},
-        "core": null
-    });
-    if component != "manager" {
-        let core = inv.core(component)?;
-        if let Some(source) = &core.source {
-            let repository = crate::sources::verify(inv, core, true)?;
-            let archive = temp.path().join(format!("{}.tar", slug(component)));
-            dependencies::run(
-                std::process::Command::new("git")
-                    .arg("-C")
-                    .arg(repository)
-                    .args(["archive", "--format=tar", &source.rev, "-o"])
-                    .arg(&archive),
-            )?;
-            entries.push((archive, format!("{}.tar", slug(component))));
-            references["core"] = serde_json::to_value(source)?;
-        }
-    }
-    let reference_file = temp.path().join("source-references.json");
-    fs::write(&reference_file, serde_json::to_vec_pretty(&references)?)?;
-    entries.push((reference_file, "source-references.json".into()));
-    zip_entries(&entries, out)
+    crate::sources::bundle(inv, component, target, out)
 }
 
-fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Result<()> {
+pub(crate) fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Result<()> {
     for record in spdx["files"].as_array().context("vcpkg SPDX files")? {
         if !record["SPDXID"]
             .as_str()

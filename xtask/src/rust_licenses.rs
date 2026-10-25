@@ -77,7 +77,7 @@ fn source_license_files(root: &Path, files: &mut BTreeMap<PathBuf, String>) -> R
             .context("UTF-8 source filename")?
             .to_owned();
         let filename = name.to_ascii_uppercase();
-        if ["LICENSE", "COPYING", "NOTICE"]
+        if ["LICENSE", "COPYING", "COPYRIGHT", "NOTICE"]
             .iter()
             .any(|prefix| filename.starts_with(prefix))
         {
@@ -94,9 +94,36 @@ fn source_license_files(root: &Path, files: &mut BTreeMap<PathBuf, String>) -> R
     Ok(())
 }
 
+/// Resolve the same manifest and features as the packaged Cargo build.
+pub(crate) fn metadata(
+    inv: &crate::cores::Inventory,
+    target: &str,
+    component: &str,
+) -> Result<Value> {
+    if component == "manager" {
+        return crate::build::cargo_metadata(inv, target);
+    }
+    let mut command = std::process::Command::new("cargo");
+    command.current_dir(&inv.root).args([
+        "metadata", "--locked", "--offline", "--format-version", "1", "--filter-platform", target,
+    ]);
+    if component != "manager" {
+        let core = inv.core(component)?;
+        command.arg("--manifest-path").arg(inv.root.join(&core.manifest));
+        if !core.features.is_empty() {
+            command.arg("--features").arg(core.features.iter().map(|f| format!("{}/{f}", core.package)).collect::<Vec<_>>().join(","));
+        }
+    }
+    Ok(serde_json::from_slice(&crate::dependencies::capture(&mut command)?)?)
+}
+
 /// Metadata must be resolved with `--filter-platform` for the packaged target.
 /// Follow normal and build edges, including proc macros, but not test-only edges.
-pub(crate) fn entries(metadata: &Value, scratch: &Path) -> Result<Vec<(PathBuf, String)>> {
+pub(crate) fn entries(
+    metadata: &Value,
+    package: &str,
+    scratch: &Path,
+) -> Result<Vec<(PathBuf, String)>> {
     let canonical_source = canonical_source()?;
     let packages = metadata["packages"]
         .as_array()
@@ -114,9 +141,9 @@ pub(crate) fn entries(metadata: &Value, scratch: &Path) -> Result<Vec<(PathBuf, 
         .collect::<Result<_>>()?;
     let root = packages
         .iter()
-        .find(|(_, p)| p["name"] == "shinki-emu-manager")
+        .find(|(_, p)| p["name"] == package)
         .map(|(id, _)| *id)
-        .context("Manager package absent from cargo metadata")?;
+        .with_context(|| format!("package {package} absent from cargo metadata"))?;
     let mut pending = vec![root];
     let mut selected = BTreeSet::new();
     while let Some(id) = pending.pop() {
@@ -188,6 +215,13 @@ pub(crate) fn entries(metadata: &Value, scratch: &Path) -> Result<Vec<(PathBuf, 
             // Git workspace crates can keep their provided copyright/license at
             // the checkout root (for example mlua-sys), outside the crate directory.
             source_license_files(checkout, &mut files)?;
+        }
+        if files.is_empty()
+            && p["source"].is_null()
+            && let Some(workspace) = metadata["workspace_root"].as_str()
+            && root.starts_with(workspace)
+        {
+            source_license_files(Path::new(workspace), &mut files)?;
         }
         let expression = p["license"].as_str().filter(|s| !s.trim().is_empty());
         let mut canonical = false;
