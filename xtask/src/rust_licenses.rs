@@ -129,7 +129,11 @@ fn source_license_files(
         .min_depth(1)
         .max_depth(if recursive { usize::MAX } else { 1 })
         .into_iter()
-        .filter_entry(|entry| entry.file_name() != ".git");
+        // Hidden trees (.direnv, .github, editor caches) are packaging residue,
+        // not notices for the crate; id3 ships Nix inputs under .direnv.
+        .filter_entry(|entry| {
+            entry.depth() == 0 || !entry.file_name().to_string_lossy().starts_with('.')
+        });
     for item in entries {
         let item = item.with_context(|| format!("reading licenses in {}", root.display()))?;
         let relative = item.path().strip_prefix(root)?;
@@ -292,11 +296,15 @@ pub(crate) fn entries(
         if files.is_empty()
             && p["source"]
                 .as_str()
-                .is_some_and(|source| source.starts_with("git+"))
+                .is_none_or(|source| source.starts_with("git+"))
+            && !(p["source"].is_null()
+                && metadata["workspace_root"]
+                    .as_str()
+                    .is_some_and(|workspace| root.starts_with(workspace)))
             && let Some(checkout) = root.ancestors().find(|dir| dir.join(".git").exists())
         {
-            // Git workspace crates can keep their provided copyright/license at
-            // the checkout root (for example mlua-sys), outside the crate directory.
+            // Git and fork-checkout path crates can keep their provided copyright/license
+            // at the checkout root (mlua-sys, siglus_rs crates/*), outside the crate directory.
             source_license_files(checkout, false, &mut files)?;
         }
         if files.is_empty()

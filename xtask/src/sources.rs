@@ -14,6 +14,9 @@ fn git(directory: &Path) -> Command {
     command
         .arg("-C")
         .arg(directory)
+        // Archives and blob reads must carry committed bytes; a runner's
+        // core.autocrlf=true would rewrite LF and break LFS pointer checks.
+        .args(["-c", "core.autocrlf=false", "-c", "core.eol=lf"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0");
     command

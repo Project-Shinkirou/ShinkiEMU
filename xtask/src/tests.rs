@@ -730,6 +730,13 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     )
     .unwrap();
     fs::write(temp.path().join("direct/README.md"), "not a license").unwrap();
+    // Hidden residue such as Nix inputs under .direnv is not a notice for the crate.
+    fs::create_dir_all(temp.path().join("transitive/.direnv/inputs")).unwrap();
+    fs::write(
+        temp.path().join("transitive/.direnv/inputs/LICENSE"),
+        "unrelated input",
+    )
+    .unwrap();
     let fonts = temp.path().join("transitive/fonts");
     fs::create_dir(&fonts).unwrap();
     for name in [
@@ -760,6 +767,14 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         "license_file": null, "source": "git+https://example.org/workspace#revision",
         "manifest_path": git_checkout.join("crates/binding/Cargo.toml")
     }));
+    // A path crate inside a fork checkout (not the product workspace) inherits the
+    // checkout-root license, as siglus_rs crates/* do.
+    fs::create_dir_all(git_checkout.join("crates/fork-path")).unwrap();
+    packages.push(json!({
+        "id": "fork-path", "name": "fork-path", "version": "0.1.0", "license": null,
+        "license_file": null, "source": null,
+        "manifest_path": git_checkout.join("crates/fork-path/Cargo.toml")
+    }));
     let dep = |pkg: &str, kind: Option<&str>| {
         json!({
             "pkg": pkg, "dep_kinds": [{"kind": kind, "target": null}]
@@ -768,14 +783,15 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     let mut metadata = json!({
         "packages": packages,
         "resolve": {"nodes": [
-            {"id": "manager", "deps": [dep("direct", None), dep("build", Some("build")), dep("binding", None), dep("dev", Some("dev"))]},
+            {"id": "manager", "deps": [dep("direct", None), dep("build", Some("build")), dep("binding", None), dep("fork-path", None), dep("dev", Some("dev"))]},
             {"id": "direct", "deps": [dep("transitive", None), dep("old", None)]},
             {"id": "transitive", "deps": [dep("direct", None)]},
             {"id": "build", "deps": []},
             {"id": "old", "deps": []},
             {"id": "dev", "deps": []},
             {"id": "other", "deps": []},
-            {"id": "binding", "deps": []}
+            {"id": "binding", "deps": []},
+            {"id": "fork-path", "deps": []}
         ]}
     });
     let scratch = temp.path().join("scratch");
@@ -871,7 +887,16 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     );
     assert_eq!(
         fs::read_dir(output.join("licenses/rust")).unwrap().count(),
-        6
+        7
+    );
+    assert_eq!(
+        sha256(&output.join("licenses/rust/fork-path-0.1.0/LICENSE")).unwrap(),
+        sha256(&git_checkout.join("LICENSE")).unwrap()
+    );
+    assert!(
+        !output
+            .join("licenses/rust/steamroom-client-0.3.0/.direnv")
+            .exists()
     );
     assert_eq!(
         sha256(&output.join("licenses/rust/binding-1.0.0/LICENSE")).unwrap(),

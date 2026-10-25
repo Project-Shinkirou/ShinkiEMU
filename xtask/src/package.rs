@@ -1075,6 +1075,9 @@ fn package_android(
         plain(key)?;
     }
     atomic_directory(out, |stage| {
+        // Each ABI resolves its own Rust closure (target-specific crates differ), so
+        // the asset listing is the union; every file present in both must still match.
+        let mut bundled = std::collections::BTreeSet::new();
         for (target, _) in ANDROID_TARGETS {
             let built = if target == result.target {
                 result.clone()
@@ -1088,6 +1091,15 @@ fn package_android(
             android_inputs(inv, &built, inputs.path())?;
             // Shared metadata/license bytes must be identical for both ABIs.
             for (source, name) in tree(inputs.path())? {
+                if name == "assets/bundled.manifest" {
+                    bundled.extend(
+                        fs::read_to_string(&source)?
+                            .lines()
+                            .filter(|line| !line.is_empty())
+                            .map(str::to_owned),
+                    );
+                    continue;
+                }
                 let destination = stage.join(&name);
                 if destination.exists() {
                     if sha256(&source)? != sha256(&destination)? {
@@ -1099,6 +1111,9 @@ fn package_android(
             }
             write_provenance(&built, &stage.join(format!("build-{target}.json")))?;
         }
+        let mut manifest = bundled.into_iter().collect::<Vec<_>>().join("\n");
+        manifest.push('\n');
+        fs::write(stage.join("assets/bundled.manifest"), manifest)?;
         let gradle = inv.root.join("Platforms/Android").join(if cfg!(windows) {
             "gradlew.bat"
         } else {
