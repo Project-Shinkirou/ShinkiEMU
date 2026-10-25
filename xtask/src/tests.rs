@@ -775,6 +775,17 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         "license_file": null, "source": null,
         "manifest_path": git_checkout.join("crates/fork-path/Cargo.toml")
     }));
+    // A git source with the same name-version as another source (ruffle swf-0.2.2 vs
+    // crates.io swf-0.2.2) keeps a separate notice group.
+    let duplicate = temp.path().join("git-duplicate");
+    fs::create_dir_all(&duplicate).unwrap();
+    fs::write(duplicate.join("LICENSE-APACHE"), "git apache").unwrap();
+    packages.push(json!({
+        "id": "duplicate", "name": "steamroom", "version": "0.2.0", "license": "MIT OR Apache-2.0",
+        "license_file": null,
+        "source": "git+https://example.org/steamroom?tag=v0.2.0#a1ac4ce8647352ad03044031cad0454a636427b8",
+        "manifest_path": duplicate.join("Cargo.toml")
+    }));
     let dep = |pkg: &str, kind: Option<&str>| {
         json!({
             "pkg": pkg, "dep_kinds": [{"kind": kind, "target": null}]
@@ -783,7 +794,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     let mut metadata = json!({
         "packages": packages,
         "resolve": {"nodes": [
-            {"id": "manager", "deps": [dep("direct", None), dep("build", Some("build")), dep("binding", None), dep("fork-path", None), dep("dev", Some("dev"))]},
+            {"id": "manager", "deps": [dep("direct", None), dep("duplicate", None), dep("build", Some("build")), dep("binding", None), dep("fork-path", None), dep("dev", Some("dev"))]},
             {"id": "direct", "deps": [dep("transitive", None), dep("old", None)]},
             {"id": "transitive", "deps": [dep("direct", None)]},
             {"id": "build", "deps": []},
@@ -791,7 +802,8 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
             {"id": "dev", "deps": []},
             {"id": "other", "deps": []},
             {"id": "binding", "deps": []},
-            {"id": "fork-path", "deps": []}
+            {"id": "fork-path", "deps": []},
+            {"id": "duplicate", "deps": []}
         ]}
     });
     let scratch = temp.path().join("scratch");
@@ -817,21 +829,22 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
             filename
         );
     }
-    assert!(
-        output
-            .join("licenses/rust/steamroom-0.2.0/package.json")
-            .is_file()
+    for file in ["package.json", "LICENSE-MIT", "LICENSE-Apache-2.0"] {
+        assert!(
+            output
+                .join("licenses/rust/steamroom-0.2.0+path")
+                .join(file)
+                .is_file()
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(
+            output.join("licenses/rust/steamroom-0.2.0+git-a1ac4ce86473/LICENSE-APACHE")
+        )
+        .unwrap(),
+        "git apache"
     );
-    assert!(
-        output
-            .join("licenses/rust/steamroom-0.2.0/LICENSE-MIT")
-            .is_file()
-    );
-    assert!(
-        output
-            .join("licenses/rust/steamroom-0.2.0/LICENSE-Apache-2.0")
-            .is_file()
-    );
+    assert!(!output.join("licenses/rust/steamroom-0.2.0").exists());
     assert!(
         output
             .join("licenses/rust/steamroom-client-0.3.0/LICENSE")
@@ -887,7 +900,7 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     );
     assert_eq!(
         fs::read_dir(output.join("licenses/rust")).unwrap().count(),
-        7
+        8
     );
     assert_eq!(
         sha256(&output.join("licenses/rust/fork-path-0.1.0/LICENSE")).unwrap(),
