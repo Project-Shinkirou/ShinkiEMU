@@ -34,7 +34,27 @@ fn canonical_source() -> Result<Value> {
     Ok(serde_json::to_value(source)?)
 }
 
-fn canonical_texts(expression: &str) -> Result<BTreeMap<&'static str, &'static str>> {
+fn provided_text(license: &str, files: &BTreeMap<PathBuf, String>) -> bool {
+    let license = license.strip_prefix("LicenseRef-").unwrap_or(license);
+    let stem = license.rsplit_once('-').filter(|(_, version)| {
+        version.bytes().any(|b| b.is_ascii_digit())
+            && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+    }).map_or(license, |(stem, _)| stem);
+    files.values().any(|name| {
+        let Some(name) = Path::new(name).file_stem().and_then(|s| s.to_str()) else { return false; };
+        ["", "LICENSE-", "LicenseRef-"].iter().any(|prefix| {
+            name.get(..prefix.len()).is_some_and(|p| p.eq_ignore_ascii_case(prefix))
+                && name.get(prefix.len()..).is_some_and(|name| {
+                    name.eq_ignore_ascii_case(license) || name.eq_ignore_ascii_case(stem)
+                })
+        })
+    })
+}
+
+fn canonical_texts(
+    expression: &str,
+    provided: &BTreeMap<PathBuf, String>,
+) -> Result<BTreeMap<&'static str, &'static str>> {
     // Cargo historically accepted "/" for OR and deprecated SPDX identifiers.
     // Keep identifier matching strict: custom/unknown texts cannot be invented.
     let mode = spdx::ParseMode {
@@ -47,13 +67,16 @@ fn canonical_texts(expression: &str) -> Result<BTreeMap<&'static str, &'static s
         .with_context(|| format!("invalid SPDX expression {expression}"))?;
     let mut texts = BTreeMap::new();
     for requirement in expression.requirements() {
-        let id = requirement.req.license.id().with_context(|| {
-            format!(
-                "unknown canonical SPDX identifier: {}",
-                requirement.req.license
-            )
-        })?;
-        texts.insert(id.name, id.text());
+        if let Some(id) = requirement.req.license.id() {
+            if !provided_text(id.name, provided) {
+                texts.insert(id.name, id.text());
+            }
+        } else {
+            let license = requirement.req.license.to_string();
+            if !license.starts_with("LicenseRef-") || !provided_text(&license, provided) {
+                bail!("unknown canonical SPDX identifier: {license}");
+            }
+        }
         if let Some(addition) = &requirement.req.addition {
             match addition {
                 spdx::AdditionItem::Spdx(id) => {
@@ -86,6 +109,16 @@ fn source_license_files(root: &Path, files: &mut BTreeMap<PathBuf, String>) -> R
                 files.insert(dunce::canonicalize(item.path())?, name);
             } else if item.file_type()?.is_dir() {
                 for (file, relative) in crate::package::tree(&item.path())? {
+                    files.insert(dunce::canonicalize(file)?, format!("{name}/{relative}"));
+                }
+            }
+        } else if filename == "FONTS" && item.file_type()?.is_dir() {
+            // Embedded font licenses often use OFL.txt/UFL.txt or the font's
+            // own name, rather than a LICENSE prefix.
+            for (file, relative) in crate::package::tree(&item.path())? {
+                if file.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+                    ["txt", "md", "rst"].iter().any(|extension| s.eq_ignore_ascii_case(extension))
+                }) {
                     files.insert(dunce::canonicalize(file)?, format!("{name}/{relative}"));
                 }
             }
@@ -225,13 +258,19 @@ pub(crate) fn entries(
         }
         let expression = p["license"].as_str().filter(|s| !s.trim().is_empty());
         let mut canonical = false;
-        if files.is_empty() {
+        let has_package_text = !files.is_empty();
+        let primary = files.values().any(|name| {
+            !name.split('/').next().is_some_and(|dir| dir.eq_ignore_ascii_case("fonts"))
+        });
+        if !primary {
             let Some(expression) = expression else {
                 missing.push(format!("{name}-{version}"));
                 continue;
             };
-            let texts = canonical_texts(expression)
+            let texts = canonical_texts(expression, &files)
                 .with_context(|| format!("collecting canonical licenses for {name}-{version}"))?;
+            canonical = !texts.is_empty();
+            canonical_packages += usize::from(canonical);
             for (id, text) in texts {
                 let dest = format!("{group}/LICENSE-{id}");
                 crate::package::portable(&dest)?;
@@ -241,8 +280,6 @@ pub(crate) fn entries(
                 entries.push((path, dest));
                 canonical_count += 1;
             }
-            canonical = true;
-            canonical_packages += 1;
         }
         for (file, filename) in files {
             let dest = format!("{group}/{filename}");
@@ -255,7 +292,7 @@ pub(crate) fn entries(
             &record,
             serde_json::to_vec_pretty(&serde_json::json!({
                 "name": name, "version": version, "license": expression, "source": p["source"],
-                "text_origin": if canonical { "canonical-spdx" } else { "package" },
+                "text_origin": if canonical && has_package_text { "package+canonical-spdx" } else if canonical { "canonical-spdx" } else { "package" },
                 "canonical_text_source": if canonical { Some(&canonical_source) } else { None },
             }))?,
         )?;

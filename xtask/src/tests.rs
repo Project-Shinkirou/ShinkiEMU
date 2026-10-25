@@ -821,3 +821,35 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     metadata["packages"][1]["license_file"] = json!("missing.txt");
     assert!(crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).is_err());
 }
+
+#[test]
+fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("crate");
+    fs::create_dir_all(root.join("fonts")).unwrap();
+    fs::write(root.join("fonts/UFL.txt"), "original Ubuntu font terms and attribution").unwrap();
+    fs::write(root.join("fonts/OFL.txt"), "original open font terms and attribution").unwrap();
+    fs::write(root.join("fonts/Hack-Regular.txt"), "original named-font copyright").unwrap();
+    fs::write(root.join("fonts/Font.ttf"), "font data is not a notice").unwrap();
+    let metadata = serde_json::json!({
+        "packages": [{
+            "id":"font-core", "name":"font-core", "version":"1.0.0",
+            "manifest_path":root.join("Cargo.toml"),
+            "license":"(MIT OR Apache-2.0) AND OFL-1.1 AND LicenseRef-UFL-1.0"
+        }],
+        "resolve":{"nodes":[{"id":"font-core", "deps":[]}]}
+    });
+    let entries = crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("scratch")).unwrap();
+    let output = temp.path().join("package");
+    fs::create_dir(&output).unwrap();
+    copy_entries(&entries, &output).unwrap();
+    let notices = output.join("licenses/rust/font-core-1.0.0");
+    assert_eq!(fs::read(notices.join("fonts/UFL.txt")).unwrap(), fs::read(root.join("fonts/UFL.txt")).unwrap());
+    assert!(notices.join("fonts/Hack-Regular.txt").is_file());
+    assert!(notices.join("LICENSE-MIT").is_file());
+    assert!(notices.join("LICENSE-Apache-2.0").is_file());
+    assert!(!notices.join("LICENSE-OFL-1.1").exists());
+    assert!(!notices.join("fonts/Font.ttf").exists());
+    fs::remove_file(root.join("fonts/UFL.txt")).unwrap();
+    assert!(crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("missing")).is_err());
+}

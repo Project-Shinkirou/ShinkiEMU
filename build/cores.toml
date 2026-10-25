@@ -452,8 +452,8 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki"
-rev = "2db6873123c3743f4bcb39303dd4426607562b13"
+branch = "shinki-latest"
+rev = "3b7c96bdd79bcf445dab33e44c64dc59332c32d3"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "The pinned official Ren'Py 8.5.3 Linux SDK lib/py3-linux-x86_64/librenpython.so does not export SDL_SendKeyboardKey/Text, SDL_SetKeyboardFocus/MouseFocus or SDL_SendMouseMotion/Button/Wheel required by shinki/core.cpp:39-46 and 678-746. A Linux resident-interpreter/SDL build exposing native input state is required; SDK Linux embeds CPython 3.12.8 rather than the Windows 3.12.7 development inputs."

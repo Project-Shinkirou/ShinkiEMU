@@ -207,9 +207,37 @@ fn append_revision(
     )?;
     for entry in tar::Archive::new(fs::File::open(raw.path())?).entries()? {
         let mut entry = entry?;
-        let path = prefix.join(entry.path()?);
+        let relative = entry.path()?.into_owned();
+        let path = prefix.join(&relative);
         let mut header = entry.header().clone();
-        builder.append_data(&mut header, path, &mut entry)?;
+        if header.entry_type().is_file() && entry.size() <= 1024 {
+            let size = entry.size() as usize;
+            let mut bytes = [0u8; 1024];
+            std::io::Read::read_exact(&mut entry, &mut bytes[..size])?;
+            if bytes[..size].starts_with(b"version https://git-lfs.github.com/spec/v1\n") {
+                let pointer = std::str::from_utf8(&bytes[..size])?;
+                let oid = pointer.lines().find_map(|line| line.strip_prefix("oid sha256:"))
+                    .context("Git LFS source lacks SHA256")?;
+                if oid.len() != 64 || !oid.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    bail!("invalid Git LFS source SHA256 for {}", relative.display());
+                }
+                let expected: u64 = pointer.lines().find_map(|line| line.strip_prefix("size "))
+                    .context("Git LFS source lacks size")?.parse()?;
+                let source = repository.join(&relative);
+                if fs::metadata(&source).with_context(|| format!("missing Git LFS source {}", source.display()))?.len() != expected
+                    || !package::sha256(&source)?.eq_ignore_ascii_case(oid)
+                {
+                    bail!("Git LFS source {} is missing, unmaterialized or changed; expected SHA256 {oid}", source.display());
+                }
+                header.set_size(expected);
+                header.set_cksum();
+                builder.append_data(&mut header, path, fs::File::open(source)?)?;
+            } else {
+                builder.append_data(&mut header, path, &bytes[..size])?;
+            }
+        } else {
+            builder.append_data(&mut header, path, &mut entry)?;
+        }
     }
     if recursive {
         for (path, pin) in gitlinks(repository, rev)? {
@@ -335,9 +363,15 @@ fn sha512(path: &Path) -> Result<String> {
     Ok(hex::encode(digest.finalize()))
 }
 
-/// Collect every installed native port, including host build ports and static
-/// libraries; an allowlist would miss newly added transitive LGPL components.
-pub(crate) fn native_sources(inv: &Inventory, component: &str, target: &str, root: &Path) -> Result<String> {
+/// Collect every installed target port, including static libraries. The pinned
+/// vcpkg Git bundle also carries host build-helper ports and toolchain scripts.
+fn native_sources(
+    inv: &Inventory,
+    component: &str,
+    target: &str,
+    root: &Path,
+    metadata: &serde_json::Value,
+) -> Result<String> {
     let selected = dependencies::needs(inv, target, component)?;
     let mut installations = Vec::new();
     if selected.subtitle {
@@ -393,7 +427,7 @@ pub(crate) fn native_sources(inv: &Inventory, component: &str, target: &str, roo
             _ => inv.core(component)?.source_directory(&inv.root)?.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/"),
         };
         commands.push_str(&format!(
-            "& $vcpkg install --x-no-downloads --triplet {triplet} --x-manifest-root=\"{manifest}\" --x-install-root=\"{install_root}\" --overlay-ports=\"native/ports/{group}\""
+            "& $vcpkg install --vcpkg-root=\".work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"{manifest}\" --x-install-root=\"{install_root}\" --overlay-ports=\"native/ports/{group}\""
         ));
         if *group == "subtitle" {
             commands.push_str(" --overlay-triplets=\"native/subtitle-triplets\"");
@@ -403,7 +437,6 @@ pub(crate) fn native_sources(inv: &Inventory, component: &str, target: &str, roo
     collect_archives(&inv.root.join(".work/vcpkg-downloads"), &root.join(".work/vcpkg-downloads"), required)?;
     if selected.subtitle {
         // The pinned engine supplies custom mixed-linkage triplets.
-        let metadata = crate::rust_licenses::metadata(inv, target, component)?;
         let engine = metadata["packages"].as_array().context("Cargo packages")?.iter()
             .find(|p| p["name"] == "roukaku-subtitle").context("roukaku-subtitle source missing")?;
         let manifest = Path::new(engine["manifest_path"].as_str().context("subtitle manifest")?);
@@ -414,10 +447,19 @@ pub(crate) fn native_sources(inv: &Inventory, component: &str, target: &str, roo
         let pins: toml::Value = toml::from_str(&fs::read_to_string(inv.root.join("build/dependencies.toml"))?)?;
         let pin = pins["vcpkg_commit"].as_str().context("vcpkg commit")?;
         if revision(&repo)? != pin { bail!("vcpkg source is not at pinned revision {pin}"); }
-        let archive = root.join("native/vcpkg.tar");
-        let mut builder = tar::Builder::new(fs::File::create(&archive)?);
-        append_revision(&mut builder, &repo, pin, Path::new(""), false)?;
-        builder.finish()?;
+        // Versioned manifests need baseline/tree objects, not just a checkout.
+        // Retaining the reachable history makes vcpkg registry resolution offline.
+        dependencies::run(
+            git(&repo).args(["bundle", "create"]).arg(root.join("native/vcpkg.bundle")).arg("HEAD"),
+        )?;
+        let tool = if target.contains("windows") {
+            "$vcpkg = (Get-Command vcpkg.exe).Source"
+        } else {
+            "vcpkg=$(command -v vcpkg)"
+        };
+        commands = format!(
+            "git clone --no-checkout native/vcpkg.bundle .work/vcpkg\ngit -C .work/vcpkg checkout --detach {pin}\n{tool}\n{commands}"
+        );
     }
     if selected.impacto_sources {
         native_archives(inv, root, &["libatrac9", "magic_enum"])?;
@@ -508,7 +550,7 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
     let native: serde_json::Value = serde_json::from_slice(&fs::read(&native_inventory)?)?;
     if native["renpy_build"] != PIN { bail!("Ren'Py native source revision mismatch"); }
     let inputs = native["sources"].as_array().context("Ren'Py native source archives")?;
-    for name in ["aom", "libavif", "libyuv", "assimp", "cpython-mingw", "renpy"] {
+    for name in ["aom", "libavif", "libyuv", "assimp", "cpython-mingw", "renpy", "pyobjus"] {
         if !inputs.iter().any(|p| p["name"] == name) { bail!("Ren'Py source closure lacks {name}"); }
     }
     for input in inputs {
@@ -584,7 +626,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         check.arg("--features").arg(features.iter().map(|f| format!("{package}/{f}")).collect::<Vec<_>>().join(","));
     }
     dependencies::capture(&mut check).context("corresponding source does not resolve offline from its vendor tree")?;
-    let native_commands = native_sources(inv, component, target, &root)?;
+    let native_commands = native_sources(inv, component, target, &root, &metadata)?;
     fs::write(root.join("source-references.json"), serde_json::to_vec_pretty(&references)?)?;
     let manifest_relative = manifest.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
     let feature_args = if features.is_empty() { String::new() } else { format!(" --features {}", features.join(",")) };
@@ -601,10 +643,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             "$env:VCPKG_DOWNLOADS = \"$PWD/.work/vcpkg-downloads\"\n\
              $env:VCPKG_BINARY_SOURCES = 'clear'\n\
              $env:VCPKG_FORCE_SYSTEM_BINARIES = '1'\n\
-             New-Item -ItemType Directory -Force .work/vcpkg | Out-Null\n\
-             tar -xf native/vcpkg.tar -C .work/vcpkg\n\
-             # Supply a vcpkg executable built from this pinned tree (system build tool).\n\
-             $vcpkg = \"$PWD/.work/vcpkg/vcpkg.exe\"\n"
+             # A system vcpkg executable, CMake and Ninja must be on PATH.\n"
         );
         instructions.push_str(&native_commands);
         if dependencies::needs(inv, target, component)?.subtitle {
@@ -671,7 +710,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              ```sh\nmkdir -p native/renpy-build\ntar -xf native/renpy-build.tar -C native/renpy-build\n\
              mkdir -p native/renpy-build/tmp/tars\n\
              cp \"$LLVM_MINGW_ARCHIVE\" native/renpy-build/tmp/tars/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz\n\
-             python3 native/renpy-offline.py --platform windows --arch x86_64\n```\n\n\
+             python3 native/renpy-offline.py --platform windows --arch x86_64 --stop renpython\n```\n\n\
              The link command in tasks/renpython.py combines librenpy.a, FFmpeg, FriBidi and the other static libraries into librenpython.dll. \
              Modify the LGPL sources/patches, rebuild those libraries, and run that link task again, retaining compatible exports. \
              Replace .work/native-downloads/renpy-sdk/lib/py3-windows-x86_64/librenpython.dll with the rebuilt DLL and rebuild the adapter above. \
@@ -684,10 +723,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .replace("```powershell", "```sh")
             .replace("$env:", "export ")
             .replace(" = ", "=")
-            .replace("New-Item -ItemType Directory -Force .work/vcpkg | Out-Null", "mkdir -p .work/vcpkg")
-            .replace("& $vcpkg ", "\"$vcpkg\" ")
-            .replace("$vcpkg=", "vcpkg=")
-            .replace(".work/vcpkg/vcpkg.exe", ".work/vcpkg/vcpkg");
+            .replace("& $vcpkg ", "\"$vcpkg\" ");
     }
     let readme = temp.path().join("BUILD-FROM-SOURCE.md");
     fs::write(&readme, &instructions)?;
@@ -731,7 +767,7 @@ for item in sources:
             archive.extract(member, dest, filter="data")
 for item in sources:
     name = item["name"]
-    if name in ("renpy", "cpython-mingw"):
+    if name in ("renpy", "cpython-mingw", "pyobjus"):
         continue
     dest = root / "tmp/source" / name
     if not dest.exists():
@@ -747,6 +783,11 @@ if not (python_source / ".git").exists():
     subprocess.run(["git", "-c", "user.name=Source bundle", "-c", "user.email=source@example.invalid",
                     "-c", "commit.gpgsign=false", "commit", "-m", "Archive-backed Python source"], cwd=python_source, check=True)
 python_archives = native / "python-sources"
+# The shipped Python payload includes this already-generated permissive module,
+# but ShinkiEMU does not redistribute or rebuild the proprietary Steam SDK.
+steam = root / "tmp/py3/steam"
+steam.mkdir(parents=True, exist_ok=True)
+shutil.copy2(root / "steamapi/steamapi.py", steam / "steamapi.py")
 os.environ["PYTHONHASHSEED"] = "0"
 os.environ.update(PIP_NO_INDEX="1", PIP_FIND_LINKS=str(python_archives),
                   PIP_NO_BUILD_ISOLATION="1", PIP_DISABLE_PIP_VERSION_CHECK="1")
@@ -766,9 +807,16 @@ def install_python_libraries(c):
               " ".join(shlex.quote(str(python_archives / p["file_name"])) for p in records))
     install(inventory["tools"])
     install([p.get("wheel", p) for p in inventory["packages"]])
+def unpack_pyobjus(c):
+    c.clean()
+    c.copytree(str(root / "unpacked/pyobjus"), "pyobjus")
+    c.chdir("pyobjus")
+    c.patch("pyobjus/ffi-h.diff")
 for task in renpybuild.task.tasks:
     if task.name == "python3" and task.task == "pip":
         task.function = install_python_libraries
+    if task.name == "pyobjus" and task.task in ("host_unpack", "unpack"):
+        task.function = unpack_pyobjus
 runpy.run_module("renpybuild", run_name="__main__")
 "#
 }
@@ -917,6 +965,30 @@ mod tests {
         let extracted = temp.path().join("fresh");
         tar::Archive::new(source).unpack(&extracted).unwrap();
         dependencies::capture(Command::new("cargo").current_dir(extracted).args(["metadata", "--offline", "--frozen", "--format-version", "1"])).unwrap();
+    }
+
+    #[test]
+    fn source_archive_materializes_only_checksum_matched_lfs_payloads() {
+        use sha2::Digest;
+        let (temp, _inv, _core, upstream, _first, _second) = fixture();
+        let payload = b"materialized public fixture bytes";
+        let oid = hex::encode(sha2::Sha256::digest(payload));
+        let pointer = format!("version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {}\n", payload.len());
+        let pin = commit(&upstream, &pointer);
+        fs::write(upstream.join("payload.txt"), payload).unwrap();
+        let archive = temp.path().join("materialized.tar");
+        let mut builder = tar::Builder::new(fs::File::create(&archive).unwrap());
+        append_revision(&mut builder, &upstream, &pin, Path::new(""), true).unwrap();
+        builder.finish().unwrap();
+        let extracted = temp.path().join("materialized");
+        tar::Archive::new(fs::File::open(archive).unwrap()).unpack(&extracted).unwrap();
+        assert_eq!(fs::read(extracted.join("payload.txt")).unwrap(), payload);
+        fs::write(upstream.join("payload.txt"), pointer).unwrap();
+        let mut builder = tar::Builder::new(fs::File::create(temp.path().join("pointer.tar")).unwrap());
+        assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
+        fs::write(upstream.join("payload.txt"), vec![b'x'; payload.len()]).unwrap();
+        let mut builder = tar::Builder::new(fs::File::create(temp.path().join("modified.tar")).unwrap());
+        assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
     }
 }
 
