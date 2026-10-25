@@ -363,8 +363,54 @@ fn sha512(path: &Path) -> Result<String> {
     Ok(hex::encode(digest.finalize()))
 }
 
-/// Collect every installed target port, including static libraries. The pinned
-/// vcpkg Git bundle also carries host build-helper ports and toolchain scripts.
+/// Read vcpkg's installed graph rather than treating every share/ directory as
+/// a port. Follow explicit host-triplet dependencies as well as target ports.
+fn installed_ports(installation: &Path) -> Result<Vec<(String, PathBuf)>> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let base = installation.parent().context("vcpkg installation root")?;
+    let triplet = installation.file_name().and_then(|s| s.to_str()).context("vcpkg triplet")?;
+    let status = base.join("vcpkg/status");
+    package::plain(&status)?;
+    let contents = fs::read_to_string(&status)?;
+    let mut graph: BTreeMap<(&str, &str), BTreeSet<(&str, &str)>> = BTreeMap::new();
+    let (mut name, mut architecture, mut depends, mut active) = (None, None, "", false);
+    for line in contents.lines().chain(std::iter::once("")) {
+        if line.is_empty() {
+            if active {
+                let name = name.context("installed vcpkg record has no Package")?;
+                let architecture = architecture.context("installed vcpkg record has no Architecture")?;
+                let edges = graph.entry((name, architecture)).or_default();
+                for dependency in depends.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let (package, target) = dependency.split_once(':').unwrap_or((dependency, architecture));
+                    let package = package.split('[').next().context("dependency package")?;
+                    edges.insert((package, target));
+                }
+            }
+            (name, architecture, depends, active) = (None, None, "", false);
+        } else if let Some(value) = line.strip_prefix("Package: ") {
+            name = Some(value);
+        } else if let Some(value) = line.strip_prefix("Architecture: ") {
+            architecture = Some(value);
+        } else if let Some(value) = line.strip_prefix("Depends: ") {
+            depends = value;
+        } else if line == "Status: install ok installed" {
+            active = true;
+        }
+    }
+    let mut pending: Vec<_> = graph.keys().filter(|key| key.1 == triplet).copied().collect();
+    if pending.is_empty() { bail!("no installed native ports for {triplet} in {}", status.display()); }
+    let mut selected = BTreeSet::new();
+    while let Some(key) = pending.pop() {
+        if selected.insert(key) {
+            let edges = graph.get(&key).with_context(|| format!("installed native dependency {}:{} missing from {}", key.0, key.1, status.display()))?;
+            pending.extend(edges.iter().copied());
+        }
+    }
+    Ok(selected.into_iter().map(|(name, arch)| (name.to_owned(), base.join(arch))).collect())
+}
+
+/// Collect installed target ports and their host-tool dependency closure,
+/// including static libraries and the pinned vcpkg registry/toolchain sources.
 fn native_sources(
     inv: &Inventory,
     component: &str,
@@ -391,11 +437,8 @@ fn native_sources(
     let mut commands = String::new();
     for (group, installed) in &installations {
         package::plain(&installed.join("share"))?;
-        for entry in fs::read_dir(installed.join("share"))? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() { continue; }
-            let port = entry.file_name().to_str().context("port name")?.to_owned();
-            let spdx = entry.path().join("vcpkg.spdx.json");
+        for (port, source_install) in installed_ports(installed)? {
+            let spdx = source_install.join("share").join(&port).join("vcpkg.spdx.json");
             package::plain(&spdx).with_context(|| format!("installed port {port} missing source provenance"))?;
             let record: serde_json::Value = serde_json::from_slice(&fs::read(&spdx)?)?;
             let overlay = if selected.native_vcpkg {
@@ -404,9 +447,11 @@ fn native_sources(
             let recipe = if overlay.join("portfile.cmake").is_file() {
                 overlay
             } else { inv.root.join(".work/vcpkg/ports").join(&port) };
-            package::verify_port_sources(&record, &recipe)?;
+            package::verify_port_sources(&record, &recipe)
+                .with_context(|| format!("native source port {port} ({})", recipe.display()))?;
             copy_tree(&recipe, &root.join("native/ports").join(group).join(&port))?;
-            copy_input(&spdx, &root.join("native/provenance").join(group).join(format!("{port}.spdx.json")))?;
+            let architecture = source_install.file_name().context("source port triplet")?;
+            copy_input(&spdx, &root.join("native/provenance").join(group).join(architecture).join(format!("{port}.spdx.json")))?;
             for resource in record["packages"].as_array().context("SPDX packages")? {
                 if !resource["SPDXID"].as_str().is_some_and(|s| s.starts_with("SPDXRef-resource-")) { continue; }
                 let checksum = resource["checksums"].as_array()
@@ -989,6 +1034,27 @@ mod tests {
         fs::write(upstream.join("payload.txt"), vec![b'x'; payload.len()]).unwrap();
         let mut builder = tar::Builder::new(fs::File::create(temp.path().join("modified.tar")).unwrap());
         assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
+    }
+
+    #[test]
+    fn native_graph_follows_host_tools_and_ignores_removed_or_unrelated_records() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("installed/target");
+        fs::create_dir_all(install.join("share/doc")).unwrap();
+        fs::create_dir_all(temp.path().join("installed/vcpkg")).unwrap();
+        assert!(installed_ports(&install).is_err());
+        let status = "Package: library\nArchitecture: target\nDepends: generator:host\nStatus: install ok installed\n\n\
+                      Package: generator\nArchitecture: host\nDepends: tool:host\nStatus: install ok installed\n\n\
+                      Package: tool\nArchitecture: host\nStatus: install ok installed\n\n\
+                      Package: unrelated\nArchitecture: host\nStatus: install ok installed\n\n\
+                      Package: removed\nArchitecture: target\nStatus: purge ok not-installed\n";
+        fs::write(temp.path().join("installed/vcpkg/status"), status).unwrap();
+        let ports = installed_ports(&install).unwrap();
+        assert_eq!(ports.len(), 3);
+        assert!(ports.iter().any(|(name, root)| name == "library" && root == &install));
+        assert!(ports.iter().any(|(name, root)| name == "tool" && root.ends_with("host")));
+        fs::write(temp.path().join("installed/vcpkg/status"), status.replace("Package: tool", "Package: missing")).unwrap();
+        assert!(installed_ports(&install).is_err());
     }
 }
 

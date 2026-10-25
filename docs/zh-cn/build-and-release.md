@@ -167,6 +167,8 @@ Git LFS 文件会按提交中的指针核对 SHA256 和大小，再写入真实�
 
 原生依赖收集覆盖所选安装树中的全部 vcpkg port，不再只收 FriBidi/FFmpeg。`native/ports/<分组>/` 保存经安装时 SPDX SHA256 核对的配方和补丁，`.work/vcpkg-downloads/` 保存经 SPDX SHA512 核对的实际源码压缩包。`native/vcpkg.bundle` 保存固定版本的 vcpkg 源码及可达 Git 历史，供版本化 manifest 离线解析 baseline 和 tree 对象。Impacto 另外保留 LibAtrac9/magic_enum 的固定源码输入，mspack 随 fork 源码交付；KiriKiri 的 libbpg、minizip 和 layerExImage 子模块也保留在源码快照中。
 
+安装图以 `vcpkg/status` 为准，也会跟随构建机 triplet 的传递依赖。`share/doc` 这类目录不算 port；实际依赖缺少 SPDX 或源码来源记录时，打包仍会失败。
+
 Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；对应文件放在 `.work/downloads/`。源码包还包含可读的 chardet/certifi 源码、离线组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
 
 Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `licenses/sena-rs/MS-PGothic.txt` 记录上游没有提供明确再分发授权，核心的 MPL 许可不替代字体本身的条款。
