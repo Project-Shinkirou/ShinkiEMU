@@ -49,6 +49,12 @@
 
 #define ShinkiEmuCAP_RENDER_EXTENT 16
 
+/**
+ * Text replacement uses the nonblocking v1 host service. Requires CAP_TEXT_HOOK.
+ * CAP_TEXT_HOOK without this bit explicitly selects synchronous replacement.
+ */
+#define ShinkiEmuCAP_ASYNC_TEXT 32
+
 #define ShinkiEmuMAX_DISPLAY_NAME_BYTES 64
 
 #define ShinkiEmuMAX_RENDER_EXTENT 16384
@@ -704,6 +710,42 @@ typedef struct ShinkiEmuCoreApi {
 typedef ShinkiEmuStatus (*ShinkiEmuQuery)(uint32_t, const struct ShinkiEmuCoreApi**);
 
 /**
+ * Optional v1 nonblocking replacement service, supplied in OpenRequestTextV1.
+ * Submit copies all input before returning. Repeating an unacknowledged ID is
+ * idempotent. Poll returns PENDING without waiting, or uses TextResult's
+ * caller-owned buffers and CAPACITY retry rules. A completed result is retained
+ * until acknowledge. Cancel drops only the matching request; a subsequent poll
+ * returns CANCELLED. Invalidate advances the context and drops every old result.
+ * All callbacks must return promptly; cancellation may run concurrently.
+ */
+typedef struct ShinkiEmuAsyncTextServiceV1 {
+  uint32_t version;
+  uint32_t size;
+  void *context;
+  ShinkiEmuStatus (*submit)(void*, const struct ShinkiEmuTextRequest*, struct ShinkiEmuError*);
+  ShinkiEmuStatus (*poll)(void*,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t,
+                          struct ShinkiEmuTextResult*,
+                          struct ShinkiEmuError*);
+  ShinkiEmuStatus (*cancel)(void*, uint64_t, uint64_t, uint64_t);
+  ShinkiEmuStatus (*acknowledge)(void*, uint64_t, uint64_t, uint64_t);
+  void (*invalidate)(void*, uint64_t, uint64_t);
+} ShinkiEmuAsyncTextServiceV1;
+
+/**
+ * Additive v1 host-service extension. The base OpenRequest layout is unchanged,
+ * so ABI v3 cores compiled against the base continue to work. Read this tail
+ * only when base.header.size covers this entire struct. A null service disables
+ * replacement; SDK-owned asynchronous cores must never fall back to sync text.
+ */
+typedef struct ShinkiEmuOpenRequestTextV1 {
+  struct ShinkiEmuOpenRequest base;
+  const struct ShinkiEmuAsyncTextServiceV1 *text_async;
+} ShinkiEmuOpenRequestTextV1;
+
+/**
  * Optional ownership extension for real cross-session module resources, e.g.
  * Musica's explicit graphics Instance owner. A Host core instance creates one
  * owner after diagnostic initialization and retains it through all its sessions.
@@ -762,5 +804,10 @@ typedef struct ShinkiEmuSessionMenuApi {
 #define ShinkiEmuNO_MATCH 8
 
 #define ShinkiEmuSTALE_CONTEXT 9
+
+/**
+ * The nonblocking text service has not completed this request.
+ */
+#define ShinkiEmuPENDING 10
 
 #endif  /* SHINKI_EMU_ABI_H */

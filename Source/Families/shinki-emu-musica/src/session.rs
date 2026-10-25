@@ -27,6 +27,7 @@ use std::{
 struct PendingText {
     id: u64,
     event: MusicaVmEvent,
+    request: Option<crate::native::text::PendingReplacement>,
 }
 pub(crate) struct MusicaSession {
     info: FrameInfo,
@@ -261,6 +262,25 @@ impl MusicaSession {
             }
             if self.backlog_event(event)? {
                 choice_dirty = true;
+                continue;
+            }
+            if self.pending.is_some()
+                && matches!(
+                    event,
+                    RuntimeEvent::Key {
+                        code: KeyCode::Enter
+                            | KeyCode::Space
+                            | KeyCode::ControlLeft
+                            | KeyCode::ControlRight,
+                        state: KeyState::Pressed,
+                        ..
+                    } | RuntimeEvent::PointerButton {
+                        button: PointerButton::Primary,
+                        state: KeyState::Pressed
+                    }
+                )
+            {
+                choice_dirty |= self.skip_translation()?;
                 continue;
             }
             match event {

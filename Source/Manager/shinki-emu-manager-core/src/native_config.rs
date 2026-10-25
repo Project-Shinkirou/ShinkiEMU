@@ -83,6 +83,9 @@ pub(super) unsafe fn descriptor(
     if raw.capabilities & abi::CAP_TEXT_HOOK != 0 {
         capabilities.push(FamilyCapability::TextReplacement);
     }
+    if raw.capabilities & abi::CAP_ASYNC_TEXT != 0 {
+        capabilities.push(FamilyCapability::AsyncTextReplacement);
+    }
     let descriptor = FamilyPluginDescriptor {
         family_id: unsafe { text(raw.family_id, 256) }?,
         plugin_id: unsafe { text(raw.plugin_id, 256) }?,

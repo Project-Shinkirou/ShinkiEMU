@@ -21,6 +21,7 @@ fn request() -> NativeOpenRequest {
             suspended: false,
         },
         host: no_host_services(&cancellation),
+        text_async: None,
         cancellation,
         render_extent: None,
     }

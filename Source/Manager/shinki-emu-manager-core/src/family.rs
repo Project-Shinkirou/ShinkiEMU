@@ -27,6 +27,7 @@ pub enum FamilyCapability {
     CpuFrame,
     RenderExtent,
     TextReplacement,
+    AsyncTextReplacement,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

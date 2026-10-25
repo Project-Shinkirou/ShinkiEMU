@@ -244,6 +244,10 @@ unsafe extern "C" fn open(
         if text.request.is_some() && (text.acknowledge.is_none() || text.invalidate.is_none()) {
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
+        let text_async = unsafe { request.async_text() }.map_err(invalid)?;
+        if text.request.is_some() && text_async.is_none() {
+            return Err(invalid(abi::UNSUPPORTED));
+        }
         let window = request.host.window;
         if window.request.is_some() && window.invalidate.is_none() {
             return Err(invalid(abi::INVALID_ARGUMENT));
@@ -267,6 +271,7 @@ unsafe extern "C" fn open(
             configuration: unsafe { config::entries(request) }?,
             render_extent: config::render_extent(request)?,
             window: request.window,
+            replacement: text_async.map(|service| text::TextBridge(services.clone(), service)),
         };
         let graphics_owner = unsafe { owner::borrow(request.module_owner) }?;
         let (commands, receiver) = sync_channel(64);

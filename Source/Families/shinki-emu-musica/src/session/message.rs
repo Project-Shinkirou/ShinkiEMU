@@ -47,10 +47,7 @@ impl MusicaSession {
                     self.translation_visible,
                 );
             }
-            let enabled = self
-                .replacement
-                .as_ref()
-                .is_some_and(|s| s.0.text.is_some());
+            let enabled = self.replacement.is_some();
             if !enabled
                 || !matches!(
                     event,
@@ -68,42 +65,57 @@ impl MusicaSession {
             self.pending = Some(PendingText {
                 id: self.generation,
                 event: event.unwrap(),
+                request: None,
             });
         }
-        let pending = self.pending.as_ref().unwrap();
-        let labels;
-        let source = match &pending.event {
-            MusicaVmEvent::Message { text, speaker, .. } => {
-                let mut source = vec![(shinki_emu_abi::TEXT_DIALOGUE, text.as_str())];
-                if let Some(speaker) = speaker {
-                    source.push((shinki_emu_abi::TEXT_SPEAKER, speaker.as_str()));
+        if self.pending.as_ref().unwrap().request.is_none() {
+            let pending = self.pending.as_ref().unwrap();
+            let labels;
+            let source = match &pending.event {
+                MusicaVmEvent::Message { text, speaker, .. } => {
+                    let mut source = vec![(shinki_emu_abi::TEXT_DIALOGUE, text.as_str())];
+                    if let Some(speaker) = speaker {
+                        source.push((shinki_emu_abi::TEXT_SPEAKER, speaker.as_str()));
+                    }
+                    source
                 }
-                source
-            }
-            MusicaVmEvent::Choice => {
-                labels = self
-                    .localized_choice_labels()?
-                    .ok_or_else(|| error("SHINKI_EMU_MUSICA_CHOICE", "choice is unavailable"))?
-                    .0;
-                labels
-                    .iter()
-                    .map(|text| (shinki_emu_abi::TEXT_CHOICE, text.as_str()))
-                    .collect()
-            }
-            _ => unreachable!(),
-        };
-        self.audio.suspend(true)?;
+                MusicaVmEvent::Choice => {
+                    labels = self
+                        .localized_choice_labels()?
+                        .ok_or_else(|| error("SHINKI_EMU_MUSICA_CHOICE", "choice is unavailable"))?
+                        .0;
+                    labels
+                        .iter()
+                        .map(|text| (shinki_emu_abi::TEXT_CHOICE, text.as_str()))
+                        .collect()
+                }
+                _ => unreachable!(),
+            };
+            let request = match self
+                .replacement
+                .as_ref()
+                .unwrap()
+                .submit(pending.id, &source)
+            {
+                Ok(request) => request,
+                Err(cause) => {
+                    self.hook_failed = true;
+                    return Err(cause);
+                }
+            };
+            self.pending.as_mut().unwrap().request = Some(request);
+        }
+        let pending = self.pending.as_mut().unwrap();
         let result = self
             .replacement
             .as_ref()
             .unwrap()
-            .transform(pending.id, &source);
-        self.reset_host_clock = true;
-        self.phase = 0;
-        self.input_pending = false;
+            .poll(pending.request.as_mut().unwrap());
         let mut transformed = match result {
-            Ok(result) => result.into_iter(),
+            Ok(Some(result)) => result.into_iter(),
+            Ok(None) => return Ok(None),
             Err(cause) => {
+                pending.request = None;
                 self.hook_failed = true;
                 return Err(cause);
             }
@@ -124,7 +136,24 @@ impl MusicaSession {
         Ok(Some(event))
     }
 
+    pub(super) fn skip_translation(&mut self) -> SessionResult<bool> {
+        let Some(pending) = self.pending.take() else {
+            return Ok(false);
+        };
+        self.replacement.as_ref().unwrap().skip(pending.id);
+        self.hook_failed = false;
+        self.input_pending = false;
+        self.apply_event(Some(pending.event))
+    }
+
     pub(super) fn choice_display(&self) -> SessionResult<Option<(Vec<String>, u32)>> {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| matches!(pending.event, MusicaVmEvent::Choice))
+        {
+            return Ok(None);
+        }
         let Some((labels, index)) = self.localized_choice_labels()? else {
             return Ok(None);
         };

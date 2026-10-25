@@ -1,15 +1,15 @@
+use crossbeam_channel::{Sender, bounded};
+use mlua::LuaSerdeExt;
+use parking_lot::{Condvar, Mutex};
 use shinki_emu_abi as abi;
 use shinki_emu_manager_core::{
     extensions::LocalExtension,
     model::{FamilyError, FamilyResult},
 };
 use shinki_emu_translation::{
-    TranslationClient, SecretResolver, TranslationProfile, TranslationRequest,
-    TranslationSegment, TranslationSession,
+    AsyncTranslationService, SecretResolver, TranslationClient, TranslationPoll,
+    TranslationProfile, TranslationSegment, TranslationSession,
 };
-use crossbeam_channel::{Sender, bounded};
-use mlua::LuaSerdeExt;
-use parking_lot::{Condvar, Mutex};
 use std::{
     ffi::c_void,
     sync::{
@@ -22,7 +22,8 @@ use std::{
 
 const MAX_ITEMS: usize = 128;
 const MAX_TEXT: usize = 1024 * 1024;
-const TRANSLATION_LUA: &str = "return function(item, config) return shinki.translate(item.text) end";
+const TRANSLATION_LUA: &str =
+    "return function(item, config) return shinki.translate(item.text) end";
 #[derive(Clone)]
 struct Item {
     id: u64,
@@ -47,14 +48,14 @@ struct Pending {
 struct State {
     epoch: u64,
     context: AtomicU64,
+    request: AtomicU64,
+    retired: AtomicU64,
     closed: AtomicBool,
     active: AtomicUsize,
     pending: Mutex<Option<Pending>>,
     changed: Condvar,
-    provider: Option<Arc<TranslationSession<dyn SecretResolver>>>,
+    provider: Option<AsyncTranslationService<dyn SecretResolver>>,
     extensions: Vec<LocalExtension>,
-    recent: Mutex<std::collections::VecDeque<TranslationSegment>>,
-    context_limit: (usize, usize),
     queue: Sender<Job>,
 }
 enum Job {
@@ -64,6 +65,7 @@ enum Job {
 struct Worker {
     sender: Sender<Job>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    handle: tokio::runtime::Handle,
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -84,7 +86,8 @@ fn worker() -> FamilyResult<Arc<Worker>> {
     let thread = std::thread::Builder::new()
         .name("shinki-extensions-luau".into())
         .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_current_thread()
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
                 .enable_all()
                 .build()
             {
@@ -99,7 +102,7 @@ fn worker() -> FamilyResult<Arc<Worker>> {
                 let _ = ready.send(Err(error("SHINKI_EMU_EXTENSION_MEMORY")));
                 return;
             }
-            let _ = ready.send(Ok(()));
+            let _ = ready.send(Ok(runtime.handle().clone()));
             let mut compiled = None;
             while let Ok(job) = receiver.recv() {
                 let Job::Text(state, key, items) = job else {
@@ -118,13 +121,14 @@ fn worker() -> FamilyResult<Arc<Worker>> {
             }
         })
         .map_err(|_| error("SHINKI_EMU_EXTENSION_THREAD"))?;
+    let handle = initialized
+        .recv()
+        .map_err(|_| error("SHINKI_EMU_EXTENSION_THREAD"))??;
     let worker = Arc::new(Worker {
         sender,
         thread: Mutex::new(Some(thread)),
+        handle,
     });
-    initialized
-        .recv()
-        .map_err(|_| error("SHINKI_EMU_EXTENSION_THREAD"))??;
     *shared = Arc::downgrade(&worker);
     Ok(worker)
 }
@@ -140,12 +144,7 @@ impl TextReplacementBridge {
         secrets: Arc<dyn SecretResolver>,
         mut extensions: Vec<LocalExtension>,
     ) -> FamilyResult<Self> {
-        let context_limit = profile.as_ref().map_or((0, 0), |profile| {
-            (
-                profile.context_segments as usize,
-                profile.context_chars as usize,
-            )
-        });
+        let worker = worker()?;
         let provider = if let Some(profile) = profile {
             profile
                 .validate()
@@ -159,27 +158,29 @@ impl TextReplacementBridge {
                     configuration: serde_json::json!({}),
                 },
             );
-            Some(Arc::new(TranslationSession::new(Arc::new(
-                TranslationClient::new(profile, secrets)
-                    .map_err(|_| error("SHINKI_EMU_TEXT_PROVIDER"))?,
-            ))))
+            Some(AsyncTranslationService::new(
+                Arc::new(TranslationSession::new(Arc::new(
+                    TranslationClient::new(profile, secrets)
+                        .map_err(|_| error("SHINKI_EMU_TEXT_PROVIDER"))?,
+                ))),
+                worker.handle.clone(),
+            ))
         } else {
             None
         };
         extensions.retain(|entry| entry.enabled);
-        let worker = worker()?;
         Ok(Self {
             state: Arc::new(State {
                 epoch,
                 context: AtomicU64::new(0),
+                request: AtomicU64::new(0),
+                retired: AtomicU64::new(0),
                 closed: AtomicBool::new(false),
                 active: AtomicUsize::new(0),
                 pending: Mutex::new(None),
                 changed: Condvar::new(),
                 provider,
                 extensions,
-                recent: Mutex::new(std::collections::VecDeque::new()),
-                context_limit,
                 queue: worker.sender.clone(),
             }),
             _worker: worker,
@@ -189,6 +190,18 @@ impl TextReplacementBridge {
         abi::TextService {
             context: Arc::as_ptr(&self.state).cast_mut().cast(),
             request: Some(request),
+            acknowledge: Some(acknowledge),
+            invalidate: Some(invalidate),
+        }
+    }
+    pub(crate) fn async_sink(&self) -> abi::AsyncTextServiceV1 {
+        abi::AsyncTextServiceV1 {
+            version: 1,
+            size: std::mem::size_of::<abi::AsyncTextServiceV1>() as u32,
+            context: Arc::as_ptr(&self.state).cast_mut().cast(),
+            submit: Some(submit),
+            poll: Some(poll),
+            cancel: Some(cancel_request),
             acknowledge: Some(acknowledge),
             invalidate: Some(invalidate),
         }
@@ -206,18 +219,19 @@ impl TextReplacementBridge {
         while self.state.active.load(Ordering::Acquire) != 0 {
             self.state.changed.wait(&mut pending);
         }
-        let provider_result = self.state.provider.as_ref().map_or(Ok(()), |provider| {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| provider.clear()))
+        self.state.provider.as_ref().map_or(Ok(()), |provider| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| provider.reset()))
                 .map_err(|_| error("SHINKI_EMU_TEXT_PROVIDER_PANIC"))
-        });
-        self.state.recent.lock().clear();
-        provider_result
+        })
     }
 }
-fn cancelled(state: &State, key: Key) -> bool {
+fn stale_context(state: &State, key: Key) -> bool {
     state.closed.load(Ordering::Acquire)
         || state.epoch != key.session
         || state.context.load(Ordering::Acquire) != key.context
+}
+fn cancelled(state: &State, key: Key) -> bool {
+    stale_context(state, key) || state.request.load(Ordering::Acquire) != key.request
 }
 struct CompiledScripts {
     epoch: u64,
@@ -237,7 +251,9 @@ fn execute(
     let cancellation = state.clone();
     lua.set_interrupt(move |_| {
         if cancelled(&cancellation, key) {
-            Err(mlua::Error::RuntimeError("SHINKI_EMU_TEXT_CANCELLED".into()))
+            Err(mlua::Error::RuntimeError(
+                "SHINKI_EMU_TEXT_CANCELLED".into(),
+            ))
         } else {
             Ok(mlua::VmState::Continue)
         }
@@ -247,42 +263,105 @@ fn execute(
         .iter()
         .find(|item| item.kind == abi::TEXT_SPEAKER)
         .map(|item| item.text.clone());
+    let sequence = AtomicUsize::new(0);
     let result = lua.scope(|scope| {
-        if compiled.as_ref().is_none_or(|compiled| compiled.epoch != state.epoch) {
-            let chunks = state.extensions.iter().map(|extension| Ok((lua.load(&extension.source).set_name(&extension.id).into_function()?, lua.to_value(&extension.configuration)?))).collect::<mlua::Result<Vec<_>>>()?;
-            *compiled = Some(CompiledScripts { epoch: state.epoch, chunks });
+        if compiled
+            .as_ref()
+            .is_none_or(|compiled| compiled.epoch != state.epoch)
+        {
+            let chunks = state
+                .extensions
+                .iter()
+                .map(|extension| {
+                    Ok((
+                        lua.load(&extension.source)
+                            .set_name(&extension.id)
+                            .into_function()?,
+                        lua.to_value(&extension.configuration)?,
+                    ))
+                })
+                .collect::<mlua::Result<Vec<_>>>()?;
+            *compiled = Some(CompiledScripts {
+                epoch: state.epoch,
+                chunks,
+            });
         }
         let api = lua.create_table()?;
         let translate = scope.create_function(|_, text: String| {
-            let provider = state.provider.as_ref().ok_or_else(|| mlua::Error::RuntimeError("SHINKI_EMU_TEXT_PROFILE_REQUIRED".into()))?;
-            let request = TranslationRequest { current: TranslationSegment { text, speaker: speaker.clone(), ruby: None }, recent: state.recent.lock().iter().cloned().collect() };
-            let translated = runtime.block_on(async {
-                let future = provider.translate(&request);
-                tokio::pin!(future);
-                loop {
-                    if cancelled(state, key) { return Err(error("SHINKI_EMU_TEXT_CANCELLED")); }
-                    tokio::select! { result = &mut future => return result.map_err(translation_error), _ = tokio::time::sleep(Duration::from_millis(5)) => {} }
-                }
-            }).map_err(|error| { let code = error.code().to_owned(); *native_error.lock() = Some(error); mlua::Error::RuntimeError(code) })?;
-            let mut recent = state.recent.lock();
-            if cancelled(state, key) { return Err(mlua::Error::RuntimeError("SHINKI_EMU_TEXT_CANCELLED".into())); }
-            recent.push_back(request.current);
-            while recent.len() > state.context_limit.0
-                || recent.iter().map(|segment| segment.text.chars().count() + segment.speaker.as_deref().map_or(0, |speaker| speaker.chars().count() + 8)).sum::<usize>() > state.context_limit.1 {
-                recent.pop_front();
-            }
-            Ok(translated.translated)
+            let provider = state.provider.as_ref().ok_or_else(|| {
+                mlua::Error::RuntimeError("SHINKI_EMU_TEXT_PROFILE_REQUIRED".into())
+            })?;
+            let id = format!(
+                "{}:{}:{}:{}",
+                key.session,
+                key.context,
+                key.request,
+                sequence.fetch_add(1, Ordering::Relaxed)
+            );
+            let translated = runtime
+                .block_on(async {
+                    if cancelled(state, key) {
+                        return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
+                    }
+                    provider
+                        .submit(
+                            &id,
+                            TranslationSegment {
+                                text,
+                                speaker: speaker.clone(),
+                                ruby: None,
+                            },
+                        )
+                        .map_err(|_| error("SHINKI_EMU_TEXT_REQUEST"))?;
+                    loop {
+                        if cancelled(state, key) {
+                            let _ = provider.cancel(&id);
+                            let _ = provider.poll(&id);
+                            return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
+                        }
+                        match provider.poll(&id) {
+                            Ok(TranslationPoll::Pending) => {
+                                tokio::time::sleep(Duration::from_millis(5)).await
+                            }
+                            Ok(TranslationPoll::Ready(result)) => return Ok(result.translated),
+                            Ok(TranslationPoll::Failed(cause)) => {
+                                return Err(translation_error(cause));
+                            }
+                            Ok(TranslationPoll::Cancelled) | Err(_) => {
+                                return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
+                            }
+                        }
+                    }
+                })
+                .map_err(|error| {
+                    let code = error.code().to_owned();
+                    *native_error.lock() = Some(error);
+                    mlua::Error::RuntimeError(code)
+                })?;
+            Ok(translated)
         })?;
         api.set("translate", translate)?;
         lua.globals().set("shinki", api)?;
-        for (chunk, configuration) in &compiled.as_ref().expect("compiled for current epoch").chunks {
+        for (chunk, configuration) in &compiled
+            .as_ref()
+            .expect("compiled for current epoch")
+            .chunks
+        {
             let transform: mlua::Function = chunk.call(())?;
             for item in &mut items {
                 let input = lua.create_table()?;
-                input.set("id", item.id)?; input.set("kind", item.kind)?; input.set("text", item.text.as_str())?;
-                input.set("session_epoch", key.session)?; input.set("context_epoch", key.context)?; input.set("request_id", key.request)?;
+                input.set("id", item.id)?;
+                input.set("kind", item.kind)?;
+                input.set("text", item.text.as_str())?;
+                input.set("session_epoch", key.session)?;
+                input.set("context_epoch", key.context)?;
+                input.set("request_id", key.request)?;
                 let output: String = transform.call((input, configuration.clone()))?;
-                if output.len() > MAX_TEXT || output.contains('\0') { return Err(mlua::Error::RuntimeError("SHINKI_EMU_TEXT_RESULT_BOUNDS".into())); }
+                if output.len() > MAX_TEXT || output.contains('\0') {
+                    return Err(mlua::Error::RuntimeError(
+                        "SHINKI_EMU_TEXT_RESULT_BOUNDS".into(),
+                    ));
+                }
                 item.text = output;
             }
         }
@@ -330,9 +409,77 @@ unsafe extern "C" fn request(
     output: *mut abi::TextResult,
     error_out: *mut abi::Error,
 ) -> abi::Status {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        request_inner(context, raw, output)
-    })) {
+    text_boundary(error_out, || unsafe {
+        request_inner(context, raw, output, Mode::Wait)
+    })
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Wait,
+    Submit,
+    Poll,
+}
+unsafe extern "C" fn submit(
+    context: *mut c_void,
+    raw: *const abi::TextRequest,
+    error_out: *mut abi::Error,
+) -> abi::Status {
+    text_boundary(error_out, || unsafe {
+        request_inner(context, raw, std::ptr::null_mut(), Mode::Submit)
+    })
+}
+unsafe extern "C" fn poll(
+    context: *mut c_void,
+    session: u64,
+    epoch: u64,
+    id: u64,
+    output: *mut abi::TextResult,
+    error_out: *mut abi::Error,
+) -> abi::Status {
+    let raw = abi::TextRequest {
+        session_epoch: session,
+        context_epoch: epoch,
+        request_id: id,
+        items: std::ptr::null(),
+        item_count: 0,
+    };
+    text_boundary(error_out, || unsafe {
+        request_inner(context, &raw, output, Mode::Poll)
+    })
+}
+unsafe extern "C" fn cancel_request(
+    context: *mut c_void,
+    session: u64,
+    epoch: u64,
+    id: u64,
+) -> abi::Status {
+    let Some(state) = (unsafe { context.cast::<State>().as_ref() }) else {
+        return abi::INVALID_ARGUMENT;
+    };
+    let key = Key {
+        session,
+        context: epoch,
+        request: id,
+    };
+    let mut pending = state.pending.lock();
+    if cancelled(state, key) {
+        return abi::CANCELLED;
+    }
+    if pending.as_ref().is_some_and(|pending| pending.key == key) {
+        state.retired.fetch_max(id, Ordering::AcqRel);
+        state.request.store(0, Ordering::Release);
+        pending.take();
+        state.changed.notify_all();
+        abi::OK
+    } else {
+        abi::CANCELLED
+    }
+}
+fn text_boundary(
+    error_out: *mut abi::Error,
+    operation: impl FnOnce() -> FamilyResult<abi::Status>,
+) -> abi::Status {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
         Ok(Ok(status)) => status,
         Ok(Err(error)) => {
             if let Some(out) = unsafe { error_out.as_mut() } {
@@ -358,11 +505,11 @@ unsafe fn request_inner(
     context: *mut c_void,
     raw: *const abi::TextRequest,
     output: *mut abi::TextResult,
+    mode: Mode,
 ) -> FamilyResult<abi::Status> {
     let state = unsafe { context.cast::<State>().as_ref() }
         .ok_or_else(|| error("SHINKI_EMU_TEXT_REQUEST"))?;
     let raw = unsafe { raw.as_ref() }.ok_or_else(|| error("SHINKI_EMU_TEXT_REQUEST"))?;
-    let output = unsafe { output.as_mut() }.ok_or_else(|| error("SHINKI_EMU_TEXT_REQUEST"))?;
     let key = Key {
         session: raw.session_epoch,
         context: raw.context_epoch,
@@ -374,11 +521,13 @@ unsafe fn request_inner(
     let _ = state
         .context
         .compare_exchange(0, key.context, Ordering::AcqRel, Ordering::Acquire);
-    if key.request == 0 || cancelled(state, key) {
+    if key.request == 0 || stale_context(state, key) {
         return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
     }
     let mut pending = state.pending.lock();
-    if cancelled(state, key) {
+    if stale_context(state, key)
+        || (mode != Mode::Wait && key.request <= state.retired.load(Ordering::Acquire))
+    {
         return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
     }
     if let Some(existing) = pending.as_ref() {
@@ -386,6 +535,9 @@ unsafe fn request_inner(
             return Err(error("SHINKI_EMU_TEXT_BUSY"));
         }
     } else {
+        if mode == Mode::Poll {
+            return Err(error("SHINKI_EMU_TEXT_CANCELLED"));
+        }
         let raw_items = unsafe { abi::borrowed_array(raw.items, raw.item_count, MAX_ITEMS) }
             .map_err(|_| error("SHINKI_EMU_TEXT_REQUEST"))?;
         if raw_items.is_empty() {
@@ -402,8 +554,8 @@ unsafe fn request_inner(
             {
                 return Err(error("SHINKI_EMU_TEXT_REQUEST"));
             }
-            let text =
-                unsafe { item.text.text(MAX_TEXT) }.map_err(|_| error("SHINKI_EMU_TEXT_REQUEST"))?;
+            let text = unsafe { item.text.text(MAX_TEXT) }
+                .map_err(|_| error("SHINKI_EMU_TEXT_REQUEST"))?;
             total += text.len();
             if total > MAX_TEXT {
                 return Err(error("SHINKI_EMU_TEXT_REQUEST"));
@@ -414,6 +566,7 @@ unsafe fn request_inner(
                 text: text.to_owned(),
             });
         }
+        state.request.store(key.request, Ordering::Release);
         *pending = Some(Pending {
             key,
             finished: None,
@@ -429,6 +582,10 @@ unsafe fn request_inner(
             return Err(error("SHINKI_EMU_EXTENSION_QUEUE"));
         }
     }
+    if mode == Mode::Submit {
+        return Ok(abi::OK);
+    }
+    let output = unsafe { output.as_mut() }.ok_or_else(|| error("SHINKI_EMU_TEXT_REQUEST"))?;
     loop {
         if cancelled(state, key) {
             pending.take();
@@ -439,6 +596,9 @@ unsafe fn request_inner(
             .ok_or_else(|| error("SHINKI_EMU_TEXT_CANCELLED"))?;
         if current.finished.is_some() {
             break;
+        }
+        if mode == Mode::Poll {
+            return Ok(abi::PENDING);
         }
         state.changed.wait(&mut pending);
     }
@@ -508,6 +668,7 @@ unsafe extern "C" fn acknowledge(
         .and_then(|r| r.as_ref().ok())
         .is_some_and(|r| r.key == key)
     {
+        state.retired.fetch_max(request, Ordering::AcqRel);
         pending.take();
         abi::OK
     } else {
@@ -522,21 +683,24 @@ unsafe extern "C" fn invalidate(context: *mut c_void, session: u64, epoch: u64) 
         if session != state.epoch {
             return;
         }
+        let mut pending = state.pending.lock();
+        if epoch <= state.context.load(Ordering::Acquire) {
+            return;
+        }
         state.context.store(epoch, Ordering::Release);
-        state.pending.lock().take();
+        state.request.store(0, Ordering::Release);
+        state.retired.store(0, Ordering::Release);
+        pending.take();
         state.changed.notify_all();
         if let Some(provider) = &state.provider {
-            provider.clear();
+            provider.reset();
         }
-        state.recent.lock().clear();
     }));
 }
 fn error(code: &str) -> FamilyError {
     FamilyError::new(code, "text extension operation failed")
 }
-fn translation_error(
-    value: shinki_emu_translation::TranslationError,
-) -> FamilyError {
+fn translation_error(value: shinki_emu_translation::TranslationError) -> FamilyError {
     use shinki_emu_translation::TranslationError as E;
     error(match value {
         E::InvalidProfile(_) => "SHINKI_EMU_TEXT_PROFILE",

@@ -353,27 +353,34 @@ impl LoadedFamilyPlugin {
         crate::model::validate_game_path(&request.game_path)?;
         let resolved = resolve_config(&self.configuration, &request.configuration)?;
         let entries = super::native_config::entries(&resolved);
-        let raw = abi::OpenRequest {
-            header: abi::Header::of::<abi::OpenRequest>(),
-            game_path: abi::Bytes::new(request.game_path.as_bytes()),
-            session_epoch: request.session_epoch,
-            configuration: entries.as_ptr(),
-            configuration_count: entries.len(),
-            window: native_window(request.initial_window),
-            host: request.host,
-            module_owner: self
-                .inner
-                .resources
+        let raw = abi::OpenRequestTextV1 {
+            base: abi::OpenRequest {
+                header: abi::Header::of::<abi::OpenRequestTextV1>(),
+                game_path: abi::Bytes::new(request.game_path.as_bytes()),
+                session_epoch: request.session_epoch,
+                configuration: entries.as_ptr(),
+                configuration_count: entries.len(),
+                window: native_window(request.initial_window),
+                host: request.host,
+                module_owner: self
+                    .inner
+                    .resources
+                    .as_ref()
+                    .map_or(std::ptr::null_mut(), |resources| resources.handle()),
+                render_extent: request.render_extent.map_or(
+                    abi::Extent::default(),
+                    |(width, height)| abi::Extent { width, height },
+                ),
+            },
+            text_async: request
+                .text_async
                 .as_ref()
-                .map_or(std::ptr::null_mut(), |resources| resources.handle()),
-            render_extent: request.render_extent.map_or(
-                abi::Extent::default(),
-                |(width, height)| abi::Extent { width, height },
-            ),
+                .map_or(std::ptr::null(), |service| service),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();
-        let status = unsafe { self.inner.api.open.unwrap()(&raw, output.as_mut_ptr(), &mut error) };
+        let status =
+            unsafe { self.inner.api.open.unwrap()(&raw.base, output.as_mut_ptr(), &mut error) };
         let output = unsafe { output.assume_init() };
         if status != abi::OK {
             if !output.session.is_null() {
@@ -426,6 +433,7 @@ pub struct NativeOpenRequest {
     pub configuration: Vec<ConfigEntry>,
     pub initial_window: WindowState,
     pub host: abi::HostServices,
+    pub text_async: Option<abi::AsyncTextServiceV1>,
     pub cancellation: crate::NativeCancellation,
     pub render_extent: Option<(u32, u32)>,
 }

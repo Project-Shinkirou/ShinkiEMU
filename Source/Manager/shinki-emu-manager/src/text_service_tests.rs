@@ -1,10 +1,7 @@
 use super::*;
 struct NoSecrets;
 impl SecretResolver for NoSecrets {
-    fn resolve(
-        &self,
-        _: &str,
-    ) -> Result<String, shinki_emu_translation::TranslationError> {
+    fn resolve(&self, _: &str) -> Result<String, shinki_emu_translation::TranslationError> {
         Err(shinki_emu_translation::TranslationError::SecretUnavailable)
     }
 }
@@ -182,10 +179,7 @@ fn native_cancel_stops_tls_wait_and_releases_the_shared_luau_queue() {
 
     struct FixtureSecret;
     impl SecretResolver for FixtureSecret {
-        fn resolve(
-            &self,
-            _: &str,
-        ) -> Result<String, shinki_emu_translation::TranslationError> {
+        fn resolve(&self, _: &str) -> Result<String, shinki_emu_translation::TranslationError> {
             Ok("public-fixture-token".into())
         }
     }
@@ -291,4 +285,152 @@ fn native_cancel_stops_tls_wait_and_releases_the_shared_luau_queue() {
         server.join().unwrap(),
         "TLS transport remained active after native cancellation"
     );
+}
+
+#[test]
+fn async_submit_poll_cancel_and_invalidate_never_wait_for_luau() {
+    let bridge = bridge("return function(item) while true do end end", 3001);
+    let service = bridge.async_sink();
+    let item = abi::TextItem {
+        id: 9,
+        kind: abi::TEXT_DIALOGUE,
+        reserved: 0,
+        text: abi::Bytes::new(b"original"),
+    };
+    let mut request = abi::TextRequest {
+        session_epoch: 3001,
+        context_epoch: 1,
+        request_id: 1,
+        items: &item,
+        item_count: 1,
+    };
+    let mut output = abi::TextResult {
+        bytes: std::ptr::null_mut(),
+        byte_capacity: 0,
+        byte_count: 0,
+        items: std::ptr::null_mut(),
+        item_capacity: 0,
+        item_count: 0,
+    };
+    let mut error = abi::Error::default();
+    unsafe {
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::OK
+        );
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::OK
+        );
+        assert_eq!(
+            service.poll.unwrap()(service.context, 3001, 1, 1, &mut output, &mut error),
+            abi::PENDING
+        );
+        assert_eq!(
+            service.cancel.unwrap()(service.context, 3001, 1, 1),
+            abi::OK
+        );
+        assert_eq!(
+            service.poll.unwrap()(service.context, 3001, 1, 1, &mut output, &mut error),
+            abi::CANCELLED
+        );
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::CANCELLED
+        );
+        service.invalidate.unwrap()(service.context, 3001, 2);
+        request.context_epoch = 2;
+        request.request_id = 2;
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::OK
+        );
+        assert_eq!(
+            service.poll.unwrap()(service.context, 3001, 1, 1, &mut output, &mut error),
+            abi::CANCELLED
+        );
+        assert_eq!(
+            service.cancel.unwrap()(service.context, 3001, 2, 2),
+            abi::OK
+        );
+    }
+    bridge.close().unwrap();
+}
+
+#[test]
+fn async_completion_preserves_capacity_identity_and_exactly_once_execution() {
+    let bridge = bridge(
+        "calls=(calls or 0)+1; return function(item) return string.upper(item.text)..calls end",
+        3002,
+    );
+    let service = bridge.async_sink();
+    let item = abi::TextItem {
+        id: 77,
+        kind: abi::TEXT_DIALOGUE,
+        reserved: 0,
+        text: abi::Bytes::new(b"source"),
+    };
+    let request = abi::TextRequest {
+        session_epoch: 3002,
+        context_epoch: 1,
+        request_id: 1,
+        items: &item,
+        item_count: 1,
+    };
+    let mut output = abi::TextResult {
+        bytes: std::ptr::null_mut(),
+        byte_capacity: 0,
+        byte_count: 0,
+        items: std::ptr::null_mut(),
+        item_capacity: 0,
+        item_count: 0,
+    };
+    let mut error = abi::Error::default();
+    unsafe {
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::OK
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let status =
+                service.poll.unwrap()(service.context, 3002, 1, 1, &mut output, &mut error);
+            if status != abi::PENDING {
+                assert_eq!(status, abi::CAPACITY);
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        assert_eq!((output.byte_count, output.item_count), (7, 1));
+        assert_eq!(
+            service.submit.unwrap()(service.context, &request, &mut error),
+            abi::OK
+        );
+        let mut bytes = [0; 7];
+        let mut range = abi::TextRange {
+            id: 0,
+            offset: 0,
+            len: 0,
+        };
+        output.bytes = bytes.as_mut_ptr();
+        output.byte_capacity = bytes.len();
+        output.items = &mut range;
+        output.item_capacity = 1;
+        assert_eq!(
+            service.poll.unwrap()(service.context, 3002, 1, 1, &mut output, &mut error),
+            abi::OK
+        );
+        assert_eq!(&bytes, b"SOURCE1");
+        assert_eq!((range.id, range.offset, range.len), (77, 0, 7));
+        assert_eq!(
+            service.acknowledge.unwrap()(service.context, 3002, 1, 1),
+            abi::OK
+        );
+        assert_eq!(
+            service.poll.unwrap()(service.context, 3002, 1, 1, &mut output, &mut error),
+            abi::CANCELLED
+        );
+    }
+    bridge.close().unwrap();
 }
