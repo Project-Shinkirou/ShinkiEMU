@@ -7,6 +7,7 @@ import {
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
+    SteamGame, SteamDepot, SteamTransfer, Steam,
 } from "./globals.slint";
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
 import { LogsOverlay, EngineModal, FatalOverlay } from "./components/dialogs.slint";
@@ -19,6 +20,8 @@ import { FiltersPage } from "./pages/filters.slint";
 import { SettingsPage } from "./pages/settings.slint";
 import { OnboardingPage } from "./pages/onboarding.slint";
 import { GameView } from "./pages/game-view.slint";
+import { AddGamePage } from "./pages/add-game.slint";
+import { SteamPage } from "./pages/steam.slint";
 
 export {
     MaterialWindowAdapter,
@@ -26,6 +29,7 @@ export {
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
+    SteamGame, SteamDepot, SteamTransfer, Steam,
 }
 
 export component ManagerWindow inherits MaterialWindow {
@@ -45,7 +49,9 @@ export component ManagerWindow inherits MaterialWindow {
     property <bool> medium: root.usable-width < 840px || root.usable-height < 480px;
     property <bool> onboarding: App.page == "onboarding";
     property <bool> show-rail: !root.compact && !root.onboarding;
-    property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active;
+    // A Steam game opened on a phone is a full-screen sheet above the bottom bar.
+    property <bool> steam-sheet: root.compact && App.page == "steam" && Steam.detail-open && Steam.selected.app-id != 0;
+    property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active && !root.steam-sheet;
     property <bool> show-library-bar: root.compact && App.page == "library";
     property <length> rail-width: 80px;
     property <length> bar-height: 64px;
@@ -110,7 +116,7 @@ export component ManagerWindow inherits MaterialWindow {
     property <float> watch-pointer-h: Session.pointer-height;
     changed watch-pointer-h => { Session.pointer-state-changed(); }
 
-    // Sidebar order: 游戏库 / 补丁 / 核心 / 滤镜 / 设置. Pages outside it (game settings) keep 游戏库 selected.
+    // Sidebar order: 游戏库 / 补丁 / 核心 / 滤镜 / 设置. Pages outside it (game settings, add game, Steam) keep 游戏库 selected.
     property <[string]> nav-pages: ["library", "patch", "cores", "filters", "settings"];
     property <int> page-index: App.page == "patch" ? 1 : App.page == "cores" ? 2 : App.page == "filters" ? 3 : App.page == "settings" ? 4 : 0;
     property <[NavigationItem]> nav-items: [
@@ -189,6 +195,15 @@ export component ManagerWindow inherits MaterialWindow {
             }
             if App.page == "library" && Library.detail-open {
                 Library.detail-open = false;
+                return accept;
+            }
+            // 添加游戏 sub-pages step back one level at a time.
+            if App.page == "steam" && Steam.detail-open && Steam.selected.app-id != 0 {
+                Steam.detail-open = false;
+                return accept;
+            }
+            if App.page == "steam" {
+                App.page = "add-game";
                 return accept;
             }
             if App.page != "library" && !root.onboarding {
@@ -284,6 +299,20 @@ export component ManagerWindow inherits MaterialWindow {
                 y: 0px;
                 width: pages.width;
                 height: pages.height;
+            }
+            if App.page == "add-game" : AddGamePage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
+            }
+            if App.page == "steam" : SteamPage {
+                x: 0px;
+                y: 0px;
+                width: pages.width;
+                height: pages.height;
+                compact: root.compact;
             }
         }
 

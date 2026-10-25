@@ -14,6 +14,8 @@ slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-w
 image = { workspace = true, features = ["gif"] }
 tracing.workspace = true
 parking_lot = "0.12.5"
+# Steam QR login is rendered locally; the challenge URL never leaves the device.
+qrcodegen = "=1.8.0"
 
 [build-dependencies]
 slint-build.workspace = true

@@ -2,6 +2,11 @@
 
 本文件随 ShinkiEMU Windows 应用分发。发布包还需包含活动依赖的完整许可证文本；以下条目记录需要单独保留的来源与归因。
 
+## steamroom / steamroom-client 0.3.0
+
+- Upstream: <https://github.com/landaire/steamroom>; published crates pinned to `0.3.0`, by Lander Brandt.
+- License: MIT OR Apache-2.0. Manager uses this clean-room Steam protocol and depot downloader implementation, not DepotDownloader binaries or GPL code. Distribution must retain both crates' upstream license texts and the licenses of their resolved dependency closure.
+
 ## Slint 1.18.1
 
 - Copyright © SixtyFPS GmbH.
@@ -25,13 +30,13 @@
 - Upstream: <https://github.com/mlua-rs/mlua/tree/v0.10.5>，MIT；完整许可和源码保存在 `ThirdParty/mlua`。
 - 本地回补仅修改 `src/state/raw.rs` 的数字分类：要求浮点数与整数精确相等，并保留 IEEE 负零；不以 epsilon 将极小非零值转成 `0`。修复同时用于严格文件范围和 JSON/TOML 数值转换，Luau 运行时版本、API 与执行队列不变。
 - Luau 不区分整数和同值的整值浮点字面量；数据编码保留数值，不保证保留原 TOML 数字字面量的类型拼写。
-- 本地包在 `licenses/mlua/LICENSE` 包含此 MIT 许可；固定依赖由 ShinkiEMU lockfile 和源码路径复现。
+- 本地包在 `licenses/rust/mlua-0.10.5/LICENSE` 包含此 MIT 许可；固定依赖由 ShinkiEMU lockfile 和源码路径复现。
 
 ## Luau 663 / luau0-src 0.12.3
 
 - Upstream: <https://github.com/luau-lang/luau>，MIT；ShinkiEMU lockfile 固定 `luau0-src 0.12.3+luau663`。
-- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/luau/LICENSE`。
-- 打包器从 `CARGO_HOME` 下该精确版本的源码读取许可，也可通过 `--luau-license` 指定同一来源；源码许可缺失时打包失败，不生成替代文本。
+- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/rust/luau0-src-0.12.3+luau663/LICENSE`。
+- 打包器通过目标平台筛选的 `cargo metadata` 找到该精确版本的源码，与 Manager 完整 Rust 依赖闭包一起收集许可文件和 SPDX 声明，不生成替代许可文本。
 
 ## aPLib 通用解码
 

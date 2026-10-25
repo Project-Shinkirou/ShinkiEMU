@@ -98,6 +98,7 @@ pub fn cargo_metadata(inv: &Inventory, target: &str) -> Result<serde_json::Value
         Command::new("cargo").current_dir(&inv.root).args([
             "metadata",
             "--locked",
+            "--offline",
             "--format-version",
             "1",
             "--filter-platform",

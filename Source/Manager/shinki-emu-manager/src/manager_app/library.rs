@@ -240,6 +240,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             diagnostic_severity: "info",
             plugin_errors: BTreeMap::new(),
+            steam: steam::SteamRuntime::new(&data_dir),
             data_dir,
             extensions: None,
             game_roots,

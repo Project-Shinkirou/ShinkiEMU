@@ -1,6 +1,13 @@
 use super::*;
 
 impl ManagerController for ShinkiEmuManagerController {
+    fn steam_action(
+        &mut self,
+        action: shinki_emu_manager_ui_slint::SteamAction,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::steam_action(self, action)
+    }
+
     fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::prepare_library(self)
     }

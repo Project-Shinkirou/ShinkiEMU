@@ -24,6 +24,7 @@ pub struct ManagerViewModel {
     pub session: SessionViewModel,
     pub onboarding: OnboardingViewModel,
     pub resale_notice: ResaleNoticeViewModel,
+    pub steam: SteamViewModel,
 }
 
 /// State of the Rust-rendered bilingual anti-resale notice.
@@ -496,6 +497,119 @@ pub struct EngineActionViewModel {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OnboardingViewModel {
     pub roots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SteamLoginState {
+    #[default]
+    SignedOut,
+    Connecting,
+    EmailCode,
+    MobileCode,
+    MobileConfirmation,
+    QrCode,
+    SignedIn,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SteamLoadState {
+    #[default]
+    Idle,
+    Loading,
+    Ready,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SteamTransferState {
+    #[default]
+    Idle,
+    Preparing,
+    Downloading,
+    Verifying,
+    Cancelling,
+    Cancelled,
+    Complete,
+    Error,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SteamViewModel {
+    pub login_state: SteamLoginState,
+    pub account_name: String,
+    pub can_import_local: bool,
+    pub qr_url: String,
+    pub guard_hint: String,
+    pub status: String,
+    pub error: String,
+    pub library_state: SteamLoadState,
+    pub games: Vec<SteamGameViewModel>,
+    pub query: String,
+    pub selected_app_id: u32,
+    pub depots: Vec<SteamDepotViewModel>,
+    pub branches: Vec<ChoiceViewModel>,
+    pub selected_branch: String,
+    pub branch_password: String,
+    pub library_root: String,
+    pub transfer: SteamTransferViewModel,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SteamGameViewModel {
+    pub app_id: u32,
+    pub name: String,
+    pub size_bytes: u64,
+    pub platforms: Vec<String>,
+    pub languages: Vec<String>,
+    pub installed: bool,
+    pub update_available: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SteamDepotViewModel {
+    pub depot_id: u32,
+    pub name: String,
+    pub platform: String,
+    pub language: String,
+    pub size_bytes: u64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SteamTransferViewModel {
+    pub state: SteamTransferState,
+    pub app_id: u32,
+    pub bytes_done: u64,
+    pub bytes_total: u64,
+    pub files_done: u64,
+    pub files_total: u64,
+    pub speed_bytes_per_second: u64,
+    pub eta_seconds: u64,
+    pub progress: Option<f32>,
+    pub status: String,
+    pub error: String,
+}
+
+/// Secret-bearing actions deliberately do not implement Debug.
+pub enum SteamAction {
+    Open,
+    Login { account: String, password: String },
+    QrLogin,
+    ImportLocal,
+    SubmitGuard { code: String },
+    Logout,
+    RefreshLibrary,
+    Search { query: String },
+    SelectGame { app_id: u32 },
+    SelectDepot { depot_id: u32, selected: bool },
+    SelectBranch { branch: String, password: String },
+    ChooseLibraryRoot,
+    SetLibraryRoot { path: String },
+    Download,
+    Cancel,
+    CheckUpdates,
+    Verify,
 }
 
 #[cfg(test)]
