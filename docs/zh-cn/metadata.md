@@ -19,7 +19,7 @@ description: 兼容性 v4、补丁审查和生成快照。
 
 ## 补丁种类与授权
 
-补丁源记录位于 `Metadata/patches/entries/<id>.json`，生成目录使用 `shinki.emu.patches.v1`。提供 id、semver 版本、包含 `zh-CN` 和 `en` 的 `title`/`summary`、作品/发行版标识、精确核心标识、种类及许可；按实际情况附 HTTPS 来源、授权链接和 issue 引用。
+补丁源记录位于 `Metadata/patches/entries/<id>.json`，生成目录使用 `shinki.emu.patches.v1`。提供 id、semver 版本、`title`/`summary`（必须含 `zh-CN` 和 `en`，可选 `ja`，缺少时门户显示 `en`）、作品/发行版标识、精确核心标识、种类及许可；按实际情况附 HTTPS 来源、授权链接和 issue 引用。
 
 - **recipe（配方）**引用 `Metadata/patches/` 下安全相对路径的 `.luau` 脚本，必须是仓库内已审查内容。只有配方进入可执行菜单，并由用户明确选择运行。
 - **external（外部）**提供附件或来源 URL，只展示链接或下载，不由产品执行。

@@ -19,7 +19,7 @@ Source entries live at `Metadata/compatibility/entries/<vid>/<rid>/<plugin_id>/<
 
 ## Patch kinds and permission
 
-Patch entries live at `Metadata/patches/entries/<id>.json`. The generated catalog uses `shinki.emu.patches.v1`. Provide an ID, semver version, localized `title`/`summary` maps (`zh-CN`, `en`), work/release IDs, exact cores, kind and license. Supply HTTPS source/authorization links and an issue reference where applicable.
+Patch entries live at `Metadata/patches/entries/<id>.json`. The generated catalog uses `shinki.emu.patches.v1`. Provide an ID, semver version, localized `title`/`summary` maps (`zh-CN` and `en` required, `ja` optional; the portal falls back to `en`), work/release IDs, exact cores, kind and license. Supply HTTPS source/authorization links and an issue reference where applicable.
 
 - **recipe:** references a safe relative `.luau` script under `Metadata/patches/`. The script must be reviewed repository content. Only recipes enter the executable recipe menu; users explicitly select execution.
 - **external:** supplies an artifact or source URL. It is displayed as a link/download, not run by the product.

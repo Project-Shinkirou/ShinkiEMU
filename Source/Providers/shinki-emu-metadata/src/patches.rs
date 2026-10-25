@@ -78,11 +78,12 @@ fn https(value: &str) -> bool {
             && u.port().is_none()
     })
 }
+/// zh-CN and en are required; ja is optional (the portal falls back to en).
 fn localized(values: &BTreeMap<String, String>, max: usize) -> bool {
-    values.len() == 2
-        && ["zh-CN", "en"]
+    ["zh-CN", "en"].iter().all(|l| values.contains_key(*l))
+        && values
             .iter()
-            .all(|l| values.get(*l).is_some_and(|v| is_bounded_text(v, 1, max)))
+            .all(|(l, v)| matches!(l.as_str(), "zh-CN" | "en" | "ja") && is_bounded_text(v, 1, max))
 }
 fn unique(values: &[String], valid: impl Fn(&str) -> bool) -> bool {
     let mut seen = BTreeSet::new();
@@ -227,6 +228,31 @@ mod tests {
             |e| e.artifact.as_mut().unwrap().url = "https://evil.example/test.bin".into(),
             |e| e.artifact.as_mut().unwrap().size = MAX_PATCH_ARTIFACT_BYTES + 1,
             |e| e.artifact.as_mut().unwrap().file_name = "../test.bin".into(),
+        ] {
+            let mut e = hosted();
+            mutate(&mut e);
+            assert!(e.validate().is_err());
+        }
+    }
+    #[test]
+    fn localized_text_requires_zh_cn_and_en_and_allows_only_ja_extra() {
+        let mut e = hosted();
+        e.title.insert("ja".into(), "公開テスト".into());
+        e.summary.insert("ja".into(), "テスト添付".into());
+        e.validate().unwrap();
+        for mutate in [
+            (|e: &mut PatchCatalogEntry| {
+                e.title.remove("en");
+            }) as fn(&mut PatchCatalogEntry),
+            |e| {
+                e.summary.remove("zh-CN");
+            },
+            |e| {
+                e.title.insert("ko".into(), "공개 테스트".into());
+            },
+            |e| {
+                e.title.insert("ja".into(), String::new());
+            },
         ] {
             let mut e = hosted();
             mutate(&mut e);
