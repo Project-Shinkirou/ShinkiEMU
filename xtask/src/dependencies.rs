@@ -1203,6 +1203,30 @@ pub fn apply_environment(
             )?,
         );
     }
+    if component != "manager" && inv.core(component)?.artifact_kind == "native-shared" {
+        if selected.native_vcpkg {
+            cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
+        }
+        cmd.env(
+            "SHINKI_EMU_NATIVE_DOWNLOADS",
+            inv.root.join(".work/native-downloads"),
+        );
+        let installed = inv
+            .root
+            .join(".work/native-vcpkg")
+            .join(component)
+            .join("installed");
+        if installed.is_dir() {
+            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed).env(
+                "SHINKI_EMU_VCPKG_TRIPLET",
+                if target == "x86_64-unknown-linux-gnu" {
+                    "x64-linux-dynamic"
+                } else {
+                    "x64-windows"
+                },
+            );
+        }
+    }
     Ok(())
 }
 pub fn prepare(

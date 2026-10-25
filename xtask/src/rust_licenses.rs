@@ -36,14 +36,20 @@ fn canonical_source() -> Result<Value> {
 
 fn provided_text(license: &str, files: &BTreeMap<PathBuf, String>) -> bool {
     let license = license.strip_prefix("LicenseRef-").unwrap_or(license);
-    let stem = license.rsplit_once('-').filter(|(_, version)| {
-        version.bytes().any(|b| b.is_ascii_digit())
-            && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
-    }).map_or(license, |(stem, _)| stem);
+    let stem = license
+        .rsplit_once('-')
+        .filter(|(_, version)| {
+            version.bytes().any(|b| b.is_ascii_digit())
+                && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+        })
+        .map_or(license, |(stem, _)| stem);
     files.values().any(|name| {
-        let Some(name) = Path::new(name).file_stem().and_then(|s| s.to_str()) else { return false; };
+        let Some(name) = Path::new(name).file_stem().and_then(|s| s.to_str()) else {
+            return false;
+        };
         ["", "LICENSE-", "LicenseRef-"].iter().any(|prefix| {
-            name.get(..prefix.len()).is_some_and(|p| p.eq_ignore_ascii_case(prefix))
+            name.get(..prefix.len())
+                .is_some_and(|p| p.eq_ignore_ascii_case(prefix))
                 && name.get(prefix.len()..).is_some_and(|name| {
                     name.eq_ignore_ascii_case(license) || name.eq_ignore_ascii_case(stem)
                 })
@@ -117,7 +123,9 @@ fn source_license_files(root: &Path, files: &mut BTreeMap<PathBuf, String>) -> R
             // own name, rather than a LICENSE prefix.
             for (file, relative) in crate::package::tree(&item.path())? {
                 if file.extension().and_then(|s| s.to_str()).is_some_and(|s| {
-                    ["txt", "md", "rst"].iter().any(|extension| s.eq_ignore_ascii_case(extension))
+                    ["txt", "md", "rst"]
+                        .iter()
+                        .any(|extension| s.eq_ignore_ascii_case(extension))
                 }) {
                     files.insert(dunce::canonicalize(file)?, format!("{name}/{relative}"));
                 }
@@ -138,16 +146,32 @@ pub(crate) fn metadata(
     }
     let mut command = std::process::Command::new("cargo");
     command.current_dir(&inv.root).args([
-        "metadata", "--locked", "--offline", "--format-version", "1", "--filter-platform", target,
+        "metadata",
+        "--locked",
+        "--offline",
+        "--format-version",
+        "1",
+        "--filter-platform",
+        target,
     ]);
     if component != "manager" {
         let core = inv.core(component)?;
-        command.arg("--manifest-path").arg(inv.root.join(&core.manifest));
+        command
+            .arg("--manifest-path")
+            .arg(inv.root.join(&core.manifest));
         if !core.features.is_empty() {
-            command.arg("--features").arg(core.features.iter().map(|f| format!("{}/{f}", core.package)).collect::<Vec<_>>().join(","));
+            command.arg("--features").arg(
+                core.features
+                    .iter()
+                    .map(|f| format!("{}/{f}", core.package))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
         }
     }
-    Ok(serde_json::from_slice(&crate::dependencies::capture(&mut command)?)?)
+    Ok(serde_json::from_slice(&crate::dependencies::capture(
+        &mut command,
+    )?)?)
 }
 
 /// Metadata must be resolved with `--filter-platform` for the packaged target.
@@ -260,7 +284,10 @@ pub(crate) fn entries(
         let mut canonical = false;
         let has_package_text = !files.is_empty();
         let primary = files.values().any(|name| {
-            !name.split('/').next().is_some_and(|dir| dir.eq_ignore_ascii_case("fonts"))
+            !name
+                .split('/')
+                .next()
+                .is_some_and(|dir| dir.eq_ignore_ascii_case("fonts"))
         });
         if !primary {
             let Some(expression) = expression else {

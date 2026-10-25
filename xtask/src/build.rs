@@ -115,7 +115,6 @@ pub fn execute(
 ) -> Result<Option<BuildResult>> {
     inv.require_supported(component, target)?;
     dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
-    let selected = dependencies::needs(inv, target, component)?;
     let core = if component == "manager" {
         None
     } else {
@@ -222,30 +221,6 @@ pub fn execute(
         cmd.arg("--features").arg(features.join(","));
     }
     dependencies::apply_environment(inv, target, component, &mut cmd)?;
-    if core.is_some_and(|c| c.artifact_kind == "native-shared") {
-        if selected.native_vcpkg {
-            cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
-        }
-        cmd.env(
-            "SHINKI_EMU_NATIVE_DOWNLOADS",
-            inv.root.join(".work/native-downloads"),
-        );
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(component)
-            .join("installed");
-        if installed.is_dir() {
-            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed).env(
-                "SHINKI_EMU_VCPKG_TRIPLET",
-                if target == "x86_64-unknown-linux-gnu" {
-                    "x64-linux-dynamic"
-                } else {
-                    "x64-windows"
-                },
-            );
-        }
-    }
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

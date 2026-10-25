@@ -224,13 +224,13 @@ features = []
 dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
-licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt"]
+licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
 supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
-rev = "f6bb8ca5721016d1fd56864381587cbcb9af29a1"
+rev = "c46d994feff822d59ce7a825584257842871aac4"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner live on the fork branch linux-port (860c1d4f), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
@@ -358,13 +358,13 @@ features = []
 dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/ReMinori/LICENSE"]
+licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-publish_blocked = "Distribution review must close corresponding-source, third-party notices and asset permissions before binary publication."
+publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
 branch = "shinki"
-rev = "f8e7e4d3b679e76dd9c3350124b8b9383a2ff583"
+rev = "14e4045553ed599e12a361d66c106d7fe4111e9e"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/ReMinori/crates/shinki/build.rs:13 accepts only Windows x64/MSVC and Linux x64/GNU, rejecting this Apple triple before compilation."
@@ -401,13 +401,13 @@ features = []
 dependencies = ["native-vcpkg", "impacto-sources"]
 artifact_kind = "native-shared"
 resources = []
-licenses = ["ThirdParty/impacto/LICENSE"]
+licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
 supported_targets = ["x86_64-pc-windows-msvc"]
-publish_blocked = "Installed Resources include NotoSansCJKjp-Regular/Bold.otf without an OFL notice and LanguageBarrier-derived font atlases (resources/cc/font-lb) without documented provenance/permission; libmspack (LGPL) is statically linked and needs a corresponding-source/relinking package. Binary release blocked until these are closed."
+publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki"
-rev = "207b37c4a5544956db0c7f6e191f2bad85a479ac"
+rev = "876657c4e54e2d6d97296a33edb36cb5dc9cb6f0"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork branch linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
@@ -452,7 +452,7 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki-latest"
+branch = "shinki"
 rev = "3b7c96bdd79bcf445dab33e44c64dc59332c32d3"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"

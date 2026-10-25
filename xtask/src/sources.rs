@@ -203,7 +203,9 @@ fn append_revision(
 ) -> Result<()> {
     let raw = tempfile::NamedTempFile::new()?;
     dependencies::run(
-        git(repository).args(["archive", "--format=tar", rev, "-o"]).arg(raw.path()),
+        git(repository)
+            .args(["archive", "--format=tar", rev, "-o"])
+            .arg(raw.path()),
     )?;
     for entry in tar::Archive::new(fs::File::open(raw.path())?).entries()? {
         let mut entry = entry?;
@@ -216,18 +218,29 @@ fn append_revision(
             std::io::Read::read_exact(&mut entry, &mut bytes[..size])?;
             if bytes[..size].starts_with(b"version https://git-lfs.github.com/spec/v1\n") {
                 let pointer = std::str::from_utf8(&bytes[..size])?;
-                let oid = pointer.lines().find_map(|line| line.strip_prefix("oid sha256:"))
+                let oid = pointer
+                    .lines()
+                    .find_map(|line| line.strip_prefix("oid sha256:"))
                     .context("Git LFS source lacks SHA256")?;
                 if oid.len() != 64 || !oid.bytes().all(|b| b.is_ascii_hexdigit()) {
                     bail!("invalid Git LFS source SHA256 for {}", relative.display());
                 }
-                let expected: u64 = pointer.lines().find_map(|line| line.strip_prefix("size "))
-                    .context("Git LFS source lacks size")?.parse()?;
+                let expected: u64 = pointer
+                    .lines()
+                    .find_map(|line| line.strip_prefix("size "))
+                    .context("Git LFS source lacks size")?
+                    .parse()?;
                 let source = repository.join(&relative);
-                if fs::metadata(&source).with_context(|| format!("missing Git LFS source {}", source.display()))?.len() != expected
+                if fs::metadata(&source)
+                    .with_context(|| format!("missing Git LFS source {}", source.display()))?
+                    .len()
+                    != expected
                     || !package::sha256(&source)?.eq_ignore_ascii_case(oid)
                 {
-                    bail!("Git LFS source {} is missing, unmaterialized or changed; expected SHA256 {oid}", source.display());
+                    bail!(
+                        "Git LFS source {} is missing, unmaterialized or changed; expected SHA256 {oid}",
+                        source.display()
+                    );
                 }
                 header.set_size(expected);
                 header.set_cksum();
@@ -242,9 +255,13 @@ fn append_revision(
     if recursive {
         for (path, pin) in gitlinks(repository, rev)? {
             let child = repository.join(&path);
-            checkout_root(&child).with_context(|| format!("missing recursive source {}", child.display()))?;
+            checkout_root(&child)
+                .with_context(|| format!("missing recursive source {}", child.display()))?;
             if revision(&child)? != pin {
-                bail!("submodule {} is not at recorded revision {pin}", child.display());
+                bail!(
+                    "submodule {} is not at recorded revision {pin}",
+                    child.display()
+                );
             }
             require_clean(&child)?;
             append_revision(builder, &child, &pin, &prefix.join(path), true)?;
@@ -283,7 +300,8 @@ fn copy_tree(source: &Path, dest: &Path) -> Result<()> {
 }
 
 fn copy_input(source: &Path, dest: &Path) -> Result<()> {
-    package::plain(source).with_context(|| format!("required corresponding-source input {}", source.display()))?;
+    package::plain(source)
+        .with_context(|| format!("required corresponding-source input {}", source.display()))?;
     fs::create_dir_all(dest.parent().context("source input parent")?)?;
     fs::copy(source, dest)?;
     Ok(())
@@ -297,16 +315,32 @@ pub(crate) fn verify_vendor(vendor: &Path) -> Result<()> {
         let dir = entry?.path();
         package::plain(&dir)?;
         let record: serde_json::Value = serde_json::from_slice(
-            &fs::read(dir.join(".cargo-checksum.json"))
-                .with_context(|| format!("vendored source missing checksum manifest: {}", dir.display()))?,
+            &fs::read(dir.join(".cargo-checksum.json")).with_context(|| {
+                format!(
+                    "vendored source missing checksum manifest: {}",
+                    dir.display()
+                )
+            })?,
         )?;
-        for (name, expected) in record["files"].as_object().context("vendor file checksums")? {
+        for (name, expected) in record["files"]
+            .as_object()
+            .context("vendor file checksums")?
+        {
             let relative = Path::new(name);
-            if relative.is_absolute() || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+            if relative.is_absolute()
+                || relative
+                    .components()
+                    .any(|c| !matches!(c, std::path::Component::Normal(_)))
+            {
                 bail!("unsafe vendored source path {name}");
             }
-            if package::sha256(&dir.join(relative))? != expected.as_str().context("vendor SHA256")? {
-                bail!("vendored source checksum mismatch: {}/{name}", dir.display());
+            if package::sha256(&dir.join(relative))?
+                != expected.as_str().context("vendor SHA256")?
+            {
+                bail!(
+                    "vendored source checksum mismatch: {}/{name}",
+                    dir.display()
+                );
             }
         }
     }
@@ -318,7 +352,13 @@ fn vendor(manifest: &Path, root: &Path) -> Result<()> {
     let output = dependencies::capture(
         Command::new("cargo")
             .current_dir(manifest.parent().context("manifest directory")?)
-            .args(["vendor", "--locked", "--offline", "--versioned-dirs", "--manifest-path"])
+            .args([
+                "vendor",
+                "--locked",
+                "--offline",
+                "--versioned-dirs",
+                "--manifest-path",
+            ])
             .arg(manifest)
             .arg(root.join("vendor")),
     )?;
@@ -340,9 +380,14 @@ fn vendor(manifest: &Path, root: &Path) -> Result<()> {
     if let Some(source) = config.get("source") {
         table.insert("source".into(), source.clone());
     }
-    table.insert("net".into(), toml::Value::Table(
-        [("offline".into(), toml::Value::Boolean(true))].into_iter().collect(),
-    ));
+    table.insert(
+        "net".into(),
+        toml::Value::Table(
+            [("offline".into(), toml::Value::Boolean(true))]
+                .into_iter()
+                .collect(),
+        ),
+    );
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, toml::to_string(&existing)?)?;
     verify_vendor(&root.join("vendor"))
@@ -357,7 +402,9 @@ fn sha512(path: &Path) -> Result<String> {
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let count = file.read(&mut buffer)?;
-        if count == 0 { break; }
+        if count == 0 {
+            break;
+        }
         digest.update(&buffer[..count]);
     }
     Ok(hex::encode(digest.finalize()))
@@ -368,7 +415,10 @@ fn sha512(path: &Path) -> Result<String> {
 fn installed_ports(installation: &Path) -> Result<Vec<(String, PathBuf)>> {
     use std::collections::{BTreeMap, BTreeSet};
     let base = installation.parent().context("vcpkg installation root")?;
-    let triplet = installation.file_name().and_then(|s| s.to_str()).context("vcpkg triplet")?;
+    let triplet = installation
+        .file_name()
+        .and_then(|s| s.to_str())
+        .context("vcpkg triplet")?;
     let status = base.join("vcpkg/status");
     package::plain(&status)?;
     let contents = fs::read_to_string(&status)?;
@@ -378,10 +428,13 @@ fn installed_ports(installation: &Path) -> Result<Vec<(String, PathBuf)>> {
         if line.is_empty() {
             if active {
                 let name = name.context("installed vcpkg record has no Package")?;
-                let architecture = architecture.context("installed vcpkg record has no Architecture")?;
+                let architecture =
+                    architecture.context("installed vcpkg record has no Architecture")?;
                 let edges = graph.entry((name, architecture)).or_default();
                 for dependency in depends.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                    let (package, target) = dependency.split_once(':').unwrap_or((dependency, architecture));
+                    let (package, target) = dependency
+                        .split_once(':')
+                        .unwrap_or((dependency, architecture));
                     let package = package.split('[').next().context("dependency package")?;
                     edges.insert((package, target));
                 }
@@ -397,16 +450,35 @@ fn installed_ports(installation: &Path) -> Result<Vec<(String, PathBuf)>> {
             active = true;
         }
     }
-    let mut pending: Vec<_> = graph.keys().filter(|key| key.1 == triplet).copied().collect();
-    if pending.is_empty() { bail!("no installed native ports for {triplet} in {}", status.display()); }
+    let mut pending: Vec<_> = graph
+        .keys()
+        .filter(|key| key.1 == triplet)
+        .copied()
+        .collect();
+    if pending.is_empty() {
+        bail!(
+            "no installed native ports for {triplet} in {}",
+            status.display()
+        );
+    }
     let mut selected = BTreeSet::new();
     while let Some(key) = pending.pop() {
         if selected.insert(key) {
-            let edges = graph.get(&key).with_context(|| format!("installed native dependency {}:{} missing from {}", key.0, key.1, status.display()))?;
+            let edges = graph.get(&key).with_context(|| {
+                format!(
+                    "installed native dependency {}:{} missing from {}",
+                    key.0,
+                    key.1,
+                    status.display()
+                )
+            })?;
             pending.extend(edges.iter().copied());
         }
     }
-    Ok(selected.into_iter().map(|(name, arch)| (name.to_owned(), base.join(arch))).collect())
+    Ok(selected
+        .into_iter()
+        .map(|(name, arch)| (name.to_owned(), base.join(arch)))
+        .collect())
 }
 
 /// Collect installed target ports and their host-tool dependency closure,
@@ -424,37 +496,75 @@ fn native_sources(
         installations.push(("subtitle", dependencies::subtitle_install(inv, target)?));
     }
     if selected.ffmpeg {
-        installations.push(("ffmpeg", if target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_install(inv, target, "ffmpeg")
-        } else { inv.root.join(".work/vcpkg-ffmpeg/installed/x64-windows") }));
+        installations.push((
+            "ffmpeg",
+            if target == "x86_64-unknown-linux-gnu" {
+                dependencies::linux_install(inv, target, "ffmpeg")
+            } else {
+                inv.root.join(".work/vcpkg-ffmpeg/installed/x64-windows")
+            },
+        ));
     }
     if selected.native_vcpkg {
-        installations.push(("native", inv.root.join(".work/native-vcpkg").join(component).join("installed").join(
-            if target == "x86_64-unknown-linux-gnu" { "x64-linux-dynamic" } else { "x64-windows" }
-        )));
+        installations.push((
+            "native",
+            inv.root
+                .join(".work/native-vcpkg")
+                .join(component)
+                .join("installed")
+                .join(if target == "x86_64-unknown-linux-gnu" {
+                    "x64-linux-dynamic"
+                } else {
+                    "x64-windows"
+                }),
+        ));
     }
     let mut required = std::collections::BTreeSet::new();
     let mut commands = String::new();
     for (group, installed) in &installations {
         package::plain(&installed.join("share"))?;
         for (port, source_install) in installed_ports(installed)? {
-            let spdx = source_install.join("share").join(&port).join("vcpkg.spdx.json");
-            package::plain(&spdx).with_context(|| format!("installed port {port} missing source provenance"))?;
+            let spdx = source_install
+                .join("share")
+                .join(&port)
+                .join("vcpkg.spdx.json");
+            package::plain(&spdx)
+                .with_context(|| format!("installed port {port} missing source provenance"))?;
             let record: serde_json::Value = serde_json::from_slice(&fs::read(&spdx)?)?;
             let overlay = if selected.native_vcpkg {
-                inv.core(component)?.source_directory(&inv.root)?.join("vcpkg/ports").join(&port)
-            } else { PathBuf::new() };
+                inv.core(component)?
+                    .source_directory(&inv.root)?
+                    .join("vcpkg/ports")
+                    .join(&port)
+            } else {
+                PathBuf::new()
+            };
             let recipe = if overlay.join("portfile.cmake").is_file() {
                 overlay
-            } else { inv.root.join(".work/vcpkg/ports").join(&port) };
+            } else {
+                inv.root.join(".work/vcpkg/ports").join(&port)
+            };
             package::verify_port_sources(&record, &recipe)
                 .with_context(|| format!("native source port {port} ({})", recipe.display()))?;
             copy_tree(&recipe, &root.join("native/ports").join(group).join(&port))?;
             let architecture = source_install.file_name().context("source port triplet")?;
-            copy_input(&spdx, &root.join("native/provenance").join(group).join(architecture).join(format!("{port}.spdx.json")))?;
+            copy_input(
+                &spdx,
+                &root
+                    .join("native/provenance")
+                    .join(group)
+                    .join(architecture)
+                    .join(format!("{port}.spdx.json")),
+            )?;
             for resource in record["packages"].as_array().context("SPDX packages")? {
-                if !resource["SPDXID"].as_str().is_some_and(|s| s.starts_with("SPDXRef-resource-")) { continue; }
-                let checksum = resource["checksums"].as_array()
+                if !resource["SPDXID"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("SPDXRef-resource-"))
+                {
+                    continue;
+                }
+                let checksum = resource["checksums"]
+                    .as_array()
                     .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA512"))
                     .and_then(|c| c["checksumValue"].as_str())
                     .context("native source resource missing SHA512")?;
@@ -464,12 +574,25 @@ fn native_sources(
                 required.insert(checksum.to_ascii_lowercase());
             }
         }
-        let triplet = installed.file_name().context("native triplet")?.to_string_lossy();
-        let install_root = installed.parent().context("install root")?.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
+        let triplet = installed
+            .file_name()
+            .context("native triplet")?
+            .to_string_lossy();
+        let install_root = installed
+            .parent()
+            .context("install root")?
+            .strip_prefix(&inv.root)?
+            .to_string_lossy()
+            .replace('\\', "/");
         let manifest = match *group {
             "subtitle" => "build/vcpkg/subtitle".to_owned(),
             "ffmpeg" => "build/vcpkg/ffmpeg".to_owned(),
-            _ => inv.core(component)?.source_directory(&inv.root)?.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/"),
+            _ => inv
+                .core(component)?
+                .source_directory(&inv.root)?
+                .strip_prefix(&inv.root)?
+                .to_string_lossy()
+                .replace('\\', "/"),
         };
         commands.push_str(&format!(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\" --overlay-ports=\"$PWD/native/ports/{group}\""
@@ -479,30 +602,57 @@ fn native_sources(
         }
         commands.push('\n');
         if *group != "native" {
-            let prefix = installed.parent().and_then(Path::parent).context("isolated vcpkg prefix")?
-                .strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
+            let prefix = installed
+                .parent()
+                .and_then(Path::parent)
+                .context("isolated vcpkg prefix")?
+                .strip_prefix(&inv.root)?
+                .to_string_lossy()
+                .replace('\\', "/");
             commands.push_str(&format!(
                 "Copy-Item \"$PWD/.work/vcpkg/.vcpkg-root\" \"$PWD/{prefix}/.vcpkg-root\"\n"
             ));
         }
     }
-    collect_archives(&inv.root.join(".work/vcpkg-downloads"), &root.join(".work/vcpkg-downloads"), required)?;
+    collect_archives(
+        &inv.root.join(".work/vcpkg-downloads"),
+        &root.join(".work/vcpkg-downloads"),
+        required,
+    )?;
     if selected.subtitle {
         // The pinned engine supplies custom mixed-linkage triplets.
-        let engine = metadata["packages"].as_array().context("Cargo packages")?.iter()
-            .find(|p| p["name"] == "roukaku-subtitle").context("roukaku-subtitle source missing")?;
-        let manifest = Path::new(engine["manifest_path"].as_str().context("subtitle manifest")?);
-        copy_tree(&manifest.parent().unwrap().join("triplets"), &root.join("native/subtitle-triplets"))?;
+        let engine = metadata["packages"]
+            .as_array()
+            .context("Cargo packages")?
+            .iter()
+            .find(|p| p["name"] == "roukaku-subtitle")
+            .context("roukaku-subtitle source missing")?;
+        let manifest = Path::new(
+            engine["manifest_path"]
+                .as_str()
+                .context("subtitle manifest")?,
+        );
+        copy_tree(
+            &manifest.parent().unwrap().join("triplets"),
+            &root.join("native/subtitle-triplets"),
+        )?;
     }
     if !installations.is_empty() {
         let repo = inv.root.join(".work/vcpkg");
-        let pins: toml::Value = toml::from_str(&fs::read_to_string(inv.root.join("build/dependencies.toml"))?)?;
+        let pins: toml::Value = toml::from_str(&fs::read_to_string(
+            inv.root.join("build/dependencies.toml"),
+        )?)?;
         let pin = pins["vcpkg_commit"].as_str().context("vcpkg commit")?;
-        if revision(&repo)? != pin { bail!("vcpkg source is not at pinned revision {pin}"); }
+        if revision(&repo)? != pin {
+            bail!("vcpkg source is not at pinned revision {pin}");
+        }
         // Versioned manifests need baseline/tree objects, not just a checkout.
         // Retaining the reachable history makes vcpkg registry resolution offline.
         dependencies::run(
-            git(&repo).args(["bundle", "create"]).arg(root.join("native/vcpkg.bundle")).arg("HEAD"),
+            git(&repo)
+                .args(["bundle", "create"])
+                .arg(root.join("native/vcpkg.bundle"))
+                .arg("HEAD"),
         )?;
         let tool = if target.contains("windows") {
             "$vcpkg = (Get-Command vcpkg.exe).Source"
@@ -516,7 +666,10 @@ fn native_sources(
     if selected.impacto_sources {
         native_archives(inv, root, &["libatrac9", "magic_enum"])?;
         for name in ["libatrac9", "magic_enum"] {
-            copy_tree(&inv.root.join(".work/native-downloads").join(name), &root.join(".work/native-downloads").join(name))?;
+            copy_tree(
+                &inv.root.join(".work/native-downloads").join(name),
+                &root.join(".work/native-downloads").join(name),
+            )?;
         }
     }
     if selected.renpy {
@@ -530,7 +683,9 @@ pub(crate) fn collect_archives(
     dest: &Path,
     mut required: std::collections::BTreeSet<String>,
 ) -> Result<()> {
-    if required.is_empty() { return Ok(()); }
+    if required.is_empty() {
+        return Ok(());
+    }
     for entry in fs::read_dir(downloads)? {
         let path = entry?.path();
         if path.is_file() && required.remove(&sha512(&path)?) {
@@ -538,16 +693,24 @@ pub(crate) fn collect_archives(
         }
     }
     if !required.is_empty() {
-        bail!("required corresponding-source archives missing or SHA512 mismatch in {}: {}", downloads.display(), required.into_iter().collect::<Vec<_>>().join(", "));
+        bail!(
+            "required corresponding-source archives missing or SHA512 mismatch in {}: {}",
+            downloads.display(),
+            required.into_iter().collect::<Vec<_>>().join(", ")
+        );
     }
     Ok(())
 }
 
 fn native_archives(inv: &Inventory, root: &Path, names: &[&str]) -> Result<()> {
-    let pins: toml::Value = toml::from_str(&fs::read_to_string(inv.root.join("build/dependencies.toml"))?)?;
+    let pins: toml::Value = toml::from_str(&fs::read_to_string(
+        inv.root.join("build/dependencies.toml"),
+    )?)?;
     for name in names {
         let pin = &pins["native"][name];
-        let filename = pin["file_name"].as_str().context("native archive filename")?;
+        let filename = pin["file_name"]
+            .as_str()
+            .context("native archive filename")?;
         let source = inv.root.join(".work/downloads").join(filename);
         if package::sha256(&source)? != pin["sha256"].as_str().context("native archive SHA256")? {
             bail!("native archive checksum mismatch: {filename}");
@@ -561,7 +724,9 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
     const PIN: &str = "7bfab40c1174f622f644b24669afd5fb167fbb79";
     let repo = inv.root.join(".work/renpy-build");
     checkout_root(&repo).context("Ren'Py corresponding source requires .work/renpy-build")?;
-    if revision(&repo)? != PIN { bail!("renpy-build must be at {PIN}"); }
+    if revision(&repo)? != PIN {
+        bail!("renpy-build must be at {PIN}");
+    }
     require_clean(&repo)?;
     fs::create_dir_all(root.join("native"))?;
     let mut builder = tar::Builder::new(fs::File::create(root.join("native/renpy-build.tar"))?);
@@ -569,20 +734,29 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
     builder.finish()?;
     // The SDK supplies bytecode without dist-info. This fork-side inventory
     // records versions read from that bytecode, not the different recipe pins.
-    let inventory = inv.core("renpy")?.source_directory(&inv.root)?
+    let inventory = inv
+        .core("renpy")?
+        .source_directory(&inv.root)?
         .join("licenses/renpy/python-sources.json");
     let lock: serde_json::Value = serde_json::from_slice(&fs::read(&inventory)?)?;
     if lock["renpy_build"] != PIN || lock["sdk"] != "8.5.3.26051504" {
         bail!("Ren'Py runtime source inventory revision mismatch");
     }
-    let packages = lock["packages"].as_array().context("Ren'Py Python source packages")?;
+    let packages = lock["packages"]
+        .as_array()
+        .context("Ren'Py Python source packages")?;
     for required in ["chardet", "certifi"] {
-        if !packages.iter().any(|p| p["name"] == required && p["copyleft"] == true) {
+        if !packages
+            .iter()
+            .any(|p| p["name"] == required && p["copyleft"] == true)
+        {
             bail!("Ren'Py source inventory lacks {required}");
         }
     }
     for item in packages {
-        let filename = item["file_name"].as_str().context("Python source filename")?;
+        let filename = item["file_name"]
+            .as_str()
+            .context("Python source filename")?;
         package::portable(filename)?;
         let archive = inv.root.join(".work/downloads").join(filename);
         if package::sha256(&archive)? != item["sha256"].as_str().context("Python source SHA256")? {
@@ -597,27 +771,59 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
         copy_hashed_archive(inv, tool, &root.join("native/python-sources"))?;
     }
     copy_input(&inventory, &root.join("native/python-sources/sources.json"))?;
-    let native_inventory = inv.core("renpy")?.source_directory(&inv.root)?
+    let native_inventory = inv
+        .core("renpy")?
+        .source_directory(&inv.root)?
         .join("licenses/renpy/native-sources.json");
     let native: serde_json::Value = serde_json::from_slice(&fs::read(&native_inventory)?)?;
-    if native["renpy_build"] != PIN { bail!("Ren'Py native source revision mismatch"); }
-    let inputs = native["sources"].as_array().context("Ren'Py native source archives")?;
-    for name in ["aom", "libavif", "libyuv", "assimp", "cpython-mingw", "renpy", "pyobjus"] {
-        if !inputs.iter().any(|p| p["name"] == name) { bail!("Ren'Py source closure lacks {name}"); }
+    if native["renpy_build"] != PIN {
+        bail!("Ren'Py native source revision mismatch");
+    }
+    let inputs = native["sources"]
+        .as_array()
+        .context("Ren'Py native source archives")?;
+    for name in [
+        "aom",
+        "libavif",
+        "libyuv",
+        "assimp",
+        "cpython-mingw",
+        "renpy",
+        "pyobjus",
+    ] {
+        if !inputs.iter().any(|p| p["name"] == name) {
+            bail!("Ren'Py source closure lacks {name}");
+        }
     }
     for input in inputs {
-        let filename = input["file_name"].as_str().context("Ren'Py native source filename")?;
+        let filename = input["file_name"]
+            .as_str()
+            .context("Ren'Py native source filename")?;
         package::portable(filename)?;
         let archive = inv.root.join(".work/downloads").join(filename);
-        if package::sha256(&archive)? != input["sha256"].as_str().context("Ren'Py native source SHA256")? {
+        if package::sha256(&archive)?
+            != input["sha256"]
+                .as_str()
+                .context("Ren'Py native source SHA256")?
+        {
             bail!("Ren'Py native source checksum mismatch: {filename}");
         }
         copy_input(&archive, &root.join("native/renpy-sources").join(filename))?;
     }
-    copy_input(&native_inventory, &root.join("native/renpy-sources/sources.json"))?;
-    native_archives(inv, root, &["renpy-sdk", "python", "cython", "cython-license", "sdl2"])?;
+    copy_input(
+        &native_inventory,
+        &root.join("native/renpy-sources/sources.json"),
+    )?;
+    native_archives(
+        inv,
+        root,
+        &["renpy-sdk", "python", "cython", "cython-license", "sdl2"],
+    )?;
     for name in ["renpy-sdk", "python", "cython-license", "sdl2"] {
-        copy_tree(&inv.root.join(".work/native-downloads").join(name), &root.join(".work/native-downloads").join(name))?;
+        copy_tree(
+            &inv.root.join(".work/native-downloads").join(name),
+            &root.join(".work/native-downloads").join(name),
+        )?;
     }
     Ok(())
 }
@@ -631,14 +837,30 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     let metadata = crate::rust_licenses::metadata(inv, target, component)?;
     let product = temp.path().join("product.tar");
     let mut builder = tar::Builder::new(fs::File::create(&product)?);
-    append_revision(&mut builder, &inv.root, &product_commit, Path::new(""), false)?;
+    append_revision(
+        &mut builder,
+        &inv.root,
+        &product_commit,
+        Path::new(""),
+        false,
+    )?;
     // Include local path dependencies which live in product gitlinks (e.g. CPAL).
     for (path, pin) in gitlinks(&inv.root, &product_commit)? {
-        if metadata["packages"].as_array().context("Cargo packages")?.iter().any(|p| {
-            p["source"].is_null() && p["manifest_path"].as_str().is_some_and(|s| Path::new(s).starts_with(inv.root.join(&path)))
-        }) {
+        if metadata["packages"]
+            .as_array()
+            .context("Cargo packages")?
+            .iter()
+            .any(|p| {
+                p["source"].is_null()
+                    && p["manifest_path"]
+                        .as_str()
+                        .is_some_and(|s| Path::new(s).starts_with(inv.root.join(&path)))
+            })
+        {
             let repo = inv.root.join(&path);
-            if revision(&repo)? != pin { bail!("product submodule {} revision mismatch", path.display()); }
+            if revision(&repo)? != pin {
+                bail!("product submodule {} revision mismatch", path.display());
+            }
             require_clean(&repo)?;
             append_revision(&mut builder, &repo, &pin, &path, true)?;
         }
@@ -652,7 +874,11 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         "core": null, "target": target
     });
     let (manifest, package, features) = if component == "manager" {
-        (inv.root.join("Cargo.toml"), "shinki-emu-manager".to_owned(), Vec::new())
+        (
+            inv.root.join("Cargo.toml"),
+            "shinki-emu-manager".to_owned(),
+            Vec::new(),
+        )
     } else {
         let core = inv.core(component)?;
         if let Some(source) = &core.source {
@@ -666,22 +892,54 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             tar::Archive::new(fs::File::open(&archive)?).unpack(dest)?;
             references["core"] = serde_json::to_value(source)?;
         }
-        (inv.root.join(&core.manifest), core.package.clone(), core.features.clone())
+        (
+            inv.root.join(&core.manifest),
+            core.package.clone(),
+            core.features.clone(),
+        )
     };
     vendor(&manifest, &root)?;
     // Resolve against the extracted tree and its generated source replacement,
     // so omitted path crates or vendor packages cannot become a partial bundle.
     let mut check = Command::new("cargo");
-    check.current_dir(&root).args(["metadata", "--offline", "--frozen", "--format-version", "1", "--filter-platform", target, "--manifest-path"])
+    check
+        .current_dir(&root)
+        .args([
+            "metadata",
+            "--offline",
+            "--frozen",
+            "--format-version",
+            "1",
+            "--filter-platform",
+            target,
+            "--manifest-path",
+        ])
         .arg(root.join(manifest.strip_prefix(&inv.root)?));
     if !features.is_empty() {
-        check.arg("--features").arg(features.iter().map(|f| format!("{package}/{f}")).collect::<Vec<_>>().join(","));
+        check.arg("--features").arg(
+            features
+                .iter()
+                .map(|f| format!("{package}/{f}"))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
     }
-    dependencies::capture(&mut check).context("corresponding source does not resolve offline from its vendor tree")?;
+    dependencies::capture(&mut check)
+        .context("corresponding source does not resolve offline from its vendor tree")?;
     let native_commands = native_sources(inv, component, target, &root, &metadata)?;
-    fs::write(root.join("source-references.json"), serde_json::to_vec_pretty(&references)?)?;
-    let manifest_relative = manifest.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
-    let feature_args = if features.is_empty() { String::new() } else { format!(" --features {}", features.join(",")) };
+    fs::write(
+        root.join("source-references.json"),
+        serde_json::to_vec_pretty(&references)?,
+    )?;
+    let manifest_relative = manifest
+        .strip_prefix(&inv.root)?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let feature_args = if features.is_empty() {
+        String::new()
+    } else {
+        format!(" --features {}", features.join(","))
+    };
     let mut instructions = format!(
         "# Rebuild {component} for {target}\n\nProduct commit: {product_commit}. Exact core revision: see source-references.json.\n\
          Unpack source.tar into a new directory and run these commands there in a developer PowerShell (Windows) or the equivalent shell on the target OS.\n\
@@ -695,14 +953,21 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             "$env:VCPKG_DOWNLOADS = \"$PWD/.work/vcpkg-downloads\"\n\
              $env:VCPKG_BINARY_SOURCES = 'clear'\n\
              $env:VCPKG_FORCE_SYSTEM_BINARIES = '1'\n\
-             # A system vcpkg executable, CMake and Ninja must be on PATH.\n"
+             # A system vcpkg executable, CMake and Ninja must be on PATH.\n",
         );
         instructions.push_str(&native_commands);
         if dependencies::needs(inv, target, component)?.subtitle {
             let install = dependencies::subtitle_install(inv, target)?;
-            let prefix = install.parent().and_then(Path::parent).context("subtitle prefix")?
-                .strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
-            instructions.push_str(&format!("$env:ROUKAKU_SUBTITLE_VCPKG_ROOT = \"$PWD/{prefix}\"\n"));
+            let prefix = install
+                .parent()
+                .and_then(Path::parent)
+                .context("subtitle prefix")?
+                .strip_prefix(&inv.root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            instructions.push_str(&format!(
+                "$env:ROUKAKU_SUBTITLE_VCPKG_ROOT = \"$PWD/{prefix}\"\n"
+            ));
             if target.contains("linux") {
                 instructions.push_str(&format!("$env:PKG_CONFIG_PATH = \"$PWD/{prefix}/installed/x64-linux-dynamic/lib/pkgconfig\"\n"));
             }
@@ -719,7 +984,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         ));
     }
     if selected.impacto_sources || selected.renpy {
-        instructions.push_str("$env:SHINKI_EMU_NATIVE_DOWNLOADS = \"$PWD/.work/native-downloads\"\n");
+        instructions
+            .push_str("$env:SHINKI_EMU_NATIVE_DOWNLOADS = \"$PWD/.work/native-downloads\"\n");
     }
     if selected.renpy {
         instructions.push_str(
@@ -734,11 +1000,22 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
     }
     let build_command = if target.contains("android") && component == "manager" {
-        format!("cargo ndk -t {} -P 26 build", if target.starts_with("aarch64") { "arm64-v8a" } else { "x86_64" })
+        format!(
+            "cargo ndk -t {} -P 26 build",
+            if target.starts_with("aarch64") {
+                "arm64-v8a"
+            } else {
+                "x86_64"
+            }
+        )
     } else {
         format!("cargo build --target {target}")
     };
-    let artifact = if component != "manager" || target.contains("android") { "--lib" } else { "--bin shinki-emu-manager" };
+    let artifact = if component != "manager" || target.contains("android") {
+        "--lib"
+    } else {
+        "--bin shinki-emu-manager"
+    };
     instructions.push_str(&format!(
         "{build_command} --offline --frozen --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n\n\
          Native ports/patches and SPDX build provenance are under native/; source archives are under .work/vcpkg-downloads. \
@@ -785,7 +1062,13 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     let mut builder = tar::Builder::new(fs::File::create(&archive)?);
     builder.append_dir_all(".", &root)?;
     builder.finish()?;
-    package::zip_entries(&[(archive, "source.tar".into()), (readme, "BUILD-FROM-SOURCE.md".into())], out)
+    package::zip_entries(
+        &[
+            (archive, "source.tar".into()),
+            (readme, "BUILD-FROM-SOURCE.md".into()),
+        ],
+        out,
+    )
 }
 
 fn copy_hashed_archive(inv: &Inventory, record: &serde_json::Value, dest: &Path) -> Result<()> {
@@ -981,8 +1264,13 @@ mod tests {
         let (temp, inv, _core, upstream, _first, _second) = fixture();
         dependencies::run(Command::new("git").args(["init"]).arg(&inv.root)).unwrap();
         fs::write(inv.root.join("Cargo.toml"), "[workspace]\n").unwrap();
-        dependencies::run(git(&inv.root).args(["-c", "protocol.file.allow=always", "submodule", "add"])
-            .arg(&upstream).arg("nested")).unwrap();
+        dependencies::run(
+            git(&inv.root)
+                .args(["-c", "protocol.file.allow=always", "submodule", "add"])
+                .arg(&upstream)
+                .arg("nested"),
+        )
+        .unwrap();
         dependencies::run(git(&inv.root).args(["add", ".gitmodules", "nested"])).unwrap();
         let pin = commit(&inv.root, "outer\n");
         let archive = temp.path().join("source.tar");
@@ -990,10 +1278,16 @@ mod tests {
         append_revision(&mut builder, &inv.root, &pin, Path::new(""), true).unwrap();
         builder.finish().unwrap();
         let extracted = temp.path().join("extracted");
-        tar::Archive::new(fs::File::open(&archive).unwrap()).unpack(&extracted).unwrap();
-        assert_eq!(fs::read(extracted.join("nested/payload.txt")).unwrap(), fs::read(upstream.join("payload.txt")).unwrap());
+        tar::Archive::new(fs::File::open(&archive).unwrap())
+            .unpack(&extracted)
+            .unwrap();
+        assert_eq!(
+            fs::read(extracted.join("nested/payload.txt")).unwrap(),
+            fs::read(upstream.join("payload.txt")).unwrap()
+        );
         fs::write(inv.root.join("nested/payload.txt"), "unpublished change").unwrap();
-        let mut builder = tar::Builder::new(fs::File::create(temp.path().join("rejected.tar")).unwrap());
+        let mut builder =
+            tar::Builder::new(fs::File::create(temp.path().join("rejected.tar")).unwrap());
         assert!(append_revision(&mut builder, &inv.root, &pin, Path::new(""), true).is_err());
     }
 
@@ -1004,12 +1298,32 @@ mod tests {
         let mut inv = Inventory::load(original).unwrap();
         inv.root = temp.path().join("product");
         fs::create_dir_all(inv.root.join("src")).unwrap();
-        fs::write(inv.root.join("Cargo.toml"), "[package]\nname=\"shinki-emu-manager\"\nversion=\"0.1.0\"\nedition=\"2024\"\n").unwrap();
-        fs::write(inv.root.join("src/lib.rs"), "pub fn answer() -> u32 { 42 }\n").unwrap();
+        fs::write(
+            inv.root.join("Cargo.toml"),
+            "[package]\nname=\"shinki-emu-manager\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+        )
+        .unwrap();
+        fs::write(
+            inv.root.join("src/lib.rs"),
+            "pub fn answer() -> u32 { 42 }\n",
+        )
+        .unwrap();
         fs::write(inv.root.join(".gitignore"), "/.work/\n").unwrap();
-        dependencies::run(Command::new("cargo").current_dir(&inv.root).args(["generate-lockfile", "--offline"])).unwrap();
+        dependencies::run(
+            Command::new("cargo")
+                .current_dir(&inv.root)
+                .args(["generate-lockfile", "--offline"]),
+        )
+        .unwrap();
         dependencies::run(Command::new("git").args(["init"]).arg(&inv.root)).unwrap();
-        dependencies::run(git(&inv.root).args(["add", "Cargo.toml", "Cargo.lock", ".gitignore", "src"])).unwrap();
+        dependencies::run(git(&inv.root).args([
+            "add",
+            "Cargo.toml",
+            "Cargo.lock",
+            ".gitignore",
+            "src",
+        ]))
+        .unwrap();
         commit(&inv.root, "product source\n");
         let output = temp.path().join("source.zip");
         bundle(&inv, "manager", "x86_64-pc-windows-msvc", &output).unwrap();
@@ -1017,7 +1331,14 @@ mod tests {
         let source = zip.by_name("source.tar").unwrap();
         let extracted = temp.path().join("fresh");
         tar::Archive::new(source).unpack(&extracted).unwrap();
-        dependencies::capture(Command::new("cargo").current_dir(extracted).args(["metadata", "--offline", "--frozen", "--format-version", "1"])).unwrap();
+        dependencies::capture(Command::new("cargo").current_dir(extracted).args([
+            "metadata",
+            "--offline",
+            "--frozen",
+            "--format-version",
+            "1",
+        ]))
+        .unwrap();
     }
 
     #[test]
@@ -1026,7 +1347,10 @@ mod tests {
         let (temp, _inv, _core, upstream, _first, _second) = fixture();
         let payload = b"materialized public fixture bytes";
         let oid = hex::encode(sha2::Sha256::digest(payload));
-        let pointer = format!("version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {}\n", payload.len());
+        let pointer = format!(
+            "version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {}\n",
+            payload.len()
+        );
         let pin = commit(&upstream, &pointer);
         fs::write(upstream.join("payload.txt"), payload).unwrap();
         let archive = temp.path().join("materialized.tar");
@@ -1034,13 +1358,17 @@ mod tests {
         append_revision(&mut builder, &upstream, &pin, Path::new(""), true).unwrap();
         builder.finish().unwrap();
         let extracted = temp.path().join("materialized");
-        tar::Archive::new(fs::File::open(archive).unwrap()).unpack(&extracted).unwrap();
+        tar::Archive::new(fs::File::open(archive).unwrap())
+            .unpack(&extracted)
+            .unwrap();
         assert_eq!(fs::read(extracted.join("payload.txt")).unwrap(), payload);
         fs::write(upstream.join("payload.txt"), pointer).unwrap();
-        let mut builder = tar::Builder::new(fs::File::create(temp.path().join("pointer.tar")).unwrap());
+        let mut builder =
+            tar::Builder::new(fs::File::create(temp.path().join("pointer.tar")).unwrap());
         assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
         fs::write(upstream.join("payload.txt"), vec![b'x'; payload.len()]).unwrap();
-        let mut builder = tar::Builder::new(fs::File::create(temp.path().join("modified.tar")).unwrap());
+        let mut builder =
+            tar::Builder::new(fs::File::create(temp.path().join("modified.tar")).unwrap());
         assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
     }
 
@@ -1059,10 +1387,21 @@ mod tests {
         fs::write(temp.path().join("installed/vcpkg/status"), status).unwrap();
         let ports = installed_ports(&install).unwrap();
         assert_eq!(ports.len(), 3);
-        assert!(ports.iter().any(|(name, root)| name == "library" && root == &install));
-        assert!(ports.iter().any(|(name, root)| name == "tool" && root.ends_with("host")));
-        fs::write(temp.path().join("installed/vcpkg/status"), status.replace("Package: tool", "Package: missing")).unwrap();
+        assert!(
+            ports
+                .iter()
+                .any(|(name, root)| name == "library" && root == &install)
+        );
+        assert!(
+            ports
+                .iter()
+                .any(|(name, root)| name == "tool" && root.ends_with("host"))
+        );
+        fs::write(
+            temp.path().join("installed/vcpkg/status"),
+            status.replace("Package: tool", "Package: missing"),
+        )
+        .unwrap();
         assert!(installed_ports(&install).is_err());
     }
 }
-

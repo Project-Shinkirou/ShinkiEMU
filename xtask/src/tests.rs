@@ -428,17 +428,36 @@ fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
     fs::create_dir(&downloads).unwrap();
     let upstream = downloads.join("source.tar.gz");
     fs::write(&upstream, b"upstream source archive").unwrap();
-    let required = [hex::encode(sha2::Sha512::digest(fs::read(&upstream).unwrap()))]
-        .into_iter().collect();
+    let required = [hex::encode(sha2::Sha512::digest(
+        fs::read(&upstream).unwrap(),
+    ))]
+    .into_iter()
+    .collect();
     let output = temp.path().join("output");
     crate::sources::collect_archives(&downloads, &output, required).unwrap();
-    assert_eq!(fs::read(output.join("source.tar.gz")).unwrap(), fs::read(&upstream).unwrap());
-    let required = [hex::encode(sha2::Sha512::digest(fs::read(&upstream).unwrap()))]
-        .into_iter().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        fs::read(output.join("source.tar.gz")).unwrap(),
+        fs::read(&upstream).unwrap()
+    );
+    let required = [hex::encode(sha2::Sha512::digest(
+        fs::read(&upstream).unwrap(),
+    ))]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
     fs::write(&upstream, b"same filename, changed contents").unwrap();
-    assert!(crate::sources::collect_archives(&downloads, &temp.path().join("changed"), required.clone()).is_err());
+    assert!(
+        crate::sources::collect_archives(
+            &downloads,
+            &temp.path().join("changed"),
+            required.clone()
+        )
+        .is_err()
+    );
     fs::remove_file(&upstream).unwrap();
-    assert!(crate::sources::collect_archives(&downloads, &temp.path().join("missing"), required).is_err());
+    assert!(
+        crate::sources::collect_archives(&downloads, &temp.path().join("missing"), required)
+            .is_err()
+    );
     let port = temp.path().join("port");
     fs::create_dir(&port).unwrap();
     fs::write(port.join("portfile.cmake"), "original recipe").unwrap();
@@ -460,9 +479,14 @@ fn vendor_closure_rejects_missing_and_modified_sources() {
     assert!(crate::sources::verify_vendor(&vendor).is_err());
     let source = package.join("lib.rs");
     fs::write(&source, "pub const VALUE: usize = 42;").unwrap();
-    fs::write(package.join(".cargo-checksum.json"), serde_json::to_vec(&serde_json::json!({
-        "files": {"lib.rs": sha256(&source).unwrap()}, "package": null
-    })).unwrap()).unwrap();
+    fs::write(
+        package.join(".cargo-checksum.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "files": {"lib.rs": sha256(&source).unwrap()}, "package": null
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     crate::sources::verify_vendor(&vendor).unwrap();
     fs::write(&source, "changed source").unwrap();
     assert!(crate::sources::verify_vendor(&vendor).is_err());
@@ -650,7 +674,13 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
     let temp = tempfile::tempdir().unwrap();
     let mut packages = Vec::new();
     for (id, name, version, license, license_file) in [
-        ("manager", "shinki-emu-test-core", "1.0.0", Some("MIT"), None),
+        (
+            "manager",
+            "shinki-emu-test-core",
+            "1.0.0",
+            Some("MIT"),
+            None,
+        ),
         (
             "direct",
             "steamroom",
@@ -682,7 +712,13 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         "custom license",
     )
     .unwrap();
-    for filename in ["LICENSE-MIT", "COPYING.txt", "COPYRIGHT", "NOTICE", "license-apache"] {
+    for filename in [
+        "LICENSE-MIT",
+        "COPYING.txt",
+        "COPYRIGHT",
+        "NOTICE",
+        "license-apache",
+    ] {
         fs::write(temp.path().join("direct").join(filename), filename).unwrap();
     }
     fs::write(temp.path().join("transitive/LICENSE"), "transitive license").unwrap();
@@ -726,7 +762,8 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         ]}
     });
     let scratch = temp.path().join("scratch");
-    let entries = crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).unwrap();
+    let entries =
+        crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).unwrap();
     let output = temp.path().join("package");
     fs::create_dir(&output).unwrap();
     copy_entries(&entries, &output).unwrap();
@@ -734,7 +771,13 @@ fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
         fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0/custom.txt")).unwrap(),
         "custom license"
     );
-    for filename in ["LICENSE-MIT", "COPYING.txt", "COPYRIGHT", "NOTICE", "license-apache"] {
+    for filename in [
+        "LICENSE-MIT",
+        "COPYING.txt",
+        "COPYRIGHT",
+        "NOTICE",
+        "license-apache",
+    ] {
         assert_eq!(
             fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0").join(filename))
                 .unwrap(),
@@ -827,9 +870,21 @@ fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("crate");
     fs::create_dir_all(root.join("fonts")).unwrap();
-    fs::write(root.join("fonts/UFL.txt"), "original Ubuntu font terms and attribution").unwrap();
-    fs::write(root.join("fonts/OFL.txt"), "original open font terms and attribution").unwrap();
-    fs::write(root.join("fonts/Hack-Regular.txt"), "original named-font copyright").unwrap();
+    fs::write(
+        root.join("fonts/UFL.txt"),
+        "original Ubuntu font terms and attribution",
+    )
+    .unwrap();
+    fs::write(
+        root.join("fonts/OFL.txt"),
+        "original open font terms and attribution",
+    )
+    .unwrap();
+    fs::write(
+        root.join("fonts/Hack-Regular.txt"),
+        "original named-font copyright",
+    )
+    .unwrap();
     fs::write(root.join("fonts/Font.ttf"), "font data is not a notice").unwrap();
     let metadata = serde_json::json!({
         "packages": [{
@@ -839,17 +894,25 @@ fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
         }],
         "resolve":{"nodes":[{"id":"font-core", "deps":[]}]}
     });
-    let entries = crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("scratch")).unwrap();
+    let entries =
+        crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("scratch"))
+            .unwrap();
     let output = temp.path().join("package");
     fs::create_dir(&output).unwrap();
     copy_entries(&entries, &output).unwrap();
     let notices = output.join("licenses/rust/font-core-1.0.0");
-    assert_eq!(fs::read(notices.join("fonts/UFL.txt")).unwrap(), fs::read(root.join("fonts/UFL.txt")).unwrap());
+    assert_eq!(
+        fs::read(notices.join("fonts/UFL.txt")).unwrap(),
+        fs::read(root.join("fonts/UFL.txt")).unwrap()
+    );
     assert!(notices.join("fonts/Hack-Regular.txt").is_file());
     assert!(notices.join("LICENSE-MIT").is_file());
     assert!(notices.join("LICENSE-Apache-2.0").is_file());
     assert!(!notices.join("LICENSE-OFL-1.1").exists());
     assert!(!notices.join("fonts/Font.ttf").exists());
     fs::remove_file(root.join("fonts/UFL.txt")).unwrap();
-    assert!(crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("missing")).is_err());
+    assert!(
+        crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("missing"))
+            .is_err()
+    );
 }
