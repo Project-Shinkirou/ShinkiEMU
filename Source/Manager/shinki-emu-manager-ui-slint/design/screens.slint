@@ -1,13 +1,13 @@
 // Design review states for the Manager UI (plan 7.4). Not compiled into the product.
-// Render from the worktree root (phone states 360x640, others 1280x800):
-// slint-viewer --style material -L material=Emulator/Source/Manager/shinki-emu-manager-ui-slint/material-1.1.0/material.slint --component <Name> --size <WxH> --screenshot .tmp/emu-manager-design/<Name>.png Emulator/Source/Manager/shinki-emu-manager-ui-slint/design/screens.slint
+// Render from the worktree root (phone states 360x780, landscape 780x360, others 1280x800):
+// slint-viewer --style material -L material=Source/Manager/shinki-emu-manager-ui-slint/material-1.1.0/material.slint --component <Name> --size <WxH> --screenshot .tmp/emu-manager-design/<Name>.png Source/Manager/shinki-emu-manager-ui-slint/design/screens.slint
 //
 // Every state sets the globals in `init` unconditionally: slint-viewer does not
 // compile in preview mode, so `Platform.uses-mock-data` would stay false here.
 
 import {
     ManagerWindow, App, Network, Library, Selection, GameSettings, Patch, Settings, Cores, Notices,
-    Dialogs, Filters, Session, Onboarding, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
+    Dialogs, Filters, Session, Onboarding, ResaleNoticeState, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
 } from "../ui/main.slint";
 
 global Mock {
@@ -342,6 +342,28 @@ export component OnboardingDisclaimerPhone inherits ManagerWindow {
         Mock.base(true);
         App.page = "onboarding";
         Onboarding.step = 0;
+    }
+}
+
+// Reading dwell still running: checkbox unchecked, Next disabled with a countdown.
+export component OnboardingNoticeReading inherits ManagerWindow {
+    init => {
+        Mock.base(false);
+        App.page = "onboarding";
+        Onboarding.step = 0;
+        ResaleNoticeState.remaining-seconds = 6;
+    }
+}
+
+// Acknowledged: checkbox checked, Next enabled.
+export component OnboardingNoticeAcknowledged inherits ManagerWindow {
+    init => {
+        Mock.base(true);
+        App.page = "onboarding";
+        Onboarding.step = 0;
+        ResaleNoticeState.remaining-seconds = 0;
+        ResaleNoticeState.checked = true;
+        ResaleNoticeState.acknowledged = true;
     }
 }
 

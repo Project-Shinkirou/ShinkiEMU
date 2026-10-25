@@ -5,6 +5,11 @@ import { RangeSlider } from "../../components/range-slider.slint";
 export component PageScroll {
     in property <string> title;
     in property <bool> show-title;
+    // Window rectangle of the visible scroll viewport.
+    out property <length> viewport-x: sv.absolute-position.x;
+    out property <length> viewport-y: sv.absolute-position.y;
+    out property <length> viewport-width: sv.visible-width;
+    out property <length> viewport-height: sv.visible-height;
     property <length> pad: root.width < 600px ? 16px : 24px;
 
     sv := ScrollView {

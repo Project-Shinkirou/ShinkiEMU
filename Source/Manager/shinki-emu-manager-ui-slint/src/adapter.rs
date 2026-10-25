@@ -10,8 +10,8 @@ use crate::{
     GamepadBindingViewModel, Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel,
     Network, Notices, Onboarding, Patch, PatchGame, PatchGameViewModel, PatchState,
     PatchStateViewModel, PlaySession, PlaySessionViewModel, Recipe, RecipeViewModel, RenderState,
-    RenderViewModel, SelectedGame, Selection, Session, Settings, TranslationForm,
-    TranslationFormViewModel,
+    RenderViewModel, ResaleNoticeState, SelectedGame, Selection, Session, Settings,
+    TranslationForm, TranslationFormViewModel,
 };
 
 pub struct SlintManagerAdapter {
@@ -210,6 +210,15 @@ impl SlintManagerAdapter {
         self.apply_filters(model);
         self.apply_session(model);
         self.onboarding_roots.update(&model.onboarding.roots);
+        self.apply_resale_notice(model);
+    }
+
+    fn apply_resale_notice(&self, model: &ManagerViewModel) {
+        let notice = self.window.global::<ResaleNoticeState>();
+        let view = &model.resale_notice;
+        notice.set_checked(view.checked);
+        notice.set_remaining_seconds(view.remaining_seconds);
+        notice.set_acknowledged(view.acknowledged);
     }
 
     fn apply_app(&self, model: &ManagerViewModel) {

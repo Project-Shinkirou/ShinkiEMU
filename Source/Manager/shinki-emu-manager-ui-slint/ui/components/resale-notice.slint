@@ -1,0 +1,105 @@
+import { MaterialPalette, MaterialText, MaterialTypography, CheckBox, CheckState } from "@material";
+import { ResaleNoticeState } from "../globals.slint";
+
+// The image itself reports geometry: removing it leaves the Rust dwell gate closed.
+export component ResaleNoticeSlot {
+    // Which reported slot this is: the 关于 copy or the onboarding one.
+    in property <bool> about;
+    // Desktop widths keep at least 210px reserved; narrow windows follow the raster.
+    in property <bool> wide: true;
+
+    property <length> content-height: root.about ? ResaleNoticeState.about-content-height : ResaleNoticeState.onboarding-content-height;
+    notice := Image {
+        width: root.width;
+        height: root.content-height;
+        source: root.about ? ResaleNoticeState.about-image : ResaleNoticeState.onboarding-image;
+        image-fit: fill;
+        property <{x: length, y: length, width: length, height: length}> geometry: {
+            x: self.absolute-position.x,
+            y: self.absolute-position.y,
+            width: self.visible ? self.width : 0px,
+            height: self.visible && self.source.height > 0 ? self.height : 0px,
+        };
+        function report() {
+            if root.about {
+                ResaleNoticeState.report-about-slot(self.geometry.x, self.geometry.y, self.geometry.width, self.geometry.height);
+            } else {
+                ResaleNoticeState.report-onboarding-slot(self.geometry.x, self.geometry.y, self.geometry.width, self.geometry.height);
+            }
+        }
+        init => { self.report(); }
+        changed geometry => { self.report(); }
+    }
+
+    height: max(root.wide ? 210px : 0px, root.content-height);
+    accessible-role: groupbox;
+    accessible-label: "防倒卖声明";
+
+}
+
+// 我已阅读 checkbox with the remaining reading time. The box always shows
+// `ResaleNoticeState.checked`; a toggle goes to Rust, which decides.
+export component ResaleNoticeAck {
+    property <bool> stored: ResaleNoticeState.checked;
+    property <string> status: ResaleNoticeState.acknowledged ? "已确认，可以继续"
+        : ResaleNoticeState.remaining-seconds > 0 ? "请阅读上方说明，还需 " + ResaleNoticeState.remaining-seconds + " 秒"
+        : root.stored ? "正在确认…"
+        : "勾选后即可继续";
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    forward-focus: cb;
+
+    function set-checked(value: bool) {
+        if value != root.stored {
+            ResaleNoticeState.acknowledge(value);
+        }
+        cb.check-state = root.stored ? CheckState.checked : CheckState.unchecked;
+    }
+
+    changed stored => { cb.check-state = root.stored ? CheckState.checked : CheckState.unchecked; }
+
+    // Below the row so the checkbox keeps its own hover/press layer; clicks on
+    // the label fall through to here.
+    TouchArea {
+        clicked => {
+            cb.focus();
+            root.set-checked(!root.stored);
+        }
+    }
+
+    l := HorizontalLayout {
+        spacing: 4px;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            cb := CheckBox {
+                check-state: root.stored ? CheckState.checked : CheckState.unchecked;
+                accessible-label: "我已阅读 / I have read this";
+                accessible-description: root.status;
+                checked-state-changed(state) => { root.set-checked(state == CheckState.checked); }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            MaterialText {
+                text: "我已阅读 / I have read this";
+                style: MaterialTypography.body-large;
+                color: MaterialPalette.on-surface;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            MaterialText {
+                text: root.status;
+                style: MaterialTypography.body-medium;
+                color: ResaleNoticeState.acknowledged ? MaterialPalette.primary : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+    }
+}

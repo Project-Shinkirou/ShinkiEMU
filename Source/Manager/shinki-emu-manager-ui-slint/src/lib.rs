@@ -23,6 +23,43 @@ pub struct ManagerViewModel {
     pub filters: FiltersViewModel,
     pub session: SessionViewModel,
     pub onboarding: OnboardingViewModel,
+    pub resale_notice: ResaleNoticeViewModel,
+}
+
+/// State of the Rust-rendered bilingual anti-resale notice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResaleNoticeViewModel {
+    pub checked: bool,
+    pub remaining_seconds: i32,
+    pub acknowledged: bool,
+}
+
+impl Default for ResaleNoticeViewModel {
+    fn default() -> Self {
+        Self {
+            checked: false,
+            remaining_seconds: 8,
+            acknowledged: false,
+        }
+    }
+}
+
+/// Logical image coordinates and the surrounding scroll viewport.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct NoticeSlotRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub clip: Option<NoticeClipRect>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct NoticeClipRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

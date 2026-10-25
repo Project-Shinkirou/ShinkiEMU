@@ -24,6 +24,8 @@ shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
 roukaku-observability = { workspace = true }
 roukaku-media-core = { workspace = true }
+roukaku-core.workspace = true
+roukaku-text.workspace = true
 clap.workspace = true
 serde.workspace = true
 crossbeam-channel.workspace = true

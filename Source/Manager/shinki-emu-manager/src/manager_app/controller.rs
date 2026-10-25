@@ -125,6 +125,26 @@ impl ManagerController for ShinkiEmuManagerController {
     fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::finish_onboarding(self)
     }
+    fn notice_presented(&mut self, now: Instant, visible: bool) -> Result<(), String> {
+        self.notice_reading.presented(now, visible);
+        self.persist_notice_acknowledgement()
+    }
+    fn acknowledge_notice(&mut self, checked: bool) -> Result<ManagerViewModel, String> {
+        self.notice_reading.set_checked(checked);
+        if !checked {
+            self.library
+                .set_app_state(
+                    shinki_emu_manager::resale_notice::ACK_KEY,
+                    &Option::<shinki_emu_manager::resale_notice::Acknowledgement>::None,
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        self.persist_notice_acknowledgement()?;
+        self.model()
+    }
+    fn notice_state(&self) -> shinki_emu_manager_ui_slint::ResaleNoticeViewModel {
+        self.notice_reading.view()
+    }
     fn game_location(&self, game_id: &str) -> Result<PathBuf, String> {
         ShinkiEmuManagerController::game_location(self, game_id)
     }
@@ -313,7 +333,9 @@ impl ManagerController for ShinkiEmuManagerController {
             .and_then(|active| active.pending_icon.take())
     }
 
-    fn take_game_pointer(&mut self) -> Option<shinki_emu_manager_core::model::FamilyPointerRequest> {
+    fn take_game_pointer(
+        &mut self,
+    ) -> Option<shinki_emu_manager_core::model::FamilyPointerRequest> {
         self.active
             .as_mut()
             .filter(|active| active.closing.is_none())

@@ -88,6 +88,7 @@ struct PendingMetadata {
 
 struct ShinkiEmuManagerController {
     library: Library,
+    notice_reading: shinki_emu_manager::resale_notice::Reading,
     registry: owner::FamilyOwner,
     candidates: BTreeMap<String, FamilyProbeCandidate>,
     startup_state: background::StartupState,

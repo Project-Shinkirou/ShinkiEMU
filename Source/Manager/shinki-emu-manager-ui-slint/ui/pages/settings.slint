@@ -1,5 +1,5 @@
 import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, Icon, ScrollView } from "@material";
-import { App } from "../globals.slint";
+import { App, ResaleNoticeState } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { AppearanceSection } from "./settings/appearance.slint";
 import { RootsSection } from "./settings/roots.slint";
@@ -217,6 +217,9 @@ export component SettingsPage {
     ];
     property <bool> two-pane: root.width >= 760px;
     property <bool> single-content: !root.two-pane && SettingsNav.show-content;
+    // Whether category content (and with it the 关于 notice slot) is on screen.
+    property <bool> content-shown: root.two-pane || root.single-content;
+    changed content-shown => { ResaleNoticeState.report-about-open(root.content-shown); }
     property <length> list-width: 280px;
     property <length> bar-height: 64px;
 
@@ -239,7 +242,10 @@ export component SettingsPage {
     }
 
     forward-focus: keys;
-    init => { SettingsNav.enter(); }
+    init => {
+        SettingsNav.enter();
+        ResaleNoticeState.report-about-open(root.content-shown);
+    }
 
     keys := FocusScope {
         key-pressed(event) => {

@@ -11,6 +11,12 @@ Download a Manager asset matching your platform and architecture from [ShinkiEMU
 
 Only select assets actually attached to a release. Build availability is listed in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/). Android debug-signed CI APKs are test builds, not release installers. iOS device and simulator outputs are distinct; a library is not an installable IPA.
 
+On first launch, read the bilingual anti-resale notice and tick “我已阅读 / I have read this”. Continue becomes available after the notice has been visible for eight seconds. The acknowledgement is stored locally with the notice's SHA-256 digest; a revised notice requires acknowledgement again. ShinkiEMU is free, open-source software: use the official website and GitHub Releases, and request a refund and report the seller if you paid for the software. The notice is also available in Settings → About.
+
+The bilingual image is rasterized in Rust and displayed in the onboarding and About image slots. Reading time advances only while the complete image fits at its readable size inside the visible scroll viewport; hidden, undersized, clipped or minimized views pause it. Resize a narrow window vertically or scroll the notice fully into view before reading. Removing the UI image does not bypass the Rust completion gate: onboarding stays locked.
+
+The image follows the current light/dark theme and its surface/text colors, including custom theme colors. Changing the theme refreshes the raster without resetting accumulated reading time.
+
 ## Add games and install cores
 
 In Settings, add the directories containing your legally obtained game installations, then scan the library. Select the detected game and check the selected core and game-specific configuration before starting. An engine probe identifies a format; encrypted resources can still require a private profile. Keep all keys local.

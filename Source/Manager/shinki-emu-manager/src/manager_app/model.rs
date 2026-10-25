@@ -264,6 +264,7 @@ impl ShinkiEmuManagerController {
             },
             session: self.session_view()?,
             onboarding: OnboardingViewModel { roots },
+            resale_notice: self.notice_reading.view(),
         })
     }
 
