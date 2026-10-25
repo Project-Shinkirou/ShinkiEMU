@@ -204,6 +204,30 @@ pub(crate) fn metadata(
         &mut command,
     )?)?)
 }
+/// Readable, stable discriminator for a package source.
+fn source_tag(source: Option<&str>) -> String {
+    use sha2::Digest;
+    match source {
+        None => "path".to_owned(),
+        Some("registry+https://github.com/rust-lang/crates.io-index") => "crates-io".to_owned(),
+        Some(source) => {
+            let revision = source
+                .strip_prefix("git+")
+                .and_then(|git| git.rsplit_once('#'))
+                .map(|(_, revision)| revision)
+                .filter(|revision| {
+                    revision.len() >= 12 && revision.bytes().all(|b| b.is_ascii_hexdigit())
+                });
+            match revision {
+                Some(revision) => format!("git-{}", &revision[..12]),
+                None => format!(
+                    "source-{}",
+                    &hex::encode(sha2::Sha256::digest(source))[..12]
+                ),
+            }
+        }
+    }
+}
 /// Metadata must be resolved with `--filter-platform` for the packaged target.
 /// Follow normal and build edges, including proc macros, but not test-only edges.
 pub(crate) fn entries(
@@ -255,6 +279,20 @@ pub(crate) fn entries(
             }
         }
     }
+    // The same name-version can resolve from several sources (crates.io swf-0.2.2 and
+    // ruffle's git swf-0.2.2); each needs its own notice group.
+    let mut versions = BTreeMap::<(&str, &str), usize>::new();
+    for id in &selected {
+        let p = packages
+            .get(id)
+            .with_context(|| format!("cargo package missing: {id}"))?;
+        *versions
+            .entry((
+                p["name"].as_str().context("cargo package name")?,
+                p["version"].as_str().context("cargo package version")?,
+            ))
+            .or_default() += 1;
+    }
     let mut entries = Vec::new();
     let mut missing = Vec::new();
     let mut canonical_packages = 0;
@@ -265,7 +303,14 @@ pub(crate) fn entries(
             .with_context(|| format!("cargo package missing: {id}"))?;
         let name = p["name"].as_str().context("cargo package name")?;
         let version = p["version"].as_str().context("cargo package version")?;
-        let group = format!("licenses/rust/{name}-{version}");
+        let group = if versions[&(name, version)] > 1 {
+            format!(
+                "licenses/rust/{name}-{version}+{}",
+                source_tag(p["source"].as_str())
+            )
+        } else {
+            format!("licenses/rust/{name}-{version}")
+        };
         crate::package::portable(&group)?;
         let root = Path::new(
             p["manifest_path"]
