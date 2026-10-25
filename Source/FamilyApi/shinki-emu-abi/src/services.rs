@@ -103,6 +103,39 @@ pub struct TextService {
     pub invalidate: Option<unsafe extern "C" fn(*mut c_void, u64, u64)>,
 }
 
+/// Optional v1 nonblocking replacement service, supplied in OpenRequestTextV1.
+/// Submit copies all input before returning. Repeating an unacknowledged ID is
+/// idempotent. Poll returns PENDING without waiting, or uses TextResult's
+/// caller-owned buffers and CAPACITY retry rules. A completed result is retained
+/// until acknowledge. Cancel drops only the matching request; a subsequent poll
+/// returns CANCELLED. Invalidate advances the context and drops every old result.
+/// All callbacks must return promptly; cancellation may run concurrently.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AsyncTextServiceV1 {
+    pub version: u32,
+    pub size: u32,
+    pub context: *mut c_void,
+    pub submit: Option<unsafe extern "C" fn(*mut c_void, *const TextRequest, *mut Error) -> Status>,
+    pub poll: Option<
+        unsafe extern "C" fn(*mut c_void, u64, u64, u64, *mut TextResult, *mut Error) -> Status,
+    >,
+    pub cancel: Option<unsafe extern "C" fn(*mut c_void, u64, u64, u64) -> Status>,
+    pub acknowledge: Option<unsafe extern "C" fn(*mut c_void, u64, u64, u64) -> Status>,
+    pub invalidate: Option<unsafe extern "C" fn(*mut c_void, u64, u64)>,
+}
+impl AsyncTextServiceV1 {
+    pub fn validate(&self) -> bool {
+        self.version == 1
+            && self.size as usize >= std::mem::size_of::<Self>()
+            && self.submit.is_some()
+            && self.poll.is_some()
+            && self.cancel.is_some()
+            && self.acknowledge.is_some()
+            && self.invalidate.is_some()
+    }
+}
+
 pub const WINDOW_TITLE: u32 = 1;
 pub const WINDOW_FULLSCREEN: u32 = 2;
 pub const WINDOW_ICON: u32 = 3;

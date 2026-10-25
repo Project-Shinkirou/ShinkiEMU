@@ -1,7 +1,7 @@
+use super::super::probe_worker::{ScanKind, ScanReport, ScanRequest};
 use super::*;
 use crate::test_native::{self, Fixture};
-use super::super::probe_worker::{ScanKind, ScanReport, ScanRequest};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 
 fn run_scan(
     registry: &FamilyProviderRegistry,
@@ -48,12 +48,14 @@ fn game(path: &Path) -> GameRecord {
     }
 }
 
-fn refresh(
-    registry: &FamilyProviderRegistry,
-    cache: &mut ProbeCache,
-    path: &Path,
-) -> ScanReport {
-    run_scan(registry, cache, ScanKind::Full, Vec::new(), vec![game(path)])
+fn refresh(registry: &FamilyProviderRegistry, cache: &mut ProbeCache, path: &Path) -> ScanReport {
+    run_scan(
+        registry,
+        cache,
+        ScanKind::Full,
+        Vec::new(),
+        vec![game(path)],
+    )
 }
 
 #[test]
@@ -296,6 +298,7 @@ fn cached_selection_is_freshly_rejected_before_open_without_probing_alternatives
                 suspended: false,
             },
             host: shinki_emu_manager_core::no_host_services(&cancellation),
+            text_async: None,
             cancellation,
             render_extent: None,
         },
@@ -445,5 +448,8 @@ fn scan_reports_progress_and_skips_excluded_and_cancelled_paths() {
         &AtomicBool::new(false),
         &mut |_| {},
     );
-    assert_eq!(cancelled.err().as_deref(), Some("SHINKI_EMU_SCAN_CANCELLED"));
+    assert_eq!(
+        cancelled.err().as_deref(),
+        Some("SHINKI_EMU_SCAN_CANCELLED")
+    );
 }

@@ -68,6 +68,10 @@ impl ActiveFamilySession {
                         session_epoch: epoch,
                         initial_window,
                         host,
+                        text_async: services
+                            .text
+                            .as_ref()
+                            .map(TextReplacementBridge::async_sink),
                         cancellation: services.cancellation,
                         render_extent,
                     },
@@ -186,7 +190,9 @@ impl ActiveFamilySession {
         };
         self.status = match state.state {
             shinki_emu_abi::SESSION_RUNNING => FamilyStatus::Running,
-            shinki_emu_abi::SESSION_PAUSED | shinki_emu_abi::SESSION_WAITING => FamilyStatus::Waiting,
+            shinki_emu_abi::SESSION_PAUSED | shinki_emu_abi::SESSION_WAITING => {
+                FamilyStatus::Waiting
+            }
             shinki_emu_abi::SESSION_FINISHED => FamilyStatus::Finished,
             _ => return Err("SHINKI_EMU_CORE_STATE".into()),
         };

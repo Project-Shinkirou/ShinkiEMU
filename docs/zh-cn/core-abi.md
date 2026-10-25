@@ -26,6 +26,17 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 普通 ABI 调用在宿主 owner 线程串行执行。核心自己的原生 owner 负责 VM 推进、渲染/音频调度及资源生命周期。Manager 只提供输入、控制和宿主服务，没有 advance 回调。取消和 epoch 校验会拒绝旧会话或旧输出代次的迟到结果。
 
+## 文本替换等级
+
+descriptor 能力位是唯一依据：不带 `CAP_TEXT_HOOK` 为 **none**；仅带 `CAP_TEXT_HOOK` 为 **synchronous**；同时带 `CAP_TEXT_HOOK | CAP_ASYNC_TEXT` 为 **async-v1**。单独声明 `CAP_ASYNC_TEXT` 无效。目前固定版本的九个外部核心均声明 none；外部核心可以选择同步替换，保留自己的调度方式。SDK 核心按归属划分：Musica 属于 SDK 自研核心；Artemis 即使使用 SDK 音频，仍是外部核心。CMVS 在独立工作树维护。
+
+ABI 版本保持 **3**。`OpenRequestTextV1` 保留完整的基础 `OpenRequest`，只在末尾追加 `AsyncTextServiceV1` 指针；服务表自带版本 1 和大小。宿主将基础 header 的 size 设为扩展结构大小。核心先检查 size 是否覆盖扩展，再校验服务版本、大小和回调；空指针表示关闭替换。已有外部二进制继续使用布局不变的 `HostServices.text` 同步回调。async-v1 核心不回退到同步路径。
+
+`submit` 在返回前复制有界文本项；完成前，`poll` 立即返回 `PENDING`。只有文字推进等待，画面、动画、输入和音频继续运行。结果保留替换语义、文本项 ID 和 `(session_epoch, context_epoch, request_id)` 身份；同一 context 内 request ID 递增。重复提交尚未确认的同一请求不会重复执行。`CAPACITY` 返回调用方缓冲区所需容量，不重复执行 provider 或扩展；完成结果保留到 `acknowledge`。`cancel` 只废弃指定请求；`invalidate` 推进 context，丢弃旧请求、上下文和 provider 缓存。回调不能等待网络或脚本执行完成。
+
+Manager 的两条路径共用 provider 的 `AsyncTranslationService`；同步兼容回调等待同一份结果。Musica 在自己的 pump 中提交一次，使用保留的缓冲区轮询，不暂停音频。Enter、空格、主键点击或 Ctrl 可以跳过待完成翻译并显示替换输入原文；该输入会被消费，不会同时跳过这一句。快进模式也会跳过待完成翻译。跳过、读档、回溯和关闭都会丢弃迟到结果；失败重试保留文本事件和身份，不重新执行 VM。
+
+
 ## CPU 帧租约
 
 Ready 状态的 `FrameSurface` 包含实际尺寸、stride、像素/颜色/行序元数据、帧身份及一个不可变 CPU 租约。接管前先校验元数据和 epoch。Pending、Unchanged 不携带像素所有权；显示时遵守声明的光栅/逻辑几何和颜色解释。

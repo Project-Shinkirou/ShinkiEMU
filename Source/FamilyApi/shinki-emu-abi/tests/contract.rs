@@ -566,3 +566,27 @@ fn retry_requires_a_retained_failure_and_bounded_diagnostic() {
     state.error.code_len = 129;
     assert_eq!(state.validate(), Err(INVALID_ARGUMENT));
 }
+
+#[test]
+fn optional_text_tail_is_size_gated_and_rejects_an_incomplete_service() {
+    // A base-only allocation must not be read past its end.
+    let mut base: OpenRequest = unsafe { std::mem::zeroed() };
+    base.header = Header::of::<OpenRequest>();
+    assert!(unsafe { base.async_text() }.unwrap().is_none());
+    let mut extended = OpenRequestTextV1 {
+        base,
+        text_async: std::ptr::null(),
+    };
+    extended.base.header = Header::of::<OpenRequestTextV1>();
+    // A core built against the base accepts the extended host allocation.
+    assert!(extended.base.header.accepts::<OpenRequest>());
+    assert!(unsafe { extended.base.async_text() }.unwrap().is_none());
+    let mut service: AsyncTextServiceV1 = unsafe { std::mem::zeroed() };
+    service.version = 1;
+    service.size = std::mem::size_of::<AsyncTextServiceV1>() as u32;
+    extended.text_async = &service;
+    assert!(matches!(
+        unsafe { extended.base.async_text() },
+        Err(INVALID_ARGUMENT)
+    ));
+}
