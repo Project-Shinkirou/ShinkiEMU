@@ -421,7 +421,10 @@ pub fn run(
     let gh = GitHub::new()?;
     let existing = gh.get_optional(&format!("{API}/releases/tags/{tag}"))?;
     let created = existing.is_none();
-    if existing.as_ref().is_some_and(|release| release["draft"] != true) {
+    if existing
+        .as_ref()
+        .is_some_and(|release| release["draft"] != true)
+    {
         bail!("release tag already published; refusing to modify published assets");
     }
     let release = if let Some(existing) = existing {
