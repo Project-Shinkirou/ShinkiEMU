@@ -39,6 +39,7 @@ architecture = "aarch64"
 variant = "desktop"
 tools = ["cargo", "xcrun"]
 manager_supported = true
+manager_blocked = ""
 
 [[targets]]
 triple = "aarch64-linux-android"
