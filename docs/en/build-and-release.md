@@ -100,6 +100,8 @@ Known runtime issue: SwiftShader/software-Vulkan emulators render only the first
 
 Native CI keeps the macOS runners from `build/targets.toml` and invokes Cargo/Xcode. On Linux, `build` and `check` select cross 0.2.5 and the private image configured in `Cross.toml`. The Apple triples are `x86_64-apple-darwin`, `aarch64-apple-darwin`, `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` and `x86_64-apple-ios` (simulators). Deployment minima are macOS 13.0 and iOS 16.0.
 
+A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the CI matrix records a blocked report row, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. The five Apple targets currently carry this reason and are excluded from CI and releases until the cross-build toolchain is validated; removing the field restores them.
+
 Obtain Xcode from the [Mac App Store](https://apps.apple.com/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/all/) under Apple's license. Expand an official Xcode `.xip` on macOS using `xip --expand`, select that Xcode installation and accept its license there. Command Line Tools alone do not provide iOS SDKs. On that Mac:
 
 ```sh

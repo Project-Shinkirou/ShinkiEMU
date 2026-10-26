@@ -100,6 +100,8 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 原生 CI 继续使用 `build/targets.toml` 中的 macOS runner，通过 Cargo/Xcode 构建。在 Linux 上，`build`、`check` 自动选择 cross 0.2.5 和 `Cross.toml` 配置的私有镜像。Apple 目标包括 `x86_64-apple-darwin`、`aarch64-apple-darwin`、设备目标 `aarch64-apple-ios`，以及模拟器目标 `aarch64-apple-ios-sim`、`x86_64-apple-ios`。最低系统版本为 macOS 13.0、iOS 16.0。
 
+`build/targets.toml` 中某个目标的 `blocked` 非空时，该目标上的所有组件都按这个原因阻塞，优先于核心的 `supported_targets` 和 `manager_supported`：CI 矩阵只记录阻塞报告行，`deps`、`build`、`package` 拒绝执行，发布说明列出该目标及原因，不附产物。五个 Apple 目标目前带有这一字段，在交叉构建工具链验证通过前不进入 CI 和发布；删除该字段即可恢复。
+
 从 [Mac App Store](https://apps.apple.com/app/xcode/id497799835) 或 [Apple Developer Downloads](https://developer.apple.com/download/all/) 取得 Xcode，遵守 Apple 许可。在 Mac 上用 `xip --expand` 展开官方 Xcode `.xip`，选择这套 Xcode，并在该 Mac 上接受许可。单独的 Command Line Tools 不提供 iOS SDK。随后执行：
 
 ```sh

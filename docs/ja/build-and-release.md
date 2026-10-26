@@ -92,6 +92,8 @@ Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_G
 
 ネイティブ CI は引き続き `build/targets.toml` の macOS runner を使い、Cargo/Xcode でビルドします。Linux では、`build` と `check` が cross 0.2.5 と `Cross.toml` で設定されたプライベートイメージを自動的に選びます。Apple のターゲットは、`x86_64-apple-darwin`、`aarch64-apple-darwin`、実機向けの `aarch64-apple-ios`、シミュレーター向けの `aarch64-apple-ios-sim` と `x86_64-apple-ios` です。最低システムバージョンは macOS 13.0、iOS 16.0 です。
 
+`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。CI マトリクスはブロック報告の行だけを記録し、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在は 5 つの Apple ターゲットにこの理由が設定されており、クロスビルドのツールチェーンが検証されるまで CI とリリースから外れます。フィールドを削除すれば元に戻ります。
+
 Xcode は [Mac App Store](https://apps.apple.com/app/xcode/id497799835) または [Apple Developer Downloads](https://developer.apple.com/download/all/) から入手し、Apple のライセンスに従ってください。Mac 上で `xip --expand` を使って公式の Xcode `.xip` を展開し、その Xcode を選択して、同じ Mac 上でライセンスに同意します。Command Line Tools だけでは iOS SDK は提供されません。続いて次を実行します。
 
 ```sh

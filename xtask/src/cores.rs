@@ -107,6 +107,10 @@ pub struct Target {
     pub tools: Vec<String>,
     pub manager_supported: bool,
     pub manager_blocked: String,
+    /// Non-empty: every component on this target is blocked with this reason,
+    /// overriding core `supported_targets` and `manager_supported`.
+    #[serde(default)]
+    pub blocked: String,
 }
 #[derive(Deserialize)]
 struct CoreFile {
@@ -279,6 +283,9 @@ impl Inventory {
     }
     pub fn blocked(&self, component: &str, triple: &str) -> Result<Option<&str>> {
         let t = self.target(triple)?;
+        if !t.blocked.is_empty() {
+            return Ok(Some(t.blocked.as_str()));
+        }
         if component == "manager" {
             return Ok((!t.manager_supported).then_some(t.manager_blocked.as_str()));
         }
@@ -354,5 +361,38 @@ mod tests {
             .static_manager_targets
             .clear();
         assert!(changed.validate_static_dependencies().is_err());
+    }
+
+    #[test]
+    fn target_block_overrides_supported_manager_and_cores() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inventory = Inventory::load(root).unwrap();
+        let triple = "x86_64-pc-windows-msvc";
+        assert!(inventory.blocked("manager", triple).unwrap().is_none());
+        assert!(inventory.blocked("rfvp", triple).unwrap().is_none());
+        inventory
+            .targets
+            .iter_mut()
+            .find(|target| target.triple == triple)
+            .unwrap()
+            .blocked = "deferred".into();
+        for component in ["manager", "rfvp"] {
+            assert_eq!(
+                inventory.blocked(component, triple).unwrap(),
+                Some("deferred")
+            );
+            assert!(inventory.require_supported(component, triple).is_err());
+        }
+        let matrix = inventory.matrix().unwrap();
+        for row in matrix.include.iter().filter(|row| row.target == triple) {
+            assert_eq!(row.status, "blocked");
+            assert_eq!(row.runner, "ubuntu-24.04");
+        }
+        assert!(
+            inventory
+                .blocked("manager", "aarch64-linux-android")
+                .unwrap()
+                .is_none()
+        );
     }
 }
