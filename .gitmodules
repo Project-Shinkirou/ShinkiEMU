@@ -1,4 +1,4 @@
 [submodule "cpal"]
 	path = ThirdParty/cpal
 	url = https://github.com/Project-Shinkirou/cpal.git
-	branch = native-owner-0.15.3
+	branch = shinki

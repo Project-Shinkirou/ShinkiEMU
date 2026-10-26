@@ -79,18 +79,18 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 
 外部核心的 Rust 适配与 KrKr 头文件均固定 [`Project-Shinkirou/ShinkiEMU`](https://github.com/Project-Shinkirou/ShinkiEMU) 的 `shinki-emu-abi`（C ABI v3），源码路径为 `Source/FamilyApi/shinki-emu-abi`。外部核心在各自 fork 的 manifest 上独立构建；Android Manager 静态链接 RFVP，iOS Manager 静态链接 RFVP、Siglus、Sena、Ethornell 和 ReMinori，通过 `[patch]` 将同一 ABI 来源映射到本地源码。精确核心提交由 `build/cores.toml` 固定。
 
-外部核心适配代码保留在各 fork，主仓不保留第二份适配源码。Apple 扩展提交位于五个 Rust 核心的 `shinki-apple` 分支，精确来源见构建清单。plugin ID 等于上游仓库名，适配包命名为 `shinki-emu-<上游仓库名>`。
+外部核心适配代码保留在各 fork，主仓不保留第二份适配源码。所有 fork 只保留 `shinki` 分支（同时是默认分支），Apple 扩展提交也在该分支上，精确来源见构建清单。plugin ID 等于上游仓库名，适配包命名为 `shinki-emu-<上游仓库名>`。
 
 ### rust-flash-lso
 
 - 上游：<https://github.com/ruffle-rs/rust-flash-lso>，固定基线 `61b717248aae853a4f5d8a103eba704268d286c8`，MIT 许可，原作者 CUB3D 及上游贡献者。
-- 兼容性 fork：<https://github.com/Project-Shinkirou/rust-flash-lso/tree/shinki-apple>，提交 `5573168345ef2d92d01ee0766bab29acf89584c0`。仅将 flash-lso 0.6.0 的 `thiserror = "=2.0.18"` 放宽为 `thiserror = "2"`，以便 Ethornell 的原 Ruffle 实现与 Manager/RoukakuEngine 共同静态链接；解析和保存逻辑不变。
+- 兼容性 fork：<https://github.com/Project-Shinkirou/rust-flash-lso/tree/shinki>，提交 `5573168345ef2d92d01ee0766bab29acf89584c0`。仅将 flash-lso 0.6.0 的 `thiserror = "=2.0.18"` 放宽为 `thiserror = "2"`，以便 Ethornell 的原 Ruffle 实现与 Manager/RoukakuEngine 共同静态链接；解析和保存逻辑不变。
 - 主仓 `[patch]` 与 `Cargo.lock` 固定该来源，Rust 许可收集及对应源码中的 `cargo vendor` 保留源代码和 MIT 许可。
 
 ## ReMinori
 
 - 上游：<https://github.com/luoyily/ReMinori>，基线 `79b00990324404bfbd496e7fa76c690cf040f744`；作者 luoyily 及上游贡献者，许可为 GNU Affero General Public License version 3。
-- 适配 fork：<https://github.com/Project-Shinkirou/ReMinori/tree/shinki-apple>，固定 `595b3e337e29fd4e3b711b45d02a7237459b01f8`；适配包为 `crates/shinki`，plugin ID 保留 `ReMinori` 大小写，family ID 为 `musica`，不替代自有 Musica 核心或复用其执行器。
+- 适配 fork：<https://github.com/Project-Shinkirou/ReMinori/tree/shinki>，固定 `595b3e337e29fd4e3b711b45d02a7237459b01f8`；适配包为 `crates/shinki`，plugin ID 保留 `ReMinori` 大小写，family ID 为 `musica`，不替代自有 Musica 核心或复用其执行器。
 - 适配保留原 VM、GPU renderer、CPAL mixer、Media Foundation 视频、游戏 UI 和存档；新增生产 C ABI v3、固定三槽 CPU lease、独立保存位置、keys.v2 归档参数、严格 CP932/GBK 脚本读取、原生 UTF-8 port 保存及多声道设备接线。修改归属与代表流程见 fork 根 `README.md`。
 - 本地核心包附原样 `LICENSE` 和该 `README.md`。AGPL 对应源码及组合分发义务须在公开二进制发布前核验；本次仅交付本地验证产物，不把加入主仓等同于更改 RoukakuEngine 或其他核心的许可。商业资源、私有 profile 与测试存档不进入源码或包。
 
@@ -119,7 +119,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 - Upstream: <https://github.com/xmoezzz/rfvp>
 - Upstream version: `0.7.0`, revision `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1`
 - Native adaptation fork: <https://github.com/Project-Shinkirou/rfvp>
-- Native adaptation branch: `shinki-apple`
+- Native adaptation branch: `shinki`
 - 固定来源：[`7c241b477fb10efd981b20af67b1fb9745ec97fe`](https://github.com/Project-Shinkirou/rfvp/commit/7c241b477fb10efd981b20af67b1fb9745ec97fe)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入，并添加 macOS dylib 构建身份；iOS 静态注册不导出重复查询符号。
 - License: Mozilla Public License 2.0.
 - Derivative source: <https://github.com/Project-Shinkirou/rfvp>
@@ -174,12 +174,12 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 ## 原生音频依赖
 
 - CPAL 0.18.2：<https://github.com/RustAudio/cpal/releases/tag/v0.18.2>，Apache-2.0，Musica 的原生设备 owner 使用该版本；Manager 不再拥有核心 PCM 输出。
-- CPAL 0.15.3：`Project-Shinkirou/cpal@ecfda841a9140d60bbec1630d47ca91f1a77b8f3`，保留 WASAPI 关闭修复并将 ALSA 依赖对齐到 0.11。完整源码与 Apache-2.0 许可位于 `ThirdParty/cpal`。
-- 自有 Musica 使用 crates.io Kira 0.12.5，关闭默认 backend，由 SDK 的 CPU mixer 和 CPAL owner 输出。外部核心保持各自固定的 Kira fork：Artemis 使用 0.12.2 `7d8961b20bce2ab8fd43b4bb34150d7e2898785c`；RFVP 使用 0.10.8 `d2f10db15d9c451c7b2fd33043ae7732e75bee5d`；Siglus 嵌套 0.9.6 `a299b42690094a71885f6ed97dc504c4038da9a7`；Sena 使用 0.12.1 `523790dbb7ddea5ca432f375a9f3180923f2ea1e`；Ethornell 使用 0.8.7 `da8668fcd5e543eec2e9ea9871b310276e09fdc5`。fork 来源为 <https://github.com/Project-Shinkirou/kira>，保留 MIT/Apache-2.0 文本和修改说明。
+- CPAL 0.15.3：`Project-Shinkirou/cpal@ecfda841a9140d60bbec1630d47ca91f1a77b8f3`（`shinki` 分支），保留 WASAPI 关闭修复并将 ALSA 依赖对齐到 0.11。完整源码与 Apache-2.0 许可位于 `ThirdParty/cpal`。
+- 自有 Musica 使用 crates.io Kira 0.12.5，关闭默认 backend，由 SDK 的 CPU mixer 和 CPAL owner 输出。外部核心保持各自固定的 Kira fork：Artemis 使用 0.12.2 `7d8961b20bce2ab8fd43b4bb34150d7e2898785c`（`shinki` 分支）；RFVP 使用 0.10.8 `d2f10db15d9c451c7b2fd33043ae7732e75bee5d`（标签 `shinki-0.10.8`）；Siglus 嵌套 0.9.6 `a299b42690094a71885f6ed97dc504c4038da9a7`（标签 `shinki-0.9.6`）；Sena 使用 0.12.1 `523790dbb7ddea5ca432f375a9f3180923f2ea1e`（标签 `shinki-0.12.1`）；Ethornell 使用 0.8.7 `da8668fcd5e543eec2e9ea9871b310276e09fdc5`（标签 `shinki-0.8.7`）。fork 来源为 <https://github.com/Project-Shinkirou/kira>，保留 MIT/Apache-2.0 文本和修改说明。
 
 ## 其他原生核心
 
-- Siglus：固定 [`Project-Shinkirou/siglus_rs@2436c25fc966306e03cdada833b507eec97b51c4`](https://github.com/Project-Shinkirou/siglus_rs/commit/2436c25fc966306e03cdada833b507eec97b51c4)，分支 `shinki-apple`。适配包 `shinki/shinki-emu-siglus_rs` 保持独立 workspace 与 lockfile。MPL-2.0，完整源码及嵌套 Kira、eluna_rs 由 `ThirdParty/siglus_rs` 准备。当前原生配置支持 original/chs 成对资源、G01/movie 选择及独立保存根，不执行 wrapper 机器码补丁或补造缺失字体。来源与输入边界改动见 fork 的 `shinki/MODIFICATIONS.md` 与 `shinki/THIRD_PARTY_NOTICES.md`。
-- Artemis：当前公开 `shinki` 与主仓 gitlink 为 [`Project-Shinkirou/art3m1s-core@5c83084d55573855713feefa949be24f0ae6baee`](https://github.com/Project-Shinkirou/art3m1s-core/commit/5c83084d55573855713feefa949be24f0ae6baee)，即基线 `ad90a62cb192b119b7cf8589aa7f87a94bd747c8` 上的单个适配提交（`crates/shinki-emu-art3m1s-core`，fork 根 workspace 成员）；`be82d5e0bbafcef55a530f69e5b9358094dbd671`、`ae967d8446fe99b97f6e1df93fb1b61d8ada2040` 仅作历史记录。MPL-2.0，保留原生 Lua 5.1/Vulkan/FFmpeg 与完整来源，见 `ThirdParty/art3m1s-core/LICENSE` 与 `crates/pf8/LICENSE`；差异见 fork 的 `crates/shinki-emu-art3m1s-core/MODIFICATIONS.md`。当前 `extra_archive` 直接消费显式额外 PFS，保留基包及原覆盖顺序。
-- Sena：SoftPAL 引擎的模拟器，上游 <https://github.com/xmoezzz/sena-rs>；固定 [`Project-Shinkirou/sena-rs@696a83ccaf096d3dd49c3c9a7c1f948c35acfed8`](https://github.com/Project-Shinkirou/sena-rs/commit/696a83ccaf096d3dd49c3c9a7c1f948c35acfed8)，分支 `shinki-apple`，适配包 `crates/shinki-emu-sena-rs`。原生配置提供 `text_language=jp/cn/tc`，选择多语言记录字段并保留原日文单字段行为；字体由原生游戏字体路径或显式字体文件提供，光栅尺寸经 C ABI v3 `render_extent` 请求。完整 MPL-2.0 许可位于 `ThirdParty/sena-rs/LICENSE-MPL-2.0`，嵌入字体另见 `docs/licenses/sena-rs/MS-PGothic.txt`。支持范围仍为原生及 Steam Koikake，未扩大到其他 SoftPAL。
-- Ethornell：上游 <https://github.com/xmoezzz/ethornell-rs>，workspace manifest 声明 `MPL-2.0`；fork 根目录补充许可全文 `LICENSE-MPL-2.0`，核心包附该全文与 `MODIFICATIONS.md`。固定来源 [`Project-Shinkirou/ethornell-rs@f8362be7d2f4d634c25a98a317dfe56ffae56346`](https://github.com/Project-Shinkirou/ethornell-rs/commit/f8362be7d2f4d634c25a98a317dfe56ffae56346)，分支 `shinki-apple`，适配包 `crates/shinki-emu-ethornell-rs`。当前原生能力包括仅作用于显示文本的 GBK 解码选择和每 runtime 显式字体，不代表未知补丁 handler、字体注册或资源优先级已经闭合。源码由 `build/cores.toml` 固定并准备到 `ThirdParty/ethornell-rs`。
+- Siglus：固定 [`Project-Shinkirou/siglus_rs@2436c25fc966306e03cdada833b507eec97b51c4`](https://github.com/Project-Shinkirou/siglus_rs/commit/2436c25fc966306e03cdada833b507eec97b51c4)，分支 `shinki`。适配包 `shinki/shinki-emu-siglus_rs` 保持独立 workspace 与 lockfile。MPL-2.0，完整源码及嵌套 Kira、eluna_rs 由 `ThirdParty/siglus_rs` 准备。当前原生配置支持 original/chs 成对资源、G01/movie 选择及独立保存根，不执行 wrapper 机器码补丁或补造缺失字体。来源与输入边界改动见 fork 的 `shinki/MODIFICATIONS.md` 与 `shinki/THIRD_PARTY_NOTICES.md`。
+- Artemis：固定 [`Project-Shinkirou/art3m1s-core@bc8c17a9b3c7ac7f6a3e20ce6d301f5dff4ebe5f`](https://github.com/Project-Shinkirou/art3m1s-core/commit/bc8c17a9b3c7ac7f6a3e20ce6d301f5dff4ebe5f)，分支 `shinki`，即基线 `ad90a62cb192b119b7cf8589aa7f87a94bd747c8` 上的适配提交（`crates/shinki-emu-art3m1s-core`，fork 根 workspace 成员）。MPL-2.0，保留原生 Lua 5.1/Vulkan/FFmpeg 与完整来源，见 `ThirdParty/art3m1s-core/LICENSE` 与 `crates/pf8/LICENSE`；差异见 fork 的 `crates/shinki-emu-art3m1s-core/MODIFICATIONS.md`。当前 `extra_archive` 直接消费显式额外 PFS，保留基包及原覆盖顺序。
+- Sena：SoftPAL 引擎的模拟器，上游 <https://github.com/xmoezzz/sena-rs>；固定 [`Project-Shinkirou/sena-rs@696a83ccaf096d3dd49c3c9a7c1f948c35acfed8`](https://github.com/Project-Shinkirou/sena-rs/commit/696a83ccaf096d3dd49c3c9a7c1f948c35acfed8)，分支 `shinki`，适配包 `crates/shinki-emu-sena-rs`。原生配置提供 `text_language=jp/cn/tc`，选择多语言记录字段并保留原日文单字段行为；字体由原生游戏字体路径或显式字体文件提供，光栅尺寸经 C ABI v3 `render_extent` 请求。完整 MPL-2.0 许可位于 `ThirdParty/sena-rs/LICENSE-MPL-2.0`，嵌入字体另见 `docs/licenses/sena-rs/MS-PGothic.txt`。支持范围仍为原生及 Steam Koikake，未扩大到其他 SoftPAL。
+- Ethornell：上游 <https://github.com/xmoezzz/ethornell-rs>，workspace manifest 声明 `MPL-2.0`；fork 根目录补充许可全文 `LICENSE-MPL-2.0`，核心包附该全文与 `MODIFICATIONS.md`。固定来源 [`Project-Shinkirou/ethornell-rs@f8362be7d2f4d634c25a98a317dfe56ffae56346`](https://github.com/Project-Shinkirou/ethornell-rs/commit/f8362be7d2f4d634c25a98a317dfe56ffae56346)，分支 `shinki`，适配包 `crates/shinki-emu-ethornell-rs`。当前原生能力包括仅作用于显示文本的 GBK 解码选择和每 runtime 显式字体，不代表未知补丁 handler、字体注册或资源优先级已经闭合。源码由 `build/cores.toml` 固定并准备到 `ThirdParty/ethornell-rs`。
