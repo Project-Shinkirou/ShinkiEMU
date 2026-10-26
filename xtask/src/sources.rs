@@ -26,8 +26,31 @@ fn git(directory: &Path) -> Command {
 /// checkout's own settings, or a CRLF product checkout would look modified.
 fn git_committed_bytes(directory: &Path) -> Command {
     let mut command = git(directory);
-    command.args(["-c", "core.autocrlf=false", "-c", "core.eol=lf"]);
+    command.args([
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "core.eol=lf",
+        "-c",
+        "core.filemode=false",
+        "-c",
+        "core.symlinks=false",
+        "-c",
+        "core.longpaths=true",
+    ]);
     command
+}
+
+fn pin_checkout_config(directory: &Path) -> Result<()> {
+    for (key, value) in [
+        ("core.autocrlf", "false"),
+        ("core.eol", "lf"),
+        ("core.filemode", "false"),
+        ("core.symlinks", "false"),
+    ] {
+        dependencies::run(git(directory).args(["config", "--local", "--replace-all", key, value]))?;
+    }
+    Ok(())
 }
 
 fn revision(directory: &Path) -> Result<String> {
@@ -160,6 +183,7 @@ fn checkout_pin(core: &Core, directory: &Path) -> Result<()> {
             &source.rev,
         ]))?;
     }
+    pin_checkout_config(directory)?;
     dependencies::run(git_committed_bytes(directory).args(["checkout", "--detach", &source.rev]))?;
     dependencies::run(git_committed_bytes(directory).args([
         "submodule",
@@ -198,6 +222,14 @@ pub fn prepare(inv: &Inventory, core: &Core, allow_dirty: bool) -> Result<()> {
                     &source.branch,
                     "--config",
                     "core.autocrlf=false",
+                    "--config",
+                    "core.eol=lf",
+                    "--config",
+                    "core.filemode=false",
+                    "--config",
+                    "core.symlinks=false",
+                    "--config",
+                    "core.longpaths=true",
                     "--",
                     &source.repo,
                 ])
@@ -777,6 +809,7 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
     let repo = inv.root.join(".work/renpy-build");
     let checkout = |directory: &Path| -> Result<()> {
         checkout_root(directory)?;
+        pin_checkout_config(directory)?;
         require_clean(directory)?;
         if !git(directory)
             .args(["cat-file", "-e", RENPY_BUILD_PIN])
@@ -814,6 +847,12 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
                     "--no-checkout",
                     "--config",
                     "core.autocrlf=false",
+                    "--config",
+                    "core.eol=lf",
+                    "--config",
+                    "core.filemode=false",
+                    "--config",
+                    "core.symlinks=false",
                     "https://github.com/renpy/renpy-build.git",
                 ])
                 .arg(stage),
