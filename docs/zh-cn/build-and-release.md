@@ -183,6 +183,8 @@ Git LFS 文件会按提交中的指针核对 SHA256 和大小，再写入真实�
 
 Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；对应文件放在 `.work/downloads/`。源码包还包含可读的 chardet/certifi 源码、离线组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
 
+没有 `url` 的记录改为固定 `repo` 和 `rev`，目前是托管在 Gitiles 的 aom 和 libyuv：Gitiles 每次生成的压缩包字节都不同。`deps` 会浅取该提交、核对取到的提交 ID，再对 `git archive --format=tar` 生成的未压缩 tar 计算哈希；不同 Git 版本生成的结果一致。
+
 `cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` 会准备固定版本的 `.work/renpy-build` 检出和递归子模块。已有工作树包含未提交修改时，命令会在更新前失败；源码收集过程保持只读。
 
 Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `licenses/sena-rs/MS-PGothic.txt` 记录上游没有提供明确再分发授权，核心的 MPL 许可不替代字体本身的条款。

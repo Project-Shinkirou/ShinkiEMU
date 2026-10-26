@@ -359,11 +359,67 @@ fn download_locked_source(root: &Path, source: &serde_json::Value) -> Result<()>
         .as_str()
         .context("source archive name")?;
     package::portable(name)?;
-    download(
-        source["url"].as_str().context("source archive URL")?,
-        source["sha256"].as_str().context("source archive SHA256")?,
-        &root.join(".work/downloads").join(name),
-    )
+    let sha = source["sha256"].as_str().context("source archive SHA256")?;
+    let out = root.join(".work/downloads").join(name);
+    match source.get("url") {
+        Some(url) => download(url.as_str().context("source archive URL")?, sha, &out),
+        // Hosts such as Gitiles generate archives with varying bytes, so these
+        // records pin a commit and the tar that `git archive` derives from it.
+        None => git_archive(
+            source["repo"].as_str().context("source repository")?,
+            source["rev"].as_str().context("source revision")?,
+            sha,
+            &out,
+        ),
+    }
+}
+
+fn git_archive(repo: &str, rev: &str, sha: &str, out: &Path) -> Result<()> {
+    if !repo.starts_with("https://")
+        || rev.len() != 40
+        || !rev
+            .bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        || sha.len() != 64
+        || !sha.bytes().all(|c| c.is_ascii_hexdigit())
+    {
+        bail!("invalid locked Git source");
+    }
+    if out.exists() {
+        if package::sha256(out)? == sha {
+            return Ok(());
+        }
+        bail!("cached download hash mismatch: {}", out.display());
+    }
+    let parent = out.parent().context("download parent")?;
+    fs::create_dir_all(parent)?;
+    let checkout = tempfile::tempdir_in(parent)?;
+    let git = || {
+        let mut command = Command::new("git");
+        command
+            .arg("-C")
+            .arg(checkout.path())
+            .args(["-c", "core.autocrlf=false", "-c", "core.eol=lf"])
+            .env("GIT_TERMINAL_PROMPT", "0");
+        command
+    };
+    run(git().args(["init", "-q"]))?;
+    run(git().args(["fetch", "-q", "--depth", "1", "--no-tags", repo, rev]))?;
+    let fetched = String::from_utf8(capture(git().args(["rev-parse", "FETCH_HEAD"]))?)?;
+    if fetched.trim() != rev {
+        bail!("{repo} returned {} for pinned {rev}", fetched.trim());
+    }
+    let temp = tempfile::NamedTempFile::new_in(parent)?;
+    run(git()
+        .args(["archive", "--format=tar", "-o"])
+        .arg(temp.path())
+        .arg(rev))?;
+    let actual = package::sha256(temp.path())?;
+    if actual != sha {
+        bail!("SHA256 mismatch for git archive {repo}@{rev}: expected {sha}, got {actual}");
+    }
+    temp.persist_noclobber(out).map_err(|e| e.error)?;
+    Ok(())
 }
 
 fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) -> Result<()> {
