@@ -14,11 +14,17 @@ fn git(directory: &Path) -> Command {
     command
         .arg("-C")
         .arg(directory)
-        // Archives and blob reads must carry committed bytes; a runner's
-        // core.autocrlf=true would rewrite LF and break LFS pointer checks.
-        .args(["-c", "core.autocrlf=false", "-c", "core.eol=lf"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0");
+    command
+}
+
+/// Committed bytes: a runner's core.autocrlf=true would rewrite LF in archives
+/// (breaking LFS pointer checks) and in fork checkouts. Status checks keep the
+/// checkout's own settings, or a CRLF product checkout would look modified.
+fn git_committed_bytes(directory: &Path) -> Command {
+    let mut command = git(directory);
+    command.args(["-c", "core.autocrlf=false", "-c", "core.eol=lf"]);
     command
 }
 
@@ -152,8 +158,13 @@ fn checkout_pin(core: &Core, directory: &Path) -> Result<()> {
             &source.rev,
         ]))?;
     }
-    dependencies::run(git(directory).args(["checkout", "--detach", &source.rev]))?;
-    dependencies::run(git(directory).args(["submodule", "update", "--init", "--recursive"]))?;
+    dependencies::run(git_committed_bytes(directory).args(["checkout", "--detach", &source.rev]))?;
+    dependencies::run(git_committed_bytes(directory).args([
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    ]))?;
     verify_at(core, directory, true)
 }
 
@@ -206,7 +217,7 @@ fn append_revision(
 ) -> Result<()> {
     let raw = tempfile::NamedTempFile::new()?;
     dependencies::run(
-        git(repository)
+        git_committed_bytes(repository)
             .args(["archive", "--format=tar", rev, "-o"])
             .arg(raw.path()),
     )?;
@@ -355,13 +366,9 @@ fn vendor(manifest: &Path, root: &Path) -> Result<()> {
     let output = dependencies::capture(
         Command::new("cargo")
             .current_dir(manifest.parent().context("manifest directory")?)
-            .args([
-                "vendor",
-                "--locked",
-                "--offline",
-                "--versioned-dirs",
-                "--manifest-path",
-            ])
+            // Online: CI fetched only the build target's crates, and vendoring
+            // needs the complete locked graph for every platform.
+            .args(["vendor", "--locked", "--versioned-dirs", "--manifest-path"])
             .arg(manifest)
             .arg(root.join("vendor")),
     )?;
@@ -1250,6 +1257,37 @@ mod tests {
         assert_eq!(
             fs::read_to_string(directory.join("payload.txt")).unwrap(),
             "second public source\n"
+        );
+    }
+
+    #[test]
+    fn crlf_product_checkout_is_clean_and_still_archives_committed_bytes() {
+        // Windows runners check the product out with core.autocrlf=true.
+        let (temp, _inv, _core, upstream, _first, second) = fixture();
+        let checkout = temp.path().join("crlf-checkout");
+        dependencies::run(
+            Command::new("git")
+                .args(["clone", "-q", "--config", "core.autocrlf=true"])
+                .arg(&upstream)
+                .arg(&checkout),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(checkout.join("payload.txt")).unwrap(),
+            b"second public source\r\n"
+        );
+        assert!(!state(&checkout).unwrap().dirty);
+        let archive = temp.path().join("crlf.tar");
+        let mut builder = tar::Builder::new(fs::File::create(&archive).unwrap());
+        append_revision(&mut builder, &checkout, &second, Path::new(""), false).unwrap();
+        builder.finish().unwrap();
+        let extracted = temp.path().join("crlf-extracted");
+        tar::Archive::new(fs::File::open(&archive).unwrap())
+            .unpack(&extracted)
+            .unwrap();
+        assert_eq!(
+            fs::read(extracted.join("payload.txt")).unwrap(),
+            b"second public source\n"
         );
     }
 
