@@ -331,8 +331,11 @@ pub(crate) fn verify_vendor(vendor: &Path) -> Result<()> {
         let dir = entry?.path();
         package::plain(&dir)?;
         if dir.is_dir() && !dir.join(".cargo-checksum.json").is_file() {
-            verify_vendor(&dir)?;
-            continue;
+            let children = fs::read_dir(&dir)?.collect::<std::result::Result<Vec<_>, _>>()?;
+            if !children.is_empty() && children.iter().all(|child| child.path().is_dir()) {
+                verify_vendor(&dir)?;
+                continue;
+            }
         }
         let record: serde_json::Value = serde_json::from_slice(
             &fs::read(dir.join(".cargo-checksum.json")).with_context(|| {
