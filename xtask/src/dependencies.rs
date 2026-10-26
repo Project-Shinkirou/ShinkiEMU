@@ -835,8 +835,9 @@ pub fn download(url: &str, sha: &str, out: &Path) -> Result<()> {
         .send()?
         .error_for_status()?;
     io::copy(&mut response, &mut temp)?;
-    if package::sha256(temp.path())? != sha {
-        bail!("SHA256 mismatch for locked download");
+    let actual = package::sha256(temp.path())?;
+    if actual != sha {
+        bail!("SHA256 mismatch for locked download {url}: expected {sha}, got {actual}");
     }
     temp.persist_noclobber(out).map_err(|e| e.error)?;
     Ok(())
