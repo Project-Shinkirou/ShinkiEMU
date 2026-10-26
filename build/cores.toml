@@ -222,7 +222,7 @@ rev = "ed361421859fa8ba2a03f8fddec1e7b60accd288"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner live on the fork branch linux-port (860c1d4f), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
+reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner live on the fork tag shinki-linux-port (860c1d4f), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
@@ -392,7 +392,7 @@ rev = "876657c4e54e2d6d97296a33edb36cb5dc9cb6f0"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork branch linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
