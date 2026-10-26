@@ -807,10 +807,15 @@ pub(crate) const RENPY_BUILD_PIN: &str = "7bfab40c1174f622f644b24669afd5fb167fbb
 
 pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
     let repo = inv.root.join(".work/renpy-build");
-    let checkout = |directory: &Path| -> Result<()> {
+    // A fresh `--no-checkout` clone has no index yet, so `git status` reports
+    // every tracked file as deleted; only an existing checkout must be clean
+    // before it is moved to the pin.
+    let checkout = |directory: &Path, existing: bool| -> Result<()> {
         checkout_root(directory)?;
         pin_checkout_config(directory)?;
-        require_clean(directory)?;
+        if existing {
+            require_clean(directory)?;
+        }
         if !git(directory)
             .args(["cat-file", "-e", RENPY_BUILD_PIN])
             .status()?
@@ -837,7 +842,7 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
         require_clean(directory)
     };
     if repo.exists() {
-        return checkout(&repo);
+        return checkout(&repo, true);
     }
     package::atomic_directory(&repo, |stage| {
         dependencies::run(
@@ -857,7 +862,7 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
                 ])
                 .arg(stage),
         )?;
-        checkout(stage)
+        checkout(stage, false)
     })
 }
 
