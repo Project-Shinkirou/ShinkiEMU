@@ -29,6 +29,24 @@ fn checked(command: &mut Command) -> Result<()> {
     }
     Ok(())
 }
+pub fn sign_binary(path: &Path) -> Result<()> {
+    if cfg!(target_os = "macos") {
+        checked(
+            Command::new("codesign")
+                .args(["--force", "--sign", "-"])
+                .arg(path),
+        )?;
+        checked(
+            Command::new("codesign")
+                .args(["--verify", "--strict"])
+                .arg(path),
+        )?;
+    } else {
+        checked(Command::new("rcodesign").arg("sign").arg(path))?;
+        checked(Command::new("rcodesign").arg("verify").arg(path))?;
+    }
+    Ok(())
+}
 fn image_name(target: &str) -> String {
     format!("shinkirou/apple-cross:{target}-1.99.1")
 }

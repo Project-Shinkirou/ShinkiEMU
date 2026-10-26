@@ -479,8 +479,13 @@ pub fn stage_core(
     atomic_directory(out, |stage| {
         let dir = stage.join(stem);
         fs::create_dir(&dir)?;
-        copy_entries(&entries, &dir)?;
-        write_provenance(result, &dir.join("build.json"))?;
+        let staged_library = dir.join(library);
+        if crate::apple::supported(&result.target) {
+            crate::apple::sign_binary(&staged_library)?;
+        }
+        let mut packaged_result = result.clone();
+        packaged_result.library = staged_library;
+        write_provenance(&packaged_result, &dir.join("build.json"))?;
         let mut files = tree(&dir)?
             .into_iter()
             .map(|(s, n)| {
