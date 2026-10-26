@@ -479,6 +479,7 @@ pub fn stage_core(
     atomic_directory(out, |stage| {
         let dir = stage.join(stem);
         fs::create_dir(&dir)?;
+        copy_entries(&entries, &dir)?;
         let staged_library = dir.join(library);
         if crate::apple::supported(&result.target) {
             crate::apple::sign_binary(&staged_library)?;
