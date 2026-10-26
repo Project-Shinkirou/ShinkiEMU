@@ -150,6 +150,14 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc --version 0
 ```
 
 出力ディレクトリはまだ存在しないものでなければなりません。パッケージングは、安全でないパス、リンク、名前の衝突、ライセンスの欠落、アーキテクチャの誤り、query エクスポートの欠落、ネイティブ依存関係の不足を含む入力を拒否します。コアパッケージには、ライブラリ、リソース、依存ファイル、ライセンス、ビルドの来歴、ハッシュ付きの `core.json` が含まれます。ソースパッケージには、該当する対応ソースと再リンク用の入力が含まれます。
+Vendor ディレクトリは Cargo のソース識別子ごとに `vendor/source-*/` へ分けられます。異なる Git fork、または Git と crates.io にある同じ名前・バージョンの crate は、それぞれのコードと対応する `[source]` 置換設定を保持します。Registry のアーカイブは変更していないロックファイルで検証し、Git manifest はソースごとに分離した一時 Cargo ワークスペースで Cargo に正規化させます。この一時的な patch はソースパッケージに含めません。decoder fork はソースツリーが異なるため、コードを変更する patch で統合しません。
+
+現在の overlay または HEAD の port recipe がインストール済みファイルのハッシュと一致しない場合、パッケージングは port の SPDX `gitoid` に記録された固定 vcpkg registry の正確な Git tree を抽出し、recipe ファイルを改めて検証します。versioned registry からビルドされた port は、現在の `ports/` ディレクトリと一致する必要はありません。
+
+`cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` は、固定された `.work/renpy-build` の checkout と再帰的な submodule を準備します。既存の checkout に未コミットの変更がある場合は更新前に失敗し、ソース収集は読み取り専用のままです。
+
+公開処理では、source archive と binary archive を Release が draft の間に認証付き asset API でアップロードし、検証します。検証済みの draft だけを公開し、アップロード、検証、公開のいずれかが失敗した場合は未完成の draft を削除します。カタログ URL は最終 tag と asset 名から構成し、アップロード応答に含まれる一時的な `untagged-*` URL は使いません。
+
 
 Manager のパッケージングでは、ターゲットプラットフォームで絞り込んだ Cargo の依存関係の閉包（通常の依存とビルド依存。テスト専用の依存エッジは除く）を収集します。各 crate が宣言した `license_file`、ソースルートの `LICENSE*`、`COPYING*`、`NOTICE*` ファイル、および同種のライセンスディレクトリの内容は `licenses/rust/<名前>-<バージョン>/` に置かれ、同じディレクトリの `package.json` に SPDX 式とテキストの出所が記録されます。crate がファイルを提供していない場合、パッケージャーは固定された `spdx` 0.13.6 に内蔵されたオフラインのデータから SPDX License List 3.29.0 の標準テキストを取り出し、SPDX 式が参照するすべてのライセンスと例外条項を `LICENSE-<SPDX>` として書き出します。データの出所となるバージョンとアーカイブの SHA256 は `build/dependencies.toml` に記録され、Cargo の固定依存と照合されます。パッケージング中にライセンステキストをダウンロードすることはありません。認識できない補完用の識別子や、ライセンスファイルも SPDX 式もない crate があると、パッケージングは失敗します。Material コンポーネント、アイコン、ネイティブ依存関係のライセンスは別途収集されます。
 

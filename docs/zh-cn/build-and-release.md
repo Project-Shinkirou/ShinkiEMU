@@ -169,15 +169,21 @@ Manager 和各独立核心包都会按所选 manifest、package、features 和�
 
 `shinki-emu-<slug>-<版本>-<平台>-sources.zip` 包含 `source.tar` 和 `BUILD-FROM-SOURCE.md`。将 TAR 解压到新目录后，按说明离线构建。包内保留指定提交的产品源码、指定提交且递归展开子模块的核心 fork、必需的产品路径依赖子模块、锁文件对应的 Cargo vendor 源码（含 Git 依赖）及 `.cargo/config.toml` 源替换配置。发布前会在解压后的目录运行 `cargo metadata --offline --frozen`；缺失源码或 vendor 校验失败会中止打包。
 
+Vendor 目录按 Cargo 源标识拆分到 `vendor/source-*/`。来自不同 Git fork、或来自 Git 与 crates.io 的同名同版本 crate 会保留各自的代码，并使用匹配的 `[source]` 替换配置。Registry 压缩包按未改动的锁文件校验；Git manifest 在一次性的、按源隔离的 Cargo 工作区中由 Cargo 完成规范化，这些临时 patch 不会写入源码包。不同 decoder fork 的源码树不同，不会通过改代码的 patch 强行统一。
+
 Git LFS 文件会按提交中的指针核对 SHA256 和大小，再写入真实字体或媒体数据。对象缺失、尚未展开的指针或校验不符都会中止源码打包；先取得固定版本的公开 LFS 对象，再在自有工作树中运行 `git lfs checkout`。
 
 原生依赖收集覆盖所选安装树中的全部 vcpkg port，不再只收 FriBidi/FFmpeg。`native/ports/<分组>/` 保存经安装时 SPDX SHA256 核对的配方和补丁，`.work/vcpkg-downloads/` 保存经 SPDX SHA512 核对的实际源码压缩包。`native/vcpkg.bundle` 保存固定版本的 vcpkg 源码及可达 Git 历史，供版本化 manifest 离线解析 baseline 和 tree 对象。Impacto 另外保留 LibAtrac9/magic_enum 的固定源码输入，mspack 随 fork 源码交付；KiriKiri 的 libbpg、minizip 和 layerExImage 子模块也保留在源码快照中。
 
 安装图以 `vcpkg/status` 为准，也会跟随构建机 triplet 的传递依赖。`share/doc` 这类目录不算 port；实际依赖缺少 SPDX 或源码来源记录时，打包仍会失败。
 
+如果当前 overlay 或 HEAD 中的配方与已安装文件的校验值不一致，打包会从 port 的 SPDX `gitoid` 记录中找到固定 vcpkg registry 的准确 Git tree，提取并再次校验每个配方文件。使用 versioned registry 构建的 port 不需要与当前 `ports/` 目录一致。
+
 离线构建前，除编译器和 SDK 外，还要备齐构建工具缓存。例如 Windows Meson 需要 `.work/vcpkg-downloads/python-3.14.7-embed-amd64.zip`；NASM、Ninja、CMake、MSYS2 的版本和哈希以固定的 vcpkg 脚本为准。生成的 vcpkg 命令使用绝对路径，避免递归工具切换目录后找错根目录。
 
 Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；对应文件放在 `.work/downloads/`。源码包还包含可读的 chardet/certifi 源码、离线组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
+
+`cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` 会准备固定版本的 `.work/renpy-build` 检出和递归子模块。已有工作树包含未提交修改时，命令会在更新前失败；源码收集过程保持只读。
 
 Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `licenses/sena-rs/MS-PGothic.txt` 记录上游没有提供明确再分发授权，核心的 MPL 许可不替代字体本身的条款。
 
@@ -185,4 +191,7 @@ Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `license
 
 Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。不带 `--publish` 时只准备本地产物。发布需要 `--publish` 及 `GH_TOKEN` 或 `GITHUB_TOKEN`；只上传真实成功的平台产物，拒绝空 Release 和同名不同内容的附件。核心发布在核对远端字节后，向 `Metadata/engines/cores/` 提议目录更新 PR。Manager 与核心独立发布；标签不会绕过分发限制，也不会把 Android debug 签名测试包变成正式安装包。
 
+发布时，源码包和二进制包会在 Release 仍为 draft 的阶段，通过带认证的 asset API 上传并校验。只有校验通过的 draft 才会发布；上传、校验或发布失败都会删除未完成的 draft。目录更新使用最终 tag 和附件名称构造 URL，不使用上传响应中的临时 `untagged-*` URL。
+
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
+
