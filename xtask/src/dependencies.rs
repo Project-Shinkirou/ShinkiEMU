@@ -354,6 +354,18 @@ fn validate_build_python(executable: &Path, python: &str, cython: &str) -> Resul
     ]))
 }
 
+fn download_locked_source(root: &Path, source: &serde_json::Value) -> Result<()> {
+    let name = source["file_name"]
+        .as_str()
+        .context("source archive name")?;
+    package::portable(name)?;
+    download(
+        source["url"].as_str().context("source archive URL")?,
+        source["sha256"].as_str().context("source archive SHA256")?,
+        &root.join(".work/downloads").join(name),
+    )
+}
+
 fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) -> Result<()> {
     let get = |name: &str| {
         lock.native
@@ -376,6 +388,30 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
     if selected.renpy {
         if !cfg!(windows) {
             bail!("RenPy's pinned build interpreter requires a Windows x64 host");
+        }
+        crate::sources::prepare_renpy_build(inv)?;
+        for inventory in ["python-sources.json", "native-sources.json"] {
+            let path = inv
+                .root
+                .join("ThirdParty/renpy/licenses/renpy")
+                .join(inventory);
+            let sources: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+            if sources["renpy_build"] != crate::sources::RENPY_BUILD_PIN {
+                bail!("RenPy source inventory build revision mismatch");
+            }
+            let records = if inventory == "python-sources.json" {
+                ["packages", "tools"].as_slice()
+            } else {
+                ["sources"].as_slice()
+            };
+            for field in records {
+                for source in sources[field].as_array().context("RenPy source records")? {
+                    download_locked_source(&inv.root, source)?;
+                    if let Some(wheel) = source.get("wheel") {
+                        download_locked_source(&inv.root, wheel)?;
+                    }
+                }
+            }
         }
         let sdk: serde_json::Value = serde_json::from_slice(&fs::read(
             inv.root.join("ThirdParty/renpy/shinki/sdk.json"),

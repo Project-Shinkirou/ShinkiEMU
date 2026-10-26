@@ -1300,6 +1300,7 @@ pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
 }
 
 pub(crate) fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Result<()> {
+    let mut count = 0;
     for record in spdx["files"].as_array().context("vcpkg SPDX files")? {
         if !record["SPDXID"]
             .as_str()
@@ -1313,6 +1314,7 @@ pub(crate) fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Resu
             .strip_prefix("./")
             .context("SPDX port relative path")?;
         portable(name)?;
+        count += 1;
         let hash = record["checksums"]
             .as_array()
             .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA256"))
@@ -1321,6 +1323,9 @@ pub(crate) fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Resu
         if sha256(&port.join(name))? != hash {
             bail!("vcpkg port changed since binary build: {name}");
         }
+    }
+    if count == 0 {
+        bail!("vcpkg SPDX contains no port recipe checksums");
     }
     Ok(())
 }

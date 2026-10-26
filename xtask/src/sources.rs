@@ -9,6 +9,8 @@ use std::{
     process::Command,
 };
 
+mod vendor;
+
 fn git(directory: &Path) -> Command {
     let mut command = Command::new("git");
     command
@@ -328,6 +330,10 @@ pub(crate) fn verify_vendor(vendor: &Path) -> Result<()> {
     for entry in fs::read_dir(vendor)? {
         let dir = entry?.path();
         package::plain(&dir)?;
+        if dir.is_dir() && !dir.join(".cargo-checksum.json").is_file() {
+            verify_vendor(&dir)?;
+            continue;
+        }
         let record: serde_json::Value = serde_json::from_slice(
             &fs::read(dir.join(".cargo-checksum.json")).with_context(|| {
                 format!(
@@ -362,24 +368,7 @@ pub(crate) fn verify_vendor(vendor: &Path) -> Result<()> {
 }
 
 fn vendor(manifest: &Path, root: &Path) -> Result<()> {
-    fs::create_dir_all(root.join("vendor"))?;
-    let output = dependencies::capture(
-        Command::new("cargo")
-            .current_dir(manifest.parent().context("manifest directory")?)
-            // Online: CI fetched only the build target's crates, and vendoring
-            // needs the complete locked graph for every platform.
-            .args(["vendor", "--locked", "--versioned-dirs", "--manifest-path"])
-            .arg(manifest)
-            .arg(root.join("vendor")),
-    )?;
-    let mut config: toml::Value = toml::from_str(std::str::from_utf8(&output)?)?;
-    if let Some(sources) = config.get_mut("source").and_then(toml::Value::as_table_mut) {
-        for (_, source) in sources.iter_mut() {
-            if source.get("directory").is_some() {
-                source["directory"] = toml::Value::String("vendor".into());
-            }
-        }
-    }
+    let sources = vendor::collect(manifest, root)?;
     let path = root.join(".cargo/config.toml");
     let mut existing: toml::Value = if path.is_file() {
         toml::from_str(&fs::read_to_string(&path)?)?
@@ -387,9 +376,7 @@ fn vendor(manifest: &Path, root: &Path) -> Result<()> {
         toml::Value::Table(Default::default())
     };
     let table = existing.as_table_mut().context("Cargo config table")?;
-    if let Some(source) = config.get("source") {
-        table.insert("source".into(), source.clone());
-    }
+    table.insert("source".into(), sources.into());
     table.insert(
         "net".into(),
         toml::Value::Table(
@@ -400,7 +387,7 @@ fn vendor(manifest: &Path, root: &Path) -> Result<()> {
     );
     fs::create_dir_all(path.parent().unwrap())?;
     fs::write(path, toml::to_string(&existing)?)?;
-    verify_vendor(&root.join("vendor"))
+    Ok(())
 }
 
 fn sha512(path: &Path) -> Result<String> {
@@ -549,14 +536,13 @@ fn native_sources(
             } else {
                 PathBuf::new()
             };
-            let recipe = if overlay.join("portfile.cmake").is_file() {
-                overlay
-            } else {
-                inv.root.join(".work/vcpkg/ports").join(&port)
-            };
-            package::verify_port_sources(&record, &recipe)
-                .with_context(|| format!("native source port {port} ({})", recipe.display()))?;
-            copy_tree(&recipe, &root.join("native/ports").join(group).join(&port))?;
+            collect_port_sources(
+                &record,
+                &inv.root.join(".work/vcpkg"),
+                &[overlay, inv.root.join(".work/vcpkg/ports").join(&port)],
+                &root.join("native/ports").join(group).join(&port),
+            )
+            .with_context(|| format!("native source port {port}"))?;
             let architecture = source_install.file_name().context("source port triplet")?;
             copy_input(
                 &spdx,
@@ -730,8 +716,111 @@ fn native_archives(inv: &Inventory, root: &Path, names: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// An installed port can come from a historical registry tree rather than HEAD.
+/// SPDX records both that tree identity and the hashes of the consumed recipe.
+pub(crate) fn collect_port_sources(
+    spdx: &serde_json::Value,
+    registry: &Path,
+    candidates: &[PathBuf],
+    dest: &Path,
+) -> Result<()> {
+    for candidate in candidates {
+        if candidate.join("portfile.cmake").is_file()
+            && package::verify_port_sources(spdx, candidate).is_ok()
+        {
+            return copy_tree(candidate, dest);
+        }
+    }
+    let port = spdx["packages"]
+        .as_array()
+        .context("SPDX packages")?
+        .iter()
+        .find(|p| p["SPDXID"] == "SPDXRef-port")
+        .context("SPDX port recipe")?;
+    let tree = port["externalRefs"]
+        .as_array()
+        .and_then(|refs| {
+            refs.iter()
+                .filter_map(|r| r["referenceLocator"].as_str())
+                .find_map(|r| r.strip_prefix("gitoid:tree:sha1:"))
+        })
+        .or_else(|| {
+            port["downloadLocation"]
+                .as_str()?
+                .rsplit_once('@')
+                .map(|(_, tree)| tree)
+        })
+        .context("installed port has no registry tree identity and no matching local recipe")?;
+    if tree.len() != 40 || !tree.bytes().all(|b| b.is_ascii_hexdigit()) {
+        bail!("invalid installed port registry tree identity");
+    }
+    let kind = dependencies::capture(git(registry).args(["cat-file", "-t", tree]))?;
+    if kind != b"tree\n" && kind != b"tree\r\n" {
+        bail!("installed port identity must reference a Git tree");
+    }
+    let archive = dependencies::capture(git_committed_bytes(registry).args([
+        "archive",
+        "--format=tar",
+        tree,
+    ]))?;
+    fs::create_dir_all(dest)?;
+    tar::Archive::new(archive.as_slice()).unpack(dest)?;
+    package::verify_port_sources(spdx, dest)
+}
+
+pub(crate) const RENPY_BUILD_PIN: &str = "7bfab40c1174f622f644b24669afd5fb167fbb79";
+
+pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
+    let repo = inv.root.join(".work/renpy-build");
+    let checkout = |directory: &Path| -> Result<()> {
+        checkout_root(directory)?;
+        require_clean(directory)?;
+        if !git(directory)
+            .args(["cat-file", "-e", RENPY_BUILD_PIN])
+            .status()?
+            .success()
+        {
+            dependencies::run(git(directory).args([
+                "fetch",
+                "--no-tags",
+                "https://github.com/renpy/renpy-build.git",
+                RENPY_BUILD_PIN,
+            ]))?;
+        }
+        dependencies::run(git_committed_bytes(directory).args([
+            "checkout",
+            "--detach",
+            RENPY_BUILD_PIN,
+        ]))?;
+        dependencies::run(git_committed_bytes(directory).args([
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+        ]))?;
+        require_clean(directory)
+    };
+    if repo.exists() {
+        return checkout(&repo);
+    }
+    package::atomic_directory(&repo, |stage| {
+        dependencies::run(
+            Command::new("git")
+                .args([
+                    "clone",
+                    "--no-checkout",
+                    "--config",
+                    "core.autocrlf=false",
+                    "https://github.com/renpy/renpy-build.git",
+                ])
+                .arg(stage),
+        )?;
+        checkout(stage)
+    })
+}
+
 fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
-    const PIN: &str = "7bfab40c1174f622f644b24669afd5fb167fbb79";
+    const PIN: &str = RENPY_BUILD_PIN;
     let repo = inv.root.join(".work/renpy-build");
     checkout_root(&repo).context("Ren'Py corresponding source requires .work/renpy-build")?;
     if revision(&repo)? != PIN {
@@ -1453,5 +1542,146 @@ mod tests {
         )
         .unwrap();
         assert!(installed_ports(&install).is_err());
+    }
+}
+
+#[cfg(test)]
+mod recipe_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn installed_registry_tree_wins_over_head_and_is_verified() {
+        let temp = tempfile::tempdir().unwrap();
+        let registry = temp.path().join("registry");
+        let head = registry.join("ports/example");
+        fs::create_dir_all(&head).unwrap();
+        dependencies::run(git(&registry).args(["init"])).unwrap();
+        fs::write(head.join("portfile.cmake"), "original recipe\n").unwrap();
+        fs::write(head.join("fix.patch"), "original patch\n").unwrap();
+        dependencies::run(git(&registry).args(["add", "."])).unwrap();
+        let commit = || {
+            dependencies::run(git(&registry).args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "recipe fixture",
+            ]))
+            .unwrap()
+        };
+        commit();
+        let tree = String::from_utf8(
+            dependencies::capture(git(&registry).args(["rev-parse", "HEAD:ports/example"]))
+                .unwrap(),
+        )
+        .unwrap();
+        let files: Vec<_> = ["portfile.cmake", "fix.patch"].map(|name| json!({
+            "SPDXID":format!("SPDXRef-port-file-{name}"), "fileName":format!("./{name}"),
+            "checksums":[{"algorithm":"SHA256", "checksumValue":package::sha256(&head.join(name)).unwrap()}]
+        })).into();
+        let provenance = json!({"packages":[{"SPDXID":"SPDXRef-port", "externalRefs":[{
+            "referenceLocator":format!("gitoid:tree:sha1:{}", tree.trim())
+        }]}], "files":files});
+        fs::write(head.join("portfile.cmake"), "new HEAD recipe\n").unwrap();
+        dependencies::run(git(&registry).args(["add", "."])).unwrap();
+        commit();
+        let output = temp.path().join("bundled");
+        collect_port_sources(&provenance, &registry, std::slice::from_ref(&head), &output).unwrap();
+        assert_eq!(
+            fs::read_to_string(output.join("portfile.cmake")).unwrap(),
+            "original recipe\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output.join("fix.patch")).unwrap(),
+            "original patch\n"
+        );
+        let mut corrupt = provenance.clone();
+        corrupt["files"][0]["checksums"][0]["checksumValue"] = json!("0".repeat(64));
+        assert!(
+            collect_port_sources(&corrupt, &registry, &[head], &temp.path().join("corrupt"))
+                .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod vendor_tests {
+    use super::*;
+
+    #[test]
+    fn equal_name_versions_from_different_git_sources_rebuild_without_caches() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut deps = toml::Table::new();
+        for (alias, value) in [("first", 17), ("second", 29)] {
+            let repo = temp.path().join(alias);
+            fs::create_dir_all(repo.join("src")).unwrap();
+            fs::write(repo.join("Cargo.toml"), "[workspace]\nmembers = [\"crate\"]\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+            fs::create_dir_all(repo.join("crate/src")).unwrap();
+            fs::write(repo.join("crate/Cargo.toml"), "[package]\nname = \"same-name\"\nversion.workspace = true\nedition.workspace = true\n").unwrap();
+            fs::write(
+                repo.join("crate/src/lib.rs"),
+                format!("pub fn value() -> u32 {{ {value} }}\n"),
+            )
+            .unwrap();
+            dependencies::run(git(&repo).args(["init"])).unwrap();
+            dependencies::run(git(&repo).args(["add", "."])).unwrap();
+            dependencies::run(git(&repo).args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "source fixture",
+            ]))
+            .unwrap();
+            deps.insert(alias.into(), toml::Value::try_from(serde_json::json!({
+                "package":"same-name", "git":reqwest::Url::from_directory_path(&repo).unwrap().as_str(),
+                "rev":revision(&repo).unwrap(),
+            })).unwrap());
+        }
+        let product = temp.path().join("product");
+        fs::create_dir_all(product.join("src")).unwrap();
+        let mut manifest = toml::Table::new();
+        manifest.insert(
+            "package".into(),
+            toml::Value::try_from(serde_json::json!({
+                "name":"source-consumer", "version":"0.0.0", "edition":"2024",
+            }))
+            .unwrap(),
+        );
+        manifest.insert("dependencies".into(), deps.into());
+        fs::write(
+            product.join("Cargo.toml"),
+            toml::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            product.join("src/main.rs"),
+            "fn main() { assert_eq!(first::value(), 17); assert_eq!(second::value(), 29); }\n",
+        )
+        .unwrap();
+        dependencies::run(
+            Command::new("cargo")
+                .current_dir(&product)
+                .arg("generate-lockfile"),
+        )
+        .unwrap();
+        vendor(&product.join("Cargo.toml"), &product).unwrap();
+        dependencies::run(
+            Command::new("cargo")
+                .current_dir(&product)
+                .args(["run", "--offline", "--frozen"])
+                .env("CARGO_HOME", temp.path().join("empty-cargo-home"))
+                .env("CARGO_TARGET_DIR", temp.path().join("fresh-target")),
+        )
+        .unwrap();
     }
 }

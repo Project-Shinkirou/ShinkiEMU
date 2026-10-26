@@ -46,25 +46,6 @@ impl GitHub {
             .error_for_status()?
             .json()?)
     }
-    fn remote_hash(&self, url: &str) -> Result<(String, u64)> {
-        if !url.starts_with("https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/") {
-            bail!("unexpected published asset URL");
-        }
-        let mut r = self.client.get(url).send()?.error_for_status()?;
-        let mut hash = sha2::Sha256::default();
-        let mut size = 0u64;
-        let mut bytes = [0u8; 64 * 1024];
-        use sha2::Digest;
-        loop {
-            let n = r.read(&mut bytes)?;
-            if n == 0 {
-                break;
-            }
-            hash.update(&bytes[..n]);
-            size = size.checked_add(n as u64).context("asset size overflow")?;
-        }
-        Ok((hex::encode(hash.finalize()), size))
-    }
     fn asset_hash(&self, asset: &Value) -> Result<(String, u64)> {
         let id = asset["id"].as_u64().context("asset id")?;
         let mut response = self
@@ -208,6 +189,35 @@ impl GitHub {
         Ok(())
     }
 }
+fn published_asset_url(tag: &str, name: &str) -> Result<String> {
+    package::portable(name)?;
+    let mut url =
+        reqwest::Url::parse("https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/")?;
+    url.path_segments_mut()
+        .map_err(|_| anyhow::anyhow!("release URL cannot hold path segments"))?
+        .pop_if_empty()
+        .push(tag)
+        .push(name);
+    Ok(url.into())
+}
+
+/// Keep all byte verification inside the draft transaction. Public URLs are not
+/// readable until publication, and upload responses still carry untagged URLs.
+fn draft_transaction<T>(
+    prepare: impl FnOnce() -> Result<T>,
+    publish: impl FnOnce() -> Result<()>,
+    cleanup: impl FnOnce() -> Result<()>,
+) -> Result<T> {
+    let result = prepare().and_then(|value| {
+        publish()?;
+        Ok(value)
+    });
+    if result.is_err() {
+        cleanup().context("removing incomplete draft Release")?;
+    }
+    result
+}
+
 pub fn run(
     inv: &Inventory,
     target: &str,
@@ -411,62 +421,61 @@ pub fn run(
     let gh = GitHub::new()?;
     let existing = gh.get_optional(&format!("{API}/releases/tags/{tag}"))?;
     let created = existing.is_none();
+    if existing.as_ref().is_some_and(|release| release["draft"] != true) {
+        bail!("release tag already published; refusing to modify published assets");
+    }
     let release = if let Some(existing) = existing {
         existing
     } else {
         gh.post("releases",&json!({"tag_name":tag,"target_commitish":records[0].1["source_commit"],"name":format!("{component} {version}"),"body":notes,"draft":true,"prerelease":!semver::Version::parse(version)?.pre.is_empty()}))?
     };
     let id = release["id"].as_u64().context("release id")?;
-    let upload = (|| -> Result<Vec<(Value, Value)>> {
-        let mut assets = Vec::new();
-        for (directory, record) in &records {
-            gh.upload(
-                &release,
-                &directory.join(
-                    record["sources"]["name"]
-                        .as_str()
-                        .context("source archive")?,
-                ),
-            )?;
-            let asset = gh.upload(
-                &release,
-                &directory.join(record["archive"]["name"].as_str().context("core archive")?),
-            )?;
-            assets.push((record.clone(), asset));
-        }
-        gh.request(reqwest::Method::PATCH, &format!("{API}/releases/{id}"))
-            .json(&json!({"draft":false,"body":notes}))
-            .send()?
-            .error_for_status()?;
-        Ok(assets)
-    })();
-    let assets = match upload {
-        Ok(assets) => assets,
-        Err(error) => {
-            if created {
-                let cleanup = gh
-                    .request(reqwest::Method::DELETE, &format!("{API}/releases/{id}"))
-                    .send()
-                    .and_then(|r| r.error_for_status());
-                if let Err(cleanup) = cleanup {
-                    eprintln!("failed to remove incomplete draft Release {id}: {cleanup}");
-                }
+    let assets = draft_transaction(
+        || -> Result<Vec<(Value, Value)>> {
+            let mut assets = Vec::new();
+            for (directory, record) in &records {
+                gh.upload(
+                    &release,
+                    &directory.join(
+                        record["sources"]["name"]
+                            .as_str()
+                            .context("source archive")?,
+                    ),
+                )?;
+                let asset = gh.upload(
+                    &release,
+                    &directory.join(record["archive"]["name"].as_str().context("core archive")?),
+                )?;
+                assets.push((record.clone(), asset));
             }
-            return Err(error);
-        }
-    };
+            Ok(assets)
+        },
+        || {
+            gh.request(reqwest::Method::PATCH, &format!("{API}/releases/{id}"))
+                .json(&json!({"draft":false,"body":notes}))
+                .send()?
+                .error_for_status()?;
+            Ok(())
+        },
+        || {
+            if created || release["draft"] == true {
+                gh.request(reqwest::Method::DELETE, &format!("{API}/releases/{id}"))
+                    .send()?
+                    .error_for_status()?;
+            }
+            Ok(())
+        },
+    )?;
     if component != "manager" {
         let c = inv.core(component)?;
         for (record, asset) in assets {
-            let url = asset["browser_download_url"]
+            let url = published_asset_url(&tag, asset["name"].as_str().context("asset name")?)?;
+            // upload() reads each source/binary back through the authenticated
+            // asset API while the Release is still a draft.
+            let hash = record["archive"]["sha256"]
                 .as_str()
-                .context("published URL")?;
-            let (hash, size) = gh.remote_hash(url)?;
-            if Some(hash.as_str()) != record["archive"]["sha256"].as_str()
-                || Some(size) != record["archive"]["size"].as_u64()
-            {
-                bail!("published asset readback mismatch; catalog not written");
-            }
+                .context("archive hash")?;
+            let size = record["archive"]["size"].as_u64().context("archive size")?;
             let platform = record["platform"].as_str().context("release platform")?;
             let entry = json!({"plugin_id":component,"display_name":c.display_name,"family_name":c.family_name,"version":version,"abi":"shinki.emu.native.c.v3","platform":platform,"url":url,"sha256":hash,"size":size,"license":c.license,"release_tag":tag});
             let dto: shinki_emu_metadata::CoreCatalogEntry = serde_json::from_value(entry.clone())?;
@@ -524,4 +533,71 @@ fn validate_record(record: &Value, root: &Path, component: &str, version: &str) 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn draft_verification_failure_cleans_up_without_publishing() {
+        let published = Cell::new(false);
+        let cleaned = Cell::new(false);
+        let result = draft_transaction::<()>(
+            || bail!("remote asset bytes differ"),
+            || {
+                published.set(true);
+                Ok(())
+            },
+            || {
+                cleaned.set(true);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert!(!published.get());
+        assert!(cleaned.get());
+    }
+
+    #[test]
+    fn draft_is_published_only_after_verification_and_removed_if_publication_fails() {
+        let verified = Cell::new(false);
+        let cleaned = Cell::new(false);
+        assert!(
+            draft_transaction(
+                || {
+                    verified.set(true);
+                    Ok(42)
+                },
+                || {
+                    assert!(verified.get());
+                    bail!("publication rejected")
+                },
+                || {
+                    cleaned.set(true);
+                    Ok(())
+                },
+            )
+            .is_err()
+        );
+        assert!(cleaned.get());
+        let value = draft_transaction(
+            || Ok(42),
+            || Ok(()),
+            || bail!("successful release must not be deleted"),
+        )
+        .unwrap();
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn catalog_urls_use_final_tags_and_escape_asset_path_segments() {
+        let url = published_asset_url("core-example-v0.1.0-beta.2", "core-example.zip").unwrap();
+        assert_eq!(
+            url,
+            "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-example-v0.1.0-beta.2/core-example.zip"
+        );
+        assert!(published_asset_url("tag", "../asset.zip").is_err());
+    }
 }
