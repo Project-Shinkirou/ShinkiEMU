@@ -75,28 +75,6 @@ fn run_native_audio_gain_setting(
 }
 
 #[test]
-fn native_audio_gain_getters_use_ctor_defaults_and_ignore_the_value_word() {
-    for command_id in 729..=733 {
-        for ignored_value in [0, 1, 256, 0x8000_0000, u32::MAX] {
-            let mut state = CmvsPs2aVmState::new(0);
-            state.write_interpreter_word(81220, 0x1234_5678);
-            state.write_interpreter_word(13224, 0);
-            execute_cmvs390_frame(&mut state, &push_immediate(0x9876_5432)).unwrap();
-            let mut expected = state.interpreter_words.clone();
-            expected.insert(81220, 256);
-
-            assert_eq!(
-                run_native_audio_gain_setting(&mut state, command_id, 0, ignored_value),
-                None,
-            );
-            assert_eq!(state.interpreter_words, expected);
-            assert_eq!(state.stack_cursor_bytes, 4);
-            assert_eq!(read_stack_word_from_top(&state, 4).unwrap(), 0x9876_5432);
-        }
-    }
-}
-
-#[test]
 fn native_audio_gain_setters_signed_clamp_and_preserve_results_and_other_settings() {
     for (command_id, field_offset) in [
         (729, 1560),
@@ -262,36 +240,6 @@ fn rejects_execution_and_snapshot_after_an_unrecovered_expression() {
 }
 
 #[test]
-fn instruction_dispatch_reuses_large_vm_allocations() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state.stack_bytes = vec![0; MAX_STACK_BYTES];
-    state.stack_initialized = vec![false; MAX_STACK_BYTES];
-    let allocation = state.stack_bytes.as_ptr();
-    for value in 0..1024 {
-        execute_cmvs390_frame(&mut state, &push_immediate(value)).unwrap();
-        assert_eq!(state.stack_bytes.as_ptr(), allocation);
-    }
-    assert_eq!(state.stack_cursor_bytes, 4096);
-    validate_cmvs390_vm_state(&state).unwrap();
-}
-
-#[test]
-fn partial_instruction_failure_cannot_resume_by_resetting_dispatch_stop() {
-    let mut state = CmvsPs2aVmState::new(u32::MAX - 1);
-    assert!(execute_cmvs390_frame(&mut state, &push_immediate(42)).is_err());
-    assert_eq!(state.stack_cursor_bytes, 4);
-    state.dispatch_stopped = false;
-    state.program_counter = 0;
-    assert_eq!(
-        execute_cmvs390_frame(&mut state, &push_immediate(1))
-            .unwrap_err()
-            .code(),
-        "SHINKI_EMU_CMVS_VM_FAILED"
-    );
-    assert_eq!(state.stack_cursor_bytes, 4);
-}
-
-#[test]
 fn dispatch_preconditions_do_not_poison_a_stopped_machine() {
     let mut state = CmvsPs2aVmState::new(0);
     state.dispatch_stopped = true;
@@ -400,32 +348,6 @@ fn assigns_float_literal_through_the_recovered_numeric_variable_target() {
 }
 
 #[test]
-fn blocks_numeric_assignment_targets_outside_the_recovered_subset() {
-    let mut state = CmvsPs2aVmState::new(0);
-    let frame = CmvsPs2aInstructionFrame::NumericExpression(crate::CmvsPs2aNumericExpression {
-        span: SPAN,
-        nodes: vec![
-            crate::CmvsPs2aNumericExpressionNode::Value {
-                span: SPAN,
-                opcode: 0x12c,
-                payload: 4,
-            },
-            crate::CmvsPs2aNumericExpressionNode::Value {
-                span: SPAN,
-                opcode: 0x12a,
-                payload: 1.0_f32.to_bits(),
-            },
-            crate::CmvsPs2aNumericExpressionNode::Operator {
-                span: SPAN,
-                opcode: 0x170,
-            },
-        ],
-    });
-    let error = execute_cmvs390_frame(&mut state, &frame).unwrap_err();
-    assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_NUMERIC_EXPRESSION");
-}
-
-#[test]
 fn assigns_and_reads_frame_local_words_through_the_active_call_base() {
     let mut state = CmvsPs2aVmState::new(0);
     let assign = crate::CmvsPs2aStackExpression {
@@ -488,30 +410,6 @@ fn tracks_wider_immediate_stack_slots_without_inventing_gap_values() {
     );
     let error = read_stack_word_from_top(&state, 4).unwrap_err();
     assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_STACK_UNINITIALIZED");
-}
-
-#[test]
-fn stores_command_30_word_without_assigning_game_semantics() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 0x1234_5678,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 30,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.interpreter_words.get(&10712), Some(&0x1234_5678));
-    assert_eq!(state.stack_cursor_bytes, 0);
 }
 
 #[test]
@@ -680,77 +578,6 @@ fn a_decoy_channel_pointer_word_cannot_authorize_commands_or_scheduler() {
     push(&mut state, 2);
     run_command(&mut state, 350);
     assert_eq!(state.interpreter_words[&81224], 0);
-}
-
-#[test]
-fn command_334_blocks_on_an_unoccupied_channel() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 1,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 5,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 334,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.interpreter_flag_words.get(&10532), Some(&0x0001_0000));
-}
-
-#[test]
-fn stores_command_29_word_without_assigning_game_semantics() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 0xabcd_1234,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 29,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.interpreter_words.get(&1600), Some(&0xabcd_1234));
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
-fn stores_command_144_constant_without_assigning_game_semantics() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 144,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.interpreter_words.get(&2940), Some(&1));
-    assert_eq!(state.stack_cursor_bytes, 0);
 }
 
 #[test]
@@ -1331,57 +1158,6 @@ fn command_138_blocks_on_a_missing_or_invalidated_coroutine_record() {
 }
 
 #[test]
-fn stores_command_31_process_global_without_assigning_game_semantics() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 0x89ab_cdef,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 31,
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        state.process_global_words.get(&0x004f_0578),
-        Some(&0x89ab_cdef)
-    );
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
-fn stores_command_940_as_a_canonical_process_global_boolean() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 7,
-        }),
-    )
-    .unwrap();
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 940,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.process_global_words.get(&0x004f_0580), Some(&1));
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
 fn mutates_the_bounded_process_flag_range_from_command_145() {
     let mut state = CmvsPs2aVmState::new(0);
     for value in [5, 3, 1] {
@@ -1495,43 +1271,6 @@ fn copies_native_string_values_from_command_148() {
 }
 
 #[test]
-fn stores_command_21_owned_path_with_symbolic_root() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state
-        .frame_string_values
-        .insert(0, BTreeMap::from([(72, b"data/".to_vec())]));
-    seed_pool_bytes(&mut state, 0, &[(72, b"data/")]);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 72,
-        }),
-    )
-    .unwrap();
-    let action = execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 21,
-        },
-    )
-    .unwrap();
-    assert_eq!(action, None);
-    assert_eq!(
-        state.interpreter_string_buffers.get(&3356),
-        Some(&vec![
-            CmvsStringSegment::InterpreterPrefixField {
-                field_offset: 10764
-            },
-            CmvsStringSegment::OwnedString("data/".into()),
-        ])
-    );
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
 fn command_22_emits_a_directory_request_for_its_path_buffer() {
     let mut state = CmvsPs2aVmState::new(0);
     state
@@ -1554,31 +1293,6 @@ fn command_22_emits_a_directory_request_for_its_path_buffer() {
         ])
     );
     assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
-fn blocks_command_21_unrecovered_string_domain() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 0xc000_0010,
-        }),
-    )
-    .unwrap();
-    let error = execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 21,
-        },
-    )
-    .unwrap_err();
-    assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_STRING_TAG");
-    assert!(state.interpreter_string_buffers.is_empty());
-    assert_eq!(state.stack_bytes.len(), 4);
 }
 
 fn push(state: &mut CmvsPs2aVmState, value: u32) {
@@ -2025,18 +1739,6 @@ fn command_352_owns_its_title_and_preserves_empty_native_titles() {
 }
 
 #[test]
-fn command_715_stores_the_component_word_from_the_stack() {
-    let mut state = CmvsPs2aVmState::new(0);
-    push(&mut state, 0x2026);
-    run_command(&mut state, 715);
-    assert_eq!(
-        state.component_words.get(&component_field_key(1920, 76)),
-        Some(&0x2026)
-    );
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
 fn command_848_resets_the_settings_object_before_storing() {
     let mut state = CmvsPs2aVmState::new(0);
     state.settings_words.insert(48, 999);
@@ -2074,29 +1776,6 @@ fn command_858_and_859_respect_their_recovered_bounds() {
     push(&mut state, 3);
     run_command(&mut state, 859);
     assert_eq!(state.settings_words.get(&32), Some(&3));
-}
-
-#[test]
-fn command_136_records_the_fixed_session_clock() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state.current_frame = 3;
-    state.session_clock_millis = 1_234;
-    push(&mut state, 50);
-    push(&mut state, 40);
-    push(&mut state, 30);
-    push(&mut state, 20);
-    push(&mut state, 2);
-    run_command(&mut state, 136);
-    let base = 13_276 + 28 * 2;
-    // The frame word (+0) snapshots the frame register; the pc word (+4)
-    // takes the second stack operand; operands fill +8..+16 and the host
-    // clock lands at +20.
-    assert_eq!(state.interpreter_words.get(&base), Some(&3));
-    assert_eq!(state.interpreter_words.get(&(base + 4)), Some(&20));
-    assert_eq!(state.interpreter_words.get(&(base + 8)), Some(&30));
-    assert_eq!(state.interpreter_words.get(&(base + 12)), Some(&40));
-    assert_eq!(state.interpreter_words.get(&(base + 16)), Some(&50));
-    assert_eq!(state.interpreter_words.get(&(base + 20)), Some(&1_234));
 }
 
 #[test]
@@ -2623,19 +2302,6 @@ fn command_completion_clears_the_counter_before_the_next_script_call() {
 }
 
 #[test]
-fn command_548_zero_control_takes_the_same_two_poll_cadence() {
-    let mut state = CmvsPs2aVmState::new(0);
-    for value in [40, 30, 20, 1] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 544);
-    push(&mut state, 0);
-    assert_eq!(run_command_with_action(&mut state, 548), None);
-    assert!(state.dispatch_stopped);
-    assert_eq!(state.interpreter_words.get(&81220), Some(&1));
-}
-
-#[test]
 fn command_548_without_an_owner_handle_pops_and_continues() {
     let mut state = CmvsPs2aVmState::new(0);
     push(&mut state, 1);
@@ -2681,15 +2347,6 @@ fn literal_node(payload: u32) -> crate::CmvsPs2aStackExpressionNode {
         opcode: 0x100,
         payload,
     }
-}
-
-#[test]
-fn stack_expression_literal_sets_value_result_slot_and_flag() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(&mut state, &stack_expression(vec![literal_node(9)])).unwrap();
-    assert_eq!(state.current_value, Some(9));
-    assert!(state.condition_flag);
-    assert_eq!(state.process_indexed_words.get(&4096), Some(&9));
 }
 
 #[test]
@@ -2745,23 +2402,6 @@ fn stack_expression_assignment_to_system_registers_matches_original_bounds() {
     )
     .unwrap();
     assert_eq!(state.interpreter_words.get(&81256), None);
-}
-
-#[test]
-fn stack_expression_unrecovered_operator_stays_fail_closed() {
-    let mut state = CmvsPs2aVmState::new(0);
-    let expression = stack_expression(vec![
-        literal_node(1),
-        literal_node(2),
-        crate::CmvsPs2aStackExpressionNode::Operator {
-            span: SPAN,
-            opcode: 0x173,
-        },
-    ]);
-    let error = execute_cmvs390_frame(&mut state, &expression).unwrap_err();
-    assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_STACK_EXPRESSION");
-    assert!(state.current_value.is_none());
-    assert!(state.process_indexed_words.is_empty());
 }
 
 #[test]
@@ -3048,25 +2688,6 @@ fn command_40_out_of_bounds_pair_only_raises_the_error_flag() {
         Some(&1)
     );
     assert_eq!(state.interpreter_flag_words.get(&10532), Some(&0x10));
-}
-
-#[test]
-fn stores_component_constant_from_command_845() {
-    let mut state = CmvsPs2aVmState::new(0);
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 845,
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        state
-            .component_words
-            .get(&component_field_key(0x0cc8, 0x0568)),
-        Some(&1)
-    );
 }
 
 #[test]

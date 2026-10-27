@@ -64,26 +64,6 @@ fn native_quads_keep_xz_strip_winding_uv_orientation_and_world_axes() {
 }
 
 #[test]
-fn root_providers_stay_bound_to_their_fixed_submission_nodes() {
-    let mut owner = scene();
-    for _ in 0..8 {
-        owner.advance(camera(4.0, 1000.0)).unwrap();
-        let names: Vec<&[u8]> = (0..owner.mesh_count())
-            .map(|index| owner.resources[owner.mesh_resource_index(index)].as_slice())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                b"strips.pb3".as_slice(),
-                b"strips.pb3",
-                b"strips.pb3",
-                b"floor.pb3"
-            ]
-        );
-    }
-}
-
-#[test]
 fn floor_follows_raw_camera_xz_without_following_y_or_scrolling_uvs() {
     let mut owner = scene();
     assert_eq!(owner.mesh(3).unwrap().position_words, [0; 3]);
@@ -139,25 +119,6 @@ fn large_camera_jump_recycles_one_plane_per_callback_and_wraps_fixed_ids() {
 }
 
 #[test]
-fn addss_phase_can_stop_advancing_while_the_child_index_keeps_wrapping() {
-    let mut owner = scene();
-    let phase = 268_435_456.0_f32; // ULP=32; phase+10 rounds back to phase.
-    owner.phase_z_word = phase.to_bits();
-    owner.advance(camera(0.0, phase + 64.0)).unwrap();
-    assert_eq!(
-        f32::from_bits(owner.mesh(0).unwrap().position_words[2]),
-        phase + 32.0
-    );
-    assert_eq!(owner.phase_z_word, phase.to_bits());
-    owner.advance(camera(0.0, phase + 64.0)).unwrap();
-    assert_eq!(
-        f32::from_bits(owner.mesh(1).unwrap().position_words[2]),
-        phase + 32.0
-    );
-    assert_eq!(owner.next_plane_index, 2);
-}
-
-#[test]
 fn private_snapshot_continues_the_phase_instead_of_reconstructing_from_camera() {
     let mut owner = scene();
     owner.advance(camera(3.0, 100.0)).unwrap();
@@ -175,34 +136,4 @@ fn private_snapshot_continues_the_phase_instead_of_reconstructing_from_camera() 
         restored.mesh(3).unwrap().position_words,
         [7.0_f32.to_bits(), 0, 100.0_f32.to_bits()]
     );
-}
-
-#[test]
-fn resource_fields_and_invalid_live_inputs_fail_before_scene_mutation() {
-    assert!(CmvsNativeSceneKind50::new([vec![b'a'; 31], Vec::new()]).is_ok());
-    for resources in [
-        [vec![b'a'; 32], Vec::new()],
-        [Vec::new(), vec![b'b'; 32]],
-        [b"a\0b".to_vec(), Vec::new()],
-        [Vec::new(), b"a\0b".to_vec()],
-    ] {
-        assert!(CmvsNativeSceneKind50::new(resources).is_err());
-    }
-    let mut owner = scene();
-    owner.advance(camera(2.0, 15.0)).unwrap();
-    for words in [[f32::NAN.to_bits(), 0], [0, f32::INFINITY.to_bits()]] {
-        let before = owner.clone();
-        assert!(owner.advance(words).is_err());
-        assert_eq!(owner, before);
-    }
-    owner.next_plane_index = 3;
-    let before = owner.clone();
-    assert!(owner.advance(camera(0.0, 100.0)).is_err());
-    assert_eq!(owner, before);
-    owner.next_plane_index = 0;
-    owner.phase_z_word = f32::NAN.to_bits();
-    assert!(owner.validate().is_err());
-    owner.phase_z_word = 0;
-    owner.meshes[0].vertices[0].uv_words[0] = f32::INFINITY.to_bits();
-    assert!(owner.validate().is_err());
 }

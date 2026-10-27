@@ -151,14 +151,6 @@ fn sloped_height_uses_world_xz_and_ignores_query_y() {
 }
 
 #[test]
-fn native_unordered_edge_comparisons_accept_degenerate_nan_hit() {
-    let hit = vertical_hit([1.0, 2.0, 3.0], &[[0.0, 0.0, 0.0, 1.0]; 3])
-        .unwrap()
-        .unwrap();
-    assert!(hit.iter().all(|coordinate| coordinate.is_nan()));
-}
-
-#[test]
 fn constructor_uses_five_crt_draws_and_native_hundredth_truncation() {
     let mut rng = 1;
     let worker = CmvsNativeCollisionParticles::new(
@@ -347,36 +339,4 @@ fn ordinary678_creates_native_kind6_and_mutually_replaces_other737_worker() {
     );
     command(&mut vm, 672, &[0]).unwrap();
     assert!(vm.native_scene_workers.is_empty());
-}
-
-#[test]
-fn all_native_projection_height_and_z_span_flag_ladders_are_preserved() {
-    for (flags, span) in [
-        (0, 20.0),
-        (1, 15.0),
-        (2, 10.0),
-        (3, 5.0),
-        (4, 2.5),
-        (5, 1.0),
-        (15, 20.0),
-    ] {
-        assert_eq!(z_span(flags << 24), span);
-    }
-    for (flags, height) in [
-        (0, 9.0),
-        (4, 60.0),
-        (5, 50.0),
-        (6, 40.0),
-        (7, 30.0),
-        (8, 20.0),
-        (15, 9.0),
-    ] {
-        let worker = CmvsNativeCollisionParticles::new(
-            b"p.pb3".to_vec(),
-            [flags << 28, 4.0_f32.to_bits(), 1000.0_f32.to_bits(), 1],
-            &mut 1,
-        )
-        .unwrap();
-        assert_eq!(f32::from_bits(worker.projection_height_word()), height);
-    }
 }

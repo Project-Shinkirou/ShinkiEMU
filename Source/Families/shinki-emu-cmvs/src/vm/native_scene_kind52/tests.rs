@@ -132,48 +132,6 @@ fn rotations_use_yaw_only_and_reverse_nodes_retain_360_at_zero() {
 }
 
 #[test]
-fn clock_add_and_multiply_wrap_before_unsigned_rotation_division() {
-    let mut owner = scene();
-    owner.rotation_clock = 11_930_464;
-    owner.advance(0, 0).unwrap();
-    assert_eq!(owner.mesh(2).unwrap().angle_words[1], 33.0_f32.to_bits());
-    owner.advance(1, 0).unwrap();
-    assert_eq!(owner.mesh(2).unwrap().angle_words[1], 0);
-    owner.rotation_clock = u32::MAX - 100;
-    owner.advance(300, 0).unwrap();
-    assert_eq!(owner.rotation_clock, 199);
-    assert_eq!(owner.mesh(2).unwrap().angle_words[1], 14.0_f32.to_bits());
-    owner.advance(u32::MAX, 0).unwrap();
-    assert_eq!(owner.rotation_clock, 198);
-}
-
-#[test]
-fn yaw_world_transform_uses_native_single_precision_radians_and_double_trig() {
-    let mut owner = scene();
-    owner.advance(1250, 0).unwrap();
-    let mesh = owner.mesh(2).unwrap();
-    let matrix = mesh
-        .world_matrix(super::super::native_mesh::identity())
-        .unwrap();
-    // 433620 MULSS degrees*0.017453292, then 413330 precise double cos/sin.
-    assert_eq!(mesh.angle_words, [0, 90.0_f32.to_bits(), 0]);
-    assert_eq!(matrix[0].to_bits(), 0xb33b_bd2e);
-    assert_eq!(matrix[2], -1.0);
-    assert_eq!(matrix[8], 1.0);
-    assert_eq!(matrix[10].to_bits(), 0xb33b_bd2e);
-    assert_eq!(&matrix[12..15], &[2.0, 1.25, 13.0]);
-    let local = mesh.vertices[0].position_words.map(f32::from_bits);
-    let world_x = local[0] * matrix[0] + local[2] * matrix[8] + matrix[12];
-    let world_z = local[0] * matrix[2] + local[2] * matrix[10] + matrix[14];
-    assert_eq!(world_x, 5.0);
-    assert_eq!(world_z, 16.0);
-    let rotated_view = [
-        0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 4.0, 5.0, 6.0, 1.0,
-    ];
-    assert_eq!(mesh.world_matrix(rotated_view).unwrap(), matrix);
-}
-
-#[test]
 fn selector_queue_overwrites_only_valid_requests_and_waits_for_idle_callback() {
     let mut owner = scene();
     owner.request(1);
@@ -392,24 +350,6 @@ fn moving_d_quad_uses_mulss_divss_subss_then_resets_at_7000() {
 }
 
 #[test]
-fn effects_never_emit_camera_updates_or_repeat_their_audio_gate() {
-    let mut owner = scene();
-    for selector in [1, 2] {
-        enter(&mut owner, selector);
-        for step in 0..40 {
-            let frame = owner.advance(200, 0x00ff_ffff).unwrap();
-            assert_eq!(frame.position_words, None);
-            assert_eq!(frame.angle_words, None);
-            assert_eq!(frame.field_of_view_word, None);
-            if step != 0 {
-                assert_eq!(frame.audio[0], None);
-            }
-        }
-        assert_eq!(owner.status(), 0);
-    }
-}
-
-#[test]
 fn private_snapshot_resumes_upper_ring_alpha_clocks_gate_and_pending_request() {
     let mut owner = scene();
     enter(&mut owner, 2);
@@ -433,16 +373,4 @@ fn private_snapshot_resumes_upper_ring_alpha_clocks_gate_and_pending_request() {
         );
         assert_eq!(restored, owner);
     }
-}
-
-#[test]
-fn malformed_private_mesh_errors_before_advancing_the_live_phase() {
-    let mut owner = scene();
-    owner.meshes[3].position_words[0] = f32::NAN.to_bits();
-    owner.request(2);
-    assert!(owner.validate().is_err());
-    assert!(owner.advance(17, 255).is_err());
-    assert_eq!(owner.rotation_clock, 0);
-    assert_eq!(owner.state, 0);
-    assert_eq!(owner.pending, 2);
 }

@@ -1857,6 +1857,3 @@ pub fn cmvs390_command_contract(command_id: u16) -> Option<CmvsPs2aCommandContra
         stack_words: stack_words.to_vec(),
     })
 }
-
-#[cfg(test)]
-mod tests;

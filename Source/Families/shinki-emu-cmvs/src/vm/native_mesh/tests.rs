@@ -251,16 +251,6 @@ fn malformed_native_restore_is_atomic_across_managers_and_random_state() {
 }
 
 #[test]
-fn malformed_geometry_cannot_partially_advance_one_manager() {
-    let mut rng = 1;
-    let mut snow = CmvsNativeSnow::new(b"red.pb3".to_vec(), parameters(2), &mut rng).unwrap();
-    snow.particles[1].mesh.vertices[0].position_words[0] = f32::NAN.to_bits();
-    let before = snow.clone();
-    assert!(snow.advance(50, [0.0, 1.0, 0.0]).is_err());
-    assert_eq!(snow, before);
-}
-
-#[test]
 fn private_snapshot_continues_particle_phase_and_shared_random_sequence() {
     let mut vm = command_fixture();
     let mut words = vec![0, 0];

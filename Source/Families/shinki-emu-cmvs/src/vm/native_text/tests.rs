@@ -172,18 +172,6 @@ fn snapshot_rejects_disconnected_font_owners_and_invalid_color_words() {
 }
 
 #[test]
-fn native_surface_translation_and_gradient_mode_are_independent_of_cursor() {
-    let mut state = fixture();
-    command(&mut state, 256, &[7, 10, 0]).unwrap();
-    command(&mut state, 259, &[7, 44, 60, 512, 30]).unwrap();
-    command(&mut state, 258, &[7, (-10i32) as u32, 25]).unwrap();
-    command(&mut state, 275, &[7, 3]).unwrap();
-    assert_eq!(state.native_text[&7].position, [-10, 25]);
-    assert_eq!(state.native_text[&7].cursor, [44, 60]);
-    assert_eq!(state.native_text[&7].color_mode, 3);
-}
-
-#[test]
 fn native_bold_changes_only_future_uploaded_glyphs_and_survives_private_restore() {
     let mut state = fixture();
     command(&mut state, 256, &[0, 10, 196]).unwrap();

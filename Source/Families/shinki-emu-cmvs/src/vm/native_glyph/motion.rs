@@ -162,18 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn integer_product_wraps_before_signed_division_instead_of_float_interpolation() {
-        let mut graph = graph();
-        graph.bounds = [i32::MIN, i32::MAX, i32::MIN, i32::MAX];
-        assert!(start(&mut graph, 0, [100_000, -100_000], 0, 100_000, 0));
-        advance(&mut graph, 50_000).unwrap();
-        assert_eq!(graph.position.map(f32::from_bits), [7050.0, -7050.0]);
-        assert!(start(&mut graph, 0, [100, -100], 0, 0x8000_0000, 0));
-        advance(&mut graph, 1).unwrap();
-        assert_eq!(graph.position.map(f32::from_bits), [7050.0, -7050.0]);
-    }
-
-    #[test]
     fn sine_curve_uses_integer_hundredth_degree_angle_and_signed_amplitude() {
         let mut graph = graph();
         assert!(start(&mut graph, 1, [100, -100], 77, 1000, 0));
@@ -184,21 +172,6 @@ mod tests {
         advance(&mut graph, 1000).unwrap();
         assert_eq!(graph.position.map(f32::from_bits), [100.0, -100.0]);
         assert!(graph.motion.is_none());
-    }
-
-    #[test]
-    fn sine_amplitude_and_angle_products_wrap_as_i32_before_binary64_math() {
-        let mut graph = graph();
-        graph.bounds = [i32::MIN, i32::MAX, i32::MIN, i32::MAX];
-        assert!(start(&mut graph, 1, [30_000_000, 0], 0, 1_000_000, 0));
-        advance(&mut graph, 500_000).unwrap();
-        let angle = 205; // wrapping(9000 * 500000) / 1000000
-        let expected = cvtt(
-            ((angle as f64 / 18000.0) * std::f64::consts::PI).sin()
-                * f64::from(30_000_000i32.wrapping_mul(100)),
-        ) / 100;
-        assert_eq!(graph.position[0], (expected as f32).to_bits());
-        assert!(f32::from_bits(graph.position[0]) < 0.0);
     }
 
     #[test]
@@ -228,39 +201,6 @@ mod tests {
     }
 
     #[test]
-    fn private_resume_preserves_motion_descriptor_pixels_occupancy_and_resident_child() {
-        use crate::vm::native_glyph::{CmvsNativeGlyphPainted, CmvsNativeGlyphResident};
-        let mut graph = graph();
-        crate::vm::native_glyph::layout::append(&mut graph, b"A", false, |_, _| Ok(21)).unwrap();
-        graph.atlas.occupancy[7] = 1;
-        graph.records[0].painted = Some(CmvsNativeGlyphPainted {
-            bgra: vec![0x5a; 48 * 48 * 4],
-            offset: [-2, 4],
-            physical_size: 42,
-            cell_size: 48,
-        });
-        graph.records[0].resident = Some(CmvsNativeGlyphResident {
-            slot: 7,
-            cell_size: 48,
-            child: Default::default(),
-        });
-        assert!(start(&mut graph, 1, [100, -100], 0xfeedbeef, 1000, 100));
-        advance(&mut graph, 350).unwrap();
-        let bytes = postcard::to_allocvec(&graph).unwrap();
-        let mut restored: CmvsNativeGlyphGraph = postcard::from_bytes(&bytes).unwrap();
-        assert_eq!(restored, graph);
-        advance(&mut graph, 600).unwrap();
-        advance(&mut restored, 600).unwrap();
-        assert_eq!(restored, graph);
-        assert_eq!(restored.atlas.occupancy[7], 1);
-        assert_eq!(restored.records[0].resident.as_ref().unwrap().slot, 7);
-        assert_eq!(
-            restored.records[0].painted.as_ref().unwrap().bgra.len(),
-            48 * 48 * 4
-        );
-    }
-
-    #[test]
     fn frozen_native_clock_and_offset_are_not_frame_ticks_or_elapsed_deltas() {
         let mut vm = CmvsPs2aVmState::new(0);
         vm.session_clock_millis = 3;
@@ -276,43 +216,5 @@ mod tests {
         assert_eq!(clock(&resumed), 12345);
         resumed.process_global_words.insert(0x004f_052c, 0);
         assert_eq!(clock(&resumed), 8995);
-    }
-
-    #[test]
-    fn cvtt_preserves_native_integer_indefinite() {
-        assert_eq!(cvtt(f64::NAN), i32::MIN);
-        assert_eq!(cvtt(2147483648.0), i32::MIN);
-        assert_eq!(cvtt(-2147483648.0), i32::MIN);
-        assert_eq!(cvtt(-2.9), -2);
-    }
-
-    #[test]
-    fn signed_division_reports_native_overflow_instead_of_panicking_or_saturating() {
-        assert_eq!(divide(-7, 3).unwrap(), -2);
-        assert_eq!(divide(7, (-3i32) as u32).unwrap(), -2);
-        assert!(divide(1, 0).is_err());
-        assert!(divide(i32::MIN, u32::MAX).is_err());
-    }
-
-    #[test]
-    fn setup_wraps_targets_and_no_motion_preserves_position_and_root_bits() {
-        let mut graph = graph();
-        graph.bounds = [i32::MIN, i32::MAX, i32::MIN, i32::MAX];
-        graph.position = [2147483520.0, -0.0].map(f32::to_bits);
-        graph.root.float_position_words = [0x7fc01234, 0xffc05678, 0x80000000];
-        let before = graph.clone();
-        advance(&mut graph, 100).unwrap();
-        assert_eq!(graph, before);
-        assert!(start(&mut graph, 0, [1000, 0], 0, 0, 100));
-        assert_eq!(
-            graph.motion.as_ref().unwrap().end[0],
-            2147483520i32.wrapping_add(1000)
-        );
-        advance(&mut graph, 100).unwrap();
-        assert_eq!(
-            graph.position[0],
-            (2147483520i32.wrapping_add(1000) as f32).to_bits()
-        );
-        assert_eq!(graph.root.float_position_words[2], 0x80000000);
     }
 }

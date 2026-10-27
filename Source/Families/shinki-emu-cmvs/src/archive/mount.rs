@@ -2,35 +2,10 @@ use super::*;
 
 impl CmvsArchive {
     pub fn mount(
-        mount_id: String,
-        prefix: String,
-        configured_archives: Vec<(String, PathBuf)>,
-        scheme: CmvsSchemeProfile,
-        private_profile_hash: Hash256,
-        mount_profile_hash: Hash256,
-    ) -> Result<Self, CoreError> {
-        Self::mount_with_cache(
-            mount_id,
-            prefix,
-            configured_archives,
-            Vec::new(),
-            scheme,
-            private_profile_hash,
-            mount_profile_hash,
-            None,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn mount_with_cache(
-        mount_id: String,
         prefix: String,
         configured_archives: Vec<(String, PathBuf)>,
         configured_loose: Vec<(String, PathBuf)>,
         scheme: CmvsSchemeProfile,
-        private_profile_hash: Hash256,
-        mount_profile_hash: Hash256,
-        cache: Option<PlaintextCache>,
     ) -> Result<Self, CoreError> {
         scheme
             .validate()
@@ -42,12 +17,6 @@ impl CmvsArchive {
             return Err(invalid(
                 "SHINKI_EMU_CMVS_MOUNT_ARCHIVES",
                 "CMVS mount has an invalid archive set",
-            ));
-        }
-        if !roukaku_core::is_safe_symbol(&mount_id) {
-            return Err(invalid(
-                "SHINKI_EMU_VFS_MANIFEST",
-                "archive mount identity is invalid",
             ));
         }
         let mut roles = BTreeSet::new();
@@ -150,9 +119,7 @@ impl CmvsArchive {
             let mounted = ArchiveFile {
                 role,
                 path,
-                byte_size: metadata.len(),
                 source_stamp: source_stamp(&metadata)?,
-                source_hash: OnceLock::new(),
                 header,
             };
             verify_archive_stamp(&mounted)?;
@@ -189,16 +156,12 @@ impl CmvsArchive {
                     "CMVS loose resource role collides with a mounted URI",
                 ));
             }
-            let source_media_kind = loose_media_kind(&path)?;
             loose.insert(
-                role.clone(),
+                role,
                 LooseSource {
-                    role,
                     path,
-                    media_kind: source_media_kind.into(),
                     byte_size: metadata.len(),
                     source_stamp: source_stamp(&metadata)?,
-                    source_hash: OnceLock::new(),
                 },
             );
         }
@@ -210,15 +173,11 @@ impl CmvsArchive {
         }
         Ok(Self {
             game_root: None,
-            mount_id,
             prefix,
-            mount_profile_hash,
             archives,
             entries,
             loose,
             scheme,
-            private_profile_hash,
-            cache,
             ephemeral_entry: Mutex::new(None),
         })
     }

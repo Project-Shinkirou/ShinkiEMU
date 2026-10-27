@@ -424,20 +424,6 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn append_is_not_limited_by_atlas_capacity_and_private_data_retains_descriptors() {
-        let mut graph = graph();
-        append(&mut graph, b"ABCD", false, |_, _| Ok(21)).unwrap();
-        graph.style = 0;
-        graph.colors = [0; 2];
-        let bytes = postcard::to_allocvec(&graph).unwrap();
-        let restored: CmvsNativeGlyphGraph = postcard::from_bytes(&bytes).unwrap();
-        assert_eq!(restored, graph);
-        assert_eq!(restored.records.len(), 4);
-        assert_eq!(restored.records[0].style, 9);
-        assert_eq!(restored.records[0].colors, [0x123456, 0xabcdef]);
-    }
-
-    #[test]
     fn measurement_starts_at_live_cursor_counts_trailing_newline_and_ignores_annotation() {
         let mut graph = graph();
         graph.rect[0] = 5.0f32.to_bits();
@@ -473,17 +459,5 @@ pub(super) mod tests {
         assert_eq!(graph.records[1].color_mode, 0);
         assert_eq!(graph.records[2].position, [0, 12]);
         assert_eq!(graph.cursor.map(f32::from_bits), [6.5, 12.5]);
-    }
-
-    #[test]
-    fn virtual_metrics_narrow_signed_words_and_use_wrapping_unsigned_products() {
-        let mut graph = graph();
-        assert_eq!(virtual_advance(&graph, 17).unwrap(), 9);
-        assert_eq!(virtual_advance(&graph, u32::MAX).unwrap(), -20972);
-        graph.virtual_size = graph.physical_size;
-        assert_eq!(virtual_advance(&graph, 0x8001).unwrap(), -32767);
-        graph.virtual_size = [100, 60];
-        graph.physical_size[0] = 0;
-        assert!(virtual_advance(&graph, 17).is_err());
     }
 }

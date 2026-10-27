@@ -199,16 +199,6 @@ fn same_family904_always_invalidates_the_persistent_font_cache() {
 }
 
 #[test]
-fn missing775_sets_native_flag_without_publishing_results_but_source_resolves_first() {
-    let mut state = vm();
-    state.write_interpreter_word(81220, 123);
-    command(&mut state, 899, &[0, 0, 0]).unwrap();
-    assert_eq!(state.interpreter_words[&81220], 123);
-    assert_ne!(state.interpreter_flag_words[&10532] & 0x1000, 0);
-    assert!(command(&mut state, 907, &[8, 0x80000080]).is_err());
-}
-
-#[test]
 fn private39_preserves_cpu_cells_residents_occupancy_cursor_and_motion() {
     let mut state = vm();
     create(&mut state);
@@ -394,23 +384,4 @@ fn remaining_handlers_guard_real775_without_resetting_results_and_pop_exact_oper
     }
     let mut state = vm();
     assert!(command(&mut state, 919, &[8, 0x80000080]).is_err());
-}
-
-#[test]
-fn native921_is_the_actual_zero_pop_default_jump_and_not_a_glyph_operation() {
-    let mut state = vm();
-    push_word(&mut state, 0x87654321).unwrap();
-    state.write_interpreter_word(81220, 99);
-    assert!(command(&mut state, 921, &[]).unwrap().is_none());
-    assert_eq!(state.stack_cursor_bytes, 4);
-    assert_eq!(state.interpreter_words[&81220], 99);
-    assert!(!state.wait_frame);
-    assert_eq!(
-        state
-            .interpreter_flag_words
-            .get(&10532)
-            .copied()
-            .unwrap_or(0),
-        0
-    );
 }

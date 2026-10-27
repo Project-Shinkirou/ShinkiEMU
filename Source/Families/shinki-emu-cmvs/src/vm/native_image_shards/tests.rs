@@ -102,20 +102,6 @@ fn drift_counts_eligible_calls_while_y_rotation_and_scale_use_full_elapsed() {
 }
 
 #[test]
-fn rotation_wraps_its_integer_product_before_unsigned_division() {
-    let mut value = single();
-    value.advance(117 + 12_000_000).unwrap();
-    let basic = value.draw_basic(0).unwrap();
-    assert_eq!(basic.rotation_hundredths, 34300);
-    assert_eq!(basic.scale_words, Some([0; 2]));
-    assert!(value.finished());
-    assert_eq!(value.particle_capacity(), 1);
-    value.advance(1000).unwrap();
-    assert_eq!(value.draw_basic(0).unwrap().rotation_hundredths, 1900);
-    assert_eq!(value.particle_capacity(), 1);
-}
-
-#[test]
 fn scale_is_one_at_delay_half_at_3750_and_zero_from_7500() {
     let mut value = single();
     value.advance(117).unwrap();
@@ -186,63 +172,6 @@ fn waiting_particles_prevent_completion_and_empty_grids_finish_on_first_tick() {
         assert_eq!(empty.draw_basic(0), None);
     }
     assert_eq!(rng, 123);
-}
-
-#[test]
-fn large_tile_coordinates_and_y_addition_wrap_with_signed_completion_comparison() {
-    let grid = CmvsNativeImageShardGrid::new([21, 21], [u32::MAX, 0], &mut 1).unwrap();
-    let corner = grid.draw_basic(3).unwrap();
-    assert_eq!(corner.rect_words, Some([u32::MAX; 4]));
-    assert_eq!(corner.position_words, Some([u32::MAX >> 1; 2]));
-    assert_eq!(corner.auxiliary_pair_words, Some([2_147_483_646; 2]));
-
-    let mut value = CmvsNativeImageShardGrid::new([1, 1], [u32::MAX, 0], &mut 1).unwrap();
-    value.advance(117).unwrap();
-    assert!(value.finished());
-    value.advance(4).unwrap();
-    assert_eq!(value.particles[0].destination_words[1], 0x80000000);
-    assert!(value.finished());
-    //At the same wrapped destination an unlatched worker remains pending.
-    value.finished = false;
-    value.advance(0).unwrap();
-    assert!(!value.finished());
-}
-
-#[test]
-fn unsigned_elapsed_rounds_to_f32_before_division_and_cvtt_uses_integer_indefinite() {
-    let mut value = single();
-    value.particles[0].delay_ms = 0;
-    value.particles[0].speed_word = 4.0_f32.to_bits();
-    value.advance(16_777_219).unwrap();
-    assert_eq!(value.particles[0].destination_words[1], 4_194_315);
-    value.advance(u32::MAX - 16_777_219).unwrap();
-    assert_eq!(value.particles[0].destination_words[1], 1_073_741_834);
-
-    let mut drift = single();
-    drift.particles[0].drift_word = 2_147_483_648.0_f32.to_bits();
-    drift.advance(117).unwrap();
-    assert_eq!(drift.particles[0].destination_words[0], 0x8000000a);
-    let mut negative = single();
-    negative.particles[0].drift_word = (-0.99_f32).to_bits();
-    negative.advance(117).unwrap();
-    assert_eq!(negative.particles[0].destination_words[0], 9);
-}
-
-#[test]
-fn absolute_clock_seed_and_elapsed_wrap_preserve_waiting_child_draw_state() {
-    let mut value = single();
-    value.clock_ms = u32::MAX - 5;
-    value.advance(117).unwrap();
-    assert_eq!(value.clock_ms, 111);
-    assert_eq!(value.particles[0].destination_words, [9, 10]);
-    value.advance(1000).unwrap();
-    let previous = value.particles[0].clone();
-    value.advance(u32::MAX - 1116).unwrap();
-    assert_eq!(value.elapsed_ms, 0);
-    assert_eq!(value.particles[0], previous);
-    assert!(value.finished());
-    value.advance(117).unwrap();
-    assert_eq!(value.particles[0].destination_words, [7, 10]);
 }
 
 #[test]

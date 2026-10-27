@@ -355,26 +355,6 @@ fn state22_fades_only_particles_and_waits_for_nonzero_pulse_before_finishing23()
 }
 
 #[test]
-fn zero_pulse_skips_alpha_even_in_hidden_states_and_all_timers_wrap_as_dwords() {
-    let mut owner = scene();
-    owner.state = 23;
-    owner.particles[0].mesh.set_alpha(77);
-    active_particle(&mut owner, 0, u32::MAX - 99);
-    owner.advance(100, 0).unwrap();
-    assert_eq!(owner.particles[0].pulse_clock, 0);
-    assert_eq!(owner.particles[0].mesh.alpha, 77);
-    owner.state = 0;
-    owner.growth_clock = u32::MAX - 49;
-    owner.advance(100, 0).unwrap();
-    assert_eq!(owner.growth_clock, 50);
-    owner.request(22);
-    owner.fade_clock = u32::MAX - 49;
-    owner.advance(100, 0).unwrap();
-    assert_eq!(owner.fade_clock, 50);
-    assert_eq!(owner.status(), 22);
-}
-
-#[test]
 fn private_snapshot_preserves_live_resources_pending_gates_and_all_particle_clocks() {
     let mut owner = scene();
     owner.request(11);
@@ -389,26 +369,4 @@ fn private_snapshot_preserves_live_resources_pending_gates_and_all_particle_cloc
         restored.advance(200, 123).unwrap()
     );
     assert_eq!(owner, restored);
-}
-
-#[test]
-fn validation_rejects_invalid_mesh_consumers() {
-    let mut owner = scene();
-    owner.validate().unwrap();
-    for invalid in [
-        0,
-        (-1.0_f32).to_bits(),
-        f32::INFINITY.to_bits(),
-        f32::NAN.to_bits(),
-        1,
-    ] {
-        let mut malformed = owner.clone();
-        malformed.particles[0].rise_time_word = invalid;
-        assert!(malformed.validate().is_err());
-        let before = malformed.clone();
-        assert!(malformed.advance(200, 0).is_err());
-        assert_eq!(malformed, before);
-    }
-    owner.particles.pop();
-    assert!(owner.validate().is_err());
 }

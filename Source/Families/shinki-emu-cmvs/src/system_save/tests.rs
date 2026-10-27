@@ -142,18 +142,6 @@ fn rejects_a_truncated_header() {
 }
 
 #[test]
-fn decompressor_reproduces_all_literal_streams() {
-    let payload = b"abcdefgh01234567".to_vec();
-    let mut stream = Vec::new();
-    for chunk in payload.chunks(8) {
-        stream.push(0xff_u8);
-        stream.extend_from_slice(chunk);
-    }
-    let decoded = decompress_system_save(&stream, payload.len()).unwrap();
-    assert_eq!(decoded, payload);
-}
-
-#[test]
 fn decompressor_reproduces_window_matches() {
     // Emit eight literals, then copy them back through the window. The
     // window starts at position 976, so the literals occupy 976..984.

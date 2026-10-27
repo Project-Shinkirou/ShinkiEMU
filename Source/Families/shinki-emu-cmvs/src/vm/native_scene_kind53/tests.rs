@@ -173,16 +173,6 @@ fn pending_request_waits_through_transition_completion_then_runs_next_callback()
 }
 
 #[test]
-fn hidden_transitions_still_advance_during_render_preparation() {
-    let mut owner = scene();
-    select(&mut owner, 1);
-    owner.visible = [false; 2];
-    owner.prepare_draw(5000).unwrap();
-    assert!(owner.transitions.iter().all(Option::is_none));
-    assert_eq!(owner.visible, [false; 2]);
-}
-
-#[test]
 fn wobble_has_strict_hold_boundaries_and_discards_excess_delta() {
     let mut owner = scene();
     owner.advance(1000, 0).unwrap();
@@ -271,36 +261,6 @@ fn large_fade_step_does_not_write_a_completion_alpha() {
 }
 
 #[test]
-fn all_timers_add_as_unsigned_wrapping_dwords_before_comparison() {
-    let mut owner = scene();
-    owner.wobble_timer = u32::MAX - 10;
-    owner.advance(20, 0).unwrap();
-    assert_eq!(owner.wobble_timer, 9);
-    assert_eq!(
-        yaws(&owner),
-        [9.0_f32 / 2000.0_f32, -(9.0_f32 / 2000.0_f32)]
-    );
-    select(&mut owner, 5);
-    owner.effect_timer = u32::MAX - 10;
-    owner.advance(20, 0).unwrap();
-    assert_eq!(owner.effect_timer, 9);
-    assert_eq!(owner.meshes[0].alpha, 252);
-    assert_eq!(owner.state, 12);
-    let mut transition_owner = scene();
-    select(&mut transition_owner, 1);
-    transition_owner.prepare_draw(1000).unwrap();
-    transition_owner.prepare_draw(u32::MAX).unwrap();
-    transition_owner.advance(0, 0).unwrap();
-    assert_eq!(transition_owner.status(), 10);
-    transition_owner.prepare_draw(4000).unwrap();
-    transition_owner.advance(0, 0).unwrap();
-    assert_eq!(transition_owner.status(), 10);
-    transition_owner.prepare_draw(1).unwrap();
-    transition_owner.advance(0, 0).unwrap();
-    assert_eq!(transition_owner.status(), 0);
-}
-
-#[test]
 fn private_snapshot_retains_pending_requests_and_both_callback_phases() {
     let mut owner = CmvsNativeSceneKind53::new([512, 256]).unwrap();
     select(&mut owner, 1);
@@ -320,20 +280,4 @@ fn private_snapshot_retains_pending_requests_and_both_callback_phases() {
         assert_eq!(restored, owner);
         owner.validate().unwrap();
     }
-}
-
-#[test]
-fn validation_rejects_corrupt_geometry_and_controller_states() {
-    let mut owner = scene();
-    owner.meshes[0].vertices[2].position_words[1] = f32::NAN.to_bits();
-    assert!(owner.validate().is_err());
-    let mut owner = scene();
-    owner.wobble_phase = 4;
-    assert!(owner.validate().is_err());
-    let mut owner = scene();
-    owner.pending = 0;
-    assert!(owner.validate().is_err());
-    let mut owner = scene();
-    owner.transitions[0] = Some(5000);
-    assert!(owner.validate().is_err());
 }

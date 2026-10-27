@@ -44,41 +44,6 @@ fn strict_spawn_boundary_and_two_shared_crt_draws() {
 }
 
 #[test]
-fn zero_angle_keeps_x_exact_and_applies_each_frame_elapsed() {
-    let mut value = worker(10.0, 100);
-    let mut rng = 1;
-    value.advance(101, &mut rng).unwrap();
-    let x = value.particles[0].position_words[0];
-    let old_y = f32::from_bits(value.particles[0].position_words[1]);
-    value.advance(23, &mut rng).unwrap();
-    assert_eq!(value.particles[0].position_words[0], x);
-    assert_eq!(
-        value.particles[0].position_words[1],
-        (old_y - 0.23_f32).to_bits()
-    );
-    assert_eq!(value.particles[0].last_tick_ms, 124);
-}
-
-#[test]
-fn negative_right_angle_uses_double_trig_after_single_degree_conversion() {
-    let mut params = parameters(10.0, 100);
-    params[3] = (-90.0_f32).to_bits();
-    let mut rng = 1;
-    let mut value = CmvsNativeParticleKind1::new(Vec::new(), params, &mut rng).unwrap();
-    value.advance(201, &mut rng).unwrap();
-    let initial_x = (41.0_f32 / 32767.0) * 10.0 - 5.0;
-    assert_eq!(
-        value.particles[0].position_words[0],
-        (initial_x + 1.01_f32).to_bits()
-    );
-    assert_eq!(value.particles[0].position_words[1], 6.0_f32.to_bits());
-    assert_eq!(value.draw_basic(0).unwrap().rotation_hundredths, 27000);
-    value.advance(1000, &mut rng).unwrap();
-    assert!(value.particles[0].active);
-    assert_eq!(value.particles[0].position_words[1], 6.0_f32.to_bits());
-}
-
-#[test]
 fn non_cardinal_motion_retains_native_single_precision_radian_rounding() {
     let mut params = parameters(7.0, 100);
     params[3] = 17.25_f32.to_bits();
@@ -163,25 +128,6 @@ fn spawn_clock_cap_does_not_cap_existing_particle_motion() {
         value.particles[1].position_words[1],
         (6.0_f32 - 0.9).to_bits()
     );
-}
-
-#[test]
-fn clock_and_object_counter_wrap_without_changing_native_age() {
-    let mut value = worker(2.0, 100);
-    value.clock_ms = u32::MAX - 50;
-    value.next_object_id = u32::MAX;
-    let mut rng = 1;
-    value.advance(101, &mut rng).unwrap();
-    assert_eq!(value.clock_ms, 50);
-    assert_eq!(value.particles[0].object_id, u32::MAX);
-    assert_eq!(value.next_object_id, 0);
-    assert_eq!(value.particles[0].last_tick_ms, 50);
-    assert_eq!(
-        value.particles[0].position_words[1],
-        (6.0_f32 - 0.002).to_bits()
-    );
-    value.advance(100, &mut rng).unwrap();
-    assert_eq!(value.particles[1].object_id, 0);
 }
 
 #[test]

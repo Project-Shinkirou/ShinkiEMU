@@ -16,7 +16,7 @@ impl CmvsArchive {
             Ok(uri) => uri,
             Err(_) => return Ok(false),
         };
-        let (bytes, _) = match self.resource_bytes(&uri) {
+        let bytes = match self.resource_bytes(&uri) {
             Ok(source) => source,
             Err(_) => return Ok(false),
         };

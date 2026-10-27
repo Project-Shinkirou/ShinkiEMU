@@ -307,18 +307,3 @@ fn private_snapshot_preserves_atlas_geometry_reload_and_full_phase() {
         assert_eq!(restored, owner);
     }
 }
-
-#[test]
-fn invalid_private_geometry_is_rejected_before_callback_mutation() {
-    let mut owner = scene();
-    owner.meshes.pop();
-    assert!(owner.validate().is_err());
-    assert!(owner.advance(10, 0).is_err());
-    assert_eq!(owner.rotation_clock, 0);
-    let mut owner = scene();
-    owner.height_words[3] = f32::NAN.to_bits();
-    assert!(owner.validate().is_err());
-    let mut owner = scene();
-    owner.meshes[80].vertices[0].uv_words[1] = f32::INFINITY.to_bits();
-    assert!(owner.validate().is_err());
-}

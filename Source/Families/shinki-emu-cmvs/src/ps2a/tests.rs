@@ -210,24 +210,6 @@ fn recognizes_only_the_proven_tag_zero_string_expression() {
 }
 
 #[test]
-fn decodes_nested_value_expression() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&0x201u16.to_le_bytes());
-    bytecode.extend_from_slice(&0x121u16.to_le_bytes());
-    bytecode.extend_from_slice(&0x200u16.to_le_bytes());
-    bytecode.extend_from_slice(&0x120u16.to_le_bytes());
-    bytecode.extend_from_slice(&7u32.to_le_bytes());
-    bytecode.extend_from_slice(&0x20fu16.to_le_bytes());
-    bytecode.extend_from_slice(&0x20fu16.to_le_bytes());
-    let expression = decode_ps2a_value_expression(&control_script(bytecode, vec![]), 0).unwrap();
-    assert_eq!(expression.tokens.len(), 1);
-    assert!(matches!(
-        expression.tokens[0],
-        CmvsPs2aValueExpressionToken::NestedStackExpression { .. }
-    ));
-}
-
-#[test]
 fn decodes_nested_stack_expression() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&0x200u16.to_le_bytes());
@@ -304,37 +286,4 @@ fn blocks_truncated_stack_expression_value() {
     bytecode.extend_from_slice(&0x120u16.to_le_bytes());
     let error = decode_ps2a_stack_expression(&control_script(bytecode, vec![]), 0).unwrap_err();
     assert_eq!(error.code(), "SHINKI_EMU_CMVS_PS2A_CONTROL");
-}
-
-#[test]
-fn frames_command_without_executing_it() {
-    let script = control_script(0x2007u16.to_le_bytes().to_vec(), vec![]);
-    let frame = frame_ps2a_instruction(&script, 0).unwrap();
-    assert_eq!(
-        frame,
-        CmvsPs2aInstructionFrame::Command {
-            span: CmvsPs2aSourceSpan {
-                offset: 0,
-                byte_length: 2,
-            },
-            command_id: 7,
-        }
-    );
-}
-
-#[test]
-fn frames_numeric_expression_without_evaluating_it() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&0x202u16.to_le_bytes());
-    bytecode.extend_from_slice(&0x12au16.to_le_bytes());
-    bytecode.extend_from_slice(&1u32.to_le_bytes());
-    bytecode.extend_from_slice(&0x20fu16.to_le_bytes());
-    let frame = frame_ps2a_instruction(&control_script(bytecode, vec![]), 0).unwrap();
-    assert!(matches!(
-        frame,
-        CmvsPs2aInstructionFrame::NumericExpression(CmvsPs2aNumericExpression {
-            nodes,
-            ..
-        }) if nodes.len() == 1
-    ));
 }

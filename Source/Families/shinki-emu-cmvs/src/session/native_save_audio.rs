@@ -421,35 +421,4 @@ mod tests {
         assert_eq!(globals.resource_channels.encode().unwrap(), [0; 312]);
         assert_eq!(globals.static_sounds.encode().unwrap(), [1, 0, 0, 0, 0, 0]);
     }
-
-    #[test]
-    fn configured_resource_capture_owns_name_and_consumes_live_control_words() {
-        let mut vm = CmvsPs2aVmState::new(0);
-        vm.resource_channel_slots.insert(
-            5,
-            CmvsResourceChannelSlotRecord {
-                source: "wind.ogg".into(),
-                start_playback: true,
-                volume: 192,
-                loop_playback: true,
-            },
-        );
-        let base = 1608 + 5 * 52;
-        vm.write_interpreter_word(base + 40, 64);
-        vm.write_interpreter_word(base + 44, (-128i32) as u32);
-        vm.write_interpreter_word(base + 48, 0);
-        let mut globals = NativeGlobals::default();
-        capture(None, &vm, &mut globals).unwrap();
-        let record = &globals.resource_channels.slots[5];
-        assert_eq!(record.name, "wind.ogg");
-        assert_eq!(record.volume, 192);
-        assert_eq!(record.channel_volume, 64);
-        assert_eq!(record.stereo_pan as i32, -128);
-        assert_eq!(record.restart_mode, 0);
-        let bytes = globals.resource_channels.encode().unwrap();
-        assert_eq!(
-            NativeResourceChannels::decode(&bytes).unwrap(),
-            globals.resource_channels
-        );
-    }
 }

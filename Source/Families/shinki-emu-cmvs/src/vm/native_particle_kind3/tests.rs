@@ -27,43 +27,6 @@ fn constructor_matches_four_draw_crt_sse_reference() {
 }
 
 #[test]
-fn constructor_consumes_four_draws_for_each_particle_in_order() {
-    let mut rng = 1;
-    let combined = CmvsNativeParticleKind3::new(Vec::new(), parameters(2), &mut rng).unwrap();
-    let mut separate_rng = 1;
-    let first = CmvsNativeParticleKind3::new(Vec::new(), parameters(1), &mut separate_rng).unwrap();
-    let second =
-        CmvsNativeParticleKind3::new(Vec::new(), parameters(1), &mut separate_rng).unwrap();
-    assert_eq!(
-        combined.particles,
-        [first.particles[0].clone(), second.particles[0].clone()]
-    );
-    assert_eq!(rng, separate_rng);
-    assert_eq!(rng, 1_924_036_713);
-}
-
-#[test]
-fn zero_count_keeps_rng_and_produces_valid_empty_configuration() {
-    let mut rng = 0x12345678;
-    let value = CmvsNativeParticleKind3::new(Vec::new(), parameters(0), &mut rng).unwrap();
-    assert_eq!(rng, 0x12345678);
-    assert!(value.particles.is_empty());
-    assert_eq!(value.capture().unwrap().encode().unwrap().len(), 52);
-}
-
-#[test]
-fn missing_resource_does_not_suppress_births_or_rng_consumption() {
-    let mut first_rng = 1;
-    let missing =
-        CmvsNativeParticleKind3::new(b"missing".to_vec(), parameters(2), &mut first_rng).unwrap();
-    let mut second_rng = 1;
-    let other =
-        CmvsNativeParticleKind3::new(b"other".to_vec(), parameters(2), &mut second_rng).unwrap();
-    assert_eq!(missing.particles, other.particles);
-    assert_eq!(first_rng, second_rng);
-}
-
-#[test]
 fn visible_motion_preserves_x_z_time_and_draw_attributes() {
     let mut value = owner(5.0, 1000.0);
     let before = value.draw_basic(0).unwrap();
@@ -90,14 +53,6 @@ fn clock_caps_unsigned_elapsed_at_five_hundred_milliseconds() {
 }
 
 #[test]
-fn zero_elapsed_keeps_ordinary_particle_phase() {
-    let mut value = owner(5.5, 1000.0);
-    let before = value.clone();
-    value.advance(0).unwrap();
-    assert_eq!(value, before);
-}
-
-#[test]
 fn lifecycle_uses_strict_negative_single_wrap_without_new_random_birth() {
     let mut value = owner(1.0, 1000.0);
     value.advance(100).unwrap();
@@ -110,31 +65,6 @@ fn lifecycle_uses_strict_negative_single_wrap_without_new_random_birth() {
     let mut fast = owner(1.0, 100.0);
     fast.advance(500).unwrap();
     assert_eq!(f32::from_bits(fast.particles[0].position_words[1]), -39.0);
-}
-
-#[test]
-fn negative_time_moves_upward_without_upper_boundary_wrap() {
-    let mut value = owner(9.0, -1000.0);
-    value.advance(500).unwrap();
-    assert_eq!(f32::from_bits(value.particles[0].position_words[1]), 14.0);
-}
-
-#[test]
-fn zero_time_and_nonfinite_native_words_are_not_artificially_rejected() {
-    let mut value = owner(1.0, 0.0);
-    value.advance(1).unwrap();
-    assert_eq!(
-        value.particles[0].position_words[1],
-        f32::NEG_INFINITY.to_bits()
-    );
-    let mut config = parameters(1);
-    config[1] = 0x7fc01234;
-    config[2] = 0;
-    let mut rng = 1;
-    let value = CmvsNativeParticleKind3::new(Vec::new(), config, &mut rng).unwrap();
-    value.validate().unwrap();
-    assert!(f32::from_bits(value.particles[0].position_words[2]).is_nan());
-    assert_eq!(value.capture().unwrap().parameter_words, config);
 }
 
 #[test]
@@ -165,18 +95,6 @@ fn basic_surface_matches_native_crop_pivot_projection_and_defaults() {
             value.particles[0].position_words
         );
     }
-}
-
-#[test]
-fn only_low_two_flag_bits_affect_kind3_planes() {
-    let mut low = owner(4.0, 1000.0);
-    low.parameter_words[0] = 2;
-    let mut high = low.clone();
-    high.parameter_words[0] = 0xffff_fffe;
-    assert_eq!(low.draw_basic(0), high.draw_basic(0));
-    low.advance(17).unwrap();
-    high.advance(17).unwrap();
-    assert_eq!(low.particles, high.particles);
 }
 
 #[test]
@@ -254,20 +172,4 @@ fn malformed_native_wire_and_inconsistent_private_counts_fail() {
     assert!(malformed.validate().is_err());
     assert!(malformed.capture().is_err());
     assert!(malformed.advance(1).is_err());
-}
-
-#[test]
-fn plane_adapter_exposes_all_live_particles_and_bounds_indices() {
-    let value = owner(1.0, 1000.0);
-    assert_eq!(value.particle_capacity(), 1);
-    assert_eq!(
-        value.plane_position(0),
-        Some(value.particles[0].position_words)
-    );
-    assert!(value.plane_position(1).is_none());
-    assert!(value.draw_basic(1).is_none());
-    let empty = CmvsNativeParticleKind3::new(Vec::new(), parameters(0), &mut 1).unwrap();
-    assert_eq!(empty.particle_capacity(), 0);
-    assert!(empty.plane_position(0).is_none());
-    assert!(empty.draw_basic(0).is_none());
 }

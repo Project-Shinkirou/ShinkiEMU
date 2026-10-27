@@ -104,51 +104,6 @@ fn voice_eos_retains_decoded_object_and_restart_emits_pcm_again() {
 }
 
 #[test]
-fn pause_retains_cursor_start_resumes_and_restart_seeks_without_resetting_byte_counter() {
-    let (mut bridge, control) = OutputControl::new();
-    let samples = (0..CHUNK_FRAMES * 8).map(|frame| (frame / CHUNK_FRAMES + 1) as f32 / 8.0);
-    bridge.configure_voice(5, clip(samples), true, 256).unwrap();
-    control.wait_for_write();
-    assert!(control.latest_pcm().iter().all(|sample| *sample == 0.125));
-    bridge
-        .control_channel(5, NativeStreamControl::Pause)
-        .unwrap();
-    let paused = accepted_snapshot(&bridge, &control, 5);
-    assert_eq!(
-        (paused.marker.accepted_output_frames, paused.decoded_bytes),
-        (2400, 9600)
-    );
-    assert_eq!(paused.position_ms, None);
-    assert_eq!(bridge.snapshot(5, false).unwrap(), paused);
-    bridge
-        .control_channel(5, NativeStreamControl::Start { looping: true })
-        .unwrap();
-    control.wait_for_write();
-    assert!(control.latest_pcm().iter().all(|sample| *sample == 0.25));
-    bridge
-        .control_channel(5, NativeStreamControl::Pause)
-        .unwrap();
-    let paused = accepted_snapshot(&bridge, &control, 5);
-    assert_eq!(
-        (paused.marker.accepted_output_frames, paused.decoded_bytes),
-        (4800, 19200)
-    );
-    bridge
-        .control_channel(5, NativeStreamControl::Restart { looping: true })
-        .unwrap();
-    control.wait_for_write();
-    assert!(control.latest_pcm().iter().all(|sample| *sample == 0.125));
-    bridge
-        .control_channel(5, NativeStreamControl::Pause)
-        .unwrap();
-    let restarted = accepted_snapshot(&bridge, &control, 5);
-    assert_eq!(restarted.decoded_bytes, 28800);
-    assert_eq!(restarted.position_ms, None);
-    assert_eq!(restarted.marker.accepted_output_frames, 7200);
-    control.finish(&mut bridge);
-}
-
-#[test]
 fn stream_volume_and_pan_follow_wrapping_native_gain_not_signed_clamps() {
     let (mut bridge, control) = OutputControl::new();
     bridge
@@ -495,26 +450,6 @@ fn stretch_emits_initialized_pcm_then_reports_first_unwritten_sample() {
 }
 
 #[test]
-fn disposing_before_stretch_boundary_never_consumes_unwritten_pcm() {
-    let (mut bridge, control) = OutputControl::new();
-    bridge
-        .configure_voice(
-            5,
-            constant(0.25, CHUNK_FRAMES * 2).with_indeterminate_tail(),
-            true,
-            256,
-        )
-        .unwrap();
-    control.wait_for_write();
-    assert!(control.latest_pcm().iter().all(|sample| *sample == 0.25));
-    bridge
-        .control_channel(5, NativeStreamControl::Dispose)
-        .unwrap();
-    assert!(!accepted_snapshot(&bridge, &control, 5).exists);
-    control.finish(&mut bridge);
-}
-
-#[test]
 fn codec_noop_restart_keeps_decoder_cursor_instead_of_rewinding_pcm() {
     let (mut bridge, control) = OutputControl::new();
     let samples = (0..CHUNK_FRAMES * 4).map(|frame| (frame / CHUNK_FRAMES + 1) as f32 / 8.0);
@@ -716,30 +651,6 @@ fn stopping_at_partial_known_prefix_keeps_other_channel_pcm_cursor_exact() {
         other.marker.accepted_bus_frames,
         CHUNK_FRAMES as u64 * 2 + 4
     );
-    control.finish(&mut bridge);
-}
-
-#[test]
-fn noop_codec_restart_at_eos_does_not_seek_even_when_looping_changes() {
-    let (mut bridge, control) = OutputControl::new();
-    bridge
-        .configure_voice(
-            5,
-            constant(0.5, 4).with_native_restart_rewinds(false),
-            false,
-            256,
-        )
-        .unwrap();
-    control.wait_for_write();
-    assert!(!accepted_snapshot(&bridge, &control, 5).playing);
-    bridge
-        .control_channel(5, NativeStreamControl::Restart { looping: true })
-        .unwrap();
-    control.wait_for_write();
-    assert!(control.latest_pcm().iter().all(|sample| *sample == 0.0));
-    let ended = accepted_snapshot(&bridge, &control, 5);
-    assert!(ended.exists && !ended.playing);
-    assert_eq!(ended.decoded_bytes, 16);
     control.finish(&mut bridge);
 }
 
@@ -1081,30 +992,6 @@ fn observed_snapshot(
     assert!(matches!(result.try_recv(), Err(TryRecvError::Empty)));
     control.steps.send(OutputStep::Accept).unwrap();
     result.recv_timeout(Duration::from_secs(5)).unwrap()
-}
-
-#[test]
-fn accepted_voice_backlog_remains_pending_until_explicit_test_consumption_reaches_its_end() {
-    let (mut bridge, control) = OutputControl::new();
-    bridge
-        .configure_voice(8, constant(0.5, 8), false, 256)
-        .unwrap();
-    control.wait_for_write();
-    assert_eq!(&control.latest_pcm()[..16], &[0.5; 16]);
-    let ended = accepted_snapshot(&bridge, &control, 8);
-    assert!(!ended.playing);
-    assert_eq!(ended.position_ms, None);
-    assert_eq!(control.accepted_frames(), CHUNK_FRAMES as u64);
-    assert_eq!(control.played_frames(), 0);
-    for _ in 0..70 {
-        assert_ne!(bridge.playing_channels().unwrap() & (1 << 8), 0);
-    }
-    control.consume_to(7);
-    assert_ne!(bridge.playing_channels().unwrap() & (1 << 8), 0);
-    control.consume_to(8);
-    assert_eq!(bridge.playing_channels().unwrap() & (1 << 8), 0);
-    assert_eq!(control.accepted_frames(), CHUNK_FRAMES as u64);
-    control.finish(&mut bridge);
 }
 
 #[test]

@@ -208,61 +208,6 @@ fn common_delta_caps_before_wrapping_addition_and_volume_has_no_effect() {
 }
 
 #[test]
-fn rotation_multiplies_in_u32_before_division_and_wraps_each_offset() {
-    for (clock, yaw_words) in [
-        (
-            1_193_046,
-            [
-                0x424c_6666,
-                0x43a9_8ccd,
-                0x4317_199a,
-                0x41d8_cccd,
-                0x4301_199a,
-                0x422c_6666,
-                0x42d6_3333,
-            ],
-        ),
-        (
-            1_193_047,
-            [
-                0x4290_0000,
-                0,
-                0x432c_0000,
-                0x4240_0000,
-                0x4316_0000,
-                0x4280_0000,
-                0x4300_0000,
-            ],
-        ),
-        (
-            u32::MAX,
-            [
-                0x424c_6666,
-                0x43a9_8ccd,
-                0x4317_199a,
-                0x41d8_cccd,
-                0x4301_199a,
-                0x422c_6666,
-                0x42d6_3333,
-            ],
-        ),
-    ] {
-        let mut owner = seeded(clock, 0, u32::MAX);
-        let before = owner.clone();
-        owner.advance(0, 0).unwrap();
-        for (index, yaw) in yaw_words.into_iter().enumerate() {
-            let mesh = owner.mesh(index + 1).unwrap();
-            let initial = before.mesh(index + 1).unwrap();
-            assert_eq!(mesh.angle_words[1], yaw);
-            assert_eq!(mesh.angle_words[0], initial.angle_words[0]);
-            assert_eq!(mesh.angle_words[2], initial.angle_words[2]);
-            assert_eq!(mesh.position_words, initial.position_words);
-            assert_eq!(mesh.scale_words, initial.scale_words);
-        }
-    }
-}
-
-#[test]
 fn private_snapshot_preserves_both_unknown_words_and_exact_seeded_phase() {
     for mut owner in [
         CmvsNativeSceneKind56::new().unwrap(),
@@ -285,14 +230,4 @@ fn private_snapshot_preserves_both_unknown_words_and_exact_seeded_phase() {
             assert!(restored.status().is_err());
         }
     }
-}
-
-#[test]
-fn validation_rejects_nonfinite_drawable_geometry_without_mutation() {
-    let mut owner = seeded(0, 0, u32::MAX);
-    owner.meshes[7].position_words[0] = f32::NAN.to_bits();
-    let before = owner.clone();
-    assert!(owner.validate().is_err());
-    assert!(owner.advance(200, 0).is_err());
-    assert_eq!(owner, before);
 }

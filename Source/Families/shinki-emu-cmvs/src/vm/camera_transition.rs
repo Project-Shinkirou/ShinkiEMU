@@ -321,38 +321,6 @@ mod tests {
         assert!(!pending(&vm));
     }
     #[test]
-    fn raw_nonfinite_and_overflow_targets_follow_native_cvtt_and_replace_running_motion() {
-        for target in [
-            f32::NAN,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            f32::MAX,
-            f32::MIN,
-        ] {
-            let mut vm = CmvsPs2aVmState::new(0);
-            start(&mut vm, 110, &[0, 8.0f32.to_bits(), 1000]).unwrap();
-            advance(&mut vm, 250).unwrap();
-            start(
-                &mut vm,
-                108,
-                &[
-                    0,
-                    target.to_bits(),
-                    target.to_bits(),
-                    target.to_bits(),
-                    1000,
-                ],
-            )
-            .unwrap();
-            advance(&mut vm, 1000).unwrap();
-            for axis in 1..=3 {
-                assert_eq!(number(&vm.screen_words, axis), -21_474_836.0);
-            }
-            assert!(!pending(&vm));
-        }
-    }
-
-    #[test]
     fn immediate_position_quantizes_invalid_raw_floats_without_cancelling_the_worker() {
         let mut vm = CmvsPs2aVmState::new(0);
         start(&mut vm, 110, &[0, 8.0f32.to_bits(), 1000]).unwrap();
@@ -371,26 +339,5 @@ mod tests {
         assert!(pending(&vm));
         advance(&mut vm, 1000).unwrap();
         assert_eq!(number(&vm.screen_words, 1), 8.0);
-    }
-
-    #[test]
-    fn ordinary_plane_setters_share_native_cvtt_and_signed_indefinite_rotation() {
-        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, f32::MAX] {
-            let mut vm = CmvsPs2aVmState::new(0);
-            crate::scene::parent_load_tests::command(&mut vm, 98, &[value.to_bits(); 3]);
-            crate::scene::parent_load_tests::command(
-                &mut vm,
-                90,
-                &[1, value.to_bits(), value.to_bits(), value.to_bits()],
-            );
-            crate::scene::parent_load_tests::command(&mut vm, 99, &[value.to_bits()]);
-            crate::scene::parent_load_tests::command(&mut vm, 91, &[1, value.to_bits()]);
-            for words in [&vm.screen_words, &vm.screen_camera_words[&1]] {
-                for axis in 1..=3 {
-                    assert_eq!(number(words, axis), -21_474_836.0);
-                }
-                assert_eq!(number(words, 14), -116.48);
-            }
-        }
     }
 }

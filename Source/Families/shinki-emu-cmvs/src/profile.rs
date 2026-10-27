@@ -29,7 +29,7 @@ pub struct CmvsArchiveFile {
 }
 
 pub fn mount_cmvs(game_root: &Path, profile_path: &Path) -> Result<CmvsArchive, CoreError> {
-    let (profile, hash, root) =
+    let (profile, _, root) =
         read_game_profile::<CmvsProfile>(game_root, profile_path, 1024 * 1024)?;
     profile.validate()?;
     let archives = resolve_sources(
@@ -49,16 +49,7 @@ pub fn mount_cmvs(game_root: &Path, profile_path: &Path) -> Result<CmvsArchive, 
             ));
         }
     }
-    let mut archive = CmvsArchive::mount_with_cache(
-        "cmvs.local".into(),
-        "cmvs:/".into(),
-        archives,
-        loose,
-        profile.scheme,
-        hash,
-        hash,
-        None,
-    )?;
+    let mut archive = CmvsArchive::mount("cmvs:/".into(), archives, loose, profile.scheme)?;
     archive.bind_game_root(root)?;
     Ok(archive)
 }

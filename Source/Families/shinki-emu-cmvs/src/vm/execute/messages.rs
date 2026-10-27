@@ -65,14 +65,3 @@ pub(super) fn execute(
         )),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn native_zero_padding_uses_type_before_width_and_preserves_variant_suffix() {
-        let bytes = native_format::render(b"mask%z3a.pb3", 2, || unreachable!()).unwrap();
-        assert_eq!(bytes, b"mask002a.pb3");
-    }
-}

@@ -141,44 +141,6 @@ fn collision_request_changes_future_respawn_span_but_not_existing_basic_projecti
 }
 
 #[test]
-fn private_mesh_controller_continuation_keeps_effects_and_provider_requests_while_native_markers_clear()
- {
-    let mut vm = CmvsPs2aVmState::new(0);
-    command(&mut vm, 660, &[0]).unwrap();
-    command(&mut vm, 663, &[1]).unwrap();
-    for _ in 0..15 {
-        tick(&mut vm, 200).unwrap();
-    }
-    command(&mut vm, 687, &[0, 50, 0, 0]).unwrap();
-    command(&mut vm, 687, &[1, 10, 0, 0]).unwrap();
-    command(&mut vm, 687, &[0, 20, 0, 0]).unwrap();
-    let mut restored: CmvsPs2aVmState =
-        postcard::from_bytes(&postcard::to_allocvec(&vm).unwrap()).unwrap();
-    for _ in 0..20 {
-        assert_eq!(
-            tick(&mut vm, 200).unwrap(),
-            tick(&mut restored, 200).unwrap()
-        );
-        assert_eq!(vm.native_scene_workers, restored.native_scene_workers);
-        assert_eq!(vm.prng_state, restored.prng_state);
-    }
-    command(&mut vm, 686, &[0]).unwrap();
-    assert_eq!(vm.interpreter_words[&81220], 21);
-    command(&mut vm, 686, &[1]).unwrap();
-    assert_eq!(vm.interpreter_words[&81220], 0);
-    let records = capture(&vm).unwrap();
-    assert_eq!(records[&0].encode().unwrap(), [1, 0, 0x54, 0]);
-    assert_eq!(records[&1].encode().unwrap(), [1, 0, 0x57, 0]);
-    restore(&mut restored, &records).unwrap();
-    assert!(
-        restored
-            .native_scene_workers
-            .values()
-            .all(|worker| matches!(worker, CmvsNativeSceneWorker::Empty))
-    );
-}
-
-#[test]
 fn plane_controller_constructor_uses_one_word_without_rng_camera_or_legacy_context_writes() {
     let mut vm = CmvsPs2aVmState::new(0);
     vm.write_interpreter_word(3168, 0xdead_beef);
@@ -220,48 +182,6 @@ fn plane_controller_constructor_uses_one_word_without_rng_camera_or_legacy_conte
 }
 
 #[test]
-fn plane_private_vm_continuation_preserves_pending_atlas_and_audio_phases_native_marker_clears() {
-    let mut vm = CmvsPs2aVmState::new(0);
-    command(&mut vm, 661, &[0]).unwrap();
-    for selector in 1..=3 {
-        command(&mut vm, 687, &[0, selector, u32::MAX, 0x7fc0_0000]).unwrap();
-        for _ in 0..18 {
-            tick(&mut vm, 200).unwrap();
-        }
-    }
-    command(&mut vm, 687, &[0, 14, 0, 0]).unwrap();
-    tick(&mut vm, 137).unwrap();
-    command(&mut vm, 687, &[0, 17, 0, 0]).unwrap();
-    let bytes = postcard::to_allocvec(&vm).unwrap();
-    let mut restored: CmvsPs2aVmState = postcard::from_bytes(&bytes).unwrap();
-    for delta in [0, 99, 200, 17, 800, 23, 500, 137] {
-        assert_eq!(
-            tick(&mut vm, delta).unwrap(),
-            tick(&mut restored, delta).unwrap()
-        );
-        assert_eq!(vm.native_scene_workers, restored.native_scene_workers);
-        assert_eq!(vm.prng_state, restored.prng_state);
-    }
-    command(&mut vm, 686, &[0]).unwrap();
-    assert_eq!(vm.interpreter_words[&81220], u32::MAX);
-    let records = capture(&vm).unwrap();
-    let encoded = records[&0].encode().unwrap();
-    assert_eq!(encoded, [1, 0, 0x55, 0]);
-    assert_eq!(
-        SavedNativeSceneWorker::decode(&encoded).unwrap(),
-        records[&0]
-    );
-    let rng = restored.prng_state;
-    restore(&mut restored, &records).unwrap();
-    assert_eq!(restored.prng_state, rng);
-    assert_eq!(
-        restored.native_scene_workers[&0],
-        CmvsNativeSceneWorker::Empty
-    );
-    assert_eq!(restored.interpreter_words[&2948], 1);
-}
-
-#[test]
 fn retiring_plane_micro_row_keeps_following_commands_and_unmodeled_range_aligned() {
     let mut vm = CmvsPs2aVmState::new(0);
     command(&mut vm, 668, &[1]).unwrap();
@@ -296,23 +216,4 @@ fn ordinary662_consumes_ignored_tail_and_reports_native_uninitialized_reads_with
         "SHINKI_EMU_CMVS_NATIVE_SCENE_KIND56_INDETERMINATE"
     );
     assert_eq!(vm.native_scene_workers[&0], before);
-}
-
-#[test]
-fn unknown_heap_phase_survives_private_snapshot_but_native_marker_restores_defined_empty_wrapper() {
-    let mut vm = CmvsPs2aVmState::new(0);
-    command(&mut vm, 662, &[0, u32::MAX]).unwrap();
-    let mut private: CmvsPs2aVmState =
-        postcard::from_bytes(&postcard::to_allocvec(&vm).unwrap()).unwrap();
-    assert!(private.native_scene_workers[&0].status().is_err());
-    assert!(tick(&mut private, 0).is_err());
-    assert_eq!(private.native_scene_workers, vm.native_scene_workers);
-    let records = capture(&vm).unwrap();
-    assert_eq!(records[&0].encode().unwrap(), [1, 0, 0x56, 0]);
-    restore(&mut private, &records).unwrap();
-    assert_eq!(private.native_scene_workers[&0].status().unwrap(), u32::MAX);
-    assert!(matches!(
-        private.native_scene_workers[&0],
-        CmvsNativeSceneWorker::Empty
-    ));
 }

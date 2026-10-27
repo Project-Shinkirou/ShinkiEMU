@@ -1,106 +1,8 @@
 use super::*;
 
 impl CmvsArchive {
-    pub fn mount_id(&self) -> &str {
-        &self.mount_id
-    }
-
     pub(crate) fn prefix(&self) -> &str {
         &self.prefix
-    }
-
-    pub fn validate_sources(&self) -> Result<(), CoreError> {
-        for archive in &self.archives {
-            archive_hash(archive, true)?;
-        }
-        for source in self.loose.values() {
-            loose_hash(source, true)?;
-        }
-        Ok(())
-    }
-
-    pub fn read_dir(&self, uri: &str) -> Result<Vec<ArchiveNode>, CoreError> {
-        validate_archive_directory_uri(&self.prefix, uri)?;
-        let base = if uri.ends_with('/') {
-            uri.to_owned()
-        } else {
-            format!("{uri}/")
-        };
-        let mut children = BTreeMap::new();
-        if !self.loose.is_empty() {
-            let loose_uri = format!("{}loose", self.prefix);
-            if base == format!("{loose_uri}/") {
-                for role in self.loose.keys() {
-                    children.insert(
-                        role.clone(),
-                        ArchiveNode {
-                            uri: format!("{loose_uri}/{role}"),
-                            name: role.clone(),
-                            kind: ArchiveNodeKind::File,
-                        },
-                    );
-                }
-                return Ok(children.into_values().collect());
-            }
-            if loose_uri.starts_with(&base) {
-                let name = loose_uri[base.len()..]
-                    .split('/')
-                    .next()
-                    .unwrap_or_default();
-                if !name.is_empty() {
-                    children.insert(
-                        name.to_owned(),
-                        ArchiveNode {
-                            uri: format!("{base}{name}"),
-                            name: name.to_owned(),
-                            kind: ArchiveNodeKind::Directory,
-                        },
-                    );
-                }
-            }
-        }
-        for entry_uri in self
-            .entries
-            .keys()
-            .filter(|candidate| candidate.starts_with(&base))
-        {
-            let suffix = &entry_uri[base.len()..];
-            let name = suffix.split('/').next().unwrap_or_default();
-            if name.is_empty() {
-                continue;
-            }
-            children
-                .entry(name.to_owned())
-                .or_insert_with(|| ArchiveNode {
-                    uri: format!("{base}{name}"),
-                    name: name.to_owned(),
-                    kind: if suffix.contains('/') {
-                        ArchiveNodeKind::Directory
-                    } else {
-                        ArchiveNodeKind::File
-                    },
-                });
-        }
-        if children.is_empty() && uri != self.prefix {
-            return Err(invalid(
-                "SHINKI_EMU_VFS_NOT_FOUND",
-                "VFS directory was not found",
-            ));
-        }
-        Ok(children.into_values().collect())
-    }
-
-    /// Resolves a bare resource name the way the original resolves bare
-    /// references: a case-insensitive suffix match against every mounted
-    /// archive, lowest mount ordinal first.
-    pub fn resolve_bare_resource(&self, name: &str) -> Option<String> {
-        let lowered = name.to_ascii_lowercase();
-        let suffix = format!("/{lowered}");
-        self.entries
-            .values()
-            .filter(|entry| entry.uri.to_ascii_lowercase().ends_with(&suffix))
-            .min_by_key(|entry| entry.archive)
-            .map(|entry| entry.uri.clone())
     }
 
     pub fn stat(&self, uri: &str) -> Result<ArchiveStat, CoreError> {
@@ -243,10 +145,5 @@ impl CmvsArchive {
             eof,
             cache_hit,
         })
-    }
-
-    pub fn open_stream(&self, uri: &str) -> Result<Box<dyn ArchiveStream>, CoreError> {
-        let (decoded, _) = self.resource_bytes(uri)?;
-        Ok(Box::new(Cursor::new(decoded)))
     }
 }

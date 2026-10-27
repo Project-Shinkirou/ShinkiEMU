@@ -34,39 +34,6 @@ pub(super) fn read_index(
     Ok((header, index))
 }
 
-pub(super) fn archive_hash(source: &ArchiveFile, recheck: bool) -> Result<Hash256, CoreError> {
-    verify_archive_stamp(source)?;
-    let hash = content_hash(&source.path, &source.source_hash, recheck)?;
-    verify_archive_stamp(source)?;
-    Ok(hash)
-}
-
-pub(super) fn loose_hash(source: &LooseSource, recheck: bool) -> Result<Hash256, CoreError> {
-    verify_loose_stamp(source)?;
-    let hash = content_hash(&source.path, &source.source_hash, recheck)?;
-    verify_loose_stamp(source)?;
-    Ok(hash)
-}
-
-fn content_hash(
-    path: &PathBuf,
-    stored: &OnceLock<Hash256>,
-    recheck: bool,
-) -> Result<Hash256, CoreError> {
-    if !recheck && let Some(hash) = stored.get() {
-        return Ok(*hash);
-    }
-    let hash = hash_file(path)?;
-    let expected = *stored.get_or_init(|| hash);
-    if hash != expected {
-        return Err(invalid(
-            "SHINKI_EMU_CMVS_SOURCE_CHANGED",
-            "CMVS source content changed after identity was established",
-        ));
-    }
-    Ok(hash)
-}
-
 pub(super) fn verify_archive_stamp(archive: &ArchiveFile) -> Result<(), CoreError> {
     let metadata = std::fs::metadata(&archive.path).map_err(|_| {
         invalid(
@@ -109,25 +76,4 @@ pub(super) fn source_stamp(metadata: &std::fs::Metadata) -> Result<SourceStamp, 
             )
         })?,
     })
-}
-
-pub(super) fn hash_file(path: &PathBuf) -> Result<Hash256, CoreError> {
-    let mut source = File::open(path).map_err(|_| {
-        invalid(
-            "SHINKI_EMU_CMVS_SOURCE_IO",
-            "CMVS source could not be opened",
-        )
-    })?;
-    let mut hash = Sha256::new();
-    let mut buffer = vec![0; 1024 * 1024];
-    loop {
-        let count = source
-            .read(&mut buffer)
-            .map_err(|_| invalid("SHINKI_EMU_CMVS_SOURCE_IO", "CMVS source could not be read"))?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    Ok(Hash256::from_sha256(&hash.finalize()))
 }

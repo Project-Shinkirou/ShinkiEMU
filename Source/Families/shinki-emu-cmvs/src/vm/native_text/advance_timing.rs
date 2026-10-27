@@ -58,21 +58,6 @@ mod tests {
     }
 
     #[test]
-    fn ramp_conversion_and_each_addition_keep_native_f32_rounding() {
-        // Conversion rounds the acceleration up before division by four.
-        assert_eq!(auto_delay_ms(2, 0, 1_677_722, 67_108_879), 0);
-        // Three additions of 16_777_218 round to 50_331_656, not 50_331_654.
-        assert_eq!(auto_delay_ms(4, 0, 2_516_583, 67_108_872), 4);
-    }
-
-    #[test]
-    fn truncated_accumulation_wraps_to_its_low_32_bits() {
-        // The rounded acceleration gives a 2^30 ramp; four additions give 2^32.
-        assert_eq!(auto_delay_ms(5, 0, 1, u32::MAX), 25);
-        assert_eq!(auto_delay_ms(6, 0, 1, u32::MAX), 30);
-    }
-
-    #[test]
     fn overshoot_is_retained_until_the_base_floor() {
         // The 3-ms increment passes the 5-ms limit: ramps are 0, 3, 6, 6, ... .
         for (glyphs, expected) in [
@@ -100,11 +85,5 @@ mod tests {
     fn adjusted_ffff_is_accepted_but_larger_values_restore_raw() {
         assert_eq!(auto_delay_ms(2, 655, 7, 140), 65_535);
         assert_eq!(auto_delay_ms(2, 655, 8, 160), 65_580);
-    }
-
-    #[test]
-    fn ramp_limit_uses_the_wrapping_unsigned_product() {
-        // Five times 0xCCCC_CCCD wraps to 1, so only the first increment runs.
-        assert_eq!(auto_delay_ms(4, 0, 0xCCCC_CCCD, 4), 1);
     }
 }

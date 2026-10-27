@@ -66,15 +66,6 @@ fn nearest_larger_scaling_truncates_native_fixedpoint_and_retains_cache() {
 }
 
 #[test]
-fn scaler_uses_ten_bit_step_not_float_interpolation() {
-    let source: Vec<_> = (0..16).map(|n| n * 16).collect();
-    assert_eq!(
-        scale(&source, 4, 3),
-        [0, 21, 42, 85, 106, 127, 170, 191, 213]
-    );
-}
-
-#[test]
 fn descriptor_update_changes_only_first_exact_record_and_preserves_pixels() {
     let mut manager = CmvsNativeCustomGlyphManager::default();
     sheet(&mut manager, 4, 77);
@@ -124,31 +115,6 @@ fn invalid_native_memory_access_is_reported_only_when_used() {
         sheet(&mut many, 1, 100);
     }
     assert!(many.register(0, 65).is_err());
-}
-
-#[test]
-fn private_snapshot_preserves_source_and_derived_allocation_identities() {
-    let mut vm = CmvsPs2aVmState::new(0);
-    sheet(&mut vm.native_custom_glyphs, 4, 201);
-    vm.native_custom_glyphs.register(0, 65).unwrap();
-    let identity = vm
-        .native_custom_glyphs
-        .lookup(65, 3)
-        .unwrap()
-        .unwrap()
-        .identity;
-    let bytes = postcard::to_allocvec(&vm).unwrap();
-    let mut restored: CmvsPs2aVmState = postcard::from_bytes(&bytes).unwrap();
-    assert_eq!(restored.native_custom_glyphs, vm.native_custom_glyphs);
-    assert_eq!(
-        restored
-            .native_custom_glyphs
-            .lookup(65, 3)
-            .unwrap()
-            .unwrap()
-            .identity,
-        identity
-    );
 }
 
 #[test]

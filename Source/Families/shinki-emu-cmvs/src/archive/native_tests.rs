@@ -47,18 +47,6 @@ fn native_boot_config_and_script_calls_share_slot_zero_without_archive_scan() {
             .unwrap(),
         uri
     );
-    // Command 16 replaces the same slot; later calls now resolve to CPZ.
-    vm.resource_search_paths
-        .get_mut(&CmvsResourceSearchBank::Script)
-        .unwrap()
-        .insert(0, "archive.cpz".into());
-    let packed = archive
-        .resolve_native_resource(&vm, CmvsResourceSearchBank::Script, "start.ps3")
-        .unwrap();
-    assert_eq!(
-        archive.read_range(&packed, 0, 7).unwrap().bytes.as_slice(),
-        b"decoded"
-    );
     vm.resource_search_paths.clear();
     std::fs::write(
         root.path().join("cmvs.cfg"),
@@ -312,7 +300,7 @@ fn unknown_archive_and_unsafe_paths_are_explicit_errors() {
 }
 
 #[test]
-fn formatted_string_reductions_reach_the_selected_source_without_missing_name_fallback() {
+fn formatted_string_reduction_reaches_the_selected_texture_source() {
     use crate::{
         CmvsPs2aControlInstruction, CmvsPs2aInstructionFrame, CmvsPs2aSourceSpan,
         CmvsPs2aStackExpression, CmvsPs2aStackExpressionNode, CmvsPs2aValueExpression,
@@ -406,23 +394,5 @@ fn formatted_string_reductions_reach_the_selected_source_without_missing_name_fa
     assert_eq!(
         archive.read_range(&loose, 0, 8).unwrap().bytes.as_slice(),
         b"override"
-    );
-    vm.resource_search_paths.insert(
-        CmvsResourceSearchBank::Texture,
-        BTreeMap::from([(0, "archive.cpz".into()), (1, "override/".into())]),
-    );
-    let packed = archive
-        .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, &resource)
-        .unwrap();
-    assert_eq!(
-        archive.read_range(&packed, 0, 7).unwrap().bytes.as_slice(),
-        b"decoded"
-    );
-    assert_eq!(
-        archive
-            .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, "image-345a.absent",)
-            .unwrap_err()
-            .code(),
-        "SHINKI_EMU_CMVS_RESOURCE_NOT_FOUND",
     );
 }

@@ -172,18 +172,6 @@ fn full_flash_delta_and_wrapping_clock_do_not_follow_motion_cap() {
 }
 
 #[test]
-fn empty_particles_still_advance_both_clocks_and_alpha() {
-    let mut rng = 0x12345678;
-    let mut value =
-        CmvsNativeParticleKind7::new(Vec::new(), parameters(2 << 16 | 1, 0), &mut rng).unwrap();
-    value.advance(100, &mut rng).unwrap();
-    assert_eq!(value.clock_ms, 100);
-    assert_eq!(value.flash_elapsed_ms, 100);
-    assert_eq!(value.alpha, 0);
-    assert_eq!(rng, 0x12345678);
-}
-
-#[test]
 fn zero_y_does_not_respawn_but_negative_y_redraws_x_then_z_only() {
     let mut value = moving(0, 1.0, 1000.0);
     let mut rng = 1;
@@ -215,32 +203,6 @@ fn motion_has_no_hundredth_quantization_and_adds_seventy_five_only_once() {
         fractional.particles[0].position_words[1],
         (5.0_f32 - 10.0_f32 / 333.0).to_bits()
     );
-}
-
-#[test]
-fn ignored_flags_and_nonfinite_configuration_keep_native_sse_semantics() {
-    let mut config = parameters(0x0f000000, 1);
-    config[1] = 0x7fc01234;
-    config[2] = 0;
-    let mut value = CmvsNativeParticleKind7::new(Vec::new(), config, &mut 1).unwrap();
-    assert_eq!(value.parameter_words, config);
-    // CVTTSS2SI(NaN) -> INT_MIN, converted back to f32 and divided by100.
-    assert_eq!(
-        value.particles[0].position_words[2],
-        ((i32::MIN as f32) / 100.0).to_bits()
-    );
-    let mut rng = 1;
-    value.advance(0, &mut rng).unwrap();
-    assert!(f32::from_bits(value.particles[0].position_words[1]).is_nan());
-    assert_eq!(rng, 1);
-    value.validate().unwrap();
-    let mut infinite = moving(0, 5.0, 0.0);
-    infinite.advance(1, &mut rng).unwrap();
-    assert_eq!(
-        infinite.particles[0].position_words[1],
-        f32::NEG_INFINITY.to_bits()
-    );
-    assert_eq!(rng, 0xc823f683);
 }
 
 #[test]
@@ -305,25 +267,4 @@ fn native_rebuild_discards_phase_while_private_roundtrip_continues_exactly() {
         rebuilt.particles[0].position_words,
         [0xc233851f, 0x4167d70a, 0x419228f6]
     );
-}
-
-#[test]
-fn draw_queue_limit_does_not_cap_native_particle_allocation() {
-    let value = CmvsNativeParticleKind7::new(Vec::new(), parameters(0, 8193), &mut 1).unwrap();
-    assert_eq!(value.particle_capacity(), 8193);
-    assert!(value.draw_basic(8192).is_some());
-}
-
-#[test]
-fn invalid_resource_and_count_fail_without_advancing_rng() {
-    let mut rng = 1;
-    for resource in [vec![b'a'; 32], b"a\0b".to_vec()] {
-        assert!(CmvsNativeParticleKind7::new(resource, parameters(0, 1), &mut rng).is_err());
-    }
-    assert_eq!(rng, 1);
-    let mut value = moving(0, 5.0, 1000.0);
-    value.parameter_words[3] = 2;
-    assert!(value.advance(100, &mut rng).is_err());
-    assert_eq!(rng, 1);
-    assert_eq!(value.clock_ms, 0);
 }

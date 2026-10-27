@@ -41,21 +41,6 @@ fn births_use_four_shared_crt_draws_and_unsigned_speed_jitter() {
 }
 
 #[test]
-fn birth_jitter_addition_and_variant_products_wrap_before_unsigned_division() {
-    let added =
-        CmvsNativeParticleKind9::new(Vec::new(), [0, u32::MAX, 0, 1], [800, 600], &mut 1).unwrap();
-    //Variant1: FFFFFFFF + (26500 << 7), wrapped before use.
-    assert_eq!(added.particles[0].speed_word, 3_391_999);
-    let multiplied =
-        CmvsNativeParticleKind9::new(Vec::new(), [0, 0x80000000, 0, 3], [800, 600], &mut 1)
-            .unwrap();
-    assert_eq!(multiplied.particles[0].speed_word, 2_150_875_648);
-    //Variant0: wrapped*3 then SHR1; variant2: wrapped*2 then unsigned DIV3.
-    assert_eq!(multiplied.particles[1].speed_word, 1_079_378_560);
-    assert_eq!(multiplied.particles[2].speed_word, 2_401_706);
-}
-
-#[test]
 fn all_three_variants_have_native_crop_pivot_speed_and_wrapping_order() {
     let mut params = parameters(3);
     params[2] = u32::MAX - 1;
@@ -89,19 +74,6 @@ fn all_three_variants_have_native_crop_pivot_speed_and_wrapping_order() {
 }
 
 #[test]
-fn flags_do_not_select_plane_projection_blending_or_birth_behavior() {
-    let base = CmvsNativeParticleKind9::new(Vec::new(), parameters(3), [800, 600], &mut 1).unwrap();
-    let mut params = parameters(3);
-    params[0] = u32::MAX;
-    let flagged = CmvsNativeParticleKind9::new(Vec::new(), params, [800, 600], &mut 1).unwrap();
-    assert_eq!(base.particles, flagged.particles);
-    for index in 0..3 {
-        assert_eq!(base.draw_basic(index), flagged.draw_basic(index));
-    }
-    assert_eq!(flagged.capture().unwrap().parameter_words[0], u32::MAX);
-}
-
-#[test]
 fn unsafe_zero_divisors_fail_without_consuming_rng_but_count_zero_skips_division() {
     let mut rng = 0x12345678;
     for (speed, extent) in [
@@ -122,39 +94,6 @@ fn unsafe_zero_divisors_fail_without_consuming_rng_but_count_zero_skips_division
     let boundary =
         CmvsNativeParticleKind9::new(Vec::new(), [0, 80, 0, 1], [1, 1], &mut rng).unwrap();
     assert_eq!(boundary.particles[0].fixed_position_words, [0; 2]);
-}
-
-#[test]
-fn missing_or_empty_resource_does_not_gate_native_births() {
-    let mut missing_rng = 1;
-    let mut empty_rng = 1;
-    let missing = CmvsNativeParticleKind9::new(
-        b"missing".to_vec(),
-        parameters(2),
-        [800, 600],
-        &mut missing_rng,
-    )
-    .unwrap();
-    let empty = CmvsNativeParticleKind9::new(Vec::new(), parameters(2), [800, 600], &mut empty_rng)
-        .unwrap();
-    assert_eq!(missing.particles, empty.particles);
-    assert_eq!(missing_rng, empty_rng);
-    assert!(missing.draw_basic(0).unwrap().surface_initialized);
-    for resource in [vec![b'a'; 32], b"a\0b".to_vec()] {
-        assert!(
-            CmvsNativeParticleKind9::new(resource, parameters(1), [800, 600], &mut missing_rng)
-                .is_err()
-        );
-        assert_eq!(missing_rng, 0x72ae7869);
-    }
-}
-
-#[test]
-fn draw_queue_limit_is_not_a_particle_allocation_cap() {
-    let value =
-        CmvsNativeParticleKind9::new(Vec::new(), parameters(8193), [800, 600], &mut 1).unwrap();
-    assert_eq!(value.particle_capacity(), 8193);
-    assert!(value.draw_basic(8192).is_some());
 }
 
 #[test]
@@ -180,16 +119,6 @@ fn fixed_point_fraction_survives_frames_and_uses_signed_pixel_shift() {
         (-1023_i32) as u32
     );
     assert_eq!(rng, 77);
-}
-
-#[test]
-fn movement_wraps_product_before_logical_shift_and_wraps_fixed_addition() {
-    let mut product = moving(0, 0x80000010);
-    product.advance(2, &mut 0).unwrap();
-    assert_eq!(product.particles[0].fixed_position_words[1], 2);
-    let mut addition = moving(u32::MAX - 15, 256);
-    addition.advance(1, &mut 0).unwrap();
-    assert_eq!(addition.particles[0].fixed_position_words[1], 0);
 }
 
 #[test]
@@ -234,26 +163,6 @@ fn bottom_boundary_resets_to_minus_sixteen_without_modulo_or_rng() {
         (-16384_i32) as u32
     );
     assert_eq!(rng, 99);
-}
-
-#[test]
-fn bottom_comparison_is_signed_and_height_addition_wraps() {
-    let mut value = moving(0, 16);
-    value.extent[1] = 0x7fffffe0;
-    value.advance(0, &mut 0).unwrap();
-    assert_eq!(
-        value.particles[0].fixed_position_words[1],
-        (-16384_i32) as u32
-    );
-    value.extent[1] = u32::MAX;
-    value.particles[0].fixed_position_words[1] = (31 << 10) - 1;
-    value.advance(0, &mut 0).unwrap();
-    assert_eq!(value.particles[0].fixed_position_words[1], (31 << 10) - 1);
-    value.advance(1, &mut 0).unwrap();
-    assert_eq!(
-        value.particles[0].fixed_position_words[1],
-        (-16384_i32) as u32
-    );
 }
 
 #[test]

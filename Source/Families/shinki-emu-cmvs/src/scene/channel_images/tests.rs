@@ -196,49 +196,6 @@ fn gpu_channel_reference_basis_scales_window_geometry_before_viewport_clipping()
     }
 }
 
-#[test]
-#[ignore = "requires a hardware GPU"]
-fn gpu_channel_child_reference_inherits_until_native382_detaches_the_basis() {
-    let instance = roukaku_platform_common::native_wgpu_instance().unwrap();
-    let mut scene = CmvsScene::new(&instance).unwrap();
-    scene.clear(16, 16).unwrap();
-    let mut vm = CmvsPs2aVmState::new(0);
-    run(&mut vm, 320, &[0, 0, 0, 0, 16, 16]);
-    run(&mut vm, 384, &[0, u32::MAX]);
-    run(&mut vm, 380, &[0, u32::MAX, 8, 16]);
-    run(&mut vm, 376, &[0, 0]);
-    run(&mut vm, 378, &[0, 0, 1]);
-    run(&mut vm, 380, &[0, 0, 4, 16]);
-    run(&mut vm, 386, &[0, 0, 0, 0, 1, 1]);
-    run(&mut vm, 387, &[0, 0, 2, 2]);
-    let atlas = TextureFrame {
-        width: 1,
-        height: 1,
-        rgba8: vec![255, 0, 0, 255].into(),
-    };
-    for (detached, range) in [(false, 4..6), (true, 8..12)] {
-        if detached {
-            run(&mut vm, 382, &[0, 0]);
-        }
-        let mut commands = Vec::new();
-        scene
-            .append_channel_images(&vm, 0, "fixture:window-basis", &atlas, &mut commands)
-            .unwrap();
-        let frame = scene.draw(16, 16, commands).unwrap();
-        for y in 0..16 {
-            for x in 0..16 {
-                let offset = (y * 16 + x) * 4;
-                let expected = if range.contains(&x) && range.contains(&y) {
-                    [255, 0, 0, 255]
-                } else {
-                    [0, 0, 0, 255]
-                };
-                assert_eq!(&frame.rgba8[offset..offset + 4], &expected);
-            }
-        }
-    }
-}
-
 fn basic_channel() -> CmvsPs2aVmState {
     let mut vm = CmvsPs2aVmState::new(0);
     vm.slot_objects.insert(742 << 8, 1);

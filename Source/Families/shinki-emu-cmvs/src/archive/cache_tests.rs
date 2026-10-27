@@ -5,22 +5,17 @@ pub(crate) fn fixture() -> (tempfile::TempDir, CmvsArchive) {
     let path = root.path().join("archive.cpz");
     std::fs::write(&path, b"fixture source").unwrap();
     let metadata = std::fs::metadata(&path).unwrap();
-    let hash = Hash256::from_sha256(b"fixture");
     let bytes = OwnedByteBuffer::from(b"decoded bytes".to_vec());
     let uri = "cmvs:/test.bin";
     // Prepopulate only the decoded-entry cache. This test exercises storage
     // ownership and source invalidation, not CPZ decryption or mounting.
     let archive = CmvsArchive {
         game_root: None,
-        mount_id: "test".into(),
         prefix: "cmvs:/".into(),
-        mount_profile_hash: hash,
         archives: vec![ArchiveFile {
             role: "test".into(),
             path: path.clone(),
-            byte_size: metadata.len(),
             source_stamp: source_stamp(&metadata).unwrap(),
-            source_hash: OnceLock::new(),
             header: CmvsCpzHeader {
                 version: CmvsCpzVersion::Cpz5,
                 directory_count: 0,
@@ -68,8 +63,6 @@ pub(crate) fn fixture() -> (tempfile::TempDir, CmvsArchive) {
             index_subtrahend: 0,
             dir_key_addend: vec![0; 4],
         },
-        private_profile_hash: hash,
-        cache: None,
         ephemeral_entry: Mutex::new(Some(("test-0".into(), bytes))),
     };
     (root, archive)
@@ -95,7 +88,6 @@ fn cached_ranges_share_storage_and_survive_cache_release() {
     assert_eq!(second.bytes.as_ptr(), pointer.wrapping_add(8));
     assert!(!first.eof);
     assert!(second.eof);
-    let mut stream = archive.open_stream(uri).unwrap();
     // Source changes still invalidate cached reads.
     std::fs::write(&path, b"changed").unwrap();
     assert_eq!(
@@ -106,54 +98,4 @@ fn cached_ranges_share_storage_and_survive_cache_release() {
     drop(archive);
     assert_eq!(first.bytes.as_slice(), b"decoded");
     assert_eq!(second.bytes.as_slice(), b"bytes");
-    let mut copied = Vec::new();
-    stream.read_to_end(&mut copied).unwrap();
-    assert_eq!(copied, b"decoded bytes");
-}
-
-#[test]
-fn playback_defers_content_identity_until_manifest_is_requested() {
-    let (_root, archive) = fixture();
-    assert!(archive.archives[0].source_hash.get().is_none());
-    archive.read_range("cmvs:/test.bin", 0, 3).unwrap();
-    assert!(archive.archives[0].source_hash.get().is_none());
-    let manifest = archive.manifest().unwrap();
-    let expected = hash_file(&archive.archives[0].path).unwrap();
-    assert_eq!(manifest.sources[0].source_revision, expected);
-    assert_eq!(manifest.entries[0].source_revision, expected);
-    assert_eq!(archive.archives[0].source_hash.get(), Some(&expected));
-    assert_eq!(archive.manifest().unwrap(), manifest);
-}
-
-#[test]
-fn explicit_validation_detects_payload_changes_even_with_preserved_revision() {
-    let (_root, archive) = fixture();
-    archive.manifest().unwrap();
-    let source = &archive.archives[0];
-    std::fs::write(&source.path, b"modified bytes").unwrap();
-    File::options()
-        .write(true)
-        .open(&source.path)
-        .unwrap()
-        .set_times(std::fs::FileTimes::new().set_modified(source.source_stamp.modified))
-        .unwrap();
-    assert_eq!(
-        archive.validate_sources().unwrap_err().code(),
-        "SHINKI_EMU_CMVS_SOURCE_CHANGED"
-    );
-}
-
-#[test]
-fn malformed_source_is_rejected_before_content_hashing() {
-    let (_root, archive) = fixture();
-    let result = CmvsArchive::mount(
-        "test".into(),
-        "cmvs:/".into(),
-        vec![("test".into(), archive.archives[0].path.clone())],
-        archive.scheme.clone(),
-        archive.private_profile_hash,
-        archive.mount_profile_hash,
-    );
-    assert!(result.is_err());
-    assert!(archive.archives[0].source_hash.get().is_none());
 }

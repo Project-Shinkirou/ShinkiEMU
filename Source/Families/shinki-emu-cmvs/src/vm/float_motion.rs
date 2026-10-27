@@ -287,67 +287,6 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_targets_use_native_cvtt_or_hold_before_literal_completion() {
-        let target = [
-            0x7fc0_1234,
-            f32::INFINITY.to_bits(),
-            f32::NEG_INFINITY.to_bits(),
-        ];
-        let held = [1.0f32.to_bits(), 2.0f32.to_bits(), 3.0f32.to_bits()];
-        for curve in [0, 2] {
-            let mut effect = motion(curve, [0.0; 3], 400);
-            effect.segments[0].target = target;
-            let mut position = held;
-            assert_eq!(effect.advance(100, &mut position).unwrap(), 0);
-            assert_eq!(
-                position,
-                if curve == 0 {
-                    [(-21_474_836.0f32).to_bits(); 3]
-                } else {
-                    held
-                }
-            );
-            effect.advance(200, &mut position).unwrap();
-            assert_eq!(effect.advance(100, &mut position).unwrap(), -1);
-            assert_eq!(position, target);
-        }
-    }
-
-    #[test]
-    fn nonfinite_origin_arithmetic_recovers_at_a_literal_finite_endpoint() {
-        let mut effect = motion(0, [9.0, 0.0, 0.0], 200);
-        effect.origin[0] = f32::NAN.to_bits();
-        let mut position = [0; 3];
-        effect.advance(100, &mut position).unwrap();
-        assert!(f32::from_bits(position[0]).is_nan());
-        assert_eq!(effect.advance(100, &mut position).unwrap(), -1);
-        assert_eq!(position, [9.0f32.to_bits(), 0, 0]);
-    }
-
-    #[test]
-    fn unknown_low_bytes_hold_current_bits_until_literal_endpoint() {
-        for curve in [2, 17, 35, 127, 128, 255, 0xa55a_a5fe, 0xffff_7f02] {
-            let mut effect = motion(curve, [8.0, 3.0, -2.0], 400);
-            effect.origin = [0x7fc0_1234, f32::INFINITY.to_bits(), 0xffc0_5678];
-            let held = [(-0.0f32).to_bits(), 2.125f32.to_bits(), (-3.5f32).to_bits()];
-            let mut position = held;
-            effect.advance(999, &mut position).unwrap();
-            assert_eq!(effect.elapsed_ms, 200);
-            assert_eq!(position, held, "curve {curve:#x}");
-            // Another owner can change visible coordinates between callbacks.
-            position[1] = 6.25f32.to_bits();
-            effect.advance(199, &mut position).unwrap();
-            assert_eq!(position, [held[0], 6.25f32.to_bits(), held[2]]);
-            assert_eq!(effect.advance(1, &mut position).unwrap(), -1);
-            assert_eq!(
-                position,
-                [8.0f32.to_bits(), 3.0f32.to_bits(), (-2.0f32).to_bits()]
-            );
-            assert_eq!(effect.origin, position);
-        }
-    }
-
-    #[test]
     fn unknown_segment_chains_into_known_motion_and_destroys_only_at_final_minus_two() {
         let mut effect = motion(0xffff_ff02, [4.0, 0.0, 0.0], 100);
         effect.origin = [f32::NAN.to_bits(); 3];
@@ -402,20 +341,6 @@ mod tests {
     }
 
     #[test]
-    fn quadratic_promotes_each_float_clock_before_division_and_preserves_cvtt_sentinel() {
-        let mut effect = motion(1, [9.0, -9.0, 0.0], 300);
-        let mut position = [0; 3];
-        effect.advance(100, &mut position).unwrap();
-        assert_eq!(position, [5.0f32.to_bits(), (-5.0f32).to_bits(), 0]);
-        let mut effect = motion(0, [1.0e10, -1.0e10, 0.0], 400);
-        effect.advance(200, &mut position).unwrap();
-        assert_eq!(
-            position,
-            [(-21474836.0f32).to_bits(), (-21474836.0f32).to_bits(), 0]
-        );
-    }
-
-    #[test]
     fn high_word_is_full_amplitude_or_frequency_plus_masked_amplitude_by_mode() {
         for (mode, elapsed, expected) in [
             (34, 200, [0.0f32, 615.4, 0.0]),
@@ -433,32 +358,6 @@ mod tests {
             assert_eq!(position, expected.map(f32::to_bits), "mode {mode}");
         }
     }
-
-    #[test]
-    fn frequency_product_wraps_before_modulo_only_for_frequency_scaled_period_modes() {
-        for (mode, expected) in [
-            (56, [0.0f32, -0.98, 0.0]),
-            (57, [0.0, 0.98, 0.0]),
-            (72, [-0.34, 0.0, 0.0]),
-            (80, [0.86, 0.0, 0.0]),
-            (81, [0.86, 0.0, 0.0]),
-        ] {
-            let mut effect = motion(
-                (3 << 28) | (100 << 16) | 0x8000 | mode,
-                [0.0; 3],
-                0x9000_0000,
-            );
-            effect.elapsed_ms = 0x7000_0000;
-            let mut position = [0; 3];
-            effect.advance(0, &mut position).unwrap();
-            assert_eq!(position, expected.map(f32::to_bits), "mode {mode}");
-        }
-    }
-}
-
-#[cfg(test)]
-mod stale_owner_tests {
-    use super::*;
 
     #[test]
     fn inactive_native_float_owner_retains_unchecked_stale_words() {

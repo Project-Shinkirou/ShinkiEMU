@@ -46,23 +46,47 @@ fn window_input(session: abi::Session, suspended: bool) {
         abi::OK
     );
 }
+/// Host window stand-in: applies each requested fullscreen mode and records it.
+unsafe extern "C" fn apply_window(
+    context: *mut std::ffi::c_void,
+    request: *const abi::WindowRequest,
+    result: *mut abi::WindowResult,
+    _: *mut abi::Error,
+) -> abi::Status {
+    let applied = unsafe { &*context.cast::<std::sync::Mutex<Vec<(u32, u32)>>>() };
+    let (request, result) = unsafe { (&*request, &mut *result) };
+    applied.lock().unwrap().push((request.kind, request.flags));
+    if request.kind == abi::WINDOW_FULLSCREEN {
+        result.valid_fields = abi::WINDOW_RESULT_MODE;
+        result.fullscreen = request.flags;
+    }
+    abi::OK
+}
 
 #[test]
 fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     let _single = crate::family::TEST_SESSION_LOCK.lock();
+    // The worker thread owns a clone, so the host context outlives every request.
+    let applied = Arc::new(std::sync::Mutex::new(Vec::<(u32, u32)>::new()));
+    let worker_applied = applied.clone();
     let services = Arc::new(shinki_emu_sdk::native::ServiceContext {
         session: 73,
         epoch: std::sync::atomic::AtomicU64::new(1),
         cancelled: AtomicBool::new(false),
         waiting: AtomicBool::new(false),
         text: None,
-        window: None,
+        window: Some(abi::WindowService {
+            context: Arc::as_ptr(&applied).cast_mut().cast(),
+            request: Some(apply_window),
+            invalidate: None,
+        }),
         host_cancel: None,
     });
     let worker_services = services.clone();
     let (commands, rx) = sync_channel(64);
     let (ready, opened) = sync_channel(1);
     let worker = std::thread::spawn(move || {
+        let _applied = worker_applied;
         let (_root, session) = crate::session::tests::fixture();
         worker::serve(session, true, worker_services, rx, &ready)
     });
@@ -81,7 +105,21 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     let retained = pull(session);
     let original_pixels = retained.pixels().to_vec();
     window_input(session, false);
+    // The configured startup mode (no cmvs.cfg WINDOW_MODE = fullscreen)
+    // reaches the host from the first scheduler advance.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while applied.lock().unwrap().is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "startup mode never reached the host"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
     wait_state(session, abi::SESSION_RUNNING);
+    assert_eq!(
+        applied.lock().unwrap().as_slice(),
+        [(abi::WINDOW_FULLSCREEN, abi::FULLSCREEN_BORDERLESS)]
+    );
     std::thread::sleep(Duration::from_millis(40));
     window_input(session, true);
     wait_state(session, abi::SESSION_PAUSED);

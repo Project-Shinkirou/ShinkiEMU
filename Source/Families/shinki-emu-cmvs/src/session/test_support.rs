@@ -48,7 +48,28 @@ pub(super) fn write_program(root: &Path, name: &str, last_word: u16) {
     std::fs::write(root.join(name), source).unwrap();
 }
 
-pub(super) fn open(root: &Path, archive: Arc<CmvsArchive>) -> CmvsSession {
+/// The CMVS lease admits one live session per process, so a fixture session
+/// holds the test lock until it drops; the session field drops first.
+pub(super) struct TestSession {
+    session: CmvsSession,
+    _single: parking_lot::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for TestSession {
+    type Target = CmvsSession;
+    fn deref(&self) -> &CmvsSession {
+        &self.session
+    }
+}
+
+impl std::ops::DerefMut for TestSession {
+    fn deref_mut(&mut self) -> &mut CmvsSession {
+        &mut self.session
+    }
+}
+
+pub(super) fn open(root: &Path, archive: Arc<CmvsArchive>) -> TestSession {
+    let single = crate::family::TEST_SESSION_LOCK.lock();
     let mut session = CmvsSession::new_with_audio(
         archive,
         root.to_path_buf(),
@@ -68,7 +89,10 @@ pub(super) fn open(root: &Path, archive: Arc<CmvsArchive>) -> CmvsSession {
         CmvsResourceSearchBank::Texture,
         BTreeMap::from([(0, String::new())]),
     );
-    session
+    TestSession {
+        session,
+        _single: single,
+    }
 }
 
 pub(super) fn command(session: &mut CmvsSession, id: u16, words: &[u32]) {

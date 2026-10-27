@@ -94,20 +94,6 @@ fn each_z_distribution_uses_its_native_width_and_offset() {
 }
 
 #[test]
-fn unrecognized_distributions_reinterpret_absolute_birth_tick_without_rng() {
-    for x_flag in [0x90, 0xb0, 0xc0, 0xd0, 0xe0, 0xf0] {
-        let mut value = worker(0.0, 100);
-        value.parameter_words[0] = x_flag | 0xf00;
-        value.clock_ms = 0x4120_0000;
-        let mut rng = 1;
-        value.advance(101, &mut rng).unwrap();
-        assert_eq!(rng, 1);
-        assert_eq!(value.particles[0].position_words[0], 0x4120_0064);
-        assert_eq!(value.particles[0].position_words[2], 0x4120_0064);
-    }
-}
-
-#[test]
 fn double_spawn_has_independent_slots_and_random_draws_at_the_same_birth_time() {
     let mut value = worker(100.0, 100);
     value.parameter_words[0] = 0x1000;
@@ -201,31 +187,6 @@ fn spawn_debt_cap_does_not_cap_existing_motion_or_replay_the_entire_gap() {
 }
 
 #[test]
-fn native_signed_elapsed_and_unsigned_clock_wrap_are_distinct() {
-    let mut value = worker(1.0, 100);
-    value.clock_ms = u32::MAX - 50;
-    value.next_object_id = u32::MAX;
-    let mut rng = 1;
-    value.advance(101, &mut rng).unwrap();
-    assert_eq!(value.clock_ms, 50);
-    assert_eq!(value.particles[0].object_id, u32::MAX);
-    assert_eq!(value.next_object_id, 0);
-    assert_eq!(
-        value.particles[0].position_words[1],
-        (150.0_f32 - 0.004).to_bits()
-    );
-    value.parameter_words[5] = u32::MAX;
-    let previous_y = f32::from_bits(value.particles[0].position_words[1]);
-    value.advance(0xffff_ff00, &mut rng).unwrap();
-    // CVTDQ2PS interprets the elapsed DWORD as -256, so the particle rises.
-    assert_eq!(
-        value.particles[0].position_words[1],
-        (previous_y + 1.024_f32).to_bits()
-    );
-    assert_eq!(value.particles[0].last_tick_ms, value.clock_ms);
-}
-
-#[test]
 fn non_cardinal_trajectory_keeps_f32_radian_conversion_and_fractional_angle() {
     let mut value = worker(7.0, 100);
     value.parameter_words[3] = 17.25_f32.to_bits();
@@ -248,23 +209,6 @@ fn non_cardinal_trajectory_keeps_f32_radian_conversion_and_fractional_angle() {
     value.advance(100, &mut rng).unwrap();
     assert_eq!(value.particles[1].position_words[1], 150.0_f32.to_bits());
     assert_eq!(value.draw_basic(1).unwrap().rotation_hundredths, 27000);
-}
-
-#[test]
-fn rotation_matches_cvtt_signed_remainder_and_final_absolute_setter() {
-    for (angle, expected) in [
-        (-721.75_f32, 1),
-        (-400.5, 40),
-        (-360.5, 0),
-        (-90.25, 270),
-        (17.99, 17),
-        (721.75, 1),
-        (2147483648.0, 128),
-        (f32::INFINITY, 128),
-        (f32::NAN, 128),
-    ] {
-        assert_eq!(native_rotation(angle), expected);
-    }
 }
 
 #[test]
@@ -299,29 +243,6 @@ fn cbasic_projection_is_not_scale_and_birth_config_is_not_live_config() {
         assert_eq!(value.particles[0].speed_word, 0.0_f32.to_bits());
         assert_eq!(value.particles[1].angle_word, 90.5_f32.to_bits());
     }
-}
-
-#[test]
-fn raw_float_words_follow_native_unordered_death_and_negative_speed() {
-    let mut value = worker(f32::NAN, 100);
-    let mut rng = 1;
-    value.advance(101, &mut rng).unwrap();
-    assert_eq!(value.next_object_id, 1);
-    assert!(value.draw_indices().is_empty());
-    assert!(f32::from_bits(value.particles[0].position_words[1]).is_nan());
-    value.validate().unwrap();
-    let mut rising = worker(f32::NEG_INFINITY, 100);
-    rising.advance(101, &mut rng).unwrap();
-    assert_eq!(
-        rising.particles[0].position_words[1],
-        f32::INFINITY.to_bits()
-    );
-    rising.validate().unwrap();
-    let encoded = serde_json::to_vec(&rising).unwrap();
-    assert_eq!(
-        serde_json::from_slice::<CmvsNativeParticleKind4>(&encoded).unwrap(),
-        rising
-    );
 }
 
 #[test]

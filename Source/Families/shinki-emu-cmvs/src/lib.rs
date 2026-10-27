@@ -25,16 +25,10 @@ pub use ps2a::*;
 pub use scheme::*;
 pub use system_save::*;
 
-pub const CMVS_FAMILY_ID: &str = "cmvs";
-pub const CMVS_READER_ID: &str = "shinki.emu.cmvs.reader.v1";
-pub const CMVS_DECRYPT_PROVIDER_ID: &str = "shinki.emu.cmvs.cpz.decrypt.v1";
-
 mod command;
 mod vm;
 pub use command::*;
 pub use vm::*;
-
-pub const CMVS_DECRYPT_DESCRIPTOR_SCHEMA: &str = "shinki.emu.cmvs.cpz5_descriptor.v1";
 
 mod family;
 mod native;

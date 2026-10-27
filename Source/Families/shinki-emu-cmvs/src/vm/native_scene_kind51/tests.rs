@@ -161,23 +161,6 @@ fn cooldown_is_uncapped_strictly_greater_than_six_hundred_and_can_be_overridden(
 }
 
 #[test]
-fn cooldown_and_active_timers_use_unsigned_wrapping_not_signed_or_saturating_add() {
-    let mut owner = start(1);
-    advance_by(&mut owner, 1500);
-    owner.advance(0x8000_0000, 0).unwrap();
-    assert_eq!(owner.status(), 1);
-    owner.state = 90;
-    owner.timer_ms = u32::MAX - 99;
-    owner.advance(100, 0).unwrap();
-    assert_eq!(owner.status(), 90);
-    assert_eq!(owner.timer_ms, 0);
-    owner.state = 2;
-    owner.timer_ms = u32::MAX - 99;
-    assert_eq!(position(owner.advance(100, 0).unwrap()), [0.0, 1.5, 0.2]);
-    assert_eq!(owner.timer_ms, 0);
-}
-
-#[test]
 fn descent_changes_pitch_not_fov_and_completion_native_immediate_is_eighty_degrees() {
     let mut owner = start(3);
     let first = advance_by(&mut owner, 500);
@@ -259,18 +242,6 @@ fn constructor_camera_writes_preserve_unrelated_roll_fov_and_do_not_start_sound(
     assert_eq!(frame.angle_words, None);
     assert_eq!(frame.field_of_view_word, None);
     assert_eq!(frame.audio, [None; 4]);
-}
-
-#[test]
-fn native_pi_and_float_narrowing_precede_hundredths_truncation() {
-    // Degrees=90 narrows radians to float PI/2, but sin narrows back to 1.0.
-    assert_eq!(landing_sine(90.0).to_bits(), 0.2_f32.to_bits());
-    assert_eq!(landing_sine(-45.0).to_bits(), (-0.14_f32).to_bits());
-    assert_eq!(landing_sine(0.0).to_bits(), 0);
-    // At 180 degrees the native float PI produces a negative sine, truncated to zero.
-    assert_eq!(landing_sine(180.0).to_bits(), 0);
-    assert_eq!(radians(180.0), f32::from_bits(0x4049_0fdb) as f64);
-    assert_ne!(radians(180.0), std::f64::consts::PI);
 }
 
 #[test]

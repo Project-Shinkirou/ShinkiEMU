@@ -145,21 +145,15 @@ impl CmvsArchive {
         })
     }
 
-    pub(super) fn resource_bytes(&self, uri: &str) -> Result<(OwnedByteBuffer, bool), CoreError> {
+    pub(super) fn resource_bytes(&self, uri: &str) -> Result<OwnedByteBuffer, CoreError> {
         if let Some(path) = self.native_file(uri)? {
-            return Ok((
-                read_native_range(&path, 0, native_size(&path)?)?.into(),
-                false,
-            ));
+            return Ok(read_native_range(&path, 0, native_size(&path)?)?.into());
         }
         if let Some(role) = self.loose_role_from_uri(uri) {
             let source = &self.loose[&role];
-            return Ok((
-                self.read_loose_range(source, 0, source.byte_size)?.into(),
-                false,
-            ));
+            return Ok(self.read_loose_range(source, 0, source.byte_size)?.into());
         }
-        self.decode_entry(self.entry(uri)?)
+        Ok(self.decode_entry(self.entry(uri)?)?.0)
     }
 }
 

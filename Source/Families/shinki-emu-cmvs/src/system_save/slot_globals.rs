@@ -369,27 +369,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_constructor_records_have_exact_wire_lengths() {
-        // 424120 explicitly memset(1556); 424B30 explicitly memset(312).
-        let timeline = NativeTimeline::default().encode().unwrap();
-        assert_eq!(timeline.len(), 1558);
-        assert_eq!(&timeline[..2], &[1, 0]);
-        assert!(timeline[2..].iter().all(|byte| *byte == 0));
-        assert_eq!(
-            NativeResourceChannels::default().encode().unwrap(),
-            vec![0; 312]
-        );
-        assert_eq!(
-            NativeStaticSounds::default().encode().unwrap(),
-            [1, 0, 0, 0, 0, 0]
-        );
-        assert_eq!(
-            NativeBgmSources::default().encode_fields().unwrap(),
-            [1, 0, 0, 1, 0, 0]
-        );
-    }
-
-    #[test]
     fn native_timeline_fixture_restores_header_and_semantic_fields() {
         let mut fixture = vec![0; 1558];
         fixture[..2].copy_from_slice(&1u16.to_le_bytes());

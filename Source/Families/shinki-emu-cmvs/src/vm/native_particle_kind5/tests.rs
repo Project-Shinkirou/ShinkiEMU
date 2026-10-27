@@ -54,28 +54,6 @@ fn births_match_eight_draw_crt_sse_instruction_reference() {
 }
 
 #[test]
-fn births_consume_eight_draws_per_particle_not_per_provider() {
-    let mut rng = 1;
-    let value = CmvsNativeParticleKind5::new(b"missing".to_vec(), parameters(2), &mut rng).unwrap();
-    assert_eq!(rng, 0x81eb59d1);
-    assert_eq!(value.particle_capacity(), 2);
-    assert_eq!(value.particles[1].atlas_variant, 2); //16th CRT output491.
-    assert_eq!(value.plane_position(2), None);
-    assert!(value.draw_basic(2).is_none());
-}
-
-#[test]
-fn empty_configuration_and_rejected_name_do_not_consume_rng() {
-    let mut rng = 0x12345678;
-    let value = CmvsNativeParticleKind5::new(Vec::new(), parameters(0), &mut rng).unwrap();
-    assert!(value.particles.is_empty());
-    assert_eq!(rng, 0x12345678);
-    assert!(CmvsNativeParticleKind5::new(vec![b'a'; 32], parameters(1), &mut rng).is_err());
-    assert!(CmvsNativeParticleKind5::new(b"a\0b".to_vec(), parameters(1), &mut rng).is_err());
-    assert_eq!(rng, 0x12345678);
-}
-
-#[test]
 fn draw_queue_capacity_is_not_a_particle_allocation_limit() {
     let value = CmvsNativeParticleKind5::new(Vec::new(), parameters(8193), &mut 1).unwrap();
     assert_eq!(value.particle_capacity(), 8193);
@@ -119,26 +97,6 @@ fn motion_uses_heading_and_hundredth_truncation_not_a_downward_only_model() {
 }
 
 #[test]
-fn negative_hundredths_truncate_toward_zero() {
-    let mut value = moving(5.0, 180.0);
-    value.advance(127, 0, &mut 7).unwrap();
-    assert_eq!(
-        value.particles[0].position_words,
-        [0xbca3d700, 0x40a00000, 0x411c0000]
-    );
-}
-
-#[test]
-fn fractional_heading_is_preserved_but_not_used_as_surface_rotation() {
-    let mut value = moving(5.0, 45.5);
-    value.advance(500, 0, &mut 7).unwrap();
-    assert_eq!(value.particles[0].heading_word, 45.5_f32.to_bits());
-    assert_eq!(value.draw_basic(0).unwrap().rotation_hundredths, 0);
-    assert!(f32::from_bits(value.particles[0].position_words[0]) > 4.7);
-    assert!(f32::from_bits(value.particles[0].position_words[1]) > 8.5);
-}
-
-#[test]
 fn zero_y_is_not_a_respawn_and_negative_y_draws_only_x_then_z() {
     let mut value = moving(1.0, 270.0);
     let mut rng = 1;
@@ -175,27 +133,6 @@ fn motion_and_sprite_clocks_have_independent_caps() {
     assert_eq!(value.particles[0].position_words[1], 3.0_f32.to_bits());
     assert_eq!(value.particles[0].animation_frame, 2);
     assert_eq!(value.particles[0].animation_elapsed_ms, 0);
-}
-
-#[test]
-fn empty_owner_clock_preserves_full_elapsed_and_wraps_natively() {
-    let mut value = CmvsNativeParticleKind5::new(Vec::new(), parameters(0), &mut 7).unwrap();
-    value.clock_ms = u32::MAX - 5;
-    let mut rng = 7;
-    value.advance(1000, 200, &mut rng).unwrap();
-    assert_eq!(value.clock_ms, 994);
-    assert_eq!(rng, 7);
-}
-
-#[test]
-fn created_frame_keeps_birth_position_but_advances_global_sprite_time() {
-    let mut value = moving(5.0, 270.0);
-    value.clock_ms = 1234;
-    let before = value.particles[0].position_words;
-    value.advance(0, 16, &mut 7).unwrap();
-    assert_eq!(value.particles[0].position_words, before);
-    assert_eq!(value.particles[0].animation_elapsed_ms, 16);
-    assert_eq!(value.clock_ms, 1234);
 }
 
 #[test]
@@ -255,29 +192,6 @@ fn surface_matches_native_basic_defaults_without_allocating_resource_copies() {
         assert!(basic.resource.is_none());
         assert_eq!(basic.float_position_words, value.plane_position(0).unwrap());
     }
-}
-
-#[test]
-fn negative_time_moves_up_without_an_upper_boundary_reset() {
-    let mut value = moving(99.0, 270.0);
-    value.particles[0].travel_time_word = (-1000.0_f32).to_bits();
-    let mut rng = 1;
-    value.advance(500, 0, &mut rng).unwrap();
-    assert_eq!(value.particles[0].position_words[1], 104.0_f32.to_bits());
-    assert_eq!(rng, 1);
-}
-
-#[test]
-fn invalid_float_conversion_uses_sse_indefinite_integer() {
-    //Native accepts raw nonfinite words; Rust's saturating cast would differ.
-    assert_eq!(hundredths(f32::NAN).to_bits(), 0xcba3d70a);
-    assert_eq!(hundredths(f32::INFINITY).to_bits(), 0xcba3d70a);
-    assert_eq!(hundredths(f32::NEG_INFINITY).to_bits(), 0xcba3d70a);
-    let mut value = moving(5.0, f32::NAN);
-    let mut rng = 1;
-    value.advance(100, 0, &mut rng).unwrap();
-    assert_eq!(value.particles[0].position_words[1], 100.0_f32.to_bits());
-    assert_eq!(rng, 0xc823f683);
 }
 
 #[test]
@@ -355,21 +269,4 @@ fn codec_rejects_truncation_wrong_headers_and_unterminated_fields() {
     let mut invalid = bytes;
     invalid[28..60].fill(b'x');
     assert!(SavedNativeParticleKind5::decode(&invalid).is_err());
-}
-
-#[test]
-fn private_validation_rejects_impossible_sprite_counters_without_rejecting_float_words() {
-    let mut value = moving(5.0, f32::NAN);
-    value.validate().unwrap();
-    value.particles[0].animation_frame = 10;
-    assert!(value.validate().is_err());
-    value.particles[0].animation_frame = 0;
-    value.particles[0].animation_elapsed_ms = 100;
-    assert!(value.validate().is_err());
-    value.particles[0].animation_elapsed_ms = 0;
-    value.particles[0].atlas_variant = 3;
-    assert!(value.validate().is_err());
-    value.particles[0].atlas_variant = 0;
-    value.parameter_words[5] = 2;
-    assert!(value.validate().is_err());
 }

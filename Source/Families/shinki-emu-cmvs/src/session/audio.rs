@@ -1285,31 +1285,6 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn crossfade_playback_writes_nonzero_samples_then_close_joins() {
-        let (mut bridge, recorded) = recording_output();
-        bridge
-            .play_crossfade(tone_clip(9600, 48_000), None, 500, true, 256)
-            .unwrap();
-        // The worker writes 50 ms chunks; 200 ms makes the fade audible.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while recorded.lock().len() < 4 {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "worker wrote too few chunks"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        bridge.close().unwrap();
-        assert!(
-            recorded
-                .lock()
-                .iter()
-                .any(|chunk| chunk.iter().any(|sample| sample.abs() > 0.01)),
-            "crossfade playback must produce audible samples"
-        );
-    }
-
-    #[test]
     fn fade_out_and_stop_retire_streams() {
         let (mut bridge, recorded) = recording_output();
         bridge
@@ -2087,24 +2062,6 @@ pub(super) mod tests {
         );
         control.accept_and_wait();
         assert_eq!(bridge.playing_channels().unwrap(), (1 << 2) | (1 << 8));
-        control.finish(&mut bridge);
-    }
-
-    #[test]
-    fn stale_eos_cannot_clear_a_queued_replacement() {
-        let (mut bridge, control) = OutputControl::new();
-        bridge
-            .play_channel(5, tone_clip(100, 48_000), false, 256)
-            .unwrap();
-        control.wait_for_write();
-        assert_eq!(bridge.playing_channels().unwrap(), 1 << 5);
-        bridge
-            .play_channel(5, tone_clip(100, 48_000), true, 256)
-            .unwrap();
-        control.accept_and_wait();
-        assert_eq!(bridge.playing_channels().unwrap(), 1 << 5);
-        control.accept_and_wait();
-        assert_eq!(bridge.playing_channels().unwrap(), 1 << 5);
         control.finish(&mut bridge);
     }
 

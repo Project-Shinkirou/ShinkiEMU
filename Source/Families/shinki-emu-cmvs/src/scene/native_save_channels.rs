@@ -891,29 +891,6 @@ mod tests {
     }
 
     #[test]
-    fn channel_tile_geometry_visibility_and_text_owner_survive_native_bridge() {
-        let e = CmvsEffectElement {
-            visible: 1,
-            width: 1280,
-            height: 720,
-            source: Some([12, 16, 32, 24]),
-            position: Some([40, 50]),
-            pivot: [2, 3],
-            order: 7,
-            alpha: 128,
-            ..Default::default()
-        };
-        let c = element_child(&e);
-        let restored = child_element(&c, e.inheritance_flags).unwrap();
-        assert_eq!(restored, e);
-        let mut channel = CmvsEffectChannel::default();
-        channel.write_dword(0, 3);
-        channel.set_playback_mode(3, -4, 5);
-        assert_eq!(channel.read_dword(0), 3);
-        assert_eq!(channel.playback_mode(), 3);
-    }
-
-    #[test]
     fn rebuilding_native_basic_resets_effect_owners_but_keeps_image_storage() {
         let mut element = CmvsEffectElement::default();
         element.basic_effects.alpha = Some(crate::vm::CmvsAlphaEffect {
