@@ -140,8 +140,9 @@ pub struct MatrixRow {
     pub platform: String,
     pub architecture: String,
     pub variant: String,
-    pub status: &'static str,
-    pub reason: Option<String>,
+    /// Declared reason this combination is not built; never part of a job matrix.
+    #[serde(skip)]
+    pub blocked: Option<String>,
 }
 
 pub fn slug(id: &str) -> String {
@@ -301,34 +302,45 @@ impl Inventory {
         }
         Ok(())
     }
-    pub fn matrix(&self) -> Result<Matrix> {
-        let mut include = Vec::new();
+    /// Every Manager/core combination on every declared target, with its blocked reason.
+    pub fn rows(&self) -> Result<Vec<MatrixRow>> {
+        let mut rows = Vec::new();
         for t in &self.targets {
             for component in
                 std::iter::once("manager").chain(self.cores.iter().map(|c| c.id.as_str()))
             {
-                let reason = self.blocked(component, &t.triple)?.map(str::to_owned);
-                include.push(MatrixRow {
+                rows.push(MatrixRow {
                     target: t.triple.clone(),
                     component: component.into(),
-                    // A blocked row only records its report; it needs no target host.
-                    runner: if reason.is_some() {
-                        "ubuntu-24.04".into()
-                    } else {
-                        t.runner.clone()
-                    },
+                    runner: t.runner.clone(),
                     platform: t.platform.clone(),
                     architecture: t.architecture.clone(),
                     variant: t.variant.clone(),
-                    status: if reason.is_some() {
-                        "blocked"
-                    } else {
-                        "supported"
-                    },
-                    reason,
+                    blocked: self.blocked(component, &t.triple)?.map(str::to_owned),
                 });
             }
         }
+        Ok(rows)
+    }
+    /// GitHub job matrix: supported combinations only. Blocked combinations need no
+    /// runner; `rows()` and release notes still report them. With `ci`, Android
+    /// Manager rows after the first are dropped: `xtask ci` builds every Android ABI
+    /// into the same universal APK from either triple.
+    pub fn job_matrix(&self, ci: bool) -> Result<Matrix> {
+        let mut android_manager = false;
+        let include = self
+            .rows()?
+            .into_iter()
+            .filter(|row| {
+                if row.blocked.is_some() {
+                    return false;
+                }
+                if ci && row.component == "manager" && row.platform == "android" {
+                    return !std::mem::replace(&mut android_manager, true);
+                }
+                true
+            })
+            .collect();
         Ok(Matrix { include })
     }
 }
@@ -383,16 +395,44 @@ mod tests {
             );
             assert!(inventory.require_supported(component, triple).is_err());
         }
-        let matrix = inventory.matrix().unwrap();
-        for row in matrix.include.iter().filter(|row| row.target == triple) {
-            assert_eq!(row.status, "blocked");
-            assert_eq!(row.runner, "ubuntu-24.04");
-        }
+        assert!(
+            inventory
+                .rows()
+                .unwrap()
+                .iter()
+                .filter(|row| row.target == triple)
+                .all(|row| row.blocked.as_deref() == Some("deferred"))
+        );
+        assert!(
+            !inventory
+                .job_matrix(false)
+                .unwrap()
+                .include
+                .iter()
+                .any(|row| row.target == triple)
+        );
         assert!(
             inventory
                 .blocked("manager", "aarch64-linux-android")
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn ci_matrix_builds_the_universal_android_manager_once() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inventory = Inventory::load(root).unwrap();
+        let android_managers = |ci| {
+            inventory
+                .job_matrix(ci)
+                .unwrap()
+                .include
+                .iter()
+                .filter(|row| row.component == "manager" && row.platform == "android")
+                .count()
+        };
+        assert_eq!(android_managers(false), 2);
+        assert_eq!(android_managers(true), 1);
     }
 }

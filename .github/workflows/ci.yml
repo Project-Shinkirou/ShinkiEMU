@@ -18,14 +18,14 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      # Workspace resolution needs the cpal submodule; the inventory needs no LFS payloads.
       - uses: actions/checkout@v7
         with:
           submodules: true
-          lfs: true
       - run: rustup show
       - id: matrix
         shell: bash
-        run: echo "matrix=$(cargo xtask matrix --json)" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(cargo xtask matrix --json --ci)" >> "$GITHUB_OUTPUT"
   tools:
     runs-on: windows-2022
     steps:
@@ -47,7 +47,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     env:
-      OHOS_SDK_NATIVE: ${{ vars.OHOS_SDK_NATIVE }}
       ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
     defaults:
       run:
@@ -63,30 +62,29 @@ jobs:
         with:
           arch: x64
       - uses: ilammy/setup-nasm@v1
-        if: matrix.status == 'supported'
         with:
           version: '3.02'
       - name: Linux desktop prerequisites
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.status == 'supported'
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
           sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
       - uses: actions/setup-java@v6
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android')
         with:
           distribution: temurin
           java-version: '27'
           cache: gradle
       - name: Android native build prerequisites
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android')
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nasm pkg-config
       - name: Select Android SDK
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android')
         shell: bash
         run: |
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -96,8 +94,7 @@ jobs:
           set -o pipefail
           "$sdkmanager" --sdk_root="$ANDROID_HOME" --channel=0 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - name: Prepare declared-supported target
-        if: matrix.status == 'supported'
+      - name: Prepare target dependencies
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
@@ -114,13 +111,13 @@ jobs:
           } else {
             cargo xtask deps --target $env:TARGET --core $env:COMPONENT
           }
-      - name: Build or report blocked
+      - name: Build and package
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
         run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
       - name: Smoke packaged Linux Manager
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status == 'supported'
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
         shell: bash
         run: |
           bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"

@@ -16,7 +16,7 @@ Clone with recursive submodules. Run from this repository's root:
 
 ```sh
 cargo xtask --help
-cargo xtask matrix --json
+cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
 cargo xtask build --target x86_64-pc-windows-msvc --manager --release

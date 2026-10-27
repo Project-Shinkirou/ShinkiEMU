@@ -23,7 +23,7 @@ Windows 交叉构建使用固定 Engine revision 中的 Android triplet，通过
 
 ```sh
 cargo xtask --help
-cargo xtask matrix --json
+cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
 cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
@@ -66,7 +66,7 @@ cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
 
-Linux Manager 的 `deps` 检查发行版提供的开发库，不调用 `apt`。核心的 `deps` 在各目标独立的目录中准备锁定的 vcpkg 原生库，并生成可重定位的共享库普通文件供打包使用。在打包目录中运行 `./shinki-emu-manager`。打包会检查 ELF 架构、加载路径和依赖闭包，收集许可证及离线元数据快照；`ci` 报告的 ZIP 保留执行权限。CI 与发布任务使用同一组依赖和 xtask 命令。核心可用性仍以 `matrix --json` 为准，声明为 blocked 的核心不产生二进制附件。
+Linux Manager 的 `deps` 检查发行版提供的开发库，不调用 `apt`。核心的 `deps` 在各目标独立的目录中准备锁定的 vcpkg 原生库，并生成可重定位的共享库普通文件供打包使用。在打包目录中运行 `./shinki-emu-manager`。打包会检查 ELF 架构、加载路径和依赖闭包，收集许可证及离线元数据快照；`ci` 报告的 ZIP 保留执行权限。CI 与发布任务使用同一组依赖和 xtask 命令。核心可用性仍以 `matrix` 为准，声明为 blocked 的核心不产生二进制附件。
 Linux 包使用发行版提供的 glibc、libstdc++、OpenSSL 3、fontconfig、udev 和 ALSA ABI 库。目标系统需安装对应运行包，并提供带图形驱动的 X11 或 Wayland 桌面。
 
 RFVP 还依赖发行版提供的 GStreamer 1.x（至少 1.14）、GLib 2.x（至少 2.56）及 base、good、libav 插件，用于原生影片解码。这些库作为系统运行要求声明，不随核心复制。在 Ubuntu 上安装 `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`。包内 `build.json` 的 `system_dependencies` 记录实际依赖的系统 SONAME。
@@ -92,7 +92,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 每次构建都以 `cargo ndk --locked` 编译，静态链接 RFVP，并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
 
-首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 会先为两个三元组准备依赖，再运行同一命令。
+首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。
 
 运行限制：原版 Slint 1.18.1 在 SwiftShader/软件 Vulkan 模拟器上存在只渲染首帧、后续界面不再更新的问题；请使用 `-gpu host` 或实体设备。独立的单 Text、单 Timer 应用在五次冷启动中均复现了更新停滞；同一 Manager 测试 APK 在主机 GPU 模式下五次冷启动均正常显示中文引导及图标。构建、打包成功不代表游戏兼容性已验证。
 
@@ -100,7 +100,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 原生 CI 继续使用 `build/targets.toml` 中的 macOS runner，通过 Cargo/Xcode 构建。在 Linux 上，`build`、`check` 自动选择 cross 0.2.5 和 `Cross.toml` 配置的私有镜像。Apple 目标包括 `x86_64-apple-darwin`、`aarch64-apple-darwin`、设备目标 `aarch64-apple-ios`，以及模拟器目标 `aarch64-apple-ios-sim`、`x86_64-apple-ios`。最低系统版本为 macOS 13.0、iOS 16.0。
 
-`build/targets.toml` 中某个目标的 `blocked` 非空时，该目标上的所有组件都按这个原因阻塞，优先于核心的 `supported_targets` 和 `manager_supported`：CI 矩阵只记录阻塞报告行，`deps`、`build`、`package` 拒绝执行，发布说明列出该目标及原因，不附产物。五个 Apple 目标目前带有这一字段，在交叉构建工具链验证通过前不进入 CI 和发布；删除该字段即可恢复。
+`build/targets.toml` 中某个目标的 `blocked` 非空时，该目标上的所有组件都按这个原因阻塞，优先于核心的 `supported_targets` 和 `manager_supported`：任务矩阵不包含这些行，`deps`、`build`、`package` 拒绝执行，发布说明列出该目标及原因，不附产物。五个 Apple 目标目前带有这一字段，在交叉构建工具链验证通过前不进入 CI 和发布；删除该字段即可恢复。
 
 从 [Mac App Store](https://apps.apple.com/app/xcode/id497799835) 或 [Apple Developer Downloads](https://developer.apple.com/download/all/) 取得 Xcode，遵守 Apple 许可。在 Mac 上用 `xip --expand` 展开官方 Xcode `.xip`，选择这套 Xcode，并在该 Mac 上接受许可。单独的 Command Line Tools 不提供 iOS SDK。随后执行：
 
@@ -143,7 +143,7 @@ SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump -
 
 ## 矩阵与 CI
 
-`matrix --json` 从权威清单生成全部核心与 Manager 在已声明目标上的组合，包括两种 iOS 模拟器架构。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成 RFVP 的 Manager 与独立动态核心包是两条不同交付路径。
+`matrix` 从权威清单列出全部核心与 Manager 在已声明目标上的组合（包括两种 iOS 模拟器架构），并给出状态和 blocked 原因。`matrix --json` 生成 GitHub 任务矩阵，只含支持的行；blocked 组合不需要 runner。`--ci` 还会去掉 `x86_64-linux-android` 的 Manager 行，因为 `ci` 从任一 Android 三元组都会构建同一个通用 APK；发布工作流保留两行，用于逐目标的发布记录。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成 RFVP 的 Manager 与独立动态核心包是两条不同交付路径。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json

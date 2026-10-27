@@ -4,7 +4,7 @@ Run from the repository root. Cargo subprocesses use `--locked`; update the lock
 
 ```text
 cargo xtask --help
-cargo xtask matrix --json
+cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc --all-cores

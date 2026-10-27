@@ -21,9 +21,9 @@ cargo xtask test
 cargo xtask metadata validate
 ```
 
-`test` 无选择时检查 xtask 和构建辅助库；原生测试可能需要真实 GPU/音频和公开夹具。目标与依赖以 `cargo xtask matrix --json` 和 `doctor` 为准，完整入口见[构建文档](docs/zh-cn/build-and-release.md)。
+`test` 无选择时检查 xtask 和构建辅助库；原生测试可能需要真实 GPU/音频和公开夹具。目标与依赖以 `cargo xtask matrix` 和 `doctor` 为准，完整入口见[构建文档](docs/zh-cn/build-and-release.md)。
 
-Unselected `test` runs xtask/build-helper tests. Native regressions may require real GPU/audio and public fixtures. Use `matrix --json` and `doctor` for target/prerequisite information; see [Build and release](docs/en/build-and-release.md).
+Unselected `test` runs xtask/build-helper tests. Native regressions may require real GPU/audio and public fixtures. Use `matrix` and `doctor` for target/prerequisite information; see [Build and release](docs/en/build-and-release.md).
 
 保留格式边界、损坏/超限输入、存档保护、取消、背压、迟到结果、线程退出、CPU 租约和真实消费者回归。只固定文案、常量、路径拼写、参数转发或 mock 调用的测试不保留。不要删除失败的行为回归或关闭真实后端来通过检查。
 

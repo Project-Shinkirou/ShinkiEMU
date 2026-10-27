@@ -23,7 +23,7 @@ Run from the repository root:
 
 ```sh
 cargo xtask --help
-cargo xtask matrix --json
+cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
 cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
@@ -66,7 +66,7 @@ cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
 
-Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix --json`; declared blocked cores produce no binary artifact.
+Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix`; declared blocked cores produce no binary artifact.
 The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfig, udev and ALSA ABI libraries. Install their runtime packages on the destination system and provide an X11 or Wayland desktop with a graphics driver.
 
 RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
@@ -92,7 +92,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 Each build uses `cargo ndk` with `--locked`, statically links RFVP and stages the JNI runtime closure, metadata and licenses under its recorded target directory's `android-inputs/`. Packaging requires release receipts for **both** triples from the same source commit. Gradle then creates a universal APK containing `arm64-v8a`, `x86_64` and `assets/metadata/`; xtask checks its signature and every native library's dependency closure. Without signing secrets the output is `ShinkiEMU-<version>-android-universal-debug-signed.apk`: a debug-signed CI test APK, not a release installer. The test key is generated inside `GRADLE_USER_HOME`. The Kotlin verifier component is resolved from the official Maven archive using the Android shim version in `Cargo.lock`, not copied from Cargo’s source directory.
 
-After the first Gradle dependency download, set `SHINKI_EMU_GRADLE_OFFLINE=1` to pass `--offline`; use a new package output directory each time. `cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` builds both ABIs and reports the actual APK path. CI prepares dependencies for both triples before invoking the same command.
+After the first Gradle dependency download, set `SHINKI_EMU_GRADLE_OFFLINE=1` to pass `--offline`; use a new package output directory each time. `cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` builds both ABIs and reports the actual APK path. CI prepares dependencies for both triples and runs this command once: `matrix --json --ci` drops the `x86_64-linux-android` Manager row, which would build the same universal APK.
 
 Known runtime issue: SwiftShader/software-Vulkan emulators render only the first frame with stock Slint 1.18.1; use `-gpu host` or a device. A separate one-Text/one-Timer app reproduced the stalled updates in five cold launches. The same Manager test APK rendered its CJK onboarding and icons in five host-GPU cold launches. Build/package success does not establish game compatibility.
 
@@ -100,7 +100,7 @@ Known runtime issue: SwiftShader/software-Vulkan emulators render only the first
 
 Native CI keeps the macOS runners from `build/targets.toml` and invokes Cargo/Xcode. On Linux, `build` and `check` select cross 0.2.5 and the private image configured in `Cross.toml`. The Apple triples are `x86_64-apple-darwin`, `aarch64-apple-darwin`, `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` and `x86_64-apple-ios` (simulators). Deployment minima are macOS 13.0 and iOS 16.0.
 
-A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the CI matrix records a blocked report row, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. The five Apple targets currently carry this reason and are excluded from CI and releases until the cross-build toolchain is validated; removing the field restores them.
+A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the job matrix omits its rows, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. The five Apple targets currently carry this reason and are excluded from CI and releases until the cross-build toolchain is validated; removing the field restores them.
 
 Obtain Xcode from the [Mac App Store](https://apps.apple.com/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/all/) under Apple's license. Expand an official Xcode `.xip` on macOS using `xip --expand`, select that Xcode installation and accept its license there. Command Line Tools alone do not provide iOS SDKs. On that Mac:
 
@@ -143,7 +143,7 @@ For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `
 
 ## Matrix and CI
 
-`matrix --json` reads the authoritative manifests and emits each core and Manager across all declared target triples, including both iOS simulator architectures. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Android RFVP static-in-Manager integration is distinct from standalone dynamic-core packaging.
+`matrix` reads the authoritative manifests and lists each core and Manager across all declared target triples, including both iOS simulator architectures, with its status and blocked reason. `matrix --json` emits the GitHub job matrix with only the supported rows; blocked combinations need no runner. `--ci` also drops the `x86_64-linux-android` Manager row, because `ci` builds the same universal APK from either Android triple; the release workflow keeps both rows for its per-target records. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Android RFVP static-in-Manager integration is distinct from standalone dynamic-core packaging.
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json

@@ -15,7 +15,7 @@ Ren’Py にはさらに、固定バージョンの公式 SDK が必要です。
 
 ```sh
 cargo xtask --help
-cargo xtask matrix --json
+cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
 cargo xtask deps --target x86_64-pc-windows-msvc
 cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
@@ -58,7 +58,7 @@ cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
 
-Linux の Manager 向け `deps` は、ディストリビューションが提供する開発ライブラリを確認するだけで、`apt` は呼び出しません。コア向けの `deps` は、ターゲットごとに独立したディレクトリでロックされた vcpkg のネイティブライブラリを準備し、パッケージング用に再配置可能な共有ライブラリの通常ファイルを生成します。パッケージのディレクトリで `./shinki-emu-manager` を実行してください。パッケージングでは ELF のアーキテクチャ、ローダーのパス、依存関係の閉包を確認し、ライセンス表記とオフラインのメタデータスナップショットを同梱します。`ci` が報告する ZIP では実行権限が保持されます。CI とリリースのジョブは、同じ依存関係と xtask コマンドを使います。コアが利用できるかどうかは引き続き `matrix --json` に従い、blocked と宣言されたコアにはバイナリの添付ファイルが作られません。
+Linux の Manager 向け `deps` は、ディストリビューションが提供する開発ライブラリを確認するだけで、`apt` は呼び出しません。コア向けの `deps` は、ターゲットごとに独立したディレクトリでロックされた vcpkg のネイティブライブラリを準備し、パッケージング用に再配置可能な共有ライブラリの通常ファイルを生成します。パッケージのディレクトリで `./shinki-emu-manager` を実行してください。パッケージングでは ELF のアーキテクチャ、ローダーのパス、依存関係の閉包を確認し、ライセンス表記とオフラインのメタデータスナップショットを同梱します。`ci` が報告する ZIP では実行権限が保持されます。CI とリリースのジョブは、同じ依存関係と xtask コマンドを使います。コアが利用できるかどうかは引き続き `matrix` に従い、blocked と宣言されたコアにはバイナリの添付ファイルが作られません。
 Linux パッケージは、ディストリビューションが提供する glibc、libstdc++、OpenSSL 3、fontconfig、udev、ALSA の ABI ライブラリを使います。導入先のシステムには対応するランタイムパッケージをインストールし、グラフィックドライバーを備えた X11 または Wayland のデスクトップを用意してください。
 
 RFVP は、ネイティブの動画デコードのために、ディストリビューションが提供する GStreamer 1.x（1.14 以上）、GLib 2.x（2.56 以上）、および base、good、libav プラグインも必要とします。これらはシステムの実行要件として宣言され、コアには同梱されません。Ubuntu では `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav` をインストールします。パッケージ内の `build.json` の `system_dependencies` には、実際に依存するシステムの SONAME が記録されます。
@@ -84,7 +84,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 各ビルドは `cargo ndk --locked` でコンパイルし、RFVP を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
-Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI では両方のトリプルの依存関係を先に準備してから、同じコマンドを実行します。
+Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。
 
 実行時の制約：標準の Slint 1.18.1 では、SwiftShader やソフトウェア Vulkan のエミュレーター上で最初のフレームしか描画されず、その後の画面が更新されない問題があります。`-gpu host` または実機を使ってください。単一の Text と単一の Timer だけを持つ別アプリでも、5 回のコールドスタートすべてで更新の停止が再現しました。同じ Manager テスト APK は、ホスト GPU モードでの 5 回のコールドスタートすべてで、中国語のオンボーディングとアイコンを正常に表示しました。ビルドやパッケージングの成功は、ゲームの互換性が検証されたことを意味しません。
 
@@ -92,7 +92,7 @@ Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_G
 
 ネイティブ CI は引き続き `build/targets.toml` の macOS runner を使い、Cargo/Xcode でビルドします。Linux では、`build` と `check` が cross 0.2.5 と `Cross.toml` で設定されたプライベートイメージを自動的に選びます。Apple のターゲットは、`x86_64-apple-darwin`、`aarch64-apple-darwin`、実機向けの `aarch64-apple-ios`、シミュレーター向けの `aarch64-apple-ios-sim` と `x86_64-apple-ios` です。最低システムバージョンは macOS 13.0、iOS 16.0 です。
 
-`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。CI マトリクスはブロック報告の行だけを記録し、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在は 5 つの Apple ターゲットにこの理由が設定されており、クロスビルドのツールチェーンが検証されるまで CI とリリースから外れます。フィールドを削除すれば元に戻ります。
+`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。ジョブマトリクスにはその行が含まれず、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在は 5 つの Apple ターゲットにこの理由が設定されており、クロスビルドのツールチェーンが検証されるまで CI とリリースから外れます。フィールドを削除すれば元に戻ります。
 
 Xcode は [Mac App Store](https://apps.apple.com/app/xcode/id497799835) または [Apple Developer Downloads](https://developer.apple.com/download/all/) から入手し、Apple のライセンスに従ってください。Mac 上で `xip --expand` を使って公式の Xcode `.xip` を展開し、その Xcode を選択して、同じ Mac 上でライセンスに同意します。Command Line Tools だけでは iOS SDK は提供されません。続いて次を実行します。
 
@@ -131,7 +131,7 @@ SDK を使った受け入れ確認では、実際の成果物のパスとサイ�
 
 ## マトリクスと CI
 
-`matrix --json` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲットとの組み合わせを生成します。iOS シミュレーターの 2 つのアーキテクチャも含まれます。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android で RFVP を静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
+`matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android で RFVP を静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json

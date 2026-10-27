@@ -28,18 +28,21 @@ fn run() -> Result<()> {
     let inv = cores::Inventory::load(root)?;
     match cli.command {
         cli::Command::AppleImage { target } => apple::image(root, &target)?,
-        cli::Command::Matrix { json } => {
-            let matrix = inv.matrix()?;
+        cli::Command::Matrix { json, ci } => {
             if json {
-                println!("{}", serde_json::to_string(&matrix)?);
+                println!("{}", serde_json::to_string(&inv.job_matrix(ci)?)?);
             } else {
-                for r in matrix.include {
+                for r in inv.rows()? {
                     println!(
                         "{}\t{}\t{}\t{}",
                         r.component,
                         r.target,
-                        r.status,
-                        r.reason.unwrap_or_default()
+                        if r.blocked.is_some() {
+                            "blocked"
+                        } else {
+                            "supported"
+                        },
+                        r.blocked.unwrap_or_default()
                     );
                 }
             }

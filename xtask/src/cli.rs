@@ -69,9 +69,13 @@ pub enum Command {
     },
     Doctor(TargetCore),
     Deps(DependencyOptions),
+    /// List every combination; `--json` emits the job matrix of supported rows only.
     Matrix {
         #[arg(long)]
         json: bool,
+        /// Drop rows whose CI build another row already performs (the universal Android Manager).
+        #[arg(long, requires = "json")]
+        ci: bool,
     },
     Build(Build),
     Check {

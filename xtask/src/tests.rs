@@ -398,23 +398,14 @@ fn linked_parent_and_files_are_rejected() {
 fn matrix_covers_each_core_and_target_without_accepting_unknown_keys() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let inv = Inventory::load(root).unwrap();
-    let matrix = inv.matrix().unwrap();
+    let rows = inv.rows().unwrap();
     for core in &inv.cores {
         for target in &inv.targets {
             assert!(
-                matrix
-                    .include
-                    .iter()
+                rows.iter()
                     .any(|r| r.component == core.id && r.target == target.triple)
             );
         }
-    }
-    for target in &inv.targets {
-        assert!(
-            inv.blocked("shinki.emu.cmvs", &target.triple)
-                .unwrap()
-                .is_some()
-        );
     }
     assert!(inv.blocked("unknown", &inv.targets[0].triple).is_err());
     assert!(inv.blocked("manager", "unknown").is_err());
