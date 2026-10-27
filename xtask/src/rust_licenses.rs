@@ -57,19 +57,20 @@ fn provided_text(license: &str, files: &BTreeMap<PathBuf, String>) -> bool {
     })
 }
 
+/// Cargo historically accepted "/" for OR and deprecated SPDX identifiers.
+/// Keep identifier matching strict: custom/unknown texts cannot be invented.
+pub(crate) const PARSE_MODE: spdx::ParseMode = spdx::ParseMode {
+    allow_slash_as_or_operator: true,
+    allow_deprecated: true,
+    allow_postfix_plus_on_gpl: true,
+    ..spdx::ParseMode::STRICT
+};
+
 fn canonical_texts(
     expression: &str,
     provided: &BTreeMap<PathBuf, String>,
 ) -> Result<BTreeMap<&'static str, &'static str>> {
-    // Cargo historically accepted "/" for OR and deprecated SPDX identifiers.
-    // Keep identifier matching strict: custom/unknown texts cannot be invented.
-    let mode = spdx::ParseMode {
-        allow_slash_as_or_operator: true,
-        allow_deprecated: true,
-        allow_postfix_plus_on_gpl: true,
-        ..spdx::ParseMode::STRICT
-    };
-    let expression = spdx::Expression::parse_mode(expression, mode)
+    let expression = spdx::Expression::parse_mode(expression, PARSE_MODE)
         .with_context(|| format!("invalid SPDX expression {expression}"))?;
     let mut texts = BTreeMap::new();
     for requirement in expression.requirements() {
@@ -205,7 +206,7 @@ pub(crate) fn metadata(
     )?)?)
 }
 /// Readable, stable discriminator for a package source.
-fn source_tag(source: Option<&str>) -> String {
+pub(crate) fn source_tag(source: Option<&str>) -> String {
     use sha2::Digest;
     match source {
         None => "path".to_owned(),
@@ -228,14 +229,10 @@ fn source_tag(source: Option<&str>) -> String {
         }
     }
 }
-/// Metadata must be resolved with `--filter-platform` for the packaged target.
-/// Follow normal and build edges, including proc macros, but not test-only edges.
-pub(crate) fn entries(
-    metadata: &Value,
-    package: &str,
-    scratch: &Path,
-) -> Result<Vec<(PathBuf, String)>> {
-    let canonical_source = canonical_source()?;
+/// Packages linked into `package`. Metadata must be resolved with
+/// `--filter-platform` for the packaged target. Follow normal and build edges,
+/// including proc macros, but not test-only edges.
+pub(crate) fn closure<'a>(metadata: &'a Value, package: &str) -> Result<Vec<&'a Value>> {
     let packages = metadata["packages"]
         .as_array()
         .context("cargo metadata packages")?;
@@ -279,13 +276,28 @@ pub(crate) fn entries(
             }
         }
     }
+    selected
+        .into_iter()
+        .map(|id| {
+            packages
+                .get(id)
+                .copied()
+                .with_context(|| format!("cargo package missing: {id}"))
+        })
+        .collect()
+}
+
+pub(crate) fn entries(
+    metadata: &Value,
+    package: &str,
+    scratch: &Path,
+) -> Result<Vec<(PathBuf, String)>> {
+    let canonical_source = canonical_source()?;
+    let selected = closure(metadata, package)?;
     // The same name-version can resolve from several sources (crates.io swf-0.2.2 and
     // ruffle's git swf-0.2.2); each needs its own notice group.
     let mut versions = BTreeMap::<(&str, &str), usize>::new();
-    for id in &selected {
-        let p = packages
-            .get(id)
-            .with_context(|| format!("cargo package missing: {id}"))?;
+    for p in &selected {
         *versions
             .entry((
                 p["name"].as_str().context("cargo package name")?,
@@ -297,10 +309,7 @@ pub(crate) fn entries(
     let mut missing = Vec::new();
     let mut canonical_packages = 0;
     let mut canonical_count = 0;
-    for id in &selected {
-        let p = packages
-            .get(id)
-            .with_context(|| format!("cargo package missing: {id}"))?;
+    for p in &selected {
         let name = p["name"].as_str().context("cargo package name")?;
         let version = p["version"].as_str().context("cargo package version")?;
         let group = if versions[&(name, version)] > 1 {
