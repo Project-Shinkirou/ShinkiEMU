@@ -18,6 +18,7 @@ pub struct ProviderDescriptor {
     pub id: &'static str,
     pub display_name: &'static str,
     pub login_methods: &'static [LoginKind],
+    pub browser_login_url: Option<&'static str>,
     pub capabilities: Capabilities,
 }
 
@@ -38,7 +39,7 @@ pub enum LoginRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoginUpdate {
     Connecting, EmailCode, MobileCode, MobileConfirmation, QrCode(String),
-    Browser { url: String }, InvalidCode, SignedIn(String),
+    InvalidCode, SignedIn(String),
 }
 
 #[derive(Clone)]
