@@ -1,4 +1,6 @@
-use super::super::{CmvsPs2aCommandEffectKind, CmvsPs2aCommandStackWord};
+use super::super::{
+    CmvsPs2aCommandEffectKind, CmvsPs2aCommandStackWord, CmvsPs2aCommandStackWordKind,
+};
 use super::*;
 
 /// Micro programs owned by this cluster, indexed by the local
@@ -117,26 +119,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             CmvsPs2aCommandEffectKind::ClearSceneLayer { base_word: 343 },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_424AC0` (case 642): the dispatch arm passes the
-        // layer-worker object (`[esi+0xCF0]`, byte 3312); when the
-        // worker's latch pair `obj[0] == 0 && obj[1] != 0` holds it
-        // stores the `sub_41A000` millisecond timestamp at `obj[3]`,
-        // zeroes `obj[2]`/`obj[4]` and sets `obj[0] = 1`. Every write is
-        // object-side; the callee is omitted (no interpreter-word,
-        // result-slot or return-path effect; the arm ignores the
-        // callee's return 1). Returns 0x4000.
+        // 424AC0 starts the queued timeline and resets its native clock.
         642 => (
             0,
-            CmvsPs2aCommandEffectKind::NoOpCommand,
+            CmvsPs2aCommandEffectKind::StartEffectTimeline,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_424B10` (case 643): on the same layer-worker
-        // object (`[esi+0xCF0]`), when `(*obj)[0] != 0 && (*obj)[1] != 0`
-        // clears `(*obj)[0]` — a stop latch. Object-side only, callee
-        // omitted like case 642. Returns 0x4000.
+        // 424B10 clears the active latch without discarding queued records.
         643 => (
             0,
-            CmvsPs2aCommandEffectKind::NoOpCommand,
+            CmvsPs2aCommandEffectKind::StopEffectTimeline,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_461350` (case 753): zeroes scene-manager (`[esi+
@@ -185,6 +177,25 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NoOpCommand,
             &[] as &[CmvsPs2aCommandStackWord],
+        ),
+        // 47C0D0 -> 4243F0: channel zero child, source, duration; 0x400C.
+        651 => (
+            12,
+            CmvsPs2aCommandEffectKind::PushEffectTimelineElement,
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 12,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+            ] as &[CmvsPs2aCommandStackWord],
         ),
         _ => return None,
     })

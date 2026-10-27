@@ -33,8 +33,10 @@ impl CmvsArchive {
                 .interpreter_string_buffers
                 .get(&5404)
                 .ok_or_else(failure)?;
-            let [CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 }, CmvsStringSegment::OwnedString(prefix)] =
-                segments.as_slice()
+            let [
+                CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 },
+                CmvsStringSegment::OwnedString(prefix),
+            ] = segments.as_slice()
             else {
                 return Err(failure());
             };
@@ -51,11 +53,11 @@ impl CmvsArchive {
                     }
                     Ok(_) => return Err(failure()),
                 };
-                if let Some((_, timestamp)) = &title {
-                    if *timestamp > newest {
-                        newest = *timestamp;
-                        catalog.latest_slot = Some(slot);
-                    }
+                if let Some((_, timestamp)) = &title
+                    && *timestamp > newest
+                {
+                    newest = *timestamp;
+                    catalog.latest_slot = Some(slot);
                 }
                 catalog.slots.push(CmvsNativeSaveSlot {
                     title: title.map(|(title, _)| title),
@@ -91,7 +93,7 @@ fn parse_header(bytes: &[u8]) -> Result<Option<(String, u32)>, CoreError> {
 // sub_4942A0 packs the original title's date characters directly. Preserve
 // its u32 wrapping/masks and two-second precision; do not sort file mtimes
 // or introduce a different calendar parser for the native menu.
-fn native_timestamp(title: &[u8]) -> u32 {
+pub(crate) fn native_timestamp(title: &[u8]) -> u32 {
     let a = |index| (title[index] as i8 as i32) as u32;
     let year = a(3).wrapping_add(10u32.wrapping_mul(a(2))).wrapping_sub(16);
     let day = a(9).wrapping_add(2u32.wrapping_mul(5u32.wrapping_mul(a(8)).wrapping_sub(8)));

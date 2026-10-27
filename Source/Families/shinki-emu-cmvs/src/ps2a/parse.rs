@@ -3,6 +3,23 @@ use super::*;
 pub fn parse_ps2a(source: &[u8]) -> Result<CmvsScript, CoreError> {
     let header = parse_header(source)?;
     let decoded = decode_ps2a(source, header)?;
+    parse_decoded_ps2a(&decoded, header)
+}
+
+/// Parses the already decoded program image stored in native stream C.
+pub(crate) fn parse_decoded_ps2a(
+    decoded: &[u8],
+    header: Ps2aHeader,
+) -> Result<CmvsScript, CoreError> {
+    if decoded.len() < HEADER_BYTES
+        || decoded.len() > MAX_SCRIPT_BYTES + HEADER_BYTES
+        || header.header_length as usize != HEADER_BYTES
+    {
+        return Err(invalid(
+            "SHINKI_EMU_CMVS_PS2A_LAYOUT",
+            "decoded PS2A image size is invalid",
+        ));
+    }
     let name_index_bytes = checked_usize(header.name_index_count)?
         .checked_mul(4)
         .ok_or_else(|| invalid("SHINKI_EMU_CMVS_PS2A_INDEX", "PS2A name index overflowed"))?;
@@ -12,7 +29,7 @@ pub fn parse_ps2a(source: &[u8]) -> Result<CmvsScript, CoreError> {
             "PS2A bytecode offset overflowed",
         )
     })?;
-    let name_index = parse_name_index(&decoded, header.name_index_count, bytecode_start)?;
+    let name_index = parse_name_index(decoded, header.name_index_count, bytecode_start)?;
     let bytecode_end = bytecode_start
         .checked_add(checked_usize(header.bytecode_size)?)
         .ok_or_else(|| {
@@ -49,6 +66,7 @@ pub fn parse_ps2a(source: &[u8]) -> Result<CmvsScript, CoreError> {
     Ok(CmvsScript {
         schema: "shinki.emu.cmvs.ps2a_script.v1".into(),
         header,
+        raw_header: decoded[..HEADER_BYTES].try_into().unwrap(),
         name_index,
         bytecode_offset: u32::try_from(bytecode_start).map_err(|_| {
             invalid(

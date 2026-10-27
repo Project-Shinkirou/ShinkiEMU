@@ -148,6 +148,50 @@ fn source_domains_and_slot_priority_control_real_file_reads() {
 }
 
 #[test]
+fn alternate_texture_bank_reads_last_slot_without_crossing_into_primary_bank() {
+    let (root, archive, mut vm) = fixture();
+    std::fs::create_dir(root.path().join("primary")).unwrap();
+    std::fs::write(root.path().join("primary/test.bin"), b"primary").unwrap();
+    vm.resource_search_paths.insert(
+        CmvsResourceSearchBank::Texture,
+        BTreeMap::from([(9, "primary/".into())]),
+    );
+    vm.resource_search_paths.insert(
+        CmvsResourceSearchBank::Native0d00,
+        BTreeMap::from([(9, "archive.cpz".into())]),
+    );
+    let alternate = archive
+        .resolve_native_resource(&vm, CmvsResourceSearchBank::Native0d00, "test.bin")
+        .unwrap();
+    let primary = archive
+        .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, "test.bin")
+        .unwrap();
+    assert_eq!(
+        archive
+            .read_range(&alternate, 0, 7)
+            .unwrap()
+            .bytes
+            .as_slice(),
+        b"decoded"
+    );
+    assert_eq!(
+        archive.read_range(&primary, 0, 7).unwrap().bytes.as_slice(),
+        b"primary"
+    );
+    vm.resource_search_paths.insert(
+        CmvsResourceSearchBank::Native0d00,
+        BTreeMap::from([(10, "archive.cpz".into())]),
+    );
+    assert_eq!(
+        archive
+            .resolve_native_resource(&vm, CmvsResourceSearchBank::Native0d00, "test.bin")
+            .unwrap_err()
+            .code(),
+        "SHINKI_EMU_CMVS_RESOURCE_NOT_FOUND"
+    );
+}
+
+#[test]
 fn native_reader_bounds_and_missing_banks_do_not_scan_unrelated_archives() {
     let (_root, archive, mut vm) = fixture();
     assert_eq!(
@@ -265,4 +309,120 @@ fn unknown_archive_and_unsafe_paths_are_explicit_errors() {
     assert!(validate_search_path(&"a".repeat(2048)).is_err());
     assert!(archive.stat("cmvs:/native-files/../outside").is_err());
     assert!(validate_search_path("").is_ok());
+}
+
+#[test]
+fn formatted_string_reductions_reach_the_selected_source_without_missing_name_fallback() {
+    use crate::{
+        CmvsPs2aControlInstruction, CmvsPs2aInstructionFrame, CmvsPs2aSourceSpan,
+        CmvsPs2aStackExpression, CmvsPs2aStackExpressionNode, CmvsPs2aValueExpression,
+        CmvsPs2aValueExpressionToken, CmvsPs2aVmAction, execute_cmvs390_frame,
+    };
+    let span = CmvsPs2aSourceSpan {
+        offset: 0,
+        byte_length: 2,
+    };
+    let command = |vm: &mut CmvsPs2aVmState, id, words: &[u32]| {
+        for word in words.iter().rev() {
+            execute_cmvs390_frame(
+                vm,
+                &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
+                    span,
+                    stack_bytes: 4,
+                    value: *word,
+                }),
+            )
+            .unwrap();
+        }
+        execute_cmvs390_frame(
+            vm,
+            &CmvsPs2aInstructionFrame::Command {
+                span,
+                command_id: id,
+            },
+        )
+        .unwrap()
+    };
+    let global = |index| CmvsPs2aValueExpressionToken::NestedStackExpression {
+        span,
+        expression: Box::new(CmvsPs2aStackExpression {
+            span,
+            nodes: vec![CmvsPs2aStackExpressionNode::Value {
+                span,
+                opcode: 0x100,
+                payload: index,
+            }],
+        }),
+    };
+    let operator = |opcode| CmvsPs2aValueExpressionToken::Operator { span, opcode };
+    let (root, mut archive, mut vm) = fixture();
+    archive
+        .entries
+        .values_mut()
+        .next()
+        .unwrap()
+        .descriptor
+        .relative_path = "image-345a.bin".into();
+    std::fs::create_dir(root.path().join("override")).unwrap();
+    std::fs::write(root.path().join("override/image-345a.bin"), b"override").unwrap();
+    vm.resource_search_paths.insert(
+        CmvsResourceSearchBank::Texture,
+        BTreeMap::from([(0, "override/".into()), (1, "archive.cpz".into())]),
+    );
+    for (index, bytes) in [
+        (5, b"image-".as_slice()),
+        (6, b"%z3a".as_slice()),
+        (7, b".bin".as_slice()),
+    ] {
+        vm.process_string_slots.insert(index, bytes.to_vec());
+    }
+    command(&mut vm, 252, &[0x8000_000c, 0x8000_0006, 12345]);
+    execute_cmvs390_frame(
+        &mut vm,
+        &CmvsPs2aInstructionFrame::ValueExpression(CmvsPs2aValueExpression {
+            span,
+            tokens: vec![
+                global(11),
+                global(5),
+                global(12),
+                operator(0x163),
+                global(7),
+                operator(0x163),
+                operator(0x170),
+            ],
+        }),
+    )
+    .unwrap();
+    command(&mut vm, 32, &[20]);
+    let Some(CmvsPs2aVmAction::LoadTextureParentResource { resource, .. }) =
+        command(&mut vm, 48, &[20, 0x8000_000b])
+    else {
+        panic!("string builder did not reach the texture consumer");
+    };
+    assert_eq!(resource, "image-345a.bin");
+    let loose = archive
+        .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, &resource)
+        .unwrap();
+    assert_eq!(
+        archive.read_range(&loose, 0, 8).unwrap().bytes.as_slice(),
+        b"override"
+    );
+    vm.resource_search_paths.insert(
+        CmvsResourceSearchBank::Texture,
+        BTreeMap::from([(0, "archive.cpz".into()), (1, "override/".into())]),
+    );
+    let packed = archive
+        .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, &resource)
+        .unwrap();
+    assert_eq!(
+        archive.read_range(&packed, 0, 7).unwrap().bytes.as_slice(),
+        b"decoded"
+    );
+    assert_eq!(
+        archive
+            .resolve_native_resource(&vm, CmvsResourceSearchBank::Texture, "image-345a.absent",)
+            .unwrap_err()
+            .code(),
+        "SHINKI_EMU_CMVS_RESOURCE_NOT_FOUND",
+    );
 }

@@ -1,7 +1,7 @@
 use crate::{CmvsArchive, CmvsSchemeProfile};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use shinki_emu_sdk::{read_game_profile, resolve_game_file, CoreError};
+use shinki_emu_sdk::{CoreError, read_game_profile, resolve_game_file};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},

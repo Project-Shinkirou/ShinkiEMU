@@ -1,41 +1,5 @@
 use super::*;
 
-/// Reverse-engineering aid: report filter-chain state only when it changes,
-/// so a long run shows each registration/selection transition once.
-fn log_chain_state_transition(state: &mut CmvsPs2aVmState) {
-    if !tracing::enabled!(tracing::Level::INFO) {
-        return;
-    }
-    let mut signature = String::new();
-    for bank in 0..6_u8 {
-        let order = state
-            .filter_chain_record_order
-            .get(&bank)
-            .cloned()
-            .unwrap_or_default();
-        let active = state.filter_chain_active_records.get(&bank).copied();
-        signature.push_str(&format!(
-            "{}:[{}]|{};",
-            bank,
-            order
-                .iter()
-                .map(|record| record.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-            active.map(|record| record.to_string()).unwrap_or_default()
-        ));
-    }
-    if state.last_filter_chain_signature.as_deref() != Some(signature.as_str()) {
-        state.last_filter_chain_signature = Some(signature.clone());
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.chain_state",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            state = signature
-        );
-    }
-}
-
 /// The native poll's pointer hover pass (`sub_468740`, LABEL_22 loop): the
 /// first record in registration order whose rectangle contains the pointer
 /// becomes the chain's active record. The rectangle is the record's `cmd
@@ -72,15 +36,6 @@ fn pointer_hover_pass(state: &mut CmvsPs2aVmState, bank: u8) {
     match hovered {
         Some(key) => {
             if state.filter_chain_active_records.get(&bank) != Some(&key) {
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.chain_pointer_hover",
-                        pc = state.program_counter,
-                        frame = state.current_frame,
-                        bank,
-                        record = key
-                    );
-                }
                 state.filter_chain_active_records.insert(bank, key);
             }
         }
@@ -120,14 +75,15 @@ pub(super) fn execute(
                 error_flag_field_offset,
                 error_flag_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, channel)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+            ],
         ) => {
             if *bank > max_bank || *channel > max_channel_id {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             // The previous occupant is freed and a fresh chain object takes
@@ -175,9 +131,7 @@ pub(super) fn execute(
             if *bank > u32::from(max_bank) {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -204,7 +158,10 @@ pub(super) fn execute(
                 error_flag_mask,
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key),
+            ],
         ) => {
             // `sub_468560` allocates a keyed queue node on a live bank. Host
             // allocation exhaustion is represented by the deterministic
@@ -237,26 +194,18 @@ pub(super) fn execute(
                         .entry(bank)
                         .or_default()
                         .push(*record_key);
-                    if tracing::enabled!(tracing::Level::INFO) {
-                        tracing::info!(
-                            event = "shinki.emu.cmvs.vm.chain_record_appended",
-                            pc = state.program_counter,
-                            frame = state.current_frame,
-                            bank,
-                            record = *record_key
-                        );
-                    }
                 }
-                state.interpreter_words.insert(result_field_offset, 1);
+                state.write_interpreter_word(result_field_offset, 1);
             } else {
                 let flags = state
                     .interpreter_words
                     .get(&u32::from(error_flag_field_offset))
                     .copied()
                     .unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(u32::from(error_flag_field_offset), flags | error_flag_mask);
+                state.write_interpreter_word(
+                    u32::from(error_flag_field_offset),
+                    flags | error_flag_mask,
+                );
             }
             Ok(None)
         }
@@ -267,7 +216,14 @@ pub(super) fn execute(
                 error_flag_field_offset,
                 error_flag_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key), (CmvsPs2aCommandStackWordKind::OpaqueU32, first), (CmvsPs2aCommandStackWordKind::OpaqueU32, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, third), (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, first),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, third),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth),
+            ],
         ) => {
             let slot_key = slot_object_key(table_byte_offset, *bank);
             let live = *bank <= u32::from(max_bank)
@@ -276,9 +232,7 @@ pub(super) fn execute(
             if !live {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -293,19 +247,6 @@ pub(super) fn execute(
                 .and_then(|records| records.get_mut(record_key))
             {
                 record.words = [*first, *second, *third, *fourth];
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.chain_record_rect",
-                        pc = state.program_counter,
-                        frame = state.current_frame,
-                        bank,
-                        record = *record_key,
-                        x = *first,
-                        y = *second,
-                        w = *third,
-                        h = *fourth
-                    );
-                }
             }
             Ok(None)
         }
@@ -317,7 +258,18 @@ pub(super) fn execute(
                 error_flag_field_offset,
                 error_flag_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key), (CmvsPs2aCommandStackWordKind::OpaqueU32, selector), (CmvsPs2aCommandStackWordKind::OpaqueU32, word), (CmvsPs2aCommandStackWordKind::OpaqueU32, first), (CmvsPs2aCommandStackWordKind::OpaqueU32, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, third), (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth), (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth), (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, record_key),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, selector),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, word),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, first),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, third),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth),
+            ],
         ) => {
             let slot_key = slot_object_key(table_byte_offset, *bank);
             let live = *bank <= u32::from(max_bank)
@@ -326,9 +278,7 @@ pub(super) fn execute(
             if !live {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -358,21 +308,6 @@ pub(super) fn execute(
                     *sixth as u16,
                 ],
             };
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.chain_param_update",
-                    tick = state.tick,
-                    pc = state.program_counter,
-                    bank = u32::from(bank),
-                    record_key = *record_key,
-                    selector = *selector,
-                    word = *word,
-                    first = *first,
-                    second = *second,
-                    third = *third,
-                    fourth = *fourth
-                );
-            }
             let alternate_backend = state
                 .process_global_words
                 .get(&backend_mode_address)
@@ -422,9 +357,7 @@ pub(super) fn execute(
             if !live {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -433,14 +366,6 @@ pub(super) fn execute(
                     "CMVS filter-chain bank exceeded the recovered range",
                 )
             })?;
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.chain_apply",
-                    tick = state.tick,
-                    pc = state.program_counter,
-                    bank = u32::from(bank)
-                );
-            }
             let revision = state
                 .filter_chain_apply_revisions
                 .get(&bank)
@@ -468,41 +393,14 @@ pub(super) fn execute(
             },
             [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank)],
         ) => {
-            if tracing::enabled!(tracing::Level::TRACE) {
-                let bank_u8 = *bank as u8;
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.poll535_probe",
-                    bank = bank_u8,
-                    records = state
-                        .filter_chain_record_order
-                        .get(&bank_u8)
-                        .map(|order| order.len())
-                        .unwrap_or(0),
-                    active = state
-                        .filter_chain_active_records
-                        .get(&bank_u8)
-                        .copied()
-                        .unwrap_or(u32::MAX)
-                );
-            }
             let slot_key = slot_object_key(table_byte_offset, *bank);
             let live = *bank <= u32::from(max_bank)
                 && slot_key.is_ok()
                 && state.slot_objects.contains_key(&slot_key.unwrap());
-            if tracing::enabled!(tracing::Level::TRACE) && *bank != 0 {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.chain_poll_live",
-                    pc = state.program_counter,
-                    bank,
-                    live
-                );
-            }
             if !live {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -520,7 +418,6 @@ pub(super) fn execute(
             // record, its release confirms the lock (returning the record
             // key), and cancel aborts with -2. An idle poll returns -1;
             // a confirm on a different record returns -10.
-            log_chain_state_transition(state);
             pointer_hover_pass(state, bank);
             // The native poll sequences its input branches (`sub_468740`):
             // after the hover pass, the PRESS edge only latches the
@@ -529,10 +426,10 @@ pub(super) fn execute(
             // confirms the lock, returning the record key when the hover
             // still matches it and -10 otherwise, consuming both advance
             // latches (`sub_45CB80`). A held button drives nothing.
-            if state.input_advance_press {
-                if let Some(active) = state.filter_chain_active_records.get(&bank).copied() {
-                    state.filter_chain_locked_records.insert(bank, active);
-                }
+            if state.input_advance_press
+                && let Some(active) = state.filter_chain_active_records.get(&bank).copied()
+            {
+                state.filter_chain_locked_records.insert(bank, active);
             }
             let control: Option<&'static str> = if state.input_cancel_held {
                 Some("escape")
@@ -547,23 +444,6 @@ pub(super) fn execute(
             };
             if let Some(control) = control {
                 let result = apply_filter_chain_control(state, bank, control);
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.chain_control",
-                        pc = state.program_counter,
-                        frame = state.current_frame,
-                        bank,
-                        control,
-                        result,
-                        confirm_held = state.input_confirm_held,
-                        advance_release = state.input_advance_release,
-                        active = state
-                            .filter_chain_active_records
-                            .get(&bank)
-                            .copied()
-                            .unwrap_or(u32::MAX)
-                    );
-                }
                 // The native hit-test consumes a directional edge exactly
                 // once (manager dword 271 clears on delivery); without this
                 // the script's poll loop re-applies the same edge once per
@@ -590,15 +470,13 @@ pub(super) fn execute(
                         }
                     _ => {}
                 }
-                state.interpreter_words.insert(result_field_offset, result);
+                state.write_interpreter_word(result_field_offset, result);
                 return Ok(None);
             }
             // Idle polls report -1 (`sub_468740`'s no-input branch): the
             // hover pass above already moved the active record, and the
             // dispatcher's message gate only consumes confirmed keys.
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::MAX);
+            state.write_interpreter_word(result_field_offset, u32::MAX);
             Ok(None)
         }
         (
@@ -618,9 +496,7 @@ pub(super) fn execute(
             if !live {
                 let field = u32::from(error_flag_field_offset);
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state
-                    .interpreter_words
-                    .insert(field, flags | error_flag_mask);
+                state.write_interpreter_word(field, flags | error_flag_mask);
                 return Ok(None);
             }
             let bank = u8::try_from(*bank).map_err(|_| {
@@ -633,22 +509,12 @@ pub(super) fn execute(
             // or -1 when nothing is hovered. The save-screen loop's -2
             // exit comes from the poll command's escape path, not this
             // read.
-            log_chain_state_transition(state);
             let result = state
                 .filter_chain_active_records
                 .get(&bank)
                 .copied()
                 .unwrap_or(u32::MAX);
-            if tracing::enabled!(tracing::Level::INFO) && state.program_counter == 410_128 {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.loop_cmd534",
-                    result,
-                    bank,
-                    active = state.filter_chain_active_records.get(&bank).copied(),
-                    tick = state.tick
-                );
-            }
-            state.interpreter_words.insert(result_field_offset, result);
+            state.write_interpreter_word(result_field_offset, result);
             Ok(None)
         }
         (
@@ -656,7 +522,11 @@ pub(super) fn execute(
                 max_bank,
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, key), (CmvsPs2aCommandStackWordKind::OpaqueU32, warp)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, key),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, warp),
+            ],
         ) => {
             // `sub_485F50` → `sub_468390`: look the record up by key in
             // the bank's chain and commit it: the record becomes the
@@ -668,11 +538,11 @@ pub(super) fn execute(
             // reports 1. The result lands in the same message word 81220
             // the poll feeds.
             if *bank > max_bank {
-                state.interpreter_words.insert(result_field_offset, 0);
+                state.write_interpreter_word(result_field_offset, 0);
                 return Ok(None);
             }
             let Ok(bank) = u8::try_from(*bank) else {
-                state.interpreter_words.insert(result_field_offset, 0);
+                state.write_interpreter_word(result_field_offset, 0);
                 return Ok(None);
             };
             let record = state
@@ -680,7 +550,7 @@ pub(super) fn execute(
                 .get(&bank)
                 .and_then(|records| records.get(key));
             let Some(record) = record else {
-                state.interpreter_words.insert(result_field_offset, 0);
+                state.write_interpreter_word(result_field_offset, 0);
                 return Ok(None);
             };
             if *warp != 0 {
@@ -689,19 +559,9 @@ pub(super) fn execute(
                 state.pointer_y = y.wrapping_add(h / 2) as i32;
             }
             if state.filter_chain_active_records.get(&bank) != Some(key) {
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.chain_click_commit",
-                        pc = state.program_counter,
-                        frame = state.current_frame,
-                        bank,
-                        record = *key,
-                        warp = *warp
-                    );
-                }
                 state.filter_chain_active_records.insert(bank, *key);
             }
-            state.interpreter_words.insert(result_field_offset, 1);
+            state.write_interpreter_word(result_field_offset, 1);
             Ok(None)
         }
         (
@@ -711,7 +571,12 @@ pub(super) fn execute(
                 error_flag_field_offset,
                 error_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, bank), (CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, _extra), (CmvsPs2aCommandStackWordKind::OpaqueU32, _name)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, bank),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _extra),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _name),
+            ],
         ) => {
             // `sub_486130`: free the bank's previous chain and install a
             // fresh single-record chain (`sub_468330`): record key 0, and
@@ -723,7 +588,7 @@ pub(super) fn execute(
             if *bank > max_bank || *channel > max_channel {
                 let field = error_flag_field_offset;
                 let flags = state.interpreter_words.get(&field).copied().unwrap_or(0);
-                state.interpreter_words.insert(field, flags | error_mask);
+                state.write_interpreter_word(field, flags | error_mask);
                 return Ok(None);
             }
             let Ok(bank) = u8::try_from(*bank) else {
@@ -774,7 +639,6 @@ pub(super) fn execute(
             // headless renderer is synchronous, so the completion is
             // modeled here at the callback's native trigger point.
             state.process_indexed_words.insert(2212, 1);
-            log_chain_state_transition(state);
             Ok(None)
         }
         _ => Err(CoreError::invalid(

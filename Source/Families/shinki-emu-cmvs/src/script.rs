@@ -1,10 +1,10 @@
 //! Script loading owned by the core, without a Host VFS or runtime provider.
 use crate::{
-    parse_ps2a, CmvsArchive, CmvsPs2aVmState, CmvsScript, CmvsScriptFrameIdentity,
-    CMVS_MAX_SCRIPT_CALL_INDEX,
+    CMVS_MAX_SCRIPT_CALL_INDEX, CmvsArchive, CmvsPs2aVmState, CmvsScript, CmvsScriptFrameIdentity,
+    parse_ps2a,
 };
 use roukaku_core::Hash256;
-use shinki_emu_sdk::{validate_archive_uri, CoreError};
+use shinki_emu_sdk::{CoreError, validate_archive_uri};
 use std::collections::BTreeMap;
 
 const MAX_SCRIPT_BYTES: usize = 64 * 1024 * 1024;
@@ -17,8 +17,21 @@ impl CmvsArchive {
         frame: u16,
         vm: &mut CmvsPs2aVmState,
     ) -> Result<CmvsScript, CoreError> {
+        validate_frame(frame)?;
+        let (encoded, _, malformed) = encoding_rs::SHIFT_JIS.encode(name);
+        if malformed || encoded.len() >= 32 {
+            return Err(CoreError::invalid(
+                "SHINKI_EMU_CMVS_SCRIPT_NAME",
+                "native script name exceeds its 32-byte buffer",
+            ));
+        }
         let uri = self.resolve_native_resource(vm, crate::CmvsResourceSearchBank::Script, name)?;
-        self.load_script(&uri, frame, vm)
+        let script = self.load_script(&uri, frame, vm)?;
+        vm.interpreter_string_buffers.insert(
+            13072 + frame * 32,
+            vec![crate::CmvsStringSegment::OwnedString(name.to_owned())],
+        );
+        Ok(script)
     }
 
     /// Decode the complete script before replacing its frame's data segment.
@@ -135,10 +148,11 @@ impl CmvsPs2aVmState {
                         _ => {}
                     }
                 }
-                if let Some(next_pc) = pc.checked_add(u32::from(instruction.span().byte_length)) {
-                    if (next_pc as usize) < script.bytecode.len() && next_pc.is_multiple_of(2) {
-                        queue.push_back(next_pc);
-                    }
+                if let Some(next_pc) = pc.checked_add(u32::from(instruction.span().byte_length))
+                    && (next_pc as usize) < script.bytecode.len()
+                    && next_pc.is_multiple_of(2)
+                {
+                    queue.push_back(next_pc);
                 }
             }
             self.script_valid_starts.insert(frame, starts);

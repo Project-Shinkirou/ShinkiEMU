@@ -5,27 +5,19 @@ use super::*;
 pub(super) struct InputState {
     confirm: u8,
     cancel: u8,
+    shift: u8,
+    control: u8,
     up_held: bool,
     down_held: bool,
     up_prev: bool,
     down_prev: bool,
+    pub(super) pointer_present: bool,
     /// Whether a cancel press opened the system menu and no confirm has
     /// dispatched from it yet. The record-29 resume is the save/load
     /// orchestrator's contract, not the story dialogue path's: story
     /// chapters also render ch60 child presenters, so arming on every
     /// dialog confirm derailed the keyboard marathon (124 -> 7 loads).
     pub(super) menu_opened: bool,
-    pub(super) menu_just_opened: bool,
-    /// True once this menu session's save transaction has completed: the
-    /// confirm dialog is torn down and the menu window's quad layer owns
-    /// the corners again (the load-page arrow). Gates the quad-dispatch
-    /// path so the save-phase clicks keep the presenter route.
-    pub(super) menu_save_completed: bool,
-    /// True until the first post-save confirm has dispatched the load
-    /// body once; later confirms leave the selection unarmed so the
-    /// record-park resume (not a fresh dispatcher dispatch) carries the
-    /// load tail.
-    pub(super) load_dispatch_fired: bool,
     /// The system menu's selected row while the menu session is open.
     /// The native confirm callback carries the row as the dispatch
     /// identity (frame local 8); intproc 70572 copies it into the
@@ -38,13 +30,35 @@ impl InputState {
     /// routing, save/load arms and one-shot flags all reset.
     pub(super) fn close_menu(&mut self) {
         self.menu_opened = false;
-        self.menu_save_completed = false;
-        self.load_dispatch_fired = false;
-        self.menu_just_opened = false;
         self.menu_row = 1;
     }
 
     pub fn event(&mut self, vm: &mut CmvsPs2aVmState, event: &RuntimeEvent) {
+        if matches!(
+            event,
+            RuntimeEvent::PointerMove { .. } | RuntimeEvent::PointerButton { .. }
+        ) {
+            self.pointer_present = true;
+        }
+        vm.native_pointer_present = self.pointer_present;
+        if let RuntimeEvent::Key { code, state, .. } = event {
+            let modifier = match code {
+                KeyCode::ShiftLeft => Some((&mut self.shift, 1)),
+                KeyCode::ShiftRight => Some((&mut self.shift, 2)),
+                KeyCode::ControlLeft => Some((&mut self.control, 1)),
+                KeyCode::ControlRight => Some((&mut self.control, 2)),
+                _ => None,
+            };
+            if let Some((keys, bit)) = modifier {
+                match state {
+                    KeyState::Pressed => *keys |= bit,
+                    KeyState::Released => *keys &= !bit,
+                    KeyState::Repeated => {}
+                }
+            }
+        }
+        vm.input_shift_held = self.shift != 0;
+        vm.input_control_held = self.control != 0;
         let binding = match event {
             RuntimeEvent::Key {
                 code: KeyCode::Enter,
@@ -76,13 +90,6 @@ impl InputState {
             }
             vm.input_confirm_held = self.confirm != 0;
             vm.input_advance_press |= !was_held && vm.input_confirm_held;
-            if tracing::enabled!(tracing::Level::INFO) && was_held && !vm.input_confirm_held {
-                tracing::info!(
-                    event = "cmvs.session.latch_armed",
-                    tick = vm.tick,
-                    frame = vm.current_frame
-                );
-            }
             vm.input_advance_release |= was_held && !vm.input_confirm_held;
             // Native key confirm on a focused dialog: the load/save
             // orchestrator (`sub_471F50` at 0x472883) writes the engine
@@ -96,71 +103,17 @@ impl InputState {
                 // the orchestrator's load branch reads it (the load body
                 // hard-codes slot 860 itself). Post-save menu = the load
                 // page.
-                // The load page's confirm key maps to key id 5
-                // (`0x4604C2`: counter 0x940 == 1 -> id 5): the item
-                // dispatcher's jve5 branch (`intproc` 187308) runs the
-                // load body (194766). Publish the request and arm the
-                // selection before any focus gating.
-                if self.menu_save_completed && !self.load_dispatch_fired {
-                    self.load_dispatch_fired = true;
-                    tracing::info!(
-                        event = "cmvs.session.load_confirm_armed",
-                        tick = vm.tick,
-                        menu_save_completed = self.menu_save_completed
-                    );
-                    vm.process_indexed_words.insert(66, 1);
-                    // The load body's deep gate (`intproc` 195098) reads
-                    // process word 2203 — an engine-side publish with no
-                    // script writer — before the render-and-execute
-                    // block. Publish it with the request.
-                    vm.process_indexed_words.insert(2203, 1);
-                    // The load body's data4 gate (`intproc` 195074):
-                    // another engine-published context word (no script
-                    // writer). Publish it into the menu script frame's
-                    // data segment.
-                    // `intproc` 187032 copies cmd 404's confirmed word
-                    // (sysreg 5, byte 81240) into data word 4 on every
-                    // dispatcher poll; the deep gate reads the copy. Arm
-                    // the confirmed word instead of the data word so the
-                    // next poll's copy carries it.
-                    vm.interpreter_words.insert(81240, 1);
-                    // `intproc` 195208 gates the load chain's tail on
-                    // the save-request flag (process word 16) still
-                    // being armed; the key confirm path never set it.
-                    vm.process_indexed_words.insert(16, 1);
-                    vm.input_selection_mirror = 5;
-                    vm.input_selection_override = Some(5);
-                    vm.load_confirm_selection = Some(5);
-                    // The save flow parks the record-17 poll family; the
-                    // item dispatcher only runs through the queued
-                    // dispatch in the disabled-scheduler mode. Queue the
-                    // dispatcher entry so the armed id reaches the ladder
-                    // on the next rebuild.
-                    vm.queue_dialog_dispatch(186_920, 1, 5);
-                }
-                // Story (non-menu) confirm: the item dispatcher only
-                // runs through a queued dispatch; the story dialog's
-                // advance is the jve1 confirmation chain, so queue the
-                // dispatcher with the confirm id like the native
-                // callback's message.
-                if !self.menu_opened && vm.story_dispatch_armed {
-                    vm.input_selection_mirror = 1;
-                    vm.queue_dialog_dispatch(186_920, 1, 1);
-                }
                 let dialog_focus = self.menu_opened
-                    && !vm.input_synthetic
-                    && vm
-                        .channel_child_presenters
-                        .keys()
-                        .any(|(ch, child)| *ch == 60 && *child >= 0);
+                    && vm.texture_children.get(&60).is_some_and(|children| {
+                        children.values().any(|child| child.surface_initialized)
+                    });
                 if dialog_focus {
-                    // Each physical menu confirm pushes the record again
-                    // (native callback behavior); the synthetic pump is
-                    // excluded so the ring never piles overlays.
+                    // Each menu confirm pushes the record again (native
+                    // callback behavior).
                     let slot = vm.process_indexed_words.get(&2).copied().unwrap_or(0);
-                    vm.interpreter_words.insert(0x36E8, slot);
-                    vm.interpreter_words.insert(0x36EC, slot);
-                    vm.interpreter_words.insert(0x36F0, u32::MAX);
+                    vm.write_interpreter_word(0x36E8, slot);
+                    vm.write_interpreter_word(0x36EC, slot);
+                    vm.write_interpreter_word(0x36F0, u32::MAX);
                     // The native callback pushes record slot 29
                     // (`sub_477F60`), whose table row resumes at intproc
                     // 369576 — the save/load orchestrator's handler. The
@@ -175,10 +128,10 @@ impl InputState {
                     // request the click handler does: the save sequence's
                     // chained waits (193138+) each need one.
                     vm.engine_request_armed = true;
-                    vm.interpreter_words.insert(3500 * 4, 1);
-                    vm.interpreter_words.insert(3501 * 4, 1);
-                    vm.interpreter_words.insert(3502 * 4, 179_768);
-                    vm.interpreter_words.insert(0x29DC, 0);
+                    vm.write_interpreter_word(3500 * 4, 1);
+                    vm.write_interpreter_word(3501 * 4, 1);
+                    vm.write_interpreter_word(3502 * 4, 179_768);
+                    vm.write_interpreter_word(0x29DC, 0);
                     // The record chain's tail lands in `Save_writeFile`
                     // (cmd694) for the selected row; the record-6 resume
                     // phase that reaches it is still being recovered, so
@@ -227,11 +180,6 @@ impl InputState {
             match state {
                 KeyState::Pressed => {
                     self.cancel |= bit;
-                    if !self.menu_opened {
-                        // The story context must be captured before the
-                        // menu's own flow lays records over the table.
-                        self.menu_just_opened = true;
-                    }
                     self.menu_opened = true;
                     self.menu_row = 1;
                 }
@@ -256,8 +204,6 @@ impl InputState {
         vm.input_up_edge = self.up_held && !self.up_prev;
         vm.input_down_edge = self.down_held && !self.down_prev;
         vm.menu_session_live = self.menu_opened;
-        vm.menu_capture_story = self.menu_just_opened;
-        self.menu_just_opened = false;
         if self.menu_opened {
             if vm.input_down_edge {
                 self.menu_row = self.menu_row.saturating_add(1).min(9);
@@ -273,6 +219,12 @@ impl InputState {
             RuntimeEvent::WindowFocused { focused: false }
                 | RuntimeEvent::WindowSuspended { suspended: true }
         ) {
+            self.pointer_present = false;
+            vm.native_pointer_present = false;
+            self.shift = 0;
+            self.control = 0;
+            vm.input_shift_held = false;
+            vm.input_control_held = false;
             self.confirm = 0;
             self.cancel = 0;
             self.up_held = false;
@@ -287,9 +239,14 @@ impl InputState {
         }
     }
 
-    /// Whether any confirm-group button is currently held.
-    pub fn confirm_held(&self) -> bool {
-        self.confirm != 0
+    /// Native 460520 rebuilds logical held inputs before every dispatch pass.
+    /// Restoring a VM must not resurrect keys no longer physically held.
+    pub(super) fn project(&self, vm: &mut CmvsPs2aVmState) {
+        vm.input_confirm_held = self.confirm != 0;
+        vm.input_cancel_held = self.cancel != 0;
+        vm.input_shift_held = self.shift != 0;
+        vm.input_control_held = self.control != 0;
+        vm.native_pointer_present = self.pointer_present;
     }
 }
 
@@ -347,5 +304,63 @@ mod tests {
         assert!(vm.input_down_edge);
         input.event(&mut vm, &key(KeyCode::Escape, KeyState::Released));
         assert!(!vm.input_cancel_held);
+    }
+
+    #[test]
+    fn modifiers_are_independent_native_skip_inputs_not_confirmation() {
+        let mut input = InputState::default();
+        let mut vm = CmvsPs2aVmState::new(0);
+        let read_skip = |vm: &mut CmvsPs2aVmState| {
+            execute_cmvs390_frame(
+                vm,
+                &crate::CmvsPs2aInstructionFrame::Command {
+                    span: crate::CmvsPs2aSourceSpan {
+                        offset: 0,
+                        byte_length: 2,
+                    },
+                    command_id: 751,
+                },
+            )
+            .unwrap();
+            vm.interpreter_words[&81220]
+        };
+        input.event(&mut vm, &key(KeyCode::Enter, KeyState::Pressed));
+        assert_eq!(read_skip(&mut vm), 0);
+        input.event(&mut vm, &key(KeyCode::ShiftLeft, KeyState::Pressed));
+        input.event(&mut vm, &key(KeyCode::ShiftRight, KeyState::Pressed));
+        input.event(&mut vm, &key(KeyCode::ShiftLeft, KeyState::Released));
+        assert_eq!(read_skip(&mut vm), 1);
+        input.event(&mut vm, &key(KeyCode::ShiftRight, KeyState::Released));
+        assert_eq!(read_skip(&mut vm), 0);
+        input.event(&mut vm, &key(KeyCode::ControlLeft, KeyState::Pressed));
+        input.event(&mut vm, &key(KeyCode::ControlRight, KeyState::Pressed));
+        input.event(&mut vm, &key(KeyCode::ControlLeft, KeyState::Released));
+        assert_eq!(read_skip(&mut vm), 1);
+        input.event(&mut vm, &RuntimeEvent::WindowFocused { focused: false });
+        assert_eq!(read_skip(&mut vm), 0);
+        assert!(!vm.input_confirm_held);
+    }
+
+    #[test]
+    fn restored_skip_state_rebinds_to_current_physical_keys() {
+        let mut input = InputState::default();
+        let mut vm = CmvsPs2aVmState::new(0);
+        input.event(&mut vm, &key(KeyCode::ControlLeft, KeyState::Pressed));
+        let bytes = postcard::to_allocvec(&vm).unwrap();
+        let mut restored: CmvsPs2aVmState = postcard::from_bytes(&bytes).unwrap();
+        input.event(&mut vm, &key(KeyCode::ControlLeft, KeyState::Released));
+        input.project(&mut restored);
+        execute_cmvs390_frame(
+            &mut restored,
+            &crate::CmvsPs2aInstructionFrame::Command {
+                span: crate::CmvsPs2aSourceSpan {
+                    offset: 0,
+                    byte_length: 2,
+                },
+                command_id: 751,
+            },
+        )
+        .unwrap();
+        assert_eq!(restored.interpreter_words[&81220], 0);
     }
 }

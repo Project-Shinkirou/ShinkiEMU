@@ -129,7 +129,9 @@ pub fn decode_ps2a_control_instruction(
                 .unwrap_or_default();
             Err(CoreError::invalid(
                 "SHINKI_EMU_CMVS_PS2A_OPCODE",
-                format!("PS2A opcode {opcode:#06x} is not a proven control instruction (offset {offset}, context [start {start}] {context})"),
+                format!(
+                    "PS2A opcode {opcode:#06x} is not a proven control instruction (offset {offset}, context [start {start}] {context})"
+                ),
             ))
         }
     }
@@ -246,11 +248,13 @@ pub fn private_string_reference_from_value_expression(
     expression: &CmvsPs2aValueExpression,
 ) -> Result<CmvsPs2aPrivateStringReference, CoreError> {
     match expression.tokens.as_slice() {
-        [CmvsPs2aValueExpressionToken::Value {
-            opcode: 0x120,
-            payload,
-            ..
-        }] => Ok(CmvsPs2aPrivateStringReference {
+        [
+            CmvsPs2aValueExpressionToken::Value {
+                opcode: 0x120,
+                payload,
+                ..
+            },
+        ] => Ok(CmvsPs2aPrivateStringReference {
             relative_offset: *payload,
         }),
         _ => Err(invalid(
@@ -336,81 +340,6 @@ pub fn frame_ps2a_instruction(
         }),
         _ => decode_ps2a_control_instruction(script, offset).map(CmvsPs2aInstructionFrame::Control),
     }
-}
-
-/// Counts the documented `0x01200201` PS2A string-reference pattern without
-/// decoding or returning script strings.  A candidate is valid only when its
-/// relative operand resolves to the beginning of a bounded, validated string
-/// pool entry; references into the middle of a string are retained as invalid
-/// evidence rather than silently accepted.
-pub fn census_ps2a_string_references(
-    script: &CmvsScript,
-) -> Result<CmvsPs2aStringReferenceCensus, CoreError> {
-    const PUSH_STRING_PATTERN: [u8; 4] = 0x0120_0201u32.to_le_bytes();
-    let string_pool_start = usize::try_from(script.string_pool_start_u64()).map_err(|_| {
-        invalid(
-            "SHINKI_EMU_CMVS_PS2A_OFFSET",
-            "PS2A string pool offset is too large",
-        )
-    })?;
-    let string_starts = script
-        .strings
-        .iter()
-        .map(|entry| usize::try_from(entry.offset))
-        .collect::<Result<std::collections::BTreeSet<_>, _>>()
-        .map_err(|_| {
-            invalid(
-                "SHINKI_EMU_CMVS_PS2A_OFFSET",
-                "PS2A string offset is too large",
-            )
-        })?;
-    let mut census = CmvsPs2aStringReferenceCensus {
-        candidate_count: 0,
-        valid_string_start_count: 0,
-        invalid_offset_count: 0,
-    };
-    for position in 0..script.bytecode.len().saturating_sub(7) {
-        if script.bytecode[position..position + 4] != PUSH_STRING_PATTERN {
-            continue;
-        }
-        census.candidate_count = census.candidate_count.checked_add(1).ok_or_else(|| {
-            invalid(
-                "SHINKI_EMU_CMVS_PS2A_COUNT",
-                "PS2A reference count overflowed",
-            )
-        })?;
-        let relative = u32::from_le_bytes(
-            script.bytecode[position + 4..position + 8]
-                .try_into()
-                .map_err(|_| invalid("SHINKI_EMU_CMVS_PS2A_LAYOUT", "PS2A operand is truncated"))?,
-        );
-        let target = string_pool_start.checked_add(usize::try_from(relative).map_err(|_| {
-            invalid(
-                "SHINKI_EMU_CMVS_PS2A_OFFSET",
-                "PS2A string reference is too large",
-            )
-        })?);
-        if target.is_some_and(|offset| string_starts.contains(&offset)) {
-            census.valid_string_start_count = census
-                .valid_string_start_count
-                .checked_add(1)
-                .ok_or_else(|| {
-                    invalid(
-                        "SHINKI_EMU_CMVS_PS2A_COUNT",
-                        "PS2A reference count overflowed",
-                    )
-                })?;
-        } else {
-            census.invalid_offset_count =
-                census.invalid_offset_count.checked_add(1).ok_or_else(|| {
-                    invalid(
-                        "SHINKI_EMU_CMVS_PS2A_COUNT",
-                        "PS2A reference count overflowed",
-                    )
-                })?;
-        }
-    }
-    Ok(census)
 }
 
 pub(crate) fn decode_ps2a(source: &[u8], header: Ps2aHeader) -> Result<Vec<u8>, CoreError> {

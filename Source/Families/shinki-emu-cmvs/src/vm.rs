@@ -1,11 +1,85 @@
+pub(crate) mod camera_transition;
+mod channel_input;
+pub(crate) mod cmv;
 mod dispatch;
+pub(crate) mod image_effects;
+pub(crate) mod independent_view;
+pub(crate) mod message_history;
 mod native_save;
-mod native_text;
+pub use independent_view::{CmvsIndependentView, CmvsIndependentViewMotion};
+pub(crate) mod native_mesh;
+pub use native_mesh::{
+    CmvsNativeMesh, CmvsNativeMeshVertex, CmvsNativeSnow, CmvsNativeSnowParticle,
+};
+pub(crate) mod native_hit_polygon;
+pub use native_hit_polygon::{
+    CmvsNativeCollisionGeometry, CmvsNativeCollisionParticle, CmvsNativeCollisionParticles,
+};
+pub(crate) mod native_scene_worker;
+pub use native_scene_worker::CmvsNativeSceneWorker;
+pub(crate) mod native_particle_kind1;
+pub use native_particle_kind1::{CmvsNativeParticleKind1, CmvsNativeParticleKind1Particle};
+pub(crate) mod native_particle_kind3;
+pub use native_particle_kind3::{CmvsNativeParticleKind3, CmvsNativeParticleKind3Particle};
+pub(crate) mod native_particle_kind4;
+pub use native_particle_kind4::{CmvsNativeParticleKind4, CmvsNativeParticleKind4Particle};
+pub(crate) mod native_particle_kind5;
+pub use native_particle_kind5::{CmvsNativeParticleKind5, CmvsNativeParticleKind5Particle};
+pub(crate) mod native_particle_kind7;
+pub use native_particle_kind7::{CmvsNativeParticleKind7, CmvsNativeParticleKind7Particle};
+pub(crate) mod native_particle_kind9;
+pub use native_particle_kind9::{CmvsNativeParticleKind9, CmvsNativeParticleKind9Particle};
+pub(crate) mod native_image_shards;
+pub use native_image_shards::{CmvsNativeImageShardGrid, CmvsNativeImageShardParticle};
+pub(crate) mod native_scene_image;
+pub use native_scene_image::CmvsNativeImageShards;
+pub(crate) mod native_scene_kind50;
+pub use native_scene_kind50::CmvsNativeSceneKind50;
+pub(crate) mod native_scene_frame;
+pub(crate) mod native_scene_kind51;
+pub use native_scene_kind51::CmvsNativeSceneKind51;
+pub(crate) mod native_scene_kind52;
+pub use native_scene_kind52::CmvsNativeSceneKind52;
+pub(crate) mod native_scene_kind53;
+pub use native_scene_kind53::CmvsNativeSceneKind53;
+pub(crate) mod native_scene_kind54;
+pub use native_scene_kind54::CmvsNativeSceneKind54;
+pub(crate) mod native_scene_kind55;
+pub use native_scene_kind55::CmvsNativeSceneKind55;
+pub(crate) mod native_scene_kind56;
+pub use native_scene_kind56::CmvsNativeSceneKind56;
+pub(crate) mod native_scene_kind57;
+pub use image_effects::{
+    CmvsAlphaEffect, CmvsAlphaSegment, CmvsBasicEffects, CmvsFloatMotion, CmvsFloatSegment,
+    CmvsSpriteEffect, CmvsSpriteFrame,
+};
+pub use native_scene_kind57::CmvsNativeSceneKind57;
+pub(crate) mod native_glyph;
+pub(crate) mod native_slot;
+pub(crate) mod native_slot_projection;
+pub(crate) mod native_text;
+pub(crate) mod native_timeline;
+pub use native_glyph::{
+    CmvsNativeGlyphAtlas, CmvsNativeGlyphAuxiliary, CmvsNativeGlyphGraph, CmvsNativeGlyphMotion,
+    CmvsNativeGlyphPainted, CmvsNativeGlyphRecord, CmvsNativeGlyphResident,
+};
+pub(crate) mod native_custom_glyph;
+pub use native_custom_glyph::{CmvsNativeCustomGlyphBitmap, CmvsNativeCustomGlyphManager};
+pub(crate) mod native_view;
+pub(crate) mod screen_shake;
 pub use native_save::{CmvsNativeSaveCatalog, CmvsNativeSaveSlot};
 pub(crate) use native_text::layout::append as append_native_static_text;
+pub use native_view::CmvsNativeViewState;
+pub use screen_shake::CmvsScreenShakeState;
 mod state;
+pub(crate) mod texture_presentation;
+pub(crate) mod texture_reload;
 pub use dispatch::execute_cmvs390_frame;
-pub use native_text::{CmvsNativeTextAction, CmvsNativeTextGlyph, CmvsNativeTextSurface};
+pub use native_text::dialogue::CmvsNativeTextReveal;
+pub use native_text::{
+    CmvsNativeFontOwner, CmvsNativeFontRasterState, CmvsNativeTextAction, CmvsNativeTextGlyph,
+    CmvsNativeTextSurface,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use shinki_emu_sdk::CoreError;
@@ -15,49 +89,15 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) const NATIVE_FONT_SHIFT_JIS: u32 = 0x4e_a3a4;
 
 use crate::{
-    cmvs390_command_contract, CmvsPs2aCommandEffectKind, CmvsPs2aCommandStackWordKind,
-    CmvsPs2aControlInstruction, CmvsPs2aInstructionFrame, CmvsPs2aPrivateStringReference,
-    CmvsResourceChannelBank, CmvsResourceSearchBank,
+    CmvsPs2aCommandEffectKind, CmvsPs2aCommandStackWordKind, CmvsPs2aControlInstruction,
+    CmvsPs2aInstructionFrame, CmvsPs2aPrivateStringReference, CmvsResourceChannelBank,
+    CmvsResourceSearchBank, cmvs390_command_contract,
 };
 
 /// The decoded-script byte budget shared with the PS2A parser; segment
 /// sizes come from decoded scripts, so the same bound applies to the
 /// snapshot they round-trip through.
 const MAX_SCRIPT_BYTES: usize = 64 * 1024 * 1024;
-
-/// Gates the per-instruction development traces so production and evidence
-/// runs do not pay for stderr formatting in the interpreter hot loop.
-fn vm_trace_enabled() -> bool {
-    tracing::enabled!(tracing::Level::TRACE)
-}
-
-/// Gates the development dump of recovered effect-graph operands. This is a
-/// reverse-engineering aid for recovering the channel/quad pipeline; it never
-/// participates in execution.
-fn effect_trace_enabled() -> bool {
-    tracing::enabled!(tracing::Level::TRACE)
-}
-
-fn is_effect_trace_target(kind: CmvsPs2aCommandEffectKind) -> bool {
-    matches!(
-        kind,
-        CmvsPs2aCommandEffectKind::CreateEffectChannel { .. }
-            | CmvsPs2aCommandEffectKind::SetEffectChannelEnabled { .. }
-            | CmvsPs2aCommandEffectKind::SetEffectChannelPlaybackFlag { .. }
-            | CmvsPs2aCommandEffectKind::ForwardEffectChannelWord { .. }
-            | CmvsPs2aCommandEffectKind::ForwardEffectChannelBlock { .. }
-            | CmvsPs2aCommandEffectKind::ForwardEffectChannelPair { .. }
-            | CmvsPs2aCommandEffectKind::ForwardEffectChannelQuad { .. }
-            | CmvsPs2aCommandEffectKind::ConfigureEffectQuadGeometry { .. }
-            | CmvsPs2aCommandEffectKind::ConfigureEffectQuadRect { .. }
-            | CmvsPs2aCommandEffectKind::SelectEffectQuad { .. }
-            | CmvsPs2aCommandEffectKind::DeselectEffectQuad { .. }
-            | CmvsPs2aCommandEffectKind::ActivateEffectQuad { .. }
-            | CmvsPs2aCommandEffectKind::EffectChildCommand { .. }
-            | CmvsPs2aCommandEffectKind::SetEffectChildEnabled { .. }
-            | CmvsPs2aCommandEffectKind::SelectEffectChild { .. }
-    )
-}
 
 const MAX_STACK_BYTES: usize = 64 * 1024;
 const MAX_PROCESS_FLAG_BITS: u32 = 0x0004_0000;
@@ -77,8 +117,26 @@ const MAX_FILTER_CHAIN_RECORDS_PER_BANK: usize = 4096;
 /// execution. The wire payload is untrusted even when its outer envelope and
 /// hash are valid.
 pub fn validate_cmvs390_vm_state(state: &CmvsPs2aVmState) -> Result<(), CoreError> {
+    state.message_history.validate()?;
+    camera_transition::validate(state)?;
+    independent_view::validate_pair(&state.independent_views)?;
+    native_scene_worker::validate(state)?;
+    native_hit_polygon::validate(state)?;
+    image_effects::validate(state)?;
     native_text::validate(state)?;
     native_save::validate(state)?;
+    texture_reload::validate(state)?;
+    cmv::validate(state)?;
+    if state
+        .texture_presentation
+        .as_ref()
+        .is_some_and(|p| p.elapsed_ms > p.duration_ms)
+    {
+        return Err(invalid(
+            "SHINKI_EMU_CMVS_PRESENTATION_CLOCK",
+            "presentation elapsed time exceeds its duration",
+        ));
+    }
     crate::system_save::validate_lists(&state.native_system_lists)?;
     for (bank, paths) in &state.resource_search_paths {
         for (slot, path) in paths {
@@ -243,14 +301,14 @@ pub fn validate_cmvs390_vm_state(state: &CmvsPs2aVmState) -> Result<(), CoreErro
 }
 
 /// One recovered resource channel slot record from the case-176 handler.
-/// String content stays owned by the active script pool; only the private
-/// reference and the control words are retained.
+/// Native 48A110 copies the source name into its fixed descriptor; it does
+/// not retain a reference into the mutable script string pool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsResourceChannelSlotRecord {
-    pub enabled: bool,
+    pub start_playback: bool,
     pub volume: u32,
     pub loop_playback: bool,
-    pub resource: CmvsPs2aPrivateStringReference,
+    pub source: String,
 }
 
 /// Recovered state of one child texture below a case-32 container.
@@ -258,43 +316,83 @@ pub struct CmvsResourceChannelSlotRecord {
 pub struct CmvsTextureChildState {
     pub resource: Option<String>,
     pub resource_frame: Option<u16>,
+    pub image_info: [u32; 3],
     pub surface_initialized: bool,
+    /// Inverse of native visibility DWORD1035; fresh roots and children are visible.
+    pub hidden: bool,
+    /// Header bit 0 cleared by command 44; basic rebuilds preserve it.
+    pub parent_context_detached: bool,
+    /// Header 0x100 cleared by command 46; parent header controls child shaking.
+    pub screen_shake_disabled: bool,
+    /// Native basic-surface alpha; None retains the default 255.
+    pub alpha: Option<i32>,
+    /// Packed opaque solid color set by command 67; None retains the native default.
+    pub solid_color: Option<u32>,
+    /// Raw IEEE754 scale words from command 73; None is native (1, 1).
+    pub scale_words: Option<[u32; 2]>,
+    /// Native basic DWORD0; 0/1/5 are flat, 2/3 use the corresponding camera.
+    pub basic_kind: u8,
+    /// None retains native alpha blending (DWORD1 = 1).
+    pub blend_mode: Option<u8>,
+    /// Native floating position DWORD11..13, independent of integer DWORD8/9.
+    pub float_position_words: [u32; 3],
+    pub projection_depth_word: u32,
+    pub projection_height_word: u32,
+    /// Native CBasic DWORD20, signed hundredths of a degree.
+    pub rotation_hundredths: i32,
+    pub reference_size: Option<[u32; 2]>,
+    /// Source rectangle (x, y, width, height).
     pub rect_words: Option<[u32; 4]>,
+    /// Pivot (DWORD6/7), set by command 70; independent of source UV.
     pub position_words: Option<[u32; 2]>,
+    /// Destination offset (DWORD8/9), set by command 69.
     pub auxiliary_pair_words: Option<[u32; 2]>,
+    /// Draw order (DWORD10), set by command 71.
     pub auxiliary_word: Option<u32>,
+    pub basic_effects: CmvsBasicEffects,
+    /// Disabled CImage effect storage is stale but survives native capture.
+    pub image_effect_words: [u32; 11],
+    /// CImage DWORD1031, independent of its drawable basic.
+    pub collision_geometry: Option<CmvsNativeCollisionGeometry>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsTextureParentState {
     pub resource: Option<String>,
     pub resource_frame: Option<u16>,
+    /// CTextureInfo width, height and source-alpha flag queried by command 51.
+    /// An allocated provider whose load failed retains the zero-initialized info.
+    pub image_info: [u32; 3],
     pub surface_initialized: bool,
+    pub hidden: bool,
+    pub screen_shake_disabled: bool,
+    /// Native basic-surface alpha; None retains the default 255.
+    pub alpha: Option<i32>,
+    /// Packed opaque solid color set by command 67; None retains the native default.
+    pub solid_color: Option<u32>,
+    pub scale_words: Option<[u32; 2]>,
+    pub basic_kind: u8,
+    pub blend_mode: Option<u8>,
+    pub float_position_words: [u32; 3],
+    pub projection_depth_word: u32,
+    pub projection_height_word: u32,
+    /// Native CBasic DWORD20, signed hundredths of a degree.
+    pub rotation_hundredths: i32,
+    /// Native DWORD1038/1039; width determines the stage coordinate ratio.
+    pub reference_size: Option<[u32; 2]>,
+    /// Source rectangle (x, y, width, height).
     pub rect_words: Option<[u32; 4]>,
+    /// Source offset (DWORD6/7), set by command 70.
     pub position_words: Option<[u32; 2]>,
+    /// Destination offset (DWORD8/9), set by command 69.
     pub auxiliary_pair_words: Option<[u32; 2]>,
+    /// Draw order (DWORD10), set by command 71.
     pub auxiliary_word: Option<u32>,
-}
-
-/// The last placement of a destroyed texture slot. The native surfaces
-/// survive the main tick's collector with their transforms; the host
-/// reuses this record when it presents a slot whose VM object is gone.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CmvsRetainedPlacement {
-    pub surface_initialized: bool,
-    pub rect_words: Option<[u32; 4]>,
-    pub position_words: Option<[u32; 2]>,
-    pub auxiliary_word: Option<u32>,
-}
-
-/// Encodes a texture slot key: `0x8000_0000 | parent` for parent slots,
-/// `(parent << 16) | child` for child slots.
-pub fn cmvs_slot_placement_key_parent(parent: u8) -> u32 {
-    0x8000_0000 | u32::from(parent)
-}
-
-pub fn cmvs_slot_placement_key_child(parent: u8, child: u16) -> u32 {
-    (u32::from(parent) << 16) | u32::from(child)
+    /// Native `sub_43C2A0` image mode, packed BGR color, and row kernel.
+    pub color_filter: Option<[u32; 3]>,
+    pub basic_effects: CmvsBasicEffects,
+    pub image_effect_words: [u32; 11],
+    pub collision_geometry: Option<CmvsNativeCollisionGeometry>,
 }
 
 /// One keyed record allocated by the recovered filter-chain helper.
@@ -302,16 +400,6 @@ pub fn cmvs_slot_placement_key_child(parent: u8, child: u16) -> u32 {
 pub struct CmvsFilterChainRecord {
     pub words: [u32; 4],
     pub parameter_blocks: BTreeMap<u8, CmvsFilterChainParameterBlock>,
-}
-
-/// The recovered screenshot owner (`sub_47AFF0`): the four construction
-/// words, the case-551 enabled flag and the case-550 progress delta word,
-/// which only the unrecovered render path updates.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CmvsSaveImageOwnerState {
-    pub construction_words: [u32; 4],
-    pub enabled: bool,
-    pub progress_delta: u32,
 }
 
 /// One physical 16-byte parameter block in a filter-chain record.
@@ -353,11 +441,94 @@ pub enum CmvsPs2aStorageRequest {
     LoadSystemState { path_buffer_offset: u16 },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum CmvsNativeAudioControl {
+    Start { looping: bool },
+    Restart { looping: bool },
+    Pause,
+    Dispose,
+    Volume(u32),
+    Pan(i32),
+    FadeOut { duration_ms: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum CmvsNativeAudioQuery {
+    Position,
+    DecodedBytes,
+    Levels,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum CmvsNativeAudioAction {
+    LoadVoice {
+        channel: u8,
+        name: String,
+        volume: u32,
+        looping: bool,
+        rate_bits: u32,
+    },
+    Control {
+        channel: u8,
+        control: CmvsNativeAudioControl,
+    },
+    Query {
+        channel: u8,
+        query: CmvsNativeAudioQuery,
+    },
+    LoadFixedStream {
+        name: String,
+        volume: u32,
+        fade_in_ms: u32,
+        looping: bool,
+        start: bool,
+    },
+    LoadStatic {
+        slot: u8,
+        name: String,
+    },
+    FreeStatic {
+        slot: u8,
+    },
+    PlayStatic {
+        slot: u8,
+        volume: u32,
+        looping: bool,
+    },
+    StopStatic {
+        slot: u8,
+    },
+}
+
 /// Core-private command boundary. Resolved names stay within the Family;
 /// callers must not serialize actions into diagnostics or public reports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum CmvsPs2aVmAction {
+    NativeAudio(CmvsNativeAudioAction),
     NativeText(CmvsNativeTextAction),
+    CreateNativeScene53 {
+        slot: u8,
+        retired_static_sounds: u32,
+        stopped_streams: u16,
+    },
+    NativeSceneWorkerResourceChanged {
+        slot: u8,
+        retired_static_sounds: u32,
+        stopped_streams: u16,
+    },
+    TransferTextureParentToSceneWorker {
+        parent_slot: u8,
+        slot: u8,
+        retired_static_sounds: u32,
+        stopped_streams: u16,
+    },
+    SetNativeFullscreen {
+        enabled: bool,
+    },
+    /// Cases 729..733: the canonical gain word has already been stored.
+    ApplyNativeAudioGainSetting {
+        command_id: u16,
+    },
     /// Cases 160/164: alternate two audio channels, optionally crossfading.
     PlayCrossfadeAudio {
         primary: CmvsPs2aPrivateStringReference,
@@ -371,25 +542,32 @@ pub enum CmvsPs2aVmAction {
     },
     /// Case 161: stop both channels and reset the channel selector.
     StopAudio,
-    /// Case 776: one bounded table slot object is rebuilt from a script
-    /// string and a seed word.
-    CreateBoundedSlotObject {
-        table_dword_index: u32,
-        aux_table_dword_index: u32,
-        slot: u32,
-        aux_slot: u32,
-        name: u32,
-        seed: u32,
-        trailing_word: u32,
+    /// Case 176: load the named stream on native channel 9..14.
+    ConfigureResourceAudio {
+        slot: u8,
+        fade_in_ms: u32,
+    },
+    /// Advance the native timeline after its command updates its targets.
+    FlushNativeTimeline,
+    BuildNativeSaveSnapshot {
+        resume_pc: u32,
+    },
+    OpenCmvResource {
+        controller_slot: u8,
+        parent_slot: u8,
+        resource: String,
+        start_frame: u32,
+    },
+    PresentCmvFrame {
+        controller_slot: u8,
+        frame: u32,
+    },
+    ReleaseCmvResource {
+        controller_slot: u8,
     },
     /// Case 73/193: the single object at one dword index is released.
     ReleaseSingleObject {
         dword_index: u32,
-    },
-    /// Case 778: one bounded table slot object is released.
-    DestroyBoundedSlotObject {
-        table_dword_index: u32,
-        slot: u32,
     },
     /// Case 349: the effect playback objects for one channel/effect pair
     /// were rebuilt; the media graph itself stays unrecovered.
@@ -411,11 +589,7 @@ pub enum CmvsPs2aVmAction {
         channel: u32,
         value: u32,
     },
-    /// Case 376: one opaque block word was forwarded to an occupied channel.
-    ForwardEffectChannelBlock {
-        channel: u32,
-    },
-    /// Case 324: two opaque words were forwarded to an occupied channel.
+    /// Case 328: two opaque words were forwarded to an occupied channel.
     ForwardEffectChannelPair {
         channel: u32,
     },
@@ -425,10 +599,6 @@ pub enum CmvsPs2aVmAction {
     },
     /// Case 350: the effect position was queried into two result words.
     QueryEffectPosition,
-    /// Cases 384-391: one child of an occupied channel ran its action.
-    EffectChildCommand {
-        channel: u32,
-    },
     /// Case 400: one effect quad configuration was applied.
     ConfigureEffectQuad {
         channel: u32,
@@ -455,13 +625,13 @@ pub enum CmvsPs2aVmAction {
         channel: u32,
         enabled: bool,
     },
-    /// Case 368: one named sound start was requested through a channel.
     SelectEffectChild {
         channel: u32,
     },
-    PlayChannelSound {
-        channel: u32,
-        name: String,
+    LoadChannelImage {
+        channel: u8,
+        resource: String,
+        load_error_mask: u32,
     },
     /// A recovered resource-channel setup request. This is not yet bound to a
     /// media provider; the host must reject an unbound channel contract.
@@ -479,11 +649,32 @@ pub enum CmvsPs2aVmAction {
         child_id: u16,
         resource: String,
     },
+    /// Case 960 appends a type-8 bitmap sheet to the native glyph manager.
+    LoadCustomGlyphResource {
+        resource: String,
+        cell_size: u32,
+    },
     /// The recovered case-48 path binds a private PB resource directly to a
     /// top-level texture container.
     LoadTextureParentResource {
         parent_slot: u8,
         resource: String,
+    },
+    /// Case 708 replaces the root before attempting the image load.
+    ReloadTextureParentImage {
+        parent_slot: u8,
+        resource: String,
+        bank: CmvsResourceSearchBank,
+        result_field_offset: u32,
+    },
+    /// Case 709 drops both transition owners and leaves the new image.
+    ReleaseTextureReload {
+        parent_slot: u8,
+    },
+    /// Case 40 moves the existing image owner, including an active reload.
+    MoveTextureParentSurface {
+        source: u8,
+        destination: u8,
     },
     /// The recovered case-966 path opens a scenario stream resource by name;
     /// the host resolves it against the mounted archive and the load
@@ -520,6 +711,7 @@ pub enum CmvsPs2aVmAction {
     /// The recovered case-700 path rewrites the save header title.
     SetNativeSaveTitle {
         slot: u32,
+        title: String,
         result_field_offset: u32,
     },
     /// The recovered case-297 path serializes the system state through
@@ -529,12 +721,30 @@ pub enum CmvsPs2aVmAction {
     /// metadata and thumbnail; failures publish zero.
     LoadNativeSaveInfo {
         slot: u32,
+        parent: u32,
+        child: i32,
+        title_target: u32,
+        secondary_target: u32,
         result_field_offset: u32,
     },
     /// The recovered case-702 path rewrites the save header metadata pair.
     SetNativeSaveMeta {
         slot: u32,
+        metadata: [u32; 2],
         result_field_offset: u32,
+    },
+    /// Resolve the active owner's mask without replacing its source image.
+    PrepareTexturePresentation {
+        clear_background: bool,
+    },
+    /// A destroyed or rebuilt native parent releases its complete surface family.
+    RemoveTextureParentSurface {
+        parent_slot: u8,
+    },
+    ClearTextureParentSurfaces,
+    RemoveTextureChildSurface {
+        parent_slot: u8,
+        child_id: u16,
     },
     /// Case 71 completes the recovered four-stage surface configuration.
     /// The host may present the selected parent or child only after this
@@ -555,12 +765,6 @@ pub enum CmvsPs2aVmAction {
     },
     SetWindowCaption {
         segments: Vec<CmvsStringSegment>,
-    },
-    /// The recovered case-177 notification path is only emitted when the
-    /// version-pinned gate field is non-zero in the retained state.
-    NotifyChannelVisibility {
-        target_index: u8,
-        enabled: bool,
     },
     /// The recovered case-354 path asks the host to resolve the reference,
     /// apply the bounded buffer write, or raise the error-flag mask when the
@@ -630,7 +834,7 @@ mod system_state;
 mod text;
 
 pub use self::effect::CmvsEffectChannel;
-use self::effect::*;
+pub(crate) use self::effect::{CmvsEffectElement, CmvsEffectPlaybackRecord, CmvsEffectTextSurface};
 use self::execute::*;
 use self::expression::*;
 use self::filterchain::*;

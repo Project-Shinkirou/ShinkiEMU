@@ -3,7 +3,7 @@ use configparser::ini::Ini;
 use std::path::Path;
 mod registry;
 
-const DEFAULT_FONT: &str = "ＭＳ ゴシック";
+pub(crate) const DEFAULT_FONT: &str = "ＭＳ ゴシック";
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 fn failure() -> CoreError {
@@ -23,6 +23,10 @@ impl CmvsArchive {
             crate::vm::NATIVE_FONT_SHIFT_JIS,
             u32::from(font_shift_jis(root)?),
         );
+        let [bold, alternate] = resolve_font_flags(root, &registry::SystemRegistry)?;
+        vm.write_interpreter_word(1476, u32::from(bold));
+        vm.write_interpreter_word(1496, u32::from(alternate));
+        vm.native_default_font = resolve_font(root, &registry::SystemRegistry)?;
         Ok(())
     }
 
@@ -55,6 +59,63 @@ impl CmvsArchive {
         let root = self.game_root.as_deref().ok_or_else(failure)?;
         resolve_font(root, &registry::SystemRegistry)
     }
+
+    pub(crate) fn native_display_sizes(&self) -> Result<([u32; 2], [u32; 2]), CoreError> {
+        resolve_display_sizes(
+            self.game_root.as_deref().ok_or_else(failure)?,
+            &registry::SystemRegistry,
+        )
+    }
+
+    pub(crate) fn native_windowed(&self) -> Result<bool, CoreError> {
+        resolve_windowed(
+            self.game_root.as_deref().ok_or_else(failure)?,
+            &registry::SystemRegistry,
+        )
+    }
+
+    pub(crate) fn native_audio_configuration(&self) -> Result<([u32; 2], [u32; 2]), CoreError> {
+        resolve_audio_configuration(
+            self.game_root.as_deref().ok_or_else(failure)?,
+            &registry::SystemRegistry,
+        )
+    }
+
+    pub(crate) fn initialize_native_view_policy(
+        &self,
+        vm: &mut crate::CmvsPs2aVmState,
+    ) -> Result<(), CoreError> {
+        let [screen, point] = resolve_view_policy(
+            self.game_root.as_deref().ok_or_else(failure)?,
+            &registry::SystemRegistry,
+        )?;
+        vm.component_words.insert((1920_u32 << 16) | 100, screen);
+        vm.component_words.insert((1920_u32 << 16) | 104, point);
+        vm.native_view.fullscreen_size = resolve_fullscreen_size(
+            self.game_root.as_deref().ok_or_else(failure)?,
+            &registry::SystemRegistry,
+        )?;
+        Ok(())
+    }
+}
+
+// 41D7F0 reads the saved registry parameter first, then the INI default.
+fn resolve_font_flags(root: &Path, registry: &impl Registry) -> Result<[bool; 2], CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    let ini = read_ini(root, "cmvs.cfg")?;
+    let parameter_key = in_registry.then(|| format!("{}\\param", key.trim_end_matches('\\')));
+    let number = |name: &str, registry_name: &str| -> Result<bool, CoreError> {
+        if let Some(key) = parameter_key.as_deref()
+            && let Some(value) = registry.number(key, registry_name)?
+        {
+            return Ok(value != 0);
+        }
+        Ok(integer(&ini, "MESSAGE_INFO", name, 0)? != 0)
+    };
+    Ok([
+        number("TEXT_BOLD", "MI_TextBold")?,
+        number("TEXT_REVISION_ALPHA", "MI_TextRevisionAlpha")?,
+    ])
 }
 
 fn font_shift_jis(root: &Path) -> Result<bool, CoreError> {
@@ -71,7 +132,10 @@ trait Registry {
     fn string(&self, key: &str, value: &str) -> Result<Option<String>, CoreError>;
 }
 
-fn resolve_font(root: &Path, registry: &impl Registry) -> Result<String, CoreError> {
+fn configuration_source(
+    root: &Path,
+    registry: &impl Registry,
+) -> Result<(bool, String), CoreError> {
     let initial = read_ini(root, "initial.cfg")?;
     let key = string(&initial, "CMVS_INIT_CFG", "REG").unwrap_or_default();
     let requested = integer(&initial, "CMVS_INIT_CFG", "CONFIG_PUT", 0)?.unsigned_abs() % 4;
@@ -92,6 +156,222 @@ fn resolve_font(root: &Path, registry: &impl Registry) -> Result<String, CoreErr
             "external native configuration root is not bound",
         ));
     }
+    Ok((in_registry, key))
+}
+
+fn resolve_windowed(root: &Path, registry: &impl Registry) -> Result<bool, CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    if in_registry {
+        let key = format!("{}\\param", key.trim_end_matches('\\'));
+        if let Some(mode) = registry.number(&key, "WS_WindowMode")? {
+            return Ok(mode != 0);
+        }
+    }
+    Ok(integer(
+        &read_ini(root, "cmvs.cfg")?,
+        "WINDOW_STATUS",
+        "WINDOW_MODE",
+        0,
+    )? != 0)
+}
+
+fn resolve_audio_configuration(
+    root: &Path,
+    registry: &impl Registry,
+) -> Result<([u32; 2], [u32; 2]), CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    let ini = read_ini(root, "cmvs.cfg")?;
+    let parameter_key = in_registry.then(|| format!("{}\\param", key.trim_end_matches('\\')));
+    let number = |name: &str, registry_name: &str, default| -> Result<u32, CoreError> {
+        if let Some(key) = parameter_key.as_deref()
+            && let Some(value) = registry.number(key, registry_name)?
+        {
+            return Ok(value);
+        }
+        integer(&ini, "SOUND_INFO", name, default).map(|value| value as u32)
+    };
+    let rate = if number("SOUND_QUALITY", "SO_SoundQuality", 0)? != 0 {
+        44100
+    } else {
+        22050
+    };
+    let buffer = number("SOUND_BUFFER", "SO_SoundBuffer", 0)?.min(3);
+    let bytes = [6144, 8192, 12288, 16384][buffer as usize];
+    let se = u32::from(number("SE_USE", "SO_SeUse", 1)? != 0);
+    let voice = u32::from(number("VOICE_USE", "SO_VoiceUse", 1)? != 0);
+    Ok((
+        [rate, if rate == 22050 { bytes / 2 } else { bytes }],
+        [voice, se],
+    ))
+}
+
+fn resolve_view_policy(root: &Path, registry: &impl Registry) -> Result<[u32; 2], CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    let ini = read_ini(root, "cmvs.cfg")?;
+    let number = |name: &str, registry_name: &str, default| {
+        if in_registry {
+            let key = format!("{}\\param", key.trim_end_matches('\\'));
+            if let Some(value) = registry.number(&key, registry_name)? {
+                return Ok(value);
+            }
+        }
+        integer(&ini, "DISPLAY_CONFIG", name, default).map(|value| value as u32)
+    };
+    let screen = number("ASPECT_RATIO_SCREEN", "DC_AspectRatioScreen", 1)?;
+    let point = number("ASPECT_RATIO_POINT", "DC_AspectRatioPoint", 2)?;
+    Ok([
+        if screen <= 3 { screen } else { 1 },
+        if point <= 4 { point } else { 2 },
+    ])
+}
+
+/// `429350` is independent of BASE (`429300`) and MODE (`42E870`).
+/// `412180` negotiates saved MODE candidates against the selected adapter;
+/// that list is not exposed by the family host, so it stays explicitly unbound.
+fn resolve_fullscreen_size(
+    root: &Path,
+    registry: &impl Registry,
+) -> Result<Option<[u32; 2]>, CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    let ini = read_ini(root, "cmvs.cfg")?;
+    let parameter_key = in_registry.then(|| format!("{}\\param", key.trim_end_matches('\\')));
+    let selected = parameter_key
+        .as_deref()
+        .map(|key| registry.string(key, "CR_Use"))
+        .transpose()?
+        .flatten()
+        .or_else(|| string(&ini, "WINDOW_RESOLVING", "USE"))
+        .unwrap_or_else(|| "0,0".into());
+    let indices = display_pair(&selected)?;
+    if indices[0] != 0 && indices[1] != 0 {
+        return Ok(None);
+    }
+    let number = |section: &str, name: &str, registry_name: &str, default| {
+        if let Some(key) = parameter_key.as_deref()
+            && let Some(value) = registry.number(key, registry_name)?
+        {
+            return Ok(value as i32);
+        }
+        integer(&ini, section, name, default)
+    };
+    let size = match number("CMVS_SYSTEM_MAIN", "WINDOW_SIZE", "CS_WindowSize", 1)? {
+        0 => [640, 480],
+        2 => [1024, 768],
+        9 => [
+            number(
+                "RESOLVING_POWER_INFO",
+                "FULL_SCREEN_WIDTH",
+                "RP_FullScreenWidth",
+                800,
+            )?,
+            number(
+                "RESOLVING_POWER_INFO",
+                "FULL_SCREEN_HEIGHT",
+                "RP_FullScreenHeight",
+                600,
+            )?,
+        ],
+        _ => [800, 600],
+    };
+    if size.iter().any(|value| !(1..=16384).contains(value)) {
+        return Err(failure());
+    }
+    Ok(Some(size.map(|value| value as u32)))
+}
+
+fn resolve_display_sizes(
+    root: &Path,
+    registry: &impl Registry,
+) -> Result<([u32; 2], [u32; 2]), CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
+    let ini = read_ini(root, "cmvs.cfg")?;
+    let parameter_key = in_registry.then(|| format!("{}\\param", key.trim_end_matches('\\')));
+    let number = |section: &str, name: &str, registry_name: &str, default| {
+        if let Some(key) = parameter_key.as_deref()
+            && let Some(value) = registry.number(key, registry_name)?
+        {
+            return Ok(value as i32);
+        }
+        integer(&ini, section, name, default)
+    };
+    let selected = parameter_key
+        .as_deref()
+        .map(|key| registry.string(key, "CR_Use"))
+        .transpose()?
+        .flatten()
+        .or_else(|| string(&ini, "WINDOW_RESOLVING", "USE"))
+        .unwrap_or_else(|| "0,0".into());
+    let indices = display_pair(&selected)?;
+    if indices[0] != 0 && indices[1] != 0 {
+        let logical = display_pair(&string(&ini, "WINDOW_RESOLVING", "BASE").ok_or_else(failure)?)?;
+        let mode = string(&ini, "WINDOW_RESOLVING", &format!("MODE{:02}", indices[0]))
+            .ok_or_else(failure)?;
+        let mut dimensions = mode.split(',');
+        let width = dimensions.next().ok_or_else(failure)?;
+        let height = dimensions.next().ok_or_else(failure)?;
+        let render = [
+            width.trim().parse::<u32>().map_err(|_| failure())?,
+            height.trim().parse::<u32>().map_err(|_| failure())?,
+        ];
+        if logical.contains(&0) || render.iter().any(|value| !(1..=16384).contains(value)) {
+            return Err(failure());
+        }
+        return Ok((logical, render));
+    }
+    if number("WINDOW_RESOLVING", "SELECT", "CR_Select", 0)? != 0 {
+        return Err(invalid(
+            "SHINKI_EMU_CMVS_DISPLAY_MODE_UNBOUND",
+            "native display selection has no saved mode",
+        ));
+    }
+    let size = match number("CMVS_SYSTEM_MAIN", "WINDOW_SIZE", "CS_WindowSize", 1)? {
+        0 => [640, 480],
+        2 => [1024, 768],
+        9 => [
+            number(
+                "RESOLVING_POWER_INFO",
+                "WINDOW_WIDTH",
+                "RP_WindowWidth",
+                800,
+            )?,
+            number(
+                "RESOLVING_POWER_INFO",
+                "WINDOW_HEIGHT",
+                "RP_WindowHeight",
+                600,
+            )?,
+        ],
+        _ => [800, 600],
+    };
+    if size.iter().any(|value| !(1..=16384).contains(value)) {
+        return Err(failure());
+    }
+    let size = size.map(|value| value as u32);
+    Ok((size, size))
+}
+
+fn display_pair(value: &str) -> Result<[u32; 2], CoreError> {
+    let mut numbers = value.split(',');
+    let x = numbers
+        .next()
+        .ok_or_else(failure)?
+        .trim()
+        .parse()
+        .map_err(|_| failure())?;
+    let y = numbers
+        .next()
+        .ok_or_else(failure)?
+        .trim()
+        .parse()
+        .map_err(|_| failure())?;
+    if numbers.next().is_some() || x > 16384 || y > 16384 {
+        return Err(failure());
+    }
+    Ok([x, y])
+}
+
+fn resolve_font(root: &Path, registry: &impl Registry) -> Result<String, CoreError> {
+    let (in_registry, key) = configuration_source(root, registry)?;
     let configured = if in_registry {
         let key = key.trim_end_matches('\\');
         registry.string(&format!("{key}\\param"), "MI_Font")?

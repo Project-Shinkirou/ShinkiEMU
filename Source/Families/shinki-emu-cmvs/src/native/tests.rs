@@ -63,7 +63,7 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     let (commands, rx) = sync_channel(64);
     let (ready, opened) = sync_channel(1);
     let worker = std::thread::spawn(move || {
-        let (_root, session, _audio_consumer) = crate::session::tests::fixture();
+        let (_root, session) = crate::session::tests::fixture();
         worker::serve(session, true, worker_services, rx, &ready)
     });
     let shared = opened

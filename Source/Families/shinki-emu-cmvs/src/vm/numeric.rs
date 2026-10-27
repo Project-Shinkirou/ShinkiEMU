@@ -225,18 +225,6 @@ pub(super) fn run_numeric_expression(
                 };
                 let right = resolve_numeric_entry(state, value_entry)? as i32;
                 let left = resolve_numeric_entry(state, target_entry)? as i32;
-                if tracing::enabled!(tracing::Level::INFO)
-                    && *opcode == 0x16c
-                    && state.program_counter == 359_530
-                {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.save_gate",
-                        left = left,
-                        right = right,
-                        frame = state.current_frame,
-                        tick = state.tick
-                    );
-                }
                 let result = match opcode {
                     0x160 => left.wrapping_mul(right),
                     0x161 if right != 0 => left.wrapping_div(right),
@@ -287,13 +275,6 @@ pub(super) fn run_numeric_expression(
                 });
             }
             _ => {
-                if tracing::enabled!(tracing::Level::TRACE) {
-                    tracing::trace!(
-                        event = "shinki.emu.cmvs.vm.num_unsupported",
-                        pc = state.program_counter,
-                        frame = state.current_frame
-                    );
-                }
                 return Err(invalid(
                     "SHINKI_EMU_CMVS_VM_NUMERIC_EXPRESSION",
                     "CMVS PS2A numeric expression token is not executable in the recovered subset",
@@ -316,12 +297,8 @@ pub(super) fn run_numeric_expression(
     let bits = result.to_bits();
     state.current_value = Some(bits);
     state.condition_flag = result != 0.0;
-    state
-        .interpreter_words
-        .insert(super::expression::VALUE_EXPRESSION_RESULT_FIELD, bits);
-    state
-        .interpreter_words
-        .insert(81212, u32::from(result != 0.0));
+    state.write_interpreter_word(super::expression::VALUE_EXPRESSION_RESULT_FIELD, bits);
+    state.write_interpreter_word(81212, u32::from(result != 0.0));
     Ok(())
 }
 

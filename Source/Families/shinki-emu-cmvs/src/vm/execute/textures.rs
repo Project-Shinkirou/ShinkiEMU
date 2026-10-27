@@ -16,36 +16,14 @@ pub(super) fn execute(
             // `sub_479C20` copies the input manager's advance-group latches
             // (`sub_45CCB0` reads manager dwords 271/272): the release edge
             // and the held state the host pump rebuilt for this frame.
-            if tracing::enabled!(tracing::Level::INFO) && state.current_frame == 0 {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.latch_read",
-                    pc = state.program_counter,
-                    release = u32::from(state.input_advance_release),
-                    held = u32::from(state.input_confirm_held),
-                    tick = state.tick
-                );
-            }
-            state
-                .interpreter_words
-                .insert(release_field_offset, u32::from(state.input_advance_release));
-            state
-                .interpreter_words
-                .insert(held_field_offset, u32::from(state.input_confirm_held));
+            state.write_interpreter_word(
+                release_field_offset,
+                u32::from(state.input_advance_release),
+            );
+            state.write_interpreter_word(held_field_offset, u32::from(state.input_confirm_held));
             Ok(None)
         }
         (CmvsPs2aCommandEffectKind::ConsumeAdvanceLatch, []) => {
-            if tracing::enabled!(tracing::Level::INFO)
-                && (state.input_advance_release || state.input_advance_press)
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.latch_consume",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    release = u32::from(state.input_advance_release),
-                    press = u32::from(state.input_advance_press),
-                    tick = state.tick
-                );
-            }
             state.input_advance_release = false;
             state.input_advance_press = false;
             Ok(None)
@@ -57,17 +35,15 @@ pub(super) fn execute(
             },
             [],
         ) => {
-            // Native manager fields 293/296 are input modes, not GPU fences.
+            // Native groups 08/09 are Shift/Ctrl, not confirmation or auto UI.
             let overridden = state
                 .interpreter_words
                 .get(&override_field_offset)
                 .copied()
                 .unwrap_or_default()
                 != 0;
-            let automatic = state.input_skip_mode || state.input_auto_mode || overridden;
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::from(automatic));
+            let automatic = state.input_shift_held || state.input_control_held || overridden;
+            state.write_interpreter_word(result_field_offset, u32::from(automatic));
             Ok(None)
         }
         (
@@ -84,16 +60,14 @@ pub(super) fn execute(
             })?;
             state
                 .slot_objects
-                .retain(|key, _| (*key >> 16) != u32::from(table));
+                .retain(|key, _| (*key >> 8) != u32::from(table));
             state
                 .slot_object_seed_words
-                .retain(|key, _| (*key >> 16) != u32::from(table));
-            for parent in state.texture_parents.keys().copied().collect::<Vec<u8>>() {
-                state.retain_texture_slot_placement(parent);
-            }
+                .retain(|key, _| (*key >> 8) != u32::from(table));
             state.texture_children.clear();
             state.texture_parents.clear();
-            Ok(None)
+            state.texture_reloads.clear();
+            Ok(Some(CmvsPs2aVmAction::ClearTextureParentSurfaces))
         }
         (
             CmvsPs2aCommandEffectKind::LoadTextureParentResource {
@@ -103,18 +77,11 @@ pub(super) fn execute(
                 error_flag_field_offset,
                 error_flag_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, parent), (CmvsPs2aCommandStackWordKind::TaggedStringReference, name)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, parent),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, name),
+            ],
         ) => {
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.texture_parent_load",
-                    pc = state.current_instruction_start,
-                    frame = state.current_frame,
-                    parent,
-                    name_word = name,
-                    tick = state.tick
-                );
-            }
             // Resolve and copy before later script or global-slot writes.
             let resource = resolve_resource_name(state, *name)?;
             if !texture_parent_is_live(state, texture_table_base_offset, max_parent_slot, *parent)?
@@ -131,56 +98,62 @@ pub(super) fn execute(
             })?;
             parent_state.resource = Some(resource.clone());
             parent_state.resource_frame = Some(state.current_frame);
+            parent_state.image_info = [0; 3];
+            parent_state.color_filter = None;
             // The host blocks the step if VFS resolution or decode fails;
             // continuation therefore observes the original non-zero loader
             // result only after this action has been accepted.
-            state.interpreter_words.insert(result_field_offset, 1);
+            state.write_interpreter_word(result_field_offset, 1);
             Ok(Some(CmvsPs2aVmAction::LoadTextureParentResource {
                 parent_slot,
                 resource,
             }))
         }
         (
-            CmvsPs2aCommandEffectKind::LoadTextureParentResourceExtended {
-                texture_table_base_offset,
-                result_field_offset,
-                error_flag_field_offset,
-                error_flag_mask,
+            CmvsPs2aCommandEffectKind::StartTexturePresentation {
+                clear_background: false,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, parent), (CmvsPs2aCommandStackWordKind::TaggedStringReference, name), (CmvsPs2aCommandStackWordKind::OpaqueU32, _word_a), (CmvsPs2aCommandStackWordKind::OpaqueU32, _word_b), (CmvsPs2aCommandStackWordKind::OpaqueU32, _word_c)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, parent),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, name),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, duration),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _software_feather),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, showing),
+            ],
         ) => {
-            let resource = resolve_resource_name(state, *name)?;
-            if *parent >= 256 {
-                raise_error_flag(state, error_flag_field_offset, error_flag_mask)?;
-                return Ok(None);
-            }
-            let parent_slot = *parent as u8;
-            // `sub_47ACA0` creates the container when absent and replaces
-            // any previous owner before the load; only occupancy and the
-            // resource reference are observable.
-            let key = slot_object_key(
-                u16::try_from(texture_table_base_offset).map_err(|_| {
-                    invalid(
-                        "SHINKI_EMU_CMVS_VM_SLOT_OBJECTS",
-                        "CMVS slot table offset overflowed",
-                    )
-                })?,
+            let mask = resolve_resource_name(state, *name)?;
+            crate::vm::texture_presentation::begin(
+                state,
+                mask,
                 *parent,
-            )?;
-            state.slot_objects.entry(key).or_insert_with(|| {
-                let identity = state.next_slot_object_id;
-                state.next_slot_object_id += 1;
-                identity
-            });
-            let parent_state = state.texture_parents.entry(parent_slot).or_default();
-            parent_state.resource = Some(resource.clone());
-            parent_state.resource_frame = Some(state.current_frame);
-            state.interpreter_words.insert(result_field_offset, 1);
-            state.interpreter_words.insert(3260, 1);
-            Ok(Some(CmvsPs2aVmAction::LoadTextureParentResource {
-                parent_slot,
-                resource,
-            }))
+                *duration,
+                *showing != 0,
+                false,
+            )
+        }
+        (
+            CmvsPs2aCommandEffectKind::StartTexturePresentation {
+                clear_background: true,
+            },
+            [
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, name),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, duration),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _software_feather),
+            ],
+        ) => {
+            let mask = resolve_resource_name(state, *name)?;
+            crate::vm::texture_presentation::begin(state, mask, 0, *duration, false, true)
+        }
+        (CmvsPs2aCommandEffectKind::QueryTexturePresentation, []) => {
+            let remaining = state
+                .texture_presentation
+                .as_ref()
+                .map_or(u32::MAX, |presentation| presentation.remaining_ms());
+            state.write_interpreter_word(81220, remaining);
+            Ok(None)
+        }
+        (CmvsPs2aCommandEffectKind::FinishTexturePresentation, []) => {
+            Ok(crate::vm::texture_presentation::finish(state))
         }
         (
             CmvsPs2aCommandEffectKind::CommitTexturePresentation {
@@ -196,7 +169,8 @@ pub(super) fn execute(
             Ok(None)
         }
         (
-            CmvsPs2aCommandEffectKind::InitializeTextureParentSurface {
+            CmvsPs2aCommandEffectKind::SetTextureParentSurface {
+                initialized,
                 texture_table_base_offset,
                 max_parent_slot,
                 error_flag_field_offset,
@@ -209,16 +183,33 @@ pub(super) fn execute(
                 raise_error_flag(state, error_flag_field_offset, error_flag_mask)?;
                 return Ok(None);
             }
-            state
+            let image = state
                 .texture_parents
                 .get_mut(&(*parent as u8))
                 .ok_or_else(|| {
                     invalid(
                         "SHINKI_EMU_CMVS_VM_TEXTURE",
-                        "CMVS live texture parent has no specialized state",
+                        "live texture parent has no specialized state",
                     )
-                })?
-                .surface_initialized = true;
+                })?;
+            image.surface_initialized = initialized;
+            // 446900/4469A0 replace or free CBasic and all of its effect owners.
+            image.basic_effects = Default::default();
+            if initialized {
+                image.alpha = None;
+                image.solid_color = None;
+                image.scale_words = None;
+                image.basic_kind = 0;
+                image.blend_mode = None;
+                image.float_position_words = [0; 3];
+                image.projection_depth_word = 0;
+                image.projection_height_word = 0;
+                image.rotation_hundredths = 0;
+                image.rect_words = None;
+                image.position_words = None;
+                image.auxiliary_pair_words = None;
+                image.auxiliary_word = None;
+            }
             Ok(None)
         }
         _ => Err(CoreError::invalid(

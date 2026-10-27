@@ -2,6 +2,7 @@ mod entry;
 pub(crate) use entry::decode_jbp;
 mod color;
 use color::*;
+pub(crate) mod cmv;
 
 use shinki_emu_sdk::CoreError;
 use std::ops::Range;
@@ -12,7 +13,7 @@ const MAX_PIXELS: usize = 64 * 1024 * 1024;
 const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 const JBP_HEADER_BYTES: usize = 0x24;
 const JBP_TABLE_BYTES: usize = 0x110;
-const ZIGZAG_ORDER: [usize; 64] = [
+pub(crate) const ZIGZAG_ORDER: [usize; 64] = [
     1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20,
     13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59,
     52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63, 0,
@@ -328,14 +329,14 @@ impl<'a> JbpDecoder<'a> {
     }
 }
 
-struct HuffmanTree {
+pub(crate) struct HuffmanTree {
     base: [u8; 16],
     nodes: [[usize; 2]; 31],
     root: usize,
 }
 
 impl HuffmanTree {
-    fn new(base: [u8; 16], mut frequency: [u32; 31]) -> Result<Self, CoreError> {
+    pub(crate) fn new(base: [u8; 16], mut frequency: [u32; 31]) -> Result<Self, CoreError> {
         let mut nodes = [[0_usize; 2]; 31];
         let mut depth = base.len();
         while depth < nodes.len() {
@@ -361,7 +362,7 @@ impl HuffmanTree {
         })
     }
 
-    fn read(&self, bits: &mut JBitStream<'_>) -> Result<usize, CoreError> {
+    pub(crate) fn read(&self, bits: &mut JBitStream<'_>) -> Result<usize, CoreError> {
         let mut node = self.root;
         while node >= self.base.len() {
             let branch = usize::from(bits.next_bit()?);
@@ -387,7 +388,7 @@ fn select_minimum(
     result.ok_or_else(|| invalid("SHINKI_EMU_CMVS_JBP_TREE", "JBP Huffman tree is incomplete"))
 }
 
-struct JBitStream<'a> {
+pub(crate) struct JBitStream<'a> {
     source: &'a [u8],
     position: usize,
     end: usize,
@@ -397,7 +398,7 @@ struct JBitStream<'a> {
 }
 
 impl<'a> JBitStream<'a> {
-    fn new(
+    pub(crate) fn new(
         source: &'a [u8],
         offset: usize,
         length: usize,
@@ -414,7 +415,7 @@ impl<'a> JBitStream<'a> {
         })
     }
 
-    fn get_bits(&mut self, count: usize) -> Result<u32, CoreError> {
+    pub(crate) fn get_bits(&mut self, count: usize) -> Result<u32, CoreError> {
         if count > 24 {
             return Err(invalid(self.code, "JBP bit request exceeds bounds"));
         }
@@ -437,12 +438,12 @@ impl<'a> JBitStream<'a> {
         Ok((self.bits >> self.available) & mask)
     }
 
-    fn next_bit(&mut self) -> Result<u8, CoreError> {
+    pub(crate) fn next_bit(&mut self) -> Result<u8, CoreError> {
         Ok(self.get_bits(1)? as u8)
     }
 }
 
-fn read_frequencies(source: &[u8], offset: usize) -> Result<[u32; 31], CoreError> {
+pub(crate) fn read_frequencies(source: &[u8], offset: usize) -> Result<[u32; 31], CoreError> {
     checked_range(source, offset, 64, "SHINKI_EMU_CMVS_JBP_TREE")?;
     let mut result = [0_u32; 31];
     for (index, value) in result.iter_mut().take(16).enumerate() {

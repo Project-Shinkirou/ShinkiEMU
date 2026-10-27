@@ -1604,7 +1604,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1690,6 +1690,12 @@ checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
 ]
+
+[[package]]
+name = "configparser"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "031ad3d167622974ed636505ae4556267ed4aa2aea0464122fa6bc9698a32825"
 
 [[package]]
 name = "console_error_panic_hook"
@@ -1946,7 +1952,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows 0.60.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -2156,7 +2162,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.13.2",
- "libloading 0.7.4",
+ "libloading 0.8.9",
  "winapi",
 ]
 
@@ -4058,7 +4064,7 @@ dependencies = [
  "log 0.4.34",
  "presser",
  "thiserror 1.0.69",
- "windows 0.54.0",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -6197,6 +6203,16 @@ name = "maybe-owned"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
+
+[[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest 0.10.7",
+]
 
 [[package]]
 name = "md-5"
@@ -9126,7 +9142,6 @@ dependencies = [
 [[package]]
 name = "roukaku-asset"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "camino",
  "roukaku-core",
@@ -9140,7 +9155,6 @@ dependencies = [
 [[package]]
 name = "roukaku-byte-source"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9152,7 +9166,6 @@ dependencies = [
 [[package]]
 name = "roukaku-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "blake3",
  "hex",
@@ -9169,7 +9182,6 @@ dependencies = [
 [[package]]
 name = "roukaku-media"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "ffmpeg-next",
  "image 0.25.10",
@@ -9199,7 +9211,6 @@ dependencies = [
 [[package]]
 name = "roukaku-media-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "rayon",
  "roukaku-byte-source",
@@ -9213,7 +9224,6 @@ dependencies = [
 [[package]]
 name = "roukaku-observability"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "file-rotate",
  "libc",
@@ -9233,7 +9243,6 @@ dependencies = [
 [[package]]
 name = "roukaku-package"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "aes-gcm-siv",
  "hkdf",
@@ -9257,7 +9266,6 @@ dependencies = [
 [[package]]
 name = "roukaku-platform"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "objc2 0.6.5",
  "objc2-avf-audio",
@@ -9279,7 +9287,6 @@ dependencies = [
 [[package]]
 name = "roukaku-platform-common"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "base16ct",
  "directories",
@@ -9305,7 +9312,6 @@ dependencies = [
 [[package]]
 name = "roukaku-plugin-abi"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9316,7 +9322,6 @@ dependencies = [
 [[package]]
 name = "roukaku-property-derive"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9326,7 +9331,6 @@ dependencies = [
 [[package]]
 name = "roukaku-subtitle"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "cc",
  "pkg-config",
@@ -9336,7 +9340,6 @@ dependencies = [
 [[package]]
 name = "roukaku-target"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9349,7 +9352,6 @@ dependencies = [
 [[package]]
 name = "roukaku-text"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "cosmic-text",
  "roukaku-core",
@@ -9364,7 +9366,6 @@ dependencies = [
 [[package]]
 name = "roukaku-ui-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "postcard",
  "roukaku-core",
@@ -9376,7 +9377,6 @@ dependencies = [
 [[package]]
 name = "roukaku-worker-budget"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=3598c63cea7d952d31499c94b1577233d370dc26#3598c63cea7d952d31499c94b1577233d370dc26"
 dependencies = [
  "tokio",
 ]
@@ -10229,6 +10229,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-cmvs"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "configparser",
+ "encoding_rs",
+ "fontdb 0.24.0",
+ "image 0.25.10",
+ "kira 0.12.5",
+ "md-5 0.10.6",
+ "parking_lot 0.13.0",
+ "pollster 1.0.1",
+ "postcard",
+ "roukaku-byte-source",
+ "roukaku-core",
+ "roukaku-media-core",
+ "roukaku-platform",
+ "roukaku-platform-common",
+ "roukaku-text",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "shinki-emu-abi",
+ "shinki-emu-build",
+ "shinki-emu-sdk",
+ "symphonia 0.6.1",
+ "tempfile",
+ "time",
+ "tracing",
+ "wgpu 30.0.1",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "shinki-emu-ethornell-rs"
 version = "0.1.0"
 source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
@@ -10444,7 +10479,7 @@ dependencies = [
  "hex",
  "image 0.25.10",
  "libc",
- "md-5",
+ "md-5 0.11.0",
  "mlua",
  "rc4",
  "repugnant-pickle",
@@ -13664,7 +13699,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.7.4",
+ "libloading 0.8.9",
  "log 0.4.34",
  "metal 0.28.0",
  "naga 0.20.0",

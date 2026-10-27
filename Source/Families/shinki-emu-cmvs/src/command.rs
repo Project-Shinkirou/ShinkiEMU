@@ -31,7 +31,14 @@ use serde::{Deserialize, Serialize};
 /// The command result shape consumed by the CMVS 3.90 interpreter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum CmvsPs2aCommandEffectKind {
+    /// Native bitmap-font sheet load, indexed glyph creation and descriptor update.
+    NativeCustomGlyph {
+        command_id: u16,
+    },
     NativeText {
+        operation: CmvsNativeTextOperation,
+    },
+    ConfigureEffectChannelText {
         operation: CmvsNativeTextOperation,
     },
     /// `sub_483FB0` (case 52) -> `sub_444F10`: on a live channel slot, the
@@ -43,20 +50,33 @@ pub enum CmvsPs2aCommandEffectKind {
         error_mask: u32,
         result_field_offset: u32,
     },
-    /// `sub_483EB0` (case 59): resolves a name and loads it into the
-    /// texture-parent slot (dword table 784); the synchronous archive
-    /// always succeeds, publishing 1 into the pinned result word. An
-    /// out-of-range or unbound slot raises 0x10. Returns 0x4014.
+    /// `sub_483EB0` (case 59): loads an image and native color/filter
+    /// parameters into an existing parent at byte table 1924.
+    /// Missing parents raise 0x10 without overwriting the result.
     LoadTextureParentFromName {
-        slot_table_dword_index: u32,
+        texture_table_byte_offset: u32,
         error_mask: u32,
         result_field_offset: u32,
     },
-    /// `sub_484B30` (case 108) -> `sub_4576F0`: stores the screen
-    /// transition's mode (0/1/2), three rate floats (rounded to two
-    /// decimals) and a flag into the transition component; no interpreter
-    /// state changes. Returns 0x4014.
-    StoreTransitionParams,
+    /// Native 107–111/125 start the plane-camera worker, not a movie.
+    StartCameraTransition {
+        command_id: u16,
+    },
+    /// Commands 608–629 address the independent primary view owner.
+    NativeIndependentView {
+        command_id: u16,
+    },
+    /// Ordinary constructors for the native table737 scene worker.
+    NativeSceneWorker {
+        command_id: u16,
+    },
+    SetNativeQueuePolicy,
+    QueryNativeSceneWorkerStatus,
+    RequestNativeSceneWorker,
+    /// Native image collision geometry816–818.
+    NativeHitPolygon {
+        command_id: u16,
+    },
     /// `sub_47A4C0` (case 710) -> `sub_444CB0`: publishes whether the
     /// channel's transition words (dwords 3100/3101) are active into the
     /// pinned result word; an unbound channel raises 0x10000. Returns
@@ -87,10 +107,6 @@ pub enum CmvsPs2aCommandEffectKind {
     /// 481-table child; the slot gate raises 0x10 and an index at or
     /// above 1024 raises 0x20. Returns 0x400C.
     StoreTextureChildWord,
-    /// `sub_47CAC0` (case 780): validates the 796-table slot (<= 2) and
-    /// fires a renderer-side action (`sub_442F90`); no interpreter state
-    /// changes. Returns 0x4004.
-    TriggerEffectSlot,
     /// `sub_489CB0` (case 568): clamps the consumed word to 0-100 and
     /// applies it as a system volume through `sub_48D720`; no interpreter
     /// state changes. Returns 0x4004.
@@ -128,39 +144,20 @@ pub enum CmvsPs2aCommandEffectKind {
     OpenScenarioStream {
         loading_field_offset: u32,
     },
-    /// Case 776 (`sub_47C5A0`): rebuilds the object in one of three slots at
-    /// dword indices 796..=798 together with the paired entry in the table at
-    /// dword index 481, seeding it from a script string and one opaque word.
-    /// A selector above two raises the 0x1000000 error mask. Returns 0x4014.
-    CreateBoundedSlotObject {
-        table_dword_index: u32,
-        aux_table_dword_index: u32,
-        max_slot: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-        /// The trailing word the handler forwards as the object's ninth
-        /// argument: case 776 passes the constant 2, case 777 the fifth
-        /// operand.
-        trailing_word: u32,
+    /// Native CImageVideo controller commands, including their five/six-word opens.
+    CmvController {
+        command_id: u16,
     },
     /// Case 73/193 (`sub_489550`): releases the single object held at dword
     /// index 794 and returns 0x4000, so it consumes nothing.
     ReleaseSingleObject {
         dword_index: u32,
     },
-    /// Case 778 (`sub_47C920`): releases the object in one of three slots at
-    /// dword indices 796..=798; a selector above two raises the 0x1000000
-    /// error mask.
-    DestroyBoundedSlotObject {
-        table_dword_index: u32,
-        max_slot: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-    },
-    /// `sub_4164F0` stores the boolean at one fixed field of the settings
-    /// object without the reset preamble some handlers perform.
-    StoreSettingBooleanPlain {
-        setting_field_offset: u16,
+    /// `sub_484F90` resolves the graphics component through `432F10`, then
+    /// `4164F0` stores a boolean in its DWORD18 without a reset preamble.
+    StoreComponentBoolean {
+        component_field_offset: u16,
+        field_offset: u16,
     },
     /// Case 349 (`sub_47ED00`): rebuilds the effect playback object for one
     /// of eight effect slots bound to one of twelve playback entries and
@@ -307,20 +304,19 @@ pub enum CmvsPs2aCommandEffectKind {
     SetNativeSaveMeta {
         result_field_offset: u32,
     },
-    /// Returns `0x4004`.
-    StoreScriptSlotPresentationState {
+    /// Case 51 (`484020`): provider presence, width, height and source alpha.
+    /// Missing slots retain all results and raise the native error flag.
+    QueryTextureParentImageInfo {
         slot_table_dword_index: u32,
         error_mask: u32,
         result_field_offset: u32,
     },
-    /// `sub_47EFC0` (case 334): sets one effect channel's playback activity
-    /// flag and clears its transient flag. Two stack words (channel, flag);
-    /// returns `0x4008`. Out-of-range selectors raise the error mask and an
-    /// unoccupied channel fails fast instead of dereferencing null.
+    /// `sub_47EFC0` (case 334): changes native scheduler enable (DWORD 1),
+    /// clears busy (DWORD 2) when changed, and propagates graphics/text
+    /// visibility. Returns `0x4008`; an empty channel raises the error mask.
     SetEffectChannelPlaybackFlag {
         effect_table_dword_index: u32,
         error_mask: u32,
-        activity_state_key_base: u32,
     },
     QueryEffectQuadActive {
         result_field_offset: u32,
@@ -333,8 +329,8 @@ pub enum CmvsPs2aCommandEffectKind {
         channel_table_dword_index: u32,
         error_mask: u32,
     },
-    EffectChildCommand {
-        pop_bytes: u16,
+    ConfigureEffectElementBasic {
+        command_id: u16,
     },
     /// `sub_47F400` (case 400) -> `sub_466CB0`: one of 32 quads on an occupied
     /// effect channel receives six `__int16` geometry values at a sub-selector
@@ -381,21 +377,16 @@ pub enum CmvsPs2aCommandEffectKind {
     ApplyEffectChannelOperation {
         error_mask: u32,
     },
-    /// `sub_484D00` (case 104) -> `sub_457B90`: commits the renderer's pending
-    /// screen parameters when the boolean operand is non-zero. Returns
-    /// 0x4004.
+    /// Native104 cancels a live camera worker and optionally snaps its target.
     CommitScreenParams {
         error_mask: u32,
     },
-    /// `sub_484D40` (case 105): waits for the pending screen commit. With no
-    /// pending commit it clears the result field and returns; otherwise it
-    /// commits and reports success. Returns 0x4004.
+    /// Native105 preserves PC/operands while active; eligible input may finish it.
     WaitScreenCommit {
         error_mask: u32,
         result_field_offset: u32,
     },
-    /// `sub_484CD0` (case 106): publishes the renderer's pending-commit flag
-    /// into the interpreter result field. No stack operands; returns 0x4000.
+    /// Native106 publishes the actual camera-zero worker activity.
     QueryScreenPending {
         result_field_offset: u32,
     },
@@ -481,6 +472,16 @@ pub enum CmvsPs2aCommandEffectKind {
         error_mask: u32,
         field_offset: u32,
     },
+    SetNativeViewSuppression {
+        error_mask: u32,
+    },
+    ConfigureNativeAlternateView {
+        result_field_offset: u32,
+    },
+    ConfigureNativeViewPolicy {
+        command_id: u16,
+    },
+    DetachTextureChildContext,
     /// `sub_488E70` (case 286) -> `sub_462C10`: stores a value dword and two
     /// script strings on an effect playback record's text surface; an
     /// out-of-range or unregistered index raises 0x1000. Returns 0x4010.
@@ -504,6 +505,14 @@ pub enum CmvsPs2aCommandEffectKind {
     SetEffectElementSize {
         error_mask: u32,
     },
+    /// `sub_47E4C0` (386): source rectangle on an existing channel surface.
+    SetEffectElementSource {
+        error_mask: u32,
+    },
+    /// `sub_47E540` (387): local destination position on that surface.
+    SetEffectElementPosition {
+        error_mask: u32,
+    },
     /// `sub_47D590` (case 382) -> `sub_445E40`: forwards one effect child
     /// element; a missing element raises 0x10000. Returns 0x4008.
     SetEffectElementAuxiliary {
@@ -520,10 +529,11 @@ pub enum CmvsPs2aCommandEffectKind {
     ApplyEffectElementOperation {
         error_mask: u32,
     },
-    PlayChannelSound {
+    /// `sub_47E690`: loads a PB image into the channel's own surface.
+    LoadChannelImage {
         channel_table_dword_index: u32,
         max_channel: u32,
-        play_error_mask: u32,
+        load_error_mask: u32,
         channel_error_mask: u32,
     },
     CreateEffectChannel {
@@ -546,11 +556,9 @@ pub enum CmvsPs2aCommandEffectKind {
         error_flag_field_offset: u32,
         error_flag_mask: u32,
     },
-    /// Case 320 (`sub_47EA90`): builds a channel element on the playback
-    /// record at the bound index; the channel word is validated against
-    /// its own bound with a separate error mask. The headless graph keeps
-    /// the element build internal.
-    CreatePlaybackChannelElement {
+    /// Case 320 (`sub_47EA90`): rebuilds table 742's channel and table 750's
+    /// text owner in the current stage coordinate space.
+    CreateStageEffectChannel {
         max_channel: u32,
         max_index: u32,
         channel_error_mask: u32,
@@ -587,10 +595,10 @@ pub enum CmvsPs2aCommandEffectKind {
         top_field_offset: u32,
         second_field_offset: u32,
     },
-    /// Plays a named audio stream on a selected bank (`sub_489F80`);
-    /// headless holds no stream objects, so the bounded no-op and the
-    /// bank-range error flag are the observable subset.
-    PlayNamedAudioStream,
+    /// Ordinary streaming audio handlers, consumed by the session PCM worker.
+    NativeAudio {
+        command_id: u16,
+    },
     /// Writes a proven immediate value to a CMVS interpreter-owned field.
     StoreInterpreterConstant {
         field_offset: u32,
@@ -681,16 +689,8 @@ pub enum CmvsPs2aCommandEffectKind {
     ConfigureResourceSearch {
         bank: CmvsResourceSearchBank,
     },
-    /// Case 356 (`sub_48A6C0`): runs the chain-graph reset controller
-    /// (`sub_428920`), posts engine message 0x7FF7 to the engine object,
-    /// marks the rebuild-request word, and suspends the frame (`0xC004`).
-    /// The headless chain graph rebuilds synchronously, so only the word
-    /// stores and the suspension are observable.
-    RebuildChainGraphSuspend {
-        clear_field_a_offset: u32,
-        clear_field_b_offset: u32,
-        request_field_offset: u32,
-    },
+    /// Case 356 (`48A6C0`): request real fullscreen mode and suspend.
+    SetNativeFullscreenSuspend,
     /// Begins the recovered CMVS resource-channel setup boundary for one of
     /// the statically proven channel banks. The bank fingerprint is the
     /// original setup-handler address; slot counts come from its bounds
@@ -826,13 +826,6 @@ pub enum CmvsPs2aCommandEffectKind {
     RequestWindowIcon {
         prefix_field_offset: u16,
     },
-    /// Case 734 (`sub_479570`): resolves the tagged string and posts it
-    /// as the engine window text through the same API both branches use
-    /// (`sub_419F50`/`sub_41A350` around the pinned caption handle); the
-    /// zero-top branch also pins one into the result word at 81220.
-    SetWindowCaptionFromTagged {
-        result_field_offset: u32,
-    },
     /// Copies the resolved stack string into one bounded interpreter buffer,
     /// raising the recovered error-flag mask when the resolved text exceeds
     /// the byte bound, mirroring `sub_48A670`.
@@ -850,26 +843,6 @@ pub enum CmvsPs2aCommandEffectKind {
     BuildPrefixedWindowCaption {
         prefix_field_offset: u16,
         buffer_offset: u16,
-    },
-    /// Writes the recovered per-channel visibility record: an enabled flag
-    /// and a touched constant, both at version-pinned interpreter offsets
-    /// derived from the bounded channel index. Out-of-range channels only
-    /// raise the recovered error-flag mask `0x200`.
-    StoreChannelVisibilityRecord {
-        enabled_field_base_offset: u16,
-        touched_field_base_offset: u16,
-        record_stride_bytes: u8,
-        notify_gate_field_offset: u16,
-    },
-    /// Resets one channel visibility record (`sub_48A2B0`): the per-channel
-    /// name buffer goes back to the interpreter prefix field and the touched
-    /// word is zeroed; channels above five only raise the 0x200 error mask.
-    ResetChannelVisibilityRecord {
-        name_buffer_base_offset: u16,
-        touched_field_base_offset: u16,
-        record_stride_bytes: u8,
-        error_flag_mask: u32,
-        teardown_slot_table_offset: u16,
     },
     /// Writes one stack word to a field on an interpreter-referenced
     /// component selected by its parent field offset.
@@ -935,39 +908,17 @@ pub enum CmvsPs2aCommandEffectKind {
     PrepareEffectChannelFromName {
         error_mask: u32,
     },
-    /// `sub_47F7D0` (case 344): starts a channel effect playback and
-    /// returns `0xA000` while it runs, `0x400C` (pop 12, no stop) once
-    /// complete. The recovered channel objects carry no pending playback,
-    /// so the headless model completes immediately.
-    StartEffectChannelPlayback {
-        error_mask: u32,
-    },
-    /// `sub_47A370` (case 708) -> `sub_425B60`: recreates the UI text
-    /// object in the paired slot table (`this+481+slot`) and loads the named
-    /// resource through it, reporting success in the pinned result word.
+    /// `47F7D0 -> 467510`: automatic text/voice wait, then 0x400C.
+    WaitChannelAutoAdvance,
+    /// `47A370 -> 425B60`: replaces the parent image, retaining the old
+    /// surface as its transition owner. Reports the real loader result.
     /// Returns `0x4010` (pop 16).
-    ReloadSlotTextResource {
+    ReloadTextureParentImage {
         result_field_offset: u32,
         table_byte_offset: u16,
     },
-    /// `sub_4899D0` (case 170) -> `sub_48C230`: queries the auxiliary slot
-    /// object at `this+592+(index+5)` and stores its status, or `-1` when
-    /// the object is absent, in the pinned result word. The table-592
-    /// object graph is unrecovered, so absence is the faithful result.
-    /// Returns `0x4004` (pop 4); out-of-range indices raise `0x400`.
-    QueryAuxiliarySlotStatus {
-        result_field_offset: u32,
-        error_mask: u32,
-    },
-    /// `sub_48A0B0` (case 182): arms the audio stream object at
-    /// `this+2368+(index+9)` with the consumed dword (`sub_48C0E0`) and
-    /// clears the 52-byte name record at `this+1608+52*index`. The
-    /// headless audio graph has no stream objects, so the bounded
-    /// no-op plus the error flag is the faithful subset. Returns
-    /// `0x4008` (pop 8); indices above 5 raise `0x200`.
-    RegisterAudioStreamNameSlot,
-    /// `sub_486E90` (case 252) -> `sub_418D70`: sprintf-style formatting
-    /// of one resolved format string and one integer into the storage the
+    /// `sub_486E90` (case 252) -> `sub_418D70`: native type-before-width
+    /// formatting of one CP932 format and one stack word into the storage the
     /// first tagged word resolves to (frame pool offset or process string
     /// slot), NUL-terminated. Returns `0x400C` (pop 12).
     FormatStringIntoSlot,
@@ -997,42 +948,31 @@ pub enum CmvsPs2aCommandEffectKind {
         record_stride_bytes: u8,
         max_index_mask: u8,
     },
-    /// Case 549 (`sub_47AFF0`): the previous screenshot owner is destroyed,
-    /// a fresh one is built from the four consumed words with zeroed flag
-    /// and progress fields, and the version-pinned owner handle field
-    /// replaces its value. Returns 0x4010.
-    RecreateSaveImageOwner {
+    /// 549/47AFF0 creates the native 459BE0 screen-shake owner.
+    CreateScreenShake {
         handle_field_offset: u16,
     },
-    /// Case 550 (`sub_47AFC0`): a missing owner writes the all-ones result
-    /// and a present owner writes `construction_words[3]` minus its progress
-    /// delta (all-ones unchanged), mirroring `sub_459CC0`. No stack pop.
-    QuerySaveImageProgress {
+    /// 550/459CC0 returns remaining periods, or all ones for an infinite/missing owner.
+    QueryScreenShakeRemaining {
         result_field_offset: u32,
     },
-    /// Case 551 (`sub_47B0F0`): only a present owner's enabled flag is set
-    /// from the consumed boolean; the pop happens regardless. Returns 0x4004.
-    StoreSaveImageEnabled,
-    /// Case 552 (`sub_47B160`): a missing owner writes one; a present owner
-    /// with a set boolean waits for the screenshot completion, which the
-    /// recovered subset blocks because the render path is not recovered;
-    /// a present owner with a clear boolean is destroyed and writes one.
-    SaveImageOwnerWaitOrDestroy {
+    /// 551 pauses the owner; paused shaking yields zero offsets.
+    SetScreenShakePaused,
+    /// 552 waits without popping while an owner exists, or cancels on false.
+    WaitOrDestroyScreenShake {
         result_field_offset: u32,
     },
     /// Case 553 (`sub_47B120`): destroys a present owner. No stack pop.
-    DestroySaveImageOwner,
-    /// Case 524 (`sub_47B0B0`): writes one only when an owner exists and
-    /// its enabled flag is set, mirroring `sub_432F60` on the owner's
-    /// field 5. No stack pop.
-    QuerySaveImageEnabled {
+    DestroyScreenShake,
+    /// 524 queries whether a live owner is paused.
+    QueryScreenShakePaused {
         result_field_offset: u32,
     },
     /// Case 294 (`sub_48A570`): the version-pinned result pair (system
     /// registers 1 and 2) receives the render object's inner display-mode
-    /// fields 6 and 7 through `sub_432F70`/`sub_432F30`. The renderer
-    /// object model is not recovered, so execution blocks instead of
-    /// inventing the register values. No stack pop.
+    /// fields 6 and 7 through `sub_432F70`/`sub_432F30`. The host rebinds
+    /// these configured native dimensions separately from base coordinates
+    /// and physical raster size. Unbound queries fail. No stack pop.
     QueryRendererDisplayMode {
         renderer_field_offset: u32,
         result_field_offset: u32,
@@ -1052,9 +992,8 @@ pub enum CmvsPs2aCommandEffectKind {
         result_field_offset: u32,
     },
     /// Case 203 (`sub_4800F0`): GDI region hit test (`PtInRegion`) of the
-    /// session pointer against the stack-provided shape. Only the
-    /// rectangular shape (type 1) is recovered; ellipse, round-rectangle
-    /// and polygon rasterization stay blocking. Returns 0x401C.
+    /// session pointer against rectangle, ellipse, round-rectangle or WINDING
+    /// polygon regions. Returns 0x401C.
     HitTestPointerRegion {
         result_field_offset: u32,
     },
@@ -1064,7 +1003,6 @@ pub enum CmvsPs2aCommandEffectKind {
     /// result field. An out-of-range or empty channel only raises the
     /// channel error mask. Returns 0x4004.
     QueryEffectChannelActivity {
-        activity_state_key_base: u32,
         max_channel: u32,
         effect_table_dword_index: u32,
         error_mask: u32,
@@ -1076,6 +1014,12 @@ pub enum CmvsPs2aCommandEffectKind {
     LoadInterpreterWordToResult {
         source_field_offset: u32,
         result_field_offset: u32,
+    },
+    /// Cases 729..733: mode zero reads the master/BGM/SFX/voice/system
+    /// gain into 81220; any nonzero mode stores a signed clamp to 0..256
+    /// and synchronously applies that setting to live audio. Pops eight bytes.
+    NativeAudioGainSetting {
+        command_id: u16,
     },
     /// Case 750 (`sub_472F10` case body): writes one when the version-pinned
     /// interpreter word at byte offset 1596 is non-zero into the result
@@ -1115,32 +1059,19 @@ pub enum CmvsPs2aCommandEffectKind {
         result_field_offset: u32,
         extent_field_offset: u32,
     },
-    /// Case 168 (`sub_4898C0`): disposes the scene-layer worker thread for
-    /// one layer group (`sub_48CAB0` signals state 3 and joins). The
-    /// recovered subset holds no worker threads, so the handle dword is
-    /// simply cleared. An out-of-range layer raises the error mask.
-    /// Returns 0x4004.
-    DisposeSceneLayerWorker {
-        table_dword_index: u32,
-        max_layer: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-    },
-    /// Case 645 (`sub_47C090`): reads the menu work area's result field
-    /// (`sub_4243B0` on the `sub_424120` object). The constructor zeroes
-    /// the area and only the native config-menu code writes it, so the
-    /// recovered headless subset always reads zero. Returns `0x4000`.
-    ReadMenuWorkState {
+    /// Case 645 (`4243B0`): publishes the queued timeline record count.
+    ReadEffectTimelineCount {
         result_field_offset: u32,
     },
     /// Case 646 (`sub_47C240` -> `sub_4246C0`): appends a timed delay step
     /// (type 1, duration from the stack) to the sixteen-record effect
     /// timeline. Returns `0x4004`.
     PushEffectTimelineDelay,
-    /// Case 648 (`sub_47C1B0` -> `sub_4245A0`): appends a channel playback
-    /// step (type 3: channel dword 28, name at +32, param dword 96) to the
-    /// sixteen-record effect timeline. Returns `0x4004`.
+    /// Case 648 (`4245A0`): queues a parent-image replacement (type 3,
+    /// mode 0), including its resource name and transition duration.
     PushEffectTimelineChannel,
+    /// Case651 queues channel-zero child image replacement (native type5).
+    PushEffectTimelineElement,
     /// Case 772 (`sub_426670`): sets interpreter dword 2408 to one.
     /// Returns `0x4000`.
     SetPresentAllFlag {
@@ -1184,14 +1115,9 @@ pub enum CmvsPs2aCommandEffectKind {
     QueryGraphicsContext {
         result_field_offset: u32,
     },
-    /// Case 644 (`sub_47C040` -> `sub_4247D0`): runs the effect timeline;
-    /// the headless pipeline completes it synchronously. Returns
-    /// `0x4000`.
+    /// Case 644 (`47C040`): skips pending delays, completes image
+    /// replacements and clears the five timeline header words.
     RunEffectTimeline,
-    /// `sub_47C160` -> `sub_424510` (case 649): six-word timeline step.
-    /// Returns 0x4018.
-    /// `sub_47C1F0` -> `sub_424630` (case 647): five-word timeline step.
-    /// Returns 0x4014.
     /// `sub_48A3A0` (case 183): sysreg0 becomes the slot-status word
     /// for selectors 0-5 (canonical zero headless); above five raises
     /// 0x200. Returns 0x4004.
@@ -1202,11 +1128,8 @@ pub enum CmvsPs2aCommandEffectKind {
     /// Returns 0x4008.
     StorePlaybackRecordWord,
     StoreTextureChildByIndex,
-    ReadSlotStatusWord {
-        result_field_offset: u32,
-    },
-    /// `sub_480A80` (case 680): rebuilds the scene-layer worker at the
-    /// 737-slot and destroys the 481-table child. Returns 0x4010.
+    /// `sub_480A80` (case680) moves a481-table CImage into a737 shard worker.
+    /// The source image and its existing subtree survive. Returns0x4010.
     RebuildSceneLayerChild,
     /// `sub_481590` (case 672): destroys the scene-layer worker at the
     /// 737-slot (<= 3). Returns 0x4004.
@@ -1214,11 +1137,12 @@ pub enum CmvsPs2aCommandEffectKind {
     /// `sub_47E720` (case 369): destroys the hit element on the occupied
     /// channel; the gate raises 0x10000. Returns 0x4004.
     DestroyEffectHitElement,
-    PushEffectTimelineStep647,
-    PushEffectTimelineStep649,
-    /// `sub_47C110` -> `sub_424480` (case 650): six-word timeline step.
-    /// Returns 0x4018.
-    PushEffectTimelineStep650,
+    /// Case 647 queues a camera-zero transition (native type 4).
+    PushEffectTimelineCamera,
+    /// Cases 649/650 queue native type-3 mode-1/2 transforms.
+    PushEffectTimelineTransform {
+        mode: u8,
+    },
     /// Case 420 (`sub_479AE0`): reads the auxiliary (skip) button group
     /// latches (`sub_45CC00`). The pump maps no physical key to this
     /// group yet, so both fields read zero. Returns `0x4000`.
@@ -1234,20 +1158,17 @@ pub enum CmvsPs2aCommandEffectKind {
         held_field_offset: u32,
         edge_field_offset: u32,
     },
-    /// Case 310 (`sub_47CFA0`): forwards four resolved strings and six
-    /// words to the movie player (`sub_468130`). The headless subset has
-    /// no video engine, so the configuration completes as a no-op.
-    /// Returns 0x4028.
-    ConfigureMoviePlayback,
-    /// Case 640 (`sub_424790`): clears the menu work area's five result
-    /// fields. The area stays outside the recovered interpreter state, so
-    /// this is a no-op. Returns `0x4000`.
-    ResetMenuWorkArea,
-    /// Case 641 (`sub_47C0B0`): reads the menu work area's active
-    /// selection (`sub_424B00` returns field 8 when a menu is open, else
-    /// -1). The headless subset has no native menu, so the result is
-    /// always -1. Returns `0x4000`.
-    ReadMenuWorkSelection {
+    /// Case 310 (`47CFA0/468130`) owns a new native history entry.
+    AppendNativeMessageHistory,
+    /// Case 303 clears native history nodes but retains their capacity.
+    ClearNativeMessageHistory,
+    /// Case 640 (`424790`): clears all five timeline header words.
+    ResetEffectTimeline,
+    /// Cases 642/643 (`424AC0`/`424B10`): start and stop the timeline.
+    StartEffectTimeline,
+    StopEffectTimeline,
+    /// Case 641 (`424B00`): publishes the active cursor, or -1.
+    ReadEffectTimelineCursor {
         result_field_offset: u32,
     },
     /// Case 720 (`sub_479860`): a non-zero selector applies the window
@@ -1262,40 +1183,12 @@ pub enum CmvsPs2aCommandEffectKind {
     /// `sub_4712F0` outside the interpreter state. No recovered interpreter
     /// word changes; the write itself stays native. Returns `0x4000`.
     BuildSaveSnapshot,
-    /// Case 285 (`sub_488DE0`): resolves the speaker name through the
-    /// voice entry table (`sub_463CC0`) and publishes the mapping. The
-    /// recovered subset stores default zeros for the three voice words
-    /// and raises the table error mask out of range. Returns 0x4008.
-    ResolveSpeakerEntry {
-        table_dword_index: u32,
-        max_index: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-        result_field_offset: u32,
-        voice0_field_offset: u32,
-        voice1_field_offset: u32,
-        voice2_field_offset: u32,
-    },
-    /// Case 339 (`sub_47F6E0`): waits for an occupied channel's effect
-    /// to finish (`sub_467060`), returning `0xA000` while it plays. The
-    /// headless effect graph completes instantly, so the recovered
-    /// handler consumes the frame words and continues. A dead channel
-    /// raises the error mask.
-    WaitEffectChannelComplete {
-        effect_table_dword_index: u32,
-        max_channel: u32,
-        error_mask: u32,
-    },
-    /// Case 338 (`sub_47E910`): plays the named sound through an occupied
-    /// effect channel and waits for completion (the original returns
-    /// `0xA000` while it plays). The headless audio graph completes
-    /// immediately, so the recovered handler emits the play action and
-    /// ends the frame (`0xC004`). A dead channel raises the error mask.
-    PlayChannelSoundAndComplete {
-        effect_table_dword_index: u32,
-        max_channel: u32,
-        error_mask: u32,
-    },
+    /// `47F6E0 -> 467060`: confirmation or configured automatic text/voice
+    /// wait. Pending returns 0xA000, completion 0x400C.
+    WaitChannelAdvance,
+    /// `sub_47E910`: display channel text; 0xA000 while glyphs are pending,
+    /// 0xC00C when complete. The second operand is a read-bitmap id.
+    DisplayChannelText,
     /// Case 417 (inline `sub_45CB80` on the input manager): consumes the
     /// advance-group latch edges (release 271 and press 273). The command
     /// takes no stack operands and returns `0x4000`.
@@ -1421,22 +1314,6 @@ pub enum CmvsPs2aCommandEffectKind {
     /// mask, otherwise the name/volume/enabled/loop words are copied into
     /// the fixed 52-byte record table. The playback gate (`sub_48DB70`)
     /// stays unrecovered and blocks when its gate field is non-zero.
-    /// Case 67 (`sub_482EA0`): invokes the bound resource-slot object's
-    /// surface method with the stack words (the signed selector word is
-    /// forwarded only when non-negative); an unbound or out-of-range slot
-    /// only raises the resource error mask.
-    /// Case 577 (`sub_4845D0`): a zero stack word (re)binds
-    /// message-engine channel 15; a non-zero word only ORs 0x200 into the
-    /// pinned error word. The headless graph keeps channels unbound.
-    BindMessageChannelOrRaise {
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-    },
-    RunResourceSlotMethod {
-        max_slot: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-    },
     RegisterResourceChannelSlot {
         max_slot: u8,
         table_base_offset: u16,
@@ -1457,6 +1334,8 @@ pub enum CmvsPs2aCommandEffectKind {
         error_flag_field_offset: u32,
         error_flag_mask: u32,
     },
+    /// 481D30/case 38 writes native root/child visibility; hidden roots hide their subtree.
+    SetTextureVisibility,
     /// Loads a tagged PB resource into a live top-level texture container.
     /// Handler `sub_483D70` stores the synchronous loader result in the
     /// interpreter expression-result word and returns 0x4008.
@@ -1470,18 +1349,12 @@ pub enum CmvsPs2aCommandEffectKind {
     /// Case 410 (`sub_45C5A0`): resets the presentation manager's internal
     /// counters; no observable headless state.
     ResetPresentationBuffers,
-    /// `sub_4804C0` (case 46): selects the presentation target slot.
-    /// Returns 0x4008.
-    SelectPresentationSlot {
-        slot_table_dword_index: u32,
-        max_slot: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
-    },
-    /// `sub_480620` (case 35): selects the renderer viewport for a slot.
-    /// Returns 0x4008.
-    SelectRenderViewport {
-        slot_table_dword_index: u32,
+    /// 46/4804C0 ->445E60 clears the selected image header's shake bit0x100.
+    DisableTextureShake,
+    /// 480620/case 35 destroys one child; out-of-range child ids are ignored.
+    /// The parent loader and other children retain their ownership.
+    DestroyTextureChild {
+        texture_table_byte_offset: u16,
         error_flag_field_offset: u32,
         error_flag_mask: u32,
     },
@@ -1507,19 +1380,19 @@ pub enum CmvsPs2aCommandEffectKind {
         result_field_offset: u32,
         present_object_field_offset: u32,
     },
-    /// Loads a tagged PB resource while creating the top-level texture
-    /// container if absent. Handler `sub_47ACA0` (case 554) consumes the
-    /// name, slot and three opaque words, replaces any previous container,
-    /// stores the loader success at the result field and returns 0x4014.
-    LoadTextureParentResourceExtended {
-        texture_table_base_offset: u32,
-        result_field_offset: u32,
-        error_flag_field_offset: u32,
-        error_flag_mask: u32,
+    /// `sub_47ACA0` / `sub_47AA50`: start a mask transition over an
+    /// existing parent, or over the newly cleared parent zero.
+    StartTexturePresentation {
+        clear_background: bool,
     },
-    /// Recreates the live top-level container's 0x88-byte surface owner.
-    /// Handler `sub_482F20` consumes one parent id and returns 0x4004.
-    InitializeTextureParentSurface {
+    /// `sub_47AED0`: remaining transition milliseconds, or -1 if absent.
+    QueryTexturePresentation,
+    /// `sub_47AE00`: finish immediately, destroying a hidden parent.
+    FinishTexturePresentation,
+    /// Cases 64/65 create or free the basic surface, retaining its image provider.
+    /// Handlers 482F20/482F60 consume one parent id and return 0x4004.
+    SetTextureParentSurface {
+        initialized: bool,
         texture_table_base_offset: u32,
         max_parent_slot: u8,
         error_flag_field_offset: u32,
@@ -1565,8 +1438,27 @@ pub enum CmvsPs2aCommandEffectKind {
         error_flag_field_offset: u32,
         error_flag_mask: u32,
     },
-    /// The recovered case-68 handler stores four transform/rectangle words
-    /// on one child texture (`sub_446B30`).
+    /// 483A80 -> 446BF0 -> 42EA20 stores raw IEEE754 X/Y scale words.
+    ConfigureTextureScale,
+    ConfigureTextureBasicKind {
+        command_id: u16,
+    },
+    ConfigureTextureBlend,
+    ConfigureTextureFloatPosition,
+    ConfigureTextureRotation,
+    ConfigureTextureProjectionField {
+        field_index: u8,
+    },
+    /// Case 67 (`482EA0` -> `4443F0` -> `42C300`): resets the basic
+    /// surface rectangle to (0, 0, width, height) and sets its opaque color.
+    ConfigureTextureSolidSurface {
+        texture_table_base_offset: u32,
+        max_parent_slot: u8,
+        error_flag_field_offset: u32,
+        parent_error_mask: u32,
+    },
+    /// Case 68 (`446B30` -> `42E950`): source rectangle (x, y, width, height).
+    /// A signed negative child selector addresses the parent's basic surface.
     ConfigureTextureChildRect {
         texture_table_base_offset: u32,
         max_parent_slot: u8,
@@ -1575,8 +1467,7 @@ pub enum CmvsPs2aCommandEffectKind {
         parent_error_mask: u32,
         child_error_mask: u32,
     },
-    /// The recovered case-70 handler stores two position words on one child
-    /// texture (`sub_446AD0`).
+    /// Case 70 (`446AD0` -> `42E870`): signed-low-word geometry pivot (DWORD6/7).
     ConfigureTextureChildPosition {
         texture_table_base_offset: u32,
         max_parent_slot: u8,
@@ -1585,8 +1476,7 @@ pub enum CmvsPs2aCommandEffectKind {
         parent_error_mask: u32,
         child_error_mask: u32,
     },
-    /// Cases 69 and 71 address the same bounded parent/child texture tree,
-    /// but their live mutation remains unrecovered and therefore blocking.
+    /// Case 69 (`446B90` -> `42E9B0`): destination offset (DWORD8/9).
     ConfigureTextureAuxiliaryPair {
         texture_table_base_offset: u32,
         max_parent_slot: u8,
@@ -1595,7 +1485,17 @@ pub enum CmvsPs2aCommandEffectKind {
         parent_error_mask: u32,
         child_error_mask: u32,
     },
+    /// Case 71 (`446BE0` -> `42EA10`): draw order (DWORD10).
     ConfigureTextureAuxiliaryWord {
+        texture_table_base_offset: u32,
+        max_parent_slot: u8,
+        max_child_id: u16,
+        error_flag_field_offset: u32,
+        parent_error_mask: u32,
+        child_error_mask: u32,
+    },
+    /// Case 72 (`446B10` -> `42E8E0`): signed alpha with only an upper clamp.
+    ConfigureTextureAlpha {
         texture_table_base_offset: u32,
         max_parent_slot: u8,
         max_child_id: u16,
@@ -1645,9 +1545,9 @@ pub enum CmvsPs2aCommandEffectKind {
     },
     /// The recovered case-42 handler (`sub_481CD0`): validates the stack
     /// slot index against 0x100, binds the child element when the stack
-    /// child id is non-negative (`sub_444EF0`), and stores the display
-    /// region pair into the slot object at offsets 0x1038/0x103c
-    /// (`sub_445E80`). The headless graph retains only the region pair.
+    /// child id is non-negative (`sub_444EF0`), and stores the reference
+    /// dimensions on the selected graphics object (`sub_445E80`).
+    /// Its width controls the uniform stage-coordinate ratio in `445010`.
     /// Returns 0x4010.
     SetResourceSlotRegion {
         max_slot: u32,
@@ -1746,12 +1646,6 @@ pub enum CmvsPs2aCommandEffectKind {
     /// presenter (quad creation, field writes and payload-table updates).
     ConfigureChannelChildPresenter {
         selector: u16,
-        channel_table_field_offset: u32,
-    },
-    /// `sub_483D70` (case 48): resolves the name string and asks the
-    /// channel's query object whether the named element is hit; the
-    /// recovered subset answers from the presenter geometry.
-    QueryChannelChildName {
         channel_table_field_offset: u32,
     },
     InstallChannelChildPayload {
@@ -1916,45 +1810,44 @@ pub fn cmvs390_command_contract(command_id: u16) -> Option<CmvsPs2aCommandContra
         });
     }
     let (stack_pop_bytes, effect_kind, stack_words) = match command_id {
-        256 | 257 | 258 | 259 | 260 | 261 | 262 | 263 | 264 | 267 | 268 | 275 => {
+        608..=612 | 624..=629 => opcodes_530_741::lookup(command_id),
+        256 | 257 | 258 | 259 | 260 | 261 | 262 | 263 | 264 | 267 | 268 | 275 | 285 | 287 => {
             native_text::lookup(command_id)
         }
         0 | 1 | 3 | 8 | 11 | 12 | 16 | 18 | 19 | 20 | 17 | 23 | 21 | 22 | 24 | 26 | 29 | 30
-        | 31 | 32 | 33 | 34 | 35 | 39 | 40 | 38 | 42 | 46 | 47 | 48 | 51 | 52 | 59 | 56 | 63
-        | 60 | 67 | 64 | 66 | 68 | 69 | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 193 => {
-            opcodes_0_71::lookup(command_id)
-        }
-        80 | 86 | 88 | 89 | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 | 100 | 101 | 102
-        | 103 | 104 | 105 | 106 | 108 | 112 | 113 | 114 | 115 | 116 | 128 | 129 | 135 | 136
-        | 137 | 183 => opcodes_80_137::lookup(command_id),
+        | 31 | 32 | 33 | 34 | 35 | 39 | 40 | 38 | 41 | 42 | 44 | 46 | 47 | 48 | 51 | 52 | 59
+        | 56 | 63 | 60 | 67 | 64 | 65 | 66 | 68 | 69 | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 78
+        | 193 => opcodes_0_71::lookup(command_id),
+        80 | 84 | 85 | 86 | 88 | 89 | 90 | 91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 | 100
+        | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111 | 125 | 112 | 113
+        | 114 | 115 | 116 | 128 | 129 | 135 | 136 | 137 | 183 => opcodes_80_137::lookup(command_id),
         138 | 139 | 140 | 143 | 144 | 145 | 146 | 147 | 148 | 152 | 153 | 156 | 160 | 161 | 162
         | 164 | 166 | 168 | 170 | 176 | 177 | 179 | 182 | 200 | 202 | 203 | 181 | 212 | 236
-        | 243 | 248 | 252 | 269 | 270 | 271 | 272 | 276 | 277 | 278 | 279 | 282 | 285 | 286
-        | 294 | 296 | 297 | 302 | 303 | 304 | 305 | 306 | 307 | 308 | 309 | 310 | 320 | 321
-        | 322 | 332 | 338 | 339 | 341 | 196 | 197 | 198 | 186 => {
-            opcodes_138_322::lookup(command_id)
-        }
+        | 243 | 248 | 252 | 269 | 270 | 271 | 272 | 276 | 277 | 278 | 279 | 282 | 286 | 294
+        | 296 | 297 | 302 | 303 | 304 | 305 | 306 | 307 | 308 | 309 | 310 | 320 | 321 | 322
+        | 332 | 338 | 339 | 341 | 196 | 197 | 198 | 186 => opcodes_138_322::lookup(command_id),
         323 | 324 | 325 | 326 | 327 | 328 | 329 | 330 | 331 | 335 | 333 | 334 | 336 | 337 | 343
         | 344 | 345 | 346 | 347 | 349 | 350 | 351 | 352 | 353 | 354 | 355 | 356 | 363 | 364
         | 365 | 369 => opcodes_323_354::lookup(command_id),
         368 | 376 | 377 | 378 | 379 | 380 | 382 | 383 | 384 | 385 | 386 | 387 | 388 | 389 | 390
-        | 391 | 397 | 400 | 401 => opcodes_368_401::lookup(command_id),
+        | 391 | 395 | 397 | 400 | 401 => opcodes_368_401::lookup(command_id),
         402 | 403 | 404 | 405 | 406 | 410 | 416 | 417 | 418 | 420 | 422 | 424 | 425 | 426 | 427
         | 428 | 429 | 430 | 431 | 432 | 433 | 463 | 464 | 465 | 466 | 468 | 469 | 470 | 471
         | 490 | 491 | 492 | 493 | 494 | 480 | 481 | 482 | 500 | 501 | 502 | 505 | 506 | 507
         | 508 | 509 | 524 | 528 | 529 | 860 => opcodes_402_529::lookup(command_id),
         530 | 531 | 532 | 533 | 534 | 535 | 538 | 539 | 544 | 545 | 548 | 549 | 550 | 551 | 552
-        | 559 | 560 | 561 | 562 | 563 | 553 | 554 | 555 | 568 | 569 | 570 | 571 | 573 | 574
-        | 575 | 577 | 592 | 640 | 641 | 644 | 647 | 649 | 650 | 672 | 680 | 686 | 645 | 646
-        | 648 | 688 | 689 | 690 | 691 | 692 | 693 | 694 | 695 | 696 | 697 | 698 | 699 | 700
-        | 701 | 702 | 704 | 705 | 708 | 709 | 710 | 715 | 717 | 718 | 719 | 720 | 721 | 723
-        | 724 | 725 | 726 | 727 | 728 | 729 | 730 | 731 | 732 | 733 | 735 | 736 | 737 | 739
-        | 740 | 741 | 743 | 744 | 745 | 760 | 761 => opcodes_530_741::lookup(command_id),
-        747 | 734 | 749 | 772 | 773 | 774 | 750 | 751 | 762 | 764 | 765 | 776 | 847 | 777 | 778
-        | 802 | 832 | 845 | 846 | 848 | 849 | 850 | 851 | 853 | 854 | 855 | 856 | 857 | 858
-        | 859 | 864 | 866 | 779 | 780 | 868 | 869 | 870 | 940 | 966 => {
-            opcodes_747_940::lookup(command_id)
+        | 559 | 560 | 561 | 562 | 563 | 553 | 554 | 555 | 556 | 557 | 558 | 568 | 569 | 570
+        | 571 | 573 | 574 | 575 | 592 | 640 | 641 | 644 | 647 | 649 | 650 | 672 | 674 | 680
+        | 686 | 645 | 646 | 648 | 688 | 689 | 690 | 691 | 692 | 693 | 694 | 695 | 696 | 697
+        | 698 | 699 | 700 | 701 | 702 | 704 | 705 | 708 | 709 | 710 | 715 | 717 | 718 | 719
+        | 720 | 721 | 723 | 724 | 725 | 726 | 727 | 728 | 729 | 730 | 731 | 732 | 733 | 735
+        | 713 | 714 | 736 | 737 | 739 | 740 | 741 | 743 | 744 | 745 | 760 | 761 => {
+            opcodes_530_741::lookup(command_id)
         }
+        747 | 748 | 734 | 749 | 772 | 773 | 774 | 750 | 751 | 762 | 764 | 765 | 776 | 847 | 777
+        | 778 | 802 | 832 | 845 | 846 | 848 | 849 | 850 | 851 | 853 | 854 | 855 | 856 | 857
+        | 858 | 859 | 864 | 866 | 779 | 780 | 781 | 782 | 783 | 794 | 795 | 796 | 797 | 798
+        | 868 | 869 | 870 | 940 | 966 => opcodes_747_940::lookup(command_id),
         _ => native_table::lookup(command_id),
     }?;
     Some(CmvsPs2aCommandContract {

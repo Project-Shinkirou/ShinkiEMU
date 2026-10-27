@@ -30,15 +30,6 @@ pub(super) fn read_script_data_segment_word(
         )
     })?;
     if end > script_data_segment_bound(state)? {
-        if tracing::enabled!(tracing::Level::INFO) {
-            tracing::info!(
-                event = "shinki.emu.cmvs.vm.segment_read_out_of_bounds",
-                pc = state.program_counter,
-                frame = state.current_frame,
-                offset,
-                tick = state.tick
-            );
-        }
         return Err(invalid(
             "SHINKI_EMU_CMVS_VM_DATA_SEGMENT",
             "CMVS data-segment read is outside the loaded segment",
@@ -50,22 +41,6 @@ pub(super) fn read_script_data_segment_word(
         .and_then(|words| words.get(&offset))
         .copied()
         .unwrap_or(0);
-    if tracing::enabled!(tracing::Level::INFO) && offset == 324 {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.word324_read_expr",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            value,
-            tick = state.tick
-        );
-    }
-    if tracing::enabled!(tracing::Level::TRACE) && offset <= 0x40 {
-        tracing::trace!(
-            event = "shinki.emu.cmvs.vm.data_read",
-            pc = state.program_counter,
-            frame = state.current_frame
-        );
-    }
     Ok(value)
 }
 
@@ -86,27 +61,11 @@ pub(super) fn write_script_data_segment_word(
             "CMVS data-segment write is outside the loaded segment",
         ));
     }
-    let previous = state
-        .script_data_segment_words
-        .get(&state.current_frame)
-        .and_then(|words| words.get(&offset))
-        .copied()
-        .unwrap_or(0);
     state
         .script_data_segment_words
         .entry(state.current_frame)
         .or_default()
         .insert(offset, value);
-    if previous != value && tracing::enabled!(tracing::Level::DEBUG) && offset <= 0x40 {
-        tracing::debug!(
-            event = "shinki.emu.cmvs.vm.data_write",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            offset,
-            previous,
-            value
-        );
-    }
     Ok(())
 }
 
@@ -141,19 +100,6 @@ pub(super) fn read_frame_local_word(
         bytes[..available_end - start].copy_from_slice(&state.stack_bytes[start..available_end]);
     }
     let value = u32::from_le_bytes(bytes);
-    if tracing::enabled!(tracing::Level::INFO)
-        && (25_400..=25_560).contains(&state.program_counter)
-        && matches!(offset.unsigned_abs(), 8 | 12)
-    {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.dispatcher_fl_read",
-            pc = state.program_counter,
-            offset,
-            value,
-            base = state.call_frame_bases.last().copied().unwrap_or(0),
-            tick = state.tick
-        );
-    }
     Ok(value)
 }
 
@@ -188,30 +134,6 @@ pub(super) fn write_frame_local_word(
             "SHINKI_EMU_CMVS_VM_FRAME_LOCAL",
             "CMVS frame-local write exceeds the recovered variable-buffer budget",
         ));
-    }
-    if tracing::enabled!(tracing::Level::INFO)
-        && offset == 4
-        && (187_200..=187_390).contains(&state.program_counter)
-    {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.fl4_write",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            value = value,
-            tick = state.tick
-        );
-    }
-    if tracing::enabled!(tracing::Level::INFO)
-        && state.current_frame == 0
-        && (202_500..=202_900).contains(&state.program_counter)
-    {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.loop_local_write",
-            pc = state.program_counter,
-            offset = offset,
-            value = value,
-            tick = state.tick
-        );
     }
     ensure_stack_memory(state, end)?;
     state.stack_bytes[start..end].copy_from_slice(&value.to_le_bytes());
@@ -256,72 +178,10 @@ pub(super) fn store_stack_expression_target(
 ) -> Result<(), CoreError> {
     match target.tag {
         0x101 => {
-            if tracing::enabled!(tracing::Level::TRACE) && matches!(target.value, 0x4d | 0x6e) {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.proc_write",
-                    pc = state.program_counter,
-                    frame = state.current_frame
-                );
-            }
             // The story's dialogue gate (intproc 49944) polls process word
             // 9 against zero, and the submit flag 2194 (plus its siblings
             // 2195/2196 and the request word 1) drive the configure
             // routine; every store is worth observing.
-            if target.value == 66 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pw66_store",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value,
-                    tick = state.tick
-                );
-            }
-            if matches!(target.value, 1 | 9 | 2194 | 2195 | 2196 | 2199)
-                && tracing::enabled!(tracing::Level::INFO)
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.dialogue_word_write",
-                    pc = state.current_instruction_start,
-                    frame = state.current_frame,
-                    word = target.value,
-                    value,
-                    depth = state.call_frame_bases.len(),
-                    target_tag = target.tag,
-                    target_raw = target.value,
-                    stack_top = {
-                        let c = state.stack_cursor_bytes as usize;
-                        state
-                            .stack_bytes
-                            .get(c.saturating_sub(16)..c)
-                            .map(|s| u64::from_le_bytes(s.try_into().unwrap_or([0; 8])))
-                            .unwrap_or(0)
-                    }
-                );
-            }
-            if matches!(
-                target.value,
-                13 | 16 | 17 | 98 | 110 | 111 | 272 | 406 | 407 | 700
-            ) && state.process_indexed_words.get(&target.value) != Some(&value)
-                && tracing::enabled!(tracing::Level::INFO)
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.process_parameter",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    word = target.value,
-                    value,
-                    tick = state.tick
-                );
-            }
-            if value == 0x4228_0000 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pc_poison_write",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    target_tag = target.tag,
-                    target_word = target.value
-                );
-            }
             // The save orchestrator's epilogue (intproc 405844) clears
             // the save-request flag while the load body's cmd-410 record
             // park hands the scheduler to it; the load tail's gate
@@ -343,62 +203,12 @@ pub(super) fn store_stack_expression_target(
             // Throwaway probe: the menu demo-loop dispatch assigns the 535
             // poll result to frame-local 0 at pc 206454 before the 0x403
             // comparison chain; INFO keeps it above the queue drop line.
-            if state.program_counter == 206454 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.menu_dispatch_store",
-                    pc = state.program_counter,
-                    value
-                );
-            }
-            if value == 0x4228_0000 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pc_poison_store_local",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    offset
-                );
-            }
             write_frame_local_word(state, offset, value)
         }
         0x104 | 0x106 | 0x107 => {
             // `sub_46E250` stores these tags through the same data-segment
             // base the reads use. Word 324 is the message pump's exit
             // gate — log its writers to catch who parks it at -1.
-            if target.value == 324 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word324_store",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value
-                );
-            }
-            if target.value == 16 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pw16_store",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value,
-                    tick = state.tick
-                );
-            }
-            if target.value == 4 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word4_store",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value,
-                    tick = state.tick
-                );
-            }
-            if target.value == 20 && tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word20_store",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value,
-                    tick = state.tick
-                );
-            }
             write_script_data_segment_word(state, target.value, value)
         }
         0x103 => {
@@ -429,9 +239,7 @@ pub(super) fn store_stack_expression_target(
             Ok(())
         }
         0x10f if target.value <= 6 => {
-            state
-                .interpreter_words
-                .insert(SYSTEM_REGISTER_FIELD_BASE + 4 * target.value, value);
+            state.write_interpreter_word(SYSTEM_REGISTER_FIELD_BASE + 4 * target.value, value);
             Ok(())
         }
         0x10f => Ok(()),

@@ -1,9 +1,11 @@
 mod access;
+mod custom_glyph;
 mod manifest;
 mod mount;
 pub(crate) mod native;
-mod save_catalog;
+pub(crate) mod save_catalog;
 mod settings;
+pub(crate) use settings::DEFAULT_FONT as DEFAULT_NATIVE_FONT;
 mod source;
 mod storage;
 mod system_state;
@@ -23,17 +25,17 @@ use roukaku_byte_source::OwnedByteBuffer;
 use roukaku_core::Hash256;
 use sha2::{Digest, Sha256};
 use shinki_emu_sdk::{
-    validate_archive_directory_uri, validate_archive_uri, ArchiveEntry, ArchiveManifest,
-    ArchiveNode, ArchiveNodeKind, ArchiveReadResult, ArchiveSource, ArchiveStat, ArchiveStream,
-    CoreError, ARCHIVE_MANIFEST_SCHEMA, ARCHIVE_MAX_READ_BYTES,
+    ARCHIVE_MANIFEST_SCHEMA, ARCHIVE_MAX_READ_BYTES, ArchiveEntry, ArchiveManifest, ArchiveNode,
+    ArchiveNodeKind, ArchiveReadResult, ArchiveSource, ArchiveStat, ArchiveStream, CoreError,
+    validate_archive_directory_uri, validate_archive_uri,
 };
 use shinki_emu_sdk::{CacheIdentity, PlaintextCache, PlaintextCacheError};
 
 use crate::{
-    decode_pb2_image, decode_pb3_jbp, decode_pb3_type1, decode_pb3_type5, decode_pb3_type6,
-    decrypt_cpz5_entry, parse_cpz5_index, parse_cpz_header, parse_pb2_metadata, parse_pb3_metadata,
-    CmvsCpzHeader, CmvsCpzVersion, CmvsSchemeProfile, Cpz5IndexEntry, PbDecodedImage,
-    PbImageResolver, CMVS_DECRYPT_PROVIDER_ID, CMVS_FAMILY_ID, CMVS_READER_ID,
+    CMVS_DECRYPT_PROVIDER_ID, CMVS_FAMILY_ID, CMVS_READER_ID, CmvsCpzHeader, CmvsCpzVersion,
+    CmvsSchemeProfile, Cpz5IndexEntry, PbDecodedImage, PbImageResolver, decode_pb2_image,
+    decode_pb3_jbp, decode_pb3_type1, decode_pb3_type5, decode_pb3_type6, decrypt_cpz5_entry,
+    parse_cpz_header, parse_cpz5_index, parse_pb2_metadata, parse_pb3_metadata,
 };
 
 const MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
@@ -176,32 +178,25 @@ impl CmvsArchive {
         self.decode_pb3_image_inner(uri, Vec::new())
     }
 
-    pub fn pb3_image_type(&self, uri: &str) -> Result<u16, CoreError> {
+    pub(crate) fn native_image_info(&self, uri: &str) -> Result<[u32; 3], CoreError> {
         validate_archive_uri(&self.prefix, uri)?;
         let (source, _) = self.resource_bytes(uri)?;
-        Ok(parse_pb3_metadata(&source)?.image_type)
+        let metadata = if source.starts_with(crate::PB2_MAGIC) {
+            parse_pb2_metadata(&source)?
+        } else {
+            parse_pb3_metadata(&source)?
+        };
+        Ok([
+            u32::from(metadata.width),
+            u32::from(metadata.height),
+            u32::from(metadata.bits_per_pixel == 32),
+        ])
     }
 
-    pub fn pb_image_type(&self, uri: &str) -> Result<u16, CoreError> {
+    pub(crate) fn load_cmv(&self, uri: &str) -> Result<crate::cmv::CmvDecoder, CoreError> {
         validate_archive_uri(&self.prefix, uri)?;
         let (source, _) = self.resource_bytes(uri)?;
-        if source.starts_with(crate::PB2_MAGIC) {
-            return Ok(parse_pb2_metadata(&source)?.image_type);
-        }
-        Ok(parse_pb3_metadata(&source)?.image_type)
-    }
-
-    /// Diagnostic hook for decoder development: returns the decrypted PB3
-    /// payload of one image. Not part of the game-facing surface.
-    #[doc(hidden)]
-    pub fn debug_pb3_payload(&self, uri: &str) -> Result<Vec<u8>, CoreError> {
-        validate_archive_uri(&self.prefix, uri)?;
-        let (source, _) = self.resource_bytes(uri)?;
-        let source = source.as_slice();
-        if source.starts_with(crate::PB2_MAGIC) {
-            return Err(invalid("SHINKI_EMU_CMVS_PB3_VARIANT", "not a PB3 payload"));
-        }
-        crate::pb::debug_decrypt_pb3(source)
+        crate::cmv::CmvDecoder::new(source)
     }
 
     fn decode_pb3_image_inner(
@@ -267,10 +262,10 @@ impl CmvsArchive {
                     "CMVS ephemeral entry cache is poisoned",
                 )
             })?;
-            if let Some((entry_id, bytes)) = ephemeral.as_ref() {
-                if entry_id == &entry.entry_id {
-                    return Ok((bytes.clone(), true));
-                }
+            if let Some((entry_id, bytes)) = ephemeral.as_ref()
+                && entry_id == &entry.entry_id
+            {
+                return Ok((bytes.clone(), true));
             }
         }
         if let Some(bytes) = cache
@@ -408,7 +403,7 @@ fn cache_error(error: PlaintextCacheError) -> CoreError {
 
 #[cfg(test)]
 #[path = "archive/cache_tests.rs"]
-mod cache_tests;
+pub(crate) mod cache_tests;
 
 #[cfg(test)]
 pub(crate) use cache_tests::fixture as test_archive;

@@ -53,10 +53,8 @@ fn content_hash(
     stored: &OnceLock<Hash256>,
     recheck: bool,
 ) -> Result<Hash256, CoreError> {
-    if !recheck {
-        if let Some(hash) = stored.get() {
-            return Ok(*hash);
-        }
+    if !recheck && let Some(hash) = stored.get() {
+        return Ok(*hash);
     }
     let hash = hash_file(path)?;
     let expected = *stored.get_or_init(|| hash);

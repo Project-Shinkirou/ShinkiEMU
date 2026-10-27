@@ -16,9 +16,12 @@ impl CmvsArchive {
         &self,
         segments: &[CmvsStringSegment],
     ) -> Result<Option<image::RgbaImage>, CoreError> {
-        let [CmvsStringSegment::InterpreterPrefixField {
-            field_offset: 10764,
-        }, CmvsStringSegment::OwnedString(relative)] = segments
+        let [
+            CmvsStringSegment::InterpreterPrefixField {
+                field_offset: 10764,
+            },
+            CmvsStringSegment::OwnedString(relative),
+        ] = segments
         else {
             return Err(failure());
         };
@@ -34,7 +37,7 @@ impl CmvsArchive {
                     std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
                 ) =>
             {
-                return Ok(None)
+                return Ok(None);
             }
             Err(_) => return Err(failure()),
         };
@@ -137,10 +140,12 @@ mod tests {
                 CmvsStringSegment::OwnedString(name.into()),
             ]
         };
-        assert!(archive
-            .load_window_icon(&request("absent.ico"))
-            .unwrap()
-            .is_none());
+        assert!(
+            archive
+                .load_window_icon(&request("absent.ico"))
+                .unwrap()
+                .is_none()
+        );
         assert!(archive.load_window_icon(&request("../escape.ico")).is_err());
         let bytes = icon();
         std::fs::write(root.path().join("game.ico"), &bytes).unwrap();

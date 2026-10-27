@@ -1,6 +1,5 @@
 use shinki_emu_sdk::CoreError;
 
-#[allow(dead_code)]
 pub(crate) fn compute(input: [u32; 4], variant: &str) -> Result<[u32; 4], CoreError> {
     let (mut a, mut b, mut c, mut d): (u32, u32, u32, u32) = match variant {
         "A" | "Chrono" => (0xc74a_2b01, 0xe7c8_ab8f, 0xd8be_dc4e, 0x7302_a4c5),
@@ -13,7 +12,7 @@ pub(crate) fn compute(input: [u32; 4], variant: &str) -> Result<[u32; 4], CoreEr
             return Err(CoreError::invalid(
                 "SHINKI_EMU_CMVS_MD5_VARIANT",
                 "CMVS MD5 variant is unsupported",
-            ))
+            ));
         }
     };
     let initial = [a, b, c, d];

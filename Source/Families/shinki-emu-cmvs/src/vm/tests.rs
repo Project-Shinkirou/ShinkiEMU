@@ -55,6 +55,153 @@ fn seed_pool_bytes(state: &mut CmvsPs2aVmState, frame: u16, entries: &[(u32, &[u
     state.frame_string_pool_bytes.insert(frame, pool);
 }
 
+fn run_native_audio_gain_setting(
+    state: &mut CmvsPs2aVmState,
+    command_id: u16,
+    mode: u32,
+    value: u32,
+) -> Option<CmvsPs2aVmAction> {
+    for word in [value, mode] {
+        execute_cmvs390_frame(state, &push_immediate(word)).unwrap();
+    }
+    execute_cmvs390_frame(
+        state,
+        &CmvsPs2aInstructionFrame::Command {
+            span: SPAN,
+            command_id,
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn native_audio_gain_getters_use_ctor_defaults_and_ignore_the_value_word() {
+    for command_id in 729..=733 {
+        for ignored_value in [0, 1, 256, 0x8000_0000, u32::MAX] {
+            let mut state = CmvsPs2aVmState::new(0);
+            state.write_interpreter_word(81220, 0x1234_5678);
+            state.write_interpreter_word(13224, 0);
+            execute_cmvs390_frame(&mut state, &push_immediate(0x9876_5432)).unwrap();
+            let mut expected = state.interpreter_words.clone();
+            expected.insert(81220, 256);
+
+            assert_eq!(
+                run_native_audio_gain_setting(&mut state, command_id, 0, ignored_value),
+                None,
+            );
+            assert_eq!(state.interpreter_words, expected);
+            assert_eq!(state.stack_cursor_bytes, 4);
+            assert_eq!(read_stack_word_from_top(&state, 4).unwrap(), 0x9876_5432);
+        }
+    }
+}
+
+#[test]
+fn native_audio_gain_setters_signed_clamp_and_preserve_results_and_other_settings() {
+    for (command_id, field_offset) in [
+        (729, 1560),
+        (730, 1564),
+        (731, 1568),
+        (732, 1572),
+        (733, 1576),
+    ] {
+        for mode in [1, 2, 0x8000_0000, u32::MAX] {
+            for (value, expected_gain) in [
+                (0x8000_0000, 0),
+                (u32::MAX, 0),
+                (0, 0),
+                (1, 1),
+                (255, 255),
+                (256, 256),
+                (257, 256),
+                (0x7fff_ffff, 256),
+            ] {
+                let mut state = CmvsPs2aVmState::new(0);
+                for (offset, gain) in [(1560, 11), (1564, 22), (1568, 33), (1572, 44), (1576, 55)] {
+                    state.write_interpreter_word(offset, gain);
+                }
+                state.write_interpreter_word(81220, 0x1234_5678);
+                state.write_interpreter_word(81236, 0x8765_4321);
+                state.write_interpreter_word(13224, 0);
+                state.settings_words.insert(390, 77);
+                execute_cmvs390_frame(&mut state, &push_immediate(0x9876_5432)).unwrap();
+                let mut expected = state.interpreter_words.clone();
+                expected.insert(field_offset, expected_gain);
+                let settings_before = state.settings_words.clone();
+
+                assert_eq!(
+                    run_native_audio_gain_setting(&mut state, command_id, mode, value),
+                    Some(CmvsPs2aVmAction::ApplyNativeAudioGainSetting { command_id }),
+                );
+                assert_eq!(state.interpreter_words, expected);
+                assert_eq!(state.settings_words, settings_before);
+                assert_eq!(state.stack_cursor_bytes, 4);
+                assert_eq!(read_stack_word_from_top(&state, 4).unwrap(), 0x9876_5432);
+            }
+        }
+    }
+}
+
+#[test]
+fn native_audio_gain_round_trips_keep_all_five_groups_independent() {
+    let mut state = CmvsPs2aVmState::new(0);
+    let mut expected_gains = [256; 5];
+    for (index, command_id) in (729..=733).enumerate() {
+        let gain = 19 + index as u32 * 43;
+        let result_before = state.interpreter_words.get(&81220).copied();
+        assert_eq!(
+            run_native_audio_gain_setting(&mut state, command_id, u32::MAX, gain),
+            Some(CmvsPs2aVmAction::ApplyNativeAudioGainSetting { command_id }),
+        );
+        assert_eq!(state.interpreter_words.get(&81220).copied(), result_before);
+        expected_gains[index] = gain;
+
+        for (group, getter) in (729..=733).enumerate() {
+            assert_eq!(
+                run_native_audio_gain_setting(&mut state, getter, 0, u32::MAX),
+                None
+            );
+            assert_eq!(state.interpreter_words[&81220], expected_gains[group]);
+            let offset = 1560 + group as u32 * 4;
+            assert_eq!(
+                state.interpreter_words.get(&offset).copied(),
+                (group <= index).then_some(expected_gains[group]),
+            );
+            assert_eq!(state.stack_cursor_bytes, 0);
+        }
+    }
+
+    // Getter copies the stored native word verbatim, including loaded values.
+    state.write_interpreter_word(1568, u32::MAX);
+    assert_eq!(run_native_audio_gain_setting(&mut state, 731, 0, 0), None);
+    assert_eq!(state.interpreter_words[&81220], u32::MAX);
+    assert_eq!(state.interpreter_words[&1568], u32::MAX);
+}
+
+#[test]
+fn native_audio_gain_missing_value_operand_fails_before_mutating_settings() {
+    for command_id in 729..=733 {
+        for mode in [0, 1, u32::MAX] {
+            let mut state = CmvsPs2aVmState::new(0);
+            state.write_interpreter_word(1560, 37);
+            state.write_interpreter_word(81220, 0x1234_5678);
+            execute_cmvs390_frame(&mut state, &push_immediate(mode)).unwrap();
+            let words_before = state.interpreter_words.clone();
+            let error = execute_cmvs390_frame(
+                &mut state,
+                &CmvsPs2aInstructionFrame::Command {
+                    span: SPAN,
+                    command_id,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_STACK_UNDERFLOW");
+            assert_eq!(state.interpreter_words, words_before);
+            assert_eq!(state.stack_cursor_bytes, 4);
+        }
+    }
+}
+
 #[test]
 fn emits_crossfade_audio_with_resource_reference_and_fade() {
     let mut state = CmvsPs2aVmState::new(0);
@@ -376,9 +523,9 @@ fn command_751_reads_input_modes_without_inventing_gpu_readiness() {
         (false, false, 1, 1),
     ] {
         let mut state = CmvsPs2aVmState::new(0);
-        state.input_skip_mode = skip;
-        state.input_auto_mode = auto;
-        state.interpreter_words.insert(1464, force);
+        state.input_shift_held = skip;
+        state.input_control_held = auto;
+        state.write_interpreter_word(1464, force);
         execute_cmvs390_frame(
             &mut state,
             &CmvsPs2aInstructionFrame::Command {
@@ -446,39 +593,93 @@ fn command_51_reports_a_slot_with_a_decoded_texture() {
 }
 
 #[test]
-fn command_334_stores_a_changed_playback_flag() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state.slot_objects.insert((742_u32 << 8) | 2, 7);
-    for flag in [1_u32, 1, 0] {
-        execute_cmvs390_frame(
-            &mut state,
-            &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-                span: SPAN,
-                stack_bytes: 4,
-                value: flag,
-            }),
-        )
-        .unwrap();
-        execute_cmvs390_frame(
-            &mut state,
-            &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-                span: SPAN,
-                stack_bytes: 4,
-                value: 2,
-            }),
-        )
-        .unwrap();
-        execute_cmvs390_frame(
-            &mut state,
-            &CmvsPs2aInstructionFrame::Command {
-                span: SPAN,
-                command_id: 334,
-            },
-        )
-        .unwrap();
+fn channel_enable_controls_native_scheduler_and_visibility_without_destroying_owners() {
+    let mut state = CmvsPs2aVmState::new(400);
+    for word in [720, 1280, 200, 600, 20, 10, 3, 2] {
+        push_word(&mut state, word).unwrap();
     }
-    assert_eq!(state.interpreter_words.get(&(0x7420_0000 + 2)), Some(&0));
+    assert_eq!(
+        run_command_with_action(&mut state, 349),
+        Some(CmvsPs2aVmAction::CreateEffectChannel {
+            channel: 2,
+            effect: 3
+        }),
+    );
+    let channel_identity = state.slot_objects[&(742 << 8 | 2)];
+    let text_identity = state.slot_objects[&(750 << 8 | 3)];
+    assert_eq!(state.effect_channels[&2].read_dword(2), 0);
+    assert_eq!(state.effect_elements[&(2, u32::MAX)].visible, 1);
+    assert!(state.native_text[&3].visible);
+    state.write_interpreter_word(0x33D4, 1);
+    state.write_interpreter_word(0x33DC + 28 * 12, 2);
+    state.write_interpreter_word(0x33DC + 28 * 12 + 4, 128);
+    let scheduled = |state: &CmvsPs2aVmState| {
+        let mut snapshot = state.clone();
+        snapshot.program_counter = 400;
+        rebuild_frame_entry_queue(&mut snapshot).unwrap();
+        (snapshot.current_frame, snapshot.program_counter)
+    };
+    assert_eq!(scheduled(&state), (0, 400));
+    state.effect_channels.get_mut(&2).unwrap().write_dword(4, 9);
+    push(&mut state, 7);
+    push(&mut state, 2);
+    run_command(&mut state, 334);
+    assert_eq!(state.effect_channels[&2].read_dword(2), 1);
+    assert_eq!(state.effect_channels[&2].read_dword(4), 0);
+    assert_eq!(scheduled(&state), (2, 128));
+    state.effect_channels.get_mut(&2).unwrap().write_dword(4, 9);
+    push(&mut state, 1);
+    push(&mut state, 2);
+    run_command(&mut state, 334);
+    assert_eq!(state.effect_channels[&2].read_dword(4), 9);
+    push(&mut state, 2);
+    run_command(&mut state, 333);
+    assert_eq!(state.interpreter_words[&81220], 1);
+    push(&mut state, 0);
+    push(&mut state, 2);
+    run_command(&mut state, 334);
+    assert_eq!(state.effect_channels[&2].read_dword(2), 0);
+    assert_eq!(state.effect_channels[&2].read_dword(4), 0);
+    assert_eq!(state.effect_elements[&(2, u32::MAX)].visible, 0);
+    assert!(!state.native_text[&3].visible);
+    assert_eq!(scheduled(&state), (0, 400));
+    push(&mut state, 2);
+    run_command(&mut state, 333);
+    assert_eq!(state.interpreter_words[&81220], 0);
+    push(&mut state, 1);
+    push(&mut state, 2);
+    run_command(&mut state, 334);
+    assert_eq!(state.effect_elements[&(2, u32::MAX)].visible, 1);
+    assert!(state.native_text[&3].visible);
+    assert_eq!(state.slot_objects[&(742 << 8 | 2)], channel_identity);
+    assert_eq!(state.slot_objects[&(750 << 8 | 3)], text_identity);
     assert_eq!(state.stack_cursor_bytes, 0);
+}
+
+#[test]
+fn a_decoy_channel_pointer_word_cannot_authorize_commands_or_scheduler() {
+    let mut state = CmvsPs2aVmState::new(400);
+    state.write_interpreter_word((742 + 2) * 4, 1);
+    state
+        .effect_channels
+        .entry(2)
+        .or_default()
+        .write_dword(2, 1);
+    state.write_interpreter_word(0x33D4, 1);
+    state.write_interpreter_word(0x33DC + 28 * 12, 2);
+    state.write_interpreter_word(0x33DC + 28 * 12 + 4, 128);
+    rebuild_frame_entry_queue(&mut state).unwrap();
+    assert_eq!((state.current_frame, state.program_counter), (0, 400));
+    state.write_interpreter_word(81224, 99);
+    push(&mut state, 2);
+    run_command(&mut state, 350);
+    assert_eq!(state.interpreter_words[&81224], 99);
+    assert_ne!(state.interpreter_flag_words[&10532] & 0x10000, 0);
+    state.slot_objects.insert(742 << 8 | 2, 1);
+    state.interpreter_words.remove(&((742 + 2) * 4));
+    push(&mut state, 2);
+    run_command(&mut state, 350);
+    assert_eq!(state.interpreter_words[&81224], 0);
 }
 
 #[test]
@@ -553,81 +754,23 @@ fn stores_command_144_constant_without_assigning_game_semantics() {
 }
 
 #[test]
-fn command_138_resumes_the_registered_coroutine_record() {
-    const RECORD_BASE: u32 = 13276 + 28 * 5;
+fn registered_coroutine_returns_to_its_caller_with_the_saved_wait_counter() {
     let mut state = CmvsPs2aVmState::new(0);
     state.current_frame = 2;
     state.program_counter = 0x100;
-    for value in [9_u32, 8, 7, 0x4321, 5] {
-        execute_cmvs390_frame(
-            &mut state,
-            &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-                span: SPAN,
-                stack_bytes: 4,
-                value,
-            }),
-        )
-        .unwrap();
+    for value in [9_u32, 8, 7, 0x4320, 5] {
+        push_word(&mut state, value).unwrap();
     }
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 136,
-        },
-    )
-    .unwrap();
-    // The frame word (+0) snapshots the frame register (frame 2 at
-    // registration); the pc word (+4) takes the second pushed operand
-    // 0x4321; the remaining operands fill +8..+16.
-    assert_eq!(state.interpreter_words.get(&RECORD_BASE), Some(&2));
-    assert_eq!(
-        state.interpreter_words.get(&(RECORD_BASE + 4)),
-        Some(&0x4321)
-    );
-    assert_eq!(state.interpreter_words.get(&(RECORD_BASE + 8)), Some(&7));
-    assert_eq!(state.interpreter_words.get(&(RECORD_BASE + 12)), Some(&8));
-    assert_eq!(state.interpreter_words.get(&(RECORD_BASE + 16)), Some(&9));
-    assert_eq!(state.stack_cursor_bytes, 0);
-
-    // Resume from a different frame with an outstanding frame counter;
-    // the label is masked like the original `& 0x3F`.
+    run_command(&mut state, 136);
     state.current_frame = 0;
-    state
-        .interpreter_words
-        .insert(SCRIPT_FRAME_COUNTER_FIELD, 0x77);
-    // The label is masked like the original `& 0x3F`: 0x145 selects the
-    // same record as 5.
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-            span: SPAN,
-            stack_bytes: 4,
-            value: 0x145,
-        }),
-    )
-    .unwrap();
     state.program_counter = 0x200;
-    execute_cmvs390_frame(
-        &mut state,
-        &CmvsPs2aInstructionFrame::Command {
-            span: SPAN,
-            command_id: 138,
-        },
-    )
-    .unwrap();
-    assert_eq!(state.program_counter, 0x4321);
-    // The resume restores the frame register from the record: frame 2,
-    // the frame active at registration.
-    assert_eq!(state.current_frame, 2);
-    assert_eq!(
-        state.interpreter_words.get(&SCRIPT_FRAME_COUNTER_FIELD),
-        Some(&0)
-    );
-    assert_eq!(&state.stack_bytes[0..4], &0x77_u32.to_le_bytes());
-    assert_eq!(&state.stack_bytes[4..8], &0x202_u32.to_le_bytes());
-    assert_eq!(&state.stack_bytes[8..12], &0_u32.to_le_bytes());
+    state.write_interpreter_word(SCRIPT_FRAME_COUNTER_FIELD, 0x77);
+    // The public resume operand masks its label to the registered slot.
+    push_word(&mut state, 0x145).unwrap();
+    run_command(&mut state, 138);
+    assert_eq!((state.current_frame, state.program_counter), (2, 0x4320));
     assert_eq!(state.stack_cursor_bytes, 12);
+    run_command(&mut state, 144);
     execute_cmvs390_frame(
         &mut state,
         &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::ScriptReturn {
@@ -636,8 +779,7 @@ fn command_138_resumes_the_registered_coroutine_record() {
         }),
     )
     .unwrap();
-    assert_eq!(state.current_frame, 0);
-    assert_eq!(state.program_counter, 0x202);
+    assert_eq!((state.current_frame, state.program_counter), (0, 0x202));
     assert_eq!(state.interpreter_words[&SCRIPT_FRAME_COUNTER_FIELD], 0x77);
     assert_eq!(state.stack_cursor_bytes, 0);
 }
@@ -806,10 +948,10 @@ fn body_update_commands_write_their_result_registers() {
         }
     };
     // 718 copies the pinned word; 750 canonicalizes it.
-    state.interpreter_words.insert(11792, 0xabc);
+    state.write_interpreter_word(11792, 0xabc);
     run(&mut state, 718);
     assert_eq!(state.interpreter_words.get(&81220), Some(&0xabc));
-    state.interpreter_words.insert(1596, 5);
+    state.write_interpreter_word(1596, 5);
     run(&mut state, 750);
     assert_eq!(state.interpreter_words.get(&81220), Some(&1));
     // 741 flag round trip: store then read back.
@@ -819,14 +961,11 @@ fn body_update_commands_write_their_result_registers() {
     push(&mut state, &[0, 0]);
     run(&mut state, 741);
     assert_eq!(state.interpreter_words.get(&81220), Some(&1));
-    // 846/304 publish canonical zeros; 426 clears the latch pair.
-    state.interpreter_words.insert(81220, 9);
+    // 846 publishes input selection; 426 clears the latch pair.
+    state.write_interpreter_word(81220, 9);
     run(&mut state, 846);
     assert_eq!(state.interpreter_words.get(&81220), Some(&0));
-    state.interpreter_words.insert(81220, 9);
-    run(&mut state, 304);
-    assert_eq!(state.interpreter_words.get(&81220), Some(&0x80));
-    state.interpreter_words.insert(81236, 7);
+    state.write_interpreter_word(81236, 7);
     run(&mut state, 426);
     assert_eq!(state.interpreter_words.get(&81236), Some(&0));
     // 397 needs the effect channel object; an occupied slot reports
@@ -842,7 +981,6 @@ fn body_update_commands_write_their_result_registers() {
 fn effect_quad_visibility_drives_the_case_405_gate() {
     let mut state = CmvsPs2aVmState::new(0);
     state.slot_objects.insert((742_u32 << 8) | 7, 1);
-    state.interpreter_words.insert(742 * 4 + 4 * 7, 1);
     let run = |state: &mut CmvsPs2aVmState, id: u16| {
         execute_cmvs390_frame(
             state,
@@ -867,7 +1005,7 @@ fn effect_quad_visibility_drives_the_case_405_gate() {
         }
     };
     let quad_active = |state: &mut CmvsPs2aVmState| {
-        state.interpreter_words.insert(81220, 9);
+        state.write_interpreter_word(81220, 9);
         push(state, &[0, 7]);
         run(state, 405);
         state.interpreter_words.get(&81220).copied()
@@ -883,11 +1021,13 @@ fn effect_quad_visibility_drives_the_case_405_gate() {
     push(&mut state, &[0, 7]);
     run(&mut state, 403);
     assert_eq!(quad_active(&mut state), Some(0));
-    // Binding an animation frame activates the same quad. Rebinding the same
-    // frame after an explicit hide must reactivate it as well.
-    for _ in 0..2 {
-        push(&mut state, &[3, 0, 7]);
+    // Changing a frame, including rebinding it, does not show a hidden quad.
+    for frame in [1, 1, 2] {
+        push(&mut state, &[frame, 0, 7]);
         run(&mut state, 406);
+        assert_eq!(quad_active(&mut state), Some(0));
+        push(&mut state, &[0, 7]);
+        run(&mut state, 402);
         assert_eq!(quad_active(&mut state), Some(1));
         push(&mut state, &[0, 7]);
         run(&mut state, 403);
@@ -937,58 +1077,6 @@ fn scene_layer_queries_publish_boolean_pairs_and_clears_leave_the_middle_word() 
     assert_eq!(state.interpreter_words.get(&81236), Some(&1));
     run(&mut state, 433);
     assert_eq!(state.scene_words.get(&308), Some(&5));
-}
-
-#[test]
-fn effect_channel_quad_geometry_and_rect_use_the_recovered_word_offsets() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state.slot_objects.insert((742_u32 << 8) | 7, 1);
-    let run = |state: &mut CmvsPs2aVmState, id: u16| {
-        execute_cmvs390_frame(
-            state,
-            &CmvsPs2aInstructionFrame::Command {
-                span: SPAN,
-                command_id: id,
-            },
-        )
-        .unwrap();
-    };
-    let push = |state: &mut CmvsPs2aVmState, values: &[u32]| {
-        for value in values {
-            execute_cmvs390_frame(
-                state,
-                &CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::PushImmediate {
-                    span: SPAN,
-                    stack_bytes: 4,
-                    value: *value,
-                }),
-            )
-            .unwrap();
-        }
-    };
-
-    // Case 400 -> `sub_466CB0`: the channel is the top word, then quad, sub
-    // selector and six `__int16` values stored at word `38*quad + 6*sub + 22`.
-    push(&mut state, &[60, 50, 40, 30, 20, 10, 0, 0, 7]);
-    run(&mut state, 400);
-    let channel = state.effect_channels.get(&7).expect("channel created");
-    assert_eq!(channel.words.get(&22).copied(), Some(10));
-    assert_eq!(channel.words.get(&27).copied(), Some(60));
-
-    // Case 401 -> `sub_466D10`: four `__int16` hit-rectangle words at
-    // `38*quad + 52`.
-    push(&mut state, &[4, 3, 2, 1, 0, 7]);
-    run(&mut state, 401);
-    assert_eq!(
-        state.effect_channels.get(&7).unwrap().quad_rect(0),
-        [1, 2, 3, 4]
-    );
-
-    // Case 406 -> `sub_47F330`: the animation frame word at `38*quad + 38`.
-    state.interpreter_words.insert(742 * 4 + 4 * 7, 1);
-    push(&mut state, &[3, 0, 7]);
-    run(&mut state, 406);
-    assert_eq!(state.effect_channels.get(&7).unwrap().quad_frame(0), 3);
 }
 
 #[test]
@@ -1070,9 +1158,73 @@ fn pointer_commands_read_the_streamed_position_and_hit_test_shapes() {
     .unwrap();
     assert_eq!(state.interpreter_words.get(&81220), Some(&0));
 
-    // The curved and polygon shapes stay blocking.
-    state.pointer_x = 100;
-    push(&mut state, &[0, 0, 110, 210, 10, 10, 2]);
+    // Curved regions use the actual GDI raster, including the excluded corner.
+    for (shape, x, y, expected) in [
+        (2, 100, 50, 1),
+        (2, 10, 10, 0),
+        (3, 100, 50, 1),
+        (3, 10, 10, 0),
+    ] {
+        state.pointer_x = x;
+        state.pointer_y = y;
+        push(&mut state, &[40, 40, 110, 210, 10, 10, shape]);
+        execute_cmvs390_frame(
+            &mut state,
+            &CmvsPs2aInstructionFrame::Command {
+                span: SPAN,
+                command_id: 203,
+            },
+        )
+        .unwrap();
+        assert_eq!(state.interpreter_words.get(&81220), Some(&expected));
+        assert_eq!(state.stack_cursor_bytes, 0);
+    }
+    // Type 4 reads interleaved process words, not the remaining stack operands.
+    // Traversing the square twice distinguishes WINDING from even-odd fill.
+    for (index, value) in [
+        10, 10, 80, 10, 80, 80, 10, 80, 10, 10, 80, 10, 80, 80, 10, 80,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        state
+            .process_indexed_words
+            .insert(100 + index as u32, value);
+    }
+    state.pointer_x = 50;
+    state.pointer_y = 50;
+    push(
+        &mut state,
+        &[u32::MAX, u32::MAX, u32::MAX, u32::MAX, 8, 100, 4],
+    );
+    execute_cmvs390_frame(
+        &mut state,
+        &CmvsPs2aInstructionFrame::Command {
+            span: SPAN,
+            command_id: 203,
+        },
+    )
+    .unwrap();
+    assert_eq!(state.interpreter_words.get(&81220), Some(&1));
+    assert_eq!(state.stack_cursor_bytes, 0);
+
+    // The native default branch publishes zero and consumes all seven words.
+    push(&mut state, &[0, 0, 110, 210, 10, 10, 99]);
+    execute_cmvs390_frame(
+        &mut state,
+        &CmvsPs2aInstructionFrame::Command {
+            span: SPAN,
+            command_id: 203,
+        },
+    )
+    .unwrap();
+    assert_eq!(state.interpreter_words.get(&81220), Some(&0));
+    assert_eq!(state.stack_cursor_bytes, 0);
+
+    // The native local array has 256 entries. Reject its memory-unsafe overflow
+    // without publishing a fabricated miss.
+    state.write_interpreter_word(81220, 0x55);
+    push(&mut state, &[0, 0, 0, 0, 257, 100, 4]);
     let error = execute_cmvs390_frame(
         &mut state,
         &CmvsPs2aInstructionFrame::Command {
@@ -1082,6 +1234,7 @@ fn pointer_commands_read_the_streamed_position_and_hit_test_shapes() {
     )
     .unwrap_err();
     assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_POINTER_REGION");
+    assert_eq!(state.interpreter_words.get(&81220), Some(&0x55));
 }
 
 #[test]
@@ -1486,29 +1639,6 @@ fn command_32_creates_and_replaces_slot_objects_with_stable_identity() {
 }
 
 #[test]
-fn commands_48_and_64_bind_and_initialize_a_live_texture_parent() {
-    let mut state = CmvsPs2aVmState::new(0);
-    push(&mut state, 7);
-    run_command(&mut state, 32);
-
-    // Case 48 (`sub_483D70`) is the channel name query: with no
-    // presenters installed the geometric answer is a miss.
-    push(&mut state, 23);
-    push(&mut state, 7);
-    run_command(&mut state, 48);
-    assert_eq!(state.interpreter_words.get(&81220), Some(&0));
-
-    // Case 64 (`sub_482F20`) clears the channel's presenters.
-    state
-        .channel_child_presenters
-        .insert((7, -1), Default::default());
-    push(&mut state, 7);
-    run_command(&mut state, 64);
-    assert!(!state.channel_child_presenters.contains_key(&(7, -1)));
-    assert_eq!(state.stack_cursor_bytes, 0);
-}
-
-#[test]
 fn command_32_out_of_bounds_slot_only_raises_the_error_flag() {
     let mut state = CmvsPs2aVmState::new(0);
     push(&mut state, 256);
@@ -1549,112 +1679,243 @@ fn command_40_moves_the_source_object_and_clears_both_source_semantics() {
         state.slot_objects.get(&slot_object_key(1924, 9).unwrap()),
         Some(&1)
     );
-    assert!(!state
-        .slot_objects
-        .contains_key(&slot_object_key(1924, 5).unwrap()));
+    assert!(
+        !state
+            .slot_objects
+            .contains_key(&slot_object_key(1924, 5).unwrap())
+    );
     assert!(!state.texture_children.contains_key(&5));
     assert!(state.texture_children.contains_key(&9));
     assert_eq!(state.stack_cursor_bytes, 0);
 }
 
 #[test]
-fn texture_child_commands_retain_the_recovered_hierarchy_and_fields() {
-    let mut state = CmvsPs2aVmState::new(0);
-    push(&mut state, 7);
-    run_command(&mut state, 32);
-
-    // case 34: child first, parent on top.
-    push(&mut state, 11);
-    push(&mut state, 7);
-    run_command(&mut state, 34);
-    assert_eq!(
-        state
-            .texture_children
-            .get(&7)
-            .and_then(|children| children.get(&11)),
-        Some(&CmvsTextureChildState::default())
-    );
-
-    state
-        .frame_string_values
-        .insert(0, BTreeMap::from([(41, b"child.pb3".to_vec())]));
-    seed_pool_bytes(&mut state, 0, &[(41, b"child.pb3")]);
-    // case 56: resource, child, parent.
-    push(&mut state, 41);
-    push(&mut state, 11);
-    push(&mut state, 7);
-    assert_eq!(
-        run_command_with_action(&mut state, 56),
-        Some(CmvsPs2aVmAction::LoadTextureResource {
-            parent_slot: 7,
-            child_id: 11,
-            resource: "child.pb3".into(),
-        })
-    );
-
-    push(&mut state, 11);
-    push(&mut state, 7);
-    run_command(&mut state, 80);
-
-    // case 68: four fields, child, parent.
-    for value in [104, 103, 102, 101, 11, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 68);
-    // case 70: two fields, child, parent.
-    for value in [202, 201, 11, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 70);
-    // case 69: auxiliary pair, child, parent.
-    for value in [302, 301, 11, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 69);
-    // case 71: auxiliary word, child, parent.
-    for value in [401, 11, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 71);
-
-    let presenter = &state.channel_child_presenters[&(7, 11)];
-    assert_eq!(presenter.rect, Some([101, 102, 103, 104]));
-    assert_eq!(presenter.values[0..2], [301, 302]);
-    assert_eq!(presenter.values[2..4], [201, 202]);
-    assert_eq!(presenter.aux_word, 401);
-}
-
-#[test]
-fn negative_texture_selector_updates_the_parent_surface_without_error() {
+fn texture_alpha_is_signed_upper_clamped_and_parent_rebuild_resets_parameters() {
     let mut state = CmvsPs2aVmState::new(0);
     push(&mut state, 7);
     run_command(&mut state, 32);
     push(&mut state, 7);
     run_command(&mut state, 64);
+    push(&mut state, 11);
+    push(&mut state, 7);
+    run_command(&mut state, 34);
+    push(&mut state, 11);
+    push(&mut state, 7);
+    run_command(&mut state, 80);
 
-    for value in [104, 103, 102, 101, u32::MAX, 7] {
-        push(&mut state, value);
+    for (selector, alpha, expected) in [
+        (u32::MAX, 256, 255),
+        (u32::MAX - 1, (-7_i32) as u32, -7),
+        (11, 700, 255),
+        (11, (-9_i32) as u32, -9),
+        (11, 0, 0),
+    ] {
+        for word in [alpha, selector, 7] {
+            push(&mut state, word);
+        }
+        run_command(&mut state, 72);
+        let actual = if (selector as i32) < 0 {
+            state.texture_parents[&7].alpha
+        } else {
+            state.texture_children[&7][&11].alpha
+        };
+        assert_eq!(actual, Some(expected));
+        assert_eq!(state.stack_cursor_bytes, 0);
     }
-    run_command(&mut state, 68);
-    for value in [202, 201, u32::MAX, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 70);
-    for value in [302, 301, u32::MAX, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 69);
-    for value in [401, u32::MAX, 7] {
-        push(&mut state, value);
-    }
-    run_command(&mut state, 71);
+    assert!(state.channel_child_presenters.is_empty());
 
-    let presenter = &state.channel_child_presenters[&(7, -1)];
-    assert_eq!(presenter.rect, Some([101, 102, 103, 104]));
-    assert_eq!(presenter.values[0..2], [301, 302]);
-    assert_eq!(presenter.values[2..4], [201, 202]);
-    assert_eq!(presenter.aux_word, 401);
-    assert!(state.interpreter_flag_words.is_empty());
+    for (command, words) in [
+        (68, vec![60, 384, 900, 0, u32::MAX, 7]),
+        (69, vec![0, (-48_i32) as u32, u32::MAX, 7]),
+        (70, vec![20, 10, u32::MAX, 7]),
+        (71, vec![3, u32::MAX, 7]),
+    ] {
+        for word in words {
+            push(&mut state, word);
+        }
+        run_command(&mut state, command);
+    }
+    for word in [0x1234_5678, 480, 640, u32::MAX, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 67);
+    assert_eq!(state.texture_parents[&7].rect_words, Some([0, 0, 640, 480]));
+    assert_eq!(state.texture_parents[&7].solid_color, Some(0xff34_5678));
+    assert_eq!(state.texture_parents[&7].alpha, Some(-7));
+    assert_eq!(state.texture_parents[&7].position_words, Some([10, 20]));
+    assert_eq!(
+        state.texture_parents[&7].auxiliary_pair_words,
+        Some([(-48_i32) as u32, 0])
+    );
+    assert_eq!(state.texture_parents[&7].auxiliary_word, Some(3));
+    for word in [0x00ab_cdef, 20, 30, 11, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 67);
+    assert_eq!(
+        state.texture_children[&7][&11].rect_words,
+        Some([0, 0, 30, 20])
+    );
+    assert_eq!(
+        state.texture_children[&7][&11].solid_color,
+        Some(0xffab_cdef)
+    );
+    assert_eq!(state.texture_children[&7][&11].alpha, Some(0));
+    assert_eq!(state.stack_cursor_bytes, 0);
+    let saved_parent = state.texture_parents[&7].clone();
+    let saved_child = state.texture_children[&7][&11].clone();
+    let encoded = postcard::to_allocvec(&state).unwrap();
+    let mut restored: CmvsPs2aVmState = postcard::from_bytes(&encoded).unwrap();
+    assert_eq!(restored.texture_parents[&7], saved_parent);
+    assert_eq!(restored.texture_children[&7][&11], saved_child);
+
+    push(&mut restored, 7);
+    push(&mut restored, 9);
+    run_command(&mut restored, 40);
+    assert_eq!(restored.texture_parents[&9], saved_parent);
+    assert_eq!(restored.texture_children[&9][&11], saved_child);
+    assert!(!restored.texture_parents.contains_key(&7));
+    push(&mut restored, 9);
+    run_command(&mut restored, 64);
+    let parent = &restored.texture_parents[&9];
+    assert_eq!(parent.alpha, None);
+    assert_eq!(parent.solid_color, None);
+    assert_eq!(parent.rect_words, None);
+    assert_eq!(parent.position_words, None);
+    assert_eq!(parent.auxiliary_pair_words, None);
+    assert_eq!(parent.auxiliary_word, None);
+    assert_eq!(restored.texture_children[&9][&11], saved_child);
+    push(&mut restored, 9);
+    run_command(&mut restored, 33);
+    assert!(!restored.texture_parents.contains_key(&9));
+    assert!(!restored.texture_children.contains_key(&9));
+}
+
+#[test]
+fn basic_surface_parameter_errors_preserve_native_bounds_and_reject_missing_surfaces() {
+    for (command, arguments) in [(68, 4), (69, 2), (70, 2), (71, 1), (72, 1)] {
+        for (parent, selector, expected_mask) in [(256, 0, 0x10), (8, 0, 0x10), (7, 1024, 0x20)] {
+            let mut state = CmvsPs2aVmState::new(0);
+            push(&mut state, 7);
+            run_command(&mut state, 32);
+            for _ in 0..arguments {
+                push(&mut state, 0);
+            }
+            push(&mut state, selector);
+            push(&mut state, parent);
+            run_command(&mut state, command);
+            assert_eq!(
+                state.interpreter_flag_words.get(&10532),
+                Some(&expected_mask)
+            );
+            assert_eq!(state.stack_cursor_bytes, 0);
+            assert_eq!(state.texture_parents[&7], CmvsTextureParentState::default());
+            assert!(state.channel_child_presenters.is_empty());
+        }
+        // Negative selectors address the root, but never allocate its basic
+        // surface. Existing and absent child objects likewise need command 80.
+        for selector in [u32::MAX, 11, 12] {
+            let mut state = CmvsPs2aVmState::new(0);
+            push(&mut state, 7);
+            run_command(&mut state, 32);
+            push(&mut state, 11);
+            push(&mut state, 7);
+            run_command(&mut state, 34);
+            for _ in 0..arguments {
+                push(&mut state, 0);
+            }
+            push(&mut state, selector);
+            push(&mut state, 7);
+            let error = execute_cmvs390_frame(
+                &mut state,
+                &CmvsPs2aInstructionFrame::Command {
+                    span: SPAN,
+                    command_id: command,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_TEXTURE_SURFACE");
+            assert!(!state.texture_parents[&7].surface_initialized);
+            assert!(!state.texture_children[&7][&11].surface_initialized);
+            assert!(state.channel_child_presenters.is_empty());
+        }
+    }
+}
+
+#[test]
+fn solid_surface_missing_parent_raises_native_flag_but_missing_basic_is_an_error() {
+    for parent in [7, 256] {
+        let mut state = CmvsPs2aVmState::new(0);
+        for word in [0, 480, 640, u32::MAX, parent] {
+            push(&mut state, word);
+        }
+        run_command(&mut state, 67);
+        assert_eq!(state.interpreter_flag_words.get(&10532), Some(&0x10));
+        assert!(state.texture_parents.is_empty());
+        assert_eq!(state.stack_cursor_bytes, 0);
+    }
+    for selector in [u32::MAX, 11, 1024, 65547] {
+        let mut state = CmvsPs2aVmState::new(0);
+        push(&mut state, 7);
+        run_command(&mut state, 32);
+        push(&mut state, 11);
+        push(&mut state, 7);
+        run_command(&mut state, 34);
+        for word in [0, 480, 640, selector, 7] {
+            push(&mut state, word);
+        }
+        let error = execute_cmvs390_frame(
+            &mut state,
+            &CmvsPs2aInstructionFrame::Command {
+                span: SPAN,
+                command_id: 67,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "SHINKI_EMU_CMVS_VM_TEXTURE_SURFACE");
+        assert!(state.interpreter_flag_words.is_empty());
+        assert_eq!(state.texture_parents[&7].solid_color, None);
+        assert_eq!(state.texture_children[&7][&11].solid_color, None);
+    }
+}
+
+#[test]
+fn basic_surface_commands_keep_quad_presenter_payload_queries_independent() {
+    let mut state = CmvsPs2aVmState::new(0);
+    push(&mut state, 7);
+    run_command(&mut state, 32);
+    push(&mut state, 11);
+    push(&mut state, 7);
+    run_command(&mut state, 34);
+    push(&mut state, 11);
+    push(&mut state, 7);
+    run_command(&mut state, 80);
+    push(&mut state, 11);
+    push(&mut state, 7);
+    run_command(&mut state, 500);
+    for word in [28, 27, 26, 25, 24, 0, 11, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 501);
+    for word in [99, 11, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 502);
+    for word in [0, 11, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 72);
+    for word in [0, 0, 11, 7] {
+        push(&mut state, word);
+    }
+    run_command(&mut state, 52);
+    assert_eq!(state.interpreter_words.get(&81220), Some(&28));
+    assert_eq!(
+        state.channel_child_presenters[&(7, 11)].quad,
+        Some([1, 0, 0, 99])
+    );
+    assert_eq!(state.texture_children[&7][&11].alpha, Some(0));
+    assert_eq!(state.stack_cursor_bytes, 0);
 }
 
 #[test]
@@ -1705,63 +1966,6 @@ fn commands_493_and_494_validate_the_container_and_publish_the_idle_state() {
     push(&mut state, 7);
     run_command(&mut state, 494);
     assert_eq!(state.interpreter_words.get(&81220), Some(&(-1_i32 as u32)));
-}
-
-#[test]
-fn case_776_rebuild_materializes_the_channel_the_494_wait_polls() {
-    let mut state = CmvsPs2aVmState::new(0);
-    state.process_string_slots.insert(2, b"1403".to_vec());
-    // The sky01 opening ladder pushes (seed, name, aux_slot, slot) so the
-    // top word is the 796-table selector and the next the 481-table
-    // channel; `sub_47C5A0` rebuilds both entries.
-    push(&mut state, 256);
-    push(&mut state, 0);
-    push(&mut state, 0x8000_0002);
-    push(&mut state, 15);
-    push(&mut state, 1);
-    let action = run_command_with_action(&mut state, 776);
-    assert!(matches!(
-        action,
-        Some(CmvsPs2aVmAction::CreateBoundedSlotObject { .. })
-    ));
-    // The opening ladder then runs the 40..=73 texture family against the
-    // fresh channel; none of these may retire the channel entry the wait
-    // loop polls (asserted after each command).
-    let channel_key = (1924u32 << 8) | 15;
-    push(&mut state, 15);
-    run_command(&mut state, 64);
-    assert!(
-        state.slot_objects.contains_key(&channel_key),
-        "cmd 64 retired the channel entry"
-    );
-    for cmd in [68u16, 70, 69, 71] {
-        for _ in 0..5 {
-            push(&mut state, 0);
-        }
-        push(&mut state, (-1_i32) as u32);
-        push(&mut state, 15);
-        run_command(&mut state, cmd);
-        assert!(
-            state.slot_objects.contains_key(&channel_key),
-            "cmd {cmd} retired the channel entry"
-        );
-    }
-    push(&mut state, 15);
-    push(&mut state, (-1_i32) as u32);
-    run_command(&mut state, 73);
-    assert!(
-        state.slot_objects.contains_key(&channel_key),
-        "cmd 73 retired the channel entry"
-    );
-    // The wait loop polls (child, container) = (-1 sentinel, channel 15).
-    push(&mut state, (-1_i32) as u32);
-    push(&mut state, 15);
-    run_command(&mut state, 494);
-    assert_eq!(state.interpreter_flag_words.get(&10532), None);
-    assert_eq!(
-        state.interpreter_words.get(&81220),
-        Some(&((-1_i32) as u32))
-    );
 }
 
 #[test]
@@ -1912,7 +2116,7 @@ fn command_869_copies_the_complete_settings_snapshot() {
 
     state.settings_words.insert(120, 0);
     state.settings_words.insert(176, 9);
-    state.interpreter_words.insert(81236, 77);
+    state.write_interpreter_word(81236, 77);
     run_command(&mut state, 869);
     assert_eq!(state.interpreter_words.get(&81236), Some(&77));
     assert_eq!(state.interpreter_words.get(&81244), Some(&9));
@@ -1963,10 +2167,12 @@ fn commands_528_530_and_531_manage_bounded_filter_chain_records() {
     push(&mut state, 99);
     push(&mut state, 2);
     run_command(&mut state, 531);
-    assert!(!state
-        .filter_chain_records
-        .get(&2)
-        .is_some_and(|records| records.contains_key(&99)));
+    assert!(
+        !state
+            .filter_chain_records
+            .get(&2)
+            .is_some_and(|records| records.contains_key(&99))
+    );
 
     push(&mut state, 4);
     push(&mut state, 3);
@@ -1992,9 +2198,11 @@ fn command_529_destroys_the_complete_filter_chain_bank() {
 
     push(&mut state, 2);
     run_command(&mut state, 529);
-    assert!(!state
-        .slot_objects
-        .contains_key(&slot_object_key(3196, 2).unwrap()));
+    assert!(
+        !state
+            .slot_objects
+            .contains_key(&slot_object_key(3196, 2).unwrap())
+    );
     assert!(!state.filter_chain_records.contains_key(&2));
     assert!(!state.filter_chain_record_order.contains_key(&2));
     assert!(!state.filter_chain_active_records.contains_key(&2));
@@ -2316,15 +2524,15 @@ fn command_548_first_poll_publishes_one_and_suspends_the_frame() {
     run_command(&mut state, 544);
     let stack_before = state.stack_cursor_bytes;
     push(&mut state, 1);
+    let pc_before = state.program_counter;
     assert_eq!(run_command_with_action(&mut state, 548), None);
-    // `sub_47A6B0` with a live owner: the finished animation still costs
-    // one observed frame (result word one, 0xC004 suspension, operand
-    // retained). The dispatcher consumes the transient wait flag, so the
-    // observable half is the stopped dispatch and the delay counter.
+    // A live owner suspends dispatch without advancing the command or
+    // consuming the operand needed by the next poll.
     assert!(state.dispatch_stopped);
     assert_eq!(state.stack_cursor_bytes, stack_before + 4);
+    assert_eq!(state.program_counter, pc_before);
+    assert_eq!(read_stack_word_from_top(&state, 4).unwrap(), 1);
     assert_eq!(state.interpreter_words.get(&81220), Some(&1));
-    assert_eq!(state.interpreter_words.get(&52896), Some(&1));
 }
 
 #[test]
@@ -2348,6 +2556,70 @@ fn command_548_second_poll_tears_the_owner_down_and_passes() {
     assert_eq!(state.interpreter_words.get(&81220), Some(&1));
     assert!(!state.slot_objects.contains_key(&(3252_u32 << 8)));
     assert_eq!(state.interpreter_words.get(&3252), Some(&0));
+}
+
+#[test]
+fn wait_repolls_preserve_operands_and_script_calls_save_the_poll_count() {
+    for polls in [1_u32, 2] {
+        let mut state = CmvsPs2aVmState::new(100);
+        seed_pool_bytes(&mut state, 0, &[(0, b"callee.ps3")]);
+        push_word(&mut state, 0xCAFE).unwrap();
+        push_word(&mut state, 0).unwrap();
+        let operands = state.stack_bytes.clone();
+        for _ in 0..polls {
+            run_command(&mut state, 563);
+            assert!(state.dispatch_stopped);
+            assert_eq!(state.program_counter, 100);
+            assert_eq!(state.stack_cursor_bytes, 8);
+            assert_eq!(state.stack_bytes, operands);
+            state.dispatch_stopped = false;
+        }
+        assert_eq!(pop_word(&mut state).unwrap(), 0);
+        push_word(&mut state, 0).unwrap();
+        push_word(&mut state, 0).unwrap();
+        assert_eq!(
+            run_command_with_action(&mut state, 129),
+            Some(CmvsPs2aVmAction::CallScript {
+                frame: 1,
+                name: "callee.ps3".into(),
+            })
+        );
+        // The call saves the native consecutive-wait count before its
+        // own completion clears the destination's live counter.
+        assert_eq!(pop_word(&mut state).unwrap(), 0);
+        assert_eq!(pop_word(&mut state).unwrap(), 102);
+        assert_eq!(pop_word(&mut state).unwrap(), polls);
+        assert_eq!(pop_word(&mut state).unwrap(), 0xCAFE);
+    }
+}
+
+#[test]
+fn command_completion_clears_the_counter_before_the_next_script_call() {
+    for command_id in [144, 563, 0] {
+        let mut state = CmvsPs2aVmState::new(100);
+        seed_pool_bytes(&mut state, 0, &[(0, b"callee.ps3")]);
+        state.write_interpreter_word(SCRIPT_FRAME_COUNTER_FIELD, 17);
+        if command_id == 563 {
+            push_word(&mut state, 1).unwrap();
+            state.input_shift_held = true;
+        }
+        run_command(&mut state, command_id);
+        assert_eq!(state.program_counter, 102);
+        assert_eq!(state.stack_cursor_bytes, 0);
+        if command_id != 144 {
+            assert!(state.dispatch_stopped);
+        }
+        if command_id == 563 {
+            assert_eq!(state.interpreter_words.get(&81220), Some(&1));
+        }
+        state.dispatch_stopped = false;
+        push_word(&mut state, 0).unwrap();
+        push_word(&mut state, 0).unwrap();
+        run_command(&mut state, 129);
+        assert_eq!(pop_word(&mut state).unwrap(), 0);
+        assert_eq!(pop_word(&mut state).unwrap(), 104);
+        assert_eq!(pop_word(&mut state).unwrap(), 0);
+    }
 }
 
 #[test]
@@ -2395,7 +2667,7 @@ fn command_692_updates_native_save_permission_and_query() {
             state
         );
     }
-    state.interpreter_words.insert(15064, 1);
+    state.write_interpreter_word(15064, 1);
     assert!(!state.native_save_enabled());
 }
 
@@ -2728,28 +3000,15 @@ fn command_153_skips_the_action_when_the_cursor_index_is_unchanged() {
 }
 
 #[test]
-fn command_177_writes_the_channel_visibility_record_without_notify() {
-    let mut state = CmvsPs2aVmState::new(0);
-    push(&mut state, 7);
-    push(&mut state, 3);
-    let action = run_command_with_action(&mut state, 177);
-    assert_eq!(action, None);
-    assert_eq!(state.interpreter_words.get(&(1640 + 52 * 3)), Some(&1));
-    assert_eq!(state.interpreter_words.get(&(1656 + 52 * 3)), Some(&1));
-    assert!(state.interpreter_flag_words.is_empty());
-}
-
-#[test]
 fn command_177_out_of_bounds_channel_raises_mask_0x200() {
     let mut state = CmvsPs2aVmState::new(0);
-    let mut interpreter_words = state.interpreter_words.clone();
     push(&mut state, 1);
     push(&mut state, 6);
     run_command(&mut state, 177);
     assert_eq!(state.interpreter_flag_words.get(&10532), Some(&0x200));
-    // The dispatcher maintains the consecutive-command counter.
-    interpreter_words.insert(52896, 0);
-    assert_eq!(state.interpreter_words, interpreter_words);
+    assert_eq!(state.stack_cursor_bytes, 0);
+    assert!(!state.interpreter_words.contains_key(&(1640 + 52 * 6)));
+    assert!(!state.interpreter_words.contains_key(&(1656 + 52 * 6)));
 }
 
 #[test]
@@ -2897,20 +3156,20 @@ fn native_crossfade_stop_preserves_duration_and_consumes_only_its_argument() {
 #[test]
 fn source_rebuild_gate_preserves_suspended_stack_until_reenabled() {
     let mut state = CmvsPs2aVmState::new(64);
-    state.interpreter_words.insert(0x33D4, 1);
-    state.interpreter_words.insert(2679 * 4, 1);
+    state.write_interpreter_word(0x33D4, 1);
+    state.write_interpreter_word(2679 * 4, 1);
     // Queue slot three is an always-active coroutine entry: the record
     // layout keeps the delay word at +0 and the resume pc at +4
     // (`sub_46DF10`, fix pinned by the 0x33DC record base).
     let entry = 13276 + 28 * 3;
-    state.interpreter_words.insert(entry + 4, 96);
-    state.interpreter_words.insert(entry, 0);
+    state.write_interpreter_word(entry + 4, 96);
+    state.write_interpreter_word(entry, 0);
     execute_cmvs390_frame(&mut state, &push_immediate(123)).unwrap();
     let cursor = state.stack_cursor_bytes;
     rebuild_frame_entry_queue(&mut state).unwrap();
     // The closed gate preserves the suspended stack.
     assert_eq!(state.stack_cursor_bytes, 4);
-    state.interpreter_words.insert(2679 * 4, 0);
+    state.write_interpreter_word(2679 * 4, 0);
     rebuild_frame_entry_queue(&mut state).unwrap();
     assert_eq!(state.stack_cursor_bytes, cursor + 12);
     assert_eq!(state.program_counter, 96);
@@ -2962,18 +3221,20 @@ fn process_word77_or_zero_sets_the_flag_word() {
 #[test]
 fn scheduler_dispatches_channel_seven_then_other_entries_then_suspension() {
     let mut state = CmvsPs2aVmState::new(400);
-    state.interpreter_words.insert(0x33D4, 1);
-    state
-        .interpreter_words
-        .insert(SCRIPT_FRAME_COUNTER_FIELD, 7);
+    state.write_interpreter_word(0x33D4, 1);
+    state.write_interpreter_word(SCRIPT_FRAME_COUNTER_FIELD, 7);
     push_word(&mut state, 0xCAFE).unwrap();
     for (slot, frame, pc) in [(3, 1, 96), (17, 2, 128)] {
         let base = 0x33DC + 28 * slot;
-        state.interpreter_words.insert(base, frame);
-        state.interpreter_words.insert(base + 4, pc);
+        state.write_interpreter_word(base, frame);
+        state.write_interpreter_word(base + 4, pc);
     }
     state.slot_objects.insert((742 << 8) | 7, 1);
-    state.interpreter_words.insert(742 * 4 + 4 * 7, 1);
+    state
+        .effect_channels
+        .entry(7)
+        .or_default()
+        .write_dword(2, 1);
     rebuild_frame_entry_queue(&mut state).unwrap();
     assert_eq!((state.current_frame, state.program_counter), (2, 128));
     let ret = CmvsPs2aInstructionFrame::Control(CmvsPs2aControlInstruction::ScriptReturn {
@@ -2993,11 +3254,11 @@ fn scheduler_dispatches_channel_seven_then_other_entries_then_suspension() {
 #[test]
 fn scheduler_clears_activity_flags_even_when_rebuild_is_gated() {
     let mut state = CmvsPs2aVmState::new(400);
-    state.interpreter_words.insert(0x29DC, 1);
+    state.write_interpreter_word(0x29DC, 1);
     let base = 0x33DC + 28 * 63;
-    state.interpreter_words.insert(base - 4, 1);
-    state.interpreter_words.insert(base, 2);
-    state.interpreter_words.insert(base + 4, 128);
+    state.write_interpreter_word(base - 4, 1);
+    state.write_interpreter_word(base, 2);
+    state.write_interpreter_word(base + 4, 128);
     rebuild_frame_entry_queue(&mut state).unwrap();
     assert_eq!(state.interpreter_words[&(base - 4)], 0);
     assert_eq!(state.interpreter_words[&base], 2);
@@ -3008,7 +3269,7 @@ fn scheduler_clears_activity_flags_even_when_rebuild_is_gated() {
 #[test]
 fn command_137_does_not_overwrite_wait_timer_two() {
     let mut state = CmvsPs2aVmState::new(0);
-    state.interpreter_words.insert(0x33AC + 8, 900);
+    state.write_interpreter_word(0x33AC + 8, 900);
     push_word(&mut state, 1).unwrap();
     execute_cmvs390_frame(
         &mut state,
@@ -3020,4 +3281,171 @@ fn command_137_does_not_overwrite_wait_timer_two() {
     .unwrap();
     assert_eq!(state.interpreter_words[&0x33D4], 1);
     assert_eq!(state.interpreter_words[&(0x33AC + 8)], 900);
+}
+
+#[test]
+fn wait_timer_commands_reset_and_read_selected_native_timers() {
+    for selector in [0, 1, 9] {
+        let mut state = CmvsPs2aVmState::new(0);
+        let timer = 0x33AC + selector * 4;
+        state.write_interpreter_word(timer, 900);
+        state.write_interpreter_word(13220, 0x1234);
+        push_word(&mut state, selector).unwrap();
+        execute_cmvs390_frame(
+            &mut state,
+            &CmvsPs2aInstructionFrame::Command {
+                span: SPAN,
+                command_id: 11,
+            },
+        )
+        .unwrap();
+        assert_eq!(state.interpreter_words[&timer], 0);
+        assert_eq!(state.interpreter_words[&13220], 0x1234);
+        state.write_interpreter_word(timer, 1500);
+        push_word(&mut state, selector).unwrap();
+        execute_cmvs390_frame(
+            &mut state,
+            &CmvsPs2aInstructionFrame::Command {
+                span: SPAN,
+                command_id: 12,
+            },
+        )
+        .unwrap();
+        assert_eq!(state.interpreter_words[&81220], 1500);
+    }
+}
+
+#[test]
+fn texture_transition_preserves_the_parent_image_instead_of_loading_its_mask_as_color() {
+    let mut state = CmvsPs2aVmState::new(0);
+    state.slot_objects.insert(1924 << 8 | 28, 1);
+    state.texture_parents.insert(
+        28,
+        CmvsTextureParentState {
+            resource: Some("background.pb3".into()),
+            surface_initialized: true,
+            ..Default::default()
+        },
+    );
+    seed_pool_bytes(&mut state, 0, &[(0, b"mask.pb3")]);
+    for value in [1, 750, 1500, 28, 0] {
+        push_word(&mut state, value).unwrap();
+    }
+    execute_cmvs390_frame(
+        &mut state,
+        &CmvsPs2aInstructionFrame::Command {
+            span: SPAN,
+            command_id: 554,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        state.texture_parents[&28].resource.as_deref(),
+        Some("background.pb3")
+    );
+    assert_eq!(state.slot_objects[&(1924 << 8 | 28)], 1);
+}
+
+#[test]
+fn named_parent_load_uses_the_live_481_table_and_preserves_object_identity() {
+    let mut state = CmvsPs2aVmState::new(0);
+    state.slot_objects.insert(1924 << 8 | 20, 91);
+    state
+        .texture_parents
+        .insert(20, CmvsTextureParentState::default());
+    state.interpreter_flag_words.insert(10532, 0x20);
+    seed_pool_bytes(&mut state, 0, &[(0, b"picture.pb3")]);
+    for word in [0, 0x00404040, 2, 0, 20] {
+        push_word(&mut state, word).unwrap();
+    }
+    run_command(&mut state, 59);
+    assert_eq!(state.interpreter_flag_words[&10532], 0x20);
+    assert_eq!(state.interpreter_words[&81220], 1);
+    assert_eq!(state.slot_objects[&(1924 << 8 | 20)], 91);
+    assert_eq!(
+        state.texture_parents[&20].color_filter,
+        Some([2, 0x00404040, 0])
+    );
+    assert_eq!(
+        state.texture_parents[&20].resource.as_deref(),
+        Some("picture.pb3")
+    );
+}
+
+#[test]
+fn an_unrelated_784_entry_cannot_authorize_a_parent_image_load() {
+    let mut state = CmvsPs2aVmState::new(0);
+    state.slot_objects.insert(784 << 8 | 20, 91);
+    state.interpreter_flag_words.insert(10532, 0x20);
+    state.write_interpreter_word(81220, 777);
+    seed_pool_bytes(&mut state, 0, &[(0, b"picture.pb3")]);
+    for word in [0, 0, 0, 0, 20] {
+        push_word(&mut state, word).unwrap();
+    }
+    run_command(&mut state, 59);
+    assert_eq!(state.interpreter_flag_words[&10532], 0x30);
+    assert_eq!(state.interpreter_words[&81220], 777);
+    assert!(!state.texture_parents.contains_key(&20));
+}
+
+#[test]
+fn rebuilding_an_effect_channel_drops_its_previous_image_and_origin() {
+    let mut state = CmvsPs2aVmState::new(0);
+    let mut channel = CmvsEffectChannel {
+        image_resource: Some("cmvs:/old.pb3".into()),
+        ..Default::default()
+    };
+    channel.set_origin(42, 19);
+    state.effect_channels.insert(1, channel.clone());
+    state.effect_channels.insert(2, channel);
+    for word in [0, 0, 0, 0, 0, 0, 3, 1] {
+        push_word(&mut state, word).unwrap();
+    }
+    run_command(&mut state, 349);
+    assert_eq!(state.effect_channels[&1].image_resource, None);
+    assert_eq!(state.effect_channels[&1].origin(), (0, 0));
+    assert_eq!(state.effect_channels[&1].read_dword(0), 3);
+    assert_eq!(
+        state.effect_channels[&2].image_resource.as_deref(),
+        Some("cmvs:/old.pb3")
+    );
+}
+
+#[test]
+fn current_stage_constructor_rebuilds_channel_and_text_without_a_virtual_extent() {
+    let mut state = CmvsPs2aVmState::new(0);
+    for word in [720, 1280, 200, 600, 20, 10, 3, 2] {
+        push_word(&mut state, word).unwrap();
+    }
+    run_command(&mut state, 349);
+    let channel_identity = state.slot_objects[&(742 << 8 | 2)];
+    let text_identity = state.slot_objects[&(750 << 8 | 3)];
+    state.effect_channels.get_mut(&2).unwrap().image_resource = Some("cmvs:/old.pb3".into());
+    state.effect_channels.get_mut(&2).unwrap().write_dword(2, 1);
+    state
+        .effect_elements
+        .insert((2, 4), CmvsEffectElement::default());
+    for word in [80, 300, 40, 30, 3, 2] {
+        push_word(&mut state, word).unwrap();
+    }
+    assert_eq!(
+        run_command_with_action(&mut state, 320),
+        Some(CmvsPs2aVmAction::CreateEffectChannel {
+            channel: 2,
+            effect: 3
+        }),
+    );
+    assert_ne!(state.slot_objects[&(742 << 8 | 2)], channel_identity);
+    assert_ne!(state.slot_objects[&(750 << 8 | 3)], text_identity);
+    let channel = &state.effect_channels[&2];
+    assert_eq!(channel.origin(), (30, 40));
+    assert_eq!(channel.image_resource, None);
+    assert_eq!(channel.read_dword(2), 0);
+    assert_eq!(channel.read_dword(4), 0);
+    assert!(!state.effect_elements.contains_key(&(2, 4)));
+    assert_eq!(state.effect_elements[&(2, u32::MAX)].visible, 1);
+    let surface = &state.native_text[&3];
+    assert_eq!(surface.position, [30, 40]);
+    assert_eq!(surface.rect, [0, 0, 300, 80]);
+    assert!(surface.visible);
 }

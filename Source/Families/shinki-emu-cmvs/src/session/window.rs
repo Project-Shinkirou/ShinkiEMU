@@ -37,9 +37,11 @@ mod tests {
         });
         queue.submit(title.clone()).unwrap();
         queue.submit(icon.clone()).unwrap();
-        assert!(queue
-            .submit(WindowCommand::SetTitle("bad\0title".into()))
-            .is_err());
+        assert!(
+            queue
+                .submit(WindowCommand::SetTitle("bad\0title".into()))
+                .is_err()
+        );
         assert_eq!(queue.take(), Some(title));
         assert_eq!(queue.take(), Some(icon));
         assert!(queue.take().is_none());

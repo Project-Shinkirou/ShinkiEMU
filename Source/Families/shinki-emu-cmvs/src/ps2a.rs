@@ -3,7 +3,7 @@ pub use parse::*;
 mod instructions;
 pub use instructions::*;
 mod payload;
-pub(super) use payload::*;
+use payload::*;
 mod expressions;
 use expressions::*;
 
@@ -40,13 +40,15 @@ pub struct CmvsScriptString {
     pub text_hash: [u8; 32],
 }
 
-/// In-process decoded script.  It deliberately has no serialization derive:
-/// `bytecode` is commercial payload and must not enter a snapshot, report or
-/// package merely because a caller serializes an adjacent DTO.
+/// In-process decoded script, without a general serialization derive.
+/// Native slot stream C explicitly carries this private program image;
+/// adjacent public reports and packages must not serialize it implicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CmvsScript {
     pub schema: String,
     pub header: Ps2aHeader,
+    /// Original decoded header bytes, including opaque native header words.
+    pub raw_header: [u8; HEADER_BYTES],
     /// Absolute program counters selected by the PS2A name-index table.
     ///
     /// These are control-flow offsets, not filenames or script text.  Keeping
@@ -61,10 +63,8 @@ pub struct CmvsScript {
     /// it). The loader's buffer keeps the decoded bytes, so the initial
     /// contents come from the script file itself.
     pub data_segment: Vec<u8>,
-    /// The validated Shift-JIS pool, retained solely for an active runtime
-    /// session to materialize an ephemeral text lease. This is commercial
-    /// payload and must never be serialized into a snapshot, report or
-    /// package.
+    /// The validated Shift-JIS pool. It is retained by the active runtime and
+    /// explicitly written only into the native slot's private program image.
     string_pool: Vec<u8>,
     pub strings: Vec<CmvsScriptString>,
     pub decoded_size: u32,
@@ -439,16 +439,6 @@ impl CmvsPs2aInstructionFrame {
             Self::Command { span, .. } => *span,
         }
     }
-}
-
-/// Aggregate evidence for the PS2A bytecode pattern used by the reference
-/// tooling to address the string pool.  This deliberately does not assign VM
-/// semantics to the pattern and never exposes the referenced text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CmvsPs2aStringReferenceCensus {
-    pub candidate_count: u32,
-    pub valid_string_start_count: u32,
-    pub invalid_offset_count: u32,
 }
 
 fn source_span(

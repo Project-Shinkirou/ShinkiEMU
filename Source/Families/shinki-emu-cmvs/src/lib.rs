@@ -3,10 +3,11 @@ mod archive;
 mod audio;
 mod profile;
 pub use profile::{
-    mount_cmvs, CmvsArchiveFile, CmvsProfile, CMVS_PROFILE_FILE, CMVS_PROFILE_SCHEMA,
+    CMVS_PROFILE_FILE, CMVS_PROFILE_SCHEMA, CmvsArchiveFile, CmvsProfile, mount_cmvs,
 };
 mod cmvs_md5;
 pub use archive::CmvsArchive;
+pub mod cmv;
 mod cpz;
 mod jbp;
 mod mgv;

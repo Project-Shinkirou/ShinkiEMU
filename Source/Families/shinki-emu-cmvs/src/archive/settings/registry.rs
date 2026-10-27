@@ -63,11 +63,11 @@ fn read(
     kind: windows::Win32::System::Registry::REG_ROUTINE_FLAGS,
 ) -> Result<Option<Vec<u8>>, CoreError> {
     use windows::{
-        core::PCWSTR,
         Win32::{
             Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS},
-            System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_SUBKEY_WOW6432KEY},
+            System::Registry::{HKEY_CURRENT_USER, RRF_SUBKEY_WOW6432KEY, RegGetValueW},
         },
+        core::PCWSTR,
     };
     let (encoded, _, invalid) = encoding_rs::SHIFT_JIS.encode(key);
     if key.is_empty() || encoded.len() >= 64 - "Software\\".len() || invalid || key.contains('\0') {

@@ -11,11 +11,6 @@ use shinki_emu_sdk::CoreError;
 pub const PB2_MAGIC: &[u8; 4] = b"PB2A";
 pub const PB3_MAGIC: &[u8; 4] = b"PB3B";
 
-/// Diagnostic hook for decoder development.
-#[doc(hidden)]
-pub fn debug_decrypt_pb3(source: &[u8]) -> Result<Vec<u8>, CoreError> {
-    decrypt_pb3_source(source)
-}
 const PB2_HEADER_BYTES: usize = 0x20;
 const PB2_KEY_BYTES: usize = 27;
 const PB3_HEADER_BYTES: usize = 0x24;

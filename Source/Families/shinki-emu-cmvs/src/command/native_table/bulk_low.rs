@@ -52,17 +52,7 @@ const W_OPAQUE6: &[CmvsPs2aCommandStackWord] = &[
     opaque(20),
     opaque(24),
 ];
-const W_OPAQUE7: &[CmvsPs2aCommandStackWord] = &[
-    opaque(4),
-    opaque(8),
-    opaque(12),
-    opaque(16),
-    opaque(20),
-    opaque(24),
-    opaque(28),
-];
 const W_BOOLEAN1: &[CmvsPs2aCommandStackWord] = &[boolean(4)];
-const W_OPAQUE_BOOLEAN: &[CmvsPs2aCommandStackWord] = &[opaque(4), boolean(8)];
 const W_OPAQUE_TAGGED: &[CmvsPs2aCommandStackWord] = &[opaque(4), tagged(8)];
 const W_OPAQUE_TAGGED2: &[CmvsPs2aCommandStackWord] = &[opaque(4), tagged(8), tagged(12)];
 const W_OPAQUE2_TAGGED_BOOLEAN: &[CmvsPs2aCommandStackWord] =
@@ -153,21 +143,6 @@ const CONTEXT_INDEX_MASKS: &[NativeMicroOp] = &[
     },
 ];
 
-/// `sub_489820` family: a selector at or above 4 raises 0x400; the
-/// in-range path only forwards to an omitted `0x48Cxxx` worker.
-const SELECT4_MASK: &[NativeMicroOp] = &[
-    NativeMicroOp::Guard {
-        lhs: NativeMicroSrc::Reg(0),
-        kind: NativeMicroCmpKind::LtU,
-        rhs: NativeMicroSrc::Const(4),
-        taken_ops: 1,
-    },
-    NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 0x400,
-    },
-];
-
 /// `sub_4879A0` family: the effect-playback table (`this[750+N]`)
 /// lives in the executor's slot-object space, which micro field reads
 /// cannot observe, so the unbound path (raise 0x1000) is encoded.
@@ -203,117 +178,13 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             W_OPAQUE2,
         ),
-        // Handler `sub_483970` (case 84): bound context slot with an
-        // index pre-check (`>= 1024` raises 0x20, unbound raises 0x10);
-        // the good path reads the context word (result unused) and calls
-        // the render worker `sub_4469D0` (omitted, receives words three
-        // and four).  Omitted callees: `sub_444EF0` (pure read),
-        // `sub_4469D0`.  Returns 0x4010.
-        84 => (
-            16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 1,
-            },
-            W_OPAQUE4,
-        ),
-        // Handler `sub_4830C0` (case 85): the mask skeleton of case 84;
-        // the mode word selects between the deep workers
-        // `sub_446A50`/`sub_446A80`/`sub_446A70` (all omitted, they
-        // receive the context word).  Returns 0x400C.
-        85 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 2,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_484C00` (case 107): forwards four words to the
-        // movie worker `sub_457910` after `sub_4290A0` on `this[480]`.
-        // No interpreter writes.  Omitted callees: `sub_4290A0`,
-        // `sub_457910`.  Returns 0x4010.
-        107 => (
-            16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 3,
-            },
-            W_OPAQUE4,
-        ),
-        // Handler `sub_484C50` (case 109): three words to the movie
-        // worker `sub_4579F0` (omitted) after `sub_4290A0` (omitted).
-        // No interpreter writes.  Returns 0x400C.
-        109 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 4,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_484AF0` (case 110): three words to the movie
-        // worker `sub_457620` (omitted) after `sub_4290A0` (omitted).
-        // No interpreter writes.  Returns 0x400C.
-        110 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 5,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_484C90` (case 111): three words to the movie
-        // worker `sub_457AC0` (omitted) after `sub_4290A0` (omitted).
-        // No interpreter writes.  Returns 0x400C.
-        111 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 6,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_483360` (case 114): bound context slot, index
-        // pre-check, then the render worker `sub_446B70` (omitted,
-        // receives word three); the inner context read's result is
-        // unused.  Omitted callees: `sub_444EF0`, `sub_446B70`.
-        // Returns 0x400C.
-        114 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 7,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_4833E0` (case 115): as case 114 with the render
-        // worker `sub_446BA0` (omitted).  Returns 0x400C.
-        115 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 8,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_483460` (case 116): as case 114 with the render
-        // worker `sub_446BC0` (omitted).  Returns 0x400C.
-        116 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 9,
-            },
-            W_OPAQUE3,
-        ),
-        // Handler `sub_4832E0` (case 117): as case 114 with the render
-        // worker `sub_446B40` (omitted).  Returns 0x400C.
+        // Handler 4832E0: validates the surface and forwards word three
+        // to 446B40 (source rectangle X).
         117 => (
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 10,
+                table_index: 1,
             },
             W_OPAQUE3,
         ),
@@ -327,20 +198,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 11,
+                table_index: 2,
             },
             W_OPAQUE2,
-        ),
-        // Handler `sub_484B90` (case 125): forwards seven words to the
-        // movie worker `sub_4577F0` (omitted) after `sub_4290A0`
-        // (omitted).  No interpreter writes.  Returns 0x401C.
-        125 => (
-            28,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 12,
-            },
-            W_OPAQUE7,
         ),
         // Handler `sub_485EA0` (case 130): copies the interpreter's
         // inline string at byte offset 13072 over the resolved private
@@ -351,7 +211,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 13,
+                table_index: 3,
             },
             W_TAGGED1,
         ),
@@ -363,7 +223,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 14,
+                table_index: 4,
             },
             W_NONE,
         ),
@@ -374,150 +234,21 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 15,
+                table_index: 5,
             },
             W_OPAQUE1,
         ),
-        // Handler `sub_489820` (case 167): a selector at or above 4
-        // raises 0x400; otherwise `sub_48C950` receives `selector + 5`
-        // and the second word's zero-ness (omitted).  Returns 0x4008.
-        167 => (
+        // Native ordinary voice controls and six resource-stream controls.
+        // Worker48C950/48C0E0/48D700/48CD50 operate on real retained streams.
+        167 | 169 | 172 | 173 | 180 | 184 | 185 => (
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 16,
-            },
-            W_OPAQUE_BOOLEAN,
-        ),
-        // Handler `sub_4895E0` (case 169): selector bound as case 167;
-        // `sub_48C0E0` receives `selector + 5` and the raw second word
-        // (omitted).  Returns 0x4008.
-        169 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 17,
-            },
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
             W_OPAQUE2,
         ),
-        // Handler `sub_489980` (case 171): a selector at or above 4
-        // raises 0x400 and skips the result store; the in-range result
-        // of `sub_48C200(selector + 5)` is an unmodeled query, encoded
-        // as zero.  Returns 0x4004.
-        171 => (
+        //189 returns0xA000 until48CCF0 reports object absence, then0x4004.
+        171 | 174 | 178 | 188 | 189 => (
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 18,
-            },
-            W_OPAQUE1,
-        ),
-        // Handler `sub_489A20` (case 172): selector bound as case 167;
-        // `sub_48D700` receives `selector + 5` and the raw second word
-        // (omitted).  Returns 0x4008.
-        172 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 19,
-            },
-            W_OPAQUE2,
-        ),
-        // Handler `sub_489590` (case 173): selector bound as case 167;
-        // `sub_48CD50` receives `selector + 5` and the raw second word
-        // (omitted).  Returns 0x4008.
-        173 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 20,
-            },
-            W_OPAQUE2,
-        ),
-        // Handler `sub_489870` (case 174): a selector at or above 4
-        // raises 0x400; otherwise `sub_48C2A0` writes
-        // `this[20309]`/`this[20310]` through out-pointers (omitted —
-        // values unrecoverable).  Returns 0x4004.
-        174 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 21,
-            },
-            W_OPAQUE1,
-        ),
-        // Handler `sub_48A3F0` (case 178): a channel at or above 6
-        // raises 0x200; otherwise the handler clears the per-channel
-        // record word at dword `13*channel + 414` after the worker
-        // `sub_48DB10(channel + 9)` (omitted).  The dynamic write is
-        // expanded over the six channels.  Returns 0x4004.
-        178 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 22,
-            },
-            W_OPAQUE1,
-        ),
-        // Handler `sub_48A320` (case 180): a channel at or above 6
-        // raises 0x200; otherwise the handler stores the second word's
-        // zero-ness at byte `52*channel + 1640`, sets byte
-        // `52*channel + 1656` to one, and — gated on `this[389]` —
-        // calls `sub_48CA10` (omitted).  Returns 0x4008.
-        180 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 23,
-            },
-            W_OPAQUE_BOOLEAN,
-        ),
-        // Handler `sub_48A440` (case 184): a channel at or above 6
-        // raises 0x200; otherwise the raw second word is stored at
-        // dword `13*channel + 412` after `sub_48D700` (omitted).
-        // Returns 0x4008.
-        184 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 24,
-            },
-            W_OPAQUE2,
-        ),
-        // Handler `sub_489D60` (case 185): as case 184, storing at
-        // dword `13*channel + 413` after `sub_48CD50` (omitted).
-        // Returns 0x4008.
-        185 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 25,
-            },
-            W_OPAQUE2,
-        ),
-        // Handler `sub_489900` (case 188): a selector at or above 4
-        // raises 0x400; otherwise `sub_48CCC0(selector + 5)` (omitted).
-        // Returns 0x4004.
-        188 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 26,
-            },
-            W_OPAQUE1,
-        ),
-        // Handler `sub_489940` (case 189): a selector at or above 4
-        // raises 0x400; otherwise the completion poll `sub_48CCF0`
-        // decides between 0x4004 (complete) and the 0xA000 wait class.
-        // The poll is an unmodeled worker, so the micro program encodes
-        // only the mask raise and continues; the 0xA000 re-execute path
-        // is flagged for the integrator.  Returns 0x4004/0xA000.
-        189 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 27,
-            },
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
             W_OPAQUE1,
         ),
         // Handler `sub_4893A0` (case 192): builds a prefixed movie
@@ -532,7 +263,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 28,
+                table_index: 6,
             },
             W_TAGGED1,
         ),
@@ -543,7 +274,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 29,
+                table_index: 7,
             },
             W_NONE,
         ),
@@ -556,7 +287,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 30,
+                table_index: 8,
             },
             W_NONE,
         ),
@@ -567,7 +298,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 31,
+                table_index: 9,
             },
             W_NONE,
         ),
@@ -580,7 +311,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 32,
+                table_index: 10,
             },
             W_OPAQUE2,
         ),
@@ -591,7 +322,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 33,
+                table_index: 11,
             },
             W_BOOLEAN1,
         ),
@@ -603,7 +334,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 34,
+                table_index: 12,
             },
             W_OPAQUE1,
         ),
@@ -614,7 +345,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 35,
+                table_index: 13,
             },
             W_OPAQUE3,
         ),
@@ -626,7 +357,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 36,
+                table_index: 14,
             },
             W_OPAQUE2,
         ),
@@ -639,7 +370,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 37,
+                table_index: 15,
             },
             W_OPAQUE2,
         ),
@@ -651,7 +382,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 38,
+                table_index: 16,
             },
             W_OPAQUE3,
         ),
@@ -663,7 +394,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 39,
+                table_index: 17,
             },
             W_OPAQUE2,
         ),
@@ -673,7 +404,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 40,
+                table_index: 18,
             },
             W_OPAQUE2,
         ),
@@ -685,7 +416,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 41,
+                table_index: 19,
             },
             W_OPAQUE4,
         ),
@@ -695,7 +426,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 42,
+                table_index: 20,
             },
             W_OPAQUE4,
         ),
@@ -707,7 +438,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 43,
+                table_index: 21,
             },
             W_OPAQUE1,
         ),
@@ -719,7 +450,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 44,
+                table_index: 22,
             },
             W_OPAQUE6,
         ),
@@ -733,7 +464,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 45,
+                table_index: 23,
             },
             W_OPAQUE_TAGGED2,
         ),
@@ -745,7 +476,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 46,
+                table_index: 24,
             },
             W_OPAQUE2,
         ),
@@ -755,7 +486,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 47,
+                table_index: 25,
             },
             W_OPAQUE1,
         ),
@@ -767,7 +498,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 48,
+                table_index: 26,
             },
             W_TAGGED2_OPAQUE,
         ),
@@ -778,7 +509,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 49,
+                table_index: 27,
             },
             W_TAGGED2,
         ),
@@ -790,7 +521,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 50,
+                table_index: 28,
             },
             W_TAGGED2,
         ),
@@ -801,7 +532,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 51,
+                table_index: 29,
             },
             W_TAGGED2,
         ),
@@ -814,7 +545,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 52,
+                table_index: 30,
             },
             W_TAGGED3,
         ),
@@ -826,7 +557,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 53,
+                table_index: 31,
             },
             W_TAGGED2,
         ),
@@ -838,7 +569,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 54,
+                table_index: 32,
             },
             W_TAGGED1,
         ),
@@ -850,7 +581,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 55,
+                table_index: 33,
             },
             W_TAGGED2,
         ),
@@ -862,7 +593,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 56,
+                table_index: 34,
             },
             W_TAGGED2,
         ),
@@ -874,7 +605,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 57,
+                table_index: 35,
             },
             W_TAGGED_OPAQUE,
         ),
@@ -886,7 +617,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 58,
+                table_index: 36,
             },
             W_TAGGED1,
         ),
@@ -898,7 +629,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 59,
+                table_index: 37,
             },
             W_TAGGED3,
         ),
@@ -910,7 +641,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 60,
+                table_index: 38,
             },
             W_TAGGED2,
         ),
@@ -923,7 +654,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 61,
+                table_index: 39,
             },
             W_OPAQUE1,
         ),
@@ -935,7 +666,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 62,
+                table_index: 40,
             },
             W_OPAQUE_TAGGED,
         ),
@@ -946,7 +677,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 63,
+                table_index: 41,
             },
             W_OPAQUE1,
         ),
@@ -959,7 +690,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 64,
+                table_index: 42,
             },
             W_OPAQUE_TAGGED,
         ),
@@ -971,7 +702,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 65,
+                table_index: 43,
             },
             W_OPAQUE2,
         ),
@@ -983,7 +714,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 66,
+                table_index: 44,
             },
             W_OPAQUE_TAGGED,
         ),
@@ -999,21 +730,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             20,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 67,
+                table_index: 45,
             },
             W_OPAQUE_TAGGED_OPAQUE3,
-        ),
-        // Handler `sub_488D50` (case 287): a bound playback slot would
-        // publish `sub_463750`'s triple and set the result to one;
-        // unbound raises 0x1000 (encoded, see case 265).  Omitted
-        // callee: `sub_463750`.  Returns 0x4008.
-        287 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 0,
-                table_index: 68,
-            },
-            W_OPAQUE_TAGGED,
         ),
         // Handler `sub_487040` (case 288): stores the boolean of the
         // mode-0 query `sub_426F60` on the resolved string into the
@@ -1023,7 +742,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 69,
+                table_index: 46,
             },
             W_TAGGED1,
         ),
@@ -1034,7 +753,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 70,
+                table_index: 47,
             },
             W_TAGGED1,
         ),
@@ -1045,7 +764,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 71,
+                table_index: 48,
             },
             W_OPAQUE1,
         ),
@@ -1057,7 +776,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 72,
+                table_index: 49,
             },
             W_NONE,
         ),
@@ -1070,7 +789,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 73,
+                table_index: 50,
             },
             W_OPAQUE_TAGGED2,
         ),
@@ -1081,7 +800,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 74,
+                table_index: 51,
             },
             W_TAGGED3_OPAQUE_TAGGED_BOOLEAN,
         ),
@@ -1097,7 +816,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             1,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 75,
+                table_index: 52,
             },
             W_NONE,
         ),
@@ -1110,7 +829,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 76,
+                table_index: 53,
             },
             W_OPAQUE_TAGGED,
         ),
@@ -1121,7 +840,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 77,
+                table_index: 54,
             },
             W_OPAQUE1,
         ),
@@ -1136,7 +855,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 0,
-                table_index: 78,
+                table_index: 55,
             },
             W_OPAQUE2_TAGGED_BOOLEAN,
         ),
@@ -1149,421 +868,15 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
 pub(super) const OPS: &[&[NativeMicroOp]] = &[
     // 81 (`sub_4806B0`).
     CONTEXT_SLOT_BOUND_MASK,
-    // 84 (`sub_483970`), 85 (`sub_4830C0`), 114 (`sub_483360`),
-    // 115 (`sub_4833E0`), 116 (`sub_483460`), 117 (`sub_4832E0`),
-    // 120 (`sub_483160`).
+    // 117 (`sub_4832E0`), 120 (`sub_483160`).
     CONTEXT_INDEX_MASKS,
     CONTEXT_INDEX_MASKS,
-    // 107 (`sub_484C00`), 109 (`sub_484C50`), 110 (`sub_484AF0`),
-    // 111 (`sub_484C90`).
-    EMPTY_PROGRAM,
-    EMPTY_PROGRAM,
-    EMPTY_PROGRAM,
-    EMPTY_PROGRAM,
-    CONTEXT_INDEX_MASKS,
-    CONTEXT_INDEX_MASKS,
-    CONTEXT_INDEX_MASKS,
-    CONTEXT_INDEX_MASKS,
-    CONTEXT_INDEX_MASKS,
-    // 125 (`sub_484B90`), 130 (`sub_485EA0`).
-    EMPTY_PROGRAM,
+    // 130 (`sub_485EA0`).
     EMPTY_PROGRAM,
     // 163 (`sub_478BE0`).
     STORE_ZERO_RESULT,
     // 165 (`sub_486E30`).
     EMPTY_PROGRAM,
-    // 167 (`sub_489820`), 169 (`sub_4895E0`).
-    SELECT4_MASK,
-    SELECT4_MASK,
-    // 171 (`sub_489980`): in-range stores the unmodeled query as zero,
-    // out-of-range raises 0x400 and skips the store.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::GeU,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x400,
-        },
-    ],
-    // 172 (`sub_489A20`), 173 (`sub_489590`).
-    SELECT4_MASK,
-    SELECT4_MASK,
-    // 174 (`sub_489870`).
-    SELECT4_MASK,
-    // 178 (`sub_48A3F0`): out-of-range channel raises 0x200;
-    // in-range clears dword `13*channel + 414` for the one selected
-    // channel (offsets 1656 + 52*channel bytes).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::GeU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 12,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1656,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1708,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1760,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1812,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1864,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1916,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x200,
-        },
-    ],
-    // 180 (`sub_48A320`): normalizes the flag word into register 2,
-    // then stores it at byte `52*channel + 1640` and one at byte
-    // `52*channel + 1656` for the selected channel.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::GeU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 21,
-        },
-        NativeMicroOp::Move {
-            dst: 2,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(1),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Move {
-            dst: 2,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1640,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1656,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1692,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1708,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1744,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1760,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1796,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1812,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1848,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1864,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1900,
-            src: NativeMicroSrc::Reg(2),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1916,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x200,
-        },
-    ],
-    // 184 (`sub_48A440`): stores the raw word at dword
-    // `13*channel + 412` (offsets 1648 + 52*channel bytes).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::GeU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 12,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1648,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1700,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1752,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1804,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1856,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1908,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x200,
-        },
-    ],
-    // 185 (`sub_489D60`): as 184 at dword `13*channel + 413`
-    // (offsets 1652 + 52*channel bytes).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::GeU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 12,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1652,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1704,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1756,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1808,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1860,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 1912,
-            src: NativeMicroSrc::Reg(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x200,
-        },
-    ],
-    // 188 (`sub_489900`), 189 (`sub_489940`).
-    SELECT4_MASK,
-    SELECT4_MASK,
     // 192 (`sub_4893A0`): failure projection of the movie open — the
     // stream field `this[3176]` (byte 12704) is cleared and the result
     // slot stores zero.
@@ -1750,8 +1063,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 0x1000,
         },
     ],
-    // 287 (`sub_488D50`).
-    PLAYBACK_TABLE_BOUND_MASK,
     // 288 (`sub_487040`), 289 (`sub_487080`).
     STORE_ZERO_RESULT,
     STORE_ZERO_RESULT,

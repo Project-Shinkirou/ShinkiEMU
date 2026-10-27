@@ -109,7 +109,7 @@ fn unsafe_save_roots_preserve_catalog_and_zero_timestamp_has_no_latest_slot() {
     archive.refresh_native_save_catalog(&mut vm, 1).unwrap();
     assert!(vm.native_save_catalog.as_ref().unwrap().load_enabled(0));
     assert_eq!(vm.native_save_catalog.as_ref().unwrap().latest_slot, None);
-    vm.interpreter_words.insert(10756, 1);
+    vm.write_interpreter_word(10756, 1);
     let previous = vm.clone();
     assert!(archive.refresh_native_save_catalog(&mut vm, 1).is_err());
     assert_eq!(vm, previous);

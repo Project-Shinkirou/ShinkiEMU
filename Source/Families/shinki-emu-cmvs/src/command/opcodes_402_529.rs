@@ -76,8 +76,8 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47F330` (case 406) selects/activates one quad slot on        // an occupied effect channel with a value word; the recovered graph
-        // keeps only occupancy. Returns 0x400C.
+        // `sub_47F330`: select the source frame of an existing quad.
+        // Visibility is unchanged. Returns 0x400C.
         406 => (
             12,
             CmvsPs2aCommandEffectKind::ActivateEffectQuad {
@@ -429,7 +429,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // Returns 0x4000.
         524 => (
             0,
-            CmvsPs2aCommandEffectKind::QuerySaveImageEnabled {
+            CmvsPs2aCommandEffectKind::QueryScreenShakePaused {
                 result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
@@ -554,7 +554,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         509 => (
             8,
             CmvsPs2aCommandEffectKind::QueryTextureChildState {
-                texture_table_base_offset: 481,
+                texture_table_base_offset: 1924,
                 max_parent_slot: 255,
                 max_child_id: 1023,
                 container_error_flag_field_offset: 10532,

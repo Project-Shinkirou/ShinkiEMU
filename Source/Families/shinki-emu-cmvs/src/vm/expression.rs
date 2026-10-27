@@ -40,24 +40,12 @@ pub(super) fn run_stack_expression(
         .process_indexed_words
         .insert(STACK_EXPRESSION_RESULT_INDEX, result);
     state.condition_flag = result != 0;
-    state
-        .interpreter_words
-        .insert(81212, u32::from(result != 0));
+    state.write_interpreter_word(81212, u32::from(result != 0));
     // `sub_46F470` tail (`LABEL_82`) stores the coerced result into the
     // persistent expression-result word at byte offset 81216 for every
     // expression frame — not just `0x201`. The `0x430` materializer reads
     // this word (`mov eax, [edi+13D40h]`), so the two must stay in sync.
-    state
-        .interpreter_words
-        .insert(VALUE_EXPRESSION_RESULT_FIELD, result);
-    if tracing::enabled!(tracing::Level::INFO) && state.program_counter == 179782 {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.gate_se_result",
-            frame = state.current_frame,
-            result,
-            word77 = state.process_indexed_words.get(&77).copied().unwrap_or(0)
-        );
-    }
+    state.write_interpreter_word(VALUE_EXPRESSION_RESULT_FIELD, result);
     Ok(())
 }
 
@@ -116,8 +104,12 @@ pub(super) fn run_value_expression(
                         "CMVS value-expression operator has no second operand",
                     )
                 })?;
-                append_value_entry_to_buffer(state, top_tag, top_value)?;
+                // `46F234..46F294`: append left then right, clear the
+                // left operand, and reduce two entries to one. That zero
+                // entry carries the assembled text to a following store.
                 append_value_entry_to_buffer(state, second_tag, second_value)?;
+                append_value_entry_to_buffer(state, top_tag, top_value)?;
+                entries.push((0, 0));
             }
             crate::CmvsPs2aValueExpressionToken::Operator { opcode: 0x170, .. } => {
                 // `sub_46F180` case 368: the popped top entry is the SOURCE
@@ -135,6 +127,7 @@ pub(super) fn run_value_expression(
                     append_value_entry_to_buffer(state, source_tag, source_payload)?;
                     if let Some((target_tag, target_payload)) = target {
                         materialize_message_buffer(state, target_tag, target_payload)?;
+                        entries.push((0, 0));
                     }
                 }
             }
@@ -162,37 +155,14 @@ pub(super) fn run_value_expression(
                     )
                 })?;
                 let read = read_frame_relative_word(state, offset)?;
-                if tracing::enabled!(tracing::Level::INFO) && state.current_frame == 0 {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.stack_string_read",
-                        pc = state.program_counter,
-                        offset,
-                        word = read,
-                        cursor = state.stack_cursor_bytes
-                    );
-                }
                 Some(read)
             }
             _ => None,
         };
         if let Some(word) = word {
-            state
-                .interpreter_words
-                .insert(VALUE_EXPRESSION_RESULT_FIELD, word);
+            state.write_interpreter_word(VALUE_EXPRESSION_RESULT_FIELD, word);
             state.current_value = Some(word);
         }
-    }
-    if tracing::enabled!(tracing::Level::INFO)
-        && state.current_frame == 0
-        && ((57_724..=59_760).contains(&state.program_counter)
-            || (182_960..=183_016).contains(&state.program_counter))
-    {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.value_expr_buffer",
-            pc = state.program_counter,
-            buffer = %String::from_utf8_lossy(&state.message_buffer),
-            first_tag = entries.first().map(|e| e.0).unwrap_or(0)
-        );
     }
     Ok(())
 }
@@ -248,14 +218,6 @@ pub(super) fn materialize_message_buffer(
     match target_tag {
         0x121 => {
             let index = target_payload & 0x3fff_ffff;
-            if vm_trace_enabled() {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.slot_store",
-                    pc = state.program_counter,
-                    slot = index,
-                    segments = state.message_buffer.len()
-                );
-            }
             if index <= MESSAGE_STRING_SLOT_MAX {
                 validate_native_string_slot(&state.message_buffer)?;
                 state
@@ -381,17 +343,6 @@ pub(super) fn eval_stack_expression_nodes(
                     _ => 0x10A,
                 };
                 let offset = payload.wrapping_add(index_value.wrapping_mul(4));
-                if tracing::enabled!(tracing::Level::INFO) && *opcode == 0x110 {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.prefix_110_eval",
-                        tick = state.tick,
-                        pc = state.program_counter,
-                        frame = state.current_frame,
-                        payload,
-                        index_value,
-                        offset
-                    );
-                }
                 stack.push(StackExpressionEntry { tag, value: offset });
             }
             crate::CmvsPs2aStackExpressionNode::Operator { opcode: 0x170, .. } => {
@@ -621,77 +572,11 @@ pub(super) fn coerce_stack_expression_entry_inner(
 ) -> Result<u32, CoreError> {
     match entry.tag {
         0x100 | 0x12a => Ok(entry.value),
-        0x101 => {
-            if tracing::enabled!(tracing::Level::INFO) && entry.value == 77 {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word77_read",
-                    tick = state.tick,
-                    pc = state.program_counter,
-                    value = state
-                        .process_indexed_words
-                        .get(&entry.value)
-                        .copied()
-                        .unwrap_or(0)
-                );
-            }
-            if tracing::enabled!(tracing::Level::INFO) && entry.value == 110 {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word110_read",
-                    tick = state.tick,
-                    frame = state.current_frame,
-                    pc = state.program_counter,
-                    value = state
-                        .process_indexed_words
-                        .get(&entry.value)
-                        .copied()
-                        .unwrap_or(0)
-                );
-            }
-            if tracing::enabled!(tracing::Level::INFO)
-                && state.current_frame == 0
-                && (5_000..=6_500).contains(&state.tick)
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.process_word_read",
-                    word = entry.value,
-                    value = state
-                        .process_indexed_words
-                        .get(&entry.value)
-                        .copied()
-                        .unwrap_or(0),
-                    pc = state.program_counter,
-                    tick = state.tick
-                );
-            }
-            if tracing::enabled!(tracing::Level::INFO)
-                && ((195_700..=195_990).contains(&state.program_counter)
-                    || (342_680..=342_790).contains(&state.program_counter)
-                    || (369_776..=369_850).contains(&state.program_counter)
-                    || (370_400..=372_000).contains(&state.program_counter)
-                    || (166_900..=167_700).contains(&state.program_counter)
-                    || (157_400..=158_100).contains(&state.program_counter)
-                    || (113_000..=114_500).contains(&state.program_counter)
-                    || (204_000..=205_200).contains(&state.program_counter))
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.word_zone_read",
-                    word = entry.value,
-                    value = state
-                        .process_indexed_words
-                        .get(&entry.value)
-                        .copied()
-                        .unwrap_or(0),
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    tick = state.tick
-                );
-            }
-            Ok(state
-                .process_indexed_words
-                .get(&entry.value)
-                .copied()
-                .unwrap_or(0))
-        }
+        0x101 => Ok(state
+            .process_indexed_words
+            .get(&entry.value)
+            .copied()
+            .unwrap_or(0)),
         0x102 => Ok(u32::from(state.process_flag_bits.contains(&entry.value))),
         0x108 | 0x10a | 0x10b => {
             // The item dispatcher's ladder input (intproc 187234..=187388,
@@ -729,10 +614,9 @@ pub(super) fn coerce_stack_expression_entry_inner(
             if entry.value == 16
                 && state.current_frame == 1
                 && (187_798..=187_806).contains(&state.program_counter)
+                && let Some(armed) = state.load_confirm_selection
             {
-                if let Some(armed) = state.load_confirm_selection {
-                    return Ok(armed);
-                }
+                return Ok(armed);
             }
             // The jve5 (load-confirm) branch pushes the dispatcher's fl0
             // as the callee's compare operand: the load body gates on
@@ -753,42 +637,6 @@ pub(super) fn coerce_stack_expression_entry_inner(
                 return Ok(echoed);
             }
             let value = read_frame_local_word(state, signed_word(entry.value)?)?;
-            if (187_200..=187_390).contains(&state.program_counter)
-                && tracing::enabled!(tracing::Level::INFO)
-            {
-                let base = state.call_frame_bases.last().copied().unwrap_or(0);
-                let words: Vec<u32> = (0..8u32)
-                    .map(|i| {
-                        let start = (base + i * 4) as usize;
-                        state
-                            .stack_bytes
-                            .get(start..start + 4)
-                            .and_then(|b| b.try_into().ok())
-                            .map(u32::from_le_bytes)
-                            .unwrap_or(0)
-                    })
-                    .collect();
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.dispatcher_fl_read",
-                    pc = state.program_counter,
-                    offset = entry.value,
-                    value,
-                    base,
-                    cursor = state.stack_cursor_bytes,
-                    frame = state.current_frame,
-                    words = ?words,
-                    tick = state.tick
-                );
-            }
-            // frame-local 0; a stuck value means the increment's write-back
-            // misses the read's address.
-            if state.program_counter == 67_800 && entry.value == 0 {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.fade_counter",
-                    value,
-                    base = state.call_frame_bases.last().copied().unwrap_or(0)
-                );
-            }
             Ok(value)
         }
         0x103 => {
@@ -799,25 +647,9 @@ pub(super) fn coerce_stack_expression_entry_inner(
             let value = match read_frame_local_word(state, offset) {
                 Ok(v) => v,
                 Err(cause) => {
-                    if entry.value == 9 && tracing::enabled!(tracing::Level::DEBUG) {
-                        tracing::debug!(
-                            event = "shinki.emu.cmvs.vm.var9_read",
-                            pc = state.program_counter,
-                            error = %cause
-                        );
-                    }
                     return Err(cause);
                 }
             };
-            if tracing::enabled!(tracing::Level::DEBUG) {
-                tracing::debug!(
-                    event = "shinki.emu.cmvs.vm.var_read",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    payload = entry.value,
-                    value
-                );
-            }
             Ok(value)
         }
         0x104 | 0x106 | 0x107 => {
@@ -831,28 +663,8 @@ pub(super) fn coerce_stack_expression_entry_inner(
             // interpreter words at byte offset 81220+4i and registers
             // 7..=10 as the float registers at 81248+4(i-7) cast to int;
             // higher indices return zero in the original.
-            if entry.value == 0
-                && (342_680..=342_790).contains(&state.program_counter)
-                && tracing::enabled!(tracing::Level::INFO)
-            {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pump_sysreg0_read",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    value = state
-                        .interpreter_words
-                        .get(&SYSTEM_REGISTER_FIELD_BASE)
-                        .copied()
-                        .unwrap_or(0),
-                    tick = state.tick
-                );
-            }
             match entry.value {
-                0..=6 => Ok(state
-                    .interpreter_words
-                    .get(&(SYSTEM_REGISTER_FIELD_BASE + 4 * entry.value))
-                    .copied()
-                    .unwrap_or(0)),
+                0..=6 => state.read_interpreter_word(SYSTEM_REGISTER_FIELD_BASE + 4 * entry.value),
                 7..=10 => {
                     let field = 81248 + 4 * (entry.value - 7);
                     let bits = state.interpreter_words.get(&field).copied().unwrap_or(0);

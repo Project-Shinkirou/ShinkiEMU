@@ -4,14 +4,51 @@ use roukaku_platform::SceneFrame;
 use roukaku_platform_common::WgpuOffscreenRenderer;
 use shinki_emu_sdk::{CoreError, SceneTextureResidency, StageCanvas, TextureCache};
 use std::{collections::BTreeMap, num::NonZeroUsize};
+mod basic_geometry;
 #[cfg(test)]
-mod tests;
+mod basic_geometry_tests;
+#[cfg(test)]
+mod camera_transition_tests;
+mod channel_images;
+mod cmv;
+mod image_filter;
+mod image_owner;
+#[cfg(test)]
+mod independent_view_tests;
+mod native_mesh;
+pub(crate) mod native_save_channels;
+pub(crate) mod native_save_images;
+#[cfg(test)]
+mod native_view_tests;
+mod native_viewport;
+#[cfg(test)]
+pub(crate) mod parent_load_tests;
+mod plane_particles;
+mod presentation;
+mod projection;
+#[cfg(test)]
+mod projection_tests;
+mod reload;
+#[cfg(test)]
+mod reload_tests;
+#[cfg(test)]
+mod screen_shake_tests;
+mod surface;
+#[cfg(test)]
+pub(crate) mod tests;
 mod text;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CmvsTextureSlot {
     Parent(u8),
     Child { parent: u8, child: u16 },
+    SceneRoot(u8),
+    SceneChild { slot: u8, child: u32 },
+}
+
+enum NativeQueuedDraw {
+    Image(CmvsTextureSlot, RectI),
+    Group(surface::NativeDrawGroup),
 }
 
 /// Core-owned GPU composition of the recovered parent/child texture stage.
@@ -20,14 +57,26 @@ pub struct CmvsScene {
     textures: TextureCache,
     texture_residency: SceneTextureResidency,
     bindings: BTreeMap<CmvsTextureSlot, String>,
-    /// Last-known placement per slot. The main tick's collector destroys
-    /// slot objects after a scene switch while the native surfaces keep
-    /// their transforms; the host reuses the cached placement then.
+    dynamic_images: BTreeMap<CmvsTextureSlot, TextureFrame>,
+    /// Placement cache for live surfaces, moved and cleared with their owners.
     slot_geometry: BTreeMap<CmvsTextureSlot, (RectI, u32)>,
     sequence: u64,
+    logical: Option<Extent2D>,
     raster: Option<Extent2D>,
     canvas: Option<StageCanvas>,
     text: text::NativeTextRenderer,
+    presentation_mask: Option<presentation::PresentationMask>,
+    filtered_images: BTreeMap<CmvsTextureSlot, image_filter::FilteredImage>,
+    channel_uploads: BTreeMap<u8, (String, String)>,
+    pub(super) channel_element_uploads: BTreeMap<(u8, u32, u8), (String, String)>,
+    mesh_uploads: BTreeMap<u8, native_mesh::NativeMeshUpload>,
+    mesh_order: Vec<native_mesh::MeshOrder>,
+    plane_uploads: BTreeMap<(u8, usize), plane_particles::PlaneUpload>,
+    plane_order: Vec<((u8, u32), u8, usize, usize)>,
+    surface_uploads: BTreeMap<CmvsTextureSlot, surface::SurfaceImage>,
+    reload_surfaces: BTreeMap<CmvsTextureSlot, reload::ReloadSurfaces>,
+    reload_releases: Vec<String>,
+    reload_generation: u64,
     // Keep the loader alive until every session GPU resource has dropped.
     _gpu_instance: wgpu::Instance,
 }
@@ -35,7 +84,8 @@ pub struct CmvsScene {
 impl CmvsScene {
     pub fn new(instance: &wgpu::Instance) -> Result<Self, CoreError> {
         let renderer = pollster::block_on(WgpuOffscreenRenderer::new(instance))
-            .map_err(|_| error("SHINKI_EMU_CMVS_GPU_CREATE"))?;
+            .map_err(|_| error("SHINKI_EMU_CMVS_GPU_CREATE"))?
+            .with_default_compositing(roukaku_media_core::SceneCompositing2D::EncodedSrgb);
         tracing::info!(event = "cmvs.gpu.created", backend = %renderer.identity().backend,
             device_type = %renderer.identity().device_type, vendor_id = renderer.identity().vendor_id,
             device_id = renderer.identity().device_id);
@@ -45,13 +95,39 @@ impl CmvsScene {
                 .map_err(|_| error("SHINKI_EMU_CMVS_TEXTURE_BUDGET"))?,
             texture_residency: SceneTextureResidency::default(),
             bindings: BTreeMap::new(),
+            dynamic_images: BTreeMap::new(),
             slot_geometry: BTreeMap::new(),
             sequence: 0,
             raster: None,
             canvas: None,
             text: text::NativeTextRenderer::default(),
+            logical: None,
+            presentation_mask: None,
+            filtered_images: BTreeMap::new(),
+            channel_uploads: BTreeMap::new(),
+            channel_element_uploads: BTreeMap::new(),
+            mesh_uploads: BTreeMap::new(),
+            mesh_order: Vec::new(),
+            plane_uploads: BTreeMap::new(),
+            plane_order: Vec::new(),
+            surface_uploads: BTreeMap::new(),
+            reload_surfaces: BTreeMap::new(),
+            reload_releases: Vec::new(),
+            reload_generation: 0,
             _gpu_instance: instance.clone(),
         })
+    }
+
+    pub(crate) fn native_restore_candidate(&self) -> Result<Self, CoreError> {
+        let mut candidate = Self::new(&self._gpu_instance)?;
+        candidate.text = self.text.native_restore_context()?;
+        // Native load retains the live stage. Font cells are rebuilt before
+        // the candidate's first draw and need its logical width immediately.
+        candidate.logical = self.logical;
+        if let Some(raster) = self.raster {
+            candidate.resize_raster(raster.width, raster.height)?;
+        }
+        Ok(candidate)
     }
 
     /// Change only the render target. VM geometry stays in native stage units.
@@ -68,7 +144,7 @@ impl CmvsScene {
     }
 
     pub(crate) fn logical_extent(&self) -> Option<Extent2D> {
-        self.canvas.map(StageCanvas::logical)
+        self.logical
     }
 
     pub(crate) fn clear(&mut self, width: u32, height: u32) -> Result<TextureFrame, CoreError> {
@@ -78,14 +154,37 @@ impl CmvsScene {
     pub(crate) fn bind_text_font(&mut self, font: &str) -> Result<(), CoreError> {
         self.text.bind_font(font)
     }
-
-    pub(crate) fn set_default_font(&mut self, font: String) {
-        let _ = self.text.bind_font(&font);
-        self.text.default_font = Some(font);
+    pub(crate) fn bind_text_owner(
+        &mut self,
+        vm: &CmvsPs2aVmState,
+        slot: u8,
+    ) -> Result<(), CoreError> {
+        let owner = vm
+            .native_font_owners
+            .get(&(762 + u16::from(slot)))
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_OBJECT"))?;
+        self.text.bind_font(&owner.family)
     }
 
-    pub(crate) fn has_text_renderer(&self) -> bool {
-        self.text.is_initialized()
+    pub(crate) fn bind_glyph_owner(
+        &mut self,
+        vm: &CmvsPs2aVmState,
+        slot: u8,
+    ) -> Result<(), CoreError> {
+        self.text.bind_glyph_owner(vm, slot)
+    }
+
+    pub(crate) fn append_glyph(
+        &mut self,
+        vm: &mut CmvsPs2aVmState,
+        slot: u8,
+        source: &[u8],
+    ) -> Result<(), CoreError> {
+        self.text.append_glyph(vm, slot, source)
+    }
+
+    pub(crate) fn set_default_font(&mut self, font: String) {
+        self.text.default_font = Some(font);
     }
 
     pub(crate) fn append_text(
@@ -94,17 +193,84 @@ impl CmvsScene {
         slot: u8,
         source: &str,
     ) -> Result<(), CoreError> {
-        self.text.append(vm, slot, source)
+        let width = self.logical_extent().map_or(0, |extent| extent.width);
+        self.text.append(vm, slot, source, width)
     }
 
-    pub(crate) fn render_text(
+    pub(crate) fn append_dialogue(
         &mut self,
-        vm: &CmvsPs2aVmState,
+        vm: &mut CmvsPs2aVmState,
+        channel: u8,
+        slot: u8,
+        source: &str,
+    ) -> Result<(), CoreError> {
+        let width = self.logical_extent().map_or(0, |extent| extent.width);
+        self.text.append_dialogue(vm, channel, slot, source, width)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn render_overlays(
+        &mut self,
+        vm: &mut CmvsPs2aVmState,
         width: u32,
         height: u32,
+        movie: Option<&TextureFrame>,
+        mut commands: Vec<SceneCommand>,
     ) -> Result<TextureFrame, CoreError> {
-        let commands = self.text.frame(vm)?;
-        self.draw(width, height, commands)
+        let mut groups = self
+            .text
+            .prepare_draw_groups(vm, width, &mut self.textures)?;
+        groups.admit(&mut 8192);
+        groups.append(&mut commands);
+        if let Some(movie) = movie {
+            let overlays = commands.len();
+            append_movie(&mut commands, vm, movie, width)?;
+            let added = commands.len() - overlays;
+            commands.rotate_right(added);
+        }
+        self.draw_final(vm, width, height, commands)
+    }
+
+    pub(crate) fn clear_parent_image(&mut self, parent: u8) {
+        self.bindings.remove(&CmvsTextureSlot::Parent(parent));
+        self.dynamic_images.remove(&CmvsTextureSlot::Parent(parent));
+        self.filtered_images
+            .remove(&CmvsTextureSlot::Parent(parent));
+        self.release_surface_image(CmvsTextureSlot::Parent(parent));
+    }
+
+    pub(crate) fn bind_parent_image(
+        &mut self,
+        vm: &mut CmvsPs2aVmState,
+        parent: u8,
+        uri: &str,
+        archive: &CmvsArchive,
+    ) -> Result<(), CoreError> {
+        let info = archive.native_image_info(uri)?;
+        self.bind(CmvsTextureSlot::Parent(parent), uri, archive)?;
+        vm.texture_parents
+            .get_mut(&parent)
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_VM_TEXTURE"))?
+            .image_info = info;
+        Ok(())
+    }
+
+    pub(crate) fn bind_child_image(
+        &mut self,
+        vm: &mut CmvsPs2aVmState,
+        parent: u8,
+        child: u16,
+        uri: &str,
+        archive: &CmvsArchive,
+    ) -> Result<(), CoreError> {
+        let info = archive.native_image_info(uri)?;
+        self.bind(CmvsTextureSlot::Child { parent, child }, uri, archive)?;
+        vm.texture_children
+            .get_mut(&parent)
+            .and_then(|children| children.get_mut(&child))
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_VM_TEXTURE_CHILD"))?
+            .image_info = info;
+        Ok(())
     }
 
     pub fn bind(
@@ -118,26 +284,6 @@ impl CmvsScene {
         }
         // Explicit loads decode again even when the URI has previously been cached.
         let image = archive.decode_pb_image(uri)?;
-        let image_type = archive
-            .pb_image_type(uri)
-            .map(|t| t.to_string())
-            .unwrap_or_default();
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            let bytes = image.as_raw();
-            let mean = if bytes.is_empty() {
-                0.0
-            } else {
-                bytes.iter().map(|byte| u32::from(*byte)).sum::<u32>() as f64 / bytes.len() as f64
-            };
-            tracing::debug!(
-                event = "cmvs.session.texture_bound",
-                slot = ?slot,
-                width = image.width(),
-                height = image.height(),
-                byte_mean = mean,
-                image_type = %image_type
-            );
-        }
         let frame = TextureFrame {
             width: image.width(),
             height: image.height(),
@@ -147,48 +293,59 @@ impl CmvsScene {
             .insert(uri.to_owned(), frame)
             .map_err(|_| error("SHINKI_EMU_CMVS_TEXTURE_BUDGET"))?;
         self.bindings.insert(slot, uri.to_owned());
+        self.dynamic_images.remove(&slot);
+        if slot.is_root() {
+            self.filtered_images.remove(&slot);
+        }
         Ok(())
     }
 
-    /// Clones the texture bindings and slot placements (the native
-    /// program switch preserves the loaded surface table; the menu's
-    /// loads replace slots, so the story snapshot must carry them).
-    pub(crate) fn binding_count(&self) -> usize {
-        self.bindings.len()
+    #[cfg(test)]
+    pub(crate) fn bound_p(&self, slot: CmvsTextureSlot) -> bool {
+        self.bindings.contains_key(&slot)
     }
 
-    pub(crate) fn bindings_snapshot(
-        &self,
-    ) -> (
-        BTreeMap<CmvsTextureSlot, String>,
-        BTreeMap<CmvsTextureSlot, (RectI, u32)>,
-    ) {
-        (self.bindings.clone(), self.slot_geometry.clone())
+    /// With no explicit target the standing scene composes every bound
+    /// family sorted by z, based on the first bound parent.
+    pub(crate) fn standing_scene_slot(&self) -> Option<CmvsTextureSlot> {
+        self.bindings.keys().find(|slot| slot.is_root()).copied()
     }
 
-    pub(crate) fn restore_bindings(
-        &mut self,
-        bindings: BTreeMap<CmvsTextureSlot, String>,
-        geometry: BTreeMap<CmvsTextureSlot, (RectI, u32)>,
-    ) {
-        self.bindings = bindings;
-        self.slot_geometry = geometry;
+    pub(crate) fn release_child_surface(&mut self, parent: u8, child: u16) {
+        let slot = CmvsTextureSlot::Child { parent, child };
+        self.bindings.remove(&slot);
+        self.slot_geometry.remove(&slot);
+        self.release_surface_image(slot);
+    }
+
+    pub(crate) fn clear_parent_surfaces(&mut self) {
+        let keep = |slot: &CmvsTextureSlot| slot.scene_worker().is_some();
+        self.bindings.retain(|slot, _| keep(slot));
+        self.dynamic_images.retain(|slot, _| keep(slot));
+        self.slot_geometry.retain(|slot, _| keep(slot));
+        self.surface_uploads.retain(|slot, upload| {
+            if keep(slot) {
+                return true;
+            }
+            self.reload_releases.push(upload.id.clone());
+            false
+        });
+        self.filtered_images.retain(|slot, _| keep(slot));
+        self.clear_parent_image_reloads();
     }
 
     pub fn render(
         &mut self,
-        vm: &CmvsPs2aVmState,
+        vm: &mut CmvsPs2aVmState,
         requested: CmvsTextureSlot,
         archive: &CmvsArchive,
         stage: (u32, u32),
         movie: Option<&TextureFrame>,
     ) -> Result<Option<TextureFrame>, CoreError> {
-        // Native texture slots are destroyed by the main tick's collector
-        // right after a scene switch loads its replacements (`menu` 206740
-        // tears the channel table down while `intproc` 9404 frees the
-        // surfaces); the decoded textures stay cached in the manager and
-        // the next present still draws them. Bindings therefore live until
-        // a new load replaces the slot, not until the VM slot object dies.
+        self.restore_image_reload_bindings(vm);
+        self.prepare_scene_image_bindings(vm, archive)?;
+        // A native root owns its bindings; destruction/rebuild actions remove
+        // the complete family before later script loads or presents.
         let requested_present = self.bindings.contains_key(&requested);
         if !requested_present {
             tracing::debug!(
@@ -200,49 +357,206 @@ impl CmvsScene {
             // remaining layers; the native present of a null surface skips
             // the layer instead of failing the frame.
         }
-        let geometry = stage_geometry(
+        let mut geometry = stage_geometry_with(
             vm,
-            self.bindings.keys().copied(),
+            vm.texture_parents.keys().copied().flat_map(|parent| {
+                std::iter::once(CmvsTextureSlot::Parent(parent)).chain(
+                    vm.texture_children
+                        .get(&parent)
+                        .into_iter()
+                        .flat_map(move |children| {
+                            children.keys().map(move |child| CmvsTextureSlot::Child {
+                                parent,
+                                child: *child,
+                            })
+                        }),
+                )
+            }),
             requested,
-            requested_present,
+            requested_present && requested.scene_worker().is_none(),
             &mut self.slot_geometry,
+            slot_state,
         )?;
-        // The native stage presents one surface: the requested parent and
-        // its children. Slots from other families keep their bindings and
-        // cached placements but stay out of this frame; drawing them would
-        // let a torn-down menu cover the story background.
-        let requested_parent = match requested {
-            CmvsTextureSlot::Parent(parent) => parent,
-            CmvsTextureSlot::Child { parent, .. } => parent,
-        };
-        let geometry: Vec<_> = geometry
-            .into_iter()
-            .filter(|(slot, _, _)| match slot {
-                CmvsTextureSlot::Parent(parent) => *parent == requested_parent,
-                CmvsTextureSlot::Child { parent, .. } => *parent == requested_parent,
-            })
-            .collect();
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            tracing::trace!(
-                event = "cmvs.session.render_family",
-                requested = ?requested,
-                requested_present,
-                layers = geometry.len()
-            );
-        }
+        tracing::info!(
+            event = "cmvs.session.render_family",
+            requested = ?requested,
+            requested_present,
+            layers = geometry.len(),
+        );
         let (stage_width, stage_height) = stage;
+        self.synchronize_image_reloads(vm);
         let mut commands = Vec::with_capacity(geometry.len());
-        for (slot, source, _) in geometry {
-            let uri = &self.bindings[&slot];
-            let frame = match self.textures.get(uri) {
+        let mut transition_commands = Vec::new();
+        let mut transition_insert_at = None;
+        let plane_counts = self.prepare_plane_particles(vm, archive, &mut commands)?;
+        let mut remaining_records = 8192_usize.saturating_sub(geometry.len());
+        let mut mesh_budgets = [0; 4];
+        let mut plane_budgets = [0; 4];
+        for slot in 0..4 {
+            let Some(worker) = vm.native_scene_workers.get(&(slot as u8)) else {
+                continue;
+            };
+            if let Some(image) = worker.image_shards() {
+                let start = geometry.len();
+                append_stage_geometry_with(
+                    vm,
+                    image_owner::scene_slots(slot as u8, image),
+                    (requested, false),
+                    &mut self.slot_geometry,
+                    slot_state,
+                    start + remaining_records,
+                    &mut geometry,
+                )?;
+                remaining_records -= geometry.len() - start;
+            } else {
+                mesh_budgets[slot] = worker.mesh_queue_count().min(remaining_records);
+                remaining_records -= mesh_budgets[slot];
+                plane_budgets[slot] = plane_counts[slot].min(remaining_records);
+                remaining_records -= plane_budgets[slot];
+            }
+        }
+        // Owner updates and GPU resource lifetimes run even after the shared
+        // 4473C0 record pool fills. Only draw admission consumes this counter.
+        let mut draw_groups = self
+            .text
+            .prepare_draw_groups(vm, stage_width, &mut self.textures)?;
+        draw_groups.admit(&mut remaining_records);
+        let mut channels = self.prepare_channel_draw_groups(vm, archive)?;
+        channels.admit(&mut remaining_records);
+        draw_groups.resources.append(&mut channels.resources);
+        draw_groups.groups.append(&mut channels.groups);
+        commands.append(&mut draw_groups.resources);
+        draw_groups.groups.sort_by_key(|group| group.position);
+        let presentation = vm.texture_presentation.as_ref();
+        geometry.sort_by_key(|(slot, _, _)| surface::native_queue_position(vm, *slot));
+        self.limit_plane_particles(vm, plane_budgets);
+        let mut plane_cursor = 0;
+        let mut snow_commands = self.native_mesh_commands(vm, archive, stage, mesh_budgets)?;
+        let mut images = geometry
+            .into_iter()
+            .map(|(slot, source, _)| {
+                (
+                    surface::native_queue_position(vm, slot),
+                    NativeQueuedDraw::Image(slot, source),
+                )
+            })
+            .peekable();
+        let mut groups = draw_groups
+            .groups
+            .into_iter()
+            .map(|group| (group.position, NativeQueuedDraw::Group(group)))
+            .peekable();
+        let queue = std::iter::from_fn(|| {
+            if images
+                .peek()
+                .is_some_and(|image| groups.peek().is_none_or(|group| image.0 <= group.0))
+            {
+                images.next()
+            } else {
+                groups.next()
+            }
+        });
+        for (position, item) in queue {
+            let queue_key = position.key();
+            if queue_key.0 >= 3 {
+                self.append_plane_particles_before(
+                    vm,
+                    &mut plane_cursor,
+                    Some((2, u32::MAX)),
+                    stage,
+                    &mut commands,
+                )?;
+                commands.append(&mut snow_commands);
+            }
+            self.append_plane_particles_before(
+                vm,
+                &mut plane_cursor,
+                Some(queue_key),
+                stage,
+                &mut commands,
+            )?;
+            let (slot, source) = match item {
+                NativeQueuedDraw::Image(slot, source) => (slot, source),
+                NativeQueuedDraw::Group(mut group) => {
+                    commands.append(&mut group.commands);
+                    continue;
+                }
+            };
+            let in_presentation =
+                presentation.is_some_and(|p| slot.root_slot() == CmvsTextureSlot::Parent(p.parent));
+            if slot.is_root()
+                && let Some(reload) = slot.reload(vm).filter(|reload| reload.busy())
+            {
+                let reloaded = self.reload_commands(vm, slot, reload, source, archive, stage)?;
+                if in_presentation {
+                    transition_insert_at.get_or_insert(commands.len());
+                    transition_commands.extend(reloaded);
+                } else {
+                    commands.extend(reloaded);
+                }
+                continue;
+            }
+            let opacity = surface::opacity(vm, slot);
+            let destination = surface::destination(vm, slot, source);
+            let uri = self.bindings.get(&slot).or_else(|| {
+                if slot.is_root() {
+                    None
+                } else {
+                    self.bindings.get(&slot.root_slot())
+                }
+            });
+            let Some(uri) = uri else {
+                if let Some(command) = surface::solid_color(vm, slot).and_then(|color| {
+                    let child = slot.child(vm);
+                    let root = slot.root(vm).expect("live drawable root");
+                    let opaque = child.as_deref().map_or(
+                        root.basic_kind == 0 && root.blend_mode == Some(0),
+                        |image| image.basic_kind == 0 && image.blend_mode == Some(0),
+                    );
+                    let solid_opacity = if opaque { 1.0 } else { opacity };
+                    surface::solid_command(slot, destination, color, solid_opacity, stage)
+                }) {
+                    let Some(geometry) = surface_geometry(vm, slot, stage.0, false)? else {
+                        continue;
+                    };
+                    if in_presentation {
+                        transition_insert_at.get_or_insert(commands.len());
+                        geometry.append(&mut transition_commands, command, None)?;
+                    } else {
+                        geometry.append(&mut commands, command, None)?;
+                    }
+                }
+                continue;
+            };
+            let Some(geometry) = surface_geometry(vm, slot, stage.0, true)? else {
+                continue;
+            };
+            let dynamic = self.dynamic_images.get(&slot).or_else(|| {
+                if !slot.is_root() && !self.bindings.contains_key(&slot) {
+                    self.dynamic_images.get(&slot.root_slot())
+                } else {
+                    None
+                }
+            });
+            let frame = match dynamic.cloned().or_else(|| self.textures.get(uri)) {
                 Some(frame) => frame,
                 None => {
-                    tracing::debug!(event = "cmvs.session.texture_lazy_decode", name = %uri);
-                    let image = archive.decode_pb_image(uri)?;
-                    let frame = TextureFrame {
-                        width: image.width(),
-                        height: image.height(),
-                        rgba8: image.into_raw().into(),
+                    tracing::debug!(event = "cmvs.session.texture_lazy_decode", slot = ?slot);
+                    let frame = if uri == crate::vm::texture_presentation::CLEAR_SURFACE_URI {
+                        TextureFrame {
+                            width: stage_width,
+                            height: stage_height,
+                            rgba8: [0, 0, 0, 255]
+                                .repeat(stage_width as usize * stage_height as usize)
+                                .into(),
+                        }
+                    } else {
+                        let image = archive.decode_pb_image(uri)?;
+                        TextureFrame {
+                            width: image.width(),
+                            height: image.height(),
+                            rgba8: image.into_raw().into(),
+                        }
                     };
                     self.textures
                         .insert(uri.clone(), frame.clone())
@@ -250,123 +564,197 @@ impl CmvsScene {
                     frame
                 }
             };
-            // The recovered CMVS stage draws every slot as a full-screen
-            // quad; the VM rect words select the texture's source crop
-            // (a [0, 0, 1, 1] rect on a 1x1 white texture is the full
-            // screen fade). Sample the source rect into a stage-sized
-            // frame so the quad maps one to one.
-            // CMVS parents are background layers: their sampled pixels
-            // ignore the source alpha so full-screen fades render as
-            // solid color quads.
-            let opaque = matches!(slot, CmvsTextureSlot::Parent(_));
-            let source_frame = sample_to_stage(&frame, source, stage_width, stage_height, opaque);
-            commands.push(SceneCommand::Texture {
-                id: slot_id(slot),
-                frame: source_frame,
-                destination: RectI {
-                    x: 0,
-                    y: 0,
-                    width: stage_width,
-                    height: stage_height,
+            let provider = if self.bindings.contains_key(&slot) {
+                slot
+            } else {
+                slot.root_slot()
+            };
+            let frame = if let Some(parameters) = provider
+                .root(vm)
+                .and_then(|image| provider.is_root().then_some(image.color_filter).flatten())
+            {
+                image_filter::frame(
+                    &mut self.textures,
+                    &mut self.filtered_images,
+                    provider,
+                    uri,
+                    parameters,
+                    frame,
+                )?
+            } else {
+                frame
+            };
+            let target = if in_presentation {
+                transition_insert_at.get_or_insert(commands.len());
+                &mut transition_commands
+            } else {
+                &mut commands
+            };
+            self.append_surface_image(vm, slot, frame, source, opacity, target, geometry)?;
+        }
+        self.append_plane_particles_before(
+            vm,
+            &mut plane_cursor,
+            Some((2, u32::MAX)),
+            stage,
+            &mut commands,
+        )?;
+        commands.append(&mut snow_commands);
+        self.append_plane_particles_before(vm, &mut plane_cursor, None, stage, &mut commands)?;
+        if let (Some(presentation), Some(index)) = (presentation, transition_insert_at) {
+            // Mask the composed parent and its children once, rather than
+            // independently fading overlapping child layers.
+            let mut family = self.draw(stage_width, stage_height, transition_commands)?;
+            self.mask_presentation_frame(&mut family, presentation, archive)?;
+            commands.insert(
+                index,
+                SceneCommand::Texture {
+                    id: format!("cmvs.presentation.{}", presentation.parent),
+                    frame: family,
+                    destination: RectI {
+                        x: 0,
+                        y: 0,
+                        width: stage_width,
+                        height: stage_height,
+                    },
+                    opacity: 1.0,
+                    blend: BlendMode::Alpha,
                 },
-                opacity: 1.0,
-                blend: BlendMode::Alpha,
-            });
+            );
         }
         if let Some(movie) = movie {
             // The native frame composes the movie after the channel layer
-            // and before the overlay passes; stage-fit keeps aspect.
-            commands.push(SceneCommand::Texture {
-                id: "cmvs.movie".into(),
-                frame: fit_to_stage(movie, stage_width, stage_height),
-                destination: RectI {
-                    x: 0,
-                    y: 0,
-                    width: stage_width,
-                    height: stage_height,
-                },
-                opacity: 1.0,
-                blend: BlendMode::Alpha,
-            });
+            // Native 412800 creates a decoded-size quad at the origin.
+            append_movie(&mut commands, vm, movie, stage_width)?;
         }
-        // Channel quads (menu items, window sprites) render as overlay
-        // rectangles: the quad's frame geometry gives (x, y, w, h) in the
-        // channel's local space plus the channel origin (re-report 5.2).
-        // The native surface rasterizes text/sprites into a pixel cache;
-        // without that cache the observable subset draws the geometry as a
-        // translucent white overlay so menu selection feedback is visible.
-        if let CmvsTextureSlot::Parent(parent) = requested {
-            if let Some(channel) = vm.effect_channels.get(&parent) {
-                let (origin_x, origin_y) = channel.origin();
-                for quad in 0..32u32 {
-                    if !channel.quad_visible(quad) {
-                        continue;
-                    }
-                    let frame = u32::from(channel.quad_frame(quad));
-                    let [x, y, w, h] = channel.quad_frame_geometry(quad, frame as u16);
-                    let (x, y, w, h) = (
-                        i32::from(x) + origin_x,
-                        i32::from(y) + origin_y,
-                        i32::from(w),
-                        i32::from(h),
-                    );
-                    if w <= 0 || h <= 0 || x + w <= 0 || y + h <= 0 {
-                        continue;
-                    }
-                    commands.push(SceneCommand::Texture {
-                        id: format!("cmvs.quad.{parent}.{quad}"),
-                        frame: white_stage_frame(stage_width, stage_height),
-                        destination: RectI {
-                            x: x.max(0),
-                            y: y.max(0),
-                            width: w.min(stage_width as i32 - x.max(0)).max(0) as u32,
-                            height: h.min(stage_height as i32 - y.max(0)).max(0) as u32,
-                        },
-                        opacity: 0.35,
-                        blend: BlendMode::Alpha,
-                    });
-                }
-            }
-        }
-        // The headless draw path cannot yet present the GPU text scene
-        // (`surface.present_scene` returns InvalidState), so the shaped
-        // dialogue stays observed through `cmvs.session.dialogue` until
-        // the text surface integration lands.
-        if let Ok(text_commands) = self.text.frame(vm) {
-            commands.extend(text_commands);
-        }
-        // Experiment: capture the glyph atlas InvalidState message.
-        self.draw(stage_width, stage_height, commands).map(Some)
+        self.draw_final(vm, stage_width, stage_height, commands)
+            .map(Some)
+    }
+
+    pub(crate) fn native_pointer(
+        &self,
+        vm: &CmvsPs2aVmState,
+        point: [f32; 2],
+    ) -> Result<[i32; 2], CoreError> {
+        let Some(viewport) = native_viewport::NativeViewport::from_vm(vm)? else {
+            return Ok(point.map(|value| value as i32));
+        };
+        let base = self.logical.unwrap_or(Extent2D::new(
+            vm.native_stage_size[0],
+            vm.native_stage_size[1],
+        ));
+        let raster = self.raster.unwrap_or(viewport.extent());
+        let host = StageCanvas::new(base, raster)?;
+        let native = StageCanvas::new(viewport.extent(), raster)?;
+        let apply = |transform: roukaku_media_core::Transform2D, [x, y]: [f32; 2]| {
+            [
+                transform.m11 * x + transform.m21 * y + transform.tx,
+                transform.m12 * x + transform.m22 * y + transform.ty,
+            ]
+        };
+        let raster_point = apply(host.logical_to_raster_transform(), point);
+        Ok(
+            viewport
+                .inverse_view_pointer(apply(native.raster_to_logical_transform(), raster_point)),
+        )
+    }
+
+    fn draw_final(
+        &mut self,
+        vm: &CmvsPs2aVmState,
+        width: u32,
+        height: u32,
+        commands: Vec<SceneCommand>,
+    ) -> Result<TextureFrame, CoreError> {
+        let viewport = native_viewport::NativeViewport::from_vm(vm)?;
+        self.draw_mapped(width, height, commands, viewport)
     }
 
     fn draw(
         &mut self,
         width: u32,
         height: u32,
+        commands: Vec<SceneCommand>,
+    ) -> Result<TextureFrame, CoreError> {
+        self.draw_mapped(width, height, commands, None)
+    }
+
+    fn draw_mapped(
+        &mut self,
+        width: u32,
+        height: u32,
         mut commands: Vec<SceneCommand>,
+        viewport: Option<native_viewport::NativeViewport>,
     ) -> Result<TextureFrame, CoreError> {
         let sequence = self
             .sequence
             .checked_add(1)
             .ok_or_else(|| error("SHINKI_EMU_CMVS_FRAME_SEQUENCE"))?;
         let logical = Extent2D::new(width, height);
-        let canvas = StageCanvas::new(logical, self.raster.unwrap_or(logical))?;
+        let output_extent = viewport.map_or(logical, |viewport| viewport.extent());
+        let canvas = StageCanvas::new(output_extent, self.raster.unwrap_or(output_extent))?;
         self.texture_residency
             .prepare(&mut commands)
             .map_err(|cause| {
                 CoreError::invalid("SHINKI_EMU_CMVS_TEXTURE_RESIDENCY", cause.to_string())
             })?;
-        let mut mapped = Vec::with_capacity(commands.len() + 4);
+        let mut mapped = Vec::with_capacity(commands.len() + self.reload_releases.len() + 8);
+        mapped.extend(
+            self.reload_releases
+                .drain(..)
+                .map(|resource_id| SceneCommand::ReleaseResource { resource_id }),
+        );
         mapped.push(SceneCommand::PushClip {
             rect: canvas.viewport_rect()?,
         });
-        mapped.push(SceneCommand::PushTransform {
-            transform: canvas.logical_to_raster_transform(),
+        let canvas_transform = canvas.logical_to_raster_transform();
+        let mut flat_camera = canvas_transform;
+        // Camera is applied AFTER the command-local transform stack.
+        mapped.push(SceneCommand::SetCamera {
+            transform: canvas_transform,
         });
-        mapped.extend(commands);
-        mapped.push(SceneCommand::PopTransform);
+        if let Some(viewport) = viewport {
+            mapped.push(SceneCommand::PushClip {
+                rect: viewport.clip_rect(),
+            });
+            let native = viewport.stage_to_view_transform();
+            let canvas = canvas_transform;
+            flat_camera = roukaku_media_core::Transform2D {
+                m11: canvas.m11 * native.m11 + canvas.m21 * native.m12,
+                m12: canvas.m12 * native.m11 + canvas.m22 * native.m12,
+                m21: canvas.m11 * native.m21 + canvas.m21 * native.m22,
+                m22: canvas.m12 * native.m21 + canvas.m22 * native.m22,
+                tx: canvas.m11 * native.tx + canvas.m21 * native.ty + canvas.tx,
+                ty: canvas.m12 * native.tx + canvas.m22 * native.ty + canvas.ty,
+            };
+            mapped.push(SceneCommand::SetCamera {
+                transform: flat_camera,
+            });
+        }
+        // Mesh projection already includes the D3D viewport origin and size;
+        // only flat 42C330 vertices receive the extra native origin/scale.
+        let mut projective_camera = false;
+        for command in commands {
+            let projective = matches!(command, SceneCommand::ProjectiveMesh2D { .. });
+            if projective != projective_camera {
+                mapped.push(SceneCommand::SetCamera {
+                    transform: if projective {
+                        canvas_transform
+                    } else {
+                        flat_camera
+                    },
+                });
+                projective_camera = projective;
+            }
+            mapped.push(command);
+        }
+        if viewport.is_some() {
+            mapped.push(SceneCommand::PopClip);
+        }
+        mapped.push(SceneCommand::SetCamera {
+            transform: roukaku_media_core::Transform2D::IDENTITY,
+        });
         mapped.push(SceneCommand::PopClip);
-        let command_count = mapped.len();
         let raster = canvas.raster();
         let output = self
             .renderer
@@ -383,25 +771,7 @@ impl CmvsScene {
                 error("SHINKI_EMU_CMVS_GPU_RENDER")
             })?;
         self.sequence = sequence;
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            let mean = if output.rgba8.is_empty() {
-                0.0
-            } else {
-                output
-                    .rgba8
-                    .iter()
-                    .map(|byte| u32::from(*byte))
-                    .sum::<u32>() as f64
-                    / output.rgba8.len() as f64
-            };
-            tracing::trace!(
-                event = "cmvs.session.draw_output",
-                commands = command_count,
-                width = raster.width,
-                height = raster.height,
-                byte_mean = mean
-            );
-        }
+        self.logical = Some(logical);
         self.canvas = Some(canvas);
         Ok(TextureFrame {
             width: raster.width,
@@ -411,95 +781,68 @@ impl CmvsScene {
     }
 }
 
+fn surface_geometry(
+    vm: &CmvsPs2aVmState,
+    slot: CmvsTextureSlot,
+    stage_width: u32,
+    textured: bool,
+) -> Result<Option<basic_geometry::BasicGeometry>, CoreError> {
+    let Some(geometry) = surface::geometry(vm, slot, stage_width, textured) else {
+        return Ok(None);
+    };
+    let root = slot.root(vm).expect("drawable image has a live root");
+    //4454D0 reads the parent CImage header for every child, even detached ones.
+    let offset = if root.screen_shake_disabled {
+        [0.0; 2]
+    } else {
+        crate::vm::screen_shake::logical_offset(vm, stage_width, 0)?
+    };
+    Ok(Some(geometry.with_offset(offset)))
+}
+
 type SlotState = (bool, Option<[u32; 4]>, Option<[u32; 2]>, Option<u32>);
 fn slot_state(vm: &CmvsPs2aVmState, slot: CmvsTextureSlot) -> Option<SlotState> {
-    let live = match slot {
-        CmvsTextureSlot::Parent(parent) => vm.texture_parents.get(&parent).map(|s| {
+    if slot.is_root() {
+        slot.root(vm).map(|s| {
             (
-                s.surface_initialized,
+                s.surface_initialized
+                    && !s.hidden
+                    && (!matches!(s.basic_kind, 2 | 3) || surface::root_queue_depth(vm, s) > 0.0),
                 s.rect_words,
                 s.position_words,
                 s.auxiliary_word,
             )
-        }),
-        CmvsTextureSlot::Child { parent, child } => {
-            vm.texture_children.get(&parent)?.get(&child).map(|s| {
-                (
-                    s.surface_initialized,
-                    s.rect_words,
-                    s.position_words,
-                    s.auxiliary_word,
-                )
-            })
-        }
-    };
-    live.or_else(|| {
-        let key = match slot {
-            CmvsTextureSlot::Parent(parent) => crate::cmvs_slot_placement_key_parent(parent),
-            CmvsTextureSlot::Child { parent, child } => {
-                crate::cmvs_slot_placement_key_child(parent, child)
-            }
-        };
-        vm.retained_slot_placements
-            .get(&key)
-            .map(|placement| -> SlotState {
-                (
-                    placement.surface_initialized,
-                    placement.rect_words,
-                    placement.position_words,
-                    placement.auxiliary_word,
-                )
-            })
-    })
-}
-fn sample_to_stage(
-    frame: &TextureFrame,
-    source: RectI,
-    stage_width: u32,
-    stage_height: u32,
-    opaque: bool,
-) -> TextureFrame {
-    let x = source.x.clamp(0, frame.width as i32) as u32;
-    let y = source.y.clamp(0, frame.height as i32) as u32;
-    let width = source.width.min(frame.width.saturating_sub(x)).max(1);
-    let height = source.height.min(frame.height.saturating_sub(y)).max(1);
-    let mut rgba8 = vec![0_u8; stage_width as usize * stage_height as usize * 4];
-    for row in 0..stage_height as usize {
-        let sy = y as usize + row * height as usize / stage_height as usize;
-        let dst = row * stage_width as usize * 4;
-        let src_row = &frame.rgba8[sy * frame.width as usize * 4..];
-        for column in 0..stage_width as usize {
-            let sx = x as usize + column * width as usize / stage_width as usize;
-            let src = &src_row[sx * 4..sx * 4 + 4];
-            let dst_range = dst + column * 4..dst + column * 4 + 4;
-            if opaque && src[3] == 0 {
-                // Keep the fade color: transparent fade pixels still
-                // belong to the overlay quad in the original renderer.
-                rgba8[dst_range].copy_from_slice(&[src[0], src[1], src[2], 255]);
-            } else {
-                rgba8[dst_range].copy_from_slice(src);
-            }
-        }
-    }
-    TextureFrame {
-        width: stage_width,
-        height: stage_height,
-        rgba8: rgba8.into(),
+        })
+    } else {
+        let root = slot.root(vm)?;
+        slot.child(vm).map(|s| {
+            let matching_indexed_kind =
+                slot.original_child().is_none() || s.basic_kind == root.basic_kind;
+            let nonnegative_order =
+                !matches!(s.basic_kind, 0 | 1 | 5) || s.auxiliary_word.unwrap_or(0) as i32 >= 0;
+            (
+                s.surface_initialized
+                    && !s.hidden
+                    && !root.hidden
+                    && matching_indexed_kind
+                    && nonnegative_order,
+                s.rect_words,
+                s.position_words,
+                s.auxiliary_word,
+            )
+        })
     }
 }
 fn slot_id(slot: CmvsTextureSlot) -> String {
     match slot {
         CmvsTextureSlot::Parent(p) => format!("cmvs.texture.parent.{p}"),
         CmvsTextureSlot::Child { parent, child } => format!("cmvs.texture.child.{parent}.{child}"),
+        CmvsTextureSlot::SceneRoot(slot) => format!("cmvs.texture.scene.{slot}"),
+        CmvsTextureSlot::SceneChild { slot, child } => format!("cmvs.texture.scene.{slot}.{child}"),
     }
 }
 
-/// A stage-sized translucent-white source frame for channel-quad overlays.
-fn white_stage_frame(width: u32, height: u32) -> TextureFrame {
-    let rgba8 = vec![255_u8; (width as usize) * (height as usize) * 4];
-    TextureFrame::from_vec(width, height, rgba8).expect("stage-sized white frame is always valid")
-}
-
+#[cfg(test)]
 fn stage_geometry(
     vm: &CmvsPs2aVmState,
     slots: impl Iterator<Item = CmvsTextureSlot>,
@@ -507,132 +850,143 @@ fn stage_geometry(
     requested_present: bool,
     geometry_cache: &mut BTreeMap<CmvsTextureSlot, (RectI, u32)>,
 ) -> Result<Vec<(CmvsTextureSlot, RectI, u32)>, CoreError> {
+    let mut geometry = stage_geometry_with(
+        vm,
+        slots,
+        requested,
+        requested_present,
+        geometry_cache,
+        slot_state,
+    )?;
+    geometry.sort_by_key(|(slot, _, _)| surface::native_queue_position(vm, *slot));
+    Ok(geometry)
+}
+
+fn stage_geometry_with(
+    vm: &CmvsPs2aVmState,
+    slots: impl Iterator<Item = CmvsTextureSlot>,
+    requested: CmvsTextureSlot,
+    requested_present: bool,
+    geometry_cache: &mut BTreeMap<CmvsTextureSlot, (RectI, u32)>,
+    state: impl Fn(&CmvsPs2aVmState, CmvsTextureSlot) -> Option<SlotState>,
+) -> Result<Vec<(CmvsTextureSlot, RectI, u32)>, CoreError> {
     let mut geometry = Vec::new();
+    append_stage_geometry_with(
+        vm,
+        slots,
+        (requested, requested_present),
+        geometry_cache,
+        state,
+        8192,
+        &mut geometry,
+    )?;
+    Ok(geometry)
+}
+
+fn append_stage_geometry_with(
+    vm: &CmvsPs2aVmState,
+    slots: impl Iterator<Item = CmvsTextureSlot>,
+    request: (CmvsTextureSlot, bool),
+    geometry_cache: &mut BTreeMap<CmvsTextureSlot, (RectI, u32)>,
+    state: impl Fn(&CmvsPs2aVmState, CmvsTextureSlot) -> Option<SlotState>,
+    limit: usize,
+    geometry: &mut Vec<(CmvsTextureSlot, RectI, u32)>,
+) -> Result<(), CoreError> {
+    let (requested, requested_present) = request;
+    let mut queue_full = false;
     let mut requested_degenerate = false;
     for slot in slots {
-        let placement = match (slot, slot_state(vm, slot)) {
-            (_, Some((true, Some(rect), Some(position), Some(z)))) => {
-                let bounds = [
-                    rect[0].checked_add(position[0]),
-                    rect[1].checked_add(position[1]),
-                    rect[2].checked_add(position[0]),
-                    rect[3].checked_add(position[1]),
-                ];
-                let [Some(x0), Some(y0), Some(x1), Some(y1)] = bounds else {
-                    return Err(error("SHINKI_EMU_CMVS_TEXTURE_GEOMETRY"));
-                };
-                if x1 <= x0 || y1 <= y0 || x1 > 16384 || y1 > 16384 || z > i32::MAX as u32 {
-                    if rect == [0, 0, 0, 0] && position == [0, 0] {
-                        // An all-zero rect is the native unset-rect marker:
-                        // the surface keeps its whole-texture default
-                        // placement (`sky01` presents slot 29 this way).
-                        let placement = (
-                            RectI {
-                                x: 0,
-                                y: 0,
-                                width: 16384,
-                                height: 16384,
-                            },
-                            z,
-                        );
-                        geometry_cache.insert(slot, placement);
-                        geometry.push((slot, placement.0, placement.1));
-                        continue;
-                    }
-                    if tracing::enabled!(tracing::Level::DEBUG) {
-                        tracing::debug!(
-                            event = "cmvs.session.geometry_degenerate",
-                            slot = ?slot,
-                            rect = ?rect,
-                            position = ?position,
-                            z
-                        );
-                    }
-                    // A degenerate quad rasterizes nothing natively; the
-                    // layer is skipped rather than failing the frame.
-                    if slot == requested {
-                        requested_degenerate = true;
-                    }
-                    continue;
+        if geometry.len() >= limit {
+            queue_full = true;
+            break;
+        }
+        if slot.original_child().is_some()
+            && matches!(state(vm, slot.root_slot()), Some((false, _, _, _)))
+        {
+            if slot == requested {
+                requested_degenerate = true;
+            }
+            continue;
+        }
+        let placement = match (slot, state(vm, slot)) {
+            (_, Some((false, _, _, _))) => {
+                if slot == requested {
+                    requested_degenerate = true;
                 }
+                continue;
+            }
+            (_, Some((true, rect, _pivot, z))) => {
+                let rect = rect.unwrap_or([0, 0, 0, 0]);
+                let x = rect[0] as i16 as i32;
+                let y = rect[1] as i16 as i32;
+                let width = rect[2] as i16;
+                let height = rect[3] as i16;
+                // Queue insertion depends on the live basic, not on its
+                // painted pixels or a nondegenerate source rectangle.
+                let [width, height] = [width.max(0) as u32, height.max(0) as u32];
                 let placement = (
                     RectI {
-                        x: x0 as i32,
-                        y: y0 as i32,
-                        width: x1 - x0,
-                        height: y1 - y0,
+                        x,
+                        y,
+                        width,
+                        height,
                     },
-                    z,
+                    match slot {
+                        CmvsTextureSlot::Child { parent, .. } => {
+                            state(vm, CmvsTextureSlot::Parent(parent))
+                                .and_then(|(_, _, _, order)| order)
+                                .unwrap_or(0)
+                                .wrapping_add(z.unwrap_or(0))
+                        }
+                        _ => z.unwrap_or(0),
+                    },
                 );
                 geometry_cache.insert(slot, placement);
                 placement
             }
-            // A parent surface without an explicit transform draws its
-            // whole texture across the stage at z 0: the native default
-            // surface state. Children stay hidden until configured.
-            (CmvsTextureSlot::Parent(_), Some((true, _, _, _))) => (
-                RectI {
-                    x: 0,
-                    y: 0,
-                    width: 16384,
-                    height: 16384,
-                },
-                0,
-            ),
-            // A destroyed slot object keeps its last placement: the native
-            // surface survives the collector with its transform intact.
-            _ => match geometry_cache.get(&slot) {
-                Some(placement) => *placement,
-                None => continue,
-            },
+            _ => continue,
         };
         geometry.push((slot, placement.0, placement.1));
     }
     if requested_present
+        && !queue_full
         && !requested_degenerate
         && !geometry.iter().any(|(slot, _, _)| *slot == requested)
     {
-        tracing::info!(
-            event = "cmvs.session.geometry_missing_detail",
-            requested = ?requested,
-            parents = vm.texture_parents.len(),
-            parent28 = ?vm.texture_parents.get(&28).map(|p| p.surface_initialized),
-            binding_count = geometry_cache.len(),
-            tick = vm.tick
-        );
         return Err(error("SHINKI_EMU_CMVS_TEXTURE_PRESENTATION_STATE"));
     }
-    geometry.sort_by_key(|(slot, _, z)| (*z, *slot));
-    Ok(geometry)
+    Ok(())
 }
 fn error(code: &'static str) -> CoreError {
     CoreError::invalid(code, "CMVS scene operation failed")
 }
 
-/// Letterbox-fits one decoded movie frame into the stage, preserving the
-/// aspect ratio with opaque black bars.
-fn fit_to_stage(frame: &TextureFrame, stage_width: u32, stage_height: u32) -> TextureFrame {
-    let mut rgba8 = vec![0_u8; stage_width as usize * stage_height as usize * 4];
-    let scale_x = f64::from(stage_width) / f64::from(frame.width.max(1));
-    let scale_y = f64::from(stage_height) / f64::from(frame.height.max(1));
-    let scale = scale_x.min(scale_y);
-    let out_w = ((f64::from(frame.width) * scale).round() as u32).clamp(1, stage_width);
-    let out_h = ((f64::from(frame.height) * scale).round() as u32).clamp(1, stage_height);
-    let off_x = (stage_width - out_w) / 2;
-    let off_y = (stage_height - out_h) / 2;
-    for row in 0..out_h {
-        let sy = (u64::from(row) * u64::from(frame.height) / u64::from(out_h)) as usize;
-        for column in 0..out_w {
-            let sx = (u64::from(column) * u64::from(frame.width) / u64::from(out_w)) as usize;
-            let src = (sy * frame.width as usize + sx) * 4;
-            let dst =
-                ((off_y + row) as usize * stage_width as usize + (off_x + column) as usize) * 4;
-            rgba8[dst..dst + 4].copy_from_slice(&frame.rgba8[src..src + 4]);
-        }
+fn append_movie(
+    commands: &mut Vec<SceneCommand>,
+    vm: &CmvsPs2aVmState,
+    frame: &TextureFrame,
+    stage_width: u32,
+) -> Result<(), CoreError> {
+    let [x, y] = crate::vm::screen_shake::logical_offset(vm, stage_width, 0)?;
+    let shifted = x != 0.0 || y != 0.0;
+    if shifted {
+        commands.push(SceneCommand::PushTransform {
+            transform: roukaku_media_core::Transform2D {
+                tx: x,
+                ty: y,
+                ..roukaku_media_core::Transform2D::IDENTITY
+            },
+        });
     }
-    TextureFrame {
-        width: stage_width,
-        height: stage_height,
-        rgba8: rgba8.into(),
+    commands.push(SceneCommand::Texture {
+        id: "cmvs.movie".into(),
+        frame: frame.clone(),
+        destination: RectI::new(0, 0, frame.width, frame.height),
+        opacity: 1.0,
+        blend: BlendMode::Alpha,
+    });
+    if shifted {
+        commands.push(SceneCommand::PopTransform);
     }
+    Ok(())
 }

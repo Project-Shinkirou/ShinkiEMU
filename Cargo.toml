@@ -5,6 +5,7 @@ members = [
     "Source/Tools/shinki-emu-build",
     "Source/SDK/shinki-emu-sdk",
     "Source/FamilyApi/shinki-emu-abi",
+    "Source/Families/shinki-emu-cmvs",
     "Source/Families/shinki-emu-musica",
     "Source/Families/shinki-emu-musica-keys",
     "Source/Programs/shinki-emu-musica-cli",
@@ -17,7 +18,6 @@ members = [
     "Source/Manager/shinki-emu-manager",
 ]
 exclude = [
-    "Source/Families/shinki-emu-cmvs",
     "ThirdParty/art3m1s-core",
     "ThirdParty/rfvp",
     "ThirdParty/siglus_rs",
@@ -190,6 +190,18 @@ roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
+
+# Local RoukakuEngine feat/cmvs-render worktree; replace with the pushed rev before merge.
+[patch."https://github.com/Project-Shinkirou/RoukakuEngine"]
+roukaku-byte-source = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-byte-source" }
+roukaku-core = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-core" }
+roukaku-media = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-media" }
+roukaku-media-core = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-media-core" }
+roukaku-observability = { path = "../rk-cmvs-render/Engine/Source/Developer/roukaku-observability" }
+roukaku-platform = { path = "../rk-cmvs-render/Engine/Source/Platform/roukaku-platform" }
+roukaku-platform-common = { path = "../rk-cmvs-render/Engine/Source/Platform/roukaku-platform-common" }
+roukaku-subtitle = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-subtitle" }
+roukaku-text = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-text" }
 
 
 [patch.crates-io]

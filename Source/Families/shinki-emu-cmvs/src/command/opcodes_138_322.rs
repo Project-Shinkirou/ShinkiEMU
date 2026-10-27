@@ -403,14 +403,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47EA90` (case 320): builds a channel element on the
-        // playback record at the second stack word (0..=11) with the
-        // stack-top channel (0..=7); each bound raises its own mask into
-        // the pinned error word (channel 0x10000, index 0x1000). The four
-        // remaining words feed the engine element build. Returns 0x4018.
+        // `sub_47EA90` (case 320) rebuilds the channel and text owner in
+        // current-stage coordinates. Channel/index bounds raise separate
+        // masks; the remaining words supply position and size. Returns 0x4018.
         320 => (
             24,
-            CmvsPs2aCommandEffectKind::CreatePlaybackChannelElement {
+            CmvsPs2aCommandEffectKind::CreateStageEffectChannel {
                 max_channel: 7,
                 max_index: 11,
                 channel_error_mask: 0x0001_0000,
@@ -630,40 +628,22 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &MESSAGE_LAYOUT_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4898C0` bounds the top stack word to 3 and disposes
-        // the scene-layer worker at table dword 597 + layer (`sub_48CAB0`
-        // signals state 3 and joins the thread). Out-of-range layers raise
-        // 0x400 at byte offset 10532. Returns 0x4004.
-        168 => (
+        //4898C0 disposes voice selector+5;4899D0 queries actual playback ms.
+        168 | 170 => (
             4,
-            CmvsPs2aCommandEffectKind::DisposeSceneLayerWorker {
-                table_dword_index: 597,
-                max_layer: 3,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x400,
-            },
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
             &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4899D0` (case 170) -> `sub_48C230`: bounded index
-        // query over the auxiliary slot objects (`this+592+(index+5)`);
-        // absent objects report -1. Returns 0x4004, out-of-range raises
-        // 0x400 at byte offset 10532.
-        170 => (
-            4,
-            CmvsPs2aCommandEffectKind::QueryAuxiliarySlotStatus {
-                result_field_offset: 81220,
-                error_mask: 0x400,
-            },
-            &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_48A0B0` (case 182) -> `sub_48C0E0`: arms the audio
-        // stream record (index+9) with the second word and clears the
-        // 52-byte name slot. Headless holds no stream objects, so the
-        // bounded no-op stands in. Returns 0x4008; indices above 5 raise
-        // 0x200 at byte offset 10532.
+        //48A0B0 starts fade-out and clears only the descriptor source name.
         182 => (
             8,
-            CmvsPs2aCommandEffectKind::RegisterAudioStreamNameSlot,
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
+            &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
+        //489F80 consumes slot/name/volume/fade-in-ms/loop/start;0x4018.
+        186 => (
+            24,
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -671,34 +651,28 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
-            ] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_489F80` (case 186): resolves the tagged stream
-        // name and plays it on the selected audio bank (volume scaled
-        // through the 0x618/0x620 pair); bank indices above 5 take the
-        // error path. Headless holds no audio stream objects, so the
-        // bounded no-op stands in. Returns 0x4008.
-        186 => (
-            24,
-            CmvsPs2aCommandEffectKind::PlayNamedAudioStream,
-            &[
-                // Only the bank word feeds the observable subset (the
-                // error gate). The remaining reads feed the volume chain
-                // inside the call; deep story call sites run this
-                // command on stacks shallower than the full six words,
-                // and the bounds-checked reads fail there, so the
-                // contract keeps the single safe word and the native
-                // 24-byte pop.
                 CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 4,
+                    offset_from_top_bytes: 12,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 16,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 20,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 24,
                     kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_486E90` (case 252) -> `sub_418D70`: sprintf(dest,
-        // format, int) with all three words resolved off the stack; the
+        // `sub_486E90` -> `sub_418D70`: native type-before-width formatting
+        // of (destination, format, word), not CRT printf.
         // formatted bytes land NUL-terminated in the destination storage.
         // Returns 0x400C (pop 12).
         252 => (
@@ -744,7 +718,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             &PAIRED_AUDIO_WORDS as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_48A110` registers one resource channel slot record
-        // (slot/name/enabled/loop/volume) in the fixed table at byte
+        // (slot/name/volume/loop/start) in the fixed table at byte
         // offset 1608 and returns 0x4014. Slots above 5 only raise the
         // error flag at byte offset 10532.
         176 => (
@@ -768,7 +742,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 12,
-                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 16,
@@ -776,47 +750,19 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 20,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-            ] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_48A230` rejects channels above five through the
-        // error-flag mask 0x200, otherwise writes `enabled != 0` at byte
-        // offset 1640 + 52*channel, one at 1656 + 52*channel, and forwards
-        // a notification only when the unrecovered gate field at byte
-        // offset 1556 is non-zero. Returns 0x4008.
-        177 => (
-            8,
-            CmvsPs2aCommandEffectKind::StoreChannelVisibilityRecord {
-                enabled_field_base_offset: 1640,
-                touched_field_base_offset: 1656,
-                record_stride_bytes: 52,
-                notify_gate_field_offset: 1556,
-            },
-            &[
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 4,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 8,
                     kind: CmvsPs2aCommandStackWordKind::BooleanU32,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_48A2B0` rejects channels above five through the
-        // error-flag mask 0x200; otherwise it resets the channel name
-        // buffer at 1608 + 52*channel to the interpreter prefix and zeroes
-        // the touched word at 1656 + 52*channel. Returns 0x4004.
+        //48A230 starts a retained decoder;48A2B0 joins/disposes it.
+        177 => (
+            8,
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
+            &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
         179 => (
             4,
-            CmvsPs2aCommandEffectKind::ResetChannelVisibilityRecord {
-                name_buffer_base_offset: 1608,
-                touched_field_base_offset: 1656,
-                record_stride_bytes: 52,
-                error_flag_mask: 0x200,
-                teardown_slot_table_offset: 2368,
-            },
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
             &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_480280` reads the input-manager object's persistent
@@ -841,12 +787,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &FOUR_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4800F0` builds a GDI region from the stack-provided
-        // shape (type, x1, y1, x2, y2, width, height) and tests the
-        // persistent pointer through `PtInRegion`, storing the boolean into
-        // the version-pinned result field. Only the rectangle type is
-        // recovered; the curved and polygon rasterization stays blocking.
-        // Returns 0x401C.
+        // `sub_4800F0`: 1=CreateRectRgnIndirect, 2=CreateEllipticRgnIndirect,
+        // 3=CreateRoundRectRgn(x1,y1,x2,y2,width,height), 4=CreatePolygonRgn
+        // with WINDING fill. For type 4, x1 indexes the process word array
+        // and y1 counts interleaved XY pairs (native local capacity 256).
+        // PtInRegion publishes 0/1 at 81220; unknown types and failed GDI
+        // creation publish zero. Returns 0x401C, popping all seven words.
         203 => (
             28,
             CmvsPs2aCommandEffectKind::HitTestPointerRegion {
@@ -990,14 +936,13 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_488EF0` (case 279): as case 276 but forwards the
-        // boolean to `sub_429850`, a graphics-subsystem global. Faults raise
-        // 0x1000. Returns 0x4008.
+        // `488EF0` validates the playback owner, then `429850` writes the
+        // renderer-global DWORD43, not a field of that playback record.
+        // Returns 0x4008.
         279 => (
             8,
-            CmvsPs2aCommandEffectKind::SetEffectPlaybackField {
+            CmvsPs2aCommandEffectKind::SetNativeViewSuppression {
                 error_mask: 0x0000_1000,
-                field_offset: 46,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -1006,7 +951,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
@@ -1061,16 +1006,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47CE30` (case 304) writes the message-window list
-        // length from the window manager at byte offset 3096 into the
-        // result field at 81220. The host owns message presentation, so the
-        // recovered native window list stays empty. Returns 0x4000.
+        // 47CE30/467E70 counts actual native message-history nodes.
         304 => (
             0,
-            CmvsPs2aCommandEffectKind::StoreInterpreterConstant {
-                field_offset: 81220,
-                value: 0x80,
-            },
+            CmvsPs2aCommandEffectKind::StoreListCountToResult { list_id: 304 },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_47F8D0` clears the resource slot named by the
@@ -1169,45 +1108,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_488DE0` resolves the speaker name against the
-        // twelve voice entries (`sub_463CC0`); the recovered subset
-        // publishes default zeros and the success flag. Out-of-range
-        // entries raise 0x1000 at byte offset 10532. Returns 0x4008.
-        285 => (
-            8,
-            CmvsPs2aCommandEffectKind::ResolveSpeakerEntry {
-                table_dword_index: 750,
-                max_index: 11,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x1000,
-                result_field_offset: 81220,
-                voice0_field_offset: 81224,
-                voice1_field_offset: 81228,
-                voice2_field_offset: 81236,
-            },
-            &[
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 4,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
-                },
-            ] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_47E910`: plays the named sound through an occupied
-        // channel (`sub_466DD0`) and waits (`0xA000` while playing,
-        // `0xC00C` on completion). The completion return's low byte is 12, so
-        // the handler pops all three operands it reads at offsets 4/8/12. A
-        // dead channel raises 0x10000 and still ends the frame.
+        // `sub_47E910` / `sub_466DD0`: channel, read-flag id, text.
+        // Pending glyphs return 0xA000 without popping; completion is 0xC00C.
         338 => (
             12,
-            CmvsPs2aCommandEffectKind::PlayChannelSoundAndComplete {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
-            },
+            CmvsPs2aCommandEffectKind::DisplayChannelText,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -1223,24 +1128,17 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 310 (`sub_47CFA0`): ten-word movie playback configuration
-        // (`sub_468130`). No video engine in the recovered subset.
-        // Returns 0x4028.
+        // 47CFA0 owns four resolved strings and six words in the history list.
         310 => (
             40,
-            CmvsPs2aCommandEffectKind::ConfigureMoviePlayback,
+            CmvsPs2aCommandEffectKind::AppendNativeMessageHistory,
             &TEN_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47F6E0` polls the channel effect wait (`0xA000`
-        // while playing, `0x400C` on completion). The headless effect
-        // graph completes instantly. Dead channels raise 0x10000.
+        // `47F6E0`: channel, read flag, voice id. Pending 0xA000 keeps all
+        // operands; completion 0x400C pops twelve bytes and continues.
         339 => (
             12,
-            CmvsPs2aCommandEffectKind::WaitEffectChannelComplete {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
-            },
+            CmvsPs2aCommandEffectKind::WaitChannelAdvance,
             &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_489D20` (case 181): a six-iteration engine loop
@@ -1269,13 +1167,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::BooleanU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler (case 303, on the object at this+0xC18): walks the
-        // linked list at +4, frees each node's resource word (+0x64) and
-        // the nodes themselves, then clears +4. Pure engine teardown: no
-        // stack operands and no interpreter-visible words. Returns 0x4000.
+        // 467E20 frees history nodes, retaining the configured capacity.
         303 => (
             0,
-            CmvsPs2aCommandEffectKind::NoOpCommand,
+            CmvsPs2aCommandEffectKind::ClearNativeMessageHistory,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
         _ => return None,

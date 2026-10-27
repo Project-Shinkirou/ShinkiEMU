@@ -7,18 +7,6 @@ pub(super) fn execute(
 ) -> Result<Option<CmvsPs2aVmAction>, CoreError> {
     match (effect_kind, values) {
         (
-            CmvsPs2aCommandEffectKind::StoreSettingBooleanPlain {
-                setting_field_offset,
-            },
-            [(CmvsPs2aCommandStackWordKind::BooleanU32, value)],
-        ) => {
-            // No reset preamble: `sub_4164F0` only writes the field.
-            state
-                .settings_words
-                .insert(setting_field_offset, u32::from(*value != 0));
-            Ok(None)
-        }
-        (
             CmvsPs2aCommandEffectKind::StoreSystemSettingBoolean {
                 setting_field_offset,
             },
@@ -42,7 +30,7 @@ pub(super) fn execute(
                 .get(&settings_field_offset)
                 .copied()
                 .unwrap_or(0);
-            state.interpreter_words.insert(target_field_offset, value);
+            state.write_interpreter_word(target_field_offset, value);
             Ok(None)
         }
         (
@@ -72,9 +60,7 @@ pub(super) fn execute(
             } else {
                 0
             };
-            state
-                .interpreter_words
-                .insert(target_field_offset, u32::from(value != 0));
+            state.write_interpreter_word(target_field_offset, u32::from(value != 0));
             Ok(None)
         }
         (
@@ -108,12 +94,8 @@ pub(super) fn execute(
                 .get(&result_field_offset)
                 .copied()
                 .unwrap_or(0);
-            state
-                .interpreter_words
-                .insert(result_target_field_offset, result);
-            state
-                .interpreter_words
-                .insert(flag_target_field_offset, u32::from(second != 0));
+            state.write_interpreter_word(result_target_field_offset, result);
+            state.write_interpreter_word(flag_target_field_offset, u32::from(second != 0));
             Ok(None)
         }
         (
@@ -140,20 +122,8 @@ pub(super) fn execute(
                 .get(&settings_field_offset)
                 .copied()
                 .unwrap_or(0);
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.pred866",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    top = *value,
-                    field,
-                    tick = state.tick
-                );
-            }
             let result = *value == 1 && (field as i32) >= 0;
-            state
-                .interpreter_words
-                .insert(target_field_offset, u32::from(result));
+            state.write_interpreter_word(target_field_offset, u32::from(result));
             Ok(None)
         }
         (
@@ -181,7 +151,7 @@ pub(super) fn execute(
                     .zip(copy_target_field_offsets.iter())
                 {
                     let value = state.settings_words.get(source).copied().unwrap_or(0);
-                    state.interpreter_words.insert(*target, value);
+                    state.write_interpreter_word(*target, value);
                 }
             }
             let always_value = state
@@ -189,12 +159,8 @@ pub(super) fn execute(
                 .get(&always_source_field_offset)
                 .copied()
                 .unwrap_or(0);
-            state
-                .interpreter_words
-                .insert(always_target_field_offset, always_value);
-            state
-                .interpreter_words
-                .insert(gate_target_field_offset, u32::from(gate != 0));
+            state.write_interpreter_word(always_target_field_offset, always_value);
+            state.write_interpreter_word(gate_target_field_offset, u32::from(gate != 0));
             Ok(None)
         }
         (
@@ -203,7 +169,14 @@ pub(super) fn execute(
                 record_stride_bytes,
                 max_index,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, index), (CmvsPs2aCommandStackWordKind::BooleanU32, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, third), (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth), (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth), (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, index),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, third),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth),
+            ],
         ) => {
             // `sub_45B260` skips the write for indices at or above six.
             if *index <= u32::from(max_index) {
@@ -239,7 +212,10 @@ pub(super) fn execute(
                 first_field_offset,
                 second_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::BooleanU32, first), (CmvsPs2aCommandStackWordKind::BooleanU32, second)],
+            [
+                (CmvsPs2aCommandStackWordKind::BooleanU32, first),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, second),
+            ],
         ) => {
             reset_settings_object(state);
             state
@@ -275,28 +251,54 @@ pub(super) fn execute(
             Ok(None)
         }
         (
+            CmvsPs2aCommandEffectKind::NativeAudioGainSetting {
+                command_id: command_id @ 729..=733,
+            },
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, mode),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, value),
+            ],
+        ) => {
+            let field_offset = 1560 + u32::from(command_id - 729) * 4;
+            if *mode == 0 {
+                // 424B30 initializes game words 390..394 to full gain.
+                let gain = state
+                    .interpreter_words
+                    .get(&field_offset)
+                    .copied()
+                    .unwrap_or(256);
+                state.write_interpreter_word(81220, gain);
+                Ok(None)
+            } else {
+                let gain = (*value as i32).clamp(0, 256) as u32;
+                state.write_interpreter_word(field_offset, gain);
+                Ok(Some(CmvsPs2aVmAction::ApplyNativeAudioGainSetting {
+                    command_id,
+                }))
+            }
+        }
+        (
             CmvsPs2aCommandEffectKind::StoreSystemConfigBoolean {
                 config_field_offset,
                 skip_flag_field_offset,
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, key), (CmvsPs2aCommandStackWordKind::OpaqueU32, value)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, key),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, value),
+            ],
         ) => {
             // `sub_478EC0`: a non-zero key writes the config boolean;
             // a zero key reads the skip flag into the result word.
             if key != &0 {
-                state
-                    .interpreter_words
-                    .insert(config_field_offset, u32::from(value != &0));
+                state.write_interpreter_word(config_field_offset, u32::from(value != &0));
             } else {
                 let skip = state
                     .interpreter_words
                     .get(&skip_flag_field_offset)
                     .copied()
                     .unwrap_or_default();
-                state
-                    .interpreter_words
-                    .insert(result_field_offset, u32::from(skip != 0));
+                state.write_interpreter_word(result_field_offset, u32::from(skip != 0));
             }
             Ok(None)
         }

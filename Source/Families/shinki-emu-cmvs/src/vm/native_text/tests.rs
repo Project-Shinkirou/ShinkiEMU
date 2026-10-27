@@ -22,6 +22,8 @@ fn command(
 
 fn fixture() -> CmvsPs2aVmState {
     let mut state = CmvsPs2aVmState::new(0);
+    state.native_stage_size = [1280, 720];
+    state.native_render_size = [1280, 720];
     state.frame_string_values.insert(
         0,
         BTreeMap::from([(10, b"Example Font".to_vec()), (20, b"plain text".to_vec())]),
@@ -179,4 +181,111 @@ fn native_surface_translation_and_gradient_mode_are_independent_of_cursor() {
     assert_eq!(state.native_text[&7].position, [-10, 25]);
     assert_eq!(state.native_text[&7].cursor, [44, 60]);
     assert_eq!(state.native_text[&7].color_mode, 3);
+}
+
+#[test]
+fn native_bold_changes_only_future_uploaded_glyphs_and_survives_private_restore() {
+    let mut state = fixture();
+    command(&mut state, 256, &[0, 10, 196]).unwrap();
+    command(&mut state, 259, &[0, 0, 0, 1000, 100]).unwrap();
+    command(&mut state, 261, &[0, 27, 0, 0]).unwrap();
+    layout::append(state.native_text.get_mut(&0).unwrap(), "A", None, None).unwrap();
+    state.stamp_native_text_glyphs(0, 0, Ok).unwrap();
+    let first = state.native_text[&0].glyphs[0].clone();
+    assert!(!first.raster.bold);
+    assert_eq!(state.native_text[&0].style, 2);
+    command(&mut state, 280, &[0, 1]).unwrap();
+    let generation = state.native_font_owners[&762].raster.generation;
+    command(&mut state, 280, &[0, 7]).unwrap();
+    assert_eq!(state.native_font_owners[&762].raster.generation, generation);
+    layout::append(state.native_text.get_mut(&0).unwrap(), "A", None, None).unwrap();
+    state.stamp_native_text_glyphs(0, 1, Ok).unwrap();
+    assert_eq!(state.native_text[&0].glyphs[0], first);
+    assert!(state.native_text[&0].glyphs[1].raster.bold);
+    assert!(generation > first.raster.generation);
+    assert_eq!(state.native_text[&0].style, 2);
+    let mut restored: CmvsPs2aVmState =
+        postcard::from_bytes(&postcard::to_allocvec(&state).unwrap()).unwrap();
+    assert_eq!(restored.native_font_owners, state.native_font_owners);
+    assert_eq!(restored.native_text, state.native_text);
+    validate(&restored).unwrap();
+    // The host rebinds program pools after restoring private VM state.
+    seed_pool_bytes(&mut restored, 0, &[(10, b"Example Font")]);
+    let font_owner = restored.slot_objects[&(762 << 8)];
+    command(&mut restored, 257, &[0]).unwrap();
+    command(&mut restored, 256, &[0, 10, 196]).unwrap();
+    assert_eq!(restored.slot_objects[&(762 << 8)], font_owner);
+    assert!(restored.native_text[&0].bold);
+    assert_eq!(
+        restored.native_font_owners[&762].raster.generation,
+        generation
+    );
+}
+
+#[test]
+fn native_mode940_retains_cached_character_size_until_real_owner_invalidation() {
+    let mut state = fixture();
+    command(&mut state, 256, &[0, 10, 196]).unwrap();
+    let first = state.native_text_raster(0, 0x41, 27).unwrap();
+    assert!(!first.proportional);
+    command(&mut state, 940, &[1]).unwrap();
+    assert_eq!(state.native_text_raster(0, 0x41, 27).unwrap(), first);
+    assert!(state.native_text_raster(0, 0x42, 27).unwrap().proportional);
+    assert!(state.native_text_raster(0, 0x41, 28).unwrap().proportional);
+    command(&mut state, 761, &[1, 1]).unwrap();
+    let alternate = state.native_text_raster(0, 0x41, 27).unwrap();
+    assert!(alternate.proportional && alternate.alternate_coverage);
+    assert!(alternate.generation > first.generation);
+    command(&mut state, 761, &[1, 1]).unwrap();
+    assert_eq!(state.native_text_raster(0, 0x41, 27).unwrap(), alternate);
+    command(&mut state, 761, &[0, 0]).unwrap();
+    assert_eq!(state.read_interpreter_word(81220).unwrap(), 1);
+}
+
+#[test]
+fn standalone_glyph_font_owner_is_bound_by_real_constructor_and_persists_after_destroy() {
+    let mut state = fixture();
+    state.native_stage_size = [1280, 720];
+    state.native_render_size = [1280, 720];
+    command(&mut state, 896, &[7, 10, 27, 0]).unwrap();
+    let owner = state.slot_objects[&(783 << 8 | 7)];
+    assert_eq!(state.native_glyphs[&7].capacity_hint, 512);
+    command(&mut state, 916, &[7, 1]).unwrap();
+    assert!(state.native_glyphs[&7].bold);
+    assert!(state.native_font_owners[&(783 + 7)].raster.bold);
+    assert!(state.native_glyph_raster(7, 0x41, 27).unwrap().bold);
+    command(&mut state, 898, &[7]).unwrap();
+    assert!(!state.native_glyphs.contains_key(&7));
+    command(&mut state, 897, &[7, 10, 40, 196, 1280, 720]).unwrap();
+    assert_eq!(state.slot_objects[&(783 << 8 | 7)], owner);
+    assert!(state.native_glyphs[&7].bold);
+    command(&mut state, 916, &[8, 1]).unwrap();
+    assert_ne!(state.interpreter_flag_words[&10532] & 0x1000, 0);
+}
+
+#[test]
+fn default_family_exchange_preserves_existing_managers_and_uploaded_font_names() {
+    let mut state = fixture();
+    state.process_string_slots.insert(0, Vec::new());
+    command(&mut state, 256, &[0, 0x8000_0000, 196]).unwrap();
+    command(&mut state, 259, &[0, 0, 0, 1000, 100]).unwrap();
+    command(&mut state, 261, &[0, 27, 0, 0]).unwrap();
+    layout::append(state.native_text.get_mut(&0).unwrap(), "A", None, None).unwrap();
+    state.stamp_native_text_glyphs(0, 0, Ok).unwrap();
+    let first = state.native_text[&0].glyphs[0].clone();
+    command(&mut state, 734, &[1, 10]).unwrap();
+    assert_eq!(
+        state.native_font_owners[&762].family,
+        crate::archive::DEFAULT_NATIVE_FONT
+    );
+    assert_eq!(state.native_text[&0].glyphs[0], first);
+    command(&mut state, 734, &[0, 0x8000_0000]).unwrap();
+    assert_eq!(state.process_string_slots[&0], b"Example Font");
+    state.process_string_slots.insert(0, Vec::new());
+    command(&mut state, 262, &[0, 0x8000_0000]).unwrap();
+    assert_eq!(state.native_font_owners[&762].family, "Example Font");
+    layout::append(state.native_text.get_mut(&0).unwrap(), "A", None, None).unwrap();
+    state.stamp_native_text_glyphs(0, 1, Ok).unwrap();
+    assert_eq!(state.native_text[&0].glyphs[0].font, first.font);
+    assert_eq!(state.native_text[&0].glyphs[1].font, "Example Font");
 }

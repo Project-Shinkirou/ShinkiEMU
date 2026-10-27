@@ -16,127 +16,11 @@ const CPZ5_HEADER_BYTES: usize = 0x40;
 const CPZ7_HEADER_BYTES: usize = 0x48;
 const MAX_INDEX_BYTES: u64 = 512 * 1024 * 1024;
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CpzArchiveKey {
-    pub index_dir: u32,
-    pub index_entry: u32,
-    pub entry_data_1: u32,
-    pub entry_data_2: u32,
-}
-
-#[allow(dead_code)]
-pub(crate) fn derive_archive_key(
-    start: &[u8],
-    archive_file_name: &str,
-) -> Result<CpzArchiveKey, CoreError> {
-    let table_count = le_u32(start, 0x10)? as usize;
-    let bytecode_size = le_u32(start, 0x14)? as usize;
-    let string_size = le_u32(start, 0x1c)? as usize;
-    let bytecode_start = 0x30usize
-        .checked_add(table_count.checked_mul(4).ok_or_else(|| {
-            invalid(
-                "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                "PS2A name table overflowed",
-            )
-        })?)
-        .ok_or_else(|| {
-            invalid(
-                "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                "PS2A bytecode offset overflowed",
-            )
-        })?;
-    let strings_start = bytecode_start.checked_add(bytecode_size).ok_or_else(|| {
-        invalid(
-            "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-            "PS2A strings offset overflowed",
-        )
-    })?;
-    let strings_end = strings_start
-        .checked_add(string_size)
-        .filter(|end| *end <= start.len())
-        .ok_or_else(|| {
-            invalid(
-                "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                "PS2A strings are outside decoded script",
-            )
-        })?;
-    let mut cursor = strings_start;
-    let mut archive_id = None;
-    while cursor < strings_end {
-        let end = start[cursor..strings_end]
-            .iter()
-            .position(|byte| *byte == 0)
-            .map(|size| cursor + size)
-            .unwrap_or(strings_end);
-        if end > cursor {
-            let (name, _, malformed) = SHIFT_JIS.decode(&start[cursor..end]);
-            if malformed {
-                return Err(invalid(
-                    "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                    "PS2A archive string is not CP932",
-                ));
-            }
-            if name.eq_ignore_ascii_case(archive_file_name) {
-                archive_id = Some(u32::try_from(cursor - strings_start).map_err(|_| {
-                    invalid(
-                        "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                        "PS2A archive string id exceeds u32",
-                    )
-                })?);
-                break;
-            }
-        }
-        cursor = end.saturating_add(1);
-    }
-    let archive_id = archive_id
-        .ok_or_else(|| {
-            invalid(
-                "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-                "PS2A does not reference the CPZ archive",
-            )
-        })?
-        .to_le_bytes();
-    for position in bytecode_start
-        ..bytecode_start
-            .saturating_add(bytecode_size)
-            .min(start.len())
-    {
-        if position < 0x30
-            || position + 4 > start.len()
-            || start[position..position + 4] != archive_id
-        {
-            continue;
-        }
-        if position < 0x30 || start.get(position - 0x33..position - 0x30) != Some(&[2, 0, 1]) {
-            continue;
-        }
-        return Ok(CpzArchiveKey {
-            index_dir: le_u32(start, position - 0x0c)?,
-            index_entry: le_u32(start, position - 0x18)?,
-            entry_data_1: le_u32(start, position - 0x24)?,
-            entry_data_2: le_u32(start, position - 0x30)?,
-        });
-    }
-    Err(invalid(
-        "SHINKI_EMU_CMVS_CPZ_ARCHIVE_KEY",
-        "PS2A archive key bytecode pattern is missing",
-    ))
-}
-
-pub fn validate_archive_key(start: &[u8], archive_file_name: &str) -> Result<(), CoreError> {
-    let header = crate::ps2a::parse_header_for_archive_key(start)?;
-    let decoded = crate::ps2a::decode_ps2a(start, header)?;
-    derive_archive_key(&decoded, archive_file_name).map(|_| ())
-}
-
-#[allow(dead_code)]
 pub(crate) struct Cpz5Decoder {
     table: [u8; 256],
     scheme: CmvsSchemeProfile,
 }
 
-#[allow(dead_code)]
 impl Cpz5Decoder {
     pub(crate) fn new(scheme: CmvsSchemeProfile, key: u32, summand: u32) -> Self {
         let mut decoder = Self {
@@ -214,7 +98,6 @@ impl Cpz5Decoder {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Cpz5Scheme {
     pub secret: [u32; 24],
@@ -391,7 +274,6 @@ fn read_u64(index: &[u8], offset: usize, _field: &'static str) -> Result<u64, Co
     Ok(u64::from_le_bytes(bytes))
 }
 
-#[allow(dead_code)]
 impl Cpz5Scheme {
     pub(crate) fn decrypt_index_stage_1(&self, data: &mut [u8], key: u32) {
         let secret = self.secret.map(|value| value.wrapping_sub(key));

@@ -73,10 +73,9 @@ impl CmvsArchive {
             | CmvsResourceSearchBank::CrossfadeAudio
             | CmvsResourceSearchBank::Native0d0c
             | CmvsResourceSearchBank::Native0d14
-            | CmvsResourceSearchBank::Native0d00
             | CmvsResourceSearchBank::Native0d04
             | CmvsResourceSearchBank::Native0d18 => 4,
-            CmvsResourceSearchBank::Texture => 10,
+            CmvsResourceSearchBank::Texture | CmvsResourceSearchBank::Native0d00 => 10,
         };
         for (_, path) in paths.range(..search_count) {
             validate_search_path(path)?;
@@ -123,6 +122,13 @@ impl CmvsArchive {
             "SHINKI_EMU_CMVS_RESOURCE_NOT_FOUND",
             "native resource was not found in its configured search table",
         ))
+    }
+
+    pub(crate) fn resolve_native_file_resource(&self, name: &str) -> Result<String, CoreError> {
+        validate_search_path(name)?;
+        let uri = format!("{NATIVE_PREFIX}{}", name.replace('\\', "/"));
+        self.native_file(&uri)?.ok_or_else(path_error)?;
+        Ok(uri)
     }
 
     pub(super) fn native_file(&self, uri: &str) -> Result<Option<PathBuf>, CoreError> {

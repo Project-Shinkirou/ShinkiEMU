@@ -2,19 +2,23 @@ use super::*;
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
-        // Handler `sub_48A3A0` (case 183): publishes the slot-status
-        // word `sub_48C230(selector + 9)` for selectors 0-5 into sysreg0;
-        // above five raises 0x200. The headless table reads canonical
-        // zero. Returns 0x4004.
+        // 483970 -> 4469D0 -> 42E580: floating X/Y, resets Z to zero.
+        84 => (
+            16,
+            CmvsPs2aCommandEffectKind::ConfigureTextureFloatPosition,
+            &FOUR_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
+        // 4830C0 selects flat basic kinds 0, 1, or floating-position kind 5.
+        85 => (
+            12,
+            CmvsPs2aCommandEffectKind::ConfigureTextureBasicKind { command_id },
+            &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
+        //48A3A0→48C230: real resource-stream position or-1unlessplaying.
         183 => (
             4,
-            CmvsPs2aCommandEffectKind::ReadSlotStatusWord {
-                result_field_offset: 81220,
-            },
-            &[CmvsPs2aCommandStackWord {
-                offset_from_top_bytes: 4,
-                kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-            }] as &[CmvsPs2aCommandStackWord],
+            CmvsPs2aCommandEffectKind::NativeAudio { command_id },
+            &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
 
         // Handler `sub_480660` applies the second stack word to the
@@ -414,12 +418,23 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::BooleanU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_484B30` (case 108) -> `sub_4576F0`: stores the
-        // screen transition's mode/rates/flag into the render component;
-        // no interpreter state changes. Returns 0x4014.
+        // 472F10 routes these to 457910/4579F0/457620/457AC0/4577F0.
+        107 | 109 | 110 | 111 | 125 => {
+            let (bytes, words): (u8, &[CmvsPs2aCommandStackWord]) = match command_id {
+                107 => (16, &FOUR_OPAQUE_WORDS),
+                125 => (28, &SEVEN_OPAQUE_WORDS),
+                _ => (12, &THREE_OPAQUE_WORDS),
+            };
+            (
+                bytes,
+                CmvsPs2aCommandEffectKind::StartCameraTransition { command_id },
+                words,
+            )
+        }
+        // 484B30 -> 4576F0: mode, target XYZ and duration, top-first.
         108 => (
             20,
-            CmvsPs2aCommandEffectKind::StoreTransitionParams,
+            CmvsPs2aCommandEffectKind::StartCameraTransition { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -556,52 +571,19 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::BooleanU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4831E0` is the case-112 twin (the same container
-        // and child validation, a different engine-side effect id).
-        // Returns 0x400c.
-        113 => (
+        // 483260/4831E0/483360/4833E0/483460 forward raw float words.
+        // These are basic projection depth/height and X/Y/Z, not audio.
+        112..=116 => (
             12,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: 1023,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0x20,
-            },
-            &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handlers `sub_483360`/`sub_4833E0`/`sub_483460` (cases 114-116)
-        // are the case-112 twins: the same container (mask 0x10) and child
-        // bound (mask 0x20) validation with different engine-side effect
-        // ids. Returns 0x400c.
-        114..=116 => (
-            12,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: 1023,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0x20,
-            },
-            &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_483260` joins the case-72 child audio rebind
-        // family: container liveness (mask 0x10) and child bound (mask
-        // 0x20) at byte offset 10532. Returns 0x400c.
-        112 => (
-            12,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: 1023,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0x20,
+            CmvsPs2aCommandEffectKind::ConfigureTextureProjectionField {
+                field_index: match command_id {
+                    112 => 15,
+                    113 => 16,
+                    114 => 11,
+                    115 => 12,
+                    116 => 13,
+                    _ => unreachable!(),
+                },
             },
             &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),

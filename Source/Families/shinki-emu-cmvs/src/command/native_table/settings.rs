@@ -102,237 +102,7 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 0x10,
         },
     ],
-    // table_index 17 — case 41 (`sub_480900`): body fully omitted.
-    &[],
-    // table_index 18 — case 44 (`sub_480420`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(1),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 19 — case 45 (`sub_480510`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 20 — case 49 (`sub_483F70`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 21 — case 50 (`sub_483CD0`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 22 — case 53 (`sub_483B80`): same shape as case 50.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 23 — case 55 (`sub_483E00`): same shape as case 50.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 24 — case 57 (`sub_480790`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 25 — case 61 (`sub_483C40`).
-    &[
-        NativeMicroOp::Move {
-            dst: 5,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 4,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(1),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 3,
-        },
-        NativeMicroOp::Move {
-            dst: 5,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(5),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 26 — case 62 (`sub_484460`): same shape as case 61.
-    &[
-        NativeMicroOp::Move {
-            dst: 5,
-            src: NativeMicroSrc::Const(1),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 4,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(1),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 3,
-        },
-        NativeMicroOp::Move {
-            dst: 5,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(5),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 27 — case 65 (`sub_482F60`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 28 — case 78 (`sub_483030`).
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 3,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(1),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(1024),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x20,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(256),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // table_index 29 — case 79 (`sub_482FA0`).
+    // table_index 17 — case 79 (`sub_482FA0`), moved from the former tail.
     &[
         NativeMicroOp::Guard {
             lhs: NativeMicroSrc::Reg(0),
@@ -372,6 +142,173 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 0x10,
         },
     ],
+    // table_index 18 — case 45 (`sub_480510`).
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 19 — case 49 (`sub_483F70`).
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 20 — case 50 (`sub_483CD0`).
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 2,
+        },
+        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 21 — case 53 (`sub_483B80`): same shape as case 50.
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 2,
+        },
+        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 22 — case 55 (`sub_483E00`): same shape as case 50.
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 2,
+        },
+        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 23 — case 57 (`sub_480790`).
+    &[
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Lt,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 24 — case 61 (`sub_483C40`).
+    &[
+        NativeMicroOp::Move {
+            dst: 5,
+            src: NativeMicroSrc::Const(1),
+        },
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 4,
+        },
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(1),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(0),
+            taken_ops: 3,
+        },
+        NativeMicroOp::Move {
+            dst: 5,
+            src: NativeMicroSrc::Const(0),
+        },
+        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(5),
+            kind: NativeMicroCmpKind::Eq,
+            rhs: NativeMicroSrc::Const(0),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
+    // table_index 25 — case 62 (`sub_484460`): same shape as case 61.
+    &[
+        NativeMicroOp::Move {
+            dst: 5,
+            src: NativeMicroSrc::Const(1),
+        },
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(0),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(256),
+            taken_ops: 4,
+        },
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(1),
+            kind: NativeMicroCmpKind::Ge,
+            rhs: NativeMicroSrc::Const(0),
+            taken_ops: 3,
+        },
+        NativeMicroOp::Move {
+            dst: 5,
+            src: NativeMicroSrc::Const(0),
+        },
+        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
+        NativeMicroOp::Guard {
+            lhs: NativeMicroSrc::Reg(5),
+            kind: NativeMicroCmpKind::Eq,
+            rhs: NativeMicroSrc::Const(0),
+            taken_ops: 1,
+        },
+        NativeMicroOp::OrField {
+            byte_offset: 10532,
+            mask: 0x10,
+        },
+    ],
 ];
 
 const fn word(offset: u8, kind: CmvsPs2aCommandStackWordKind) -> CmvsPs2aCommandStackWord {
@@ -402,7 +339,6 @@ const SLOT_NAME_BOOL_BOOL: [CmvsPs2aCommandStackWord; 4] =
     [opaque(4), string(8), boolean(12), boolean(16)];
 const NAME_NAME_NAME_SELECTOR: [CmvsPs2aCommandStackWord; 4] =
     [string(4), string(8), string(12), opaque(16)];
-const SLOT_INDEX_SELECTOR: [CmvsPs2aCommandStackWord; 3] = [opaque(4), opaque(8), boolean(12)];
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
@@ -603,30 +539,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_480900` (case 41): passes the zero/non-zero top
-        // word to `sub_458B60` (engine-side setter with no
-        // interpreter-word writes — omitted). Returns 0x4004.
-        41 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 2,
-                table_index: 17,
-            },
-            &BOOLEAN_TOP as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_480420` (case 44): raises 0x10 when the slot word
-        // is at or above 256 or the index word is negative; the success
-        // path resolves `sub_444EF0` and calls `sub_445E40`
-        // (engine-side, omitted). Returns 0x4008. Omitted callees:
-        // sub_444EF0, sub_445E40.
-        44 => (
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 2,
-                table_index: 18,
-            },
-            &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
-        ),
         // Handler `sub_480510` (case 45): a slot word at or above 256
         // raises 0x10; the success path resolves `sub_444EF0` and calls
         // `sub_445E70` (engine-side, omitted). Occupancy read beyond the
@@ -636,7 +548,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 19,
+                table_index: 18,
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
         ),
@@ -650,7 +562,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 20,
+                table_index: 19,
             },
             &SLOT_TOP as &[CmvsPs2aCommandStackWord],
         ),
@@ -667,7 +579,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 21,
+                table_index: 20,
             },
             &SLOT_NAME as &[CmvsPs2aCommandStackWord],
         ),
@@ -679,7 +591,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 22,
+                table_index: 21,
             },
             &SLOT_NAME_BOOL_BOOL as &[CmvsPs2aCommandStackWord],
         ),
@@ -691,7 +603,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 23,
+                table_index: 22,
             },
             &SLOT_NAME_NAME as &[CmvsPs2aCommandStackWord],
         ),
@@ -704,7 +616,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 24,
+                table_index: 23,
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
         ),
@@ -718,7 +630,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 25,
+                table_index: 24,
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
         ),
@@ -731,36 +643,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 26,
+                table_index: 25,
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_482F60` (case 65): raises 0x10 unless the slot
-        // word is below 256 and bound; the success path calls
-        // `sub_4469A0` on the slot object (engine-side, omitted).
-        // Returns 0x4004. Omitted callee: sub_4469A0.
-        65 => (
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 2,
-                table_index: 27,
-            },
-            &SLOT_TOP as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_483030` (case 78): on a valid bound slot, an
-        // index word at or above 1024 raises the 0x20 mask and stops; a
-        // negative index addresses the slot object itself
-        // (`sub_444EF0`, engine-side, omitted) and the selector word
-        // picks `sub_446A50`/`sub_446A70` (both omitted). An invalid
-        // slot raises 0x10 without the 0x20 check. Returns 0x400C.
-        // Omitted callees: sub_444EF0, sub_446A50, sub_446A70.
-        78 => (
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 2,
-                table_index: 28,
-            },
-            &SLOT_INDEX_SELECTOR as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_482FA0` (case 79): on a valid bound slot, queries
         // the object graph (`sub_444EF0` for a non-negative index,
@@ -773,7 +658,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 2,
-                table_index: 29,
+                table_index: 17,
             },
             &SLOT_INDEX as &[CmvsPs2aCommandStackWord],
         ),

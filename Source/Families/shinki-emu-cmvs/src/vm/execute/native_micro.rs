@@ -21,15 +21,11 @@ pub(super) fn execute(
     let mut pc = 0usize;
     while pc < ops.len() {
         let op = ops[pc];
-        let val = |s: NativeMicroSrc, regs: &[u32; 8]| -> u32 {
+        let val = |s: NativeMicroSrc, regs: &[u32; 8]| -> Result<u32, CoreError> {
             match s {
-                NativeMicroSrc::Reg(i) => regs[(i as usize) & 7],
-                NativeMicroSrc::Field(off) => state
-                    .interpreter_words
-                    .get(&off)
-                    .copied()
-                    .unwrap_or_default(),
-                NativeMicroSrc::Const(v) => v,
+                NativeMicroSrc::Reg(i) => Ok(regs[(i as usize) & 7]),
+                NativeMicroSrc::Field(off) => state.read_interpreter_word(off),
+                NativeMicroSrc::Const(v) => Ok(v),
             }
         };
         match op {
@@ -37,26 +33,21 @@ pub(super) fn execute(
                 byte_offset,
                 src: s,
             } => {
-                let v = val(s, &regs);
-                state.interpreter_words.insert(byte_offset, v);
+                let v = val(s, &regs)?;
+                state.write_interpreter_word(byte_offset, v);
             }
             NativeMicroOp::OrField { byte_offset, mask } => {
-                let v = state
-                    .interpreter_words
-                    .get(&byte_offset)
-                    .copied()
-                    .unwrap_or_default()
-                    | mask;
-                state.interpreter_words.insert(byte_offset, v);
+                let v = state.read_interpreter_word(byte_offset)? | mask;
+                state.write_interpreter_word(byte_offset, v);
             }
             NativeMicroOp::SetResult(s) => {
-                let v = val(s, &regs);
-                state.interpreter_words.insert(RESULT_FIELD, v);
+                let v = val(s, &regs)?;
+                state.write_interpreter_word(RESULT_FIELD, v);
             }
-            NativeMicroOp::Move { dst, src: s } => regs[(dst as usize) & 7] = val(s, &regs),
+            NativeMicroOp::Move { dst, src: s } => regs[(dst as usize) & 7] = val(s, &regs)?,
             NativeMicroOp::BinOp { dst, src: s, kind } => {
                 let a = regs[(dst as usize) & 7];
-                let b = val(s, &regs);
+                let b = val(s, &regs)?;
                 regs[(dst as usize) & 7] = bin_op(kind, a, b);
             }
             NativeMicroOp::Guard {
@@ -65,7 +56,7 @@ pub(super) fn execute(
                 rhs,
                 taken_ops,
             } => {
-                let (l, r) = (val(lhs, &regs), val(rhs, &regs));
+                let (l, r) = (val(lhs, &regs)?, val(rhs, &regs)?);
                 if cmp_holds(kind, l, r) {
                     pc += usize::from(taken_ops);
                 }
@@ -115,8 +106,7 @@ fn cmp_holds(kind: crate::command::native_table::NativeMicroCmpKind, l: u32, r: 
 
 /// `sub_444EF0` on `this[481 + slot]`: the slot's sub-object exposes
 /// dword reads at `index + 1`; unbound slots read zero.  The context
-/// table base is dword 481 (byte 0x784), matching the slot-object key
-/// layout used by `CreateBoundedSlotObject`.
+/// table base is dword 481 (byte 0x784), matching the texture slot-object keys.
 fn context_read(state: &CmvsPs2aVmState, slot: u32, index: u32) -> u32 {
     if slot >= 0x100 || index >= 0x400 {
         return 0;

@@ -223,20 +223,6 @@ const W_1O2O3O4O5O6O: [CmvsPs2aCommandStackWord; 6] = [
         kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
     },
 ];
-const W_1T2O3O: [CmvsPs2aCommandStackWord; 3] = [
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 4,
-        kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 8,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 12,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-];
 const W_1T2O3O4O5O: [CmvsPs2aCommandStackWord; 5] = [
     CmvsPs2aCommandStackWord {
         offset_from_top_bytes: 4,
@@ -289,20 +275,6 @@ const W_1B: [CmvsPs2aCommandStackWord; 1] = [CmvsPs2aCommandStackWord {
     offset_from_top_bytes: 4,
     kind: CmvsPs2aCommandStackWordKind::BooleanU32,
 }];
-const W_1O2T3O: [CmvsPs2aCommandStackWord; 3] = [
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 4,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 8,
-        kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 12,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-];
 const W_1O2T3T: [CmvsPs2aCommandStackWord; 3] = [
     CmvsPs2aCommandStackWord {
         offset_from_top_bytes: 4,
@@ -369,28 +341,6 @@ const W_1B2B: [CmvsPs2aCommandStackWord; 2] = [
     CmvsPs2aCommandStackWord {
         offset_from_top_bytes: 8,
         kind: CmvsPs2aCommandStackWordKind::BooleanU32,
-    },
-];
-const W_1O2O3T5O6O: [CmvsPs2aCommandStackWord; 5] = [
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 4,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 8,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 12,
-        kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 20,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-    },
-    CmvsPs2aCommandStackWord {
-        offset_from_top_bytes: 24,
-        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
     },
 ];
 const W_1O2O3T4O5O: [CmvsPs2aCommandStackWord; 5] = [
@@ -612,11 +562,9 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         byte_offset: 10532,
         mask: 0x10000,
     }],
-    // case 395 (sub_47E5A0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 0x10000,
-    }],
+    // Case 711 (`sub_47A3D0`): channel-transition busy query; the
+    // unbound channel table takes the <= 0 path — result zero, 0x4008.
+    &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
     // case 407 (sub_47F590)
     &[NativeMicroOp::OrField {
         byte_offset: 10532,
@@ -1335,48 +1283,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         },
         NativeMicroOp::SetResult(NativeMicroSrc::Const(0xFFFFFFFF)),
     ],
-    // case 556 (sub_47AED0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3260),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0xFFFFFFFF)),
-    ],
-    // case 557 (sub_47AE00)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3260),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 3260,
-            src: NativeMicroSrc::Const(0),
-        },
-    ],
-    // case 558 (sub_47AA50)
-    &[
-        NativeMicroOp::SetField {
-            byte_offset: 3260,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(1)),
-        NativeMicroOp::SetField {
-            byte_offset: 3260,
-            src: NativeMicroSrc::Const(1),
-        },
-    ],
     // case 564 (sub_47A760)
     &[
         NativeMicroOp::SetField {
@@ -1421,66 +1327,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
     ],
     // case 572 (sub_489C40)
     &[],
-    // case 578 (sub_484610)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 512,
-        },
-    ],
-    // case 579 (sub_484580)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 3,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 81236,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 81240,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 512,
-        },
-    ],
-    // case 580 (sub_484660)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 512,
-        },
-    ],
     // case 583 (sub_47B2E0)
     &[
         NativeMicroOp::SetField {
@@ -1507,34 +1353,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             src: NativeMicroSrc::Const(1),
         },
     ],
-    // case 585 (sub_489F00)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(24),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 512,
-        },
-    ],
-    // case 586 (sub_489E80)
-    &[],
-    // case 587 (sub_489F40)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(24),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 512,
-        },
-    ],
     // case 591 (sub_489DC0)
     &[
         NativeMicroOp::Guard {
@@ -1548,16 +1366,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 512,
         },
     ],
-    // case 608 (sub_4852E0)
-    &[],
-    // case 609 (sub_485000)
-    &[],
-    // case 610 (sub_484FD0)
-    &[],
-    // case 611 (sub_485060)
-    &[],
-    // case 612 (sub_485030)
-    &[],
     // case 616 (sub_47BB80)
     &[],
     // case 617 (sub_47B670)
@@ -1571,34 +1379,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
     // case 621 (sub_47BA00)
     &[],
     // case 622 (sub_47B7A0)
-    &[],
-    // case 624 (sub_4851E0)
-    &[],
-    // case 626 (sub_4851B0)
-    &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
-    // case 627 (sub_485090)
-    &[],
-    // case 628 (sub_485160)
-    &[],
-    // case 629 (sub_4850F0)
-    &[],
-    // case 651 (sub_47C0D0)
-    &[],
-    // case 656 (sub_481940)
-    &[],
-    // case 657 (sub_481A30)
-    &[],
-    // case 658 (sub_480CA0)
-    &[],
-    // case 659 (sub_480D70)
-    &[],
-    // case 660 (sub_480E30)
-    &[],
-    // case 661 (sub_480BD0)
-    &[],
-    // case 662 (sub_480F00)
-    &[],
-    // case 663 (sub_480FD0)
     &[],
     // case 668 (sub_485E40)
     &[
@@ -1634,27 +1414,12 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             src: NativeMicroSrc::Const(1),
         },
     ],
-    // case 673 (sub_4812F0)
-    &[],
-    // case 674 (sub_481440)
-    &[],
-    // case 675 (sub_481820)
-    &[],
-    // case 676 (sub_4811A0)
-    &[],
-    // case 677 (sub_480930)
-    &[],
-    // case 678 (sub_4815E0)
-    &[],
-    // case 679 (sub_481700)
-    &[],
-    // case 681 (sub_4810A0)
-    &[],
-    // case 687 (sub_480B90)
-    &[],
     // case 712 (sub_478980)
     &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
-    // case 714 (sub_478950)
+    // Case 565 (`sub_47A990`): clears the result word, then the 3268
+    // gate (scene object absent headless) takes the 0x400C path — result
+    // zero, pop 12, continue. The live branch would wait on input via
+    // 0xC004; unreachable without a bound object. Returns 0x400C.
     &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
     // case 722 (sub_479990)
     &[
@@ -1723,16 +1488,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         },
         NativeMicroOp::SetResult(NativeMicroSrc::Field(1584)),
     ],
-    // case 748 (sub_479A10)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-    ],
     // case 752 (sub_479EB0)
     &[
         NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
@@ -1767,56 +1522,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             byte_offset: 1320,
             src: NativeMicroSrc::Const(0),
         },
-    ],
-    // case 781 (sub_47C980)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-    ],
-    // case 782 (sub_47C760)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-    ],
-    // case 783 (sub_47C430)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetField {
-            byte_offset: 81236,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0xFFFFFFFF)),
     ],
     // case 784 (sub_484160)
     &[
@@ -1981,99 +1686,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 16,
         },
     ],
-    // case 794 (sub_47C4B0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-    ],
-    // case 795 (sub_47C350)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-    ],
-    // case 796 (sub_47C9C0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-    ],
-    // case 797 (sub_47CA40)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-    ],
-    // case 798 (sub_47C3D0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::LtU,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000000,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(0)),
-    ],
     // case 800 (sub_483590)
     &[
         NativeMicroOp::Move {
@@ -2182,48 +1794,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         },
     ],
     // case 809 (sub_481E20)
-    &[
-        NativeMicroOp::Move {
-            dst: 3,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Call(NativeMicroMacro::ContextRead {
-            slot_reg: 0,
-            index_reg: 3,
-        }),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(7),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 16,
-        },
-    ],
-    // case 817 (sub_481BF0)
-    &[
-        NativeMicroOp::Move {
-            dst: 3,
-            src: NativeMicroSrc::Const(0),
-        },
-        NativeMicroOp::Call(NativeMicroMacro::ContextRead {
-            slot_reg: 0,
-            index_reg: 3,
-        }),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(7),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 16,
-        },
-    ],
-    // case 818 (sub_481B40)
     &[
         NativeMicroOp::Move {
             dst: 3,
@@ -2484,194 +2054,6 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         byte_offset: 10532,
         mask: 0x100000,
     }],
-    // case 896 (sub_487B30)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(8),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(1)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 4096,
-        },
-    ],
-    // case 897 (sub_487CD0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(8),
-            taken_ops: 2,
-        },
-        NativeMicroOp::SetResult(NativeMicroSrc::Const(1)),
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Eq,
-            rhs: NativeMicroSrc::Reg(0),
-            taken_ops: 2,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 4096,
-        },
-    ],
-    // case 898 (sub_4883B0)
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(8),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 4096,
-        },
-    ],
-    // case 899 (sub_488910)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 900 (sub_488190)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 901 (sub_487F00)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 902 (sub_487EC0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 903 (sub_488140)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 904 (sub_4880A0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 905 (sub_4880F0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 906 (sub_487AE0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 907 (sub_488320)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 908 (sub_4882D0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 909 (sub_487FF0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 910 (sub_487AA0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 911 (sub_488370)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 912 (sub_488240)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 913 (sub_4888B0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 914 (sub_488870)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 915 (sub_488830)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 918 (sub_487E70)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 919 (sub_487A40)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 920 (sub_4881F0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 922 (sub_4887E0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 923 (sub_4885B0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 924 (sub_488600)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 925 (sub_488770)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 926 (sub_4886B0)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 927 (sub_488650)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
-    // case 928 (sub_488730)
-    &[NativeMicroOp::OrField {
-        byte_offset: 10532,
-        mask: 4096,
-    }],
     // case 933 (sub_487400)
     &[],
     // case 935 (sub_487340)
@@ -2698,24 +2080,9 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
         byte_offset: 10532,
         mask: 4096,
     }],
-    // case 960 (sub_47BF80)
-    &[],
-    // case 962 (sub_47BFC0)
-    &[],
     // case 965 (sub_479030)
     &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
     // case 967 (sub_4790F0)
-    &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
-    // Case 565 (`sub_47A990`): clears the result word, then the 3268
-    // gate (scene object absent headless) takes the 0x400C path — result
-    // zero, pop 12, continue. The live branch would wait on input via
-    // 0xC004; unreachable without a bound object. Returns 0x400C.
-    &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
-    // Case 625 (`sub_485220`): same shape over the renderer object
-    // (sub_411C60/sub_458370 absent headless) — result zero, 0x400C.
-    &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
-    // Case 711 (`sub_47A3D0`): channel-transition busy query; the
-    // unbound channel table takes the <= 0 path — result zero, 0x4008.
     &[NativeMicroOp::SetResult(NativeMicroSrc::Const(0))],
 ];
 
@@ -2818,19 +2185,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 table_index: 7,
             },
             &W_1O2O3O4O5O[..],
-        )),
-        // Handler `sub_47E5A0` (case 395). Returns 0x4010.
-        // layer-object call guarded by the channel/layer gate (ch < 8 && this[742+ch] && sub_466AE0(layer)); sub_466AE0 reads the channel child object, which the
-        // recovered model never binds, so the else path raises mask 0x10000.
-        // Omitted callees: sub_466AE0, sub_445340 and the layer worker (see
-        // the decompiled body).
-        395 => Some((
-            16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 8,
-            },
-            &W_1O2O3O4O[..],
         )),
         // Handler `sub_47F590` (case 407). Returns 0x4008.
         // quad-state query on the occupied channel (`ch < 8 && this[742+ch]` and
@@ -3303,45 +2657,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
-        // Handler `sub_47AED0` (case 556). Returns 0x4000.
-        // singleton query: publishes sub_4590C0 when the handle word at byte 3260 is
-        // live, else -1; the child-absent default is zero. Omitted callee:
-        // sub_4590C0.
-        556 => Some((
-            0,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 48,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Handler `sub_47AE00` (case 557). Returns 0x4000.
-        // destroys the singleton at byte 3260 when live: the handle word is
-        // nulled; the nested teardown (sub_4590A0/sub_443E70) and the dynamic this[481+sub]
-        // release are unmodelled. Omitted callees: sub_432F40, sub_432F10,
-        // sub_4A9B8F, sub_4590A0/sub_443E70.
-        557 => Some((
-            0,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 49,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Handler `sub_47AA50` (case 558). Returns 0x400C.
-        // rebuilds the 815-singleton: the prior handle is nulled, the result word
-        // takes 1, then the fresh constructor handle is stored as a non-zero
-        // marker (native stores the heap pointer). The this[481] master table
-        // write and the v12[297] failure path stay unmodelled. Omitted callees:
-        // sub_459540, sub_4590A0, sub_443E70, sub_443D90, sub_458F10.
-        558 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 50,
-            },
-            &W_1T2O3O[..],
-        )),
         // Handler `sub_47A760` (case 564). Returns 0x4014.
         // rebuilds the 817-singleton (sub_459570 constructor): prior handle
         // nulled, result 1, fresh handle marker stored; the v8[298] failure path
@@ -3350,7 +2665,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             20,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 51,
+                table_index: 48,
             },
             &W_1T2O3O4O5O[..],
         )),
@@ -3362,7 +2677,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 52,
+                table_index: 49,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -3375,7 +2690,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 53,
+                table_index: 50,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -3386,44 +2701,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 54,
+                table_index: 51,
             },
             &W_1O[..],
-        )),
-        // Handler `sub_484610` (case 578). Returns 0x4004.
-        // audio-device query: a non-zero operand raises mask 0x200; the zero path
-        // publishes sub_48C230(15) (child-absent zero). Omitted callee:
-        // sub_48C230.
-        578 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 55,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_484580` (case 579). Returns 0x4004.
-        // audio-device query: a non-zero operand raises mask 0x200; the zero path
-        // stores the sub_48C2A0(15) out-pair into dwords 20309/20310 as the
-        // child-absent zero default. Omitted callee: sub_48C2A0.
-        579 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 56,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_484660` (case 580). Returns 0x4008.
-        // audio-device store: a non-zero first operand raises mask 0x200; the
-        // zero path forwards the second word. Omitted callee: sub_48D700.
-        580 => Some((
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 57,
-            },
-            &W_1O2O[..],
         )),
         // Handler `sub_47B2E0` (case 583). Returns 0x4014.
         // rebuilds the 816-singleton: prior handle nulled, result 1; the fresh
@@ -3435,42 +2715,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             20,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 58,
+                table_index: 52,
             },
             &W_1O2O3O4O5O[..],
-        )),
-        // Handler `sub_489F00` (case 585). Returns 0x4004.
-        // audio-channel selector: an operand above 23 raises mask 0x200; the
-        // in-range path calls sub_48CC40, omitted.
-        585 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 59,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_489E80` (case 586). Returns 0x400C.
-        // three-word audio-channel mix: scales dwords 390/392 into the forwarded
-        // volume; no interpreter writes. Omitted callee: sub_48C9E0.
-        586 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 60,
-            },
-            &W_1O2O3O[..],
-        )),
-        // Handler `sub_489F40` (case 587). Returns 0x4004.
-        // audio-channel selector: an operand above 23 raises mask 0x200; the
-        // in-range path calls sub_48DB50, omitted.
-        587 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 61,
-            },
-            &W_1O[..],
         )),
         // Handler `sub_489DC0` (case 591). Returns 0x4004.
         // audio-channel selector: an operand above 23 raises mask 0x200; the
@@ -3479,57 +2726,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 62,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_4852E0` (case 608). Returns 0x400C.
-        // three-word screen-object call. Omitted callees: sub_411C60, sub_458AF0.
-        608 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 63,
-            },
-            &W_1O2O3O[..],
-        )),
-        // Handler `sub_485000` (case 609). Returns 0x4004.
-        // one-word screen-object call. Omitted callees: sub_411C60, sub_458AD0.
-        609 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 64,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_484FD0` (case 610). Returns 0x4004.
-        // one-word screen-object call. Omitted callees: sub_411C60, sub_458AB0.
-        610 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 65,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_485060` (case 611). Returns 0x4004.
-        // one-word screen-object call. Omitted callees: sub_411C60, sub_458B40.
-        611 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 66,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_485030` (case 612). Returns 0x4004.
-        // one-word screen-object call. Omitted callees: sub_411C60, sub_458B20.
-        612 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 67,
+                table_index: 53,
             },
             &W_1O[..],
         )),
@@ -3542,7 +2739,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 68,
+                table_index: 54,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3555,7 +2752,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 69,
+                table_index: 55,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3568,7 +2765,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 70,
+                table_index: 56,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3581,7 +2778,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 71,
+                table_index: 57,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3594,7 +2791,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 72,
+                table_index: 58,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3607,7 +2804,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 73,
+                table_index: 59,
             },
             &W_1O2T3O4O5O6O[..],
         )),
@@ -3620,185 +2817,27 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 74,
+                table_index: 60,
             },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_4851E0` (case 624). Returns 0x4004.
-        // boolean screen-object call. Omitted callees: sub_411C60, sub_458A10.
-        624 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 75,
-            },
-            &W_1B[..],
-        )),
-        // Handler `sub_4851B0` (case 626). Returns 0x4000.
-        // publishes the screen-object count (sub_458370, child-absent zero).
-        // Omitted callees: sub_411C60, sub_458370.
-        626 => Some((
-            0,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 76,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Handler `sub_485090` (case 627). Returns 0x4014.
-        // five-word screen-object call. Omitted callees: sub_411C60,
-        // sub_4588C0.
-        627 => Some((
-            20,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 77,
-            },
-            &W_1O2O3O4O5O[..],
-        )),
-        // Handler `sub_485160` (case 628). Returns 0x4010.
-        // four-word screen-object call. Omitted callees: sub_411C60,
-        // sub_4589B0.
-        628 => Some((
-            16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 78,
-            },
-            &W_1O2O3O4O[..],
-        )),
-        // Handler `sub_4850F0` (case 629). Returns 0x401C.
-        // seven-word screen-object call. Omitted callees: sub_411C60,
-        // sub_458930.
-        629 => Some((
-            28,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 79,
-            },
-            &W_1O2O3O4O5O6O7O[..],
-        )),
-        // Handler `sub_47C0D0` (case 651). Returns 0x400C.
-        // timeline registration with the resolved name. Omitted callee:
-        // sub_470D50, sub_4243F0.
-        651 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 80,
-            },
-            &W_1O2T3O[..],
-        )),
-        // Handler `sub_481940` (case 656). Returns 0x400C.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448D70 runs with two resolved names. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448D70.
+        // 481940 ->448D70: two-resource kind0x50 camera-following D3D scene,0x400C.
         656 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 81,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3T[..],
         )),
-        // Handler `sub_481A30` (case 657). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448E20 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448E20.
-        657 => Some((
+        // 481A30/480CA0 -> 448E20/4483E0: camera and multi-provider controllers.
+        657 | 658 | 659 | 660 | 661 | 663 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 82,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O[..],
         )),
-        // Handler `sub_480CA0` (case 658). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_4483E0 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_4483E0.
-        658 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 83,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_480D70` (case 659). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_4484A0 runs with no args. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_4484A0.
-        659 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 84,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_480E30` (case 660). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448550 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448550.
-        660 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 85,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_480BD0` (case 661). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448320 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448320.
-        661 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 86,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_480F00` (case 662). Returns 0x4008.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448600 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448600.
+        //480F00 pops8 but reads only the top slot. The other word is ignored.
+        //450360 leaves heap status/clock/pending uninitialized; consumers report it.
         662 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 87,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_480FD0` (case 663). Returns 0x4004.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_4486C0 runs with dwords 792/835. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_4486C0.
-        663 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 88,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O[..],
         )),
         // Handler `sub_485E40` (case 668). Returns 0x4004.
@@ -3807,7 +2846,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 89,
+                table_index: 61,
             },
             &W_1B[..],
         )),
@@ -3817,131 +2856,56 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 90,
+                table_index: 62,
             },
             &W_1B[..],
         )),
-        // Handler `sub_4812F0` (case 673). Returns 0x4020.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448C80 runs with a name and six words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448C80.
+        // 4812F0 -> 448C80: fixed 1024-slot kind1 emitter, configuration-only save.
         673 => Some((
             32,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 91,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O7O8O[..],
         )),
-        // Handler `sub_481440` (case 674). Returns 0x4020.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448ED0 runs with a name and six words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448ED0.
-        674 => Some((
-            32,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 92,
-            },
-            &W_1O2T3O4O5O6O7O8O[..],
-        )),
-        // Handler `sub_481820` (case 675). Returns 0x4018.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448AC0 runs with a name and four words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448AC0.
+        // 481820 -> 448AC0: kind3 unquantized downward planes, configuration-only save.
         675 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 93,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_4811A0` (case 676). Returns 0x4020.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448B90 runs with a name and six words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448B90.
+        // 4811A0 -> 448B90: kind4 fixed 2048-slot emitter, native configuration save.
         676 => Some((
             32,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 94,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O7O8O[..],
         )),
-        // Handler `sub_480930` (case 677). Returns 0x4020.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448840 runs with a name and six words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448840.
+        // 480930 -> 448840: kind5 directional atlas animation, independent clock domains.
         677 => Some((
             32,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 95,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O7O8O[..],
         )),
-        // Handler `sub_4815E0` (case 678). Returns 0x4018.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448920 runs with a name and four words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448920.
+        // 4815E0 -> 448920: kind6 XYZ collision particles, 0x4018.
         678 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 96,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_481700` (case 679). Returns 0x4018.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_4489F0 runs with a name and four words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_4489F0.
+        // 481700 -> 4489F0: kind7 plane particles with an independent flash clock, 0x4018.
         679 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 97,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_4810A0` (case 681). Returns 0x4018.
-        // r
-        // slot-table churn (free sub_447E30/sub_4A9B8F, ctor
-        // sub_447D90, store pointer) is outside the recovered slot-object
-        // model, and sub_448780 runs with a name and four words. No interpreter writes. Omitted
-        // callees: sub_447E30, sub_4A9B8F, sub_447D90, sub_448780.
+        // 4810A0 -> 448780: kind9 flat fixed-point particles, 0x4018.
         681 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 98,
-            },
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_480B90` (case 687). Returns 0x4010.
-        // three-word filter call gated on slot <= 3; the gate routes only to the
-        // omitted worker. Omitted callee: sub_448090.
+        // 480B90 ->448090 forwards three request words to the current worker.
         687 => Some((
             16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 99,
-            },
+            CmvsPs2aCommandEffectKind::RequestNativeSceneWorker,
             &W_1O2O3O4O[..],
         )),
         // Handler `sub_478980` (case 712). Returns 0x4000.
@@ -3951,18 +2915,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 100,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Handler `sub_478950` (case 714). Returns 0x4000.
-        // publishes the boolean/word state of the 480-object through sub_42AF50;
-        // child-absent default zero. Omitted callees: sub_432F10, sub_42AF50.
-        714 => Some((
-            0,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 101,
+                table_index: 63,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -3975,7 +2928,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 102,
+                table_index: 65,
             },
             &W_1B2O[..],
         )),
@@ -3988,7 +2941,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 103,
+                table_index: 66,
             },
             &W_1B2O[..],
         )),
@@ -4000,7 +2953,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 104,
+                table_index: 67,
             },
             &W_1B2B[..],
         )),
@@ -4013,22 +2966,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 105,
+                table_index: 68,
             },
             &W_1O2O[..],
-        )),
-        // Handler `sub_479A10` (case 748). Returns 0x4008.
-        // dual-mode control: a non-zero first operand drives the omitted setter;
-        // the zero path publishes the deep query boolean (sub_4292C0,
-        // child-absent zero). Omitted callees: sub_432F40, sub_429B20,
-        // sub_4292C0.
-        748 => Some((
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 106,
-            },
-            &W_1B2B[..],
         )),
         // Handler `sub_479EB0` (case 752). Returns 0x4000.
         // device state poll: the result word takes the boolean return and
@@ -4038,7 +2978,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 107,
+                table_index: 69,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4050,7 +2990,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 108,
+                table_index: 70,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4062,7 +3002,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 109,
+                table_index: 71,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4072,48 +3012,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 110,
+                table_index: 72,
             },
             &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Handler `sub_47C980` (case 781). Returns 0x4008.
-        // bounded-slot call: a slot above 2 raises mask 0x1000000; the occupied
-        // path runs the omitted worker. Occupancy lives in the slot-object map
-        // (unreachable here), so the unbound path falls through without the
-        // worker. Omitted callee: sub_442BE0.
-        781 => Some((
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 111,
-            },
-            &W_1O2O[..],
-        )),
-        // Handler `sub_47C760` (case 782). Returns 0x4018.
-        // bounded-slot creator: a slot above 2 raises mask 0x1000000; the create
-        // path rebuilds the dword-796 and dword-481 entries (slot-object churn
-        // outside the micro model). Omitted callees: sub_441E10, sub_443E70,
-        // sub_443D90, sub_441D90, sub_4430E0, sub_4A9B8F.
-        782 => Some((
-            24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 112,
-            },
-            &W_1O2O3T5O6O[..],
-        )),
-        // Handler `sub_47C430` (case 783). Returns 0x4004.
-        // bounded-slot query: a slot above 2 raises mask 0x1000000; the occupied
-        // path publishes the sub_442B40 pair into dwords 20305/20309. With the
-        // 796-occupancy unmodelled the unbound path stores dword 20309 = 0 and
-        // result -1. Omitted callee: sub_442B40.
-        783 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 113,
-            },
-            &W_1O[..],
         )),
         // Handler `sub_484160` (case 784). Returns 0x4014.
         // context-table slot call; worker omitted. Omitted callees:
@@ -4122,7 +3023,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             20,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 114,
+                table_index: 73,
             },
             &W_1O2O3T4O5O[..],
         )),
@@ -4133,7 +3034,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 115,
+                table_index: 74,
             },
             &W_1O2O[..],
         )),
@@ -4144,7 +3045,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 116,
+                table_index: 75,
             },
             &W_1O2O3O[..],
         )),
@@ -4155,7 +3056,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 117,
+                table_index: 76,
             },
             &W_1O2O3O[..],
         )),
@@ -4166,7 +3067,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 118,
+                table_index: 77,
             },
             &W_1O2O3O4O[..],
         )),
@@ -4178,7 +3079,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 119,
+                table_index: 78,
             },
             &W_1O2O3O4O5O6O[..],
         )),
@@ -4189,68 +3090,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 120,
+                table_index: 79,
             },
             &W_1O2O3O4O5O6O[..],
-        )),
-        // Handler `sub_47C4B0` (case 794). Returns 0x4004.
-        // bounded-slot query: a slot above 2 raises mask 0x1000000; the
-        // occupied path publishes sub_442B30 (child-absent zero) and the unbound
-        // path stores zero. Omitted callee: sub_442B30.
-        794 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 121,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_47C350` (case 795). Returns 0x4008.
-        // bounded-slot query: a slot above 2 raises mask 0x1000000; the
-        // occupied path publishes sub_442A80 (child-absent zero) and the unbound
-        // path stores zero. Omitted callee: sub_442A80.
-        795 => Some((
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 122,
-            },
-            &W_1O2O[..],
-        )),
-        // Handler `sub_47C9C0` (case 796). Returns 0x4004.
-        // bounded-slot query: a slot above 2 raises mask 0x1000000; the
-        // occupied path publishes sub_442BF0 (child-absent zero) and the unbound
-        // path stores zero. Omitted callee: sub_442BF0.
-        796 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 123,
-            },
-            &W_1O[..],
-        )),
-        // Handler `sub_47CA40` (case 797). Returns 0x4008.
-        // bounded-slot call: a slot above 2 raises mask 0x1000000; the occupied
-        // path runs the omitted worker. Omitted callee: sub_42EA10.
-        797 => Some((
-            8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 124,
-            },
-            &W_1O2O[..],
-        )),
-        // Handler `sub_47C3D0` (case 798). Returns 0x4004.
-        // bounded-slot query: a slot above 2 raises mask 0x1000000; the
-        // occupied path publishes sub_442B20 (child-absent zero) and the unbound
-        // path stores zero. Omitted callee: sub_442B20.
-        798 => Some((
-            4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 125,
-            },
-            &W_1O[..],
         )),
         // Handler `sub_483590` (case 800). Returns 0x400C.
         // context-table slot call with the index guard; worker omitted.
@@ -4259,7 +3101,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 126,
+                table_index: 80,
             },
             &W_1O2O3O[..],
         )),
@@ -4270,7 +3112,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 127,
+                table_index: 81,
             },
             &W_1O2O3O[..],
         )),
@@ -4281,7 +3123,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             40,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 128,
+                table_index: 82,
             },
             &W_1O2O3O4O5O6O7O8O9OAO[..],
         )),
@@ -4292,30 +3134,20 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 129,
+                table_index: 83,
             },
             &W_1O[..],
         )),
-        // Handler `sub_481BF0` (case 817). Returns 0x4004.
-        // context-table slot call; worker omitted. Omitted callees:
-        // sub_444EF0, sub_445340, sub_445940.
+        // 481BF0 -> 445940 destroys CImage DWORD1031, 0x4004.
         817 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 130,
-            },
+            CmvsPs2aCommandEffectKind::NativeHitPolygon { command_id },
             &W_1O[..],
         )),
-        // Handler `sub_481B40` (case 818). Returns 0x4010.
-        // context-table slot call; worker omitted. Omitted callees:
-        // sub_444EF0, sub_445340, sub_445880.
+        // 481B40 -> 445880 -> 447C40 appends XYZ float words, 0x4010.
         818 => Some((
             16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 131,
-            },
+            CmvsPs2aCommandEffectKind::NativeHitPolygon { command_id },
             &W_1O2O3O4O[..],
         )),
         // Handler `sub_4871F0` (case 824). Returns 0x4004.
@@ -4325,7 +3157,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 132,
+                table_index: 84,
             },
             &W_1O[..],
         )),
@@ -4337,7 +3169,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 133,
+                table_index: 85,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4347,7 +3179,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 134,
+                table_index: 86,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4359,7 +3191,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 135,
+                table_index: 87,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4369,7 +3201,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 136,
+                table_index: 88,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4381,7 +3213,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 137,
+                table_index: 89,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4391,7 +3223,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 138,
+                table_index: 90,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4403,7 +3235,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 139,
+                table_index: 91,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4413,7 +3245,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 140,
+                table_index: 92,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4424,7 +3256,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 141,
+                table_index: 93,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4436,7 +3268,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 142,
+                table_index: 94,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4447,7 +3279,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 143,
+                table_index: 95,
             },
             &W_1B[..],
         )),
@@ -4459,7 +3291,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 144,
+                table_index: 96,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -4469,7 +3301,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 145,
+                table_index: 97,
             },
             &W_1O[..],
         )),
@@ -4483,7 +3315,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 146,
+                table_index: 98,
             },
             &W_1O2O[..],
         )),
@@ -4495,7 +3327,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 147,
+                table_index: 99,
             },
             &W_1O[..],
         )),
@@ -4508,7 +3340,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 148,
+                table_index: 100,
             },
             &W_1O2O[..],
         )),
@@ -4521,7 +3353,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 149,
+                table_index: 101,
             },
             &W_1O2O3O4O5O6O[..],
         )),
@@ -4534,7 +3366,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             40,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 150,
+                table_index: 102,
             },
             &W_1O2O3O4O5O6O7O8O9OAO[..],
         )),
@@ -4547,7 +3379,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 151,
+                table_index: 103,
             },
             &W_1O[..],
         )),
@@ -4560,7 +3392,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 152,
+                table_index: 104,
             },
             &W_1O[..],
         )),
@@ -4573,7 +3405,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 153,
+                table_index: 105,
             },
             &W_1O[..],
         )),
@@ -4586,7 +3418,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 154,
+                table_index: 106,
             },
             &W_1O[..],
         )),
@@ -4599,7 +3431,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             24,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 155,
+                table_index: 107,
             },
             &W_1O2O3O4O5O6O[..],
         )),
@@ -4612,7 +3444,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 156,
+                table_index: 108,
             },
             &W_1O2O3B[..],
         )),
@@ -4625,7 +3457,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 157,
+                table_index: 109,
             },
             &W_1O2O3O4O[..],
         )),
@@ -4638,7 +3470,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 158,
+                table_index: 110,
             },
             &W_1O2B[..],
         )),
@@ -4651,7 +3483,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             20,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 159,
+                table_index: 111,
             },
             &W_1O2O3O4O5O[..],
         )),
@@ -4664,7 +3496,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 160,
+                table_index: 112,
             },
             &W_1O2B[..],
         )),
@@ -4677,396 +3509,226 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 161,
+                table_index: 113,
             },
             &W_1O[..],
         )),
-        // Handler `sub_487B30` (case 896). Returns 0x4010.
-        // creates the 775-table console object: an index >= 8 raises mask
-        // 0x1000; the create path also lazily builds the 783-parent (churn
-        // outside the micro model) and publishes `constructor != 0`, so the
-        // good path stores the non-zero marker. Omitted callees: sub_432F40,
-        // sub_4290A0, sub_432F50, sub_4292D0, sub_411E10, sub_461CD0,
-        // sub_437AF0.
+        // 487B30 creates the standalone glyph owner and its persistent 783 font manager.
         896 => Some((
             16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 162,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::CreateGlyph,
             },
             &W_1O2T3O4O[..],
         )),
-        // Handler `sub_487CD0` (case 897). Returns 0x4018.
-        // creates the 775-table console object (case-896 shape with two more
-        // payload words). Omitted callees: same as case 896.
+        // 487CD0 supplies an explicit virtual coordinate extent to the same owner.
         897 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 163,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::CreateGlyphVirtual,
             },
             &W_1O2T3O4O5O6O[..],
         )),
-        // Handler `sub_4883B0` (case 898). Returns 0x4004.
-        // destroys the 775-table console object (index >= 8 raises mask 0x1000);
-        // the free itself is slot-object churn. Omitted callees: sub_437D30,
-        // sub_4A9B8F.
+        // 4883B0 destroys 775 while its separately owned 783 font manager survives.
         898 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 164,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::DestroyGlyph,
             },
             &W_1O[..],
         )),
-        // Handler `sub_488910` (case 899). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43B200.
         899 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 165,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphPosition,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_488190` (case 900). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43B2B0.
         900 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 166,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphPositionFloat,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_487F00` (case 901). Returns 0x4014.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A700.
         901 => Some((
             20,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 167,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphRect,
             },
             &W_1O2O3O4O5O[..],
         )),
-        // Handler `sub_487EC0` (case 902). Returns 0x4004.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A6D0.
         902 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 168,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphClear,
             },
             &W_1O[..],
         )),
-        // Handler `sub_488140` (case 903). Returns 0x4010.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A420.
         903 => Some((
             16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 169,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphMetrics,
             },
             &W_1O2O3O4O[..],
         )),
-        // Handler `sub_4880A0` (case 904). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A3A0.
         904 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 170,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphFont,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_4880F0` (case 905). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A3E0.
         905 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 171,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphColors,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_487AE0` (case 906). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_466270.
         906 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 172,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphKinsoku,
             },
             &W_1O2B[..],
         )),
-        // Handler `sub_488320` (case 907). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A790.
         907 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 173,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphAppend,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_4882D0` (case 908). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A670.
         908 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 174,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphCursor,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_487FF0` (case 909). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A6A0.
         909 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 175,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphCursorFloat,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_487AA0` (case 910). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A410.
         910 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 176,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphColorMode,
             },
             &W_1O2O[..],
         )),
-        // Handler `sub_488370` (case 911). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43AEF0.
         911 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 177,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphOrder,
             },
             &W_1O2O[..],
         )),
-        // Handler `sub_488240` (case 912). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_439D90.
         912 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 178,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphMeasure,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_4888B0` (case 913). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_439C40.
         913 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 179,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphUnits,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_488870` (case 914). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43AF20.
         914 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 180,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphStyle,
             },
             &W_1O2O[..],
         )),
-        // Handler `sub_488830` (case 915). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43AF10.
         915 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 181,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphOutline,
             },
             &W_1O2O[..],
         )),
-        // Handler `sub_487E70` (case 918). Returns 0x4014.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A750.
         918 => Some((
             20,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 182,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphViewport,
             },
             &W_1O2O3O4O5O[..],
         )),
-        // Handler `sub_487A40` (case 919). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_437D60.
+        // 487A40 resolves the resource before guarding775;437D60 replaces its root provider.
         919 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 183,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphLoadImage,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_4881F0` (case 920). Returns 0x4004.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43B1E0.
+        // 4881F0/43B1E0 truncates virtual XY into81224/81228, leaving81220 alone.
         920 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 184,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphGetPosition,
             },
             &W_1O[..],
         )),
-        // Handler `sub_4887E0` (case 922). Returns 0x4014.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A640.
         922 => Some((
             20,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 185,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphBounds,
             },
             &W_1O2O3O4O5O[..],
         )),
-        // Handler `sub_4885B0` (case 923). Returns 0x4004.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_438110.
+        // 4885B0/438110 reports the stored motion-active word; it does not advance time.
         923 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 186,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphMotionActive,
             },
             &W_1O[..],
         )),
-        // Handler `sub_488600` (case 924). Returns 0x4010.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A460.
         924 => Some((
             16,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 187,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphMove,
             },
             &W_1O2O3O4O[..],
         )),
-        // Handler `sub_488770` (case 925). Returns 0x4008.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_438120.
+        // 488770/438120 binds a non-owning481 image pointer; negative indices detach.
         925 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 188,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphReference,
             },
             &W_1O2O[..],
         )),
-        // Handler `sub_4886B0` (case 926). Returns 0x400C.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A5E0.
+        // 4886B0/43A5E0 clamps signed coordinates with sequential lower/upper comparisons.
         926 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 189,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphClamp,
             },
             &W_1O2O3O[..],
         )),
-        // Handler `sub_488650` (case 927). Returns 0x4018.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A520.
         927 => Some((
             24,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 190,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphMoveCurve,
             },
             &W_1O2O3O4O5O6O[..],
         )),
-        // Handler `sub_488730` (case 928). Returns 0x4004.
-        // console call gated on the 775-table occupancy (`slot < 8 &&
-        // this[775+slot]`); the table stays unbound headless, so the else
-        // path raises mask 0x1000 and the then-branch result writes (if
-        // any) stay unreachable. Omitted callee: sub_43A630.
+        // 488730/43A630 clears active motion without selecting its endpoint.
         928 => Some((
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 191,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphStop,
             },
             &W_1O[..],
         )),
@@ -5078,7 +3740,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 192,
+                table_index: 114,
             },
             &W_1O2T3T4T[..],
         )),
@@ -5090,7 +3752,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 193,
+                table_index: 115,
             },
             &W_1O2T3T4T[..],
         )),
@@ -5100,7 +3762,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             4,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 194,
+                table_index: 116,
             },
             &W_1O[..],
         )),
@@ -5113,7 +3775,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             16,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 195,
+                table_index: 117,
             },
             &W_1O2T3T4O[..],
         )),
@@ -5126,7 +3788,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 196,
+                table_index: 118,
             },
             &W_1O2T[..],
         )),
@@ -5139,7 +3801,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 197,
+                table_index: 119,
             },
             &W_1O2T3T[..],
         )),
@@ -5152,30 +3814,20 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 198,
+                table_index: 120,
             },
             &W_1O2T[..],
         )),
-        // Handler `sub_47BF80` (case 960). Returns 0x4008.
-        // resolves the name and forwards it with dwords 831 to the loader;
-        // no interpreter writes. Omitted callees: sub_470D50, sub_4140C0.
+        // 47BF80 -> 4140C0: append a type-8 sheet, cell size at stack-8.
         960 => Some((
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 199,
-            },
+            CmvsPs2aCommandEffectKind::NativeCustomGlyph { command_id },
             &W_1T2O[..],
         )),
-        // Handler `sub_47BFC0` (case 962). Returns 0x400C.
-        // three-word call (the top word read as a 16-bit selector); no
-        // interpreter writes. Omitted callee: sub_414160.
+        // 47BFC0 -> 414160: update the first character's exact-size descriptor.
         962 => Some((
             12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 200,
-            },
+            CmvsPs2aCommandEffectKind::NativeCustomGlyph { command_id },
             &W_1O2O3O[..],
         )),
         // Handler `sub_479030` (case 965). Returns 0x4000.
@@ -5185,7 +3837,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 201,
+                table_index: 121,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -5196,7 +3848,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             0,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 202,
+                table_index: 122,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -5221,16 +3873,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             12,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 203,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Case 625 (`sub_485220`): result-zero path per the renderer gate.
-        625 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 1,
-                table_index: 204,
+                table_index: 64,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         )),
@@ -5239,17 +3882,8 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             8,
             CmvsPs2aCommandEffectKind::NativeMicroProgram {
                 cluster: 1,
-                table_index: 205,
+                table_index: 8,
             },
-            &[] as &[CmvsPs2aCommandStackWord],
-        )),
-        // Case 713 (`sub_4789B0`): compares the polled boolean against
-        // the 480-object state and mutates only object-side records; the
-        // 0x400C return is the observable boundary. Interpreter state is
-        // untouched.
-        713 => Some((
-            12,
-            CmvsPs2aCommandEffectKind::NoOpCommand,
             &[] as &[CmvsPs2aCommandStackWord],
         )),
         // Case 825 (`sub_487220`): returns 0xA000 while the 831-object

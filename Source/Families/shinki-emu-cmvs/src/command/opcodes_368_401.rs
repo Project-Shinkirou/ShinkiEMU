@@ -2,16 +2,14 @@ use super::*;
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
-        // Handler `sub_47E690` consumes a channel and a string reference,
-        // starting the named sound through the channel table entry; a failed
-        // start raises 0x80 and an out-of-range or unoccupied channel raises
-        // 0x10000, both at byte offset 10532. Returns 0x4008.
+        // `sub_47E690` resolves an image on the channel's surface.
+        // Load failure raises 0x80; a missing channel raises 0x10000.
         368 => (
             8,
-            CmvsPs2aCommandEffectKind::PlayChannelSound {
-                channel_table_dword_index: 2968,
+            CmvsPs2aCommandEffectKind::LoadChannelImage {
+                channel_table_dword_index: 742,
                 max_channel: 7,
-                play_error_mask: 0x80,
+                load_error_mask: 0x80,
                 channel_error_mask: 0x0001_0000,
             },
             &[
@@ -46,16 +44,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47D7B0` consumes a channel and one opaque word,
-        // forwarding the word to the effect engine while the channel slot is
-        // occupied; otherwise it raises 0x10000. Returns 0x4008.
+        // `47D7B0 -> 466C50`: destroys one child, or the complete image
+        // owner for a negative selector. Missing children are harmless.
         377 => (
             8,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelWord {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
-            },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id: 377 },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -173,12 +166,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
+        // `47E240 -> 446900/446A70`: replaces the selected basic with
+        // a freshly constructed kind-zero basic, preserving its owner.
         384 => (
             8,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 8 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id: 384 },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -190,12 +182,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
+        // `47E2B0 -> 4469A0`: frees only the selected basic.
         385 => (
             8,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 8 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id: 385 },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -212,7 +202,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // Returns 0x4000 | pop bytes.
         386 => (
             24,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 24 },
+            CmvsPs2aCommandEffectKind::SetEffectElementSource {
+                error_mask: 0x10000,
+            },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -245,7 +237,9 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // Returns 0x4000 | pop bytes.
         387 => (
             16,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 16 },
+            CmvsPs2aCommandEffectKind::SetEffectElementPosition {
+                error_mask: 0x10000,
+            },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -265,12 +259,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
+        // 47E630 -> 42EA10: signed child order.
         388 => (
             12,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 12 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -286,12 +278,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
-        389 => (
+        // 47E3A0 -> 42E870: pivot; 47E5A0 -> 42EA20: IEEE754 scale.
+        389 | 395 => (
             16,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 16 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -311,12 +301,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
+        // 47E400 -> 42E8E0: signed alpha, upper-clamped to 255.
         390 => (
             12,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 12 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -332,12 +320,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler group `sub_47E2xx`/`sub_47E4xx`/`sub_47E630`: channel +
-        // child selector (+ opaque action words) on the occupied channel.
-        // Returns 0x4000 | pop bytes.
+        // 47E460 -> 42E900: select native blend 0..3; other values do nothing.
         391 => (
             12,
-            CmvsPs2aCommandEffectKind::EffectChildCommand { pop_bytes: 12 },
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,

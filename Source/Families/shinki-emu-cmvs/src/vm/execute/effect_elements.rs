@@ -12,7 +12,10 @@ pub(super) fn execute(
                 max_channel,
                 error_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, _child)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _child),
+            ],
         ) => {
             if *channel > max_channel {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -29,11 +32,18 @@ pub(super) fn execute(
         }
         (
             CmvsPs2aCommandEffectKind::SetEffectTextSurface { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, index), (CmvsPs2aCommandStackWordKind::TaggedStringReference, first), (CmvsPs2aCommandStackWordKind::TaggedStringReference, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, value)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, index),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, first),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, value),
+            ],
         ) => {
             // `sub_488E70` rejects an index at or above 12 and an
             // unregistered playback record with 0x1000, then forwards to
             // `sub_462C10`, which stores the value and both strings.
+            let first_bytes = text::resolve_tagged_string_bytes(state, *first)?.into_owned();
+            let second_bytes = text::resolve_tagged_string_bytes(state, *second)?.into_owned();
             let occupied = *index < 12 && state.slot_objects.contains_key(&(750_u32 << 8 | *index));
             if !occupied {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -50,19 +60,27 @@ pub(super) fn execute(
                 second = *second,
                 value = *value
             );
-            let first_reference = tag_zero_reference(*first)?;
-            let second_reference = tag_zero_reference(*second)?;
+            for bytes in [&first_bytes, &second_bytes] {
+                text::validate_native_string_slot(bytes)?;
+                if bytes.len() >= 64 {
+                    return Err(invalid(
+                        "SHINKI_EMU_CMVS_TEXT_BOUNDARY",
+                        "kinsoku list exceeds its native buffer",
+                    ));
+                }
+            }
             let record = state.effect_playback.entry(*index as u8).or_default();
             record.text_surface.value = *value;
-            record.text_surface.first = Some(first_reference);
-            record.text_surface.second = Some(second_reference);
-            // These strings configure the text surface (including its
-            // kinsoku rules); they are not emitted dialogue.
+            record.text_surface.boundaries = Some([first_bytes, second_bytes]);
             Ok(None)
         }
         (
             CmvsPs2aCommandEffectKind::SetEffectElementVisible { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child), (CmvsPs2aCommandStackWordKind::BooleanU32, value)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, child),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, value),
+            ],
         ) => {
             // `sub_47D850` requires channel and element; `sub_445EA0` stores
             // the boolean at the element's visibility dword.
@@ -82,7 +100,10 @@ pub(super) fn execute(
                 error_mask,
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, child),
+            ],
         ) => {
             // `sub_47D630` only requires the channel; a missing element simply
             // reports zero.
@@ -93,20 +114,75 @@ pub(super) fn execute(
             let exists = state
                 .effect_elements
                 .contains_key(&(*channel as u8, *child));
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::from(exists));
+            state.write_interpreter_word(result_field_offset, u32::from(exists));
             Ok(None)
         }
         (
-            CmvsPs2aCommandEffectKind::SetEffectElementSize { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child), (CmvsPs2aCommandStackWordKind::OpaqueU32, first), (CmvsPs2aCommandStackWordKind::OpaqueU32, second)],
+            CmvsPs2aCommandEffectKind::SetEffectElementSource { error_mask },
+            [
+                (_, channel),
+                (_, child),
+                (_, x),
+                (_, y),
+                (_, width),
+                (_, height),
+            ],
         ) => {
+            let child = if (*child as i32) < 0 {
+                u32::MAX
+            } else {
+                *child
+            };
             if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
             }
-            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, *child)) else {
+            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, child)) else {
+                raise_error_flag(state, 10532, error_mask)?;
+                return Ok(None);
+            };
+            element.source = Some([*x as i32, *y as i32, *width as i32, *height as i32]);
+            Ok(None)
+        }
+        (
+            CmvsPs2aCommandEffectKind::SetEffectElementPosition { error_mask },
+            [(_, channel), (_, child), (_, x), (_, y)],
+        ) => {
+            let child = if (*child as i32) < 0 {
+                u32::MAX
+            } else {
+                *child
+            };
+            if !effect_channel_exists(state, *channel) {
+                raise_error_flag(state, 10532, error_mask)?;
+                return Ok(None);
+            }
+            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, child)) else {
+                raise_error_flag(state, 10532, error_mask)?;
+                return Ok(None);
+            };
+            element.position = Some([*x as i32, *y as i32]);
+            Ok(None)
+        }
+        (
+            CmvsPs2aCommandEffectKind::SetEffectElementSize { error_mask },
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, child),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, first),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, second),
+            ],
+        ) => {
+            let child = if (*child as i32) < 0 {
+                u32::MAX
+            } else {
+                *child
+            };
+            if !effect_channel_exists(state, *channel) {
+                raise_error_flag(state, 10532, error_mask)?;
+                return Ok(None);
+            }
+            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, child)) else {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
             };
@@ -115,45 +191,46 @@ pub(super) fn execute(
             Ok(None)
         }
         (
-            CmvsPs2aCommandEffectKind::SetEffectElementAuxiliary { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child)],
+            kind @ CmvsPs2aCommandEffectKind::SetEffectElementAuxiliary { error_mask }
+            | kind @ CmvsPs2aCommandEffectKind::SetEffectElementAuxiliaryPair { error_mask },
+            [(_, channel), (_, child)],
         ) => {
-            // `sub_47D590` -> `sub_445E40` forwards the element to the
-            // graphics object; the recovered subset keeps the channel and
-            // element checks, which are the VM-visible effects.
-            if !effect_channel_is_occupied(state, *channel)
-                || !state
-                    .effect_elements
-                    .contains_key(&(*channel as u8, *child))
-            {
+            let child = if (*child as i32) < 0 {
+                u32::MAX
+            } else {
+                *child
+            };
+            if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
             }
-            Ok(None)
-        }
-        (
-            CmvsPs2aCommandEffectKind::SetEffectElementAuxiliaryPair { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child)],
-        ) => {
-            // `sub_47D5E0` -> `sub_445E60`, as above.
-            if !effect_channel_is_occupied(state, *channel)
-                || !state
-                    .effect_elements
-                    .contains_key(&(*channel as u8, *child))
-            {
+            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, child)) else {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
-            }
+            };
+            // `445E40`/`445E60` clear the native inheritance bits.
+            element.inheritance_flags &= !if matches!(
+                kind,
+                CmvsPs2aCommandEffectKind::SetEffectElementAuxiliary { .. }
+            ) {
+                1
+            } else {
+                0x100
+            };
             Ok(None)
         }
         (
             CmvsPs2aCommandEffectKind::ApplyEffectElementOperation { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, child), ..],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, child),
+                ..,
+            ],
         ) => {
             // `sub_47DC80` -> `sub_445340` + `sub_42BF50`, forwarding the
             // element's texture object; the channel and element checks are
             // the VM-visible effects.
-            if !effect_channel_is_occupied(state, *channel)
+            if !effect_channel_exists(state, *channel)
                 || !state
                     .effect_elements
                     .contains_key(&(*channel as u8, *child))
@@ -164,22 +241,62 @@ pub(super) fn execute(
             Ok(None)
         }
         (
-            CmvsPs2aCommandEffectKind::EffectChildCommand { .. },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), ..],
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id: 377 },
+            [(_, channel), (_, child)],
         ) => {
-            // Stack words: channel, child selector, then opaque action
-            // words; all are consumed and only occupancy is observable.
-            if *channel > 7 {
-                raise_error_flag(state, 10532, 0x0001_0000)?;
-                return Ok(None);
-            }
             if !effect_channel_exists(state, *channel) {
-                raise_error_flag(state, 10532, 0x0001_0000)?;
+                raise_error_flag(state, 10532, 0x10000)?;
                 return Ok(None);
             }
-            Ok(Some(CmvsPs2aVmAction::EffectChildCommand {
-                channel: *channel,
-            }))
+            // `466C50` destroys the 630 owner for any negative selector;
+            // `4443B0` bounds-checks and silently ignores missing children.
+            if (*child as i32) < 0 {
+                state
+                    .effect_elements
+                    .retain(|(owner, _), _| *owner != *channel as u8);
+                if let Some(channel) = state.effect_channels.get_mut(&(*channel as u8)) {
+                    channel.image_resource = None;
+                    channel.image_has_alpha = false;
+                }
+            } else if *child < 1024 {
+                state.effect_elements.remove(&(*channel as u8, *child));
+            }
+            Ok(None)
+        }
+        (
+            CmvsPs2aCommandEffectKind::ConfigureEffectElementBasic { command_id },
+            [(_, channel), (_, child), tail @ ..],
+        ) => {
+            if !effect_channel_exists(state, *channel) {
+                raise_error_flag(state, 10532, 0x10000)?;
+                return Ok(None);
+            }
+            let child = if (*child as i32) < 0 {
+                u32::MAX
+            } else {
+                *child
+            };
+            let Some(element) = state.effect_elements.get_mut(&(*channel as u8, child)) else {
+                raise_error_flag(state, 10532, 0x10000)?;
+                return Ok(None);
+            };
+            match (command_id, tail) {
+                (384, []) => element.reset_basic(true),
+                (385, []) => element.reset_basic(false),
+                (388, [(_, order)]) => element.order = *order as i32,
+                (389, [(_, x), (_, y)]) => element.pivot = [*x as i32, *y as i32],
+                (390, [(_, alpha)]) => element.alpha = (*alpha as i32).min(255),
+                (391, [(_, mode)]) if *mode < 4 => element.blend_mode = *mode as u8,
+                (391, [_]) => {}
+                (395, [(_, x), (_, y)]) => element.scale_words = [*x, *y],
+                _ => {
+                    return Err(invalid(
+                        "SHINKI_EMU_CMVS_VM_COMMAND_CONTRACT",
+                        "channel basic setter has invalid operands",
+                    ));
+                }
+            }
+            Ok(None)
         }
         (
             CmvsPs2aCommandEffectKind::SetEffectChildEnabled {
@@ -187,7 +304,11 @@ pub(super) fn execute(
                 max_channel,
                 error_mask,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, _child), (CmvsPs2aCommandStackWordKind::BooleanU32, enabled)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _child),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, enabled),
+            ],
         ) => {
             if *channel > max_channel {
                 raise_error_flag(state, 10532, error_mask)?;

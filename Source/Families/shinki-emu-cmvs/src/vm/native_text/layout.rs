@@ -9,13 +9,12 @@ fn failure() -> CoreError {
     )
 }
 
-type Measure<'a> = Option<&'a mut dyn FnMut(&str) -> Result<u32, CoreError>>;
-
 /// CMVS 390's static parser (465C10), including both native advance policies.
 /// Font rasterization is deliberately separate from this script layout policy.
 pub(crate) fn append(
     surface: &mut CmvsNativeTextSurface,
     source: &str,
+    boundary: Option<&CmvsEffectTextSurface>,
     mut measure: Measure<'_>,
 ) -> Result<(), CoreError> {
     if source.is_empty() {
@@ -31,6 +30,7 @@ pub(crate) fn append(
     let mut cursor = surface.cursor;
     let mut glyphs = Vec::new();
     let mut index = 0;
+    let mut line_boundary = measurement::LineBoundary::default();
     while index < bytes.len() {
         match bytes[index] {
             b'\\' => {
@@ -52,6 +52,8 @@ pub(crate) fn append(
                             &mut glyphs,
                             &[literal],
                             false,
+                            boundary,
+                            &mut line_boundary,
                             &mut measure,
                         )?;
                     }
@@ -71,7 +73,16 @@ pub(crate) fn append(
                     // Unlike command 266, static ruby ignores single-byte base
                     // characters and the complete annotation after the slash.
                     if length == 2 {
-                        emit(surface, &mut cursor, &mut glyphs, value, true, &mut measure)?;
+                        emit(
+                            surface,
+                            &mut cursor,
+                            &mut glyphs,
+                            value,
+                            true,
+                            boundary,
+                            &mut line_boundary,
+                            &mut measure,
+                        )?;
                     }
                     index += length;
                 }
@@ -95,6 +106,8 @@ pub(crate) fn append(
                     &mut glyphs,
                     value,
                     false,
+                    boundary,
+                    &mut line_boundary,
                     &mut measure,
                 )?;
                 index += length;
@@ -126,12 +139,15 @@ fn newline(surface: &CmvsNativeTextSurface, cursor: &mut [i32; 2]) -> Result<(),
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit(
     surface: &CmvsNativeTextSurface,
     cursor: &mut [i32; 2],
     glyphs: &mut Vec<CmvsNativeTextGlyph>,
     bytes: &[u8],
     ruby_base: bool,
+    boundary: Option<&CmvsEffectTextSurface>,
+    line_boundary: &mut measurement::LineBoundary,
     measure: &mut Measure<'_>,
 ) -> Result<(), CoreError> {
     let code = if bytes.len() == 2 {
@@ -142,11 +158,7 @@ fn emit(
     let text = encoding_rs::SHIFT_JIS
         .decode_without_bom_handling_and_without_replacement(bytes)
         .ok_or_else(failure)?;
-    let threshold = i64::from(surface.rect[0]) + i64::from(surface.rect[2])
-        - i64::from(surface.character_spacing)
-        - i64::from(surface.size);
-    let prohibited = surface.kinsoku && matches!(code, 0x8141 | 0x8142 | 0x8176 | 0x8178);
-    if i64::from(cursor[0]) >= threshold && !prohibited {
+    if line_boundary.wrap(surface, boundary, cursor[0] as u32, code, bytes.len() == 1) {
         newline(surface, cursor)?;
     }
     let narrow_punctuation = !ruby_base && code == 0x814a;
@@ -169,6 +181,11 @@ fn emit(
     };
     glyphs.push(CmvsNativeTextGlyph {
         text: text.into_owned(),
+        code,
+        raster: CmvsNativeFontRasterState {
+            bold: surface.bold,
+            ..Default::default()
+        },
         position,
         font: surface.font.clone(),
         size: surface.size,

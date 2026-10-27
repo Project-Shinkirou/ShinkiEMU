@@ -106,6 +106,124 @@ fn value_assignment_resolves_source_tag_before_writing_global_target() {
 }
 
 #[test]
+fn string_reductions_build_owned_cp932_names_for_ordinary_and_reload_consumers() {
+    let span = crate::CmvsPs2aSourceSpan {
+        offset: 0,
+        byte_length: 2,
+    };
+    let value = |opcode, payload| crate::CmvsPs2aValueExpressionToken::Value {
+        span,
+        opcode,
+        payload,
+    };
+    let operator = |opcode| crate::CmvsPs2aValueExpressionToken::Operator { span, opcode };
+    for binary in [0x160, 0x163, 0x172] {
+        let mut state = CmvsPs2aVmState::new(0);
+        state.current_frame = 2;
+        let (prefix, _, malformed) = encoding_rs::SHIFT_JIS.encode("画像-");
+        assert!(!malformed);
+        state.process_string_slots.insert(11, prefix.into_owned());
+        state.process_string_slots.insert(12, b"variant-".to_vec());
+        state.install_script_data(2, b"01\0").unwrap();
+        seed_pool_bytes(&mut state, 0, &[(42, b"wrong.pb3")]);
+        seed_pool_bytes(&mut state, 2, &[(42, b".pb3")]);
+        execute_cmvs390_frame(
+            &mut state,
+            &CmvsPs2aInstructionFrame::ValueExpression(crate::CmvsPs2aValueExpression {
+                span,
+                tokens: vec![
+                    global_string_operand(11),
+                    global_string_operand(11),
+                    global_string_operand(12),
+                    operator(binary),
+                    value(0x125, 0),
+                    operator(binary),
+                    value(0x120, 42),
+                    operator(binary),
+                    operator(0x170),
+                ],
+            }),
+        )
+        .unwrap();
+        state.process_string_slots.insert(12, b"changed".to_vec());
+        push_word(&mut state, 20).unwrap();
+        command(&mut state, 32).unwrap();
+        push_word(&mut state, 0x8000_000b).unwrap();
+        push_word(&mut state, 20).unwrap();
+        assert_eq!(
+            command(&mut state, 48).unwrap(),
+            Some(CmvsPs2aVmAction::LoadTextureParentResource {
+                parent_slot: 20,
+                resource: "画像-variant-01.pb3".into(),
+            }),
+        );
+        for word in [0, 250, 0x8000_000b, 20] {
+            push_word(&mut state, word).unwrap();
+        }
+        assert!(matches!(
+            command(&mut state, 708).unwrap(),
+            Some(CmvsPs2aVmAction::ReloadTextureParentImage {
+                parent_slot: 20,
+                resource,
+                bank: CmvsResourceSearchBank::Texture,
+                ..
+            }) if resource == "画像-variant-01.pb3"
+        ));
+    }
+}
+
+#[test]
+fn chained_string_assignments_preserve_the_reduced_value_for_resource_consumers() {
+    let mut state = CmvsPs2aVmState::new(0);
+    let span = crate::CmvsPs2aSourceSpan {
+        offset: 0,
+        byte_length: 2,
+    };
+    state.process_string_slots.insert(11, b"image-".to_vec());
+    state
+        .process_string_slots
+        .insert(12, b"variant.pb3".to_vec());
+    execute_cmvs390_frame(
+        &mut state,
+        &CmvsPs2aInstructionFrame::ValueExpression(crate::CmvsPs2aValueExpression {
+            span,
+            tokens: vec![
+                global_string_operand(6),
+                global_string_operand(5),
+                global_string_operand(11),
+                global_string_operand(12),
+                crate::CmvsPs2aValueExpressionToken::Operator {
+                    span,
+                    opcode: 0x163,
+                },
+                crate::CmvsPs2aValueExpressionToken::Operator {
+                    span,
+                    opcode: 0x170,
+                },
+                crate::CmvsPs2aValueExpressionToken::Operator {
+                    span,
+                    opcode: 0x170,
+                },
+            ],
+        }),
+    )
+    .unwrap();
+    push_word(&mut state, 20).unwrap();
+    command(&mut state, 32).unwrap();
+    for slot in [5, 6] {
+        push_word(&mut state, 0x8000_0000 | slot).unwrap();
+        push_word(&mut state, 20).unwrap();
+        assert_eq!(
+            command(&mut state, 48).unwrap(),
+            Some(CmvsPs2aVmAction::LoadTextureParentResource {
+                parent_slot: 20,
+                resource: "image-variant.pb3".into(),
+            }),
+        );
+    }
+}
+
+#[test]
 fn value_assignment_past_pool_reads_empty_and_replaces_target() {
     let span = crate::CmvsPs2aSourceSpan {
         offset: 0,
@@ -177,7 +295,7 @@ fn command(state: &mut CmvsPs2aVmState, id: u16) -> Result<Option<CmvsPs2aVmActi
 #[test]
 fn native_save_title_uses_cp932_byte_bounds_and_preserves_errors_and_old_title() {
     let mut state = CmvsPs2aVmState::new(0);
-    state.interpreter_words.insert(10532, 0x20);
+    state.write_interpreter_word(10532, 0x20);
     for text in [
         String::new(),
         "a".repeat(127),
@@ -344,9 +462,11 @@ fn restore_retains_slot_values_without_serializing_script_pool() {
     bind(&mut state, 0, b"private-pool.ps3");
     state.process_string_slots.insert(0, b"saved.ps3".to_vec());
     let encoded = postcard::to_allocvec(&state).unwrap();
-    assert!(!encoded
-        .windows(b"private-pool.ps3".len())
-        .any(|s| s == b"private-pool.ps3"));
+    assert!(
+        !encoded
+            .windows(b"private-pool.ps3".len())
+            .any(|s| s == b"private-pool.ps3")
+    );
     let restored: CmvsPs2aVmState = postcard::from_bytes(&encoded).unwrap();
     assert_eq!(
         resolve_resource_name(&restored, 0x8000_0000).unwrap(),
@@ -357,16 +477,12 @@ fn restore_retains_slot_values_without_serializing_script_pool() {
 
 #[test]
 fn legacy_and_unknown_snapshot_versions_are_rejected_at_the_prefix() {
-    for bytes in [
-        vec![0],
-        vec![1],
-        vec![2],
-        vec![3],
-        vec![4],
-        vec![5],
-        vec![7],
-    ] {
-        assert!(postcard::from_bytes::<CmvsPs2aVmState>(&bytes).is_err());
+    let mut payload = postcard::to_allocvec(&CmvsPs2aVmState::new(0)).unwrap();
+    // Use a complete valid payload, so this cannot pass merely because
+    // the state following an otherwise accepted version is truncated.
+    for version in (0..=38).chain([40, 127]) {
+        payload[0] = version;
+        assert!(postcard::from_bytes::<CmvsPs2aVmState>(&payload).is_err());
     }
     let mut state = CmvsPs2aVmState::new(0);
     state.process_string_slots.insert(128, b"invalid".to_vec());
@@ -517,4 +633,49 @@ fn invalid_search_path_preserves_previous_binding_and_invalid_slot_is_native_noo
         validate_cmvs390_vm_state(&state).unwrap_err().code(),
         "SHINKI_EMU_CMVS_RESOURCE_SLOT"
     );
+}
+
+#[test]
+fn native_header_destinations_update_owned_slots_pools_and_unaligned_data_without_aliasing() {
+    let mut vm = CmvsPs2aVmState::new(0);
+    vm.frame_string_pool_bytes.insert(0, vec![0; 32]);
+    vm.frame_string_lengths
+        .insert(0, std::collections::BTreeMap::from([(0, 0)]));
+    vm.frame_string_values
+        .insert(0, std::collections::BTreeMap::from([(0, Vec::new())]));
+    vm.install_script_data(0, &[b'a'; 11]).unwrap();
+    vm.write_native_string_reference(0x8000_0002, b"owned")
+        .unwrap();
+    vm.write_native_string_reference(0, b"pool title").unwrap();
+    vm.write_native_string_reference(0x4000_0003, b"data")
+        .unwrap();
+    assert_eq!(
+        resolve_tagged_string_bytes(&vm, 0x8000_0002)
+            .unwrap()
+            .as_ref(),
+        b"owned"
+    );
+    assert_eq!(
+        resolve_tagged_string_bytes(&vm, 0).unwrap().as_ref(),
+        b"pool title"
+    );
+    assert_eq!(resolve_tagged_string_length(&vm, 0).unwrap(), 10);
+    assert_eq!(
+        resolve_tagged_string_bytes(&vm, 0x4000_0003)
+            .unwrap()
+            .as_ref(),
+        b"data"
+    );
+    assert_eq!(
+        resolve_tagged_string_bytes(&vm, 0x4000_0000)
+            .unwrap()
+            .as_ref(),
+        b"aaadata"
+    );
+    let previous = vm.clone();
+    assert!(
+        vm.write_native_string_reference(0x4000_0009, b"overflow")
+            .is_err()
+    );
+    assert_eq!(vm, previous);
 }

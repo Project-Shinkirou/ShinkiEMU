@@ -2,12 +2,19 @@ use super::*;
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
-        // Case 74 (`sub_483710`): stores the value word into the
-        // 481-table child (`sub_446AF0`); the slot gate raises 0x10 and
-        // an index at or above 1024 raises 0x20. Returns 0x400C.
+        // 480900 configures queue2964 equal-depth insertion, not a view.
+        41 => (
+            4,
+            CmvsPs2aCommandEffectKind::SetNativeQueuePolicy,
+            &[CmvsPs2aCommandStackWord {
+                offset_from_top_bytes: 4,
+                kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+            }],
+        ),
+        // 483710 -> 446AF0 -> 42E8A0: absolute rotation in integer degrees.
         74 => (
             12,
-            CmvsPs2aCommandEffectKind::StoreTextureChildByIndex,
+            CmvsPs2aCommandEffectKind::ConfigureTextureRotation,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -23,12 +30,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 76 (`sub_483530`): passes the value word to the 481-table
-        // child (`sub_446A40`); the slot gate raises 0x10 and a negative
-        // child index addresses the object itself. Returns 0x400C.
+        // 483530 -> 446A40: selects camera-projected basic kind 2 or 3.
         76 => (
             12,
-            CmvsPs2aCommandEffectKind::StoreTextureChildByIndex,
+            CmvsPs2aCommandEffectKind::ConfigureTextureBasicKind { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -100,16 +105,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         11 => (
             4,
             CmvsPs2aCommandEffectKind::ClearInterpreterTableWord {
-                table_base_offset: 13220,
+                table_base_offset: 13228,
                 table_word_count: 10,
             },
             &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_481CD0` (case 42): validates the stack slot index
         // against 0x100, binds the stack child element when its id is
-        // non-negative, and stores the display region pair into the slot
-        // object (`sub_445E80`). The headless graph retains the region
-        // pair per slot. Returns 0x4010.
+        // non-negative, and stores reference dimensions on that graphics
+        // object (`sub_445E80`). Its width scales both coordinate axes.
+        // Returns 0x4010.
         42 => (
             16,
             CmvsPs2aCommandEffectKind::SetResourceSlotRegion { max_slot: 255 },
@@ -138,7 +143,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         12 => (
             4,
             CmvsPs2aCommandEffectKind::LoadInterpreterTableWord {
-                table_base_offset: 13220,
+                table_base_offset: 13228,
                 table_word_count: 10,
                 field_offset: 81220,
             },
@@ -261,14 +266,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_480620` (case 35): the stack top selects a script
-        // slot (occupancy required, else the error mask) and the next word
-        // selects the renderer viewport. Nothing is observable headless.
-        // Returns 0x4008.
+        // 480620 → 4443B0 destroys one child of the selected live parent.
         35 => (
             8,
-            CmvsPs2aCommandEffectKind::SelectRenderViewport {
-                slot_table_dword_index: 1924,
+            CmvsPs2aCommandEffectKind::DestroyTextureChild {
+                texture_table_byte_offset: 1924,
                 error_flag_field_offset: 10532,
                 error_flag_mask: 0x10,
             },
@@ -318,18 +320,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &SLOT_PAIR_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4804C0` (case 46): the stack top selects a script
-        // slot and the next word optionally names a sub-object; the chosen
-        // slot becomes the presentation target. Out-of-range slots raise
-        // the error mask. Returns 0x4008.
+        // 4804C0 clears header bit0x100; it does not choose a presentation target.
         46 => (
             8,
-            CmvsPs2aCommandEffectKind::SelectPresentationSlot {
-                slot_table_dword_index: 1924,
-                max_slot: 255,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x10,
-            },
+            CmvsPs2aCommandEffectKind::DisableTextureShake,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -356,8 +350,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // The loader success flag is stored at byte offset 81220.
         48 => (
             8,
-            CmvsPs2aCommandEffectKind::QueryChannelChildName {
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::LoadTextureParentResource {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                result_field_offset: 81220,
+                error_flag_field_offset: 10532,
+                error_flag_mask: 0x10,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -366,7 +364,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
@@ -376,7 +374,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // 0x10 at byte offset 10532. Returns 0x4004.
         51 => (
             4,
-            CmvsPs2aCommandEffectKind::StoreScriptSlotPresentationState {
+            CmvsPs2aCommandEffectKind::QueryTextureParentImageInfo {
                 slot_table_dword_index: 1924,
                 error_mask: 0x10,
                 result_field_offset: 81220,
@@ -386,13 +384,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_483EB0` (case 59): resolves a name and loads the
-        // texture parent at the 784-table slot; success publishes 1 into
-        // the pinned result word. Returns 0x4014.
+        // `sub_483EB0`: name at -8, parent at -4, then three image
+        // processing words. The native guard is this[481+parent].
         59 => (
             20,
             CmvsPs2aCommandEffectKind::LoadTextureParentFromName {
-                slot_table_dword_index: 784,
+                texture_table_byte_offset: 1924,
                 error_mask: 0x10,
                 result_field_offset: 81220,
             },
@@ -403,7 +400,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 12,
@@ -415,6 +412,21 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 20,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+            ] as &[CmvsPs2aCommandStackWord],
+        ),
+        // 480420 -> 445E40: detach a live child's parent basic context.
+        44 => (
+            8,
+            CmvsPs2aCommandEffectKind::DetachTextureChildContext,
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
                     kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
             ] as &[CmvsPs2aCommandStackWord],
@@ -490,25 +502,29 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             CmvsPs2aCommandEffectKind::NoOpCommand,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_482F20` recreates the top-level texture surface owner
-        // selected by the stack-top parent id.
-        64 => (
+        // 482F20/482F60 create or free the basic surface, not the image loader.
+        64 | 65 => (
             4,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 64,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::SetTextureParentSurface {
+                initialized: command_id == 64,
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                error_flag_field_offset: 10532,
+                error_flag_mask: 0x10,
             },
             &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4838D0` consumes a parent, a signed surface selector
-        // and four opaque transform words. A negative selector retains the
-        // parent surface; non-negative selectors address one child surface.
-        // Returns 0x4018.
+        // 4838D0 -> 446B30 -> 42E950: source rectangle (x, y, width, height).
+        // Every negative surface selector addresses the parent's basic surface.
         68 => (
             24,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 68,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::ConfigureTextureChildRect {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                max_child_id: 1023,
+                error_flag_field_offset: 10532,
+                parent_error_mask: 0x10,
+                child_error_mask: 0x20,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -537,13 +553,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_483A00` writes a distinct two-word field pair through
-        // `sub_446B90`; the signed selector contract matches case 68.
+        // 483A00 -> 446B90 -> 42E9B0: destination offset (DWORD8/9).
         69 => (
             16,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 69,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::ConfigureTextureAuxiliaryPair {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                max_child_id: 1023,
+                error_flag_field_offset: 10532,
+                parent_error_mask: 0x10,
+                child_error_mask: 0x20,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -564,13 +583,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_483600` is the four-word sibling of case 68 and writes
-        // the second recovered pair on the selected surface.
+        // 483600 -> 446AD0 -> 42E870: source offset (DWORD6/7).
         70 => (
             16,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 70,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::ConfigureTextureChildPosition {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                max_child_id: 1023,
+                error_flag_field_offset: 10532,
+                parent_error_mask: 0x10,
+                child_error_mask: 0x20,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -591,13 +613,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_483B10` writes one additional opaque surface word
-        // through `sub_446BE0`; the signed selector contract matches case 68.
+        // 483B10 -> 446BE0 -> 42EA10: draw order (DWORD10).
         71 => (
             12,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 71,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::ConfigureTextureAuxiliaryWord {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                max_child_id: 1023,
+                error_flag_field_offset: 10532,
+                parent_error_mask: 0x10,
+                child_error_mask: 0x20,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -614,85 +639,52 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4837F0` validates the texture container at dword
-        // table 1924 (`this+481+slot`) and the child bound before
-        // rebinding the child's audio cue (`sub_444EF0`/`sub_446B10`
-        // stay outside the recovered subset). Dead containers raise 0x10
-        // and out-of-range children 0x20 at byte offset 10532. Returns
-        // 0x400c.
+        // 4837F0 -> 446B10 -> 42E8E0: signed alpha, upper-clamped to 255.
         72 => (
             12,
-            CmvsPs2aCommandEffectKind::ConfigureChannelChildPresenter {
-                selector: 72,
-                channel_table_field_offset: 0x784,
+            CmvsPs2aCommandEffectKind::ConfigureTextureAlpha {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
+                max_child_id: 1023,
+                error_flag_field_offset: 10532,
+                parent_error_mask: 0x10,
+                child_error_mask: 0x20,
             },
             &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_483860` shares the case-72 container/child
-        // validation with one forwarded engine value
-        // (`sub_444EF0`/`sub_446B20` stay outside the recovered subset).
-        // Dead containers raise 0x10 and out-of-range children 0x20 at byte
-        // offset 10532. Returns 0x400c.
-        // Handler `sub_483A80` (case 73): reads the container selector at
-        // offset 4, the child id at 8, a value at 12 and one more word at 16,
-        // then rebinds the child (`sub_444EF0`/`sub_446BF0` stay outside the
-        // recovered subset). A dead container raises 0x10 and an out-of-range
-        // child 0x20 at byte offset 10532. Returns 0x4010, so it pops all
-        // sixteen bytes it reads.
+        // 483A80 forwards two raw IEEE754 scales to the selected basic surface.
         73 => (
             16,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: 1023,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0x20,
-            },
+            CmvsPs2aCommandEffectKind::ConfigureTextureScale,
             &FOUR_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
+        // 483860 -> 446B20 -> 42E900: basic blend state, not audio.
         75 => (
             12,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: 1023,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0x20,
-            },
+            CmvsPs2aCommandEffectKind::ConfigureTextureBlend,
             &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_4834E0` validates the texture container (mask 0x10
-        // at byte offset 10532 when dead) and forwards the child audio
-        // select (`sub_444EF0`/`sub_446A30` stay outside the recovered
-        // subset); the child id carries no bound check. Returns 0x4008.
+        // 4834E0 -> 446A30: selects basic kind 2 without a child bound check.
         66 => (
             8,
-            CmvsPs2aCommandEffectKind::ConfigureTextureChildAudio {
-                texture_table_base_offset: 1924,
-                max_parent_slot: 255,
-                max_child_id: u32::MAX,
-                container_error_flag_field_offset: 10532,
-                container_error_flag_mask: 0x10,
-                child_error_flag_field_offset: 10532,
-                child_error_flag_mask: 0,
-            },
+            CmvsPs2aCommandEffectKind::ConfigureTextureBasicKind { command_id },
             &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_482EA0` (case 67): forwards the stack surface-method
-        // words to the resource slot bound at the stack-top index (<0x100,
-        // table base byte offset 1924); the signed selector word reaches
-        // the method only when non-negative. An unbound or out-of-range
-        // slot only ORs 0x10 into the pinned error word. Returns 0x4014.
+        // 483030 -> 446A50/446A70: flat pass selection.
+        78 => (
+            12,
+            CmvsPs2aCommandEffectKind::ConfigureTextureBasicKind { command_id },
+            &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
+        // 482EA0 -> 4443F0 -> 42C300: width, height and packed solid color.
+        // Unlike 68-72 this handler has no child-bound error-mask branch.
         67 => (
             20,
-            CmvsPs2aCommandEffectKind::RunResourceSlotMethod {
-                max_slot: 255,
+            CmvsPs2aCommandEffectKind::ConfigureTextureSolidSurface {
+                texture_table_base_offset: 1924,
+                max_parent_slot: 255,
                 error_flag_field_offset: 10532,
-                error_flag_mask: 0x10,
+                parent_error_mask: 0x10,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -717,20 +709,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_481D30` (case 38): forwards the stack's child-id
-        // and flag words to the resource slot bound at the stack-top index
-        // (<0x100, table base byte offset 1924, sibling of case 67); a
-        // negative child binds the parent surface, a non-negative one
-        // resolves the child surface through `sub_444EF0`. An unbound or
-        // out-of-range slot only raises the resource error mask.
-        // Returns 0x400c.
+        // 481D30 → 445EA0 sets visibility on the root (negative selector) or one child.
         38 => (
             12,
-            CmvsPs2aCommandEffectKind::RunResourceSlotMethod {
-                max_slot: 255,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x10,
-            },
+            CmvsPs2aCommandEffectKind::SetTextureVisibility,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,

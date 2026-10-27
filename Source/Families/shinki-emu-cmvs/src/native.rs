@@ -5,9 +5,9 @@ use shinki_emu_sdk::runtime::RuntimeEvent;
 use std::{
     ffi::c_void,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc::{sync_channel, SyncSender},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc::{SyncSender, sync_channel},
     },
     thread::JoinHandle,
 };
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn cmvs_query(version: u32, output: *mut *const abi::CoreA
     unsafe { output.write(&API) };
     abi::OK
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn shinki_emu_query(
     version: u32,
     output: *mut *const abi::CoreApi,

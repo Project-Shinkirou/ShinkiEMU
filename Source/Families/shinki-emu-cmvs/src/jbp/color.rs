@@ -107,10 +107,12 @@ pub(super) fn ycc_to_bgr(
             let red = (cr_value * 0x166f0) >> 16;
             let green = ((cb_value * 0x5810) >> 16) + ((cr_value * 0xb6c0) >> 16);
             let blue = (cb_value * 0x1c590) >> 16;
+            // Native/reference +0x180 indexes a table with 0x100 leading zeros.
+            // Our clamp is direct saturation, so the actual luma bias is +0x80.
             write_bgr(
                 output,
                 dc,
-                i64::from(planes[0][y_source]) + 0x180,
+                i64::from(planes[0][y_source]) + 0x80,
                 blue,
                 green,
                 red,
@@ -118,7 +120,7 @@ pub(super) fn ycc_to_bgr(
             write_bgr(
                 output,
                 ac + 4 - stride,
-                i64::from(planes[0][y_source + 1]) + 0x180,
+                i64::from(planes[0][y_source + 1]) + 0x80,
                 blue,
                 green,
                 red,
@@ -126,7 +128,7 @@ pub(super) fn ycc_to_bgr(
             write_bgr(
                 output,
                 ac,
-                i64::from(planes[0][y_source + 8]) + 0x180,
+                i64::from(planes[0][y_source + 8]) + 0x80,
                 blue,
                 green,
                 red,
@@ -134,7 +136,7 @@ pub(super) fn ycc_to_bgr(
             write_bgr(
                 output,
                 ac + 4,
-                i64::from(planes[0][y_source + 9]) + 0x180,
+                i64::from(planes[0][y_source + 9]) + 0x80,
                 blue,
                 green,
                 red,
@@ -226,4 +228,41 @@ pub(super) fn apply_alpha(
         pixel_index += count;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pb_jbp_luma_uses_the_native_table_origin_without_overexposing_midtones() {
+        for (dc, expected) in [(-1024, 0), (0, 128), (1016, 255)] {
+            let mut luma = [0; 64];
+            luma[0] = dc;
+            inverse_dct(&mut luma, &[1; 64]).unwrap();
+            let mut output = [0xa5; 8 * 8 * 4];
+            ycc_to_bgr(&mut output, 32, 0, 32, [&luma, &[0; 64], &[0; 64]], 0).unwrap();
+            for pixel in output.as_chunks::<4>().0 {
+                assert_eq!(&pixel[..3], &[expected; 3]);
+                assert_eq!(pixel[3], 0xa5);
+            }
+        }
+    }
+
+    #[test]
+    fn pb_jbp_signed_chroma_preserves_dark_color_channels() {
+        let mut output = [0; 8 * 8 * 4];
+        ycc_to_bgr(
+            &mut output,
+            32,
+            0,
+            32,
+            [&[-80; 64], &[20; 64], &[-30; 64]],
+            0,
+        )
+        .unwrap();
+        for pixel in output.as_chunks::<4>().0 {
+            assert_eq!(&pixel[..3], &[83, 64, 5]);
+        }
+    }
 }

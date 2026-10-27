@@ -16,52 +16,11 @@ fn word(state: &CmvsPs2aVmState, offset: u32) -> u32 {
 
 fn record_pc(state: &CmvsPs2aVmState, slot: u32) -> Option<u32> {
     let base = COROUTINE_RECORD_TABLE_BASE + slot * COROUTINE_RECORD_STRIDE;
-    let pc = state
+    state
         .interpreter_words
         .get(&(base + 4))
         .copied()
-        .filter(|pc| *pc != u32::MAX);
-    if let Some(pc) = pc {
-        // A loaded record table can carry a continuation captured while
-        // the frame sat inside an expression (an interior byte offset).
-        // The native scheduler only ever resumes at decoded instruction
-        // starts; snap an interior offset forward to the next valid one.
-        if let Some(starts) = state.script_valid_starts.get(
-            &u16::try_from(state.interpreter_words.get(&base).copied().unwrap_or(0))
-                .unwrap_or(state.current_frame),
-        ) {
-            if !starts.contains(&pc) {
-                if let Some(next) = starts.iter().copied().filter(|p| *p > pc).min() {
-                    if tracing::enabled!(tracing::Level::INFO) {
-                        tracing::info!(
-                            event = "shinki.emu.cmvs.vm.record_pc_snapped",
-                            slot,
-                            pc,
-                            next,
-                            tick = state.tick
-                        );
-                    }
-                    return Some(next);
-                }
-            }
-        }
-        if pc >= 0x0100_0000 && tracing::enabled!(tracing::Level::INFO) {
-            tracing::info!(
-                event = "shinki.emu.cmvs.vm.record_pc_anomaly",
-                slot,
-                base,
-                pc,
-                w0 = state.interpreter_words.get(&base).copied().unwrap_or(0),
-                w8 = state
-                    .interpreter_words
-                    .get(&(base + 8))
-                    .copied()
-                    .unwrap_or(0),
-                tick = state.tick
-            );
-        }
-    }
-    pc
+        .filter(|pc| *pc != u32::MAX)
 }
 
 fn push_context(
@@ -70,29 +29,12 @@ fn push_context(
     pc: u32,
     frame: u32,
 ) -> Result<(), CoreError> {
-    {
-        super::stack::set_push_origin("sched");
-    }
     push_word(state, counter)?;
     push_word(state, pc)?;
-    let result = push_word(state, frame);
-    super::stack::set_push_origin("push");
-    result
+    push_word(state, frame)
 }
 
 fn push_suspended(state: &mut CmvsPs2aVmState) -> Result<(), CoreError> {
-    if tracing::enabled!(tracing::Level::INFO) {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.suspend_capture",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            tick = state.tick,
-            valid = state
-                .script_valid_starts
-                .get(&state.current_frame)
-                .is_some_and(|s| s.contains(&state.program_counter))
-        );
-    }
     push_context(
         state,
         word(state, SCRIPT_FRAME_COUNTER_FIELD),
@@ -134,10 +76,10 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                         state
                             .slot_objects
                             .contains_key(&(EFFECT_CHANNEL_TABLE_DWORD_INDEX << 8 | channel))
-                            && word(
-                                state,
-                                super::execute::effect_channel_activity_field(channel),
-                            ) != 0
+                            && state
+                                .effect_channels
+                                .get(&(channel as u8))
+                                .is_some_and(|object| object.read_dword(2) != 0)
                     }
                     23 => {
                         word(
@@ -147,75 +89,42 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                     }
                     _ => false,
                 };
-                if active && tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.entry_armed",
-                        slot,
-                        scan_index,
-                        pc,
-                        frame = word(
-                            state,
-                            COROUTINE_RECORD_TABLE_BASE + slot * COROUTINE_RECORD_STRIDE,
-                        ),
-                        tick = state.tick
-                    );
-                }
                 if active {
                     // While a queued dialog dispatch is winding down, the
                     // shared continuation stack must not interleave more
                     // record contexts: hold actives until the dispatch
                     // completes its cleanup.
-                    if state.dialog_dispatch_base_depth.is_some() {
-                        if tracing::enabled!(tracing::Level::INFO) {
-                            tracing::info!(
-                                event = "shinki.emu.cmvs.vm.entry_held",
-                                slot,
-                                pc,
-                                tick = state.tick
-                            );
-                        }
-                    } else {
+                    if state.dialog_dispatch_base_depth.is_none() {
                         push_record(state, slot, pc)?;
                     }
                 }
             }
-            if let Some((frame, pc, id)) = state.forced_dialog_record.take() {
-                if pc != u32::MAX {
-                    if tracing::enabled!(tracing::Level::INFO) {
-                        tracing::info!(
-                            event = "shinki.emu.cmvs.vm.forced_record_resume",
-                            pc,
-                            frame,
-                            id,
-                            tick = state.tick
-                        );
-                    }
-                    // Native record resume, `sub_477F60` + the 0x410 leg
-                    // of the dispatch loop: push the suspended triple
-                    // [counter][pc][script] for the eventual unwind, then
-                    // the record params [0][paramB][paramA], register the
-                    // new call depth's frame base after paramA (so nested
-                    // calls' returns land above the params), and switch
-                    // straight into the record entry — no extra context
-                    // triple above the params.
-                    super::stack::set_push_origin("menu");
-                    let counter_now = word(state, SCRIPT_FRAME_COUNTER_FIELD);
-                    let pc_now = state.program_counter;
-                    let script_now = u32::from(state.current_frame);
-                    super::stack::push_word_public(state, counter_now)?;
-                    super::stack::push_word_public(state, pc_now)?;
-                    super::stack::push_word_public(state, script_now)?;
-                    let rec_base = COROUTINE_RECORD_TABLE_BASE + 28 * 29;
-                    let param_a = word(state, rec_base);
-                    let param_b = word(state, rec_base + 4);
-                    super::stack::push_word_public(state, 0)?;
-                    super::stack::push_word_public(state, param_b)?;
-                    super::stack::push_word_public(state, param_a)?;
-                    push_call_frame_base(state)?;
-                    state.program_counter = pc;
-                    state.current_frame = u16::try_from(frame).unwrap_or(1);
-                    super::stack::set_push_origin("push");
-                }
+            if let Some((frame, pc, _)) = state.forced_dialog_record.take()
+                && pc != u32::MAX
+            {
+                // Native record resume, `sub_477F60` + the 0x410 leg
+                // of the dispatch loop: push the suspended triple
+                // [counter][pc][script] for the eventual unwind, then
+                // the record params [0][paramB][paramA], register the
+                // new call depth's frame base after paramA (so nested
+                // calls' returns land above the params), and switch
+                // straight into the record entry — no extra context
+                // triple above the params.
+                let counter_now = word(state, SCRIPT_FRAME_COUNTER_FIELD);
+                let pc_now = state.program_counter;
+                let script_now = u32::from(state.current_frame);
+                super::stack::push_word_public(state, counter_now)?;
+                super::stack::push_word_public(state, pc_now)?;
+                super::stack::push_word_public(state, script_now)?;
+                let rec_base = COROUTINE_RECORD_TABLE_BASE + 28 * 29;
+                let param_a = word(state, rec_base);
+                let param_b = word(state, rec_base + 4);
+                super::stack::push_word_public(state, 0)?;
+                super::stack::push_word_public(state, param_b)?;
+                super::stack::push_word_public(state, param_a)?;
+                push_call_frame_base(state)?;
+                state.program_counter = pc;
+                state.current_frame = u16::try_from(frame).unwrap_or(1);
             }
             if state.pending_dialog_dispatches.len() > 1
                 && state.dialog_dispatch_base_depth.is_some()
@@ -223,19 +132,11 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 // A dispatch is still winding down; hold the remaining queued
                 // entries for later engine frames so each completes its cleanup
                 // before the next lays its own locals.
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.dialog_dispatch_held",
-                        tick = state.tick,
-                        queued = state.pending_dialog_dispatches.len()
-                    );
-                }
             } else if let Some((entry_pc, frame, id)) = state.pending_dialog_dispatches.pop() {
                 // The dispatcher chain runs on top of the untouched suspension:
                 // its tail returns into the suspended pc (like the native
                 // callback returning to the engine loop) and the scheduler's
                 // own suspension triple stays intact below.
-                super::stack::set_push_origin("dialog");
                 // Native `sub_46D270` case 0x103 reads frame_base - payload: the
                 // dispatcher head's fl12/fl8 come from the words the caller
                 // pushed BENEATH the frame base. Lay [fl12][fl8 = id][return]
@@ -262,7 +163,6 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 // carries the selection id instead.
                 super::stack::push_word_public(state, id)?;
                 push_context(state, 0, entry_pc, u32::from(frame))?;
-                super::stack::set_push_origin("push");
                 state.dialog_dispatch_consumed = true;
                 state.dialog_dispatch_base_depth = Some(state.call_frame_bases.len());
                 state.dialog_dispatch_cursor = Some(state.stack_cursor_bytes);
@@ -274,15 +174,6 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 // work only on equality — any other value takes the early
                 // return at 371834.
                 state.process_indexed_words.insert(17, 1000);
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.dialog_dispatch_queued",
-                        tick = state.tick,
-                        entry_pc,
-                        frame,
-                        id
-                    );
-                }
             }
 
             loaded = true;
@@ -293,7 +184,6 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
             // there too. Lay the same frame layout the enabled branch
             // uses; the shared adopt tail below pops the triple and
             // resumes the dispatcher entry.
-            super::stack::set_push_origin("dialog");
             let rec_base = COROUTINE_RECORD_TABLE_BASE + 28 * 28;
             let param_a = word(state, rec_base + 8);
             let param_b = word(state, rec_base + 12);
@@ -305,37 +195,15 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
             super::stack::push_word_public(state, id)?;
             push_call_frame_base(state)?;
             push_context(state, 0, entry_pc, u32::from(frame))?;
-            super::stack::set_push_origin("push");
             state.dialog_dispatch_consumed = true;
             state.dialog_dispatch_base_depth = Some(state.call_frame_bases.len());
             state.dialog_dispatch_cursor = Some(state.stack_cursor_bytes);
             state.process_indexed_words.insert(17, 1000);
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.dialog_dispatch_queued",
-                    tick = state.tick,
-                    entry_pc,
-                    frame,
-                    id
-                );
-            }
             loaded = true;
         } else {
             // Disabled-scheduler fallback: record 26 (flag+pc) takes
             // priority over record 28 (native dwords 3500/3502 and
             // 3515/3516, checked before the activity-flag clear below).
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.scheduler_fallback_probe",
-                    slot26_flag = word(
-                        state,
-                        COROUTINE_RECORD_TABLE_BASE + 26 * COROUTINE_RECORD_STRIDE - 4,
-                    ),
-                    slot26_pc = record_pc(state, 26),
-                    slot28_pc = record_pc(state, 28),
-                    tick = state.tick
-                );
-            }
             // `sub_46DF10`'s disabled branch first honors the engine's
             // raw resume-request dwords (gate 3500, frame 3501, pc 3502,
             // then the 3515/3516 bank) before falling back to records —
@@ -358,27 +226,11 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 if let Some((park_pc, park_frame)) = state.engine_request_park.take() {
                     req_pc = park_pc;
                     req_frame = park_frame;
-                    if tracing::enabled!(tracing::Level::INFO) {
-                        tracing::info!(
-                            event = "shinki.emu.cmvs.vm.engine_request_park_resume",
-                            pc = park_pc,
-                            frame = park_frame,
-                            tick = state.tick
-                        );
-                    }
                 }
             }
             let alt_pc = word(state, 3516 * 4);
             let alt_frame = word(state, 3515 * 4);
             if req_gate != 0 && req_pc != u32::MAX {
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.engine_request_resume",
-                        pc = req_pc,
-                        frame = req_frame,
-                        tick = state.tick
-                    );
-                }
                 push_suspended(state)?;
                 push_context(state, 0, req_pc, req_frame)?;
                 // `sub_46DF10`'s tail reads the pushed param triple back
@@ -393,18 +245,10 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 // The engine re-arms the request per interaction; consume
                 // the gate after one resume so the record's own wait gates
                 // pace the loop instead of a resume storm.
-                state.interpreter_words.insert(3500 * 4, 0);
+                state.write_interpreter_word(3500 * 4, 0);
                 state.engine_request_live = true;
                 loaded = true;
             } else if alt_pc != u32::MAX && alt_pc != 0 {
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.engine_request_resume_alt",
-                        pc = alt_pc,
-                        frame = alt_frame,
-                        tick = state.tick
-                    );
-                }
                 push_suspended(state)?;
                 push_context(state, 0, alt_pc, alt_frame)?;
                 state.program_counter = alt_pc;
@@ -427,14 +271,6 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                     .or_else(|| record_pc(state, 28).map(|pc| (28, pc)))
             };
             if let Some((slot, pc)) = selected {
-                if tracing::enabled!(tracing::Level::INFO) {
-                    tracing::info!(
-                        event = "shinki.emu.cmvs.vm.scheduler_fallback_resume",
-                        slot,
-                        pc,
-                        tick = state.tick
-                    );
-                }
                 push_suspended(state)?;
                 push_record(state, slot, pc)?;
                 loaded = true;
@@ -456,14 +292,12 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
             )
         })?;
         state.program_counter = pc;
-        state
-            .interpreter_words
-            .insert(SCRIPT_FRAME_COUNTER_FIELD, counter);
+        state.write_interpreter_word(SCRIPT_FRAME_COUNTER_FIELD, counter);
     }
     // This loop runs even with the rebuild gate closed. Only the activity
     // flag is reset; registration frame, PC, arguments and timestamp survive.
     for slot in 0..COROUTINE_RECORD_COUNT {
-        state.interpreter_words.insert(
+        state.write_interpreter_word(
             COROUTINE_RECORD_TABLE_BASE + slot * COROUTINE_RECORD_STRIDE - 4,
             0,
         );

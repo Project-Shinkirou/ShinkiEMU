@@ -8,7 +8,17 @@ pub(super) fn execute(
     match (effect_kind, values) {
         (
             CmvsPs2aCommandEffectKind::ConfigureEffectQuadGeometry { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad), (CmvsPs2aCommandStackWordKind::OpaqueU32, sub), (CmvsPs2aCommandStackWordKind::OpaqueU32, first), (CmvsPs2aCommandStackWordKind::OpaqueU32, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, third), (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth), (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth), (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, sub),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, first),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, third),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fifth),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, sixth),
+            ],
         ) => {
             if *channel > 7 || *quad >= 32 {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -42,7 +52,14 @@ pub(super) fn execute(
         }
         (
             CmvsPs2aCommandEffectKind::ConfigureEffectQuadRect { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad), (CmvsPs2aCommandStackWordKind::OpaqueU32, first), (CmvsPs2aCommandStackWordKind::OpaqueU32, second), (CmvsPs2aCommandStackWordKind::OpaqueU32, third), (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, first),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, second),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, third),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fourth),
+            ],
         ) => {
             if *channel > 7 || *quad >= 32 {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -53,17 +70,6 @@ pub(super) fn execute(
                 return Ok(None);
             }
             // `sub_466D10` stores four `__int16` hit-rectangle words at
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.quad_rect_write",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    channel = *channel,
-                    quad = *quad,
-                    rect = ?[*first, *second, *third, *fourth],
-                    tick = state.tick
-                );
-            }
             state
                 .effect_channels
                 .entry(*channel as u8)
@@ -83,7 +89,10 @@ pub(super) fn execute(
         }
         (
             CmvsPs2aCommandEffectKind::SelectEffectQuad { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+            ],
         ) => {
             if *channel > 7 || *quad >= 32 {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -95,19 +104,14 @@ pub(super) fn execute(
             }
             // `sub_466D50`: the quad record's visibility flag becomes 1 and
             // the bound element is shown.
-            if tracing::enabled!(tracing::Level::DEBUG) {
-                tracing::debug!(
-                    event = "shinki.emu.cmvs.vm.quad_show",
-                    pc = state.program_counter,
-                    channel = *channel,
-                    quad = *quad
-                );
-            }
             state
                 .effect_channels
                 .entry(*channel as u8)
                 .or_default()
                 .set_quad_visible(*quad, true);
+            if let Some(element) = state.effect_elements.get_mut(&(*channel as u8, *quad + 16)) {
+                element.visible = 1;
+            }
             Ok(Some(CmvsPs2aVmAction::SelectEffectQuad {
                 channel: *channel,
                 quad: *quad,
@@ -115,7 +119,10 @@ pub(super) fn execute(
         }
         (
             CmvsPs2aCommandEffectKind::DeselectEffectQuad { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+            ],
         ) => {
             if *channel > 7 || *quad >= 32 {
                 raise_error_flag(state, 10532, error_mask)?;
@@ -132,6 +139,9 @@ pub(super) fn execute(
                 .entry(*channel as u8)
                 .or_default()
                 .set_quad_visible(*quad, false);
+            if let Some(element) = state.effect_elements.get_mut(&(*channel as u8, *quad + 16)) {
+                element.visible = 0;
+            }
             Ok(Some(CmvsPs2aVmAction::DeselectEffectQuad {
                 channel: *channel,
                 quad: *quad,
@@ -139,28 +149,34 @@ pub(super) fn execute(
         }
         (
             CmvsPs2aCommandEffectKind::ActivateEffectQuad { error_mask },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad), (CmvsPs2aCommandStackWordKind::OpaqueU32, value)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, value),
+            ],
         ) => {
             if *channel > 7 || *quad >= 32 {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
             }
-            if !effect_channel_is_occupied(state, *channel) {
+            if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, error_mask)?;
                 return Ok(None);
             }
-            // `sub_47F330` stores the selected animation frame at word
-            // `38*quad + 38` and, when the frame actually changes, copies the
-            // frame's geometry sub-record onto the bound element through
-            // `sub_446B30`. Binding geometry makes the record live, so the
-            // activation also raises the quad's dword-40 visibility flag
-            // that case 405 polls (`sub_47F470`); case 403 clears it again.
+            // `sub_47F330` changes only the source rectangle and frame word;
+            // it must not show a hidden quad.
             let frame = *value as u16;
             let channel_object = state.effect_channels.entry(*channel as u8).or_default();
             if channel_object.quad_frame(*quad) != frame {
+                let source = channel_object
+                    .quad_frame_geometry(*quad, frame)
+                    .map(i32::from);
+                if let Some(element) = state.effect_elements.get_mut(&(*channel as u8, *quad + 16))
+                {
+                    element.source = Some(source);
+                }
                 channel_object.set_quad_frame(*quad, frame);
             }
-            channel_object.set_quad_visible(*quad, true);
             Ok(None)
         }
         (
@@ -175,7 +191,10 @@ pub(super) fn execute(
                 result9_field_offset,
                 ..
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, _index)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, _index),
+            ],
         ) => {
             let effect_key = (effect_table_dword_index << 8) | *channel;
             if *channel > 7 || !state.slot_objects.contains_key(&effect_key) {
@@ -192,7 +211,7 @@ pub(super) fn execute(
                 result8_field_offset,
                 result9_field_offset,
             ] {
-                state.interpreter_words.insert(offset, 0);
+                state.write_interpreter_word(offset, 0);
             }
             Ok(None)
         }
@@ -200,9 +219,12 @@ pub(super) fn execute(
             CmvsPs2aCommandEffectKind::QueryEffectQuadActive {
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, quad)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, quad),
+            ],
         ) => {
-            if *channel > 7 || !effect_channel_is_occupied(state, *channel) {
+            if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, 0x0002_0000)?;
                 return Ok(None);
             }
@@ -215,9 +237,7 @@ pub(super) fn execute(
                 .effect_channels
                 .get(&(*channel as u8))
                 .is_some_and(|object| object.quad_visible(*quad));
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::from(live));
+            state.write_interpreter_word(result_field_offset, u32::from(live));
             Ok(None)
         }
         (
@@ -227,26 +247,32 @@ pub(super) fn execute(
             },
             [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel)],
         ) => {
-            if *channel > 7 || !effect_channel_is_occupied(state, *channel) {
+            if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, 0x0001_0000)?;
                 return Ok(None);
             }
             // The headless engine has no animated effect position.
-            state.interpreter_words.insert(result_x_field_offset, 0);
-            state.interpreter_words.insert(result_y_field_offset, 0);
+            state.write_interpreter_word(result_x_field_offset, 0);
+            state.write_interpreter_word(result_y_field_offset, 0);
             Ok(None)
         }
         (
             CmvsPs2aCommandEffectKind::QueryEffectPointerHit {
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, channel), (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_x), (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_y), (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_w), (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_h)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, channel),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_x),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_y),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_w),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, rect_h),
+            ],
         ) => {
             // `sub_47F2C0` requires an occupied channel and forwards the
             // rectangle to the hit test (`sub_466A50`). The stage scale and
             // offset are identity in headless, so the test compares the
             // streamed pointer position words against the rectangle.
-            if *channel > 7 || !effect_channel_is_occupied(state, *channel) {
+            if !effect_channel_exists(state, *channel) {
                 raise_error_flag(state, 10532, 0x0001_0000)?;
                 return Ok(None);
             }
@@ -258,14 +284,7 @@ pub(super) fn execute(
                 && y <= pointer_y
                 && x.saturating_add(*rect_w) > pointer_x
                 && y.saturating_add(*rect_h) > pointer_y;
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::from(hit));
-            tracing::trace!(
-                event = "shinki.emu.cmvs.vm.hit_trace",
-                pc = state.program_counter,
-                frame = state.current_frame
-            );
+            state.write_interpreter_word(result_field_offset, u32::from(hit));
             Ok(None)
         }
         _ => Err(CoreError::invalid(

@@ -2,15 +2,11 @@ use super::*;
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
-        // Handler `sub_47F0D0` matches case 322's shape: a channel and one
-        // opaque word forwarded to the occupied channel's effect engine.
-        // Returns 0x4008.
+        // `47F0D0 -> 466FE0 -> 464A30(size, -1, -1)`.
         323 => (
             8,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelWord {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
+            CmvsPs2aCommandEffectKind::ConfigureEffectChannelText {
+                operation: CmvsNativeTextOperation::Metrics,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -23,18 +19,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47F110` consumes a channel and two opaque words,
-        // forwarding both to the occupied channel's effect engine; the
-        // usual occupancy fault otherwise. Returns 0x400c.
-        // Handler `sub_47F080` forwards two opaque words to an occupied
-        // effect channel (`sub_466FB0`), the case-324 shape. Returns
-        // 0x400c.
-        335 => (
+        // Native dispatcher324 -> 47F110 -> 467990 -> 464A30(-1, char, line).
+        324 => (
             12,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelPair {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
+            CmvsPs2aCommandEffectKind::ConfigureEffectChannelText {
+                operation: CmvsNativeTextOperation::Metrics,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -51,12 +40,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        324 => (
+        // Native dispatcher335 -> 47F080 -> 466FB0 -> 464A60(cursor_x, cursor_y).
+        335 => (
             12,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelPair {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
+            CmvsPs2aCommandEffectKind::ConfigureEffectChannelText {
+                operation: CmvsNativeTextOperation::Cursor,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -105,15 +93,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47EF70` matches case 324's shape: a channel and two
-        // opaque words forwarded to the occupied channel's effect engine.
-        // Returns 0x400c.
+        // `47EF70 -> 466FC0 -> 4649F0` updates the text owner's colors.
         326 => (
             12,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelPair {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
+            CmvsPs2aCommandEffectKind::ConfigureEffectChannelText {
+                operation: CmvsNativeTextOperation::Colors,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -151,7 +135,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47F690` matches case 324's shape: a channel and two
+        // Handler `sub_47F690` consumes a channel and two
         // opaque words forwarded to the occupied channel. Returns 0x400c.
         328 => (
             12,
@@ -175,14 +159,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47EA50` matches case 322's shape: a channel and one
-        // opaque word forwarded to the occupied channel. Returns 0x4008.
+        // `47EA50 -> 466FD0 -> 464A20` sets the text color mode.
         329 => (
             8,
-            CmvsPs2aCommandEffectKind::ForwardEffectChannelWord {
-                effect_table_dword_index: 742,
-                max_channel: 7,
-                error_mask: 0x0001_0000,
+            CmvsPs2aCommandEffectKind::ConfigureEffectChannelText {
+                operation: CmvsNativeTextOperation::ColorMode,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -231,7 +212,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         333 => (
             4,
             CmvsPs2aCommandEffectKind::QueryEffectChannelActivity {
-                activity_state_key_base: 0x7420_0000,
                 max_channel: 7,
                 effect_table_dword_index: 742,
                 error_mask: 0x0001_0000,
@@ -249,7 +229,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             CmvsPs2aCommandEffectKind::SetEffectChannelPlaybackFlag {
                 effect_table_dword_index: 742,
                 error_mask: 0x0001_0000,
-                activity_state_key_base: 0x7420_0000,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -337,15 +316,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47F7D0` (case 344): starts a playback on an
-        // occupied channel and returns `0xA000` while `sub_467510` reports
-        // the channel active, `0x400C` (pop 12) once it completes. The
-        // headless channel completes immediately.
+        // `47F7D0`: automatic text/voice wait, pending 0xA000, done 0x400C.
+        // Only channel and voice id are read; the middle word is still popped.
         344 => (
             12,
-            CmvsPs2aCommandEffectKind::StartEffectChannelPlayback {
-                error_mask: 0x0001_0000,
-            },
+            CmvsPs2aCommandEffectKind::WaitChannelAutoAdvance,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -606,17 +581,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_48A6C0` (case 356): runs the chain reset
-        // controller (`sub_428920`), posts engine message 0x7FF7 and marks
-        // the rebuild-request word before suspending the frame. The
-        // stack word feeds the reset comparison only. Returns 0xC004.
+        // 48A6C0 -> 428920: fullscreen=(top!=0), renderer reset then C004.
         356 => (
             4,
-            CmvsPs2aCommandEffectKind::RebuildChainGraphSuspend {
-                clear_field_a_offset: 10548,
-                clear_field_b_offset: 10552,
-                request_field_offset: 10708,
-            },
+            CmvsPs2aCommandEffectKind::SetNativeFullscreenSuspend,
             &[CmvsPs2aCommandStackWord {
                 offset_from_top_bytes: 4,
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,

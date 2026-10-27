@@ -23,164 +23,8 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             src: NativeMicroSrc::Reg(0),
         },
     ],
-    // 1 (cmd 280): font-cache slot gate; the then-branch only calls the
-    // omitted deep callee, so the program reduces to the 0x1000 raise.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(12),
-            taken_ops: 24,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3000),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 23,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3004),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 21,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3008),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 19,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3012),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 17,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3016),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 15,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3020),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 13,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3024),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 11,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(7),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3028),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 9,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(8),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3032),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 7,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(9),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3036),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 5,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(10),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3040),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 3,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(11),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3044),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000,
-        },
-    ],
+    // Reserved positional entry after the typed 280 cutover.
+    &[],
     // 2 (cmd 495): container/slot-index gates; the context read and its
     // tail calls are omitted deep calls with no interpreter effect.
     &[
@@ -231,132 +75,9 @@ pub(super) const OPS: &[&[NativeMicroOp]] = &[
             mask: 0x10,
         },
     ],
-    // 7 (cmd 816): string-table slot gate; the 0x608-byte table build on
-    // the slot object is an omitted deep call.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Lt,
-            rhs: NativeMicroSrc::Const(0x100),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x10,
-        },
-    ],
-    // 8 (cmd 916): glyph-cache slot gate, mirroring program 1 over the
-    // eight-entry table at byte 3100.
-    &[
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ge,
-            rhs: NativeMicroSrc::Const(8),
-            taken_ops: 16,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3100),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 15,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(1),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3104),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 13,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(2),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3108),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 11,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(3),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3112),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 9,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(4),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3116),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 7,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(5),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3120),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 5,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(6),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3124),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 3,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Reg(0),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(7),
-            taken_ops: 1,
-        },
-        NativeMicroOp::Guard {
-            lhs: NativeMicroSrc::Field(3128),
-            kind: NativeMicroCmpKind::Ne,
-            rhs: NativeMicroSrc::Const(0),
-            taken_ops: 1,
-        },
-        NativeMicroOp::OrField {
-            byte_offset: 10532,
-            mask: 0x1000,
-        },
-    ],
-    // 9 (cmd 961): string-table record construction only; no
-    // interpreter writes.
+    // Reserved positional entry after the typed 816 cutover.
+    &[],
+    // Reserved positional entry after the typed 916 cutover.
     &[],
 ];
 
@@ -384,22 +105,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_488960` (case 280): font-cache selector. With
-        // font index values[0] below twelve and the font-object table
-        // `this[750..761]` (bytes 3000..3044) bound at that index, it
-        // calls `sub_464980(font_object, values[1] != 0)` — an omitted
-        // deep call that only refreshes the font manager's +0x68 cached
-        // id through `sub_461F20`/`sub_461790`; otherwise it raises
-        // mask 0x1000 at byte 10532. The unrolled slot gates read the
-        // live interpreter words, so font-loading contracts that publish
-        // those words keep this faithful; a negative index (native reads
-        // `this[750+index]` below the table) always raises here.
-        // Returns 0x4008.
+        // 488960 -> 464980 -> 461F20/461790: per-text-owner bold,
+        // false=400, true=600; only a changed bool clears the cache.
         280 => (
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 5,
-                table_index: 1,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::Bold,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -530,40 +241,20 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_481BB0` (case 816; decompile failed, recovered
-        // from the raw asm): the 0x10 gate mirrors case 786 — values[0]
-        // at or above 0x100 (signed `jge`) or a null
-        // `this[481+values[0]]` slot raises 0x10 at byte 10532. The
-        // success tail calls `sub_4458C0(slot_object)`: allocates a
-        // 0x608-byte block (`sub_4A9BD1`), constructs it via
-        // `sub_447C30` and stores the result at slot_object+0x101C — an
-        // omitted deep call with no interpreter writes. The 481-table
-        // occupancy gate is executor-side slot state, treated as bound.
-        // Returns 0x4004.
+        // 481BB0 -> 4458C0 constructs an empty native XYZ collision owner.
         816 => (
             4,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 5,
-                table_index: 7,
-            },
+            CmvsPs2aCommandEffectKind::NativeHitPolygon { command_id },
             &[CmvsPs2aCommandStackWord {
                 offset_from_top_bytes: 4,
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_488050` (case 916): glyph-cache selector, the
-        // eight-entry twin of case 280 over `this[775..782]` (bytes
-        // 3100..3128). With values[0] below eight and the glyph object
-        // bound, calls `sub_43A370(glyph_object, values[1] != 0)` —
-        // omitted deep call refreshing the +0x78 cached id through
-        // `sub_461F20`/`sub_461790`; otherwise raises 0x1000. A negative
-        // index always raises here (native reads below the table).
-        // Returns 0x4008.
+        // 488050 -> 43A370: independent eight-slot glyph owner weight.
         916 => (
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 5,
-                table_index: 8,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::GlyphBold,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -576,20 +267,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47BF50` (case 961): string-table record
-        // construction. Reads the string-table manager at `this[790]`
-        // (byte 3160) and calls `sub_413FC0(manager, values[0],
-        // values[1] as u16)`: LocalAlloc(0x88) per record, per-entry
-        // string buffers, linked through the manager's list with the
-        // head parked at manager+4. All writes land in the engine-side
-        // manager object, none in `interpreter_words`; the callee is
-        // omitted. Returns 0x4008.
+        // 47BF50 -> 413FC0: main+3164 bitmap manager, cell index at
+        // stack-4 and character code truncated to u16 at stack-8.
         961 => (
             8,
-            CmvsPs2aCommandEffectKind::NativeMicroProgram {
-                cluster: 5,
-                table_index: 9,
-            },
+            CmvsPs2aCommandEffectKind::NativeCustomGlyph { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,

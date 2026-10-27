@@ -38,10 +38,6 @@ pub(super) fn parse_header(source: &[u8]) -> Result<Ps2aHeader, CoreError> {
     })
 }
 
-pub(crate) fn parse_header_for_archive_key(source: &[u8]) -> Result<Ps2aHeader, CoreError> {
-    parse_header(source)
-}
-
 pub(super) fn decode_payload(source: &[u8], header: Ps2aHeader) -> Result<Vec<u8>, CoreError> {
     let compressed_end = HEADER_BYTES
         .checked_add(checked_usize(header.compressed_size)?)

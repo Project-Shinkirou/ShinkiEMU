@@ -18,44 +18,6 @@ fn rejects_truncated_lzss_literal() {
     assert_eq!(error.code(), "SHINKI_EMU_CMVS_PS2A_LZSS");
 }
 
-#[test]
-fn censes_only_bounded_string_starts() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&0x0120_0201u32.to_le_bytes());
-    bytecode.extend_from_slice(&0u32.to_le_bytes());
-    bytecode.extend_from_slice(&0x0120_0201u32.to_le_bytes());
-    bytecode.extend_from_slice(&1u32.to_le_bytes());
-    let script = CmvsScript {
-        schema: "test".into(),
-        header: Ps2aHeader {
-            header_length: HEADER_BYTES as u32,
-            program_key: 0,
-            name_index_count: 0,
-            bytecode_size: u32::try_from(bytecode.len()).unwrap(),
-            metadata_size: 0,
-            name_index_size: 0,
-            initial_pc: 0,
-            compressed_size: 1,
-            uncompressed_size: 1,
-        },
-        name_index: Vec::new(),
-        bytecode_offset: HEADER_BYTES as u32,
-        bytecode,
-        data_segment: Vec::new(),
-        string_pool: vec![b'x'],
-        strings: vec![CmvsScriptString {
-            offset: (HEADER_BYTES + 16) as u32,
-            byte_length: 1,
-            text_hash: [0; 32],
-        }],
-        decoded_size: 0,
-    };
-    let census = census_ps2a_string_references(&script).unwrap();
-    assert_eq!(census.candidate_count, 2);
-    assert_eq!(census.valid_string_start_count, 1);
-    assert_eq!(census.invalid_offset_count, 1);
-}
-
 fn control_script(bytecode: Vec<u8>, name_index: Vec<u32>) -> CmvsScript {
     CmvsScript {
         schema: "test".into(),
@@ -70,6 +32,7 @@ fn control_script(bytecode: Vec<u8>, name_index: Vec<u32>) -> CmvsScript {
             compressed_size: 1,
             uncompressed_size: 1,
         },
+        raw_header: [0; HEADER_BYTES],
         name_index,
         bytecode_offset: HEADER_BYTES as u32,
         bytecode,
@@ -103,9 +66,10 @@ fn installing_a_script_frame_replaces_all_lookup_tables_and_preserves_failed_loa
         "SHINKI_EMU_CMVS_SCRIPT_FRAME"
     );
     assert_eq!(vm, before);
-    assert!(vm
-        .install_script_frame(1, "cmvs:/../second.ps3", hash, &script)
-        .is_err());
+    assert!(
+        vm.install_script_frame(1, "cmvs:/../second.ps3", hash, &script)
+            .is_err()
+    );
     assert_eq!(vm, before);
     script.header.initial_pc = 0;
     script.name_index.clear();

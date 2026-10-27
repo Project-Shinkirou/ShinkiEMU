@@ -26,8 +26,10 @@ impl CmvsArchive {
             .interpreter_string_buffers
             .get(&buffer_offset)
             .ok_or_else(storage_error)?;
-        let [CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 }, CmvsStringSegment::OwnedString(relative)] =
-            segments.as_slice()
+        let [
+            CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 },
+            CmvsStringSegment::OwnedString(relative),
+        ] = segments.as_slice()
         else {
             return Err(storage_error());
         };
@@ -90,22 +92,28 @@ mod tests {
             .unwrap();
         assert!(!root.path().join("save/absent").exists());
         assert_eq!(std::fs::read(existing).unwrap(), b"original save");
-        assert!(archive
-            .ensure_path_directories(&request("save/nested/system.dat/"), 5404)
-            .is_err());
+        assert!(
+            archive
+                .ensure_path_directories(&request("save/nested/system.dat/"), 5404)
+                .is_err()
+        );
         for path in ["../escape/", "save/../escape/", "/absolute/", "C:\\save\\"] {
-            assert!(archive
-                .ensure_path_directories(&request(path), 5404)
-                .is_err());
+            assert!(
+                archive
+                    .ensure_path_directories(&request(path), 5404)
+                    .is_err()
+            );
         }
     }
 
     #[test]
     fn unknown_or_unresolved_prefix_is_rejected_before_filesystem_access() {
         let (_root, archive) = super::super::cache_tests::fixture();
-        assert!(archive
-            .ensure_path_directories(&request("save/"), 5404)
-            .is_err());
+        assert!(
+            archive
+                .ensure_path_directories(&request("save/"), 5404)
+                .is_err()
+        );
         let mut vm = request("save/");
         vm.interpreter_string_buffers.get_mut(&5404).unwrap()[0] =
             CmvsStringSegment::InterpreterPrefixField { field_offset: 1 };
@@ -118,7 +126,7 @@ mod tests {
         archive.bind_game_root(root.path().to_path_buf()).unwrap();
         for mode in [1, 2, 3, u32::MAX] {
             let mut vm = request("save/");
-            vm.interpreter_words.insert(10756, mode);
+            vm.write_interpreter_word(10756, mode);
             assert!(archive.ensure_path_directories(&vm, 5404).is_err());
             assert!(!root.path().join("save").exists());
         }

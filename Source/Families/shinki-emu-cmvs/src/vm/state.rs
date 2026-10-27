@@ -7,8 +7,8 @@ use version::VmVersion;
 /// game save; source script pools are rebound from verified files instead.
 /// One this+0x784 channel-child presenter recovered from the native
 /// UI toolkit: the case-490 payload reset, the case-491 eight-entry
-/// payload table (`sub_432AF0`), the case-500 quad slot (`sub_42BC90`/
-/// `sub_431290`) and the case-72 byte clamp (`sub_42E8E0`).
+/// payload table (`sub_432AF0`) and the case-500 quad slot (`sub_42BC90`/
+/// `sub_431290`). Basic-surface parameters live in the texture tree.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsChannelChildPresenter {
     /// Eight 16-byte table entries from `sub_432AF0`: fields land at
@@ -20,14 +20,6 @@ pub struct CmvsChannelChildPresenter {
     pub reset_value: i32,
     /// The case-500 quad: `[0]=flag, [4]=u16, [6]=u16, [8]=[0xc]=value`.
     pub quad: Option<[u32; 4]>,
-    /// The case-72 clamped byte field at presenter +0x44.
-    pub byte44: u32,
-    /// The case-68 rect at presenter +0x08..+0x14 (`sub_42E950`).
-    pub rect: Option<[i32; 4]>,
-    /// Generic value stores for the case-69/70 setters.
-    pub values: [u32; 4],
-    /// The case-71 single auxiliary word.
-    pub aux_word: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -57,6 +49,9 @@ pub struct CmvsPs2aVmState {
     /// original interpreter object byte offsets, not script-visible
     /// variables.
     pub interpreter_words: BTreeMap<u32, u32>,
+    /// Native175 can publish its unwritten stack-local extent on load failure.
+    /// The value, when defined, lives only in interpreter_words[81236].
+    pub native_audio_extent_indeterminate: bool,
     /// Version-pinned words assigned through recovered CMVS process-global
     /// setters. Keys are original addresses, not game-visible variable ids.
     pub process_global_words: BTreeMap<u32, u32>,
@@ -82,39 +77,43 @@ pub struct CmvsPs2aVmState {
     /// Keys pack the version-pinned table byte offset and slot index; values
     /// are deterministic identities assigned by the creation order.
     pub slot_objects: BTreeMap<u32, u64>,
+    pub(crate) cmv_controllers: BTreeMap<u8, super::cmv::CmvController>,
     /// Recovered effect-channel objects, keyed by channel 0..=7. Cases
     /// 400/401/402/403/405/406 read and write the quad records inside these
     /// objects at the original byte offsets; case 405 reports the inverse of
     /// the quad record's visibility dword.
     pub effect_channels: BTreeMap<u8, CmvsEffectChannel>,
-    /// Per-channel synthetic playback lifecycle (the native channel
-    /// object's +0xD0/+0xD4 pair): a channel armed by a playback-start
-    /// flag completes a bounded number of ticks later, mirroring the
-    /// native stop path (`sub_48C0E0` clears +0xD0 and sets +0xD4).
-    pub channel_completion_at: BTreeMap<u8, u64>,
     /// Recovered effect playback table entries, keyed by effect index 0..=11.
     /// Cases 276/277/278 write the record fields at dwords 41/44/45.
     pub effect_playback: BTreeMap<u8, CmvsEffectPlaybackRecord>,
-    /// Recovered effect timeline steps (`sub_4246C0` pushes delay entries
-    /// with type 1; the native table holds sixteen 96-byte records).
-    pub effect_timeline: Vec<CmvsEffectTimelineStep>,
+    /// Native sixteen-record timeline, including its active cursor and clock.
+    pub(crate) native_timeline: Option<crate::system_save::slot_globals::NativeTimeline>,
+    pub(crate) message_history: super::message_history::MessageHistory,
     /// Core-private text objects in native table 750; fonts in table 762
     /// outlive destruction of their corresponding text object.
     pub native_text: BTreeMap<u8, CmvsNativeTextSurface>,
     pub native_text_fonts: BTreeMap<u8, String>,
+    pub native_font_owners: BTreeMap<u16, CmvsNativeFontOwner>,
+    pub native_default_font: String,
+    pub native_glyphs: BTreeMap<u8, CmvsNativeGlyphGraph>,
+    /// Main+3164 survives native slot loads; private snapshots retain its data.
+    pub native_custom_glyphs: CmvsNativeCustomGlyphManager,
+    pub native_text_reveals: BTreeMap<u8, Vec<CmvsNativeTextReveal>>,
     pub native_save_catalog: Option<CmvsNativeSaveCatalog>,
     /// Recovered effect channel child elements, keyed by `(channel, child)`.
     /// Cases 378/379/380/382/383 address one element through `sub_466AE0`.
     pub effect_elements: BTreeMap<(u8, u32), CmvsEffectElement>,
-    /// Recovered renderer screen-commit flag (`renderer[21]`), committed by
-    /// case 104 and polled by cases 105/106. The headless texture pipeline is
-    /// synchronous and the host owns input pacing, so the recovered subset
-    /// commits on the first poll instead of blocking the frame.
-    pub screen_pending: bool,
-    /// Recovered renderer screen-object dwords, keyed by the original field
-    /// index. Cases 88/89/90/91 write the RGB (1..3), offset (6..8), scale
-    /// (9/10/15/16) and rotation (14) fields; unwritten fields read zero.
+    /// Camera zero dwords keyed by native field index. Missing fields retain
+    /// the 457BF0 constructor values; fields 1..3 are world position, not RGB.
     pub screen_words: BTreeMap<u32, u32>,
+    /// Addressed camera banks selected by 43C0C0; bank zero uses screen_words.
+    pub screen_camera_words: BTreeMap<u32, BTreeMap<u32, u32>>,
+    pub independent_views: [super::CmvsIndependentView; 2],
+    pub native_scene_workers: BTreeMap<u8, super::CmvsNativeSceneWorker>,
+    /// Queue manager DWORD23 (command41): reverse equal-key insertion order.
+    pub native_mesh_equal_prepend: bool,
+    /// Native renderer mode and script-controlled view flags.
+    pub native_view: CmvsNativeViewState,
     /// Persisted dwords of the recovered scene object (`game[818]`, byte
     /// offset 3272). The `424`/`426`/`428`/`430`/`432` queries publish
     /// `(base != 0, base + 1 != 0)` for the five layer groups at base words
@@ -130,9 +129,7 @@ pub struct CmvsPs2aVmState {
     /// container. Object lifetime remains authoritative in `slot_objects`;
     /// this table retains only the recovered resource/surface fields.
     pub texture_parents: BTreeMap<u8, CmvsTextureParentState>,
-    /// Placements of destroyed texture slots, keyed by
-    /// [`cmvs_slot_placement_key_parent`] / [`cmvs_slot_placement_key_child`].
-    pub retained_slot_placements: BTreeMap<u32, CmvsRetainedPlacement>,
+    pub(crate) texture_reloads: BTreeMap<u8, super::texture_reload::TextureReload>,
     /// Child textures owned by each live top-level container in the case-32
     /// table. Parent slots are bounded to 256 and child ids to 1024 by the
     /// original helpers. Resource content remains in the VFS/script pool;
@@ -141,11 +138,6 @@ pub struct CmvsPs2aVmState {
     /// Live resource slot membership behind the recovered case-321 clear
     /// handler. Slot contents are unrecovered; only occupancy is retained.
     pub resource_slots: BTreeSet<u8>,
-    /// The display region pair case 42 stores into a resource slot object
-    /// (`sub_445E80`, object offsets 0x1038/0x103c), keyed by slot index.
-    /// No renderer consumes it yet; retaining it keeps the command's
-    /// observable state replayable.
-    pub resource_slot_regions: BTreeMap<u8, [u32; 2]>,
     /// Monotonic identity source for recovered slot objects.
     pub next_slot_object_id: u64,
     /// The opaque construction words of recovered singleton slot objects,
@@ -166,14 +158,6 @@ pub struct CmvsPs2aVmState {
     /// current item and reports -10; a confirm on the already-locked item
     /// reports its id. Moving or cancelling clears the lock.
     pub filter_chain_locked_records: BTreeMap<u8, u32>,
-    /// Reverse-engineering aid: each frame's last tick-end pc, so the idle
-    /// snapshot can name every coroutine's park position. Never part of
-    /// save/replay semantics.
-    pub last_frame_stop_pcs: BTreeMap<u16, u32>,
-    /// Reverse-engineering aid: last rendered chain-state signature, so the
-    /// change-gated diagnostic only logs transitions. Never participates in
-    /// execution or snapshots.
-    pub last_filter_chain_signature: Option<String>,
     /// Case-528 channel binding for each live interactive-chain bank. The
     /// original constructor retains the selected object from the bounded
     /// case-32 table (`this+481+channel`); retaining the channel is required
@@ -200,25 +184,18 @@ pub struct CmvsPs2aVmState {
     /// Words of the recovered global settings object, keyed by version-
     /// pinned byte offsets.
     pub settings_words: BTreeMap<u16, u32>,
+    /// Presenters of the this+0x784 channel children, keyed by
+    /// (channel, child): the eight-entry payload table (`sub_432AF0`)
+    /// and the quad slot (`sub_42BC90`).
+    pub channel_child_presenters: BTreeMap<(u32, i32), CmvsChannelChildPresenter>,
     /// Ordered private string references held by recovered string-list
     /// append paths, keyed by version-pinned list ids.
-    /// Presenters of the this+0x784 channel children, keyed by
-    /// (channel, child). Models the native presenter: the eight-entry
-    /// payload table (`sub_432AF0`), the quad slot (`sub_42BC90`) and
-    /// the byte field at +0x44 (`sub_42E8E0`).
-    pub channel_child_presenters: BTreeMap<(u32, i32), CmvsChannelChildPresenter>,
     pub private_string_lists: BTreeMap<u16, Vec<CmvsPs2aPrivateStringReference>>,
     /// The outstanding host storage request, if any. Dispatch stays blocked
     /// until the host resolves it through the runtime provider.
     pub storage_await: Option<CmvsPs2aStorageRequest>,
-    /// Cancel-group half of the per-frame logical button snapshot the host
-    /// rebuilds before dispatch (`sub_45D2D0` reads manager dword 296).
+    /// Native cancel-group held state (input-manager dword 275).
     pub input_cancel_held: bool,
-    /// Reverse-engineering aid for the keyboard advance: the headless host
-    /// has no pointer, so the message indicator quads (12 for the first
-    /// window mode, 13 for the second) take turns receiving the synthesized
-    /// hover hit. Never part of save/replay semantics.
-    pub message_fallback_parity: bool,
     /// Directional edges for the recovered case-535 selection poll, which
     /// moves the highlighted record on up/down and reads the cancel group.
     pub input_up_edge: bool,
@@ -237,6 +214,7 @@ pub struct CmvsPs2aVmState {
     /// The movie player's audio-clock frame counter (`player->this[8]`),
     /// updated by the host each tick; command 198 publishes it.
     pub movie_frame: u32,
+    pub(crate) texture_presentation: Option<super::texture_presentation::TexturePresentation>,
     /// The active script frame index; frame 0 is the entry script.
     pub current_frame: u16,
     /// Script identities loaded into call frames, keyed by frame index. The
@@ -284,24 +262,32 @@ pub struct CmvsPs2aVmState {
     pub script_data_segment_words: BTreeMap<u16, BTreeMap<u32, u32>>,
     /// Native evaluator assembly buffer; global stores copy its bytes.
     pub message_buffer: Vec<u8>,
-    /// The recovered screenshot owner at the version-pinned handle field
-    /// (byte offset 3256), absent until case 549 recreates it.
-    pub save_image_owner: Option<CmvsSaveImageOwnerState>,
+    /// Native screen-shake owner at byte3256, created by command 549.
+    pub screen_shake: Option<CmvsScreenShakeState>,
     /// The case-696 save snapshot: a bottom-up 24-bpp BMP of the presented
     /// frame at the case-688 dimensions, replaced on each successful
     /// capture and preserved on failure.
     pub save_snapshot: Option<Vec<u8>>,
-    /// The last streamed pointer position in stage coordinates. The original
-    /// input-manager object stores it at fields 180/181 every frame
-    /// (`sub_461630`) and the hit-test commands read it through `sub_45CF40`.
+    /// Native confirmation group 01, held dword 272.
     pub input_confirm_held: bool,
-    pub input_skip_mode: bool,
-    pub input_auto_mode: bool,
+    /// Native key-function groups 08/09 (held dwords 293/296).
+    pub input_shift_held: bool,
+    pub input_control_held: bool,
     pub input_advance_release: bool,
     pub input_advance_press: bool,
-    /// True while the session pumps its synthesized auto-advance clicks,
-    /// so menu confirm arming can tell physical keys from the pump.
-    pub input_synthetic: bool,
+    /// Rebound by the host before dispatch; never carried through snapshots.
+    #[serde(skip)]
+    pub native_frame_delta_ms: u32,
+    #[serde(skip)]
+    pub native_audio_playing: u16,
+    #[serde(skip)]
+    pub native_audio_present: u16,
+    #[serde(skip)]
+    pub native_stage_size: [u32; 2],
+    #[serde(skip)]
+    pub native_render_size: [u32; 2],
+    #[serde(skip)]
+    pub native_pointer_present: bool,
     /// The pc/frame a coroutine resumed through the engine request parked
     /// at (the record table's mutable park slot, `sub_46DF10`'s phase
     /// mechanism): the next engine request resumes the park, not the
@@ -338,15 +324,6 @@ pub struct CmvsPs2aVmState {
     /// through its 349086 exit — the native program switch moment for a
     /// deferred load.
     pub menu_pump_exit_seen: bool,
-    /// One-shot from the session's input layer: the system menu just
-    /// opened; capture the story context before the menu flow runs.
-    pub menu_capture_story: bool,
-    /// Post-load: the story's dialog advances need the dispatcher
-    /// queued per confirm (the native callback's message); armed once
-    /// the load's switch has applied.
-    pub story_dispatch_armed: bool,
-    /// RE aid: last story-region pc logged by the change-gated trace.
-    pub last_story_pc: Option<u32>,
     pub pointer_x: i32,
     pub pointer_y: i32,
     /// Rebound from verified scripts after restore; never written into saves.
@@ -379,6 +356,32 @@ pub struct CmvsPs2aVmState {
 }
 
 impl CmvsPs2aVmState {
+    pub fn read_interpreter_word(&self, offset: u32) -> Result<u32, CoreError> {
+        if offset == 81236 && self.native_audio_extent_indeterminate {
+            return Err(CoreError::invalid(
+                "SHINKI_EMU_CMVS_NATIVE_AUDIO_EXTENT_INDETERMINATE",
+                "native175 published an uninitialized decoder extent",
+            ));
+        }
+        Ok(self.interpreter_words.get(&offset).copied().unwrap_or(0))
+    }
+
+    pub fn write_interpreter_word(&mut self, offset: u32, value: u32) -> Option<u32> {
+        if offset == 81236 {
+            self.native_audio_extent_indeterminate = false;
+        }
+        self.interpreter_words.insert(offset, value)
+    }
+
+    pub(crate) fn native_audio_poll_channel(&self) -> Result<Option<u8>, CoreError> {
+        let selector = super::stack::read_stack_word_from_top(self, 4)?;
+        Ok(if selector < 4 {
+            Some(selector as u8 + 5)
+        } else {
+            None
+        })
+    }
+
     /// True once any instruction failed; the session layer checks this
     /// before each frame without reaching the private field.
     pub fn execution_error(&self) -> Option<&'static str> {
@@ -445,59 +448,93 @@ impl CmvsPs2aVmState {
             stack_initialized: Vec::new(),
             stack_cursor_bytes: 0,
             call_frame_bases: vec![0],
-            interpreter_words: BTreeMap::from([(1452, 1), (1464, 0), (1596, 1), (15064, 0)]),
-            process_global_words: BTreeMap::from([(super::NATIVE_FONT_SHIFT_JIS, 1)]),
+            interpreter_words: BTreeMap::from([
+                (1552, 1),
+                (1556, 1),
+                (1452, 1),
+                (1464, 0),
+                (1472, 1),
+                (1476, 0),
+                (1480, 1),
+                (1484, 2),
+                (1488, 4),
+                (1496, 0),
+                (1500, 0),
+                (1504, 10),
+                (1508, 0),
+                (1512, 0),
+                (1516, 0),
+                (1520, 1),
+                (1596, 1),
+                (15064, 0),
+            ]),
+            native_audio_extent_indeterminate: false,
+            process_global_words: BTreeMap::from([
+                (super::NATIVE_FONT_SHIFT_JIS, 1),
+                (super::native_text::font_owner::NATIVE_FONT_PROPORTIONAL, 0),
+            ]),
             process_flag_bits: BTreeSet::new(),
             process_indexed_words: BTreeMap::new(),
             process_float_words: BTreeMap::new(),
             process_string_slots: BTreeMap::new(),
-            component_words: BTreeMap::new(),
+            component_words: BTreeMap::from([
+                ((1920_u32 << 16) | 96, 1),
+                ((1920_u32 << 16) | 100, 1),
+                ((1920_u32 << 16) | 104, 2),
+            ]),
             interpreter_string_buffers: BTreeMap::new(),
             resource_search_paths: BTreeMap::new(),
             slot_objects: BTreeMap::new(),
+            cmv_controllers: BTreeMap::new(),
             effect_channels: BTreeMap::new(),
-            channel_completion_at: BTreeMap::new(),
             effect_playback: BTreeMap::new(),
-            effect_timeline: Vec::new(),
+            native_timeline: None,
+            message_history: super::message_history::MessageHistory::default(),
             native_text: BTreeMap::new(),
             native_text_fonts: BTreeMap::new(),
+            native_font_owners: BTreeMap::new(),
+            native_default_font: crate::archive::DEFAULT_NATIVE_FONT.to_owned(),
+            native_glyphs: BTreeMap::new(),
+            native_custom_glyphs: CmvsNativeCustomGlyphManager::default(),
+            native_text_reveals: BTreeMap::new(),
             native_save_catalog: None,
             effect_elements: BTreeMap::new(),
-            screen_pending: false,
             screen_words: BTreeMap::new(),
+            screen_camera_words: BTreeMap::new(),
+            independent_views: super::independent_view::default_pair(),
+            native_scene_workers: BTreeMap::new(),
+            native_mesh_equal_prepend: false,
+            native_view: CmvsNativeViewState::default(),
             scene_words: BTreeMap::new(),
             resource_channel_slots: BTreeMap::new(),
             texture_parents: BTreeMap::new(),
-            retained_slot_placements: BTreeMap::new(),
             texture_children: BTreeMap::new(),
+            texture_reloads: BTreeMap::new(),
             resource_slots: BTreeSet::new(),
-            resource_slot_regions: BTreeMap::new(),
             next_slot_object_id: 1,
             slot_object_seed_words: BTreeMap::new(),
             filter_chain_records: BTreeMap::new(),
             filter_chain_record_order: BTreeMap::new(),
             filter_chain_active_records: BTreeMap::new(),
             filter_chain_locked_records: BTreeMap::new(),
-            last_frame_stop_pcs: BTreeMap::new(),
-            last_filter_chain_signature: None,
             filter_chain_channels: BTreeMap::new(),
             filter_chain_apply_revisions: BTreeMap::new(),
             prng_state: 1,
             tick: 0,
             session_clock_millis: 0,
             interpreter_flag_words: BTreeMap::new(),
-            settings_words: BTreeMap::new(),
+            settings_words: super::runtime::SETTINGS_RESET_FIELDS.into_iter().collect(),
             channel_child_presenters: BTreeMap::new(),
             private_string_lists: BTreeMap::new(),
             storage_await: None,
             input_cancel_held: false,
-            message_fallback_parity: false,
             input_up_edge: false,
             input_down_edge: false,
             wait_frame: false,
             native_system_lists: [Vec::new(), Vec::new()],
             movie_object: None,
             movie_frame: 0,
+            texture_presentation: None,
             current_frame: 0,
             script_frames: BTreeMap::new(),
             script_valid_starts: BTreeMap::new(),
@@ -511,14 +548,19 @@ impl CmvsPs2aVmState {
             script_data_segment_words: BTreeMap::new(),
             message_buffer: Vec::new(),
             frame_string_values: BTreeMap::new(),
-            save_image_owner: None,
+            screen_shake: None,
             save_snapshot: None,
             input_confirm_held: false,
-            input_skip_mode: false,
-            input_auto_mode: false,
+            input_shift_held: false,
+            input_control_held: false,
             input_advance_release: false,
             input_advance_press: false,
-            input_synthetic: false,
+            native_frame_delta_ms: 0,
+            native_audio_playing: 0,
+            native_audio_present: 0,
+            native_stage_size: [0, 0],
+            native_render_size: [0, 0],
+            native_pointer_present: false,
             engine_request_park: None,
             engine_request_live: false,
             engine_request_armed: false,
@@ -527,9 +569,6 @@ impl CmvsPs2aVmState {
             input_selection_override: None,
             load_confirm_selection: None,
             menu_pump_exit_seen: false,
-            menu_capture_story: false,
-            story_dispatch_armed: false,
-            last_story_pc: None,
             pointer_x: 0,
             pointer_y: 0,
             dispatch_stopped: false,
@@ -540,37 +579,6 @@ impl CmvsPs2aVmState {
             dialog_dispatch_cursor: None,
             forced_dialog_record: None,
             execution_failed: false,
-        }
-    }
-}
-
-impl CmvsPs2aVmState {
-    /// Stashes the placement of a parent slot (and its children) before the
-    /// slot object is destroyed; native surfaces keep their transforms.
-    pub(crate) fn retain_texture_slot_placement(&mut self, parent: u8) {
-        if let Some(state) = self.texture_parents.get(&parent) {
-            self.retained_slot_placements.insert(
-                crate::cmvs_slot_placement_key_parent(parent),
-                crate::CmvsRetainedPlacement {
-                    surface_initialized: state.surface_initialized,
-                    rect_words: state.rect_words,
-                    position_words: state.position_words,
-                    auxiliary_word: state.auxiliary_word,
-                },
-            );
-        }
-        if let Some(children) = self.texture_children.get(&parent) {
-            for (child, state) in children {
-                self.retained_slot_placements.insert(
-                    crate::cmvs_slot_placement_key_child(parent, *child),
-                    crate::CmvsRetainedPlacement {
-                        surface_initialized: state.surface_initialized,
-                        rect_words: state.rect_words,
-                        position_words: state.position_words,
-                        auxiliary_word: state.auxiliary_word,
-                    },
-                );
-            }
         }
     }
 }

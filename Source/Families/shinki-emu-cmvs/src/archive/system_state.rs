@@ -28,8 +28,10 @@ impl CmvsArchive {
             .interpreter_string_buffers
             .get(&buffer)
             .ok_or_else(failure)?;
-        let [CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 }, CmvsStringSegment::OwnedString(prefix)] =
-            segments.as_slice()
+        let [
+            CmvsStringSegment::InterpreterPrefixField { field_offset: 7452 },
+            CmvsStringSegment::OwnedString(prefix),
+        ] = segments.as_slice()
         else {
             return Err(failure());
         };
@@ -49,13 +51,6 @@ impl CmvsArchive {
                 crate::apply_system_save(vm, candidate)?;
             }
             Ok(_) => return Err(failure()),
-        }
-        if tracing::enabled!(tracing::Level::INFO) {
-            tracing::info!(
-                event = "cmvs.session.system_state_load",
-                identity = vm.interpreter_words.get(&1600).copied().unwrap_or(0),
-                applied = true
-            );
         }
         vm.storage_await = None;
         Ok(())

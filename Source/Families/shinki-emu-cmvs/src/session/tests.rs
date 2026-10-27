@@ -1,11 +1,7 @@
 use super::*;
 
 /// A public, synthetic PS2A program: yield to the presenter, then loop.
-pub(crate) fn fixture() -> (
-    tempfile::TempDir,
-    CmvsSession,
-    roukaku_platform_common::NativeAudioConsumer,
-) {
+pub(crate) fn fixture() -> (tempfile::TempDir, CmvsSession) {
     let (root, mut archive) = crate::archive::test_archive();
     archive.bind_game_root(root.path().to_path_buf()).unwrap();
     let mut bytecode = 0x2000u16.to_le_bytes().to_vec();
@@ -28,7 +24,7 @@ pub(crate) fn fixture() -> (
     source.extend_from_slice(&compressed);
     std::fs::write(root.path().join("start.ps3"), source).unwrap();
     let instance = roukaku_platform_common::native_wgpu_instance().unwrap();
-    let (audio, consumer) = audio::test_output();
+    let audio = audio::test_output();
     let session = CmvsSession::new_with_audio(
         Arc::new(archive),
         root.path().to_path_buf(),
@@ -44,5 +40,5 @@ pub(crate) fn fixture() -> (
         || Ok(audio),
     )
     .unwrap();
-    (root, session, consumer)
+    (root, session)
 }

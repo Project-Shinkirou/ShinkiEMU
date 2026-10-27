@@ -107,7 +107,6 @@ pub(crate) fn micro_ops(cluster: u8, table_index: u8) -> &'static [NativeMicroOp
         1 => bulk_high::OPS,
         2 => settings::OPS,
         3 => layers::OPS,
-        4 => audio::OPS,
         5 => misc::OPS,
         _ => video::OPS,
     };

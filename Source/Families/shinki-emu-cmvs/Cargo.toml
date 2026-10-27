@@ -7,10 +7,10 @@ build = "build.rs"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
+
 [features]
 default = []
 video-ffmpeg = ["shinki-emu-sdk/video-ffmpeg"]
-
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
@@ -20,30 +20,31 @@ roukaku-text = { workspace = true }
 fontdb.workspace = true
 configparser = "=3.3.0"
 kira.workspace = true
+symphonia.workspace = true
 roukaku-media-core = { workspace = true }
 roukaku-platform = { workspace = true }
 roukaku-platform-common = { workspace = true }
 pollster.workspace = true
 wgpu.workspace = true
 encoding_rs.workspace = true
-flate2.workspace = true
-image = { workspace = true, features = ["ico"] }
+image = { workspace = true, features = ["ico", "bmp"] }
 md-5 = "0.10"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-
 roukaku-core = { workspace = true }
 postcard.workspace = true
 tracing.workspace = true
+time = { workspace = true, features = ["local-offset"] }
+
+[build-dependencies]
+cc = "1.2"
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
 
 [dev-dependencies]
 tempfile.workspace = true
 parking_lot.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_System_Registry"] }
-
-[build-dependencies]
-shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
+windows = { workspace = true, features = ["Win32_System_Registry", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Globalization"] }

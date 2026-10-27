@@ -8,7 +8,10 @@ pub(super) fn execute(
     match (effect_kind, values) {
         (
             CmvsPs2aCommandEffectKind::CallScript,
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, slot), (CmvsPs2aCommandStackWordKind::TaggedStringReference, name)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, slot),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, name),
+            ],
         ) => {
             if *slot >= crate::CMVS_MAX_SCRIPT_CALL_INDEX {
                 return Err(invalid(
@@ -39,18 +42,9 @@ pub(super) fn execute(
                     "CMVS PS2A program counter overflowed",
                 )
             })?;
-            { super::super::stack::set_push_origin("ret0x413"); }
             push_word(state, frame_counter)?;
             push_word(state, return_pc)?;
             push_word(state, u32::from(state.current_frame))?;
-            super::super::stack::set_push_origin("push");
-            if vm_trace_enabled() {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.stack_trace",
-                    pc = state.program_counter,
-                    frame = state.current_frame
-                );
-            }
             state.current_frame = frame;
             Ok(Some(CmvsPs2aVmAction::CallScript { frame, name }))
         }
@@ -70,14 +64,17 @@ pub(super) fn execute(
             state.slot_objects.clear();
             state.texture_parents.clear();
             state.texture_children.clear();
-            state.retained_slot_placements.clear();
+            state.texture_presentation = None;
+            state.texture_reloads.clear();
             state.effect_channels.clear();
             state.effect_elements.clear();
             state.effect_playback.clear();
             state.native_text.clear();
+            state.native_text_reveals.clear();
             state.native_text_fonts.clear();
+            state.native_font_owners.clear();
+            state.native_glyphs.clear();
             state.resource_slots.clear();
-            state.resource_slot_regions.clear();
             state.resource_channel_slots.clear();
             state.component_words.clear();
             // The teardown also parks the engine-state dwords the reload
@@ -91,25 +88,18 @@ pub(super) fn execute(
                 (10568, 1),
                 (10708, 0),
                 (10576, 0),
+                (3260, 0),
             ] {
-                state.interpreter_words.insert(field, value);
+                state.write_interpreter_word(field, value);
             }
             let action = reload_root_script(state, "main.ps3".to_string());
             // Post-reload the handler clears the record-28 fallback entry
             // (flag 0, frame 0, pc -1) so the scheduler fallback stays dead
             // until the boot flow registers it again.
             let base = COROUTINE_RECORD_TABLE_BASE + COROUTINE_RECORD_STRIDE * 28;
-            state.interpreter_words.insert(base - 4, 0);
-            state.interpreter_words.insert(base, 0);
-            state.interpreter_words.insert(base + 4, u32::MAX);
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.engine_reset_to_main",
-                    tick = state.tick,
-                    pc = state.program_counter,
-                    frame = state.current_frame
-                );
-            }
+            state.write_interpreter_word(base - 4, 0);
+            state.write_interpreter_word(base, 0);
+            state.write_interpreter_word(base + 4, u32::MAX);
             Ok(Some(action))
         }
         (CmvsPs2aCommandEffectKind::SaveSystemState, []) => {
@@ -131,29 +121,26 @@ pub(super) fn execute(
             // the command, and the scheduler resumes the coroutine next
             // frame (`0xC004`).
             let reference = resolve_resource_name(state, *name)?;
-            state.interpreter_words.insert(loading_field_offset, 1);
+            state.write_interpreter_word(loading_field_offset, 1);
             state.dispatch_stopped = true;
             Ok(Some(CmvsPs2aVmAction::OpenScenarioStream {
                 resource: reference,
             }))
         }
         (
-            CmvsPs2aCommandEffectKind::RebuildChainGraphSuspend {
-                clear_field_a_offset,
-                clear_field_b_offset,
-                request_field_offset,
-            },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, _top)],
+            CmvsPs2aCommandEffectKind::SetNativeFullscreenSuspend,
+            [(CmvsPs2aCommandStackWordKind::OpaqueU32, top)],
         ) => {
-            // `sub_48A6C0`: the engine-side chain rebuild is synchronous in
-            // the headless model, so the observable half is the cleared
-            // layout words, the raised request word and the `0xC004` frame
-            // suspension.
-            state.interpreter_words.insert(clear_field_a_offset, 0);
-            state.interpreter_words.insert(clear_field_b_offset, 0);
-            state.interpreter_words.insert(request_field_offset, 1);
+            let enabled = *top != 0;
+            if state.native_view.fullscreen != enabled {
+                state.write_interpreter_word(10516, 0);
+                state.write_interpreter_word(10520, 0);
+            }
+            state.native_view.fullscreen = enabled;
+            state.native_view.reset_viewport(state.native_render_size);
+            state.write_interpreter_word(10708, 1);
             state.dispatch_stopped = true;
-            Ok(None)
+            Ok(Some(CmvsPs2aVmAction::SetNativeFullscreen { enabled }))
         }
         (
             CmvsPs2aCommandEffectKind::ResumeInterpreterCoroutineRecord {
@@ -187,24 +174,16 @@ pub(super) fn execute(
                     return Err(invalid(
                         "SHINKI_EMU_CMVS_VM_COROUTINE",
                         "CMVS coroutine label has no registered continuation record",
-                    ))
+                    ));
                 }
             };
-            if tracing::enabled!(tracing::Level::INFO) {
-                tracing::info!(
-                    event = "shinki.emu.cmvs.vm.cmd138_resume",
-                    pc = state.program_counter,
-                    frame = state.current_frame,
-                    label,
-                    dest_pc = recorded_pc,
-                    dest_frame = recorded_frame
-                );
-            }
             // Native jumps through the registered address. An invalidated
             // target is an invalid continuation, never successful playback.
             if recorded_pc == u32::MAX {
-                return Err(invalid("SHINKI_EMU_CMVS_VM_COROUTINE",
-                    "CMVS coroutine continuation was invalidated"));
+                return Err(invalid(
+                    "SHINKI_EMU_CMVS_VM_COROUTINE",
+                    "CMVS coroutine continuation was invalidated",
+                ));
             }
             let frame = u16::try_from(recorded_frame).map_err(|_| {
                 invalid(
@@ -223,23 +202,15 @@ pub(super) fn execute(
             })?;
             // sub_47CB00 saves the caller's counter before resetting it;
             // the destination frame id is not a counter.
-            let caller_counter = state.interpreter_words
-                .get(&SCRIPT_FRAME_COUNTER_FIELD).copied().unwrap_or_default();
-            { super::super::stack::set_push_origin("resume"); }
+            let caller_counter = state
+                .interpreter_words
+                .get(&SCRIPT_FRAME_COUNTER_FIELD)
+                .copied()
+                .unwrap_or_default();
             push_word(state, caller_counter)?;
             push_word(state, return_pc)?;
             push_word(state, u32::from(state.current_frame))?;
-            super::super::stack::set_push_origin("push");
-            if vm_trace_enabled() {
-                tracing::trace!(
-                    event = "shinki.emu.cmvs.vm.stack_trace",
-                    pc = state.program_counter,
-                    frame = state.current_frame
-                );
-            }
-            state
-                .interpreter_words
-                .insert(SCRIPT_FRAME_COUNTER_FIELD, 0);
+            state.write_interpreter_word(SCRIPT_FRAME_COUNTER_FIELD, 0);
 
             state.current_frame = frame;
             state.program_counter = recorded_pc;
@@ -253,30 +224,38 @@ pub(super) fn execute(
                 error_flag_mask,
                 result_field_offset,
             },
-            [(CmvsPs2aCommandStackWordKind::OpaqueU32, slot), (CmvsPs2aCommandStackWordKind::OpaqueU32, selector)],
+            [
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, slot),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, selector),
+            ],
         ) => {
-            // `sub_480560`: a negative selector reports only the channel's
-            // liveness; a non-negative selector also requires the child to
-            // exist (`sub_444EF0`). The recovered subset tracks no children
-            // on the 481-table channels, so the child check reports absent.
+            // 480560 addresses this[481 + slot] in DWORDs. Non-negative
+            // selectors query the actual child table; any negative selects root.
             if *slot > max_slot {
                 raise_error_flag(state, error_flag_field_offset, error_flag_mask)?;
                 return Ok(None);
             }
             let key = slot_object_key(
-                u16::try_from(slot_table_dword_index).map_err(|_| {
-                    invalid(
-                        "SHINKI_EMU_CMVS_VM_SLOT_OBJECTS",
-                        "CMVS slot table offset overflowed",
-                    )
-                })?,
+                slot_table_dword_index
+                    .checked_mul(4)
+                    .and_then(|offset| u16::try_from(offset).ok())
+                    .ok_or_else(|| {
+                        invalid(
+                            "SHINKI_EMU_CMVS_VM_SLOT_OBJECTS",
+                            "CMVS slot object table offset overflowed",
+                        )
+                    })?,
                 *slot,
             )?;
             let channel_live = state.slot_objects.contains_key(&key);
-            let occupied = channel_live && (*selector as i32) < 0;
-            state
-                .interpreter_words
-                .insert(result_field_offset, u32::from(occupied));
+            let occupied = channel_live
+                && ((*selector as i32) < 0
+                    || (*selector < 1024
+                        && state
+                            .texture_children
+                            .get(&(*slot as u8))
+                            .is_some_and(|children| children.contains_key(&(*selector as u16)))));
+            state.write_interpreter_word(result_field_offset, u32::from(occupied));
             Ok(None)
         }
         (
@@ -294,9 +273,7 @@ pub(super) fn execute(
             state
                 .effect_elements
                 .retain(|(_, element_playback), _| *element_playback != (*index) & 0xffff);
-            state
-                .interpreter_words
-                .insert(81220, u32::from(*index <= max_index));
+            state.write_interpreter_word(81220, u32::from(*index <= max_index));
             Ok(None)
         }
         _ => Err(CoreError::invalid(
@@ -330,10 +307,10 @@ fn reload_root_script(state: &mut CmvsPs2aVmState, name: String) -> CmvsPs2aVmAc
     state.current_frame = 0;
     state.current_value = None;
     state.condition_flag = false;
-    state.interpreter_words.insert(80952, 0);
-    state.interpreter_words.insert(81208, 0);
-    state.interpreter_words.insert(81212, 0);
-    state.interpreter_words.insert(81216, 0);
+    state.write_interpreter_word(80952, 0);
+    state.write_interpreter_word(81208, 0);
+    state.write_interpreter_word(81212, 0);
+    state.write_interpreter_word(81216, 0);
     for label in 0..COROUTINE_RECORD_COUNT {
         let base = COROUTINE_RECORD_TABLE_BASE + COROUTINE_RECORD_STRIDE * label;
         let frame = state.interpreter_words.get(&base).copied();
@@ -342,17 +319,9 @@ fn reload_root_script(state: &mut CmvsPs2aVmState, name: String) -> CmvsPs2aVmAc
         // frames (e.g. intproc) stay live.
         let invalidatable = matches!(frame, None | Some(0));
         if invalidatable && state.interpreter_words.contains_key(&(base + 4)) {
-            state.interpreter_words.insert(base + 4, u32::MAX);
-            state.interpreter_words.insert(base - 4, 0);
+            state.write_interpreter_word(base + 4, u32::MAX);
+            state.write_interpreter_word(base - 4, 0);
         }
-    }
-    if tracing::enabled!(tracing::Level::INFO) {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.root_reload_requested",
-            tick = state.tick,
-            pc = state.program_counter,
-            frame = state.current_frame
-        );
     }
     CmvsPs2aVmAction::ReloadRootScript { name }
 }

@@ -4,97 +4,6 @@ pub(super) fn push_word(state: &mut CmvsPs2aVmState, value: u32) -> Result<(), C
     push_immediate(state, value, 4)
 }
 
-thread_local! {
-    static PUSH_ORIGIN: std::cell::RefCell<&'static str> =
-        const { std::cell::RefCell::new("push") };
-}
-
-/// Tags subsequent `push_word` ledger entries with their call origin.
-pub(super) fn set_push_origin(origin: &'static str) {
-    PUSH_ORIGIN.with(|slot| *slot.borrow_mut() = origin);
-}
-
-pub(super) fn current_push_origin() -> &'static str {
-    PUSH_ORIGIN.with(|slot| *slot.borrow())
-}
-
-/// File-based push trace for stack-leak audits (CMVS_PUSH_TRACE=path).
-pub(crate) fn trace_push(state: &CmvsPs2aVmState, width: usize, kind: &str) {
-    use std::io::Write;
-    static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let cap = std::env::var("CMVS_PUSH_TRACE_CAP")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok())
-        .unwrap_or(400);
-    if n >= cap {
-        return;
-    }
-    if let Ok(path) = std::env::var("CMVS_PUSH_TRACE") {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(
-                file,
-                "{n} pc={} frame={} cursor={} +{width} {kind} script={}",
-                state.program_counter,
-                state.current_frame,
-                state.stack_cursor_bytes,
-                state
-                    .script_frames
-                    .get(&state.current_frame)
-                    .map(|identity| identity.script_uri.as_str())
-                    .unwrap_or("?")
-            );
-        }
-    }
-}
-
-/// Full-session cursor ledger (CMVS_CURSOR_TRACE=path): every stack
-/// primitive movement with its source pc, for unbalanced-push audits.
-fn cursor_ledger(state: &CmvsPs2aVmState, delta: i64) {
-    use std::io::Write;
-    static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let cap = std::env::var("CMVS_CURSOR_TRACE_CAP")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok())
-        .unwrap_or(200_000);
-    if n >= cap {
-        return;
-    }
-    let pc_min = std::env::var("CMVS_CURSOR_TRACE_PC_MIN")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok());
-    let pc_max = std::env::var("CMVS_CURSOR_TRACE_PC_MAX")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok());
-    if let (Some(lo), Some(hi)) = (pc_min, pc_max) {
-        if state.program_counter < lo || state.program_counter > hi {
-            return;
-        }
-    }
-    if let Ok(path) = std::env::var("CMVS_CURSOR_TRACE") {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(
-                file,
-                "{n} pc={} frame={} cursor={} delta={delta} width={} origin={}",
-                state.program_counter,
-                state.current_frame,
-                state.stack_cursor_bytes,
-                if delta > 0 { delta } else { 0 },
-                current_push_origin()
-            );
-        }
-    }
-}
-
 pub(super) fn push_immediate(
     state: &mut CmvsPs2aVmState,
     value: u32,
@@ -105,24 +14,6 @@ pub(super) fn push_immediate(
             "SHINKI_EMU_CMVS_VM_STACK_WIDTH",
             "CMVS PS2A immediate push is smaller than its written word",
         ));
-    }
-    if value == 277_798 && tracing::enabled!(tracing::Level::INFO) {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.rogue_pc_push",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            origin = PUSH_ORIGIN.with(|o| *o.borrow()),
-            cursor = state.stack_cursor_bytes
-        );
-    }
-    if value == 0x4228_0000 && tracing::enabled!(tracing::Level::INFO) {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.pc_poison_push",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            origin = PUSH_ORIGIN.with(|o| *o.borrow()),
-            cursor = state.stack_cursor_bytes
-        );
     }
     let advance = usize::from(advance_bytes);
     let start = usize::try_from(state.stack_cursor_bytes).map_err(|_| {
@@ -137,20 +28,6 @@ pub(super) fn push_immediate(
             "CMVS PS2A stack size overflowed",
         )
     })?;
-    if end > MAX_STACK_BYTES && tracing::enabled!(tracing::Level::INFO) {
-        // Dump the frame-call base under the cursor: a leak means the
-        // cursor drifted above the deepest valid call base.
-        let bases: Vec<String> = state
-            .call_frame_bases
-            .iter()
-            .map(|base| base.to_string())
-            .collect();
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.stack_overflow_bases",
-            bases_csv = bases.join(","),
-            cursor = state.stack_cursor_bytes
-        );
-    }
     if end > MAX_STACK_BYTES {
         return Err(CoreError::invalid(
             "SHINKI_EMU_CMVS_VM_STACK_LIMIT",
@@ -211,7 +88,6 @@ pub(super) fn pop_word(state: &mut CmvsPs2aVmState) -> Result<u32, CoreError> {
 }
 
 pub(super) fn drop_stack_bytes(state: &mut CmvsPs2aVmState, bytes: u16) -> Result<(), CoreError> {
-    cursor_ledger(state, -(i32::from(bytes)) as i64);
     let cursor = usize::try_from(state.stack_cursor_bytes).map_err(|_| {
         invalid(
             "SHINKI_EMU_CMVS_VM_STACK_LIMIT",

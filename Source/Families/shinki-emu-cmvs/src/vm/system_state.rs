@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn lists_follow_native_enable_count_and_shift_jis_comparison() {
         let mut vm = CmvsPs2aVmState::new(0);
-        vm.interpreter_words.insert(10508, 1);
+        vm.write_interpreter_word(10508, 1);
         vm.native_system_lists[1].push(b"old".to_vec());
         let mut save = candidate();
         save.lists[0] = vec![
@@ -101,7 +101,7 @@ mod tests {
             vec![b"Alpha".to_vec(), vec![0x83, 0x61], vec![0x83, 0x41]]
         );
         assert!(vm.native_system_lists[1].is_empty());
-        vm.interpreter_words.insert(10508, 0);
+        vm.write_interpreter_word(10508, 0);
         let retained = vm.native_system_lists.clone();
         apply_system_save(&mut vm, candidate()).unwrap();
         assert_eq!(vm.native_system_lists, retained);

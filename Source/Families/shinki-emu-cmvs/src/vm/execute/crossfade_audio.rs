@@ -12,7 +12,11 @@ pub(super) fn execute(
         (CmvsPs2aCommandEffectKind::StopAudio, []) => Ok(Some(CmvsPs2aVmAction::StopAudio)),
         (
             CmvsPs2aCommandEffectKind::PlayAudio,
-            [(CmvsPs2aCommandStackWordKind::TaggedStringReference, primary), (CmvsPs2aCommandStackWordKind::OpaqueU32, fade_ms), (CmvsPs2aCommandStackWordKind::BooleanU32, playback_flag)],
+            [
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, primary),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fade_ms),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, playback_flag),
+            ],
         ) => Ok(Some(CmvsPs2aVmAction::PlayCrossfadeAudio {
             secondary: None,
             primary: tag_zero_reference(*primary)?,
@@ -21,7 +25,12 @@ pub(super) fn execute(
         })),
         (
             CmvsPs2aCommandEffectKind::PlayPairedAudio,
-            [(CmvsPs2aCommandStackWordKind::TaggedStringReference, primary), (CmvsPs2aCommandStackWordKind::TaggedStringReference, secondary), (CmvsPs2aCommandStackWordKind::OpaqueU32, fade_ms), (CmvsPs2aCommandStackWordKind::BooleanU32, playback_flag)],
+            [
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, primary),
+                (CmvsPs2aCommandStackWordKind::TaggedStringReference, secondary),
+                (CmvsPs2aCommandStackWordKind::OpaqueU32, fade_ms),
+                (CmvsPs2aCommandStackWordKind::BooleanU32, playback_flag),
+            ],
         ) => Ok(Some(CmvsPs2aVmAction::PlayCrossfadeAudio {
             secondary: Some(tag_zero_reference(*secondary)?),
             primary: tag_zero_reference(*primary)?,

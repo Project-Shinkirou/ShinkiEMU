@@ -221,3 +221,125 @@ fn data_segment_string(state: &CmvsPs2aVmState, start: u32) -> Result<Vec<u8>, C
         "data string has no terminator inside its segment",
     ))
 }
+
+impl CmvsPs2aVmState {
+    /// 470D50 destinations used by native header readback own their bytes.
+    pub(crate) fn write_native_string_reference(
+        &mut self,
+        target: u32,
+        bytes: &[u8],
+    ) -> Result<(), CoreError> {
+        validate_native_string_slot(bytes)?;
+        let offset = target & 0x3fff_ffff;
+        match target & 0xc000_0000 {
+            0x8000_0000 if offset < MAX_PROCESS_STRING_SLOTS => {
+                self.process_string_slots.insert(offset, bytes.to_vec());
+            }
+            0 => {
+                let pool = self
+                    .frame_string_pool_bytes
+                    .get_mut(&self.current_frame)
+                    .ok_or_else(|| {
+                        invalid(
+                            "SHINKI_EMU_CMVS_VM_STRING_POOL",
+                            "string destination pool is not bound",
+                        )
+                    })?;
+                let end = (offset as usize)
+                    .checked_add(bytes.len() + 1)
+                    .ok_or_else(|| {
+                        invalid(
+                            "SHINKI_EMU_CMVS_VM_STRING_BOUND",
+                            "string destination range overflowed",
+                        )
+                    })?;
+                let destination = pool.get_mut(offset as usize..end).ok_or_else(|| {
+                    invalid(
+                        "SHINKI_EMU_CMVS_VM_STRING_BOUND",
+                        "string destination exceeds pool",
+                    )
+                })?;
+                destination[..bytes.len()].copy_from_slice(bytes);
+                destination[bytes.len()] = 0;
+                if let Some(lengths) = self.frame_string_lengths.get_mut(&self.current_frame) {
+                    for (&start, length) in lengths {
+                        if let Some(tail) = pool.get(start as usize..) {
+                            *length = tail
+                                .iter()
+                                .position(|byte| *byte == 0)
+                                .unwrap_or(tail.len()) as u32;
+                        }
+                    }
+                }
+                if let Some(values) = self.frame_string_values.get_mut(&self.current_frame) {
+                    for (&start, value) in values {
+                        if let Some(tail) = pool.get(start as usize..) {
+                            let length = tail
+                                .iter()
+                                .position(|byte| *byte == 0)
+                                .unwrap_or(tail.len());
+                            value.clear();
+                            value.extend_from_slice(&tail[..length]);
+                        }
+                    }
+                }
+            }
+            0x4000_0000 => {
+                let size = self
+                    .script_data_segment_sizes
+                    .get(&self.current_frame)
+                    .copied()
+                    .ok_or_else(|| {
+                        invalid(
+                            "SHINKI_EMU_CMVS_VM_STRING_POOL",
+                            "string destination segment is not bound",
+                        )
+                    })?;
+                if u64::from(offset) + bytes.len() as u64 + 1 > u64::from(size) {
+                    return Err(invalid(
+                        "SHINKI_EMU_CMVS_VM_STRING_BOUND",
+                        "string destination exceeds data segment",
+                    ));
+                }
+                let complete = size & !3;
+                let words = self
+                    .script_data_segment_words
+                    .entry(self.current_frame)
+                    .or_default();
+                let tail = self
+                    .script_data_segment_tail
+                    .entry(self.current_frame)
+                    .or_default();
+                if tail.len() != (size & 3) as usize {
+                    return Err(invalid(
+                        "SHINKI_EMU_CMVS_VM_STRING_POOL",
+                        "string destination data tail is not bound",
+                    ));
+                }
+                for (index, byte) in bytes.iter().copied().chain(std::iter::once(0)).enumerate() {
+                    let position = offset + index as u32;
+                    if position < complete {
+                        let at = position & !3;
+                        let shift = (position & 3) * 8;
+                        let word = words.get(&at).copied().unwrap_or(0);
+                        let word = (word & !(255 << shift)) | (u32::from(byte) << shift);
+                        if word == 0 {
+                            words.remove(&at);
+                        } else {
+                            words.insert(at, word);
+                        }
+                    } else {
+                        tail[(position - complete) as usize] = byte;
+                    }
+                }
+            }
+            _ => {
+                return Err(invalid(
+                    "SHINKI_EMU_CMVS_VM_STRING_TAG",
+                    "string destination tag is unsupported",
+                ));
+            }
+        }
+        Ok(())
+    }
+}

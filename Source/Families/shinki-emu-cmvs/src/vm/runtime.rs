@@ -47,14 +47,6 @@ pub(super) const SETTINGS_RESET_FIELDS: [(u16, u32); 14] = [
 ];
 
 pub(super) fn reset_settings_object(state: &mut CmvsPs2aVmState) {
-    if tracing::enabled!(tracing::Level::INFO) {
-        tracing::info!(
-            event = "shinki.emu.cmvs.vm.settings_reset",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            tick = state.tick
-        );
-    }
     for (offset, value) in SETTINGS_RESET_FIELDS {
         state.settings_words.insert(offset, value);
     }
@@ -82,9 +74,7 @@ pub(super) fn destroy_filter_graph_owner(
     state.slot_objects.remove(&key);
     state.slot_object_seed_words.remove(&key);
     if table_byte_offset == 3252 {
-        state
-            .interpreter_words
-            .insert(u32::from(table_byte_offset), 0);
+        state.write_interpreter_word(u32::from(table_byte_offset), 0);
     }
 }
 
@@ -154,26 +144,7 @@ pub(super) fn store_process_indexed_range(
             "CMVS process indexed range exceeds the recovered table budget",
         ));
     }
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!(
-            event = "shinki.emu.cmvs.vm.process_range",
-            pc = state.program_counter,
-            frame = state.current_frame,
-            start,
-            count,
-            value
-        );
-    }
     for index in start..end {
-        if index == 66 && tracing::enabled!(tracing::Level::INFO) {
-            tracing::info!(
-                event = "shinki.emu.cmvs.vm.pw66_range_store",
-                pc = state.program_counter,
-                frame = state.current_frame,
-                value,
-                tick = state.tick
-            );
-        }
         state.process_indexed_words.insert(index, value);
     }
     Ok(())

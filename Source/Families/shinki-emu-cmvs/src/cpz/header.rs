@@ -125,7 +125,7 @@ pub(super) fn parse_modern(source: &[u8], source_len: u64) -> Result<CmvsCpzHead
             return Err(invalid(
                 "SHINKI_EMU_CMVS_CPZ_VERSION",
                 "CPZ version is unsupported",
-            ))
+            ));
         }
     };
     let header_bytes = if version == CmvsCpzVersion::Cpz7 {

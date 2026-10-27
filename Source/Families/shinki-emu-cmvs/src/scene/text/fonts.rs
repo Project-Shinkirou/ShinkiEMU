@@ -2,13 +2,17 @@ use super::*;
 use roukaku_core::Hash256;
 use roukaku_text::PackagedFont;
 
-pub(super) fn load(database: &fontdb::Database, name: &str) -> Result<PackagedFont, CoreError> {
+fn face<'a>(
+    database: &'a fontdb::Database,
+    name: &str,
+    weight: u16,
+) -> Result<&'a fontdb::FaceInfo, CoreError> {
     // Empty names refer to the native process configuration. Do not substitute
     // a platform-dependent generic family until that configuration is bound.
     if name.is_empty() {
         return Err(error("SHINKI_EMU_CMVS_DEFAULT_FONT_UNBOUND"));
     }
-    let face = database
+    database
         .faces()
         .filter(|face| {
             face.families
@@ -18,10 +22,26 @@ pub(super) fn load(database: &fontdb::Database, name: &str) -> Result<PackagedFo
         .min_by_key(|face| {
             (
                 face.style != fontdb::Style::Normal,
-                face.weight.0.abs_diff(400),
+                face.weight.0.abs_diff(weight),
             )
         })
-        .ok_or_else(|| error("SHINKI_EMU_CMVS_FONT_MISSING"))?;
+        .ok_or_else(|| error("SHINKI_EMU_CMVS_FONT_MISSING"))
+}
+
+#[cfg(windows)]
+pub(super) fn has_distinct_bold_face(
+    database: &fontdb::Database,
+    name: &str,
+) -> Result<bool, CoreError> {
+    Ok(face(database, name, 400)?.id != face(database, name, 600)?.id)
+}
+
+pub(super) fn load(
+    database: &fontdb::Database,
+    name: &str,
+    weight: u16,
+) -> Result<PackagedFont, CoreError> {
+    let face = face(database, name, weight)?;
     let (bytes, index) = database
         .with_face_data(face.id, |bytes, index| (bytes.to_vec(), index))
         .ok_or_else(|| error("SHINKI_EMU_CMVS_FONT_READ"))?;

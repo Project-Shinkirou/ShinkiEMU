@@ -48,15 +48,31 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_479570` (case 734): resolves the second stack word
-        // as a tagged string and posts it as the engine window text
-        // (`sub_419F50` on the zero-top path, `sub_41A350` otherwise); the
-        // zero-top path also stores one into the result word at 81220.
-        // Returns 0x4008.
+        // `479A10`: the setter writes renderer DWORD47 through `429B20`;
+        // the query reads that flag through `4292C0`, not `429290`'s
+        // effective fullscreen predicate. Returns 0x4008.
+        748 => (
+            8,
+            CmvsPs2aCommandEffectKind::ConfigureNativeAlternateView {
+                result_field_offset: 81220,
+            },
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+                },
+            ] as &[CmvsPs2aCommandStackWord],
+        ),
+        // 479570 exchanges the global default font family with the tagged
+        // string destination/source; zero reads, nonzero writes.
         734 => (
             8,
-            CmvsPs2aCommandEffectKind::SetWindowCaptionFromTagged {
-                result_field_offset: 81220,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::DefaultFont,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -86,16 +102,13 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_478A90` (case 764): publishes the chain-graph
-        // object's raw `+0x64` field (`[[this+0x780]] -> +0x64` via
-        // `sub_432F10` then `sub_42AF40`) into the interpreter result word
-        // at `this+0x13D44`. The headless chain graph keeps
-        // zero-initialized fields. Returns 0x4000.
+        // 478A90 -> 42AF40 publishes retained graphics-policy DWORD25.
         764 => (
             0,
-            CmvsPs2aCommandEffectKind::StoreInterpreterConstant {
-                field_offset: 81220,
-                value: 0,
+            CmvsPs2aCommandEffectKind::QueryComponentWordToResult {
+                component_field_offset: 1920,
+                field_offset: 100,
+                result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
@@ -119,26 +132,58 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47C5A0` (case 776): reads four operands (selector at
-        // offset 4, paired selector at 8, script string at 12, opaque word at
-        // 20), rebuilds `this[selector + 796]` and `this[paired + 481]` and
-        // starts the new object with the string. A selector above two raises
-        // the 0x1000000 mask at byte offset 10532. Returns 0x4014, so it pops
-        // all twenty bytes it reads.
-        // Handler `sub_47C510` (case 777): the same rebuild as case 776
-        // reading five words; the handler returns 0x4014 (`mov eax,
-        // 4014h`), so it pops twenty bytes and the fifth word stays for
-        // the caller.
+        // 776/782 open CStreamVideo; 777 configures a range on the existing
+        // controller. Stack offsets are relative to the top, not push order.
+        776 | 782 => (
+            if command_id == 776 { 20 } else { 24 },
+            CmvsPs2aCommandEffectKind::CmvController { command_id },
+            if command_id == 776 {
+                &[
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 4,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 8,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 12,
+                        kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 20,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                ] as &[CmvsPs2aCommandStackWord]
+            } else {
+                &[
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 4,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 8,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 12,
+                        kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 20,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                    CmvsPs2aCommandStackWord {
+                        offset_from_top_bytes: 24,
+                        kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    },
+                ] as &[CmvsPs2aCommandStackWord]
+            },
+        ),
         777 => (
             20,
-            CmvsPs2aCommandEffectKind::CreateBoundedSlotObject {
-                table_dword_index: 796,
-                aux_table_dword_index: 481,
-                max_slot: 2,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x0100_0000,
-                trailing_word: 0,
-            },
+            CmvsPs2aCommandEffectKind::CmvController { command_id },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -150,67 +195,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 12,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
-                },
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 20,
                     kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
                 CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 24,
+                    offset_from_top_bytes: 16,
                     kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-            ] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_47CAC0` (case 780): validates the 796-table slot
-        // (<= 2) and fires a renderer-side action; no interpreter state.
-        // Returns 0x4004.
-        780 => (
-            4,
-            CmvsPs2aCommandEffectKind::TriggerEffectSlot,
-            &[CmvsPs2aCommandStackWord {
-                offset_from_top_bytes: 4,
-                kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-            }] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_47CA80` (case 779): the case-780 twin
-        // (`sub_442C90`); same validation, same pop. Returns 0x4004.
-        779 => (
-            4,
-            CmvsPs2aCommandEffectKind::TriggerEffectSlot,
-            &[CmvsPs2aCommandStackWord {
-                offset_from_top_bytes: 4,
-                kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-            }] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_47C5A0` (case 776): reads four operands (selector at
-        // offset 4, paired selector at 8, script string at 12, opaque word at
-        // 20), rebuilds `this[selector + 796]` and `this[paired + 481]` and
-        // starts the new object with the string. A selector above two raises
-        // the 0x1000000 mask at byte offset 10532. Returns 0x4014, so it pops
-        // all twenty bytes it reads.
-        776 => (
-            20,
-            CmvsPs2aCommandEffectKind::CreateBoundedSlotObject {
-                table_dword_index: 796,
-                aux_table_dword_index: 481,
-                max_slot: 2,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x0100_0000,
-                trailing_word: 2,
-            },
-            &[
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 4,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
-                },
-                CmvsPs2aCommandStackWord {
-                    offset_from_top_bytes: 12,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 20,
@@ -218,10 +207,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47C920` pops one selector and frees the object in
-        // that slot of the three-entry table at dword index 796; selectors
-        // above two raise the 0x1000000 mask at byte offset 10532. Returns
-        // 0x4004.
+        781 | 795 | 797 => (
+            8,
+            CmvsPs2aCommandEffectKind::CmvController { command_id },
+            &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
+        ),
+        778 | 779 | 780 | 783 | 794 | 796 | 798 => (
+            4,
+            CmvsPs2aCommandEffectKind::CmvController { command_id },
+            &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
+        ),
         // Handler `sub_483680` (case 802): reads the container selector at
         // offset 4, the child id at 8 and a boolean at 12, then toggles the
         // child's audio (`sub_444EF0`/`sub_446AE0` stay outside the recovered
@@ -240,16 +235,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 child_error_flag_mask: 0x20,
             },
             &THREE_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
-        ),
-        778 => (
-            4,
-            CmvsPs2aCommandEffectKind::DestroyBoundedSlotObject {
-                table_dword_index: 796,
-                max_slot: 2,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x0100_0000,
-            },
-            &OPAQUE_WORD as &[CmvsPs2aCommandStackWord],
         ),
         // Dispatcher case 845 invokes `sub_45CBC0` on `this+0xCC8`; that
         // method writes one to its field at byte offset 0x568.
@@ -563,17 +548,12 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::BooleanU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_478AC0` (case 765): the case-764 setter. When the
-        // stack top differs from the chain-graph object's `+0x64` field
-        // (`sub_42AF40` getter), `sub_42B3D0` stores the new value and may
-        // chain further engine work that the headless graph keeps
-        // synchronous. Returns 0x4004.
+        // 478AC0 compares the raw operand with policy DWORD25, then
+        // 42B3D0 clamps and reapplies policy DWORD24 to renderer DWORD43.
+        // This handler always returns 4004, including fullscreen mode.
         765 => (
             4,
-            CmvsPs2aCommandEffectKind::StoreComponentWord {
-                component_field_offset: 1920,
-                field_offset: 100,
-            },
+            CmvsPs2aCommandEffectKind::ConfigureNativeViewPolicy { command_id: 765 },
             &[CmvsPs2aCommandStackWord {
                 offset_from_top_bytes: 4,
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,

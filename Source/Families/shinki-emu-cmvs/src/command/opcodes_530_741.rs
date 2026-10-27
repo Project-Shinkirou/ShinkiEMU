@@ -2,6 +2,79 @@ use super::*;
 
 pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
     Some(match command_id {
+        // 4852E0/485000/484FD0/485060/485030 address the primary
+        // independent view, not either of the 4566B0 plane cameras.
+        608 => (
+            12,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &THREE_OPAQUE_WORDS,
+        ),
+        609..=612 | 624..=625 => (
+            4,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &OPAQUE_WORD,
+        ),
+        626 => (
+            0,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &[],
+        ),
+        627 => (
+            20,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 12,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 16,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 20,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+            ],
+        ),
+        628 => (
+            16,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &FOUR_OPAQUE_WORDS,
+        ),
+        629 => (
+            28,
+            CmvsPs2aCommandEffectKind::NativeIndependentView { command_id },
+            &SEVEN_OPAQUE_WORDS,
+        ),
+        // 4789B0 updates the retained graphics policy only when the boolean
+        // differs; fullscreen changes rebuild the window and yield C004.
+        713 => (
+            4,
+            CmvsPs2aCommandEffectKind::ConfigureNativeViewPolicy { command_id: 713 },
+            &[CmvsPs2aCommandStackWord {
+                offset_from_top_bytes: 4,
+                kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+            }] as &[CmvsPs2aCommandStackWord],
+        ),
+        // 478950 -> 42AF50 reads policy DWORD24, not renderer DWORD43.
+        714 => (
+            0,
+            CmvsPs2aCommandEffectKind::QueryComponentWordBooleanToResult {
+                component_field_offset: 1920,
+                field_offset: 96,
+                result_field_offset: 81220,
+            },
+            &[] as &[CmvsPs2aCommandStackWord],
+        ),
         // Case 559 (`sub_47B1E0`): tears down and rebuilds the native
         // graphics context from four stack words; the headless pipeline
         // keeps the observable sysreg0 success store. The native return
@@ -44,10 +117,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 644 (`sub_47C040` -> `sub_4247D0`): runs the effect
-        // timeline — delay steps wait and channel steps act on occupied
-        // channels. The headless pipeline completes the whole timeline
-        // synchronously. Returns 0x4000.
+        // 47C040 skips queued delays, completes replacements and resets.
         644 => (
             0,
             CmvsPs2aCommandEffectKind::RunEffectTimeline,
@@ -57,7 +127,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // step append. Returns 0x4014 (pop 20).
         647 => (
             20,
-            CmvsPs2aCommandEffectKind::PushEffectTimelineStep647,
+            CmvsPs2aCommandEffectKind::PushEffectTimelineCamera,
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -81,14 +151,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 686 (`sub_481B00`): sysreg0 becomes the 737-slot scene
-        // layer status (`sub_4490B0`); the headless worker reads zero.
-        // Returns 0x4004.
+        // 481B00 -> 4490B0 returns -1 for a live snow manager.
+        // Out-of-range slots preserve the result; missing owners fail closed.
         686 => (
             4,
-            CmvsPs2aCommandEffectKind::ReadSlotStatusWord {
-                result_field_offset: 81220,
-            },
+            CmvsPs2aCommandEffectKind::QueryNativeSceneWorkerStatus,
             &[CmvsPs2aCommandStackWord {
                 offset_from_top_bytes: 4,
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
@@ -103,6 +170,47 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 offset_from_top_bytes: 4,
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
+        ),
+        // 481440 -> 448ED0 -> 456350 constructs real D3D billboards.
+        // Top-first: slot, resource, span, height, fall time, fade distance,
+        // particle count, follow-camera boolean. Returns 0x4020.
+        674 => (
+            32,
+            CmvsPs2aCommandEffectKind::NativeSceneWorker { command_id },
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 12,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 16,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 20,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 24,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 28,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 32,
+                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+                },
+            ],
         ),
         // Case 680 (`sub_480A80`): rebuilds the scene-layer worker at
         // the 737-table slot (<= 3) and destroys the 481-table child;
@@ -134,7 +242,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // 0x4018 (pop 24).
         649 => (
             24,
-            CmvsPs2aCommandEffectKind::PushEffectTimelineStep649,
+            CmvsPs2aCommandEffectKind::PushEffectTimelineTransform { mode: 1 },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -164,7 +272,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         ),
         650 => (
             24,
-            CmvsPs2aCommandEffectKind::PushEffectTimelineStep650,
+            CmvsPs2aCommandEffectKind::PushEffectTimelineTransform { mode: 2 },
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
@@ -499,26 +607,23 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // Returns 0x4010.
         549 => (
             16,
-            CmvsPs2aCommandEffectKind::RecreateSaveImageOwner {
+            CmvsPs2aCommandEffectKind::CreateScreenShake {
                 handle_field_offset: 3256,
             },
             &FOUR_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47AFC0` writes the owner's remaining progress
-        // (`sub_459CC0`) or all-ones when no owner exists into the
-        // version-pinned result field. Returns 0x4000.
+        // 459CC0 returns remaining shake periods, or all ones for absent/infinite.
         550 => (
             0,
-            CmvsPs2aCommandEffectKind::QuerySaveImageProgress {
+            CmvsPs2aCommandEffectKind::QueryScreenShakeRemaining {
                 result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47B0F0` stores the consumed boolean into the
-        // owner's enabled flag only when the owner exists. Returns 0x4004.
+        // 47B0F0 stores the consumed paused flag only when the owner exists.
         551 => (
             4,
-            CmvsPs2aCommandEffectKind::StoreSaveImageEnabled,
+            CmvsPs2aCommandEffectKind::SetScreenShakePaused,
             &OPAQUE_BOOLEAN as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_47B160` distinguishes a missing owner (writes one,
@@ -527,7 +632,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // (destroy, writes one, 0xC004).
         552 => (
             4,
-            CmvsPs2aCommandEffectKind::SaveImageOwnerWaitOrDestroy {
+            CmvsPs2aCommandEffectKind::WaitOrDestroyScreenShake {
                 result_field_offset: 81220,
             },
             &OPAQUE_BOOLEAN as &[CmvsPs2aCommandStackWord],
@@ -536,21 +641,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // stack. Returns 0x4000.
         553 => (
             0,
-            CmvsPs2aCommandEffectKind::DestroySaveImageOwner,
+            CmvsPs2aCommandEffectKind::DestroyScreenShake,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_47ACA0` (case 554): the stack top selects a parent
-        // slot, the next word is the tagged PB resource name and three
-        // opaque words follow. The container is created when absent, the
-        // previous one is replaced, and the loader success lands at byte
-        // offset 81220. Returns 0x4014.
+        // `sub_47ACA0`: mask name at top, parent at -8, then total
+        // milliseconds, software feather duration, and show/hide mode.
+        // The mask belongs to the 815 singleton; the parent's image stays.
         554 => (
             20,
-            CmvsPs2aCommandEffectKind::LoadTextureParentResourceExtended {
-                texture_table_base_offset: 1924,
-                result_field_offset: 81220,
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x10,
+            CmvsPs2aCommandEffectKind::StartTexturePresentation {
+                clear_background: false,
             },
             &[
                 CmvsPs2aCommandStackWord {
@@ -590,13 +690,43 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_484F90` stores the consumed boolean at field 72 of
-        // the settings object reached through `sub_432F10(this+480)`.
-        // Returns 0x4004.
+        556 => (
+            0,
+            CmvsPs2aCommandEffectKind::QueryTexturePresentation,
+            &[] as &[CmvsPs2aCommandStackWord],
+        ),
+        557 => (
+            0,
+            CmvsPs2aCommandEffectKind::FinishTexturePresentation,
+            &[] as &[CmvsPs2aCommandStackWord],
+        ),
+        558 => (
+            12,
+            CmvsPs2aCommandEffectKind::StartTexturePresentation {
+                clear_background: true,
+            },
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 12,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                },
+            ],
+        ),
+        // 484F90 -> 432F10 -> 4164F0 writes graphics DWORD18, the same
+        // owner read by native save tag 515 through 42B010. Returns 0x4004.
         592 => (
             4,
-            CmvsPs2aCommandEffectKind::StoreSettingBooleanPlain {
-                setting_field_offset: 72,
+            CmvsPs2aCommandEffectKind::StoreComponentBoolean {
+                component_field_offset: 1920,
+                field_offset: 72,
             },
             &[CmvsPs2aCommandStackWord {
                 offset_from_top_bytes: 4,
@@ -686,11 +816,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
@@ -702,11 +832,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             &[
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 4,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 8,
-                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
+                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 12,
@@ -714,11 +844,11 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 16,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
                 CmvsPs2aCommandStackWord {
                     offset_from_top_bytes: 20,
-                    kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
+                    kind: CmvsPs2aCommandStackWordKind::TaggedStringReference,
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
@@ -829,7 +959,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
         // pinned result word. Returns 0x4010 (pop 16).
         708 => (
             16,
-            CmvsPs2aCommandEffectKind::ReloadSlotTextResource {
+            CmvsPs2aCommandEffectKind::ReloadTextureParentImage {
                 result_field_offset: 81220,
                 table_byte_offset: 1924,
             },
@@ -958,11 +1088,10 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 645 (`sub_47C090`): publishes the menu work area's result
-        // field (always zero in the recovered subset). Returns 0x4000.
+        // 47C090 publishes the actual queued timeline count.
         645 => (
             0,
-            CmvsPs2aCommandEffectKind::ReadMenuWorkState {
+            CmvsPs2aCommandEffectKind::ReadEffectTimelineCount {
                 result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
@@ -978,9 +1107,7 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 kind: CmvsPs2aCommandStackWordKind::OpaqueU32,
             }] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 648 (`sub_47C1B0` -> `sub_4245A0`): appends a channel
-        // playback step (type 3: channel, resource name, param) to the
-        // effect timeline. Returns 0x4004.
+        // 4245A0 queues a parent-image replacement with a transition duration.
         648 => (
             12,
             CmvsPs2aCommandEffectKind::PushEffectTimelineChannel,
@@ -999,18 +1126,16 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 },
             ] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 640 (`sub_424790`): clears the menu work area; no-op in
-        // the recovered subset. Returns 0x4000.
+        // 424790 clears all five timeline header words.
         640 => (
             0,
-            CmvsPs2aCommandEffectKind::ResetMenuWorkArea,
+            CmvsPs2aCommandEffectKind::ResetEffectTimeline,
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 641 (`sub_47C0B0`): publishes the menu work area's active
-        // selection; -1 without a native menu. Returns 0x4000.
+        // 424B00 returns the active timeline cursor, or -1.
         641 => (
             0,
-            CmvsPs2aCommandEffectKind::ReadMenuWorkSelection {
+            CmvsPs2aCommandEffectKind::ReadEffectTimelineCursor {
                 result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
@@ -1026,9 +1151,8 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
-        // Case 690 (`sub_485D10`): builds the save snapshot blob
-        // (`sub_4712F0`) outside the interpreter; no interpreter word is
-        // observable. Returns 0x4000.
+        // 485D10 captures 4712F0 at PC+2 with live counter 13224 reset
+        // to zero; the host owns the complete native slot transaction.
         690 => (
             0,
             CmvsPs2aCommandEffectKind::BuildSaveSnapshot,
@@ -1165,16 +1289,23 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_478FE0` (case 761): the case-736 shape with the
-        // pinned config word at byte offset 1496 as the polled source.
-        // Returns 0x4008.
+        // 478FE0: selector zero polls TEXT_REVISION_ALPHA; otherwise
+        // 478670 updates every font manager and invalidates changed caches.
         761 => (
             8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordBooleanToResult {
-                source_field_offset: 1496,
-                result_field_offset: 81220,
+            CmvsPs2aCommandEffectKind::NativeText {
+                operation: crate::CmvsNativeTextOperation::AlternateCoverage,
             },
-            &[] as &[CmvsPs2aCommandStackWord],
+            &[
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 4,
+                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+                },
+                CmvsPs2aCommandStackWord {
+                    offset_from_top_bytes: 8,
+                    kind: CmvsPs2aCommandStackWordKind::BooleanU32,
+                },
+            ] as &[CmvsPs2aCommandStackWord],
         ),
         // Handler `sub_478DF0` (case 726): the case-736 shape with the
         // pinned config word at byte offset 1548 as the polled source.
@@ -1209,57 +1340,13 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
             },
             &[] as &[CmvsPs2aCommandStackWord],
         ),
-        // Handler `sub_479180` (case 729): the case-735 shape with the
-        // pinned config word at byte offset 1560 as the polled source.
-        // Returns 0x4008.
-        729 => (
+        // 479180/478E50/479500/479920/4797F0: top words [mode, value].
+        // Mode zero reads config 1560..1576; setters clamp signed gain
+        // to 0..256 and route synchronously through 428280. Return 0x4008.
+        729..=733 => (
             8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordToResult {
-                source_field_offset: 1560,
-                result_field_offset: 81220,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_478E50` (case 730): the case-735 shape with the
-        // pinned config word at byte offset 1564 as the polled source.
-        // Returns 0x4008.
-        730 => (
-            8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordToResult {
-                source_field_offset: 1564,
-                result_field_offset: 81220,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler (case 731): the case-735 shape with the pinned config
-        // word at byte offset 1568 as the polled source. Returns 0x4008.
-        731 => (
-            8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordToResult {
-                source_field_offset: 1568,
-                result_field_offset: 81220,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler (case 732): the case-735 shape with the pinned config
-        // word at byte offset 1572 as the polled source. Returns 0x4008.
-        732 => (
-            8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordToResult {
-                source_field_offset: 1572,
-                result_field_offset: 81220,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler (case 733): the case-735 shape with the pinned config
-        // word at byte offset 1576 as the polled source. Returns 0x4008.
-        733 => (
-            8,
-            CmvsPs2aCommandEffectKind::LoadInterpreterWordToResult {
-                source_field_offset: 1576,
-                result_field_offset: 81220,
-            },
-            &[] as &[CmvsPs2aCommandStackWord],
+            CmvsPs2aCommandEffectKind::NativeAudioGainSetting { command_id },
+            &TWO_OPAQUE_WORDS as &[CmvsPs2aCommandStackWord],
         ),
         // Handler (case 739): the case-735 shape with the pinned config
         // word at byte offset 1484 as the polled source. Returns 0x4008.
@@ -1336,22 +1423,6 @@ pub(super) fn lookup(command_id: u16) -> Option<CommandFields> {
                 result_field_offset: 81220,
             },
             &[] as &[CmvsPs2aCommandStackWord],
-        ),
-        // Handler `sub_4845D0` (case 577): with a zero stack word the
-        // message-engine channel 15 is (re)bound through `sub_48CAB0`; a
-        // non-zero word only ORs 0x200 into the pinned error word. The
-        // headless graph keeps channels unbound, so only the error mask is
-        // observable. Returns 0x4004.
-        577 => (
-            4,
-            CmvsPs2aCommandEffectKind::BindMessageChannelOrRaise {
-                error_flag_field_offset: 10532,
-                error_flag_mask: 0x200,
-            },
-            &[CmvsPs2aCommandStackWord {
-                offset_from_top_bytes: 4,
-                kind: CmvsPs2aCommandStackWordKind::BooleanU32,
-            }] as &[CmvsPs2aCommandStackWord],
         ),
         _ => return None,
     })

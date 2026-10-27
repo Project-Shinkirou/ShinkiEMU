@@ -460,5 +460,11 @@ pub fn decompress_system_save(source: &[u8], expected_size: usize) -> Result<Vec
 
 pub mod lzss;
 pub mod slot;
+pub(crate) mod slot_channel;
+pub(crate) mod slot_cmv;
+pub(crate) mod slot_globals;
+pub(crate) mod slot_image;
+pub(crate) mod slot_io;
+pub(crate) mod slot_projection;
 #[cfg(test)]
 pub(crate) mod tests;

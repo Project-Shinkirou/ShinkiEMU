@@ -1,7 +1,7 @@
 //! Recovered CMVS effect-channel object model.
 //!
-//! The original engine stores one 0x3088-byte channel object per effect
-//! channel. Its quad records live at a 76-byte (38-word) stride, and the
+//! The original engine stores one 0x9e4-byte channel with a separate
+//! 0x3088-byte image surface. Quad records use a 76-byte (38-word) stride;
 //! recovered handlers address it with `_WORD *` arithmetic. Modelling the
 //! object as a sparse word-addressed image keeps every recovered read and
 //! write at the original byte/word offset instead of inventing a new layout.
@@ -11,25 +11,14 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The recovered text surface attached to one effect playback record.
-///
-/// `sub_462C10` (case 286) stores one value dword and two script strings, then
-/// marks the surface dirty. The metric-producing cases (`sub_463CC0`/
-/// `sub_463750`) read those strings through the script. The stored state keeps
-/// only the numeric reference, length and flags so game text never enters the
-/// snapshot.
+/// `462C10` copies the two CP932 kinsoku lists into text-object buffers
+/// 324/388 and enables extended boundary handling (DWORD79).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsEffectTextSurface {
     /// Dword 320: the surface's stored value.
     pub value: u32,
-    /// The first stored script string reference (`record + 324`).
-    pub first: Option<crate::CmvsPs2aPrivateStringReference>,
-    /// The second stored script string reference (`record + 388`).
-    pub second: Option<crate::CmvsPs2aPrivateStringReference>,
-    /// Byte length of the first stored string.
-    pub first_length: u32,
-    /// Byte length of the second stored string.
-    pub second_length: u32,
+    /// Owned native buffers; `None` is the constructor's disabled state.
+    pub boundaries: Option<[Vec<u8>; 2]>,
 }
 
 /// One entry of the recovered effect playback table (`game[750]`, twelve
@@ -43,39 +32,8 @@ pub struct CmvsEffectPlaybackRecord {
     pub value: u32,
     /// Record dword 45 (`sub_464A80`, case 278).
     pub value2: u32,
-    /// Case 279 (`sub_488EF0`) forwards a boolean to `sub_429850`, a
-    /// graphics-subsystem global the recovered subset keeps as state here.
-    pub global_flag: u32,
     /// The record's text surface (`sub_462C10`, case 286).
     pub text_surface: CmvsEffectTextSurface,
-}
-
-/// One step of the recovered effect timeline (`sub_4246C0`/`sub_4245A0`):
-/// the native table holds sixteen 96-byte records. Case 646 appends delay
-/// entries (type 1) and case 648 appends channel playback entries
-/// (type 3, channel dword 28, name at +32, param dword 96).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CmvsEffectTimelineStep {
-    /// Record dword at offset 20: step type (1 = timed delay, 3 = channel).
-    pub step_type: u32,
-    /// Record dword at offset 96: delay duration (type 1) or channel param.
-    pub duration: u32,
-    /// Record dword at offset 28: the effect channel for type 3.
-    pub channel: u32,
-    /// The record's resource name (record offset 32) for type 3.
-    pub name: String,
-}
-
-impl CmvsEffectPlaybackRecord {
-    /// Writes the recovered record field for cases 276/277/278/279.
-    pub fn set_field(&mut self, field_offset: u32, value: u32) {
-        match field_offset {
-            41 => self.flag = value,
-            44 => self.value = value,
-            45 => self.value2 = value,
-            _ => self.global_flag = value,
-        }
-    }
 }
 
 /// One child element of an effect channel's element container
@@ -84,7 +42,7 @@ impl CmvsEffectPlaybackRecord {
 /// Cases 378/379/380 address one element by `(channel, child)`:
 /// `sub_445EA0` writes the visibility dword, `sub_466AE0` answers the
 /// existence query, and `sub_445E80` stores the element size.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsEffectElement {
     /// Element dword 1035 (`sub_445EA0`, cases 402/403 and 378).
     pub visible: u32,
@@ -92,13 +50,92 @@ pub struct CmvsEffectElement {
     pub width: i32,
     /// Element height stored by `sub_445E80` (case 380).
     pub height: i32,
+    /// `42E950` source XYWH; `None` means no allocated drawable basic.
+    pub source: Option<[i32; 4]>,
+    /// `sub_42E9B0`: local destination x/y.
+    pub position: Option<[i32; 2]>,
+    /// Header DWORD1036; `445010` follows the parent while bit1 is set.
+    pub inheritance_flags: u32,
+    /// Basic DWORD6/7: pivot, independent of atlas source coordinates.
+    pub pivot: [i32; 2],
+    /// Basic DWORD10, sorted descending within the channel's child list.
+    pub order: i32,
+    /// Basic DWORD17, signed upper-clamped alpha.
+    pub alpha: i32,
+    /// Basic DWORD1; native default is alpha-over (1).
+    pub blend_mode: u8,
+    /// Basic DWORD18/19: original IEEE754 scale words.
+    pub scale_words: [u32; 2],
+    pub basic_kind: u8,
+    pub float_position_words: [u32; 3],
+    pub projection_depth_word: u32,
+    pub projection_height_word: u32,
+    /// Native CBasic DWORD20, signed hundredths of a degree.
+    pub rotation_hundredths: i32,
+    pub image_resource: Option<String>,
+    pub image_info: [u32; 3],
+    pub(crate) image_reload: Option<Box<super::texture_reload::TextureReload>>,
+    pub basic_effects: super::CmvsBasicEffects,
+    pub image_effect_words: [u32; 11],
+    pub collision_geometry: Option<super::CmvsNativeCollisionGeometry>,
 }
 
-/// One effect channel object: a sparse word-addressed image of the original
-/// 0x3088-byte channel, holding 32 quad records at a 38-word stride.
+impl Default for CmvsEffectElement {
+    fn default() -> Self {
+        Self {
+            visible: 0,
+            width: 0,
+            height: 0,
+            source: None,
+            position: None,
+            inheritance_flags: 0x7fff_ffff,
+            pivot: [0; 2],
+            order: 0,
+            alpha: 255,
+            blend_mode: 1,
+            scale_words: [1.0_f32.to_bits(); 2],
+            basic_kind: 0,
+            float_position_words: [0; 3],
+            projection_depth_word: 0,
+            projection_height_word: 0,
+            rotation_hundredths: 0,
+            image_resource: None,
+            image_info: [0; 3],
+            image_reload: None,
+            basic_effects: Default::default(),
+            image_effect_words: [0; 11],
+            collision_geometry: None,
+        }
+    }
+}
+
+impl CmvsEffectElement {
+    /// `446900`/`4469A0` replace/free the basic without touching the
+    /// element's visibility, reference dimensions, or inheritance header.
+    pub(crate) fn reset_basic(&mut self, allocated: bool) {
+        self.source = allocated.then_some([0; 4]);
+        self.position = allocated.then_some([0; 2]);
+        self.pivot = [0; 2];
+        self.order = 0;
+        self.alpha = 255;
+        self.blend_mode = 1;
+        self.scale_words = [1.0_f32.to_bits(); 2];
+        self.basic_kind = 0;
+        self.float_position_words = [0; 3];
+        self.projection_depth_word = 0;
+        self.projection_height_word = 0;
+        self.rotation_hundredths = 0;
+        self.basic_effects = Default::default();
+    }
+}
+
+/// Native 0x9e4-byte channel, with a separate 0x3088-byte image surface.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmvsEffectChannel {
     pub words: BTreeMap<u32, u16>,
+    pub image_resource: Option<String>,
+    /// Source provider's bpp-derived alpha capability, not a pixel census.
+    pub image_has_alpha: bool,
 }
 
 impl CmvsEffectChannel {
@@ -151,37 +188,36 @@ impl CmvsEffectChannel {
         self.write_dword(1242, y as u32);
     }
 
-    /// `sub_4679B0` (case 337) stores the channel's playback mode at word 28.
-    /// Modes 0/2 clear the dword at word 30; modes 1/3 store the two given
-    /// `__int16` coordinates at words 30/32.
+    /// `4679B0`: mode at byte 28, coordinate shorts at bytes 30/32.
     pub fn set_playback_mode(&mut self, mode: u16, first: i16, second: i16) {
-        self.words.insert(28, mode);
+        self.words.insert(14, mode);
         match mode {
             0 | 2 => {
-                self.write_dword(30, 0);
+                self.write_dword(15, 0);
             }
             1 | 3 => {
-                self.write_i16(30, first);
-                self.write_i16(32, second);
+                self.write_i16(15, first);
+                self.write_i16(16, second);
             }
             _ => {}
         }
     }
 
-    /// The channel's stored playback mode (word 28) and coordinates.
+    /// Native indicator mode at byte 28 (word 14).
     pub fn playback_mode(&self) -> u16 {
-        self.words.get(&28).copied().unwrap_or(0)
+        self.words.get(&14).copied().unwrap_or(0)
     }
 
-    /// `sub_467CF0` (case 346) stores two dwords at 618/619.
+    /// `467CF0` (case 346): alternate origin at DWORD618/619, words1236/1238.
+    /// `467C60` selects this pair while the enabled view predicate is true.
     pub fn set_value_pair(&mut self, first: u32, second: u32) {
-        self.write_dword(618, first);
-        self.write_dword(619, second);
+        self.write_dword(1236, first);
+        self.write_dword(1238, second);
     }
 
-    /// `sub_467CE0` (case 347) stores the flag dword at 622.
+    /// `467CE0` (case 347): origin-swap enable at DWORD622, word1244.
     pub fn set_flag(&mut self, value: bool) {
-        self.write_dword(622, u32::from(value));
+        self.write_dword(1244, u32::from(value));
     }
 
     /// `sub_466D50`/`sub_466D90`/`sub_47F470` (cases 402/403/405) address the
@@ -228,23 +264,22 @@ impl CmvsEffectChannel {
         ]
     }
 
-    /// `sub_47F330` (case 406) stores the selected animation frame at word
-    /// `38*quad + 38` (byte `76*quad + 76`) and reads that frame's twelve-byte
-    /// geometry sub-record at `18 + 38*quad + 6*frame`.
+    /// `sub_47F330` adds the channel's 36-byte header before reading
+    /// byte `76*quad + 76`: the selected frame is at word `38*quad + 56`.
     pub fn quad_frame(&self, quad: u32) -> u16 {
         self.words
-            .get(&(Self::QUAD_STRIDE_WORDS * quad + 38))
+            .get(&(Self::QUAD_STRIDE_WORDS * quad + 56))
             .copied()
             .unwrap_or(0)
     }
 
     pub fn set_quad_frame(&mut self, quad: u32, frame: u16) {
         self.words
-            .insert(Self::QUAD_STRIDE_WORDS * quad + 38, frame);
+            .insert(Self::QUAD_STRIDE_WORDS * quad + 56, frame);
     }
 
-    /// The four `__int16` rectangle words of one animation frame's geometry
-    /// sub-record (`sub_47F330` reads words 4..7 of the 12-byte sub-record).
+    /// The source x/y/width/height at word `22 + 38*quad + 6*frame`
+    /// (`sub_47F330`), matching the first four words written by case 400.
     pub fn quad_frame_geometry(&self, quad: u32, frame: u16) -> [i16; 4] {
         let base = 18 + Self::QUAD_STRIDE_WORDS * quad + 6 * u32::from(frame);
         [

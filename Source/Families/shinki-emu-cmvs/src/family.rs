@@ -1,11 +1,11 @@
-use crate::{mount_cmvs, session::CmvsSession, CMVS_PROFILE_FILE};
+use crate::{CMVS_PROFILE_FILE, mount_cmvs, session::CmvsSession};
 use shinki_emu_sdk::runtime::*;
 use std::{
     io::Read,
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 pub(crate) fn error(code: &str, message: &str) -> SessionError {

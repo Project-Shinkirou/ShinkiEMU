@@ -7,9 +7,8 @@
 //! through channel sound slot 2 with looping enabled, and the audio-slot
 //! position acts as the playback clock (`SndSlot_positionMs 0x48C160`).
 //! `player->this[8]` — the frame counter read by command 198 — advances as
-//! `position_ms / ms_per_frame`, saturating at the index entry count; the
-//! counter freezes when the looping audio clock wraps, which is the
-//! script-visible EOF signal.
+//! `position_ms / ms_per_frame`. At the index boundary the engine releases
+//! the player (`0x41B4C0`), so command 198 then returns -1.
 //!
 //! Video decode runs through the SDK `VideoDecoderWorker` (the Theora
 //! stream is a standard Ogg elementary stream). Without the FFmpeg
@@ -34,13 +33,16 @@ const FRAME_CACHE: usize = 8;
 pub(super) struct MovieFrame {
     pub(super) width: u32,
     pub(super) height: u32,
-    pub(super) rgba8: Vec<u8>,
+    pub(super) rgba8: roukaku_media_core::OwnedPixelBuffer,
 }
 
 pub(super) struct MoviePlayer {
     /// Index entry count: the saturating upper bound of the frame counter
     /// (header dword 4, byte offset 16).
     pub(super) index_count: u32,
+    /// MGV index high words map presentation frames to zero-based Theora
+    /// decode indices; repeated entries hold the same decoded image.
+    frame_indices: Vec<u16>,
     /// Frames per second as `fps_num / fps_den` (dwords 7/6).
     fps_num: u32,
     fps_den: u32,
@@ -55,6 +57,7 @@ pub(super) struct MoviePlayer {
     /// Bounded decoded-frame ring keyed by decode sequence; the native
     /// decode worker keeps an eight-frame cache, this mirrors it.
     frames: std::collections::VecDeque<(u64, std::sync::Arc<MovieFrame>)>,
+    #[cfg(feature = "video-ffmpeg")]
     video_eof: bool,
 }
 
@@ -63,6 +66,7 @@ impl MoviePlayer {
     pub(super) fn open(
         bytes: &[u8],
         audio: &mut audio::AudioBridge,
+        native_gain: u32,
         cancelled: &AtomicBool,
     ) -> SessionResult<Self> {
         let bad = |code: &'static str, message: &'static str| error(code, message);
@@ -98,6 +102,12 @@ impl MoviePlayer {
                 "movie ranges exceed the file",
             ));
         }
+        let frame_indices = bytes[HEADER_SIZE..index_end]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|entry| u16::from_le_bytes([entry[2], entry[3]]))
+            .collect();
         // The embedded Ogg blob decodes as ordinary Vorbis audio.
         let clip_data = crate::audio::decode_audio_public(
             &bytes[index_end..ogg_end],
@@ -108,14 +118,14 @@ impl MoviePlayer {
         let audio_frames = clip_data.frames.len() as f64;
         let audio_rate = clip_data.sample_rate;
         let clip = audio::DecodedClip::from_kira(clip_data);
-        audio.play_channel(MOVIE_AUDIO_CHANNEL, clip, true)?;
+        audio.play_channel(MOVIE_AUDIO_CHANNEL, clip, true, native_gain)?;
         #[cfg(feature = "video-ffmpeg")]
         let video = if video_bytes == 0 {
             None
         } else {
             match shinki_emu_sdk::video::VideoDecoderWorker::open(
                 "ogg".into(),
-                bytes[ogg_end..video_end].to_vec().into(),
+                bytes[ogg_end..video_end].into(),
                 {
                     let mut limits = shinki_emu_sdk::video::FfmpegStreamLimits::default();
                     // 1080p Theora frames routinely exceed the 100 ms
@@ -140,6 +150,7 @@ impl MoviePlayer {
         };
         Ok(Self {
             index_count,
+            frame_indices,
             fps_num,
             fps_den,
             audio_frames,
@@ -148,13 +159,13 @@ impl MoviePlayer {
             #[cfg(feature = "video-ffmpeg")]
             video,
             frames: std::collections::VecDeque::new(),
+            #[cfg(feature = "video-ffmpeg")]
             video_eof: false,
         })
     }
 
-    /// Advances the audio clock and returns the current frame counter
-    /// (`player->this[8]`): `position_ms / ms_per_frame`, saturating at the
-    /// index count. The counter freezes once the looping audio clock wraps.
+    /// Advances the audio clock and returns the current presentation index.
+    /// The session releases the player when it reaches `index_count`.
     pub(super) fn current_frame(&mut self, audio: &audio::AudioBridge) -> u32 {
         let written = audio.channel_position_frames(MOVIE_AUDIO_CHANNEL);
         self.clock_frames_written = self.clock_frames_written.max(written);
@@ -169,22 +180,13 @@ impl MoviePlayer {
     }
     /// Pumps the incremental decode worker and returns the frame whose
     /// decode sequence best matches the audio-clock target, if decoded.
-    pub(super) fn pump(&mut self, target_frame: u32) -> Option<std::sync::Arc<MovieFrame>> {
-        tracing::debug!(
-            event = "cmvs.session.movie_pump",
-            target = target_frame,
-            cached = self.frames.len(),
-            eof = self.video_eof
-        );
+    pub(super) fn pump(&mut self, target_frame: u32) -> Option<(u64, std::sync::Arc<MovieFrame>)> {
+        let target = u64::from(*self.frame_indices.get(target_frame as usize)?);
+        self.retire_due_frames(target);
         #[cfg(feature = "video-ffmpeg")]
         {
             let mut keep_worker = true;
             if let Some(worker) = self.video.as_mut() {
-                // Request a bounded batch; `request_next` rejects while
-                // one is already outstanding, which covers the busy case.
-                if !self.video_eof {
-                    let _ = worker.request_next(4, 32 * 1024 * 1024);
-                }
                 match worker.poll() {
                     Ok(Some(shinki_emu_sdk::video::DecodeCompletion::Opened(_))) => {}
                     Ok(Some(shinki_emu_sdk::video::DecodeCompletion::Packets { packets, eof })) => {
@@ -195,18 +197,15 @@ impl MoviePlayer {
                                 bgra8,
                             } = packet
                             {
-                                let rgba8 = bgra_to_rgba(&bgra8);
+                                // SDK sequences start at one; MGV indices at zero.
                                 self.frames.push_back((
-                                    meta.sequence,
+                                    meta.sequence - 1,
                                     std::sync::Arc::new(MovieFrame {
                                         width: meta.width,
                                         height: meta.height,
-                                        rgba8,
+                                        rgba8: bgra_to_rgba(&bgra8).into(),
                                     }),
                                 ));
-                                while self.frames.len() > FRAME_CACHE {
-                                    self.frames.pop_front();
-                                }
                             }
                         }
                     }
@@ -227,22 +226,32 @@ impl MoviePlayer {
                 }
             }
         }
-        // Decode sequences map 1:1 onto container frames in decode order;
-        // pick the newest cached frame at or before the target.
-        let target = u64::from(target_frame.min(self.index_count));
-        let mut best: Option<u64> = None;
-        for (sequence, _) in self.frames.iter() {
-            if *sequence <= target {
-                best = Some(*sequence);
-            } else {
-                break;
+        self.retire_due_frames(target);
+        #[cfg(feature = "video-ffmpeg")]
+        if !self.video_eof {
+            if let Some(worker) = self.video.as_mut() {
+                let available = FRAME_CACHE - self.frames.len();
+                if available != 0 {
+                    // Only decode into free slots. Never evict a frame
+                    // whose presentation time has not arrived.
+                    let _ = worker.request_next(available, 32 * 1024 * 1024);
+                }
             }
         }
-        let sequence = best.or_else(|| self.frames.back().map(|(sequence, _)| *sequence))?;
         self.frames
-            .iter()
-            .find(|(candidate, _)| *candidate == sequence)
-            .map(|(_, frame)| std::sync::Arc::clone(frame))
+            .front()
+            .filter(|(sequence, _)| *sequence <= target)
+            .map(|(sequence, frame)| (*sequence, std::sync::Arc::clone(frame)))
+    }
+
+    fn retire_due_frames(&mut self, target: u64) {
+        while self
+            .frames
+            .get(1)
+            .is_some_and(|(sequence, _)| *sequence <= target)
+        {
+            self.frames.pop_front();
+        }
     }
 
     /// True when the Theora stream is retained for a video decoder.
@@ -294,4 +303,71 @@ fn bgra_to_rgba(bgra8: &[u8]) -> Vec<u8> {
         dst[3] = src[3];
     }
     rgba
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn player() -> MoviePlayer {
+        MoviePlayer {
+            index_count: 20,
+            frame_indices: (0..20).collect(),
+            fps_num: 24,
+            fps_den: 1,
+            audio_frames: 48_000.0 * 10.0,
+            audio_rate: 48_000,
+            clock_frames_written: 0,
+            #[cfg(feature = "video-ffmpeg")]
+            video: None,
+            frames: std::collections::VecDeque::new(),
+            #[cfg(feature = "video-ffmpeg")]
+            video_eof: false,
+        }
+    }
+
+    fn frame() -> std::sync::Arc<MovieFrame> {
+        std::sync::Arc::new(MovieFrame {
+            width: 1,
+            height: 1,
+            rgba8: vec![255, 0, 0, 255].into(),
+        })
+    }
+
+    #[test]
+    fn decoding_ahead_does_not_present_a_future_frame() {
+        let mut player = player();
+        player.frames.push_back((2, frame()));
+        player.frames.push_back((3, frame()));
+        assert!(player.pump(1).is_none());
+    }
+
+    #[test]
+    fn mgv_repeated_indices_hold_the_due_image_until_the_next_decode_index() {
+        let mut player = player();
+        player.frame_indices = vec![0, 0, 1, 1, 2];
+        player.index_count = 5;
+        let images = [frame(), frame(), frame()];
+        for (index, image) in images.iter().enumerate() {
+            player.frames.push_back((index as u64, image.clone()));
+        }
+        for (presentation, decoded) in [(0, 0), (1, 0), (2, 1), (3, 1), (4, 2)] {
+            let (sequence, image) = player.pump(presentation).unwrap();
+            assert_eq!(sequence, decoded as u64);
+            assert!(std::sync::Arc::ptr_eq(&image, &images[decoded]));
+        }
+        assert!(player.pump(5).is_none());
+    }
+
+    #[test]
+    fn late_decode_replaces_the_held_frame_without_advancing_the_clock() {
+        let mut player = player();
+        player.frames.push_back((0, frame()));
+        assert_eq!(player.pump(3).unwrap().0, 0);
+        player.frames.push_back((2, frame()));
+        player.frames.push_back((4, frame()));
+        assert_eq!(player.pump(3).unwrap().0, 2);
+        assert_eq!(player.pump(3).unwrap().0, 2);
+        assert_eq!(player.pump(4).unwrap().0, 4);
+    }
 }

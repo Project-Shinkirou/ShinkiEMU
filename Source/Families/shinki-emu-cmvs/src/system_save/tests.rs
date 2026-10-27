@@ -168,32 +168,3 @@ fn decompressor_reproduces_window_matches() {
     let decoded = decompress_system_save(&stream, 16).unwrap();
     assert_eq!(decoded, b"abcdefghabcdefgh".to_vec());
 }
-
-#[test]
-fn native_slot_retains_full_coroutine_records_and_suspension() {
-    use crate::system_save::slot::{deserialize_prog_state, serialize_prog_state};
-    let mut vm = crate::CmvsPs2aVmState::new(400);
-    vm.current_frame = 2;
-    vm.interpreter_words.insert(0x33A8, 91);
-    let record = [1, 2, 128, 7, 8, 9, 1234];
-    for (field, value) in record.iter().enumerate() {
-        vm.interpreter_words
-            .insert(0x33D8 + 63 * 28 + field as u32 * 4, *value);
-    }
-    let parsed = deserialize_prog_state(&serialize_prog_state(&vm).unwrap()).unwrap();
-    assert_eq!(parsed.suspend, Some((91, 400, 2)));
-    assert_eq!(parsed.records[63], record);
-    assert_eq!(parsed.records[0][2], u32::MAX);
-}
-
-#[test]
-fn roundtrips_the_headless_probe_save() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.tmp/cmvs-port/game/save/save004.dat");
-    let Ok(bytes) = std::fs::read(&path) else {
-        return;
-    };
-    let tlv = super::slot::unpack_save_container(&bytes).expect("unpack");
-    let state = super::slot::deserialize_prog_state(&tlv).expect("deserialize");
-    assert!(!state.records.is_empty());
-}
