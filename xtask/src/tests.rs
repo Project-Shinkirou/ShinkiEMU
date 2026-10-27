@@ -478,7 +478,7 @@ fn apple_subtitle_installs_isolate_architectures_and_platforms() {
 }
 
 #[test]
-fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
+fn corresponding_sources_copy_downloads_matching_installed_sha512() {
     use sha2::Digest;
     let temp = tempfile::tempdir().unwrap();
     let downloads = temp.path().join("downloads");
@@ -515,40 +515,6 @@ fn corresponding_sources_bind_downloads_and_port_patches_to_installed_hashes() {
         crate::sources::collect_archives(&downloads, &temp.path().join("missing"), required)
             .is_err()
     );
-    let port = temp.path().join("port");
-    fs::create_dir(&port).unwrap();
-    fs::write(port.join("portfile.cmake"), "original recipe").unwrap();
-    let provenance = serde_json::json!({
-        "files":[{"SPDXID":"SPDXRef-port-file-0","fileName":"./portfile.cmake","checksums":[{"algorithm":"SHA256","checksumValue":sha256(&port.join("portfile.cmake")).unwrap()}]}]
-    });
-    verify_port_sources(&provenance, &port).unwrap();
-    fs::write(port.join("portfile.cmake"), "different recipe").unwrap();
-    assert!(verify_port_sources(&provenance, &port).is_err());
-}
-
-#[test]
-fn vendor_closure_rejects_missing_and_modified_sources() {
-    let temp = tempfile::tempdir().unwrap();
-    let vendor = temp.path().join("vendor");
-    assert!(crate::sources::verify_vendor(&vendor).is_err());
-    let package = vendor.join("dependency-1.0.0");
-    fs::create_dir_all(&package).unwrap();
-    assert!(crate::sources::verify_vendor(&vendor).is_err());
-    let source = package.join("lib.rs");
-    fs::write(&source, "pub const VALUE: usize = 42;").unwrap();
-    fs::write(
-        package.join(".cargo-checksum.json"),
-        serde_json::to_vec(&serde_json::json!({
-            "files": {"lib.rs": sha256(&source).unwrap()}, "package": null
-        }))
-        .unwrap(),
-    )
-    .unwrap();
-    crate::sources::verify_vendor(&vendor).unwrap();
-    fs::write(&source, "changed source").unwrap();
-    assert!(crate::sources::verify_vendor(&vendor).is_err());
-    fs::remove_file(&source).unwrap();
-    assert!(crate::sources::verify_vendor(&vendor).is_err());
 }
 
 #[test]

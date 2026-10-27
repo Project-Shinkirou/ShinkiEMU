@@ -96,11 +96,12 @@ pub enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Prepare one target's release files, or publish every prepared target.
     Release {
         #[arg(long)]
         component: String,
-        #[arg(long)]
-        target: String,
+        #[arg(long, required_unless_present = "publish", conflicts_with = "publish")]
+        target: Option<String>,
         #[arg(long)]
         version: String,
         #[arg(long)]

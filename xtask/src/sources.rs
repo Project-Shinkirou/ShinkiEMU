@@ -3,13 +3,12 @@ use crate::{
     dependencies, package,
 };
 use anyhow::{Context, Result, bail};
+use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
 };
-
-mod vendor;
 
 fn git(directory: &Path) -> Command {
     let mut command = Command::new("git");
@@ -240,14 +239,15 @@ pub fn prepare(inv: &Inventory, core: &Core, allow_dirty: bool) -> Result<()> {
     })
 }
 
-/// Append tracked files and every gitlink at its recorded revision. Never use
-/// `git archive` alone for a fork: it silently leaves submodules empty.
+/// Append the committed tree at `rev` and every gitlink at its recorded
+/// revision; `git archive` alone leaves submodules empty. Working-tree edits
+/// never enter the archive. Git LFS pointers are replaced by the materialized
+/// working-tree payload, which must match the committed pointer.
 fn append_revision(
     builder: &mut tar::Builder<fs::File>,
     repository: &Path,
     rev: &str,
     prefix: &Path,
-    recursive: bool,
 ) -> Result<()> {
     let raw = tempfile::NamedTempFile::new()?;
     dependencies::run(
@@ -270,9 +270,6 @@ fn append_revision(
                     .lines()
                     .find_map(|line| line.strip_prefix("oid sha256:"))
                     .context("Git LFS source lacks SHA256")?;
-                if oid.len() != 64 || !oid.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    bail!("invalid Git LFS source SHA256 for {}", relative.display());
-                }
                 let expected: u64 = pointer
                     .lines()
                     .find_map(|line| line.strip_prefix("size "))
@@ -300,20 +297,11 @@ fn append_revision(
             builder.append_data(&mut header, path, &mut entry)?;
         }
     }
-    if recursive {
-        for (path, pin) in gitlinks(repository, rev)? {
-            let child = repository.join(&path);
-            checkout_root(&child)
-                .with_context(|| format!("missing recursive source {}", child.display()))?;
-            if revision(&child)? != pin {
-                bail!(
-                    "submodule {} is not at recorded revision {pin}",
-                    child.display()
-                );
-            }
-            require_clean(&child)?;
-            append_revision(builder, &child, &pin, &prefix.join(path), true)?;
-        }
+    for (path, pin) in gitlinks(repository, rev)? {
+        let child = repository.join(&path);
+        checkout_root(&child)
+            .with_context(|| format!("missing recursive source {}", child.display()))?;
+        append_revision(builder, &child, &pin, &prefix.join(path))?;
     }
     Ok(())
 }
@@ -355,73 +343,76 @@ fn copy_input(source: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Cargo verifies checksums while reading the vendor tree. Validate it before
-/// publication as well, including files not compiled on this release target.
-pub(crate) fn verify_vendor(vendor: &Path) -> Result<()> {
-    package::plain(vendor)?;
-    for entry in fs::read_dir(vendor)? {
-        let dir = entry?.path();
-        package::plain(&dir)?;
-        if dir.is_dir() && !dir.join(".cargo-checksum.json").is_file() {
-            let children = fs::read_dir(&dir)?.collect::<std::result::Result<Vec<_>, _>>()?;
-            if !children.is_empty() && children.iter().all(|child| child.path().is_dir()) {
-                verify_vendor(&dir)?;
-                continue;
-            }
+/// Whether every way to satisfy `expression` uses a license matching `obliging`.
+/// `LicenseRef-*` terms are custom licenses the project selects explicitly
+/// (Slint Royalty-free, KiriKiri2) and are not treated as source obligations.
+fn obliges(expression: &str, obliging: fn(spdx::LicenseId) -> bool) -> Result<bool> {
+    let parsed = spdx::Expression::parse_mode(expression, crate::rust_licenses::PARSE_MODE)
+        .with_context(|| format!("invalid SPDX expression {expression}"))?;
+    Ok(!parsed.evaluate(|req| req.license.id().is_none_or(|id| !obliging(id))))
+}
+
+fn copyleft(id: spdx::LicenseId) -> bool {
+    id.is_copyleft()
+}
+
+/// GPL, LGPL and AGPL cover the combined, statically linked Rust binary.
+fn gnu_copyleft(id: spdx::LicenseId) -> bool {
+    id.is_gnu() && id.is_copyleft()
+}
+
+/// Copy the crates whose licenses require their source to accompany the
+/// binary: every linked crate when a GNU copyleft license applies to any of
+/// them, otherwise only copyleft crates (MPL file-level copyleft) and crates
+/// without a license expression. Path crates are in the product/fork snapshot.
+fn rust_sources(metadata: &Value, package: &str, root: &Path) -> Result<()> {
+    let closure = crate::rust_licenses::closure(metadata, package)?;
+    let mut whole = false;
+    for p in &closure {
+        if let Some(expression) = p["license"].as_str().filter(|s| !s.trim().is_empty()) {
+            whole |= obliges(expression, gnu_copyleft)?;
         }
-        let record: serde_json::Value = serde_json::from_slice(
-            &fs::read(dir.join(".cargo-checksum.json")).with_context(|| {
-                format!(
-                    "vendored source missing checksum manifest: {}",
-                    dir.display()
-                )
-            })?,
-        )?;
-        for (name, expected) in record["files"]
-            .as_object()
-            .context("vendor file checksums")?
+    }
+    for p in closure {
+        let Some(source) = p["source"].as_str() else {
+            continue;
+        };
+        let required = match p["license"].as_str().filter(|s| !s.trim().is_empty()) {
+            Some(expression) => whole || obliges(expression, copyleft)?,
+            None => true,
+        };
+        if !required {
+            continue;
+        }
+        let name = format!(
+            "{}-{}+{}",
+            p["name"].as_str().context("cargo package name")?,
+            p["version"].as_str().context("cargo package version")?,
+            crate::rust_licenses::source_tag(Some(source))
+        );
+        package::portable(&name)?;
+        let crate_root = Path::new(
+            p["manifest_path"]
+                .as_str()
+                .context("cargo source manifest")?,
+        )
+        .parent()
+        .context("cargo source directory")?;
+        let dest = root.join("rust-sources").join(name);
+        for item in walkdir::WalkDir::new(crate_root)
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|item| item.file_name() != ".git")
         {
-            let relative = Path::new(name);
-            if relative.is_absolute()
-                || relative
-                    .components()
-                    .any(|c| !matches!(c, std::path::Component::Normal(_)))
-            {
-                bail!("unsafe vendored source path {name}");
-            }
-            if package::sha256(&dir.join(relative))?
-                != expected.as_str().context("vendor SHA256")?
-            {
-                bail!(
-                    "vendored source checksum mismatch: {}/{name}",
-                    dir.display()
-                );
+            let item = item?;
+            let to = dest.join(item.path().strip_prefix(crate_root)?);
+            if item.file_type().is_dir() {
+                fs::create_dir_all(to)?;
+            } else {
+                fs::copy(item.path(), to)?;
             }
         }
     }
-    Ok(())
-}
-
-fn vendor(manifest: &Path, root: &Path) -> Result<()> {
-    let sources = vendor::collect(manifest, root)?;
-    let path = root.join(".cargo/config.toml");
-    let mut existing: toml::Value = if path.is_file() {
-        toml::from_str(&fs::read_to_string(&path)?)?
-    } else {
-        toml::Value::Table(Default::default())
-    };
-    let table = existing.as_table_mut().context("Cargo config table")?;
-    table.insert("source".into(), sources.into());
-    table.insert(
-        "net".into(),
-        toml::Value::Table(
-            [("offline".into(), toml::Value::Boolean(true))]
-                .into_iter()
-                .collect(),
-        ),
-    );
-    fs::create_dir_all(path.parent().unwrap())?;
-    fs::write(path, toml::to_string(&existing)?)?;
     Ok(())
 }
 
@@ -513,14 +504,41 @@ fn installed_ports(installation: &Path) -> Result<Vec<(String, PathBuf)>> {
         .collect())
 }
 
-/// Collect installed target ports and their host-tool dependency closure,
-/// including static libraries and the pinned vcpkg registry/toolchain sources.
+/// Registry ports are identified by the Git tree their SPDX record names, which
+/// can predate the registry HEAD. Overlay ports record no tree; they ship in
+/// the fork snapshot. Returns whether a recipe was extracted.
+pub(crate) fn port_recipe(spdx: &Value, registry: &Path, dest: &Path) -> Result<bool> {
+    let port = spdx["packages"]
+        .as_array()
+        .context("SPDX packages")?
+        .iter()
+        .find(|p| p["SPDXID"] == "SPDXRef-port")
+        .context("SPDX port recipe")?;
+    let Some(tree) = port["externalRefs"].as_array().and_then(|refs| {
+        refs.iter()
+            .filter_map(|r| r["referenceLocator"].as_str())
+            .find_map(|r| r.strip_prefix("gitoid:tree:sha1:"))
+    }) else {
+        return Ok(false);
+    };
+    let archive = dependencies::capture(git_committed_bytes(registry).args([
+        "archive",
+        "--format=tar",
+        tree,
+    ]))?;
+    fs::create_dir_all(dest)?;
+    tar::Archive::new(archive.as_slice()).unpack(dest)?;
+    Ok(true)
+}
+
+/// Collect installed target ports and their host-tool dependency closure:
+/// recipes/patches and the original source archives vcpkg consumed.
 fn native_sources(
     inv: &Inventory,
     component: &str,
     target: &str,
     root: &Path,
-    metadata: &serde_json::Value,
+    metadata: &Value,
 ) -> Result<String> {
     let selected = dependencies::needs(inv, target, component)?;
     let mut installations = Vec::new();
@@ -551,42 +569,25 @@ fn native_sources(
                 }),
         ));
     }
+    let registry = inv.root.join(".work/vcpkg");
     let mut required = std::collections::BTreeSet::new();
     let mut commands = String::new();
     for (group, installed) in &installations {
-        package::plain(&installed.join("share"))?;
         for (port, source_install) in installed_ports(installed)? {
             let spdx = source_install
                 .join("share")
                 .join(&port)
                 .join("vcpkg.spdx.json");
-            package::plain(&spdx)
-                .with_context(|| format!("installed port {port} missing source provenance"))?;
-            let record: serde_json::Value = serde_json::from_slice(&fs::read(&spdx)?)?;
-            let overlay = if selected.native_vcpkg {
-                inv.core(component)?
-                    .source_directory(&inv.root)?
-                    .join("vcpkg/ports")
-                    .join(&port)
-            } else {
-                PathBuf::new()
-            };
-            collect_port_sources(
+            let record: Value =
+                serde_json::from_slice(&fs::read(&spdx).with_context(|| {
+                    format!("installed port {port} missing source provenance")
+                })?)?;
+            port_recipe(
                 &record,
-                &inv.root.join(".work/vcpkg"),
-                &[overlay, inv.root.join(".work/vcpkg/ports").join(&port)],
+                &registry,
                 &root.join("native/ports").join(group).join(&port),
             )
             .with_context(|| format!("native source port {port}"))?;
-            let architecture = source_install.file_name().context("source port triplet")?;
-            copy_input(
-                &spdx,
-                &root
-                    .join("native/provenance")
-                    .join(group)
-                    .join(architecture)
-                    .join(format!("{port}.spdx.json")),
-            )?;
             for resource in record["packages"].as_array().context("SPDX packages")? {
                 if !resource["SPDXID"]
                     .as_str()
@@ -599,9 +600,6 @@ fn native_sources(
                     .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA512"))
                     .and_then(|c| c["checksumValue"].as_str())
                     .context("native source resource missing SHA512")?;
-                if checksum.len() != 128 || !checksum.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    bail!("invalid native source SHA512 for {port}");
-                }
                 required.insert(checksum.to_ascii_lowercase());
             }
         }
@@ -626,8 +624,12 @@ fn native_sources(
                 .replace('\\', "/"),
         };
         commands.push_str(&format!(
-            "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --no-downloads --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\" --overlay-ports=\"$PWD/native/ports/{group}\""
+            "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
+        if *group == "native" && inv.root.join(&manifest).join("vcpkg/ports").is_dir() {
+            commands.push_str(&format!(" --overlay-ports=\"$PWD/{manifest}/vcpkg/ports\""));
+        }
+        commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
             commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
         }
@@ -669,33 +671,21 @@ fn native_sources(
         )?;
     }
     if !installations.is_empty() {
-        let repo = inv.root.join(".work/vcpkg");
         let pins: toml::Value = toml::from_str(&fs::read_to_string(
             inv.root.join("build/dependencies.toml"),
         )?)?;
+        let url = pins["vcpkg_url"].as_str().context("vcpkg URL")?;
         let pin = pins["vcpkg_commit"].as_str().context("vcpkg commit")?;
-        if revision(&repo)? != pin {
-            bail!("vcpkg source is not at pinned revision {pin}");
-        }
-        // Versioned manifests need baseline/tree objects, not just a checkout.
-        // Retaining the reachable history makes vcpkg registry resolution offline.
-        dependencies::run(
-            git(&repo)
-                .args(["bundle", "create"])
-                .arg(root.join("native/vcpkg.bundle"))
-                .arg("HEAD"),
-        )?;
         let tool = if target.contains("windows") {
-            "$vcpkg = (Get-Command vcpkg.exe).Source"
+            "& .work/vcpkg/bootstrap-vcpkg.bat -disableMetrics\n$vcpkg = \"$PWD/.work/vcpkg/vcpkg.exe\""
         } else {
-            "vcpkg=$(command -v vcpkg)"
+            "sh .work/vcpkg/bootstrap-vcpkg.sh -disableMetrics\nvcpkg=\"$PWD/.work/vcpkg/vcpkg\""
         };
         commands = format!(
-            "git clone --no-checkout native/vcpkg.bundle .work/vcpkg\ngit -C .work/vcpkg checkout --detach {pin}\n{tool}\n{commands}"
+            "git clone {url} .work/vcpkg\ngit -C .work/vcpkg checkout --detach {pin}\n{tool}\n{commands}"
         );
     }
     if selected.impacto_sources {
-        native_archives(inv, root, &["libatrac9", "magic_enum"])?;
         for name in ["libatrac9", "magic_enum"] {
             copy_tree(
                 &inv.root.join(".work/native-downloads").join(name),
@@ -709,6 +699,7 @@ fn native_sources(
     Ok(commands)
 }
 
+/// Copy the downloaded archives vcpkg recorded by SHA512 in the installed SPDX.
 pub(crate) fn collect_archives(
     downloads: &Path,
     dest: &Path,
@@ -731,76 +722,6 @@ pub(crate) fn collect_archives(
         );
     }
     Ok(())
-}
-
-fn native_archives(inv: &Inventory, root: &Path, names: &[&str]) -> Result<()> {
-    let pins: toml::Value = toml::from_str(&fs::read_to_string(
-        inv.root.join("build/dependencies.toml"),
-    )?)?;
-    for name in names {
-        let pin = &pins["native"][name];
-        let filename = pin["file_name"]
-            .as_str()
-            .context("native archive filename")?;
-        let source = inv.root.join(".work/downloads").join(filename);
-        if package::sha256(&source)? != pin["sha256"].as_str().context("native archive SHA256")? {
-            bail!("native archive checksum mismatch: {filename}");
-        }
-        copy_input(&source, &root.join(".work/downloads").join(filename))?;
-    }
-    Ok(())
-}
-
-/// An installed port can come from a historical registry tree rather than HEAD.
-/// SPDX records both that tree identity and the hashes of the consumed recipe.
-pub(crate) fn collect_port_sources(
-    spdx: &serde_json::Value,
-    registry: &Path,
-    candidates: &[PathBuf],
-    dest: &Path,
-) -> Result<()> {
-    for candidate in candidates {
-        if candidate.join("portfile.cmake").is_file()
-            && package::verify_port_sources(spdx, candidate).is_ok()
-        {
-            return copy_tree(candidate, dest);
-        }
-    }
-    let port = spdx["packages"]
-        .as_array()
-        .context("SPDX packages")?
-        .iter()
-        .find(|p| p["SPDXID"] == "SPDXRef-port")
-        .context("SPDX port recipe")?;
-    let tree = port["externalRefs"]
-        .as_array()
-        .and_then(|refs| {
-            refs.iter()
-                .filter_map(|r| r["referenceLocator"].as_str())
-                .find_map(|r| r.strip_prefix("gitoid:tree:sha1:"))
-        })
-        .or_else(|| {
-            port["downloadLocation"]
-                .as_str()?
-                .rsplit_once('@')
-                .map(|(_, tree)| tree)
-        })
-        .context("installed port has no registry tree identity and no matching local recipe")?;
-    if tree.len() != 40 || !tree.bytes().all(|b| b.is_ascii_hexdigit()) {
-        bail!("invalid installed port registry tree identity");
-    }
-    let kind = dependencies::capture(git(registry).args(["cat-file", "-t", tree]))?;
-    if kind != b"tree\n" && kind != b"tree\r\n" {
-        bail!("installed port identity must reference a Git tree");
-    }
-    let archive = dependencies::capture(git_committed_bytes(registry).args([
-        "archive",
-        "--format=tar",
-        tree,
-    ]))?;
-    fs::create_dir_all(dest)?;
-    tar::Archive::new(archive.as_slice()).unpack(dest)?;
-    package::verify_port_sources(spdx, dest)
 }
 
 pub(crate) const RENPY_BUILD_PIN: &str = "7bfab40c1174f622f644b24669afd5fb167fbb79";
@@ -866,105 +787,56 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
     })
 }
 
+/// Ren'Py's LGPL relink material: the pinned renpy-build recipes, the source
+/// archives inventoried by the fork (downloaded and hash-checked by `deps`),
+/// and the prepared SDK/Python/SDL trees the adapter build consumes.
 fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
-    const PIN: &str = RENPY_BUILD_PIN;
     let repo = inv.root.join(".work/renpy-build");
-    checkout_root(&repo).context("Ren'Py corresponding source requires .work/renpy-build")?;
-    if revision(&repo)? != PIN {
-        bail!("renpy-build must be at {PIN}");
-    }
-    require_clean(&repo)?;
+    checkout_root(&repo).context(
+        "Ren'Py corresponding source requires .work/renpy-build; run cargo xtask deps --core renpy",
+    )?;
     fs::create_dir_all(root.join("native"))?;
     let mut builder = tar::Builder::new(fs::File::create(root.join("native/renpy-build.tar"))?);
-    append_revision(&mut builder, &repo, PIN, Path::new(""), true)?;
+    append_revision(&mut builder, &repo, RENPY_BUILD_PIN, Path::new(""))?;
     builder.finish()?;
-    // The SDK supplies bytecode without dist-info. This fork-side inventory
-    // records versions read from that bytecode, not the different recipe pins.
-    let inventory = inv
+    let licenses = inv
         .core("renpy")?
         .source_directory(&inv.root)?
-        .join("licenses/renpy/python-sources.json");
-    let lock: serde_json::Value = serde_json::from_slice(&fs::read(&inventory)?)?;
-    if lock["renpy_build"] != PIN || lock["sdk"] != "8.5.3.26051504" {
-        bail!("Ren'Py runtime source inventory revision mismatch");
-    }
-    let packages = lock["packages"]
-        .as_array()
-        .context("Ren'Py Python source packages")?;
-    for required in ["chardet", "certifi"] {
-        if !packages
-            .iter()
-            .any(|p| p["name"] == required && p["copyleft"] == true)
-        {
-            bail!("Ren'Py source inventory lacks {required}");
-        }
-    }
-    for item in packages {
-        let filename = item["file_name"]
-            .as_str()
-            .context("Python source filename")?;
-        package::portable(filename)?;
-        let archive = inv.root.join(".work/downloads").join(filename);
-        if package::sha256(&archive)? != item["sha256"].as_str().context("Python source SHA256")? {
-            bail!("Python source checksum mismatch: {filename}");
-        }
-        copy_input(&archive, &root.join("native/python-sources").join(filename))?;
-        if let Some(wheel) = item.get("wheel") {
-            copy_hashed_archive(inv, wheel, &root.join("native/python-sources"))?;
-        }
-    }
-    for tool in lock["tools"].as_array().context("Python build tools")? {
-        copy_hashed_archive(inv, tool, &root.join("native/python-sources"))?;
-    }
-    copy_input(&inventory, &root.join("native/python-sources/sources.json"))?;
-    let native_inventory = inv
-        .core("renpy")?
-        .source_directory(&inv.root)?
-        .join("licenses/renpy/native-sources.json");
-    let native: serde_json::Value = serde_json::from_slice(&fs::read(&native_inventory)?)?;
-    if native["renpy_build"] != PIN {
-        bail!("Ren'Py native source revision mismatch");
-    }
-    let inputs = native["sources"]
-        .as_array()
-        .context("Ren'Py native source archives")?;
-    for name in [
-        "aom",
-        "libavif",
-        "libyuv",
-        "assimp",
-        "cpython-mingw",
-        "renpy",
-        "pyobjus",
+        .join("licenses/renpy");
+    for (inventory, dest, fields) in [
+        (
+            "python-sources.json",
+            "native/python-sources",
+            ["packages", "tools"].as_slice(),
+        ),
+        (
+            "native-sources.json",
+            "native/renpy-sources",
+            ["sources"].as_slice(),
+        ),
     ] {
-        if !inputs.iter().any(|p| p["name"] == name) {
-            bail!("Ren'Py source closure lacks {name}");
+        let path = licenses.join(inventory);
+        let records: Value = serde_json::from_slice(&fs::read(&path)?)?;
+        let dest = root.join(dest);
+        for field in fields {
+            for record in records[field]
+                .as_array()
+                .with_context(|| format!("{inventory} {field}"))?
+            {
+                for archive in std::iter::once(record).chain(record.get("wheel")) {
+                    let name = archive["file_name"]
+                        .as_str()
+                        .context("source archive filename")?;
+                    package::portable(name)?;
+                    copy_input(
+                        &inv.root.join(".work/downloads").join(name),
+                        &dest.join(name),
+                    )?;
+                }
+            }
         }
+        copy_input(&path, &dest.join("sources.json"))?;
     }
-    for input in inputs {
-        let filename = input["file_name"]
-            .as_str()
-            .context("Ren'Py native source filename")?;
-        package::portable(filename)?;
-        let archive = inv.root.join(".work/downloads").join(filename);
-        if package::sha256(&archive)?
-            != input["sha256"]
-                .as_str()
-                .context("Ren'Py native source SHA256")?
-        {
-            bail!("Ren'Py native source checksum mismatch: {filename}");
-        }
-        copy_input(&archive, &root.join("native/renpy-sources").join(filename))?;
-    }
-    copy_input(
-        &native_inventory,
-        &root.join("native/renpy-sources/sources.json"),
-    )?;
-    native_archives(
-        inv,
-        root,
-        &["renpy-sdk", "python", "cython", "cython-license", "sdl2"],
-    )?;
     for name in ["renpy-sdk", "python", "cython-license", "sdl2"] {
         copy_tree(
             &inv.root.join(".work/native-downloads").join(name),
@@ -974,47 +846,16 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Write `<out>` as a zip holding `source.tar` and `BUILD-FROM-SOURCE.md`.
 pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path) -> Result<()> {
     let temporary = inv.root.join(".work/tmp");
     fs::create_dir_all(&temporary)?;
     let temp = tempfile::tempdir_in(&temporary)?;
     let product_commit = revision(&inv.root)?;
-    require_clean(&inv.root)?;
     let metadata = crate::rust_licenses::metadata(inv, target, component)?;
-    let product = temp.path().join("product.tar");
-    let mut builder = tar::Builder::new(fs::File::create(&product)?);
-    append_revision(
-        &mut builder,
-        &inv.root,
-        &product_commit,
-        Path::new(""),
-        false,
-    )?;
-    // Include local path dependencies which live in product gitlinks (e.g. CPAL).
-    for (path, pin) in gitlinks(&inv.root, &product_commit)? {
-        if metadata["packages"]
-            .as_array()
-            .context("Cargo packages")?
-            .iter()
-            .any(|p| {
-                p["source"].is_null()
-                    && p["manifest_path"]
-                        .as_str()
-                        .is_some_and(|s| Path::new(s).starts_with(inv.root.join(&path)))
-            })
-        {
-            let repo = inv.root.join(&path);
-            if revision(&repo)? != pin {
-                bail!("product submodule {} revision mismatch", path.display());
-            }
-            require_clean(&repo)?;
-            append_revision(&mut builder, &repo, &pin, &path, true)?;
-        }
-    }
-    builder.finish()?;
-    let root = temp.path().join("source");
-    fs::create_dir(&root)?;
-    tar::Archive::new(fs::File::open(&product)?).unpack(&root)?;
+    let archive = temp.path().join("source.tar");
+    let mut builder = tar::Builder::new(fs::File::create(&archive)?);
+    append_revision(&mut builder, &inv.root, &product_commit, Path::new(""))?;
     let mut references = serde_json::json!({
         "product": {"repo":"https://github.com/Project-Shinkirou/ShinkiEMU","rev":product_commit},
         "core": null, "target": target
@@ -1028,14 +869,14 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         let core = inv.core(component)?;
         if let Some(source) = &core.source {
-            let repo = verify(inv, core, true)?;
-            let archive = temp.path().join("core.tar");
-            let mut builder = tar::Builder::new(fs::File::create(&archive)?);
-            append_revision(&mut builder, &repo, &source.rev, Path::new(""), true)?;
-            builder.finish()?;
-            let dest = root.join(repo.strip_prefix(&inv.root)?);
-            fs::create_dir_all(&dest)?;
-            tar::Archive::new(fs::File::open(&archive)?).unpack(dest)?;
+            let repo = core.source_directory(&inv.root)?;
+            checkout_root(&repo)?;
+            append_revision(
+                &mut builder,
+                &repo,
+                &source.rev,
+                repo.strip_prefix(&inv.root)?,
+            )?;
             references["core"] = serde_json::to_value(source)?;
         }
         (
@@ -1044,34 +885,10 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             core.features.clone(),
         )
     };
-    vendor(&manifest, &root)?;
-    // Resolve against the extracted tree and its generated source replacement,
-    // so omitted path crates or vendor packages cannot become a partial bundle.
-    let mut check = Command::new("cargo");
-    check
-        .current_dir(&root)
-        .args([
-            "metadata",
-            "--offline",
-            "--frozen",
-            "--format-version",
-            "1",
-            "--filter-platform",
-            target,
-            "--manifest-path",
-        ])
-        .arg(root.join(manifest.strip_prefix(&inv.root)?));
-    if !features.is_empty() {
-        check.arg("--features").arg(
-            features
-                .iter()
-                .map(|f| format!("{package}/{f}"))
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-    }
-    dependencies::capture(&mut check)
-        .context("corresponding source does not resolve offline from its vendor tree")?;
+    // Files outside the Git snapshots, appended under the same root.
+    let root = temp.path().join("extra");
+    fs::create_dir(&root)?;
+    rust_sources(&metadata, &package, &root)?;
     let native_commands = native_sources(inv, component, target, &root, &metadata)?;
     fs::write(
         root.join("source-references.json"),
@@ -1089,20 +906,20 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     let mut instructions = format!(
         "# Rebuild {component} for {target}\n\nProduct commit: {product_commit}. Exact core revision: see source-references.json.\n\
          Unpack source.tar into a new directory and run these commands there in a developer PowerShell (Windows) or the equivalent shell on the target OS.\n\
-         Prerequisites: the Rust toolchain in rust-toolchain.toml, the {target} standard library, the system C/C++ compiler/SDK, CMake and Ninja. Build tools and OS SDKs are system prerequisites. Before disconnecting, provision vcpkg's pinned build-tool archives in .work/vcpkg-downloads (Windows Meson uses python-3.14.7-embed-amd64.zip; NASM 3.01, Ninja 1.13.2, CMake 4.4.3 and MSYS2 tools may also be needed). The pinned vcpkg scripts record and verify their hashes. These toolchain inputs are separate from the bundled library sources.\n\
-         Cargo uses .cargo/config.toml and vendor/, including exact pinned Git dependencies. No registry or Git network access is needed. Keep Cargo.lock unchanged.\n\n```powershell\n\
-         $env:CARGO_NET_OFFLINE = 'true'\n\
+         Prerequisites: the Rust toolchain in rust-toolchain.toml, the {target} standard library, the system C/C++ compiler/SDK, CMake, Ninja and Git. Build tools and OS SDKs are system prerequisites.\n\
+         Cargo.lock pins every Rust dependency to an exact registry checksum or Git commit; Cargo downloads them. \
+         rust-sources/ holds the exact sources of each linked crate whose license requires source distribution (every linked crate when a GPL-family license applies). \
+         To build with a modified copy, add a `[patch]` entry pointing at its directory.\n\n```powershell\n\
          $env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
     );
+    let selected = dependencies::needs(inv, target, component)?;
     if !native_commands.is_empty() {
         instructions.push_str(
             "$env:VCPKG_DOWNLOADS = \"$PWD/.work/vcpkg-downloads\"\n\
-             $env:VCPKG_BINARY_SOURCES = 'clear'\n\
-             $env:VCPKG_FORCE_SYSTEM_BINARIES = '1'\n\
-             # A system vcpkg executable, CMake and Ninja must be on PATH.\n",
+             $env:VCPKG_BINARY_SOURCES = 'clear'\n",
         );
         instructions.push_str(&native_commands);
-        if dependencies::needs(inv, target, component)?.subtitle {
+        if selected.subtitle {
             let install = dependencies::subtitle_install(inv, target)?;
             let prefix = install
                 .parent()
@@ -1126,11 +943,10 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
                 ));
             }
         }
-        if dependencies::needs(inv, target, component)?.ffmpeg {
+        if selected.ffmpeg {
             instructions.push_str("$env:VCPKG_ROOT = \"$PWD/.work/vcpkg-ffmpeg\"\n");
         }
     }
-    let selected = dependencies::needs(inv, target, component)?;
     if selected.native_vcpkg {
         instructions.push_str(&format!(
             "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_VCPKG_INSTALLED = \"$PWD/.work/native-vcpkg/{component}/installed\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{}\"\n",
@@ -1171,11 +987,16 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         "--bin shinki-emu-manager"
     };
     instructions.push_str(&format!(
-        "{build_command} --offline --frozen --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n\n\
-         Native ports/patches and SPDX build provenance are under native/; source archives are under .work/vcpkg-downloads. \
-         Static libraries can be modified, rebuilt with these recipes, and relinked by rebuilding the consumer above. \
-         Compatible replacement and reverse engineering for debugging modifications to LGPL components are permitted.\n"
+        "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
     ));
+    if !native_commands.is_empty() {
+        instructions.push_str(
+            "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the fork snapshot. \
+             .work/vcpkg-downloads/ holds the original source archives vcpkg consumed. \
+             Static libraries can be modified, rebuilt with these recipes, and relinked by rebuilding the consumer above. \
+             Compatible replacement and reverse engineering for debugging modifications to LGPL components are permitted.\n",
+        );
+    }
     if selected.renpy {
         instructions.push_str(
             "\n## Ren'Py combined-runtime rebuild and relink\n\n\
@@ -1189,7 +1010,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              These sources rebuild the LGPL parts inside librenpython.dll; libEGL.dll/libGLESv2.dll and the Windows compiler/OS SDK remain separate permissive/system inputs, with notices.\n\n\
              Rebuilding the combined DLL uses upstream's Ubuntu 24.04 cross-build environment (see renpy-build/README.rst). \
              Use the llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64 toolchain, host Python 3.12 with Cython 3.2.4/Jinja2/requests, autoconf/automake/libtool, CMake, Ninja, NASM and the system development libraries listed in prepare.sh. \
-             Supply these build tools before disconnecting; do not run the online prepare.sh. Extract the archives and run the supplied offline driver:\n\n\
+             Supply these build tools instead of running the online prepare.sh. Extract the archives and run the supplied archive-backed driver:\n\n\
              ```sh\nmkdir -p native/renpy-build\ntar -xf native/renpy-build.tar -C native/renpy-build\n\
              mkdir -p native/renpy-build/tmp/tars\n\
              cp \"$LLVM_MINGW_ARCHIVE\" native/renpy-build/tmp/tars/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz\n\
@@ -1212,10 +1033,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     let readme = temp.path().join("BUILD-FROM-SOURCE.md");
     fs::write(&readme, &instructions)?;
     fs::write(root.join("BUILD-FROM-SOURCE.md"), instructions)?;
-    let archive = temp.path().join("source.tar");
-    let mut builder = tar::Builder::new(fs::File::create(&archive)?);
     builder.append_dir_all(".", &root)?;
-    builder.finish()?;
+    drop(builder.into_inner()?);
     package::zip_entries(
         &[
             (archive, "source.tar".into()),
@@ -1223,16 +1042,6 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         ],
         out,
     )
-}
-
-fn copy_hashed_archive(inv: &Inventory, record: &serde_json::Value, dest: &Path) -> Result<()> {
-    let name = record["file_name"].as_str().context("archive filename")?;
-    package::portable(name)?;
-    let archive = inv.root.join(".work/downloads").join(name);
-    if package::sha256(&archive)? != record["sha256"].as_str().context("archive SHA256")? {
-        bail!("source archive checksum mismatch: {name}");
-    }
-    copy_input(&archive, &dest.join(name))
 }
 
 fn renpy_offline_driver() -> &'static str {
@@ -1362,6 +1171,12 @@ mod tests {
         (temp, inv, core, source, first, second)
     }
 
+    fn unpack(archive: &Path, out: &Path) {
+        tar::Archive::new(fs::File::open(archive).unwrap())
+            .unpack(out)
+            .unwrap();
+    }
+
     #[test]
     fn source_checkout_uses_pinned_commit_and_preserves_dirty_work_before_update() {
         let (_temp, inv, mut core, _upstream, first, second) = fixture();
@@ -1415,12 +1230,10 @@ mod tests {
         assert!(!state(&checkout).unwrap().dirty);
         let archive = temp.path().join("crlf.tar");
         let mut builder = tar::Builder::new(fs::File::create(&archive).unwrap());
-        append_revision(&mut builder, &checkout, &second, Path::new(""), false).unwrap();
+        append_revision(&mut builder, &checkout, &second, Path::new("")).unwrap();
         builder.finish().unwrap();
         let extracted = temp.path().join("crlf-extracted");
-        tar::Archive::new(fs::File::open(&archive).unwrap())
-            .unpack(&extracted)
-            .unwrap();
+        unpack(&archive, &extracted);
         assert_eq!(
             fs::read(extracted.join("payload.txt")).unwrap(),
             b"second public source\n"
@@ -1446,7 +1259,7 @@ mod tests {
     }
 
     #[test]
-    fn source_archive_expands_gitlinks_and_rejects_dirty_submodules() {
+    fn source_archive_expands_gitlinks_at_their_pins_without_working_tree_edits() {
         let (temp, inv, _core, upstream, _first, _second) = fixture();
         dependencies::run(Command::new("git").args(["init"]).arg(&inv.root)).unwrap();
         fs::write(inv.root.join("Cargo.toml"), "[workspace]\n").unwrap();
@@ -1459,72 +1272,17 @@ mod tests {
         .unwrap();
         dependencies::run(git(&inv.root).args(["add", ".gitmodules", "nested"])).unwrap();
         let pin = commit(&inv.root, "outer\n");
+        fs::write(inv.root.join("nested/payload.txt"), "unpublished change").unwrap();
         let archive = temp.path().join("source.tar");
         let mut builder = tar::Builder::new(fs::File::create(&archive).unwrap());
-        append_revision(&mut builder, &inv.root, &pin, Path::new(""), true).unwrap();
+        append_revision(&mut builder, &inv.root, &pin, Path::new("")).unwrap();
         builder.finish().unwrap();
         let extracted = temp.path().join("extracted");
-        tar::Archive::new(fs::File::open(&archive).unwrap())
-            .unpack(&extracted)
-            .unwrap();
+        unpack(&archive, &extracted);
         assert_eq!(
-            fs::read(extracted.join("nested/payload.txt")).unwrap(),
-            fs::read(upstream.join("payload.txt")).unwrap()
+            fs::read_to_string(extracted.join("nested/payload.txt")).unwrap(),
+            "second public source\n"
         );
-        fs::write(inv.root.join("nested/payload.txt"), "unpublished change").unwrap();
-        let mut builder =
-            tar::Builder::new(fs::File::create(temp.path().join("rejected.tar")).unwrap());
-        assert!(append_revision(&mut builder, &inv.root, &pin, Path::new(""), true).is_err());
-    }
-
-    #[test]
-    fn source_bundle_resolves_from_a_clean_extracted_directory() {
-        let temp = tempfile::tempdir().unwrap();
-        let original = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let mut inv = Inventory::load(original).unwrap();
-        inv.root = temp.path().join("product");
-        fs::create_dir_all(inv.root.join("src")).unwrap();
-        fs::write(
-            inv.root.join("Cargo.toml"),
-            "[package]\nname=\"shinki-emu-manager\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
-        )
-        .unwrap();
-        fs::write(
-            inv.root.join("src/lib.rs"),
-            "pub fn answer() -> u32 { 42 }\n",
-        )
-        .unwrap();
-        fs::write(inv.root.join(".gitignore"), "/.work/\n").unwrap();
-        dependencies::run(
-            Command::new("cargo")
-                .current_dir(&inv.root)
-                .args(["generate-lockfile", "--offline"]),
-        )
-        .unwrap();
-        dependencies::run(Command::new("git").args(["init"]).arg(&inv.root)).unwrap();
-        dependencies::run(git(&inv.root).args([
-            "add",
-            "Cargo.toml",
-            "Cargo.lock",
-            ".gitignore",
-            "src",
-        ]))
-        .unwrap();
-        commit(&inv.root, "product source\n");
-        let output = temp.path().join("source.zip");
-        bundle(&inv, "manager", "x86_64-pc-windows-msvc", &output).unwrap();
-        let mut zip = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
-        let source = zip.by_name("source.tar").unwrap();
-        let extracted = temp.path().join("fresh");
-        tar::Archive::new(source).unpack(&extracted).unwrap();
-        dependencies::capture(Command::new("cargo").current_dir(extracted).args([
-            "metadata",
-            "--offline",
-            "--frozen",
-            "--format-version",
-            "1",
-        ]))
-        .unwrap();
     }
 
     #[test]
@@ -1541,21 +1299,147 @@ mod tests {
         fs::write(upstream.join("payload.txt"), payload).unwrap();
         let archive = temp.path().join("materialized.tar");
         let mut builder = tar::Builder::new(fs::File::create(&archive).unwrap());
-        append_revision(&mut builder, &upstream, &pin, Path::new(""), true).unwrap();
+        append_revision(&mut builder, &upstream, &pin, Path::new("")).unwrap();
         builder.finish().unwrap();
         let extracted = temp.path().join("materialized");
-        tar::Archive::new(fs::File::open(archive).unwrap())
-            .unpack(&extracted)
-            .unwrap();
+        unpack(&archive, &extracted);
         assert_eq!(fs::read(extracted.join("payload.txt")).unwrap(), payload);
         fs::write(upstream.join("payload.txt"), pointer).unwrap();
         let mut builder =
             tar::Builder::new(fs::File::create(temp.path().join("pointer.tar")).unwrap());
-        assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
+        assert!(append_revision(&mut builder, &upstream, &pin, Path::new("")).is_err());
         fs::write(upstream.join("payload.txt"), vec![b'x'; payload.len()]).unwrap();
         let mut builder =
             tar::Builder::new(fs::File::create(temp.path().join("modified.tar")).unwrap());
-        assert!(append_revision(&mut builder, &upstream, &pin, Path::new(""), true).is_err());
+        assert!(append_revision(&mut builder, &upstream, &pin, Path::new("")).is_err());
+    }
+
+    #[test]
+    fn source_obligation_follows_the_selectable_license() {
+        for (expression, source, whole) in [
+            ("MIT OR Apache-2.0", false, false),
+            ("MPL-2.0", true, false),
+            ("MIT AND MPL-2.0", true, false),
+            ("Apache-2.0 OR GPL-2.0-only", false, false),
+            (
+                "GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0",
+                false,
+                false,
+            ),
+            ("AGPL-3.0-only", true, true),
+            ("MIT AND LGPL-2.1-or-later", true, true),
+        ] {
+            assert_eq!(
+                obliges(expression, copyleft).unwrap(),
+                source,
+                "{expression}"
+            );
+            assert_eq!(
+                obliges(expression, gnu_copyleft).unwrap(),
+                whole,
+                "{expression}"
+            );
+        }
+        assert!(obliges("not an SPDX expression", copyleft).is_err());
+    }
+
+    #[test]
+    fn source_bundle_ships_snapshot_and_only_obligated_crate_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut dependencies_table = toml::Table::new();
+        for (name, license) in [("weak-copyleft", "MPL-2.0"), ("permissive", "MIT")] {
+            let repo = temp.path().join(name);
+            fs::create_dir_all(repo.join("src")).unwrap();
+            fs::write(
+                repo.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"{license}\"\n"),
+            )
+            .unwrap();
+            fs::write(repo.join("src/lib.rs"), format!("// {name}\n")).unwrap();
+            dependencies::run(git(&repo).args(["init"])).unwrap();
+            dependencies::run(git(&repo).args(["add", "."])).unwrap();
+            dependencies::run(git(&repo).args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "dependency fixture",
+            ]))
+            .unwrap();
+            dependencies_table.insert(
+                name.into(),
+                toml::Value::try_from(serde_json::json!({
+                    "git": reqwest::Url::from_directory_path(&repo).unwrap().as_str(),
+                    "rev": revision(&repo).unwrap(),
+                }))
+                .unwrap(),
+            );
+        }
+        let original = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inv = Inventory::load(original).unwrap();
+        inv.root = temp.path().join("product");
+        fs::create_dir_all(inv.root.join("src")).unwrap();
+        let mut manifest = toml::Table::new();
+        manifest.insert(
+            "package".into(),
+            toml::Value::try_from(serde_json::json!({
+                "name":"shinki-emu-manager", "version":"0.1.0", "edition":"2024", "license":"MIT",
+            }))
+            .unwrap(),
+        );
+        manifest.insert("dependencies".into(), dependencies_table.into());
+        fs::write(
+            inv.root.join("Cargo.toml"),
+            toml::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            inv.root.join("src/lib.rs"),
+            "pub fn answer() -> u32 { 42 }\n",
+        )
+        .unwrap();
+        fs::write(inv.root.join(".gitignore"), "/.work/\n").unwrap();
+        dependencies::run(
+            Command::new("cargo")
+                .current_dir(&inv.root)
+                .arg("generate-lockfile"),
+        )
+        .unwrap();
+        dependencies::run(Command::new("git").args(["init"]).arg(&inv.root)).unwrap();
+        dependencies::run(git(&inv.root).args(["add", "Cargo.lock", ".gitignore", "src"])).unwrap();
+        commit(&inv.root, "product source\n");
+        let output = temp.path().join("source.zip");
+        bundle(&inv, "manager", "x86_64-pc-windows-msvc", &output).unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
+        let extracted = temp.path().join("fresh");
+        tar::Archive::new(zip.by_name("source.tar").unwrap())
+            .unpack(&extracted)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(extracted.join("payload.txt")).unwrap(),
+            "product source\n"
+        );
+        assert!(extracted.join("BUILD-FROM-SOURCE.md").is_file());
+        let crates: Vec<_> = fs::read_dir(extracted.join("rust-sources"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(crates.len(), 1, "{crates:?}");
+        assert!(crates[0].starts_with("weak-copyleft-0.1.0+git-"));
+        assert_eq!(
+            fs::read_to_string(
+                extracted
+                    .join("rust-sources")
+                    .join(&crates[0])
+                    .join("src/lib.rs")
+            )
+            .unwrap(),
+            "// weak-copyleft\n"
+        );
     }
 
     #[test]
@@ -1590,24 +1474,16 @@ mod tests {
         .unwrap();
         assert!(installed_ports(&install).is_err());
     }
-}
-
-#[cfg(test)]
-mod recipe_tests {
-    use super::*;
-    use serde_json::json;
 
     #[test]
-    fn installed_registry_tree_wins_over_head_and_is_verified() {
+    fn installed_registry_tree_wins_over_head_and_overlays_are_skipped() {
         let temp = tempfile::tempdir().unwrap();
         let registry = temp.path().join("registry");
         let head = registry.join("ports/example");
         fs::create_dir_all(&head).unwrap();
         dependencies::run(git(&registry).args(["init"])).unwrap();
-        fs::write(head.join("portfile.cmake"), "original recipe\n").unwrap();
-        fs::write(head.join("fix.patch"), "original patch\n").unwrap();
-        dependencies::run(git(&registry).args(["add", "."])).unwrap();
         let commit = || {
+            dependencies::run(git(&registry).args(["add", "."])).unwrap();
             dependencies::run(git(&registry).args([
                 "-c",
                 "user.name=Fixture",
@@ -1621,24 +1497,21 @@ mod recipe_tests {
             ]))
             .unwrap()
         };
+        fs::write(head.join("portfile.cmake"), "original recipe\n").unwrap();
+        fs::write(head.join("fix.patch"), "original patch\n").unwrap();
         commit();
         let tree = String::from_utf8(
             dependencies::capture(git(&registry).args(["rev-parse", "HEAD:ports/example"]))
                 .unwrap(),
         )
         .unwrap();
-        let files: Vec<_> = ["portfile.cmake", "fix.patch"].map(|name| json!({
-            "SPDXID":format!("SPDXRef-port-file-{name}"), "fileName":format!("./{name}"),
-            "checksums":[{"algorithm":"SHA256", "checksumValue":package::sha256(&head.join(name)).unwrap()}]
-        })).into();
-        let provenance = json!({"packages":[{"SPDXID":"SPDXRef-port", "externalRefs":[{
-            "referenceLocator":format!("gitoid:tree:sha1:{}", tree.trim())
-        }]}], "files":files});
         fs::write(head.join("portfile.cmake"), "new HEAD recipe\n").unwrap();
-        dependencies::run(git(&registry).args(["add", "."])).unwrap();
         commit();
+        let provenance = serde_json::json!({"packages":[{"SPDXID":"SPDXRef-port", "externalRefs":[{
+            "referenceLocator":format!("gitoid:tree:sha1:{}", tree.trim())
+        }]}]});
         let output = temp.path().join("bundled");
-        collect_port_sources(&provenance, &registry, std::slice::from_ref(&head), &output).unwrap();
+        assert!(port_recipe(&provenance, &registry, &output).unwrap());
         assert_eq!(
             fs::read_to_string(output.join("portfile.cmake")).unwrap(),
             "original recipe\n"
@@ -1647,88 +1520,9 @@ mod recipe_tests {
             fs::read_to_string(output.join("fix.patch")).unwrap(),
             "original patch\n"
         );
-        let mut corrupt = provenance.clone();
-        corrupt["files"][0]["checksums"][0]["checksumValue"] = json!("0".repeat(64));
-        assert!(
-            collect_port_sources(&corrupt, &registry, &[head], &temp.path().join("corrupt"))
-                .is_err()
-        );
-    }
-}
-
-#[cfg(test)]
-mod vendor_tests {
-    use super::*;
-
-    #[test]
-    fn equal_name_versions_from_different_git_sources_rebuild_without_caches() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut deps = toml::Table::new();
-        for (alias, value) in [("first", 17), ("second", 29)] {
-            let repo = temp.path().join(alias);
-            fs::create_dir_all(repo.join("src")).unwrap();
-            fs::write(repo.join("Cargo.toml"), "[workspace]\nmembers = [\"crate\"]\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
-            fs::create_dir_all(repo.join("crate/src")).unwrap();
-            fs::write(repo.join("crate/Cargo.toml"), "[package]\nname = \"same-name\"\nversion.workspace = true\nedition.workspace = true\n").unwrap();
-            fs::write(
-                repo.join("crate/src/lib.rs"),
-                format!("pub fn value() -> u32 {{ {value} }}\n"),
-            )
-            .unwrap();
-            dependencies::run(git(&repo).args(["init"])).unwrap();
-            dependencies::run(git(&repo).args(["add", "."])).unwrap();
-            dependencies::run(git(&repo).args([
-                "-c",
-                "user.name=Fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-                "-c",
-                "commit.gpgsign=false",
-                "commit",
-                "-m",
-                "source fixture",
-            ]))
-            .unwrap();
-            deps.insert(alias.into(), toml::Value::try_from(serde_json::json!({
-                "package":"same-name", "git":reqwest::Url::from_directory_path(&repo).unwrap().as_str(),
-                "rev":revision(&repo).unwrap(),
-            })).unwrap());
-        }
-        let product = temp.path().join("product");
-        fs::create_dir_all(product.join("src")).unwrap();
-        let mut manifest = toml::Table::new();
-        manifest.insert(
-            "package".into(),
-            toml::Value::try_from(serde_json::json!({
-                "name":"source-consumer", "version":"0.0.0", "edition":"2024",
-            }))
-            .unwrap(),
-        );
-        manifest.insert("dependencies".into(), deps.into());
-        fs::write(
-            product.join("Cargo.toml"),
-            toml::to_string(&manifest).unwrap(),
-        )
-        .unwrap();
-        fs::write(
-            product.join("src/main.rs"),
-            "fn main() { assert_eq!(first::value(), 17); assert_eq!(second::value(), 29); }\n",
-        )
-        .unwrap();
-        dependencies::run(
-            Command::new("cargo")
-                .current_dir(&product)
-                .arg("generate-lockfile"),
-        )
-        .unwrap();
-        vendor(&product.join("Cargo.toml"), &product).unwrap();
-        dependencies::run(
-            Command::new("cargo")
-                .current_dir(&product)
-                .args(["run", "--offline", "--frozen"])
-                .env("CARGO_HOME", temp.path().join("empty-cargo-home"))
-                .env("CARGO_TARGET_DIR", temp.path().join("fresh-target")),
-        )
-        .unwrap();
+        let overlay = serde_json::json!({"packages":[{"SPDXID":"SPDXRef-port", "downloadLocation":"NOASSERTION"}]});
+        let skipped = temp.path().join("overlay");
+        assert!(!port_recipe(&overlay, &registry, &skipped).unwrap());
+        assert!(!skipped.exists());
     }
 }

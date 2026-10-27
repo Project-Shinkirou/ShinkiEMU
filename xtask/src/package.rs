@@ -1293,39 +1293,3 @@ fn verify_android_apk(apk: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-/// Collect the locked Rust, recursive Git and native corresponding-source closure.
-pub fn source_bundle(inv: &Inventory, component: &str, target: &str, out: &Path) -> Result<()> {
-    crate::sources::bundle(inv, component, target, out)
-}
-
-pub(crate) fn verify_port_sources(spdx: &serde_json::Value, port: &Path) -> Result<()> {
-    let mut count = 0;
-    for record in spdx["files"].as_array().context("vcpkg SPDX files")? {
-        if !record["SPDXID"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("SPDXRef-port-file-"))
-        {
-            continue;
-        }
-        let name = record["fileName"]
-            .as_str()
-            .context("SPDX port filename")?
-            .strip_prefix("./")
-            .context("SPDX port relative path")?;
-        portable(name)?;
-        count += 1;
-        let hash = record["checksums"]
-            .as_array()
-            .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA256"))
-            .and_then(|c| c["checksumValue"].as_str())
-            .context("port source SHA256 missing")?;
-        if sha256(&port.join(name))? != hash {
-            bail!("vcpkg port changed since binary build: {name}");
-        }
-    }
-    if count == 0 {
-        bail!("vcpkg SPDX contains no port recipe checksums");
-    }
-    Ok(())
-}

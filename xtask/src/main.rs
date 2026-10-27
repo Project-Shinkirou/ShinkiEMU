@@ -113,7 +113,10 @@ fn run() -> Result<()> {
             target,
             version,
             publish,
-        } => release::run(&inv, &target, &component, &version, publish)?,
+        } => match target {
+            Some(target) if !publish => release::prepare(&inv, &target, &component, &version)?,
+            _ => release::publish(&inv, &component, &version)?,
+        },
         cli::Command::Metadata { cmd } => metadata::run(cmd)?,
         cli::Command::Ci {
             target,
