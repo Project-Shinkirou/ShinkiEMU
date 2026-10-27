@@ -14,6 +14,8 @@ members = [
     "Source/Providers/shinki-emu-translation",
     "Source/Providers/shinki-emu-metadata",
     "Source/Providers/shinki-emu-steam",
+    "Source/Providers/shinki-emu-store",
+    "Source/Providers/shinki-emu-dlsite",
     "Source/Manager/shinki-emu-manager-ui-slint",
     "Source/Manager/shinki-emu-manager",
 ]
@@ -69,12 +71,7 @@ evdev = "=0.13.2"
 gilrs = { version = "0.11.2", default-features = false }
 gstreamer = "=0.25.4"
 gstreamer-app = "=0.25.2"
-image = { version = "0.25.10", default-features = false, features = [
-    "png",
-    "jpeg",
-    "webp",
-    "bmp",
-] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 indexmap = { version = "2.14.2", features = ["serde"] }
 js-sys = "0.3.106"
 jni = "0.22.4"
@@ -101,18 +98,12 @@ pollster = "1.0.1"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 rc4 = "=0.2.0"
-reqwest = { version = "0.13.5", default-features = false, features = [
-    "json",
-    "rustls",
-    "stream",
-] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "stream"] }
 bangumi-api = "0.1.2"
 rcgen = "0.14.10"
 rfd = { version = "0.17.2", default-features = false, features = ["wayland", "xdg-portal"] }
 rtrb = "0.4.0"
-rubato = { version = "5.0.1", default-features = false, features = [
-    "fft_resampler",
-] }
+rubato = { version = "5.0.1", default-features = false, features = ["fft_resampler"] }
 rustfft = "6.4.1"
 schemars = { version = "1.2.3", features = ["uuid1"] }
 rowan = "0.17.0"
@@ -140,11 +131,7 @@ tokio-rustls = "0.26.6"
 tracing = "0.1.44"
 zeroize = { version = "1.9.1", features = ["derive"] }
 tracing-appender = "0.2.5"
-tracing-subscriber = { version = "0.3.23", features = [
-    "env-filter",
-    "fmt",
-    "json",
-] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
 tungstenite = "0.30.0"
 unicode-segmentation = "1.13.3"
 chumsky = "0.13.0"
@@ -185,15 +172,12 @@ roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuE
 roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
 roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
 
-# Android static cores use the workspace ABI and native build helper rather than
-# a second copy of the same packages from this repository's Git URL.
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
 
 [patch.crates-io]
 cpal = { path = "ThirdParty/cpal" }
-# Published 0.13.0 rejects Luau 744's bytecode; upstream raises the supported maximum to 14.
 mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f43ef1372bd22be0fbf7866" }
 
 [patch."https://github.com/Project-Shinkirou/cpal.git"]

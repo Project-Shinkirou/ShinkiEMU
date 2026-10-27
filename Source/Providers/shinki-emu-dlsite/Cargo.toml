@@ -1,0 +1,19 @@
+[package]
+name = "shinki-emu-dlsite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+shinki-emu-store = { path = "../shinki-emu-store" }
+reqwest = { workspace = true, features = ["query"] }
+tokio = { workspace = true, features = ["fs"] }
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+futures-util.workspace = true
+zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile.workspace = true

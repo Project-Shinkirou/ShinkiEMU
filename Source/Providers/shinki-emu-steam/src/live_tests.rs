@@ -1,20 +1,22 @@
 //! Opt-in network acceptance; never requires or reads account credentials.
-use shinki_emu_steam::{
-    DownloadPlan, Error, LoginMethod, SecretStore, StoredLogin, has_update, login,
+use crate::{
+    auth::{LoginMethod, login},
+    transfer::{DownloadPlan, has_update},
 };
+use shinki_emu_store::{SecretStore, StoreError, StoredLogin};
 use std::sync::Mutex;
 use steamroom::depot::{DepotId, DepotKey, ManifestId};
 use steamroom_client::depot_config::DepotConfig;
 
 struct NoSecrets;
 impl SecretStore for NoSecrets {
-    fn load(&self) -> Result<Option<StoredLogin>, Error> {
+    fn load(&self, _: &str) -> Result<Option<StoredLogin>, StoreError> {
         Ok(None)
     }
-    fn save(&self, _: &StoredLogin) -> Result<(), Error> {
+    fn save(&self, _: &str, _: &StoredLogin) -> Result<(), StoreError> {
         panic!("anonymous login must not persist credentials")
     }
-    fn clear(&self) -> Result<(), Error> {
+    fn clear(&self, _: &str) -> Result<(), StoreError> {
         panic!("anonymous test must not touch the secret store")
     }
 }
@@ -32,13 +34,12 @@ async fn anonymous_spacewar_download_verify_repair_and_simulated_update() {
         game,
         depot_ids: vec![481],
         branch: "public".into(),
-        install_dir: temp.path().to_owned(),
         verify: true,
     };
     let (_, cancel) = tokio::sync::watch::channel(false);
-    let progress = Mutex::new(shinki_emu_steam::Progress::default());
+    let progress = Mutex::new(shinki_emu_store::Progress::default());
     let downloaded = session
-        .download(&plan, cancel.clone(), |value| {
+        .download(&plan, temp.path(), cancel.clone(), |value| {
             *progress.lock().unwrap() = value
         })
         .await
@@ -51,7 +52,7 @@ async fn anonymous_spacewar_download_verify_repair_and_simulated_update() {
     assert_eq!(progress.files_done, progress.files_total);
     assert!(!has_update(temp.path(), &plan.game, &[481], "public"));
     let verified = session
-        .download(&plan, cancel.clone(), |_| {})
+        .download(&plan, temp.path(), cancel.clone(), |_| {})
         .await
         .expect("verify Spacewar");
     assert_eq!(
@@ -80,7 +81,7 @@ async fn anonymous_spacewar_download_verify_repair_and_simulated_update() {
     damaged[0] ^= 0xff;
     std::fs::write(&path, damaged).unwrap();
     let repaired = session
-        .download(&plan, cancel, |_| {})
+        .download(&plan, temp.path(), cancel, |_| {})
         .await
         .expect("repair corrupted Spacewar file");
     assert!(repaired.bytes_downloaded > 0);

@@ -14,6 +14,12 @@ doctest = false
 name = "shinki-emu-manager"
 path = "src/bin_main.rs"
 
+[features]
+default = ["store-steam", "store-dlsite", "store-dmm"]
+store-steam = ["dep:shinki-emu-steam"]
+store-dlsite = ["dep:shinki-emu-dlsite"]
+store-dmm = ["dep:shinki-emu-dmm"]
+
 [dependencies]
 shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
 shinki-emu-manager-ui-slint = { path = "../shinki-emu-manager-ui-slint" }
@@ -23,7 +29,12 @@ shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 mlua.workspace = true
 shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
-shinki-emu-steam = { path = "../../Providers/shinki-emu-steam" }
+shinki-emu-store = { path = "../../Providers/shinki-emu-store" }
+shinki-emu-steam = { path = "../../Providers/shinki-emu-steam", optional = true }
+shinki-emu-dlsite = { path = "../../Providers/shinki-emu-dlsite", optional = true }
+shinki-emu-dmm = { path = "../../Providers/shinki-emu-dmm", optional = true }
+webbrowser = "1.0"
+open = "5.3"
 roukaku-observability = { workspace = true }
 roukaku-media-core = { workspace = true }
 roukaku-core.workspace = true

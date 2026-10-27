@@ -1,19 +1,22 @@
 //! Steam downloads without a Steam installation or a GPL runtime dependency.
 mod auth;
 mod catalog;
+#[cfg(test)]
+mod live_tests;
 mod transfer;
 
-pub use auth::{LoginMethod, LoginUpdate, SecretStore, StoredLogin, import_local, login};
-pub use catalog::{Branch, Depot, Game};
+use catalog::Game;
+use shinki_emu_store::StoreError;
+mod provider;
+pub use provider::Provider;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use steamroom::client::{LoggedIn, SteamClient};
-pub use transfer::{DownloadPlan, Progress, TransferSummary, has_update};
-
-pub struct Session {
+struct Session {
     client: SteamClient<LoggedIn>,
     wire: Arc<Mutex<auth::WireState>>,
     heartbeat: tokio::task::JoinHandle<()>,
+    owned: tokio::sync::Mutex<Option<std::collections::HashSet<u32>>>,
     pub account_name: String,
 }
 
@@ -24,7 +27,9 @@ impl Drop for Session {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+enum Error {
+    #[error(transparent)]
+    Store(#[from] StoreError),
     #[error("网络连接失败，请检查连接后重试 / Connection failed; check your network and retry")]
     Network,
     #[error("Steam 请求超时，请重试 / Steam request timed out; retry")]
@@ -35,20 +40,15 @@ pub enum Error {
     InvalidGuardCode,
     #[error("登录已过期，请重新登录 / Session expired; sign in again")]
     SessionExpired,
-    #[error("系统密钥库不可用，请解锁后重试 / Unlock the platform secret store and retry")]
-    SecretStore,
     #[error(
         "未找到可导入的 Steam 客户端登录，请使用密码或扫码登录 / No importable Steam login; use password or QR login"
     )]
     NoLocalLogin,
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     #[error("此设备不支持导入 Steam 客户端登录 / Local Steam login import is desktop-only")]
     ImportUnsupported,
-    #[error("请先选择游戏 / Select a game first")]
-    GameRequired,
     #[error("请至少选择一个内容仓库 / Select at least one depot")]
     DepotRequired,
-    #[error("请选择可写的游戏库目录 / Choose a writable library folder")]
-    LibraryRootRequired,
     #[error(
         "Steam 未返回所需内容，请刷新游戏信息 / Steam metadata is incomplete; refresh game details"
     )]

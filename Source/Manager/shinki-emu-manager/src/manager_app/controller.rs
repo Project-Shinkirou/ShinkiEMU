@@ -1,11 +1,11 @@
 use super::*;
 
 impl ManagerController for ShinkiEmuManagerController {
-    fn steam_action(
+    fn store_action(
         &mut self,
-        action: shinki_emu_manager_ui_slint::SteamAction,
+        action: shinki_emu_manager_ui_slint::StoreAction,
     ) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::steam_action(self, action)
+        ShinkiEmuManagerController::store_action(self, action)
     }
 
     fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
@@ -74,16 +74,16 @@ impl ManagerController for ShinkiEmuManagerController {
                 .active
                 .as_mut()
                 .filter(|active| active.epoch == request.session_epoch)
+        {
+            if let shinki_emu_manager::window_service::WindowCommand::Title(title) =
+                &request.command
             {
-                if let shinki_emu_manager::window_service::WindowCommand::Title(title) =
-                    &request.command
-                {
-                    active.title = Some(title.clone());
-                }
-                if outcome.valid_fields & shinki_emu_abi::WINDOW_RESULT_MODE != 0 {
-                    active.fullscreen = outcome.fullscreen != shinki_emu_abi::FULLSCREEN_WINDOWED;
-                }
+                active.title = Some(title.clone());
             }
+            if outcome.valid_fields & shinki_emu_abi::WINDOW_RESULT_MODE != 0 {
+                active.fullscreen = outcome.fullscreen != shinki_emu_abi::FULLSCREEN_WINDOWED;
+            }
+        }
         self.registry.respond_window(request, result)
     }
     fn native_failure(&self) -> Option<(&str, bool)> {

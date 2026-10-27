@@ -1,0 +1,12 @@
+[package]
+name = "shinki-emu-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+tokio.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true

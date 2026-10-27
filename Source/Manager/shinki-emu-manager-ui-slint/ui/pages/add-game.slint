@@ -1,5 +1,5 @@
 import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, ScrollView, Icon } from "@material";
-import { App, Library, Steam } from "../globals.slint";
+import { App, Library, Store } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme } from "../theme.slint";
 
@@ -105,7 +105,7 @@ export component SourceTile {
     }
 }
 
-// 添加游戏: pick an existing local folder or download an owned Steam game.
+// 添加游戏: pick an existing local folder or download an owned Store game.
 export component AddGamePage {
     in property <bool> compact;
 
@@ -166,11 +166,11 @@ export component AddGamePage {
 
                 SourceTile {
                     icon: Icons.download;
-                    title: "Steam 下载";
-                    description: "登录 Steam，下载你已拥有的游戏到游戏库目录。";
+                    title: "商店下载";
+                    description: "登录商店，下载你已拥有的 PC 游戏到游戏库目录。";
                     activate => {
-                        App.page = "steam";
-                        Steam.open();
+                        App.page = "store";
+                        Store.open();
                     }
                 }
             }

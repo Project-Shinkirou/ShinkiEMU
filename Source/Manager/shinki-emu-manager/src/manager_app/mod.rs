@@ -12,22 +12,22 @@ use std::{
 use metadata_runtime::{MetadataCommand, MetadataCommandKind, MetadataPayload, MetadataRuntime};
 use platform_secret::ManagerSecretStore;
 use shinki_emu_manager::modal_service::ModalBridge;
-use shinki_emu_manager::{run_manager_with_initial_state, HostExit, HostWake, ManagerController};
+use shinki_emu_manager::{HostExit, HostWake, ManagerController, run_manager_with_initial_state};
 use shinki_emu_manager_core::model::{
     FamilyEvent, FamilyStatus, KeyCode, KeyModifiers, KeyState, ProbeRequest, WindowState,
 };
 use shinki_emu_manager_core::{
-    default_vn_preset, input_key_code as key_code, FamilyPluginDescriptor, FamilyProbeCandidate,
-    FamilyProbeSelection, FamilyProviderRegistry, GameRecord, GameRelease, GamepadDeadzone,
-    GamepadInput, Library, NativeOpenRequest, NativeSession, PlaySessionEndReason,
+    FamilyPluginDescriptor, FamilyProbeCandidate, FamilyProbeSelection, FamilyProviderRegistry,
+    GameRecord, GameRelease, GamepadDeadzone, GamepadInput, Library, NativeOpenRequest,
+    NativeSession, PlaySessionEndReason, default_vn_preset, input_key_code as key_code,
 };
 use shinki_emu_manager_ui_slint::{
     AppearanceViewModel, ConfigFieldViewModel, GamepadBindingViewModel, ManagerViewModel,
 };
 use shinki_emu_metadata::{
-    plain_description, unique_exact_match, BangumiPlayStatus, BangumiPlayUpdate,
-    CompatibilityEntry, CoverAsset, MetadataProviderId, MetadataRecord, MetadataSearchQuery,
-    DEFAULT_METADATA_BASE_URL,
+    BangumiPlayStatus, BangumiPlayUpdate, CompatibilityEntry, CoverAsset,
+    DEFAULT_METADATA_BASE_URL, MetadataProviderId, MetadataRecord, MetadataSearchQuery,
+    plain_description, unique_exact_match,
 };
 use shinki_emu_translation::{OpenAiApi, SecretResolver, TranslationProfile, TranslationProvider};
 use stage_renderer::{FrameMailbox, ManagerStageRenderer};
@@ -70,7 +70,7 @@ mod session;
 #[cfg(test)]
 mod session_finish_tests;
 mod snackbar;
-mod steam;
+mod store;
 mod support;
 mod translation;
 mod view_fields;
@@ -158,7 +158,7 @@ struct ShinkiEmuManagerController {
     scan_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     last_excluded: Option<String>,
     key_capture: Option<input::KeyCapture>,
-    steam: steam::SteamRuntime,
+    store: store::StoreRuntime,
 }
 
 impl Drop for ShinkiEmuManagerController {
@@ -219,16 +219,17 @@ pub(super) fn run_application() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(guard) = emit_guard.upgrade()
             && let Err(error) =
                 guard.record_external(record.level, &record.target, &record.event, record.fields)
-            {
-                tracing::error!(event = "shinki.emu.diagnostics.record_failed", error = %error);
-            }
+        {
+            tracing::error!(event = "shinki.emu.diagnostics.record_failed", error = %error);
+        }
     });
     let flush_guard = std::sync::Arc::downgrade(&_observability);
     shinki_emu_manager_core::set_diagnostic_flush(move || {
         if let Some(guard) = flush_guard.upgrade()
-            && let Err(error) = guard.flush() {
-                tracing::error!(event = "shinki.emu.diagnostics.flush_failed", error = %error);
-            }
+            && let Err(error) = guard.flush()
+        {
+            tracing::error!(event = "shinki.emu.diagnostics.flush_failed", error = %error);
+        }
     });
     let result = (|| {
         let mailbox = FrameMailbox::new();

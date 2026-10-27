@@ -1,11 +1,11 @@
 import { MaterialPalette, MaterialText, MaterialTypography, TextButton, CheckBox, CheckState, Icon, CircularProgressIndicator } from "@material";
-import { Steam, SteamGame, SteamDepot, SteamTransfer } from "../../globals.slint";
+import { Store, StoreGame, StoreDepot, StoreTransfer } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { Theme } from "../../theme.slint";
 import { StatusChip } from "../settings/common.slint";
 import { PrepareProgress } from "../library.slint";
 
-export global SteamText {
+export global StoreText {
     public pure function transfer-active(state: string) -> bool {
         return state == "preparing" || state == "downloading" || state == "verifying" || state == "cancelling";
     }
@@ -129,7 +129,7 @@ export component ErrorBanner {
 
 // Installed / update badges of an owned game.
 export component GameBadges {
-    in property <SteamGame> game;
+    in property <StoreGame> game;
 
     min-height: l.min-height;
     preferred-height: l.preferred-height;
@@ -147,12 +147,15 @@ export component GameBadges {
         if root.game.installed : StatusChip {
             text: "已安装";
         }
+        if root.game.update-unknown : StatusChip {
+            text: "Update status unavailable";
+        }
     }
 }
 
 // One owned game in the list.
-export component SteamGameRow {
-    in property <SteamGame> game;
+export component StoreGameRow {
+    in property <StoreGame> game;
     in property <bool> selected;
     callback activate();
 
@@ -237,7 +240,7 @@ export component SteamGameRow {
 // Depot with a checkbox that always shows the stored selection; the whole row
 // toggles, and the checkbox itself never sees the click.
 export component DepotRow {
-    in property <SteamDepot> depot;
+    in property <StoreDepot> depot;
     in property <bool> enabled: true;
 
     property <string> title: root.depot.language != "" && root.depot.name == "" ? root.depot.language : root.depot.name;
@@ -247,7 +250,7 @@ export component DepotRow {
 
     function toggle() {
         if root.enabled {
-            Steam.select-depot(root.depot.depot-id, !root.depot.selected);
+            Store.select-depot(root.depot.depot-id, !root.depot.selected);
         }
     }
 
@@ -329,11 +332,11 @@ export component DepotRow {
 
 // Download / verify progress: state, bar, bytes, files, speed and ETA.
 export component TransferPanel {
-    in property <SteamTransfer> transfer;
+    in property <StoreTransfer> transfer;
     // Prefix the title with the game name (list strip).
     in property <bool> show-name;
 
-    property <bool> active: SteamText.transfer-active(root.transfer.state);
+    property <bool> active: StoreText.transfer-active(root.transfer.state);
     property <bool> failed: root.transfer.state == "error";
     // Amounts and rate on separate lines so narrow widths never split "MB/s".
     property <string> amounts: root.transfer.bytes
@@ -345,7 +348,7 @@ export component TransferPanel {
     preferred-height: l.preferred-height;
     vertical-stretch: 0;
     accessible-role: groupbox;
-    accessible-label: SteamText.transfer-title(root.transfer.state);
+    accessible-label: StoreText.transfer-title(root.transfer.state);
 
     Rectangle {
         border-radius: 16px;
@@ -363,7 +366,7 @@ export component TransferPanel {
                 alignment: center;
                 spacing: 2px;
                 MaterialText {
-                    text: SteamText.transfer-title(root.transfer.state)
+                    text: StoreText.transfer-title(root.transfer.state)
                         + (root.transfer.progress >= 0 && root.active ? " · " + round(root.transfer.progress * 100) + "%" : "");
                     style: MaterialTypography.title-small;
                     color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface;
@@ -382,7 +385,7 @@ export component TransferPanel {
                 TextButton {
                     text: "取消";
                     enabled: root.transfer.state != "cancelling";
-                    clicked => { Steam.cancel(); }
+                    clicked => { Store.cancel(); }
                 }
             }
         }
@@ -414,6 +417,16 @@ export component TransferPanel {
             color: root.failed ? MaterialPalette.on-error-container : MaterialPalette.on-surface;
             wrap: word-wrap;
             overflow: clip;
+        }
+        if root.transfer.notice != "" : MaterialText {
+            text: root.transfer.notice;
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+        }
+        if root.transfer.state == "complete" && root.transfer.can-open-destination : TextButton {
+            text: "打开下载目录 / Open folder";
+            clicked => { Store.open-destination(); }
         }
         if root.transfer.error != "" : MaterialText {
             text: root.transfer.error;
