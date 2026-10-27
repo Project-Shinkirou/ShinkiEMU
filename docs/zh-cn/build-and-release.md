@@ -5,6 +5,10 @@ description: Cargo 编排、核心构建脚本、打包及明确的 blocked 状�
 
 # 构建与发布
 
+## 游戏目录中的磁盘布局
+
+ShinkiEMU 自身在游戏目录内写入的文件一律放在 `<game>/.shinki/` 下；产品存档、缓存、日志、回执、补丁附件及临时文件不得写进商业游戏根目录或原版存档目录。各组件使用自己的子路径：Musica 存档为 `musica/saves/`，下载附件为 `patch/`，事务暂存为 `staging/`，原文件及清单为 `backup/<id>/`，原位覆盖回执为 `patch-result.json`。增加写入者时沿用安全路径校验，不跟随目录链接。第三方核心继续遵守各自上游的存储约定。
+
 ## 输入与依赖
 
 克隆仓库时递归取得子模块，并准备 Rust/Cargo 和目标平台的原生工具链。Windows 原生构建需要 x64 MSVC 开发者环境、CMake、Ninja 和 Git。Android 使用 JDK 27、NDK 30.0.16248370 和 cargo-ndk 4.1.2。工具版本与下载输入在 `build/dependencies.toml`；核心 manifest、features、许可在 `build/cores.toml`；目标与 runner 定义在 `build/targets.toml`。

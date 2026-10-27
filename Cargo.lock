@@ -10296,6 +10296,8 @@ name = "shinki-emu-manager"
 version = "0.1.0-beta.2"
 dependencies = [
  "android-activity 0.6.1",
+ "cap-fs-ext",
+ "cap-std",
  "clap",
  "crc32fast",
  "crossbeam-channel",
@@ -10506,6 +10508,7 @@ dependencies = [
  "sha2 0.11.1",
  "shinki-emu-metadata",
  "tempfile",
+ "time",
  "toml 1.1.8+spec-1.1.0",
  "toml_parser",
  "windows 0.62.2",

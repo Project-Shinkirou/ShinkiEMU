@@ -3,7 +3,8 @@
 //! Windows requires owner ACLs and native file IDs. Linux/Android require procfs
 //! for handle paths and kernel/filesystem RENAME_NOREPLACE support; macOS uses
 //! F_GETPATH and RENAME_EXCL. Unsupported native operations fail without fallback.
-use crate::{PatchError, PatchErrorKind, PatchRequest, error::check_cancelled};
+use crate::{PatchError, PatchErrorKind, PatchMode, PatchRequest, error::check_cancelled};
+use cap_fs_ext::DirExt;
 use cap_std::{ambient_authority, fs::Dir};
 use std::{
     ffi::OsString,
@@ -23,6 +24,9 @@ pub(crate) struct Transaction {
     staging: Option<Dir>,
     staging_name: OsString,
     output_name: OsString,
+    in_place: bool,
+    created_state: bool,
+    created_staging: bool,
     #[cfg(test)]
     staging_path: PathBuf,
     published: bool,
@@ -34,7 +38,53 @@ impl Transaction {
             .map_err(|e| path_error("cannot open source directory", e))?;
         let patch = Dir::open_ambient_dir(&request.patch, ambient_authority())
             .map_err(|e| path_error("cannot open patch directory", e))?;
-        let name = request.output.file_name().ok_or_else(|| {
+        if matches!(request.mode, PatchMode::InPlace) {
+            let state_missing = source
+                .symlink_metadata(crate::GAME_STATE_DIR)
+                .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
+            let state = if state_missing {
+                create_private_directory(&source, Path::new(crate::GAME_STATE_DIR))?
+            } else {
+                source
+                    .open_dir_nofollow(crate::GAME_STATE_DIR)
+                    .map_err(|e| path_error("cannot open private game state", e))?
+            };
+            let staging_missing = state
+                .symlink_metadata(crate::STAGING_DIR)
+                .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
+            let parent = if staging_missing {
+                create_private_directory(&state, Path::new(crate::STAGING_DIR))?
+            } else {
+                state
+                    .open_dir_nofollow(crate::STAGING_DIR)
+                    .map_err(|e| path_error("cannot open private staging parent", e))?
+            };
+            let pins = ancestors(&source)?;
+            #[cfg(test)]
+            let parent_final = final_dir_path(&parent)?;
+            let (staging_name, staging) = create_staging(&parent)?;
+            #[cfg(test)]
+            let staging_path = parent_final.join(&staging_name);
+            return Ok(Self {
+                source,
+                patch,
+                parent,
+                _pins: pins,
+                staging: Some(staging),
+                staging_name,
+                output_name: OsString::new(),
+                #[cfg(test)]
+                staging_path,
+                in_place: true,
+                created_state: state_missing,
+                created_staging: staging_missing,
+                published: false,
+            });
+        }
+        let PatchMode::NewDirectory { output } = &request.mode else {
+            unreachable!()
+        };
+        let name = output.file_name().ok_or_else(|| {
             PatchError::new(
                 PatchErrorKind::InvalidRequest,
                 "output requires a directory name",
@@ -52,8 +102,7 @@ impl Transaction {
                 "output requires a single name",
             ));
         }
-        let parent_path = request
-            .output
+        let parent_path = output
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
@@ -100,7 +149,18 @@ impl Transaction {
             #[cfg(test)]
             staging_path,
             published: false,
+            in_place: false,
+            created_state: false,
+            created_staging: false,
         })
+    }
+
+    pub(crate) fn source_dir(&self) -> Result<Dir, PatchError> {
+        Ok(self.source.try_clone()?)
+    }
+
+    pub(crate) fn staging_dir(&self) -> Result<Dir, PatchError> {
+        self.open_staging()
     }
 
     pub(crate) fn open_source(&self) -> Result<Dir, PatchError> {
@@ -128,6 +188,7 @@ impl Transaction {
 
     /// All caller-owned staging directory/file handles must already be closed.
     pub(crate) fn publish(mut self, cancelled: &AtomicBool) -> Result<PathBuf, PatchError> {
+        assert!(!self.in_place);
         // Obtain everything fallible needed for the result before publication.
         // No cancellation check or other fallible operation follows the rename.
         let output = final_dir_path(&self.parent)?.join(&self.output_name);
@@ -213,6 +274,23 @@ impl Drop for Transaction {
                 eprintln!("SHINKI_EMU_PATCH_CLEANUP_FAILED (identity unavailable)");
             }
         }
+        if self.in_place {
+            if let Ok(replacement) = self.source.try_clone() {
+                let parent = std::mem::replace(&mut self.parent, replacement);
+                if self.created_staging {
+                    let _ = parent.remove_open_dir();
+                }
+            }
+            if self.created_state {
+                #[cfg(windows)]
+                let state = open_windows_staging(&self.source, Path::new(crate::GAME_STATE_DIR));
+                #[cfg(not(windows))]
+                let state = self.source.open_dir_nofollow(crate::GAME_STATE_DIR);
+                if let Ok(state) = state {
+                    let _ = state.remove_open_dir();
+                }
+            }
+        }
     }
 }
 
@@ -249,7 +327,7 @@ fn ancestors(directory: &Dir) -> io::Result<Vec<Dir>> {
     Ok(result)
 }
 
-fn create_staging(parent: &Dir) -> io::Result<(OsString, Dir)> {
+pub(crate) fn create_staging(parent: &Dir) -> io::Result<(OsString, Dir)> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -428,7 +506,7 @@ fn wide(path: &Path) -> io::Result<Vec<u16>> {
 }
 
 #[cfg(windows)]
-fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
+pub(crate) fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use windows::{
         Win32::{
             Foundation::{HLOCAL, LocalFree},
@@ -491,7 +569,7 @@ fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
 }
 
 #[cfg(windows)]
-fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir> {
+pub(crate) fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use std::os::windows::{fs::MetadataExt, io::FromRawHandle};
     use windows::{
         Win32::Storage::FileSystem::{
@@ -549,7 +627,7 @@ fn set_staging_hidden(directory: &Dir, hidden: bool) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
+pub(crate) fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use cap_std::fs::{DirBuilder, DirBuilderExt};
     let mut builder = DirBuilder::new();
     builder.mode(0o700);
@@ -661,7 +739,7 @@ fn rename_noreplace_after(
 // Never call cap_std's Windows remove_open_dir_all: it closes the pin and then
 // recursively deletes an ambient path. Delete descendants through capabilities,
 // and mark the original staging object for deletion through its DELETE handle.
-fn cleanup(directory: Dir) -> io::Result<()> {
+pub(crate) fn cleanup(directory: Dir) -> io::Result<()> {
     #[cfg(windows)]
     set_staging_hidden(&directory, true)?;
     clear_directory(&directory)?;
@@ -774,7 +852,9 @@ mod tests {
                 script: directory.path().join("fixture.luau"),
                 source,
                 patch,
-                output: directory.path().join("独立输出"),
+                mode: PatchMode::NewDirectory {
+                    output: directory.path().join("独立输出"),
+                },
             };
             Self { directory, request }
         }
@@ -806,6 +886,7 @@ mod tests {
     }
 
     #[test]
+
     fn rejects_each_input_overlap_before_creating_staging() {
         let mut fixture = Fixture::new();
         for output in [
@@ -814,7 +895,7 @@ mod tests {
             fixture.request.source.clone(),
             fixture.directory.path().to_owned(),
         ] {
-            fixture.request.output = output;
+            fixture.request.mode = PatchMode::NewDirectory { output };
             assert!(Transaction::new(&fixture.request).is_err());
             fixture.assert_no_staging();
             fixture.assert_inputs();
@@ -824,16 +905,21 @@ mod tests {
     #[test]
     fn missing_input_or_parent_creates_nothing() {
         let mut fixture = Fixture::new();
-        fixture.request.output = fixture.directory.path().join("missing").join("output");
+        fixture.request.mode = PatchMode::NewDirectory {
+            output: fixture.directory.path().join("missing").join("output"),
+        };
         assert!(Transaction::new(&fixture.request).is_err());
         assert!(!fixture.directory.path().join("missing").exists());
-        fixture.request.output = fixture.directory.path().join("output");
+        fixture.request.mode = PatchMode::NewDirectory {
+            output: fixture.directory.path().join("output"),
+        };
         fixture.request.source = fixture.directory.path().join("absent-source");
         assert!(Transaction::new(&fixture.request).is_err());
         fixture.assert_no_staging();
     }
 
     #[test]
+
     fn staging_is_private_before_writing_and_descendants_inherit_on_windows() {
         let fixture = Fixture::new();
         let transaction = Transaction::new(&fixture.request).unwrap();
@@ -885,7 +971,9 @@ mod tests {
         let error = transaction.publish(&AtomicBool::new(true)).unwrap_err();
         assert_eq!(error.kind(), PatchErrorKind::Cancelled);
         assert!(!staging_path.exists());
-        assert!(!fixture.request.output.exists());
+        assert!(
+            !matches!(&fixture.request.mode, PatchMode::NewDirectory { output } if output.exists())
+        );
         fixture.assert_inputs();
         fixture.assert_no_staging();
     }
@@ -897,15 +985,18 @@ mod tests {
         let staging = transaction.open_staging().unwrap();
         staging.write("new.bin", b"converted output").unwrap();
         drop(staging);
-        std::fs::create_dir(&fixture.request.output).unwrap();
-        std::fs::write(fixture.request.output.join("user.bin"), b"race winner").unwrap();
+        let PatchMode::NewDirectory { output } = &fixture.request.mode else {
+            unreachable!()
+        };
+        std::fs::create_dir(output).unwrap();
+        std::fs::write(output.join("user.bin"), b"race winner").unwrap();
         let error = transaction.publish(&AtomicBool::new(false)).unwrap_err();
         assert_eq!(error.kind(), PatchErrorKind::OutputExists);
         assert_eq!(
-            std::fs::read(fixture.request.output.join("user.bin")).unwrap(),
+            std::fs::read(output.join("user.bin")).unwrap(),
             b"race winner"
         );
-        assert!(!fixture.request.output.join("new.bin").exists());
+        assert!(!output.join("new.bin").exists());
         fixture.assert_inputs();
         fixture.assert_no_staging();
     }
@@ -917,7 +1008,9 @@ mod tests {
         let mut fixture = Fixture::new();
         let alias = fixture.directory.path().join("alias");
         symlink(&fixture.request.source, &alias).unwrap();
-        fixture.request.output = alias.join("output");
+        fixture.request.mode = PatchMode::NewDirectory {
+            output: alias.join("output"),
+        };
         assert_eq!(
             Transaction::new(&fixture.request).err().unwrap().kind(),
             PatchErrorKind::InvalidRequest

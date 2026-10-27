@@ -217,3 +217,34 @@ fn gallery_progress_preserves_damaged_foreign_and_monotonic_state() {
     assert!(storage.write_progress(game, &unlocks).is_err());
     assert_eq!(fs::read(&path).unwrap(), b"damaged");
 }
+
+#[test]
+fn legacy_saves_move_once_without_overwriting_private_slots() {
+    let root = tempfile::tempdir().unwrap();
+    let old = root.path().join(".shinki-musica/saves");
+    fs::create_dir_all(&old).unwrap();
+    fs::write(old.join("slot-000.asav"), b"legacy user bytes").unwrap();
+    Storage::new(root.path()).unwrap();
+    let destination = root.path().join(".shinki/musica/saves/slot-000.asav");
+    assert_eq!(fs::read(&destination).unwrap(), b"legacy user bytes");
+    assert!(!old.join("slot-000.asav").exists());
+    Storage::new(root.path()).unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"legacy user bytes");
+}
+
+#[test]
+fn legacy_collision_preserves_both_existing_save_files() {
+    let root = tempfile::tempdir().unwrap();
+    let old = root.path().join(".shinki-musica/saves");
+    let new = root.path().join(".shinki/musica/saves");
+    fs::create_dir_all(&old).unwrap();
+    fs::create_dir_all(&new).unwrap();
+    fs::write(old.join("slot-000.asav"), b"legacy").unwrap();
+    fs::write(new.join("slot-000.asav"), b"new save").unwrap();
+    assert_eq!(
+        Storage::new(root.path()).err().unwrap().code(),
+        "SHINKI_EMU_MUSICA_SAVE_PATH"
+    );
+    assert_eq!(fs::read(old.join("slot-000.asav")).unwrap(), b"legacy");
+    assert_eq!(fs::read(new.join("slot-000.asav")).unwrap(), b"new save");
+}

@@ -5,6 +5,7 @@ use crate::{
     storage::TaskFile,
     vm::{Execution, InputRecord, ScriptRecord},
 };
+use cap_fs_ext::DirExt;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -153,16 +154,39 @@ pub fn read_output_profile(
         ));
     }
     let root = AuthorizedRoot::open(output)?;
-    if !root.exists(RECEIPT_FILE)? {
-        return Ok(None);
-    }
+    let receipt_root = if root.exists(RECEIPT_FILE)? {
+        root
+    } else {
+        let game = cap_std::fs::Dir::open_ambient_dir(output, cap_std::ambient_authority())?;
+        let state = match game.open_dir_nofollow(crate::GAME_STATE_DIR) {
+            Ok(state) => state,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(PatchError::with_source(
+                    PatchErrorKind::Path,
+                    "cannot open private game state",
+                    error,
+                ));
+            }
+        };
+        let root = AuthorizedRoot::from_input_dir(state);
+        if !root.exists("patch-result.json")? {
+            return Ok(None);
+        }
+        root
+    };
+    let receipt_file = if receipt_root.exists(RECEIPT_FILE)? {
+        RECEIPT_FILE
+    } else {
+        "patch-result.json"
+    };
     #[derive(Deserialize)]
     struct ImportMetadata {
         schema: String,
         profile: OutputProfile,
     }
     let reader = BufReader::new(CancelledReader {
-        file: root.open_read(RECEIPT_FILE)?,
+        file: receipt_root.open_read(receipt_file)?,
         cancelled,
     });
     let metadata = serde_json::from_reader::<_, ImportMetadata>(reader);

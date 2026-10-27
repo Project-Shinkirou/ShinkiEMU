@@ -11,7 +11,9 @@ fn request(fixture: &PublicOverlay) -> PatchRequest {
         script: fixture.script.clone(),
         source: fixture.source.clone(),
         patch: fixture.patch.clone(),
-        output: fixture.output.clone(),
+        mode: shinki_emu_patch::PatchMode::NewDirectory {
+            output: fixture.output.clone(),
+        },
     }
 }
 

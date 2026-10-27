@@ -223,6 +223,12 @@ fn install_patch<C: ManagerController>(
     let w = wiring.clone();
     patch.on_select_recipe(move |id| w.run(|c| c.select_patch_recipe(id.as_str())));
     let w = wiring.clone();
+    patch.on_set_mode(move |in_place| w.run(|c| c.set_patch_mode(in_place)));
+    let w = wiring.clone();
+    patch.on_download(move |id| w.run(|c| c.download_patch(id.as_str())));
+    let w = wiring.clone();
+    patch.on_restore(move || w.run(|c| c.restore_patch()));
+    let w = wiring.clone();
     patch.on_pick_directory(move |kind| {
         let w = w.clone();
         let output = kind == "output";

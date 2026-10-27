@@ -90,7 +90,9 @@ end }}
             script,
             source: source.clone(),
             patch,
-            output: output.clone(),
+            mode: shinki_emu_patch::PatchMode::NewDirectory {
+                output: output.clone(),
+            },
         },
         cancelled,
         move |event| {

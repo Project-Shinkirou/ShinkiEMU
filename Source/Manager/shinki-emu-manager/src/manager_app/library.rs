@@ -295,6 +295,7 @@ impl ShinkiEmuManagerController {
             action_message: String::new(),
             action_serial: 0,
             patch_job: None,
+            patch_download: None,
             patch_import: None,
             patch_state: Default::default(),
             patch_game_id: None,

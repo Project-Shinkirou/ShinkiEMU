@@ -93,7 +93,9 @@ end }
         script,
         source,
         patch: patch_root,
-        output: root.join("output"),
+        mode: shinki_emu_patch::PatchMode::NewDirectory {
+            output: root.join("output"),
+        },
     }
 }
 
@@ -142,7 +144,10 @@ fn invalid_target_gbk_fails_without_publishing() {
     let (original, mut patch) = fixtures();
     patch[768..773].copy_from_slice(b"\x81\0\0\0\0");
     let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
+    let shinki_emu_patch::PatchMode::NewDirectory { output } = &request.mode else {
+        unreachable!()
+    };
+    let output = output.clone();
     let error = apply(request, Arc::new(AtomicBool::new(false)), |_| {})
         .err()
         .expect("invalid GBK must fail");
@@ -151,6 +156,7 @@ fn invalid_target_gbk_fails_without_publishing() {
 }
 
 #[test]
+
 fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
     let root = tempfile::tempdir().unwrap();
     let (mut original, patch) = fixtures();
@@ -169,3 +175,4 @@ fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
         ])
     );
 }
+

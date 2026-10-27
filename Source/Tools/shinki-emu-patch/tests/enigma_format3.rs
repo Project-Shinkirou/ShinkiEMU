@@ -195,7 +195,9 @@ return {{ id = "public-enigma-format3", version = 1, title = "Public format3 fix
                 script: script_path,
                 source: source.clone(),
                 patch: source,
-                output: root.join("output"),
+                mode: shinki_emu_patch::PatchMode::NewDirectory {
+                    output: root.join("output"),
+                },
             },
             Arc::new(AtomicBool::new(false)),
             |_| {},

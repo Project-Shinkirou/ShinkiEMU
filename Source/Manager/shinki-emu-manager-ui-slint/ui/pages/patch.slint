@@ -320,7 +320,7 @@ export component PatchPage {
     property <bool> failed: Patch.state.error != "";
     property <bool> has-game: Patch.game.id != "";
     property <bool> has-script: Patch.state.script != "";
-    property <bool> has-output: Patch.state.output-directory != "";
+    property <bool> has-output: Patch.state.in-place || Patch.state.output-directory != "";
     // The controller owns running (forced to 4) and completion (5 after a started run).
     property <int> step: root.locked ? 4
         : !root.has-game ? 1
@@ -543,6 +543,14 @@ export component PatchPage {
                 }
             }
 
+            if Patch.state.has-backup && !root.locked : Panel {
+                SectionTitle { text: "恢复原文件"; description: "还原最近一次原位覆盖，修改过的补丁文件不会被覆盖。"; }
+                TextButton {
+                    text: "还原最近一次补丁";
+                    clicked => { Patch.step = 4; Patch.restore(); }
+                }
+            }
+
             if root.step == 2 : Panel {
                 SectionTitle {
                     text: "选择补丁";
@@ -572,6 +580,35 @@ export component PatchPage {
                     supporting-text: Patch.state.script;
                     selected: true;
                 }
+                if Patch.state.error != "" : MaterialText {
+                    text: Patch.state.error;
+                    style: MaterialTypography.body-small;
+                    color: MaterialPalette.error;
+                    wrap: word-wrap;
+                }
+                if Patch.state.phase != "" && Patch.state.error == "" && !Patch.state.running : MaterialText {
+                    text: Patch.state.phase;
+                    style: MaterialTypography.body-small;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                }
+                if Patch.artifacts.length > 0 : VerticalLayout {
+                    spacing: Theme.space-sm;
+                    for artifact in Patch.artifacts : HorizontalLayout {
+                        alignment: start;
+                        spacing: Theme.space-sm;
+                        MaterialText {
+                            horizontal-stretch: 1;
+                            text: artifact.title;
+                            style: MaterialTypography.body-medium;
+                            color: MaterialPalette.on-surface;
+                        }
+                        TextButton {
+                            text: "下载补丁";
+                            clicked => { Patch.download(artifact.id); }
+                        }
+                    }
+                }
                 HorizontalLayout {
                     alignment: start;
                     TextButton {
@@ -585,7 +622,20 @@ export component PatchPage {
             if root.step == 3 : Panel {
                 SectionTitle {
                     text: "目录";
-                    description: "补丁输入目录默认是游戏目录；补丁文件放在别处时改选它。转换结果写入新的输出目录，原游戏目录保持不变，完成后作为一部新作品加入资料库。";
+                    description: "补丁输入目录默认是游戏目录；可选择新目录或原位覆盖。原位覆盖会把修改前的文件保存在游戏目录的 .shinki/backup。";
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-sm;
+                    SelectableTile {
+                        text: "新目录";
+                        selected: !Patch.state.in-place;
+                        clicked => { Patch.set-mode(false); }
+                    }
+                    SelectableTile {
+                        text: "原位覆盖";
+                        selected: Patch.state.in-place;
+                        clicked => { Patch.set-mode(true); }
+                    }
                 }
                 DirectoryPicker {
                     label: "补丁输入目录";
@@ -593,7 +643,7 @@ export component PatchPage {
                     empty-text: "使用游戏目录";
                     pick => { Patch.pick-directory("patch"); }
                 }
-                DirectoryPicker {
+                if !Patch.state.in-place : DirectoryPicker {
                     label: "输出目录";
                     value: Patch.state.output-directory;
                     empty-text: "尚未选择";
@@ -605,7 +655,7 @@ export component PatchPage {
             if root.step == 4 : Panel {
                 SectionTitle {
                     text: root.locked ? "正在转换" : root.failed ? "转换失败" : "开始转换";
-                    description: root.locked || root.failed ? "" : "确认下面的设置后开始。转换期间可以随时取消，取消时不会生成输出目录。";
+                    description: root.locked || root.failed ? "" : Patch.state.in-place ? "原文件备份到 .shinki/backup；取消前不会修改游戏文件。" : "确认下面的设置后开始。转换期间可以随时取消，取消时不会生成输出目录。";
                 }
 
                 if !root.locked : VerticalLayout {
@@ -624,7 +674,7 @@ export component PatchPage {
                         wrap: word-wrap;
                         overflow: clip;
                     }
-                    MaterialText {
+                    if !Patch.state.in-place : MaterialText {
                         text: "输出目录：" + (root.has-output ? Patch.state.output-directory : "未选择");
                         style: MaterialTypography.body-medium;
                         color: MaterialPalette.on-surface;
@@ -730,11 +780,11 @@ export component PatchPage {
                     SectionTitle {
                         horizontal-stretch: 1;
                         text: "转换完成";
-                        description: Patch.state.phase != "" ? Patch.state.phase : "新作品已加入资料库。";
+                        description: Patch.state.phase != "" ? Patch.state.phase : "转换结果已保存。";
                     }
                 }
                 MaterialText {
-                    text: "输出目录：" + Patch.state.output;
+                    text: (Patch.state.in-place ? "游戏目录：" : "输出目录：") + Patch.state.output;
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface;
                     wrap: word-wrap;
@@ -748,7 +798,7 @@ export component PatchPage {
                         clicked => { root.go(1); }
                     }
                     FilledButton {
-                        text: "打开新作品";
+                        text: Patch.state.in-place ? "返回游戏" : "打开新作品";
                         icon: Icons.library-books;
                         clicked => { Patch.open-output(); }
                     }

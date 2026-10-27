@@ -52,7 +52,7 @@ fn game_stamp(root: &Path) -> Option<Vec<FileStamp>> {
         for entry in fs::read_dir(directory).ok()? {
             let entry = entry.ok()?;
             // Core-owned saves/configuration are not inputs to native game identification.
-            if depth == 0 && entry.file_name() == ".shinki-musica" {
+            if depth == 0 && (entry.file_name() == ".shinki" || entry.file_name() == ".shinki-musica") {
                 continue;
             }
             let path = entry.path();

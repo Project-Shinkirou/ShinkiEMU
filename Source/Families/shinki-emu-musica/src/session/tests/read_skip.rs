@@ -67,7 +67,7 @@ fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
     Box::new(session).close().unwrap();
     let path = root
         .path()
-        .join(".shinki-musica/saves/global-progress.json");
+        .join(".shinki/musica/saves/global-progress.json");
     std::fs::write(&path, b"damaged").unwrap();
     assert!(
         provider

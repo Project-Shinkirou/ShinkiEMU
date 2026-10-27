@@ -5,6 +5,10 @@ description: Cargo orchestration, native build scripts, packaging and explicit b
 
 # Build and release
 
+## Game-local on-disk layout
+
+Every file written by ShinkiEMU itself inside a game directory belongs under `<game>/.shinki/`; never write product saves, cache, logs, receipts, patch artifacts or temporary outputs into the commercial game's root or original save paths. Allocate each owner its own subtree: `musica/saves/` for Musica, `patch/` for downloaded artifacts, `staging/` for transactions, `backup/<id>/` for original files plus manifest, and `patch-result.json` for the in-place receipt. Keep path validation and no-follow directory resolution when adding owners. Third-party cores retain their upstream storage contracts.
+
 ## Inputs and prerequisites
 
 Clone the repository with its recursive submodules. Use Rust/Cargo and the target's native toolchain. Windows native builds require an x64 MSVC developer environment, CMake, Ninja and Git. Android uses JDK 27, NDK 30.0.16248370 and cargo-ndk 4.1.2. Tool versions and downloads are inputs in `build/dependencies.toml`; core manifests/features/licenses are in `build/cores.toml`, and target/runner definitions in `build/targets.toml`.

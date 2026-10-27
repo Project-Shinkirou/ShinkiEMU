@@ -161,6 +161,33 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
 }
 
 #[test]
+fn in_place_patch_and_restore_reprobe_the_same_library_game() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, source, game_id) = controller(root.path());
+    let script = root.path().join("in-place.luau");
+    recipe(&script, r#"local added=ctx.create("added.bin"); added:write(0,buffer.fromstring("new")); added:close()"#,
+        "{launch_mode=\"title\"}");
+    app.set_patch_mode(true).unwrap();
+    app.start_file_patch(&script, Path::new(""), Path::new("")).unwrap();
+    settle(&mut app, |app| !app.patch_busy() && !app.startup_busy());
+    assert!(app.patch_state.error.is_empty(), "{}", app.patch_state.error);
+    assert_eq!(app.library.list_games().unwrap().len(), 1);
+    assert!(app.library.game(&game_id).is_ok());
+    assert_eq!(fs::read(source.join("added.bin")).unwrap(), b"new");
+    assert!(!source.join("save/slot.bin").exists());
+    assert!(source.join(".shinki/patch-result.json").is_file());
+    assert!(app.patch_state_view().has_backup);
+    app.restore_patch().unwrap();
+    settle(&mut app, |app| !app.patch_busy() && !app.startup_busy());
+    assert!(app.patch_state.error.is_empty(), "{}", app.patch_state.error);
+    assert_eq!(app.library.list_games().unwrap().len(), 1);
+    assert_eq!(fs::read(source.join("save/slot.bin")).unwrap(), b"original public save");
+    assert!(!source.join("added.bin").exists());
+    assert!(!source.join(".shinki/patch-result.json").exists());
+    assert!(!app.patch_state_view().has_backup);
+}
+
+#[test]
 fn patch_output_inherits_source_work_but_not_its_release() {
     let root = tempfile::tempdir().unwrap();
     let (mut app, _source, source_id) = controller(root.path());

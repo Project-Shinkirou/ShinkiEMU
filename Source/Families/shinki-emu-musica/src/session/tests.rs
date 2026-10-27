@@ -492,6 +492,7 @@ fn audio_snapshot_timeout_cancels_blocked_worker_and_rejects_late_commands() {
     assert_eq!(sink.writes.load(Ordering::Acquire), writes);
 }
 #[test]
+
 fn non_yielding_variable_loop_is_bounded() {
     let source = b".label loop\r\n.set count = count + 1\r\n.goto loop\r\n";
     let script = crate::parse_sc(source, &crate::ScOpcodeCatalog::observed_musica()).unwrap();
