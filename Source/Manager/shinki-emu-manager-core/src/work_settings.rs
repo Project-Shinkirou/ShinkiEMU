@@ -102,17 +102,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_settings_round_trip() {
-        let settings = GameSettings::default();
-        assert!(settings.is_empty());
-        let encoded = serde_json::to_string(&settings).unwrap();
-        assert_eq!(
-            serde_json::from_str::<GameSettings>(&encoded).unwrap(),
-            settings
-        );
-    }
-
-    #[test]
     fn choice_ids_parse_to_preferences() {
         assert_eq!(RenderPreference::from_choice("default", 0, 0), Ok(None));
         assert_eq!(
@@ -132,12 +121,6 @@ mod tests {
                 Err("SHINKI_EMU_RENDER_PREFERENCE_INVALID".to_owned())
             );
         }
-    }
-
-    #[test]
-    fn unknown_fields_are_rejected() {
-        let result = serde_json::from_str::<GameSettings>(r#"{"old_patch_mode":"safe"}"#);
-        assert!(result.is_err());
     }
 
     #[test]

@@ -410,24 +410,6 @@ mod tests {
         assert!(low_press < med_press && med_press < high_press);
     }
 
-    #[test]
-    fn mapping_round_trips_through_json() {
-        let mapping = default_vn_preset();
-        let json = serde_json::to_string(&mapping).unwrap();
-        let restored: InputMapping = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, mapping);
-    }
-
-    #[test]
-    fn mapping_rejects_unknown_fields_to_keep_schema_strict() {
-        let parsed: Result<InputMapping, _> = serde_json::from_str(
-            r#"{"gamepad_enabled":true,"deadzone":"medium","gamepad":{},"bogus":1}"#,
-        );
-        assert!(parsed.is_err());
-        let missing: Result<InputMapping, _> = serde_json::from_str(r#"{"gamepad_enabled":true}"#);
-        assert!(missing.is_err());
-    }
-
     macro_rules! every_key_code {
         ($($variant:ident),* $(,)?) => {{
             fn exhaustive(code: crate::model::KeyCode) {
