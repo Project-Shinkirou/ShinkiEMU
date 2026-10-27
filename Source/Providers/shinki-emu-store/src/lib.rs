@@ -117,6 +117,7 @@ pub enum StoreError {
     #[error("Download failed; check network and free space")] TransferFailed,
     #[error("This title is not offered as a PC download")] Unavailable,
     #[error("This login method is not supported")] UnsupportedLogin,
+    #[error("Paste the cookies from your signed-in browser")] CookiesRequired,
     #[error("Operation cancelled")] Cancelled,
     #[error("Provider identifiers must be unique")] DuplicateProvider,
 }
@@ -131,6 +132,7 @@ impl StoreError {
             Self::Metadata => "metadata", Self::AccessDenied => "access_denied", Self::Integrity => "integrity",
             Self::Io => "io", Self::TransferFailed => "transfer_failed", Self::Unavailable => "unavailable",
             Self::UnsupportedLogin => "unsupported_login", Self::Cancelled => "cancelled",
+            Self::CookiesRequired => "cookies_required",
             Self::DuplicateProvider => "duplicate_provider",
         }
     }
