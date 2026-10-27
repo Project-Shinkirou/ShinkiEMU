@@ -88,30 +88,30 @@ jobs:
         with:
           arch: x64
       - uses: ilammy/setup-nasm@v1
-        if: matrix.status == 'supported'
+        if: matrix.status != 'blocked'
         with:
           version: '3.02'
       - name: Linux desktop prerequisites
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.status == 'supported'
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.status != 'blocked'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
           sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
       - uses: actions/setup-java@v6
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
         with:
           distribution: temurin
           java-version: '27'
           cache: gradle
       - name: Android native build prerequisites
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nasm pkg-config
       - name: Android SDK
-        if: contains(matrix.target, 'android') && matrix.status == 'supported'
+        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
         shell: bash
         run: |
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -122,7 +122,7 @@ jobs:
           "$sdkmanager" --sdk_root="$ANDROID_HOME" --channel=0 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Prepare supported build
-        if: matrix.status == 'supported'
+        if: matrix.status != 'blocked'
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
@@ -149,7 +149,7 @@ jobs:
           SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
       - name: Smoke packaged Linux Manager
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status == 'supported'
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status != 'blocked'
         shell: bash
         run: |
           bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"
@@ -176,7 +176,7 @@ jobs:
           path: .work/ci-report.json
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
-        if: matrix.status == 'supported'
+        if: matrix.status != 'blocked'
         with:
           name: release-files-${{ matrix.target }}
           path: .work/release/
@@ -193,29 +193,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
-          lfs: true
       - run: rustup show
       - uses: actions/download-artifact@v8
         with:
           pattern: release-files-*
           path: .work/release/
           merge-multiple: true
-      - name: Publish only actual successfully aggregated platforms
-        shell: pwsh
+      - name: Publish every prepared platform as one Release
         env:
           GH_TOKEN: ${{ github.token }}
           COMPONENT: ${{ needs.select.outputs.component }}
           VERSION: ${{ needs.select.outputs.version }}
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $matrix = cargo xtask matrix --json | ConvertFrom-Json
-          $published = 0
-          foreach ($row in $matrix.include | Where-Object { $_.component -ceq $env:COMPONENT -and $_.status -eq 'supported' }) {
-            $slug = $env:COMPONENT.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
-            $tag = if ($env:COMPONENT -eq 'manager') { "manager-v$env:VERSION" } else { "core-$slug-v$env:VERSION" }
-            if (Test-Path ".work/release/$tag/$($row.target)/package") {
-              cargo xtask release --component $env:COMPONENT --target $row.target --version $env:VERSION --publish
-              $published++
-            }
-          }
-          if ($published -eq 0) { throw 'No publishable artifact; no Release created' }
+        run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --publish
