@@ -7,9 +7,11 @@ description: Cargo によるオーケストレーション、コアのビルド�
 
 ## 入力と依存関係
 
-リポジトリはサブモジュールを含めて再帰的にクローンし、Rust/Cargo とターゲットプラットフォームのネイティブツールチェーンを用意します。Windows のネイティブビルドには、x64 MSVC 開発者環境、CMake、Ninja、Git が必要です。Android では JDK 17、NDK 30.0.15729638、cargo-ndk 4.1.2 を使います。ツールのバージョンとダウンロード入力は `build/dependencies.toml`、コアの manifest、features、ライセンスは `build/cores.toml`、ターゲットと runner の定義は `build/targets.toml` にあります。
+リポジトリはサブモジュールを含めて再帰的にクローンし、Rust/Cargo とターゲットプラットフォームのネイティブツールチェーンを用意します。Windows のネイティブビルドには、x64 MSVC 開発者環境、CMake、Ninja、Git が必要です。Android では JDK 27、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。ツールのバージョンとダウンロード入力は `build/dependencies.toml`、コアの manifest、features、ライセンスは `build/cores.toml`、ターゲットと runner の定義は `build/targets.toml` にあります。
 
 Ren’Py にはさらに、固定バージョンの公式 SDK が必要です。`RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE` を設定し、CPython 3.12.7 に対応する公式の Cython 3.2.4 コンパイラーを用意してください。これらは上流のビルドと実行に必要な依存関係です。SDK の入力は fork の `shinki/sdk.json` に従います。
+
+CMVS は Windows x64 のみでビルドします。その他のターゲットには検証済みのホスト実行経路がありません。RoukakuEngine は公開リビジョン `8392cf161800f7684af7704eb95f7a5526d2015d` に固定されています。
 
 リポジトリのルートで実行します。
 
