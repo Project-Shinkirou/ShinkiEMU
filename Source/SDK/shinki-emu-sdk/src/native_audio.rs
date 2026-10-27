@@ -112,12 +112,10 @@ impl PlaybackClock {
 }
 
 pub struct NativeAudioOutput {
-    producer: NativeAudioProducer,
+    blocks: BlockWriter,
     failed: Arc<AtomicBool>,
     converter: crate::NativeAudioConverter,
     clock: Arc<PlaybackClock>,
-    partial: Vec<f32>,
-    partial_len: usize,
     _stream: cpal::Stream,
 }
 impl NativeAudioOutput {
@@ -146,11 +144,6 @@ impl NativeAudioOutput {
         )
         .map_err(conversion_error)?;
         let chunk_samples = 512 * usize::from(supported.channels());
-        let partial = if converter.needs_conversion() {
-            vec![0.0; chunk_samples]
-        } else {
-            Vec::new()
-        };
         let format = supported.sample_format();
         let config = supported.into();
         let wake = AudioWakeRegistration::default();
@@ -195,12 +188,14 @@ impl NativeAudioOutput {
             .play()
             .map_err(|_| error("SHINKI_EMU_AUDIO_START", "native stream start failed"))?;
         Ok(Self {
-            producer,
+            blocks: BlockWriter {
+                producer,
+                partial: vec![0.0; chunk_samples],
+                partial_len: 0,
+            },
             failed,
             converter,
             clock,
-            partial,
-            partial_len: 0,
             _stream: stream,
         })
     }
@@ -224,6 +219,9 @@ impl NativeAudioOutput {
             Ok(())
         }
     }
+    /// Accepts interleaved 48 kHz stereo of any length. Device samples are
+    /// queued in whole device blocks; a trailing partial block is carried to
+    /// the next `write` and reaches the device only once it fills.
     pub fn write(
         &mut self,
         samples: Vec<f32>,
@@ -235,67 +233,65 @@ impl NativeAudioOutput {
         if stop.load(Ordering::Acquire) {
             return Ok(None);
         }
+        let blocks = &mut self.blocks;
+        let failed = &self.failed;
         if self.converter.needs_conversion() {
-            let producer = &mut self.producer;
-            let partial = &mut self.partial;
-            let partial_len = &mut self.partial_len;
-            let failed = &self.failed;
             self.converter
-                .convert(&samples, |mut converted| {
-                    while !converted.is_empty() {
-                        if stop.load(Ordering::Acquire) {
-                            return Ok(());
-                        }
-                        let count = (partial.len() - *partial_len).min(converted.len());
-                        partial[*partial_len..*partial_len + count]
-                            .copy_from_slice(&converted[..count]);
-                        *partial_len += count;
-                        converted = &converted[count..];
-                        if *partial_len == partial.len() {
-                            producer
-                                .wait_for_capacity(partial.len(), stop)
-                                .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
-                            if failed.load(Ordering::Acquire) {
-                                return Err("SHINKI_EMU_AUDIO_DEVICE".into());
-                            }
-                            if stop.load(Ordering::Acquire) {
-                                return Ok(());
-                            }
-                            *partial = producer
-                                .submit(std::mem::take(partial))
-                                .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
-                            *partial_len = 0;
-                        }
-                    }
-                    Ok(())
-                })
+                .convert(&samples, |converted| blocks.push(converted, failed, stop))
                 .map_err(conversion_error)?;
-            self.check()?;
-            if stop.load(Ordering::Acquire) {
-                return Ok(None);
-            }
-            self.clock.accept(samples.len());
-            return Ok(Some(samples));
+        } else {
+            blocks
+                .push(&samples, failed, stop)
+                .map_err(conversion_error)?;
         }
-        self.producer
-            .wait_for_capacity(samples.len(), stop)
-            .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "device queue wait failed"))?;
-        if self.failed.load(Ordering::Acquire) {
-            return Err(error(
-                "SHINKI_EMU_AUDIO_DEVICE",
-                "native output device failed",
-            ));
-        }
+        self.check()?;
         if stop.load(Ordering::Acquire) {
             return Ok(None);
         }
-        let accepted = samples.len();
-        let recycled = self
-            .producer
-            .submit(samples)
-            .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "device queue submission failed"))?;
-        self.clock.accept(accepted);
-        Ok(Some(recycled))
+        self.clock.accept(samples.len());
+        Ok(Some(samples))
+    }
+}
+/// Regroups device-format samples into the queue's fixed block size.
+struct BlockWriter {
+    producer: NativeAudioProducer,
+    partial: Vec<f32>,
+    partial_len: usize,
+}
+impl BlockWriter {
+    fn push(
+        &mut self,
+        mut data: &[f32],
+        failed: &AtomicBool,
+        stop: &AtomicBool,
+    ) -> Result<(), String> {
+        while !data.is_empty() {
+            if stop.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            let count = (self.partial.len() - self.partial_len).min(data.len());
+            self.partial[self.partial_len..self.partial_len + count]
+                .copy_from_slice(&data[..count]);
+            self.partial_len += count;
+            data = &data[count..];
+            if self.partial_len == self.partial.len() {
+                self.producer
+                    .wait_for_capacity(self.partial.len(), stop)
+                    .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
+                if failed.load(Ordering::Acquire) {
+                    return Err("SHINKI_EMU_AUDIO_DEVICE".into());
+                }
+                if stop.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+                self.partial = self
+                    .producer
+                    .submit(std::mem::take(&mut self.partial))
+                    .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
+                self.partial_len = 0;
+            }
+        }
+        Ok(())
     }
 }
 fn conversion_error(cause: String) -> SessionError {
@@ -397,5 +393,29 @@ mod tests {
             .unwrap();
         assert_eq!(progress.accepted_frames, 96);
         assert_eq!(progress.played_frames, 92);
+    }
+
+    #[test]
+    fn writes_of_any_length_reach_the_device_in_order_as_whole_blocks() {
+        let (producer, mut consumer, _) =
+            NativeAudioQueue::create(4, 8, AudioWakeRegistration::default()).unwrap();
+        let mut blocks = BlockWriter {
+            producer,
+            partial: vec![0.0; 8],
+            partial_len: 0,
+        };
+        let (failed, stop) = (AtomicBool::new(false), AtomicBool::new(false));
+        let source: Vec<f32> = (0..24).map(|sample| sample as f32).collect();
+        let mut device = [0.0; 24];
+
+        blocks.push(&source[..5], &failed, &stop).unwrap();
+        assert_eq!(consumer.pop_samples(&mut device), 0);
+        blocks.push(&source[5..11], &failed, &stop).unwrap();
+        assert_eq!(consumer.pop_samples(&mut device[..8]), 8);
+        // The 3 carried samples lead the next block, which also spans writes.
+        blocks.push(&source[11..24], &failed, &stop).unwrap();
+        assert_eq!(consumer.pop_samples(&mut device[8..]), 16);
+        assert_eq!(device[..], source[..]);
+        assert_eq!(blocks.partial_len, 0);
     }
 }
