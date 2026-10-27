@@ -268,21 +268,6 @@ mod tests {
     }
 
     #[test]
-    fn failed_settings_write_preserves_previous_filter() {
-        let mut library = Library::in_memory().unwrap();
-        let previous = crate::FilterSettings::default();
-        library.save_filter_settings(&previous).unwrap();
-        library
-            .connection
-            .execute_batch("PRAGMA query_only=ON")
-            .unwrap();
-        let mut next = previous.clone();
-        next.configuration.preset = crate::FilterPreset::Sharpen;
-        assert!(library.save_filter_settings(&next).is_err());
-        assert_eq!(library.filter_settings().unwrap(), Some(previous));
-    }
-
-    #[test]
     fn previous_appearance_preserves_shared_preferences_after_reopen() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("library.db");

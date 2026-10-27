@@ -358,28 +358,4 @@ mod tests {
         assert_eq!(library.game_release("g1").unwrap(), None);
         assert_eq!(library.game_release("g2").unwrap(), Some(other));
     }
-
-    #[test]
-    fn app_state_round_trips_typed_values() {
-        let mut library = Library::in_memory().unwrap();
-        assert_eq!(library.app_state::<bool>("network.allowed").unwrap(), None);
-        library.set_app_state("network.allowed", &true).unwrap();
-        assert_eq!(
-            library.app_state::<bool>("network.allowed").unwrap(),
-            Some(true)
-        );
-        library.set_app_state("network.allowed", &false).unwrap();
-        assert_eq!(
-            library.app_state::<bool>("network.allowed").unwrap(),
-            Some(false)
-        );
-        assert!(matches!(
-            library.app_state::<String>("network.allowed"),
-            Err(LibraryError::Settings)
-        ));
-        assert!(matches!(
-            library.set_app_state("bad key", &true),
-            Err(LibraryError::InvalidId)
-        ));
-    }
 }

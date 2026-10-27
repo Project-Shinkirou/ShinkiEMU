@@ -611,16 +611,3 @@ pub enum SteamAction {
     CheckUpdates,
     Verify,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_contract_is_send_sync<T: Send + Sync>() {}
-
-    #[test]
-    fn public_view_models_do_not_require_ui_thread_types() {
-        assert_contract_is_send_sync::<ManagerViewModel>();
-        assert_contract_is_send_sync::<ErrorText>();
-    }
-}

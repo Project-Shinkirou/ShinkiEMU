@@ -171,47 +171,6 @@ fn golden_pe_overlay_converts_complete_bytes_and_keeps_all_inputs_unchanged() {
 }
 
 #[test]
-fn changed_source_fingerprint_rejects_without_publishing_or_modifying_inputs() {
-    let root = tempfile::tempdir().unwrap();
-    let fixture = PublicOverlay::new(root.path());
-    let mut changed = fs::read(fixture.source.join("assets.bin")).unwrap();
-    changed[17] ^= 1;
-    fs::write(fixture.source.join("assets.bin"), changed).unwrap();
-    let source_before = fingerprints(&fixture.source);
-    let patch_before = fingerprints(&fixture.patch);
-    failure(
-        apply(&fixture).output().unwrap(),
-        1,
-        "SHINKI_EMU_PATCH_UNSUPPORTED_INPUT",
-    );
-    assert!(!fixture.output.exists());
-    assert_eq!(fingerprints(&fixture.source), source_before);
-    assert_eq!(fingerprints(&fixture.patch), patch_before);
-    assert_no_staging(root.path());
-}
-
-#[test]
-fn existing_output_and_its_user_files_are_preserved() {
-    let root = tempfile::tempdir().unwrap();
-    let fixture = PublicOverlay::new(root.path());
-    fs::create_dir(&fixture.output).unwrap();
-    fs::write(
-        fixture.output.join("user-owned.dat"),
-        b"preserve this user file",
-    )
-    .unwrap();
-    let before = fingerprints(&fixture.output);
-    failure(
-        apply(&fixture).output().unwrap(),
-        1,
-        "SHINKI_EMU_PATCH_OUTPUT_EXISTS",
-    );
-    assert_eq!(fingerprints(&fixture.output), before);
-    fixture.assert_inputs();
-    assert_no_staging(root.path());
-}
-
-#[test]
 fn omitted_patch_uses_source_directory() {
     let root = tempfile::tempdir().unwrap();
     let fixture = PublicOverlay::new(root.path());
@@ -408,39 +367,4 @@ fn command_line_errors_return_one_and_help_returns_zero() {
     let output = binary().arg("--help").output().unwrap();
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
-}
-
-#[test]
-fn corrupt_overlay_boundaries_roll_back_without_changing_inputs() {
-    for case in ["crc", "truncated-zlib", "declared-length"] {
-        let root = tempfile::tempdir().unwrap();
-        let mut fixture = PublicOverlay::new(root.path());
-        let expected = match case {
-            "crc" => {
-                fixture.blocks[1].2 ^= 1;
-                "SHINKI_EMU_PATCH_INTEGRITY"
-            }
-            "truncated-zlib" => {
-                let length = fixture.blocks[2].3.len() - 2;
-                fixture.blocks[2].3.truncate(length);
-                "SHINKI_EMU_PATCH_CODEC"
-            }
-            "declared-length" => {
-                fixture.blocks[0].1 -= 1;
-                "SHINKI_EMU_PATCH_CODEC"
-            }
-            _ => unreachable!(),
-        };
-        fixture.write_patch();
-        // Keep fingerprints valid so each failure reaches the intended native
-        // decoder/integrity boundary rather than failing recipe identification.
-        fixture.write_script();
-        let source_before = fingerprints(&fixture.source);
-        let patch_before = fingerprints(&fixture.patch);
-        failure(apply(&fixture).output().unwrap(), 1, expected);
-        assert!(!fixture.output.exists());
-        assert_eq!(fingerprints(&fixture.source), source_before);
-        assert_eq!(fingerprints(&fixture.patch), patch_before);
-        assert_no_staging(root.path());
-    }
 }

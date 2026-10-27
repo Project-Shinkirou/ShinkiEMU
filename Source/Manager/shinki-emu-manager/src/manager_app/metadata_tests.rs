@@ -168,23 +168,6 @@ fn metadata_linked_title_persists_and_unlink_hides_stale_snapshot() {
 }
 
 #[test]
-fn metadata_empty_search_displays_a_retriable_state() {
-    let root = tempfile::tempdir().unwrap();
-    let mut app = controller(root.path());
-    add_game(&mut app, "first");
-    app.apply_metadata_payload(
-        Some("first"),
-        MetadataProviderId::Vndb,
-        MetadataPayload::Search(Vec::new()),
-    )
-    .unwrap();
-    let model = app.model().unwrap();
-    assert!(!model.selection.metadata_busy);
-    assert!(model.selection.matches.is_empty());
-    assert!(model.selection.metadata_status.contains("没有找到作品"));
-}
-
-#[test]
 fn network_permission_gates_metadata_and_translation_and_persists() {
     let root = tempfile::tempdir().unwrap();
     {

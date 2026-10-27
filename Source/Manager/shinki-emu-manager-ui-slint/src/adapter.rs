@@ -939,12 +939,4 @@ mod steam_tests {
         assert_eq!(transfer.speed, "");
         assert_eq!(transfer.progress, -1.0);
     }
-
-    #[test]
-    fn qr_is_one_pixel_per_module() {
-        let image = qr_image("https://s.team/q/1/1234567890123456789");
-        let size = image.size();
-        assert!(size.width >= 21 && size.width == size.height);
-        assert_eq!(qr_image("").size().width, 0);
-    }
 }

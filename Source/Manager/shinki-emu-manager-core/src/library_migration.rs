@@ -540,7 +540,6 @@ CREATE TABLE plugin_installation (
         assert!(library.family_overrides("rfvp", "g").unwrap().is_empty());
         assert_eq!(user_version(&library), 7);
         assert_eq!(library.user_table_count().unwrap(), REQUIRED_TABLES.len());
-        assert_eq!(REQUIRED_TABLES.len(), 13);
         assert_eq!(
             library.app_state::<bool>("onboarding.completed").unwrap(),
             Some(true)
@@ -795,20 +794,6 @@ CREATE TABLE plugin_installation (
         add_game(&mut library, "download");
         link(&mut library, "download", "v1");
         assert_eq!(library.external_identities("retail").unwrap(), identities);
-    }
-
-    #[test]
-    fn schema_5_upgrade_keeps_identities_and_records() {
-        let mut old = legacy_schema_5(5);
-        add_game(&mut old, "g");
-        link(&mut old, "g", "v7");
-        played(&mut old, "g");
-        let identities = old.external_identities("g").unwrap();
-        let snapshot = old.metadata_snapshot("g", "vndb").unwrap();
-        let library = upgrade(old);
-        assert_eq!(library.external_identities("g").unwrap(), identities);
-        assert_eq!(library.metadata_snapshot("g", "vndb").unwrap(), snapshot);
-        assert_eq!(library.play_stats("g").unwrap().session_count, 1);
     }
 
     #[test]

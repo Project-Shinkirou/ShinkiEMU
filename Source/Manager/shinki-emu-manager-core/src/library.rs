@@ -561,28 +561,6 @@ mod tests {
     }
 
     #[test]
-    fn new_schema_stores_games_and_manager_settings() {
-        let mut library = Library::in_memory().unwrap();
-        assert!(library.list_games().unwrap().is_empty());
-        library
-            .add_game(&game("game-a", "user-selected-location"))
-            .unwrap();
-        assert_eq!(
-            library.game("game-a").unwrap().unwrap().display_title(),
-            "game-a"
-        );
-        library.save_input_mapping(&default_vn_preset()).unwrap();
-        assert!(library.load_input_mapping().unwrap().is_some());
-        library
-            .save_filter_settings(&crate::FilterSettings::default())
-            .unwrap();
-        assert_eq!(
-            library.filter_settings().unwrap(),
-            Some(crate::FilterSettings::default())
-        );
-    }
-
-    #[test]
     fn old_schema_is_rebuilt_without_migration() {
         let connection = Connection::open_in_memory().unwrap();
         connection

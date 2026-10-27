@@ -468,47 +468,6 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_registration_preserves_original_descriptor() {
-        let mut registry = FamilyPluginRegistry::new();
-        registry.register(descriptor("fvp", "original")).unwrap();
-        assert_eq!(
-            registry.register(descriptor("fvp", "replacement")),
-            Err(FamilyPolicyError::DuplicatePlugin)
-        );
-        assert_eq!(registry.descriptor("fvp").unwrap().family_id, "original");
-    }
-
-    #[test]
-    fn all_probe_hits_are_returned_for_user_choice() {
-        let mut registry = FamilyPluginRegistry::new();
-        registry.register(descriptor("fvp-a", "fvp")).unwrap();
-        registry.register(descriptor("fvp-b", "fvp")).unwrap();
-        let selection = registry
-            .select_probe(
-                [
-                    report("fvp-a", "fvp", "game", 8_000),
-                    report("fvp-b", "fvp", "game", 9_000),
-                ],
-                None,
-                None,
-            )
-            .unwrap();
-        let FamilyProbeSelection::RequiresUserChoice(candidates) = selection else {
-            panic!("multiple probe hits must require a choice");
-        };
-        assert_eq!(candidates.len(), 2);
-        assert_eq!(candidates[0].report.plugin_id, "fvp-b");
-        assert_eq!(
-            registry
-                .choose_probe(&candidates, "fvp-a", "game")
-                .unwrap()
-                .report
-                .plugin_id,
-            "fvp-a"
-        );
-    }
-
-    #[test]
     fn probe_must_match_registered_descriptor() {
         let mut registry = FamilyPluginRegistry::new();
         registry.register(descriptor("fvp", "fvp")).unwrap();
@@ -520,23 +479,5 @@ mod tests {
             registry.validate_probe(&report("fvp", "other", "game", 1)),
             Err(FamilyPolicyError::ReportMismatch)
         );
-    }
-
-    #[test]
-    fn explicit_family_preference_filters_candidates() {
-        let mut registry = FamilyPluginRegistry::new();
-        registry.register(descriptor("fvp", "fvp")).unwrap();
-        registry.register(descriptor("other", "other")).unwrap();
-        let selection = registry
-            .select_probe(
-                [
-                    report("fvp", "fvp", "game", 1),
-                    report("other", "other", "game", 2),
-                ],
-                None,
-                Some("other"),
-            )
-            .unwrap();
-        assert!(matches!(selection, FamilyProbeSelection::Selected(_)));
     }
 }

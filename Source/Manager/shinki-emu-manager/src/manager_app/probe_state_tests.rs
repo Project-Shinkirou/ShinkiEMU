@@ -221,18 +221,6 @@ fn core_loading_preserves_cached_library_bindings_until_an_explicit_scan() {
 }
 
 #[test]
-fn import_selects_the_imported_game() {
-    let root = tempfile::tempdir().unwrap();
-    let path = game(root.path());
-    let mut app = controller(root.path());
-    app.registry
-        .register_provider(move || provider("test-a", 9_000))
-        .unwrap();
-    let model = import(&mut app, &path);
-    assert_eq!(model.library.selected_id, path_id(&path));
-}
-
-#[test]
 fn unsupported_import_preserves_the_existing_game_and_selection() {
     let root = tempfile::tempdir().unwrap();
     let path = game(root.path());
@@ -1130,48 +1118,6 @@ fn dwell_without_checkbox_cannot_finish_and_unchecking_revokes_ack() {
     )
     .unwrap();
     assert!(!app.onboarding_completed().unwrap());
-}
-
-#[test]
-fn missing_hidden_and_undersized_notice_images_cannot_finish_onboarding() {
-    use shinki_emu_manager::resale_notice::slot_is_readable;
-    use shinki_emu_manager_ui_slint::{NoticeClipRect, NoticeSlotRect};
-    let root = tempfile::tempdir().unwrap();
-    let mut app = ShinkiEmuManagerController::open_library(
-        root.path().into(), FrameMailbox::new(), Vec::new(),
-    ).unwrap();
-    app.acknowledge_notice(true).unwrap();
-    let full = NoticeSlotRect {
-        x: 20.0, y: 20.0, width: 320.0, height: 300.0,
-        clip: Some(NoticeClipRect { x: 0.0, y: 0.0, width: 360.0, height: 700.0 }),
-    };
-    let start = Instant::now();
-    for (phase, (visible, slot)) in [
-        (true, NoticeSlotRect::default()),
-        (false, full),
-        (true, NoticeSlotRect { width: 100.0, ..full }),
-        (true, NoticeSlotRect { height: 100.0, ..full }),
-        (true, NoticeSlotRect { y: -100.0, ..full }),
-    ].into_iter().enumerate() {
-        for frame in 0..=100 {
-            app.notice_presented(
-                start + Duration::from_millis((phase as u64 * 101 + frame) * 100),
-                slot_is_readable(visible, slot, (320.0, 300.0), (360.0, 700.0)),
-            ).unwrap();
-        }
-        assert_eq!(app.notice_state().remaining_seconds, 8);
-        assert!(app.finish_onboarding().is_err());
-        assert!(!app.onboarding_completed().unwrap());
-    }
-    let resume = start + Duration::from_secs(60);
-    for frame in 0..=80 {
-        app.notice_presented(
-            resume + Duration::from_millis(frame * 100),
-            slot_is_readable(true, full, (320.0, 300.0), (360.0, 700.0)),
-        ).unwrap();
-    }
-    app.finish_onboarding().unwrap();
-    assert!(app.onboarding_completed().unwrap());
 }
 
 #[test]

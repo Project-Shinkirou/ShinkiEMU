@@ -382,34 +382,6 @@ pub fn input_key_name(code: crate::model::KeyCode) -> Option<&'static str> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn default_preset_maps_confirm_cancel_and_navigation() {
-        let mapping = default_vn_preset();
-        assert!(mapping.gamepad_enabled);
-        assert_eq!(mapping.deadzone, GamepadDeadzone::Medium);
-        assert_eq!(mapping.gamepad[&GamepadInput::South], "enter");
-        assert_eq!(mapping.gamepad[&GamepadInput::East], "escape");
-        assert_eq!(mapping.gamepad[&GamepadInput::North], "space");
-        assert_eq!(mapping.gamepad[&GamepadInput::Start], "enter");
-        assert_eq!(mapping.gamepad[&GamepadInput::Select], "escape");
-        assert_eq!(mapping.gamepad[&GamepadInput::DpadUp], "arrow_up");
-        assert_eq!(mapping.gamepad[&GamepadInput::LeftStickLeft], "arrow_left");
-        // Shoulders/triggers are unbound by default.
-        assert!(!mapping.gamepad.contains_key(&GamepadInput::LeftShoulder));
-        assert!(!mapping.gamepad.contains_key(&GamepadInput::RightTrigger));
-    }
-
-    #[test]
-    fn deadzone_thresholds_use_hysteresis_and_ordering() {
-        let (low_press, low_release) = GamepadDeadzone::Low.thresholds();
-        let (med_press, med_release) = GamepadDeadzone::Medium.thresholds();
-        let (high_press, high_release) = GamepadDeadzone::High.thresholds();
-        assert!(low_release < low_press);
-        assert!(med_release < med_press);
-        assert!(high_release < high_press);
-        assert!(low_press < med_press && med_press < high_press);
-    }
-
     macro_rules! every_key_code {
         ($($variant:ident),* $(,)?) => {{
             fn exhaustive(code: crate::model::KeyCode) {

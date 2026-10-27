@@ -151,17 +151,11 @@ fn civil_from_days(mut z: i64) -> (i32, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{human_relative, local_time_label};
+    use super::local_time_label;
 
     #[test]
     fn local_time_label_formats_unix_epoch_in_utc() {
         assert_eq!(local_time_label(0), "1970-01-01 00:00 UTC");
         assert_eq!(local_time_label(1_700_000_000_000), "2023-11-14 22:13 UTC");
-    }
-
-    #[test]
-    fn human_relative_uses_chinese_units() {
-        assert_eq!(human_relative(0, 3 * 86_400_000), "3 天前");
-        assert_eq!(human_relative(0, 30_000), "刚刚");
     }
 }

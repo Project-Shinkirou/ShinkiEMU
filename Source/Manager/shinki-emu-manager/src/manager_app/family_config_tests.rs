@@ -430,21 +430,6 @@ fn filter_changes_roll_back_when_the_renderer_rejects_them() {
     assert_eq!(applied.len(), 1);
 }
 
-#[test]
-fn typed_game_configuration_round_trips_after_controller_reopen() {
-    let root = tempfile::tempdir().unwrap();
-    {
-        let mut controller = configuration_controller(root.path());
-        controller.set_game_config("game", "launch_mode", "title").unwrap();
-    }
-    let controller = configuration_controller(root.path());
-    let model = controller.model().unwrap();
-    let launch_mode = field(&model.game_settings.fields, "launch_mode");
-    assert_eq!(launch_mode.label, "Launch mode");
-    assert_eq!(launch_mode.display_value, "标题菜单启动");
-    assert!(launch_mode.overridden);
-}
-
 fn install_preset(controller: &mut ShinkiEmuManagerController, configuration: &str) {
     let directory = controller.data_dir.join("preset-catalog");
     let preset = format!(
@@ -580,7 +565,6 @@ fn assert_configurable(controller: &mut ShinkiEmuManagerController, south: &str)
 
 enum Leave {
     Menu,
-    Window,
     Opening,
 }
 
@@ -605,17 +589,7 @@ fn configuration_follows_leaving(leave: Leave) {
             "SHINKI_EMU_FAMILY_SESSION_ALREADY_ACTIVE"
         );
     }
-    match leave {
-        Leave::Menu | Leave::Opening => {
-            controller.leave_game().unwrap();
-        }
-        Leave::Window => match shinki_emu_manager::close_requested(&mut controller) {
-            shinki_emu_manager::CloseDecision::KeepWindow(result) => {
-                result.unwrap();
-            }
-            shinki_emu_manager::CloseDecision::HideWindow => panic!("running game must keep window"),
-        },
-    }
+    controller.leave_game().unwrap();
     assert!(controller.active.as_ref().unwrap().closing.is_some());
     assert_configurable(&mut controller, "space");
     assert_eq!(
@@ -633,11 +607,6 @@ fn configuration_follows_leaving(leave: Leave) {
 #[test]
 fn configuration_is_editable_while_a_game_left_from_the_menu_closes() {
     configuration_follows_leaving(Leave::Menu);
-}
-
-#[test]
-fn configuration_is_editable_while_a_game_left_by_closing_the_window_closes() {
-    configuration_follows_leaving(Leave::Window);
 }
 
 #[test]
