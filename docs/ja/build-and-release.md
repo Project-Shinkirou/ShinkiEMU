@@ -150,17 +150,21 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc --version 0
 ```
 
 出力ディレクトリはまだ存在しないものでなければなりません。パッケージングは、安全でないパス、リンク、名前の衝突、ライセンスの欠落、アーキテクチャの誤り、query エクスポートの欠落、ネイティブ依存関係の不足を含む入力を拒否します。コアパッケージには、ライブラリ、リソース、依存ファイル、ライセンス、ビルドの来歴、ハッシュ付きの `core.json` が含まれます。ソースパッケージには、該当する対応ソースと再リンク用の入力が含まれます。
-Vendor ディレクトリは Cargo のソース識別子ごとに `vendor/source-*/` へ分けられます。異なる Git fork、または Git と crates.io にある同じ名前・バージョンの crate は、それぞれのコードと対応する `[source]` 置換設定を保持します。Registry のアーカイブは変更していないロックファイルで検証し、Git manifest はソースごとに分離した一時 Cargo ワークスペースで Cargo に正規化させます。この一時的な patch はソースパッケージに含めません。decoder fork はソースツリーが異なるため、コードを変更する patch で統合しません。
 
-現在の overlay または HEAD の port recipe がインストール済みファイルのハッシュと一致しない場合、パッケージングは port の SPDX `gitoid` に記録された固定 vcpkg registry の正確な Git tree を抽出し、recipe ファイルを改めて検証します。versioned registry からビルドされた port は、現在の `ports/` ディレクトリと一致する必要はありません。
+`shinki-emu-<slug>-<バージョン>-<プラットフォーム>-sources.zip` には `source.tar` と `BUILD-FROM-SOURCE.md` が入っています。TAR には、リリースコミット時点の製品のコミット済みツリーと、選択した fork の固定 revision のコミット済みツリーが含まれ、どちらもサブモジュールを記録された revision で展開します。ワークツリー上の未コミットの変更は含まれません。Git LFS のポインターは、コミットされた SHA256 とサイズを確認したうえで実体のデータに置き換えます。データがない場合は先に `git lfs checkout` を実行してください。
+
+Rust の依存関係は変更していない `Cargo.lock`（registry のチェックサムと正確な Git コミット）で特定され、再ビルド時に Cargo が取得します。さらに `rust-sources/<名前>-<バージョン>+<ソース>/` には、ライセンスがソースの提供を求めるリンク済み crate のソースを入れます。対象は、選べるライセンスがすべて copyleft の crate（MPL-2.0 の symphonia、triple_buffer、option-ext など）と SPDX 式のない crate です。GPL/LGPL/AGPL でしか使えない crate が 1 つでもリンクされている場合（ReMinori）は、リンク済みの crate をすべて含めます。寛容なライセンスを選べる crate（`Apache-2.0 OR GPL-2.0-only`、Slint の `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR …`）はその選択肢で配布するため、ソースの提供義務は生じません。パス crate は fork のスナップショットに含まれます。
+
+ネイティブのソースは、選択したインストールツリーの vcpkg port をすべて対象にし、ホスト triplet のツールも含めて `vcpkg/status` から依存関係をたどります。`native/ports/<グループ>/` には、インストール時の SPDX `gitoid` が示す固定 registry tree から取り出した各 registry port の recipe とパッチを置きます。overlay port には tree の識別子がなく、fork のスナップショットに含まれます。`.work/vcpkg-downloads/` には、インストール済み SPDX が SHA512 で記録したソースアーカイブを置きます。ビルド手順では固定 revision の vcpkg を clone します。Impacto では準備済みの LibAtrac9/magic_enum のソースも含め、mspack は fork のスナップショットに含まれます。
+
+ソースパッケージは、`deps` と `build` が確認済みの入力をそのままコピーします。`.work/downloads` のハッシュの再計算、recipe の再検証、Cargo のオフライン解決、ワークツリーの再確認は行いません。`release` 自体は、未コミットの変更がある製品の checkout と、別のソース revision から作られたビルド記録を拒否します。
 
 `cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` は、固定された `.work/renpy-build` の checkout と再帰的な submodule を準備します。既存の checkout に未コミットの変更がある場合は更新前に失敗し、ソース収集は読み取り専用のままです。
 
-公開処理では、source archive と binary archive を Release が draft の間に認証付き asset API でアップロードし、検証します。検証済みの draft だけを公開し、アップロード、検証、公開のいずれかが失敗した場合は未完成の draft を削除します。カタログ URL は最終 tag と asset 名から構成し、アップロード応答に含まれる一時的な `untagged-*` URL は使いません。
-
-
 Manager のパッケージングでは、ターゲットプラットフォームで絞り込んだ Cargo の依存関係の閉包（通常の依存とビルド依存。テスト専用の依存エッジは除く）を収集します。各 crate が宣言した `license_file`、ソースルートの `LICENSE*`、`COPYING*`、`NOTICE*` ファイル、および同種のライセンスディレクトリの内容は `licenses/rust/<名前>-<バージョン>/` に置かれ、同じディレクトリの `package.json` に SPDX 式とテキストの出所が記録されます。crate がファイルを提供していない場合、パッケージャーは固定された `spdx` 0.13.6 に内蔵されたオフラインのデータから SPDX License List 3.29.0 の標準テキストを取り出し、SPDX 式が参照するすべてのライセンスと例外条項を `LICENSE-<SPDX>` として書き出します。データの出所となるバージョンとアーカイブの SHA256 は `build/dependencies.toml` に記録され、Cargo の固定依存と照合されます。パッケージング中にライセンステキストをダウンロードすることはありません。認識できない補完用の識別子や、ライセンスファイルも SPDX 式もない crate があると、パッケージングは失敗します。Material コンポーネント、アイコン、ネイティブ依存関係のライセンスは別途収集されます。
 
-Release タグは `manager-v<semver>` または `core-<slug>-v<semver>` です。slug は plugin_id を小文字にし、ドットとアンダースコアをハイフンに置き換えたものです（例: `ReMinori` は `reminori`）。plugin_id 自体は変わりません。`--publish` なしではローカルの成果物を準備するだけです。公開には `--publish` と、`GH_TOKEN` または `GITHUB_TOKEN` が必要です。アップロードするのは実際に成功したプラットフォームの成果物だけで、空の Release や、同名で内容の異なる添付ファイルは拒否します。コアの公開では、リモートのバイト列を確認してから、`Metadata/engines/cores/` へのカタログ更新 PR を提案します。Manager とコアは別々にリリースされます。タグを付けても配布上の制約は回避できず、Android の debug 署名テスト用パッケージが正式なインストーラーになることもありません。
+Release タグは `manager-v<semver>` または `core-<slug>-v<semver>` です。slug は plugin_id を小文字にし、ドットとアンダースコアをハイフンに置き換えたものです（例: `ReMinori` は `reminori`）。plugin_id 自体は変わりません。`cargo xtask release --component <id> --target <トリプル> --version <semver>` は 1 つのターゲットをパッケージングし、`.work/release/<tag>/<ターゲット>/` にバイナリの ZIP、ソースの ZIP、`release.json` を書き出します。`build/targets.toml` や `build/cores.toml` でブロックされたターゲット、`publish_blocked` のコアでは何も作りません。準備済みのターゲットで再実行すると、そのディレクトリを再利用します。
+
+`cargo xtask release --component <id> --version <semver> --publish`（`GH_TOKEN` または `GITHUB_TOKEN` が必要）は、その tag で準備済みのターゲットをすべて集め、別の製品コミットや別のコア固定 revision の記録、空の Release、公開済みの Release を拒否します。ソースとバイナリのアーカイブを draft にアップロードし（中断した実行が残した同名の draft 添付ファイルは置き換えます）、draft を公開して、`Metadata/engines/cores/` へのカタログ更新 PR を作ります。カタログ URL は最終 tag から作り、draft の `untagged-*` URL は使いません。Manager とコアは別々にリリースされます。Android の debug 署名テスト用 APK はブロック扱いとなり、アップロードされません。
 
 メタデータのコマンドは [Metadata](metadata.md)、コアパッケージの契約は[コア ABI](core-abi.md) を参照してください。

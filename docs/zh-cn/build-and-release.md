@@ -167,21 +167,15 @@ Manager 和各独立核心包都会按所选 manifest、package、features 和�
 
 `fonts/` 中的字体许可和署名文本按原名保留。`LicenseRef-UFL-1.0` 这类自定义条款必须有对应的上游文本，例如 `fonts/UFL.txt`，打包器不会编造许可正文。crate 只提供字体声明时，代码本身声明的标准许可仍会补齐。
 
-`shinki-emu-<slug>-<版本>-<平台>-sources.zip` 包含 `source.tar` 和 `BUILD-FROM-SOURCE.md`。将 TAR 解压到新目录后，按说明离线构建。包内保留指定提交的产品源码、指定提交且递归展开子模块的核心 fork、必需的产品路径依赖子模块、锁文件对应的 Cargo vendor 源码（含 Git 依赖）及 `.cargo/config.toml` 源替换配置。发布前会在解压后的目录运行 `cargo metadata --offline --frozen`；缺失源码或 vendor 校验失败会中止打包。
+`shinki-emu-<slug>-<版本>-<平台>-sources.zip` 包含 `source.tar` 和 `BUILD-FROM-SOURCE.md`。TAR 中是发布提交时产品的已提交源码树，以及所选 fork 在固定提交上的已提交源码树，两者的子模块都按记录的提交展开。工作区里未提交的修改不会进入源码包。Git LFS 指针会先按提交记录核对 SHA256 和大小，再替换为已展开的真实数据；数据缺失时先运行 `git lfs checkout`。
 
-Vendor 目录按 Cargo 源标识拆分到 `vendor/source-*/`。来自不同 Git fork、或来自 Git 与 crates.io 的同名同版本 crate 会保留各自的代码，并使用匹配的 `[source]` 替换配置。Registry 压缩包按未改动的锁文件校验；Git manifest 在一次性的、按源隔离的 Cargo 工作区中由 Cargo 完成规范化，这些临时 patch 不会写入源码包。不同 decoder fork 的源码树不同，不会通过改代码的 patch 强行统一。
+Rust 依赖以未改动的 `Cargo.lock` 为准（registry 校验和与准确的 Git 提交），重新构建时由 Cargo 下载。`rust-sources/<名称>-<版本>+<来源>/` 另外保存许可要求随附源码的已链接 crate：所有可选许可都是 copyleft 的 crate（例如 MPL-2.0 的 symphonia、triple_buffer、option-ext）、没有 SPDX 表达式的 crate；只要有一个已链接 crate 只能按 GPL/LGPL/AGPL 使用（ReMinori），就收录全部已链接 crate。带宽松许可选项的 crate（`Apache-2.0 OR GPL-2.0-only`，以及 Slint 的 `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR …`）按该宽松选项分发，不产生源码义务。路径 crate 已在 fork 快照中。
 
-Git LFS 文件会按提交中的指针核对 SHA256 和大小，再写入真实字体或媒体数据。对象缺失、尚未展开的指针或校验不符都会中止源码打包；先取得固定版本的公开 LFS 对象，再在自有工作树中运行 `git lfs checkout`。
+原生源码覆盖所选安装树中的全部 vcpkg port，依据 `vcpkg/status` 跟随依赖，包括构建机 triplet 的工具。`native/ports/<分组>/` 保存每个 registry port 的配方和补丁，从安装时 SPDX `gitoid` 记录的固定 registry tree 中提取；overlay port 没有 tree 标识，随 fork 快照交付。`.work/vcpkg-downloads/` 保存已安装 SPDX 按 SHA512 记录的源码压缩包。构建说明会克隆固定版本的 vcpkg。Impacto 另外保留准备好的 LibAtrac9/magic_enum 源码，mspack 随 fork 快照交付。
 
-原生依赖收集覆盖所选安装树中的全部 vcpkg port，不再只收 FriBidi/FFmpeg。`native/ports/<分组>/` 保存经安装时 SPDX SHA256 核对的配方和补丁，`.work/vcpkg-downloads/` 保存经 SPDX SHA512 核对的实际源码压缩包。`native/vcpkg.bundle` 保存固定版本的 vcpkg 源码及可达 Git 历史，供版本化 manifest 离线解析 baseline 和 tree 对象。Impacto 另外保留 LibAtrac9/magic_enum 的固定源码输入，mspack 随 fork 源码交付；KiriKiri 的 libbpg、minizip 和 layerExImage 子模块也保留在源码快照中。
+源码包直接复制 `deps` 和 `build` 已核对过的输入：不再重新计算 `.work/downloads` 的哈希、不再校验配方、不做 Cargo 离线解析，也不重复检查工作区是否干净。`release` 本身拒绝未提交修改的产品检出，以及来自其他源码提交的构建记录。
 
-安装图以 `vcpkg/status` 为准，也会跟随构建机 triplet 的传递依赖。`share/doc` 这类目录不算 port；实际依赖缺少 SPDX 或源码来源记录时，打包仍会失败。
-
-如果当前 overlay 或 HEAD 中的配方与已安装文件的校验值不一致，打包会从 port 的 SPDX `gitoid` 记录中找到固定 vcpkg registry 的准确 Git tree，提取并再次校验每个配方文件。使用 versioned registry 构建的 port 不需要与当前 `ports/` 目录一致。
-
-离线构建前，除编译器和 SDK 外，还要备齐构建工具缓存。例如 Windows Meson 需要 `.work/vcpkg-downloads/python-3.14.7-embed-amd64.zip`；NASM、Ninja、CMake、MSYS2 的版本和哈希以固定的 vcpkg 脚本为准。生成的 vcpkg 命令使用绝对路径，避免递归工具切换目录后找错根目录。
-
-Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；对应文件放在 `.work/downloads/`。源码包还包含可读的 chardet/certifi 源码、离线组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
+Ren'Py 需要 `.work/renpy-build` 位于 `7bfab40c1174f622f644b24669afd5fb167fbb79`，并保留其中的 FFmpeg/FriBidi/SDL 源码和补丁。fork 的 `licenses/renpy/{native,python}-sources.json` 记录额外原生源码、SDK 实际复制的 Python 包版本、URL 和哈希；`deps` 把这些文件下载到 `.work/downloads/` 并核对哈希。源码包包含这些压缩包、可读的 chardet/certifi 源码、基于压缩包的组合运行时构建入口，以及重链接、替换和调试权利说明。SDK 的 urllib3/certifi 版本与标签配方不同，构建说明会列出已核实的 SDK 版本，不声称仅凭该标签即可逐字节复现。Ubuntu 交叉构建工具及 Windows 编译器/系统 SDK 属于构建前提。
 
 没有 `url` 的记录改为固定 `repo` 和 `rev`，目前是托管在 Gitiles 的 aom 和 libyuv：Gitiles 每次生成的压缩包字节都不同。`deps` 会浅取该提交、核对取到的提交 ID，再对 `git archive --format=tar` 生成的未压缩 tar 计算哈希；不同 Git 版本生成的结果一致。
 
@@ -191,9 +185,9 @@ Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `license
 
 源码许可收集也覆盖嵌套资源的许可文件和字体同名文本说明，保留相对路径，不复制字体本身。Git 工作区成员的包目录没有许可文件时，会收集该检出根目录提供的许可文件，先保留上游版权声明，再考虑使用 SPDX 标准文本。
 
-Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。不带 `--publish` 时只准备本地产物。发布需要 `--publish` 及 `GH_TOKEN` 或 `GITHUB_TOKEN`；只上传真实成功的平台产物，拒绝空 Release 和同名不同内容的附件。核心发布在核对远端字节后，向 `Metadata/engines/cores/` 提议目录更新 PR。Manager 与核心独立发布；标签不会绕过分发限制，也不会把 Android debug 签名测试包变成正式安装包。
+Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。`cargo xtask release --component <id> --target <三元组> --version <semver>` 打包一个目标，在 `.work/release/<tag>/<目标>/` 写入二进制 ZIP、源码 ZIP 和 `release.json`。`build/targets.toml`、`build/cores.toml` 中阻止的目标或带 `publish_blocked` 的核心不产生任何文件。对已准备的目标再次运行会直接复用该目录。
 
-发布时，源码包和二进制包会在 Release 仍为 draft 的阶段，通过带认证的 asset API 上传并校验。只有校验通过的 draft 才会发布；上传、校验或发布失败都会删除未完成的 draft。目录更新使用最终 tag 和附件名称构造 URL，不使用上传响应中的临时 `untagged-*` URL。
+`cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标，拒绝来自其他产品提交或核心固定版本的记录，也拒绝空 Release 和已发布的 Release。它把源码包和二进制包上传到 draft，替换中断运行遗留的同名 draft 附件，然后发布 draft，并在 `Metadata/engines/cores/` 下提出目录更新 PR。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
 
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
 
