@@ -295,7 +295,10 @@ fn legacy_collision_preserves_both_existing_save_files() {
     fs::create_dir_all(&new).unwrap();
     fs::write(old.join("slot-000.asav"), b"legacy").unwrap();
     fs::write(new.join("slot-000.asav"), b"new save").unwrap();
-    assert_eq!(Storage::new(root.path()).err().unwrap().code(), "SHINKI_EMU_MUSICA_SAVE_PATH");
+    assert_eq!(
+        Storage::new(root.path()).err().unwrap().code(),
+        "SHINKI_EMU_MUSICA_SAVE_PATH"
+    );
     assert_eq!(fs::read(old.join("slot-000.asav")).unwrap(), b"legacy");
     assert_eq!(fs::read(new.join("slot-000.asav")).unwrap(), b"new save");
 }

@@ -1,4 +1,3 @@
-use cap_fs_ext::DirExt;
 use crate::{
     OutputProfile, PatchError, PatchErrorKind, PatchProgress,
     error::check_cancelled,
@@ -6,6 +5,7 @@ use crate::{
     storage::TaskFile,
     vm::{Execution, InputRecord, ScriptRecord},
 };
+use cap_fs_ext::DirExt;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -161,13 +161,25 @@ pub fn read_output_profile(
         let state = match game.open_dir_nofollow(crate::GAME_STATE_DIR) {
             Ok(state) => state,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(PatchError::with_source(PatchErrorKind::Path, "cannot open private game state", error)),
+            Err(error) => {
+                return Err(PatchError::with_source(
+                    PatchErrorKind::Path,
+                    "cannot open private game state",
+                    error,
+                ));
+            }
         };
         let root = AuthorizedRoot::from_input_dir(state);
-        if !root.exists("patch-result.json")? { return Ok(None); }
+        if !root.exists("patch-result.json")? {
+            return Ok(None);
+        }
         root
     };
-    let receipt_file = if receipt_root.exists(RECEIPT_FILE)? { RECEIPT_FILE } else { "patch-result.json" };
+    let receipt_file = if receipt_root.exists(RECEIPT_FILE)? {
+        RECEIPT_FILE
+    } else {
+        "patch-result.json"
+    };
     #[derive(Deserialize)]
     struct ImportMetadata {
         schema: String,

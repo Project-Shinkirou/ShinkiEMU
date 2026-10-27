@@ -61,9 +61,14 @@ pub(crate) fn relative(value: &str, allow_empty: bool) -> Result<PathBuf, PatchE
 
 fn output_relative(value: &str) -> Result<PathBuf, PatchError> {
     let path = relative(value, false)?;
-    if path.components().any(|part| part.as_os_str().to_str()
-        .is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR))) {
-        return Err(path_error("recipe cannot write reserved .shinki game state"));
+    if path.components().any(|part| {
+        part.as_os_str()
+            .to_str()
+            .is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR))
+    }) {
+        return Err(path_error(
+            "recipe cannot write reserved .shinki game state",
+        ));
     }
     Ok(path)
 }
@@ -157,8 +162,13 @@ impl AuthorizedRoot {
             .map_err(|error| io_error("enumerating directory failed", error))?
         {
             let entry = entry.map_err(|error| io_error("reading directory entry failed", error))?;
-            if !self.writable && path.as_os_str().is_empty()
-                && entry.file_name().to_str().is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR)) {
+            if !self.writable
+                && path.as_os_str().is_empty()
+                && entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR))
+            {
                 continue;
             }
             let metadata = entry
