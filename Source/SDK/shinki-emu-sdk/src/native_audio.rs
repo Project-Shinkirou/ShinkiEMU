@@ -22,7 +22,7 @@ const SOURCE_CHANNELS: u16 = 2;
 /// Output timeline in 48 kHz source frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NativeAudioProgress {
-    /// Frames of every `write` that returned `Ok(Some(_))`.
+    /// Frames of every `write` that returned `Ok(Some(_))`, plus `flush` padding.
     pub accepted_frames: u64,
     /// Frames the device has made audible: consumed device frames minus the
     /// reported output latency and the resampler delay, mapped to 48 kHz.
@@ -86,6 +86,19 @@ impl PlaybackClock {
             .saturating_add(callback_samples as u64);
         self.latency_samples.store(samples, Ordering::Release);
     }
+    fn accepted_frames(&self) -> u64 {
+        self.accepted.load(Ordering::Acquire)
+    }
+    /// Device samples the queue must have consumed before `progress` reports
+    /// `frames` as played, at the latest recorded output latency.
+    fn samples_until_audible(&self, frames: u64) -> u64 {
+        let device_frames =
+            (u128::from(frames) * u128::from(self.device_rate)).div_ceil(u128::from(SOURCE_RATE));
+        let device_frames = u64::try_from(device_frames).unwrap_or(u64::MAX);
+        (self.delay_frames.saturating_add(device_frames))
+            .saturating_mul(self.device_channels)
+            .saturating_add(self.latency_samples.load(Ordering::Acquire))
+    }
     fn progress(&self) -> NativeAudioProgress {
         let accepted = self.accepted.load(Ordering::Acquire);
         // Device latency varies per callback; the watermark never retracts.
@@ -112,10 +125,7 @@ impl PlaybackClock {
 }
 
 pub struct NativeAudioOutput {
-    blocks: BlockWriter,
-    failed: Arc<AtomicBool>,
-    converter: crate::NativeAudioConverter,
-    clock: Arc<PlaybackClock>,
+    pipeline: Pipeline,
     _stream: cpal::Stream,
 }
 impl NativeAudioOutput {
@@ -188,36 +198,32 @@ impl NativeAudioOutput {
             .play()
             .map_err(|_| error("SHINKI_EMU_AUDIO_START", "native stream start failed"))?;
         Ok(Self {
-            blocks: BlockWriter {
-                producer,
-                partial: vec![0.0; chunk_samples],
-                partial_len: 0,
+            pipeline: Pipeline {
+                blocks: BlockWriter {
+                    producer,
+                    partial: vec![0.0; chunk_samples],
+                    partial_len: 0,
+                    submitted: 0,
+                },
+                failed,
+                converter,
+                clock,
             },
-            failed,
-            converter,
-            clock,
             _stream: stream,
         })
     }
     /// Observes the device queue; call `check` separately for device failure.
     pub fn progress(&self) -> NativeAudioProgress {
-        self.clock.progress()
+        self.pipeline.clock.progress()
     }
     /// Hands the same timeline to threads that do not own the output.
     pub fn progress_reader(&self) -> NativeAudioProgressReader {
         NativeAudioProgressReader {
-            clock: self.clock.clone(),
+            clock: self.pipeline.clock.clone(),
         }
     }
     pub fn check(&self) -> SessionResult<()> {
-        if self.failed.load(Ordering::Acquire) {
-            Err(error(
-                "SHINKI_EMU_AUDIO_DEVICE",
-                "native output device failed",
-            ))
-        } else {
-            Ok(())
-        }
+        self.pipeline.check()
     }
     /// Accepts interleaved 48 kHz stereo of any length. Device samples are
     /// queued in whole device blocks; a trailing partial block is carried to
@@ -227,6 +233,36 @@ impl NativeAudioOutput {
         samples: Vec<f32>,
         stop: &AtomicBool,
     ) -> SessionResult<Option<Vec<f32>>> {
+        self.pipeline.write(samples, stop)
+    }
+    /// Writes silence until every frame accepted before the call can become
+    /// audible, then returns; call it before the writer idles. The padding
+    /// counts as accepted, so the timeline stays continuous for later writes
+    /// and `played_frames` may settle below `accepted_frames`. Blocks on
+    /// queue capacity like `write`; returns `Ok(None)` once `stop` is set.
+    pub fn flush(&mut self, stop: &AtomicBool) -> SessionResult<Option<()>> {
+        self.pipeline.flush(stop)
+    }
+}
+/// Converter, block regrouping and timeline of one output, without the stream.
+struct Pipeline {
+    blocks: BlockWriter,
+    failed: Arc<AtomicBool>,
+    converter: crate::NativeAudioConverter,
+    clock: Arc<PlaybackClock>,
+}
+impl Pipeline {
+    fn check(&self) -> SessionResult<()> {
+        if self.failed.load(Ordering::Acquire) {
+            Err(error(
+                "SHINKI_EMU_AUDIO_DEVICE",
+                "native output device failed",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+    fn write(&mut self, samples: Vec<f32>, stop: &AtomicBool) -> SessionResult<Option<Vec<f32>>> {
         // wait_for_capacity observes this independent flag at most every 20 ms.
         // The device error callback also sets it, waking a blocked producer.
         self.check()?;
@@ -251,12 +287,29 @@ impl NativeAudioOutput {
         self.clock.accept(samples.len());
         Ok(Some(samples))
     }
+    fn flush(&mut self, stop: &AtomicBool) -> SessionResult<Option<()>> {
+        // One extra block absorbs callback-to-callback latency jitter.
+        let target = self
+            .clock
+            .samples_until_audible(self.clock.accepted_frames())
+            + self.blocks.partial.len() as u64;
+        let mut silence = vec![0.0; 512 * usize::from(SOURCE_CHANNELS)];
+        while self.blocks.submitted < target {
+            match self.write(silence, stop)? {
+                Some(recycled) => silence = recycled,
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(()))
+    }
 }
 /// Regroups device-format samples into the queue's fixed block size.
 struct BlockWriter {
     producer: NativeAudioProducer,
     partial: Vec<f32>,
     partial_len: usize,
+    /// Device samples handed to the queue.
+    submitted: u64,
 }
 impl BlockWriter {
     fn push(
@@ -284,11 +337,13 @@ impl BlockWriter {
                 if stop.load(Ordering::Acquire) {
                     return Ok(());
                 }
+                let len = self.partial.len();
                 self.partial = self
                     .producer
                     .submit(std::mem::take(&mut self.partial))
                     .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
                 self.partial_len = 0;
+                self.submitted += len as u64;
             }
         }
         Ok(())
@@ -403,6 +458,7 @@ mod tests {
             producer,
             partial: vec![0.0; 8],
             partial_len: 0,
+            submitted: 0,
         };
         let (failed, stop) = (AtomicBool::new(false), AtomicBool::new(false));
         let source: Vec<f32> = (0..24).map(|sample| sample as f32).collect();
@@ -417,5 +473,60 @@ mod tests {
         assert_eq!(consumer.pop_samples(&mut device[8..]), 16);
         assert_eq!(device[..], source[..]);
         assert_eq!(blocks.partial_len, 0);
+    }
+
+    #[test]
+    fn flush_makes_every_accepted_frame_audible_through_resampler_and_carry() {
+        // 44.1 kHz stereo device: the resampler and the partial block both
+        // hold back the tail of the last write.
+        let (producer, mut consumer, telemetry) =
+            NativeAudioQueue::create(64, 1024, AudioWakeRegistration::default()).unwrap();
+        let converter = crate::NativeAudioConverter::new(48_000, 2, 44_100, 2).unwrap();
+        let clock = Arc::new(PlaybackClock::new(
+            telemetry,
+            44_100,
+            2,
+            converter.output_delay(),
+        ));
+        let mut pipeline = Pipeline {
+            blocks: BlockWriter {
+                producer,
+                partial: vec![0.0; 1024],
+                partial_len: 0,
+                submitted: 0,
+            },
+            failed: Arc::new(AtomicBool::new(false)),
+            converter,
+            clock: clock.clone(),
+        };
+        let stop = AtomicBool::new(false);
+        let mut drain = || while consumer.pop_samples(&mut [0.0; 1024]) > 0 {};
+        clock.record_latency(Duration::ZERO, 512);
+        pipeline
+            .write(vec![0.25; 2 * 2401], &stop)
+            .unwrap()
+            .unwrap();
+        drain();
+        let before = clock.progress();
+        assert_eq!(before.accepted_frames, 2401);
+        assert!(before.played_frames < before.accepted_frames);
+
+        assert_eq!(pipeline.flush(&stop).unwrap(), Some(()));
+        drain();
+        let after = clock.progress();
+        assert!(after.played_frames >= before.accepted_frames);
+        assert!(after.accepted_frames > before.accepted_frames);
+        assert!(after.played_frames <= after.accepted_frames);
+        // Padding joined the timeline, so a later voice is not played early.
+        pipeline
+            .write(vec![0.25; 2 * 4800], &stop)
+            .unwrap()
+            .unwrap();
+        let next = clock.progress();
+        assert_eq!(next.accepted_frames, after.accepted_frames + 4800);
+        assert!(next.played_frames < after.accepted_frames + 4800);
+
+        stop.store(true, Ordering::Release);
+        assert_eq!(pipeline.flush(&stop).unwrap(), None);
     }
 }
