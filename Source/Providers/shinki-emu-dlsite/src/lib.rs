@@ -39,8 +39,11 @@ struct Count {
 #[derive(Clone, Debug, Deserialize)]
 struct Sale {
     workno: String,
-    #[serde(default)]
-    sales_date: Option<String>,
+}
+fn purchase_batches(sales: &[Sale]) -> impl Iterator<Item = Vec<&str>> + '_ {
+    sales
+        .chunks(100)
+        .map(|batch| batch.iter().map(|sale| sale.workno.as_str()).collect())
 }
 #[derive(Clone, Debug, Deserialize)]
 struct Works {
@@ -108,7 +111,10 @@ impl Http {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| StoreError::Network)?;
-        Ok(Self { client, cookie: Arc::new(cookie) })
+        Ok(Self {
+            client,
+            cookie: Arc::new(cookie),
+        })
     }
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, StoreError> {
         let r = self
@@ -137,15 +143,14 @@ impl Http {
         let sales: Vec<Sale> = self
             .get_json(&format!("{PLAY}/content/sales?last=0"))
             .await?;
-        let ids: Vec<String> = sales.into_iter().map(|s| s.workno).collect();
         let mut seen = HashSet::new();
         let mut works = Vec::new();
-        for batch in ids.chunks(100) {
+        for batch in purchase_batches(&sales) {
             let r = self
                 .client
                 .post(format!("{PLAY}/content/works"))
                 .header(COOKIE, self.cookie.as_str())
-                .json(batch)
+                .json(&batch)
                 .send()
                 .await
                 .map_err(|_| StoreError::Network)?;
@@ -182,33 +187,58 @@ impl Http {
         Ok(values.into_iter().find(|w| w.id == id))
     }
     async fn download_plan(&self, id: &str) -> Result<PlanData, StoreError> {
-        let response = self.client.get(DOWNLOAD).query(&[("workno", id)])
-            .header(COOKIE, self.cookie.as_str()).send().await.map_err(|_| StoreError::Network)?;
-        if response.status() == StatusCode::UNAUTHORIZED { return Err(StoreError::SessionExpired); }
-        if !response.status().is_redirection() { return Err(StoreError::Unavailable); }
-        let location = response.headers().get(LOCATION).and_then(|v| v.to_str().ok()).ok_or(StoreError::Metadata)?;
-        let url = response.url().join(location).map_err(|_| StoreError::Metadata)?;
+        let response = self
+            .client
+            .get(DOWNLOAD)
+            .query(&[("workno", id)])
+            .header(COOKIE, self.cookie.as_str())
+            .send()
+            .await
+            .map_err(|_| StoreError::Network)?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            return Err(StoreError::SessionExpired);
+        }
+        if !response.status().is_redirection() {
+            return Err(StoreError::Unavailable);
+        }
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(StoreError::Metadata)?;
+        let url = response
+            .url()
+            .join(location)
+            .map_err(|_| StoreError::Metadata)?;
         let links = match classify_download_redirect(&url) {
             DownloadKind::Direct => vec![url],
             DownloadKind::Split => {
                 let html = self.fetch_text(url.as_str()).await?;
-                let mut links: Vec<_> = extract_links(&html, &url).into_iter()
-                    .filter(|link| classify_download_redirect(link) == DownloadKind::Direct && part_number(link).is_some())
+                let mut links: Vec<_> = extract_links(&html, &url)
+                    .into_iter()
+                    .filter(|link| part_number(link).is_some())
                     .collect();
-                links.sort_by_key(|link| part_number(link));
+                links.sort_by_key(part_number);
                 links
             }
             DownloadKind::Serial => {
                 let html = self.fetch_text(url.as_str()).await?;
-                extract_links(&html, &url).into_iter()
-                    .filter(|link| classify_download_redirect(link) == DownloadKind::Direct).take(1).collect()
+                extract_links(&html, &url)
+                    .into_iter()
+                    .filter(|link| classify_download_redirect(link) == DownloadKind::Direct)
+                    .take(1)
+                    .collect()
             }
             DownloadKind::Unavailable => return Err(StoreError::Unavailable),
         };
-        if links.is_empty() { return Err(StoreError::Metadata); }
+        if links.is_empty() {
+            return Err(StoreError::Metadata);
+        }
         let mut files = Vec::with_capacity(links.len());
         for link in links {
-            if !link.path().contains("product_id") || !link.path().contains(id) { return Err(StoreError::Metadata); }
+            if !matches_owned_work(&link, id) {
+                return Err(StoreError::Metadata);
+            }
             files.push(PlannedFile { url: link });
         }
         Ok(PlanData { files })
@@ -219,19 +249,41 @@ impl Http {
             if url.scheme() != "https" || url.host_str() != Some("www.dlsite.com") {
                 return Err(StoreError::Metadata);
             }
-            let response = self.client.get(url).header(COOKIE, self.cookie.as_str())
-                .send().await.map_err(|_| StoreError::Network)?;
+            let response = self
+                .client
+                .get(url)
+                .header(COOKIE, self.cookie.as_str())
+                .send()
+                .await
+                .map_err(|_| StoreError::Network)?;
             if response.status().is_redirection() {
-                let location = response.headers().get(LOCATION).and_then(|v| v.to_str().ok())
+                let location = response
+                    .headers()
+                    .get(LOCATION)
+                    .and_then(|v| v.to_str().ok())
                     .ok_or(StoreError::Metadata)?;
-                url = response.url().join(location).map_err(|_| StoreError::Metadata)?;
+                url = response
+                    .url()
+                    .join(location)
+                    .map_err(|_| StoreError::Metadata)?;
                 continue;
             }
-            if response.status() == StatusCode::UNAUTHORIZED { return Err(StoreError::SessionExpired); }
-            let response = response.error_for_status().map_err(|_| StoreError::Metadata)?;
-            if response.content_length().is_some_and(|len| len > 512 * 1024) { return Err(StoreError::Metadata); }
+            if response.status() == StatusCode::UNAUTHORIZED {
+                return Err(StoreError::SessionExpired);
+            }
+            let response = response
+                .error_for_status()
+                .map_err(|_| StoreError::Metadata)?;
+            if response
+                .content_length()
+                .is_some_and(|len| len > 512 * 1024)
+            {
+                return Err(StoreError::Metadata);
+            }
             let body = response.bytes().await.map_err(|_| StoreError::Network)?;
-            if body.len() > 512 * 1024 { return Err(StoreError::Metadata); }
+            if body.len() > 512 * 1024 {
+                return Err(StoreError::Metadata);
+            }
             return String::from_utf8(body.to_vec()).map_err(|_| StoreError::Metadata);
         }
         Err(StoreError::TransferFailed)
@@ -242,40 +294,74 @@ fn extract_links(html: &str, base: &reqwest::Url) -> Vec<reqwest::Url> {
     for quote in ['"', '\''] {
         let mut start = None;
         for (index, character) in html.char_indices() {
-            if character != quote { continue; }
+            if character != quote {
+                continue;
+            }
             if let Some(open) = start.take() {
                 let escaped = html[open..index].replace("&amp;", "&");
-                if let Ok(url) = base.join(&escaped) {
-                    if url.scheme() == "https" && url.host_str() == Some("www.dlsite.com") &&
-                        url.path().starts_with("/home/download") && url.path().contains("product_id")
-                    { links.push(url); }
+                if let Ok(url) = base.join(&escaped)
+                    && url.scheme() == "https"
+                    && url.host_str() == Some("www.dlsite.com")
+                    && url.path().starts_with("/home/download")
+                    && url.path().contains("product_id")
+                {
+                    links.push(url);
                 }
-            } else { start = Some(index + character.len_utf8()); }
+            } else {
+                start = Some(index + character.len_utf8());
+            }
         }
     }
     links.sort();
     links.dedup();
     links
 }
+fn matches_owned_work(url: &reqwest::Url, id: &str) -> bool {
+    let Some(mut segments) = url.path_segments() else {
+        return false;
+    };
+    while let Some(segment) = segments.next() {
+        if segment == "product_id" {
+            return segments
+                .next()
+                .is_some_and(|work| work == id || work.strip_suffix(".html") == Some(id));
+        }
+    }
+    false
+}
+
 fn part_number(url: &reqwest::Url) -> Option<u32> {
     let mut segments = url.path_segments()?;
     while let Some(segment) = segments.next() {
-        if segment == "number" { return segments.next()?.parse().ok(); }
+        if segment == "number" {
+            return segments.next()?.parse().ok();
+        }
     }
     None
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DownloadKind { Direct, Split, Serial, Unavailable }
+enum DownloadKind {
+    Direct,
+    Split,
+    Serial,
+    Unavailable,
+}
 fn classify_download_redirect(url: &reqwest::Url) -> DownloadKind {
     let host = url.host_str().unwrap_or_default();
     let path = url.path();
-    if host != "www.dlsite.com" { return DownloadKind::Unavailable; }
-    if path.starts_with("/home/download/split") || path.starts_with("/home/split") { DownloadKind::Split }
-    else if path.starts_with("/home/download/serial") || path.starts_with("/home/serial") { DownloadKind::Serial }
-    else if path.starts_with("/home/download") { DownloadKind::Direct }
-    else { DownloadKind::Unavailable }
+    if host != "www.dlsite.com" {
+        return DownloadKind::Unavailable;
+    }
+    if path.starts_with("/home/download/split") || path.starts_with("/home/split") {
+        DownloadKind::Split
+    } else if path.starts_with("/home/download/serial") || path.starts_with("/home/serial") {
+        DownloadKind::Serial
+    } else if path.starts_with("/home/download") {
+        DownloadKind::Direct
+    } else {
+        DownloadKind::Unavailable
+    }
 }
-
 
 pub struct Provider;
 impl StoreProvider for Provider {
@@ -386,6 +472,12 @@ impl StoreSession for Session {
         Box::pin(async move {
             let w = self.find(id).await?;
             let m = self.http.metadata(&w.id).await?;
+            let unavailable_reason = match self.http.download_plan(&w.id).await {
+                Ok(_) => None,
+                Err(StoreError::Unavailable) => Some("DLsite offers no original PC download for this owned work (Play-only or streaming).".into()),
+                Err(StoreError::Metadata) => Some("DLsite PC download details are incomplete; a signed-in browser capture is needed.".into()),
+                Err(error) => return Err(error),
+            };
             let title = OwnedTitle {
                 id: id.clone(),
                 name: m
@@ -396,7 +488,7 @@ impl StoreSession for Session {
                 platforms: vec!["Windows".into()],
                 languages: vec![],
                 size_bytes: w.content_size.unwrap_or_default(),
-                unavailable_reason: None,
+                unavailable_reason,
             };
             Ok(TitleDetail {
                 title,
@@ -408,7 +500,7 @@ impl StoreSession for Session {
     fn plan<'a>(&'a self, id: &'a TitleId, _options: PlanOptions) -> BoxFuture<'a, DownloadPlan> {
         Box::pin(async move {
             let w = self.find(id).await?;
-            let mut title = OwnedTitle {
+            let title = OwnedTitle {
                 id: id.clone(),
                 name: w.name.text(),
                 platforms: vec!["Windows".into()],
@@ -416,15 +508,7 @@ impl StoreSession for Session {
                 size_bytes: w.content_size.unwrap_or_default(),
                 unavailable_reason: None,
             };
-            let data = match self.http.download_plan(&w.id).await {
-                Ok(data) => data,
-                Err(e) => {
-                    title.unavailable_reason = Some(
-                        "DLsite did not provide a verified PC download plan for this work.".into(),
-                    );
-                    return Err(e);
-                }
-            };
+            let data = self.http.download_plan(&w.id).await?;
             Ok(DownloadPlan {
                 title,
                 branch: String::new(),
@@ -442,8 +526,20 @@ impl StoreSession for Session {
         cancel: CancelToken,
     ) -> BoxFuture<'a, TransferSummary> {
         Box::pin(async move {
-            let data = plan.payload.downcast_ref::<PlanData>().ok_or(StoreError::Metadata)?;
-            transfer::download_parts(&self.http, data, &plan.title, dest, work_dir, &progress, &cancel).await
+            let data = plan
+                .payload
+                .downcast_ref::<PlanData>()
+                .ok_or(StoreError::Metadata)?;
+            transfer::download_parts(
+                &self.http,
+                data,
+                &plan.title,
+                dest,
+                work_dir,
+                &progress,
+                &cancel,
+            )
+            .await
         })
     }
     fn has_update<'a>(
@@ -479,25 +575,67 @@ mod tests {
         assert_eq!(w.works[0].id, "RJ123456");
     }
     #[test]
+    fn purchases_larger_than_one_page_keep_the_last_title() {
+        let sales: Vec<_> = (0..201)
+            .map(|n| Sale {
+                workno: format!("RJ{n:06}"),
+            })
+            .collect();
+        let pages: Vec<_> = purchase_batches(&sales).collect();
+        assert_eq!(
+            pages.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![100, 100, 1]
+        );
+        assert_eq!(pages[2][0], "RJ000200");
+    }
+    #[tokio::test]
+    async fn unknown_installer_identity_is_never_a_false_update_result() {
+        let session = Session {
+            account: "DLsite account".into(),
+            http: Http::new(Zeroizing::new("irrelevant".into())).unwrap(),
+        };
+        let state = session
+            .has_update(
+                &TitleId("RJ123456".into()),
+                Path::new("nonexistent"),
+                PlanOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(state, shinki_emu_store::UpdateState::Unknown);
+    }
+    #[test]
     fn split_part_order_is_numeric() {
-        let mut urls = vec![
-            "https://www.dlsite.com/home/download/split/number/10/product_id/RJ1".to_owned(),
-            "https://www.dlsite.com/home/download/split/number/2/product_id/RJ1".to_owned(),
-        ];
-        urls.sort_by(|a, b| natural_cmp(a, b));
-        assert!(urls[0].contains("/number/2/"));
+        let base = reqwest::Url::parse(
+            "https://www.dlsite.com/home/download/split/=/product_id/RJ123456.html",
+        )
+        .unwrap();
+        let html = r#"<a href="/home/download/split/number/10/product_id/RJ123456">10</a><a href="/home/download/split/number/2/product_id/RJ123456">2</a>"#;
+        let mut urls: Vec<_> = extract_links(html, &base)
+            .into_iter()
+            .filter(|url| part_number(url).is_some())
+            .collect();
+        urls.sort_by_key(part_number);
+        assert_eq!(
+            urls.iter().map(part_number).collect::<Vec<_>>(),
+            vec![Some(2), Some(10)]
+        );
     }
     #[test]
     fn play_only_redirect_is_not_a_pc_download() {
         let play = reqwest::Url::parse("https://play.dlsite.com/reader/RJ123456").unwrap();
         assert_eq!(classify_download_redirect(&play), DownloadKind::Unavailable);
-        let pc = reqwest::Url::parse("https://www.dlsite.com/home/download/=/product_id/RJ123456.html").unwrap();
+        let pc =
+            reqwest::Url::parse("https://www.dlsite.com/home/download/=/product_id/RJ123456.html")
+                .unwrap();
         assert_eq!(classify_download_redirect(&pc), DownloadKind::Direct);
     }
     #[test]
-    fn fixed_error_display_does_not_echo_secrets() {
-        let e = StoreError::TransferFailed;
-        assert!(!e.to_string().contains("cookie"));
-        assert!(!e.to_string().contains("token"));
+    fn similar_product_ids_do_not_share_download_entitlement() {
+        let url =
+            reqwest::Url::parse("https://www.dlsite.com/home/download/=/product_id/RJ10.html")
+                .unwrap();
+        assert!(matches_owned_work(&url, "RJ10"));
+        assert!(!matches_owned_work(&url, "RJ1"));
     }
 }

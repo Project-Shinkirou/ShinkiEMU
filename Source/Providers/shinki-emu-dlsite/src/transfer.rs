@@ -3,7 +3,9 @@ use super::{Http, PlanData};
 use futures_util::StreamExt;
 use reqwest::{
     StatusCode, Url,
-    header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, COOKIE, LOCATION, RANGE},
+    header::{
+        CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, COOKIE, LOCATION, RANGE,
+    },
 };
 use serde::Serialize;
 use shinki_emu_store::{
@@ -56,9 +58,14 @@ pub(super) async fn download_parts(
         };
         let response = open_download(http, item.url.clone(), offset).await?;
         let filename = response_filename(&response)?;
-        if response.headers().get(CONTENT_TYPE).and_then(|value| value.to_str().ok())
+        if response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
             .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/html"))
-        { return Err(StoreError::SessionExpired); }
+        {
+            return Err(StoreError::SessionExpired);
+        }
         if !names.insert(filename.clone()) {
             return Err(StoreError::Metadata);
         }
@@ -66,17 +73,26 @@ pub(super) async fn download_parts(
         if response.status() == StatusCode::PARTIAL_CONTENT && !append {
             return Err(StoreError::Integrity);
         }
-        if append && !response.headers().get(CONTENT_RANGE)
-            .and_then(|header| header.to_str().ok())
-            .is_some_and(|header| range_total(header, offset).is_some())
+        if append
+            && !response
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|header| header.to_str().ok())
+                .is_some_and(|header| range_total(header, offset).is_some())
         {
             return Err(StoreError::Integrity);
         }
         let expected_total = if append {
-            response.headers().get(CONTENT_RANGE).and_then(|header| header.to_str().ok())
+            response
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|header| header.to_str().ok())
                 .and_then(|header| range_total(header, offset))
         } else {
-            response.headers().get(CONTENT_LENGTH).and_then(|header| header.to_str().ok())
+            response
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|header| header.to_str().ok())
                 .and_then(|value| value.parse::<u64>().ok())
         };
         let mut file = if append {
@@ -98,8 +114,8 @@ pub(super) async fn download_parts(
         file.flush().await?;
         drop(file);
         let size = fs::metadata(&partial).await?.len();
-        if expected_total.is_some_and(|expected| expected != size) ||
-            (append && size != offset + received)
+        if expected_total.is_some_and(|expected| expected != size)
+            || (append && size != offset + received)
         {
             return Err(StoreError::Integrity);
         }
@@ -112,7 +128,10 @@ pub(super) async fn download_parts(
             files_total: plan.files.len() as u64,
             ..Progress::default()
         });
-        parts.push(InstalledPart { filename, size_bytes: size });
+        parts.push(InstalledPart {
+            filename,
+            size_bytes: size,
+        });
     }
     if cancel.is_cancelled() {
         summary.cancelled = true;
@@ -125,14 +144,14 @@ pub(super) async fn download_parts(
         manual_extraction_required: !zip,
     };
     let manifest = serde_json::to_vec(&manifest).map_err(|_| StoreError::Metadata)?;
-    fs::write(staging.join("installed-parts.json"), manifest).await?;
     if zip {
         let archive = staging.join("0000.partial");
         let staging_clone = staging.clone();
         let dest = dest.to_path_buf();
         let token = cancel.clone();
         tokio::task::spawn_blocking(move || extract_zip(&archive, &staging_clone, &dest, &token))
-            .await.map_err(|_| StoreError::Integrity)??;
+            .await
+            .map_err(|_| StoreError::Integrity)??;
     } else {
         fs::create_dir_all(dest).await?;
         for (index, part) in parts.iter().enumerate() {
@@ -148,34 +167,56 @@ pub(super) async fn download_parts(
         }
         summary.notice = Some(InstallNotice::ManualExtractionRequired);
     }
+    fs::write(staging.join("installed-parts.json"), manifest).await?;
     Ok(summary)
 }
 
 async fn open_download(
-    http: &Http, mut url: Url, offset: u64,
+    http: &Http,
+    mut url: Url,
+    offset: u64,
 ) -> Result<reqwest::Response, StoreError> {
     for _ in 0..8 {
-        if url.scheme() != "https" { return Err(StoreError::TransferFailed); }
+        if url.scheme() != "https" {
+            return Err(StoreError::TransferFailed);
+        }
         let mut request = http.client.get(url.clone());
-        if url.host_str().is_some_and(|host| host == "dlsite.com" || host.ends_with(".dlsite.com")) {
+        if url
+            .host_str()
+            .is_some_and(|host| host == "dlsite.com" || host.ends_with(".dlsite.com"))
+        {
             request = request.header(COOKIE, http.cookie.as_str());
         }
-        if offset != 0 { request = request.header(RANGE, format!("bytes={offset}-")); }
+        if offset != 0 {
+            request = request.header(RANGE, format!("bytes={offset}-"));
+        }
         let response = request.send().await.map_err(|_| StoreError::Network)?;
         if response.status().is_redirection() {
-            let location = response.headers().get(LOCATION).and_then(|h| h.to_str().ok())
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|h| h.to_str().ok())
                 .ok_or(StoreError::Metadata)?;
-            url = response.url().join(location).map_err(|_| StoreError::Metadata)?;
+            url = response
+                .url()
+                .join(location)
+                .map_err(|_| StoreError::Metadata)?;
             continue;
         }
-        if response.status() == StatusCode::UNAUTHORIZED { return Err(StoreError::SessionExpired); }
-        if response.status() == StatusCode::FORBIDDEN { return Err(StoreError::AccessDenied); }
         if response.status() != StatusCode::OK && response.status() != StatusCode::PARTIAL_CONTENT {
-            return Err(StoreError::TransferFailed);
+            return Err(transfer_status(response.status()));
         }
         return Ok(response);
     }
     Err(StoreError::TransferFailed)
+}
+
+fn transfer_status(status: StatusCode) -> StoreError {
+    match status {
+        StatusCode::UNAUTHORIZED => StoreError::SessionExpired,
+        StatusCode::FORBIDDEN => StoreError::AccessDenied,
+        _ => StoreError::TransferFailed,
+    }
 }
 
 fn range_total(header: &str, offset: u64) -> Option<u64> {
@@ -188,8 +229,11 @@ fn range_total(header: &str, offset: u64) -> Option<u64> {
 }
 
 fn response_filename(response: &reqwest::Response) -> Result<String, StoreError> {
-    if let Some(disposition) = response.headers().get(CONTENT_DISPOSITION)
-        .and_then(|h| h.to_str().ok()) {
+    if let Some(disposition) = response
+        .headers()
+        .get(CONTENT_DISPOSITION)
+        .and_then(|h| h.to_str().ok())
+    {
         for parameter in disposition.split(';').map(str::trim) {
             if let Some(value) = parameter.strip_prefix("filename*=UTF-8''") {
                 return validated_filename(&percent_decode(value)?);
@@ -201,10 +245,15 @@ fn response_filename(response: &reqwest::Response) -> Result<String, StoreError>
             }
         }
     }
-    let name = response.url().path_segments().and_then(Iterator::last)
+    let name = response
+        .url()
+        .path_segments()
+        .and_then(Iterator::last)
         .ok_or(StoreError::Metadata)?;
     let name = percent_decode(name)?;
-    if !name.contains('.') { return Err(StoreError::Metadata); }
+    if !name.contains('.') {
+        return Err(StoreError::Metadata);
+    }
     validated_filename(&name)
 }
 
@@ -213,66 +262,137 @@ fn percent_decode(text: &str) -> Result<String, StoreError> {
     let mut bytes = text.bytes();
     while let Some(byte) = bytes.next() {
         if byte == b'%' {
-            let hi = bytes.next().and_then(|n| (n as char).to_digit(16)).ok_or(StoreError::Metadata)?;
-            let lo = bytes.next().and_then(|n| (n as char).to_digit(16)).ok_or(StoreError::Metadata)?;
+            let hi = bytes
+                .next()
+                .and_then(|n| (n as char).to_digit(16))
+                .ok_or(StoreError::Metadata)?;
+            let lo = bytes
+                .next()
+                .and_then(|n| (n as char).to_digit(16))
+                .ok_or(StoreError::Metadata)?;
             decoded.push((hi * 16 + lo) as u8);
-        } else { decoded.push(byte); }
+        } else {
+            decoded.push(byte);
+        }
     }
     String::from_utf8(decoded).map_err(|_| StoreError::Metadata)
 }
 
 fn validated_filename(name: &str) -> Result<String, StoreError> {
-    let stem = name.split('.').next().unwrap_or_default().to_ascii_uppercase();
-    if name.is_empty() || name.len() > 240 || name == "." || name == ".." ||
-        name.ends_with('.') || name.ends_with(' ') ||
-        name.chars().any(|ch| ch.is_control() || "<>:\"/\\|?*".contains(ch)) ||
-        matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "COM1" | "COM2" | "COM3" |
-            "COM4" | "COM5" | "COM6" | "COM7" | "COM8" | "COM9" | "LPT1" | "LPT2" |
-            "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9")
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    if name.is_empty()
+        || name.len() > 240
+        || name == "."
+        || name == ".."
+        || name.ends_with('.')
+        || name.ends_with(' ')
+        || name
+            .chars()
+            .any(|ch| ch.is_control() || "<>:\"/\\|?*".contains(ch))
+        || matches!(
+            stem.as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        )
     {
         return Err(StoreError::Integrity);
     }
     Ok(name.to_owned())
 }
 
-fn extract_zip(archive: &Path, staging: &Path, dest: &Path, cancel: &CancelToken)
-    -> Result<(), StoreError> {
+fn extract_zip(
+    archive: &Path,
+    staging: &Path,
+    dest: &Path,
+    cancel: &CancelToken,
+) -> Result<(), StoreError> {
     let extracted = staging.join("extracted");
-    if extracted.exists() { std::fs::remove_dir_all(&extracted)?; }
+    if extracted.exists() {
+        std::fs::remove_dir_all(&extracted)?;
+    }
     std::fs::create_dir_all(&extracted)?;
     let result = (|| {
         let mut zip = zip::ZipArchive::new(std::fs::File::open(archive)?)
             .map_err(|_| StoreError::Integrity)?;
         for index in 0..zip.len() {
-            if cancel.is_cancelled() { return Err(StoreError::Cancelled); }
+            if cancel.is_cancelled() {
+                return Err(StoreError::Cancelled);
+            }
             let mut entry = zip.by_index(index).map_err(|_| StoreError::Integrity)?;
-            let raw = entry.name();
-            if raw.starts_with('/') || raw.contains('\\') || raw.contains(':') ||
-                raw.split('/').any(|component| component == "..") ||
-                entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
-            { return Err(StoreError::Integrity); }
+            let raw = entry.name().map_err(|_| StoreError::Integrity)?;
+            if raw.starts_with('/')
+                || raw.contains('\\')
+                || raw.contains(':')
+                || raw.split('/').any(|component| component == "..")
+                || entry
+                    .unix_mode()
+                    .is_some_and(|mode| mode & 0o170000 == 0o120000)
+            {
+                return Err(StoreError::Integrity);
+            }
             for component in raw.split('/').filter(|component| !component.is_empty()) {
                 validated_filename(component)?;
             }
             let enclosed = entry.enclosed_name().ok_or(StoreError::Integrity)?;
             let target = extracted.join(enclosed);
-            if entry.is_dir() { std::fs::create_dir_all(target)?; continue; }
-            if target.exists() { return Err(StoreError::Integrity); }
-            if let Some(parent) = target.parent() { std::fs::create_dir_all(parent)?; }
+            if entry.is_dir() {
+                std::fs::create_dir_all(target)?;
+                continue;
+            }
+            if target.exists() {
+                return Err(StoreError::Integrity);
+            }
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
             let mut output = std::fs::File::create(target)?;
             std::io::copy(&mut entry, &mut output)?;
         }
-        if cancel.is_cancelled() { return Err(StoreError::Cancelled); }
-        if let Some(parent) = dest.parent() { std::fs::create_dir_all(parent)?; }
+        if cancel.is_cancelled() {
+            return Err(StoreError::Cancelled);
+        }
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         if dest.exists() {
-            if std::fs::symlink_metadata(dest)?.file_type().is_symlink() || !dest.is_dir() ||
-                std::fs::read_dir(dest)?.next().is_some() { return Err(StoreError::Io); }
+            if std::fs::symlink_metadata(dest)?.file_type().is_symlink()
+                || !dest.is_dir()
+                || std::fs::read_dir(dest)?.next().is_some()
+            {
+                return Err(StoreError::Io);
+            }
             std::fs::remove_dir(dest)?;
         }
         std::fs::rename(&extracted, dest)?;
         Ok(())
     })();
-    if result.is_err() { let _ = std::fs::remove_dir_all(extracted); }
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(extracted);
+    }
     result
 }
 
@@ -289,9 +409,18 @@ mod tests {
 
     #[test]
     fn signed_filename_is_decoded_and_restricted_to_leaf_name() {
-        assert_eq!(percent_decode("game%20part1.rar").unwrap(), "game part1.rar");
-        assert_eq!(validated_filename("../evil.zip"), Err(StoreError::Integrity));
-        assert_eq!(validated_filename("work.part1.exe").unwrap(), "work.part1.exe");
+        assert_eq!(
+            percent_decode("game%20part1.rar").unwrap(),
+            "game part1.rar"
+        );
+        assert_eq!(
+            validated_filename("../evil.zip"),
+            Err(StoreError::Integrity)
+        );
+        assert_eq!(
+            validated_filename("work.part1.exe").unwrap(),
+            "work.part1.exe"
+        );
     }
 
     #[test]
@@ -299,13 +428,58 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let archive = root.path().join("archive.zip");
         let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
-        writer.start_file("../outside.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        writer
+            .start_file("../outside.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         use std::io::Write;
         writer.write_all(b"escape").unwrap();
         writer.finish().unwrap();
         let target = root.path().join("installed");
-        assert_eq!(extract_zip(&archive, root.path(), &target, &CancelToken::new()), Err(StoreError::Integrity));
+        assert_eq!(
+            extract_zip(&archive, root.path(), &target, &CancelToken::new()),
+            Err(StoreError::Integrity)
+        );
         assert!(!target.exists());
         assert!(!root.path().join("outside.txt").exists());
+    }
+    #[test]
+    fn valid_zip_extracts_only_after_checks_and_cancel_leaves_no_install() {
+        use std::io::Write;
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("owned.zip");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        writer
+            .start_file("game/start.exe", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"executable fixture").unwrap();
+        writer.finish().unwrap();
+        let install = root.path().join("installed");
+        let cancelled = CancelToken::new();
+        cancelled.cancel();
+        assert_eq!(
+            extract_zip(&archive, root.path(), &install, &cancelled),
+            Err(StoreError::Cancelled)
+        );
+        assert!(!install.exists());
+        extract_zip(&archive, root.path(), &install, &CancelToken::new()).unwrap();
+        assert_eq!(
+            std::fs::read(install.join("game/start.exe")).unwrap(),
+            b"executable fixture"
+        );
+    }
+
+    #[test]
+    fn http_error_mapping_never_echoes_signed_urls_or_cookies() {
+        assert_eq!(
+            transfer_status(StatusCode::UNAUTHORIZED),
+            StoreError::SessionExpired
+        );
+        assert_eq!(
+            transfer_status(StatusCode::FORBIDDEN),
+            StoreError::AccessDenied
+        );
+        let error = transfer_status(StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error, StoreError::TransferFailed);
+        assert!(!error.to_string().contains("sensitive_session_cookie"));
     }
 }

@@ -10355,10 +10355,10 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
+ "shinki-emu-store",
  "tempfile",
- "thiserror 2.0.21",
  "tokio",
- "windows 0.62.2",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 
