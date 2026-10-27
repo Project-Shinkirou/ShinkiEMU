@@ -11,7 +11,7 @@ description: Cargo 编排、核心构建脚本、打包及明确的 blocked 状�
 
 Ren’Py 另需固定的官方 SDK，设置 `RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE`，并准备与 CPython 3.12.7 匹配的官方 Cython 3.2.4 编译器。这些属于上游编译和运行依赖。SDK 输入以 fork 的 `shinki/sdk.json` 为准。
 
-工作区统一使用 Rust 2024 edition，最低 Rust 版本为 1.99，固定工具链为 Rust 1.99.1。Android 打包使用 Gradle 9.8.2、AGP 9.4.1 内置 Kotlin、JDK 27、platform 37.2、build-tools 37.0.0 和稳定版 NDK r30（30.0.16248370）。CMVS 正在独立工作树开发，暂不参与依赖升级后的构建；开发完成后单独合入。所有目标均标为 blocked，工作区不包含该 crate。
+工作区统一使用 Rust 2024 edition，最低 Rust 版本为 1.99，固定工具链为 Rust 1.99.1。Android 打包使用 Gradle 9.8.2、AGP 9.4.1 内置 Kotlin、JDK 27、platform 37.2、build-tools 37.0.0 和稳定版 NDK r30（30.0.16248370）。CMVS 目前只构建 Windows x64，其他目标尚无经过验证的宿主路径。所有目标均标为 blocked，工作区不包含该 crate。
 
 原生库固定 vcpkg baseline `0c2a9ace1964b818b15f7ae50ba1c42404918a7b`，对应 FFmpeg 9.0.2#2、libass 0.17.5、HarfBuzz 14.6.0、FriBidi 1.0.17、FreeType 2.14.3。CI 使用 NASM 3.02，DXC 固定为 1.9.2609。构建运行在 JDK 27 上，Java/Kotlin 字节码仍以 JVM 17 为目标，保持 Android 兼容性。RoukakuEngine 固定到已发布 revision `3598c63cea7d952d31499c94b1577233d370dc26`，外部核心来源由独立任务合入。Bangumi/VNDB SDK 的公开 API 仍要求 reqwest 0.12 类型，因此保留最新补丁版 0.12.28，应用自己的 HTTP 请求使用 0.13.5。Ren’Py 的 CPython/Cython/SDL 输入继续匹配其固定 SDK 的 ABI。Android 静态核心通过来源 patch 共用工作区的 ABI 与构建辅助库，不再解析第二份同版本的构建辅助包。
 
