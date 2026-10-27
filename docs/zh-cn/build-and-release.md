@@ -50,6 +50,11 @@ build 必须在 `--manager`、`--core`、`--all-cores` 中选一项。check 选�
 
 Manager 在创建网络客户端和工作线程前，仅初始化一次进程级 Rustls 加密实现，选择与 reqwest 0.13 和平台证书校验栈一致的 AWS-LC。VNDB 当前使用的 reqwest 0.12 还会启用 ring，不能依靠 feature 自动判断默认实现。Steam 等 provider 自身不安装进程级默认实现。
 
+### 编译进程序的商店插件
+
+`shinki-emu-store` 定义对象安全的 provider/session trait、取消机制、密钥库边界和 `Registry`。Manager 默认启用 `store-steam`、`store-dlsite` 和 `store-dmm`。只编译 Steam 时，对 Manager 包使用 `--no-default-features --features store-steam`。新增商店需要一个 provider crate、对应的可选 Cargo 依赖与 feature，以及 `manager_app/store.rs` 中一行 `registry.register(...)`；不动态加载库。Provider 返回进程内的不透明下载计划、无凭据的固定 `StoreError` 消息，以及账号拥有的作品。临时文件必须使用传入的 `.shinki/store/<商店>/` 工作目录；凭据只通过 `SecretStore` 保存。
+
+
 ### Linux 桌面
 
 使用仓库固定的 Rust 1.99.1 工具链。在 Ubuntu 22.04/24.04 上显式安装原生开发包：

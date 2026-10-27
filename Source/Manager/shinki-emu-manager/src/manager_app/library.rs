@@ -240,7 +240,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             diagnostic_severity: "info",
             plugin_errors: BTreeMap::new(),
-            steam: steam::SteamRuntime::new(&data_dir),
+            store: store::StoreRuntime::new(&data_dir),
             data_dir,
             extensions: None,
             game_roots,
@@ -347,11 +347,12 @@ impl ShinkiEmuManagerController {
                 choices
                     .iter()
                     .all(|choice| choice.report.family_id == first.report.family_id)
-            }) {
-                self.library
-                    .set_game_family(game_id, Some(&first.report.family_id))
-                    .map_err(|error| error.to_string())?;
-            }
+            })
+        {
+            self.library
+                .set_game_family(game_id, Some(&first.report.family_id))
+                .map_err(|error| error.to_string())?;
+        }
         self.probe_choices.insert(game_id.to_owned(), choices);
         if let Some(plugin_id) = selected {
             self.install_probe_choice(game_id, &plugin_id)?;

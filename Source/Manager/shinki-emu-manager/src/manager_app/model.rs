@@ -1,10 +1,10 @@
 use super::*;
 use shinki_emu_manager_ui_slint::{
-    describe_error, AppViewModel, BangumiViewModel, ChoiceViewModel, CoresViewModel,
-    EngineActionViewModel, ExcludedViewModel, FiltersViewModel, GameCardViewModel,
-    GameSettingsViewModel, LibraryViewModel, MatchViewModel, NoticeViewModel, NoticesViewModel,
-    OnboardingViewModel, PatchGameViewModel, PatchViewModel, PlaySessionViewModel,
-    SelectedGameViewModel, SelectionViewModel, SessionViewModel, SettingsViewModel,
+    AppViewModel, BangumiViewModel, ChoiceViewModel, CoresViewModel, EngineActionViewModel,
+    ExcludedViewModel, FiltersViewModel, GameCardViewModel, GameSettingsViewModel,
+    LibraryViewModel, MatchViewModel, NoticeViewModel, NoticesViewModel, OnboardingViewModel,
+    PatchGameViewModel, PatchViewModel, PlaySessionViewModel, SelectedGameViewModel,
+    SelectionViewModel, SessionViewModel, SettingsViewModel, describe_error,
 };
 
 impl ShinkiEmuManagerController {
@@ -266,7 +266,7 @@ impl ShinkiEmuManagerController {
             session: self.session_view()?,
             onboarding: OnboardingViewModel { roots },
             resale_notice: self.notice_reading.view(),
-            steam: self.steam.view(),
+            store: self.store.view(),
         })
     }
 

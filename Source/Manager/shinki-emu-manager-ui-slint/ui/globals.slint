@@ -597,19 +597,21 @@ export global ResaleNoticeState {
     }
 }
 
-// Owned Steam game. `app-id` carries the u32 bit pattern; sizes are preformatted.
-export struct SteamGame {
-    app-id: int,
+// Owned store game. Identifiers are opaque strings; sizes are preformatted.
+export struct StoreGame {
+    title-id: string,
     name: string,
     size: string,
     platforms: string,
     languages: string,
     installed: bool,
     update-available: bool,
+    update-unknown: bool,
+    unavailable-reason: string,
 }
 
-export struct SteamDepot {
-    depot-id: int,
+export struct StoreDepot {
+    depot-id: string,
     name: string,
     platform: string,
     language: string,
@@ -619,9 +621,9 @@ export struct SteamDepot {
 
 // `state`: idle | preparing | downloading | verifying | cancelling | cancelled | complete | error.
 // `progress` is -1 while the total is unknown.
-export struct SteamTransfer {
+export struct StoreTransfer {
     state: string,
-    app-id: int,
+    title-id: string,
     // Name of the game being transferred (looked up in `games`).
     name: string,
     bytes: string,
@@ -630,31 +632,43 @@ export struct SteamTransfer {
     eta: string,
     progress: float,
     status: string,
+    notice: string,
+    can-open-destination: bool,
     error: string,
 }
 
-// Steam sub-page of 添加游戏. Secrets (password, guard code, branch password)
+// Store sub-page of 添加游戏. Secrets (password, guard code, branch password)
 // only travel through the callbacks; the model never sends them back.
-export global Steam {
+export global Store {
+    in-out property <[Choice]> providers;
+    in-out property <string> provider-id;
+    in-out property <string> provider-name;
+    in-out property <bool> can-qr;
+    in-out property <bool> can-credentials;
+    in-out property <bool> can-browser;
+    in-out property <string> browser-url;
+    in-out property <bool> has-branches;
+    in-out property <bool> has-depots;
+    in-out property <bool> can-verify;
     // signed-out | connecting | email-code | mobile-code | mobile-confirmation | qr-code | signed-in | error
     in-out property <string> login-state: "signed-out";
     in-out property <string> account-name;
     in-out property <bool> can-import-local;
-    // QR code of the Steam challenge URL, rendered locally by the adapter.
+    // QR code of the Store challenge URL, rendered locally by the adapter.
     in-out property <image> qr;
     in-out property <string> guard-hint;
     in-out property <string> status;
     in-out property <string> error;
     // idle | loading | ready | error
     in-out property <string> library-state: "idle";
-    in-out property <[SteamGame]> games;
+    in-out property <[StoreGame]> games;
     in-out property <string> query;
-    in-out property <int> selected-app-id;
-    // Row of `games` matching `selected-app-id`; app-id 0 when none.
-    in-out property <SteamGame> selected;
+    in-out property <string> selected-title-id;
+    // Row of `games` matching `selected-title-id`; empty when none.
+    in-out property <StoreGame> selected;
     // Content depots (no language) and independent language depots, split by the adapter.
-    in-out property <[SteamDepot]> depots;
-    in-out property <[SteamDepot]> language-depots;
+    in-out property <[StoreDepot]> depots;
+    in-out property <[StoreDepot]> language-depots;
     // Count and total size of the selected depots of both lists.
     in-out property <int> selected-depot-count;
     in-out property <string> selected-size;
@@ -662,11 +676,15 @@ export global Steam {
     in-out property <string> selected-branch;
     in-out property <bool> branch-password-set;
     in-out property <string> library-root;
-    in-out property <SteamTransfer> transfer: { state: "idle", progress: -1 };
+    in-out property <StoreTransfer> transfer: { state: "idle", progress: -1 };
     // UI-only: phone shows the selected game as a full-screen sheet.
     in-out property <bool> detail-open;
 
     callback open();
+    callback select-provider(string);
+    callback browser-login(string);
+    callback open-browser();
+    callback open-destination();
     callback login(string, string);
     callback qr-login();
     callback import-local();
@@ -674,8 +692,8 @@ export global Steam {
     callback logout();
     callback refresh-library();
     callback search(string);
-    callback select-game(int);
-    callback select-depot(int, bool);
+    callback select-game(string);
+    callback select-depot(string, bool);
     callback select-branch(string, string);
     callback choose-library-root();
     callback download();

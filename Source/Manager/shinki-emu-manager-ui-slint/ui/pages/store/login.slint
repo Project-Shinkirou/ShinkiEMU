@@ -2,7 +2,7 @@ import {
     MaterialPalette, MaterialText, MaterialTypography, ScrollView, TextField, FilledButton, TonalButton,
     OutlineButton, TextButton, CircularProgressIndicator, HorizontalDivider, Icon,
 } from "@material";
-import { Steam } from "../../globals.slint";
+import { Store } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { ErrorBanner } from "./parts.slint";
 
@@ -56,7 +56,7 @@ component PasswordForm {
 
     function submit() {
         if root.ready && root.enabled {
-            Steam.login(account.text, password.text);
+            Store.login(account.text, password.text);
             password.text = "";
         }
     }
@@ -68,8 +68,8 @@ component PasswordForm {
         spacing: 12px;
 
         account := TextField {
-            label: "Steam 账户名";
-            text: Steam.account-name;
+            label: Store.provider-name + " 账户名";
+            text: Store.account-name;
             enabled: root.enabled;
             input-type: InputType.text;
             accepted => { password.focus(); }
@@ -92,13 +92,13 @@ component PasswordForm {
     }
 }
 
-// Steam Guard: email or mobile authenticator code.
+// Store Guard: email or mobile authenticator code.
 component GuardForm {
     in property <bool> email;
 
     function submit() {
         if code.text != "" {
-            Steam.submit-guard(code.text);
+            Store.submit-guard(code.text);
             code.text = "";
         }
     }
@@ -114,8 +114,8 @@ component GuardForm {
         code := TextField {
             label: root.email ? "邮箱验证码" : "手机令牌验证码";
             input-type: InputType.text;
-            supporting-text: Steam.guard-hint != "" ? Steam.guard-hint
-                : root.email ? "Steam 已向你的邮箱发送验证码。" : "打开 Steam 手机应用，输入令牌中显示的验证码。";
+            supporting-text: Store.guard-hint != "" ? Store.guard-hint
+                : root.email ? "验证码已发送至你的邮箱。" : "打开商店手机应用，输入令牌中显示的验证码。";
             accepted => { root.submit(); }
         }
         HorizontalLayout {
@@ -123,7 +123,7 @@ component GuardForm {
             spacing: 8px;
             TextButton {
                 text: "取消";
-                clicked => { Steam.logout(); }
+                clicked => { Store.logout(); }
             }
             FilledButton {
                 text: "提交";
@@ -179,17 +179,17 @@ component PendingStep {
             alignment: end;
             TextButton {
                 text: "取消";
-                clicked => { Steam.logout(); }
+                clicked => { Store.logout(); }
             }
         }
     }
 }
 
-// Signed-out and pending login states of the Steam sub-page.
-export component SteamLogin {
+// Signed-out and pending login states of the Store sub-page.
+export component StoreLogin {
     in property <bool> compact;
 
-    property <string> state: Steam.login-state;
+    property <string> state: Store.login-state;
     property <bool> choosing: root.state == "signed-out" || root.state == "error";
     property <length> pad: root.compact ? 16px : 24px;
 
@@ -213,63 +213,88 @@ export component SteamLogin {
                 alignment: start;
 
                 if root.choosing : MaterialText {
-                    text: "登录 Steam 后可以下载你已拥有的游戏。";
+                    text: "登录 " + Store.provider-name + " 后可以下载你已拥有的游戏。";
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-surface-variant;
                     wrap: word-wrap;
                     overflow: clip;
                 }
 
-                if Steam.error != "" : ErrorBanner {
+                if Store.error != "" : ErrorBanner {
                     title: "登录失败";
-                    text: Steam.error;
+                    text: Store.error;
                 }
 
-                if root.choosing : LoginCard {
+                if root.choosing && Store.can-credentials : LoginCard {
                     title: "账户密码登录";
                     PasswordForm { }
                 }
 
-                if root.choosing : LoginCard {
+                if root.choosing && (Store.can-qr || Store.can-import-local) : LoginCard {
                     title: "其他登录方式";
                     VerticalLayout {
                         spacing: 8px;
-                        TonalButton {
+                        if Store.can-qr : TonalButton {
                             icon: Icons.qr-code;
                             text: "扫码登录";
-                            clicked => { Steam.qr-login(); }
+                            clicked => { Store.qr-login(); }
                         }
-                        if Steam.can-import-local : OutlineButton {
+                        if Store.can-import-local : OutlineButton {
                             icon: Icons.upload-file;
-                            text: "导入 Steam 客户端登录";
-                            clicked => { Steam.import-local(); }
+                            text: "导入 " + Store.provider-name + " 客户端登录";
+                            clicked => { Store.import-local(); }
+                        }
+                    }
+                }
+
+                if root.choosing && Store.can-browser : LoginCard {
+                    title: "浏览器登录";
+                    description: "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。";
+                    VerticalLayout {
+                        spacing: 12px;
+                        OutlineButton {
+                            text: "打开官网登录页";
+                            enabled: Store.browser-url != "";
+                            clicked => { Store.open-browser(); }
+                        }
+                        cookies := TextField {
+                            label: "Cookie";
+                            input-type: InputType.password;
+                            accepted(text) => {
+                                if text != "" { Store.browser-login(text); self.text = ""; }
+                            }
+                        }
+                        FilledButton {
+                            text: "使用 Cookie 登录";
+                            enabled: cookies.text != "";
+                            clicked => { Store.browser-login(cookies.text); cookies.text = ""; }
                         }
                     }
                 }
 
                 if root.state == "connecting" : LoginCard {
                     PendingStep {
-                        title: "正在连接 Steam";
-                        body: Steam.status;
+                        title: "正在连接 " + Store.provider-name;
+                        body: Store.status;
                     }
                 }
 
                 if root.state == "email-code" || root.state == "mobile-code" : LoginCard {
-                    title: "Steam 令牌验证";
-                    description: Steam.account-name != "" ? "账户：" + Steam.account-name : "";
+                    title: "验证码验证";
+                    description: Store.account-name != "" ? "账户：" + Store.account-name : "";
                     GuardForm { email: root.state == "email-code"; }
                 }
 
                 if root.state == "mobile-confirmation" : LoginCard {
                     PendingStep {
-                        title: "请在 Steam 手机应用中确认";
-                        body: Steam.guard-hint != "" ? Steam.guard-hint : "在手机上批准这次登录后会自动继续。";
+                        title: "请在 " + Store.provider-name + " 手机应用中确认";
+                        body: Store.guard-hint != "" ? Store.guard-hint : "在手机上批准这次登录后会自动继续。";
                     }
                 }
 
                 if root.state == "qr-code" : LoginCard {
                     title: "扫码登录";
-                    description: "用 Steam 手机应用扫描二维码并确认登录。";
+                    description: "用 " + Store.provider-name + " 手机应用扫描二维码并确认登录。";
 
                     HorizontalLayout {
                         alignment: center;
@@ -280,24 +305,24 @@ export component SteamLogin {
                             // Quiet zone stays white in dark mode so the code scans.
                             background: white;
                             accessible-role: image;
-                            accessible-label: "Steam 登录二维码";
+                            accessible-label: "登录二维码";
 
-                            if Steam.qr.width > 0 : Image {
+                            if Store.qr.width > 0 : Image {
                                 width: 200px;
                                 height: 200px;
-                                source: Steam.qr;
+                                source: Store.qr;
                                 image-rendering: pixelated;
                                 image-fit: contain;
                             }
-                            if Steam.qr.width == 0 : CircularProgressIndicator {
+                            if Store.qr.width == 0 : CircularProgressIndicator {
                                 width: 40px;
                                 height: 40px;
                                 indeterminate: true;
                             }
                         }
                     }
-                    if Steam.status != "" : MaterialText {
-                        text: Steam.status;
+                    if Store.status != "" : MaterialText {
+                        text: Store.status;
                         style: MaterialTypography.body-medium;
                         color: MaterialPalette.on-surface-variant;
                         horizontal-alignment: center;
@@ -308,7 +333,7 @@ export component SteamLogin {
                         alignment: end;
                         TextButton {
                             text: "取消";
-                            clicked => { Steam.logout(); }
+                            clicked => { Store.logout(); }
                         }
                     }
                 }

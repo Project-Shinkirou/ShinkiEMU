@@ -1,20 +1,21 @@
 import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, ScrollView, TextField, TextButton, OutlineButton, VerticalDivider, Icon } from "@material";
-import { App, Steam } from "../globals.slint";
+import { App, Store } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme } from "../theme.slint";
-import { SteamLogin } from "./steam/login.slint";
-import { SteamDetail } from "./steam/detail.slint";
-import { SteamGameRow, StateMessage, ErrorBanner, TransferPanel } from "./steam/parts.slint";
+import { StoreLogin } from "./store/login.slint";
+import { StoreDetail } from "./store/detail.slint";
+import { StoreGameRow, StateMessage, ErrorBanner, TransferPanel } from "./store/parts.slint";
+import { ChoiceSelect } from "../components/select.slint";
 
 // Owned-games list with search, account row and the running transfer.
-component SteamLibrary {
+component StoreLibrary {
     in property <bool> show-transfer;
-    callback chosen(app-id: int);
+    callback chosen(title-id: string);
 
     function clear-search() {
         debounce.running = false;
-        Steam.query = "";
-        Steam.search("");
+        Store.query = "";
+        Store.search("");
     }
 
     debounce := Timer {
@@ -22,7 +23,7 @@ component SteamLibrary {
         running: false;
         triggered => {
             self.running = false;
-            Steam.search(Steam.query);
+            Store.search(Store.query);
         }
     }
 
@@ -37,7 +38,7 @@ component SteamLibrary {
             spacing: 8px;
             MaterialText {
                 horizontal-stretch: 1;
-                text: Steam.account-name != "" ? "已登录：" + Steam.account-name : "已登录 Steam";
+                text: Store.account-name != "" ? "已登录：" + Store.account-name : "已登录 " + Store.provider-name;
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 vertical-alignment: center;
@@ -46,26 +47,26 @@ component SteamLibrary {
             TextButton {
                 horizontal-stretch: 0;
                 text: "退出登录";
-                enabled: !(Steam.transfer.state == "preparing" || Steam.transfer.state == "downloading" || Steam.transfer.state == "verifying" || Steam.transfer.state == "cancelling");
-                clicked => { Steam.logout(); }
+                enabled: !(Store.transfer.state == "preparing" || Store.transfer.state == "downloading" || Store.transfer.state == "verifying" || Store.transfer.state == "cancelling");
+                clicked => { Store.logout(); }
             }
         }
 
         TextField {
             label: "搜索已拥有的游戏";
             leading-icon: Icons.search;
-            trailing-icon: Steam.query != "" ? Icons.close : @image-url("");
-            text <=> Steam.query;
+            trailing-icon: Store.query != "" ? Icons.close : @image-url("");
+            text <=> Store.query;
             edited => { debounce.restart(); }
             accepted => {
                 debounce.running = false;
-                Steam.search(Steam.query);
+                Store.search(Store.query);
             }
             trailing-icon-clicked => { root.clear-search(); }
         }
 
         if root.show-transfer : TransferPanel {
-            transfer: Steam.transfer;
+            transfer: Store.transfer;
             show-name: true;
         }
 
@@ -77,7 +78,7 @@ component SteamLibrary {
                 y: 0px;
                 width: parent.width;
                 height: parent.height;
-                visible: Steam.games.length > 0;
+                visible: Store.games.length > 0;
 
                 VerticalLayout {
                     width: list.visible-width;
@@ -85,15 +86,15 @@ component SteamLibrary {
                     spacing: 2px;
                     alignment: start;
 
-                    for game in Steam.games : SteamGameRow {
+                    for game in Store.games : StoreGameRow {
                         game: game;
-                        selected: game.app-id == Steam.selected-app-id;
-                        activate => { root.chosen(game.app-id); }
+                        selected: game.title-id == Store.selected-title-id;
+                        activate => { root.chosen(game.title-id); }
                     }
                 }
             }
 
-            if Steam.games.length == 0 : VerticalLayout {
+            if Store.games.length == 0 : VerticalLayout {
                 x: 0px;
                 y: 0px;
                 width: parent.width;
@@ -101,28 +102,28 @@ component SteamLibrary {
                 alignment: center;
                 padding-bottom: 48px;
 
-                if Steam.library-state == "loading" || Steam.library-state == "idle" : StateMessage {
+                if Store.library-state == "loading" || Store.library-state == "idle" : StateMessage {
                     busy: true;
                     title: "加载游戏库";
-                    body: Steam.status;
+                    body: Store.status;
                 }
-                if Steam.library-state == "error" : StateMessage {
+                if Store.library-state == "error" : StateMessage {
                     icon: Icons.error;
                     error: true;
                     title: "游戏库加载失败";
-                    body: Steam.error;
+                    body: Store.error;
                     HorizontalLayout {
                         alignment: center;
                         OutlineButton {
                             icon: Icons.refresh;
                             text: "重试";
-                            clicked => { Steam.refresh-library(); }
+                            clicked => { Store.refresh-library(); }
                         }
                     }
                 }
-                if Steam.library-state == "ready" && Steam.query != "" : StateMessage {
+                if Store.library-state == "ready" && Store.query != "" : StateMessage {
                     icon: Icons.search;
-                    title: "没有找到“" + Steam.query + "”";
+                    title: "没有找到“" + Store.query + "”";
                     body: "换个关键词试试。";
                     HorizontalLayout {
                         alignment: center;
@@ -132,56 +133,58 @@ component SteamLibrary {
                         }
                     }
                 }
-                if Steam.library-state == "ready" && Steam.query == "" : StateMessage {
+                if Store.library-state == "ready" && Store.query == "" : StateMessage {
                     icon: Icons.library-books;
                     title: "这个账户还没有游戏";
-                    body: "在 Steam 购买或领取游戏后，刷新即可看到。";
+                    body: "在商店购买或领取游戏后，刷新即可看到。";
                     HorizontalLayout {
                         alignment: center;
                         OutlineButton {
                             icon: Icons.refresh;
                             text: "刷新";
-                            clicked => { Steam.refresh-library(); }
+                            clicked => { Store.refresh-library(); }
                         }
                     }
                 }
             }
 
             // A refresh failure keeps the old list; say so above it.
-            if Steam.games.length > 0 && Steam.library-state == "error" && Steam.error != "" : ErrorBanner {
+            if Store.games.length > 0 && Store.library-state == "error" && Store.error != "" : ErrorBanner {
                 x: 0px;
                 y: 0px;
                 width: parent.width;
                 height: self.preferred-height;
-                text: Steam.error;
+                text: Store.error;
             }
         }
     }
 }
 
-// Steam 下载: login, then the owned-games master-detail view. Phones and
+// Store 下载: login, then the owned-games master-detail view. Phones and
 // medium widths show the selected game as a full-screen sheet.
-export component SteamPage {
+export component StorePage {
     in property <bool> compact;
 
     property <length> bar-height: 64px;
-    property <bool> signed-in: Steam.login-state == "signed-in";
+    property <length> picker-height: Store.providers.length > 1 ? 80px : 0px;
+    property <length> content-top: root.bar-height + root.picker-height;
+    property <bool> signed-in: Store.login-state == "signed-in";
     property <bool> two-pane: root.width >= 760px;
     property <length> list-width: clamp(root.width * 0.4, 320px, 440px);
-    property <bool> has-selection: Steam.selected.app-id != 0;
-    property <bool> sheet-open: root.signed-in && !root.two-pane && Steam.detail-open && root.has-selection;
+    property <bool> has-selection: Store.selected.title-id != "";
+    property <bool> sheet-open: root.signed-in && !root.two-pane && Store.detail-open && root.has-selection;
     // Widening a phone sheet into master-detail drops its back-stack level.
     changed two-pane => {
         if root.two-pane {
-            Steam.detail-open = false;
+            Store.detail-open = false;
         }
     }
 
-    function choose(app-id: int) {
-        Steam.selected-app-id = app-id;
-        Steam.select-game(app-id);
+    function choose(title-id: string) {
+        Store.selected-title-id = title-id;
+        Store.select-game(title-id);
         // Only the phone sheet is a separate back-stack level.
-        Steam.detail-open = !root.two-pane;
+        Store.detail-open = !root.two-pane;
     }
 
     Rectangle {
@@ -192,61 +195,76 @@ export component SteamPage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: "Steam 下载";
+        title: Store.provider-name != "" ? Store.provider-name + " 下载" : "商店下载";
         leading-button: { icon: Icons.arrow-back, tooltip: "返回添加游戏", enabled: true };
         leading-button-clicked => { App.page = "add-game"; }
-        trailing-buttons: root.signed-in ? [{ icon: Icons.refresh, tooltip: "刷新游戏库", enabled: Steam.library-state != "loading" }] : [];
-        trailing-button-clicked(index) => { Steam.refresh-library(); }
+        trailing-buttons: root.signed-in ? [{ icon: Icons.refresh, tooltip: "刷新游戏库", enabled: Store.library-state != "loading" }] : [];
+        trailing-button-clicked(index) => { Store.refresh-library(); }
     }
 
-    if !root.signed-in : SteamLogin {
+    if Store.providers.length > 1 : HorizontalLayout {
+        x: 16px;
+        y: root.bar-height + 8px;
+        width: root.width - 32px;
+        height: root.picker-height - 16px;
+        ChoiceSelect {
+            label: "商店";
+            choices: Store.providers;
+            value: Store.provider-id;
+            enabled: (Store.login-state == "signed-out" || Store.login-state == "signed-in" || Store.login-state == "error") && !(Store.transfer.state == "preparing" || Store.transfer.state == "downloading" || Store.transfer.state == "verifying" || Store.transfer.state == "cancelling");
+            selected(id) => { Store.detail-open = false; Store.select-provider(id); }
+        }
+    }
+
+
+    if !root.signed-in : StoreLogin {
         x: 0px;
-        y: root.bar-height;
+        y: root.content-top;
         width: root.width;
-        height: root.height - root.bar-height;
+        height: root.height - root.content-top;
         compact: root.compact;
     }
 
-    if root.signed-in : SteamLibrary {
+    if root.signed-in : StoreLibrary {
         x: 0px;
-        y: root.bar-height;
+        y: root.content-top;
         width: root.two-pane ? root.list-width : root.width;
-        height: root.height - root.bar-height;
-        show-transfer: Steam.transfer.state != "idle" && (!root.two-pane || Steam.transfer.app-id != Steam.selected.app-id);
-        chosen(app-id) => { root.choose(app-id); }
+        height: root.height - root.content-top;
+        show-transfer: Store.transfer.state != "idle" && (!root.two-pane || Store.transfer.title-id != Store.selected.title-id);
+        chosen(title-id) => { root.choose(title-id); }
     }
 
     if root.signed-in && root.two-pane : Rectangle {
         x: root.list-width;
-        y: root.bar-height;
+        y: root.content-top;
         width: 1px;
-        height: root.height - root.bar-height;
+        height: root.height - root.content-top;
         background: MaterialPalette.outline-variant;
     }
 
-    if root.signed-in && root.two-pane && root.has-selection : SteamDetail {
+    if root.signed-in && root.two-pane && root.has-selection : StoreDetail {
         x: root.list-width + 1px;
-        y: root.bar-height;
+        y: root.content-top;
         width: root.width - root.list-width - 1px;
-        height: root.height - root.bar-height;
+        height: root.height - root.content-top;
     }
 
     if root.signed-in && root.two-pane && !root.has-selection : StateMessage {
         x: root.list-width + 1px;
-        y: root.bar-height;
+        y: root.content-top;
         width: root.width - root.list-width - 1px;
-        height: root.height - root.bar-height;
+        height: root.height - root.content-top;
         icon: Icons.download;
         title: "选择一款游戏";
         body: "选择内容仓库、语言和分支后即可下载。";
     }
 
-    if root.sheet-open : SteamDetail {
+    if root.sheet-open : StoreDetail {
         x: 0px;
         y: 0px;
         width: root.width;
         height: root.height;
         sheet: true;
-        close => { Steam.detail-open = false; }
+        close => { Store.detail-open = false; }
     }
 }

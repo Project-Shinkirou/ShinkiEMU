@@ -1,7 +1,8 @@
 use crate::{Error, Game, Session, timed};
+use shinki_emu_store::{Progress, TransferSummary};
 use std::{
     collections::{HashMap, HashSet},
-    path::{Component, Path, PathBuf},
+    path::{Component, Path},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -25,27 +26,7 @@ pub struct DownloadPlan {
     pub game: Game,
     pub depot_ids: Vec<u32>,
     pub branch: String,
-    /// Shared destination for all selected depots, below a user-selected root.
-    pub install_dir: PathBuf,
     pub verify: bool,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Progress {
-    pub bytes_done: u64,
-    pub bytes_total: u64,
-    pub files_done: u64,
-    pub files_total: u64,
-    pub speed_bytes_per_second: u64,
-    pub eta_seconds: u64,
-}
-
-#[derive(Debug, Default)]
-pub struct TransferSummary {
-    pub files_completed: u64,
-    pub files_skipped: u64,
-    pub bytes_downloaded: u64,
-    pub cancelled: bool,
 }
 
 struct CancellableFetcher {
@@ -219,14 +200,15 @@ impl Session {
     pub async fn download(
         &self,
         plan: &DownloadPlan,
+        install_dir: &Path,
         cancel: watch::Receiver<bool>,
         notify: impl Fn(Progress),
     ) -> Result<TransferSummary, Error> {
         if plan.depot_ids.is_empty() {
             return Err(Error::DepotRequired);
         }
-        tokio::fs::create_dir_all(&plan.install_dir).await?;
-        let mut config = DepotConfig::load(&plan.install_dir);
+        tokio::fs::create_dir_all(install_dir).await?;
+        let mut config = DepotConfig::load(install_dir);
         let mut summary = TransferSummary::default();
         let mut aggregate = Progress::default();
         let start = Instant::now();
@@ -298,7 +280,7 @@ impl Session {
                 {
                     return Err(Error::Integrity);
                 }
-                validate_paths(&plan.install_dir, &manifest)?;
+                validate_paths(install_dir, &manifest)?;
                 aggregate.bytes_total += manifest.files.iter().map(|f| f.size).sum::<u64>();
                 aggregate.files_total += manifest
                     .files
@@ -309,7 +291,7 @@ impl Session {
                     })
                     .count() as u64;
                 let old = if let Some((old_id, old_key)) = config.get_installed(depot_id) {
-                    cached_manifest(&plan.install_dir, depot_id, old_id, &old_key)?
+                    cached_manifest(install_dir, depot_id, old_id, &old_key)?
                 } else {
                     None
                 };
@@ -347,7 +329,7 @@ impl Session {
             .filter(|id| !plan.depot_ids.contains(id))
         {
             let (manifest_id, key) = config.get_installed(DepotId(*id)).ok_or(Error::Integrity)?;
-            let manifest = cached_manifest(&plan.install_dir, DepotId(*id), manifest_id, &key)?
+            let manifest = cached_manifest(install_dir, DepotId(*id), manifest_id, &key)?
                 .ok_or(Error::Integrity)?;
             new_paths.extend(
                 manifest
@@ -375,8 +357,8 @@ impl Session {
                 .cloned()
                 .collect();
             config.set_installing(id, manifest_id, &key);
-            config.save(&plan.install_dir)?;
-            DepotConfig::save_manifest_raw(&plan.install_dir, id, manifest_id, &raw)?;
+            config.save(install_dir)?;
+            DepotConfig::save_manifest_raw(install_dir, id, manifest_id, &raw)?;
             let fetcher = Arc::new(CancellableFetcher {
                 inner: CdnChunkFetcher::new(cdn, pool, auth),
                 cancel: cancel.clone(),
@@ -396,7 +378,7 @@ impl Session {
                 let mut builder = DepotJob::builder()
                     .depot_id(id)
                     .depot_key(key.clone())
-                    .install_dir(plan.install_dir.clone())
+                    .install_dir(install_dir.to_owned())
                     .max_downloads(4)
                     .verify(plan.verify)
                     .retry(retry.clone())
@@ -449,7 +431,7 @@ impl Session {
                 let cleanup = DepotJob::builder()
                     .depot_id(id)
                     .depot_key(key.clone())
-                    .install_dir(plan.install_dir.clone())
+                    .install_dir(install_dir.to_owned())
                     .old_manifest_files(removed)
                     .build()
                     .map_err(|_| Error::Metadata)?;
@@ -459,7 +441,7 @@ impl Session {
                     .map_err(|_| Error::TransferFailed)?;
             }
             config.set_installed(id, manifest_id, &key);
-            config.save(&plan.install_dir)?;
+            config.save(install_dir)?;
         }
         Ok(summary)
     }
@@ -492,7 +474,7 @@ mod tests {
     fn installed_manifest_changes_and_interrupted_installs_require_update() {
         let temp = tempfile::tempdir().unwrap();
         let mut game = Game::default();
-        let mut depot = crate::Depot {
+        let mut depot = crate::catalog::Depot {
             depot_id: 481,
             ..Default::default()
         };

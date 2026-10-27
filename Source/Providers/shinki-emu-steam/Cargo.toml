@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+shinki-emu-store = { path = "../shinki-emu-store" }
 steamroom = "=0.3.0"
 steamroom-client = "=0.3.0"
 tokio = { workspace = true, features = ["fs"] }

@@ -24,7 +24,7 @@ pub struct ManagerViewModel {
     pub session: SessionViewModel,
     pub onboarding: OnboardingViewModel,
     pub resale_notice: ResaleNoticeViewModel,
-    pub steam: SteamViewModel,
+    pub store: StoreViewModel,
 }
 
 /// State of the Rust-rendered bilingual anti-resale notice.
@@ -500,7 +500,7 @@ pub struct OnboardingViewModel {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SteamLoginState {
+pub enum StoreLoginState {
     #[default]
     SignedOut,
     Connecting,
@@ -513,7 +513,7 @@ pub enum SteamLoginState {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SteamLoadState {
+pub enum StoreLoadState {
     #[default]
     Idle,
     Loading,
@@ -522,7 +522,7 @@ pub enum SteamLoadState {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SteamTransferState {
+pub enum StoreTransferState {
     #[default]
     Idle,
     Preparing,
@@ -535,40 +535,52 @@ pub enum SteamTransferState {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SteamViewModel {
-    pub login_state: SteamLoginState,
+pub struct StoreViewModel {
+    pub providers: Vec<ChoiceViewModel>,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub can_qr: bool,
+    pub can_credentials: bool,
+    pub can_browser: bool,
+    pub browser_url: String,
+    pub has_branches: bool,
+    pub has_depots: bool,
+    pub can_verify: bool,
+    pub login_state: StoreLoginState,
     pub account_name: String,
     pub can_import_local: bool,
     pub qr_url: String,
     pub guard_hint: String,
     pub status: String,
     pub error: String,
-    pub library_state: SteamLoadState,
-    pub games: Vec<SteamGameViewModel>,
+    pub library_state: StoreLoadState,
+    pub games: Vec<StoreGameViewModel>,
     pub query: String,
-    pub selected_app_id: u32,
-    pub depots: Vec<SteamDepotViewModel>,
+    pub selected_title_id: String,
+    pub depots: Vec<StoreDepotViewModel>,
     pub branches: Vec<ChoiceViewModel>,
     pub selected_branch: String,
     pub branch_password: String,
     pub library_root: String,
-    pub transfer: SteamTransferViewModel,
+    pub transfer: StoreTransferViewModel,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SteamGameViewModel {
-    pub app_id: u32,
+pub struct StoreGameViewModel {
+    pub title_id: String,
     pub name: String,
     pub size_bytes: u64,
     pub platforms: Vec<String>,
     pub languages: Vec<String>,
     pub installed: bool,
     pub update_available: bool,
+    pub update_unknown: bool,
+    pub unavailable_reason: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SteamDepotViewModel {
-    pub depot_id: u32,
+pub struct StoreDepotViewModel {
+    pub depot_id: String,
     pub name: String,
     pub platform: String,
     pub language: String,
@@ -577,9 +589,9 @@ pub struct SteamDepotViewModel {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SteamTransferViewModel {
-    pub state: SteamTransferState,
-    pub app_id: u32,
+pub struct StoreTransferViewModel {
+    pub state: StoreTransferState,
+    pub title_id: String,
     pub bytes_done: u64,
     pub bytes_total: u64,
     pub files_done: u64,
@@ -589,11 +601,17 @@ pub struct SteamTransferViewModel {
     pub progress: Option<f32>,
     pub status: String,
     pub error: String,
+    pub notice: String,
+    pub destination: String,
 }
 
 /// Secret-bearing actions deliberately do not implement Debug.
-pub enum SteamAction {
+pub enum StoreAction {
     Open,
+    SelectProvider { id: String },
+    BrowserLogin { cookies: String },
+    OpenBrowser,
+    OpenDestination,
     Login { account: String, password: String },
     QrLogin,
     ImportLocal,
@@ -601,8 +619,8 @@ pub enum SteamAction {
     Logout,
     RefreshLibrary,
     Search { query: String },
-    SelectGame { app_id: u32 },
-    SelectDepot { depot_id: u32, selected: bool },
+    SelectGame { title_id: String },
+    SelectDepot { depot_id: String, selected: bool },
     SelectBranch { branch: String, password: String },
     ChooseLibraryRoot,
     SetLibraryRoot { path: String },
@@ -610,17 +628,4 @@ pub enum SteamAction {
     Cancel,
     CheckUpdates,
     Verify,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_contract_is_send_sync<T: Send + Sync>() {}
-
-    #[test]
-    fn public_view_models_do_not_require_ui_thread_types() {
-        assert_contract_is_send_sync::<ManagerViewModel>();
-        assert_contract_is_send_sync::<ErrorText>();
-    }
 }

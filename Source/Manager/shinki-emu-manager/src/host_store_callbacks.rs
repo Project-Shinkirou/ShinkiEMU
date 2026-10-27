@@ -1,7 +1,7 @@
 use super::*;
-use shinki_emu_manager_ui_slint::SteamAction;
+use shinki_emu_manager_ui_slint::StoreAction;
 
-/// Steam sub-page: every UI callback arrives as one [`SteamAction`]. The library
+/// Store sub-page: every UI callback arrives as one [`StoreAction`]. The library
 /// folder picker is a host service, so `ChooseLibraryRoot` becomes
 /// `SetLibraryRoot` once the user picks a folder.
 pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
@@ -9,19 +9,19 @@ pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
         return;
     };
     let w = wiring.clone();
-    adapter.set_on_steam_action(move |action| match action {
-        SteamAction::ChooseLibraryRoot => {
+    adapter.set_on_store_action(move |action| match action {
+        StoreAction::ChooseLibraryRoot => {
             let w = w.clone();
             platform::pick_folder(
-                "选择 Steam 游戏库目录",
+                "选择 Store 游戏库目录",
                 Box::new(move |picked| {
                     w.run(|c| {
                         let path = picked?.to_string_lossy().into_owned();
-                        c.steam_action(SteamAction::SetLibraryRoot { path })
+                        c.store_action(StoreAction::SetLibraryRoot { path })
                     })
                 }),
             );
         }
-        action => w.run(|c| c.steam_action(action)),
+        action => w.run(|c| c.store_action(action)),
     });
 }

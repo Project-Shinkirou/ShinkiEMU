@@ -1,7 +1,7 @@
 use crate::{Error, Session};
 use bytes::Bytes;
 use prost::Message;
-use serde::{Deserialize, Serialize};
+use shinki_emu_store::{LoginUpdate, SecretStore, StoredLogin};
 use std::{
     future::Future,
     pin::Pin,
@@ -19,21 +19,9 @@ use steamroom_client::login::{
     ApprovedAuth, CredentialsLoginFlow, GuardType, LoginError, PreparedLoginBuilder,
 };
 use tokio::sync::mpsc;
-use zeroize::{Zeroize, ZeroizeOnDrop};
-
-pub trait SecretStore: Send + Sync {
-    fn load(&self) -> Result<Option<StoredLogin>, Error>;
-    fn save(&self, login: &StoredLogin) -> Result<(), Error>;
-    fn clear(&self) -> Result<(), Error>;
-}
-
-#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
-pub struct StoredLogin {
-    pub account: String,
-    pub refresh_token: String,
-}
 
 pub enum LoginMethod {
+    #[cfg(test)]
     Anonymous,
     Credentials {
         account: String,
@@ -41,17 +29,6 @@ pub enum LoginMethod {
     },
     Qr,
     Token(StoredLogin),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LoginUpdate {
-    Connecting,
-    EmailCode,
-    MobileCode,
-    MobileConfirmation,
-    QrCode(String),
-    InvalidCode,
-    SignedIn(String),
 }
 
 /// Small side-channel: steamroom 0.3 can discard unrelated messages, including
@@ -183,10 +160,10 @@ async fn finish(
     let tokens = approved.tokens();
     let saved = StoredLogin {
         account: tokens.account_name.clone().ok_or(Error::Metadata)?,
-        refresh_token: tokens.refresh_token.clone(),
+        secret: tokens.refresh_token.clone(),
     };
     let client = approved.finish().await.map_err(login_error)?;
-    store.save(&saved)?;
+    store.save("steam", &saved)?;
     Ok((client, saved.account.clone()))
 }
 
@@ -200,17 +177,18 @@ pub async fn login(
     let (ready, wire) = connect().await?;
     let builder = PreparedLoginBuilder::new(ready).device_name("ShinkiEMU");
     let (client, account) = match method {
+        #[cfg(test)]
         LoginMethod::Anonymous => (
             builder.anonymous().login().await.map_err(login_error)?,
             String::new(),
         ),
         LoginMethod::Token(saved) => {
             let client = builder
-                .with_refresh_token(saved.account.clone(), saved.refresh_token.clone())
+                .with_refresh_token(saved.account.clone(), saved.secret.clone())
                 .login()
                 .await
                 .map_err(login_error)?;
-            store.save(&saved)?;
+            store.save("steam", &saved)?;
             (client, saved.account.clone())
         }
         LoginMethod::Qr => {
@@ -276,6 +254,7 @@ pub async fn login(
     Ok(Session {
         client,
         wire,
+        owned: tokio::sync::Mutex::new(None),
         heartbeat,
         account_name: account,
     })
@@ -291,7 +270,7 @@ pub fn import_local() -> Result<StoredLogin, Error> {
             steamroom_client::steam_creds::extract_token(&account).ok_or(Error::NoLocalLogin)?;
         Ok(StoredLogin {
             account: cached.account_name,
-            refresh_token: cached.refresh_token,
+            secret: cached.refresh_token,
         })
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]

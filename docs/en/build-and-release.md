@@ -50,6 +50,11 @@ Each core owns a real `build.rs`. It validates target inputs and records `core-b
 
 Manager initializes the process-wide Rustls crypto provider once, before creating network clients or workers. It selects AWS-LC, matching reqwest 0.13 and platform certificate verification; VNDB's current reqwest 0.12 dependency also enables ring, so automatic feature-based selection is ambiguous. Steam and the other providers do not install a process default themselves.
 
+### Compile-in stores
+
+`shinki-emu-store` defines the object-safe provider/session traits, cancellation, secret-store boundary and `Registry`. Manager features `store-steam`, `store-dlsite` and `store-dmm` are enabled by default. For a Steam-only build, use `--no-default-features --features store-steam` with the Manager package. Add a provider crate and its optional Cargo feature/dependency, then one `registry.register(...)` line in `manager_app/store.rs`; no dynamic library loading is involved. Providers return opaque in-process plans, fixed secret-free `StoreError` messages, and owned titles only. All provider temporary files must use the supplied `.shinki/store/<provider>/` work directory. Credentials belong exclusively to `SecretStore`.
+
+
 ### Linux desktop
 
 Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:

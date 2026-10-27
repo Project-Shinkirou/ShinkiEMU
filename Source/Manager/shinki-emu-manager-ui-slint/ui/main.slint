@@ -7,7 +7,7 @@ import {
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
-    SteamGame, SteamDepot, SteamTransfer, Steam,
+    StoreGame, StoreDepot, StoreTransfer, Store,
 } from "./globals.slint";
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
 import { LogsOverlay, EngineModal, FatalOverlay } from "./components/dialogs.slint";
@@ -21,7 +21,7 @@ import { SettingsPage } from "./pages/settings.slint";
 import { OnboardingPage } from "./pages/onboarding.slint";
 import { GameView } from "./pages/game-view.slint";
 import { AddGamePage } from "./pages/add-game.slint";
-import { SteamPage } from "./pages/steam.slint";
+import { StorePage } from "./pages/store.slint";
 
 export {
     MaterialWindowAdapter,
@@ -29,7 +29,7 @@ export {
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
-    SteamGame, SteamDepot, SteamTransfer, Steam,
+    StoreGame, StoreDepot, StoreTransfer, Store,
 }
 
 export component ManagerWindow inherits MaterialWindow {
@@ -49,9 +49,9 @@ export component ManagerWindow inherits MaterialWindow {
     property <bool> medium: root.usable-width < 840px || root.usable-height < 480px;
     property <bool> onboarding: App.page == "onboarding";
     property <bool> show-rail: !root.compact && !root.onboarding;
-    // A Steam game opened on a phone is a full-screen sheet above the bottom bar.
-    property <bool> steam-sheet: root.compact && App.page == "steam" && Steam.detail-open && Steam.selected.app-id != 0;
-    property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active && !root.steam-sheet;
+    // A Store game opened on a phone is a full-screen sheet above the bottom bar.
+    property <bool> store-sheet: root.compact && App.page == "store" && Store.detail-open && Store.selected.title-id != "";
+    property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active && !root.store-sheet;
     property <bool> show-library-bar: root.compact && App.page == "library";
     property <length> rail-width: 80px;
     property <length> bar-height: 64px;
@@ -116,7 +116,7 @@ export component ManagerWindow inherits MaterialWindow {
     property <float> watch-pointer-h: Session.pointer-height;
     changed watch-pointer-h => { Session.pointer-state-changed(); }
 
-    // Sidebar order: 游戏库 / 补丁 / 核心 / 滤镜 / 设置. Pages outside it (game settings, add game, Steam) keep 游戏库 selected.
+    // Sidebar order: 游戏库 / 补丁 / 核心 / 滤镜 / 设置. Pages outside it (game settings, add game, Store) keep 游戏库 selected.
     property <[string]> nav-pages: ["library", "patch", "cores", "filters", "settings"];
     property <int> page-index: App.page == "patch" ? 1 : App.page == "cores" ? 2 : App.page == "filters" ? 3 : App.page == "settings" ? 4 : 0;
     property <[NavigationItem]> nav-items: [
@@ -198,11 +198,11 @@ export component ManagerWindow inherits MaterialWindow {
                 return accept;
             }
             // 添加游戏 sub-pages step back one level at a time.
-            if App.page == "steam" && Steam.detail-open && Steam.selected.app-id != 0 {
-                Steam.detail-open = false;
+            if App.page == "store" && Store.detail-open && Store.selected.title-id != "" {
+                Store.detail-open = false;
                 return accept;
             }
-            if App.page == "steam" {
+            if App.page == "store" {
                 App.page = "add-game";
                 return accept;
             }
@@ -307,7 +307,7 @@ export component ManagerWindow inherits MaterialWindow {
                 height: pages.height;
                 compact: root.compact;
             }
-            if App.page == "steam" : SteamPage {
+            if App.page == "store" : StorePage {
                 x: 0px;
                 y: 0px;
                 width: pages.width;

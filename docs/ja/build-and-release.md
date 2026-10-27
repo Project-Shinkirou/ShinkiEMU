@@ -42,6 +42,11 @@ build では `--manager`、`--core`、`--all-cores` のいずれか 1 つを必�
 
 Manager は、ネットワーククライアントやワーカースレッドを作る前に、プロセス全体の Rustls 暗号プロバイダーを一度だけ初期化します。選ぶのは、reqwest 0.13 とプラットフォームの証明書検証スタックに合わせた AWS-LC です。VNDB が現在使っている reqwest 0.12 は ring も有効にするため、feature による自動選択には頼れません。Steam などの provider は、プロセス全体の既定実装を自分ではインストールしません。
 
+### コンパイル時に組み込むストア
+
+`shinki-emu-store` はオブジェクト安全な provider/session trait、キャンセル、秘密情報ストアの境界、`Registry` を定義します。Manager の `store-steam`、`store-dlsite`、`store-dmm` feature は既定で有効です。Steam のみのビルドでは Manager パッケージに `--no-default-features --features store-steam` を指定します。ストアを追加するには provider crate と任意の Cargo 依存関係・feature を追加し、`manager_app/store.rs` に `registry.register(...)` を一行追加します。動的ライブラリのロードは行いません。Provider はプロセス内だけで使う不透明な計画、秘密情報を含まない固定の `StoreError`、所有済み作品を返します。一時ファイルには渡された `.shinki/store/<provider>/` 作業ディレクトリを使い、認証情報は `SecretStore` だけに保存します。
+
+
 ### Linux デスクトップ
 
 リポジトリで固定された Rust 1.98.0 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
