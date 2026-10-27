@@ -40,6 +40,11 @@ description: 安装 Manager、管理原生核心并查看对应平台的运行�
 商店无法确定已安装版本时，Manager 以普通状态显示 **Update status unavailable**，不显示更新操作；刷新游戏库可再次查询。部分下载是压缩包或安装程序，下载完成后会显示 **Downloaded archives need manual extraction or installer run**，并提供“打开下载目录”。请自行解压或运行官方安装程序，再把实际可运行的游戏目录加入 Manager；Manager 不绕过安装程序或 DRM。
 
 
+## DLsite 下载
+
+DLsite 使用浏览器 Cookie 完成登录。打开登录页，在浏览器中完成 CAPTCHA 或其他验证，再将会话 Cookie 粘贴到 Manager。会话只保存在系统密钥库中。库列表来自 DLsite Play 的已购作品；只有 DLsite 为账号提供原版 PC 下载时，Manager 才会下载游戏文件，不会把 Play 阅读器或媒体优化文件当作 PC 游戏安装。ZIP 会经过路径安全检查后解压。RAR 和自解压安装包保留原样，需要手动解压或安装；Manager 不会运行下载的可执行文件。目前查到的 DLsite 接口没有可靠的本地构建标识，因此更新状态显示为未知。
+
+如果作品无法解析出下载计划，请在已登录的浏览器中重现，并导出包含响应内容的 HAR。记录从 `https://play.dlsite.com/api/v3/download?workno=<已购作品编号>` 开始，直到重定向及 `/home/download`、`/home/serial` 或分卷列表请求结束。分享前删除 Cookie、序列号和签名 URL token。不要提交 HAR 文件。
 
 ## 兼容性与元数据
 

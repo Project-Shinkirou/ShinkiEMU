@@ -13,6 +13,8 @@ serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
 futures-util.workspace = true
+zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
+walkdir.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -40,6 +40,11 @@ Only PC downloads owned by the signed-in account are eligible. Play-only, stream
 When the store cannot determine the installed version, Manager shows **Update status unavailable** as a neutral status and hides update actions. Refreshing the library asks the provider again. Some downloads are archives or installers: after completion, **Downloaded archives need manual extraction or installer run** appears with **Open folder**. Extract or run the official installer yourself, then add the playable game directory to Manager; Manager does not bypass installers or DRM.
 
 
+## DLsite downloads
+
+DLsite sign-in uses a browser cookie handoff. Open the sign-in page, complete any CAPTCHA or verification in the browser, then paste the session cookies into Manager. The provider stores the session only in the platform secret store. It lists owned works from DLsite Play and retrieves original PC files only when DLsite exposes an authenticated PC download plan; Play-optimized reader/media files are not installed as games. ZIP files are extracted with path-safety checks. RAR and self-extracting installer parts are kept unchanged and require manual extraction or installation; Manager never runs downloaded executables. DLsite does not provide a reliable installed-build identifier through the researched endpoints, so update state is reported as unknown.
+
+If a work's download plan cannot be resolved, reproduce it in a signed-in browser and export a HAR with response content, beginning at `https://play.dlsite.com/api/v3/download?workno=<owned work number>` through redirects and any `/home/download`, `/home/serial`, or split listing request. Remove cookies, serial numbers and signed URL tokens before sharing. Never commit the HAR.
 
 ## Compatibility and metadata
 
