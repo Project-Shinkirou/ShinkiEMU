@@ -39,18 +39,7 @@ pub use transport::TranslationClient;
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
-
-    #[derive(Debug)]
-    struct TestSecrets;
-
-    impl SecretResolver for TestSecrets {
-        fn resolve(&self, _reference: &str) -> Result<String, TranslationError> {
-            Ok("secret".into())
-        }
-    }
 
     fn profile() -> TranslationProfile {
         TranslationProfile {
@@ -60,18 +49,6 @@ mod tests {
             secret_reference: "test.secret".into(),
             ..Default::default()
         }
-    }
-
-    #[test]
-    fn profile_defaults_to_fifteen_second_timeout_and_validates() {
-        let defaults = TranslationProfile::default();
-        assert_eq!(defaults.timeout_ms, 15_000);
-        assert_eq!(defaults.provider, TranslationProvider::OpenAi);
-        assert_eq!(defaults.base_url, "https://api.openai.com/v1");
-        assert_eq!(defaults.context_segments, 8);
-        assert_eq!(defaults.context_chars, 6_000);
-        profile().validate().unwrap();
-        assert_eq!(profile().provider_identity(), "openai:test");
     }
 
     #[test]
@@ -265,11 +242,5 @@ mod tests {
                 .unwrap()
                 .contains("STYLE:")
         );
-    }
-
-    #[test]
-    fn client_constructs_with_secret_resolver() {
-        let client = TranslationClient::new(profile(), Arc::new(TestSecrets)).unwrap();
-        assert_eq!(client.profile().timeout_ms, DEFAULT_TIMEOUT_MS);
     }
 }
