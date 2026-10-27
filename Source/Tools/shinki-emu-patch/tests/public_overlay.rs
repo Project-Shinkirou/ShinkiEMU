@@ -49,47 +49,29 @@ fn pe_overlay_patches_both_text_slots_and_images_without_changing_originals() {
 }
 
 #[test]
-fn independent_crc_mismatch_is_integrity_failure_and_never_publishes() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = PublicOverlay::new(root.path());
-    fixture.blocks[1].2 ^= 1;
-    fixture.write_patch();
-    fixture.write_script();
-    let error = apply(request(&fixture), Arc::new(AtomicBool::new(false)), |_| {})
-        .err()
-        .unwrap();
-    assert_eq!(error.kind(), PatchErrorKind::Integrity);
-    assert!(!fixture.output.exists());
-    fixture.assert_inputs();
-}
-
-#[test]
-fn truncated_zlib_payload_fails_at_decoder_boundary() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = PublicOverlay::new(root.path());
-    let new_length = fixture.blocks[2].3.len() - 2;
-    fixture.blocks[2].3.truncate(new_length);
-    fixture.write_patch();
-    fixture.write_script();
-    let error = apply(request(&fixture), Arc::new(AtomicBool::new(false)), |_| {})
-        .err()
-        .unwrap();
-    assert_eq!(error.kind(), PatchErrorKind::Codec);
-    assert!(!fixture.output.exists());
-    fixture.assert_inputs();
-}
-
-#[test]
-fn declared_inflate_length_is_not_treated_as_a_hint() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = PublicOverlay::new(root.path());
-    fixture.blocks[0].1 -= 1;
-    fixture.write_patch();
-    fixture.write_script();
-    let error = apply(request(&fixture), Arc::new(AtomicBool::new(false)), |_| {})
-        .err()
-        .unwrap();
-    assert_eq!(error.kind(), PatchErrorKind::Codec);
-    assert!(!fixture.output.exists());
-    fixture.assert_inputs();
+fn corrupt_overlay_blocks_fail_closed_without_publishing_or_changing_inputs() {
+    for (case, expected) in [
+        ("crc", PatchErrorKind::Integrity),
+        ("truncated zlib", PatchErrorKind::Codec),
+        ("declared length", PatchErrorKind::Codec),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let mut fixture = PublicOverlay::new(root.path());
+        match case {
+            "crc" => fixture.blocks[1].2 ^= 1,
+            "truncated zlib" => {
+                let new_length = fixture.blocks[2].3.len() - 2;
+                fixture.blocks[2].3.truncate(new_length);
+            }
+            _ => fixture.blocks[0].1 -= 1,
+        }
+        fixture.write_patch();
+        fixture.write_script();
+        let error = apply(request(&fixture), Arc::new(AtomicBool::new(false)), |_| {})
+            .err()
+            .unwrap();
+        assert_eq!(error.kind(), expected, "{case}");
+        assert!(!fixture.output.exists(), "{case}");
+        fixture.assert_inputs();
+    }
 }

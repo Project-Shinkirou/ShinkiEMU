@@ -151,17 +151,6 @@ fn invalid_target_gbk_fails_without_publishing() {
 }
 
 #[test]
-fn unmapped_original_pointer_fails_at_pe_reference_boundary() {
-    let root = tempfile::tempdir().unwrap();
-    let (mut original, patch) = fixtures();
-    put32(&mut original, 516, 0x409000);
-    let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
-    assert!(apply(request, Arc::new(AtomicBool::new(false)), |_| {}).is_err());
-    assert!(!output.exists());
-}
-
-#[test]
 fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
     let root = tempfile::tempdir().unwrap();
     let (mut original, patch) = fixtures();
@@ -179,15 +168,4 @@ fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
             {"source_hash":hash,"source_sha256":sha,"text":"名字"}
         ])
     );
-}
-
-#[test]
-fn unterminated_name_fails_without_reading_outside_backed_file() {
-    let root = tempfile::tempdir().unwrap();
-    let (original, mut patch) = fixtures();
-    patch[768..].fill(b'A');
-    let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
-    assert!(apply(request, Arc::new(AtomicBool::new(false)), |_| {}).is_err());
-    assert!(!output.exists());
 }

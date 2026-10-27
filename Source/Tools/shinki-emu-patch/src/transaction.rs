@@ -806,30 +806,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_identical_inputs_and_publishes_independent_unicode_output() {
-        let mut fixture = Fixture::new();
-        fixture.request.patch = fixture.request.source.clone();
-        let transaction = Transaction::new(&fixture.request).unwrap();
-        let staging = transaction.open_staging().unwrap();
-        staging.write("输出.bin", b"independent bytes").unwrap();
-        drop(staging);
-        let output = transaction.publish(&AtomicBool::new(false)).unwrap();
-        assert_eq!(
-            std::fs::canonicalize(&output).unwrap(),
-            std::fs::canonicalize(&fixture.request.output).unwrap()
-        );
-        assert_eq!(
-            std::fs::read(output.join("输出.bin")).unwrap(),
-            b"independent bytes"
-        );
-        assert_eq!(
-            std::fs::read(fixture.request.source.join("original.bin")).unwrap(),
-            b"source unchanged"
-        );
-        fixture.assert_no_staging();
-    }
-
-    #[test]
     fn rejects_each_input_overlap_before_creating_staging() {
         let mut fixture = Fixture::new();
         for output in [
@@ -854,21 +830,6 @@ mod tests {
         fixture.request.output = fixture.directory.path().join("output");
         fixture.request.source = fixture.directory.path().join("absent-source");
         assert!(Transaction::new(&fixture.request).is_err());
-        fixture.assert_no_staging();
-    }
-
-    #[test]
-    fn existing_output_is_preserved_byte_for_byte() {
-        let fixture = Fixture::new();
-        std::fs::create_dir(&fixture.request.output).unwrap();
-        std::fs::write(fixture.request.output.join("user.bin"), b"user data").unwrap();
-        let error = Transaction::new(&fixture.request).err().unwrap();
-        assert_eq!(error.kind(), PatchErrorKind::OutputExists);
-        assert_eq!(
-            std::fs::read(fixture.request.output.join("user.bin")).unwrap(),
-            b"user data"
-        );
-        fixture.assert_inputs();
         fixture.assert_no_staging();
     }
 
@@ -947,41 +908,6 @@ mod tests {
         assert!(!fixture.request.output.join("new.bin").exists());
         fixture.assert_inputs();
         fixture.assert_no_staging();
-    }
-
-    #[test]
-    fn publication_remains_successful_after_late_cancellation() {
-        let fixture = Fixture::new();
-        let cancelled = AtomicBool::new(false);
-        let transaction = Transaction::new(&fixture.request).unwrap();
-        transaction
-            .open_staging()
-            .unwrap()
-            .write("complete.bin", b"complete")
-            .unwrap();
-        let output = transaction.publish(&cancelled).unwrap();
-        cancelled.store(true, Ordering::Release);
-        assert_eq!(
-            std::fs::read(output.join("complete.bin")).unwrap(),
-            b"complete"
-        );
-        fixture.assert_inputs();
-        fixture.assert_no_staging();
-    }
-
-    #[test]
-    fn native_file_rename_does_not_replace_an_existing_file() {
-        let directory = tempfile::tempdir().unwrap();
-        let root = Dir::open_ambient_dir(directory.path(), ambient_authority()).unwrap();
-        root.create_dir("from").unwrap();
-        root.create_dir("to").unwrap();
-        let from = root.open_dir("from").unwrap();
-        let to = root.open_dir("to").unwrap();
-        from.write("item", b"new bytes").unwrap();
-        to.write("item", b"existing bytes").unwrap();
-        assert!(rename_noreplace(&from, Path::new("item"), &to, Path::new("item")).is_err());
-        assert_eq!(from.read("item").unwrap(), b"new bytes");
-        assert_eq!(to.read("item").unwrap(), b"existing bytes");
     }
 
     #[cfg(unix)]

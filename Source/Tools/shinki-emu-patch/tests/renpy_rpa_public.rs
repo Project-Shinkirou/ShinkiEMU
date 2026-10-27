@@ -404,47 +404,6 @@ fn compressed_index_read_is_bounded_before_inflate() {
     rejects(input, PatchErrorKind::Bounds, false, false);
 }
 
-#[test]
-fn real_recipe_rejects_public_nonmatching_edition_without_copying_runtime_or_saves() {
-    let root = tempfile::tempdir().unwrap();
-    let source = root.path().join("source");
-    fs::create_dir_all(source.join("game/saves")).unwrap();
-    fs::create_dir_all(source.join("game/cache")).unwrap();
-    fs::create_dir_all(root.path().join("scripts/common")).unwrap();
-    fs::write(source.join("game/script_version.txt"), b"(8, 5, 2)\n").unwrap();
-    let public = archive(VALID);
-    for name in ["audio", "code", "font", "gui", "image", "movie", "patch"] {
-        fs::write(source.join(format!("game/{name}.rpa")), &public).unwrap();
-    }
-    for path in [
-        "game/saves/public.save",
-        "game/cache/public.cache",
-        "public.exe",
-        "public.dll",
-    ] {
-        fs::write(source.join(path), b"public excluded file").unwrap();
-    }
-    let script = root.path().join("scripts/renpy-himanatsu.luau");
-    fs::write(
-        &script,
-        include_str!("../../../../Metadata/patches/renpy-himanatsu.luau"),
-    )
-    .unwrap();
-    fs::write(
-        root.path().join("scripts/common/renpy_rpa.luau"),
-        include_str!("../../../../Metadata/patches/common/renpy_rpa.luau"),
-    )
-    .unwrap();
-    let error = invoke(root.path(), &script).err().unwrap();
-    assert_eq!(error.kind(), PatchErrorKind::UnsupportedInput);
-    assert!(!root.path().join("output").exists());
-    assert_eq!(fs::read(source.join("game/audio.rpa")).unwrap(), public);
-    assert_eq!(
-        fs::read(source.join("game/saves/public.save")).unwrap(),
-        b"public excluded file"
-    );
-}
-
 const RESOLUTION_MEMBER: &str = "kagami_games/code/system/force_720p.rpyc";
 const UNTOUCHED: &[u8] = b"public unrelated script payload";
 

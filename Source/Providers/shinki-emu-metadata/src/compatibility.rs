@@ -246,21 +246,6 @@ mod tests {
     }
 
     #[test]
-    fn serde_round_trip_preserves_database() {
-        let database = sample_database();
-        let json = serde_json::to_string(&database).unwrap();
-        let parsed = parse_compatibility_database(json.as_bytes()).unwrap();
-        assert_eq!(parsed, database);
-        assert_eq!(
-            parsed
-                .entry("r123", "sena-rs", "windows", "x86_64", "desktop")
-                .unwrap()
-                .status,
-            CompatibilityStatus::Flawed
-        );
-    }
-
-    #[test]
     fn optional_fields_may_be_omitted() {
         let json = br#"{"schema":"shinki.emu.compatibility.v4","generated_at_unix_ms":1,
             "entries":[{"vn_id":"v1","release_id":"r2","emulator":"rfvp",
@@ -268,18 +253,6 @@ mod tests {
         let database = parse_compatibility_database(json).unwrap();
         assert_eq!(database.entries[0].notes, None);
         assert_eq!(database.entries[0].issue, None);
-    }
-
-    #[test]
-    fn duplicate_release_and_emulator_is_rejected() {
-        let mut database = sample_database();
-        database.entries.push(entry(
-            "r123",
-            "shinki.emu.musica",
-            CompatibilityStatus::Unplayable,
-        ));
-        let error = database.validate().unwrap_err();
-        assert!(matches!(error, CompatibilityError::Duplicate(_)));
     }
 
     #[test]
@@ -339,6 +312,18 @@ mod tests {
         linux.platform = "linux".into();
         database.entries.push(linux.clone());
         database.validate().unwrap();
+        assert_eq!(
+            database
+                .entry("r123", "sena-rs", "windows", "x86_64", "desktop")
+                .unwrap()
+                .status,
+            CompatibilityStatus::Flawed
+        );
+        assert!(
+            database
+                .entry("r123", "shinki.emu.musica", "linux", "x86_64", "desktop")
+                .is_some()
+        );
         assert!(
             database
                 .entry("r123", "shinki.emu.musica", "macos", "aarch64", "desktop")

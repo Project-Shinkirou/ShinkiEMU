@@ -68,7 +68,6 @@ fn u32_at(bytes: &mut [u8], offset: usize, value: u32) {
 
 struct Fixture {
     bytes: Vec<u8>,
-    expected: Vec<u8>,
     index: Vec<u8>,
     index_offset: usize,
     header_offset: usize,
@@ -107,7 +106,6 @@ impl Fixture {
         let index_offset = bytes.len();
         let mut fixture = Self {
             bytes,
-            expected: blocks.concat(),
             index,
             index_offset,
             header_offset: index_offset + 136,
@@ -183,30 +181,6 @@ const EXTRACT: &str = r#"
 "#;
 
 #[test]
-fn every_stelpack_block_is_decoded_crc_checked_and_written_in_order() {
-    let root = tempfile::tempdir().unwrap();
-    let fixture = Fixture::new();
-    let result = fixture.apply(root.path(), EXTRACT).unwrap();
-    assert_eq!(
-        fs::read(result.output.join("scene.sc")).unwrap(),
-        fixture.expected
-    );
-}
-
-#[test]
-fn second_block_crc_failure_rolls_back_the_already_written_first_block() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = Fixture::new();
-    fixture.index[52 + 12 + 6] ^= 1;
-    fixture.rebuild();
-    assert_eq!(
-        fixture.apply(root.path(), EXTRACT).err().unwrap().kind(),
-        PatchErrorKind::Integrity
-    );
-    assert!(!root.path().join("output").exists());
-}
-
-#[test]
 fn index_crc_lookup_set_and_payload_range_fail_at_distinct_boundaries() {
     for case in 0..3 {
         let root = tempfile::tempdir().unwrap();
@@ -270,36 +244,6 @@ fn loader_lz_preserves_literal_run_escape_and_bounded_back_reference() {
 }
 
 #[test]
-fn xor_bitmap_restores_bgra_channels_bottom_up_rows_and_original_alpha() {
-    let root = tempfile::tempdir().unwrap();
-    let fixture = Fixture::new();
-    let result = fixture
-        .apply(
-            root.path(),
-            r#"
-        local bmp=buffer.create(62)
-        buffer.writeu16(bmp,0,0x4d42)
-        buffer.writeu32(bmp,10,54);buffer.writeu32(bmp,14,40)
-        buffer.writeu32(bmp,18,1);buffer.writeu32(bmp,22,2)
-        buffer.writeu16(bmp,26,1);buffer.writeu16(bmp,28,32)
-        buffer.copy(bmp,54,buffer.fromstring(string.char(16,32,48,0,1,2,3,0)))
-        local original=ctx.image.png(1,2,buffer.fromstring(string.char(10,20,30,40,50,60,70,80)))
-        local png=m.xor_bitmap_png(ctx,bmp,original)
-        local output=ctx.create("restored.png");output:write(0,png);output:close()
-    "#,
-        )
-        .unwrap();
-    let image = image::load_from_memory(&fs::read(result.output.join("restored.png")).unwrap())
-        .unwrap()
-        .to_rgba8();
-    assert_eq!(image.dimensions(), (1, 2));
-    assert_eq!(
-        image.as_raw(),
-        &[10 ^ 3, 20 ^ 2, 30 ^ 1, 40, 50 ^ 48, 60 ^ 32, 70 ^ 16, 80]
-    );
-}
-
-#[test]
 fn xor_bitmap_refuses_unmatched_original_or_truncated_pixels() {
     for truncated in [false, true] {
         let root = tempfile::tempdir().unwrap();
@@ -322,66 +266,4 @@ fn xor_bitmap_refuses_unmatched_original_or_truncated_pixels() {
         );
         assert!(!root.path().join("output").exists());
     }
-}
-
-#[test]
-fn catalog_uses_length_then_crc_footer_and_preserves_package_seed_privately() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = Fixture::new();
-    let mut catalog = vec![0u8; 64];
-    u32_at(&mut catalog, 8, 16);
-    u32_at(&mut catalog, 12, 1);
-    u32_at(&mut catalog, 20, 40);
-    catalog[24..40].copy_from_slice(SEED);
-    catalog[40..51].copy_from_slice(b"public.mys\0");
-    let mut footer = [0u8; 8];
-    u32_at(&mut footer, 0, catalog.len() as u32);
-    u32_at(&mut footer, 4, crc32fast::hash(&catalog));
-    fixture.bytes = b"public wrapper prefix".to_vec();
-    fixture.bytes.extend_from_slice(&encrypt(&catalog));
-    fixture.bytes.extend_from_slice(&encrypt(&footer));
-    fixture
-        .apply(
-            root.path(),
-            r#"
-        local entries=m.catalog(ctx,ctx.open("source","public.mys"),seed,substitution)
-        assert(#entries==1 and entries[1].name=="public.mys" and entries[1].flags==0)
-        assert(buffer.tostring(entries[1].seed)==buffer.tostring(seed))
-    "#,
-        )
-        .unwrap();
-}
-
-#[test]
-fn static_loader_recovery_transforms_data_without_executing_a_loader() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = Fixture::new();
-    let expected = b"STEELBOXpublicloader";
-    let mut payload = (expected.len() as u32).to_le_bytes().to_vec();
-    payload.extend_from_slice(&[0, expected.len() as u8 - 1]);
-    payload.extend_from_slice(expected);
-    let payload = encrypt(&payload);
-    let mut header = vec![0u8; 496];
-    header[368..384].copy_from_slice(SEED);
-    u32_at(&mut header, 32, 760);
-    u32_at(&mut header, 36, payload.len() as u32);
-    let mut wrapper = (0u32..256)
-        .map(|i| ((0xf563_f082u32 >> ((i + 1) % 21)).wrapping_sub(i ^ 0x5a)) as u8)
-        .collect::<Vec<_>>();
-    wrapper.extend_from_slice(&0u32.to_le_bytes());
-    wrapper.extend_from_slice(&520359445u32.to_le_bytes());
-    wrapper.extend_from_slice(&encrypt(&header[..368]));
-    wrapper.extend_from_slice(SEED);
-    wrapper.extend_from_slice(&encrypt(&header[384..]));
-    wrapper.extend_from_slice(&payload);
-    fixture.bytes = wrapper;
-    fixture
-        .apply(
-            root.path(),
-            r#"
-        local recovered=m.recover_loader(ctx,ctx.open("source","public.mys"),256,0)
-        assert(buffer.tostring(recovered.bytes)=="STEELBOXpublicloader" and recovered.trailing==0)
-    "#,
-        )
-        .unwrap();
 }

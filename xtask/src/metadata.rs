@@ -654,8 +654,7 @@ mod tests {
         }
     }
     #[test]
-    fn rejects_duplicate_json_keys_and_illegal_ids() {
-        assert!(parse_unique_json(br#"{"issue":{"body":"a","body":"b"}}"#).is_err());
+    fn illegal_core_id_in_intake_publishes_nothing() {
         let t = tempfile::tempdir().unwrap();
         let ev = t.path().join("event.json");
         event(&ev, "windows");

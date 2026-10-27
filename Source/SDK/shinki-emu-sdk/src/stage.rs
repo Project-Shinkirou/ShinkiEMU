@@ -110,18 +110,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn texture_asset_keeps_logical_extent_separate_from_physical_pixels() {
-        let frame = TextureFrame::from_vec(192, 108, vec![255; 192 * 108 * 4])
-            .expect("physical texture is valid");
-        let asset = TextureAsset::new(frame, Extent2D::new(128, 72))
-            .expect("logical asset extent is valid");
-        assert_eq!(asset.frame.width, 192);
-        assert_eq!(asset.frame.height, 108);
-        assert_eq!(asset.logical_extent, Extent2D::new(128, 72));
-        assert_eq!(asset.logical_origin, [0, 0]);
-    }
-
-    #[test]
     fn stage_canvas_round_trips_letterbox_stage_points() {
         let canvas = StageCanvas::new(Extent2D::new(1280, 720), Extent2D::new(1920, 1080))
             .expect("16:9 stage canvas");

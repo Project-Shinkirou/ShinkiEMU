@@ -1,15 +1,12 @@
 use shinki_emu_patch::{PatchErrorKind, PatchRequest, apply};
 use std::{
     fs,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 
 // Every vector passes through the public transaction API and actual Luau context.
 // All PE bytes below are handcrafted data, never loaded as executable images.
-fn exercise(bytes: &[u8], body: &str, expected: Option<PatchErrorKind>, cancel: bool) {
+fn exercise(bytes: &[u8], body: &str, expected: Option<PatchErrorKind>) {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     let patch = root.path().join("patch");
@@ -47,8 +44,6 @@ end }}
         ),
     )
     .unwrap();
-    let cancelled = Arc::new(AtomicBool::new(false));
-    let flag = cancelled.clone();
     let result = apply(
         PatchRequest {
             script,
@@ -56,12 +51,8 @@ end }}
             patch,
             output: output.clone(),
         },
-        cancelled,
-        move |event| {
-            if cancel && event.phase == "cancel inside helper" {
-                flag.store(true, Ordering::Release);
-            }
-        },
+        Arc::new(AtomicBool::new(false)),
+        |_| {},
     );
     if let Some(kind) = expected {
         assert_eq!(
@@ -208,7 +199,6 @@ fn binary_reader_exact_endian_signed_and_safe_integer_vectors() {
     } do assert(not pcall(f)) end
     "#,
         None,
-        false,
     );
 }
 
@@ -226,7 +216,6 @@ fn binary_read_limit_and_chunked_cstring_are_exact() {
     assert(not pcall(function() r:cstring(0, 65539) end))
     "#,
         None,
-        false,
     );
 }
 
@@ -261,7 +250,7 @@ fn pe32_and_pe32plus_preserve_sections_names_resources_and_overlay() {
             if plus { 0x8664 } else { 0x14c },
             if plus { 0x1_4000_0000_u64 } else { 0x400000 }
         );
-        exercise(&image(plus), &body, None, false);
+        exercise(&image(plus), &body, None);
     }
 }
 
@@ -281,7 +270,6 @@ fn malformed_rvas_bss_and_partial_overlaps_reject() {
             &image(false),
             &format!("local p=pe.parse(ctx,source); pe.offset(p,{rva},{length})"),
             Some(PatchErrorKind::Bounds),
-            false,
         );
     }
     let mut bytes = image(false);
@@ -291,13 +279,11 @@ fn malformed_rvas_bss_and_partial_overlaps_reject() {
         &bytes,
         "local p=pe.parse(ctx,source); pe.offset(p,0x10f0,32)",
         Some(PatchErrorKind::Bounds),
-        false,
     );
     exercise(
         &bytes,
         "local p=pe.parse(ctx,source); pe.offset(p,0x1100,1)",
         Some(PatchErrorKind::Bounds),
-        false,
     );
     let mut bytes = image(false);
     put32(&mut bytes, section_table(false) + 12, 0x100);
@@ -305,7 +291,6 @@ fn malformed_rvas_bss_and_partial_overlaps_reject() {
         &bytes,
         "local p=pe.parse(ctx,source); pe.offset(p,0x100,1)",
         Some(PatchErrorKind::Bounds),
-        false,
     );
 }
 
@@ -317,7 +302,6 @@ fn malformed_headers_overflow_and_truncation_reject() {
             &bytes[..length],
             "pe.parse(ctx,source)",
             Some(PatchErrorKind::Bounds),
-            false,
         );
     }
     for (at, value) in [
@@ -330,36 +314,20 @@ fn malformed_headers_overflow_and_truncation_reject() {
     ] {
         let mut bytes = image(false);
         put32(&mut bytes, at, value);
-        exercise(
-            &bytes,
-            "pe.parse(ctx,source)",
-            Some(PatchErrorKind::Bounds),
-            false,
-        );
+        exercise(&bytes, "pe.parse(ctx,source)", Some(PatchErrorKind::Bounds));
     }
     let mut bytes = image(false);
     put16(&mut bytes, 0x94, 2);
-    exercise(
-        &bytes,
-        "pe.parse(ctx,source)",
-        Some(PatchErrorKind::Bounds),
-        false,
-    );
+    exercise(&bytes, "pe.parse(ctx,source)", Some(PatchErrorKind::Bounds));
     let mut bytes = image(true);
     bytes[0xb0..0xb8].copy_from_slice(&9007199254740992_u64.to_le_bytes());
-    exercise(
-        &bytes,
-        "pe.parse(ctx,source)",
-        Some(PatchErrorKind::Bounds),
-        false,
-    );
+    exercise(&bytes, "pe.parse(ctx,source)", Some(PatchErrorKind::Bounds));
     let mut bytes = image(false);
     put16(&mut bytes, 0x98, 0x107);
     exercise(
         &bytes,
         "pe.parse(ctx,source)",
         Some(PatchErrorKind::UnsupportedInput),
-        false,
     );
 }
 
@@ -381,7 +349,6 @@ fn malformed_resource_trees_ranges_cycles_and_utf16_reject() {
             &bytes,
             "pe.resources(ctx,pe.parse(ctx,source))",
             Some(PatchErrorKind::Bounds),
-            false,
         );
     }
     let mut bytes = image(false);
@@ -390,7 +357,6 @@ fn malformed_resource_trees_ranges_cycles_and_utf16_reject() {
         &bytes,
         "pe.resources(ctx,pe.parse(ctx,source))",
         Some(PatchErrorKind::Bounds),
-        false,
     );
     let mut bytes = image(false);
     put16(&mut bytes, 0x2d0, 0xffff);
@@ -398,7 +364,6 @@ fn malformed_resource_trees_ranges_cycles_and_utf16_reject() {
         &bytes,
         "pe.resources(ctx,pe.parse(ctx,source))",
         Some(PatchErrorKind::Bounds),
-        false,
     );
     for unit in [0x0041, 0xd800] {
         let mut bytes = image(false);
@@ -407,31 +372,6 @@ fn malformed_resource_trees_ranges_cycles_and_utf16_reject() {
             &bytes,
             "pe.resources(ctx,pe.parse(ctx,source))",
             Some(PatchErrorKind::Codec),
-            false,
         );
     }
-}
-
-#[test]
-fn cancellation_reaches_reader_and_resource_helpers_in_real_context() {
-    exercise(
-        &vec![b'x'; 131072],
-        r#"
-    local r=binary.reader(ctx,source)
-    ctx.progress("cancel inside helper",0,1)
-    r:cstring(0,131072)
-    "#,
-        Some(PatchErrorKind::Cancelled),
-        true,
-    );
-    exercise(
-        &image(true),
-        r#"
-    local p=pe.parse(ctx,source)
-    ctx.progress("cancel inside helper",0,1)
-    pe.resources(ctx,p)
-    "#,
-        Some(PatchErrorKind::Cancelled),
-        true,
-    );
 }

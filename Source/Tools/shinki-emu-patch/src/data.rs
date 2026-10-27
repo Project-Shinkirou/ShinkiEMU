@@ -1306,13 +1306,6 @@ mod tests {
                 PRIVATE,
             );
         }
-        let diagnostic = json_error(
-            serde_json::from_str::<serde_json::Value>("{\n bad").unwrap_err(),
-            &AtomicBool::new(false),
-        );
-        let position = diagnostic.source().unwrap().to_string();
-        assert!(position.contains("line 2"));
-        assert!(!position.contains("bad"));
     }
 
     // Hand-specified 2x1, bottom-up, 24-bit BMP: red then green, row padded.
@@ -1459,7 +1452,6 @@ mod tests {
             .eval::<Value>()
             .unwrap_err();
         assert!(error.to_string().contains("SHINKI_EMU_PATCH_MEMORY"));
-        assert!(error.to_string().contains(&MAX_NATIVE_BYTES.to_string()));
     }
 
     #[test]

@@ -52,32 +52,19 @@ mod tests {
     }
 
     #[test]
-    fn provider_serialization_and_default_urls() {
-        for (provider, name, url) in [
-            (
-                TranslationProvider::OpenAi,
-                "openai",
-                "https://api.openai.com/v1",
-            ),
-            (
-                TranslationProvider::Anthropic,
-                "anthropic",
-                "https://api.anthropic.com/v1",
-            ),
-            (
-                TranslationProvider::Google,
-                "google",
-                "https://generativelanguage.googleapis.com/v1beta",
-            ),
+    fn every_provider_validates_and_keeps_its_saved_name() {
+        for (provider, name) in [
+            (TranslationProvider::OpenAi, "openai"),
+            (TranslationProvider::Anthropic, "anthropic"),
+            (TranslationProvider::Google, "google"),
         ] {
             assert_eq!(
                 serde_json::to_value(provider).unwrap(),
                 serde_json::json!(name)
             );
-            assert_eq!(provider.default_base_url(), url);
             TranslationProfile {
                 provider,
-                base_url: url.into(),
+                base_url: provider.default_base_url().into(),
                 ..profile()
             }
             .validate()

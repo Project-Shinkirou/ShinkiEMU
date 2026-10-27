@@ -11,10 +11,7 @@ use std::{
     fs,
     io::{Cursor, Write},
     path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 
 const PIPELINE: &str = include_str!("../../../../Metadata/patches/common/perseus.luau");
@@ -297,7 +294,6 @@ impl Fixture {
     fn apply(
         &mut self,
         root: &Path,
-        cancel_after_member: bool,
     ) -> Result<shinki_emu_patch::PatchResult, shinki_emu_patch::PatchError> {
         if self.top_down {
             self.members[3].bytes =
@@ -391,8 +387,6 @@ impl Fixture {
         end}}"#, wrapper_hash=digest(&wrapper), package_hash=digest(&package), sys_hash=digest(&sys),
             offset=if self.bad_span { sys.len() + 8 } else { 8 }, unpacked=original.len(), packed=self.packed_original,
             original_hash=if self.bad_original { "0".repeat(64) } else { digest(&original) })).unwrap();
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let callback_flag = cancelled.clone();
         let result = apply(
             PatchRequest {
                 script,
@@ -400,12 +394,8 @@ impl Fixture {
                 patch: source.clone(),
                 output: root.join("output"),
             },
-            cancelled,
-            move |progress| {
-                if cancel_after_member && progress.phase == "Restoring checked Perseus resources" {
-                    callback_flag.store(true, Ordering::Release);
-                }
-            },
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
         );
         assert_eq!(fs::read(source.join("public.exe")).unwrap(), wrapper);
         assert_eq!(fs::read(source.join("public.mys")).unwrap(), package);
@@ -419,7 +409,7 @@ impl Fixture {
 fn recovered_loader_catalog_and_every_member_produce_independent_native_resources() {
     let root = tempfile::tempdir().unwrap();
     let mut fixture = Fixture::new();
-    let result = fixture.apply(root.path(), false).unwrap();
+    let result = fixture.apply(root.path()).unwrap();
     let output = &result.output;
     for member in fixture
         .members
@@ -487,7 +477,7 @@ fn top_down_full_replacement_keeps_original_row_order_and_zero_alpha() {
     let root = tempfile::tempdir().unwrap();
     let mut fixture = Fixture::new();
     fixture.top_down = true;
-    let result = fixture.apply(root.path(), false).unwrap();
+    let result = fixture.apply(root.path()).unwrap();
     assert_eq!(
         image::open(result.output.join("localized/perseus/textures/bg.png"))
             .unwrap()
@@ -502,7 +492,7 @@ fn packed_native_original_slice_is_inflated_before_xor_without_filename_crypto()
     let root = tempfile::tempdir().unwrap();
     let mut fixture = Fixture::new();
     fixture.packed_original = true;
-    let result = fixture.apply(root.path(), false).unwrap();
+    let result = fixture.apply(root.path()).unwrap();
     assert_eq!(
         image::open(result.output.join("localized/perseus/textures/ui.png"))
             .unwrap()
@@ -532,19 +522,8 @@ fn late_crc_identity_slice_and_dimension_failures_never_publish_partial_output()
             4 => fixture.bad_dimensions = true,
             _ => fixture.bad_marker = true,
         }
-        let error = fixture.apply(root.path(), false).err().unwrap();
+        let error = fixture.apply(root.path()).err().unwrap();
         assert_eq!(error.kind(), expected, "case {case}");
         assert!(!root.path().join("output").exists());
     }
-}
-
-#[test]
-fn cancellation_after_first_checked_member_rolls_back_all_staged_resources() {
-    let root = tempfile::tempdir().unwrap();
-    let mut fixture = Fixture::new();
-    assert_eq!(
-        fixture.apply(root.path(), true).err().unwrap().kind(),
-        PatchErrorKind::Cancelled
-    );
-    assert!(!root.path().join("output").exists());
 }

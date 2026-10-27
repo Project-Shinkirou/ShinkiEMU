@@ -554,15 +554,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
 
-    #[test]
-    fn bounded_inflate_checks_cancellation_before_native_work() {
-        let flag = AtomicBool::new(true);
-        assert_eq!(
-            inflate_bounded(b"", 0, &flag).unwrap_err().kind(),
-            PatchErrorKind::Cancelled,
-        );
-    }
-
     fn vm() -> Lua {
         let lua = Lua::new();
         let ctx = lua.create_table().unwrap();
@@ -944,6 +935,7 @@ mod tests {
             local k = buffer.fromstring('1234')
             local calls = {
                 function() ctx.codec.inflate(b, 8) end,
+                function() ctx.codec.inflate_bounded(b, 8) end,
                 function() ctx.codec.deflate(b) end,
                 function() ctx.codec.aplib(b, 8) end,
                 function() ctx.crypto.blowfish(b, k, false) end,

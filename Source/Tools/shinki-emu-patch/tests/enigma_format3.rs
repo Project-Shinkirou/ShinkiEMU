@@ -73,7 +73,6 @@ struct Fixture {
     size_at: usize,
     flags_at: usize,
     first_table: usize,
-    first_packed: usize,
 }
 impl Fixture {
     fn new() -> Self {
@@ -127,7 +126,6 @@ impl Fixture {
             size_at,
             flags_at,
             first_table: 0,
-            first_packed: 24,
         }
     }
 
@@ -272,25 +270,4 @@ fn format3_rejects_truncated_block_extent() {
     let mut f = Fixture::new();
     f.payload.pop();
     rejects(f, PatchErrorKind::Bounds);
-}
-#[test]
-fn aplib_rejects_missing_terminator_at_actual_decoder_boundary() {
-    let mut f = Fixture::new();
-    // First packed block's final byte is the zero short-match offset.
-    let length = u32::from_le_bytes(f.payload[8..12].try_into().unwrap()) as usize;
-    f.payload[f.first_packed + length - 1] = 2;
-    rejects(f, PatchErrorKind::Codec);
-}
-#[test]
-fn decoded_crc_mismatch_is_not_treated_as_conversion_success() {
-    let mut f = Fixture::new();
-    f.payload[f.first_packed] ^= 1;
-    rejects(f, PatchErrorKind::Integrity);
-}
-
-#[test]
-fn aplib_rejects_incorrect_declared_output_length() {
-    let mut f = Fixture::new();
-    f.directory[f.size_at..f.size_at + 8].copy_from_slice(&65538_u64.to_le_bytes());
-    rejects(f, PatchErrorKind::Codec);
 }

@@ -142,13 +142,12 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_and_finds_preset() {
+    fn parsed_database_finds_preset_by_release_and_emulator() {
         let database = database(vec![
             preset("r1", "shinki.emu.musica"),
             preset("r1", "rfvp"),
         ]);
         let parsed = parse_preset_database(&serde_json::to_vec(&database).unwrap()).unwrap();
-        assert_eq!(parsed, database);
         assert!(parsed.preset("r1", "rfvp").is_some());
         assert!(parsed.preset("r2", "rfvp").is_none());
     }

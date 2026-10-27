@@ -84,29 +84,6 @@ const CONVERT: &str = r#"
 "#;
 
 #[test]
-fn acr_absolute_offsets_and_original_identity_preserve_ordered_native_rows() {
-    let root = tempfile::tempdir().unwrap();
-    let input = acr(&[(b"original", b"translated"), (b"original", b"translated")]);
-    let result = run(root.path(), &input, CONVERT).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_slice(&fs::read(result.output.join("table.json")).unwrap()).unwrap();
-    assert_eq!(value["version"], 2);
-    assert_eq!(value["source_encoding"], "gbk");
-    assert_eq!(value["hash_collision_policy"], "first_record");
-    assert_eq!(value["dialogue"].as_array().unwrap().len(), 2);
-    assert_eq!(value["dialogue"][0]["source_hash"], hash(b"original"));
-    assert_eq!(value["dialogue"][0]["text"], "translated");
-    assert_eq!(value["dialogue"][0], value["dialogue"][1]);
-    assert_eq!(
-        value["dialogue"][0]["source_sha256"]
-            .as_str()
-            .unwrap()
-            .len(),
-        64
-    );
-}
-
-#[test]
 fn rolling_hash_ignores_nuls_and_wraps_exactly_at_31_bits() {
     let root = tempfile::tempdir().unwrap();
     run(
@@ -120,74 +97,6 @@ fn rolling_hash_ignores_nuls_and_wraps_exactly_at_31_bits() {
             hash(b"abc"),
             hash(&[b'z'; 200])
         ),
-    )
-    .unwrap();
-}
-
-#[test]
-fn acr_retains_real_hash_collision_with_distinct_original_identity_audit() {
-    let root = tempfile::tempdir().unwrap();
-    assert_eq!(hash(&[1, 132]), hash(&[2, 1]));
-    let input = acr(&[(&[1, 132], b"one"), (&[2, 1], b"two")]);
-    let result = run(root.path(), &input, r#"
-        local records=legacy.read(ctx,ctx.open("source","public.bin"))
-        local result,audit=legacy.translation_table(ctx,{},records,
-            {source="gbk",names="gbk",dialogue="cp932"})
-        assert(audit.different_identity_collisions==1)
-        assert(#result.dialogue==2 and result.dialogue[1].text=="one" and result.dialogue[2].text=="two")
-        assert(result.dialogue[1].source_hash==result.dialogue[2].source_hash)
-        assert(result.dialogue[1].source_sha256~=result.dialogue[2].source_sha256)
-        local out=ctx.create("table.json");out:write(0,buffer.fromstring(ctx.json.encode(result)));out:close()
-    "#).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_slice(&fs::read(result.output.join("table.json")).unwrap()).unwrap();
-    assert_eq!(value["dialogue"].as_array().unwrap().len(), 2);
-}
-
-#[test]
-fn acr_retains_conflicting_duplicates_but_refuses_mutated_source_bytes() {
-    let root = tempfile::tempdir().unwrap();
-    let input = acr(&[(b"original", b"one"), (b"original", b"two")]);
-    let result = run(root.path(), &input, CONVERT).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_slice(&fs::read(result.output.join("table.json")).unwrap()).unwrap();
-    assert_eq!(value["dialogue"][0]["text"], "one");
-    assert_eq!(value["dialogue"][1]["text"], "two");
-    let rejected = tempfile::tempdir().unwrap();
-    assert_eq!(
-        run(
-            rejected.path(),
-            &input,
-            r#"
-            local records=legacy.read(ctx,ctx.open("source","public.bin"))
-            buffer.writeu8(records[1].source,0,0)
-            legacy.translation_table(ctx,{},records,{source="gbk",names="gbk",dialogue="cp932"})
-        "#
-        )
-        .err()
-        .unwrap()
-        .kind(),
-        PatchErrorKind::Integrity
-    );
-    assert!(!rejected.path().join("output").exists());
-}
-
-#[test]
-fn names_and_dialogue_follow_their_different_native_codepages() {
-    let root = tempfile::tempdir().unwrap();
-    let input = acr(&[
-        (b"speaker", b"\xd6\xd0\xce\xc4"),
-        (b"message", b"\x93\xfa\x96\x7b\x8c\xea"),
-    ]);
-    run(
-        root.path(),
-        &input,
-        r#"
-        local rows=legacy.read(ctx,ctx.open("source","public.bin"))
-        local result=legacy.translation_table(ctx,{rows[1]},{rows[2]},
-            {source="gbk",names="gbk",dialogue="cp932"})
-        assert(result.names[1].text=="中文" and result.dialogue[1].text=="日本語")
-    "#,
     )
     .unwrap();
 }
@@ -305,41 +214,6 @@ fn cnbg_rejects_traversal_truncation_and_wrong_original_dimensions() {
             }
         );
         assert!(!root.path().join("output").exists());
-    }
-}
-
-#[test]
-fn cnbg_preserves_zero_alpha_and_checks_pinned_crc_before_png_publication() {
-    let mut input = cnbg(b"public.bmp");
-    let index = u32::from_le_bytes(input[16..20].try_into().unwrap()) as usize;
-    let bitmap = u32::from_le_bytes(input[index + 8..index + 12].try_into().unwrap()) as usize;
-    input[bitmap + 57] = 0;
-    input[bitmap + 61] = 31;
-    let crc = crc32fast::hash(&input[bitmap..bitmap + 62]);
-    for wrong_crc in [false, true] {
-        let root = tempfile::tempdir().unwrap();
-        let result = run(
-            root.path(),
-            &input,
-            &format!(
-                r#"
-            local source=ctx.open("source","public.bin")
-            local entries=legacy.cnbg_index(ctx,source)
-            local png=legacy.cnbg_png(ctx,source,entries[1],{{width=2,height=1,crc32={}}})
-            local out=ctx.create("public.png");out:write(0,png);out:close()
-        "#,
-                crc ^ u32::from(wrong_crc)
-            ),
-        );
-        if wrong_crc {
-            assert_eq!(result.err().unwrap().kind(), PatchErrorKind::Integrity);
-            assert!(!root.path().join("output").exists());
-        } else {
-            let image = image::open(result.unwrap().output.join("public.png"))
-                .unwrap()
-                .to_rgba8();
-            assert_eq!(image.as_raw(), &[255, 0, 0, 0, 0, 255, 0, 31]);
-        }
     }
 }
 

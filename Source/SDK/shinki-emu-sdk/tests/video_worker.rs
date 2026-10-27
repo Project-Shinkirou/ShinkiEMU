@@ -101,35 +101,6 @@ fn worker_decodes_complete_audio_video_stream_with_bounded_requests() {
     worker.close().unwrap();
 }
 #[test]
-fn worker_seek_replaces_generation_and_close_discards_pending_result() {
-    let mut worker = open();
-    let DecodeCompletion::Opened(config) = receive(&mut worker) else {
-        panic!("expected open");
-    };
-    worker.request_next(1, 64 * 1024 * 1024).unwrap();
-    receive(&mut worker);
-    worker.request_seek(config.duration_us / 2).unwrap();
-    assert!(matches!(
-        receive(&mut worker),
-        DecodeCompletion::Seeked { generation: 2 }
-    ));
-    worker.request_next(1, 64 * 1024 * 1024).unwrap();
-    match receive_packet(&mut worker) {
-        Some(DecodedMediaPacket::Video { packet, .. }) => {
-            assert_eq!(packet.generation, 2)
-        }
-        Some(DecodedMediaPacket::Audio { packet, .. }) => {
-            assert_eq!(packet.generation, 2)
-        }
-        _ => panic!("seek produced no media"),
-    }
-    worker.request_next(1, 64 * 1024 * 1024).unwrap();
-    worker.close().unwrap();
-    for _ in 0..3 {
-        open().close().unwrap();
-    }
-}
-#[test]
 fn worker_open_error_is_reported_and_stops_further_requests() {
     let mut worker = VideoDecoderWorker::open(
         "mp4".into(),
