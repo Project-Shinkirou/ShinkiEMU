@@ -1018,12 +1018,16 @@ impl CmvsSession {
                 // ciphered container; failures leave the previous file in
                 // place like the native write-through.
                 let payload = crate::system_save::build_system_payload(&self.vm);
-                let identity = self.vm.interpreter_words.get(&1600).copied().unwrap_or(0);
+                let words = &self.vm.interpreter_words;
+                let identity = words.get(&1600).copied().unwrap_or(0);
+                let stamp = words.get(&10308).copied().unwrap_or(0);
+                let integrity = words.get(&10532).copied().unwrap_or(0);
                 let lists = [
                     self.vm.native_system_lists[0].len(),
                     self.vm.native_system_lists[1].len(),
                 ];
-                let bytes = crate::system_save::encode_system_container(&payload, identity, &lists);
+                let bytes =
+                    crate::system_save::encode_system_container(&payload, identity, stamp, &lists);
                 let dir = self.game_root.join("save");
                 std::fs::create_dir_all(&dir).map_err(|cause| {
                     error(
@@ -1032,6 +1036,13 @@ impl CmvsSession {
                     )
                 })?;
                 let path = dir.join("system.dat");
+                // `sub_427E80` copies the previous file to `system.bak` only
+                // while the interpreter carries no load-integrity flags, so
+                // a rejected file never replaces the last good backup. The
+                // native `CopyFileA` result is unchecked.
+                if integrity == 0 && path.is_file() {
+                    let _ = std::fs::copy(&path, dir.join("system.bak"));
+                }
                 std::fs::write(&path, &bytes).map_err(|cause| {
                     error(
                         "SHINKI_EMU_CMVS_SAVE_WRITE",

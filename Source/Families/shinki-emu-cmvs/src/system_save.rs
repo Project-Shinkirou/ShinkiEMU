@@ -9,6 +9,8 @@ use shinki_emu_sdk::CoreError;
 
 /// The fixed engine key string proven by `sub_427B30`/`sub_427E80`.
 const SYSTEM_SAVE_KEY: &[u8] = b"YUKO_KAWAI_PURPLE_SYSTEM_SAVE_CHECK";
+/// The CP932 banner `sub_427E80` copies from `byte_4D223C` to header offset 8.
+const SYSTEM_SAVE_BANNER: &[u8] = b"\x8f\x91\x82\xab\x8a\xb7\x82\xa6\x82\xbf\x82\xe1\x81c\x82\xe2\x81`\x82\xc5\x82\xb7\x82\xcc\x81I\x81I\x82\xc8\x82\xf1\x82\xc4\x82\xcb\x81\xf4";
 /// The fixed header region length; the encrypted payload starts right after.
 const SYSTEM_SAVE_HEADER_BYTES: usize = 360;
 /// Decompressed byte offset of the CG table (2048 dwords).
@@ -125,9 +127,15 @@ pub fn build_system_payload(state: &crate::CmvsPs2aVmState) -> Vec<u8> {
 
 /// Encodes the decompressed payload into the native container: literal
 /// LZSS, the fixed cipher (key/addend/xor/rotation derived exactly like
-/// the loader's inverse), the identity/version header and the byte-sum
-/// checksum. `sub_427E80` writes this shape to `save/system.dat`.
-pub fn encode_system_container(payload: &[u8], identity: u32, lists: &[usize; 2]) -> Vec<u8> {
+/// the loader's inverse), the `CSS1` identity/version header and the
+/// byte-sum checksum. `sub_427E80` writes this shape to `save/system.dat`;
+/// `stamp` is the interpreter dword it stores at header offset 72.
+pub fn encode_system_container(
+    payload: &[u8],
+    identity: u32,
+    stamp: u32,
+    lists: &[usize; 2],
+) -> Vec<u8> {
     let mut plain = Vec::with_capacity(payload.len() + payload.len() / 8 + 1);
     for chunk in payload.chunks(8) {
         plain.push(0xff_u8);
@@ -148,7 +156,11 @@ pub fn encode_system_container(payload: &[u8], identity: u32, lists: &[usize; 2]
         .collect();
     let total = SYSTEM_SAVE_HEADER_BYTES + encoded.len() + 2;
     let mut source = vec![0_u8; total];
+    source[..4].copy_from_slice(b"CSS1");
+    source[4..8].copy_from_slice(&104_u32.to_le_bytes());
+    source[8..8 + SYSTEM_SAVE_BANNER.len()].copy_from_slice(SYSTEM_SAVE_BANNER);
     source[68..72].copy_from_slice(&identity.to_le_bytes());
+    source[72..76].copy_from_slice(&stamp.to_le_bytes());
     source[76..78].copy_from_slice(&1_u16.to_le_bytes());
     source[78] = addend;
     source[79] = 0;
