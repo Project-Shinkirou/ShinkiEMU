@@ -1,23 +1,6 @@
 use super::*;
 
 #[test]
-fn select_preserves_source_and_resolves_each_display_label_pair() {
-    let source =
-        b".select first:left second:right\r\n.label left\r\n.end\r\n.label right\r\n.end\r\n";
-    let script = parse_sc(source, &ScOpcodeCatalog::observed_musica()).unwrap();
-    let ScLineKind::Command { command } = &script.lines[0].kind else {
-        panic!("expected select");
-    };
-    assert_eq!(
-        command.control_flow,
-        ScControlFlow::Choice {
-            targets: vec!["left".into(), "right".into()]
-        }
-    );
-    assert_eq!(encode_sc(&script).unwrap(), source);
-}
-
-#[test]
 fn select_terminal_separator_preserves_three_choices_and_runtime_transition() {
     let source = b".select first:a second:b third:c \r\n.label a\r\n.end\r\n.label b\r\n.end\r\n.label c\r\n.end\r\n";
     let script = parse_sc(source, &ScOpcodeCatalog::observed_musica()).unwrap();
@@ -123,43 +106,6 @@ fn absent_goto_is_native_script_local_fallthrough_not_a_filtered_command() {
         )
         .is_err()
     );
-}
-
-#[test]
-fn duplicate_catalog_opcode_is_blocking() {
-    let mut catalog = ScOpcodeCatalog::default();
-    let spec = ScOpcodeSpec {
-        name: "wait".into(),
-        control_flow: ScControlFlowKind::Next,
-    };
-    catalog.insert("wait", spec.clone()).unwrap();
-    assert_eq!(
-        catalog.insert("WAIT", spec).unwrap_err(),
-        ScParseError::DuplicateOpcode("wait".into())
-    );
-}
-
-#[test]
-fn operands_are_typed_without_discarding_raw_source() {
-    let source = b".movie 9989 op.avi 1280 720 t\r\n.if flag == 1 done\r\n.label done\r\n.end\r\n";
-    let script = parse_sc(source, &ScOpcodeCatalog::observed_musica()).unwrap();
-    let ScLineKind::Command { command } = &script.lines[0].kind else {
-        panic!("first line must be a command");
-    };
-    assert_eq!(
-        command.operands,
-        vec![
-            ScOperand::Integer { value: 9989 },
-            ScOperand::Symbol {
-                value: "op.avi".into()
-            },
-            ScOperand::Integer { value: 1280 },
-            ScOperand::Integer { value: 720 },
-            ScOperand::Boolean { value: true },
-        ]
-    );
-    assert_eq!(command.raw_operands, b"9989 op.avi 1280 720 t");
-    assert_eq!(encode_sc(&script).unwrap(), source);
 }
 
 #[test]

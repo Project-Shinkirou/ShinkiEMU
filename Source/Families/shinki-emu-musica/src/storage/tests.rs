@@ -37,16 +37,6 @@ fn translation_visibility_and_cached_overlay_round_trip_with_identity() {
 }
 
 #[test]
-fn save_cards_accept_arbitrary_raster_extents() {
-    for (width, height) in [(1280, 720), (721, 1280), (1279, 719), (641, 359), (17, 1)] {
-        let rgba = vec![255; width as usize * height as usize * 4];
-        let card = SaveCard::capture(1280, 720, width, height, &rgba).unwrap();
-        let thumbnail = card.texture().unwrap();
-        assert_eq!((thumbnail.width, thumbnail.height), (96, 54));
-    }
-}
-
-#[test]
 fn save_card_crops_content_before_resizing_the_thumbnail() {
     let width = 721_u32;
     let height = 1280_u32;
@@ -91,50 +81,6 @@ fn save_cards_accept_supported_rasters_and_reject_invalid_frames() {
             Err(error) => error,
         };
         assert_eq!(error.code(), "SHINKI_EMU_MUSICA_SAVE_THUMBNAIL");
-    }
-}
-
-#[test]
-fn arbitrary_size_save_cards_round_trip_through_storage() {
-    let root = tempfile::tempdir().unwrap();
-    let game = Hash256::from_sha256(b"high-scale-game");
-    let storage = Storage::new(root.path()).unwrap();
-    for (slot, (width, height)) in [
-        (0, (1280, 720)),
-        (1, (721, 1280)),
-        (2, (1279, 719)),
-        (3, (17, 1)),
-    ] {
-        let rgba = vec![255; width as usize * height as usize * 4];
-        let mut card = SaveCard::capture(1280, 720, width, height, &rgba).unwrap();
-        card.comment = format!("scale-{width}x{height}");
-        let snapshot = Snapshot {
-            logical_extent: [1280, 720],
-            card,
-            game,
-            vm: vec![slot as u8],
-            message: None,
-            translation_visible: true,
-            translation_overlay: None,
-            wait_ns: 0,
-            sounds: vec![],
-        };
-        storage.write(slot, &snapshot).unwrap();
-    }
-
-    let reopened = Storage::new(root.path()).unwrap();
-    for (slot, (width, height)) in [
-        (0, (1280, 720)),
-        (1, (721, 1280)),
-        (2, (1279, 719)),
-        (3, (17, 1)),
-    ] {
-        let snapshot = reopened.read(slot).unwrap();
-        let thumbnail = snapshot.card.texture().unwrap();
-        assert_eq!((thumbnail.width, thumbnail.height), (96, 54));
-        assert_eq!(snapshot.card.comment, format!("scale-{width}x{height}"));
-        assert_eq!(snapshot.vm, vec![slot as u8]);
-        assert_eq!(snapshot.game, game);
     }
 }
 

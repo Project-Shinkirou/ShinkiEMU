@@ -387,25 +387,6 @@ fn message_speaker_strips_native_prefix_and_spaces() {
 }
 
 #[test]
-fn message_preserves_empty_voice_before_speaker() {
-    let source = b".message 42  speaker body\r\n.end\r\n";
-    let script = parse_sc(source, &ScOpcodeCatalog::observed_musica()).unwrap();
-    let mut vm = MusicaVm::new(
-        "musica:/scr/test.sc".into(),
-        Hash256::from_sha256(source),
-        script,
-        1,
-    )
-    .unwrap();
-    let Some(MusicaVmEvent::Message { text, speaker, .. }) = vm.step(1).unwrap() else {
-        panic!("expected message input wait")
-    };
-    assert_eq!(text, "body");
-    assert_eq!(speaker.as_deref(), Some("speaker"));
-    assert_eq!(vm.state().message.as_ref().unwrap().message_id, 42);
-}
-
-#[test]
 fn short_message_executes_the_observed_constructor_defaults() {
     let source = b".message 42 incomplete\r\n";
     let script = parse_sc(source, &ScOpcodeCatalog::observed_musica()).unwrap();

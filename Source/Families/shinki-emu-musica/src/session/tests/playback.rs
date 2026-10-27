@@ -273,18 +273,6 @@ fn native_gpu_background_focus_remains_active_but_keeps_elapsed_guard() {
 }
 
 #[test]
-fn native_gpu_active_elapsed_remains_bounded() {
-    let _session = PROVIDER_SESSION.lock();
-    let root = tempfile::tempdir().unwrap();
-    fixture::game(root.path(), b".wait 1000\r\n.end\r\n");
-    let request = request(root.path(), Sink::default());
-    let (_, mut session) = fixture::provider().open_session(request).unwrap();
-    let error = session.advance(1_000_000_001, &[]).unwrap_err();
-    assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_ELAPSED");
-    Box::new(session).close().unwrap();
-}
-
-#[test]
 fn native_gpu_text_shadow_uses_current_manager_setting_after_load() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();

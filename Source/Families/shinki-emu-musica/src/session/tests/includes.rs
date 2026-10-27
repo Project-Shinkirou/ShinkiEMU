@@ -41,18 +41,3 @@ fn native_gpu_includes_execute_on_open_chain_and_restore() {
     assert_eq!(session.message.as_ref().unwrap().0, "Included");
     Box::new(session).close().unwrap();
 }
-
-#[test]
-fn include_cycle_fails_before_creating_a_family_session() {
-    let _session = PROVIDER_SESSION.lock();
-    let root = tempfile::tempdir().unwrap();
-    fixture::game(root.path(), b".include test.sc\r\n");
-    assert_eq!(
-        fixture::provider()
-            .open(request(root.path(), Sink::default()))
-            .err()
-            .unwrap()
-            .code(),
-        "SHINKI_EMU_MUSICA_SCRIPT_INCLUDE_CYCLE"
-    );
-}

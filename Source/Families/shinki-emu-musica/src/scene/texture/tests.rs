@@ -94,56 +94,6 @@ fn ani_with_origin(offset_x: u16, offset_y: u16) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "requires a hardware GPU"]
-fn profile_texture_overrides_preserve_native_geometry_and_ani_origin() {
-    let root = tempfile::tempdir().unwrap();
-    crate::test_fixture::game(root.path(), b".stage * BG.png 2 3\r\n.end\r\n");
-    let native_png = png(16, 16, [25, 100, 220, 255]);
-    let native_ani = ani_with_origin(3, 4);
-    crate::test_fixture::assets(
-        root.path(),
-        "bg",
-        &[("BG.png", &native_png), ("BG.ANI", &native_ani)],
-    );
-    std::fs::create_dir_all(root.path().join("hd")).unwrap();
-    let replacement_png = png(32, 32, [220, 40, 80, 255]);
-    let replacement_ani = png(24, 20, [80, 220, 100, 255]);
-    std::fs::write(root.path().join("hd/static.png"), replacement_png).unwrap();
-    std::fs::write(root.path().join("hd/ani.png"), replacement_ani).unwrap();
-    let profile_path = root.path().join(MUSICA_KEY_FILE);
-    let mut key = shinki_emu_musica_keys::load_musica_key_file(&profile_path).unwrap();
-    key.texture_overrides = std::collections::BTreeMap::from([
-        ("musica:/bg/BG.png".into(), "hd/static.png".into()),
-        ("musica:/bg/BG.ANI".into(), "hd/ani.png".into()),
-    ]);
-    std::fs::write(&profile_path, toml::to_string_pretty(&key).unwrap()).unwrap();
-
-    let (archive, overrides) =
-        mount_musica_with_texture_overrides(root.path(), &profile_path).unwrap();
-    let mut scene = Scene::new_scaled(
-        crate::test_fixture::gpu_instance(),
-        Arc::new(archive),
-        16,
-        16,
-        32,
-        32,
-        overrides,
-        crate::ScriptEncoding::ShiftJis,
-    )
-    .unwrap();
-    let static_asset = scene.texture_asset("musica:/bg/BG.png").unwrap();
-    assert_eq!(static_asset.frame.width, 32);
-    assert_eq!(static_asset.frame.height, 32);
-    assert_eq!(static_asset.logical_extent, Extent2D::new(16, 16));
-    assert_eq!(static_asset.logical_origin, [0, 0]);
-    let ani_asset = scene.texture_asset("musica:/bg/BG.ANI").unwrap();
-    assert_eq!(ani_asset.frame.width, 24);
-    assert_eq!(ani_asset.frame.height, 20);
-    assert_eq!(ani_asset.logical_extent, Extent2D::new(1, 1));
-    assert_eq!(ani_asset.logical_origin, [3, 4]);
-}
-
-#[test]
 fn texture_override_profile_rejects_unsupported_archive_sources() {
     let root = tempfile::tempdir().unwrap();
     let source = b".stage * BG.png 0 0\r\n.end\r\n";

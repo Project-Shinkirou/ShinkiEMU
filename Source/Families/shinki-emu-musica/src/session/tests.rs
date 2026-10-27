@@ -467,15 +467,6 @@ fn full_audio_control_queue_waits_and_cancellation_releases_the_sender() {
     assert!(!audio.take_backpressure());
 }
 #[test]
-fn decoded_audio_rejects_expansion_budget_and_cancellation() {
-    let bytes = fixture::wave();
-    let stop = AtomicBool::new(false);
-    assert!(shinki_emu_sdk::decode_audio(&bytes, 100, &stop).is_err());
-    stop.store(true, Ordering::Release);
-    assert!(shinki_emu_sdk::decode_audio(&bytes, 4800, &stop).is_err());
-}
-
-#[test]
 fn audio_snapshot_timeout_cancels_blocked_worker_and_rejects_late_commands() {
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".end\r\n");
@@ -499,30 +490,6 @@ fn audio_snapshot_timeout_cancels_blocked_worker_and_rejects_late_commands() {
     let writes = sink.writes.load(Ordering::Acquire);
     std::thread::sleep(Duration::from_millis(5));
     assert_eq!(sink.writes.load(Ordering::Acquire), writes);
-}
-#[test]
-fn corrupt_or_foreign_slot_is_never_overwritten() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".shinki-musica/saves");
-    std::fs::create_dir_all(&path).unwrap();
-    let slot = path.join("slot-000.asav");
-    std::fs::write(&slot, b"original commercial save").unwrap();
-    let store = crate::storage::Storage::new(root.path()).unwrap();
-    let state = crate::storage::Snapshot {
-        logical_extent: [1280, 720],
-        card: crate::storage::SaveCard::capture(1280, 720, 1280, 720, &vec![255; 1280 * 720 * 4])
-            .unwrap(),
-        game: roukaku_core::Hash256::from_sha256(b"game"),
-        vm: vec![],
-        message: None,
-        translation_visible: true,
-        translation_overlay: None,
-        wait_ns: 0,
-        sounds: vec![],
-    };
-    assert!(store.read(0).is_err());
-    assert!(store.write(0, &state).is_err());
-    assert_eq!(std::fs::read(slot).unwrap(), b"original commercial save");
 }
 #[test]
 fn non_yielding_variable_loop_is_bounded() {

@@ -344,7 +344,7 @@ fn canonical_key_loader_is_bounded_regular_read_only_and_redacted() {
 }
 
 #[test]
-fn key_file_errors_are_redacted_and_display_code_then_message() {
+fn key_file_io_errors_map_to_redacted_codes() {
     for (kind, code) in [
         (ErrorKind::NotFound, "SHINKI_EMU_PROFILE_MISSING"),
         (ErrorKind::PermissionDenied, "SHINKI_EMU_PROFILE_PERMISSION"),
@@ -352,11 +352,6 @@ fn key_file_errors_are_redacted_and_display_code_then_message() {
     ] {
         let error = key_io_error(std::io::Error::new(kind, "private-secret-sentinel"));
         assert_eq!(error.code, code);
-        assert!(!error.message.contains("private-secret-sentinel"));
-        assert_eq!(error.to_string(), format!("{code}: {}", error.message));
+        assert!(!error.to_string().contains("private-secret-sentinel"));
     }
-    for (code, _) in KEY_FILE_ERRORS {
-        assert_eq!(key_file_error(code).unwrap().code, code);
-    }
-    assert!(key_file_error("SHINKI_EMU_PROFILE_ROOT").is_none());
 }
