@@ -19,7 +19,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
 branch = "shinki"
-rev = "7c241b477fb10efd981b20af67b1fb9745ec97fe"
+rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 upstream = "https://github.com/xmoezzz/rfvp"
 [[cores.blocked]]
 target = "aarch64-linux-android"

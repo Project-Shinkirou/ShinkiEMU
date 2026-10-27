@@ -175,34 +175,21 @@ zstd = "0.14.3"
 anyhow = "1.0.104"
 ndk-sys = "0.6.0"
 oboe = "0.6.1"
-roukaku-byte-source = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-media = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-platform = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
-roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "3598c63cea7d952d31499c94b1577233d370dc26" }
+roukaku-byte-source = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-media = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-platform = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
+roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "8392cf161800f7684af7704eb95f7a5526d2015d" }
 
 # Android static cores use the workspace ABI and native build helper rather than
 # a second copy of the same packages from this repository's Git URL.
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
-
-# Local RoukakuEngine feat/cmvs-render worktree; replace with the pushed rev before merge.
-[patch."https://github.com/Project-Shinkirou/RoukakuEngine"]
-roukaku-byte-source = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-byte-source" }
-roukaku-core = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-core" }
-roukaku-media = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-media" }
-roukaku-media-core = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-media-core" }
-roukaku-observability = { path = "../rk-cmvs-render/Engine/Source/Developer/roukaku-observability" }
-roukaku-platform = { path = "../rk-cmvs-render/Engine/Source/Platform/roukaku-platform" }
-roukaku-platform-common = { path = "../rk-cmvs-render/Engine/Source/Platform/roukaku-platform-common" }
-roukaku-subtitle = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-subtitle" }
-roukaku-text = { path = "../rk-cmvs-render/Engine/Source/Runtime/roukaku-text" }
-
 
 [patch.crates-io]
 cpal = { path = "ThirdParty/cpal" }

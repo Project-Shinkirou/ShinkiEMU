@@ -120,7 +120,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 - Upstream version: `0.7.0`, revision `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1`
 - Native adaptation fork: <https://github.com/Project-Shinkirou/rfvp>
 - Native adaptation branch: `shinki`
-- 固定来源：[`7c241b477fb10efd981b20af67b1fb9745ec97fe`](https://github.com/Project-Shinkirou/rfvp/commit/7c241b477fb10efd981b20af67b1fb9745ec97fe)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入，并添加 macOS dylib 构建身份；iOS 静态注册不导出重复查询符号。
+- 固定来源：[`9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72`](https://github.com/Project-Shinkirou/rfvp/commit/9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入，并添加 macOS dylib 构建身份；iOS 静态注册不导出重复查询符号。
 - License: Mozilla Public License 2.0.
 - Derivative source: <https://github.com/Project-Shinkirou/rfvp>
 - Shinki adapter source: fork 内 `crates/shinki-emu-rfvp/`

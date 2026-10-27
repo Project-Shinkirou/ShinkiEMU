@@ -412,7 +412,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -423,7 +423,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -456,7 +456,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot 0.12.5",
  "percent-encoding",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -1321,7 +1321,7 @@ dependencies = [
  "cap-primitives",
  "cap-std",
  "io-lifetimes 3.0.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1338,7 +1338,7 @@ dependencies = [
  "maybe-owned",
  "rustix 1.1.5",
  "rustix-linux-procfs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "winx",
 ]
 
@@ -1952,7 +1952,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.60.0",
 ]
 
 [[package]]
@@ -2151,7 +2151,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e3d747f100290a1ca24b752186f61f6637e1deffe3bf6320de6fcb29510a307"
 dependencies = [
  "bitflags 2.13.2",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "winapi",
 ]
 
@@ -2162,7 +2162,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
 dependencies = [
  "bitflags 2.13.2",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "winapi",
 ]
 
@@ -2404,7 +2404,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2453,7 +2453,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading 0.8.9",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -2900,7 +2900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3748,7 +3748,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.52.0",
 ]
 
 [[package]]
@@ -3767,7 +3767,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4078,7 +4078,7 @@ dependencies = [
  "log 0.4.34",
  "presser",
  "thiserror 2.0.21",
- "windows 0.62.2",
+ "windows 0.54.0",
 ]
 
 [[package]]
@@ -4375,7 +4375,7 @@ dependencies = [
  "bitflags 2.13.2",
  "com",
  "libc",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "thiserror 1.0.69",
  "widestring",
  "winapi",
@@ -4390,7 +4390,7 @@ dependencies = [
  "bitflags 2.13.2",
  "com",
  "libc",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "thiserror 1.0.69",
  "widestring",
  "winapi",
@@ -4926,7 +4926,7 @@ dependencies = [
  "js-sys",
  "log 0.4.34",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -5369,7 +5369,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.3",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6456,7 +6456,7 @@ dependencies = [
  "once_cell",
  "png 0.18.1",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6515,7 +6515,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=7c241b477fb10efd981b20af67b1fb9745ec97fe#7c241b477fb10efd981b20af67b1fb9745ec97fe"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -6854,7 +6854,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7604,15 +7604,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ordered-float"
-version = "5.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "ordered-stream"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7629,7 +7620,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -8476,7 +8467,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9011,7 +9002,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=7c241b477fb10efd981b20af67b1fb9745ec97fe#7c241b477fb10efd981b20af67b1fb9745ec97fe"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9064,7 +9055,7 @@ dependencies = [
  "video-sys",
  "wgpu 0.19.4",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=7c241b477fb10efd981b20af67b1fb9745ec97fe)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72)",
 ]
 
 [[package]]
@@ -9142,6 +9133,7 @@ dependencies = [
 [[package]]
 name = "roukaku-asset"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "camino",
  "roukaku-core",
@@ -9155,6 +9147,7 @@ dependencies = [
 [[package]]
 name = "roukaku-byte-source"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9166,6 +9159,7 @@ dependencies = [
 [[package]]
 name = "roukaku-core"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "blake3",
  "hex",
@@ -9182,6 +9176,7 @@ dependencies = [
 [[package]]
 name = "roukaku-media"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "ffmpeg-next",
  "image 0.25.10",
@@ -9211,6 +9206,7 @@ dependencies = [
 [[package]]
 name = "roukaku-media-core"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "rayon",
  "roukaku-byte-source",
@@ -9224,6 +9220,7 @@ dependencies = [
 [[package]]
 name = "roukaku-observability"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "file-rotate",
  "libc",
@@ -9243,6 +9240,7 @@ dependencies = [
 [[package]]
 name = "roukaku-package"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "aes-gcm-siv",
  "hkdf",
@@ -9266,6 +9264,7 @@ dependencies = [
 [[package]]
 name = "roukaku-platform"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "objc2 0.6.5",
  "objc2-avf-audio",
@@ -9287,6 +9286,7 @@ dependencies = [
 [[package]]
 name = "roukaku-platform-common"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "base16ct",
  "directories",
@@ -9312,6 +9312,7 @@ dependencies = [
 [[package]]
 name = "roukaku-plugin-abi"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9322,6 +9323,7 @@ dependencies = [
 [[package]]
 name = "roukaku-property-derive"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9331,6 +9333,7 @@ dependencies = [
 [[package]]
 name = "roukaku-subtitle"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "cc",
  "pkg-config",
@@ -9340,6 +9343,7 @@ dependencies = [
 [[package]]
 name = "roukaku-target"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9352,6 +9356,7 @@ dependencies = [
 [[package]]
 name = "roukaku-text"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "cosmic-text",
  "roukaku-core",
@@ -9366,6 +9371,7 @@ dependencies = [
 [[package]]
 name = "roukaku-ui-core"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "postcard",
  "roukaku-core",
@@ -9377,6 +9383,7 @@ dependencies = [
 [[package]]
 name = "roukaku-worker-budget"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=8392cf161800f7684af7704eb95f7a5526d2015d#8392cf161800f7684af7704eb95f7a5526d2015d"
 dependencies = [
  "tokio",
 ]
@@ -9723,7 +9730,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9792,7 +9799,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10498,7 +10505,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=7c241b477fb10efd981b20af67b1fb9745ec97fe#7c241b477fb10efd981b20af67b1fb9745ec97fe"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -10982,7 +10989,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11793,10 +11800,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -11815,7 +11822,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -12475,7 +12482,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -13654,7 +13661,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "log 0.4.34",
  "metal 0.27.0",
  "naga 0.19.2",
@@ -13699,7 +13706,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading 0.8.9",
+ "libloading 0.7.4",
  "log 0.4.34",
  "metal 0.28.0",
  "naga 0.20.0",
@@ -13800,7 +13807,7 @@ dependencies = [
  "ndk-sys 0.6.0+11769913",
  "objc",
  "once_cell",
- "ordered-float 5.5.0",
+ "ordered-float 4.6.0",
  "parking_lot 0.12.5",
  "portable-atomic",
  "portable-atomic-util",
@@ -13850,7 +13857,7 @@ dependencies = [
  "objc2-metal 0.3.2",
  "objc2-quartz-core 0.3.2",
  "once_cell",
- "ordered-float 5.5.0",
+ "ordered-float 4.6.0",
  "parking_lot 0.12.5",
  "portable-atomic",
  "portable-atomic-util",
@@ -13907,7 +13914,7 @@ dependencies = [
  "objc2-metal 0.3.2",
  "objc2-quartz-core 0.3.2",
  "once_cell",
- "ordered-float 5.5.0",
+ "ordered-float 4.6.0",
  "parking_lot 0.12.5",
  "portable-atomic",
  "portable-atomic-util",
@@ -14076,7 +14083,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -15078,7 +15085,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=7c241b477fb10efd981b20af67b1fb9745ec97fe#7c241b477fb10efd981b20af67b1fb9745ec97fe"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 dependencies = [
  "byteorder",
  "log 0.4.34",
