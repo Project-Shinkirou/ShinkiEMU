@@ -1,0 +1,24 @@
+[package]
+name = "shinki-emu-dmm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+md-5 = "0.10.6"
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shinki-emu-store = { path = "../shinki-emu-store" }
+tokio = { workspace = true, features = ["fs", "io-util"] }
+zeroize.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+base64.workspace = true
+aes-gcm = "0.10.3"
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[dev-dependencies]
+tempfile.workspace = true
