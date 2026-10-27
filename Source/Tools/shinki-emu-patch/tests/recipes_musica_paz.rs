@@ -175,4 +175,3 @@ fn duplicate_raw_speaker_identity_retains_ordered_native_records() {
         ])
     );
 }
-
