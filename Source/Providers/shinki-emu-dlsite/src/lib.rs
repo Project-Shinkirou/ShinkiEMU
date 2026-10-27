@@ -83,7 +83,7 @@ impl Name {
 }
 #[derive(Clone, Debug, Deserialize)]
 struct PublicWork {
-    #[serde(default, alias = "product_id")]
+    #[serde(default, alias = "product_id", alias = "workno")]
     id: String,
     #[serde(default, alias = "work_name")]
     name: String,
@@ -574,6 +574,16 @@ mod tests {
         assert_eq!(s[0].workno, "RJ123456");
         assert_eq!(w.works[0].id, "RJ123456");
     }
+    #[test]
+    fn public_product_response_matches_owned_work_number() {
+        let products: Vec<PublicWork> = serde_json::from_str(
+            r#"[{"workno":"RJ123456","work_name":"PC Game","work_type":"GAME"}]"#,
+        )
+        .unwrap();
+        assert_eq!(products[0].id, "RJ123456");
+        assert_eq!(products[0].name, "PC Game");
+    }
+
     #[test]
     fn purchases_larger_than_one_page_keep_the_last_title() {
         let sales: Vec<_> = (0..201)
