@@ -41,13 +41,15 @@ fn definition(source: &str) -> Result<(String, toml::Table)> {
 /// Cargo itself still performs Git manifest normalization (workspace inheritance,
 /// targets and path dependencies); no dependency in the shipped lock is patched.
 pub(super) fn collect(manifest: &Path, root: &Path) -> Result<toml::Table> {
-    // No target filter: corresponding sources must contain the whole lockfile.
+    // No target filter and every feature: corresponding sources must contain the
+    // whole lockfile, which Cargo resolves with all features of all members.
     let metadata: Value = serde_json::from_slice(&dependencies::capture(
         Command::new("cargo")
             .current_dir(manifest.parent().context("manifest directory")?)
             .args([
                 "metadata",
                 "--locked",
+                "--all-features",
                 "--format-version",
                 "1",
                 "--manifest-path",
@@ -55,9 +57,8 @@ pub(super) fn collect(manifest: &Path, root: &Path) -> Result<toml::Table> {
             .arg(manifest),
     )?)?;
     let packages = metadata["packages"].as_array().context("Cargo packages")?;
-    let lock: toml::Value = toml::from_str(&fs::read_to_string(
-        Path::new(text(&metadata, "workspace_root")?).join("Cargo.lock"),
-    )?)?;
+    let lock_path = Path::new(text(&metadata, "workspace_root")?).join("Cargo.lock");
+    let lock: toml::Value = toml::from_str(&fs::read_to_string(&lock_path)?)?;
     let mut groups: BTreeMap<&str, Vec<&Value>> = BTreeMap::new();
     for package in packages {
         if let Some(source) = package["source"].as_str() {
@@ -131,6 +132,9 @@ pub(super) fn collect(manifest: &Path, root: &Path) -> Result<toml::Table> {
                 toml::to_string(&project_manifest)?,
             )?;
             fs::write(project.join("lib.rs"), "")?;
+            // Offline Cargo cannot look up a Git tag/branch the original fetch
+            // never recorded as a ref; the original lock supplies precise revisions.
+            fs::copy(&lock_path, project.join("Cargo.lock"))?;
             let vendored = project.join("vendor");
             dependencies::capture(
                 Command::new("cargo")
