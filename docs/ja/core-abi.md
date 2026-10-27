@@ -45,7 +45,7 @@ Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセ�
 
 ## SDK の役割
 
-`Source/SDK/shinki-emu-sdk` は共通の仕組みを提供するもので、別のゲームランタイムを作るものではありません。`runtime` の値はプロセス内部でのみ使われます。`native` は設定の検証、epoch、キャンセル、遅れて届いたウィンドウ結果の拒否、独立した CPU リースを共通化し、`native_input` は VM を呼ばずに長さ上限のある入力をコピーします。`NativeAudioOutput`/`NativeAudioConverter` は、コアが所有するデバイススレッドに使われます。ミキシング、メディアクロック、ネイティブのセーブ形式、ゲームのルールは引き続き各コアが担当します。具体的な API は [SDK](https://github.com/Project-Shinkirou/ShinkiEMU/tree/main/Source/SDK/shinki-emu-sdk) を参照してください。
+`Source/SDK/shinki-emu-sdk` は共通の仕組みを提供するもので、別のゲームランタイムを作るものではありません。`runtime` の値はプロセス内部でのみ使われます。`native` は設定の検証、epoch、キャンセル、遅れて届いたウィンドウ結果の拒否、独立した CPU リースを共通化し、`native_input` は VM を呼ばずに長さ上限のある入力をコピーします。`NativeAudioOutput`/`NativeAudioConverter` は、コアが所有するデバイススレッドに使われます。`NativeAudioOutput::progress()` は、受け付けたフレーム数と実際に再生されたフレーム数を 48 kHz のソース時間軸で返します。再生フレーム数からはデバイス遅延とリサンプラー遅延を差し引いてあり、コアはこれでメディアクロックを進めます。ミキシング、メディアクロック、ネイティブのセーブ形式、ゲームのルールは引き続き各コアが担当します。具体的な API は [SDK](https://github.com/Project-Shinkirou/ShinkiEMU/tree/main/Source/SDK/shinki-emu-sdk) を参照してください。
 
 ## コアパッケージ
 
