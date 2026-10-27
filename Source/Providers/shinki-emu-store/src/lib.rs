@@ -219,6 +219,8 @@ pub enum StoreError {
     UnsupportedLogin,
     #[error("Paste the cookies from your signed-in browser")]
     CookiesRequired,
+    #[error("DMM catalog needs a signed-in DGP library capture")]
+    CatalogCaptureRequired,
     #[error("Operation cancelled")]
     Cancelled,
     #[error("Provider identifiers must be unique")]
@@ -247,6 +249,7 @@ impl StoreError {
             Self::UnsupportedLogin => "unsupported_login",
             Self::Cancelled => "cancelled",
             Self::CookiesRequired => "cookies_required",
+            Self::CatalogCaptureRequired => "catalog_capture_required",
             Self::DuplicateProvider => "duplicate_provider",
         }
     }
