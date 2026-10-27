@@ -119,7 +119,7 @@ fn native_gpu_save_page_rejects_corrupt_cards_without_overwriting() {
     let _lock = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     game(root.path());
-    let folder = root.path().join(".shinki-musica/saves");
+    let folder = root.path().join(".shinki/musica/saves");
     std::fs::create_dir_all(&folder).unwrap();
     let slot = folder.join("slot-020.asav");
     std::fs::write(&slot, b"original corrupt slot").unwrap();

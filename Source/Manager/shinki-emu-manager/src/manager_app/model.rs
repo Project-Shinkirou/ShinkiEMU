@@ -74,6 +74,12 @@ impl ShinkiEmuManagerController {
                 };
                 if patch_selected {
                     (patch.recipes, patch.hint) = self.patch_choices(&game.game_id, linked)?;
+                    patch.artifacts = self.matching_artifacts(&game.game_id, linked)
+                        .into_iter().map(|item| shinki_emu_manager_ui_slint::RecipeViewModel {
+                            id: item.id,
+                            title: item.title["zh-CN"].clone(),
+                            recommended: false,
+                        }).collect();
                     patch.game = row.clone();
                 }
                 if patch_listed {

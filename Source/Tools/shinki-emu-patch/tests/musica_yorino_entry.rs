@@ -240,7 +240,7 @@ impl Fixture {
                 script,
                 source: self.root.join("source"),
                 patch: self.root.join("patch"),
-                output: self.root.join("output"),
+                mode: shinki_emu_patch::PatchMode::NewDirectory { output: self.root.join("output") },
             },
             Arc::new(AtomicBool::new(false)),
             |_| {},

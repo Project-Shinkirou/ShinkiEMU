@@ -503,7 +503,7 @@ fn audio_snapshot_timeout_cancels_blocked_worker_and_rejects_late_commands() {
 #[test]
 fn corrupt_or_foreign_slot_is_never_overwritten() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join(".shinki-musica/saves");
+    let path = root.path().join(".shinki/musica/saves");
     std::fs::create_dir_all(&path).unwrap();
     let slot = path.join("slot-000.asav");
     std::fs::write(&slot, b"original commercial save").unwrap();

@@ -4,6 +4,7 @@ mod catalog;
 mod codecs;
 mod data;
 mod error;
+mod inplace;
 mod paths;
 mod pickle;
 mod receipt;
@@ -15,15 +16,21 @@ pub use error::{PatchError, PatchErrorKind};
 pub use receipt::read_output_profile;
 
 pub(crate) const STAGING_PREFIX: &str = ".shinki-patch-staging-";
+pub const GAME_STATE_DIR: &str = ".shinki";
+pub const BACKUP_DIR: &str = "backup";
+pub const PATCH_DIR: &str = "patch";
+pub const STAGING_DIR: &str = "staging";
+pub use inplace::{has_backup, restore_latest};
 
 /// The private transaction namespace is never a discoverable game/output root.
 pub fn is_staging_path(path: &std::path::Path) -> bool {
     path.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .and_then(|name| name.get(..STAGING_PREFIX.len()))
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(STAGING_PREFIX))
+        component.as_os_str().to_str().is_some_and(|name| {
+            name.eq_ignore_ascii_case(GAME_STATE_DIR)
+                || name
+                    .get(..STAGING_PREFIX.len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case(STAGING_PREFIX))
+        })
     })
 }
 
@@ -34,7 +41,13 @@ pub struct PatchRequest {
     pub script: PathBuf,
     pub source: PathBuf,
     pub patch: PathBuf,
-    pub output: PathBuf,
+    pub mode: PatchMode,
+}
+
+#[derive(Clone, Debug)]
+pub enum PatchMode {
+    NewDirectory { output: PathBuf },
+    InPlace,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -72,7 +85,10 @@ pub fn apply(
     let root = paths::AuthorizedRoot::from_dir(transaction.open_staging()?);
     receipt::write(&root, &execution, cancelled.clone(), &progress)?;
     drop(root);
-    let output = transaction.publish(&cancelled)?;
+    let output = match request.mode {
+        PatchMode::NewDirectory { .. } => transaction.publish(&cancelled)?,
+        PatchMode::InPlace => inplace::commit(transaction, &execution.id, &cancelled, &progress)?,
+    };
     progress(PatchProgress {
         phase: "complete".into(),
         completed: 1,

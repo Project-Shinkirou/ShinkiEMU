@@ -40,7 +40,7 @@ PAZ 探测只识别引擎，不能据此得出密钥已安装。Manager 只选�
 
 PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文件变化校验保留。SDK 的 `ArchiveManifest` 是核心本地索引，不是 Host VFS 或产品 package。配置相对路径以游戏目录为基准，资源始终限于游戏目录内；公共读取错误使用 `SHINKI_EMU_PROFILE_*`。读取不运行 managed helper、BinaryFormatter 或 executable patch。
 
-核心自有 slot 位于游戏目录 `.shinki-musica/saves/slot-000.asav`。容器 `AMUSSV06` 包含长度、SHA-256 与 postcard snapshot，保存 VM、当前文本、翻译层文本/可见性、等待进度以及 sound resource/播放位置/volume/pan/repeat。它绑定同一 archive/profile/localization/font identity；加载重建脚本、场景和声音后提交。临时文件 flush 后原子替换；损坏、异版本或外部格式文件拒绝覆盖。此格式不宣称兼容原版存档。加载恢复声音的当前参数、位置与尚未完成的音量渐变。渐变保存分贝起止值、总采样数、已推进采样数和结束停止意图；按剩余采样继续，暂停不推进渐变。新音量命令替换旧渐变。旧 AMUSSV05 及更早内部格式明确拒绝，不覆盖旧 slot。
+核心自有 slot 位于游戏目录 `.shinki/musica/saves/slot-000.asav`。首次使用时把旧 `.shinki-musica/saves/` 中的文件迁至新路径，绝不覆盖已有新存档，此后只读取新路径。容器 `AMUSSV06` 包含长度、SHA-256 与 postcard snapshot，保存 VM、当前文本、翻译层文本/可见性、等待进度以及 sound resource/播放位置/volume/pan/repeat。它绑定同一 archive/profile/localization/font identity；加载重建脚本、场景和声音后提交。临时文件 flush 后原子替换；损坏、异版本或外部格式文件拒绝覆盖。此格式不宣称兼容原版存档。加载恢复声音的当前参数、位置与尚未完成的音量渐变。渐变保存分贝起止值、总采样数、已推进采样数和结束停止意图；按剩余采样继续，暂停不推进渐变。新音量命令替换旧渐变。旧 AMUSSV05 及更早内部格式明确拒绝，不覆盖旧 slot。
 
 ## eden 原版存档与检查点
 

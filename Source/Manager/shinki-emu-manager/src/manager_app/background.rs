@@ -372,14 +372,12 @@ impl ShinkiEmuManagerController {
             }
             let mut choices = result.candidates;
             for id in ids {
-                if automatic.is_some_and(|expected| expected.source_game_id == id) {
-                    return Err(
-                        "SHINKI_EMU_PATCH_INTEGRITY: output import would modify source game".into(),
-                    );
+                if automatic.is_some_and(|expected| expected.source_game_id == id && !expected.in_place) {
+                    return Err("SHINKI_EMU_PATCH_INTEGRITY: output import would modify source game".into());
                 }
                 if let Some(profile) = &profile {
                     self.apply_import_profile(&id, std::mem::take(&mut choices), profile)?;
-                    if let Some(expected) = automatic {
+                    if let Some(expected) = automatic && !expected.in_place {
                         self.inherit_source_work(&expected.source_game_id, &id)?;
                     }
                 } else {

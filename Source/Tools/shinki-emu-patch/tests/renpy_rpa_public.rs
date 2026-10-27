@@ -50,7 +50,7 @@ fn invoke(
             script: script.to_owned(),
             source: root.join("source"),
             patch: root.join("source"),
-            output: root.join("output"),
+            mode: shinki_emu_patch::PatchMode::NewDirectory { output: root.join("output") },
         },
         Arc::new(AtomicBool::new(false)),
         |_| {},

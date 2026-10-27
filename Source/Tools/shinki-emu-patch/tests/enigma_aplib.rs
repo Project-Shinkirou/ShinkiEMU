@@ -38,7 +38,7 @@ end}}
             script,
             source: source.clone(),
             patch: source,
-            output: root.path().join("output"),
+            mode: shinki_emu_patch::PatchMode::NewDirectory { output: root.path().join("output") },
         },
         Arc::new(AtomicBool::new(false)),
         |_| {},

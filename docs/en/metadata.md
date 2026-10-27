@@ -27,6 +27,8 @@ Patch entries live at `Metadata/patches/entries/<id>.json`. The generated catalo
 
 Hosted release naming follows `patch-<id>-v<semver>`. Attachments are separately reviewed distribution artifacts, not files embedded in the metadata snapshot. Updating a version requires binding its exact bytes and authorization again. An empty `release_ids` list means the submitter declared work-level applicability; display “release not restricted,” not “all releases verified.”
 
+Manager offers a download action for applicable hosted artifacts and external entries that include an artifact. It follows HTTPS redirects only (hosted release assets retain the GitHub release CDN allowlist), writes a temporary `.part` file, verifies byte count and SHA256, then publishes `<game>/.shinki/patch/<file_name>` atomically. A previously verified artifact is reused. The download directory becomes patch input; the artifact never runs as a script. In-place recipes back up changed originals under `<game>/.shinki/backup/<id>/` with a manifest and support hash-checked restore.
+
 ## Maintainer review
 
 A maintainer with write/maintain/admin permission reviews the issue and applies `compat:accepted` or `patch:accepted`. Intake treats form text as data, records the raw body SHA256 and `updated_at`, and proposes the keyed entry through a normal PR. It never executes issue scripts. Editing the approved body requires removing approval and reviewing again; recheck the binding before merge. Review schema/path consistency, duplicate keys, cross-references and permission evidence. The local intake command generates candidate files and `approval.json`; it does not itself grant approval or publish an attachment.

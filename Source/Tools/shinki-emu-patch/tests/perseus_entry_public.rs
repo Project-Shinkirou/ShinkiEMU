@@ -398,7 +398,7 @@ impl Fixture {
                 script,
                 source: source.clone(),
                 patch: source.clone(),
-                output: root.join("output"),
+                mode: shinki_emu_patch::PatchMode::NewDirectory { output: root.join("output") },
             },
             cancelled,
             move |progress| {

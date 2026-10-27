@@ -17,7 +17,7 @@ This in-tree core reads PAZ archives and native SC scripts, including split arch
 
 A core owner runs the SC VM, hardware offscreen composition and native audio. Title launch precedes story execution by default. Input and frame polling never advance the VM. The current presentation includes a 1280×720 layout and Noto Sans JP binding; host resizing does not rewrite game coordinates. Movie ASS subtitles use actual movie clocks and explicit fonts; BGM subtitle mappings are rejected on this path.
 
-Product-owned slots are under `.shinki-musica/saves/` and bind archive/profile/localization/font identities. Invalid candidates leave live state and existing files intact. Original eden save interchange is an explicit strict subset of known message checkpoints, not general native-save compatibility. Unknown commands, unsupported effects and device failures remain explicit. Audio currently decodes whole bounded resources rather than arbitrary-length streaming.
+Product-owned slots live under `.shinki/musica/saves/` and bind archive/profile/localization/font identities. At first use, existing `.shinki-musica/saves/` files move there without overwriting newer files; subsequent reads only use the new path. Invalid candidates leave live state and existing files intact. Original eden save interchange is an explicit strict subset of known message checkpoints, not general native-save compatibility. Unknown commands, unsupported effects and device failures remain explicit. Audio currently decodes whole bounded resources rather than arbitrary-length streaming.
 
 [ReMinori](reminori.md) is a separate implementation with different execution, configuration and saves.
 

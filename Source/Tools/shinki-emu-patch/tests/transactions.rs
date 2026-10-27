@@ -61,7 +61,7 @@ impl Fixture {
             script: self.script.clone(),
             source: self.source.clone(),
             patch: self.patch.clone(),
-            output: self.output.clone(),
+            mode: shinki_emu_patch::PatchMode::NewDirectory { output: self.output.clone() },
         }
     }
 
@@ -344,5 +344,96 @@ fn tiny_fractions_are_not_accepted_as_zero_offsets_lengths_or_counts() {
         assert!(!fixture.output.exists());
         fixture.unchanged();
         fixture.no_staging();
+    }
+}
+
+#[test]
+fn in_place_apply_and_restore_round_trip_changed_added_and_removed_files() {
+    let fixture = Fixture::new();
+    fixture.recipe(r#"
+        local changed = ctx.create("assets.bin")
+        changed:write(0, buffer.fromstring("patched bytes")); changed:close()
+        ctx.mkdir("new")
+        local added = ctx.create("new/file.bin")
+        added:write(0, buffer.fromstring("added bytes")); added:close()
+    "#);
+    let mut request = fixture.request();
+    request.mode = shinki_emu_patch::PatchMode::InPlace;
+    let result = apply(request, Arc::new(AtomicBool::new(false)), |_| {}).unwrap();
+    assert_eq!(result.output, fs::canonicalize(&fixture.source).unwrap());
+    assert_eq!(fs::read(fixture.source.join("assets.bin")).unwrap(), b"patched bytes");
+    assert_eq!(fs::read(fixture.source.join("new/file.bin")).unwrap(), b"added bytes");
+    assert!(!fixture.source.join("untouched.dat").exists());
+    let state = fixture.source.join(".shinki");
+    let backups = fs::read_dir(state.join("backup")).unwrap().collect::<Vec<_>>();
+    assert_eq!(backups.len(), 1);
+    let backup = backups[0].as_ref().unwrap().path();
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["recipe_id"], "public-fixture");
+    assert_eq!(manifest["entries"].as_array().unwrap().len(), 4);
+    assert_eq!(fs::read(backup.join("assets.bin")).unwrap(), b"alpha|beta");
+    assert_eq!(fs::read(backup.join("untouched.dat")).unwrap(), b"unchanged public bytes");
+    assert!(state.join("patch-result.json").is_file());
+    assert!(shinki_emu_patch::has_backup(&fixture.source).unwrap());
+    shinki_emu_patch::restore_latest(&fixture.source, Arc::new(AtomicBool::new(false)), |_| {}).unwrap();
+    assert_eq!(fs::read(fixture.source.join("assets.bin")).unwrap(), b"alpha|beta");
+    assert_eq!(fs::read(fixture.source.join("untouched.dat")).unwrap(), b"unchanged public bytes");
+    assert!(!fixture.source.join("new/file.bin").exists());
+    assert!(!state.join("patch-result.json").exists());
+    assert!(!shinki_emu_patch::has_backup(&fixture.source).unwrap());
+    assert!(fs::read_dir(state.join("staging")).map_or(true, |entries| entries.count() == 0));
+}
+
+#[test]
+fn in_place_cancel_or_recipe_failure_before_commit_preserves_game() {
+    let fixture = Fixture::new();
+    fixture.recipe(r#"ctx.create("assets.bin"):close(); ctx.fail("UNSUPPORTED_INPUT", "abort")"#);
+    let mut request = fixture.request();
+    request.mode = shinki_emu_patch::PatchMode::InPlace;
+    assert_eq!(apply(request, Arc::new(AtomicBool::new(false)), |_| {})
+        .err().unwrap().kind(), PatchErrorKind::UnsupportedInput);
+    fixture.unchanged();
+    assert!(!shinki_emu_patch::has_backup(&fixture.source).unwrap());
+    fixture.recipe(r#"ctx.create("assets.bin"):close()"#);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let signal = cancelled.clone();
+    let mut request = fixture.request();
+    request.mode = shinki_emu_patch::PatchMode::InPlace;
+    assert_eq!(apply(request, cancelled, move |progress| {
+        if progress.phase == "verifying output" { signal.store(true, Ordering::Release); }
+    }).err().unwrap().kind(), PatchErrorKind::Cancelled);
+    fixture.unchanged();
+    assert!(!shinki_emu_patch::has_backup(&fixture.source).unwrap());
+}
+
+#[test]
+fn restore_refuses_modified_patched_file_and_retains_backup() {
+    let fixture = Fixture::new();
+    fixture.recipe(r#"ctx.create("assets.bin"):close()"#);
+    let mut request = fixture.request();
+    request.mode = shinki_emu_patch::PatchMode::InPlace;
+    apply(request, Arc::new(AtomicBool::new(false)), |_| {}).unwrap();
+    fs::write(fixture.source.join("assets.bin"), b"edited by user").unwrap();
+    let error = shinki_emu_patch::restore_latest(&fixture.source,
+        Arc::new(AtomicBool::new(false)), |_| {}).unwrap_err();
+    assert_eq!(error.kind(), PatchErrorKind::Changed);
+    assert_eq!(fs::read(fixture.source.join("assets.bin")).unwrap(), b"edited by user");
+    assert!(shinki_emu_patch::has_backup(&fixture.source).unwrap());
+}
+
+#[test]
+fn recipe_cannot_write_game_state_namespace() {
+    for body in [
+        r#"ctx.create(".shinki/patch/hijack"):close()"#,
+        r#"ctx.mkdir(".shinki/backup")"#,
+        r#"ctx.create(".SHINKI"):close()"#,
+    ] {
+        let fixture = Fixture::new();
+        fixture.recipe(body);
+        let mut request = fixture.request();
+        request.mode = shinki_emu_patch::PatchMode::InPlace;
+        assert_eq!(apply(request, Arc::new(AtomicBool::new(false)), |_| {})
+            .err().unwrap().kind(), PatchErrorKind::Path);
+        fixture.unchanged();
     }
 }

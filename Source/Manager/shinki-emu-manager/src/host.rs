@@ -204,6 +204,9 @@ pub trait ManagerController: 'static {
     fn select_patch_game(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;
     /// Catalog recipe id that applies to the patch game.
     fn select_patch_recipe(&mut self, id: &str) -> Result<ManagerViewModel, String>;
+    fn set_patch_mode(&mut self, in_place: bool) -> Result<ManagerViewModel, String>;
+    fn download_patch(&mut self, id: &str) -> Result<ManagerViewModel, String>;
+    fn restore_patch(&mut self) -> Result<ManagerViewModel, String>;
     fn set_patch_script(&mut self, path: &std::path::Path) -> Result<ManagerViewModel, String>;
     /// `kind` is `patch` or `output`.
     fn set_patch_directory(

@@ -43,6 +43,7 @@ mod cores;
 mod extensions;
 mod family_config;
 mod file_patch;
+mod patch_download;
 mod filters;
 mod input;
 mod library;
@@ -145,6 +146,7 @@ struct ShinkiEmuManagerController {
     action_message: String,
     action_serial: u32,
     patch_job: Option<file_patch::PatchJob>,
+    patch_download: Option<patch_download::PatchDownloadJob>,
     patch_import: Option<file_patch::PendingImport>,
     patch_state: shinki_emu_manager_ui_slint::PatchStateViewModel,
     patch_game_id: Option<String>,

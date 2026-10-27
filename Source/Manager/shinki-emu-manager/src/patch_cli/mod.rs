@@ -1,6 +1,6 @@
 mod worker;
 
-use shinki_emu_patch::{list_recipes, PatchError, PatchErrorKind, PatchProgress, PatchRequest};
+use shinki_emu_patch::{list_recipes, PatchError, PatchErrorKind, PatchMode, PatchProgress, PatchRequest};
 use clap::Subcommand;
 use std::{
     error::Error,
@@ -21,7 +21,7 @@ pub(super) enum Command {
         #[arg(long, value_name = "DIR")]
         scripts: Option<PathBuf>,
     },
-    /// Convert read-only inputs into a new independent output directory.
+    /// Convert trusted inputs into a new directory or patch the game in place.
     Apply {
         #[arg(long, value_name = "FILE")]
         script: PathBuf,
@@ -30,8 +30,16 @@ pub(super) enum Command {
         /// Patch input directory (defaults to --source).
         #[arg(long, value_name = "DIR")]
         patch: Option<PathBuf>,
-        #[arg(long, value_name = "NEW-DIR")]
-        output: PathBuf,
+        #[arg(long, value_name = "NEW-DIR", conflicts_with = "in_place", required_unless_present = "in_place")]
+        output: Option<PathBuf>,
+        /// Patch the source game in place, storing originals under .shinki/backup.
+        #[arg(long, conflicts_with = "output")]
+        in_place: bool,
+    },
+    /// Restore the most recent in-place patch after checking patched file hashes.
+    Restore {
+        #[arg(long, value_name = "GAME-DIR")]
+        game: PathBuf,
     },
 }
 
@@ -91,6 +99,7 @@ fn execute(command: Command) -> Result<(), PatchError> {
             source,
             patch,
             output,
+            in_place,
         } => {
             let cancelled = Arc::new(AtomicBool::new(false));
             let signal = cancelled.clone();
@@ -105,7 +114,9 @@ fn execute(command: Command) -> Result<(), PatchError> {
                 script,
                 patch: patch.unwrap_or_else(|| source.clone()),
                 source,
-                output,
+                mode: if in_place { PatchMode::InPlace } else {
+                    PatchMode::NewDirectory { output: output.expect("required unless in-place") }
+                },
             };
             let result = worker::apply(request, cancelled, |progress| {
                 report_progress(progress, &mut io::stderr().lock());
@@ -114,11 +125,21 @@ fn execute(command: Command) -> Result<(), PatchError> {
             // an already published successful output into cancellation.
             let mut stdout = io::stdout().lock();
             writeln!(stdout, "output: {}", result.output.display())?;
-            writeln!(
-                stdout,
-                "receipt: {}",
-                result.output.join("shinki-patch-result.json").display()
-            )?;
+            writeln!(stdout, "receipt: {}", result.output.join(if in_place {
+                ".shinki/patch-result.json"
+            } else { "shinki-patch-result.json" }).display())?;
+            Ok(())
+        }
+        Command::Restore { game } => {
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let signal = cancelled.clone();
+            ctrlc::set_handler(move || signal.store(true, Ordering::Release)).map_err(|cause| {
+                PatchError::with_source(PatchErrorKind::Io, "cannot install cancellation handler", cause)
+            })?;
+            shinki_emu_patch::restore_latest(&game, cancelled, |progress| {
+                report_progress(progress, &mut io::stderr().lock());
+            })?;
+            writeln!(io::stdout().lock(), "restored: {}", game.display())?;
             Ok(())
         }
     }

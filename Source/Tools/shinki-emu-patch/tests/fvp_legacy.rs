@@ -65,7 +65,7 @@ fn fixture(root: &std::path::Path, dat: &[u8]) -> PatchRequest {
         script,
         source,
         patch,
-        output: root.join("output"),
+        mode: shinki_emu_patch::PatchMode::NewDirectory { output: root.join("output") },
     }
 }
 

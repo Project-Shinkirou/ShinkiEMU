@@ -59,6 +59,15 @@ pub(crate) fn relative(value: &str, allow_empty: bool) -> Result<PathBuf, PatchE
     Ok(PathBuf::from(value))
 }
 
+fn output_relative(value: &str) -> Result<PathBuf, PatchError> {
+    let path = relative(value, false)?;
+    if path.components().any(|part| part.as_os_str().to_str()
+        .is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR))) {
+        return Err(path_error("recipe cannot write reserved .shinki game state"));
+    }
+    Ok(path)
+}
+
 #[derive(Serialize)]
 pub(crate) struct DirectoryEntry {
     pub name: String,
@@ -148,6 +157,10 @@ impl AuthorizedRoot {
             .map_err(|error| io_error("enumerating directory failed", error))?
         {
             let entry = entry.map_err(|error| io_error("reading directory entry failed", error))?;
+            if !self.writable && path.as_os_str().is_empty()
+                && entry.file_name().to_str().is_some_and(|name| name.eq_ignore_ascii_case(crate::GAME_STATE_DIR)) {
+                continue;
+            }
             let metadata = entry
                 .metadata()
                 .map_err(|error| io_error("reading directory entry metadata failed", error))?;
@@ -176,7 +189,7 @@ impl AuthorizedRoot {
 
     pub(crate) fn create(&self, value: &str) -> Result<File, PatchError> {
         self.require_writable()?;
-        let path = relative(value, false)?;
+        let path = output_relative(value)?;
         let parent = self.directory(path.parent().unwrap_or(Path::new("")), false)?;
         let mut options = output_options();
         options.create_new(true);
@@ -193,7 +206,7 @@ impl AuthorizedRoot {
 
     pub(crate) fn edit(&self, value: &str) -> Result<File, PatchError> {
         self.require_writable()?;
-        let path = relative(value, false)?;
+        let path = output_relative(value)?;
         let parent = self.directory(path.parent().unwrap_or(Path::new("")), false)?;
         let file = parent
             .open_with(
@@ -209,14 +222,14 @@ impl AuthorizedRoot {
 
     pub(crate) fn mkdir(&self, value: &str) -> Result<(), PatchError> {
         self.require_writable()?;
-        let path = relative(value, false)?;
+        let path = output_relative(value)?;
         self.directory(&path, true)?;
         Ok(())
     }
 
     pub(crate) fn remove(&self, value: &str) -> Result<(), PatchError> {
         self.require_writable()?;
-        let path = relative(value, false)?;
+        let path = output_relative(value)?;
         let parent = self.directory(path.parent().unwrap_or(Path::new("")), false)?;
         let leaf = Path::new(path.file_name().expect("validated nonempty path"));
         self.inspect_output(&parent, leaf)?;
@@ -227,8 +240,8 @@ impl AuthorizedRoot {
 
     pub(crate) fn rename(&self, from: &str, to: &str) -> Result<(), PatchError> {
         self.require_writable()?;
-        let from = relative(from, false)?;
-        let to = relative(to, false)?;
+        let from = output_relative(from)?;
+        let to = output_relative(to)?;
         let from_parent = self.directory(from.parent().unwrap_or(Path::new("")), false)?;
         let to_parent = self.directory(to.parent().unwrap_or(Path::new("")), false)?;
         let from_leaf = Path::new(from.file_name().expect("validated nonempty path"));
@@ -249,6 +262,18 @@ impl AuthorizedRoot {
             .into_std();
         self.verify_bounded(&file)?;
         regular_file(&file, true)
+    }
+
+    pub(crate) fn checked_directory(&self, path: &Path, create: bool) -> Result<Dir, PatchError> {
+        self.directory(path, create)
+    }
+
+    pub(crate) fn checked_file(&self, value: &str) -> Result<File, PatchError> {
+        let path = relative(value, false)?;
+        let parent = self.directory(path.parent().unwrap_or(Path::new("")), false)?;
+        let leaf = Path::new(path.file_name().expect("validated path"));
+        self.inspect_output(&parent, leaf)?;
+        self.open_read(value)
     }
 
     fn require_writable(&self) -> Result<(), PatchError> {

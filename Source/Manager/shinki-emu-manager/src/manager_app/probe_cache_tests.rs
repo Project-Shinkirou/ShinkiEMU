@@ -363,7 +363,7 @@ fn rejected_duplicate_provider_cannot_be_revived_by_a_persistent_hint() {
 fn owned_musica_saves_do_not_invalidate_game_identification() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("game");
-    let saves = path.join(".shinki-musica").join("saves");
+    let saves = path.join(".shinki").join("musica/saves");
     fs::create_dir_all(&saves).unwrap();
     fs::write(path.join("boot"), b"boot").unwrap();
     let registry = registry();

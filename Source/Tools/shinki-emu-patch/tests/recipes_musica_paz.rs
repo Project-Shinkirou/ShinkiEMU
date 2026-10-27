@@ -93,7 +93,7 @@ end }
         script,
         source,
         patch: patch_root,
-        output: root.join("output"),
+        mode: shinki_emu_patch::PatchMode::NewDirectory { output: root.join("output") },
     }
 }
 
@@ -142,7 +142,8 @@ fn invalid_target_gbk_fails_without_publishing() {
     let (original, mut patch) = fixtures();
     patch[768..773].copy_from_slice(b"\x81\0\0\0\0");
     let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
+    let shinki_emu_patch::PatchMode::NewDirectory { output } = &request.mode else { unreachable!() };
+    let output = output.clone();
     let error = apply(request, Arc::new(AtomicBool::new(false)), |_| {})
         .err()
         .expect("invalid GBK must fail");
@@ -156,7 +157,8 @@ fn unmapped_original_pointer_fails_at_pe_reference_boundary() {
     let (mut original, patch) = fixtures();
     put32(&mut original, 516, 0x409000);
     let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
+    let shinki_emu_patch::PatchMode::NewDirectory { output } = &request.mode else { unreachable!() };
+    let output = output.clone();
     assert!(apply(request, Arc::new(AtomicBool::new(false)), |_| {}).is_err());
     assert!(!output.exists());
 }
@@ -187,7 +189,8 @@ fn unterminated_name_fails_without_reading_outside_backed_file() {
     let (original, mut patch) = fixtures();
     patch[768..].fill(b'A');
     let request = request(root.path(), &original, &patch);
-    let output = request.output.clone();
+    let shinki_emu_patch::PatchMode::NewDirectory { output } = &request.mode else { unreachable!() };
+    let output = output.clone();
     assert!(apply(request, Arc::new(AtomicBool::new(false)), |_| {}).is_err());
     assert!(!output.exists());
 }

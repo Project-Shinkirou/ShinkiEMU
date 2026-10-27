@@ -36,14 +36,81 @@ pub(crate) struct Storage {
 }
 impl Storage {
     pub fn new(root: &Path) -> SessionResult<Self> {
-        Ok(Self {
+        let storage = Self {
             root: root.canonicalize().map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_SAVE_ROOT",
-                    "game directory is unavailable",
-                )
+                error("SHINKI_EMU_MUSICA_SAVE_ROOT", "game directory is unavailable")
             })?,
-        })
+        };
+        storage.migrate_legacy_saves()?;
+        Ok(storage)
+    }
+
+    fn migrate_legacy_saves(&self) -> SessionResult<()> {
+        let old_root = self.root.join(".shinki-musica");
+        let old = old_root.join("saves");
+        let old_meta = match fs::symlink_metadata(&old_root) {
+            Ok(meta) => meta,
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(_) => return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save root cannot be inspected")),
+        };
+        if old_meta.file_type().is_symlink() || !old_meta.is_dir() {
+            return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save root is not a native directory"));
+        }
+        let old_meta = match fs::symlink_metadata(&old) {
+            Ok(meta) => meta,
+            Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(_) => return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy saves cannot be inspected")),
+        };
+        if old_meta.file_type().is_symlink() || !old_meta.is_dir() {
+            return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy saves are not a native directory"));
+        }
+        let target = self.root.join(".shinki/musica/saves");
+        let mut files = Vec::new();
+        let mut dirs = vec![PathBuf::new()];
+        while let Some(relative) = dirs.pop() {
+            for entry in fs::read_dir(old.join(&relative)).map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy saves cannot be listed"))? {
+                let entry = entry.map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save entry cannot be read"))?;
+                let meta = fs::symlink_metadata(entry.path()).map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save entry cannot be inspected"))?;
+                if meta.file_type().is_symlink() { return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save link is forbidden")); }
+                let next = relative.join(entry.file_name());
+                if meta.is_dir() { dirs.push(next); }
+                else if meta.is_file() { files.push(next); }
+                else { return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save is not a regular file")); }
+            }
+        }
+        if files.is_empty() { return Ok(()); }
+        self.named_path("migration-check.asav", true)?;
+        for relative in &files {
+            let mut parent = target.clone();
+            if let Some(parts) = relative.parent() {
+                for part in parts.components() {
+                    parent.push(part);
+                    match fs::symlink_metadata(&parent) {
+                        Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
+                            return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "migration target is not a native directory"));
+                        }
+                        Ok(_) => {}
+                        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(_) => return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "migration target cannot be inspected")),
+                    }
+                }
+            }
+            if fs::symlink_metadata(target.join(relative)).is_ok() {
+                return Err(error("SHINKI_EMU_MUSICA_SAVE_PATH", "migration cannot overwrite existing save"));
+            }
+        }
+        for relative in files {
+            let destination = target.join(&relative);
+            fs::create_dir_all(destination.parent().unwrap())
+                .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_DIRECTORY", "migration directory cannot be created"))?;
+            fs::hard_link(old.join(&relative), &destination)
+                .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save cannot be moved without overwrite"))?;
+            fs::remove_file(old.join(relative))
+                .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_PATH", "legacy save source cannot be removed"))?;
+        }
+        let _ = fs::remove_dir(&old);
+        let _ = fs::remove_dir(&old_root);
+        Ok(())
     }
     fn path(&self, slot: u32, create: bool) -> SessionResult<PathBuf> {
         if slot >= SAVE_MAX_SLOTS {
@@ -55,8 +122,8 @@ impl Storage {
         self.named_path(&format!("slot-{slot:03}.asav"), create)
     }
     fn named_path(&self, name: &str, create: bool) -> SessionResult<PathBuf> {
-        let directory = self.root.join(".shinki-musica").join("saves");
-        for path in [self.root.join(".shinki-musica"), directory.clone()] {
+        let directory = self.root.join(".shinki").join("musica").join("saves");
+        for path in [self.root.join(".shinki"), self.root.join(".shinki/musica"), directory.clone()] {
             match fs::symlink_metadata(&path) {
                 Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
                     return Err(error(
