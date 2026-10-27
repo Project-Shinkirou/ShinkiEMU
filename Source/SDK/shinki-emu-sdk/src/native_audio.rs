@@ -1,14 +1,19 @@
 use crate::runtime::{SessionError, SessionResult};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::Duration,
 };
 fn error(code: &str, message: &str) -> SessionError {
     SessionError::invalid(code, message)
 }
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use roukaku_platform::{AudioOutputLane, AudioWakeRegistration};
-use roukaku_platform_common::{NativeAudioConsumer, NativeAudioProducer, NativeAudioQueue};
+use roukaku_platform_common::{
+    AudioQueueTelemetryReader, NativeAudioConsumer, NativeAudioProducer, NativeAudioQueue,
+};
 
 /// The VM/Kira/movie source clock written to every native output.
 const SOURCE_RATE: u32 = 48_000;
@@ -25,43 +30,83 @@ pub struct NativeAudioProgress {
     pub played_frames: u64,
 }
 
+/// Cloneable, thread-safe view of one output's timeline. It stays readable
+/// while the writer thread is blocked or idle, and after the output closes.
+#[derive(Clone)]
+pub struct NativeAudioProgressReader {
+    clock: Arc<PlaybackClock>,
+}
+impl NativeAudioProgressReader {
+    pub fn progress(&self) -> NativeAudioProgress {
+        self.clock.progress()
+    }
+}
+
 /// Maps the device queue's consumed-sample counter back to source frames.
 struct PlaybackClock {
+    telemetry: AudioQueueTelemetryReader,
     device_rate: u64,
     device_channels: u64,
     /// Device frames emitted before the first source frame (resampler delay).
     delay_frames: u64,
-    accepted: u64,
+    /// Device samples consumed by the latest callback but not yet audible.
+    latency_samples: AtomicU64,
+    accepted: AtomicU64,
     played: AtomicU64,
 }
 impl PlaybackClock {
-    fn new(device_rate: u32, device_channels: u16, delay_frames: usize) -> Self {
+    fn new(
+        telemetry: AudioQueueTelemetryReader,
+        device_rate: u32,
+        device_channels: u16,
+        delay_frames: usize,
+    ) -> Self {
         Self {
+            telemetry,
             device_rate: u64::from(device_rate),
             device_channels: u64::from(device_channels),
             delay_frames: delay_frames as u64,
-            accepted: 0,
+            latency_samples: AtomicU64::new(0),
+            accepted: AtomicU64::new(0),
             played: AtomicU64::new(0),
         }
     }
-    fn accept(&mut self, samples: usize) {
-        self.accepted += (samples / usize::from(SOURCE_CHANNELS)) as u64;
+    /// Only the writer thread calls this, after the samples were queued.
+    fn accept(&self, samples: usize) {
+        let frames = (samples / usize::from(SOURCE_CHANNELS)) as u64;
+        self.accepted.fetch_add(frames, Ordering::Release);
     }
-    fn progress(&self, lane: &impl AudioOutputLane) -> NativeAudioProgress {
+    /// `latency` is the callback's playback-minus-callback delay;
+    /// `callback_samples` is the buffer the callback is about to fill.
+    fn record_latency(&self, latency: Duration, callback_samples: usize) {
+        let delayed = latency.as_nanos() * u128::from(self.device_rate * self.device_channels)
+            / 1_000_000_000;
+        let samples = u64::try_from(delayed)
+            .unwrap_or(u64::MAX)
+            .saturating_add(callback_samples as u64);
+        self.latency_samples.store(samples, Ordering::Release);
+    }
+    fn progress(&self) -> NativeAudioProgress {
+        let accepted = self.accepted.load(Ordering::Acquire);
         // Device latency varies per callback; the watermark never retracts.
-        let audible = lane
-            .consumed_samples()
-            .saturating_sub(lane.output_latency_samples())
+        let audible = self
+            .telemetry
+            .snapshot()
+            .consumed_samples
+            .saturating_sub(self.latency_samples.load(Ordering::Acquire))
             / self.device_channels;
         let source = u128::from(audible.saturating_sub(self.delay_frames))
             * u128::from(SOURCE_RATE)
             / u128::from(self.device_rate);
         // Converter input and the unsubmitted partial block are accepted but
         // not consumed, so the cap only matters around the resampler delay.
-        let played = u64::try_from(source).unwrap_or(u64::MAX).min(self.accepted);
+        let played = u64::try_from(source).unwrap_or(u64::MAX).min(accepted);
+        let played = self.played.fetch_max(played, Ordering::AcqRel).max(played);
+        // A concurrent reader may have raised the watermark from a newer
+        // `accepted`; reloading after the RMW keeps `played <= accepted`.
         NativeAudioProgress {
-            accepted_frames: self.accepted,
-            played_frames: self.played.fetch_max(played, Ordering::Relaxed).max(played),
+            accepted_frames: self.accepted.load(Ordering::Acquire),
+            played_frames: played,
         }
     }
 }
@@ -70,7 +115,7 @@ pub struct NativeAudioOutput {
     producer: NativeAudioProducer,
     failed: Arc<AtomicBool>,
     converter: crate::NativeAudioConverter,
-    clock: PlaybackClock,
+    clock: Arc<PlaybackClock>,
     partial: Vec<f32>,
     partial_len: usize,
     _stream: cpal::Stream,
@@ -100,11 +145,6 @@ impl NativeAudioOutput {
             supported.channels(),
         )
         .map_err(conversion_error)?;
-        let clock = PlaybackClock::new(
-            supported.sample_rate(),
-            supported.channels(),
-            converter.output_delay(),
-        );
         let chunk_samples = 512 * usize::from(supported.channels());
         let partial = if converter.needs_conversion() {
             vec![0.0; chunk_samples]
@@ -114,43 +154,35 @@ impl NativeAudioOutput {
         let format = supported.sample_format();
         let config = supported.into();
         let wake = AudioWakeRegistration::default();
-        let (producer, consumer, _) = NativeAudioQueue::create(4, chunk_samples, wake.clone())
-            .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "cannot create device queue"))?;
+        let (producer, consumer, telemetry) =
+            NativeAudioQueue::create(4, chunk_samples, wake.clone())
+                .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "cannot create device queue"))?;
+        let clock = Arc::new(PlaybackClock::new(
+            telemetry,
+            supported.sample_rate(),
+            supported.channels(),
+            converter.output_delay(),
+        ));
         let failed = Arc::new(AtomicBool::new(false));
+        let callback = Callback {
+            consumer,
+            wake,
+            failed: failed.clone(),
+            stop,
+            clock: clock.clone(),
+        };
         let stream = match format {
-            cpal::SampleFormat::I8 => {
-                build::<i8>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::I16 => {
-                build::<i16>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::I24 => {
-                build::<cpal::I24>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::I32 => {
-                build::<i32>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::I64 => {
-                build::<i64>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::U8 => {
-                build::<u8>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::U16 => {
-                build::<u16>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::U32 => {
-                build::<u32>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::U64 => {
-                build::<u64>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::F32 => {
-                build::<f32>(&device, config, consumer, wake, failed.clone(), stop)
-            }
-            cpal::SampleFormat::F64 => {
-                build::<f64>(&device, config, consumer, wake, failed.clone(), stop)
-            }
+            cpal::SampleFormat::I8 => build::<i8>(&device, config, callback),
+            cpal::SampleFormat::I16 => build::<i16>(&device, config, callback),
+            cpal::SampleFormat::I24 => build::<cpal::I24>(&device, config, callback),
+            cpal::SampleFormat::I32 => build::<i32>(&device, config, callback),
+            cpal::SampleFormat::I64 => build::<i64>(&device, config, callback),
+            cpal::SampleFormat::U8 => build::<u8>(&device, config, callback),
+            cpal::SampleFormat::U16 => build::<u16>(&device, config, callback),
+            cpal::SampleFormat::U32 => build::<u32>(&device, config, callback),
+            cpal::SampleFormat::U64 => build::<u64>(&device, config, callback),
+            cpal::SampleFormat::F32 => build::<f32>(&device, config, callback),
+            cpal::SampleFormat::F64 => build::<f64>(&device, config, callback),
             _ => {
                 return Err(error(
                     "SHINKI_EMU_AUDIO_FORMAT",
@@ -174,7 +206,13 @@ impl NativeAudioOutput {
     }
     /// Observes the device queue; call `check` separately for device failure.
     pub fn progress(&self) -> NativeAudioProgress {
-        self.clock.progress(&self.producer)
+        self.clock.progress()
+    }
+    /// Hands the same timeline to threads that do not own the output.
+    pub fn progress_reader(&self) -> NativeAudioProgressReader {
+        NativeAudioProgressReader {
+            clock: self.clock.clone(),
+        }
     }
     pub fn check(&self) -> SessionResult<()> {
         if self.failed.load(Ordering::Acquire) {
@@ -269,28 +307,33 @@ fn conversion_error(cause: String) -> SessionError {
         &cause,
     )
 }
-fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
-    device: &cpal::Device,
-    config: cpal::StreamConfig,
-    mut consumer: NativeAudioConsumer,
+struct Callback {
+    consumer: NativeAudioConsumer,
     wake: AudioWakeRegistration,
     failed: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
+    clock: Arc<PlaybackClock>,
+}
+fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
+    device: &cpal::Device,
+    config: cpal::StreamConfig,
+    callback: Callback,
 ) -> Result<cpal::Stream, cpal::Error> {
+    let Callback {
+        mut consumer,
+        wake,
+        failed,
+        stop,
+        clock,
+    } = callback;
     let error_wake = wake.clone();
-    let (sample_rate, channels) = (config.sample_rate, config.channels);
     device.build_output_stream(
         config,
         move |output: &mut [T], info| {
             // Record before filling so a concurrent progress query can only
             // under-report this callback's not yet audible samples.
             let time = info.timestamp();
-            consumer.record_output_latency(
-                time.playback.duration_since(time.callback),
-                sample_rate,
-                channels,
-                output.len(),
-            );
+            clock.record_latency(time.playback.duration_since(time.callback), output.len());
             let mut scratch = [0.0; 1024];
             for chunk in output.chunks_mut(scratch.len()) {
                 consumer.fill_output_f32(&mut scratch[..chunk.len()]);
@@ -312,42 +355,46 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn progress_follows_audible_device_frames_and_never_exceeds_accepted() {
         // 96 kHz stereo device with 8 frames of resampler delay: 2 device
         // frames per source frame, 96 device frames per queued chunk.
-        let (mut producer, mut consumer, _) =
+        let (mut producer, mut consumer, telemetry) =
             NativeAudioQueue::create(4, 192, AudioWakeRegistration::default()).unwrap();
-        let mut clock = PlaybackClock::new(96_000, 2, 8);
-        let played = |clock: &PlaybackClock, producer: &NativeAudioProducer| {
-            clock.progress(producer).played_frames
+        let clock = Arc::new(PlaybackClock::new(telemetry, 96_000, 2, 8));
+        let reader = NativeAudioProgressReader {
+            clock: clock.clone(),
         };
-        assert_eq!(clock.progress(&producer), NativeAudioProgress::default());
+        let played = || reader.progress().played_frames;
+        assert_eq!(reader.progress(), NativeAudioProgress::default());
         producer.submit(vec![0.0; 192]).unwrap();
         clock.accept(96);
-        assert_eq!(clock.progress(&producer).accepted_frames, 48);
-        assert_eq!(played(&clock, &producer), 0);
+        assert_eq!(reader.progress().accepted_frames, 48);
+        assert_eq!(played(), 0);
 
         consumer.pop_samples(&mut [0.0; 64]);
-        assert_eq!(played(&clock, &producer), 12);
+        assert_eq!(played(), 12);
         // Larger reported latency hides more frames, but never retracts.
-        consumer.record_output_latency(Duration::ZERO, 96_000, 2, 64);
-        assert_eq!(played(&clock, &producer), 12);
-        consumer.record_output_latency(Duration::ZERO, 96_000, 2, 0);
+        clock.record_latency(Duration::ZERO, 64);
+        assert_eq!(played(), 12);
+        clock.record_latency(Duration::ZERO, 0);
         consumer.pop_samples(&mut [0.0; 128]);
-        assert_eq!(played(&clock, &producer), 44);
+        assert_eq!(played(), 44);
         // Underrun silence does not advance the source clock.
         assert!(consumer.fill_output_f32(&mut [0.0; 64]));
-        assert_eq!(played(&clock, &producer), 44);
+        assert_eq!(played(), 44);
 
         // A callback may drain a chunk before the writer records acceptance.
         producer.submit(vec![0.0; 192]).unwrap();
         consumer.pop_samples(&mut [0.0; 192]);
-        assert_eq!(played(&clock, &producer), 48);
+        assert_eq!(played(), 48);
         clock.accept(96);
-        let progress = clock.progress(&producer);
+        // Another thread observes the same timeline while the writer is idle.
+        let remote = reader.clone();
+        let progress = std::thread::spawn(move || remote.progress())
+            .join()
+            .unwrap();
         assert_eq!(progress.accepted_frames, 96);
         assert_eq!(progress.played_frames, 92);
     }

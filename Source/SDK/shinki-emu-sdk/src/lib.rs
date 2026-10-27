@@ -53,7 +53,7 @@ pub mod runtime;
 #[cfg(feature = "device-audio")]
 mod native_audio;
 #[cfg(feature = "device-audio")]
-pub use native_audio::{NativeAudioOutput, NativeAudioProgress};
+pub use native_audio::{NativeAudioOutput, NativeAudioProgress, NativeAudioProgressReader};
 
 #[cfg(feature = "runtime")]
 pub mod native;
