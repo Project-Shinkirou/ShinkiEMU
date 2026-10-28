@@ -811,11 +811,19 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             missing.push("Android subtitle vcpkg tree (cargo xtask deps)".into());
         }
     }
+    if selected.ffmpeg {
+        let pc = ffmpeg_install(inv, target)?.join("lib/pkgconfig/libavcodec.pc");
+        if !pc.is_file() {
+            missing.push(format!("{} (cargo xtask deps --target {target})", pc.display()));
+        }
+    }
     if t.platform == "ios" && env::var_os("DEVELOPER_DIR").is_none() {
         println!("Xcode: using xcode-select developer directory");
     }
-    if t.platform == "ohos" && env::var_os("OHOS_SDK_NATIVE").is_none() {
-        missing.push("OHOS_SDK_NATIVE".into());
+    if t.platform == "ohos" {
+        if let Err(error) = ohos_sdk_native() {
+            missing.push(error.to_string());
+        }
     }
     if selected.renpy {
         let base = inv.root.join(".work/native-downloads");
@@ -1027,6 +1035,8 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
             } else {
                 "x64-android-dynbidi"
             })
+    } else if target == "aarch64-unknown-linux-ohos" {
+        inv.root.join(".work/vcpkg-subtitle").join(target).join("installed/arm64-ohos")
     } else if target == "x86_64-unknown-linux-gnu" {
         linux_install(inv, target, "subtitle")
     } else if let Some(triplet) = apple_subtitle_triplet(target) {
@@ -1042,6 +1052,58 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
             .join("installed")
             .join(l.subtitle_windows_triplet)
     })
+}
+
+pub(crate) fn native_triplet(inv: &Inventory, target: &str) -> Result<String> {
+    if target == "x86_64-pc-windows-msvc" {
+        Ok("x64-windows".into())
+    } else {
+        ffmpeg_triplet(inv, target)
+    }
+}
+
+/// One installation per target; manifest mode must not prune another SDK's ports.
+pub(crate) fn ffmpeg_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
+    let triplet = ffmpeg_triplet(inv, target)?;
+    Ok(ffmpeg_root(inv, target).join("installed").join(triplet))
+}
+
+fn ffmpeg_root(inv: &Inventory, target: &str) -> PathBuf {
+    let root = inv.root.join(".work/vcpkg-ffmpeg");
+    if target.contains("windows") { root } else { root.join(target) }
+}
+
+fn ffmpeg_triplet(inv: &Inventory, target: &str) -> Result<String> {
+    Ok(match target {
+        "x86_64-pc-windows-msvc" => lock(inv)?.ffmpeg_windows_triplet,
+        "x86_64-unknown-linux-gnu" => "x64-linux-dynamic".into(),
+        "aarch64-linux-android" => "arm64-android-ffmpeg".into(),
+        "x86_64-linux-android" => "x64-android-ffmpeg".into(),
+        "aarch64-unknown-linux-ohos" => "arm64-ohos".into(),
+        _ => apple_subtitle_triplet(target)
+            .with_context(|| format!("no FFmpeg triplet for {target}"))?.into(),
+    })
+}
+
+/// Static Apple/mobile builds have no redistributable FFmpeg shared libraries.
+pub(crate) fn ffmpeg_runtime(inv: &Inventory, target: &str) -> Result<Option<PathBuf>> {
+    Ok(match target {
+        "x86_64-pc-windows-msvc" => Some(ffmpeg_install(inv, target)?.join("bin")),
+        "x86_64-unknown-linux-gnu" => Some(linux_runtime(inv, target, "ffmpeg")),
+        _ => { ffmpeg_triplet(inv, target)?; None }
+    })
+}
+
+pub(crate) fn ohos_sdk_native() -> Result<PathBuf> {
+    let sdk = env::var_os("OHOS_SDK_NATIVE").map(PathBuf::from)
+        .or_else(|| cfg!(windows).then(|| PathBuf::from("D:/Huawei/DevEco Studio/sdk/default/openharmony/native")))
+        .context("OHOS_SDK_NATIVE must point to the DevEco native SDK")?;
+    for required in ["build/cmake/ohos.toolchain.cmake", "sysroot/usr/include", "llvm/bin"] {
+        if !sdk.join(required).exists() {
+            bail!("OHOS native SDK missing {required}: {}", sdk.display());
+        }
+    }
+    Ok(sdk)
 }
 
 pub(crate) fn linux_install(inv: &Inventory, target: &str, kind: &str) -> PathBuf {
@@ -1171,6 +1233,7 @@ pub fn apply_environment(
 ) -> Result<()> {
     shinki_emu_build::configure_native_environment(&inv.root.join(".work"), cmd)?;
     let selected = needs(inv, target, component)?;
+    cmd.env_remove("SHINKI_EMU_FFMPEG_INSTALLED");
     let subtitle = subtitle_install(inv, target)?;
     if target.contains("windows") {
         cmd.env_remove("ROUKAKU_SUBTITLE_VCPKG_ROOT")
@@ -1367,16 +1430,91 @@ pub fn apply_environment(
         if installed.is_dir() {
             cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed).env(
                 "SHINKI_EMU_VCPKG_TRIPLET",
-                if target == "x86_64-unknown-linux-gnu" {
-                    "x64-linux-dynamic"
-                } else {
-                    "x64-windows"
-                },
+                native_triplet(inv, target)?,
             );
         }
     }
+    if (crate::apple::supported(target) || target.contains("android") || target.ends_with("ohos"))
+        && (selected.ffmpeg || selected.subtitle)
+    {
+        let mut paths = Vec::new();
+        if selected.ffmpeg {
+            cmd.env("SHINKI_EMU_FFMPEG_INSTALLED", ffmpeg_install(inv, target)?);
+            paths.push(ffmpeg_install(inv, target)?.join("lib/pkgconfig"));
+        }
+        if selected.subtitle {
+            paths.push(subtitle.join("lib/pkgconfig"));
+        }
+        // Both private closures are static. Never discover host/Homebrew .pc files.
+        for var in ["PKG_CONFIG_PATH", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR"] {
+            cmd.env_remove(var)
+                .env_remove(format!("{var}_{target}"))
+                .env_remove(format!("{var}_{}", target.replace('-', "_")))
+                .env_remove(format!("TARGET_{var}"));
+        }
+        cmd.env_remove("FFMPEG_DIR")
+            .env("PKG_CONFIG_ALLOW_CROSS", "1")
+            .env("PKG_CONFIG_ALL_STATIC", "1")
+            .env("PKG_CONFIG_LIBDIR", env::join_paths(paths)?);
+    }
+    if selected.ffmpeg && crate::apple::supported(target) && cfg!(target_os = "macos") {
+        let sdk = if target.ends_with("darwin") { "macosx" }
+            else if target.ends_with("-sim") || target.starts_with("x86_64") { "iphonesimulator" }
+            else { "iphoneos" };
+        let sysroot = String::from_utf8(capture(Command::new("xcrun").args(["--sdk", sdk, "--show-sdk-path"]))?)?;
+        cmd.env(format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target.replace('-', "_")),
+            format!("-isysroot \"{}\"", sysroot.trim()));
+    }
+    if selected.ffmpeg && target.contains("android") {
+        let host = if cfg!(windows) { "windows-x86_64" } else if cfg!(target_os = "macos") { "darwin-x86_64" } else { "linux-x86_64" };
+        let sysroot = ndk_root(inv)?.join("toolchains/llvm/prebuilt").join(host).join("sysroot");
+        let clang_target = if target.starts_with("aarch64") { "aarch64-linux-android28" } else { "x86_64-linux-android28" };
+        cmd.env(format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target.replace('-', "_")),
+            format!("--target={clang_target} --sysroot=\"{}\"", sysroot.display()));
+    }
+    if target.ends_with("ohos") {
+        let sdk = ohos_sdk_native()?;
+        let suffix = if cfg!(windows) { ".exe" } else { "" };
+        let tools = sdk.join("llvm/bin");
+        let target_key = target.replace('-', "_");
+        cmd.env("OHOS_SDK_NATIVE", &sdk)
+            .env(format!("CC_{target_key}"), tools.join(format!("clang{suffix}")))
+            .env(format!("CXX_{target_key}"), tools.join(format!("clang++{suffix}")))
+            .env(format!("AR_{target_key}"), tools.join(format!("llvm-ar{suffix}")))
+            .env(format!("CFLAGS_{target_key}"), format!("--target=aarch64-linux-ohos --sysroot=\"{}\"", sdk.join("sysroot").display()))
+            .env(format!("CXXFLAGS_{target_key}"), format!("--target=aarch64-linux-ohos --sysroot=\"{}\"", sdk.join("sysroot").display()))
+            .env(format!("BINDGEN_EXTRA_CLANG_ARGS_{target_key}"), format!("--target=aarch64-linux-ohos --sysroot=\"{}\"", sdk.join("sysroot").display()));
+    }
     Ok(())
 }
+fn prepare_ffmpeg(inv: &Inventory, target: &str, binary: &Path) -> Result<()> {
+    let root = ffmpeg_root(inv, target);
+    fs::create_dir_all(&root)?;
+    let mut command = vcpkg_install_command(inv, binary)?;
+    command.arg("--x-wait-for-lock")
+        .arg(format!("--x-manifest-root={}", inv.root.join("build/vcpkg/ffmpeg").display()))
+        .arg(format!("--overlay-triplets={}", inv.root.join("build/vcpkg/apple-triplets").display()))
+        .arg(format!("--overlay-triplets={}", inv.root.join("build/vcpkg/mobile-triplets").display()))
+        .args(["--triplet", &ffmpeg_triplet(inv, target)?])
+        .arg(format!("--x-install-root={}", root.join("installed").display()))
+        .args(["--clean-buildtrees-after-build", "--clean-packages-after-build"])
+        .env("VCPKG_DISABLE_METRICS", "1")
+        .env_remove("MACOSX_DEPLOYMENT_TARGET")
+        .env_remove("IPHONEOS_DEPLOYMENT_TARGET");
+    if target.contains("android") {
+        command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
+    }
+    if target.ends_with("ohos") {
+        command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);
+    }
+    run(&mut command)?;
+    fs::copy(binary.parent().context("vcpkg root")?.join(".vcpkg-root"), root.join(".vcpkg-root"))?;
+    if target == "x86_64-unknown-linux-gnu" {
+        prepare_linux_runtime(inv, target, "ffmpeg")?;
+    }
+    Ok(())
+}
+
 pub fn prepare(
     inv: &Inventory,
     target: &str,
@@ -1390,20 +1528,20 @@ pub fn prepare(
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     if crate::apple::supported(target) {
         crate::apple::preflight(target)?;
-        if selected.subtitle && !cfg!(target_os = "macos") {
-            bail!("Apple libass preparation requires a native macOS host with Xcode");
+        if (selected.subtitle || selected.ffmpeg || selected.native_vcpkg) && !cfg!(target_os = "macos") {
+            bail!("Apple native dependency preparation requires a native macOS host with Xcode");
         }
     }
     if !matches!(
         target_spec.platform.as_str(),
-        "windows" | "android" | "linux" | "macos" | "ios"
+        "windows" | "android" | "linux" | "macos" | "ios" | "ohos"
     ) {
         bail!("no dependency preparation path for blocked target {target}");
     }
     if let Some(id) = core {
         crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
     }
-    if crate::apple::supported(target) && !selected.subtitle {
+    if crate::apple::supported(target) && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg) {
         return doctor(inv, target, core);
     }
     if target_spec.platform == "linux"
@@ -1501,6 +1639,8 @@ pub fn prepare(
             }
         } else if target_spec.platform == "linux" {
             "x64-linux-dynamic"
+        } else if target_spec.platform == "ohos" {
+            "arm64-ohos"
         } else if let Some(triplet) = apple_subtitle_triplet(target) {
             triplet
         } else {
@@ -1532,6 +1672,7 @@ pub fn prepare(
                 "--overlay-triplets={}",
                 inv.root.join("build/vcpkg/apple-triplets").display()
             ))
+            .arg(format!("--overlay-triplets={}", inv.root.join("build/vcpkg/mobile-triplets").display()))
             .args(["--triplet", triplet])
             .arg(format!("--x-install-root={}", install.display()))
             .args([
@@ -1541,6 +1682,9 @@ pub fn prepare(
             .env("VCPKG_DISABLE_METRICS", "1");
         if target_spec.platform == "android" {
             command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
+        }
+        if target_spec.platform == "ohos" {
+            command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);
         }
         // Apple deployment targets come from build/vcpkg/apple-triplets. Never
         // export them here: they would also retarget the macOS host triplet.
@@ -1557,39 +1701,7 @@ pub fn prepare(
         }
     }
     if selected.ffmpeg {
-        let ff = if target_spec.platform == "linux" {
-            inv.root.join(".work/vcpkg-ffmpeg").join(target)
-        } else {
-            inv.root.join(".work/vcpkg-ffmpeg")
-        };
-        fs::create_dir_all(&ff)?;
-        run(vcpkg_install_command(inv, &binary)?
-            .arg("--x-wait-for-lock")
-            .arg(format!(
-                "--x-manifest-root={}",
-                inv.root.join("build/vcpkg/ffmpeg").display()
-            ))
-            .args([
-                "--triplet",
-                if target_spec.platform == "linux" {
-                    "x64-linux-dynamic"
-                } else {
-                    &pins.ffmpeg_windows_triplet
-                },
-            ])
-            .arg(format!(
-                "--x-install-root={}",
-                ff.join("installed").display()
-            ))
-            .args([
-                "--clean-buildtrees-after-build",
-                "--clean-packages-after-build",
-            ])
-            .env("VCPKG_DISABLE_METRICS", "1"))?;
-        if target_spec.platform == "linux" {
-            prepare_linux_runtime(inv, target, "ffmpeg")?;
-        }
-        fs::copy(vcpkg.join(".vcpkg-root"), ff.join(".vcpkg-root"))?;
+        prepare_ffmpeg(inv, target, &binary)?;
     }
     if selected.native_vcpkg {
         let native = inv.core(core.context("native core selection missing")?)?;
@@ -1614,15 +1726,20 @@ pub fn prepare(
             .arg(format!("--x-install-root={}", installed.display()))
             .args([
                 "--triplet",
-                if target_spec.platform == "linux" {
-                    "x64-linux-dynamic"
-                } else {
-                    "x64-windows"
-                },
+                &native_triplet(inv, target)?,
                 "--clean-buildtrees-after-build",
                 "--clean-packages-after-build",
             ])
             .env("VCPKG_DISABLE_METRICS", "1");
+        command
+            .arg(format!("--overlay-triplets={}", inv.root.join("build/vcpkg/apple-triplets").display()))
+            .arg(format!("--overlay-triplets={}", inv.root.join("build/vcpkg/mobile-triplets").display()));
+        if target.contains("android") {
+            command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
+        }
+        if target.ends_with("ohos") {
+            command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);
+        }
         let overlay = source.join("vcpkg/ports");
         if overlay.is_dir() {
             command.arg(format!("--overlay-ports={}", overlay.display()));
