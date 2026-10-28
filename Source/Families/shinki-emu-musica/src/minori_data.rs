@@ -358,7 +358,10 @@ pub fn resolve_prefix(
         };
     };
     if let Some(serial) = registry_serial(key) {
-        let end = serial.iter().position(|byte| *byte == 0).unwrap_or(serial.len());
+        let end = serial
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(serial.len());
         return FilePrefix {
             value: crc32fast::hash(&serial[..end]),
             strict: true,
@@ -445,5 +448,70 @@ mod tests {
         let encoded = encode_read_flags(&bits, 0).unwrap();
         assert_eq!(&encoded[..4], &[0; 4]);
         assert_eq!(decode_read_flags(&encoded, 0).unwrap(), bits);
+    }
+
+    #[test]
+    fn serial_prefix_prefers_registry_then_existing_file_then_zero() {
+        fn serial(value: &'static [u8]) -> impl FnOnce(&str) -> Option<Vec<u8>> {
+            move |key| {
+                assert_eq!(key, "Software\\minori\\perseus");
+                Some(value.to_vec())
+            }
+        }
+        let absent = |_: &str| None;
+        let crc = crc32fast::hash(b"ABCD-1234");
+        assert_eq!(
+            resolve_prefix(MinoriTitle::Perseus, serial(b"ABCD-1234\0junk"), Some(7)),
+            FilePrefix {
+                value: crc,
+                strict: true
+            }
+        );
+        assert_eq!(
+            resolve_prefix(MinoriTitle::Perseus, serial(b""), Some(7)),
+            FilePrefix {
+                value: 0,
+                strict: true
+            }
+        );
+        assert_eq!(
+            resolve_prefix(MinoriTitle::Perseus, absent, Some(7)),
+            FilePrefix {
+                value: 7,
+                strict: true
+            }
+        );
+        assert_eq!(
+            resolve_prefix(MinoriTitle::Perseus, absent, None),
+            FilePrefix {
+                value: 0,
+                strict: false
+            }
+        );
+        assert_eq!(
+            resolve_prefix(MinoriTitle::EdenEnglish, serial(b"ignored"), Some(7)),
+            FilePrefix {
+                value: 0,
+                strict: true
+            }
+        );
+    }
+
+    #[test]
+    fn title_is_detected_from_the_original_executable() {
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(MinoriTitle::detect(root.path()), None);
+        std::fs::write(root.path().join("perseus.exe"), b"").unwrap();
+        assert_eq!(MinoriTitle::detect(root.path()), Some(MinoriTitle::Perseus));
+        assert_eq!(
+            encoding_rs::SHIFT_JIS
+                .encode(MinoriTitle::Perseus.directory())
+                .0
+                .as_ref(),
+            [
+                0x89, 0xc4, 0x8b, 0xf3, 0x82, 0xcc, 0x83, 0x79, 0x83, 0x8b, 0x83, 0x5a, 0x83, 0x45,
+                0x83, 0x58
+            ]
+        );
     }
 }
