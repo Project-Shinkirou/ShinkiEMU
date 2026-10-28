@@ -472,31 +472,13 @@ fn execute_instruction(
                 // parks through the stale guard. The identity lands at
                 // the head's fl8 (base - 8) and its mirror at fl12.
                 let identity = next.process_indexed_words.get(&17).copied().unwrap_or(0);
-                // The sentinel (-1) is the "no message" park: the native
-                // entry gate drops it instead of running the dispatcher's
-                // fall-through tail over stale operands.
-                let identity = if identity == u32::MAX {
-                    // A queued click is still pending: its identity is the
-                    // message the ring just consumed; adopt it (with its
-                    // frame). Otherwise no message is pending: the native
-                    // entry gate drops the resume entirely.
-                    match next.pending_dialog_dispatches.pop() {
-                        Some((_, queued_frame, queued_id)) => {
-                            next.current_frame = queued_frame;
-                            queued_id
-                        }
-                        None => {
-                            next.dispatch_stopped = true;
-                            return Ok(None);
-                        }
-                    }
-                } else if identity == 0 {
-                    // A zero identity is not a message either.
+                // The sentinel (-1) and zero are the "no message" park: the
+                // native entry gate drops the resume instead of running the
+                // dispatcher's fall-through tail over stale operands.
+                if identity == u32::MAX || identity == 0 {
                     next.dispatch_stopped = true;
                     return Ok(None);
-                } else {
-                    identity
-                };
+                }
                 super::stack::push_word_public(next, identity)?;
                 super::stack::push_word_public(next, identity)?;
                 super::stack::push_word_public(next, 0)?;

@@ -7,6 +7,8 @@ mod audio;
 mod cmv;
 mod diagnostics;
 mod input;
+#[cfg(test)]
+mod menu_input_tests;
 mod movie;
 mod native_audio;
 mod native_save_audio;
@@ -1258,8 +1260,7 @@ impl CmvsSession {
         // A live dialog cascade refreshes the entry queue mid-tick the
         // way the native engine rebuilds it every frame, so the cascade
         // never overdraws one rebuild's pushes.
-        let cascade_refresh = self.vm.dialog_dispatch_base_depth.is_some()
-            || !self.vm.pending_dialog_dispatches.is_empty();
+        let cascade_refresh = self.vm.dialog_dispatch_base_depth.is_some();
         let mut executed_count: u32 = 0;
         loop {
             if executed_count.is_multiple_of(256)
@@ -1651,19 +1652,19 @@ impl CmvsSession {
                         // Native resolves the click through the child-window
                         // tree: a presenter hit goes to the overlay ring and
                         // never touches the input manager's selection; a
-                        // key-quad hit parks the selection id (field 347)
-                        // and the input callback re-enters the item
-                        // dispatcher (intproc 186920) with the id laid as
-                        // its fl4 input slot. Mirror the second path.
+                        // key-quad hit only parks the selection id (field
+                        // 347). The record-17 poll body reaches the item
+                        // dispatcher (intproc 186920) itself through
+                        // nic161, and the dispatcher derives its ladder input
+                        // (fl4) from process word 10 each poll (`intproc`
+                        // 186960), so publishing the id there is the whole
+                        // callback. A second, engine-laid dispatcher entry
+                        // would leave an orphan frame base whose unwind
+                        // returns into the script with an underfilled stack.
                         let id = self.vm.input_selection_mirror;
-                        // The item dispatcher derives its ladder input
-                        // (fl4) from process word 10 each poll
-                        // (`intproc` 186960): the callback publishes the
-                        // selected id there.
                         self.vm.process_indexed_words.insert(10, id);
-                        self.vm.queue_dialog_dispatch(186_920, 1, id);
                         tracing::info!(
-                            event = "cmvs.session.quad_dispatch_queued",
+                            event = "cmvs.session.quad_selection_published",
                             tick = self.vm.tick,
                             id
                         );

@@ -57,10 +57,6 @@ fn push_record(state: &mut CmvsPs2aVmState, slot: u32, pc: u32) -> Result<(), Co
 /// this same dispatch, ultimately resuming the original suspension.
 pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), CoreError> {
     let mut loaded = false;
-    // Drain the session-queued dialog dispatches the way the native
-    // input callback arms the interpreter: the identity word goes under
-    // the (counter, pc, frame) context so the dispatcher head's frame
-    // locals read it as the call argument.
     if word(state, FRAME_ENTRY_REBUILD_GATE_FIELD) == 0 {
         if word(state, FRAME_ENTRY_SCHEDULER_ENABLED_WORD) != 0 {
             push_suspended(state)?;
@@ -126,79 +122,7 @@ pub fn rebuild_frame_entry_queue(state: &mut CmvsPs2aVmState) -> Result<(), Core
                 state.program_counter = pc;
                 state.current_frame = u16::try_from(frame).unwrap_or(1);
             }
-            if state.pending_dialog_dispatches.len() > 1
-                && state.dialog_dispatch_base_depth.is_some()
-            {
-                // A dispatch is still winding down; hold the remaining queued
-                // entries for later engine frames so each completes its cleanup
-                // before the next lays its own locals.
-            } else if let Some((entry_pc, frame, id)) = state.pending_dialog_dispatches.pop() {
-                // The dispatcher chain runs on top of the untouched suspension:
-                // its tail returns into the suspended pc (like the native
-                // callback returning to the engine loop) and the scheduler's
-                // own suspension triple stays intact below.
-                // Native `sub_46D270` case 0x103 reads frame_base - payload: the
-                // dispatcher head's fl12/fl8 come from the words the caller
-                // pushed BENEATH the frame base. Lay [fl12][fl8 = id][return]
-                // then record the base.
-                let suspended_pc = state.program_counter;
-                // The native callback lays the action parameters beneath
-                // the identity pair: the jve1 branch (intproc 25932) reads
-                // them as its frame locals at base-16/-12. Take them from
-                // the armed record's argument words (record table +8/+12).
-                let rec_base = COROUTINE_RECORD_TABLE_BASE + 28 * 28;
-                let param_a = word(state, rec_base + 8);
-                let param_b = word(state, rec_base + 12);
 
-                super::stack::push_word_public(state, param_a)?;
-                super::stack::push_word_public(state, param_b)?;
-                super::stack::push_word_public(state, suspended_pc)?;
-                super::stack::push_word_public(state, id)?;
-                super::stack::push_word_public(state, id)?;
-                push_call_frame_base(state)?;
-                // The item dispatcher reads its input through the
-                // positive 0x108 offsets (base+4); after the adopt pops
-                // the top triple the stale word at base+4 is the triple's
-                // pc slot. Lay one id word above the base so base+4
-                // carries the selection id instead.
-                super::stack::push_word_public(state, id)?;
-                push_context(state, 0, entry_pc, u32::from(frame))?;
-                state.dialog_dispatch_consumed = true;
-                state.dialog_dispatch_base_depth = Some(state.call_frame_bases.len());
-                state.dialog_dispatch_cursor = Some(state.stack_cursor_bytes);
-                // Single-shot: the dispatcher tail republishes the identity into
-                // the polled word; parking the sentinel keeps the overlay ring
-                // from re-arming the dispatch loop within the same tick chain.
-                // The native marker is 1000: the intproc idle loop compares
-                // word 17 against 1000 (jfc@370590) and processes the queued
-                // work only on equality — any other value takes the early
-                // return at 371834.
-                state.process_indexed_words.insert(17, 1000);
-            }
-
-            loaded = true;
-        } else if let Some((entry_pc, frame, id)) = state.pending_dialog_dispatches.pop() {
-            // The post-save menu runs through the disabled-scheduler
-            // fallback (the engine request dwords), and the queued quad
-            // dispatch — the input callback's item dispatcher — must fire
-            // there too. Lay the same frame layout the enabled branch
-            // uses; the shared adopt tail below pops the triple and
-            // resumes the dispatcher entry.
-            let rec_base = COROUTINE_RECORD_TABLE_BASE + 28 * 28;
-            let param_a = word(state, rec_base + 8);
-            let param_b = word(state, rec_base + 12);
-            let suspended_pc = state.program_counter;
-            super::stack::push_word_public(state, param_a)?;
-            super::stack::push_word_public(state, param_b)?;
-            super::stack::push_word_public(state, suspended_pc)?;
-            super::stack::push_word_public(state, id)?;
-            super::stack::push_word_public(state, id)?;
-            push_call_frame_base(state)?;
-            push_context(state, 0, entry_pc, u32::from(frame))?;
-            state.dialog_dispatch_consumed = true;
-            state.dialog_dispatch_base_depth = Some(state.call_frame_bases.len());
-            state.dialog_dispatch_cursor = Some(state.stack_cursor_bytes);
-            state.process_indexed_words.insert(17, 1000);
             loaded = true;
         } else {
             // Disabled-scheduler fallback: record 26 (flag+pc) takes

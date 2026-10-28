@@ -101,7 +101,6 @@ fn clear_native_objects(vm: &mut CmvsPs2aVmState) {
     ] {
         vm.write_interpreter_word(field, 0);
     }
-    vm.pending_dialog_dispatches.clear();
     vm.dialog_dispatch_base_depth = None;
     vm.dialog_dispatch_cursor = None;
     vm.forced_dialog_record = None;
