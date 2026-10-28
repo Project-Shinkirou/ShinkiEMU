@@ -10871,7 +10871,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-sena-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=696a83ccaf096d3dd49c3c9a7c1f948c35acfed8#696a83ccaf096d3dd49c3c9a7c1f948c35acfed8"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
 dependencies = [
  "anyhow",
  "log 0.4.34",
@@ -15459,7 +15459,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=696a83ccaf096d3dd49c3c9a7c1f948c35acfed8#696a83ccaf096d3dd49c3c9a7c1f948c35acfed8"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
 dependencies = [
  "byteorder",
  "log 0.4.34",
