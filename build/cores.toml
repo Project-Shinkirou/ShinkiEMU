@@ -91,34 +91,13 @@ dependencies = ["ffmpeg"]
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
 branch = "shinki"
 rev = "bc8c17a9b3c7ac7f6a3e20ce6d301f5dff4ebe5f"
 upstream = "https://github.com/Alphaly2K/art3m1s-core"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "Artemis core features require FFmpeg, but xtask dependencies.rs has no Apple FFmpeg preparation/runtime-closure path; only Windows and Linux native trees are prepared."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "Artemis core features require FFmpeg, but xtask dependencies.rs has no Apple FFmpeg preparation/runtime-closure path; only Windows and Linux native trees are prepared."
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
-[[cores.blocked]]
-target = "aarch64-apple-ios"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
-[[cores.blocked]]
-target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
-[[cores.blocked]]
-target = "x86_64-apple-ios"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
