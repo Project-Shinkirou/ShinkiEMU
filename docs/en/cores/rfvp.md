@@ -19,4 +19,8 @@ The fork retains its App, VM, GPU renderer, device audio and saves. The adapter 
 
 WMV/ASF/WMA playback uses the fork's native movie/decoder path. Requested native fonts and game-specific resources remain real inputs. Recognizing an HCB file does not establish syscall coverage or edition compatibility.
 
+## Save paths and format
+
+The original RFVP engine stores numbered saves in `<game>/save/sNNN.bin` and global HCB data in `<game>/save/save.bin` (`crates/rfvp/src/script/global.rs:134-136` and the `setsumei/` reverse-engineering notes). The fork's `SaveItem` appends its own runtime-state block after the original header, and its global file wraps `GlobalSaveDataV1` in an `RFVG` envelope, so neither file is a byte-level implementation of the original format. The fork keeps its own names, `<game>/save/rfvp_sNNN.bin` and `<game>/save/rfvp_global.bin`, and still reads older `<game>/save/sNNN.bin` files. These saves belong to the game directory and are not moved into `.shinki`.
+
 See the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) for build/release status and [compatibility reports](https://project-shinkirou.github.io/en/shinkiemu/compatibility/) for specific releases. See also [Core ABI](../core-abi.md) and [User guide](../user-guide.md).
