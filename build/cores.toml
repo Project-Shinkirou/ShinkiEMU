@@ -389,12 +389,11 @@ resources = []
 static_features = ["static"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
 supported_targets = ["x86_64-pc-windows-msvc"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki"
-rev = "51a39e1d1d4ef95e57e03730fd0da2048928291b"
+rev = "5b12f0be12659918e65d6eb00a0fa745bf58ea10"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
