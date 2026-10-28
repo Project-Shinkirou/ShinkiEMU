@@ -99,7 +99,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
 branch = "shinki"
-rev = "7f54a0ff25c1db432cd91d034133f254f6cc8d68"
+rev = "92f8cc369272863e01efa43f67a304105e9aaa6e"
 upstream = "https://github.com/Alphaly2K/art3m1s-core"
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
@@ -180,7 +180,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
 branch = "shinki"
-rev = "696a83ccaf096d3dd49c3c9a7c1f948c35acfed8"
+rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574"
 upstream = "https://github.com/xmoezzz/sena-rs"
 [[cores.blocked]]
 target = "aarch64-linux-android"

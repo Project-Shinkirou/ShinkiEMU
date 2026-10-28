@@ -19,4 +19,13 @@ The core keeps Lua 5.1, the native graphics path and FFmpeg. This Lua graph is s
 
 `extra_archive` explicitly selects an additional relative PFS after the normal active numeric chain. It does not scan backups or rewrite the base package. The descriptor does not offer adjustable render extent. Missing script targets/resources and unsupported native UI/media commands remain errors; a clickable title screen alone is not a complete-game result.
 
+## Save paths
+
+`SAVEPATH` is a logical relative prefix from `system.ini`. The adapter mounts its
+writable root at `<game>`, so `SAVEPATH=savedata` resolves to
+`<game>/savedata/save0001.dat`, `saveg.dat`, and `system.dat`. It does not append
+`savedata` a second time. Absolute or CSIDL-style values are normalized by the
+upstream runtime to their logical prefix; the adapter keeps that prefix relative
+to the game root and rejects traversal/device segments.
+
 See the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) for build/release status and [compatibility reports](https://project-shinkirou.github.io/en/shinkiemu/compatibility/) for specific releases. See also [Core ABI](../core-abi.md) and [User guide](../user-guide.md).

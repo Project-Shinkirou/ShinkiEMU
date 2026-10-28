@@ -19,4 +19,8 @@ Artemis は `system.ini`、PFS（PF6/PF8）、ネイティブのシナリオ・t
 
 `extra_archive` は相対パスの PFS を明示的に選び、通常の数字付きパッチの連鎖のあとにマウントします。バックアップのスキャンやベースパッケージの書き換えは行いません。descriptor は描画サイズの調整を提供しません。スクリプトの対象やリソースの欠落、未対応のネイティブ UI・メディアコマンドは引き続きエラーになります。タイトル画面を操作できても、ゲーム全体を通して遊べるとは限りません。
 
+## セーブパス
+
+`SAVEPATH` は `system.ini` の論理的な相対プレフィックスです。書き込み可能なルートは `<game>` にマウントされるため、`SAVEPATH=savedata` は `<game>/savedata/save0001.dat`、`saveg.dat`、`system.dat` に一度だけ解決されます。絶対パスや CSIDL 形式の値は上流ランタイムが論理プレフィックスへ正規化し、アダプターはそれをゲームルート内に制限します。
+
 ビルドとリリースの状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、個々のリリースでの結果は[互換性レポート](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)を参照してください。[コア ABI](../core-abi.md)と[ユーザーガイド](../user-guide.md)もあわせて参照してください。
