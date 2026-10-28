@@ -10459,7 +10459,6 @@ dependencies = [
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",
- "shinki-emu-musica",
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
  "shinki-emu-rfvp",

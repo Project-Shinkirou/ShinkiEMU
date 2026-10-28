@@ -248,31 +248,18 @@ impl Inventory {
                 let dependency = dependency.with_context(|| {
                     format!("Manager {platform} is missing static core {}", core.id)
                 })?;
-                if let Some(source) = &core.source {
-                    if dependency.get("git").and_then(toml::Value::as_str) != Some(&source.repo)
-                        || dependency.get("rev").and_then(toml::Value::as_str) != Some(&source.rev)
-                        || dependency.get("features").is_some_and(|features| {
-                            features.as_array().is_none_or(|features| !features.is_empty())
-                        })
-                    {
-                        bail!("Manager {platform} static core {} pin/features differ from inventory", core.id);
-                    }
-                } else {
-                    let expected = core
-                        .manifest
-                        .parent()
-                        .and_then(|path| path.strip_prefix("Source").ok())
-                        .context("in-repo static manifest parent")?;
-                    let expected = format!("../../{}", expected.to_string_lossy());
-                    if dependency.get("path").and_then(toml::Value::as_str) != Some(expected.as_str())
-                        || dependency.get("git").is_some()
-                        || dependency.get("rev").is_some()
-                    {
-                        bail!("Manager {platform} in-repo static core {} path differs from inventory", core.id);
-                    }
-                }
-                if dependency.get("default-features").and_then(toml::Value::as_bool) == Some(true) {
-                    bail!("Manager {platform} static core {} must disable default features", core.id);
+                let source = core.source.as_ref().context("static core source")?;
+                if dependency.get("git").and_then(toml::Value::as_str) != Some(&source.repo)
+                    || dependency.get("rev").and_then(toml::Value::as_str) != Some(&source.rev)
+                    || dependency.get("features").is_some_and(|features| {
+                        features.as_array().is_none_or(|features| !features.is_empty())
+                    })
+                    || dependency
+                        .get("default-features")
+                        .and_then(toml::Value::as_bool)
+                        == Some(true)
+                {
+                    bail!("Manager {platform} static core {} pin/features differ from inventory", core.id);
                 }
             }
         }
