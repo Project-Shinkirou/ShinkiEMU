@@ -80,7 +80,6 @@ winit.workspace = true
 
 [target.'cfg(target_os = "ios")'.dependencies]
 roukaku-platform.workspace = true
-shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "2436c25fc966306e03cdada833b507eec97b51c4", default-features = false }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "696a83ccaf096d3dd49c3c9a7c1f948c35acfed8", default-features = false }

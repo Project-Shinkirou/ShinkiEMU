@@ -136,7 +136,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -146,13 +146,13 @@ target = "x86_64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."

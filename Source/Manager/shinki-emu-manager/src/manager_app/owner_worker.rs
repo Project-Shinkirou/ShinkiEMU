@@ -276,8 +276,6 @@ const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("ethornell-rs", shinki_emu_ethornell_rs::QUERY),
     #[cfg(target_os = "ios")]
     ("ReMinori", shinki_emu_ReMinori::shinki_emu_query),
-    #[cfg(target_os = "ios")]
-    ("shinki.emu.musica", shinki_emu_musica::musica_query),
 ];
 
 fn initialize(

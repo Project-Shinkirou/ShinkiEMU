@@ -13,12 +13,7 @@ Apple、Android 和 OHOS 使用静态库，不另打包 FFmpeg dylib/so。每个
 target 独立安装到 `.work/vcpkg-ffmpeg/<triple>/installed/<triplet>`，避免 manifest
 安装裁掉其他设备或模拟器的依赖。
 
-iOS Manager 通过 `musica_query` 静态注册核心，启用 `ffmpeg-vcpkg`，不启用
-`dynamic-plugin-export`。Apple 构建需要原生 macOS/Xcode；部署版本保持 macOS 13、
-iOS 16。Android FFmpeg 使用 API 28 的静态 triplet。OHOS 依赖准备读取
-`OHOS_SDK_NATIVE`，Windows 默认识别 DevEco Studio 的已安装 native SDK，使用
-API 17 的 arm64 工具链。xtask 为这些平台隔离 pkg-config 并启用完整静态私有闭包，
-同时向 native 消费者导出 `SHINKI_EMU_FFMPEG_INSTALLED`；Windows/Linux 不设置该变量。
+Android Manager 通过 `musica_query` 静态注册核心，并启用 `ffmpeg-vcpkg`。iOS 静态 Manager 集成仍待 AppleNative 完成远端 macOS 构建与验证。Apple 构建使用原生 macOS/Xcode，部署版本为 macOS 13、iOS 16。Android FFmpeg 使用 API 28 静态 triplet。OHOS 依赖准备读取 `OHOS_SDK_NATIVE`；Windows 默认指向已安装的 DevEco Studio native SDK，并使用 API 17 arm64 工具链。xtask 为这些平台隔离 pkg-config，启用完整静态依赖闭包，并向 native 消费者导出 `SHINKI_EMU_FFMPEG_INSTALLED`；Windows/Linux 不设置此变量。
 
 私有 `key.toml` 仍由用户显式选择，游戏内相对路径按游戏根解析，不依赖进程当前目录。
 手机端需把游戏和密钥放入 Manager 可读的本地目录，并保留游戏目录内
