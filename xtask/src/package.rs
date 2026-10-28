@@ -555,13 +555,8 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
             .context("library parent")?
             .to_owned(),
     ];
-    if selected.ffmpeg {
-        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_runtime(inv, &result.target, "ffmpeg")
-        } else {
-            inv.root
-                .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin")
-        });
+    if selected.ffmpeg && let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)? {
+        dirs.push(runtime);
     }
     if selected.subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
@@ -889,13 +884,8 @@ pub fn package(
                 .unwrap()
                 .licenses
                 .push(BuildAsset {
-                    source: if target == "x86_64-unknown-linux-gnu" {
-                        dependencies::linux_install(inv, target, "ffmpeg")
-                            .join("share/ffmpeg/copyright")
-                    } else {
-                        inv.root
-                            .join(".work/vcpkg-ffmpeg/installed/x64-windows/share/ffmpeg/copyright")
-                    },
+                    source: dependencies::ffmpeg_install(inv, target)?
+                        .join("share/ffmpeg/copyright"),
                     dest: "licenses/ffmpeg/copyright".into(),
                 });
         }
