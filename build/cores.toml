@@ -102,11 +102,11 @@ branch = "shinki"
 rev = "bc8c17a9b3c7ac7f6a3e20ce6d301f5dff4ebe5f"
 upstream = "https://github.com/Alphaly2K/art3m1s-core"
 [[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "Artemis core features require FFmpeg, but xtask dependencies.rs has no Apple FFmpeg preparation/runtime-closure path; only Windows and Linux native trees are prepared."
-[[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "Artemis core features require FFmpeg, but xtask dependencies.rs has no Apple FFmpeg preparation/runtime-closure path; only Windows and Linux native trees are prepared."
+reason = "pending: shared FFmpeg static closure + native build not yet verified"
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
@@ -115,13 +115,13 @@ target = "x86_64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
+reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
+reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/src/session.rs:298-301 selects NativeVulkanHardware on iOS rather than NativeMetal; the selected FFmpeg feature also lacks an iOS dependency build."
+reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
