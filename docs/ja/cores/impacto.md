@@ -17,6 +17,8 @@ impacto は MAGES の SC3 VM、ネイティブのリソースリーダー、ゲ�
 
 `userconfig.toml` は Impacto のプラットフォーム設定ディレクトリに置かれます。Windows では `%APPDATA%/Committee of Zero/Impacto` です。現在の CC profile は `SaveDataType.None` を指定しているため、profile のセーブ形式やセーブファイルはありません。ネイティブセーブに対応する profile は、上流が定義する場所をそのまま使います。
 
+旧 `save_root` はユーザー指定でした。Beta.1/beta.2 の設定を移すにはゲームを閉じ、移動先にファイルがない場合のみ `<旧 save_root>/userconfig.toml` をプラットフォーム設定ディレクトリにコピーしてください。Manager は廃止されたパスを一度表示します。旧パスを推測する自動移行や、上流の場所に書き込めない場合の代替先は追加しません。パッケージの基準パスは上流サンプルの `RootSavesDir = "./saves"` に合わせた `<resources>/saves` です。現在の CC profile はここにセーブを書きません。
+
 ## ネイティブ動作と制約
 
 アダプターは C ABI v3 と CPU フレームの所有権を提供し、Manager 側で MAGES のスクリプトを書き直すことはしません。fork には、DDS の並行読み込み状態と動画音声の解放に関する所有権の修正が保持されています。Steam 版のフォントは、ユーザーが実際に持っているゲームの DDS から読み込み、代替リソースとして配布することはしません。

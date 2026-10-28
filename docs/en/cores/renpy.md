@@ -21,6 +21,28 @@ The adapter preserves Ren’Py 8.5.3 save-location behavior. With a
 when it is unset, saves use `<game>/game/saves`. Save tokens and backups follow
 the same upstream resolver. No Shinki-specific data directory is required.
 
+Beta.3 imports the former default `%LOCALAPPDATA%/ShinkiEMU/renpy/<game-hash>/saves`
+once, before save tokens and persistent data load. Missing save files are copied
+byte-for-byte into the native save directories; an existing file in either native
+directory wins. Tokens and backups go through the upstream resolvers. The old
+files remain, and a completion marker prevents deleted saves from being imported
+again. A failed import leaves no completion marker and reports a warning; the
+runtime still uses its normal locations, with no writable-directory fallback.
+
+If you chose a custom `data_directory` in beta.1/beta.2, close the game and copy
+missing files from `<old-directory>/<game-hash>/saves` into `<game>/game/saves`.
+Copy its `tokens` and `backups` subdirectories into the corresponding upstream
+Ren’Py directories, not into the game save directory. Do not replace existing
+files. Existing native security keys are retained; Ren’Py may ask you to trust
+an imported save signed by a different key. The Manager shows the retired path
+once so you can locate it. Logs and generated caches use upstream locations;
+Python interpreter bytecode writes remain disabled.
+
+Storage comparison base: upstream `39895c1e017f0b36ffea2447d97eccd69d76ee1c`
+(the fork's merge base). `renpy.py`, `savelocation.py`, `loader.py`, `script.py`
+and translation output paths are unchanged. The five added lines in `main.py`
+only invoke the one-time import before the native token/persistent loaders.
+
 ## Native behavior and limits
 
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.

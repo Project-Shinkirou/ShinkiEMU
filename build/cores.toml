@@ -354,7 +354,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki"
-rev = "c51af8d5cff7069810ccbdaa29113b5b117509cd"
+rev = "1afb3df50f6d52ffb729f4c074f3b38be38322b5"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
@@ -403,7 +403,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
-rev = "df14ff1aa072065476a86c95319811574a784a4a"
+rev = "f7296fbd4cbda11298b2d49268fe828df0224929"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"

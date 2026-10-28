@@ -17,6 +17,10 @@ description: Ren’Py 的格式、原生行为与限制。
 
 适配层保留 Ren’Py 8.5.3 的存档路径行为。设置 `config.save_directory` 时，运行时会同步游戏目录中的 `<game>/game/saves` 与 `%APPDATA%/RenPy/<config.save_directory>`；未设置时使用 `<game>/game/saves`。存档令牌和备份也沿用上游解析规则，不需要 Shinki 专用数据目录。
 
+Beta.3 会在加载令牌和 persistent 前，一次性导入旧默认目录 `%LOCALAPPDATA%/ShinkiEMU/renpy/<game-hash>/saves`，逐字节复制缺失文件；任一原生存档目录已有同名文件时保留原文件。令牌和备份使用上游路径。旧文件保留，完成标记防止重新导入已删除的存档。失败时记录警告，不写完成标记，也不更换原生存储位置。
+
+若 beta.1/beta.2 手动设置过 `data_directory`，请关闭游戏，将 `<旧目录>/<game-hash>/saves` 中缺失的文件复制到 `<game>/game/saves`；其中的 `tokens`、`backups` 子目录分别复制到上��对应目录，不要覆盖已有文件。已有安全密钥保留，Ren’Py 可能询问是否信任使用旧密钥签名的存档。Manager 会显示一次退役路径，便于查找。日志和生成缓存使用上游位置，Python 解释器仍禁写字节码。
+
 ## 原生行为与限制
 
 运行时桥保留在驻留解释器中。原生构建产出 display 扩展和真实共享核心，包内还需匹配的 SDK DLL 与 `Resources/`。关闭和跨游戏重开继续清理解释器/原生状态，不能只复制核心 DLL。
