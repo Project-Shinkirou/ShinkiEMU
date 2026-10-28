@@ -142,6 +142,26 @@ fn rejects_a_truncated_header() {
 }
 
 #[test]
+fn writer_emits_the_native_css1_header_and_reads_back() {
+    let mut payload = layout_payload();
+    payload.extend_from_slice(b"first\0second\0");
+    let bytes = encode_system_container(&payload, 0x1760_0013, 0xabcd, &[1, 1]);
+    assert_eq!(&bytes[..4], b"CSS1");
+    assert_eq!(bytes[4..8], 104_u32.to_le_bytes());
+    assert_eq!(bytes[72..76], 0xabcd_u32.to_le_bytes());
+    assert_eq!(
+        u32::from_le_bytes(bytes[100..104].try_into().unwrap()) as usize + 2,
+        bytes.len()
+    );
+    let save = parse_cmvs_system_save(&bytes, 0x1760_0013).unwrap();
+    assert_eq!(
+        save.lists,
+        [vec![b"first".to_vec()], vec![b"second".to_vec()]]
+    );
+    assert!(parse_cmvs_system_save(&bytes, 1).is_err());
+}
+
+#[test]
 fn decompressor_reproduces_window_matches() {
     // Emit eight literals, then copy them back through the window. The
     // window starts at position 976, so the literals occupy 976..984.

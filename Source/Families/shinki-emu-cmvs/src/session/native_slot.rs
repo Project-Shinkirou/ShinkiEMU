@@ -101,7 +101,6 @@ fn clear_native_objects(vm: &mut CmvsPs2aVmState) {
     ] {
         vm.write_interpreter_word(field, 0);
     }
-    vm.pending_dialog_dispatches.clear();
     vm.dialog_dispatch_base_depth = None;
     vm.dialog_dispatch_cursor = None;
     vm.forced_dialog_record = None;
@@ -190,13 +189,9 @@ impl CmvsSession {
     }
 
     fn prepare_native_slot(&self, saved: &NativeSlot) -> SessionResult<PreparedNativeSlot> {
-        let identity = self.vm.interpreter_words.get(&10556).copied().unwrap_or(0);
-        if saved.header.get(8..12) != Some(identity.to_le_bytes().as_slice()) {
-            return Err(error(
-                "SHINKI_EMU_CMVS_NATIVE_SLOT_IDENTITY",
-                "save belongs to a different game identity",
-            ));
-        }
+        // Native 471F50 never compares the header identity (bytes 8..12):
+        // it only checks the file length and the ciphered-body checksum, so
+        // a save from another build or update level loads unchanged.
         let mut vm = self.vm.clone();
         clear_native_objects(&mut vm);
         let mut scripts = self.scripts.clone();

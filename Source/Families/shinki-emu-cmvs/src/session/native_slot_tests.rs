@@ -120,6 +120,9 @@ fn gpu_native_file_selects_its_own_program_and_media_across_fresh_session() {
     drop(session);
     let mut fresh = open(root.path(), archive);
     assert!(fresh.vm.texture_parents.is_empty());
+    // 471F50 never compares the header identity, so a save written under
+    // another build identity still loads.
+    fresh.vm.interpreter_words.insert(10556, 0xBAD0_1D1D);
     fresh
         .action(CmvsPs2aVmAction::LoadNativeSaveSlot { slot: 987 })
         .unwrap();

@@ -333,15 +333,9 @@ pub struct CmvsPs2aVmState {
     /// Set when a wait command completes (the native engine's frame
     /// boundary); the session refreshes the entry queue before resuming.
     pub wait_boundary_hit: bool,
-    /// Dialog dispatches queued by the session's presenter-click
-    /// callback; the scheduler drains one entry per frame pass.
-    pub pending_dialog_dispatches: Vec<(u32, u16, u32)>,
-    /// Set when a queued dialog dispatch has run; the next tick's first
-    /// pass parks the message word sentinel to end the cascade.
-    pub dialog_dispatch_consumed: bool,
-    /// Call-frame depth captured when a queued dispatch resumes; the
-    /// tick stops once the returns unwind back to it (the native engine
-    /// resumes one entry per frame).
+    /// Call-frame depth captured when a record resume lays the dispatcher
+    /// head's locals; the tick stops once the returns unwind back to it
+    /// (the native engine resumes one entry per frame).
     pub dialog_dispatch_base_depth: Option<usize>,
     /// Stack cursor captured before the dispatch layout was pushed; the
     /// entry-completion unwind restores it so no layout words leak into
@@ -387,14 +381,6 @@ impl CmvsPs2aVmState {
     pub fn execution_error(&self) -> Option<&'static str> {
         self.execution_failed
             .then_some("CMVS PS2A VM execution previously failed")
-    }
-
-    /// Queues the dialog dispatcher entry the way the native Win32
-    /// click callback does: the message identity lands as the dispatcher
-    /// call argument and a frame-entry context is appended so the next
-    /// scheduler pass resumes the dispatcher chain.
-    pub fn queue_dialog_dispatch(&mut self, entry_pc: u32, frame: u16, id: u32) {
-        self.pending_dialog_dispatches.push((entry_pc, frame, id));
     }
 
     /// Hit-tests the pointer against the system-menu channel's quad
@@ -573,8 +559,6 @@ impl CmvsPs2aVmState {
             pointer_y: 0,
             dispatch_stopped: false,
             wait_boundary_hit: false,
-            pending_dialog_dispatches: Vec::new(),
-            dialog_dispatch_consumed: false,
             dialog_dispatch_base_depth: None,
             dialog_dispatch_cursor: None,
             forced_dialog_record: None,

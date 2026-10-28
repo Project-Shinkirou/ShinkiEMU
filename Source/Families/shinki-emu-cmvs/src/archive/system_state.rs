@@ -19,7 +19,6 @@ impl CmvsArchive {
                 path_buffer_offset: buffer,
             })
             || vm.interpreter_words.get(&10756).copied().unwrap_or(0) != 0
-            || vm.interpreter_words.get(&10532).copied().unwrap_or(0) != 0
         {
             return Err(failure());
         }
@@ -47,8 +46,23 @@ impl CmvsArchive {
                 let path = shinki_emu_sdk::resolve_game_file(root, &relative)?;
                 let bytes = native::read_native_range(&path, 0, metadata.len())?;
                 let identity = vm.interpreter_words.get(&1600).copied().unwrap_or(0);
-                let candidate = crate::parse_cmvs_system_save(&bytes, identity)?;
-                crate::apply_system_save(vm, candidate)?;
+                match crate::parse_cmvs_system_save(&bytes, identity) {
+                    // `sub_427B30` marks a checksum or identity mismatch in
+                    // the interpreter (`+10532 |= 4`) and boots on the live
+                    // defaults; any set integrity bit skips the apply.
+                    Err(error)
+                        if matches!(
+                            error.code(),
+                            "SHINKI_EMU_CMVS_SYSTEM_SAVE_CHECKSUM"
+                                | "SHINKI_EMU_CMVS_SYSTEM_SAVE_IDENTITY"
+                        ) =>
+                    {
+                        *vm.interpreter_words.entry(10532).or_insert(0) |= 4;
+                    }
+                    Err(error) => return Err(error),
+                    Ok(_) if vm.interpreter_words.get(&10532).copied().unwrap_or(0) != 0 => {}
+                    Ok(candidate) => crate::apply_system_save(vm, candidate)?,
+                }
             }
             Ok(_) => return Err(failure()),
         }
@@ -115,20 +129,52 @@ mod tests {
     }
 
     #[test]
-    fn invalid_candidate_leaves_file_request_and_all_globals_unchanged() {
+    fn checksum_or_identity_mismatch_flags_integrity_and_keeps_live_defaults() {
+        let (root, mut archive) = super::super::cache_tests::fixture();
+        archive.bind_game_root(root.path().to_path_buf()).unwrap();
+        std::fs::create_dir(root.path().join("save")).unwrap();
+        let path = root.path().join("save/system.dat");
+        let mut checksum = encode_container(&layout_payload(), 0);
+        checksum[360] ^= 1;
+        for bytes in [checksum, encode_container(&layout_payload(), 77)] {
+            std::fs::write(&path, &bytes).unwrap();
+            let mut vm = request();
+            let mut expected = vm.clone();
+            expected.storage_await = None;
+            expected.interpreter_words.insert(10532, 4);
+            archive.load_native_system_state(&mut vm, 5404).unwrap();
+            assert_eq!(vm, expected);
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn preexisting_integrity_bits_skip_applying_a_valid_file() {
+        let (root, mut archive) = super::super::cache_tests::fixture();
+        archive.bind_game_root(root.path().to_path_buf()).unwrap();
+        std::fs::create_dir(root.path().join("save")).unwrap();
+        let bytes = encode_container(&layout_payload(), 0);
+        std::fs::write(root.path().join("save/system.dat"), &bytes).unwrap();
+        let mut vm = request();
+        vm.interpreter_words.insert(10532, 0x10000);
+        let mut expected = vm.clone();
+        expected.storage_await = None;
+        archive.load_native_system_state(&mut vm, 5404).unwrap();
+        assert_eq!(vm, expected);
+    }
+
+    #[test]
+    fn invalid_layout_leaves_file_request_and_all_globals_unchanged() {
         let (root, mut archive) = super::super::cache_tests::fixture();
         archive.bind_game_root(root.path().to_path_buf()).unwrap();
         std::fs::create_dir(root.path().join("save")).unwrap();
         let path = root.path().join("save/system.dat");
         let valid = encode_container(&layout_payload(), 0);
-        let mut checksum = valid.clone();
-        checksum[360] ^= 1;
         let mut version = valid.clone();
         version[76] = 2;
         let mut count = valid.clone();
         count[88..92].copy_from_slice(&u32::MAX.to_le_bytes());
         for bytes in [
-            checksum,
             version,
             count,
             encode_container(&layout_payload()[..44863], 0),
