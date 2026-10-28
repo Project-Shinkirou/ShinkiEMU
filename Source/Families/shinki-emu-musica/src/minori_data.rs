@@ -133,9 +133,40 @@ fn format_properties(properties: &Properties, crlf: bool) -> Result<Vec<u8>, Cor
     Ok(bytes)
 }
 
-/// Decode the encrypted, zlib-compressed `system.dat` variable table.
-pub fn decode_system(bytes: &[u8]) -> Result<Properties, CoreError> {
-    if bytes.len() < 8 || bytes.len() > LIMIT || !bytes.len().is_multiple_of(8) {
+/// The two original `system.dat` envelopes. eden (English edition) reads a
+/// zero u32 followed by RC4("minori") over the property table (eden_en.exe
+/// `sub_4C1700`/`sub_4BFE60`); Perseus encrypts `[u32 length][zlib(table + NUL)]`
+/// with little-endian Blowfish and zero padding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SystemFormat {
+    Rc4,
+    Blowfish,
+}
+
+const RC4_KEY: &[u8] = b"minori";
+
+fn rc4(bytes: &mut [u8]) -> Result<(), CoreError> {
+    use rc4::{Rc4, StreamCipher};
+    let mut cipher =
+        Rc4::new_from_slice(RC4_KEY).map_err(|_| invalid("original system data key is invalid"))?;
+    cipher.apply_keystream(bytes);
+    Ok(())
+}
+
+/// Decode an original `system.dat` variable table.
+pub fn decode_system(bytes: &[u8], format: SystemFormat) -> Result<Properties, CoreError> {
+    if bytes.len() > LIMIT {
+        return Err(invalid("original system data has an invalid length"));
+    }
+    if format == SystemFormat::Rc4 {
+        let mut plain = bytes
+            .strip_prefix(&[0, 0, 0, 0])
+            .ok_or_else(|| invalid("original system data header is invalid"))?
+            .to_vec();
+        rc4(&mut plain)?;
+        return parse_properties(&plain, false);
+    }
+    if bytes.len() < 8 || !bytes.len().is_multiple_of(8) {
         return Err(invalid("original system data has an invalid length"));
     }
     let mut decrypted = bytes.to_vec();
@@ -153,9 +184,16 @@ pub fn decode_system(bytes: &[u8]) -> Result<Properties, CoreError> {
     parse_properties(&plain, true)
 }
 
-/// Encode the original little-endian Blowfish and zlib `system.dat` format.
-pub fn encode_system(properties: &Properties) -> Result<Vec<u8>, CoreError> {
+/// Encode an original `system.dat` variable table in the given envelope.
+pub fn encode_system(properties: &Properties, format: SystemFormat) -> Result<Vec<u8>, CoreError> {
     let mut plain = format_properties(properties, false)?;
+    if format == SystemFormat::Rc4 {
+        rc4(&mut plain)?;
+        let mut bytes = Vec::with_capacity(4 + plain.len());
+        bytes.extend_from_slice(&[0; 4]);
+        bytes.extend_from_slice(&plain);
+        return Ok(bytes);
+    }
     plain.push(0);
     let compressed = compress(&plain)?;
     let mut bytes = Vec::with_capacity((compressed.len() + 11) & !7);
@@ -176,36 +214,42 @@ pub fn encode_settings(properties: &Properties) -> Result<Vec<u8>, CoreError> {
     format_properties(properties, true)
 }
 
-fn decode_zfile(bytes: &[u8], bound: usize) -> Result<Vec<u8>, CoreError> {
+/// The u32 every original compressed file starts with: CRC32 of the title's
+/// `SerialCode` registry string, zero when the title has none.
+pub fn file_prefix(bytes: &[u8]) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(..4)?.try_into().ok()?))
+}
+
+fn decode_zfile(bytes: &[u8], bound: usize, prefix: u32) -> Result<Vec<u8>, CoreError> {
     let compressed = bytes
-        .strip_prefix(&[0, 0, 0, 0])
+        .strip_prefix(&prefix.to_le_bytes())
         .ok_or_else(|| invalid("original compressed file header is invalid"))?;
     decompress(compressed, bound, false)
 }
 
-fn encode_zfile(plain: &[u8]) -> Result<Vec<u8>, CoreError> {
+fn encode_zfile(plain: &[u8], prefix: u32) -> Result<Vec<u8>, CoreError> {
     let compressed = compress(plain)?;
     let mut bytes = Vec::with_capacity(4 + compressed.len());
-    bytes.extend_from_slice(&[0; 4]);
+    bytes.extend_from_slice(&prefix.to_le_bytes());
     bytes.extend_from_slice(&compressed);
     Ok(bytes)
 }
 
 /// Decode one script's `<script>.tbr` read bitmap.
-pub fn decode_read_flags(bytes: &[u8]) -> Result<[u8; READ_FLAG_BYTES], CoreError> {
-    decode_zfile(bytes, READ_FLAG_BYTES)?
+pub fn decode_read_flags(bytes: &[u8], prefix: u32) -> Result<[u8; READ_FLAG_BYTES], CoreError> {
+    decode_zfile(bytes, READ_FLAG_BYTES, prefix)?
         .try_into()
         .map_err(|_| invalid("original read bitmap has an invalid length"))
 }
 
 /// Encode one script's `<script>.tbr` read bitmap.
-pub fn encode_read_flags(bits: &[u8; READ_FLAG_BYTES]) -> Result<Vec<u8>, CoreError> {
-    encode_zfile(bits)
+pub fn encode_read_flags(bits: &[u8; READ_FLAG_BYTES], prefix: u32) -> Result<Vec<u8>, CoreError> {
+    encode_zfile(bits, prefix)
 }
 
 /// Decode the newline-separated original `cgv.dat` image names.
-pub fn decode_cg_names(bytes: &[u8]) -> Result<Vec<Vec<u8>>, CoreError> {
-    let plain = decode_zfile(bytes, LIMIT)?;
+pub fn decode_cg_names(bytes: &[u8], prefix: u32) -> Result<Vec<Vec<u8>>, CoreError> {
+    let plain = decode_zfile(bytes, LIMIT, prefix)?;
     let Some(body) = plain.strip_suffix(b"\n") else {
         if plain.is_empty() {
             return Ok(Vec::new());
@@ -223,7 +267,7 @@ pub fn decode_cg_names(bytes: &[u8]) -> Result<Vec<Vec<u8>>, CoreError> {
 }
 
 /// Encode the original `cgv.dat` image-name list.
-pub fn encode_cg_names(names: &[Vec<u8>]) -> Result<Vec<u8>, CoreError> {
+pub fn encode_cg_names(names: &[Vec<u8>], prefix: u32) -> Result<Vec<u8>, CoreError> {
     let mut plain = Vec::new();
     for name in names {
         if name.is_empty() || name.iter().any(|byte| matches!(byte, 0 | b'\r' | b'\n')) {
@@ -235,7 +279,7 @@ pub fn encode_cg_names(names: &[Vec<u8>]) -> Result<Vec<u8>, CoreError> {
             return Err(invalid("original CG list exceeds its size limit"));
         }
     }
-    encode_zfile(&plain)
+    encode_zfile(&plain, prefix)
 }
 
 #[cfg(test)]
@@ -243,7 +287,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn independently_constructed_system_fixture_round_trips() {
+    fn blowfish_system_fixture_keeps_its_envelope() {
         // Synthetic property, encrypted independently with the original
         // little-endian Blowfish block convention and negated "minori" key.
         let fixture = [
@@ -251,15 +295,37 @@ mod tests {
             94, 195, 2, 37, 87, 223, 71, 135, 4, 3, 43, 24, 209,
         ];
         let properties = Properties::from([(b"REN_CLEAR".to_vec(), b"1".to_vec())]);
-        assert_eq!(decode_system(&fixture).unwrap(), properties);
         assert_eq!(
-            decode_system(&encode_system(&properties).unwrap()).unwrap(),
+            decode_system(&fixture, SystemFormat::Blowfish).unwrap(),
             properties
         );
+        let encoded = encode_system(&properties, SystemFormat::Blowfish).unwrap();
+        assert!(encoded.len().is_multiple_of(8));
+        assert_eq!(
+            decode_system(&encoded, SystemFormat::Blowfish).unwrap(),
+            properties
+        );
+        assert!(decode_system(&fixture, SystemFormat::Rc4).is_err());
     }
 
     #[test]
-    fn original_settings_cg_and_script_bitmap_round_trip() {
+    fn rc4_system_fixture_reencodes_byte_identically() {
+        // Zero u32 then RC4("minori") over the table, as eden_en.exe writes it.
+        let fixture = [
+            0, 0, 0, 0, 119, 189, 225, 184, 158, 226, 131, 214, 249, 31, 157, 81, 58, 20, 42, 147,
+            128, 201, 226, 70, 51, 82, 150, 162, 230, 69, 181, 130, 158, 188,
+        ];
+        let decoded = decode_system(&fixture, SystemFormat::Rc4).unwrap();
+        assert_eq!(decoded[b"EYE_SEQ_DEFAULT".as_slice()], b"2");
+        assert_eq!(decoded[b"REN_CLEAR".as_slice()], b"1");
+        assert_eq!(encode_system(&decoded, SystemFormat::Rc4).unwrap(), fixture);
+        let mut foreign = fixture;
+        foreign[0] = 1;
+        assert!(decode_system(&foreign, SystemFormat::Rc4).is_err());
+    }
+
+    #[test]
+    fn settings_cg_and_read_flags_keep_plaintext_and_prefix() {
         let settings = b"fontname\t\x82\xa0\r\nvolumeBGM\t75\r\n";
         let decoded = decode_settings(settings).unwrap();
         assert_eq!(encode_settings(&decoded).unwrap(), settings);
@@ -268,21 +334,22 @@ mod tests {
             0, 0, 0, 0, 120, 156, 75, 74, 55, 48, 212, 43, 200, 75, 231, 42, 46, 129, 50, 0, 52,
             194, 5, 109,
         ];
-        assert_eq!(decode_cg_names(&cg_fixture).unwrap(), names);
-        assert_eq!(
-            decode_cg_names(&encode_cg_names(&names).unwrap()).unwrap(),
-            names
-        );
+        assert_eq!(decode_cg_names(&cg_fixture, 0).unwrap(), names);
+        assert!(decode_cg_names(&cg_fixture, 7).is_err());
+        let serial = 0x2299_cf44;
+        let encoded = encode_cg_names(&names, serial).unwrap();
+        assert_eq!(file_prefix(&encoded), Some(serial));
+        assert_eq!(decode_cg_names(&encoded, serial).unwrap(), names);
+        assert!(decode_cg_names(&encoded, 0).is_err());
         let mut bits = [0u8; READ_FLAG_BYTES];
         bits[12] = 0x20;
         let flags_fixture = [
             0, 0, 0, 0, 120, 156, 237, 193, 65, 13, 0, 0, 8, 0, 161, 139, 98, 255, 148, 62, 205,
             224, 6, 212, 153, 0, 0, 0, 0, 0, 0, 0, 128, 143, 22, 30, 188, 0, 33,
         ];
-        assert_eq!(decode_read_flags(&flags_fixture).unwrap(), bits);
-        assert_eq!(
-            decode_read_flags(&encode_read_flags(&bits).unwrap()).unwrap(),
-            bits
-        );
+        assert_eq!(decode_read_flags(&flags_fixture, 0).unwrap(), bits);
+        let encoded = encode_read_flags(&bits, 0).unwrap();
+        assert_eq!(&encoded[..4], &[0; 4]);
+        assert_eq!(decode_read_flags(&encoded, 0).unwrap(), bits);
     }
 }
