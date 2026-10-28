@@ -321,7 +321,7 @@ reason = "Statically embedded in the Android Manager; standalone dynamic-core in
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
 branch = "shinki"
-rev = "595b3e337e29fd4e3b711b45d02a7237459b01f8"
+rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
 upstream = "https://github.com/luoyily/ReMinori"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
