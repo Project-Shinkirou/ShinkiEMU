@@ -8,5 +8,6 @@
       "default-features": false,
       "features": ["avcodec", "avdevice", "avfilter", "avformat", "swresample", "swscale"]
     }
-  ]
+  ],
+  "overrides": [{ "name": "ffmpeg", "version": "7.1.2" }]
 }

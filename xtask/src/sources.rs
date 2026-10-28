@@ -546,14 +546,7 @@ fn native_sources(
         installations.push(("subtitle", dependencies::subtitle_install(inv, target)?));
     }
     if selected.ffmpeg {
-        installations.push((
-            "ffmpeg",
-            if target == "x86_64-unknown-linux-gnu" {
-                dependencies::linux_install(inv, target, "ffmpeg")
-            } else {
-                inv.root.join(".work/vcpkg-ffmpeg/installed/x64-windows")
-            },
-        ));
+        installations.push(("ffmpeg", dependencies::ffmpeg_install(inv, target)?));
     }
     if selected.native_vcpkg {
         installations.push((
@@ -632,6 +625,9 @@ fn native_sources(
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
             commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
+        }
+        if *group == "ffmpeg" {
+            commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         commands.push('\n');
         if *group != "native" {

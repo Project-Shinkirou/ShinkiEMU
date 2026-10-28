@@ -4,6 +4,27 @@ Musica 通过 C ABI v3 的 `shinki_emu_query` 提供原生核心；静态集成�
 
 动态插件通过共享诊断桥将核心 tracing/log 接入 Manager；静态核心使用宿主订阅器。日志不另建文件 sink，正文和未审查 Debug 内容不会跨 ABI 透传。
 
+## 平台依赖
+
+`cargo xtask deps --target <triple> --core shinki.emu.musica` 使用同一份
+`build/vcpkg/ffmpeg/vcpkg.json`，固定 FFmpeg 7.1.2，保留完整内置解码器、demuxer
+和 parser。Windows 沿用 `x64-windows` 动态闭包，Linux 沿用 `x64-linux-dynamic`；
+Apple、Android 和 OHOS 使用静态库，不另打包 FFmpeg dylib/so。每个非 Windows
+target 独立安装到 `.work/vcpkg-ffmpeg/<triple>/installed/<triplet>`，避免 manifest
+安装裁掉其他设备或模拟器的依赖。
+
+iOS Manager 通过 `musica_query` 静态注册核心，启用 `ffmpeg-vcpkg`，不启用
+`dynamic-plugin-export`。Apple 构建需要原生 macOS/Xcode；部署版本保持 macOS 13、
+iOS 16。Android FFmpeg 使用 API 28 的静态 triplet。OHOS 依赖准备读取
+`OHOS_SDK_NATIVE`，Windows 默认识别 DevEco Studio 的已安装 native SDK，使用
+API 17 的 arm64 工具链。xtask 为这些平台隔离 pkg-config 并启用完整静态私有闭包，
+同时向 native 消费者导出 `SHINKI_EMU_FFMPEG_INSTALLED`；Windows/Linux 不设置该变量。
+
+私有 `key.toml` 仍由用户显式选择，游戏内相对路径按游戏根解析，不依赖进程当前目录。
+手机端需把游戏和密钥放入 Manager 可读的本地目录，并保留游戏目录内
+`.shinki/musica` 的写权限；核心不扫描系统密钥目录，也不复制密钥到应用包。
+
+
 ## 启动和输入
 
 原生 C ABI v3 descriptor 提供 `profile_file`（界面显示 key.toml，默认 `key.toml`）、`entry_script`（默认 `test.sc`）等 typed 启动配置，完整字段以 Rust descriptor/schema 为准。正常启动默认 `launch_mode=title`，先显示原生标题菜单，点击开始后才执行入口脚本；`direct` 保留为显式直入与原版 eden 存档导入用途。已保存的显式选择不自动覆盖。key.toml 可选显式绝对路径，或游戏目录内安全相对路径；入口是 scr archive 内单个 `.sc` 文件名。不会在入口失败后猜测另一个脚本。

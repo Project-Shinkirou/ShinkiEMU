@@ -178,6 +178,7 @@ shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
 
 [patch.crates-io]
+ffmpeg-sys-next = { path = "../forks/rust-ffmpeg-sys-musica-xplat" }
 cpal = { path = "ThirdParty/cpal" }
 mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f43ef1372bd22be0fbf7866" }
 

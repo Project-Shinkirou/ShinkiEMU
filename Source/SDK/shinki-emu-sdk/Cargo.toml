@@ -7,7 +7,7 @@ license.workspace = true
 
 [features]
 runtime = ["dep:serde", "dep:shinki-emu-abi"]
-video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile"]
+video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile", "dep:ffmpeg-next"]
 subtitle = ["dep:roukaku-subtitle"]
 audio = ["dep:kira", "dep:symphonia"]
 device-audio = ["runtime", "dep:rubato", "dep:cpal", "dep:roukaku-platform", "dep:roukaku-platform-common"]
@@ -39,6 +39,10 @@ lru = { workspace = true, optional = true }
 roukaku-core = { workspace = true, optional = true }
 roukaku-media-core = { workspace = true }
 roukaku-text = { workspace = true, optional = true }
+
+# Unify the decoder's native linkage with the target's pinned static vcpkg tree.
+[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "android", target_env = "ohos"))'.dependencies]
+ffmpeg-next = { workspace = true, optional = true, features = ["static"] }
 
 [dev-dependencies]
 tempfile.workspace = true
