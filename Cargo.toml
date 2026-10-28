@@ -176,9 +176,10 @@ roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
+shinki-emu-sdk = { path = "Source/SDK/shinki-emu-sdk" }
 
 [patch.crates-io]
-ffmpeg-sys-next = { path = "../forks/rust-ffmpeg-sys-musica-xplat" }
+ffmpeg-sys-next = { git = "https://github.com/Project-Shinkirou/rust-ffmpeg-sys", rev = "6c96d7efbcba1360f92120567f8e4340dd1df101" }
 cpal = { path = "ThirdParty/cpal" }
 mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f43ef1372bd22be0fbf7866" }
 
