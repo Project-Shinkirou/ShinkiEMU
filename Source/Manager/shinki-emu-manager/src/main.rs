@@ -2,10 +2,8 @@ mod core_package;
 mod manager_app;
 mod metadata_cache;
 mod metadata_runtime;
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 mod patch_cli;
-#[cfg(any(target_os = "android", target_env = "ohos"))]
-mod patch_cli {}
 mod platform_secret;
 mod stage_renderer;
 #[cfg(test)]
@@ -13,16 +11,16 @@ mod stage_renderer;
 mod test_native;
 mod text_service;
 
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 use clap::Parser;
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 use std::process::ExitCode;
 
 // Native VM boot may hold large temporaries. Reserve once per session owner.
 const FAMILY_OWNER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 // The command line is desktop-only: the Android activity has no arguments.
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 #[derive(Parser)]
 #[command(version)]
 struct Arguments {
@@ -30,7 +28,7 @@ struct Arguments {
     command: Option<Command>,
 }
 
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 #[derive(clap::Subcommand)]
 enum Command {
     /// Apply trusted offline file patches without starting the GUI or a core.
@@ -42,7 +40,7 @@ enum Command {
     Extension(ExtensionCommand),
 }
 
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 #[derive(clap::Subcommand)]
 pub(crate) enum ExtensionCommand {
     /// Install a trusted local Luau text extension, initially disabled.
@@ -66,7 +64,7 @@ pub(crate) enum ExtensionCommand {
     List,
 }
 
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+#[cfg(not(target_os = "android"))]
 fn main() -> ExitCode {
     let arguments = match Arguments::try_parse() {
         Ok(arguments) => arguments,
@@ -121,17 +119,6 @@ fn android_main(app: slint::android::AndroidApp) {
             diagnostic_code = "SHINKI_EMU_ANDROID_STARTUP",
             error = %error
         );
-        platform::report_startup_error(&error.to_string());
-    }
-}
-
-/// OpenHarmony native ability entry. The ArkUI XComponent bridge calls
-/// `platform::ohos::register_xcomponent` before this entry is invoked.
-#[cfg(target_env = "ohos")]
-#[unsafe(no_mangle)]
-pub extern "C" fn shinki_emu_ohos_main() {
-    if let Err(error) = manager_app::run_application() {
-        tracing::error!(event = "shinki.emu.ohos.startup_failed", diagnostic_code = "SHINKI_EMU_OHOS_STARTUP", error = %error);
         platform::report_startup_error(&error.to_string());
     }
 }

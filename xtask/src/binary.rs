@@ -332,14 +332,6 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         ]
         .contains(&n.as_str());
     }
-    if target.contains("ohos") {
-        let n = name.to_ascii_lowercase();
-        return [
-            "libc.so", "libm.so", "libdl.so", "libace_ndk.z.so", "libegl.so", "libglesv2.so",
-            "libz.so", "libhilog_ndk.z.so",
-        ]
-        .contains(&n.as_str());
-    }
     if target.contains("apple") {
         return name.starts_with("/usr/lib/") || name.starts_with("/System/Library/Frameworks/");
     }

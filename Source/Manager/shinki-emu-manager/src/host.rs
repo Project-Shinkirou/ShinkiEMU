@@ -462,12 +462,15 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     settings.device_memory_hints = wgpu::MemoryHints::Performance;
     // The final-frame effects use compute and storage textures; Slint's UI-only
     // WebGL2 defaults expose neither capability.
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    #[cfg(not(target_os = "android"))]
     {
         settings.device_required_limits = wgpu::Limits::default();
     }
-    #[cfg(any(target_os = "android", target_env = "ohos"))]
+    #[cfg(target_os = "android")]
     {
+        // Keep desktop-class compute and texture budgets; only the uniform
+        // buffer baseline differs on Android. Slint negotiates texture
+        // resolution against the selected adapter's limits.
         settings.device_required_limits = wgpu::Limits {
             max_uniform_buffer_binding_size: wgpu::Limits::downlevel_defaults()
                 .max_uniform_buffer_binding_size,
@@ -476,7 +479,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     }
     settings.device_required_features |= crate::effects::FilterEngine::required_features();
     let selector = slint::BackendSelector::new();
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    // Android has only the android-activity backend, installed by `android_main`;
+    // selecting there requests the wgpu-30 Skia surface the stage underlay draws into.
+    #[cfg(not(target_os = "android"))]
     let selector = selector.backend_name("winit".into());
     selector
         .require_wgpu_30(slint::wgpu_30::WGPUConfiguration::Automatic(settings))
@@ -664,7 +669,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     let event_window = adapter.window().as_weak();
     let event_pending = async_events_pending.clone();
     let renderer_callback = renderer.clone();
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+    #[cfg(not(target_os = "android"))]
     let initial_window_pending = std::cell::Cell::new(true);
     let first_ui_frame_pending = std::cell::Cell::new(true);
     let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
@@ -682,7 +687,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                 renderer_callback.borrow_mut().setup(context)?;
                 if let Some(window) = event_window.upgrade() {
                     // Android windows always cover the full surface; only desktop fits.
-                    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+                    #[cfg(not(target_os = "android"))]
                     if initial_window_pending.replace(false) {
                         // Winit creates its native window when the event loop starts.
                         // Defer fitting until the first render finishes applying size.

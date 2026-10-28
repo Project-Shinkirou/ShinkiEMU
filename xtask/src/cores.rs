@@ -214,7 +214,7 @@ impl Inventory {
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
                 if !target.manager_supported
-                    || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
+                    || !matches!(target.platform.as_str(), "android" | "ios")
                 {
                     bail!("invalid static Manager integration");
                 }
@@ -228,8 +228,9 @@ impl Inventory {
             self.root
                 .join("Source/Manager/shinki-emu-manager/Cargo.toml"),
         )?)?;
-        for (platform, cfg_key) in [("android", "cfg(target_os = \"android\")"), ("ios", "cfg(target_os = \"ios\")"), ("ohos", "cfg(target_env = \"ohos\")")] {
-            let dependencies = manifest["target"][cfg_key]["dependencies"]
+        for platform in ["android", "ios"] {
+            let key = format!("cfg(target_os = \"{platform}\")");
+            let dependencies = manifest["target"][&key]["dependencies"]
                 .as_table()
                 .context("Manager target dependencies")?;
             for core in &self.cores {

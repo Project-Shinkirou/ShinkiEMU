@@ -62,11 +62,6 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
                     .ok_or_else(|| anyhow::anyhow!("Android package APK missing"))?;
                 package::portable(apk)?;
                 report.artifact = Some(staged.join(apk));
-            } else if component == "manager" && target == "aarch64-unknown-linux-ohos" {
-                report.artifact = Some(
-                    staged
-                        .join(format!("ShinkiEMU-{version}-{target}-debug.hap")),
-                );
             } else if component == "manager" && target == "aarch64-apple-ios" {
                 report.artifact = Some(staged.join(format!(
                     "ShinkiEMU-{version}-{target}-adhoc-device-test.ipa"

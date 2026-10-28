@@ -770,9 +770,6 @@ pub fn package(
         if target.contains("android") {
             return package_android(inv, &result, version, out);
         }
-        if target == "aarch64-unknown-linux-ohos" {
-            return package_ohos(inv, &result, version, out);
-        }
         atomic_directory(out, |stage| {
             let temp = tempfile::tempdir_in(stage)?;
             let name = result
@@ -1301,30 +1298,4 @@ fn verify_android_apk(apk: &Path) -> Result<()> {
         bail!("APK metadata snapshot missing");
     }
     Ok(())
-}
-
-fn package_ohos(inv: &Inventory, result: &BuildResult, version: &str, out: &Path) -> Result<PathBuf> {
-    let sign_tool = std::env::var_os("OHOS_HAP_SIGN_TOOL")
-        .map(PathBuf::from)
-        .context("set OHOS_HAP_SIGN_TOOL to the DevEco debug HAP signer")?;
-    plain(&sign_tool)?;
-    atomic_directory(out, |stage| {
-        let lib = stage.join("libs/arm64-v8a");
-        fs::create_dir_all(&lib)?;
-        fs::copy(&result.library, lib.join("libshinki_emu_manager.so"))?;
-        fs::create_dir_all(stage.join("assets"))?;
-        fs::copy(inv.root.join("THIRD_PARTY_NOTICES.md"), stage.join("assets/THIRD_PARTY_NOTICES.md"))?;
-        fs::create_dir_all(stage.join("entry/src/main/ets"))?;
-        fs::write(stage.join("entry/module.json5"), "{\"module\":{\"name\":\"entry\",\"type\":\"entry\",\"deviceTypes\":[\"phone\",\"tablet\"],\"deliveryWithInstall\":true}}")?;
-        fs::write(stage.join("entry/src/main/ets/ShinkiEMUAbility.ets"), "export default {};\n")?;
-        fs::write(stage.join("module.json5"), format!("{{\"app\":{{\"bundleName\":\"org.shinkirou.shinkiemu\",\"vendor\":\"Project-Shinkirou\",\"versionCode\":1,\"versionName\":\"{version}\"}},\"module\":{{\"name\":\"entry\",\"type\":\"entry\",\"deviceTypes\":[\"phone\",\"tablet\"]}}}}"))?;
-        let unsigned = stage.join("ShinkiEMU-unsigned.hap");
-        zip_entries(&tree(stage)?, &unsigned)?;
-        let signed = stage.join(format!("ShinkiEMU-{version}-aarch64-unknown-linux-ohos-debug.hap"));
-        dependencies::run(std::process::Command::new(&sign_tool).args(["sign-app", "-i"]).arg(&unsigned).args(["-o"]).arg(&signed))?;
-        plain(&signed)?;
-        fs::remove_file(unsigned)?;
-        Ok(())
-    })?;
-    Ok(out.to_owned())
 }

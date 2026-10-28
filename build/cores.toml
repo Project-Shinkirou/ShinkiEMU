@@ -14,7 +14,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/rfvp/LICENSE", "ThirdParty/rfvp/crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "ThirdParty/rfvp/crates/shinki-emu-rfvp/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
@@ -38,7 +38,8 @@ target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OpenHarmony Manager; standalone dynamic-core installation is not supported."
+reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+
 [[cores]]
 id = "siglus_rs"
 display_name = "siglus-rs"
@@ -52,7 +53,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
@@ -76,7 +77,8 @@ target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OpenHarmony Manager; standalone dynamic-core installation is not supported."
+reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+
 [[cores]]
 id = "art3m1s-core"
 display_name = "Art3m1s"
@@ -173,7 +175,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/sena-rs/LICENSE-MPL-2.0", "docs/licenses/sena-rs/MS-PGothic.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
@@ -197,7 +199,8 @@ target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OpenHarmony Manager; standalone dynamic-core installation is not supported."
+reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+
 [[cores]]
 id = "kirikiroid2-web"
 display_name = "KiriKiri2"
@@ -258,7 +261,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
@@ -282,7 +285,8 @@ target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OpenHarmony Manager; standalone dynamic-core installation is not supported."
+reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+
 [[cores]]
 id = "shinki.emu.cmvs"
 display_name = "Shinki CMVS"
@@ -338,7 +342,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
@@ -362,7 +366,8 @@ target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OpenHarmony Manager; standalone dynamic-core installation is not supported."
+reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+
 [[cores]]
 id = "impacto"
 display_name = "impacto"
