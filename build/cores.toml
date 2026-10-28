@@ -213,41 +213,16 @@ dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
-rev = "ed361421859fa8ba2a03f8fddec1e7b60accd288"
+rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet and GLFW/POSIX owner live on the fork tag shinki-linux-port (860c1d4f), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
-[[cores.blocked]]
-target = "aarch64-apple-ios"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
-[[cores.blocked]]
-target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
-[[cores.blocked]]
-target = "x86_64-apple-ios"
-reason = "ThirdParty/kirikiri2/shinki/build.rs:9 accepts only a native Windows x64/MSVC HOST and TARGET; Apple targets and their native owner build are not adapted."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
-
 [[cores]]
 id = "ethornell-rs"
 display_name = "ethornell-rs"
