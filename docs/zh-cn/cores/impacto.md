@@ -13,6 +13,12 @@ description: impacto 的格式、原生行为与限制。
 
 impacto 保留 MAGES SC3 VM、原生资源 reader 和游戏专用配置。C++ 接入仍位于 `src/shinki`，Cargo/CMake 构建入口位于 `shinki`。OpenGL 合成、OpenAL 音频、FFmpeg 影片、游戏 UI 和存档继续由原生引擎执行。
 
+## 存储
+
+`userconfig.toml` 保留在 Impacto 的平台偏好目录。Windows 路径为 `%APPDATA%/Committee of Zero/Impacto`。当前 CC profile 将 `SaveDataType` 设为 `None`，没有 profile 存档格式或存档文件；后续支持原生存档的 profile 继续使用上游定义的位置。
+
+旧 `save_root` 由用户指定。迁移 beta.1/beta.2 配置时，请关闭游戏，只在目标文件不存在时，将 `<旧 save_root>/userconfig.toml` 复制到平台偏好目录。Manager 会显示一次退役路径。核心不猜测旧路径，也不在上游目录不可写时另找目录。打包资源中的基础路径使用 `<resources>/saves`，对应上游示例的 `RootSavesDir = "./saves"`；当前 CC profile 不会在此写入存档。
+
 ## 原生行为与限制
 
 适配层提供 C ABI v3 和 CPU 帧所有权，不在 Manager 重写 MAGES 脚本。fork 保留 DDS 并发读取状态与影片音频释放的所有权修复。Steam 字库从用户实际游戏的 DDS 读取，不作为替代资源分发。
