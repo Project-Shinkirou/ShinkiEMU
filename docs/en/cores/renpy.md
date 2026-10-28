@@ -45,6 +45,10 @@ only invoke the one-time import before the native token/persistent loaders.
 
 ## Native behavior and limits
 
+Windows builds generate MSVC import libraries from the official SDK DLLs in the
+Rust build helper, then link those SDK libraries into both the display extension
+and the core. The package includes the SDK-generated `renpy/vc_version.py`.
+
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.
 
 The current embedding requires Windows x64/MSVC. Upstream Ren’Py platform support does not imply the adapter is ported to those platforms. Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
