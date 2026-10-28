@@ -1,7 +1,6 @@
 use super::*;
 use crate::{CmvsNativeGlyphAtlas, CmvsNativeGlyphPainted, CmvsTextureParentState};
 
-#[cfg(windows)]
 impl NativeTextRenderer {
     fn draw_commands(
         &mut self,
@@ -207,7 +206,6 @@ fn raw_style_and_outline_color_use_shared_native_composition() {
     assert_eq!(&raw.pixels.as_slice()[2 * 4..3 * 4], &[0; 4]);
 }
 
-#[cfg(windows)]
 fn fixture() -> (NativeTextRenderer, CmvsPs2aVmState, TextureCache) {
     let (renderer, mut vm) = super::super::tests::fixture();
     crate::vm::native_text::font_owner::ensure_owner(&mut vm, 783, 0).unwrap();
@@ -223,7 +221,6 @@ fn fixture() -> (NativeTextRenderer, CmvsPs2aVmState, TextureCache) {
     (renderer, vm, cache)
 }
 
-#[cfg(windows)]
 #[test]
 fn append_queries_fixed_advance_but_paints_only_at_frame_and_retains_pixels_on_eviction() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -304,7 +301,6 @@ fn append_queries_fixed_advance_but_paints_only_at_frame_and_retains_pixels_on_e
     assert_eq!(cold.glyph_atlases[&0].frame, old_frame);
 }
 
-#[cfg(windows)]
 #[test]
 fn pending_records_use_later_family_and_bold_while_painted_records_do_not() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -322,7 +318,7 @@ fn pending_records_use_later_family_and_bold_while_painted_records_do_not() {
     renderer.bind_glyph_owner(&vm, 0).unwrap();
     let raster = vm.native_glyph_raster(0, b'W' as u16, 24).unwrap();
     let expected = renderer
-        .gdi
+        .raster
         .paint_glyph(
             "Arial",
             &vm.native_glyphs[&0].records[1],
@@ -344,7 +340,6 @@ fn pending_records_use_later_family_and_bold_while_painted_records_do_not() {
     assert_ne!(&original.bgra, &expected.bgra);
 }
 
-#[cfg(windows)]
 #[test]
 fn clear_keeps_occupancy_and_capacity_does_not_limit_append() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -367,7 +362,6 @@ fn clear_keeps_occupancy_and_capacity_does_not_limit_append() {
     );
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_atlas_draws_actual_glyph_children_and_evicts_without_losing_cpu_pixels() {
@@ -407,18 +401,6 @@ fn gpu_atlas_draws_actual_glyph_children_and_evicts_without_losing_cpu_pixels() 
     assert_eq!(again, first);
 }
 
-#[cfg(not(windows))]
-#[test]
-fn standalone_consumer_reports_the_real_gdi_platform_boundary() {
-    let mut renderer = NativeTextRenderer::default();
-    let mut vm = CmvsPs2aVmState::new(0);
-    vm.native_glyphs.insert(0, graph());
-    let before = vm.native_glyphs[&0].clone();
-    assert!(renderer.append_glyph(&mut vm, 0, b"W").is_err());
-    assert_eq!(vm.native_glyphs[&0], before);
-}
-
-#[cfg(windows)]
 #[test]
 fn linked_children_sort_independently_and_negative_order_skips_only_that_child() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -456,7 +438,6 @@ fn linked_children_sort_independently_and_negative_order_skips_only_that_child()
     assert_eq!(ids[2], "cmvs.glyph.37.0");
 }
 
-#[cfg(windows)]
 #[test]
 fn actual_allocation_failure_retains_owner_and_never_marks_a_failed_slot_resident() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -470,7 +451,6 @@ fn actual_allocation_failure_retains_owner_and_never_marks_a_failed_slot_residen
     assert!(renderer.glyph_atlases[&0].resource.is_none());
 }
 
-#[cfg(windows)]
 #[test]
 fn motion_advances_before_viewport_materialization() {
     let (mut renderer, mut vm, mut cache) = fixture();
@@ -495,7 +475,6 @@ fn motion_advances_before_viewport_materialization() {
     assert!(owner.records[0].resident.is_none());
 }
 
-#[cfg(windows)]
 fn mixed_fixture(table: u16) -> (tempfile::TempDir, CmvsArchive, CmvsScene, CmvsPs2aVmState) {
     let (renderer, mut vm, _) = fixture();
     let (root, archive, archive_vm) = super::super::super::parent_load_tests::fixture();
@@ -543,7 +522,6 @@ fn mixed_fixture(table: u16) -> (tempfile::TempDir, CmvsArchive, CmvsScene, Cmvs
     (root, archive, scene, vm)
 }
 
-#[cfg(windows)]
 fn set_mixed_order(vm: &mut CmvsPs2aVmState, table: u16, order: i32) {
     if table == 750 {
         vm.native_text.get_mut(&3).unwrap().draw_order = order;
@@ -559,7 +537,6 @@ fn set_mixed_order(vm: &mut CmvsPs2aVmState, table: u16, order: i32) {
     }
 }
 
-#[cfg(windows)]
 fn mixed_frame(
     scene: &mut CmvsScene,
     vm: &mut CmvsPs2aVmState,
@@ -571,7 +548,6 @@ fn mixed_frame(
         .unwrap()
 }
 
-#[cfg(windows)]
 fn is_blue(frame: &TextureFrame) -> bool {
     frame
         .rgba8
@@ -582,7 +558,6 @@ fn is_blue(frame: &TextureFrame) -> bool {
         .all(|pixel| *pixel == [0, 0, 255, 255])
 }
 
-#[cfg(windows)]
 fn fill_ordinary_records(vm: &mut CmvsPs2aVmState, count: usize) {
     // Configured zero-area/alpha-zero basics still enter4473C0. Eight real
     // indexed containers cover the boundary without exceeding1024 children.
@@ -613,7 +588,6 @@ fn fill_ordinary_records(vm: &mut CmvsPs2aVmState, count: usize) {
     }
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_global_queue_mixes_750_and_775_with_opaque_images_and_both_41_tie_policies() {
@@ -641,7 +615,6 @@ fn gpu_global_queue_mixes_750_and_775_with_opaque_images_and_both_41_tie_policie
     }
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_global_queue_counts_transparent_750_and_775_roots_at_8192_boundary() {
@@ -679,7 +652,6 @@ fn gpu_global_queue_counts_transparent_750_and_775_roots_at_8192_boundary() {
     }
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_full_global_queue_still_updates_paints_uploads_evicts_and_releases_775() {
@@ -704,7 +676,6 @@ fn gpu_full_global_queue_still_updates_paints_uploads_evicts_and_releases_775() 
     assert!(scene.text.glyph_pending.is_empty());
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_742_admission_follows_glyphs_and_flat_ties_without_an_overlay_escape() {
@@ -772,7 +743,6 @@ fn gpu_742_admission_follows_glyphs_and_flat_ties_without_an_overlay_escape() {
     }
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_full_global_queue_does_not_hide_native_font_materialization_errors() {
@@ -800,7 +770,6 @@ fn gpu_full_global_queue_does_not_hide_native_font_materialization_errors() {
     assert!(vm.native_glyphs[&0].records[1].resident.is_none());
 }
 
-#[cfg(windows)]
 #[test]
 #[ignore = "requires a hardware GPU"]
 fn gpu_global_queue_drains_indexed_children_but_flat_sorts_detached_channel_records() {
@@ -886,7 +855,6 @@ fn gpu_global_queue_drains_indexed_children_but_flat_sorts_detached_channel_reco
     );
 }
 
-#[cfg(windows)]
 #[test]
 fn text_queue_counts_started_alpha_and_width_zero_nodes_but_not_delayed_hidden_nodes() {
     let (mut renderer, mut vm, mut cache) = fixture();

@@ -23,10 +23,11 @@ impl CmvsArchive {
             crate::vm::NATIVE_FONT_SHIFT_JIS,
             u32::from(font_shift_jis(root)?),
         );
-        let [bold, alternate] = resolve_font_flags(root, &registry::SystemRegistry)?;
+        let registry = registry::PortableRegistry::new(root);
+        let [bold, alternate] = resolve_font_flags(root, &registry)?;
         vm.write_interpreter_word(1476, u32::from(bold));
         vm.write_interpreter_word(1496, u32::from(alternate));
-        vm.native_default_font = resolve_font(root, &registry::SystemRegistry)?;
+        vm.native_default_font = resolve_font(root, &registry)?;
         Ok(())
     }
 
@@ -57,49 +58,40 @@ impl CmvsArchive {
 
     pub(crate) fn native_default_font(&self) -> Result<String, CoreError> {
         let root = self.game_root.as_deref().ok_or_else(failure)?;
-        resolve_font(root, &registry::SystemRegistry)
+        resolve_font(root, &registry::PortableRegistry::new(root))
     }
 
     pub(crate) fn native_display_sizes(&self) -> Result<([u32; 2], [u32; 2]), CoreError> {
-        resolve_display_sizes(
-            self.game_root.as_deref().ok_or_else(failure)?,
-            &registry::SystemRegistry,
-        )
+        let root = self.game_root.as_deref().ok_or_else(failure)?;
+        resolve_display_sizes(root, &registry::PortableRegistry::new(root))
     }
 
     pub(crate) fn native_windowed(&self) -> Result<bool, CoreError> {
-        resolve_windowed(
-            self.game_root.as_deref().ok_or_else(failure)?,
-            &registry::SystemRegistry,
-        )
+        let root = self.game_root.as_deref().ok_or_else(failure)?;
+        resolve_windowed(root, &registry::PortableRegistry::new(root))
     }
 
     pub(crate) fn native_audio_configuration(&self) -> Result<([u32; 2], [u32; 2]), CoreError> {
-        resolve_audio_configuration(
-            self.game_root.as_deref().ok_or_else(failure)?,
-            &registry::SystemRegistry,
-        )
+        let root = self.game_root.as_deref().ok_or_else(failure)?;
+        resolve_audio_configuration(root, &registry::PortableRegistry::new(root))
     }
 
     pub(crate) fn initialize_native_view_policy(
         &self,
         vm: &mut crate::CmvsPs2aVmState,
     ) -> Result<(), CoreError> {
-        let [screen, point] = resolve_view_policy(
-            self.game_root.as_deref().ok_or_else(failure)?,
-            &registry::SystemRegistry,
-        )?;
+        let root = self.game_root.as_deref().ok_or_else(failure)?;
+        let registry = registry::PortableRegistry::new(root);
+        let [screen, point] = resolve_view_policy(root, &registry)?;
         vm.component_words.insert((1920_u32 << 16) | 100, screen);
         vm.component_words.insert((1920_u32 << 16) | 104, point);
-        vm.native_view.fullscreen_size = resolve_fullscreen_size(
-            self.game_root.as_deref().ok_or_else(failure)?,
-            &registry::SystemRegistry,
-        )?;
+        vm.native_view.fullscreen_size = resolve_fullscreen_size(root, &registry)?;
         Ok(())
     }
 }
 
-// 41D7F0 reads the saved registry parameter first, then the INI default.
+// 41D7F0 reads the saved registry parameter first, then the INI default. The
+// registry values come from the portable `.shinki/cmvs/registry.json` store.
 fn resolve_font_flags(root: &Path, registry: &impl Registry) -> Result<[bool; 2], CoreError> {
     let (in_registry, key) = configuration_source(root, registry)?;
     let ini = read_ini(root, "cmvs.cfg")?;

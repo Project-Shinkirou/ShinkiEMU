@@ -19,19 +19,11 @@ impl NativeTextRenderer {
         vm: &CmvsPs2aVmState,
         slot: u8,
     ) -> Result<(), CoreError> {
-        #[cfg(not(windows))]
-        {
-            let _ = (vm, slot);
-            Err(error("SHINKI_EMU_CMVS_GLYPH_GDI_REQUIRED"))
-        }
-        #[cfg(windows)]
-        {
-            let owner = vm
-                .native_font_owners
-                .get(&(783 + u16::from(slot)))
-                .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
-            self.bind_font(&owner.family)
-        }
+        let owner = vm
+            .native_font_owners
+            .get(&(783 + u16::from(slot)))
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
+        self.bind_font(&owner.family)
     }
 
     pub(in crate::scene) fn append_glyph(
@@ -40,35 +32,27 @@ impl NativeTextRenderer {
         slot: u8,
         source: &[u8],
     ) -> Result<(), CoreError> {
-        #[cfg(not(windows))]
-        {
-            let _ = (vm, slot, source);
-            Err(error("SHINKI_EMU_CMVS_GLYPH_GDI_REQUIRED"))
-        }
-        #[cfg(windows)]
-        {
-            let proportional = vm.native_glyph_raster_settings(slot)?.proportional;
-            let mut graph = vm
-                .native_glyphs
-                .remove(&slot)
-                .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
-            let result = crate::vm::native_glyph::layout::append(
-                &mut graph,
-                source,
-                proportional,
-                |code, size| {
-                    // 43B360 queries 461FB0 even in fixed-width layout mode.
-                    let raster = vm.native_glyph_raster(slot, code, size)?;
-                    let owner = vm
-                        .native_font_owners
-                        .get(&(783 + u16::from(slot)))
-                        .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
-                    self.gdi.advance(&owner.family, code, size, raster)
-                },
-            );
-            vm.native_glyphs.insert(slot, graph);
-            result
-        }
+        let proportional = vm.native_glyph_raster_settings(slot)?.proportional;
+        let mut graph = vm
+            .native_glyphs
+            .remove(&slot)
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
+        let result = crate::vm::native_glyph::layout::append(
+            &mut graph,
+            source,
+            proportional,
+            |code, size| {
+                // 43B360 queries 461FB0 even in fixed-width layout mode.
+                let raster = vm.native_glyph_raster(slot, code, size)?;
+                let owner = vm
+                    .native_font_owners
+                    .get(&(783 + u16::from(slot)))
+                    .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_OBJECT"))?;
+                self.raster.advance(&owner.family, code, size, raster)
+            },
+        );
+        vm.native_glyphs.insert(slot, graph);
+        result
     }
 
     pub(in crate::scene) fn prepare_draw_groups(
@@ -77,15 +61,8 @@ impl NativeTextRenderer {
         stage_width: u32,
         textures: &mut TextureCache,
     ) -> Result<NativeDrawGroups, CoreError> {
-        #[cfg(not(windows))]
-        if !vm.native_glyphs.is_empty() {
-            return Err(error("SHINKI_EMU_CMVS_GLYPH_GDI_REQUIRED"));
-        }
         let mut glyph_groups = Vec::new();
-        #[cfg(windows)]
         self.glyph_groups(vm, stage_width, textures, &mut glyph_groups)?;
-        #[cfg(not(windows))]
-        let _ = textures;
         let mut owners = Vec::new();
         let text = self.frame_with_owners(vm, stage_width, &mut owners)?;
         let mut output = NativeDrawGroups::default();
@@ -95,7 +72,6 @@ impl NativeTextRenderer {
         Ok(output)
     }
 
-    #[cfg(windows)]
     fn glyph_groups(
         &mut self,
         vm: &mut CmvsPs2aVmState,
@@ -189,7 +165,7 @@ impl NativeTextRenderer {
                             let custom = raster.custom_bitmap_identity.and_then(|identity| {
                                 vm.native_custom_glyphs.bitmap_by_identity(identity)
                             });
-                            record.painted = Some(self.gdi.paint_glyph(
+                            record.painted = Some(self.raster.paint_glyph(
                                 &owner.family,
                                 record,
                                 pixel_size,
@@ -360,7 +336,6 @@ fn cell_destination(
     ])
 }
 
-#[cfg(windows)]
 fn upload_provider_cell(
     atlas: Option<&mut AtlasUpload>,
     auxiliary_info: Option<[u32; 3]>,
@@ -437,7 +412,6 @@ fn upload_cell_clipped(
     Ok(true)
 }
 
-#[cfg(windows)]
 #[allow(clippy::too_many_arguments)]
 fn append_draw(
     vm: &CmvsPs2aVmState,

@@ -19,6 +19,6 @@ description: CMVS 的格式、原生行为与限制。
 
 核心自有音频混合 BGM、crossfade 和音效，并转换到真实设备格式。MGV 保留 slot-2 音频时钟及既有 Theora 规则。取消唤醒队列，关闭等待 VM、音频和 decoder 退出，CPU 租约仍可在关闭后归还。
 
-同一时间只允许一个 CMVS 会话。当前 reader 拒绝未支持 CPZ 版本、越界路径、未知命令及未恢复字符串域。字体要求精确匹配原生字体，不以通用字体替代；Documents/AppData 保存根行为尚未恢复。
+同一时间只允许一个 CMVS 会话。当前 reader 拒绝未支持 CPZ 版本、越界路径、未知命令及未恢复字符串域。所有平台用同一个可移植光栅器按 GDI 带 hinting 的 17 级 `GGO_GRAY4_BITMAP` 规则生成字形，字宽与 GDI 一致；灰度位图接近但不完全相同：MS Gothic 12–48 px 的全部 7494 个 CP932 字符中，着墨像素平均相差 0.05–0.43 级，外框一致的字形占 64–88%。未安装的字体族改用核心内置的 Noto Sans JP，相当于 GDI 字体映射替换另一款字体。原引擎从 `HKCU\Software\<REG>` 读取的注册表值改从游戏目录 `.shinki/cmvs/registry.json` 读取。存档保留原引擎的 `game/save/` 位置和格式；Documents/AppData 保存根行为尚未恢复。
 
 构建/发布情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，具体发行版结果见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。另见[核心 ABI](../core-abi.md)和[用户指南](../user-guide.md)。

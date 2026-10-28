@@ -195,7 +195,6 @@ mod tests {
         assert_eq!(vm.native_glyphs[&0].provider_generation, 0);
     }
 
-    #[cfg(windows)]
     #[test]
     #[ignore = "requires a hardware GPU"]
     fn gpu_919_replaces_root_and_resident_child_pixels_without_repainting_old_records() {

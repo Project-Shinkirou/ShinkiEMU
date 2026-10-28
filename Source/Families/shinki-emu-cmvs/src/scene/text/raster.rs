@@ -1,5 +1,5 @@
-//! Windows CMVS 461840/462040/4662D0 consumer. The non-Windows renderer
-//! deliberately remains separate: Swash does not implement the GDI oracle.
+//! CMVS 461840/462040/4662D0 consumer: native glyph cells, paint variants and
+//! their scene resources, on the portable glyph rasterizer in `outline`.
 use super::*;
 use crate::{CmvsNativeCustomGlyphBitmap, CmvsNativeFontRasterState, CmvsNativeTextGlyph};
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, GlyphInstance, Transform2D};
@@ -7,9 +7,8 @@ use std::{
     collections::{BTreeSet, btree_map::Entry},
     sync::Mutex,
 };
-use windows::Win32::Graphics::Gdi::*;
 mod cell;
-mod handles;
+mod outline;
 pub(super) fn code(text: &str) -> Result<u16, CoreError> {
     let mut bytes = [0; 4];
     let (result, read, written) = encoding_rs::SHIFT_JIS
@@ -19,16 +18,16 @@ pub(super) fn code(text: &str) -> Result<u16, CoreError> {
         || read != text.len()
         || text.chars().count() != 1
     {
-        return Err(error("SHINKI_EMU_CMVS_GDI_CP932"));
+        return Err(error("SHINKI_EMU_CMVS_RASTER_CP932"));
     }
     match &bytes[..written] {
         [byte] => Ok(u16::from(*byte)),
         [high, low] => Ok(u16::from_be_bytes([*high, *low])),
-        _ => Err(error("SHINKI_EMU_CMVS_GDI_CP932")),
+        _ => Err(error("SHINKI_EMU_CMVS_RASTER_CP932")),
     }
 }
 
-pub(super) struct NativeGdiRun<'a> {
+pub(super) struct NativeRasterRun<'a> {
     pub id: String,
     pub font_name: &'a str,
     pub style: &'a CmvsNativeTextGlyph,
@@ -41,7 +40,7 @@ pub(super) struct NativeGdiRun<'a> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct NativeGdiSettings {
+pub(super) struct NativeRasterSettings {
     pub proportional: bool,
     pub alternate_coverage: bool,
 }
@@ -60,8 +59,8 @@ struct CellKey {
     raster: CmvsNativeFontRasterState,
 }
 impl CellKey {
-    fn settings(self) -> NativeGdiSettings {
-        NativeGdiSettings {
+    fn settings(self) -> NativeRasterSettings {
+        NativeRasterSettings {
             proportional: self.raster.proportional,
             alternate_coverage: self.raster.alternate_coverage,
         }
@@ -85,33 +84,20 @@ struct Variant {
 }
 
 #[derive(Default)]
-pub(super) struct NativeGdiRenderer {
+pub(super) struct NativeRasterRenderer {
     state: Mutex<State>,
     variants: BTreeMap<PaintKey, Variant>,
     pending: Vec<SceneCommand>,
     next_resource: u64,
 }
 
-// GDI handles never escape State or the renderer mutex. Selection guards
-// restore the stock font before every return, including errors. A non-NULL
-// compatible DC remains valid when a worker thread exits.
 #[derive(Default)]
 struct State {
-    fonts: BTreeMap<FontKey, handles::Font>,
+    fonts: BTreeMap<FontKey, outline::Scaler>,
     cells: BTreeMap<CellKey, CachedCell>,
-    dc: Option<handles::Dc>,
     bindings: BTreeMap<String, [usize; 2]>,
-    // Declared after fonts/DC so HFONTs are destroyed before registrations.
-    assets: Vec<handles::MemoryFont>,
+    assets: Vec<outline::Face>,
     measurement_misses: u16,
-}
-unsafe impl Send for State {}
-
-fn win_error(operation: &'static str) -> CoreError {
-    CoreError::invalid(
-        "SHINKI_EMU_CMVS_GDI",
-        format!("{operation}: {}", windows::core::Error::from_thread()),
-    )
 }
 
 impl State {
@@ -123,7 +109,7 @@ impl State {
         mut raster: CmvsNativeFontRasterState,
     ) -> Result<CellKey, CoreError> {
         if size == 0 || size > i32::MAX as u32 {
-            return Err(error("SHINKI_EMU_CMVS_GDI_SIZE"));
+            return Err(error("SHINKI_EMU_CMVS_RASTER_SIZE"));
         }
         let assets = self
             .bindings
@@ -171,34 +157,27 @@ impl State {
                         GlyphBitmapFormat::Alpha8,
                         bitmap.coverage.clone(),
                     )
-                    .map_err(|_| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?,
+                    .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?,
                     offset: [0, 0],
                     advance: 0,
                     empty: bitmap.coverage.iter().all(|value| *value == 0),
                 }
             } else {
-                if self.dc.is_none() {
-                    self.dc = Some(handles::Dc::new()?);
-                }
-                let dc = self
-                    .dc
-                    .as_ref()
-                    .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_DC"))?;
                 if let Entry::Vacant(entry) = self.fonts.entry(key.font) {
-                    entry.insert(handles::Font::new(&self.assets, key.font, dc)?);
+                    entry.insert(outline::Scaler::new(&self.assets, key.font)?);
                 }
-                let font = self
+                let scaler = self
                     .fonts
                     .get(&key.font)
-                    .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_FONT"))?;
-                handles::raster(dc, font, key)?
+                    .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_FONT"))?;
+                outline::raster(&self.assets, scaler, key)?
             };
             self.cells.insert(key, CachedCell { value, live });
         }
         let cached = self
             .cells
             .get_mut(&key)
-            .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?;
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?;
         cached.live |= live;
         Ok(&cached.value)
     }
@@ -209,12 +188,10 @@ impl State {
     }
 }
 
-impl NativeGdiRenderer {
-    /// Bind the asset/face expected for the current native family and weight.
-    /// If a weight change selects a distinct real face, the caller must resolve
-    /// and rebind that face; a synthesized weight retains the original tables.
-    /// GetFontData rejects a different selection rather than weakening identity
-    /// checks or silently replacing the requested CreateFontA weight.
+impl NativeRasterRenderer {
+    /// Bind the regular and, when the family has one, the distinct bold face
+    /// for each native family name. A weight without its own face is
+    /// emboldened by the rasterizer, as GDI's font mapper does.
     pub(super) fn bind_fonts(
         &mut self,
         fonts: &BTreeMap<String, PackagedFont>,
@@ -223,7 +200,7 @@ impl NativeGdiRenderer {
         let current = self
             .state
             .get_mut()
-            .map_err(|_| error("SHINKI_EMU_CMVS_GDI_LOCK"))?;
+            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_LOCK"))?;
         if current.bindings.len() == fonts.len()
             && fonts.iter().all(|(name, font)| {
                 current.bindings.get(name).is_some_and(|indices| {
@@ -249,7 +226,7 @@ impl NativeGdiRenderer {
                     index
                 } else {
                     let index = replacement.assets.len();
-                    replacement.assets.push(handles::MemoryFont::new(font)?);
+                    replacement.assets.push(outline::Face::new(font)?);
                     index
                 };
             }
@@ -284,7 +261,7 @@ impl NativeGdiRenderer {
         let mut state = self
             .state
             .lock()
-            .map_err(|_| error("SHINKI_EMU_CMVS_GDI_LOCK"))?;
+            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_LOCK"))?;
         let key = state.key(font_name, code, pixel_size, raster)?;
         Ok(state.ensure_cell(key, None, false)?.advance)
     }
@@ -301,7 +278,7 @@ impl NativeGdiRenderer {
         let state = self
             .state
             .get_mut()
-            .map_err(|_| error("SHINKI_EMU_CMVS_GDI_LOCK"))?;
+            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_LOCK"))?;
         let key = state.key(font_name, record.code, pixel_size, raster)?;
         let cell = state.ensure_cell(key, custom, true)?;
         let bgra = paint::paint_cell(
@@ -326,20 +303,20 @@ impl NativeGdiRenderer {
     #[cfg(test)]
     pub(super) fn frame(
         &mut self,
-        runs: &[NativeGdiRun<'_>],
+        runs: &[NativeRasterRun<'_>],
     ) -> Result<Vec<SceneCommand>, CoreError> {
         self.frame_with_owners(runs, &mut Vec::new())
     }
 
     pub(super) fn frame_with_owners(
         &mut self,
-        runs: &[NativeGdiRun<'_>],
+        runs: &[NativeRasterRun<'_>],
         owners: &mut Vec<usize>,
     ) -> Result<Vec<SceneCommand>, CoreError> {
         let state = self
             .state
             .get_mut()
-            .map_err(|_| error("SHINKI_EMU_CMVS_GDI_LOCK"))?;
+            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_LOCK"))?;
         for cell in state.cells.values_mut() {
             cell.live = false;
         }
@@ -378,8 +355,8 @@ impl NativeGdiRenderer {
                         let sequence = self.next_resource;
                         self.next_resource = sequence
                             .checked_add(1)
-                            .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_RESOURCE"))?;
-                        let resource_id = format!("cmvs.gdi.{sequence}");
+                            .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_RESOURCE"))?;
+                        let resource_id = format!("cmvs.text.cell.{sequence}");
                         uploads.push(SceneCommand::UploadGlyph {
                             resource_id: resource_id.clone(),
                             glyph: bitmap,

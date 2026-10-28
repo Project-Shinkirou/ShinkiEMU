@@ -1,118 +1,106 @@
 use super::*;
 
-pub(super) struct SystemRegistry;
+/// Portable store for the values the original engine keeps under
+/// `HKEY_CURRENT_USER\Software\<REG>` (32-bit view). It lives in the game
+/// directory as `.shinki/cmvs/registry.json`:
+///
+/// ```json
+/// { "Vendor\\title": { "ConfigPut": 1 },
+///   "Vendor\\title\\param": { "MI_Font": "ＭＳ ゴシック", "MI_TextBold": 0 } }
+/// ```
+///
+/// Numbers are `REG_DWORD` values and strings are `REG_SZ` values. Key and
+/// value names compare case-insensitively, as registry lookups do. A missing
+/// file, key or value reads as absent; a value of the other type fails like
+/// `RegGetValueW` with a mismatched `RRF_RT_*` filter.
+pub(super) struct PortableRegistry<'a> {
+    root: &'a Path,
+}
 
-#[cfg(not(windows))]
-impl Registry for SystemRegistry {
-    fn number(&self, _: &str, _: &str) -> Result<Option<u32>, CoreError> {
-        Err(unavailable())
+pub(super) const REGISTRY_FILE: &str = ".shinki/cmvs/registry.json";
+const MAX_REGISTRY_BYTES: u64 = 1024 * 1024;
+
+impl<'a> PortableRegistry<'a> {
+    pub(super) fn new(root: &'a Path) -> Self {
+        Self { root }
     }
-    fn string(&self, _: &str, _: &str) -> Result<Option<String>, CoreError> {
-        Err(unavailable())
+
+    fn read(&self, key: &str, value: &str) -> Result<Option<serde_json::Value>, CoreError> {
+        let (encoded, _, invalid) = encoding_rs::SHIFT_JIS.encode(key);
+        if key.is_empty()
+            || encoded.len() >= 64 - "Software\\".len()
+            || invalid
+            || key.contains('\0')
+        {
+            return Err(failure());
+        }
+        let Some(store) = load(self.root)? else {
+            return Ok(None);
+        };
+        let key = key.trim_end_matches('\\');
+        let entry = store
+            .iter()
+            .find(|(name, _)| name.trim_end_matches('\\').eq_ignore_ascii_case(key))
+            .map(|(_, values)| values);
+        let Some(values) = entry else {
+            return Ok(None);
+        };
+        let values = values.as_object().ok_or_else(failure)?;
+        Ok(values
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(value))
+            .map(|(_, value)| value.clone()))
     }
 }
 
-#[cfg(not(windows))]
-fn unavailable() -> CoreError {
-    invalid(
-        "SHINKI_EMU_CMVS_REGISTRY_UNAVAILABLE",
-        "native registry settings require Windows",
-    )
+fn load(root: &Path) -> Result<Option<serde_json::Map<String, serde_json::Value>>, CoreError> {
+    let root = root.canonicalize().map_err(|_| failure())?;
+    let path = root.join(REGISTRY_FILE);
+    match std::fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(failure()),
+        Ok(_) => {}
+    }
+    let path = path.canonicalize().map_err(|_| failure())?;
+    if !path.starts_with(&root) {
+        return Err(failure());
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .map_err(|_| failure())?
+        .take(MAX_REGISTRY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| failure())?;
+    if bytes.len() as u64 > MAX_REGISTRY_BYTES {
+        return Err(failure());
+    }
+    match serde_json::from_slice(&bytes).map_err(|_| failure())? {
+        serde_json::Value::Object(store) => Ok(Some(store)),
+        _ => Err(failure()),
+    }
 }
 
-#[cfg(windows)]
-impl Registry for SystemRegistry {
+impl Registry for PortableRegistry<'_> {
     fn number(&self, key: &str, value: &str) -> Result<Option<u32>, CoreError> {
-        use windows::Win32::System::Registry::RRF_RT_REG_DWORD;
-        read(key, value, RRF_RT_REG_DWORD)?
-            .map(|bytes| {
-                let bytes: [u8; 4] = bytes.try_into().map_err(|_| failure())?;
-                Ok(u32::from_le_bytes(bytes))
+        self.read(key, value)?
+            .map(|value| {
+                value
+                    .as_u64()
+                    .and_then(|value| u32::try_from(value).ok())
+                    .ok_or_else(failure)
             })
             .transpose()
     }
     fn string(&self, key: &str, value: &str) -> Result<Option<String>, CoreError> {
-        use windows::Win32::System::Registry::RRF_RT_REG_SZ;
-        read(key, value, RRF_RT_REG_SZ)?
-            .map(|bytes| {
-                if bytes.len() % 2 != 0 {
+        self.read(key, value)?
+            .map(|value| {
+                let text = value.as_str().ok_or_else(failure)?;
+                // RegGetValueW reads at most 512 bytes of UTF-16 with its NUL.
+                if text.contains('\0') || text.encode_utf16().count() >= 256 {
                     return Err(failure());
                 }
-                let mut words = bytes
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                    .collect::<Vec<_>>();
-                if words.last() == Some(&0) {
-                    words.pop();
-                }
-                if words.contains(&0) {
-                    return Err(failure());
-                }
-                String::from_utf16(&words).map_err(|_| failure())
+                Ok(text.to_owned())
             })
             .transpose()
     }
-}
-
-#[cfg(windows)]
-fn read(
-    key: &str,
-    value: &str,
-    kind: windows::Win32::System::Registry::REG_ROUTINE_FLAGS,
-) -> Result<Option<Vec<u8>>, CoreError> {
-    use windows::{
-        Win32::{
-            Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS},
-            System::Registry::{HKEY_CURRENT_USER, RRF_SUBKEY_WOW6432KEY, RegGetValueW},
-        },
-        core::PCWSTR,
-    };
-    let (encoded, _, invalid) = encoding_rs::SHIFT_JIS.encode(key);
-    if key.is_empty() || encoded.len() >= 64 - "Software\\".len() || invalid || key.contains('\0') {
-        return Err(failure());
-    }
-    let key = format!("Software\\{}", key.trim_end_matches('\\'))
-        .encode_utf16()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let value = value.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    let mut size = 0;
-    let flags = kind | RRF_SUBKEY_WOW6432KEY;
-    // Read only, explicitly using the original 32-bit process's registry view.
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            PCWSTR(key.as_ptr()),
-            PCWSTR(value.as_ptr()),
-            flags,
-            None,
-            None,
-            Some(&mut size),
-        )
-    };
-    if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
-        return Ok(None);
-    }
-    if status != ERROR_SUCCESS || size > 512 {
-        return Err(failure());
-    }
-    let mut bytes = vec![0u8; size as usize];
-    let status = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            PCWSTR(key.as_ptr()),
-            PCWSTR(value.as_ptr()),
-            flags,
-            None,
-            Some(bytes.as_mut_ptr().cast()),
-            Some(&mut size),
-        )
-    };
-    if status != ERROR_SUCCESS || size as usize > bytes.len() {
-        return Err(failure());
-    }
-    bytes.truncate(size as usize);
-    Ok(Some(bytes))
 }

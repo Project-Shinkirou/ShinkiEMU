@@ -1,8 +1,6 @@
 use super::*;
 use crate::CmvsNativeTextGlyph;
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat};
-#[cfg(any(not(windows), test))]
-use roukaku_media_core::{GlyphInstance, Transform2D};
 
 #[derive(Clone, Copy)]
 pub(super) struct PaintStyle {
@@ -20,163 +18,6 @@ impl From<&CmvsNativeTextGlyph> for PaintStyle {
             color_mode: glyph.color_mode,
             outline_color: 0,
         }
-    }
-}
-
-#[cfg(any(not(windows), test))]
-#[derive(Default)]
-pub(super) struct NativePaint {
-    glyphs: BTreeMap<String, CachedGlyph>,
-}
-
-#[cfg(any(not(windows), test))]
-struct CachedGlyph {
-    bitmap: GlyphBitmap,
-    variants: BTreeMap<PaintKey, String>,
-}
-
-/// Per-glyph-run paint inputs: glyph, offset, scale and outline color.
-#[cfg(any(not(windows), test))]
-pub(super) type GlyphStyles<'a> =
-    BTreeMap<String, (&'a CmvsNativeTextGlyph, [i32; 2], [f32; 2], u32)>;
-
-#[cfg(any(not(windows), test))]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct PaintKey {
-    style: u32,
-    colors: [u32; 2],
-    color_mode: u32,
-    pixel_size: u32,
-    offset: [i32; 2],
-}
-
-#[cfg(any(not(windows), test))]
-impl NativePaint {
-    #[cfg(test)]
-    pub(super) fn project(
-        &mut self,
-        commands: Vec<SceneCommand>,
-        styles: &GlyphStyles<'_>,
-    ) -> Result<Vec<SceneCommand>, CoreError> {
-        self.project_with_owners(commands, styles, &mut Vec::new())
-    }
-
-    pub(super) fn project_with_owners(
-        &mut self,
-        commands: Vec<SceneCommand>,
-        styles: &GlyphStyles<'_>,
-        owners: &mut Vec<String>,
-    ) -> Result<Vec<SceneCommand>, CoreError> {
-        let mut output = Vec::new();
-        for command in commands {
-            match command {
-                SceneCommand::UploadGlyph { resource_id, glyph } => {
-                    self.glyphs.insert(
-                        resource_id,
-                        CachedGlyph {
-                            bitmap: glyph,
-                            variants: BTreeMap::new(),
-                        },
-                    );
-                }
-                SceneCommand::ReleaseResource { resource_id } => {
-                    if let Some(glyph) = self.glyphs.remove(&resource_id) {
-                        for resource_id in glyph.variants.into_values() {
-                            output.push(SceneCommand::ReleaseResource { resource_id });
-                        }
-                    }
-                }
-                SceneCommand::GlyphRun { id, glyphs, .. } => {
-                    let (style, origin, visual, pixel_size) = styles
-                        .get(&id)
-                        .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_STYLE"))?;
-                    if style.style > 2 || *pixel_size == 0 {
-                        return Err(error("SHINKI_EMU_CMVS_TEXT_STYLE"));
-                    }
-                    if visual[1] != 1.0 {
-                        let pivot = origin[0] as f32 - 2.0;
-                        output.push(SceneCommand::PushTransform {
-                            transform: Transform2D {
-                                m11: visual[1],
-                                tx: pivot * (1.0 - visual[1]),
-                                ..Transform2D::IDENTITY
-                            },
-                        });
-                    }
-                    for (index, glyph) in glyphs.iter().enumerate() {
-                        if glyph.rotation_quadrants != 0 {
-                            return Err(error("SHINKI_EMU_CMVS_TEXT_ROTATION"));
-                        }
-                        let cached = self
-                            .glyphs
-                            .get_mut(&glyph.resource_id)
-                            .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_RESOURCE"))?;
-                        let key = PaintKey {
-                            style: style.style,
-                            colors: style.colors,
-                            color_mode: style.color_mode,
-                            pixel_size: *pixel_size,
-                            offset: [
-                                glyph
-                                    .x
-                                    .checked_sub(origin[0])
-                                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?,
-                                glyph
-                                    .y
-                                    .checked_sub(origin[1])
-                                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?,
-                            ],
-                        };
-                        let resource_id = if let Some(resource_id) = cached.variants.get(&key) {
-                            resource_id.clone()
-                        } else {
-                            let resource_id = format!(
-                                "{}.cmvs-paint.{}",
-                                glyph.resource_id,
-                                cached.variants.len()
-                            );
-                            output.push(SceneCommand::UploadGlyph {
-                                resource_id: resource_id.clone(),
-                                glyph: paint(
-                                    &cached.bitmap,
-                                    *style,
-                                    key.offset,
-                                    *pixel_size,
-                                    style.style,
-                                )?,
-                            });
-                            cached.variants.insert(key, resource_id.clone());
-                            resource_id
-                        };
-                        owners.push(id.clone());
-                        output.push(SceneCommand::GlyphRun {
-                            id: format!("{id}.{index}"),
-                            glyphs: vec![GlyphInstance {
-                                resource_id,
-                                x: glyph
-                                    .x
-                                    .checked_sub(style.style as i32)
-                                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?,
-                                y: glyph
-                                    .y
-                                    .checked_sub(style.style as i32)
-                                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?,
-                                rotation_quadrants: 0,
-                            }]
-                            .into(),
-                            rgba: [255; 4],
-                            opacity: visual[0],
-                            blend: BlendMode::Alpha,
-                        });
-                    }
-                    if visual[1] != 1.0 {
-                        output.push(SceneCommand::PopTransform);
-                    }
-                }
-                _ => return Err(error("SHINKI_EMU_CMVS_TEXT_COMMAND")),
-            }
-        }
-        Ok(output)
     }
 }
 
@@ -207,20 +48,6 @@ fn outline(glyph: &GlyphBitmap, radius: u32, padding: u32, width: u32, pixels: &
 // 0x462040 paints into one BGRA cell before uploading it. In outlined styles,
 // every nonzero fill sample becomes opaque after its RGB is mixed with the
 // outline using a 256 denominator. Two source-over glyph draws are different.
-#[cfg(any(not(windows), test))]
-pub(super) fn paint(
-    glyph: &GlyphBitmap,
-    style: impl Into<PaintStyle>,
-    offset: [i32; 2],
-    pixel_size: u32,
-    padding: u32,
-) -> Result<GlyphBitmap, CoreError> {
-    let (width, height, pixels) = paint_buffer(glyph, style.into(), offset, pixel_size, padding)?;
-    GlyphBitmap::from_vec(width, height, GlyphBitmapFormat::Rgba8, pixels)
-        .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
-}
-
-#[cfg(windows)]
 pub(super) fn paint_upload(
     glyph: &GlyphBitmap,
     style: impl Into<PaintStyle>,
@@ -306,7 +133,6 @@ fn paint_buffer(
     Ok((width, height, pixels))
 }
 
-#[cfg(windows)]
 pub(super) fn paint_cell(
     glyph: &GlyphBitmap,
     style: PaintStyle,
@@ -414,6 +240,20 @@ fn color(style: impl Into<PaintStyle>, point: [i64; 2], pixel_size: u32) -> [u8;
         *channel = ((start + distance) >> 10).clamp(0, 255) as u8;
     }
     rgba
+}
+
+/// Paints one glyph into a padded RGBA bitmap, for composition tests.
+#[cfg(test)]
+pub(super) fn paint(
+    glyph: &GlyphBitmap,
+    style: impl Into<PaintStyle>,
+    offset: [i32; 2],
+    pixel_size: u32,
+    padding: u32,
+) -> Result<GlyphBitmap, CoreError> {
+    let (width, height, pixels) = paint_buffer(glyph, style.into(), offset, pixel_size, padding)?;
+    GlyphBitmap::from_vec(width, height, GlyphBitmapFormat::Rgba8, pixels)
+        .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
 }
 
 #[cfg(test)]
@@ -531,53 +371,9 @@ mod tests {
     }
 
     #[test]
-    fn projected_outline_preserves_fill_origin_without_a_shadow() {
-        let mut renderer = NativePaint::default();
-        let glyph_style = style(2, 0);
-        let commands = vec![
-            SceneCommand::UploadGlyph {
-                resource_id: "mask".into(),
-                glyph: GlyphBitmap::from_vec(1, 1, GlyphBitmapFormat::Alpha8, vec![255]).unwrap(),
-            },
-            SceneCommand::GlyphRun {
-                id: "line".into(),
-                glyphs: vec![GlyphInstance {
-                    resource_id: "mask".into(),
-                    x: 11,
-                    y: 13,
-                    rotation_quadrants: 0,
-                }]
-                .into(),
-                rgba: [255; 4],
-                opacity: 1.0,
-                blend: BlendMode::Alpha,
-            },
-        ];
-        let styles = BTreeMap::from([("line".into(), (&glyph_style, [11, 13], [1.0, 1.0], 4))]);
-        let commands = renderer.project(commands, &styles).unwrap();
-        let [
-            SceneCommand::UploadGlyph { glyph, resource_id },
-            SceneCommand::GlyphRun { glyphs, rgba, .. },
-        ] = commands.as_slice()
-        else {
-            panic!("expected one precomposited glyph");
-        };
-        assert_eq!((glyph.width, glyph.height), (5, 5));
-        assert_eq!((glyphs[0].x, glyphs[0].y), (9, 11));
-        assert_eq!(&glyphs[0].resource_id, resource_id);
-        assert_eq!(*rgba, [255; 4]);
-        assert_eq!(&glyph.pixels.as_slice()[12 * 4..13 * 4], &[255, 0, 0, 255]);
-        assert_eq!(
-            glyph.pixels.as_slice()[3],
-            glyph.pixels.as_slice()[24 * 4 + 3]
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
     #[ignore = "requires a hardware GPU"]
     fn compact_upload_preserves_native_pixels_under_scale_and_reveal() {
-        use roukaku_media_core::{BlendMode, SceneCompositing2D};
+        use roukaku_media_core::{BlendMode, GlyphInstance, SceneCompositing2D, Transform2D};
         let mut coverage = vec![0; 40 * 40];
         for y in 8..32 {
             for x in 7..30 {

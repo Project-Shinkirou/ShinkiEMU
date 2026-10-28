@@ -14,11 +14,7 @@ impl NativeCoordinates {
         surface: &crate::CmvsNativeTextSurface,
         stage_width: u32,
     ) -> Result<Self, CoreError> {
-        let numerator = if cfg!(windows) {
-            surface.physical_size[0]
-        } else {
-            stage_width
-        };
+        let numerator = surface.physical_size[0];
         let denominator = surface.virtual_size[0];
         if numerator == 0 || denominator == 0 || stage_width == 0 {
             return Err(error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"));

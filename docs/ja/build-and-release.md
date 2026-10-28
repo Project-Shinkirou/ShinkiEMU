@@ -15,7 +15,7 @@ ShinkiEMU 自身がゲームディレクトリ内に書き込むファイルは�
 
 Ren’Py にはさらに、固定バージョンの公式 SDK が必要です。`RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE` を設定し、CPython 3.12.7 に対応する公式の Cython 3.2.4 コンパイラーを用意してください。これらは上流のビルドと実行に必要な依存関係です。SDK の入力は fork の `shinki/sdk.json` に従います。
 
-CMVS は Windows x64 のみでビルドします。その他のターゲットには検証済みのホスト実行経路がありません。RoukakuEngine は公開リビジョン `8392cf161800f7684af7704eb95f7a5526d2015d` に固定されています。
+CMVS は Win32 に依存せず、Windows x64、Linux x64、macOS の両アーキテクチャ向けに動的コアとしてビルドします。Android と iOS は Manager への静的組み込みを待っています。RoukakuEngine は公開リビジョン `8392cf161800f7684af7704eb95f7a5526d2015d` に固定されています。
 
 リポジトリのルートで実行します。
 
