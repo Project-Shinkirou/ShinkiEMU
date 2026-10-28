@@ -273,6 +273,8 @@ const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     #[cfg(target_os = "android")]
     ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),
     #[cfg(target_os = "android")]
+    ("impacto", shinki_emu_impacto::QUERY),
+    #[cfg(target_os = "android")]
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     #[cfg(any(target_os = "android", target_os = "ios"))]
     ("siglus_rs", shinki_emu_siglus_rs::query),
