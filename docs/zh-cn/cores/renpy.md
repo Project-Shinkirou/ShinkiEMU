@@ -13,6 +13,10 @@ description: Ren’Py 的格式、原生行为与限制。
 
 该核心嵌入官方 Ren’Py 运行时，不把脚本转成新的 VM。脚本执行、Screen Language、ATL、GL2 合成、媒体和存档沿用官方行为。接入固定官方 SDK、CPython 3.12.7、Cython 3.2.4 和 SDL 2.0.20，DLL 校验和及来源记录在 `shinki/sdk.json`。
 
+## 存储
+
+适配层保留 Ren’Py 8.5.3 的存档路径行为。设置 `config.save_directory` 时，运行时会同步游戏目录中的 `<game>/game/saves` 与 `%APPDATA%/RenPy/<config.save_directory>`；未设置时使用 `<game>/game/saves`。存档令牌和备份也沿用上游解析规则，不需要 Shinki 专用数据目录。
+
 ## 原生行为与限制
 
 运行时桥保留在驻留解释器中。原生构建产出 display 扩展和真实共享核心，包内还需匹配的 SDK DLL 与 `Resources/`。关闭和跨游戏重开继续清理解释器/原生状态，不能只复制核心 DLL。

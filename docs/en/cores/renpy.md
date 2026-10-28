@@ -13,6 +13,14 @@ Upstream: [renpy/renpy](https://github.com/renpy/renpy). Adaptation fork: [Proje
 
 This core embeds the official Ren’Py runtime rather than translating its scripts to a new VM. Script execution, Screen Language, ATL, GL2 composition, media and saves keep their official behavior. The integration pins the official SDK, CPython 3.12.7, Cython 3.2.4 and SDL 2.0.20; DLL checksums and sources are recorded in `shinki/sdk.json`.
 
+## Storage
+
+The adapter preserves Ren’Py 8.5.3 save-location behavior. With a
+`config.save_directory`, the runtime synchronizes the game-local
+`<game>/game/saves` directory with `%APPDATA%/RenPy/<config.save_directory>`;
+when it is unset, saves use `<game>/game/saves`. Save tokens and backups follow
+the same upstream resolver. No Shinki-specific data directory is required.
+
 ## Native behavior and limits
 
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.

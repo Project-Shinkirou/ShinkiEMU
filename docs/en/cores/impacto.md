@@ -13,6 +13,13 @@ Upstream: [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto).
 
 impacto retains its MAGES SC3 VM, native resource readers and game-specific configuration. The C++ integration remains under `src/shinki`, with Cargo/CMake build entry under `shinki`. Original OpenGL composition, OpenAL audio, FFmpeg movies, game UI and save behavior remain in the native engine.
 
+## Storage
+
+`userconfig.toml` stays in Impacto's platform preference directory, which is
+`%APPDATA%/Committee of Zero/Impacto` on Windows. The selected CC profile sets
+`SaveDataType.None`, so it has no profile save format or save files. Any future
+profile with native save support keeps the upstream profile-defined location.
+
 ## Native behavior and limits
 
 The adapter exposes C ABI v3 and CPU frame ownership rather than reimplementing MAGES scripts in Manager. Native DDS parallel-read state and movie-audio release are ownership boundaries preserved by the fork. Steam font resources are read from the user's actual game DDS files, not distributed as replacement assets.
