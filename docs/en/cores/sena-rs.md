@@ -19,4 +19,15 @@ The fork owns the SoftPAL VM, wait semantics, native rendering/audio and saves. 
 
 The adapter's game scope remains the native and Steam Koikake paths. It does not establish support for every SoftPAL title. Unknown external calls and indirect-memory paths must be assessed against the actual runtime; table recognition alone is insufficient.
 
+## Save paths
+
+Numbered native slots remain `<game>/save/saveNNN.dat`. Reverse-engineering notes
+identify the metadata `SaveFolder` as the directory used by
+`VmTask_WriteSystemDat`; for the shipped layout this writes
+`<game>/save/system.dat` (`reverse/GAME_VM_RE.md:489-492`,
+`reverse/IDB_CHANGELOG.md:782-801`). The fork's portable companions
+`system.ini`, `system_mem.bin`, `read_lines.bin`, and `history/` remain under
+`<game>/save/sena_rs/` because they are fork state, not files written by the
+original engine.
+
 See the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) for build/release status and [compatibility reports](https://project-shinkirou.github.io/en/shinkiemu/compatibility/) for specific releases. See also [Core ABI](../core-abi.md) and [User guide](../user-guide.md).

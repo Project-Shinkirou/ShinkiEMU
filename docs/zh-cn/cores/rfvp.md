@@ -19,4 +19,14 @@ fork 保留原 App、VM、GPU renderer、设备音频和存档。适配层用不
 
 WMV/ASF/WMA 走 fork 原生影片及 decoder 路径。原生请求的字体和游戏资源仍是实际输入；识别出 HCB 不代表 syscall 已全部实现或所有发行版可用。
 
+## 存档路径与格式
+
+原 RFVP 引擎的编号存档使用 `<game>/save/sNNN.bin`，全局 HCB 数据使用
+`<game>/save/save.bin`（`crates/rfvp/src/script/global.rs:134-136` 及
+`setsumei/` 反向记录）。fork 的 `SaveItem` 在原始头部后追加自有运行时状态块，
+全局文件使用 `RFVG` 封装的 `GlobalSaveDataV1`，因此两者都不是原格式的字节级实现。
+fork 继续使用自己的文件名 `<game>/save/rfvp_sNNN.bin` 和
+`<game>/save/rfvp_global.bin`，并保留读取旧版 `<game>/save/sNNN.bin` 的兼容路径；
+这些文件属于 fork 的游戏目录存档，不迁移到 `.shinki`。
+
 构建/发布情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，具体发行版结果见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。另见[核心 ABI](../core-abi.md)和[用户指南](../user-guide.md)。

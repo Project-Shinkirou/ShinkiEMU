@@ -19,4 +19,12 @@ Artemis 读取 `system.ini`、PFS（PF6/PF8）及原生剧情/tag/Lua 资源。�
 
 `extra_archive` 显式选择相对路径 PFS，挂在正常数字补丁链之后；不扫描备份、不重写基包。descriptor 不提供可调渲染尺寸。缺脚本目标、缺资源或未支持的原生 UI/媒体命令仍报错；能点击标题界面不代表完整游戏流程可用。
 
+## 存档路径
+
+`SAVEPATH` 是 `system.ini` 中的逻辑相对前缀。适配层把可写根挂在
+`<game>`，因此 `SAVEPATH=savedata` 会解析为
+`<game>/savedata/save0001.dat`、`saveg.dat` 和 `system.dat`，不会重复追加
+`savedata`。绝对路径或 CSIDL 风格值由上游运行时归一化为逻辑前缀；适配层将
+该前缀限制在游戏根下，并拒绝遍历段和设备路径。
+
 构建/发布情况见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，具体发行版结果见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。另见[核心 ABI](../core-abi.md)和[用户指南](../user-guide.md)。
