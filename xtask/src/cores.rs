@@ -274,10 +274,7 @@ impl Inventory {
                 let source_match = if let Some(source) = &core.source {
                     dependency.get("git").and_then(toml::Value::as_str) == Some(&source.repo)
                         && dependency.get("rev").and_then(toml::Value::as_str) == Some(&source.rev)
-                } else {
-                    let Some(path) = dependency.get("path").and_then(toml::Value::as_str) else {
-                        false
-                    };
+                } else if let Some(path) = dependency.get("path").and_then(toml::Value::as_str) {
                     let manager_dir = self.root.join("Source/Manager/shinki-emu-manager");
                     let package_dir = self.root.join(
                         core.manifest
@@ -286,6 +283,8 @@ impl Inventory {
                     );
                     std::fs::canonicalize(manager_dir.join(path)).ok()
                         == std::fs::canonicalize(package_dir).ok()
+                } else {
+                    false
                 };
                 if !source_match || !features_match || !defaults_ok {
                     bail!(

@@ -555,7 +555,9 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
             .context("library parent")?
             .to_owned(),
     ];
-    if selected.ffmpeg && let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)? {
+    if selected.ffmpeg
+        && let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)?
+    {
         dirs.push(runtime);
     }
     if selected.subtitle {

@@ -181,6 +181,7 @@ shinki-emu-sdk = { path = "Source/SDK/shinki-emu-sdk" }
 [patch.crates-io]
 ffmpeg-sys-next = { git = "https://github.com/Project-Shinkirou/rust-ffmpeg-sys", rev = "6c96d7efbcba1360f92120567f8e4340dd1df101" }
 cpal = { path = "ThirdParty/cpal" }
+kira = { git = "https://github.com/Project-Shinkirou/kira.git", rev = "d3b2c85160361adcd7c899bfd91c09b31cf7979c" }
 mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f43ef1372bd22be0fbf7866" }
 
 [patch."https://github.com/Project-Shinkirou/cpal.git"]
