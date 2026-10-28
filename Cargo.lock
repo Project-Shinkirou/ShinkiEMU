@@ -543,6 +543,7 @@ dependencies = [
 name = "art3m1s-render"
 version = "0.1.0"
 source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=9200784fa86814051e56b18ae30a9ba447cf0d7c#9200784fa86814051e56b18ae30a9ba447cf0d7c"
+dependencies = [
  "ash 0.38.0+1.3.281",
  "glam 0.30.10",
  "image 0.25.10",
