@@ -7887,7 +7887,7 @@ dependencies = [
  "kira 0.12.1",
  "libc",
  "log 0.4.34",
-"na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)"
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)",
  "ndk-context",
  "pal-asset",
  "pal-script",
@@ -7902,7 +7902,7 @@ dependencies = [
  "wgpu 29.0.4",
  "windows-sys 0.61.2",
  "winit 0.30.13",
-"wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)"
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574)",
 ]
 
 [[package]]
