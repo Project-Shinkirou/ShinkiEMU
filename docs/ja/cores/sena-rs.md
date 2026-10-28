@@ -19,4 +19,8 @@ SoftPAL の VM、待機の意味論、ネイティブの描画・音声、セー
 
 アダプターの対象範囲は引き続きネイティブ版と Steam 版の Koikake のパスで、すべての SoftPAL 作品に当てはまるわけではありません。未知の extcall や間接メモリのパスは実際のランタイムで確認する必要があり、データテーブルを認識できるだけでは不十分です。
 
+## セーブパス
+
+番号付きセーブは `<game>/save/saveNNN.dat` に保存されます。リバースエンジニアリング資料では、メタデータの `SaveFolder` が番号付きセーブのディレクトリであり、`VmTask_WriteSystemDat` が `SaveFolder\\system.dat` を書くことを確認しています。そのため出荷レイアウトでは `<game>/save/system.dat` になります（`reverse/GAME_VM_RE.md:489-492`、`reverse/IDB_CHANGELOG.md:782-801`）。fork 固有の `system.ini`、`system_mem.bin`、`read_lines.bin`、`history/` は元エンジンが作らない状態なので、`<game>/save/sena_rs/` に残ります。
+
 ビルドとリリースの状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、個々のリリースでの結果は[互換性レポート](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)を参照してください。[コア ABI](../core-abi.md)と[ユーザーガイド](../user-guide.md)もあわせて参照してください。
