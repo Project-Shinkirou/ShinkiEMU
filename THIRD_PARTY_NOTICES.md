@@ -90,7 +90,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 ## ReMinori
 
 - 上游：<https://github.com/luoyily/ReMinori>，基线 `79b00990324404bfbd496e7fa76c690cf040f744`；作者 luoyily 及上游贡献者，许可为 GNU Affero General Public License version 3。
-- 适配 fork：<https://github.com/Project-Shinkirou/ReMinori/tree/shinki>，固定 `595b3e337e29fd4e3b711b45d02a7237459b01f8`；适配包为 `crates/shinki`，plugin ID 保留 `ReMinori` 大小写，family ID 为 `musica`，不替代自有 Musica 核心或复用其执行器。
+- 适配 fork：<https://github.com/Project-Shinkirou/ReMinori/tree/shinki>，固定 `0eec31a7d1412ea9061ee1cff2d64ab6133bda00`；适配包为 `crates/shinki`，plugin ID 保留 `ReMinori` 大小写，family ID 为 `musica`，不替代自有 Musica 核心或复用其执行器。
 - 适配保留原 VM、GPU renderer、CPAL mixer、Media Foundation 视频、游戏 UI 和存档；新增生产 C ABI v3、固定三槽 CPU lease、独立保存位置、keys.v2 归档参数、严格 CP932/GBK 脚本读取、原生 UTF-8 port 保存及多声道设备接线。修改归属与代表流程见 fork 根 `README.md`。
 - 本地核心包附原样 `LICENSE` 和该 `README.md`。AGPL 对应源码及组合分发义务须在公开二进制发布前核验；本次仅交付本地验证产物，不把加入主仓等同于更改 RoukakuEngine 或其他核心的许可。商业资源、私有 profile 与测试存档不进入源码或包。
 
