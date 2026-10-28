@@ -218,7 +218,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
-rev = "ed361421859fa8ba2a03f8fddec1e7b60accd288"
+rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
