@@ -54,6 +54,7 @@ resources = []
 licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
@@ -92,6 +93,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+static_features = ["static-core"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
 [cores.source]
@@ -137,6 +139,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+static_features = ["ffmpeg-vcpkg"]
 publish_blocked = ""
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
@@ -177,6 +180,7 @@ resources = []
 licenses = ["ThirdParty/sena-rs/LICENSE-MPL-2.0", "docs/licenses/sena-rs/MS-PGothic.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
@@ -263,6 +267,7 @@ resources = []
 licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = []
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
@@ -344,6 +349,7 @@ resources = []
 licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = []
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."

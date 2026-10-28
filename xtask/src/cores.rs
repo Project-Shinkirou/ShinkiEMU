@@ -21,6 +21,8 @@ pub struct Core {
     pub supported_targets: Vec<String>,
     #[serde(default)]
     pub static_manager_targets: Vec<String>,
+    #[serde(default)]
+    pub static_features: Vec<String>,
     pub blocked: Vec<Blocked>,
     pub publish_blocked: String,
     pub source: Option<CoreSource>,
@@ -245,24 +247,49 @@ impl Inventory {
                     }
                     continue;
                 }
-                let source = core.source.as_ref().context("static core source")?;
                 let dependency = dependency.with_context(|| {
                     format!("Manager {platform} is missing static core {}", core.id)
                 })?;
-                if dependency.get("git").and_then(toml::Value::as_str) != Some(&source.repo)
-                    || dependency.get("rev").and_then(toml::Value::as_str) != Some(&source.rev)
-                    || dependency.get("features").is_some_and(|features| {
+                let mut expected_features = core.static_features.clone();
+                expected_features.sort();
+                expected_features.dedup();
+                let mut actual_features = dependency
+                    .get("features")
+                    .and_then(toml::Value::as_array)
+                    .map(|features| {
                         features
-                            .as_array()
-                            .is_none_or(|features| !features.is_empty())
+                            .iter()
+                            .filter_map(toml::Value::as_str)
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
                     })
-                    || dependency
-                        .get("default-features")
-                        .and_then(toml::Value::as_bool)
-                        == Some(true)
-                {
+                    .unwrap_or_default();
+                actual_features.sort();
+                actual_features.dedup();
+                let features_match = actual_features == expected_features;
+                let defaults_ok = dependency
+                    .get("default-features")
+                    .and_then(toml::Value::as_bool)
+                    != Some(true);
+                let source_match = if let Some(source) = &core.source {
+                    dependency.get("git").and_then(toml::Value::as_str) == Some(&source.repo)
+                        && dependency.get("rev").and_then(toml::Value::as_str) == Some(&source.rev)
+                } else {
+                    let Some(path) = dependency.get("path").and_then(toml::Value::as_str) else {
+                        false
+                    };
+                    let manager_dir = self.root.join("Source/Manager/shinki-emu-manager");
+                    let package_dir = self.root.join(
+                        core.manifest
+                            .parent()
+                            .context("in-tree core manifest has no package directory")?,
+                    );
+                    std::fs::canonicalize(manager_dir.join(path)).ok()
+                        == std::fs::canonicalize(package_dir).ok()
+                };
+                if !source_match || !features_match || !defaults_ok {
                     bail!(
-                        "Manager {platform} static core {} pin/features differ from inventory",
+                        "Manager {platform} static core {} pin/path/features differ from inventory",
                         core.id
                     );
                 }
@@ -350,28 +377,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn static_manager_pins_and_declared_integrations_cannot_drift() {
+    fn static_manager_pins_features_and_paths_cannot_drift() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let inventory = Inventory::load(root).unwrap();
+
         let mut changed = inventory.clone();
         changed
             .cores
             .iter_mut()
-            .find(|core| core.id == "rfvp")
+            .find(|core| core.id == "art3m1s-core")
             .unwrap()
-            .source
-            .as_mut()
-            .unwrap()
-            .rev = "0".repeat(40);
+            .static_features = Vec::new();
         assert!(changed.validate_static_dependencies().is_err());
+
         let mut changed = inventory;
         changed
             .cores
             .iter_mut()
-            .find(|core| core.id == "rfvp")
+            .find(|core| core.id == "shinki.emu.musica")
             .unwrap()
-            .static_manager_targets
-            .clear();
+            .manifest = "Source/Families/shinki-emu-cmvs/Cargo.toml".into();
         assert!(changed.validate_static_dependencies().is_err());
     }
 
