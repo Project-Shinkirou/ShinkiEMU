@@ -282,6 +282,100 @@ pub fn encode_cg_names(names: &[Vec<u8>], prefix: u32) -> Result<Vec<u8>, CoreEr
     encode_zfile(&plain, prefix)
 }
 
+/// Original titles whose save layout is established from their executables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MinoriTitle {
+    EdenEnglish,
+    Perseus,
+}
+
+impl MinoriTitle {
+    const ALL: [Self; 2] = [Self::EdenEnglish, Self::Perseus];
+
+    /// Folder below `minori/`. Both names are compiled-in literals: eden_en.exe
+    /// `sub_4BB980` pushes 0x56AAE8, perseus.exe `sub_4705F0` pushes the CP932
+    /// bytes at 0x4FEC8C. The original passes them to ANSI APIs, so a non-CP932
+    /// system shows the Perseus folder as mojibake (GBK: 壞嬻偺儁儖僙僂僗).
+    pub fn directory(self) -> &'static str {
+        match self {
+            Self::EdenEnglish => "eden (English edition)",
+            Self::Perseus => "夏空のペルセウス",
+        }
+    }
+
+    pub fn executable(self) -> &'static str {
+        match self {
+            Self::EdenEnglish => "eden_en.exe",
+            Self::Perseus => "perseus.exe",
+        }
+    }
+
+    pub fn system_format(self) -> SystemFormat {
+        match self {
+            Self::EdenEnglish => SystemFormat::Rc4,
+            Self::Perseus => SystemFormat::Blowfish,
+        }
+    }
+
+    /// `HKLM` key whose `SerialCode` feeds the file prefix (perseus.exe
+    /// `sub_47EFB0`). eden_en.exe has no serial and always writes zero.
+    pub fn serial_key(self) -> Option<&'static str> {
+        match self {
+            Self::EdenEnglish => None,
+            Self::Perseus => Some("Software\\minori\\perseus"),
+        }
+    }
+
+    /// The title whose original executable sits in the game directory.
+    pub fn detect(game_root: &std::path::Path) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|title| game_root.join(title.executable()).is_file())
+    }
+}
+
+/// The u32 written before every compressed file and slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FilePrefix {
+    pub value: u32,
+    /// The original rejects a mismatched prefix; Musica does the same only when
+    /// the value came from the same input the original reads.
+    pub strict: bool,
+}
+
+/// Precedence: the title's registry `SerialCode` (CRC32 of the string bytes),
+/// then the prefix of an existing original file in the native directory, then
+/// zero. Titles without a serial always use a strict zero.
+pub fn resolve_prefix(
+    title: MinoriTitle,
+    registry_serial: impl FnOnce(&str) -> Option<Vec<u8>>,
+    existing_file: Option<u32>,
+) -> FilePrefix {
+    let Some(key) = title.serial_key() else {
+        return FilePrefix {
+            value: 0,
+            strict: true,
+        };
+    };
+    if let Some(serial) = registry_serial(key) {
+        let end = serial.iter().position(|byte| *byte == 0).unwrap_or(serial.len());
+        return FilePrefix {
+            value: crc32fast::hash(&serial[..end]),
+            strict: true,
+        };
+    }
+    match existing_file {
+        Some(value) => FilePrefix {
+            value,
+            strict: true,
+        },
+        None => FilePrefix {
+            value: 0,
+            strict: false,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
