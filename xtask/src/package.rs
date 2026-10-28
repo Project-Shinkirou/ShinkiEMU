@@ -556,12 +556,13 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
             .to_owned(),
     ];
     if selected.ffmpeg {
-        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_runtime(inv, &result.target, "ffmpeg")
+        if result.target == "x86_64-unknown-linux-gnu" {
+            dirs.push(dependencies::linux_runtime(inv, &result.target, "ffmpeg"));
+        } else if let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)? {
+            dirs.push(runtime);
         } else {
-            inv.root
-                .join(".work/vcpkg-ffmpeg/installed/x64-windows/bin")
-        });
+            dirs.push(dependencies::ffmpeg_install(inv, &result.target)?.join("lib"));
+        }
     }
     if selected.subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
@@ -883,21 +884,15 @@ pub fn package(
                 .push(BuildAsset { source, dest });
         }
         if dependencies::needs(inv, target, component)?.ffmpeg {
-            result
-                .core_build
-                .as_mut()
-                .unwrap()
-                .licenses
-                .push(BuildAsset {
-                    source: if target == "x86_64-unknown-linux-gnu" {
-                        dependencies::linux_install(inv, target, "ffmpeg")
-                            .join("share/ffmpeg/copyright")
-                    } else {
-                        inv.root
-                            .join(".work/vcpkg-ffmpeg/installed/x64-windows/share/ffmpeg/copyright")
-                    },
-                    dest: "licenses/ffmpeg/copyright".into(),
-                });
+            let copyright = if target == "x86_64-unknown-linux-gnu" {
+                dependencies::linux_install(inv, target, "ffmpeg").join("share/ffmpeg/copyright")
+            } else {
+                dependencies::ffmpeg_install(inv, target)?.join("share/ffmpeg/copyright")
+            };
+            result.core_build.as_mut().unwrap().licenses.push(BuildAsset {
+                source: copyright,
+                dest: "licenses/ffmpeg/copyright".into(),
+            });
         }
         stage_core(&result, version, out, &search_dirs(inv, &result)?)
     }
