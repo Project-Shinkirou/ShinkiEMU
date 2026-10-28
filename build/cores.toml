@@ -59,7 +59,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
 branch = "shinki"
-rev = "2436c25fc966306e03cdada833b507eec97b51c4"
+rev = "aa0809cceabe80b3963dcf203b38f8db60a2bcc7"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 [[cores.blocked]]
 target = "aarch64-linux-android"
