@@ -182,44 +182,117 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn game_config_fields(
-        &self,
+        &mut self,
         game_id: &str,
     ) -> Result<Vec<ConfigFieldViewModel>, String> {
         let Some(plugin) = self
             .candidates
             .get(game_id)
-            .map(|candidate| candidate.descriptor.plugin_id.as_str())
+            .map(|candidate| candidate.descriptor.plugin_id.clone())
         else {
             return Ok(Vec::new());
         };
-        self.scope_fields(plugin, game_id)
+        self.scope_fields(&plugin, game_id)
     }
 
     pub(super) fn emulator_default_fields(
-        &self,
+        &mut self,
         plugin_id: &str,
     ) -> Result<Vec<ConfigFieldViewModel>, String> {
         self.scope_fields(plugin_id, "")
     }
 
     fn scope_fields(
-        &self,
+        &mut self,
         plugin_id: &str,
         game_id: &str,
     ) -> Result<Vec<ConfigFieldViewModel>, String> {
         let Ok(schema) = self.registry.configuration(plugin_id) else {
             return Ok(Vec::new());
         };
-        let entries = self
+        let configuration = self
             .library
             .family_configuration(plugin_id, game_id, &schema)
             .map_err(|error| error.to_string())?;
+        self.report_retired_configuration(&configuration.retired);
         let overrides = self
             .library
             .family_overrides(plugin_id, game_id)
             .map_err(|error| error.to_string())?;
-        Ok(config_field_views(&schema, &entries, &overrides))
+        Ok(config_field_views(&schema, &configuration.values, &overrides))
     }
+
+    pub(super) fn report_retired_configuration(
+        &mut self,
+        retired: &[shinki_emu_manager_core::RetiredConfigEntry],
+    ) -> bool {
+        if retired.is_empty() {
+            return false;
+        }
+        let mut paths = Vec::new();
+        for entry in retired {
+            tracing::warn!(
+                event = "shinki.emu.config.retired_field",
+                plugin_id = %entry.plugin_id,
+                game_id = %entry.game_id,
+                field_id = %entry.field_id,
+                value = ?entry.value
+            );
+            if let shinki_emu_manager_core::model::ConfigValue::String(value) = &entry.value
+                && retired_value_is_path(&entry.field_id, value)
+            {
+                let slug = core_documentation_slug(&entry.plugin_id);
+                paths.push(format!(
+                    "核心设置项已不存在。旧存档文件夹：{value}\n请将其中的存档复制到该核心当前的存档位置。核心文档：https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+                ));
+            }
+        }
+        if paths.is_empty() {
+            return false;
+        }
+        let new_paths = paths
+            .into_iter()
+            .filter(|message| !self.diagnostic.contains(message))
+            .collect::<Vec<_>>();
+        if new_paths.is_empty() {
+            return true;
+        }
+        if self.diagnostic_severity == "warning"
+            && self.diagnostic.starts_with("核心设置项已不存在。")
+        {
+            if !self.diagnostic.is_empty() {
+                self.diagnostic.push_str("\n\n");
+            }
+            self.diagnostic.push_str(&new_paths.join("\n\n"));
+        } else {
+            self.diagnostic = new_paths.join("\n\n");
+        }
+        self.diagnostic_severity = "warning";
+        true
+    }
+}
+
+fn retired_value_is_path(field_id: &str, value: &str) -> bool {
+    let field_kind = field_id
+        .rsplit(['.', '_', '-'])
+        .next()
+        .unwrap_or(field_id)
+        .to_ascii_lowercase();
+    Path::new(value).is_absolute()
+        || value.contains('/')
+        || value.contains('\\')
+        || matches!(value, "." | "..")
+        || matches!(field_kind.as_str(), "path" | "dir" | "directory" | "root")
+}
+
+fn core_documentation_slug(plugin_id: &str) -> String {
+    plugin_id
+        .chars()
+        .map(|character| match character {
+            '.' | '_' => '-',
+            character => character.to_ascii_lowercase(),
+        })
+        .collect()
 }
 
 /// Canonical path, made relative to the game directory when the field allows it

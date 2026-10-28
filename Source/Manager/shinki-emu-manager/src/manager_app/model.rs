@@ -8,7 +8,7 @@ use shinki_emu_manager_ui_slint::{
 };
 
 impl ShinkiEmuManagerController {
-    pub(super) fn model(&self) -> Result<ManagerViewModel, String> {
+    pub(super) fn model(&mut self) -> Result<ManagerViewModel, String> {
         let now_ms = unix_time_ms()?;
         let query = self.search_query.trim().to_ascii_lowercase();
         let patch_query = self.patch_query.trim().to_ascii_lowercase();
@@ -450,7 +450,7 @@ impl ShinkiEmuManagerController {
         })
     }
 
-    fn game_settings_view(&self, game: &GameRecord) -> Result<GameSettingsViewModel, String> {
+    fn game_settings_view(&mut self, game: &GameRecord) -> Result<GameSettingsViewModel, String> {
         let game_id = game.game_id.as_str();
         let override_mapping = self
             .library
@@ -489,16 +489,14 @@ impl ShinkiEmuManagerController {
         })
     }
 
-    fn cores_model(&self) -> Result<CoresViewModel, String> {
+    fn cores_model(&mut self) -> Result<CoresViewModel, String> {
         let mut cores = self.cores_view()?;
-        if let Some(plugin) = self
-            .defaults_plugin
-            .as_deref()
-            .filter(|plugin| self.registry.descriptor(plugin).is_some())
+        if let Some(plugin) = self.defaults_plugin.clone()
+            && self.registry.descriptor(&plugin).is_some()
         {
-            cores.default_plugin = plugin.into();
-            cores.default_fields = self.emulator_default_fields(plugin)?;
-            cores.default_render = self.emulator_render_view(plugin)?;
+            cores.default_plugin.clone_from(&plugin);
+            cores.default_fields = self.emulator_default_fields(&plugin)?;
+            cores.default_render = self.emulator_render_view(&plugin)?;
         }
         Ok(cores)
     }

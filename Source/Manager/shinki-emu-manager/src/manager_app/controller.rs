@@ -206,7 +206,7 @@ impl ManagerController for ShinkiEmuManagerController {
     fn is_game_active(&self) -> bool {
         self.session_running()
     }
-    fn model(&self) -> Result<ManagerViewModel, String> {
+    fn model(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::model(self)
     }
 

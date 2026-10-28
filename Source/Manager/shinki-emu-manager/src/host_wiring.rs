@@ -91,7 +91,7 @@ impl<C: ManagerController> Wiring<C> {
         let Some(window) = self.window.upgrade() else {
             return;
         };
-        let model = self.controller.borrow().model();
+        let model = self.controller.borrow_mut().model();
         let mut model = match model {
             Ok(model) => model,
             Err(model_error) => return report_error(&window, &model_error),

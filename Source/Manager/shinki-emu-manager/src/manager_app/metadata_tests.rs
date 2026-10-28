@@ -200,7 +200,7 @@ fn network_permission_gates_metadata_and_translation_and_persists() {
     app.set_network_allowed(true).unwrap();
     assert!(app.launch_translation_profile().unwrap().is_some());
     drop(app);
-    let app = controller(root.path());
+    let mut app = controller(root.path());
     assert!(app.network_allowed);
     assert!(app.model().unwrap().network.allowed);
 }
