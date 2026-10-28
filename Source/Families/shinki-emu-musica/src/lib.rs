@@ -51,3 +51,4 @@ pub(crate) use provider::{MusicaProvider, musica_descriptor};
 mod test_fixture;
 
 pub mod eden_save;
+pub mod minori_data;
