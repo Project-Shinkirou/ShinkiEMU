@@ -178,7 +178,7 @@ pub trait ManagerController: 'static {
     fn notice_state(&self) -> shinki_emu_manager_ui_slint::ResaleNoticeViewModel;
     fn game_location(&self, game_id: &str) -> Result<std::path::PathBuf, String>;
     fn data_dir(&self) -> &std::path::Path;
-    fn model(&self) -> Result<ManagerViewModel, String>;
+    fn model(&mut self) -> Result<ManagerViewModel, String>;
     fn select_case(&mut self, case_id: &str) -> Result<ManagerViewModel, String>;
     fn search(&mut self, query: &str) -> Result<ManagerViewModel, String>;
     fn save_translation_profile(
@@ -452,7 +452,7 @@ pub fn run_manager<C: ManagerController, R: ShinkiUnderlayRenderer>(
 }
 
 pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRenderer>(
-    controller: C,
+    mut controller: C,
     renderer: R,
     game_active: bool,
 ) -> Result<HostExit, HostError> {

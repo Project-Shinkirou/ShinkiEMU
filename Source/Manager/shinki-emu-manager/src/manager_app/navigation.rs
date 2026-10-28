@@ -37,8 +37,9 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn launch(&mut self, case_id: &str) -> Result<ManagerViewModel, String> {
+        let retired_before = self.diagnostic.clone();
         let result = self.try_launch(case_id);
-        if let Err(error) = &result {
+        if let Err(error) = &result && self.diagnostic == retired_before {
             self.diagnostic.clone_from(error);
             self.diagnostic_severity = "error";
         }
@@ -111,6 +112,8 @@ impl ShinkiEmuManagerController {
             .library
             .family_configuration(&candidate.descriptor.plugin_id, case_id, &schema)
             .map_err(|error| error.to_string())?;
+        let retired_path_reported = self.report_retired_configuration(&configuration.retired);
+        let configuration = configuration.values;
         let window = self.window_state.ok_or("SHINKI_EMU_WINDOW_STATE_REQUIRED")?;
         let settings = self
             .library
@@ -147,7 +150,9 @@ impl ShinkiEmuManagerController {
         self.session_mapping = Some(session_mapping);
         self.pending_events.clear();
         self.active = Some(owner::ActiveSessionView::opening(epoch, case_id.into()));
-        self.diagnostic.clear();
+        if !retired_path_reported {
+            self.diagnostic.clear();
+        }
         self.model()
     }
 

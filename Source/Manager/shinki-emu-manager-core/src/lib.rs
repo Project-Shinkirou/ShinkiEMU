@@ -60,6 +60,7 @@ pub use work_settings::{
     GameSettings, MAX_RENDER_EXTENT, RENDER_PRESET_HEIGHTS, RenderPreference, SurfaceRecord,
 };
 
+pub use family_configuration::{FamilyConfiguration, RetiredConfigEntry};
 mod family_configuration;
 
 mod family_diagnostics;

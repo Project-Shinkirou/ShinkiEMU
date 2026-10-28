@@ -1,7 +1,23 @@
 //! Typed startup configuration. Empty game ID denotes core defaults.
-use crate::model::{ConfigEntry, ConfigField, resolve_config};
+use crate::model::{ConfigEntry, ConfigField, ConfigValue, resolve_config};
 use crate::{Library, LibraryError};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, Transaction, params};
+use serde::{Deserialize, Serialize};
+
+/// Retired values pruned from stored layers are returned alongside resolved values.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RetiredConfigEntry {
+    pub plugin_id: String,
+    pub game_id: String,
+    pub field_id: String,
+    pub value: ConfigValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FamilyConfiguration {
+    pub values: Vec<ConfigEntry>,
+    pub retired: Vec<RetiredConfigEntry>,
+}
 
 impl Library {
     pub fn family_configuration(
@@ -9,19 +25,22 @@ impl Library {
         plugin_id: &str,
         game_id: &str,
         schema: &[ConfigField],
-    ) -> Result<Vec<ConfigEntry>, LibraryError> {
-        let mut values = self.read_family_configuration(plugin_id, "")?;
-        // Validate each layer before merging: duplicates/unknowns cannot disappear.
-        resolve_config(schema, &values).map_err(LibraryError::FamilyConfiguration)?;
+    ) -> Result<FamilyConfiguration, LibraryError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let (mut values, mut retired) =
+            read_family_configuration(&transaction, plugin_id, "", schema)?;
         if !game_id.is_empty() {
-            let overrides = self.read_family_configuration(plugin_id, game_id)?;
-            resolve_config(schema, &overrides).map_err(LibraryError::FamilyConfiguration)?;
+            let (overrides, retired_overrides) =
+                read_family_configuration(&transaction, plugin_id, game_id, schema)?;
+            retired.extend(retired_overrides);
             for entry in overrides {
                 values.retain(|value| value.id != entry.id);
                 values.push(entry);
             }
         }
-        resolve_config(schema, &values).map_err(LibraryError::FamilyConfiguration)
+        let values = resolve_config(schema, &values).map_err(LibraryError::FamilyConfiguration)?;
+        transaction.commit()?;
+        Ok(FamilyConfiguration { values, retired })
     }
 
     fn read_family_configuration(
@@ -143,6 +162,59 @@ impl Library {
     }
 }
 
+fn read_family_configuration(
+    transaction: &Transaction<'_>,
+    plugin_id: &str,
+    game_id: &str,
+    schema: &[ConfigField],
+) -> Result<(Vec<ConfigEntry>, Vec<RetiredConfigEntry>), LibraryError> {
+    let raw: Option<String> = transaction
+        .query_row(
+            "SELECT values_json FROM family_configuration WHERE plugin_id=?1 AND game_id=?2",
+            params![plugin_id, game_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(raw) = raw else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    if raw.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    if raw.len() > 4 * 1024 * 1024 {
+        return Err(LibraryError::Settings);
+    }
+    let values: Vec<ConfigEntry> =
+        serde_json::from_str(&raw).map_err(|_| LibraryError::Settings)?;
+    let mut known = Vec::with_capacity(values.len());
+    let mut retired = Vec::new();
+    for entry in values {
+        if schema.iter().any(|field| field.id == entry.id) {
+            known.push(entry);
+        } else {
+            retired.push(RetiredConfigEntry {
+                plugin_id: plugin_id.to_owned(),
+                game_id: game_id.to_owned(),
+                field_id: entry.id,
+                value: entry.value,
+            });
+        }
+    }
+    resolve_config(schema, &known).map_err(LibraryError::FamilyConfiguration)?;
+    if !retired.is_empty() {
+        if known.is_empty() {
+            transaction.execute(
+                "DELETE FROM family_configuration WHERE plugin_id=?1 AND game_id=?2",
+                params![plugin_id, game_id],
+            )?;
+        } else {
+            let raw = serde_json::to_string(&known).map_err(|_| LibraryError::Serialization)?;
+            write_configuration(transaction, plugin_id, game_id, &raw)?;
+        }
+    }
+    Ok((known, retired))
+}
+
 fn write_configuration(
     connection: &rusqlite::Connection,
     plugin_id: &str,
@@ -200,7 +272,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("test.core", "game", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             vec![entry(0.7)]
         );
         assert!(
@@ -211,7 +284,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("test.core", "", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             vec![entry(0.7)]
         );
         library
@@ -222,7 +296,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("test.core", "game", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             vec![entry(0.2)]
         );
         library
@@ -231,7 +306,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("test.core", "", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             vec![entry(0.5)]
         );
         library
@@ -250,8 +326,148 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("test.core", "game", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             vec![entry(0.5)]
+        );
+    }
+
+    #[test]
+    fn loading_prunes_retired_fields_and_returns_known_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("manager.sqlite");
+        let mut library = Library::open(&path).unwrap();
+        library
+            .add_game(&crate::GameRecord {
+                game_id: "game".into(),
+                title: "Test".into(),
+                user_title: None,
+                location: "test-game".into(),
+                family_id: Some("test".into()),
+                content_fingerprint: None,
+                added_at_unix_ms: 0,
+            })
+            .unwrap();
+        let schema = vec![ConfigField {
+            id: "gain".into(),
+            label: "Gain".into(),
+            group: "Audio".into(),
+            kind: ConfigKind::Number { min: 0.0, max: 1.0 },
+            default: ConfigValue::Number(0.5),
+            description: String::new(),
+            choice_labels: Vec::new(),
+            flags: ConfigFlags::default(),
+            step: None,
+            unit: String::new(),
+        }];
+        let known = ConfigEntry {
+            id: "gain".into(),
+            value: ConfigValue::Number(0.7),
+        };
+        let retired = ConfigEntry {
+            id: "save_root".into(),
+            value: ConfigValue::String("C:/old-saves".into()),
+        };
+        library
+            .connection
+            .execute(
+                "INSERT INTO family_configuration(plugin_id, game_id, values_json) VALUES(?1, '', ?2)",
+                params!["test.core", serde_json::to_string(&[known.clone(), retired.clone()]).unwrap()],
+            )
+            .unwrap();
+
+        let loaded = library
+            .family_configuration("test.core", "game", &schema)
+            .unwrap();
+
+        assert_eq!(loaded.values, std::slice::from_ref(&known));
+        assert_eq!(
+            loaded.retired,
+            [RetiredConfigEntry {
+                plugin_id: "test.core".into(),
+                game_id: String::new(),
+                field_id: "save_root".into(),
+                value: retired.value,
+            }]
+        );
+        let rewritten: String = library
+            .connection
+            .query_row(
+                "SELECT values_json FROM family_configuration WHERE plugin_id='test.core' AND game_id=''",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Vec<ConfigEntry>>(&rewritten).unwrap(),
+            [known]
+        );
+    }
+
+    #[test]
+    fn known_stored_values_remain_strict_and_unknown_writes_are_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut library = Library::open(directory.path().join("manager.sqlite")).unwrap();
+        library
+            .add_game(&crate::GameRecord {
+                game_id: "game".into(),
+                title: "Test".into(),
+                user_title: None,
+                location: "test-game".into(),
+                family_id: Some("test".into()),
+                content_fingerprint: None,
+                added_at_unix_ms: 0,
+            })
+            .unwrap();
+        let schema = vec![ConfigField {
+            id: "gain".into(),
+            label: "Gain".into(),
+            group: "Audio".into(),
+            kind: ConfigKind::Number { min: 0.0, max: 1.0 },
+            default: ConfigValue::Number(0.5),
+            description: String::new(),
+            choice_labels: Vec::new(),
+            flags: ConfigFlags::default(),
+            step: None,
+            unit: String::new(),
+        }];
+        let entry = |value| ConfigEntry {
+            id: "gain".into(),
+            value,
+        };
+        for values in [
+            vec![
+                entry(ConfigValue::Number(0.1)),
+                entry(ConfigValue::Number(0.2)),
+            ],
+            vec![entry(ConfigValue::Bool(true))],
+        ] {
+            library
+                .connection
+                .execute(
+                    "INSERT INTO family_configuration(plugin_id, game_id, values_json) VALUES('test.core', '', ?1) ON CONFLICT(plugin_id, game_id) DO UPDATE SET values_json=excluded.values_json",
+                    [serde_json::to_string(&values).unwrap()],
+                )
+                .unwrap();
+            assert!(
+                library
+                    .family_configuration("test.core", "", &schema)
+                    .is_err()
+            );
+        }
+        let unknown = ConfigEntry {
+            id: "retired".into(),
+            value: ConfigValue::String("old path".into()),
+        };
+        assert!(
+            library
+                .save_family_configuration("test.core", "", &schema, std::slice::from_ref(&unknown))
+                .is_err()
+        );
+        assert!(
+            library
+                .set_family_override("test.core", "game", &schema, unknown)
+                .is_err()
         );
     }
 
@@ -341,7 +557,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("new.emulator", "output", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             [ConfigEntry {
                 id: "script_encoding".into(),
                 value: ConfigValue::Enum("gbk".into())
@@ -432,7 +649,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("new.emulator", "output", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             [encoding("gbk")]
         );
 
@@ -476,7 +694,8 @@ mod tests {
         assert_eq!(
             library
                 .family_configuration("new.emulator", "output", &schema)
-                .unwrap(),
+                .unwrap()
+                .values,
             [encoding("cp932")]
         );
     }

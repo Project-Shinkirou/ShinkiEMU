@@ -129,7 +129,8 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
     let values = app
         .library
         .family_configuration("patch-fixture", &output_id, &schema)
-        .unwrap();
+        .unwrap()
+        .values;
     assert_eq!(
         values[0].value,
         shinki_emu_manager_core::model::ConfigValue::Enum("title".into())
@@ -356,7 +357,8 @@ fn explicit_receipt_import_reads_only_data_and_private_staging_is_never_discover
     assert_eq!(
         app.library
             .family_configuration("patch-fixture", &output_id, &schema)
-            .unwrap()[0]
+            .unwrap()
+            .values[0]
             .value,
         shinki_emu_manager_core::model::ConfigValue::Enum("title".into())
     );

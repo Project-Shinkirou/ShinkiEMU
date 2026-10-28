@@ -54,7 +54,7 @@ fn assert_returned_to_library(controller: &mut ShinkiEmuManagerController) {
         .unwrap();
 }
 
-fn assert_finished_record(controller: &ShinkiEmuManagerController) {
+fn assert_finished_record(controller: &mut ShinkiEmuManagerController) {
     let record = history(controller).remove(0);
     assert_eq!(record.ended_by, Some(PlaySessionEndReason::Finished));
     let end = record.end_unix_ms.expect("finished session has an end time");
@@ -89,7 +89,7 @@ fn a_game_the_core_ends_is_recorded_as_finished_and_returns_to_the_library() {
     pump_until(&mut controller, &woken, |controller| {
         controller.active.is_none()
     });
-    assert_finished_record(&controller);
+    assert_finished_record(&mut controller);
     assert!(history(&controller)[0].duration_ms >= 20);
     assert_returned_to_library(&mut controller);
 
@@ -125,7 +125,7 @@ fn finished_while_input_is_withdrawn(withdraw: impl FnOnce(&mut ShinkiEmuManager
     pump_until(&mut controller, &woken, |controller| {
         controller.active.is_none()
     });
-    assert_finished_record(&controller);
+    assert_finished_record(&mut controller);
     assert_returned_to_library(&mut controller);
 }
 
@@ -208,6 +208,6 @@ fn a_finished_game_whose_core_fails_to_close_is_still_recorded_as_finished() {
     // The cleanup error is still reported to the host.
     let error = controller.advance_runtime().unwrap_err();
     assert!(error.contains("SHINKI_EMU_TEST_CLOSE"), "{error}");
-    assert_finished_record(&controller);
+    assert_finished_record(&mut controller);
     assert_returned_to_library(&mut controller);
 }
