@@ -18,18 +18,20 @@ const SCALAR_FIELDS: [(u16, u32); 10] = [
 ];
 const STRING_FIELDS: [u16; 6] = [10324, 12816, 13072, 13104, 13136, 13168];
 
+/// 4712F0 stamps the slot with `GetLocalTime`. The local offset comes from
+/// the platform zone database, which stays readable in multithreaded hosts.
 pub(crate) fn native_save_local_timestamp() -> Result<[u16; 6], CoreError> {
-    let now = time::OffsetDateTime::now_local()
-        .map_err(|_| slot_error("native save cannot read the OS local wall clock"))?;
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Local::now();
     let year =
         u16::try_from(now.year()).map_err(|_| slot_error("native save year is out of range"))?;
     Ok([
         year,
-        u8::from(now.month()).into(),
-        now.day().into(),
-        now.hour().into(),
-        now.minute().into(),
-        now.second().into(),
+        now.month() as u16,
+        now.day() as u16,
+        now.hour() as u16,
+        now.minute() as u16,
+        now.second() as u16,
     ])
 }
 

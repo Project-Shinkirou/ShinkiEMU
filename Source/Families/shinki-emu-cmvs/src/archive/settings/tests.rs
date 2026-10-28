@@ -457,3 +457,39 @@ fn configured_audio_gates_follow_se_then_voice_startup_without_invented_defaults
         [1, 0]
     );
 }
+
+#[test]
+fn portable_registry_store_keeps_registry_keys_types_and_absence() {
+    let root = tempfile::tempdir().unwrap();
+    initial(root.path(), 3, 0);
+    std::fs::write(
+        root.path().join("cmvs.cfg"),
+        "[MESSAGE_INFO]\nFONT=Ini Font\nTEXT_BOLD=0\n",
+    )
+    .unwrap();
+    let registry = registry::PortableRegistry::new(root.path());
+    // No store: CONFIG_PUT=3 finds no ConfigPut and falls back to the INI.
+    assert_eq!(resolve_font(root.path(), &registry).unwrap(), "Ini Font");
+    std::fs::create_dir_all(root.path().join(".shinki/cmvs")).unwrap();
+    let store = root.path().join(registry::REGISTRY_FILE);
+    std::fs::write(
+        &store,
+        r#"{"fixture": {"configput": 1},
+            "Fixture\\param\\": {"MI_Font": "Stored Font", "MI_TextBold": 1}}"#,
+    )
+    .unwrap();
+    assert_eq!(resolve_font(root.path(), &registry).unwrap(), "Stored Font");
+    assert_eq!(
+        resolve_font_flags(root.path(), &registry).unwrap(),
+        [true, false]
+    );
+    // A value of the other registry type fails like RegGetValueW.
+    std::fs::write(
+        &store,
+        r#"{"Fixture": {"ConfigPut": 1}, "Fixture\\param": {"MI_Font": 7}}"#,
+    )
+    .unwrap();
+    assert!(resolve_font(root.path(), &registry).is_err());
+    std::fs::write(&store, "not json").unwrap();
+    assert!(resolve_font(root.path(), &registry).is_err());
+}

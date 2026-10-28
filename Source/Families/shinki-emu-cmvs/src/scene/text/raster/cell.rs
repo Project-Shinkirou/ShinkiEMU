@@ -12,28 +12,46 @@ pub(super) struct Cell {
     pub empty: bool,
 }
 
-// 461840 copies the top-left of the GDI black box, not a bearing-adjusted
+/// The `GLYPHMETRICS` fields 461840 consumes.
+#[derive(Clone, Copy, Default)]
+pub(super) struct GlyphMetrics {
+    /// gmBlackBoxX/Y.
+    pub black_box: [u32; 2],
+    /// gmptGlyphOrigin: black-box left and top, y up from the baseline.
+    pub origin: [i32; 2],
+    pub cell_inc_x: i16,
+}
+
+/// The `TEXTMETRICA` fields 461840 consumes.
+#[derive(Clone, Copy, Default)]
+pub(super) struct FaceMetrics {
+    pub ascent: i32,
+    pub internal_leading: i32,
+}
+
+// 461840 copies the top-left of the black box, not a bearing-adjusted
 // source subrectangle. Negative bearings are carried by the descriptor.
+// `source` holds GGO_GRAY4 levels in DWORD-aligned rows.
 pub(super) fn compose(
     size: u32,
     code: u16,
-    gm: &GLYPHMETRICS,
-    tm: &TEXTMETRICA,
+    gm: &GlyphMetrics,
+    tm: &FaceMetrics,
     source: &[u8],
-    settings: NativeGdiSettings,
+    settings: NativeRasterSettings,
 ) -> Result<Cell, CoreError> {
-    let size_i = i32::try_from(size).map_err(|_| error("SHINKI_EMU_CMVS_GDI_SIZE"))?;
-    let raw_x = gm.gmptGlyphOrigin.x;
-    let raw_y = tm.tmAscent - tm.tmInternalLeading / 2 - gm.gmptGlyphOrigin.y;
+    let size_i = i32::try_from(size).map_err(|_| error("SHINKI_EMU_CMVS_RASTER_SIZE"))?;
+    let raw_x = gm.origin[0];
+    let raw_y = tm.ascent - tm.internal_leading / 2 - gm.origin[1];
     let ink_x = raw_x.max(0);
     let mut ink_y = raw_y.max(0);
-    let width = i64::from(gm.gmBlackBoxX)
+    let width = i64::from(gm.black_box[0])
         .min(i64::from(size_i) - i64::from(ink_x))
         .max(0) as u32;
     let mut height = if settings.proportional && code <= 255 {
-        gm.gmBlackBoxY.min(size)
+        gm.black_box[1].min(size)
     } else {
-        i64::from(gm.gmBlackBoxY)
+        i64::from(gm.black_box[1])
             .min(i64::from(size_i) - i64::from(ink_y))
             .max(0) as u32
     };
@@ -46,13 +64,13 @@ pub(super) fn compose(
             offset[1] = (i64::from(ink_y) + i64::from(height) - i64::from(size)) as i32;
             ink_y = size_i - height as i32;
         }
-        u32::from(gm.gmCellIncX as u16)
+        u32::from(gm.cell_inc_x as u16)
     } else if code <= 255 {
         (ink_x as u32 + width) & 0xffff
     } else {
         size & 0xffff
     };
-    // A zero-byte space still has real GDI metrics; it never needs an upload.
+    // A zero-byte space still has real metrics; it never needs an upload.
     if source.is_empty() {
         height = 0;
         offset[1] = 0;
@@ -62,26 +80,25 @@ pub(super) fn compose(
     }
     let count = (size as usize)
         .checked_mul(size as usize)
-        .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_SIZE"))?;
+        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_SIZE"))?;
     let mut pixels = vec![0; count];
-    let stride = gm
-        .gmBlackBoxX
+    let stride = gm.black_box[0]
         .checked_add(3)
-        .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?
+        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?
         & !3;
     if height != 0 && width != 0 {
         let required = (height as usize - 1)
             .checked_mul(stride as usize)
             .and_then(|n| n.checked_add(width as usize))
-            .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?;
+            .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?;
         if source.len() < required {
-            return Err(error("SHINKI_EMU_CMVS_GDI_BITMAP"));
+            return Err(error("SHINKI_EMU_CMVS_RASTER_BITMAP"));
         }
         for y in 0..height as usize {
             let start = (ink_y as usize + y) * size as usize + ink_x as usize;
             let row = pixels
                 .get_mut(start..start + width as usize)
-                .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?;
+                .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?;
             for (target, value) in row
                 .iter_mut()
                 .zip(&source[y * stride as usize..][..width as usize])
@@ -90,7 +107,7 @@ pub(super) fn compose(
                     ALTERNATE
                         .get(*value as usize)
                         .copied()
-                        .ok_or_else(|| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?
+                        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?
                 } else if *value == 0 {
                     0
                 } else {
@@ -101,7 +118,7 @@ pub(super) fn compose(
     }
     let empty = pixels.iter().all(|value| *value == 0);
     let bitmap = GlyphBitmap::from_vec(size, size, GlyphBitmapFormat::Alpha8, pixels)
-        .map_err(|_| error("SHINKI_EMU_CMVS_GDI_BITMAP"))?;
+        .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?;
     // Native descriptor fields are signed WORDs.
     offset = offset.map(|value| i32::from(value as i16));
     Ok(Cell {
@@ -116,8 +133,8 @@ pub(super) fn compose(
 mod tests {
     use super::*;
 
-    fn settings(proportional: bool, alternate_coverage: bool) -> NativeGdiSettings {
-        NativeGdiSettings {
+    fn settings(proportional: bool, alternate_coverage: bool) -> NativeRasterSettings {
+        NativeRasterSettings {
             proportional,
             alternate_coverage,
         }
@@ -133,15 +150,13 @@ mod tests {
 
     #[test]
     fn dword_stride_and_right_bottom_clip_preserve_source_origin() {
-        let gm = GLYPHMETRICS {
-            gmBlackBoxX: 3,
-            gmBlackBoxY: 3,
-            gmptGlyphOrigin: windows::Win32::Foundation::POINT { x: 2, y: 2 },
-            gmCellIncX: 7,
-            ..Default::default()
+        let gm = GlyphMetrics {
+            black_box: [3, 3],
+            origin: [2, 2],
+            cell_inc_x: 7,
         };
-        let tm = TEXTMETRICA {
-            tmAscent: 4,
+        let tm = FaceMetrics {
+            ascent: 4,
             ..Default::default()
         };
         let result = compose(
@@ -163,15 +178,13 @@ mod tests {
 
     #[test]
     fn proportional_ascii_descender_moves_cell_up_and_descriptor_down() {
-        let gm = GLYPHMETRICS {
-            gmBlackBoxX: 1,
-            gmBlackBoxY: 3,
-            gmptGlyphOrigin: windows::Win32::Foundation::POINT { x: -1, y: 1 },
-            gmCellIncX: 2,
-            ..Default::default()
+        let gm = GlyphMetrics {
+            black_box: [1, 3],
+            origin: [-1, 1],
+            cell_inc_x: 2,
         };
-        let tm = TEXTMETRICA {
-            tmAscent: 4,
+        let tm = FaceMetrics {
+            ascent: 4,
             ..Default::default()
         };
         let result = compose(
@@ -193,15 +206,13 @@ mod tests {
 
     #[test]
     fn alternate_levels_and_negative_dbcs_bearings_are_exact() {
-        let gm = GLYPHMETRICS {
-            gmBlackBoxX: 17,
-            gmBlackBoxY: 1,
-            gmptGlyphOrigin: windows::Win32::Foundation::POINT { x: -2, y: 8 },
-            gmCellIncX: 18,
-            ..Default::default()
+        let gm = GlyphMetrics {
+            black_box: [17, 1],
+            origin: [-2, 8],
+            cell_inc_x: 18,
         };
-        let tm = TEXTMETRICA {
-            tmAscent: 7,
+        let tm = FaceMetrics {
+            ascent: 7,
             ..Default::default()
         };
         let source: Vec<u8> = (0..17).chain([90, 90, 90]).collect();
@@ -212,15 +223,15 @@ mod tests {
 
     #[test]
     fn blank_space_keeps_advance_without_uploadable_ink() {
-        let gm = GLYPHMETRICS {
-            gmCellIncX: 14,
+        let gm = GlyphMetrics {
+            cell_inc_x: 14,
             ..Default::default()
         };
         let result = compose(
             27,
             32,
             &gm,
-            &TEXTMETRICA::default(),
+            &FaceMetrics::default(),
             &[],
             settings(true, false),
         )

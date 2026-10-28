@@ -10507,7 +10507,7 @@ dependencies = [
 name = "shinki-emu-cmvs"
 version = "0.1.0"
 dependencies = [
- "cc",
+ "chrono",
  "configparser",
  "encoding_rs",
  "fontdb 0.24.0",
@@ -10530,12 +10530,12 @@ dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
  "shinki-emu-sdk",
+ "skrifa 0.44.0",
  "symphonia 0.6.1",
  "tempfile",
  "time",
  "tracing",
  "wgpu 30.0.1",
- "windows 0.62.2",
 ]
 
 [[package]]

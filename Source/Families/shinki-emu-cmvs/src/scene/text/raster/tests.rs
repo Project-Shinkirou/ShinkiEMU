@@ -1,7 +1,7 @@
 use super::*;
 
-fn settings() -> NativeGdiSettings {
-    NativeGdiSettings {
+fn settings() -> NativeRasterSettings {
+    NativeRasterSettings {
         proportional: true,
         alternate_coverage: false,
     }
@@ -25,23 +25,21 @@ fn style(color: u32) -> CmvsNativeTextGlyph {
         raster: raster(),
     }
 }
-fn renderer() -> NativeGdiRenderer {
-    let mut renderer = NativeGdiRenderer::default();
+fn renderer() -> NativeRasterRenderer {
+    let mut renderer = NativeRasterRenderer::default();
     let state = renderer.state.get_mut().unwrap();
     state.bindings.insert("fixture".into(), [0, 0]);
     let key = state.key("fixture", b'g' as u16, 4, raster()).unwrap();
-    let gm = GLYPHMETRICS {
-        gmBlackBoxX: 1,
-        gmBlackBoxY: 3,
-        gmptGlyphOrigin: windows::Win32::Foundation::POINT { x: -1, y: 1 },
-        gmCellIncX: 2,
+    let gm = cell::GlyphMetrics {
+        black_box: [1, 3],
+        origin: [-1, 1],
+        cell_inc_x: 2,
+    };
+    let tm = cell::FaceMetrics {
+        ascent: 4,
         ..Default::default()
     };
-    let tm = TEXTMETRICA {
-        tmAscent: 4,
-        ..Default::default()
-    };
-    // A deterministic pre-existing GDI cell enters the same composition,
+    // A deterministic pre-existing cell enters the same composition,
     // resource ownership, placement and retirement path as a real raster.
     let value = cell::compose(
         4,
@@ -55,8 +53,8 @@ fn renderer() -> NativeGdiRenderer {
     state.cells.insert(key, CachedCell { value, live: true });
     renderer
 }
-fn run<'a>(id: &str, style: &'a CmvsNativeTextGlyph) -> NativeGdiRun<'a> {
-    NativeGdiRun {
+fn run<'a>(id: &str, style: &'a CmvsNativeTextGlyph) -> NativeRasterRun<'a> {
+    NativeRasterRun {
         id: id.into(),
         font_name: "fixture",
         style,
@@ -197,5 +195,6 @@ fn custom_descriptor_changes_update_advance_without_reuploading_pixels() {
             .unwrap(),
         11
     );
-    assert!(renderer.state.get_mut().unwrap().dc.is_none());
+    // Custom bitmaps never rasterize the bound face.
+    assert!(renderer.state.get_mut().unwrap().fonts.is_empty());
 }

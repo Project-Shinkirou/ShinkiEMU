@@ -34,17 +34,15 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 roukaku-core = { workspace = true }
+skrifa = "=0.44.0"
 postcard.workspace = true
 tracing.workspace = true
-time = { workspace = true, features = ["local-offset"] }
+time.workspace = true
+chrono = { version = "=0.4.45", default-features = false, features = ["clock"] }
 
 [build-dependencies]
-cc = "1.2"
 shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
 
 [dev-dependencies]
 tempfile.workspace = true
 parking_lot.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_System_Registry", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Globalization"] }
