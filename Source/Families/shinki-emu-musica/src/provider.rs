@@ -686,6 +686,7 @@ impl MusicaProvider {
             native,
         );
         session.install_localization(translation_table, translation_mode);
+        session.sync_read_flags()?;
         if let Some((text, speaker)) = restored_message {
             session.install_imported_message(text, speaker)?;
         }

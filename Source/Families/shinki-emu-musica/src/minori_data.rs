@@ -12,7 +12,8 @@ use std::{
 };
 
 const LIMIT: usize = 64 * 1024 * 1024;
-const READ_FLAG_BYTES: usize = 8192;
+/// Bytes in one `<script>.tbr` bitmap: one bit per message id 0..=0xFFFF.
+pub const READ_FLAG_BYTES: usize = 8192;
 const SYSTEM_KEY: [u8; 6] = [0x93, 0x97, 0x92, 0x91, 0x8e, 0x97];
 
 /// Property bytes use the game's original encoding; unknown fields are retained.
