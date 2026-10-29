@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "impacto",
+  "family_name": "MAGES.",
+  "license": "ISC",
+  "platform": "windows-x86_64",
+  "plugin_id": "impacto",
+  "release_tag": "core-impacto-v0.1.0-beta.2",
+  "sha256": "aaa3d9925c11d5f726826024fb493f1404caff04c8c7975eefd297db5304ce2f",
+  "size": 101045890,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-impacto-v0.1.0-beta.2/shinki-emu-core-impacto-0.1.0-beta.2-windows-x86_64.zip",
+  "version": "0.1.0-beta.2"
+}
