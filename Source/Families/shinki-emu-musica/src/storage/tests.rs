@@ -197,28 +197,6 @@ fn quick_cursor_is_bounded_persistent_and_rejects_foreign_or_corrupt_data() {
 }
 
 #[test]
-fn gallery_progress_preserves_damaged_foreign_and_monotonic_state() {
-    let root = tempfile::tempdir().unwrap();
-    let storage = Storage::new(root.path()).unwrap();
-    let game = Hash256::from_sha256(b"game");
-    let unlocks = [Hash256::from_sha256(b"REN_CLEAR")];
-    assert!(storage.progress(game).unwrap().is_empty());
-    storage.write_progress(game, &unlocks).unwrap();
-    assert_eq!(storage.progress(game).unwrap(), unlocks);
-    assert!(storage.write_progress(game, &[]).is_err());
-    assert!(
-        storage
-            .write_progress(Hash256::from_sha256(b"other"), &unlocks)
-            .is_err()
-    );
-    assert_eq!(storage.progress(game).unwrap(), unlocks);
-    let path = storage.named_path("global-progress.json", false).unwrap();
-    fs::write(&path, b"damaged").unwrap();
-    assert!(storage.write_progress(game, &unlocks).is_err());
-    assert_eq!(fs::read(&path).unwrap(), b"damaged");
-}
-
-#[test]
 fn legacy_saves_move_once_without_overwriting_private_slots() {
     let root = tempfile::tempdir().unwrap();
     let old = root.path().join(".shinki-musica/saves");

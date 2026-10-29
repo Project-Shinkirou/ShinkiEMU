@@ -568,6 +568,8 @@ impl MusicaProvider {
         )
         .map_err(core_error)?;
         let storage = Storage::new(root)?;
+        let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
+        native.import_legacy_progress(root, game)?;
         let mut settings = vm.config().clone();
         [
             settings.bgm_volume,
@@ -592,13 +594,7 @@ impl MusicaProvider {
             .as_ref()
             .map(|save| eden::restore_vm(&mut vm, save, &archive, primary_encoding))
             .transpose()?;
-        vm.merge_verified_gallery_unlocks(&storage.progress(game)?)
-            .map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
-                    "global progress cannot be applied",
-                )
-            })?;
+        vm.replace_global_variables(native.globals());
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
@@ -687,6 +683,7 @@ impl MusicaProvider {
             progress_in_background,
             primary_encoding,
             quick_cursor,
+            native,
         );
         session.install_localization(translation_table, translation_mode);
         if let Some((text, speaker)) = restored_message {

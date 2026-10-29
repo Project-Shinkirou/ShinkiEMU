@@ -150,8 +150,7 @@ mod tests {
         assert!(vm.set_gallery_page(MusicaSystemPage::Memories, 0).is_err());
         vm.begin_title_launch().unwrap();
         assert!(vm.set_gallery_page(MusicaSystemPage::Memories, 0).is_err());
-        vm.merge_verified_gallery_unlocks(&[Hash256::from_sha256(b"TOHKA_CLEAR")])
-            .unwrap();
+        vm.replace_global_variables(BTreeMap::from([("TOHKA_CLEAR".into(), 1)]));
         for page in [
             MusicaSystemPage::Memories,
             MusicaSystemPage::GalleryCg,

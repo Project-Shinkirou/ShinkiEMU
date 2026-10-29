@@ -71,7 +71,8 @@ pub(crate) struct MusicaSession {
     gameplay_frame: Option<Arc<[u8]>>,
     save_cards: Vec<(u32, crate::storage::SaveCard)>,
     quick_cursor: u32,
-    persisted_unlocks: Vec<Hash256>,
+    persisted_globals: std::collections::BTreeMap<String, i64>,
+    native: crate::native_directory::NativeFiles,
     entry_uri: String,
     title_focus: Option<u32>,
     load_from_title: bool,
@@ -95,12 +96,14 @@ impl MusicaSession {
         progress_in_background: bool,
         primary_encoding: crate::ScriptEncoding,
         quick_cursor: u32,
+        native: crate::native_directory::NativeFiles,
     ) -> Self {
-        let persisted_unlocks = vm.state().gallery_unlocks.clone();
+        let persisted_globals = vm.state().global_variables.clone();
         let entry_uri = vm.state().script_uri.clone();
         let pending_fullscreen = vm.config().fullscreen.then_some(true);
         Self {
-            persisted_unlocks,
+            persisted_globals,
+            native,
             entry_uri,
             title_focus: None,
             load_from_title: false,
@@ -574,7 +577,7 @@ impl MusicaSession {
         if save {
             self.quick_save()?;
         }
-        self.persist_progress()?;
+        self.persist_globals()?;
         Ok(AdvanceResponse {
             // Backpressure pauses the native VM; do not replay that wait as elapsed game time.
             reset_clock: std::mem::take(&mut self.reset_host_clock)

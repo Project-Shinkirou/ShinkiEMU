@@ -2,6 +2,7 @@ mod configuration;
 pub use configuration::*;
 mod audio;
 mod movie;
+mod native_directory;
 mod provider;
 mod scene;
 mod session;

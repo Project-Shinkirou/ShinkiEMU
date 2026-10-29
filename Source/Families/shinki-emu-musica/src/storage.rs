@@ -9,7 +9,6 @@ use std::{
     path::{Path, PathBuf},
 };
 mod card;
-mod progress;
 mod quick;
 pub(crate) use card::SaveCard;
 

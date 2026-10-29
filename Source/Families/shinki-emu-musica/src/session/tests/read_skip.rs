@@ -43,7 +43,7 @@ fn native_gpu_read_skip_stops_on_unread_and_restores_mode() {
 }
 
 #[test]
-fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
+fn native_gpu_globals_persist_in_system_dat_across_old_slot_and_cold_restart() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".message 1  speaker Before\r\n.setglobal REN_CLEAR = 1\r\n.message 2  speaker After\r\n.end\r\n");
@@ -55,6 +55,15 @@ fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
     session.save(20).unwrap();
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    let system = root
+        .path()
+        .join(".shinki/musica/minori/夏空のペルセウス/system.dat");
+    let decoded = crate::minori_data::decode_system(
+        &std::fs::read(&system).unwrap(),
+        crate::minori_data::SystemFormat::Blowfish,
+    )
+    .unwrap();
+    assert_eq!(decoded.get(b"REN_CLEAR".as_slice()).unwrap(), b"1");
     session.load(20).unwrap();
     assert_eq!(session.vm.state().global_variables["REN_CLEAR"], 1);
     assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
@@ -65,14 +74,11 @@ fn native_gpu_gallery_progress_survives_old_slot_and_cold_restart() {
     assert_eq!(session.vm.state().global_variables["REN_CLEAR"], 1);
     assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
     Box::new(session).close().unwrap();
-    let path = root
-        .path()
-        .join(".shinki/musica/saves/global-progress.json");
-    std::fs::write(&path, b"damaged").unwrap();
+    std::fs::write(&system, b"damaged").unwrap();
     assert!(
         provider
             .open_session(request(root.path(), Sink::default()))
             .is_err()
     );
-    assert_eq!(std::fs::read(path).unwrap(), b"damaged");
+    assert_eq!(std::fs::read(system).unwrap(), b"damaged");
 }

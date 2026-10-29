@@ -7,11 +7,12 @@ impl MusicaSession {
     ) -> SessionResult<()> {
         self.message(text, speaker)
     }
-    pub(super) fn persist_progress(&mut self) -> SessionResult<()> {
-        let unlocks = &self.vm.state().gallery_unlocks;
-        if *unlocks != self.persisted_unlocks {
-            self.storage.write_progress(self.game, unlocks)?;
-            self.persisted_unlocks = unlocks.clone();
+    /// Writes `system.dat` when a `.setglobal` changed the title-wide table.
+    pub(super) fn persist_globals(&mut self) -> SessionResult<()> {
+        let globals = &self.vm.state().global_variables;
+        if *globals != self.persisted_globals {
+            self.native.store_globals(globals)?;
+            self.persisted_globals = globals.clone();
         }
         Ok(())
     }
@@ -123,8 +124,8 @@ impl MusicaSession {
         vm.restore_native_save(&saved.vm, 1)
             .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "saved VM state is invalid"))?;
         vm.set_launch_mode(self.vm.state().launch_mode);
-        vm.merge_verified_gallery_unlocks(&self.persisted_unlocks)
-            .map_err(vm_error)?;
+        // Globals are title-wide (`system.dat`), never restored from a slot.
+        vm.replace_global_variables(self.vm.state().global_variables.clone());
         let mut scene = Scene::new_scaled(
             self.scene.gpu_instance(),
             self.archive.clone(),
