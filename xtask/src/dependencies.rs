@@ -1717,7 +1717,7 @@ pub fn prepare(
         return doctor(inv, target, core);
     }
     if target_spec.platform == "linux"
-        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
+        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
     {
         return doctor(inv, target, core);
     }
