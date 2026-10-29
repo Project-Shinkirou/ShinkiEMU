@@ -28,3 +28,596 @@ msgstr "言語"
 
 msgid "跟随系统"
 msgstr "システムに従う"
+
+# library
+msgid "完美"
+msgstr "完璧"
+
+msgid "可通关"
+msgstr "クリア可能"
+
+msgid "有瑕疵"
+msgstr "不具合あり"
+
+msgid "仅能启动"
+msgstr "起動のみ"
+
+msgid "无法运行"
+msgstr "プレイ不可"
+
+msgid "未评级"
+msgstr "未評価"
+
+msgid "准备失败"
+msgstr "準備失敗"
+
+msgid "正在加载模拟器核心"
+msgstr "コアを読み込み中"
+
+msgid "正在扫描游戏目录"
+msgstr "ライブラリフォルダーをスキャン中"
+
+msgid "查看核心"
+msgstr "コアを表示"
+
+msgid "重启 ShinkiEMU"
+msgstr "ShinkiEMUを再起動"
+
+msgid "引擎 · 模拟器"
+msgstr "エンジン · コア"
+
+msgid "兼容性"
+msgstr "互換性"
+
+msgid "先准备资料库"
+msgstr "まずライブラリを準備"
+
+msgid "ShinkiEMU 会加载模拟器核心，再扫描你的游戏目录。"
+msgstr "ShinkiEMUはコアを読み込み、ライブラリフォルダーをスキャンします。"
+
+msgid "换个关键词试试。"
+msgstr "別のキーワードを試してください。"
+
+msgid "清除搜索"
+msgstr "検索をクリア"
+
+msgid "添加第一个游戏目录"
+msgstr "最初のライブラリフォルダーを追加"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会识别其中的作品。"
+msgstr "ゲームを含むフォルダーを選択してください。ShinkiEMUは作品を検出します。"
+
+msgid "没有符合筛选条件的作品"
+msgstr "フィルターに一致する作品がありません"
+
+msgid "显示全部"
+msgstr "すべて表示"
+
+msgid "这些目录里还没有识别到作品"
+msgstr "これらのフォルダーには作品が検出されませんでした"
+
+msgid "可以添加其他目录，或在 设置→库目录 中管理已有目录。"
+msgstr "フォルダーを追加するか、設定 → ライブラリフォルダーで管理してください。"
+
+msgid "上次游玩"
+msgstr "最終プレイ"
+
+msgid "最近游玩"
+msgstr "最近プレイした順"
+
+msgid "游玩时长"
+msgstr "プレイ時間"
+
+msgid "全部"
+msgstr "すべて"
+
+msgid "网格"
+msgstr "グリッド"
+
+msgid "列表"
+msgstr "リスト"
+
+msgid "视图"
+msgstr "表示"
+
+msgid "取消"
+msgstr "キャンセル"
+
+msgid "排序"
+msgstr "並べ替え"
+
+msgid "标题"
+msgstr "タイトル"
+
+msgid "添加游戏"
+msgstr "ゲームを追加"
+
+msgid "搜索标题、别名或开发商"
+msgstr "タイトル、別名、開発元で検索"
+
+msgid "没有找到“{}”"
+msgstr "「{}」は見つかりませんでした"
+
+msgid "{n} 部作品"
+msgid_plural "{n} 部作品"
+msgstr[0] "{n} 作品"
+
+# patch
+msgid "第 {0} 步：{1}"
+msgstr "ステップ {0}：{1}"
+
+msgid "选择…"
+msgstr "選択…"
+
+msgid "已关联 VNDB"
+msgstr "VNDB 連携済み"
+
+msgid "未关联 VNDB"
+msgstr "VNDB 未連携"
+
+msgid "{0}，{1}，{2}"
+msgstr "{0}、{1}、{2}"
+
+msgid "选择游戏"
+msgstr "ゲームを選択"
+
+msgid "选择补丁"
+msgstr "パッチを選択"
+
+msgid "目录"
+msgstr "ディレクトリ"
+
+msgid "执行"
+msgstr "実行"
+
+msgid "完成"
+msgstr "完了"
+
+msgid "补丁 · {}"
+msgstr "パッチ · {}"
+
+msgid "返回游戏库"
+msgstr "ライブラリに戻る"
+
+msgid "搜索游戏"
+msgstr "ゲームを検索"
+
+msgid "没有与“{}”匹配的游戏。"
+msgstr "「{}」に一致するゲームはありません。"
+
+msgid "资料库中还没有游戏。先在游戏库添加游戏目录并完成准备。"
+msgstr "ライブラリにはまだゲームがありません。先にライブラリでゲームフォルダーを追加し、準備を完了してください。"
+
+msgid "更换"
+msgstr "変更"
+
+msgid "恢复原文件"
+msgstr "元のファイルを復元"
+
+msgid "还原最近一次原位覆盖，修改过的补丁文件不会被覆盖。"
+msgstr "最新のその場で上書きを元に戻します。編集したパッチ適用後のファイルは上書きしません。"
+
+msgid "还原最近一次补丁"
+msgstr "最新のパッチを復元"
+
+msgid "下面列出补丁目录中适用于这部作品和当前模拟器的补丁；也可以使用本地的 Luau 转换脚本。"
+msgstr "このタイトルと現在のコアに対応するカタログのパッチを下に表示します。ローカルの Luau レシピも使えます。"
+
+msgid "补丁目录中没有适用于这部作品的补丁。"
+msgstr "カタログにこのタイトル用のパッチはありません。"
+
+msgid "推荐"
+msgstr "おすすめ"
+
+msgid "本地脚本"
+msgstr "ローカルレシピ"
+
+msgid "下载补丁"
+msgstr "パッチをダウンロード"
+
+msgid "选择本地脚本…"
+msgstr "ローカルレシピを選択…"
+
+msgid "补丁输入目录默认是游戏目录；可选择新目录或原位覆盖。原位覆盖会把修改前的文件保存在游戏目录的 .shinki/backup。"
+msgstr "パッチ入力ディレクトリの既定はゲームディレクトリです。新しいディレクトリかその場で上書きを選べます。その場で上書きでは、変更前のファイルをゲームディレクトリの .shinki/backup に保存します。"
+
+msgid "新目录"
+msgstr "新しいディレクトリ"
+
+msgid "原位覆盖"
+msgstr "その場で上書き"
+
+msgid "补丁输入目录"
+msgstr "パッチ入力ディレクトリ"
+
+msgid "使用游戏目录"
+msgstr "ゲームディレクトリを使用"
+
+msgid "输出目录"
+msgstr "出力ディレクトリ"
+
+msgid "尚未选择"
+msgstr "未選択"
+
+msgid "必须是不存在或为空的目录"
+msgstr "存在しないか空のディレクトリを指定してください"
+
+msgid "正在转换"
+msgstr "変換中"
+
+msgid "转换失败"
+msgstr "変換に失敗しました"
+
+msgid "开始转换"
+msgstr "変換を開始"
+
+msgid "原文件备份到 .shinki/backup；取消前不会修改游戏文件。"
+msgstr "元のファイルは .shinki/backup にバックアップされます。完了するまでゲームファイルは変更されません。"
+
+msgid "确认下面的设置后开始。转换期间可以随时取消，取消时不会生成输出目录。"
+msgstr "下の設定を確認してから開始してください。変換中はいつでもキャンセルでき、キャンセルした場合は出力ディレクトリは作成されません。"
+
+msgid "补丁：{}"
+msgstr "パッチ：{}"
+
+msgid "已从补丁目录选择"
+msgstr "カタログから選択済み"
+
+msgid "未选择"
+msgstr "未選択"
+
+msgid "补丁输入目录：{}"
+msgstr "パッチ入力ディレクトリ：{}"
+
+msgid "游戏目录"
+msgstr "ゲームディレクトリ"
+
+msgid "输出目录：{}"
+msgstr "出力ディレクトリ：{}"
+
+msgid "重新开始"
+msgstr "やり直す"
+
+msgid "转换完成"
+msgstr "変換が完了しました"
+
+msgid "转换结果已保存。"
+msgstr "変換結果を保存しました。"
+
+msgid "游戏目录：{}"
+msgstr "ゲームディレクトリ：{}"
+
+msgid "转换其他游戏"
+msgstr "別のゲームを変換"
+
+msgid "返回游戏"
+msgstr "ゲームに戻る"
+
+msgid "打开新作品"
+msgstr "新しい作品を開く"
+
+msgid "上一步"
+msgstr "戻る"
+
+msgid "下一步"
+msgstr "次へ"
+
+# translation
+msgid "{} 秒"
+msgstr "{} 秒"
+
+msgid "实时翻译"
+msgstr "リアルタイム翻訳"
+
+msgid "启用实时翻译"
+msgstr "リアルタイム翻訳を有効にする"
+
+msgid "需要先在 联网与资料 中允许联网"
+msgstr "先に「ネットワークとメタデータ」でネットワーク接続を許可してください"
+
+msgid "需要先填写并保存下方的接口配置"
+msgstr "先に下のプロバイダー設定を入力して保存してください"
+
+msgid "游戏运行时把对白发送到翻译服务，并显示译文。"
+msgstr "ゲーム実行中に台詞を翻訳サービスへ送り、訳文を表示します。"
+
+msgid "翻译接口"
+msgstr "翻訳プロバイダー"
+
+msgid "修改后点「保存」才会生效。"
+msgstr "変更は「保存」を押すと反映されます。"
+
+msgid "服务商"
+msgstr "プロバイダー"
+
+msgid "请填写接口地址"
+msgstr "エンドポイント URL を入力してください"
+
+msgid "需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。"
+msgstr "HTTPS が必要です。ローカルサービス（localhost / 127.0.0.1）は HTTP でも構いません。"
+
+msgid "恢复默认地址"
+msgstr "既定の URL に戻す"
+
+msgid "API 密钥（已保存，留空沿用）"
+msgstr "API キー（保存済み。空欄なら現在のキーを使用）"
+
+msgid "API 密钥"
+msgstr "API キー"
+
+msgid "密钥保存在系统凭据库中，不会写入配置文件。"
+msgstr "キーはシステムの資格情報ストアに保存され、設定ファイルには書き込まれません。"
+
+msgid "接口格式"
+msgstr "API 形式"
+
+msgid "模型"
+msgstr "モデル"
+
+msgid "先「测试连接」获取模型列表"
+msgstr "「接続テスト」でモデル一覧を取得"
+
+msgid "手动输入…"
+msgstr "手動で入力…"
+
+msgid "测试连接成功后可以从列表中选择模型。"
+msgstr "接続テストに成功すると、一覧からモデルを選べます。"
+
+msgid "模型名称"
+msgstr "モデル名"
+
+msgid "请填写模型名称"
+msgstr "モデル名を入力してください"
+
+msgid "目标语言"
+msgstr "翻訳先の言語"
+
+msgid "语言代码"
+msgstr "言語コード"
+
+msgid "BCP 47 语言代码，例如 zh-CN、fr、de。"
+msgstr "BCP 47 の言語コード（例：zh-CN、fr、de）。"
+
+msgid "超时"
+msgstr "タイムアウト"
+
+msgid "收起高级设置"
+msgstr "詳細設定を閉じる"
+
+msgid "高级设置"
+msgstr "詳細設定"
+
+msgid "追加提示词"
+msgstr "追加プロンプト"
+
+msgid "附加在翻译指令后的风格要求，例如人名译法或语气。"
+msgstr "翻訳指示の後に付け加えるスタイルの指定（人名の訳し方や口調など）。"
+
+msgid "不能超过 2000 字"
+msgstr "2000 文字以内にしてください"
+
+msgid "上下文段数"
+msgstr "コンテキスト行数"
+
+msgid "随请求附带的前文对白条数，0 表示不带上下文。"
+msgstr "リクエストに添える直前の台詞の数。0 にするとコンテキストを送りません。"
+
+msgid "上下文字符上限"
+msgstr "コンテキスト文字数の上限"
+
+msgid "连接状态"
+msgstr "接続状態"
+
+msgid "有未保存的修改"
+msgstr "未保存の変更があります"
+
+msgid "测试连接"
+msgstr "接続テスト"
+
+msgid "保存"
+msgstr "保存"
+
+msgid "测试连接需要先允许联网。"
+msgstr "接続テストにはネットワーク接続の許可が必要です。"
+
+# detail+login
+msgid "关闭"
+msgstr "閉じる"
+
+msgid "模拟器"
+msgstr "エミュレーター"
+
+msgid "开始游戏"
+msgstr "ゲームを開始"
+
+msgid "游戏设置"
+msgstr "ゲーム設定"
+
+msgid "更多操作"
+msgstr "その他の操作"
+
+msgid "暂时无法启动"
+msgstr "現在は起動できません"
+
+msgid "概览"
+msgstr "概要"
+
+msgid "记录"
+msgstr "記録"
+
+msgid "未开始"
+msgstr "未プレイ"
+
+msgid "从未"
+msgstr "なし"
+
+msgid "开发商"
+msgstr "開発元"
+
+msgid "发售日"
+msgstr "発売日"
+
+msgid "平台"
+msgstr "プラットフォーム"
+
+msgid "别名"
+msgstr "別名"
+
+msgid "标签"
+msgstr "タグ"
+
+msgid "作品资料"
+msgstr "作品情報"
+
+msgid "尚未关联 VNDB 或 Bangumi 作品资料。"
+msgstr "VNDB または Bangumi の作品情報にまだ連携していません。"
+
+msgid "关联作品资料…"
+msgstr "作品情報を連携…"
+
+msgid "同一作品的其他版本"
+msgstr "同じ作品の別バージョン"
+
+msgid "发行版本 {}"
+msgstr "リリース {}"
+
+msgid "发行版本 {0} · {1}"
+msgstr "リリース {0} · {1}"
+
+msgid "更新于 {}"
+msgstr "{} 更新"
+
+msgid "发行版本"
+msgstr "リリース"
+
+msgid "选择你的发行版本以匹配兼容性记录"
+msgstr "互換性レポートと照合するリリースを選択してください"
+
+msgid "获取版本列表"
+msgstr "リリース一覧を取得"
+
+msgid "取消指定版本"
+msgstr "リリース指定を解除"
+
+msgid "报告兼容性"
+msgstr "互換性を報告"
+
+msgid "先关联 VNDB 作品"
+msgstr "先に VNDB の作品と連携してください"
+
+msgid "游玩记录"
+msgstr "プレイ記録"
+
+msgid "还没有游玩记录"
+msgstr "プレイ記録はまだありません"
+
+msgid "Bangumi 状态"
+msgstr "Bangumi のステータス"
+
+msgid "想玩"
+msgstr "プレイしたい"
+
+msgid "在玩"
+msgstr "プレイ中"
+
+msgid "玩过"
+msgstr "プレイ済み"
+
+msgid "搁置"
+msgstr "保留中"
+
+msgid "抛弃"
+msgstr "中断"
+
+msgid "评分"
+msgstr "評価"
+
+msgid "{} 分"
+msgstr "{} 点"
+
+msgid "未评分"
+msgstr "未評価"
+
+msgid "备注"
+msgstr "メモ"
+
+msgid "同步到 Bangumi"
+msgstr "Bangumi に同期"
+
+msgid "{} 账户名"
+msgstr "{} アカウント名"
+
+msgid "密码"
+msgstr "パスワード"
+
+msgid "密码只用于本次登录；登录凭据保存在系统凭据库中。"
+msgstr "パスワードはこのサインインにのみ使います。サインイン情報はシステムの資格情報ストアに保存されます。"
+
+msgid "登录"
+msgstr "サインイン"
+
+msgid "邮箱验证码"
+msgstr "メール認証コード"
+
+msgid "手机令牌验证码"
+msgstr "モバイル認証コード"
+
+msgid "验证码已发送至你的邮箱。"
+msgstr "認証コードをメールで送信しました。"
+
+msgid "打开商店手机应用，输入令牌中显示的验证码。"
+msgstr "ストアのモバイルアプリを開き、認証機能に表示されるコードを入力してください。"
+
+msgid "提交"
+msgstr "送信"
+
+msgid "登录 {} 后可以下载你已拥有的游戏。"
+msgstr "{} にサインインすると、所有しているゲームをダウンロードできます。"
+
+msgid "登录失败"
+msgstr "サインインに失敗しました"
+
+msgid "账户密码登录"
+msgstr "アカウントとパスワード"
+
+msgid "其他登录方式"
+msgstr "その他のサインイン方法"
+
+msgid "扫码登录"
+msgstr "QR コードでサインイン"
+
+msgid "导入 {} 客户端登录"
+msgstr "{} クライアントのサインインを取り込む"
+
+msgid "浏览器登录"
+msgstr "ブラウザーでサインイン"
+
+msgid "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。"
+msgstr "ストアの公式サイトで自分のアカウントにサインインし、そのサイトの Cookie を貼り付けてください。Cookie はシステムのキーリングにのみ保存されます。"
+
+msgid "打开官网登录页"
+msgstr "公式サイトのサインインページを開く"
+
+msgid "使用 Cookie 登录"
+msgstr "Cookie でサインイン"
+
+msgid "正在连接 {}"
+msgstr "{} に接続中"
+
+msgid "验证码验证"
+msgstr "認証コード"
+
+msgid "账户：{}"
+msgstr "アカウント：{}"
+
+msgid "请在 {} 手机应用中确认"
+msgstr "{} のモバイルアプリで承認してください"
+
+msgid "在手机上批准这次登录后会自动继续。"
+msgstr "スマートフォンで承認すると自動的に続行します。"
+
+msgid "用 {} 手机应用扫描二维码并确认登录。"
+msgstr "{} のモバイルアプリで QR コードを読み取り、サインインを承認してください。"
+
+msgid "登录二维码"
+msgstr "サインイン用 QR コード"

@@ -28,3 +28,597 @@ msgstr "Language"
 
 msgid "跟随系统"
 msgstr "Follow system"
+
+# library
+msgid "完美"
+msgstr "Perfect"
+
+msgid "可通关"
+msgstr "Completable"
+
+msgid "有瑕疵"
+msgstr "Flawed"
+
+msgid "仅能启动"
+msgstr "Boot only"
+
+msgid "无法运行"
+msgstr "Unplayable"
+
+msgid "未评级"
+msgstr "Unrated"
+
+msgid "准备失败"
+msgstr "Preparation failed"
+
+msgid "正在加载模拟器核心"
+msgstr "Loading cores"
+
+msgid "正在扫描游戏目录"
+msgstr "Scanning library folders"
+
+msgid "查看核心"
+msgstr "View cores"
+
+msgid "重启 ShinkiEMU"
+msgstr "Restart ShinkiEMU"
+
+msgid "引擎 · 模拟器"
+msgstr "Engine · Core"
+
+msgid "兼容性"
+msgstr "Compatibility"
+
+msgid "先准备资料库"
+msgstr "Prepare library first"
+
+msgid "ShinkiEMU 会加载模拟器核心，再扫描你的游戏目录。"
+msgstr "ShinkiEMU will load cores and scan your library folders."
+
+msgid "换个关键词试试。"
+msgstr "Try different keywords."
+
+msgid "清除搜索"
+msgstr "Clear search"
+
+msgid "添加第一个游戏目录"
+msgstr "Add your first library folder"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会识别其中的作品。"
+msgstr "Choose folders containing your games. ShinkiEMU will detect titles inside."
+
+msgid "没有符合筛选条件的作品"
+msgstr "No titles match the filter"
+
+msgid "显示全部"
+msgstr "Show all"
+
+msgid "这些目录里还没有识别到作品"
+msgstr "No titles detected in these folders"
+
+msgid "可以添加其他目录，或在 设置→库目录 中管理已有目录。"
+msgstr "Add more folders or manage them in Settings → Library folders."
+
+msgid "上次游玩"
+msgstr "Last played"
+
+msgid "最近游玩"
+msgstr "Recently played"
+
+msgid "游玩时长"
+msgstr "Play time"
+
+msgid "全部"
+msgstr "All"
+
+msgid "网格"
+msgstr "Grid"
+
+msgid "列表"
+msgstr "List"
+
+msgid "视图"
+msgstr "View"
+
+msgid "取消"
+msgstr "Cancel"
+
+msgid "排序"
+msgstr "Sort"
+
+msgid "标题"
+msgstr "Title"
+
+msgid "添加游戏"
+msgstr "Add game"
+
+msgid "搜索标题、别名或开发商"
+msgstr "Search titles, aliases or developers"
+
+msgid "没有找到“{}”"
+msgstr "No results for “{}”"
+
+msgid "{n} 部作品"
+msgid_plural "{n} 部作品"
+msgstr[0] "{n} game"
+msgstr[1] "{n} games"
+
+# patch
+msgid "第 {0} 步：{1}"
+msgstr "Step {0}: {1}"
+
+msgid "选择…"
+msgstr "Choose…"
+
+msgid "已关联 VNDB"
+msgstr "Linked to VNDB"
+
+msgid "未关联 VNDB"
+msgstr "Not linked to VNDB"
+
+msgid "{0}，{1}，{2}"
+msgstr "{0}, {1}, {2}"
+
+msgid "选择游戏"
+msgstr "Choose game"
+
+msgid "选择补丁"
+msgstr "Choose patch"
+
+msgid "目录"
+msgstr "Directories"
+
+msgid "执行"
+msgstr "Run"
+
+msgid "完成"
+msgstr "Done"
+
+msgid "补丁 · {}"
+msgstr "Patches · {}"
+
+msgid "返回游戏库"
+msgstr "Back to library"
+
+msgid "搜索游戏"
+msgstr "Search games"
+
+msgid "没有与“{}”匹配的游戏。"
+msgstr "No games match “{}”."
+
+msgid "资料库中还没有游戏。先在游戏库添加游戏目录并完成准备。"
+msgstr "The library has no games yet. Add a game folder in Library and finish preparing it first."
+
+msgid "更换"
+msgstr "Change"
+
+msgid "恢复原文件"
+msgstr "Restore original files"
+
+msgid "还原最近一次原位覆盖，修改过的补丁文件不会被覆盖。"
+msgstr "Restores the latest in-place overwrite. Patched files you edited are not overwritten."
+
+msgid "还原最近一次补丁"
+msgstr "Restore latest patch"
+
+msgid "下面列出补丁目录中适用于这部作品和当前模拟器的补丁；也可以使用本地的 Luau 转换脚本。"
+msgstr "Patches from the catalog that fit this title and its current core are listed below. You can also use a local Luau recipe."
+
+msgid "补丁目录中没有适用于这部作品的补丁。"
+msgstr "The catalog has no patches for this title."
+
+msgid "推荐"
+msgstr "Recommended"
+
+msgid "本地脚本"
+msgstr "Local recipe"
+
+msgid "下载补丁"
+msgstr "Download patch"
+
+msgid "选择本地脚本…"
+msgstr "Choose local recipe…"
+
+msgid "补丁输入目录默认是游戏目录；可选择新目录或原位覆盖。原位覆盖会把修改前的文件保存在游戏目录的 .shinki/backup。"
+msgstr "The patch input directory defaults to the game directory. Choose New directory or In-place overwrite; in-place mode keeps the original files in the game's .shinki/backup."
+
+msgid "新目录"
+msgstr "New directory"
+
+msgid "原位覆盖"
+msgstr "In-place overwrite"
+
+msgid "补丁输入目录"
+msgstr "Patch input directory"
+
+msgid "使用游戏目录"
+msgstr "Use game directory"
+
+msgid "输出目录"
+msgstr "Output directory"
+
+msgid "尚未选择"
+msgstr "Not chosen yet"
+
+msgid "必须是不存在或为空的目录"
+msgstr "Must be a new or empty directory"
+
+msgid "正在转换"
+msgstr "Converting"
+
+msgid "转换失败"
+msgstr "Conversion failed"
+
+msgid "开始转换"
+msgstr "Start conversion"
+
+msgid "原文件备份到 .shinki/backup；取消前不会修改游戏文件。"
+msgstr "Original files are backed up to .shinki/backup. Game files stay unchanged until the run finishes."
+
+msgid "确认下面的设置后开始。转换期间可以随时取消，取消时不会生成输出目录。"
+msgstr "Check the settings below, then start. You can cancel at any time; cancelling leaves no output directory."
+
+msgid "补丁：{}"
+msgstr "Patch: {}"
+
+msgid "已从补丁目录选择"
+msgstr "chosen from the catalog"
+
+msgid "未选择"
+msgstr "not chosen"
+
+msgid "补丁输入目录：{}"
+msgstr "Patch input directory: {}"
+
+msgid "游戏目录"
+msgstr "game directory"
+
+msgid "输出目录：{}"
+msgstr "Output directory: {}"
+
+msgid "重新开始"
+msgstr "Start again"
+
+msgid "转换完成"
+msgstr "Conversion complete"
+
+msgid "转换结果已保存。"
+msgstr "The result has been saved."
+
+msgid "游戏目录：{}"
+msgstr "Game directory: {}"
+
+msgid "转换其他游戏"
+msgstr "Convert another game"
+
+msgid "返回游戏"
+msgstr "Back to game"
+
+msgid "打开新作品"
+msgstr "Open new title"
+
+msgid "上一步"
+msgstr "Back"
+
+msgid "下一步"
+msgstr "Next"
+
+# translation
+msgid "{} 秒"
+msgstr "{} s"
+
+msgid "实时翻译"
+msgstr "Live translation"
+
+msgid "启用实时翻译"
+msgstr "Enable live translation"
+
+msgid "需要先在 联网与资料 中允许联网"
+msgstr "Allow network access in Network & metadata first"
+
+msgid "需要先填写并保存下方的接口配置"
+msgstr "Fill in and save the provider settings below first"
+
+msgid "游戏运行时把对白发送到翻译服务，并显示译文。"
+msgstr "Sends dialogue to the translation service while a game runs and shows the translation."
+
+msgid "翻译接口"
+msgstr "Translation provider"
+
+msgid "修改后点「保存」才会生效。"
+msgstr "Changes take effect after you click Save."
+
+msgid "服务商"
+msgstr "Provider"
+
+msgid "请填写接口地址"
+msgstr "Enter the endpoint URL"
+
+msgid "需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。"
+msgstr "HTTPS is required; local services (localhost / 127.0.0.1) may use HTTP."
+
+msgid "恢复默认地址"
+msgstr "Restore default URL"
+
+msgid "API 密钥（已保存，留空沿用）"
+msgstr "API key (saved; leave empty to keep it)"
+
+msgid "API 密钥"
+msgstr "API key"
+
+msgid "密钥保存在系统凭据库中，不会写入配置文件。"
+msgstr "The key is stored in the system credential store, never in the config file."
+
+msgid "接口格式"
+msgstr "API format"
+
+msgid "模型"
+msgstr "Model"
+
+msgid "先「测试连接」获取模型列表"
+msgstr "Run Test connection to load models"
+
+msgid "手动输入…"
+msgstr "Enter manually…"
+
+msgid "测试连接成功后可以从列表中选择模型。"
+msgstr "After a successful connection test you can pick a model from the list."
+
+msgid "模型名称"
+msgstr "Model name"
+
+msgid "请填写模型名称"
+msgstr "Enter a model name"
+
+msgid "目标语言"
+msgstr "Target language"
+
+msgid "语言代码"
+msgstr "Language code"
+
+msgid "BCP 47 语言代码，例如 zh-CN、fr、de。"
+msgstr "BCP 47 language code, e.g. zh-CN, fr, de."
+
+msgid "超时"
+msgstr "Timeout"
+
+msgid "收起高级设置"
+msgstr "Hide advanced settings"
+
+msgid "高级设置"
+msgstr "Advanced settings"
+
+msgid "追加提示词"
+msgstr "Extra prompt"
+
+msgid "附加在翻译指令后的风格要求，例如人名译法或语气。"
+msgstr "Style notes appended to the translation instructions, such as how to render names or tone."
+
+msgid "不能超过 2000 字"
+msgstr "Must not exceed 2000 characters"
+
+msgid "上下文段数"
+msgstr "Context lines"
+
+msgid "随请求附带的前文对白条数，0 表示不带上下文。"
+msgstr "Number of preceding dialogue lines sent with each request; 0 sends none."
+
+msgid "上下文字符上限"
+msgstr "Context character limit"
+
+msgid "连接状态"
+msgstr "Connection status"
+
+msgid "有未保存的修改"
+msgstr "Unsaved changes"
+
+msgid "测试连接"
+msgstr "Test connection"
+
+msgid "保存"
+msgstr "Save"
+
+msgid "测试连接需要先允许联网。"
+msgstr "Testing the connection requires network access."
+
+# detail+login
+msgid "关闭"
+msgstr "Close"
+
+msgid "模拟器"
+msgstr "Emulator"
+
+msgid "开始游戏"
+msgstr "Start game"
+
+msgid "游戏设置"
+msgstr "Game settings"
+
+msgid "更多操作"
+msgstr "More actions"
+
+msgid "暂时无法启动"
+msgstr "Can't start right now"
+
+msgid "概览"
+msgstr "Overview"
+
+msgid "记录"
+msgstr "History"
+
+msgid "未开始"
+msgstr "Not started"
+
+msgid "从未"
+msgstr "Never"
+
+msgid "开发商"
+msgstr "Developer"
+
+msgid "发售日"
+msgstr "Release date"
+
+msgid "平台"
+msgstr "Platforms"
+
+msgid "别名"
+msgstr "Aliases"
+
+msgid "标签"
+msgstr "Tags"
+
+msgid "作品资料"
+msgstr "Metadata"
+
+msgid "尚未关联 VNDB 或 Bangumi 作品资料。"
+msgstr "Not linked to VNDB or Bangumi metadata yet."
+
+msgid "关联作品资料…"
+msgstr "Link metadata…"
+
+msgid "同一作品的其他版本"
+msgstr "Other editions of this title"
+
+msgid "发行版本 {}"
+msgstr "Release {}"
+
+msgid "发行版本 {0} · {1}"
+msgstr "Release {0} · {1}"
+
+msgid "更新于 {}"
+msgstr "Updated {}"
+
+msgid "发行版本"
+msgstr "Release"
+
+msgid "选择你的发行版本以匹配兼容性记录"
+msgstr "Choose your release to match compatibility reports"
+
+msgid "获取版本列表"
+msgstr "Fetch releases"
+
+msgid "取消指定版本"
+msgstr "Clear release"
+
+msgid "报告兼容性"
+msgstr "Report compatibility"
+
+msgid "先关联 VNDB 作品"
+msgstr "Link a VNDB title first"
+
+msgid "游玩记录"
+msgstr "Play history"
+
+msgid "还没有游玩记录"
+msgstr "No play history yet"
+
+msgid "Bangumi 状态"
+msgstr "Bangumi status"
+
+msgid "想玩"
+msgstr "Wish"
+
+msgid "在玩"
+msgstr "Playing"
+
+msgid "玩过"
+msgstr "Played"
+
+msgid "搁置"
+msgstr "On hold"
+
+msgid "抛弃"
+msgstr "Dropped"
+
+msgid "评分"
+msgstr "Rating"
+
+msgid "{} 分"
+msgstr "{} / 10"
+
+msgid "未评分"
+msgstr "Not rated"
+
+msgid "备注"
+msgstr "Notes"
+
+msgid "同步到 Bangumi"
+msgstr "Sync to Bangumi"
+
+msgid "{} 账户名"
+msgstr "{} account name"
+
+msgid "密码"
+msgstr "Password"
+
+msgid "密码只用于本次登录；登录凭据保存在系统凭据库中。"
+msgstr "The password is used only for this sign-in; the sign-in credential is stored in the system credential store."
+
+msgid "登录"
+msgstr "Sign in"
+
+msgid "邮箱验证码"
+msgstr "Email code"
+
+msgid "手机令牌验证码"
+msgstr "Mobile authenticator code"
+
+msgid "验证码已发送至你的邮箱。"
+msgstr "A code has been sent to your email."
+
+msgid "打开商店手机应用，输入令牌中显示的验证码。"
+msgstr "Open the store's mobile app and enter the code shown by its authenticator."
+
+msgid "提交"
+msgstr "Submit"
+
+msgid "登录 {} 后可以下载你已拥有的游戏。"
+msgstr "Sign in to {} to download games you own."
+
+msgid "登录失败"
+msgstr "Sign-in failed"
+
+msgid "账户密码登录"
+msgstr "Account and password"
+
+msgid "其他登录方式"
+msgstr "Other sign-in options"
+
+msgid "扫码登录"
+msgstr "QR login"
+
+msgid "导入 {} 客户端登录"
+msgstr "Import {} client sign-in"
+
+msgid "浏览器登录"
+msgstr "Browser sign-in"
+
+msgid "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。"
+msgstr "Sign in to your own account on the store's website, then paste that site's cookie. The cookie is stored only in the system keyring."
+
+msgid "打开官网登录页"
+msgstr "Open sign-in page"
+
+msgid "使用 Cookie 登录"
+msgstr "Sign in with cookie"
+
+msgid "正在连接 {}"
+msgstr "Connecting to {}"
+
+msgid "验证码验证"
+msgstr "Verification code"
+
+msgid "账户：{}"
+msgstr "Account: {}"
+
+msgid "请在 {} 手机应用中确认"
+msgstr "Confirm in the {} mobile app"
+
+msgid "在手机上批准这次登录后会自动继续。"
+msgstr "Sign-in continues automatically once you approve it on your phone."
+
+msgid "用 {} 手机应用扫描二维码并确认登录。"
+msgstr "Scan the QR code with the {} mobile app and confirm the sign-in."
+
+msgid "登录二维码"
+msgstr "Sign-in QR code"

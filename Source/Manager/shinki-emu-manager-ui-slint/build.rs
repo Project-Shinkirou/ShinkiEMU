@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     env, fs,
     path::{Path, PathBuf},
 };
@@ -8,13 +8,15 @@ use rspolib::prelude::*;
 
 /// Bundled translation languages. zh-CN is the source language (msgid = zh text).
 const LANGUAGES: [&str; 2] = ["en", "ja"];
+/// `nplurals` of each entry of `LANGUAGES`, matching the .po `Plural-Forms` headers.
+const PLURAL_FORMS: [usize; 2] = [2, 1];
 const DOMAIN: &str = "shinki-emu-manager-ui-slint";
 
 fn main() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let translations = manifest.join("translations");
-    let catalog = load_catalog(&translations);
-    check_slint_sources(&manifest.join("ui"), &catalog);
+    let (catalog, plurals) = load_catalog(&translations);
+    check_slint_sources(&manifest.join("ui"), &catalog, &plurals);
     write_rust_catalog(&catalog);
 
     let material = manifest.join("material-1.1.0/material.slint");
@@ -30,9 +32,12 @@ fn main() {
 type Catalog = BTreeMap<String, Vec<String>>;
 
 /// Every msgid must be translated in every language, with the same placeholders.
-fn load_catalog(root: &Path) -> Catalog {
+/// Plural entries (`@tr("…" | "…" % n)`, Slint only) are returned separately
+/// because the Rust catalog has no plural forms.
+fn load_catalog(root: &Path) -> (Catalog, BTreeSet<String>) {
     let mut per_language = Vec::new();
-    for language in LANGUAGES {
+    let mut plurals = BTreeSet::new();
+    for (language, forms) in LANGUAGES.into_iter().zip(PLURAL_FORMS) {
         let path = root.join(language).join("LC_MESSAGES").join(format!("{DOMAIN}.po"));
         println!("cargo:rerun-if-changed={}", path.display());
         let file = rspolib::pofile(path.as_path())
@@ -40,26 +45,44 @@ fn load_catalog(root: &Path) -> Catalog {
         let mut entries = BTreeMap::new();
         for entry in file.entries {
             assert!(
-                entry.msgctxt.is_none() && entry.msgid_plural.is_none(),
+                entry.msgctxt.is_none(),
                 "SHINKI_EMU_I18N_UNSUPPORTED_ENTRY {language}: {:?}",
                 entry.msgid
             );
             if entry.obsolete {
                 continue;
             }
-            let translated = entry.translated();
-            let msgstr = entry.msgstr.clone().unwrap_or_default();
             assert!(
-                translated,
+                entry.translated(),
                 "SHINKI_EMU_I18N_UNTRANSLATED {language}: {:?}",
                 entry.msgid
             );
-            assert_eq!(
-                placeholders(&entry.msgid),
-                placeholders(&msgstr),
-                "SHINKI_EMU_I18N_PLACEHOLDER_MISMATCH {language}: {:?}",
-                entry.msgid
-            );
+            let msgstr = if let Some(plural) = &entry.msgid_plural {
+                assert!(
+                    entry.msgstr_plural.len() == forms && entry.msgstr_plural.iter().all(|s| !s.is_empty()),
+                    "SHINKI_EMU_I18N_PLURAL_FORMS {language} needs {forms}: {:?}",
+                    entry.msgid
+                );
+                for form in &entry.msgstr_plural {
+                    assert_eq!(
+                        placeholders(plural),
+                        placeholders(form),
+                        "SHINKI_EMU_I18N_PLACEHOLDER_MISMATCH {language}: {:?}",
+                        entry.msgid
+                    );
+                }
+                plurals.insert(entry.msgid.clone());
+                entry.msgstr_plural.join("\u{0}")
+            } else {
+                let msgstr = entry.msgstr.clone().unwrap_or_default();
+                assert_eq!(
+                    placeholders(&entry.msgid),
+                    placeholders(&msgstr),
+                    "SHINKI_EMU_I18N_PLACEHOLDER_MISMATCH {language}: {:?}",
+                    entry.msgid
+                );
+                msgstr
+            };
             assert!(
                 entries.insert(entry.msgid.clone(), msgstr).is_none(),
                 "SHINKI_EMU_I18N_DUPLICATE {language}: {:?}",
@@ -85,7 +108,10 @@ fn load_catalog(root: &Path) -> Catalog {
             .collect();
         catalog.insert(msgid.clone(), row);
     }
-    catalog
+    for msgid in &plurals {
+        catalog.remove(msgid);
+    }
+    (catalog, plurals)
 }
 
 /// `{}`, `{0}` and `{name}` tokens, sorted, so reordering is allowed.
@@ -103,7 +129,7 @@ fn placeholders(text: &str) -> Vec<String> {
 
 /// Every `@tr("…")` in the Slint sources needs a catalog entry; Slint itself
 /// would silently fall back to the zh source text.
-fn check_slint_sources(ui: &Path, catalog: &Catalog) {
+fn check_slint_sources(ui: &Path, catalog: &Catalog, plurals: &BTreeSet<String>) {
     println!("cargo:rerun-if-changed={}", ui.display());
     let mut missing = Vec::new();
     let mut stack = vec![ui.to_path_buf()];
@@ -115,7 +141,7 @@ fn check_slint_sources(ui: &Path, catalog: &Catalog) {
             } else if path.extension().is_some_and(|ext| ext == "slint") {
                 let source = fs::read_to_string(&path).expect("SHINKI_EMU_I18N_UI_READ");
                 for msgid in tr_literals(&source) {
-                    if !catalog.contains_key(&msgid) {
+                    if !catalog.contains_key(&msgid) && !plurals.contains(&msgid) {
                         missing.push(format!("{}: {msgid:?}", path.display()));
                     }
                 }

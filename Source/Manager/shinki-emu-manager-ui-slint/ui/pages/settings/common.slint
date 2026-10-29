@@ -246,7 +246,8 @@ export component FormField {
 export component SliderField {
     in property <string> label;
     in property <string> description;
-    in property <string> suffix;
+    // Renders the value as a duration in seconds.
+    in property <bool> seconds;
     in property <float> minimum;
     in property <float> maximum;
     in property <float> step: 1;
@@ -269,7 +270,7 @@ export component SliderField {
             }
             MaterialText {
                 horizontal-stretch: 0;
-                text: round(slider.value) + root.suffix;
+                text: root.seconds ? @tr("{} 秒", round(slider.value)) : round(slider.value);
                 style: MaterialTypography.label-large;
                 color: MaterialPalette.primary;
                 vertical-alignment: center;
