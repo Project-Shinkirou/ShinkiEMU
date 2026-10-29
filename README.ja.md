@@ -28,7 +28,7 @@ ShinkiEMU はプレリリース段階で、ビルドは beta として公開し�
 | [`ethornell-rs`](docs/ja/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`ReMinori`](docs/ja/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`shinki.emu.musica`](docs/ja/cores/shinki-emu-musica.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android |
-| [`art3m1s-core`](docs/ja/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | Android |
+| [`art3m1s-core`](docs/ja/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | — |
 | [`renpy`](docs/ja/cores/renpy.md) | Ren'Py | Windows x64、Linux x64 | Android |
 | [`shinki.emu.cmvs`](docs/ja/cores/shinki-emu-cmvs.md) | CMVS | Windows x64、Linux x64、macOS x64/arm64 | — |
 | [`kirikiroid2-web`](docs/ja/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（Android と iOS 向けの単体コアパッケージもあり） | — |

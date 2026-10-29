@@ -93,8 +93,8 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-static_features = ["static-core"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_features = []
+static_manager_targets = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
@@ -109,10 +109,10 @@ target = "x86_64-apple-darwin"
 reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Artemis needs Lua 5.1 (mlua lua51) while the Manager links Luau; one binary can link only one Lua. Android embedding is pending an isolated Lua build."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Artemis needs Lua 5.1 (mlua lua51) while the Manager links Luau; one binary can link only one Lua. Android embedding is pending an isolated Lua build."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "pending: shared FFmpeg static closure + native build not yet verified"
