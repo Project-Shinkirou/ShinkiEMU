@@ -25,6 +25,7 @@ fn install_app<C: ManagerController>(
             view_mode: appearance.view_mode.to_string(),
             reduce_motion: appearance.reduce_motion,
             cover_badges: appearance.cover_badges,
+            language: appearance.language.to_string(),
         };
         w.run(|c| c.set_appearance(settings));
     });

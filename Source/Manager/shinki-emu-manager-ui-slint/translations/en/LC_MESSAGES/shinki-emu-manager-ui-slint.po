@@ -8,17 +8,23 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "游戏库"
-msgstr "Library"
-
-msgid "补丁"
-msgstr "Patches"
-
 msgid "核心"
 msgstr "Cores"
+
+msgid "游戏库"
+msgstr "Library"
 
 msgid "滤镜"
 msgstr "Filters"
 
+msgid "补丁"
+msgstr "Patches"
+
 msgid "设置"
 msgstr "Settings"
+
+msgid "语言"
+msgstr "Language"
+
+msgid "跟随系统"
+msgstr "Follow system"

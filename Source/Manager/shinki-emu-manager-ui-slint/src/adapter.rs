@@ -792,6 +792,7 @@ fn appearance(value: &AppearanceViewModel) -> Appearance {
         view_mode: value.view_mode.as_str().into(),
         reduce_motion: value.reduce_motion,
         cover_badges: value.cover_badges,
+        language: value.language.as_str().into(),
     }
 }
 

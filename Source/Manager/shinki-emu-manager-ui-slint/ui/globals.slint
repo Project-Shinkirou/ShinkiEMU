@@ -7,6 +7,8 @@ export struct Appearance {
     view-mode: string,
     reduce-motion: bool,
     cover-badges: bool,
+    // "system" | "zh-CN" | "en" | "ja"
+    language: string,
 }
 
 export struct Choice {
@@ -24,6 +26,7 @@ export global App {
         view-mode: "grid",
         reduce-motion: false,
         cover-badges: true,
+        language: "system",
     };
     in-out property <bool> system-dark: true;
     out property <bool> dark: appearance.theme-mode == "system" ? system-dark : appearance.theme-mode == "dark";

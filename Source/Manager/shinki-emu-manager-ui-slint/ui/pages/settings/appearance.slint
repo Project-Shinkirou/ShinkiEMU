@@ -10,32 +10,37 @@ export global AppearanceEdit {
 
     public function set-theme(mode: string) {
         let a = App.appearance;
-        self.commit({ theme-mode: mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges });
+        self.commit({ theme-mode: mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges, language: a.language });
     }
 
     public function set-density(density: string) {
         let a = App.appearance;
-        self.commit({ theme-mode: a.theme-mode, density: density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges });
+        self.commit({ theme-mode: a.theme-mode, density: density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges, language: a.language });
     }
 
     public function set-cover-size(size: string) {
         let a = App.appearance;
-        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges });
+        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges, language: a.language });
     }
 
     public function set-view-mode(mode: string) {
         let a = App.appearance;
-        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges });
+        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges, language: a.language });
     }
 
     public function set-reduce-motion(on: bool) {
         let a = App.appearance;
-        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: on, cover-badges: a.cover-badges });
+        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: on, cover-badges: a.cover-badges, language: a.language });
+    }
+
+    public function set-language(language: string) {
+        let a = App.appearance;
+        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: a.cover-badges, language: language });
     }
 
     public function set-cover-badges(on: bool) {
         let a = App.appearance;
-        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: on });
+        self.commit({ theme-mode: a.theme-mode, density: a.density, cover-size: a.cover-size, view-mode: a.view-mode, reduce-motion: a.reduce-motion, cover-badges: on, language: a.language });
     }
 }
 
@@ -46,6 +51,17 @@ export component ThemeChooser inherits FieldBlock {
         items: ["跟随系统", "浅色", "深色"];
         index: App.appearance.theme-mode == "light" ? 1 : App.appearance.theme-mode == "dark" ? 2 : 0;
         selected(i) => { AppearanceEdit.set-theme(i == 1 ? "light" : i == 2 ? "dark" : "system"); }
+    }
+}
+
+// Language names stay in their own script so each is findable in any UI language.
+export component LanguageChooser inherits FieldBlock {
+    label: @tr("语言");
+    Segments {
+        label: @tr("语言");
+        items: [@tr("跟随系统"), "简体中文", "English", "日本語"];
+        index: App.appearance.language == "zh-CN" ? 1 : App.appearance.language == "en" ? 2 : App.appearance.language == "ja" ? 3 : 0;
+        selected(i) => { AppearanceEdit.set-language(i == 1 ? "zh-CN" : i == 2 ? "en" : i == 3 ? "ja" : "system"); }
     }
 }
 
@@ -66,6 +82,8 @@ export component AppearanceSection inherits PageScroll {
         title: "显示";
 
         ThemeChooser { }
+
+        LanguageChooser { }
 
         FieldBlock {
             label: "密度";

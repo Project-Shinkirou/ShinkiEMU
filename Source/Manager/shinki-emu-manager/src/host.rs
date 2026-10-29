@@ -172,6 +172,8 @@ pub trait ManagerController: 'static {
     fn add_library_root(&mut self, path: &std::path::Path) -> Result<ManagerViewModel, String>;
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String>;
     fn onboarding_completed(&self) -> Result<bool, String>;
+    /// Persisted `AppearanceSettings::language`.
+    fn language(&self) -> String;
     fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String>;
     fn notice_presented(&mut self, now: Instant, visible: bool) -> Result<(), String>;
     fn acknowledge_notice(&mut self, checked: bool) -> Result<ManagerViewModel, String>;
@@ -489,6 +491,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     crate::startup::mark("ui_backend_selected");
     let adapter = std::rc::Rc::new(SlintManagerAdapter::new()?);
     crate::startup::mark("window_object_created");
+    shinki_emu_manager_ui_slint::i18n::apply(&controller.language());
     adapter.apply(&controller.model().map_err(HostError::Renderer)?);
     if !controller
         .onboarding_completed()

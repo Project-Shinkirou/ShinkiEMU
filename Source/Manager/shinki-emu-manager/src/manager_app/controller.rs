@@ -125,6 +125,9 @@ impl ManagerController for ShinkiEmuManagerController {
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::remove_library_root(self, path)
     }
+    fn language(&self) -> String {
+        self.appearance.language.clone()
+    }
     fn onboarding_completed(&self) -> Result<bool, String> {
         ShinkiEmuManagerController::onboarding_completed(self)
     }

@@ -79,6 +79,7 @@ pub struct AppearanceViewModel {
     pub view_mode: String,
     pub reduce_motion: bool,
     pub cover_badges: bool,
+    pub language: String,
 }
 
 impl Default for AppearanceViewModel {
@@ -90,6 +91,7 @@ impl Default for AppearanceViewModel {
             view_mode: "grid".into(),
             reduce_motion: false,
             cover_badges: true,
+            language: "system".into(),
         }
     }
 }
