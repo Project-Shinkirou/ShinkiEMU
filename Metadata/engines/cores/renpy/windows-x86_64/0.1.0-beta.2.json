@@ -6,8 +6,8 @@
   "platform": "windows-x86_64",
   "plugin_id": "renpy",
   "release_tag": "core-renpy-v0.1.0-beta.2",
-  "sha256": "e3b7bf17dbf08e1397fa687cbed926175a11a9d2095f5ef22c6cc89ac28acec0",
-  "size": 27180712,
+  "sha256": "672c78f297c9da5f470df2fe7280d1dc9af1446751b7024c609dbc80f625c16f",
+  "size": 27180709,
   "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-renpy-v0.1.0-beta.2/shinki-emu-core-renpy-0.1.0-beta.2-windows-x86_64.zip",
   "version": "0.1.0-beta.2"
 }
