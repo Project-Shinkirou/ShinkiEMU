@@ -1,0 +1,24 @@
+# ShinkiEMU Manager UI, English translation. Source language: zh-CN (msgid).
+# Edit msgstr only; build.rs rejects missing, fuzzy or placeholder-mismatched entries.
+msgid ""
+msgstr ""
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "游戏库"
+msgstr "Library"
+
+msgid "补丁"
+msgstr "Patches"
+
+msgid "核心"
+msgstr "Cores"
+
+msgid "滤镜"
+msgstr "Filters"
+
+msgid "设置"
+msgstr "Settings"

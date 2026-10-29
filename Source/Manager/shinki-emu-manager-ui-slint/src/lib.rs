@@ -1,6 +1,7 @@
 mod adapter;
 mod config_model;
 mod covers;
+pub mod i18n;
 mod list_model;
 mod notices;
 
