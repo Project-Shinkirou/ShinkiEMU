@@ -409,16 +409,13 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
-rev = "a3b698e3af5369cc6573a3392f9c63065e7a029d"
+rev = "77fd0834a0a20edaedaa8ba05a9261d33515e0ac"
 upstream = "https://github.com/renpy/renpy"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Linux builds are pending."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."

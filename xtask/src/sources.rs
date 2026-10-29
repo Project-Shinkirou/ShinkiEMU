@@ -949,13 +949,14 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .push_str("$env:SHINKI_EMU_NATIVE_DOWNLOADS = \"$PWD/.work/native-downloads\"\n");
     }
     if selected.renpy {
-        instructions.push_str(
+        instructions.push_str(&format!(
             "$env:RENPY_SDK_ROOT = \"$PWD/.work/native-downloads/renpy-sdk\"\n\
              $env:RENPY_PYTHON_DEV = \"$PWD/.work/native-downloads/python\"\n\
              $env:RENPY_SDL_INCLUDE = \"$PWD/.work/native-downloads/sdl2/include\"\n\
-             $env:Python3_EXECUTABLE = \"$PWD/.work/native-downloads/python/python.exe\"\n\
-             $env:RENPY_CYTHON_LICENSE = \"$PWD/.work/native-downloads/cython-license/LICENSE.txt\"\n"
-        );
+             $env:Python3_EXECUTABLE = \"$PWD/.work/native-downloads/python/{}\"\n\
+             $env:RENPY_CYTHON_LICENSE = \"$PWD/.work/native-downloads/cython-license/LICENSE.txt\"\n",
+             dependencies::build_python_relative()
+        ));
     }
     if selected.bison {
         instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
