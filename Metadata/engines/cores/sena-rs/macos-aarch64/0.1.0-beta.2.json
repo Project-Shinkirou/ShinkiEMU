@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "Sena",
+  "family_name": "SoftPAL",
+  "license": "MPL-2.0",
+  "platform": "macos-aarch64",
+  "plugin_id": "sena-rs",
+  "release_tag": "core-sena-rs-v0.1.0-beta.2",
+  "sha256": "47e475a39e05b8d3d7f414fb98fca806567f6fda70b969a583b1557f0cdd6b68",
+  "size": 10541225,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-sena-rs-v0.1.0-beta.2/shinki-emu-core-sena-rs-0.1.0-beta.2-macos-aarch64.zip",
+  "version": "0.1.0-beta.2"
+}
