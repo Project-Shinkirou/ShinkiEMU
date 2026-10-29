@@ -95,7 +95,9 @@ impl GitHub {
         }
         Ok(asset)
     }
-    fn catalog_pr(&self, path: &str, entry: &Value, tag: &str) -> Result<()> {
+    /// Create the release's catalog branch from `main`, or reuse it when it
+    /// only touches this core's catalog directory.
+    fn catalog_branch(&self, plugin_id: &str, tag: &str) -> Result<String> {
         let main = self
             .get_optional(&format!("{API}/git/ref/heads/main"))?
             .context("main ref missing")?;
@@ -113,10 +115,7 @@ impl GitHub {
             let compare = self
                 .get_optional(&format!("{API}/compare/main...{branch}"))?
                 .context("catalog branch comparison")?;
-            let prefix = format!(
-                "Metadata/engines/cores/{}/",
-                entry["plugin_id"].as_str().context("catalog plugin")?
-            );
+            let prefix = format!("Metadata/engines/cores/{plugin_id}/");
             if compare["files"]
                 .as_array()
                 .context("catalog branch changes")?
@@ -130,8 +129,11 @@ impl GitHub {
                 bail!("catalog branch contains unrelated changes; refusing to modify it");
             }
         }
+        Ok(branch)
+    }
+    fn catalog_put(&self, branch: &str, path: &str, entry: &Value, tag: &str) -> Result<()> {
         let mut content_url = reqwest::Url::parse(&format!("{API}/contents/{path}"))?;
-        content_url.query_pairs_mut().append_pair("ref", &branch);
+        content_url.query_pairs_mut().append_pair("ref", branch);
         let existing = self.get_optional(content_url.as_str())?;
         let mut bytes = serde_json::to_vec_pretty(entry)?;
         bytes.push(b'\n');
@@ -150,6 +152,11 @@ impl GitHub {
                 .send()?
                 .error_for_status()?;
         }
+        Ok(())
+    }
+    /// Open the catalog PR after every platform entry is on the branch, so a
+    /// refused PR never leaves platforms out of the catalog.
+    fn catalog_open_pr(&self, branch: &str, tag: &str) -> Result<()> {
         let mut prs_url = reqwest::Url::parse(&format!("{API}/pulls"))?;
         prs_url
             .query_pairs_mut()
@@ -157,7 +164,8 @@ impl GitHub {
             .append_pair("head", &format!("Project-Shinkirou:{branch}"));
         let prs = self.get_optional(prs_url.as_str())?.context("PR list")?;
         if prs.as_array().context("PRs")?.is_empty() {
-            self.post("pulls",&json!({"title":format!("Catalog {tag}"),"head":branch,"base":"main","body":"Catalog generated from the published Release records. Review license, platform, hash and size before merging."}))?;
+            self.post("pulls",&json!({"title":format!("Catalog {tag}"),"head":branch,"base":"main","body":"Catalog generated from the published Release records. Review license, platform, hash and size before merging."}))
+                .with_context(|| format!("every catalog entry is on branch {branch}; open its PR against main manually"))?;
         }
         Ok(())
     }
@@ -420,6 +428,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     .error_for_status()?;
     if component != "manager" {
         let c = inv.core(component)?;
+        let branch = gh.catalog_branch(component, tag)?;
         for (record, asset) in assets {
             let url = published_asset_url(tag, asset["name"].as_str().context("asset name")?)?;
             let hash = record["archive"]["sha256"]
@@ -430,12 +439,14 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
             let entry = json!({"plugin_id":component,"display_name":c.display_name,"family_name":c.family_name,"version":version,"abi":"shinki.emu.native.c.v3","platform":platform,"url":url,"sha256":hash,"size":size,"license":c.license,"release_tag":tag});
             let dto: shinki_emu_metadata::CoreCatalogEntry = serde_json::from_value(entry.clone())?;
             dto.validate()?;
-            gh.catalog_pr(
+            gh.catalog_put(
+                &branch,
                 &format!("Metadata/engines/cores/{component}/{platform}/{version}.json"),
                 &entry,
                 tag,
             )?;
         }
+        gh.catalog_open_pr(&branch, tag)?;
     }
     Ok(())
 }
