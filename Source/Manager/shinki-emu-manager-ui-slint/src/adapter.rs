@@ -4,6 +4,8 @@ use slint::{
     ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
 };
 
+use crate::tr;
+
 use crate::{
     App, Appearance, AppearanceViewModel, BangumiProgress, BangumiViewModel, Choice,
     ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreInfo, CoreViewModel, Cores,
@@ -679,8 +681,8 @@ fn store_transfer(value: &StoreTransferViewModel, name: &str) -> StoreTransfer {
     };
     let files = match (value.files_done, value.files_total) {
         (0, 0) => String::new(),
-        (done, 0) => format!("{done} 个文件"),
-        (done, total) => format!("{done} / {total} 个文件"),
+        (done, 0) => tr!("{done} 个文件", done = done),
+        (done, total) => tr!("{done} / {total} 个文件", done = done, total = total),
     };
     let speed = if value.speed_bytes_per_second == 0 {
         String::new()
@@ -736,9 +738,9 @@ fn eta_text(seconds: u64) -> String {
     let (hours, minutes, seconds) = (seconds / 3600, seconds % 3600 / 60, seconds % 60);
     match (hours, minutes, seconds) {
         (0, 0, 0) => String::new(),
-        (0, 0, s) => format!("剩余 {s} 秒"),
-        (0, m, s) => format!("剩余 {m} 分 {s} 秒"),
-        (h, m, _) => format!("剩余 {h} 小时 {m} 分"),
+        (0, 0, s) => tr!("剩余 {s} 秒", s = s),
+        (0, m, s) => tr!("剩余 {m} 分 {s} 秒", m = m, s = s),
+        (h, m, _) => tr!("剩余 {h} 小时 {m} 分", h = h, m = m),
     }
 }
 

@@ -133,7 +133,7 @@ impl Default for LibraryViewModel {
             sort: "title".into(),
             compat_filter: "all".into(),
             prepare_state: "unprepared".into(),
-            prepare_label: "准备".into(),
+            prepare_label: tr!("准备").into(),
             prepare_detail: String::new(),
             prepare_progress: None,
             can_cancel_prepare: false,

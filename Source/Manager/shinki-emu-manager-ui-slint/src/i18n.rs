@@ -4,6 +4,7 @@
 //! those files; build.rs fails on any untranslated or missing entry.
 
 use std::{
+    collections::BTreeMap,
     fmt::Display,
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -83,11 +84,7 @@ pub fn current() -> Locale {
     }
 }
 
-/// Applies the persisted language setting to both the Rust catalog and the
-/// Slint bundle. Call after the first Slint component exists.
-pub fn apply(setting: &str) -> Locale {
-    let system = sys_locale::get_locale();
-    let locale = Locale::resolve(setting, system.as_deref());
+fn set(locale: Locale) {
     CURRENT.store(
         match locale {
             Locale::ZhCn => 0,
@@ -96,10 +93,34 @@ pub fn apply(setting: &str) -> Locale {
         },
         Ordering::Relaxed,
     );
+}
+
+/// Renders Rust-side text in the system language until [`apply`] runs, so a
+/// startup failure before the settings load is reported in a readable language.
+pub fn select_system() {
+    set(Locale::resolve("system", sys_locale::get_locale().as_deref()));
+}
+
+/// Applies the persisted language setting to both the Rust catalog and the
+/// Slint bundle. Call after the first Slint component exists.
+pub fn apply(setting: &str) -> Locale {
+    let system = sys_locale::get_locale();
+    let locale = Locale::resolve(setting, system.as_deref());
+    set(locale);
     if let Err(error) = slint::select_bundled_translation(locale.bundle()) {
         tracing::warn!(?error, language = locale.id(), "SHINKI_EMU_I18N_SELECT_FAILED");
     }
     locale
+}
+
+/// Text from a metadata map keyed by language id. The metadata schema requires
+/// zh-CN and en; ja is optional and falls back to en, as on the portal.
+pub fn pick(texts: &BTreeMap<String, String>) -> &str {
+    texts
+        .get(current().id())
+        .or_else(|| texts.get("en"))
+        .or_else(|| texts.get("zh-CN"))
+        .map_or("", String::as_str)
 }
 
 const fn str_cmp(a: &str, b: &str) -> core::cmp::Ordering {

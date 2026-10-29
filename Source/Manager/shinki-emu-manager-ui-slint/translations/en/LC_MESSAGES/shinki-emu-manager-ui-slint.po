@@ -1488,3 +1488,486 @@ msgid "请阅读上方说明，还需 {n} 秒"
 msgid_plural "请阅读上方说明，还需 {n} 秒"
 msgstr[0] "Please read the notice above, {n} second left"
 msgstr[1] "Please read the notice above, {n} seconds left"
+
+msgid "模拟器核心尚未加载"
+msgstr "Cores aren't loaded yet"
+
+msgid "请先在游戏库点击“准备”。"
+msgstr "Click \"Prepare\" in Library first."
+
+msgid "核心仍在加载或扫描中"
+msgstr "Cores are still loading or scanning"
+
+msgid "请稍候再试。"
+msgstr "Please wait and try again."
+
+msgid "正在准备资料库"
+msgstr "Preparing the library"
+
+msgid "请等待当前的核心加载或扫描结束。"
+msgstr "Wait for the current core loading or scan to finish."
+
+msgid "当前没有可取消的扫描"
+msgstr "No scan to cancel"
+
+msgid "核心加载阶段不能取消。"
+msgstr "Core loading can't be cancelled."
+
+msgid "资料库准备失败"
+msgstr "Library preparation failed"
+
+msgid "请查看核心诊断，修复后重启 ShinkiEMU。"
+msgstr "Check core diagnostics, fix the problem, then restart ShinkiEMU."
+
+msgid "已取消扫描"
+msgstr "Scan cancelled"
+
+msgid "资料库保持不变。"
+msgstr "The library is unchanged."
+
+msgid "无法使用这个目录"
+msgstr "Can't use this folder"
+
+msgid "目录不存在或无法访问。"
+msgstr "The folder doesn't exist or can't be accessed."
+
+msgid "没有可撤销的移除"
+msgstr "Nothing to undo"
+
+msgid "作品可以在 设置→库目录 中恢复。"
+msgstr "Titles can be restored in Settings → Library folders."
+
+msgid "无法打开所在目录"
+msgstr "Can't open the folder"
+
+msgid "系统文件管理器未能启动。"
+msgstr "The system file manager didn't start."
+
+msgid "没有正在设置的按键"
+msgstr "No key is being bound"
+
+msgid "请先点选要绑定的手柄按钮。"
+msgstr "Select the gamepad button to bind first."
+
+msgid "这个补丁不适用于所选游戏"
+msgstr "This patch doesn't apply to the selected game"
+
+msgid "补丁列表可能已随元数据同步或模拟器选择更新，请重新选择。"
+msgstr "The patch list may have changed after a metadata sync or emulator change. Choose again."
+
+msgid "请先选择游戏"
+msgstr "Choose a game first"
+
+msgid "在补丁页的第一步选择要转换的游戏。"
+msgstr "Choose the game to convert in the first step of the Patches page."
+
+msgid "无法识别的手柄按钮"
+msgstr "Unknown gamepad button"
+
+msgid "请从按键列表中选择。"
+msgstr "Choose one from the button list."
+
+msgid "已有游戏正在运行"
+msgstr "A game is already running"
+
+msgid "请先返回游戏库结束当前游戏。"
+msgstr "Return to the library and end the current game first."
+
+msgid "游戏正在关闭，请稍候"
+msgstr "The game is closing, please wait"
+
+msgid "核心释放完成后即可继续操作。"
+msgstr "You can continue once the core has shut down."
+
+msgid "这部作品尚未识别"
+msgstr "This title hasn't been identified"
+
+msgid "请重新扫描游戏目录。"
+msgstr "Rescan the game folder."
+
+msgid "需要选择模拟器"
+msgstr "Choose an emulator"
+
+msgid "有多个模拟器可以运行这部作品，请在作品详情中选择一个。"
+msgstr "Several emulators can run this title. Choose one in the title details."
+
+msgid "找不到这部作品"
+msgstr "Title not found"
+
+msgid "它可能已被移除，请刷新资料库。"
+msgstr "It may have been removed. Refresh the library."
+
+msgid "核心已加载"
+msgstr "Cores are already loaded"
+
+msgid "更换核心后需要重启 ShinkiEMU。"
+msgstr "Restart ShinkiEMU after changing cores."
+
+msgid "核心后台意外退出"
+msgstr "The core backend exited unexpectedly"
+
+msgid "请重启 ShinkiEMU 并查看日志。"
+msgstr "Restart ShinkiEMU and check the log."
+
+msgid "无法加载核心文件"
+msgstr "Can't load the core file"
+
+msgid "文件可能已损坏，或缺少它依赖的运行库。"
+msgstr "The file may be damaged, or a runtime library it needs is missing."
+
+msgid "核心版本与 ShinkiEMU 不兼容"
+msgstr "The core version isn't compatible with ShinkiEMU"
+
+msgid "请安装与当前版本匹配的核心。"
+msgstr "Install a core that matches this version."
+
+msgid "核心信息无效"
+msgstr "Invalid core information"
+
+msgid "核心文件可能已损坏。"
+msgstr "The core file may be damaged."
+
+msgid "发现重复的核心"
+msgstr "Duplicate core found"
+
+msgid "同一个核心存在多份文件，已全部停用。删除多余的一份后重启。"
+msgstr "The same core exists in several files, so all copies were disabled. Delete the extra copy and restart."
+
+msgid "核心文件位置无效"
+msgstr "Invalid core file location"
+
+msgid "请检查核心文件是否仍然存在。"
+msgstr "Check that the core file still exists."
+
+msgid "核心不符合安全要求"
+msgstr "The core doesn't meet security requirements"
+
+msgid "已停用这个核心。"
+msgstr "This core has been disabled."
+
+msgid "核心诊断初始化失败"
+msgstr "Core diagnostics failed to start"
+
+msgid "请查看日志。"
+msgstr "Check the log."
+
+msgid "无法读取核心目录"
+msgstr "Can't read the cores folder"
+
+msgid "请检查目录权限。"
+msgstr "Check the folder permissions."
+
+msgid "无法重试"
+msgstr "Can't retry"
+
+msgid "这个错误不支持重试，请结束游戏。"
+msgstr "This error can't be retried. End the game."
+
+msgid "输入过多"
+msgstr "Too much input"
+
+msgid "游戏未能及时处理输入，多余的输入已丢弃。"
+msgstr "The game couldn't keep up with input, so extra input was dropped."
+
+msgid "渲染分辨率设置无效"
+msgstr "Invalid render resolution"
+
+msgid "预设只能选 720p、1080p、1440p 或 2160p，自定义宽高须在 1 到 16384 之间。"
+msgstr "Presets are 720p, 1080p, 1440p or 2160p; custom width and height must be between 1 and 16384."
+
+msgid "自定义分辨率超出该模拟器支持范围"
+msgstr "The custom resolution is outside what this emulator supports"
+
+msgid "请在游戏设置中查看该模拟器支持的分辨率范围。"
+msgstr "See the supported resolution range in Game settings."
+
+msgid "需要先选择模拟器"
+msgstr "Choose an emulator first"
+
+msgid "选定模拟器后才能修改这部作品的模拟器设置。"
+msgstr "Emulator settings for this title can be changed after you choose an emulator."
+
+msgid "无法使用所选路径"
+msgstr "Can't use the selected path"
+
+msgid "文件或目录不存在或无法访问。"
+msgstr "The file or folder doesn't exist or can't be accessed."
+
+msgid "所选路径包含无法保存的字符"
+msgstr "The selected path contains characters that can't be saved"
+
+msgid "请把文件放到路径只含常规字符的位置后重新选择。"
+msgstr "Move the file to a path with only regular characters, then choose it again."
+
+msgid "设置值无效"
+msgstr "Invalid setting value"
+
+msgid "取值不在允许范围内，已保留原来的设置。"
+msgstr "The value is out of range; the previous setting was kept."
+
+msgid "发行版本编号无效"
+msgstr "Invalid release ID"
+
+msgid "VNDB 发行版本编号应为 r 加数字，例如 r12345，且不超过 64 个字符。"
+msgstr "A VNDB release ID is r followed by digits, such as r12345, and at most 64 characters."
+
+msgid "兼容性数据有重复条目"
+msgstr "Duplicate compatibility entries"
+
+msgid "同一发行版本和模拟器出现了多条记录，本次更新未采用。"
+msgstr "The same release and emulator appear in several records, so this update wasn't applied."
+
+msgid "尚未配置翻译服务"
+msgstr "No translation service configured"
+
+msgid "请在 设置→实时翻译 中填写并保存。"
+msgstr "Fill it in and save it in Settings → Live translation."
+
+msgid "尚未允许联网"
+msgstr "Network access not allowed"
+
+msgid "需要先在 设置→联网与资料 中允许联网"
+msgstr "Allow network access in Settings → Network & metadata first"
+
+msgid "请填写 Bangumi 访问令牌"
+msgstr "Enter a Bangumi access token"
+
+msgid "令牌为空时无法保存。"
+msgstr "An empty token can't be saved."
+
+msgid "不是有效的核心文件"
+msgstr "Not a valid core file"
+
+msgid "请选择核心包（.zip）或文件名以 shinki_emu_ 开头的本系统动态库。"
+msgstr "Choose a core package (.zip) or a native library whose name starts with shinki_emu_."
+
+msgid "复制核心文件失败"
+msgstr "Couldn't copy the core file"
+
+msgid "请检查磁盘空间和目录权限。"
+msgstr "Check disk space and folder permissions."
+
+msgid "随包核心不能卸载"
+msgstr "Bundled cores can't be uninstalled"
+
+msgid "可以安装同名核心来覆盖它。"
+msgstr "Install a core with the same name to replace it."
+
+msgid "应用待安装的核心失败"
+msgstr "Couldn't apply the pending core"
+
+msgid "请查看日志后重试。"
+msgstr "Check the log, then try again."
+
+msgid "核心目录结构不正确"
+msgstr "Invalid cores folder layout"
+
+msgid "cores 下每个核心目录必须恰好包含一个 shinki_emu_ 核心库，请重新安装该核心。"
+msgstr "Each core folder under cores must contain exactly one shinki_emu_ core library. Reinstall the core."
+
+msgid "无法读取核心包"
+msgstr "Can't read the core package"
+
+msgid "请检查文件是否存在且可以访问。"
+msgstr "Check that the file exists and can be accessed."
+
+msgid "核心包已损坏"
+msgstr "The core package is damaged"
+
+msgid "文件不是有效的 zip 核心包。"
+msgstr "The file isn't a valid zip core package."
+
+msgid "核心包过大"
+msgstr "The core package is too large"
+
+msgid "核心包的文件数或解压后大小超出上限。"
+msgstr "The package's file count or unpacked size exceeds the limit."
+
+msgid "核心包包含不安全的路径"
+msgstr "The core package contains unsafe paths"
+
+msgid "包内有绝对路径、上级目录或符号链接，已拒绝安装。"
+msgstr "The package contains absolute paths, parent folders or symbolic links, so installation was refused."
+
+msgid "核心包包含重复文件"
+msgstr "The core package contains duplicate files"
+
+msgid "已拒绝安装这个核心包。"
+msgstr "Installation of this core package was refused."
+
+msgid "核心包的文件清单无效"
+msgstr "Invalid core package manifest"
+
+msgid "core.json 缺失、格式错误、ABI 不匹配或与包内文件不一致。"
+msgstr "core.json is missing or malformed, its ABI doesn't match, or it disagrees with the package contents."
+
+msgid "核心包与所选核心不符"
+msgstr "The core package doesn't match the selected core"
+
+msgid "下载的核心包声明了另一个模拟器，已拒绝安装。"
+msgstr "The downloaded package declares a different emulator, so installation was refused."
+
+msgid "核心包文件校验失败"
+msgstr "Core package file check failed"
+
+msgid "包内文件的 SHA-256 与 core.json 不一致，已拒绝安装。"
+msgstr "A file's SHA-256 doesn't match core.json, so installation was refused."
+
+msgid "没有可安装的核心版本"
+msgstr "No installable core version"
+
+msgid "元数据中没有适用于当前平台和接口版本的发布，请先同步元数据。"
+msgstr "The metadata has no release for this platform and interface version. Sync metadata first."
+
+msgid "核心正在下载"
+msgstr "A core is downloading"
+
+msgid "请等待当前下载完成。"
+msgstr "Wait for the current download to finish."
+
+msgid "核心下载地址无效"
+msgstr "Invalid core download URL"
+
+msgid "只允许从 GitHub Releases 下载核心。"
+msgstr "Cores can only be downloaded from GitHub Releases."
+
+msgid "核心下载被重定向到未知地址"
+msgstr "The core download was redirected to an unknown address"
+
+msgid "只允许跳转到 GitHub 的发布文件服务器，已停止下载。"
+msgstr "Only redirects to GitHub's release file servers are allowed, so the download was stopped."
+
+msgid "核心下载失败"
+msgstr "Core download failed"
+
+msgid "请检查网络连接后重试。"
+msgstr "Check your network connection and try again."
+
+msgid "核心包大小不符"
+msgstr "Core package size mismatch"
+
+msgid "下载的文件大小与元数据记录不一致，已丢弃。"
+msgstr "The downloaded file's size doesn't match the metadata, so it was discarded."
+
+msgid "核心包校验失败"
+msgstr "Core package check failed"
+
+msgid "下载文件的 SHA-256 与元数据记录不一致，已丢弃。"
+msgstr "The downloaded file's SHA-256 doesn't match the metadata, so it was discarded."
+
+msgid "这个操作已失效"
+msgstr "This action has expired"
+
+msgid "提示已过期，请重新操作。"
+msgstr "The notice expired. Try the action again."
+
+msgid "元数据校验失败"
+msgstr "Metadata check failed"
+
+msgid "下载的文件与索引记录不一致，已保留原有数据。"
+msgstr "The downloaded file doesn't match the index, so the existing data was kept."
+
+msgid "无法保存元数据"
+msgstr "Can't save metadata"
+
+msgid "写入数据目录失败，已保留原有数据。请检查磁盘空间和目录权限。"
+msgstr "Writing to the data folder failed, so the existing data was kept. Check disk space and folder permissions."
+
+msgid "无法读取元数据缓存"
+msgstr "Can't read the metadata cache"
+
+msgid "请检查数据目录权限。"
+msgstr "Check the data folder permissions."
+
+msgid "元数据内容无效"
+msgstr "Invalid metadata"
+
+msgid "同步到的数据无法解析，已保留原有数据。"
+msgstr "The synced data couldn't be parsed, so the existing data was kept."
+
+msgid "作品资料服务拒绝了请求"
+msgstr "The metadata service rejected the request"
+
+msgid "VNDB 不接受这次查询。请更新 ShinkiEMU 后重试，仍失败请反馈问题。"
+msgstr "VNDB didn't accept this query. Update ShinkiEMU and try again; if it still fails, please report it."
+
+msgid "作品资料请求过于频繁"
+msgstr "Too many metadata requests"
+
+msgid "VNDB 或 Bangumi 暂时限制了请求，请稍后再试。"
+msgstr "VNDB or Bangumi is temporarily limiting requests. Try again later."
+
+msgid "推荐配置无法套用"
+msgstr "Can't apply the recommended settings"
+
+msgid "其中有当前模拟器不支持的设置项或取值，已恢复原来的设置。"
+msgstr "They contain settings or values this emulator doesn't support; the previous settings were restored."
+
+msgid "没有推荐配置"
+msgstr "No recommended settings"
+
+msgid "当前发行版本和模拟器没有推荐配置。"
+msgstr "There are no recommended settings for this release and emulator."
+
+msgid "无法读取日志"
+msgstr "Can't read the log"
+
+msgid "当前无法执行这个操作"
+msgstr "This action isn't available right now"
+
+msgid "请在游戏画面中稍后再试。"
+msgstr "Try again later from the game screen."
+
+msgid "模拟器核心出错"
+msgstr "Core error"
+
+msgid "窗口或显示出错"
+msgstr "Window or display error"
+
+msgid "实时翻译出错"
+msgstr "Live translation error"
+
+msgid "作品资料服务出错"
+msgstr "Metadata service error"
+
+msgid "兼容性数据出错"
+msgstr "Compatibility data error"
+
+msgid "画面滤镜出错"
+msgstr "Screen filter error"
+
+msgid "文件补丁处理失败"
+msgstr "File patching failed"
+
+msgid "输入设备出错"
+msgstr "Input device error"
+
+msgid "游戏库出错"
+msgstr "Library error"
+
+msgid "推荐配置出错"
+msgstr "Recommended settings error"
+
+msgid "声音输出出错"
+msgstr "Audio output error"
+
+msgid "管理器出错"
+msgstr "Manager error"
+
+msgid "发生错误"
+msgstr "Something went wrong"
+
+msgid "{done} 个文件"
+msgstr "Files: {done}"
+
+msgid "{done} / {total} 个文件"
+msgstr "Files: {done} / {total}"
+
+msgid "剩余 {s} 秒"
+msgstr "{s}s left"
+
+msgid "剩余 {m} 分 {s} 秒"
+msgstr "{m}m {s}s left"
+
+msgid "剩余 {h} 小时 {m} 分"
+msgstr "{h}h {m}m left"
