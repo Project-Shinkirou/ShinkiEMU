@@ -150,6 +150,11 @@ fn native_gpu_quick_save_rotates_skips_same_line_and_survives_restart() {
     session.save(0).unwrap();
     session.save(20).unwrap();
     let storage = Storage::new(root.path()).unwrap();
+    let stored_cursor = || {
+        crate::native_directory::NativeFiles::open(root.path(), crate::ScriptEncoding::ShiftJis)
+            .unwrap()
+            .quick_cursor()
+    };
     for i in 0..12 {
         if i > 0 {
             session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
@@ -157,7 +162,7 @@ fn native_gpu_quick_save_rotates_skips_same_line_and_survives_restart() {
         session.advance(0, &[key(KeyCode::F5)]).unwrap();
         let cursor = (i + 1) % 10;
         assert_eq!(session.quick_cursor, cursor);
-        assert_eq!(storage.quick_cursor(session.game).unwrap(), cursor);
+        assert_eq!(stored_cursor(), cursor);
         session.advance(0, &[key(KeyCode::F5)]).unwrap();
         assert_eq!(
             session.quick_cursor, cursor,

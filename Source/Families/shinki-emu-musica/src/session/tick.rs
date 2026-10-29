@@ -194,6 +194,7 @@ impl MusicaSession {
                     .replace_script(uri, loaded.hash, loaded.script, label)
                     .map_err(vm_error)?;
                 self.scene.set_text_encoding(encoding);
+                self.sync_read_flags()?;
                 Ok(false)
             }
             Some(MusicaVmEvent::Stage(stage)) => {

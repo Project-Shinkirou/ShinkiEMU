@@ -7,15 +7,22 @@ impl MusicaVm {
     }
 
     pub fn fast_forward_active(&self) -> bool {
-        fast_forward_active(&self.state, self.control_pressed)
+        fast_forward_active(
+            &self.state,
+            self.control_pressed,
+            self.read_flags.is_read(&self.state),
+        )
     }
 }
 
-pub(super) fn fast_forward_active(state: &MusicaRuntimeState, pressed: bool) -> bool {
+pub(super) fn fast_forward_active(
+    state: &MusicaRuntimeState,
+    pressed: bool,
+    message_read: bool,
+) -> bool {
     state.system_ui.skip_enabled
         && ((state.system_ui.control_enabled && pressed)
-            || (state.system_ui.play_mode == MusicaPlayMode::Skip
-                && super::read_state::is_read(state)))
+            || (state.system_ui.play_mode == MusicaPlayMode::Skip && message_read))
 }
 
 pub(super) fn execute_pragma(

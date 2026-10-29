@@ -18,6 +18,7 @@ use std::{
 };
 
 mod legacy;
+mod sysparams;
 #[cfg(test)]
 mod tests;
 
@@ -53,6 +54,7 @@ fn replace_file(dir: &Path, name: &str, bytes: &[u8]) -> SessionResult<()> {
 
 struct NativeDirectory {
     title: MinoriTitle,
+    game_root: PathBuf,
     root: PathBuf,
     prefix: FilePrefix,
 }
@@ -71,6 +73,7 @@ impl NativeDirectory {
         let prefix = minori_data::resolve_prefix(title, registry_serial, existing_prefix(&root));
         Ok(Self {
             title,
+            game_root: game_root.to_path_buf(),
             root,
             prefix,
         })
@@ -204,6 +207,26 @@ fn global(encoding: ScriptEncoding, key: &[u8], value: &[u8]) -> Option<(String,
     Some((encoding.decode(key)?.into_owned(), integer(value)?))
 }
 
+/// `<stem>.tbr`; the stem comes from an archive script name and must stay a
+/// plain file name inside the native directory.
+fn read_flags_name(stem: &str) -> SessionResult<String> {
+    if stem.is_empty()
+        || stem.starts_with('.')
+        || stem.chars().any(|c| {
+            matches!(
+                c,
+                '/' | '\\' | ':' | '\0' | '*' | '?' | '"' | '<' | '>' | '|'
+            )
+        })
+    {
+        return Err(error(
+            "SHINKI_EMU_MUSICA_SAVE_PATH",
+            "script name cannot name a read-flag file",
+        ));
+    }
+    Ok(format!("{stem}.tbr"))
+}
+
 /// Session view of the title-wide original files: `system.dat` holds every
 /// `.setglobal` value and `cgv.dat` the background images already shown.
 ///
@@ -215,7 +238,13 @@ pub(crate) struct NativeFiles {
     encoding: ScriptEncoding,
     system: Properties,
     cg: BTreeSet<Vec<u8>>,
+    /// `sysparams.txt`, `None` before the first write.
+    settings: Option<Properties>,
+    /// `musica-settings.txt`: settings without an original key.
+    musica: Properties,
     legacy_globals: BTreeMap<String, i64>,
+    legacy_config: Option<crate::MusicaConfigState>,
+    legacy_quick_cursor: Option<u32>,
     warned: bool,
 }
 
@@ -226,7 +255,11 @@ impl NativeFiles {
             encoding,
             system: Properties::new(),
             cg: BTreeSet::new(),
+            settings: None,
+            musica: Properties::new(),
             legacy_globals: BTreeMap::new(),
+            legacy_config: None,
+            legacy_quick_cursor: None,
             warned: false,
         };
         let Some(title) = MinoriTitle::detect(game_root) else {
@@ -235,6 +268,8 @@ impl NativeFiles {
         let dir = NativeDirectory::open(game_root, title)?;
         files.system = dir.system_data()?.unwrap_or_default();
         files.cg = dir.cg_names()?.into_iter().collect();
+        files.settings = dir.settings()?;
+        files.musica = dir.musica_settings()?;
         files.dir = Some(dir);
         Ok(files)
     }
@@ -329,6 +364,35 @@ impl NativeFiles {
         dir.write_cg_names(&names.iter().cloned().collect::<Vec<_>>())?;
         self.cg = names;
         Ok(())
+    }
+
+    /// The stored `<stem>.tbr` read bitmap, `None` before the first write.
+    pub(crate) fn read_flags(
+        &self,
+        stem: &str,
+    ) -> SessionResult<Option<crate::runtime::ReadBitmap>> {
+        let Some(dir) = &self.dir else {
+            return Ok(None);
+        };
+        read_optional(&dir.root.join(read_flags_name(stem)?))?
+            .map(|bytes| minori_data::decode_read_flags(&bytes, dir.prefix.value))
+            .transpose()
+            .map_err(core_error)
+    }
+
+    /// Replaces `<stem>.tbr` with `bits`.
+    pub(crate) fn store_read_flags(
+        &mut self,
+        stem: &str,
+        bits: &crate::runtime::ReadBitmap,
+    ) -> SessionResult<()> {
+        let Some(dir) = &self.dir else {
+            self.warn_unpersisted();
+            return Ok(());
+        };
+        let name = read_flags_name(stem)?;
+        let bytes = minori_data::encode_read_flags(bits, dir.prefix.value).map_err(core_error)?;
+        replace_file(&dir.root, &name, &bytes)
     }
 
     fn warn_unpersisted(&mut self) {
