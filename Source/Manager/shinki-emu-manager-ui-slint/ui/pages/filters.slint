@@ -108,8 +108,8 @@ export component FiltersPage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: "滤镜";
-        leading-button: root.compact ? { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true } : { };
+        title: @tr("滤镜");
+        leading-button: root.compact ? { icon: Icons.arrow-back, tooltip: @tr("返回游戏库"), enabled: true } : { };
         leading-button-clicked => { App.page = "library"; }
     }
 
@@ -120,44 +120,44 @@ export component FiltersPage {
         height: root.height - root.bar-height;
 
         SettingGroup {
-            title: "预设";
-            description: "滤镜作用于模拟器输出的画面，游戏中也可以在菜单里调整。";
+            title: @tr("预设");
+            description: @tr("滤镜作用于模拟器输出的画面，游戏中也可以在菜单里调整。");
 
             FlexboxLayout {
                 spacing: 12px;
                 alignment: stretch;
 
                 PresetCard {
-                    title: "原画";
-                    description: "不做处理";
+                    title: @tr("原画");
+                    description: @tr("不做处理");
                     icon: Icons.image;
                     active: Filters.preset == "none";
                     activate => { Filters.set-preset("none"); }
                 }
                 PresetCard {
-                    title: "缩放";
-                    description: "平滑放大到窗口大小";
+                    title: @tr("缩放");
+                    description: @tr("平滑放大到窗口大小");
                     icon: Icons.fullscreen;
                     active: Filters.preset == "scale";
                     activate => { Filters.set-preset("scale"); }
                 }
                 PresetCard {
-                    title: "锐化";
-                    description: "增强线条边缘";
+                    title: @tr("锐化");
+                    description: @tr("增强线条边缘");
                     icon: Icons.tune;
                     active: Filters.preset == "sharpen";
                     activate => { Filters.set-preset("sharpen"); }
                 }
                 PresetCard {
                     title: "Anime4K 2×";
-                    description: "修复线条并 2 倍放大";
+                    description: @tr("修复线条并 2 倍放大");
                     icon: Icons.filter-vintage;
                     active: Filters.preset == "anime4k";
                     activate => { Filters.set-preset("anime4k"); }
                 }
                 PresetCard {
-                    title: "外部效果…";
-                    description: "加载 HLSL 效果文件";
+                    title: @tr("外部效果…");
+                    description: @tr("加载 HLSL 效果文件");
                     icon: Icons.upload-file;
                     active: Filters.preset == "external";
                     activate => { Filters.load-source(); }
@@ -166,10 +166,10 @@ export component FiltersPage {
         }
 
         SettingGroup {
-            title: "参数";
+            title: @tr("参数");
 
             if Filters.fields.length == 0 : MaterialText {
-                text: "当前预设没有可调参数。";
+                text: @tr("当前预设没有可调参数。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
             }
@@ -184,13 +184,13 @@ export component FiltersPage {
                 alignment: start;
                 spacing: 8px;
                 TextButton {
-                    text: "恢复默认参数";
+                    text: @tr("恢复默认参数");
                     icon: Icons.restart-alt;
                     enabled: Filters.fields.length > 0;
                     clicked => { Filters.reset-parameters(); }
                 }
                 TextButton {
-                    text: "选择文件…";
+                    text: @tr("选择文件…");
                     icon: Icons.upload-file;
                     clicked => { Filters.load-source(); }
                 }

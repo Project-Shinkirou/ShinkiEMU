@@ -1376,3 +1376,115 @@ msgstr "Choose a game folder already on your computer or device and ShinkiEMU wi
 
 msgid "需要允许联网"
 msgstr "Network access required"
+
+# components
+msgid "ShinkiEMU 不附带任何游戏内容。请只使用你合法拥有的游戏副本。"
+msgstr "ShinkiEMU includes no game content. Use only game copies you legally own."
+
+msgid "ShinkiEMU 是独立开发的开源工具，与各游戏及游戏引擎的开发商、发行商和其他权利人没有隶属、授权或认可关系。"
+msgstr "ShinkiEMU is an independently developed open-source tool. It is not affiliated with, licensed by or endorsed by the developers, publishers or other rights holders of any game or game engine."
+
+msgid "{0}（{1}）"
+msgstr "{0} ({1})"
+
+msgid "{0}，{1}"
+msgstr "{0}, {1}"
+
+msgid "仅此核心"
+msgstr "This core only"
+
+msgid "从资料库移除"
+msgstr "Remove from library"
+
+msgid "全部记录"
+msgstr "All entries"
+
+msgid "兼容性：{}"
+msgstr "Compatibility: {}"
+
+msgid "勾选后即可继续"
+msgstr "Check the box to continue"
+
+msgid "可以启动"
+msgstr "Ready to start"
+
+msgid "宽"
+msgstr "Width"
+
+msgid "已确认，可以继续"
+msgstr "Confirmed. You can continue."
+
+msgid "恢复默认"
+msgstr "Reset"
+
+msgid "打开所在目录"
+msgstr "Open containing folder"
+
+msgid "支持范围 {0} – {1}"
+msgstr "Supported range {0} – {1}"
+
+msgid "文中提及的游戏名、引擎名和商标归各自权利人所有。"
+msgstr "Game names, engine names and trademarks mentioned here belong to their respective owners."
+
+msgid "日志"
+msgstr "Logs"
+
+msgid "日志范围"
+msgstr "Log scope"
+
+msgid "未绑定"
+msgstr "Unbound"
+
+msgid "本软件按所附开源许可证“现状”提供，不作任何明示或暗示的担保。"
+msgstr "This software is provided “as is” under the accompanying open-source licences, without warranty of any kind, express or implied."
+
+msgid "核心：{}"
+msgstr "Core: {}"
+
+msgid "正在确认…"
+msgstr "Confirming…"
+
+msgid "此模拟器不支持调整渲染分辨率，可以在“滤镜”页使用显示滤镜"
+msgstr "This emulator can't change its render resolution. Use a display filter on the Filters page instead."
+
+msgid "渲染分辨率"
+msgstr "Render resolution"
+
+msgid "知道了"
+msgstr "Got it"
+
+msgid "结束游戏"
+msgstr "End game"
+
+msgid "补丁和翻译可能修改游戏文件。应用前请备份，使用风险由你自行承担。"
+msgstr "Patches and translations may modify game files. Back up before applying; you use them at your own risk."
+
+msgid "请按下键盘按键…"
+msgstr "Press a keyboard key…"
+
+msgid "退出游戏"
+msgstr "Quit game"
+
+msgid "错误代码 {}"
+msgstr "Error code {}"
+
+msgid "高级设置（{}）"
+msgstr "Advanced settings ({})"
+
+msgid "（当前排序）"
+msgstr " (current sort)"
+
+msgid "共 {n} 条（最近 200 条）"
+msgid_plural "共 {n} 条（最近 200 条）"
+msgstr[0] "{n} entry (latest 200)"
+msgstr[1] "{n} entries (latest 200)"
+
+msgid "另有 {n} 条通知"
+msgid_plural "另有 {n} 条通知"
+msgstr[0] "{n} more notification"
+msgstr[1] "{n} more notifications"
+
+msgid "请阅读上方说明，还需 {n} 秒"
+msgid_plural "请阅读上方说明，还需 {n} 秒"
+msgstr[0] "Please read the notice above, {n} second left"
+msgstr[1] "Please read the notice above, {n} seconds left"

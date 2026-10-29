@@ -115,19 +115,19 @@ export component LogsOverlay {
                 spacing: 12px;
                 IconButton {
                     icon: Icons.close;
-                    tooltip: "关闭";
+                    tooltip: @tr("关闭");
                     clicked => { Logs.open = false; }
                 }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;
                     MaterialText {
-                        text: "日志";
+                        text: @tr("日志");
                         style: MaterialTypography.title-large;
                         color: MaterialPalette.on-surface;
                     }
                     MaterialText {
-                        text: Logs.scope == "core" && Logs.core != "" ? "核心：" + Logs.core : "全部记录";
+                        text: Logs.scope == "core" && Logs.core != "" ? @tr("核心：{}", Logs.core) : @tr("全部记录");
                         style: MaterialTypography.body-small;
                         color: MaterialPalette.on-surface-variant;
                         overflow: elide;
@@ -137,8 +137,8 @@ export component LogsOverlay {
                     alignment: center;
                     Segments {
                         width: 208px;
-                        label: "日志范围";
-                        items: ["仅此核心", "全部"];
+                        label: @tr("日志范围");
+                        items: [@tr("仅此核心"), @tr("全部")];
                         index: Logs.scope == "core" ? 0 : 1;
                         selected(index) => {
                             if index == 0 {
@@ -162,7 +162,7 @@ export component LogsOverlay {
             }
 
             MaterialText {
-                text: "共 " + Logs.count + " 条（最近 200 条）";
+                text: @tr("共 {n} 条（最近 200 条）" | "共 {n} 条（最近 200 条）" % Logs.count);
                 style: MaterialTypography.body-small;
                 color: MaterialPalette.on-surface-variant;
             }
@@ -218,11 +218,11 @@ export component EngineModal {
             alignment: end;
             spacing: 8px;
             TextButton {
-                text: "取消";
+                text: @tr("取消");
                 clicked => { Dialogs.modal-cancel(); }
             }
             TextButton {
-                text: "退出游戏";
+                text: @tr("退出游戏");
                 clicked => { Session.leave(); }
             }
         }
@@ -259,7 +259,7 @@ export component FatalOverlay {
                 overflow: clip;
             }
             if Dialogs.fatal-code != "" : MaterialText {
-                text: "错误代码 " + Dialogs.fatal-code;
+                text: @tr("错误代码 {}", Dialogs.fatal-code);
                 style: MaterialTypography.label-small;
                 color: MaterialPalette.on-surface-variant;
             }
@@ -269,11 +269,11 @@ export component FatalOverlay {
             alignment: end;
             spacing: 8px;
             if Dialogs.fatal-retryable : TextButton {
-                text: "重试";
+                text: @tr("重试");
                 clicked => { Dialogs.retry(); }
             }
             FilledButton {
-                text: Session.active ? "结束游戏" : "知道了";
+                text: Session.active ? @tr("结束游戏") : @tr("知道了");
                 clicked => {
                     if Session.active {
                         Session.leave();

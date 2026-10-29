@@ -122,7 +122,7 @@ export component GameSettingsPage inherits FocusScope {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        leading-button: { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true };
+        leading-button: { icon: Icons.arrow-back, tooltip: @tr("返回游戏库"), enabled: true };
         leading-button-clicked => { root.back(); }
     }
 
@@ -131,7 +131,7 @@ export component GameSettingsPage inherits FocusScope {
         y: 0px;
         width: root.width - 50px - 16px;
         height: root.bar-height;
-        text: "游戏设置 · " + GameSettings.title;
+        text: @tr("游戏设置 · {}", GameSettings.title);
         style: MaterialTypography.title-large;
         color: MaterialPalette.on-surface;
         vertical-alignment: center;
@@ -145,9 +145,9 @@ export component GameSettingsPage inherits FocusScope {
         width: root.width;
         height: root.tab-height;
         items: [
-            { icon: Icons.tune, text: "模拟器" },
-            { icon: Icons.sports-esports, text: "按键" },
-            { icon: Icons.info, text: "作品资料" },
+            { icon: Icons.tune, text: @tr("模拟器") },
+            { icon: Icons.sports-esports, text: @tr("按键") },
+            { icon: Icons.info, text: @tr("作品资料") },
         ];
         current-index: root.section-index;
         index-changed(index) => { root.select-section(index); }
@@ -162,22 +162,22 @@ export component GameSettingsPage inherits FocusScope {
         spacing: 0px;
         alignment: start;
         accessible-role: tab-list;
-        accessible-label: "游戏设置分区";
+        accessible-label: @tr("游戏设置分区");
 
         SectionItem {
-            text: "模拟器与渲染";
+            text: @tr("模拟器与渲染");
             icon: Icons.tune;
             selected: root.section-index == 0;
             clicked => { root.select-section(0); }
         }
         SectionItem {
-            text: "按键";
+            text: @tr("按键");
             icon: Icons.sports-esports;
             selected: root.section-index == 1;
             clicked => { root.select-section(1); }
         }
         SectionItem {
-            text: "作品资料";
+            text: @tr("作品资料");
             icon: Icons.info;
             selected: root.section-index == 2;
             clicked => { root.select-section(2); }

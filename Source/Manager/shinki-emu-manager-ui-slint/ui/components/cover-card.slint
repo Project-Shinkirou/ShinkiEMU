@@ -46,11 +46,11 @@ export component GameMenu {
         x: root.menu-x;
         y: root.menu-y;
         items: [
-            { icon: Icons.play-arrow, text: "开始游戏", enabled: root.ready },
-            { icon: Icons.tune, text: "游戏设置", enabled: true },
-            { icon: Icons.build, text: "补丁", enabled: true },
-            { icon: Icons.folder-open, text: "打开所在目录", enabled: true },
-            { icon: Icons.delete, text: "从资料库移除", enabled: true },
+            { icon: Icons.play-arrow, text: @tr("开始游戏"), enabled: root.ready },
+            { icon: Icons.tune, text: @tr("游戏设置"), enabled: true },
+            { icon: Icons.build, text: @tr("补丁"), enabled: true },
+            { icon: Icons.folder-open, text: @tr("打开所在目录"), enabled: true },
+            { icon: Icons.delete, text: @tr("从资料库移除"), enabled: true },
         ];
         activated(index) => {
             menu.close();
@@ -80,7 +80,7 @@ export component CompatPill {
     height: 24px;
     width: row.preferred-width;
     accessible-role: AccessibleRole.text;
-    accessible-label: "兼容性：" + Theme.status-label(root.status);
+    accessible-label: @tr("兼容性：{}", Theme.status-label(root.status));
 
     Rectangle {
         border-radius: 12px;
@@ -386,8 +386,8 @@ export component CoverCard {
         width: root.width;
         height: root.height;
         focus-wanted: root.focus-wanted;
-        label: root.game.title + "，" + (root.game.version != "" ? root.game.version + "，" : "") + root.game.subtitle;
-        description: root.game.problem != "" ? root.game.problem : "可以启动";
+        label: root.game.version != "" ? @tr("{0}，{1}，{2}", root.game.title, root.game.version, root.game.subtitle) : @tr("{0}，{1}", root.game.title, root.game.subtitle);
+        description: root.game.problem != "" ? root.game.problem : @tr("可以启动");
         activated => { root.activated(); }
         launch => { root.launch(); }
         context-menu(x, y) => { root.context-menu(x, y); }
@@ -399,7 +399,7 @@ export component CoverCard {
         x: root.width - self.width - 8px;
         y: root.poster-height - self.height - 8px;
         icon: Icons.play-arrow;
-        tooltip: "开始游戏";
+        tooltip: @tr("开始游戏");
         clicked => { root.launch(); }
     }
 }
@@ -449,8 +449,8 @@ export component GameListRow {
         width: 100%;
         height: 100%;
         focus-wanted: root.focus-wanted;
-        label: root.game.title + "，" + (root.game.version != "" ? root.game.version + "，" : "") + root.game.subtitle;
-        description: root.game.problem != "" ? root.game.problem : "可以启动";
+        label: root.game.version != "" ? @tr("{0}，{1}，{2}", root.game.title, root.game.version, root.game.subtitle) : @tr("{0}，{1}", root.game.title, root.game.subtitle);
+        description: root.game.problem != "" ? root.game.problem : @tr("可以启动");
         activated => { root.activated(); }
         launch => { root.launch(); }
         context-menu(x, y) => { root.context-menu(x, y); }
@@ -531,7 +531,7 @@ export component GameListRow {
 
         if root.last-width > 0px : MaterialText {
             width: root.last-width;
-            text: root.game.last-played != "" ? root.game.last-played : "从未";
+            text: root.game.last-played != "" ? root.game.last-played : @tr("从未");
             style: MaterialTypography.body-medium;
             color: MaterialPalette.on-surface-variant;
             vertical-alignment: center;
@@ -541,7 +541,7 @@ export component GameListRow {
             alignment: center;
             IconButton {
                 icon: Icons.play-arrow;
-                tooltip: "开始游戏";
+                tooltip: @tr("开始游戏");
                 enabled: root.game.ready;
                 clicked => { root.launch(); }
             }
@@ -557,7 +557,7 @@ export component SortHeader {
 
     height: Theme.control-height;
     accessible-role: button;
-    accessible-label: root.label + (root.active ? "（当前排序）" : "");
+    accessible-label: root.label + (root.active ? @tr("（当前排序）") : "");
     accessible-action-default => { root.clicked(); }
 
     focus := FocusScope {
