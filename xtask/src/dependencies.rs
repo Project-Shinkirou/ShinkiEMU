@@ -380,6 +380,22 @@ fn prepare_native_tree(
                     .args(["-j4", "python", "sharedmods"])
                     .current_dir(stage)
                     .env("PYTHONDONTWRITEBYTECODE", "1"))?;
+                // CPython's build tree links extension modules back to Modules/.
+                // Publish ordinary files so the verified tree remains relocatable.
+                let modules = fs::read_to_string(stage.join("pybuilddir.txt"))?;
+                native_path(modules.trim())?;
+                let stage_root = fs::canonicalize(stage)?;
+                for entry in fs::read_dir(stage.join(modules.trim()))? {
+                    let entry = entry?;
+                    if entry.file_type()?.is_symlink() {
+                        let source = fs::canonicalize(entry.path())?;
+                        if !source.starts_with(&stage_root) || !source.is_file() {
+                            bail!("CPython generated an external module link");
+                        }
+                        fs::remove_file(entry.path())?;
+                        fs::copy(source, entry.path())?;
+                    }
+                }
             }
             validate_build_python(&stage.join(build_python_relative()), python, cython)?;
         }
