@@ -69,6 +69,7 @@ impl EdenSave {
             comment: format!("Shinki Musica {}", last.message_id),
             route: [0; 4],
             variables,
+            script_variables: Vec::new(),
             backlog: history.iter().map(write_message).collect(),
         };
         // The writer must obey the same supported-state boundary as the reader.

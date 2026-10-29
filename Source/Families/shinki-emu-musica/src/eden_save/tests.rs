@@ -14,6 +14,7 @@ pub(super) fn fixture() -> EdenSave {
             f("script_Filename", "fixture.sc"),
             f("script_Pointer", "12"),
         ],
+        script_variables: Vec::new(),
         backlog: vec![vec![
             f("LC", "2"),
             f("L1_0", "voice.ogg"),
@@ -67,7 +68,7 @@ fn rejects_delimiter_injection_and_incomplete_sections() {
         "<begin variables>\n!x\ty\n",
         "<begin variables>\n!x\ty\n<end variables>\n<<begin backlog>>\nL0\t1\n<<end backlog>>\n",
     ] {
-        assert!(body::parse(body).is_err());
+        assert!(body::parse(body, EdenSaveEncoding::Gbk).is_err());
     }
 }
 #[test]
