@@ -1,22 +1,20 @@
 name: Component release
+# One component: push its tag. Many components: dispatch this workflow. Either way one
+# run builds every (component x target) row, then publishes each component whose rows
+# all succeeded; GitHub creates a missing tag at the run's commit when it publishes.
 on:
   push:
     tags: ['manager-v*', 'core-*-v*']
   workflow_dispatch:
     inputs:
-      component:
-        description: 'manager or exact plugin_id (case-sensitive)'
-        required: true
-        default: manager
       version:
-        description: Semver version
+        description: Semver version shared by every selected component
         required: true
-        default: 0.1.0-beta.1
+      components:
+        description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
+        required: true
 permissions:
   contents: read
-concurrency:
-  group: release-${{ github.ref }}-${{ inputs.component }}
-  cancel-in-progress: false
 env:
   CARGO_INCREMENTAL: '0'
 jobs:
@@ -24,45 +22,53 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
-      component: ${{ steps.select.outputs.component }}
+      components: ${{ steps.select.outputs.components }}
       version: ${{ steps.select.outputs.version }}
     steps:
+      # The inventory needs the cpal submodule for workspace resolution, not LFS payloads.
       - uses: actions/checkout@v7
         with:
           submodules: true
-          lfs: true
       - run: rustup show
       - id: select
         shell: pwsh
         env:
-          INPUT_COMPONENT: ${{ inputs.component }}
+          INPUT_COMPONENTS: ${{ inputs.components }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          $matrix = cargo xtask matrix --json | ConvertFrom-Json
-          $component = $env:INPUT_COMPONENT
-          $version = $env:INPUT_VERSION
-          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+          $rows = @((cargo xtask matrix --json | ConvertFrom-Json).include)
+          $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
+          $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
             if ($env:GITHUB_REF_NAME -match '^manager-v(.+)$') {
-              $component = 'manager'; $version = $Matches[1]
+              $requested = @('manager'); $version = $Matches[1]
             } else {
-              $candidates = @($matrix.include.component | Sort-Object -Unique | Where-Object { $_ -ne 'manager' })
-              $matched = @($candidates | Where-Object {
-                $slug = $_.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
-                $env:GITHUB_REF_NAME.StartsWith("core-$slug-v")
-              })
-              if ($matched.Count -ne 1) { throw 'Tag does not identify one core' }
-              $component = $matched[0]
-              $slug = $component.ToLowerInvariant().Replace('.', '-').Replace('_', '-')
-              $version = $env:GITHUB_REF_NAME.Substring("core-$slug-v".Length)
+              $matched = @($known | Where-Object { $_ -ne 'manager' -and $env:GITHUB_REF_NAME.StartsWith("core-$(& $slug $_)-v") })
+              if ($matched.Count -ne 1) { throw "Tag $env:GITHUB_REF_NAME does not identify one core" }
+              $requested = $matched
+              $version = $env:GITHUB_REF_NAME.Substring("core-$(& $slug $matched[0])-v".Length)
+            }
+          } else {
+            $version = $env:INPUT_VERSION.Trim()
+            if ($env:INPUT_COMPONENTS.Trim() -ceq 'all') {
+              $requested = @($known | Where-Object { $c = $_; -not ($rows | Where-Object { $_.component -ceq $c -and $_.publish_blocked }) })
+            } else {
+              $requested = @($env:INPUT_COMPONENTS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
             }
           }
-          $rows = @($matrix.include | Where-Object { $_.component -ceq $component })
-          if ($rows.Count -eq 0) { throw 'Unknown or empty component matrix' }
-          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw 'Invalid semantic version' }
-          "matrix=$(@{include=$rows} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
-          "component=$component" >> $env:GITHUB_OUTPUT
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw "Invalid semantic version '$version'" }
+          if ($requested.Count -eq 0) { throw 'No components selected' }
+          foreach ($component in $requested) {
+            $own = @($rows | Where-Object { $_.component -ceq $component })
+            if ($own.Count -eq 0) { throw "Unknown component '$component', or it has no supported target" }
+            if ($own[0].publish_blocked) { throw "$component is publish_blocked: $($own[0].publish_blocked)" }
+          }
+          $include = @($rows | Where-Object { $_.component -cin $requested })
+          "matrix=$(@{include=$include} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
+          "components=$(ConvertTo-Json -Compress -InputObject @($requested))" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
+          "Release $version`: $($requested -join ', ') ($($include.Count) build rows)" >> $env:GITHUB_STEP_SUMMARY
   build:
     needs: select
     strategy:
@@ -72,8 +78,12 @@ jobs:
     timeout-minutes: 360
     env:
       SHINKI_EMU_CI_VERSION: ${{ needs.select.outputs.version }}
-      OHOS_SDK_NATIVE: ${{ vars.OHOS_SDK_NATIVE }}
       ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
+      SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
+      SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
+      SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
+      SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
+      SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
     defaults:
       run:
         shell: pwsh
@@ -88,30 +98,29 @@ jobs:
         with:
           arch: x64
       - uses: ilammy/setup-nasm@v1
-        if: matrix.status != 'blocked'
         with:
           version: '3.02'
       - name: Linux desktop prerequisites
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.status != 'blocked'
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
           sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
       - uses: actions/setup-java@v6
-        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
+        if: contains(matrix.target, 'android')
         with:
           distribution: temurin
           java-version: '27'
           cache: gradle
       - name: Android native build prerequisites
-        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
+        if: contains(matrix.target, 'android')
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nasm pkg-config
       - name: Android SDK
-        if: contains(matrix.target, 'android') && matrix.status != 'blocked'
+        if: contains(matrix.target, 'android')
         shell: bash
         run: |
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -121,8 +130,7 @@ jobs:
           set -o pipefail
           "$sdkmanager" --sdk_root="$ANDROID_HOME" --channel=0 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - name: Prepare supported build
-        if: matrix.status != 'blocked'
+      - name: Prepare dependencies
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
@@ -142,53 +150,42 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
-          SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
-          SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
-          SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
-          SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
-          SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
       - name: Smoke packaged Linux Manager
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager' && matrix.status != 'blocked'
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
         shell: bash
         run: |
           bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"
-      - name: Prepare Release files without publishing
+      - name: Prepare Release files
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
-          VERSION: ${{ needs.select.outputs.version }}
-          SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
-          SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
-          SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
-          SHINKI_EMU_ANDROID_KEY_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEY_PASSWORD }}
-          SHINKI_EMU_ANDROID_VERSION_CODE: ${{ github.run_number }}
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $report = Get-Content -Raw .work/ci-report.json | ConvertFrom-Json
-          if ($null -ne $report.artifact) {
-            cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:VERSION
-          }
+        run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION
       - uses: actions/upload-artifact@v7
-        if: always()
         with:
-          name: release-report-${{ matrix.target }}
-          path: .work/ci-report.json
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        if: matrix.status != 'blocked'
-        with:
-          name: release-files-${{ matrix.target }}
+          # Component ids and triples never contain '@', so publish can select one component.
+          name: release-files-${{ matrix.component }}@${{ matrix.target }}
           path: .work/release/
           include-hidden-files: true
-          if-no-files-found: ignore
+          if-no-files-found: error
   publish:
-    if: github.ref_type == 'tag'
     needs: [select, build]
+    # Failed build rows fail only their own component's publish job.
+    if: ${{ !cancelled() && needs.select.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.select.outputs.components) }}
+    concurrency:
+      group: publish-${{ matrix.component }}-${{ needs.select.outputs.version }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     permissions:
       contents: write
       pull-requests: write
+    env:
+      COMPONENT: ${{ matrix.component }}
+      VERSION: ${{ needs.select.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -196,12 +193,35 @@ jobs:
       - run: rustup show
       - uses: actions/download-artifact@v8
         with:
-          pattern: release-files-*
+          pattern: release-files-${{ matrix.component }}@*
           path: .work/release/
           merge-multiple: true
+      - name: Require every build row of this component
+        shell: bash
+        env:
+          MATRIX: ${{ needs.select.outputs.matrix }}
+        run: |
+          set -euo pipefail
+          # Prepared files sit at .work/release/<tag>/<target>/release.json.
+          missing=$(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX" \
+            | while IFS= read -r target; do compgen -G ".work/release/*/$target/release.json" >/dev/null || printf '%s ' "$target"; done)
+          if test -n "$missing"; then
+            echo "- **$COMPONENT $VERSION skipped**: build rows failed or were cancelled: $missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::$COMPONENT not published; build rows failed or were cancelled: $missing"
+            exit 1
+          fi
       - name: Publish every prepared platform as one Release
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
-          COMPONENT: ${{ needs.select.outputs.component }}
-          VERSION: ${{ needs.select.outputs.version }}
         run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --publish
+      - name: Summary
+        if: always() && steps.publish.outcome != 'skipped'
+        env:
+          OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          if test "$OUTCOME" = success; then
+            echo "- $COMPONENT $VERSION published" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **$COMPONENT $VERSION publish failed**: see the publish step log" >> "$GITHUB_STEP_SUMMARY"
+          fi

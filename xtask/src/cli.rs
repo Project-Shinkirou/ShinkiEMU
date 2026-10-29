@@ -76,6 +76,9 @@ pub enum Command {
         /// Drop rows whose CI build another row already performs (the universal Android Manager).
         #[arg(long, requires = "json")]
         ci: bool,
+        /// Filter to components affected by changes since this Git ref.
+        #[arg(long, requires = "json")]
+        since: Option<String>,
     },
     Build(Build),
     Check {

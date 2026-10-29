@@ -160,6 +160,10 @@ cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/r
 
 清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中真实的嵌入及原生依赖限制；OpenHarmony 需要原生宿主适配和 `OHOS_SDK_NATIVE`。清单声称支持的组合编译失败，报告 `failed` 并返回非零。`--all-cores` 跳过已声明的 blocked 组合，但不掩盖支持组合的失败。`publish_blocked` 单独记录分发限制，不等同于无法编译。
 
+远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
+
+本地 runner 只是推送前的可选预检，用来提前发现会让远端失败的问题。`matrix --json [--ci] --since <ref>` 只保留输入在 `<ref>` 之后有变化的行，runner 通过 `SHINKI_CI_SINCE` 传入该参数。共享输入会选中所有行，包括根目录 `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`，以及这里没有列出的任何路径。`Source/Manager/` 和 `Source/Providers/` 选中 Manager 行。`Source/Families/<目录>/` 选中 manifest 位于该目录的核心，以及该核心 `static_manager_targets` 上的 Manager 行；`build/cores.toml` 中某个 `[[cores]]` 表有改动时，对该核心的效果相同。`docs/**`、`Metadata/**` 和 Markdown 文件不选中任何行。
+
 ## 打包与发布
 
 先构建所选组件，再打包构建记录指向的产物：
@@ -196,7 +200,9 @@ Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `license
 
 Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。`cargo xtask release --component <id> --target <三元组> --version <semver>` 打包一个目标，在 `.work/release/<tag>/<目标>/` 写入二进制 ZIP、源码 ZIP 和 `release.json`。`build/targets.toml`、`build/cores.toml` 中阻止的目标或带 `publish_blocked` 的核心不产生任何文件。对已准备的目标再次运行会直接复用该目录。
 
-`cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标，拒绝来自其他产品提交或核心固定版本的记录，也拒绝空 Release 和已发布的 Release。它把源码包和二进制包上传到 draft，替换中断运行遗留的同名 draft 附件，然后发布 draft，并在 `Metadata/engines/cores/` 下提出目录更新 PR。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
+`cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标。它拒绝来自其他产品提交或核心固定版本的记录、已指向其他提交的 tag、从其他提交创建的 draft，以及空 Release 和已发布的 Release。它在本次运行的提交上创建 draft，或复用该提交上的 draft（替换中断运行遗留的同名附件），上传源码包和二进制包后发布；tag 不存在时由 GitHub 在该提交上创建。核心发布之后，它把每个平台的目录条目提交到 `metadata/release-<tag>` 分支的 `Metadata/engines/cores/` 下，再向 `main` 提 PR。组织设置不允许 Actions 创建 PR 时，最后这一步会失败，但所有条目已在分支上，手动提 PR 即可。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
+
+发布由 `release.yml` 完成。发布单个组件时推送它的 tag。一次推送超过三个 tag 不会触发任何工作流，所以发布多个组件时手动运行该工作流，填写 `version` 和 `components`（逗号分隔的 plugin_id 和 `manager`，或用 `all` 表示所有不带 `publish_blocked` 的组件）。一次运行会构建全部组件 × 目标行，然后发布所有行都成功的组件，由 GitHub 在本次运行的提交上打 tag。运行摘要列出被跳过的组件及其失败的行。
 
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
 
