@@ -23,7 +23,7 @@ ShinkiEMU はプレリリース段階で、ビルドは beta として公開し�
 | コア | エンジン | デスクトップ（動的コア） | Manager に組み込み |
 |---|---|---|---|
 | [`rfvp`](docs/ja/cores/rfvp.md) | FVP | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
-| [`siglus_rs`](docs/ja/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
+| [`siglus_rs`](docs/ja/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`sena-rs`](docs/ja/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ethornell-rs`](docs/ja/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ReMinori`](docs/ja/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | iOS |

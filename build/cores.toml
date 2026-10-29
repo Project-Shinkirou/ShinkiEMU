@@ -53,7 +53,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [cores.source]
@@ -63,10 +63,10 @@ rev = "d640798deee47819f34ba10143f38c06e7fd85e2"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Android static link conflicts with RFVP: duplicate wmv2_decoder_* C symbols (siglus_wmv_decoder vs wmv_decoder) and two wgpu-core instances exporting wgpu_render_bundle_*; pending symbol isolation."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Android static link conflicts with RFVP: duplicate wmv2_decoder_* C symbols (siglus_wmv_decoder vs wmv_decoder) and two wgpu-core instances exporting wgpu_render_bundle_*; pending symbol isolation."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
