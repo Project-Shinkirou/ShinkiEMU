@@ -24,7 +24,7 @@ ShinkiEMU 仍处于预发布阶段，构建以 beta 版发布。构建成功不�
 |---|---|---|---|
 | [`rfvp`](docs/zh-cn/cores/rfvp.md) | FVP | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`siglus_rs`](docs/zh-cn/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
-| [`sena-rs`](docs/zh-cn/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
+| [`sena-rs`](docs/zh-cn/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ethornell-rs`](docs/zh-cn/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`ReMinori`](docs/zh-cn/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`shinki.emu.musica`](docs/zh-cn/cores/shinki-emu-musica.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android |
