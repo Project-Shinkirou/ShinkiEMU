@@ -11,7 +11,7 @@ doctest = false
 
 [dependencies]
 serde.workspace = true
-slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu", "unstable-fontique-011"] }
 image = { workspace = true, features = ["gif"] }
 tracing.workspace = true
 parking_lot = "0.13.0"

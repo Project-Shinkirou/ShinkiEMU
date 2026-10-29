@@ -101,8 +101,9 @@ pub fn select_system() {
     set(Locale::resolve("system", sys_locale::get_locale().as_deref()));
 }
 
-/// Applies the persisted language setting to both the Rust catalog and the
-/// Slint bundle. Call after the first Slint component exists.
+/// Applies the persisted language setting to the Rust catalog, the Slint
+/// bundle and the CJK font fallback order. Call after the first Slint
+/// component exists.
 pub fn apply(setting: &str) -> Locale {
     let system = sys_locale::get_locale();
     let locale = Locale::resolve(setting, system.as_deref());
@@ -110,6 +111,7 @@ pub fn apply(setting: &str) -> Locale {
     if let Err(error) = slint::select_bundled_translation(locale.bundle()) {
         tracing::warn!(?error, language = locale.id(), "SHINKI_EMU_I18N_SELECT_FAILED");
     }
+    crate::fonts::apply(locale);
     locale
 }
 

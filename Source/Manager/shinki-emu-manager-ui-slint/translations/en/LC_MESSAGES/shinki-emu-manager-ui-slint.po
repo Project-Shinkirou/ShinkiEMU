@@ -24,7 +24,7 @@ msgid "设置"
 msgstr "Settings"
 
 msgid "语言"
-msgstr "Languages"
+msgstr "Language"
 
 msgid "跟随系统"
 msgstr "Follow system"
