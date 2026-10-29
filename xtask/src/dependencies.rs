@@ -369,6 +369,12 @@ fn prepare_native_tree(
         for (layer, input) in layers.iter().zip(&archives) {
             extract_native_archive(layer.archive, input, stage, layer.destination)?;
         }
+        if name == "sdl2" && cfg!(target_os = "linux") {
+            run(Command::new("sh")
+                .arg("configure")
+                .arg("--disable-shared")
+                .current_dir(stage))?;
+        }
         if let Some((python, cython)) = python_versions {
             if cfg!(target_os = "linux") {
                 run(Command::new("sh")
@@ -560,7 +566,7 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
         let sdk_archive = get("renpy-sdk")?;
         let python = get(&renpy_host_pin("python"))?;
         let cython = get(&renpy_host_pin("cython"))?;
-        let sdl = get("sdl2")?;
+        let sdl = get(&renpy_host_pin("sdl2"))?;
         if sdk["url"] != sdk_archive.url
             || sdk["sha256"] != sdk_archive.sha256
             || sdk["python"] != python.version
