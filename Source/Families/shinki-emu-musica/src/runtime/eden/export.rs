@@ -37,13 +37,16 @@ pub(in crate::runtime) fn record_message(state: &mut MusicaRuntimeState, command
         return;
     }
     match capture(state, command) {
-        Ok(record) => {
+        Ok(mut record) => {
             let EdenExportState::Ready { history, .. } = &mut state.eden_export else {
                 return;
             };
             if history.len() >= 16_384 || history.len() + 1 != state.backlog.len() {
                 state.eden_export = EdenExportState::Rejected(Rejection::HistoryBound);
             } else {
+                if let Some(previous) = history.last() {
+                    inherit_native_fields(&mut record, previous);
+                }
                 history.push(record);
             }
         }
@@ -67,9 +70,7 @@ impl MusicaVm {
         let last = history.last().ok_or_else(invalid)?;
         let command = checked_command(last, &self.script)?;
         let mut current = capture(&self.state, command).map_err(|_| invalid())?;
-        // CT5 is the recorded panel transition setting, not a live timer.
-        // The current message owns this typed value; new messages record zero.
-        current.panel_fade = last.panel_fade;
+        inherit_native_fields(&mut current, last);
         if history.len() != self.state.backlog.len() || current != *last {
             return Err(invalid());
         }
@@ -188,9 +189,19 @@ fn capture(
         bgm,
         bgm_volume,
         sound_effects: [String::new(), String::new()],
-        panel_fade: 0,
+        stand_count: 0,
         transition_ticks: state.transition.param,
+        fire_effect: String::new(),
+        transition_method: 0,
     })
+}
+
+/// CT5 (stand-slot count), Ce1 (fire effect) and Ct1 (transition method) are
+/// native engine state the VM does not model; they stay as last recorded.
+fn inherit_native_fields(record: &mut EdenHistoryMessage, previous: &EdenHistoryMessage) {
+    record.stand_count = previous.stand_count;
+    record.fire_effect.clone_from(&previous.fire_effect);
+    record.transition_method = previous.transition_method;
 }
 
 fn strip(uri: &str, prefix: &str) -> Result<String, Rejection> {

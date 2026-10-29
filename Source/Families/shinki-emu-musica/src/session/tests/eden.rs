@@ -29,7 +29,9 @@ fn native_gpu_eden_import_continues_saves_and_exports_authoritative_message() {
             bgm: String::new(),
             bgm_volume: 100,
             sound_effects: Default::default(),
-            panel_fade: 0,
+            stand_count: 10,
+            fire_effect: String::new(),
+            transition_method: 0,
             transition_ticks: 30,
         }],
     )

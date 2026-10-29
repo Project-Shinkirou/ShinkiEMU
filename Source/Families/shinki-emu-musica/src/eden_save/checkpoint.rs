@@ -34,9 +34,15 @@ pub struct EdenHistoryMessage {
     pub bgm: String,
     pub bgm_volume: u16,
     pub sound_effects: [String; 2],
-    /// Native historical panel transition setting; no active timer is encoded.
-    pub panel_fade: u32,
+    /// CT5: number of stand-name slots, written by sub_4C9C90 as
+    /// `(end - begin) / 28` over a vector of 28-byte MSVC `std::string`s.
+    /// CT6_%d/CT7_%d/CT7Y_%d follow only for non-empty names (size at +16).
+    pub stand_count: u32,
     pub transition_ticks: u32,
+    /// Native fire-effect resource (Ce1): "", "Firefly", "end".
+    pub fire_effect: String,
+    /// Native transition method (Ct1): 0 or 1.
+    pub transition_method: u32,
 }
 
 impl std::fmt::Debug for EdenHistoryMessage {
@@ -179,13 +185,11 @@ impl EdenHistoryMessage {
         fields.expect("CF1", "16777215")?;
         fields.expect("CF2", "22")?;
         fields.expect("CF3", "10")?;
-        for name in [
-            "CT3", "CT6", "CT7", "bgH", "bgS", "bgV", "stH", "stS", "stV", "Ct1",
-        ] {
+        for name in ["CT6", "CT7", "bgH", "bgS", "bgV", "stH", "stS", "stV"] {
             fields.expect(name, "0")?;
         }
         for name in [
-            "CT1", "Frm", "CO0", "CO1", "CO2", "Cs0", "Cs1", "Cs2", "Ce1", "Ce2", "Ct2",
+            "CT1", "Frm", "CO0", "CO1", "CO2", "Cs0", "Cs1", "Cs2", "Ce2", "Ct2",
         ] {
             fields.expect(name, "")?;
         }
@@ -204,7 +208,7 @@ impl EdenHistoryMessage {
             speaker: fields.take("L2")?.into(),
             text: fields.take("L3")?.into(),
             background: resource_name(fields.take("CT2")?)?,
-            background_position: [0, fields.number("CT4")?],
+            background_position: [fields.number("CT3")?, fields.number("CT4")?],
             panel_mode: fields.number("CP1")?,
             panel_resource: resource_name(fields.take("CP2")?)?,
             bgm: resource_name(fields.take("CB1")?)?,
@@ -213,17 +217,21 @@ impl EdenHistoryMessage {
                 resource_name(fields.take("CE1")?)?,
                 resource_name(fields.take("CE2")?)?,
             ],
-            panel_fade: fields.number("CT5")?,
+            stand_count: fields.number("CT5")?,
             transition_ticks: fields.number("Ct3")?,
+            fire_effect: resource_name(fields.take("Ce1")?)?,
+            transition_method: fields.number("Ct1")?,
         };
         fields.finish()?;
         if message.next_line == 0
             || i32::try_from(message.next_line).is_err()
             || i32::try_from(message.message_id).is_err()
             || i32::try_from(message.transition_ticks).is_err()
+            || i32::try_from(message.background_position[0]).is_err()
+            || i32::try_from(message.background_position[1]).is_err()
             || message.bgm_volume > 100
-            || !matches!(message.panel_fade, 0 | 10)
-            || !matches!(message.panel_mode, 0 | 1 | 3)
+            || !matches!(message.panel_mode, 0 | 1 | 2 | 3)
+            || !matches!(message.transition_method, 0 | 1)
         {
             return Err(unsupported());
         }

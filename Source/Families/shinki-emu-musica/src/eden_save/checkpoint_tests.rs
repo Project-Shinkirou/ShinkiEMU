@@ -245,27 +245,53 @@ fn native_restore_failure_keeps_active_state_and_rejects_unmodeled_fields() {
 }
 
 #[test]
-fn native_resave_zero_panel_fade_is_typed_and_other_values_are_rejected() {
+fn native_ct_fields_map_to_typed_values() {
+    let mut save = checkpoint_fixture();
+    for (name, value) in [
+        ("CT3", "256"),
+        ("CT5", "0"),
+        ("Ce1", "Firefly"),
+        ("Ct1", "1"),
+    ] {
+        save.backlog[0]
+            .iter_mut()
+            .find(|field| field.name == name)
+            .unwrap()
+            .value = value.into();
+    }
+    save.variables
+        .iter_mut()
+        .find(|field| field.name == "stage_BGX")
+        .unwrap()
+        .value = "256".into();
+    let message = &save.checkpoint().unwrap().history[0];
+    assert_eq!(message.background_position, [256, 0]);
+    assert_eq!(message.stand_count, 0);
+    assert_eq!(message.fire_effect, "Firefly");
+    assert_eq!(message.transition_method, 1);
+    save.backlog[0]
+        .iter_mut()
+        .find(|field| field.name == "Ct1")
+        .unwrap()
+        .value = "2".into();
+    assert!(save.checkpoint().is_err());
+}
+
+#[test]
+fn imported_stand_count_survives_live_export() {
     let mut save = checkpoint_fixture();
     save.backlog[0]
         .iter_mut()
         .find(|field| field.name == "CT5")
         .unwrap()
-        .value = "0".into();
-    assert_eq!(save.checkpoint().unwrap().history[0].panel_fade, 0);
+        .value = "10".into();
     let mut vm = vm();
     vm.restore_eden_save(&save, |_| panic!("current script"), 1)
         .unwrap();
     assert_eq!(
-        vm.export_eden_save().unwrap().checkpoint().unwrap().history[0].panel_fade,
-        0
+        vm.export_eden_save().unwrap().checkpoint().unwrap().history[0].stand_count,
+        10
     );
-    save.backlog[0]
-        .iter_mut()
-        .find(|field| field.name == "CT5")
-        .unwrap()
-        .value = "1".into();
-    assert!(save.checkpoint().is_err());
 }
 
 #[test]
