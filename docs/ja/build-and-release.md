@@ -93,7 +93,7 @@ cargo xtask build --target x86_64-linux-android --manager --release
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
 ```
 
-各ビルドは `cargo ndk --locked` でコンパイルし、`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Ethornell、ReMinori、Shinki Musica）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
+各ビルドは `cargo ndk --locked` でコンパイルし、`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Ethornell、Shinki Musica）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。
 

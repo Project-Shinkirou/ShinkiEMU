@@ -24,9 +24,9 @@ ShinkiEMU はプレリリース段階で、ビルドは beta として公開し�
 |---|---|---|---|
 | [`rfvp`](docs/ja/cores/rfvp.md) | FVP | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`siglus_rs`](docs/ja/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
-| [`sena-rs`](docs/ja/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
+| [`sena-rs`](docs/ja/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ethornell-rs`](docs/ja/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
-| [`ReMinori`](docs/ja/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
+| [`ReMinori`](docs/ja/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`shinki.emu.musica`](docs/ja/cores/shinki-emu-musica.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android |
 | [`art3m1s-core`](docs/ja/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | — |
 | [`renpy`](docs/ja/cores/renpy.md) | Ren'Py | Windows x64、Linux x64 | Android |
