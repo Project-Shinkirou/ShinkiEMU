@@ -213,13 +213,37 @@ dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-linux-android", "x86_64-linux-android"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki"
 rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "Native dependency closure fails on Linux (vcpkg libxcrypt autoreconf: LT_SYS_SYMBOL_USCORE); port pending."
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "macOS native dependency closure (vcpkg gperf) has not built in CI; port pending."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "macOS native dependency closure (vcpkg gperf) fails in CI; port pending."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "cocos2dx vcpkg port does not support iOS triplets; port pending."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "cocos2dx vcpkg port does not support iOS triplets; port pending."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "cocos2dx vcpkg port does not support iOS triplets; port pending."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "opencv4 Android build lacks cpu-features.h in CI; port pending."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "opencv4 Android build lacks cpu-features.h in CI; port pending."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -396,15 +420,16 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-static_features = ["static"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
 rev = "a3b698e3af5369cc6573a3392f9c63065e7a029d"
 upstream = "https://github.com/renpy/renpy"
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Linux builds are pending."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
@@ -413,10 +438,10 @@ target = "aarch64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "AppleNative iOS static Ren'Py runtime build has not run."

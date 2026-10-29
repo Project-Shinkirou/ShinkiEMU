@@ -6650,6 +6650,17 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "log 0.4.34",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "na_mpeg2_decoder"
+version = "0.1.0"
 source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d113af06cf44f428cf1e635d7cf8ca2975a401b8#d113af06cf44f428cf1e635d7cf8ca2975a401b8"
 dependencies = [
  "bytemuck",
@@ -6658,17 +6669,6 @@ dependencies = [
  "oxideav-ac3",
  "oxideav-core",
  "symphonia 0.5.5",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "na_mpeg2_decoder"
-version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/sena-rs?rev=22ac45acc6a436516333a85a4ac3b8470e1cc574#22ac45acc6a436516333a85a4ac3b8470e1cc574"
-dependencies = [
- "bytemuck",
- "byteorder",
- "log 0.4.34",
  "thiserror 1.0.69",
 ]
 
@@ -10633,7 +10633,6 @@ dependencies = [
  "shinki-emu-musica",
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
- "shinki-emu-renpy",
  "shinki-emu-rfvp",
  "shinki-emu-sena-rs",
  "shinki-emu-siglus_rs",
@@ -10812,18 +10811,6 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "toml_parser",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "shinki-emu-renpy"
-version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/renpy?rev=a3b698e3af5369cc6573a3392f9c63065e7a029d#a3b698e3af5369cc6573a3392f9c63065e7a029d"
-dependencies = [
- "anyhow",
- "serde_json",
- "sha2 0.10.9",
- "shinki-emu-abi",
- "shinki-emu-build",
 ]
 
 [[package]]

@@ -269,8 +269,6 @@ pub(super) fn service_due(
 const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
     #[cfg(target_os = "android")]
-    ("renpy", shinki_emu_renpy::QUERY),
-    #[cfg(target_os = "android")]
     ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),
     #[cfg(target_os = "android")]
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
