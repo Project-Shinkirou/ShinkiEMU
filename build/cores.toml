@@ -378,7 +378,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki"
-rev = "1afb3df50f6d52ffb729f4c074f3b38be38322b5"
+rev = "fbbf0af88754564b6c6c0acaf84f8a5cc77e406c"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
