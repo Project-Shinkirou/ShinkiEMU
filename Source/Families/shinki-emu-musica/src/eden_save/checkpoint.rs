@@ -227,10 +227,8 @@ impl EdenHistoryMessage {
             || i32::try_from(message.next_line).is_err()
             || i32::try_from(message.message_id).is_err()
             || i32::try_from(message.transition_ticks).is_err()
-            || i32::try_from(message.background_position[0]).is_err()
-            || i32::try_from(message.background_position[1]).is_err()
             || message.bgm_volume > 100
-            || !matches!(message.panel_mode, 0 | 1 | 2 | 3)
+            || !matches!(message.panel_mode, 0..=3)
             || !matches!(message.transition_method, 0 | 1)
         {
             return Err(unsupported());
