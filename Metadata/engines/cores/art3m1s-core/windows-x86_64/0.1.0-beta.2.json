@@ -6,8 +6,8 @@
   "platform": "windows-x86_64",
   "plugin_id": "art3m1s-core",
   "release_tag": "core-art3m1s-core-v0.1.0-beta.2",
-  "sha256": "51a759bf17b82746dce0ff00220323fe9a64dfdf44abb3924e624bf1ea8f3cfa",
-  "size": 17535200,
+  "sha256": "24bbf99f42ffdfcd1a756c7500436440a4cf90194b32fc90e359f8b7047d6edb",
+  "size": 17535189,
   "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-art3m1s-core-v0.1.0-beta.2/shinki-emu-core-art3m1s-core-0.1.0-beta.2-windows-x86_64.zip",
   "version": "0.1.0-beta.2"
 }
