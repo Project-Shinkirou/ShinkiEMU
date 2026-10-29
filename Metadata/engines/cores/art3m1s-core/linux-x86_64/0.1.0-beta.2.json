@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "Art3m1s",
+  "family_name": "Artemis",
+  "license": "MPL-2.0",
+  "platform": "linux-x86_64",
+  "plugin_id": "art3m1s-core",
+  "release_tag": "core-art3m1s-core-v0.1.0-beta.2",
+  "sha256": "8521c0b538d532296c30f7eedb25ac059dfc18cfb6823f40af183bc29429f865",
+  "size": 20519240,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-art3m1s-core-v0.1.0-beta.2/shinki-emu-core-art3m1s-core-0.1.0-beta.2-linux-x86_64.zip",
+  "version": "0.1.0-beta.2"
+}
