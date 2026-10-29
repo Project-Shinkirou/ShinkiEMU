@@ -208,12 +208,12 @@ export component SettingsPage {
     in property <bool> compact;
 
     property <[Category]> categories: [
-        { id: "appearance", label: "外观", icon: Icons.palette },
-        { id: "library-roots", label: "库目录", icon: Icons.folder-open },
-        { id: "network", label: "联网与资料", icon: Icons.public },
-        { id: "translation", label: "实时翻译", icon: Icons.translate },
-        { id: "input", label: "输入与手柄", icon: Icons.sports-esports },
-        { id: "about", label: "关于", icon: Icons.info },
+        { id: "appearance", label: @tr("外观"), icon: Icons.palette },
+        { id: "library-roots", label: @tr("库目录"), icon: Icons.folder-open },
+        { id: "network", label: @tr("联网与资料"), icon: Icons.public },
+        { id: "translation", label: @tr("实时翻译"), icon: Icons.translate },
+        { id: "input", label: @tr("输入与手柄"), icon: Icons.sports-esports },
+        { id: "about", label: @tr("关于"), icon: Icons.info },
     ];
     property <bool> two-pane: root.width >= 760px;
     property <bool> single-content: !root.two-pane && SettingsNav.show-content;
@@ -224,13 +224,13 @@ export component SettingsPage {
     property <length> bar-height: 64px;
 
     pure function category-label(id: string) -> string {
-        return id == "appearance" ? "外观"
-            : id == "library-roots" ? "库目录"
-            : id == "network" ? "联网与资料"
-            : id == "translation" ? "实时翻译"
-            : id == "input" ? "输入与手柄"
-            : id == "about" ? "关于"
-            : "设置";
+        return id == "appearance" ? @tr("外观")
+            : id == "library-roots" ? @tr("库目录")
+            : id == "network" ? @tr("联网与资料")
+            : id == "translation" ? @tr("实时翻译")
+            : id == "input" ? @tr("输入与手柄")
+            : id == "about" ? @tr("关于")
+            : @tr("设置");
     }
 
     function back() {
@@ -277,7 +277,7 @@ export component SettingsPage {
                     padding-left: 28px;
                     height: 72px;
                     MaterialText {
-                        text: "设置";
+                        text: @tr("设置");
                         style: MaterialTypography.headline-small;
                         color: MaterialPalette.on-surface;
                         vertical-alignment: center;
@@ -304,8 +304,8 @@ export component SettingsPage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: root.single-content ? root.category-label(App.settings-category) : "设置";
-        leading-button: root.single-content || root.compact ? { icon: Icons.arrow-back, tooltip: "返回", enabled: true } : { };
+        title: root.single-content ? root.category-label(App.settings-category) : @tr("设置");
+        leading-button: root.single-content || root.compact ? { icon: Icons.arrow-back, tooltip: @tr("返回"), enabled: true } : { };
         leading-button-clicked => { root.back(); }
     }
 

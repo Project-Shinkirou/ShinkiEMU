@@ -24,7 +24,7 @@ msgid "设置"
 msgstr "Settings"
 
 msgid "语言"
-msgstr "Language"
+msgstr "Languages"
 
 msgid "跟随系统"
 msgstr "Follow system"
@@ -872,3 +872,507 @@ msgstr "Appearance"
 
 msgid "选择界面主题和游戏库封面大小。更多选项在 设置→外观。"
 msgstr "Choose the theme and library cover size. More options are in Settings → Appearance."
+
+# store
+msgid "{0}。{1}"
+msgstr "{0}. {1}"
+
+msgid "作品 ID {}"
+msgstr "Title ID {}"
+
+msgid "已选 {0} 个内容仓库，共 {1}"
+msgstr "Depots selected: {0}, {1} total"
+
+msgid "已选 {} 个内容仓库"
+msgstr "Depots selected: {}"
+
+msgid "已登录：{}"
+msgstr "Signed in: {}"
+
+msgid "已登录 {}"
+msgstr "Signed in to {}"
+
+msgid "{} 下载"
+msgstr "{} downloads"
+
+msgid "商店下载"
+msgstr "Store downloads"
+
+msgid "内容仓库 {}"
+msgstr "Depot {}"
+
+msgid "返回添加游戏"
+msgstr "Back to Add game"
+
+msgid "返回游戏列表"
+msgstr "Back to games"
+
+msgid "搜索已拥有的游戏"
+msgstr "Search owned games"
+
+msgid "这个账户还没有游戏"
+msgstr "This account has no games yet"
+
+msgid "在商店购买或领取游戏后，刷新即可看到。"
+msgstr "Buy or claim games in the store, then refresh to see them here."
+
+msgid "刷新"
+msgstr "Refresh"
+
+msgid "选择一款游戏"
+msgstr "Select a game"
+
+msgid "选择内容仓库、语言和分支后即可下载。"
+msgstr "Choose depots, languages and a branch, then download."
+
+msgid "内容仓库"
+msgstr "Depots"
+
+msgid "正在读取内容仓库…"
+msgstr "Loading depots…"
+
+msgid "默认选中 Windows 版本。"
+msgstr "The Windows version is selected by default."
+
+msgid "额外下载的语言内容。"
+msgstr "Extra language content to download."
+
+msgid "分支"
+msgstr "Branch"
+
+msgid "分支密码"
+msgstr "Branch password"
+
+msgid "已输入分支密码"
+msgstr "Branch password entered"
+
+msgid "测试分支需要密码时填写；不会保存。"
+msgstr "Required for password-protected beta branches; not saved."
+
+msgid "游戏库目录"
+msgstr "Library folder"
+
+msgid "请选择下载到哪个文件夹。"
+msgstr "Choose a folder to download to."
+
+msgid "应用"
+msgstr "Apply"
+
+msgid "正在准备下载"
+msgstr "Preparing download"
+
+msgid "正在下载"
+msgstr "Downloading"
+
+msgid "正在校验文件"
+msgstr "Verifying files"
+
+msgid "已取消"
+msgstr "Cancelled"
+
+msgid "正在取消"
+msgstr "Cancelling"
+
+msgid "下载完成"
+msgstr "Download complete"
+
+msgid "下载失败"
+msgstr "Download failed"
+
+msgid "下载"
+msgstr "Download"
+
+msgid "检查更新"
+msgstr "Check updates"
+
+msgid "有可用更新"
+msgstr "Update available"
+
+msgid "下载更新"
+msgstr "Download update"
+
+msgid "已安装"
+msgstr "Installed"
+
+msgid "校验并修复"
+msgstr "Verify and repair"
+
+msgid "打开下载目录"
+msgstr "Open download folder"
+
+msgid "商店"
+msgstr "Store"
+
+msgid "退出登录"
+msgstr "Sign out"
+
+msgid "刷新游戏库"
+msgstr "Refresh library"
+
+msgid "加载游戏库"
+msgstr "Load library"
+
+msgid "游戏库加载失败"
+msgstr "Couldn't load the library"
+
+# settings
+msgid "Bangumi 访问令牌"
+msgstr "Bangumi access token"
+
+msgid "ShinkiEMU 使用的开源组件及其许可证"
+msgstr "Open-source components used by ShinkiEMU and their licenses"
+
+msgid "ShinkiEMU 元数据"
+msgstr "ShinkiEMU metadata"
+
+msgid "下载敏感封面"
+msgstr "Download sensitive covers"
+
+msgid "中"
+msgstr "Medium"
+
+msgid "主题"
+msgstr "Theme"
+
+msgid "从资料库移除的作品不会在扫描时重新加入，恢复后会重新出现。"
+msgstr "Titles removed from the library are skipped by later scans. Restore them to bring them back."
+
+msgid "低"
+msgstr "Low"
+
+msgid "免责声明"
+msgstr "Disclaimer"
+
+msgid "关于"
+msgstr "About"
+
+msgid "关闭时，VNDB 标记为敏感的封面不会下载，以占位图代替。"
+msgstr "When off, covers VNDB marks as sensitive are not downloaded and a placeholder is shown instead."
+
+msgid "关闭界面过渡动画。"
+msgstr "Turn off interface transition animations."
+
+msgid "兼容性数据"
+msgstr "Compatibility data"
+
+msgid "兼容性记录、推荐配置、补丁目录和在线核心列表来自元数据仓库。"
+msgstr "Compatibility records, recommended settings, the patch catalog and the online core list come from the metadata repository."
+
+msgid "准备资料库时会扫描这些目录及其子目录。"
+msgstr "Preparing the library scans these folders and their subfolders."
+
+msgid "减少动态效果"
+msgstr "Reduce motion"
+
+msgid "启用手柄"
+msgstr "Enable controller"
+
+msgid "在游戏封面上显示兼容性状态。"
+msgstr "Show compatibility status on game covers."
+
+msgid "大"
+msgstr "Large"
+
+msgid "密度"
+msgstr "Density"
+
+msgid "封面兼容性徽章"
+msgstr "Compatibility badges on covers"
+
+msgid "封面大小"
+msgstr "Cover size"
+
+msgid "小"
+msgstr "Small"
+
+msgid "已保存（输入新令牌可替换）"
+msgstr "Saved (enter a new token to replace it)"
+
+msgid "已移除的作品"
+msgstr "Removed titles"
+
+msgid "库目录"
+msgstr "Library folders"
+
+msgid "开启后才会访问 VNDB 资料与封面、Bangumi、ShinkiEMU 元数据与核心更新，以及实时翻译服务。关闭时 ShinkiEMU 不发出任何网络请求。"
+msgstr "When on, ShinkiEMU can reach VNDB metadata and covers, Bangumi, ShinkiEMU metadata and core updates, and live translation services. When off, ShinkiEMU makes no network requests at all."
+
+msgid "恢复"
+msgstr "Restore"
+
+msgid "恢复《{}》"
+msgstr "Restore “{}”"
+
+msgid "恢复推荐按键"
+msgstr "Restore recommended keys"
+
+msgid "手柄"
+msgstr "Controller"
+
+msgid "手柄状态"
+msgstr "Controller status"
+
+msgid "打开数据目录"
+msgstr "Open data folder"
+
+msgid "打开日志目录"
+msgstr "Open log folder"
+
+msgid "把手柄按键映射为游戏的键盘输入。"
+msgstr "Map controller buttons to the game's keyboard input."
+
+msgid "报告问题时请附上日志"
+msgstr "Attach logs when reporting a problem"
+
+msgid "按下手柄按钮即可在下方查看对应的按键"
+msgstr "Press a controller button to see its mapped key below"
+
+msgid "按键映射"
+msgstr "Key mapping"
+
+msgid "摇杆偏移小于死区时不产生输入；摇杆漂移明显时调高。"
+msgstr "Stick movement inside the dead zone is ignored. Raise it if your stick drifts."
+
+msgid "摇杆死区"
+msgstr "Stick dead zone"
+
+msgid "数据来源"
+msgstr "Data sources"
+
+msgid "显示"
+msgstr "Display"
+
+msgid "未同步"
+msgstr "Not synced"
+
+msgid "未知"
+msgstr "unknown"
+
+msgid "正在同步…"
+msgstr "Syncing…"
+
+msgid "正在按下的按钮会在下方高亮"
+msgstr "Buttons you press are highlighted below"
+
+msgid "没有可用的按键映射。"
+msgstr "No key mapping available."
+
+msgid "没有已移除的作品。"
+msgstr "No removed titles."
+
+msgid "浅色"
+msgstr "Light"
+
+msgid "深色"
+msgstr "Dark"
+
+msgid "清除"
+msgstr "Clear"
+
+msgid "游戏库视图"
+msgstr "Library view"
+
+msgid "点击一行后按下键盘按键完成绑定。Esc 也可以绑定。"
+msgstr "Click a row, then press a keyboard key to bind it. Esc can be bound too."
+
+msgid "版本 {0} · 构建 {1}"
+msgstr "Version {0} · build {1}"
+
+msgid "版本 {}"
+msgstr "Version {}"
+
+msgid "用于同步收藏状态与评分。令牌保存在系统凭据库中。"
+msgstr "Used to sync collection status and ratings. The token is stored in the system credential store."
+
+msgid "界面框架"
+msgstr "UI framework"
+
+msgid "移除"
+msgstr "Remove"
+
+msgid "立即同步"
+msgstr "Sync now"
+
+msgid "第三方许可"
+msgstr "Third-party licenses"
+
+msgid "紧凑"
+msgstr "Compact"
+
+msgid "紧凑模式会缩小间距和封面。"
+msgstr "Compact mode reduces spacing and cover size."
+
+msgid "细节"
+msgstr "Details"
+
+msgid "联网"
+msgstr "Network"
+
+msgid "联网与资料"
+msgstr "Network & metadata"
+
+msgid "舒适"
+msgstr "Comfortable"
+
+msgid "访问令牌"
+msgstr "Access token"
+
+msgid "资料库、设置、封面缓存和用户安装的核心"
+msgstr "Library database, settings, cover cache and user-installed cores"
+
+msgid "输入与手柄"
+msgstr "Input & controllers"
+
+msgid "重新查看说明，选择库目录、联网与外观"
+msgstr "Review the notes and choose library folders, network and appearance again"
+
+msgid "重新运行首次设置"
+msgstr "Run first-time setup again"
+
+msgid "防倒卖声明"
+msgstr "Anti-resale notice"
+
+msgid "需要先允许联网"
+msgstr "Network access must be allowed first"
+
+msgid "高"
+msgstr "High"
+
+# game-settings
+msgid "ShinkiEMU 元数据为这部作品和当前模拟器提供了推荐参数。"
+msgstr "ShinkiEMU metadata has recommended settings for this title and the current emulator."
+
+msgid "为这部作品单独设置按键"
+msgstr "Use separate keys for this title"
+
+msgid "修复线条并 2 倍放大"
+msgstr "Clean up lines and upscale 2×"
+
+msgid "关联"
+msgstr "Link"
+
+msgid "关联作品资料"
+msgstr "Link title metadata"
+
+msgid "关闭时沿用 设置→输入与手柄 中的全局映射。开启时会先复制一份全局映射。"
+msgstr "When off, the global mapping in Settings → Input & controllers is used. Turning it on starts from a copy of the global mapping."
+
+msgid "准备"
+msgstr "Prepare"
+
+msgid "前往设置"
+msgstr "Go to Settings"
+
+msgid "加载 HLSL 效果文件"
+msgstr "Load an HLSL effect file"
+
+msgid "参数"
+msgstr "Parameters"
+
+msgid "发行日期"
+msgstr "Release date"
+
+msgid "在 {} 中搜索"
+msgstr "Search {}"
+
+msgid "套用"
+msgstr "Apply"
+
+msgid "平滑放大到窗口大小"
+msgstr "Smoothly scale to the window size"
+
+msgid "当前资料"
+msgstr "Current metadata"
+
+msgid "当前预设没有可调参数。"
+msgstr "This preset has no adjustable parameters."
+
+msgid "手柄按钮 → 键盘键"
+msgstr "Controller button → keyboard key"
+
+msgid "按标题搜索，在结果中选择对应的作品后点「关联」。"
+msgstr "Search by title, select the matching title in the results, then click Link."
+
+msgid "按键"
+msgstr "Keys"
+
+msgid "搜索"
+msgstr "Search"
+
+msgid "搜索和刷新作品资料需要先在 设置→联网与资料 中允许联网。解除关联不需要联网。"
+msgstr "Searching and refreshing metadata requires allowing network access in Settings → Network & metadata. Unlinking works offline."
+
+msgid "改动立即保存，只对这部作品生效；标有「恢复默认」的项目已单独设置。"
+msgstr "Changes are saved immediately and apply only to this title. Items showing Reset have been set for this title."
+
+msgid "有推荐配置"
+msgstr "Recommended settings available"
+
+msgid "未识别到可用的模拟器。先在游戏库中准备资料库，或到“核心”页安装对应核心。"
+msgstr "No usable emulator was found. Prepare the library first, or install the matching core on the Cores page."
+
+msgid "本地目录"
+msgstr "Local folder"
+
+msgid "核心内部绘制画面时使用的分辨率，与窗口大小和画面滤镜无关。"
+msgstr "The resolution the core renders at internally, independent of window size and filters."
+
+msgid "模拟器与渲染"
+msgstr "Emulator & rendering"
+
+msgid "模拟器参数"
+msgstr "Emulator parameters"
+
+msgid "渲染"
+msgstr "Rendering"
+
+msgid "游戏设置 · {}"
+msgstr "Game settings · {}"
+
+msgid "游戏设置分区"
+msgstr "Game settings sections"
+
+msgid "滤镜作用于模拟器输出的画面，游戏中也可以在菜单里调整。"
+msgstr "Filters apply to the emulator's output and can also be changed from the in-game menu."
+
+msgid "点击一行后按下想绑定的键盘按键，Esc 也可以绑定。点「取消」放弃修改。"
+msgstr "Click a row, then press the keyboard key to bind. Esc can be bound too. Click Cancel to discard the change."
+
+msgid "登录商店，下载你已拥有的 PC 游戏到游戏库目录。"
+msgstr "Sign in to a store and download PC games you own into a library folder."
+
+msgid "缩放"
+msgstr "Scaling"
+
+msgid "解除 {} 关联"
+msgstr "Unlink {}"
+
+msgid "资料来源"
+msgstr "Metadata source"
+
+msgid "还没有关联作品资料。"
+msgstr "No metadata linked yet."
+
+msgid "这个模拟器没有可调整的参数。"
+msgstr "This emulator has no adjustable parameters."
+
+msgid "这部作品使用下方的按键映射，不受全局设置影响。"
+msgstr "This title uses the key mapping below, independent of the global settings."
+
+msgid "选择文件…"
+msgstr "Choose file…"
+
+msgid "选择模拟器后可调整它的参数。"
+msgstr "Choose an emulator to adjust its parameters."
+
+msgid "选择游戏的来源。"
+msgstr "Choose where your games come from."
+
+msgid "选择用哪个模拟器运行这部作品。更换后，下方参数会切换到该模拟器的设置。"
+msgstr "Choose which emulator runs this title. Switching changes the parameters below to that emulator's settings."
+
+msgid "选择电脑或设备上已有的游戏文件夹，ShinkiEMU 会识别其中的作品。"
+msgstr "Choose a game folder already on your computer or device and ShinkiEMU will identify the titles in it."
+
+msgid "需要允许联网"
+msgstr "Network access required"

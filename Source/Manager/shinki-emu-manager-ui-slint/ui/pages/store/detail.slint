@@ -105,7 +105,7 @@ export component StoreDetail {
                             horizontal-stretch: 0;
                             IconButton {
                                 icon: Icons.arrow-back;
-                                tooltip: "返回游戏列表";
+                                tooltip: @tr("返回游戏列表");
                                 clicked => { root.close(); }
                             }
                         }
@@ -121,7 +121,7 @@ export component StoreDetail {
                                 overflow: clip;
                             }
                             MaterialText {
-                                text: "作品 ID " + Store.selected.title-id
+                                text: @tr("作品 ID {}", Store.selected.title-id)
                                     + (Store.selected.size != "" ? " · " + Store.selected.size : "")
                                     + (Store.selected.platforms != "" ? " · " + Store.selected.platforms : "");
                                 style: MaterialTypography.body-medium;
@@ -145,8 +145,8 @@ export component StoreDetail {
                     }
 
                     if Store.has-depots : Section {
-                        title: "内容仓库";
-                        description: Store.depots.length == 0 ? "正在读取内容仓库…" : "默认选中 Windows 版本。";
+                        title: @tr("内容仓库");
+                        description: Store.depots.length == 0 ? @tr("正在读取内容仓库…") : @tr("默认选中 Windows 版本。");
                         for depot in Store.depots : DepotRow {
                             depot: depot;
                             enabled: !root.busy;
@@ -154,8 +154,8 @@ export component StoreDetail {
                     }
 
                     if Store.has-depots && Store.language-depots.length > 0 : Section {
-                        title: "语言";
-                        description: "额外下载的语言内容。";
+                        title: @tr("语言");
+                        description: @tr("额外下载的语言内容。");
                         for depot in Store.language-depots : DepotRow {
                             depot: depot;
                             enabled: !root.busy;
@@ -165,7 +165,7 @@ export component StoreDetail {
                     if Store.has-branches && Store.branches.length > 0 : VerticalLayout {
                         spacing: 12px;
                         ChoiceSelect {
-                            label: "分支";
+                            label: @tr("分支");
                             choices: Store.branches;
                             value: Store.selected-branch;
                             enabled: !root.busy;
@@ -175,10 +175,10 @@ export component StoreDetail {
                             spacing: 8px;
                             branch-password := TextField {
                                 horizontal-stretch: 1;
-                                label: "分支密码";
+                                label: @tr("分支密码");
                                 input-type: InputType.password;
                                 enabled: !root.busy;
-                                supporting-text: Store.branch-password-set ? "已输入分支密码" : "测试分支需要密码时填写；不会保存。";
+                                supporting-text: Store.branch-password-set ? @tr("已输入分支密码") : @tr("测试分支需要密码时填写；不会保存。");
                                 accepted(text) => {
                                     if text != "" {
                                         Store.select-branch(Store.selected-branch, text);
@@ -191,7 +191,7 @@ export component StoreDetail {
                                 horizontal-stretch: 0;
                                 padding-top: 8px;
                                 TonalButton {
-                                    text: "应用";
+                                    text: @tr("应用");
                                     enabled: !root.busy && branch-password.text != "";
                                     clicked => {
                                         Store.select-branch(Store.selected-branch, branch-password.text);
@@ -209,7 +209,7 @@ export component StoreDetail {
                             spacing: 8px;
                             TextField {
                                 horizontal-stretch: 1;
-                                label: "游戏库目录";
+                                label: @tr("游戏库目录");
                                 text: Store.library-root;
                                 read-only: true;
                                 leading-icon: Icons.folder-open;
@@ -219,14 +219,14 @@ export component StoreDetail {
                                 horizontal-stretch: 0;
                                 padding-top: 8px;
                                 OutlineButton {
-                                    text: "选择…";
+                                    text: @tr("选择…");
                                     enabled: !root.busy;
                                     clicked => { Store.choose-library-root(); }
                                 }
                             }
                         }
                         if Store.library-root == "" : SupportingText {
-                            text: "请选择下载到哪个文件夹。";
+                            text: @tr("请选择下载到哪个文件夹。");
                             error: true;
                         }
                     }
@@ -236,25 +236,25 @@ export component StoreDetail {
                         spacing: 8px;
                         alignment: end;
                         if root.busy && root.this-transfer : OutlineButton {
-                            text: "取消";
+                            text: @tr("取消");
                             enabled: Store.transfer.state != "cancelling";
                             clicked => { Store.cancel(); }
                         }
                         if Store.can-verify && Store.selected.installed : OutlineButton {
                             icon: Icons.build;
-                            text: "校验并修复";
+                            text: @tr("校验并修复");
                             enabled: !root.busy;
                             clicked => { Store.verify(); }
                         }
                         if Store.selected.installed && !Store.selected.update-unknown : TonalButton {
                             icon: Icons.refresh;
-                            text: "检查更新";
+                            text: @tr("检查更新");
                             enabled: !root.busy;
                             clicked => { Store.check-updates(); }
                         }
                         FilledButton {
                             icon: Icons.download;
-                            text: Store.selected.update-available ? "下载更新" : "下载";
+                            text: Store.selected.update-available ? @tr("下载更新") : @tr("下载");
                             enabled: root.can-download;
                             clicked => { Store.download(); }
                         }
@@ -263,30 +263,30 @@ export component StoreDetail {
                         spacing: 8px;
                         FilledButton {
                             icon: Icons.download;
-                            text: Store.selected.update-available ? "下载更新" : "下载";
+                            text: Store.selected.update-available ? @tr("下载更新") : @tr("下载");
                             enabled: root.can-download;
                             clicked => { Store.download(); }
                         }
                         if root.busy && root.this-transfer : OutlineButton {
-                            text: "取消";
+                            text: @tr("取消");
                             enabled: Store.transfer.state != "cancelling";
                             clicked => { Store.cancel(); }
                         }
                         if Store.selected.installed && !Store.selected.update-unknown : TonalButton {
                             icon: Icons.refresh;
-                            text: "检查更新";
+                            text: @tr("检查更新");
                             enabled: !root.busy;
                             clicked => { Store.check-updates(); }
                         }
                         if Store.can-verify && Store.selected.installed : OutlineButton {
                             icon: Icons.build;
-                            text: "校验并修复";
+                            text: @tr("校验并修复");
                             enabled: !root.busy;
                             clicked => { Store.verify(); }
                         }
                     }
                     if Store.selected-depot-count > 0 : MaterialText {
-                        text: "已选 " + Store.selected-depot-count + " 个内容仓库" + (Store.selected-size != "" ? "，共 " + Store.selected-size : "");
+                        text: Store.selected-size != "" ? @tr("已选 {0} 个内容仓库，共 {1}", Store.selected-depot-count, Store.selected-size) : @tr("已选 {} 个内容仓库", Store.selected-depot-count);
                         style: MaterialTypography.body-medium;
                         color: MaterialPalette.on-surface-variant;
                         horizontal-alignment: root.sheet ? left : right;
