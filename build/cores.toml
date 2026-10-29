@@ -260,15 +260,15 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
 branch = "shinki"
