@@ -425,7 +425,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
-rev = "2e7c21fb55632f21fbfcf9c1cad3c695a77a383c"
+rev = "628becd1836c33536105388d299b6e8e35b5b2c5"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
