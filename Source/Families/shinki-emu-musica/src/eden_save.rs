@@ -7,7 +7,7 @@ mod slot;
 mod state;
 pub use slot::{EdenSlotExport, export_slot};
 mod write_checkpoint;
-pub use checkpoint::{EdenCheckpoint, EdenHistoryMessage};
+pub use checkpoint::{EdenCheckpoint, EdenHistoryLine, EdenHistoryMessage};
 pub use position::EdenMessagePosition;
 pub use state::{EdenExportRejection, EdenExportState};
 #[cfg(test)]

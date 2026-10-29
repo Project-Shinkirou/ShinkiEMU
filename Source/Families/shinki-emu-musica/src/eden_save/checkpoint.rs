@@ -24,9 +24,21 @@ pub struct EdenHistoryMessage {
     pub script: String,
     pub next_line: u32,
     pub message_id: i64,
+    /// `CS3` when the original writer stored a value different from `L0`.
+    /// Only a trailing novel page with no text has this: eden0005 record 6098
+    /// holds `L0=-1`, `CS3=4140`, `LC=2` and empty `L1_n..L3_n`, written after
+    /// `.message 4140` / `.panel 0` / `.panel 2` in C006.sc lines 714-718.
+    /// Native slots carry it; the runtime snapshot does not.
+    #[serde(skip)]
+    pub state_message_id: Option<i64>,
+    /// Plain `L1`/`L2`/`L3`; empty for a novel page (`CP1=2`), whose lines are in `page`.
     pub voice: String,
     pub speaker: String,
     pub text: String,
+    /// Novel-mode (`CP1=2`) page lines `L1_n..L4_n`, `LC` of them; empty otherwise.
+    /// Native slots carry the page; the runtime snapshot does not.
+    #[serde(skip)]
+    pub page: Vec<EdenHistoryLine>,
     pub background: String,
     pub background_position: [i32; 2],
     pub panel_mode: u32,
@@ -51,6 +63,23 @@ impl std::fmt::Debug for EdenHistoryMessage {
             .field("message_id", &self.message_id)
             .finish_non_exhaustive()
     }
+}
+
+/// One line of a novel-mode page. The original CLog writer `sub_4F1920`
+/// (CLog vtable +72 at 0x567b2c in eden_en.exe) emits, after `LC` (vt+64,
+/// line count) and `L0`, for each line n: `L1_n` = vt+28 (voice), `L2_n` =
+/// vt+40 (speaker), `L3_n` = vt+16 (text), `L4_n` = vt+52 `sub_4F0030`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct EdenHistoryLine {
+    pub voice: String,
+    pub speaker: String,
+    pub text: String,
+    /// `L4_n`: vertical position where the line starts in the novel window.
+    /// CBacklog+12 `sub_4F0B20` stores it through CLog+48 from scene+4804,
+    /// which message execute `sub_4D35D0` sets from the window's vt+120
+    /// (`sub_427930`). The input handler `sub_4D2660` hit-tests the mouse y
+    /// against vt+52 to pick the clicked line.
+    pub top_y: i32,
 }
 
 struct Fields<'a>(BTreeMap<&'a str, &'a str>);
@@ -178,10 +207,38 @@ impl EdenSave {
     }
 }
 
+/// Upper bound on `LC`; the seven real eden_en slots hold at most 6 lines.
+pub(super) const EDEN_PAGE_LINE_LIMIT: usize = 64;
+
 impl EdenHistoryMessage {
     fn parse(record: &[EdenSaveField]) -> Result<Self, CoreError> {
         let mut fields = Fields::new(record)?;
-        fields.expect("LC", "0")?;
+        let panel_mode: u32 = fields.number("CP1")?;
+        let line_count: usize = fields.number("LC")?;
+        // sub_4F1920 takes the page path exactly when the window mode is 2.
+        if (panel_mode == 2) != (line_count > 0) || line_count > EDEN_PAGE_LINE_LIMIT {
+            return Err(unsupported());
+        }
+        let (voice, speaker, text, page) = if line_count == 0 {
+            (
+                fields.take("L1")?.into(),
+                fields.take("L2")?.into(),
+                fields.take("L3")?.into(),
+                Vec::new(),
+            )
+        } else {
+            let page = (0..line_count)
+                .map(|line| {
+                    Ok(EdenHistoryLine {
+                        voice: fields.take(&format!("L1_{line}"))?.into(),
+                        speaker: fields.take(&format!("L2_{line}"))?.into(),
+                        text: fields.take(&format!("L3_{line}"))?.into(),
+                        top_y: fields.number(&format!("L4_{line}"))?,
+                    })
+                })
+                .collect::<Result<Vec<_>, CoreError>>()?;
+            (String::new(), String::new(), String::new(), page)
+        };
         fields.expect("CF1", "16777215")?;
         fields.expect("CF2", "22")?;
         fields.expect("CF3", "10")?;
@@ -197,19 +254,32 @@ impl EdenHistoryMessage {
             fields.expect(name, "-1")?;
         }
         let message_id = fields.number("L0")?;
-        if fields.number::<i64>("CS3")? != message_id {
+        let state_id: i64 = fields.number("CS3")?;
+        let state_message_id = if state_id == message_id {
+            None
+        } else if message_id == -1
+            && i32::try_from(state_id).is_ok()
+            && !page.is_empty()
+            && page.iter().all(|line| {
+                line.voice.is_empty() && line.speaker.is_empty() && line.text.is_empty()
+            })
+        {
+            Some(state_id)
+        } else {
             return Err(unsupported());
-        }
+        };
         let message = Self {
             script: script_name(fields.take("CS1")?)?,
             next_line: fields.number("CS2")?,
             message_id,
-            voice: fields.take("L1")?.into(),
-            speaker: fields.take("L2")?.into(),
-            text: fields.take("L3")?.into(),
+            state_message_id,
+            voice,
+            speaker,
+            text,
+            page,
             background: resource_name(fields.take("CT2")?)?,
             background_position: [fields.number("CT3")?, fields.number("CT4")?],
-            panel_mode: fields.number("CP1")?,
+            panel_mode,
             panel_resource: resource_name(fields.take("CP2")?)?,
             bgm: resource_name(fields.take("CB1")?)?,
             bgm_volume: fields.number("CB1v")?,

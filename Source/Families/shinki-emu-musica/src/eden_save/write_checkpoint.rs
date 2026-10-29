@@ -77,16 +77,35 @@ impl EdenSave {
     }
 }
 
+/// Field order follows the original CLog writer `sub_4F1920` (CLog vtable +72
+/// at 0x567b2c in eden_en.exe): `LC`, `L0`, then either `L1`..`L3` or, for a
+/// novel page, `L1_n`..`L4_n` per line.
 fn write_message(message: &EdenHistoryMessage) -> Vec<EdenSaveField> {
-    vec![
-        field("LC", 0),
-        field("L0", message.message_id),
-        field("L1", &message.voice),
-        field("L2", &message.speaker),
-        field("L3", &message.text),
+    let mut fields = Vec::with_capacity(46 + 4 * message.page.len());
+    fields.push(field("LC", message.page.len()));
+    fields.push(field("L0", message.message_id));
+    if message.page.is_empty() {
+        fields.extend([
+            field("L1", &message.voice),
+            field("L2", &message.speaker),
+            field("L3", &message.text),
+        ]);
+    }
+    for (index, line) in message.page.iter().enumerate() {
+        fields.extend([
+            field(&format!("L1_{index}"), &line.voice),
+            field(&format!("L2_{index}"), &line.speaker),
+            field(&format!("L3_{index}"), &line.text),
+            field(&format!("L4_{index}"), line.top_y),
+        ]);
+    }
+    fields.extend([
         field("CS1", &message.script),
         field("CS2", message.next_line),
-        field("CS3", message.message_id),
+        field(
+            "CS3",
+            message.state_message_id.unwrap_or(message.message_id),
+        ),
         field("CF1", 16777215),
         field("CF2", 22),
         field("CF3", 10),
@@ -125,5 +144,6 @@ fn write_message(message: &EdenHistoryMessage) -> Vec<EdenSaveField> {
         field("Ct1", message.transition_method),
         field("Ct2", ""),
         field("Ct3", message.transition_ticks),
-    ]
+    ]);
+    fields
 }
