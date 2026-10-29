@@ -435,10 +435,10 @@ target = "aarch64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "AppleNative iOS static Ren'Py runtime build has not run."
