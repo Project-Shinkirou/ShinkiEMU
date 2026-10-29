@@ -570,6 +570,7 @@ impl MusicaProvider {
         let storage = Storage::new(root)?;
         let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
         native.import_legacy_progress(root, game)?;
+        native.import_legacy_settings(root, game)?;
         let mut settings = vm.config().clone();
         [
             settings.bgm_volume,
@@ -579,7 +580,7 @@ impl MusicaProvider {
         [settings.bgm_muted, settings.voice_muted, settings.se_muted] = audio_preferences.muted;
         settings.progress_in_background = progress_in_background;
         settings.text_shadow = text_shadow;
-        let settings = storage.configuration(game)?.unwrap_or(settings);
+        let settings = native.configuration(settings);
         let progress_in_background = settings.progress_in_background;
         let text_shadow = settings.text_shadow;
         let audio_preferences = settings.audio_preferences();
@@ -589,7 +590,6 @@ impl MusicaProvider {
                 "native configuration is invalid",
             )
         })?;
-        let quick_cursor = storage.quick_cursor(game)?;
         let restored_message = imported
             .as_ref()
             .map(|save| eden::restore_vm(&mut vm, save, &archive, primary_encoding))
@@ -682,7 +682,6 @@ impl MusicaProvider {
             visible,
             progress_in_background,
             primary_encoding,
-            quick_cursor,
             native,
         );
         session.install_localization(translation_table, translation_mode);

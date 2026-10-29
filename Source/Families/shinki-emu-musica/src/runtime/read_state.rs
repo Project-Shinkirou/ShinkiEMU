@@ -65,9 +65,9 @@ impl ReadFlags {
         else {
             return false;
         };
-        self.scripts.get(&self.current).is_some_and(|flags| {
-            flags.bits[usize::from(id / 8)] & (0x80 >> (id & 7)) != 0
-        })
+        self.scripts
+            .get(&self.current)
+            .is_some_and(|flags| flags.bits[usize::from(id / 8)] & (0x80 >> (id & 7)) != 0)
     }
 
     fn mark(&mut self, id: u16) {

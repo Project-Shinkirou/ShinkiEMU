@@ -1,4 +1,6 @@
-//! Reader for the `global-progress.json` file Musica wrote before `system.dat`.
+//! Readers for the JSON files Musica wrote before the original formats:
+//! `global-progress.json` (now `system.dat`), `configuration.json` and
+//! `quick-cursor.json` (now `sysparams.txt`).
 
 use super::*;
 use serde::Deserialize;
@@ -8,6 +10,12 @@ use std::io::Read;
 pub(super) const PROGRESS: &str = "global-progress.json";
 const PROGRESS_SCHEMA: &str = "shinki.musica.global_progress.v1";
 const PROGRESS_LIMIT: u64 = 1024;
+pub(super) const CONFIGURATION: &str = "configuration.json";
+const CONFIGURATION_SCHEMA: &str = "shinki.musica.configuration.v1";
+const CONFIGURATION_LIMIT: u64 = 8192;
+pub(super) const QUICK_CURSOR: &str = "quick-cursor.json";
+const QUICK_CURSOR_SCHEMA: &str = "shinki.musica.quick_cursor.v1";
+const QUICK_CURSOR_LIMIT: u64 = 1024;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,10 +25,40 @@ struct Progress {
     unlocks: Vec<Hash256>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Configuration {
+    schema: String,
+    game: Hash256,
+    settings: crate::MusicaConfigState,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QuickCursor {
+    schema: String,
+    game: Hash256,
+    next: u32,
+}
+
 fn invalid_progress() -> SessionError {
     error(
         "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
         "legacy global progress is invalid or belongs to another game",
+    )
+}
+
+fn invalid_configuration() -> SessionError {
+    error(
+        "SHINKI_EMU_MUSICA_CONFIG_READ",
+        "legacy configuration is invalid or belongs to another game",
+    )
+}
+
+fn invalid_quick_cursor() -> SessionError {
+    error(
+        "SHINKI_EMU_MUSICA_QUICK_CURSOR",
+        "legacy quick save cursor is invalid or belongs to another game",
     )
 }
 
@@ -55,6 +93,49 @@ pub(super) fn progress(saves: &Path, game: Hash256) -> SessionResult<Option<Vec<
         return Err(invalid_progress());
     }
     Ok(Some(value.unlocks))
+}
+
+pub(super) fn configuration(
+    saves: &Path,
+    game: Hash256,
+) -> SessionResult<Option<crate::MusicaConfigState>> {
+    let Some(bytes) = read(
+        &saves.join(CONFIGURATION),
+        CONFIGURATION_LIMIT,
+        invalid_configuration,
+    )?
+    else {
+        return Ok(None);
+    };
+    let value: Configuration =
+        serde_json::from_slice(&bytes).map_err(|_| invalid_configuration())?;
+    if value.schema != CONFIGURATION_SCHEMA || value.game != game {
+        return Err(invalid_configuration());
+    }
+    value
+        .settings
+        .validate()
+        .map_err(|_| invalid_configuration())?;
+    Ok(Some(value.settings))
+}
+
+pub(super) fn quick_cursor(saves: &Path, game: Hash256) -> SessionResult<Option<u32>> {
+    let Some(bytes) = read(
+        &saves.join(QUICK_CURSOR),
+        QUICK_CURSOR_LIMIT,
+        invalid_quick_cursor,
+    )?
+    else {
+        return Ok(None);
+    };
+    let value: QuickCursor = serde_json::from_slice(&bytes).map_err(|_| invalid_quick_cursor())?;
+    if value.schema != QUICK_CURSOR_SCHEMA
+        || value.game != game
+        || value.next >= crate::storage::SAVE_PAGE_WIDTH
+    {
+        return Err(invalid_quick_cursor());
+    }
+    Ok(Some(value.next))
 }
 
 /// The `.setglobal` clear flags (`= 1`) that the stored unlock hashes name.

@@ -42,8 +42,7 @@ impl MusicaSession {
         let slot = 10 + self.quick_cursor;
         self.save(slot)?;
         let next = (self.quick_cursor + 1) % crate::storage::SAVE_PAGE_WIDTH;
-        self.storage.write_quick_cursor(self.game, next)?;
-        self.quick_cursor = next;
+        self.store_quick_cursor(next)?;
         self.last_quick_save_pc_line = Some(pc_line);
         tracing::debug!(event = "shinki.emu.musica.quick_save.rotated", slot, next);
         Ok(())
