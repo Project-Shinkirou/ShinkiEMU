@@ -29,6 +29,10 @@ Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xc
 
 Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7, Cython 3.2.4, Cython source-license files and SDL 2.0.20 headers. Windows uses the pinned NuGet development tree and cp312 wheel. Linux builds the pinned CPython source with the host C compiler and loads Cython's pinned Python sources from its standard library. Both interpreters are task-owned under `.work/native-downloads/python`; no system interpreter or developer cache is used. Linux preserves archive executable modes and verifies the SDK's `librenpython.so`, which contains CPython as well as Ren'Py and SDL. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE` automatically on either host.
 
+Linux SDL headers come from the pinned source archive and run its configure
+step to generate the native `SDL_config.h`; the Visual C++ archive contains
+Windows-only configuration headers and is used only on Windows.
+
 Every native download is SHA256-pinned in `build/dependencies.toml`. Extraction is staged, rejects unsafe paths/links/collisions, and publishes only a complete tree. A local verification record binds every file to the archive recipe. A verified existing tree is reused without downloading; modified trees fail without overwriting their files. Bytecode writes are disabled for the task-owned build interpreter so builds do not mutate the verified installation.
 
 Native subprocesses use `.work/vcpkg-binary-cache`, `.work/vcpkg-downloads` and `.work/tmp` rather than profile caches, with vcpkg concurrency capped at 4 and install operations waiting for the shared lock. The vcpkg registry checkout has complete history: historical port trees must be available locally, so registry acquisition never uses a partial or shallow clone. CMake respects an explicit `CMAKE_GENERATOR`; otherwise it prefers Ninja when available inside an MSVC developer environment.
