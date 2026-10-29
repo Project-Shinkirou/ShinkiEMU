@@ -43,4 +43,10 @@ Release archives are deterministic, include build provenance and have correspond
 
 `release` writes GitHub only with `--publish` and `GH_TOKEN` or `GITHUB_TOKEN`. It refuses replacement assets with different bytes. Catalog entries are created only after reading back published assets and verifying SHA256 and size, through a normal PR in this repository. Tags are `manager-v<semver>` or `core-<core-slug>-v<semver>`. Dispatch builds only upload Actions artifacts. CI records manifest-declared unsupported rows as `blocked`, with `artifact: null`; supported build/package failures remain failures.
 
+Manual `ci.yml` dispatch accepts optional exact `component` and `target`
+filters for focused platform gates. For example, pass `-f component=renpy`
+and `-f target=x86_64-unknown-linux-gnu` to `gh workflow run ci.yml`.
+Empty filters, pushes and pull requests retain the full matrix. An unmatched
+filter fails matrix preparation instead of reporting an empty green run.
+
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.

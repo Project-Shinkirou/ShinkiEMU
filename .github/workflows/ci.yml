@@ -7,6 +7,15 @@ on:
   pull_request:
     paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
   workflow_dispatch:
+    inputs:
+      component:
+        description: 'Optional exact component id; empty runs every component'
+        type: string
+        default: ''
+      target:
+        description: 'Optional exact target triple; empty runs every target'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -28,7 +37,14 @@ jobs:
       - run: rustup show
       - id: matrix
         shell: bash
-        run: echo "matrix=$(cargo xtask matrix --json --ci)" >> "$GITHUB_OUTPUT"
+        env:
+          COMPONENT: ${{ inputs.component }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          matrix=$(cargo xtask matrix --json --ci | jq -ce --arg component "$COMPONENT" --arg target "$TARGET" '
+            .include |= map(select(($component == "" or .component == $component) and ($target == "" or .target == $target)))
+            | if (.include | length) == 0 then error("No matching CI rows") else . end')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   tools:
     runs-on: windows-2022
     steps:
