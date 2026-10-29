@@ -43,4 +43,11 @@ Release archives are deterministic, include build provenance and have correspond
 
 `release` writes GitHub only with `--publish` and `GH_TOKEN` or `GITHUB_TOKEN`. It refuses replacement assets with different bytes. Catalog entries are created only after reading back published assets and verifying SHA256 and size, through a normal PR in this repository. Tags are `manager-v<semver>` or `core-<core-slug>-v<semver>`. Dispatch builds only upload Actions artifacts. CI records manifest-declared unsupported rows as `blocked`, with `artifact: null`; supported build/package failures remain failures.
 
+Manual `ci.yml` dispatch accepts `since`, using the existing
+`cargo xtask matrix --json --ci --since <ref>` input classifier. The matrix
+checkout fetches full history so the comparison ref is available. An optional
+`components` comma-separated list narrows that affected matrix. For example:
+`gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
+Empty inputs, pushes and pull requests retain the full matrix.
+
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
