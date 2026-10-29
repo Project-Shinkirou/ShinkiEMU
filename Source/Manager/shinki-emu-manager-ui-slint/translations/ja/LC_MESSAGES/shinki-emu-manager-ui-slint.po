@@ -621,3 +621,252 @@ msgstr "{} のモバイルアプリで QR コードを読み取り、サイン�
 
 msgid "登录二维码"
 msgstr "サインイン用 QR コード"
+
+# cores
+msgid "可更新"
+msgstr "更新可能"
+
+msgid "已加载"
+msgstr "読み込み済み"
+
+msgid "加载失败"
+msgstr "読み込み失敗"
+
+msgid "重启后安装"
+msgstr "再起動後にインストール"
+
+msgid "重启后更新"
+msgstr "再起動後に更新"
+
+msgid "重启后移除"
+msgstr "再起動後に削除"
+
+msgid "可安装"
+msgstr "インストール可能"
+
+msgid "随附"
+msgstr "同梱"
+
+msgid "用户安装"
+msgstr "ユーザーインストール"
+
+msgid "在线"
+msgstr "オンライン"
+
+msgid "版本未知"
+msgstr "バージョン不明"
+
+msgid "更新到 {}"
+msgstr "{} に更新"
+
+msgid "安装"
+msgstr "インストール"
+
+msgid "收起默认设置"
+msgstr "既定設定を閉じる"
+
+msgid "默认设置"
+msgstr "既定設定"
+
+msgid "查看日志"
+msgstr "ログを表示"
+
+msgid "卸载"
+msgstr "アンインストール"
+
+msgid "模拟器默认设置"
+msgstr "エミュレーターの既定設定"
+
+msgid "没有单独设置的游戏使用这里的值；修改立即保存。"
+msgstr "個別設定のないゲームはこの値を使います。変更は即座に保存されます。"
+
+msgid "这个模拟器没有其他可调参数。"
+msgstr "このエミュレーターには他の調整可能な設定はありません。"
+
+msgid "核心有变更，重启 ShinkiEMU 后生效。"
+msgstr "コアが変更されました。ShinkiEMU を再起動すると反映されます。"
+
+msgid "立即重启"
+msgstr "今すぐ再起動"
+
+msgid "在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。"
+msgstr "オンラインのコア一覧は ShinkiEMU メタデータから提供されます。ダウンロード後、再起動すると反映されます。"
+
+msgid "允许联网后可以在线安装和更新核心。"
+msgstr "ネットワーク接続を許可すると、コアをオンラインでインストール・更新できます。"
+
+msgid "从本地安装…"
+msgstr "ファイルからインストール…"
+
+msgid "没有找到核心。可以从本地安装核心包，或允许联网后在线安装。"
+msgstr "コアが見つかりません。ローカルファイルからコアをインストールするか、ネットワーク接続を許可してオンラインでインストールしてください。"
+
+msgid "待重启（{}）"
+msgstr "再起動待ち（{}）"
+
+msgid "加载失败（{}）"
+msgstr "読み込み失敗（{}）"
+
+msgid "已安装（{}）"
+msgstr "インストール済み（{}）"
+
+msgid "可安装（{}）"
+msgstr "インストール可能（{}）"
+
+# onboarding
+msgid "第 {0} 步，共 {1} 步"
+msgstr "ステップ {0} / {1}"
+
+msgid "开始之前"
+msgstr "はじめる前に"
+
+msgid "请先阅读以下说明。以后可以在 设置→关于 再次查看。"
+msgstr "以下の注意事項をお読みください。後から「設定→について」で再度確認できます。"
+
+msgid "添加库目录"
+msgstr "ライブラリフォルダーを追加"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会在其中识别作品。以后也可以在 设置→库目录 修改，这一步可以跳过。"
+msgstr "ゲームの入ったフォルダーを選択してください。ShinkiEMU がそこから作品を認識します。後から「設定→ライブラリフォルダー」で変更できます。この手順はスキップ可能です。"
+
+msgid "还没有添加目录。"
+msgstr "フォルダーをまだ追加していません。"
+
+msgid "添加目录"
+msgstr "フォルダーを追加"
+
+msgid "联网服务"
+msgstr "ネットワークサービス"
+
+msgid "ShinkiEMU 默认不联网。开启后可以使用以下服务，随时可以在 设置→联网与资料 关闭。"
+msgstr "ShinkiEMU は既定ではネットワークに接続しません。有効にすると以下のサービスを利用できます。いつでも「設定→ネットワークとメタデータ」で無効にできます。"
+
+msgid "允许联网"
+msgstr "ネットワーク接続を許可"
+
+msgid "涵盖 VNDB 资料与封面、Bangumi 同步、ShinkiEMU 元数据（兼容性、推荐配置、补丁）与核心更新，以及实时翻译。"
+msgstr "VNDB の情報とカバー画像、Bangumi 同期、ShinkiEMU メタデータ（互換性、推奨設定、パッチ）とコア更新、リアルタイム翻訳を含みます。"
+
+msgid "准备资料库"
+msgstr "ライブラリを準備"
+
+msgid "加载模拟器核心并扫描库目录。作品较多时可能需要一些时间，可以先完成引导，在游戏库中查看进度。"
+msgstr "エミュレーターコアを読み込み、ライブラリフォルダーをスキャンします。作品が多い場合は時間がかかることがあります。先にオンボーディングを完了してライブラリで進行状況を確認できます。"
+
+msgid "重新扫描"
+msgstr "再スキャン"
+
+msgid "重试"
+msgstr "再試行"
+
+msgid "开始准备"
+msgstr "開始"
+
+msgid "正在加载核心…"
+msgstr "コアを読み込み中…"
+
+msgid "正在扫描…"
+msgstr "スキャン中…"
+
+msgid "欢迎使用 ShinkiEMU"
+msgstr "ShinkiEMU へようこそ"
+
+msgid "跳过引导"
+msgstr "オンボーディングをスキップ"
+
+msgid "下一步（{} 秒）"
+msgstr "次へ（{} 秒）"
+
+# onboarding
+msgid "准备失败，请查看核心诊断"
+msgstr "準備に失敗しました。コアの診断を確認してください"
+
+msgid "资料库已准备好，共 {n} 部作品"
+msgid_plural "资料库已准备好，共 {n} 部作品"
+msgstr[0] "ライブラリの準備ができました（{n} 作品）"
+
+# game-view
+msgid "游戏画面"
+msgstr "ゲーム画面"
+
+msgid "打开游戏菜单"
+msgstr "ゲームメニューを開く"
+
+msgid "封面"
+msgstr "カバー"
+
+msgid "正在启动"
+msgstr "起動中"
+
+msgid "正在启动…"
+msgstr "起動中…"
+
+msgid "游戏菜单"
+msgstr "ゲームメニュー"
+
+msgid "继续游戏"
+msgstr "再開"
+
+msgid "画面滤镜"
+msgstr "画面フィルター"
+
+msgid "退出全屏"
+msgstr "全画面表示を終了"
+
+msgid "全屏"
+msgstr "全画面表示"
+
+msgid "↑↓ 选择 · Enter 确认 · Esc 关闭"
+msgstr "↑↓ 選択 · Enter 決定 · Esc 閉じる"
+
+msgid "返回"
+msgstr "戻る"
+
+msgid "改动立即生效"
+msgstr "変更は即座に反映されます"
+
+msgid "预设"
+msgstr "プリセット"
+
+msgid "原画"
+msgstr "オリジナル"
+
+msgid "不做处理"
+msgstr "処理なし"
+
+msgid "平滑放大"
+msgstr "スムーズ拡大"
+
+msgid "按倍率放大画面"
+msgstr "倍率で画面を拡大"
+
+msgid "锐化"
+msgstr "シャープ"
+
+msgid "增强线条边缘"
+msgstr "線の輪郭を強調"
+
+msgid "修复线条并放大 2 倍"
+msgstr "線を修復して 2 倍に拡大"
+
+msgid "外部效果…"
+msgstr "外部エフェクト…"
+
+msgid "从文件加载 HLSL 效果"
+msgstr "ファイルから HLSL エフェクトを読み込む"
+
+msgid "效果参数"
+msgstr "エフェクトのパラメーター"
+
+msgid "当前预设没有可调参数"
+msgstr "このプリセットには調整できるパラメーターがありません"
+
+msgid "恢复默认参数"
+msgstr "既定値に戻す"
+
+# onboarding-appearance
+msgid "外观"
+msgstr "外観"
+
+msgid "选择界面主题和游戏库封面大小。更多选项在 设置→外观。"
+msgstr "テーマとライブラリのカバーサイズを選択してください。その他のオプションは「設定→外観」にあります。"

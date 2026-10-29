@@ -322,7 +322,7 @@ export component GameView inherits Rectangle {
         height: root.stage-height;
         image-fit: fill;
         accessible-role: image;
-        accessible-label: "游戏画面";
+        accessible-label: @tr("游戏画面");
     }
 
     game-focus := FocusScope {
@@ -437,7 +437,7 @@ export component GameView inherits Rectangle {
             width: parent.width;
             height: parent.height;
             icon: Icons.menu;
-            tooltip: "打开游戏菜单";
+            tooltip: @tr("打开游戏菜单");
             clicked => { root.open-menu(); }
         }
     }
@@ -494,7 +494,7 @@ export component GameView inherits Rectangle {
                         source: Session.launch-cover;
                         image-fit: cover;
                         accessible-role: image;
-                        accessible-label: "封面";
+                        accessible-label: @tr("封面");
                     }
                 }
             }
@@ -515,10 +515,10 @@ export component GameView inherits Rectangle {
                 CircularProgressIndicator {
                     height: 40px;
                     indeterminate: true;
-                    accessible-label: "正在启动";
+                    accessible-label: @tr("正在启动");
                 }
                 MaterialText {
-                    text: "正在启动…";
+                    text: @tr("正在启动…");
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-surface-variant;
                     vertical-alignment: center;
@@ -528,7 +528,7 @@ export component GameView inherits Rectangle {
             HorizontalLayout {
                 alignment: center;
                 OutlineButton {
-                    text: "取消";
+                    text: @tr("取消");
                     clicked => { Session.leave(); }
                 }
             }
@@ -571,7 +571,7 @@ export component GameView inherits Rectangle {
             drop-shadow-offset-x: -4px;
             drop-shadow-color: MaterialPalette.shadow-30;
             accessible-role: groupbox;
-            accessible-label: "游戏菜单";
+            accessible-label: @tr("游戏菜单");
 
             TouchArea { }
 
@@ -621,7 +621,7 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.play-arrow;
-                            label: "继续游戏";
+                            label: @tr("继续游戏");
                             wanted: root.menu-focus == 0;
                             activated => { root.close-menu(); }
                             step(delta) => { root.move-menu-focus(delta); }
@@ -654,7 +654,7 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.filter-vintage;
-                            label: "画面滤镜";
+                            label: @tr("画面滤镜");
                             wanted: root.menu-focus == root.filters-index;
                             activated => { root.show-filters(); }
                             step(delta) => { root.move-menu-focus(delta); }
@@ -667,7 +667,7 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Session.fullscreen ? Icons.fullscreen-exit : Icons.fullscreen;
-                            label: Session.fullscreen ? "退出全屏" : "全屏";
+                            label: Session.fullscreen ? @tr("退出全屏") : @tr("全屏");
                             wanted: root.menu-focus == root.fullscreen-index;
                             activated => { Session.set-fullscreen(!Session.fullscreen); }
                             step(delta) => { root.move-menu-focus(delta); }
@@ -682,7 +682,7 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.arrow-back;
-                            label: "返回游戏库";
+                            label: @tr("返回游戏库");
                             danger: true;
                             wanted: root.menu-focus == root.leave-index;
                             activated => { Session.leave(); }
@@ -696,7 +696,7 @@ export component GameView inherits Rectangle {
                 }
 
                 MaterialText {
-                    text: "↑↓ 选择 · Enter 确认 · Esc 关闭";
+                    text: @tr("↑↓ 选择 · Enter 确认 · Esc 关闭");
                     style: MaterialTypography.label-small;
                     color: MaterialPalette.on-surface-variant;
                     horizontal-alignment: center;
@@ -725,7 +725,7 @@ export component GameView inherits Rectangle {
                         horizontal-stretch: 0;
                         IconButton {
                             icon: Icons.arrow-back;
-                            tooltip: "返回";
+                            tooltip: @tr("返回");
                             clicked => { root.show-main(); }
                         }
                     }
@@ -734,12 +734,12 @@ export component GameView inherits Rectangle {
                         horizontal-stretch: 1;
                         spacing: 2px;
                         MaterialText {
-                            text: "画面滤镜";
+                            text: @tr("画面滤镜");
                             style: MaterialTypography.title-large;
                             color: MaterialPalette.on-surface;
                         }
                         MaterialText {
-                            text: "改动立即生效";
+                            text: @tr("改动立即生效");
                             style: MaterialTypography.body-small;
                             color: MaterialPalette.on-surface-variant;
                         }
@@ -766,7 +766,7 @@ export component GameView inherits Rectangle {
                             padding-left: 28px;
                             padding-right: 28px;
                             MaterialText {
-                                text: "预设";
+                                text: @tr("预设");
                                 style: MaterialTypography.title-small;
                                 color: MaterialPalette.primary;
                                 height: 32px;
@@ -777,8 +777,8 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.image;
-                            label: "原画";
-                            supporting: "不做处理";
+                            label: @tr("原画");
+                            supporting: @tr("不做处理");
                             checkable: true;
                             selected: Filters.preset == "none";
                             trap-tab: false;
@@ -793,8 +793,8 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.fullscreen;
-                            label: "平滑放大";
-                            supporting: "按倍率放大画面";
+                            label: @tr("平滑放大");
+                            supporting: @tr("按倍率放大画面");
                             checkable: true;
                             selected: Filters.preset == "scale";
                             trap-tab: false;
@@ -809,8 +809,8 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.tune;
-                            label: "锐化";
-                            supporting: "增强线条边缘";
+                            label: @tr("锐化");
+                            supporting: @tr("增强线条边缘");
                             checkable: true;
                             selected: Filters.preset == "sharpen";
                             trap-tab: false;
@@ -826,7 +826,7 @@ export component GameView inherits Rectangle {
                             dense: root.dense-menu;
                             icon: Icons.filter-vintage;
                             label: "Anime4K 2×";
-                            supporting: "修复线条并放大 2 倍";
+                            supporting: @tr("修复线条并放大 2 倍");
                             checkable: true;
                             selected: Filters.preset == "anime4k";
                             trap-tab: false;
@@ -841,8 +841,8 @@ export component GameView inherits Rectangle {
                         MenuRow {
                             dense: root.dense-menu;
                             icon: Icons.upload-file;
-                            label: "外部效果…";
-                            supporting: "从文件加载 HLSL 效果";
+                            label: @tr("外部效果…");
+                            supporting: @tr("从文件加载 HLSL 效果");
                             checkable: true;
                             selected: Filters.preset == "external";
                             trap-tab: false;
@@ -863,12 +863,12 @@ export component GameView inherits Rectangle {
                             spacing: 8px;
 
                             MaterialText {
-                                text: "效果参数";
+                                text: @tr("效果参数");
                                 style: MaterialTypography.title-small;
                                 color: MaterialPalette.primary;
                             }
                             if Filters.fields.length == 0 : MaterialText {
-                                text: "当前预设没有可调参数";
+                                text: @tr("当前预设没有可调参数");
                                 style: MaterialTypography.body-medium;
                                 color: MaterialPalette.on-surface-variant;
                                 wrap: word-wrap;
@@ -882,7 +882,7 @@ export component GameView inherits Rectangle {
                             HorizontalLayout {
                                 alignment: start;
                                 TextButton {
-                                    text: "恢复默认参数";
+                                    text: @tr("恢复默认参数");
                                     icon: Icons.restart-alt;
                                     enabled: Filters.fields.length > 0;
                                     clicked => { Filters.reset-parameters(); }

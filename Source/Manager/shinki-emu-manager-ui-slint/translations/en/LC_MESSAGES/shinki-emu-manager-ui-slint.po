@@ -172,7 +172,7 @@ msgid "执行"
 msgstr "Run"
 
 msgid "完成"
-msgstr "Done"
+msgstr "Finish"
 
 msgid "补丁 · {}"
 msgstr "Patches · {}"
@@ -622,3 +622,253 @@ msgstr "Scan the QR code with the {} mobile app and confirm the sign-in."
 
 msgid "登录二维码"
 msgstr "Sign-in QR code"
+
+# cores
+msgid "可更新"
+msgstr "Update available"
+
+msgid "已加载"
+msgstr "Loaded"
+
+msgid "加载失败"
+msgstr "Load failed"
+
+msgid "重启后安装"
+msgstr "Install on restart"
+
+msgid "重启后更新"
+msgstr "Update on restart"
+
+msgid "重启后移除"
+msgstr "Remove on restart"
+
+msgid "可安装"
+msgstr "Available"
+
+msgid "随附"
+msgstr "Bundled"
+
+msgid "用户安装"
+msgstr "User-installed"
+
+msgid "在线"
+msgstr "Online"
+
+msgid "版本未知"
+msgstr "Version unknown"
+
+msgid "更新到 {}"
+msgstr "Update to {}"
+
+msgid "安装"
+msgstr "Install"
+
+msgid "收起默认设置"
+msgstr "Hide defaults"
+
+msgid "默认设置"
+msgstr "Default settings"
+
+msgid "查看日志"
+msgstr "View log"
+
+msgid "卸载"
+msgstr "Uninstall"
+
+msgid "模拟器默认设置"
+msgstr "Emulator defaults"
+
+msgid "没有单独设置的游戏使用这里的值；修改立即保存。"
+msgstr "Games without individual settings use these values; changes save immediately."
+
+msgid "这个模拟器没有其他可调参数。"
+msgstr "This emulator has no other tunable settings."
+
+msgid "核心有变更，重启 ShinkiEMU 后生效。"
+msgstr "Cores have changed; restart ShinkiEMU to apply."
+
+msgid "立即重启"
+msgstr "Restart now"
+
+msgid "在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。"
+msgstr "The online core catalog comes from ShinkiEMU metadata; downloads take effect after a restart."
+
+msgid "允许联网后可以在线安装和更新核心。"
+msgstr "Enable network access to install and update cores online."
+
+msgid "从本地安装…"
+msgstr "Install from file…"
+
+msgid "没有找到核心。可以从本地安装核心包，或允许联网后在线安装。"
+msgstr "No cores found. Install a core package from a file or enable network access to install online."
+
+msgid "待重启（{}）"
+msgstr "Pending restart ({})"
+
+msgid "加载失败（{}）"
+msgstr "Load failed ({})"
+
+msgid "已安装（{}）"
+msgstr "Installed ({})"
+
+msgid "可安装（{}）"
+msgstr "Available ({})"
+
+# onboarding
+msgid "第 {0} 步，共 {1} 步"
+msgstr "Step {0} of {1}"
+
+msgid "开始之前"
+msgstr "Before you begin"
+
+msgid "请先阅读以下说明。以后可以在 设置→关于 再次查看。"
+msgstr "Please read the notices below. You can view them again in Settings → About."
+
+msgid "添加库目录"
+msgstr "Add library folders"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会在其中识别作品。以后也可以在 设置→库目录 修改，这一步可以跳过。"
+msgstr "Choose folders containing your games; ShinkiEMU scans them for titles. You can change them later in Settings → Library folders. This step is optional."
+
+msgid "还没有添加目录。"
+msgstr "No folders added yet."
+
+msgid "添加目录"
+msgstr "Add folder"
+
+msgid "联网服务"
+msgstr "Network services"
+
+msgid "ShinkiEMU 默认不联网。开启后可以使用以下服务，随时可以在 设置→联网与资料 关闭。"
+msgstr "ShinkiEMU doesn't connect to the network by default. Enable it to use the services below; you can turn them off anytime in Settings → Network & metadata."
+
+msgid "允许联网"
+msgstr "Allow network access"
+
+msgid "涵盖 VNDB 资料与封面、Bangumi 同步、ShinkiEMU 元数据（兼容性、推荐配置、补丁）与核心更新，以及实时翻译。"
+msgstr "Covers VNDB metadata and cover art, Bangumi sync, ShinkiEMU metadata (compatibility, recommended settings, patches) and core updates, plus live translation."
+
+msgid "准备资料库"
+msgstr "Prepare library"
+
+msgid "加载模拟器核心并扫描库目录。作品较多时可能需要一些时间，可以先完成引导，在游戏库中查看进度。"
+msgstr "Load emulator cores and scan library folders. This may take a moment if you have many titles; you can finish onboarding first and watch progress in the library."
+
+msgid "重新扫描"
+msgstr "Re-scan"
+
+msgid "重试"
+msgstr "Retry"
+
+msgid "开始准备"
+msgstr "Start"
+
+msgid "正在加载核心…"
+msgstr "Loading cores…"
+
+msgid "正在扫描…"
+msgstr "Scanning…"
+
+msgid "欢迎使用 ShinkiEMU"
+msgstr "Welcome to ShinkiEMU"
+
+msgid "跳过引导"
+msgstr "Skip onboarding"
+
+msgid "下一步（{} 秒）"
+msgstr "Next ({} s)"
+
+# onboarding
+msgid "准备失败，请查看核心诊断"
+msgstr "Preparation failed; check core diagnostics"
+
+msgid "资料库已准备好，共 {n} 部作品"
+msgid_plural "资料库已准备好，共 {n} 部作品"
+msgstr[0] "Library ready: {n} title"
+msgstr[1] "Library ready: {n} titles"
+
+# game-view
+msgid "游戏画面"
+msgstr "Game viewport"
+
+msgid "打开游戏菜单"
+msgstr "Open game menu"
+
+msgid "封面"
+msgstr "Cover"
+
+msgid "正在启动"
+msgstr "Starting"
+
+msgid "正在启动…"
+msgstr "Starting…"
+
+msgid "游戏菜单"
+msgstr "Game menu"
+
+msgid "继续游戏"
+msgstr "Resume"
+
+msgid "画面滤镜"
+msgstr "Screen filter"
+
+msgid "退出全屏"
+msgstr "Exit fullscreen"
+
+msgid "全屏"
+msgstr "Fullscreen"
+
+msgid "↑↓ 选择 · Enter 确认 · Esc 关闭"
+msgstr "↑↓ Select · Enter Confirm · Esc Close"
+
+msgid "返回"
+msgstr "Back"
+
+msgid "改动立即生效"
+msgstr "Changes take effect immediately"
+
+msgid "预设"
+msgstr "Presets"
+
+msgid "原画"
+msgstr "Original"
+
+msgid "不做处理"
+msgstr "No processing"
+
+msgid "平滑放大"
+msgstr "Smooth upscale"
+
+msgid "按倍率放大画面"
+msgstr "Scale the picture by a factor"
+
+msgid "锐化"
+msgstr "Sharpen"
+
+msgid "增强线条边缘"
+msgstr "Enhance line edges"
+
+msgid "修复线条并放大 2 倍"
+msgstr "Restore lines and upscale 2×"
+
+msgid "外部效果…"
+msgstr "External effect…"
+
+msgid "从文件加载 HLSL 效果"
+msgstr "Load an HLSL effect from a file"
+
+msgid "效果参数"
+msgstr "Effect parameters"
+
+msgid "当前预设没有可调参数"
+msgstr "This preset has no tunable parameters"
+
+msgid "恢复默认参数"
+msgstr "Restore defaults"
+
+# onboarding-appearance
+msgid "外观"
+msgstr "Appearance"
+
+msgid "选择界面主题和游戏库封面大小。更多选项在 设置→外观。"
+msgstr "Choose the theme and library cover size. More options are in Settings → Appearance."
