@@ -396,6 +396,8 @@ fn prepare_native_tree(
                         fs::copy(source, entry.path())?;
                     }
                 }
+                // Keep the executable distinct from CPython's Python/ source directory.
+                fs::rename(stage.join("python"), stage.join(build_python_relative()))?;
             }
             validate_build_python(&stage.join(build_python_relative()), python, cython)?;
         }
@@ -417,7 +419,7 @@ pub(crate) fn build_python_relative() -> &'static str {
     if cfg!(windows) {
         "python.exe"
     } else {
-        "python"
+        "build-python"
     }
 }
 
