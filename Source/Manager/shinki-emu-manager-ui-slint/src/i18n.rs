@@ -98,7 +98,10 @@ fn set(locale: Locale) {
 /// Renders Rust-side text in the system language until [`apply`] runs, so a
 /// startup failure before the settings load is reported in a readable language.
 pub fn select_system() {
-    set(Locale::resolve("system", sys_locale::get_locale().as_deref()));
+    set(Locale::resolve(
+        "system",
+        sys_locale::get_locale().as_deref(),
+    ));
 }
 
 /// Applies the persisted language setting to the Rust catalog, the Slint
@@ -109,7 +112,11 @@ pub fn apply(setting: &str) -> Locale {
     let locale = Locale::resolve(setting, system.as_deref());
     set(locale);
     if let Err(error) = slint::select_bundled_translation(locale.bundle()) {
-        tracing::warn!(?error, language = locale.id(), "SHINKI_EMU_I18N_SELECT_FAILED");
+        tracing::warn!(
+            ?error,
+            language = locale.id(),
+            "SHINKI_EMU_I18N_SELECT_FAILED"
+        );
     }
     crate::fonts::apply(locale);
     locale
@@ -160,7 +167,9 @@ pub const fn index_of(msgid: &str) -> usize {
             core::cmp::Ordering::Equal => return mid,
         }
     }
-    panic!("SHINKI_EMU_I18N_MISSING: add this msgid to every translations/{{en,ja}}/LC_MESSAGES/*.po")
+    panic!(
+        "SHINKI_EMU_I18N_MISSING: add this msgid to every translations/{{en,ja}}/LC_MESSAGES/*.po"
+    )
 }
 
 #[doc(hidden)]

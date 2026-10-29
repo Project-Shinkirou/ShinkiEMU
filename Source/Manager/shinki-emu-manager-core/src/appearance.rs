@@ -58,7 +58,10 @@ mod tests {
         assert_eq!(settings.language, "system");
         assert_eq!(settings.theme_mode, "dark");
         assert!(settings.validate().is_ok());
-        let invalid = AppearanceSettings { language: "fr".into(), ..settings };
+        let invalid = AppearanceSettings {
+            language: "fr".into(),
+            ..settings
+        };
         assert!(invalid.validate().is_err());
     }
 }

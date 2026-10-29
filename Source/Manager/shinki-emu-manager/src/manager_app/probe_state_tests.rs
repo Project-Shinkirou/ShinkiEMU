@@ -1147,7 +1147,7 @@ fn patch_selection_keeps_choices_and_reports_steps() {
     assert_eq!(model.patch.game.id, "source");
     assert!(!model.patch.game.linked);
     assert!(model.patch.recipes.is_empty());
-    assert_eq!(model.patch.hint, file_patch::PATCH_VNDB_HINT);
+    assert_eq!(model.patch.hint, shinki_emu_manager_ui_slint::tr!("先在 游戏设置→作品资料 关联 VNDB 作品"));
     assert_eq!(model.patch.state.patch_directory, location);
     assert_eq!(
         app.select_patch_recipe("missing").unwrap_err(),

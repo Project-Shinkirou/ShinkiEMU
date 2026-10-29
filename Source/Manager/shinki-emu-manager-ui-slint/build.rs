@@ -38,7 +38,10 @@ fn load_catalog(root: &Path) -> (Catalog, BTreeSet<String>) {
     let mut per_language = Vec::new();
     let mut plurals = BTreeSet::new();
     for (language, forms) in LANGUAGES.into_iter().zip(PLURAL_FORMS) {
-        let path = root.join(language).join("LC_MESSAGES").join(format!("{DOMAIN}.po"));
+        let path = root
+            .join(language)
+            .join("LC_MESSAGES")
+            .join(format!("{DOMAIN}.po"));
         println!("cargo:rerun-if-changed={}", path.display());
         let file = rspolib::pofile(path.as_path())
             .unwrap_or_else(|e| panic!("SHINKI_EMU_I18N_PO_PARSE {}: {e}", path.display()));
@@ -59,7 +62,8 @@ fn load_catalog(root: &Path) -> (Catalog, BTreeSet<String>) {
             );
             let msgstr = if let Some(plural) = &entry.msgid_plural {
                 assert!(
-                    entry.msgstr_plural.len() == forms && entry.msgstr_plural.iter().all(|s| !s.is_empty()),
+                    entry.msgstr_plural.len() == forms
+                        && entry.msgstr_plural.iter().all(|s| !s.is_empty()),
                     "SHINKI_EMU_I18N_PLURAL_FORMS {language} needs {forms}: {:?}",
                     entry.msgid
                 );
@@ -119,7 +123,9 @@ fn placeholders(text: &str) -> Vec<String> {
     let mut found = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find('{') {
-        let Some(len) = rest[start..].find('}') else { break };
+        let Some(len) = rest[start..].find('}') else {
+            break;
+        };
         found.push(rest[start..start + len + 1].to_owned());
         rest = &rest[start + len + 1..];
     }
@@ -162,7 +168,9 @@ fn tr_literals(source: &str) -> Vec<String> {
     let mut rest = source;
     while let Some(at) = rest.find("@tr(") {
         rest = rest[at + 4..].trim_start();
-        let Some(body) = rest.strip_prefix('"') else { continue };
+        let Some(body) = rest.strip_prefix('"') else {
+            continue;
+        };
         let mut text = String::new();
         let mut chars = body.char_indices();
         while let Some((i, c)) = chars.next() {

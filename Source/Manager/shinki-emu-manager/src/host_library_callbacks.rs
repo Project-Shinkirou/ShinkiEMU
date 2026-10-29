@@ -238,7 +238,11 @@ fn install_patch<C: ManagerController>(
         if output {
             // A folder picker only returns existing directories; the platform names
             // a new one, which the conversion creates.
-            platform::pick_new_directory(tr!("选择尚不存在的新输出目录名称"), "localized-output", done);
+            platform::pick_new_directory(
+                tr!("选择尚不存在的新输出目录名称"),
+                "localized-output",
+                done,
+            );
         } else {
             platform::pick_folder(tr!("选择补丁输入目录"), done);
         }
