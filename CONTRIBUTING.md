@@ -29,6 +29,12 @@ Unselected `test` runs xtask/build-helper tests. Native regressions may require 
 
 Keep behavior regressions for format/budget boundaries, corrupt inputs, save integrity, cancellation/backpressure, stale results, worker shutdown, CPU leases and real consumers. Remove tests that only pin wording, constants, path spelling, forwarding or mock calls. Do not delete failing behavior tests or disable real backends to pass checks.
 
+## 界面翻译 / Manager translations
+
+Manager 以简体中文为源语言：Slint 的 `@tr("…")` 和 Rust 的 `tr!("…")` 都以中文原文作为 msgid，英文和日文译文在 `Source/Manager/shinki-emu-manager-ui-slint/translations/{en,ja}/LC_MESSAGES/shinki-emu-manager-ui-slint.po`。新增或修改界面文字时，在两个 `.po` 文件中同时添加对应条目；缺少条目或译文为空时，构建会以 `SHINKI_EMU_I18N_MISSING` 失败并列出 msgid。一条 msgid 对应一句完整的话，不要拼接片段；变量用 `{}`，有多个变量或语序需要调整时用 `{0}`、`{1}`。术语与 `docs/en`、`docs/ja` 保持一致。逻辑判断比较 id 或枚举，不比较显示文本。
+
+Simplified Chinese is the source language. Slint `@tr("…")` and Rust `tr!("…")` both use the Chinese text as the msgid; English and Japanese live in `Source/Manager/shinki-emu-manager-ui-slint/translations/{en,ja}/LC_MESSAGES/shinki-emu-manager-ui-slint.po`. Add every new or changed string to both files; a missing or empty entry fails the build with `SHINKI_EMU_I18N_MISSING` and lists the msgid. Keep one msgid per complete sentence instead of concatenated fragments; use `{}` for a value, or `{0}`/`{1}` for several values or when word order differs. Follow the terminology in `docs/en` and `docs/ja`. Compare ids or enums in logic, never displayed text.
+
 ## 来源、许可与敏感数据 / Sources, licensing and sensitive data
 
 保留作者、上游来源和完整许可；引入依赖或可分发附件前核实分发条件。不得提交商业游戏资源、正文、密钥、私有配置、商业存档、解码导出或含敏感数据的日志。回归使用公开授权或自造夹具。兼容性与补丁通过 issue 表单和维护者审查贡献，规则见 [Metadata](docs/zh-cn/metadata.md)。
