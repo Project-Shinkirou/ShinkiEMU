@@ -953,7 +953,7 @@ fn key_capture_binds_named_keys_and_waits_on_unmappable_ones() {
     app.begin_key_capture("south", None).unwrap();
     assert_eq!(app.key_capture().unwrap().button, "south");
     app.capture_key(KeyCode::Digit1).unwrap();
-    assert_eq!(app.key_capture().unwrap().hint, input::UNMAPPABLE_KEY_HINT);
+    assert_eq!(app.key_capture().unwrap().hint, "这个键不能用于映射");
     app.capture_key(KeyCode::Escape).unwrap();
     assert!(app.key_capture().is_none());
     assert_eq!(app.input_mapping.gamepad[&GamepadInput::South], "escape");

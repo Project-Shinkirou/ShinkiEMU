@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     pub(super) fn next_metadata_id(&mut self, prefix: &str) -> Result<String, String> {
@@ -121,7 +122,7 @@ impl ShinkiEmuManagerController {
                 Err(error) => {
                     if let Some(game_id) = game_id {
                         self.metadata_status
-                            .insert(game_id, "请求失败，请检查错误信息后重试".into());
+                            .insert(game_id, tr!("请求失败，请检查错误信息后重试").into());
                     }
                     self.diagnostic = error;
                     self.diagnostic_severity = "error";
@@ -144,9 +145,9 @@ impl ShinkiEmuManagerController {
                 self.metadata_status.insert(
                     game_id.into(),
                     if records.is_empty() {
-                        "没有找到作品，请尝试原名、译名或其他关键词".into()
+                        tr!("没有找到作品，请尝试原名、译名或其他关键词").into()
                     } else {
-                        format!("找到 {} 个作品，请选择关联", records.len())
+                        tr!("找到 {count} 个作品，请选择关联", count = records.len())
                     },
                 );
                 self.store_match_candidates(game_id, provider, records);
@@ -157,7 +158,7 @@ impl ShinkiEmuManagerController {
                     game_id.ok_or_else(|| "SHINKI_EMU_METADATA_REQUEST_UNKNOWN".to_owned())?;
                 let linked_title = self.link_metadata(game_id, provider, *record, cover)?;
                 self.metadata_status
-                    .insert(game_id.into(), format!("已关联：{linked_title}"));
+                    .insert(game_id.into(), tr!("已关联：{title}", title = linked_title));
                 self.diagnostic.clear();
             }
             MetadataPayload::Releases(releases) => {

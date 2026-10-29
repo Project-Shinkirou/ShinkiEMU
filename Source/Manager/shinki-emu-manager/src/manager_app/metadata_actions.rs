@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     pub(super) fn search_metadata(
@@ -23,7 +24,7 @@ impl ShinkiEmuManagerController {
         self.match_candidates
             .retain(|_, (game_id, _)| game_id != &game.game_id);
         self.metadata_status
-            .insert(game.game_id, "正在搜索…".into());
+            .insert(game.game_id, tr!("正在搜索…").into());
         self.diagnostic.clear();
         self.model()
     }
@@ -73,7 +74,7 @@ impl ShinkiEmuManagerController {
             self.mark_auto_link_attempted(&game.game_id)?;
         }
         self.metadata_status
-            .insert(game.game_id, "已解除关联".into());
+            .insert(game.game_id, tr!("已解除关联").into());
         self.model()
     }
 

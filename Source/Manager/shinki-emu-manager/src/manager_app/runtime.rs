@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     pub(super) fn session_running(&self) -> bool {
@@ -108,7 +109,7 @@ impl ShinkiEmuManagerController {
         };
         if reason == PlaySessionEndReason::Finished {
             tracing::info!(event = "shinki.emu.manager.session_finished");
-            self.show_snackbar("游戏已结束", None);
+            self.show_snackbar(tr!("游戏已结束"), None);
         }
         let play_error = self.finish_play_session(reason).err();
         let errors: Vec<_> = [start_error, update.error, clear_error, play_error]

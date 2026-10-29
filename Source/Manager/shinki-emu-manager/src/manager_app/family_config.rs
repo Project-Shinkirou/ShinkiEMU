@@ -1,5 +1,6 @@
 use super::*;
 use shinki_emu_manager_core::model::{ConfigEntry, ConfigField, ConfigKind, ConfigValue};
+use shinki_emu_manager_ui_slint::tr;
 
 const MUSICA_PLUGIN: &str = "shinki.emu.musica";
 
@@ -242,8 +243,10 @@ impl ShinkiEmuManagerController {
                 && retired_value_is_path(&entry.field_id, value)
             {
                 let slug = core_documentation_slug(&entry.plugin_id);
-                paths.push(format!(
-                    "核心设置项已不存在。旧存档文件夹：{value}\n请将其中的存档复制到该核心当前的存档位置。核心文档：https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+                paths.push(tr!(
+                    "核心设置项已不存在。旧存档文件夹：{value}\n请将其中的存档复制到该核心当前的存档位置。核心文档：https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/",
+                    value = value,
+                    slug = slug
                 ));
             }
         }
@@ -257,16 +260,13 @@ impl ShinkiEmuManagerController {
         if new_paths.is_empty() {
             return true;
         }
-        if self.diagnostic_severity == "warning"
-            && self.diagnostic.starts_with("核心设置项已不存在。")
-        {
-            if !self.diagnostic.is_empty() {
-                self.diagnostic.push_str("\n\n");
-            }
+        if self.retired_diagnostic.as_deref() == Some(self.diagnostic.as_str()) {
+            self.diagnostic.push_str("\n\n");
             self.diagnostic.push_str(&new_paths.join("\n\n"));
         } else {
             self.diagnostic = new_paths.join("\n\n");
         }
+        self.retired_diagnostic = Some(self.diagnostic.clone());
         self.diagnostic_severity = "warning";
         true
     }

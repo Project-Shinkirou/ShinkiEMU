@@ -90,6 +90,7 @@ fn main() -> ExitCode {
             },
         };
     }
+    shinki_emu_manager_ui_slint::i18n::select_system();
     match manager_app::run_application() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

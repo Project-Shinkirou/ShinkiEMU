@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) const NETWORK_ALLOWED_KEY: &str = "network.allowed";
 pub(super) const TRANSLATION_ENABLED_KEY: &str = "translation.enabled";
@@ -115,13 +116,13 @@ pub(super) fn human_duration(ms: i64) -> String {
 pub(super) fn human_relative(timestamp: i64, now: i64) -> String {
     let seconds = ((now.saturating_sub(timestamp)) / 1000).max(0);
     if seconds >= 86_400 {
-        format!("{} 天前", seconds / 86_400)
+        tr!("{n} 天前", n = seconds / 86_400)
     } else if seconds >= 3600 {
-        format!("{} 小时前", seconds / 3600)
+        tr!("{n} 小时前", n = seconds / 3600)
     } else if seconds >= 60 {
-        format!("{} 分钟前", seconds / 60)
+        tr!("{n} 分钟前", n = seconds / 60)
     } else {
-        "刚刚".into()
+        tr!("刚刚").into()
     }
 }
 

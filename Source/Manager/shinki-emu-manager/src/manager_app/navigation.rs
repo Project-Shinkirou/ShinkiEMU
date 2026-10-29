@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     pub(super) fn launch_candidate_for_game(
@@ -49,7 +50,10 @@ impl ShinkiEmuManagerController {
     fn try_launch(&mut self, case_id: &str) -> Result<ManagerViewModel, String> {
         if self.patch_busy() {
             return Err(
-                "SHINKI_EMU_PATCH_INVALID_REQUEST: 文件补丁转换或导入期间不能启动游戏".into(),
+                format!(
+                    "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
+                    tr!("文件补丁转换或导入期间不能启动游戏")
+                ),
             );
         }
         tracing::info!(event = "shinki.emu.manager.launch.opening");

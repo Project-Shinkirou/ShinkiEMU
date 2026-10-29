@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>, restart: &std::rc::Rc<dyn Fn()>) {
     let Some(window) = wiring.window.upgrade() else {
@@ -120,7 +121,7 @@ fn install_settings<C: ManagerController>(
     settings.on_add_root(move || {
         let w = w.clone();
         platform::pick_folder(
-            "添加库目录",
+            tr!("添加库目录"),
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );
     });
@@ -140,9 +141,9 @@ fn install_cores<C: ManagerController>(
     cores.on_install_local(move || {
         let w = w.clone();
         platform::pick_file(
-            "从本地安装核心",
+            tr!("从本地安装核心"),
             &[platform::FileFilter {
-                label: "核心包或核心文件",
+                label: tr!("核心包或核心文件"),
                 extensions: &["zip", std::env::consts::DLL_EXTENSION],
             }],
             Box::new(move |picked| w.run(|c| c.install_core(&picked?))),
@@ -201,7 +202,7 @@ fn install_onboarding<C: ManagerController>(
     onboarding.on_add_root(move || {
         let w = w.clone();
         platform::pick_folder(
-            "添加库目录",
+            tr!("添加库目录"),
             Box::new(move |picked| w.run(|c| c.add_library_root(&picked?))),
         );
     });

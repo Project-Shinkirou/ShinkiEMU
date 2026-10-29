@@ -2,6 +2,7 @@ use super::*;
 use shinki_emu_manager_ui_slint::TranslationFormViewModel;
 use shinki_emu_translation::TranslationError;
 use std::sync::Arc;
+use shinki_emu_manager_ui_slint::tr;
 
 const TEST_SECRET_REFERENCE: &str = "translation.test";
 
@@ -39,7 +40,7 @@ impl ShinkiEmuManagerController {
         self.connection_test = Some(connection_test::ConnectionTest::start(
             profile, secrets, wake,
         )?);
-        self.translation_status = "正在测试翻译服务连接…".into();
+        self.translation_status = tr!("正在测试翻译服务连接…").into();
         self.model()
     }
 
@@ -51,15 +52,15 @@ impl ShinkiEmuManagerController {
         self.connection_test.take();
         match result {
             Ok(result) => {
-                self.translation_status = format!(
-                    "连接成功（{} ms，{} 个可用模型）",
-                    result.latency_ms,
-                    result.models.len()
+                self.translation_status = tr!(
+                    "连接成功（{latency} ms，{models} 个可用模型）",
+                    latency = result.latency_ms,
+                    models = result.models.len()
                 );
                 self.translation_models = result.models;
             }
             Err(error) => {
-                self.translation_status = format!("连接失败：{error}");
+                self.translation_status = tr!("连接失败：{error}", error = error);
             }
         }
         true
@@ -119,7 +120,7 @@ impl ShinkiEmuManagerController {
                     .delete(&previous.secret_reference)
                     .map_err(|_| "SHINKI_EMU_TRANSLATION_SAVED_OLD_SECRET_CLEANUP_FAILED")?;
             }
-        self.translation_status = "翻译配置已保存".into();
+        self.translation_status = tr!("翻译配置已保存").into();
         self.model()
     }
 

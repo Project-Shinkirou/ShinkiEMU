@@ -6,12 +6,11 @@ use crate::metadata_cache::{MetadataCatalog, MetadataSource};
 use shinki_emu_manager_ui_slint::{CompatViewModel, NetworkViewModel};
 use shinki_emu_metadata::{Preset, SyncOutcome};
 use serde::{Deserialize, Serialize};
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) const METADATA_SYNC_KEY: &str = "metadata.sync";
 const REPORT_URL: &str =
     "https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml";
-pub(super) const RELEASE_HINT: &str = "选择发行版本以查看兼容性";
-pub(super) const VNDB_LINK_HINT: &str = "先关联 VNDB 作品";
 
 fn host_compatibility_target() -> (&'static str, &'static str, &'static str) {
     let platform = if cfg!(target_env = "ohos") { "ohos" } else { std::env::consts::OS };
@@ -176,8 +175,8 @@ impl ShinkiEmuManagerController {
             ..CompatViewModel::default()
         };
         match self.compatibility_match(game_id, identities) {
-            CompatibilityMatch::NotLinked => view.hint = VNDB_LINK_HINT.into(),
-            CompatibilityMatch::ReleaseUndecided => view.hint = RELEASE_HINT.into(),
+            CompatibilityMatch::NotLinked => view.hint = tr!("先关联 VNDB 作品").into(),
+            CompatibilityMatch::ReleaseUndecided => view.hint = tr!("选择发行版本以查看兼容性").into(),
             CompatibilityMatch::NoEmulator { release_id }
             | CompatibilityMatch::NoRecord { release_id } => view.release_id = release_id,
             CompatibilityMatch::Found(entry) => {
@@ -325,7 +324,7 @@ impl ShinkiEmuManagerController {
                     self.metadata_catalog = Some(catalog);
                 }
                 if changed {
-                    self.show_snackbar("元数据已更新", None);
+                    self.show_snackbar(tr!("元数据已更新"), None);
                 }
                 etag
             }
@@ -341,15 +340,15 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn network_view(&self, now_ms: i64) -> NetworkViewModel {
         let sync_status = if self.metadata_sync.request.is_some() {
-            "正在同步…".into()
+            tr!("正在同步…").into()
         } else {
             match (&self.metadata_catalog, self.metadata_sync.record.synced_at_unix_ms) {
-                (None, _) => "未同步".into(),
-                (Some(_), Some(synced)) => format!("已同步 · {}", human_relative(synced, now_ms)),
+                (None, _) => tr!("未同步").into(),
+                (Some(_), Some(synced)) => tr!("已同步 · {when}", when = human_relative(synced, now_ms)),
                 (Some(catalog), None) if catalog.source == MetadataSource::Bundled => {
-                    "使用随包数据".into()
+                    tr!("使用随包数据").into()
                 }
-                (Some(_), None) => "使用本地缓存".into(),
+                (Some(_), None) => tr!("使用本地缓存").into(),
             }
         };
         NetworkViewModel {
@@ -362,12 +361,12 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn compatibility_summary(&self) -> String {
         match &self.metadata_catalog {
-            Some(catalog) => format!(
-                "已收录 {} 条兼容性记录、{} 份推荐配置",
-                catalog.compatibility.entries.len(),
-                catalog.presets.entries.len()
+            Some(catalog) => tr!(
+                "已收录 {records} 条兼容性记录、{presets} 份推荐配置",
+                records = catalog.compatibility.entries.len(),
+                presets = catalog.presets.entries.len()
             ),
-            None => "未同步".into(),
+            None => tr!("未同步").into(),
         }
     }
 }

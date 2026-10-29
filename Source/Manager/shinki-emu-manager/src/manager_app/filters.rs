@@ -1,6 +1,7 @@
 use super::*;
 use shinki_emu_manager::effects::format4::EffectSource;
 use shinki_emu_manager_core::{FilterConfiguration, FilterPreset, FilterSettings};
+use shinki_emu_manager_ui_slint::tr;
 
 const MAX_FILTER_SOURCE_BYTES: usize = 1_048_576;
 
@@ -22,11 +23,11 @@ impl ShinkiEmuManagerController {
                 ..ConfigFieldViewModel::default()
             }
         };
-        let mut fields = vec![field("filter.scale", "缩放倍率", config.scale, (1.0, 4.0, 0.25))];
-        fields[0].description = "Anime4K 固定为 2 倍".into();
+        let mut fields = vec![field("filter.scale", tr!("缩放倍率"), config.scale, (1.0, 4.0, 0.25))];
+        fields[0].description = tr!("Anime4K 固定为 2 倍").into();
         fields.push(field(
             "filter.strength",
-            "锐化强度",
+            tr!("锐化强度"),
             config.strength,
             (0.0, 1.0, 0.05),
         ));

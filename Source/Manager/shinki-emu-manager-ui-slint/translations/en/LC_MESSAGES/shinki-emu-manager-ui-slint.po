@@ -1971,3 +1971,361 @@ msgstr "{m}m {s}s left"
 
 msgid "剩余 {h} 小时 {m} 分"
 msgstr "{h}h {m}m left"
+
+# Rust: manager
+msgid "Anime4K 固定为 2 倍"
+msgstr "Anime4K is fixed at 2×"
+
+msgid "Luau 脚本"
+msgstr "Luau script"
+
+msgid "ShinkiEMU 启动失败"
+msgstr "ShinkiEMU failed to start"
+
+msgid "Store 工作线程不可用，请重新打开管理器"
+msgstr "The Store worker is unavailable. Restart Manager."
+
+msgid "{n} 分钟前"
+msgstr "{n} min ago"
+
+msgid "{n} 天前"
+msgstr "{n} d ago"
+
+msgid "{n} 小时前"
+msgstr "{n} h ago"
+
+msgid "上次实际生效 {width}×{height}"
+msgstr "Last applied {width}×{height}"
+
+msgid "下载完成，正在识别核心"
+msgstr "Download complete, detecting cores"
+
+msgid "下载：{url}\nSHA256：{sha256}\n大小：{size} 字节"
+msgstr "Download: {url}\nSHA256: {sha256}\nSize: {size} bytes"
+
+msgid "从本地安装核心"
+msgstr "Install a core from a local file"
+
+msgid "使用本地缓存"
+msgstr "Using local cache"
+
+msgid "使用随包数据"
+msgstr "Using bundled data"
+
+msgid "元数据已更新"
+msgstr "Metadata updated"
+
+msgid "先在 游戏设置→作品资料 关联 VNDB 作品"
+msgstr "Link a VNDB title first in Game settings → Metadata"
+
+msgid "关闭程序"
+msgstr "App closed"
+
+msgid "准备文件补丁任务…"
+msgstr "Preparing the file patch job…"
+
+msgid "刚刚"
+msgstr "Just now"
+
+msgid "刷新资料库"
+msgstr "Refresh library"
+
+msgid "原位覆盖完成，正在重新探测游戏…"
+msgstr "In-place overwrite finished. Re-detecting the game…"
+
+msgid "原位覆盖完成，游戏已重新探测"
+msgstr "In-place overwrite finished. The game was re-detected"
+
+msgid "原文件已还原，正在重新探测游戏…"
+msgstr "Original files restored. Re-detecting the game…"
+
+msgid "发现 {added} 部新作品"
+msgstr "Found {added} new titles"
+
+msgid "发行版本未限定（未验证所有版本）"
+msgstr "Not limited to a release (not verified on every release)"
+
+msgid "可调渲染分辨率"
+msgstr "Adjustable render resolution"
+
+msgid "同步需手动点击，不会自动上传。"
+msgstr "Sync runs only when you click it; nothing is uploaded automatically."
+
+msgid "已从资料库移除《{title}》"
+msgstr "Removed “{title}” from the library"
+
+msgid "已关联 {provider}：{title}"
+msgstr "Linked to {provider}: {title}"
+
+msgid "已关联：{title}"
+msgstr "Linked: {title}"
+
+msgid "已取消，游戏文件保持不变"
+msgstr "Canceled. Game files are unchanged"
+
+msgid "已同步 · {when}"
+msgstr "Synced · {when}"
+
+msgid "已收录 {records} 条兼容性记录、{presets} 份推荐配置"
+msgstr "{records} compatibility records, {presets} recommended settings"
+
+msgid "已有文件补丁任务或导入正在进行"
+msgstr "A file patch job or import is already running"
+
+msgid "已自动关联：{title}"
+msgstr "Linked automatically: {title}"
+
+msgid "已解除关联"
+msgstr "Unlinked"
+
+msgid "异常结束"
+msgstr "Crashed"
+
+msgid "所选目录中未发现当前核心支持的游戏。请选择原生游戏目录，或检查运行包包含的核心。"
+msgstr "No games supported by the installed cores were found in the selected folder. Choose the original game folder, or check which cores your package includes."
+
+msgid "找到 {count} 个作品，请选择关联"
+msgstr "Found {count} titles. Choose one to link"
+
+msgid "授权：{url}"
+msgstr "Authorization: {url}"
+
+msgid "撤销"
+msgstr "Undo"
+
+msgid "文件补丁转换或导入尚未结束，暂不能启动游戏"
+msgstr "A file patch or import is still running, so the game can't start yet"
+
+msgid "文件补丁转换或导入期间不能启动游戏"
+msgstr "Games can't start while a file patch or import is running"
+
+msgid "文件补丁转换期间不能扫描游戏"
+msgstr "Games can't be scanned while a file patch is running"
+
+msgid "文件转换完成，导入失败"
+msgstr "Files converted, but the import failed"
+
+msgid "文件转换完成，导入失败：{error}"
+msgstr "Files converted, but the import failed: {error}"
+
+msgid "文件转换完成，已加入独立库条目"
+msgstr "Files converted and added as a separate library entry"
+
+msgid "文件转换完成，正在导入独立目录…"
+msgstr "Files converted. Importing the separate folder…"
+
+msgid "无法停止 Store 连接，请重新打开管理器"
+msgstr "Can't stop the Store connection. Restart Manager."
+
+msgid "暂无相关日志"
+msgstr "No related logs"
+
+msgid "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。"
+msgstr "{count} cores failed to load. Check core diagnostics, and restart the app after fixing or replacing them."
+
+msgid "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。"
+msgstr "{count} game folders are unavailable. Their library entries are kept; restore the folders, then click “Refresh library”."
+
+msgid "未加载模拟器核心，请检查核心安装和加载错误后重启应用。"
+msgstr "No cores are loaded. Check the core installation and load errors, then restart the app."
+
+msgid "未在 VNDB 找到匹配作品"
+msgstr "No matching title on VNDB"
+
+msgid "未能自动关联，找到 {count} 个候选，请手动选择"
+msgstr "Couldn't link automatically. Found {count} candidates; choose one"
+
+msgid "未识别到可用的模拟器"
+msgstr "No compatible core detected"
+
+msgid "未识别引擎"
+msgstr "Unknown engine"
+
+msgid "来源：{url}"
+msgstr "Source: {url}"
+
+msgid "核心加载或后台运行失败：{error}。请修复后重启应用。"
+msgstr "Loading cores or a background task failed: {error}. Fix it and restart the app."
+
+msgid "核心包或核心文件"
+msgstr "Core package or core file"
+
+msgid "核心已下载，重启后生效"
+msgstr "Core downloaded. Restart to use it"
+
+msgid "核心设置项已不存在。旧存档文件夹：{value}\n请将其中的存档复制到该核心当前的存档位置。核心文档：https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+msgstr "A core setting no longer exists. Old save folder: {value}\nCopy its saves to the core's current save location. Core docs: https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+
+msgid "正在 VNDB 自动匹配…"
+msgstr "Matching on VNDB…"
+
+msgid "正在下载并验证补丁文件…"
+msgstr "Downloading and verifying the patch…"
+
+msgid "正在加载模拟器核心…"
+msgstr "Loading cores…"
+
+msgid "正在加载模拟器核心（{loaded}/{total}）…"
+msgstr "Loading cores ({loaded}/{total})…"
+
+msgid "正在取消…"
+msgstr "Canceling…"
+
+msgid "正在取消补丁下载…"
+msgstr "Canceling the patch download…"
+
+msgid "正在取消，等待文件句柄和工作线程回收…"
+msgstr "Canceling. Waiting for file handles and worker threads to close…"
+
+msgid "正在导入游戏目录…"
+msgstr "Importing game folder…"
+
+msgid "正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…"
+msgstr "Importing game folder: checked {directories} folders, found {games} titles…"
+
+msgid "正在扫描资料库…"
+msgstr "Scanning library…"
+
+msgid "正在扫描资料库：已检查 {directories} 个目录，识别 {games} 部作品…"
+msgstr "Scanning library: checked {directories} folders, found {games} titles…"
+
+msgid "正在搜索…"
+msgstr "Searching…"
+
+msgid "正在测试翻译服务连接…"
+msgstr "Testing the translation service connection…"
+
+msgid "正在自动关联…"
+msgstr "Linking automatically…"
+
+msgid "正在还原最近一次补丁…"
+msgstr "Restoring the most recent patch…"
+
+msgid "没有可用的核心"
+msgstr "No cores available"
+
+msgid "没有找到作品，请尝试原名、译名或其他关键词"
+msgstr "No titles found. Try the original title, a translated title or other keywords"
+
+msgid "游戏已结束"
+msgstr "Game ended"
+
+msgid "游戏扫描失败：{error}"
+msgstr "Game scan failed: {error}"
+
+msgid "点击“准备”加载模拟器核心并扫描资料库。"
+msgstr "Click “Prepare” to load cores and scan the library."
+
+msgid "结束游戏后才能应用文件补丁"
+msgstr "Close the game before applying a file patch"
+
+msgid "缩放倍率"
+msgstr "Scale factor"
+
+msgid "翻译配置已保存"
+msgstr "Translation settings saved"
+
+msgid "自定义…"
+msgstr "Custom…"
+
+msgid "补丁下载失败"
+msgstr "Patch download failed"
+
+msgid "补丁已下载并验证，已设置补丁输入目录"
+msgstr "Patch downloaded and verified; patch input directory set"
+
+msgid "补丁目录中没有适用于这部作品和当前模拟器的补丁，可以选择本地脚本。"
+msgstr "The patch catalog has no patch for this title and core. You can choose a local script."
+
+msgid "许可：{license}"
+msgstr "License: {license}"
+
+msgid "请先准备资料库"
+msgstr "Prepare the library first"
+
+msgid "请先在设置中允许网络访问"
+msgstr "Allow network access in Settings first"
+
+msgid "请在“核心”页安装核心，或使用包含 cores 目录的完整运行包。"
+msgstr "Install a core on the Cores page, or use the full package that includes the cores folder."
+
+msgid "请求失败，请检查错误信息后重试"
+msgstr "The request failed. Check the error and try again"
+
+msgid "请等待当前 Store 操作完成，或先取消"
+msgstr "Wait for the current Store operation to finish, or cancel it"
+
+msgid "请等待资料库准备完成"
+msgstr "Wait for the library to finish preparing"
+
+msgid "请等待验证码提交完成"
+msgstr "Wait for the code submission to finish"
+
+msgid "请选择脚本和新的输出目录"
+msgstr "Choose a script and a new output directory"
+
+msgid "资料库已准备好。更换核心文件后需重启应用。"
+msgstr "The library is ready. Restart the app after replacing core files."
+
+msgid "资料库已是最新"
+msgstr "The library is up to date"
+
+msgid "软件渲染"
+msgstr "Software rendering"
+
+msgid "还原失败"
+msgstr "Restore failed"
+
+msgid "这个键不能用于映射"
+msgstr "This key can't be mapped"
+
+msgid "这是尚未发布的临时目录，不能启动"
+msgstr "This is an unpublished temporary folder and can't be launched"
+
+msgid "进行中"
+msgstr "In progress"
+
+msgid "连接失败：{error}"
+msgstr "Connection failed: {error}"
+
+msgid "连接成功（{latency} ms，{models} 个可用模型）"
+msgstr "Connected ({latency} ms, {models} models available)"
+
+msgid "适应窗口"
+msgstr "Fit to window"
+
+msgid "选择 Store 游戏库目录"
+msgstr "Choose a Store library folder"
+
+msgid "选择发行版本以查看兼容性"
+msgstr "Choose a release to see compatibility"
+
+msgid "选择可信的本地 Luau 补丁脚本"
+msgstr "Choose a trusted local Luau patch script"
+
+msgid "选择外部画面效果（HLSL）"
+msgstr "Choose an external screen effect (HLSL)"
+
+msgid "选择尚不存在的新输出目录名称"
+msgstr "Choose a name for a new output directory that doesn't exist yet"
+
+msgid "选择游戏目录"
+msgstr "Choose a game folder"
+
+msgid "选择补丁输入目录"
+msgstr "Choose the patch input directory"
+
+msgid "锐化强度"
+msgstr "Sharpening strength"
+
+msgid "需要先准备资料库"
+msgstr "Prepare the library first"
+
+msgid "非阻塞翻译"
+msgstr "Non-blocking translation"
+
+msgid "默认（核心原生）"
+msgstr "Default (core native)"
+
+msgid "默认（跟随模拟器设置）"
+msgstr "Default (follow emulator settings)"

@@ -34,7 +34,7 @@ pub(super) fn pick_new_directory(title: &str, default_name: &str, done: PickDone
 
 pub(super) fn report_startup_error(message: &str) {
     rfd::MessageDialog::new()
-        .set_title("ShinkiEMU 启动失败")
+        .set_title(shinki_emu_manager_ui_slint::tr!("ShinkiEMU 启动失败"))
         .set_description(message)
         .set_level(rfd::MessageLevel::Error)
         .set_buttons(rfd::MessageButtons::Ok)
