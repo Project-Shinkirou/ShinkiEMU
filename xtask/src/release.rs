@@ -95,6 +95,42 @@ impl GitHub {
         }
         Ok(asset)
     }
+    /// The commit an existing tag names, peeling annotated tags.
+    fn tag_commit(&self, tag: &str) -> Result<Option<String>> {
+        let Some(reference) = self.get_optional(&format!("{API}/git/ref/tags/{tag}"))? else {
+            return Ok(None);
+        };
+        let mut object = reference["object"].clone();
+        while object["type"] == "tag" {
+            let sha = object["sha"].as_str().context("tag object SHA")?;
+            object = self
+                .get_optional(&format!("{API}/git/tags/{sha}"))?
+                .context("annotated tag object missing")?["object"]
+                .clone();
+        }
+        if object["type"] != "commit" {
+            bail!("tag {tag} does not name a commit");
+        }
+        Ok(Some(
+            object["sha"].as_str().context("tag commit SHA")?.to_owned(),
+        ))
+    }
+    /// Every release carrying `tag`, drafts included: `releases/tags/{tag}` returns
+    /// published releases only.
+    fn releases_for_tag(&self, tag: &str) -> Result<Vec<Value>> {
+        let mut found = Vec::new();
+        for page in 1.. {
+            let list = self
+                .get_optional(&format!("{API}/releases?per_page=100&page={page}"))?
+                .context("release list")?;
+            let list = list.as_array().context("releases")?;
+            found.extend(list.iter().filter(|r| r["tag_name"] == tag).cloned());
+            if list.len() < 100 {
+                break;
+            }
+        }
+        Ok(found)
+    }
     /// Create the release's catalog branch from `main`, or reuse it when it
     /// only touches this core's catalog directory.
     fn catalog_branch(&self, plugin_id: &str, tag: &str) -> Result<String> {
@@ -165,7 +201,7 @@ impl GitHub {
         let prs = self.get_optional(prs_url.as_str())?.context("PR list")?;
         if prs.as_array().context("PRs")?.is_empty() {
             self.post("pulls",&json!({"title":format!("Catalog {tag}"),"head":branch,"base":"main","body":"Catalog generated from the published Release records. Review license, platform, hash and size before merging."}))
-                .with_context(|| format!("every catalog entry is on branch {branch}; open its PR against main manually"))?;
+                .with_context(|| format!("GitHub refused the catalog PR (Actions may create pull requests only when the organization allows it); every catalog entry is on branch {branch}: open its PR against main manually"))?;
         }
         Ok(())
     }
@@ -182,6 +218,33 @@ fn published_asset_url(tag: &str, name: &str) -> Result<String> {
         .push(tag)
         .push(name);
     Ok(url.into())
+}
+
+/// The draft this run may reuse, or `None` to create one. GitHub publishes a
+/// release at an existing tag regardless of `target_commitish`, so a tag at another
+/// commit, a published release and a draft opened from another commit are refused.
+fn release_target(
+    releases: &[Value],
+    tag_commit: Option<&str>,
+    commit: &str,
+) -> Result<Option<Value>> {
+    if releases.iter().any(|r| r["draft"] != true) {
+        bail!("release tag already published; refusing to modify published assets");
+    }
+    if let Some(tagged) = tag_commit.filter(|tagged| *tagged != commit) {
+        bail!(
+            "the tag already names commit {tagged}, not this run's commit {commit}; refusing to publish these artifacts under it"
+        );
+    }
+    match releases {
+        [] => Ok(None),
+        [draft] if draft["target_commitish"] == commit => Ok(Some(draft.clone())),
+        [draft] => bail!(
+            "the draft release targets {}, not this run's commit {commit}; delete the draft and publish again",
+            draft["target_commitish"]
+        ),
+        _ => bail!("several draft releases carry this tag; delete the extras and publish again"),
+    }
 }
 
 /// The product revision and core pin every target of one Release must share.
@@ -339,7 +402,8 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
 pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     let id = identity(inv, component, version)?;
     let tag = id.tag.as_str();
-    if env::var("GITHUB_REF_TYPE").ok().as_deref() == Some("tag")
+    if env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("push")
+        && env::var("GITHUB_REF_TYPE").ok().as_deref() == Some("tag")
         && env::var("GITHUB_REF_NAME").ok().as_deref() != Some(tag)
     {
         bail!("tag does not match component/version");
@@ -392,10 +456,13 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         blocked.join("\n")
     );
     let gh = GitHub::new()?;
-    let release = match gh.get_optional(&format!("{API}/releases/tags/{tag}"))? {
-        Some(release) if release["draft"] != true => {
-            bail!("release tag already published; refusing to modify published assets")
-        }
+    let existing = release_target(
+        &gh.releases_for_tag(tag)?,
+        gh.tag_commit(tag)?.as_deref(),
+        &id.commit,
+    )?;
+    // A new draft records the run's commit; publishing it creates the tag there.
+    let release = match existing {
         Some(draft) => draft,
         None => gh.post(
             "releases",
@@ -463,5 +530,32 @@ mod tests {
             "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-example-v0.1.0-beta.2/core-example.zip"
         );
         assert!(published_asset_url("tag", "../asset.zip").is_err());
+    }
+
+    #[test]
+    fn publishing_reuses_only_a_draft_at_the_run_commit() {
+        let commit = "1".repeat(40);
+        let other = "2".repeat(40);
+        let draft =
+            |at: &str| json!({"tag_name":"manager-v1.0.0","draft":true,"target_commitish":at});
+        // No release or tag yet: create a draft that GitHub tags at the commit on publish.
+        assert!(release_target(&[], None, &commit).unwrap().is_none());
+        // A tag pushed for this commit, or a dispatch rerun of an interrupted publish.
+        assert!(
+            release_target(&[], Some(&commit), &commit)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            release_target(&[draft(&commit)], None, &commit).unwrap(),
+            Some(draft(&commit))
+        );
+        // GitHub would keep an existing tag at its commit and ignore target_commitish.
+        assert!(release_target(&[], Some(&other), &commit).is_err());
+        assert!(release_target(&[draft(&other)], None, &commit).is_err());
+        assert!(release_target(&[draft(&commit), draft(&commit)], None, &commit).is_err());
+        let published =
+            json!({"tag_name":"manager-v1.0.0","draft":false,"target_commitish":commit});
+        assert!(release_target(&[published], Some(&commit), &commit).is_err());
     }
 }

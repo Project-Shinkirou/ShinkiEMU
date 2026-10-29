@@ -1,3 +1,4 @@
+use crate::affected::Affected;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -145,6 +146,9 @@ pub struct MatrixRow {
     /// Declared reason this combination is not built; never part of a job matrix.
     #[serde(skip)]
     pub blocked: Option<String>,
+    /// Distribution restriction of the core; the release workflow refuses these components.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub publish_blocked: String,
 }
 
 pub fn slug(id: &str) -> String {
@@ -343,22 +347,30 @@ impl Inventory {
                     architecture: t.architecture.clone(),
                     variant: t.variant.clone(),
                     blocked: self.blocked(component, &t.triple)?.map(str::to_owned),
+                    publish_blocked: if component == "manager" {
+                        String::new()
+                    } else {
+                        self.core(component)?.publish_blocked.clone()
+                    },
                 });
             }
         }
         Ok(rows)
     }
     /// GitHub job matrix: supported combinations only. Blocked combinations need no
-    /// runner; `rows()` and release notes still report them. With `ci`, Android
-    /// Manager rows after the first are dropped: `xtask ci` builds every Android ABI
-    /// into the same universal APK from either triple.
-    pub fn job_matrix(&self, ci: bool) -> Result<Matrix> {
+    /// runner; `rows()` and release notes still report them. `affected` keeps only
+    /// rows a change can reach. With `ci`, Android Manager rows after the first are
+    /// dropped: `xtask ci` builds every Android ABI into the same universal APK from
+    /// either triple.
+    pub fn job_matrix(&self, ci: bool, affected: Option<&Affected>) -> Result<Matrix> {
         let mut android_manager = false;
         let include = self
             .rows()?
             .into_iter()
             .filter(|row| {
-                if row.blocked.is_some() {
+                if row.blocked.is_some()
+                    || affected.is_some_and(|a| !a.row(&row.component, &row.target))
+                {
                     return false;
                 }
                 if ci && row.component == "manager" && row.platform == "android" {
@@ -429,7 +441,7 @@ mod tests {
         );
         assert!(
             !inventory
-                .job_matrix(false)
+                .job_matrix(false, None)
                 .unwrap()
                 .include
                 .iter()
@@ -449,7 +461,7 @@ mod tests {
         let inventory = Inventory::load(root).unwrap();
         let android_managers = |ci| {
             inventory
-                .job_matrix(ci)
+                .job_matrix(ci, None)
                 .unwrap()
                 .include
                 .iter()
