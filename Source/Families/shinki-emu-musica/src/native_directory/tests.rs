@@ -298,8 +298,10 @@ fn legacy_settings_import_once_and_never_overwrite_sysparams() {
     let root = game(Some("perseus.exe"));
     let saves = root.path().join(".shinki/musica/saves");
     std::fs::create_dir_all(&saves).unwrap();
-    let mut config = crate::MusicaConfigState::default();
-    config.bgm_volume = 12;
+    let config = crate::MusicaConfigState {
+        bgm_volume: 12,
+        ..Default::default()
+    };
     let configuration = legacy_json(
         "shinki.musica.configuration.v1",
         id,
@@ -371,8 +373,10 @@ fn unknown_executable_reads_legacy_settings_and_writes_nothing() {
     let root = game(None);
     let saves = root.path().join(".shinki/musica/saves");
     std::fs::create_dir_all(&saves).unwrap();
-    let mut config = crate::MusicaConfigState::default();
-    config.animation = false;
+    let config = crate::MusicaConfigState {
+        animation: false,
+        ..Default::default()
+    };
     std::fs::write(
         saves.join(legacy::CONFIGURATION),
         legacy_json(
