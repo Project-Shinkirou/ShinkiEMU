@@ -31,7 +31,7 @@ ShinkiEMU is pre-release software. Builds are published as beta releases. A succ
 | [`art3m1s-core`](docs/en/cores/art3m1s-core.md) | Artemis | Windows x64, Linux x64 | Android |
 | [`renpy`](docs/en/cores/renpy.md) | Ren'Py | Windows x64, Linux x64 | Android |
 | [`shinki.emu.cmvs`](docs/en/cores/shinki-emu-cmvs.md) | CMVS | Windows x64, Linux x64, macOS x64/arm64 | — |
-| [`kirikiroid2-web`](docs/en/cores/kirikiroid2-web.md) | KiriKiri | Windows x64, Linux x64, macOS x64/arm64 (also a standalone Android core) | — |
+| [`kirikiroid2-web`](docs/en/cores/kirikiroid2-web.md) | KiriKiri | Windows x64, Linux x64, macOS x64/arm64 (also packaged as a standalone Android and iOS core) | — |
 | [`impacto`](docs/en/cores/impacto.md) | MAGES. | Windows x64 | — |
 
 [`build/cores.toml`](build/cores.toml) and [`build/targets.toml`](build/targets.toml) define this matrix; run `cargo xtask matrix` for every combination with its blocked reason. The [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) lists what is actually published. OpenHarmony is declared but blocked for every component.

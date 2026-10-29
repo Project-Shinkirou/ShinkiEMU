@@ -31,7 +31,7 @@ ShinkiEMU 仍处于预发布阶段，构建以 beta 版发布。构建成功不�
 | [`art3m1s-core`](docs/zh-cn/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | Android |
 | [`renpy`](docs/zh-cn/cores/renpy.md) | Ren'Py | Windows x64、Linux x64 | Android |
 | [`shinki.emu.cmvs`](docs/zh-cn/cores/shinki-emu-cmvs.md) | CMVS | Windows x64、Linux x64、macOS x64/arm64 | — |
-| [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（另有独立 Android 核心） | — |
+| [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（另有独立的 Android 和 iOS 核心包） | — |
 | [`impacto`](docs/zh-cn/cores/impacto.md) | MAGES. | Windows x64 | — |
 
 这张表由 [`build/cores.toml`](build/cores.toml) 和 [`build/targets.toml`](build/targets.toml) 决定；`cargo xtask matrix` 会列出全部组合及 blocked 原因。实际发布了哪些产物，以[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)为准。OpenHarmony 目标已声明，但对所有组件都处于 blocked 状态。

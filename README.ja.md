@@ -31,7 +31,7 @@ ShinkiEMU はプレリリース段階で、ビルドは beta として公開し�
 | [`art3m1s-core`](docs/ja/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | Android |
 | [`renpy`](docs/ja/cores/renpy.md) | Ren'Py | Windows x64、Linux x64 | Android |
 | [`shinki.emu.cmvs`](docs/ja/cores/shinki-emu-cmvs.md) | CMVS | Windows x64、Linux x64、macOS x64/arm64 | — |
-| [`kirikiroid2-web`](docs/ja/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（単体の Android コアもあり） | — |
+| [`kirikiroid2-web`](docs/ja/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（Android と iOS 向けの単体コアパッケージもあり） | — |
 | [`impacto`](docs/ja/cores/impacto.md) | MAGES. | Windows x64 | — |
 
 この表は [`build/cores.toml`](build/cores.toml) と [`build/targets.toml`](build/targets.toml) で決まります。`cargo xtask matrix` を実行すると、すべての組み合わせと blocked の理由が表示されます。実際に公開されている成果物は[コアディレクトリ](https://project-shinkirou.github.io/ja/shinkiemu/cores/)で確認してください。OpenHarmony は宣言済みですが、すべてのコンポーネントで blocked です。
