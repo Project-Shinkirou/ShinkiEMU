@@ -28,18 +28,30 @@ const MAX_BODY: usize = 16 * 1024 * 1024;
 pub enum EdenEdition {
     Japanese,
     English,
+    /// perseus.exe `sub_470C50` writes the SerialCode CRC32 (`sub_47EFB0`)
+    /// as the u32 header and `sub_46A860` rejects a mismatch. The signature
+    /// literal is pushed by `sub_481970`/`sub_481A90`.
+    Perseus,
 }
 impl EdenEdition {
-    fn magic(self) -> &'static [u8; 4] {
+    fn magic(self, prefix: u32) -> [u8; 4] {
         match self {
-            Self::Japanese => b";\n!\xaa",
-            Self::English => &[0; 4],
+            Self::Japanese => *b";\n!\xaa",
+            Self::English => [0; 4],
+            Self::Perseus => prefix.to_le_bytes(),
         }
     }
     fn signature(self) -> &'static [u8] {
         match self {
             Self::Japanese => b"eden 1.00",
             Self::English => b"eden_en 1.00",
+            Self::Perseus => b"perseus 1.00",
+        }
+    }
+    pub fn for_title(title: crate::minori_data::MinoriTitle) -> Self {
+        match title {
+            crate::minori_data::MinoriTitle::EdenEnglish => Self::English,
+            crate::minori_data::MinoriTitle::Perseus => Self::Perseus,
         }
     }
 }
@@ -94,6 +106,8 @@ pub struct EdenSaveField {
 pub struct EdenSave {
     pub edition: EdenEdition,
     pub encoding: EdenSaveEncoding,
+    /// Header u32 of Perseus slots (SerialCode CRC32); zero for eden.
+    pub prefix: u32,
     pub comment: String,
     pub route: [u8; 4],
     pub variables: Vec<EdenSaveField>,
@@ -106,11 +120,17 @@ impl EdenSave {
         edition: EdenEdition,
         encoding: EdenSaveEncoding,
     ) -> Result<Self, CoreError> {
-        if bytes.len() > MAX_CONTAINER {
+        if bytes.len() > MAX_CONTAINER || bytes.len() < 4 {
             return Err(invalid("BOUND", "save container exceeds the byte limit"));
         }
+        let header = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+        let prefix = if edition == EdenEdition::Perseus {
+            header
+        } else {
+            0
+        };
         let suffix = bytes
-            .strip_prefix(edition.magic())
+            .strip_prefix(&edition.magic(prefix))
             .and_then(|b| b.strip_prefix(edition.signature()))
             .and_then(|b| b.strip_prefix(&[0]))
             .ok_or_else(|| invalid("SIGNATURE", "save edition signature does not match"))?;
@@ -147,6 +167,7 @@ impl EdenSave {
         Ok(Self {
             edition,
             encoding,
+            prefix,
             comment,
             route,
             variables,
@@ -165,7 +186,7 @@ impl EdenSave {
             return Err(invalid("BOUND", "save body exceeds the byte limit"));
         }
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(self.edition.magic());
+        bytes.extend_from_slice(&self.edition.magic(self.prefix));
         bytes.extend_from_slice(self.edition.signature());
         bytes.push(0);
         bytes.extend_from_slice(&comment);

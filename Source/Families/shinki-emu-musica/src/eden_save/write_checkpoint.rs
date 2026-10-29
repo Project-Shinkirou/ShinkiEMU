@@ -65,6 +65,7 @@ impl EdenSave {
         let save = Self {
             edition,
             encoding,
+            prefix: 0,
             comment: format!("Shinki Musica {}", last.message_id),
             route: [0; 4],
             variables,
