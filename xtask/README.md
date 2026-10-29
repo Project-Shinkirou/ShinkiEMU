@@ -25,6 +25,10 @@ cargo xtask ci --target aarch64-apple-ios --component manager --report .work/ios
 
 Native requirements are scoped per component. Only consumers prepare the pinned vcpkg subtitle/FFmpeg trees or DXC runtime. Subtitle lookup runs locked Cargo metadata for the selected core's own manifest and enabled build features, then uses triplets from that exact RoukakuEngine Git checkout with the workspace-owned, baseline-pinned libass manifest; it does not infer optional dependencies from the desktop Manager graph or a neighboring checkout. Android uses JDK 27, SDK 37.2, NDK 30.0.16248370 and private cargo-ndk 4.1.2. No command installs system packages.
 
+Linux kirikiroid2-web dependency builds require `libltdl-dev` in addition to
+`libtool` and `autoconf-archive`: libxcrypt's configure script uses
+`LT_SYS_SYMBOL_USCORE` from `ltdl.m4`. CI installs that package before vcpkg.
+
 Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The built-in Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. Static Manager dependencies and exact Git pins must match `static_manager_targets` in the inventory; dynamic export features stay disabled. iOS packages include all five Rust cores' licenses and an `embedded-cores.json` source inventory.
 
 Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7 NuGet development tree, Cython 3.2.4 cp312 Windows wheel, Cython source-license files and SDL 2.0.20 headers. Python and Cython are installed only into `.work/native-downloads/python`; no system interpreter or developer cache is used. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE`.
