@@ -341,6 +341,7 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         "libdl.so.2",
         "libpthread.so.0",
         "librt.so.1",
+        "libutil.so.1",
         "ld-linux-x86-64.so.2",
         "ld-linux-aarch64.so.1",
         "libgcc_s.so.1",
