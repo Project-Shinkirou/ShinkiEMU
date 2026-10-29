@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "ReMinori",
+  "family_name": "Musica",
+  "license": "AGPL-3.0-only",
+  "platform": "macos-x86_64",
+  "plugin_id": "ReMinori",
+  "release_tag": "core-reminori-v0.1.0-beta.2",
+  "sha256": "e1200c4f659d0acb49dc35f493eba429412d05746ea48e2e1448342f0cc9bd0e",
+  "size": 3487327,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-reminori-v0.1.0-beta.2/shinki-emu-core-reminori-0.1.0-beta.2-macos-x86_64.zip",
+  "version": "0.1.0-beta.2"
+}
