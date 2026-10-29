@@ -1,33 +1,99 @@
 # ShinkiEMU
 
-ShinkiEMU 由 Manager 和原生核心组成，用来运行旧视觉小说引擎的游戏。Manager 管理游戏库、核心与元数据；各核心保留原生 VM、渲染、音频和存档行为。创作引擎另见 [RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine)。
+A game library manager with native cores that run visual novels made with legacy engines.
 
-ShinkiEMU combines a library Manager with native cores for legacy visual novel engines. Cores own their native VM, rendering, audio and saves. [RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine) is the separate creation engine.
+[![CI](https://github.com/Project-Shinkirou/ShinkiEMU/actions/workflows/ci.yml/badge.svg)](https://github.com/Project-Shinkirou/ShinkiEMU/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Project-Shinkirou/ShinkiEMU?include_prereleases&sort=date)](https://github.com/Project-Shinkirou/ShinkiEMU/releases)
 
-## 安装 / Install
+English · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-从 [Releases](https://github.com/Project-Shinkirou/ShinkiEMU/releases) 下载匹配平台的完整 Manager 包，解压后启动 `shinki-emu-manager`（Windows 为 `.exe`）。在设置中添加游戏目录，再从核心目录安装或更新所需核心。只使用实际提供的产物；当前构建与运行报告见[门户](https://project-shinkirou.github.io/zh-cn/shinkiemu/)。
+ShinkiEMU is pre-release software. Builds are published as beta releases. A successful build does not mean that a given game is verified playable. Per-game reports are in the [portal](https://project-shinkirou.github.io/en/shinkiemu/).
 
-Download the complete matching Manager bundle from [Releases](https://github.com/Project-Shinkirou/ShinkiEMU/releases), extract it and start `shinki-emu-manager` (`.exe` on Windows). Add game directories in Settings, then install/update cores from the catalog. See the [portal](https://project-shinkirou.github.io/en/shinkiemu/) for real artifacts and reports.
+## Features
 
-## 开发入口 / Developer entry points
+- **Manager.** One desktop and mobile app for your game library, cores, metadata (Bangumi, VNDB) and store accounts (Steam, DLsite, DMM).
+- **Native cores.** Each core keeps its engine's own VM, rendering, audio, menus and saves. The Manager hosts cores through one C ABI ([Core ABI](docs/en/core-abi.md)).
+- **Separately released cores.** Cores are released and updated independently of the Manager, and installed from the in-app catalog.
+- **Mobile embedding.** Android and iOS Managers link the supported cores statically; desktop Managers load downloaded core libraries.
+- **Upstream engines stay upstream.** External cores are thin adapters on organization forks of existing open-source engine reimplementations. Their saves, keys and settings keep upstream locations and formats.
+- **Your game directory stays clean.** Files ShinkiEMU itself writes in a game directory go under `<game>/.shinki/`.
 
-Clone with recursive submodules. Run from this repository's root:
+## Supported engines
+
+| Core | Engine | Desktop (dynamic core) | Embedded in Manager |
+|---|---|---|---|
+| [`rfvp`](docs/en/cores/rfvp.md) | FVP | Windows x64, Linux x64, macOS x64/arm64 | Android, iOS |
+| [`siglus_rs`](docs/en/cores/siglus-rs.md) | SiglusEngine | Windows x64, Linux x64, macOS x64/arm64 | Android, iOS |
+| [`sena-rs`](docs/en/cores/sena-rs.md) | SoftPAL | Windows x64, Linux x64, macOS x64/arm64 | Android, iOS |
+| [`ethornell-rs`](docs/en/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64, Linux x64, macOS x64/arm64 | Android, iOS |
+| [`ReMinori`](docs/en/cores/reminori.md) | Musica | Windows x64, Linux x64, macOS x64/arm64 | Android, iOS |
+| [`shinki.emu.musica`](docs/en/cores/shinki-emu-musica.md) | Musica | Windows x64, Linux x64, macOS x64/arm64 | Android |
+| [`art3m1s-core`](docs/en/cores/art3m1s-core.md) | Artemis | Windows x64, Linux x64 | Android |
+| [`renpy`](docs/en/cores/renpy.md) | Ren'Py | Windows x64, Linux x64 | Android |
+| [`shinki.emu.cmvs`](docs/en/cores/shinki-emu-cmvs.md) | CMVS | Windows x64, Linux x64, macOS x64/arm64 | — |
+| [`kirikiroid2-web`](docs/en/cores/kirikiroid2-web.md) | KiriKiri | Windows x64, Linux x64, macOS x64/arm64 (also packaged as a standalone Android and iOS core) | — |
+| [`impacto`](docs/en/cores/impacto.md) | MAGES. | Windows x64 | — |
+
+[`build/cores.toml`](build/cores.toml) and [`build/targets.toml`](build/targets.toml) define this matrix; run `cargo xtask matrix` for every combination with its blocked reason. The [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/) lists what is actually published. OpenHarmony is declared but blocked for every component.
+
+## Install
+
+1. Download the Manager bundle for your platform from [Releases](https://github.com/Project-Shinkirou/ShinkiEMU/releases).
+2. Extract it and start `shinki-emu-manager` (`shinki-emu-manager.exe` on Windows).
+3. On Linux, install the runtime libraries listed in [Build and release](docs/en/build-and-release.md#linux-desktop).
+
+Android builds are currently debug-signed test APKs, not release installers.
+
+## Quick start
+
+1. In Settings, add the directories that contain your games.
+2. Install or update the cores your games need from the core catalog.
+3. Select a game in the library and launch it.
+
+The [user guide](docs/en/user-guide.md) covers configuration, saves, metadata and patches.
+
+## Building from source
+
+Clone with submodules and use the pinned Rust 1.99.1 toolchain. All build, packaging and release steps are `cargo xtask` commands run from the repository root:
 
 ```sh
-cargo xtask --help
-cargo xtask matrix
-cargo xtask doctor --target x86_64-pc-windows-msvc
-cargo xtask deps --target x86_64-pc-windows-msvc
+git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU
+cd ShinkiEMU
+cargo xtask doctor --target x86_64-pc-windows-msvc          # report missing prerequisites
+cargo xtask deps --target x86_64-pc-windows-msvc --all-cores
 cargo xtask build --target x86_64-pc-windows-msvc --manager --release
 cargo xtask build --target x86_64-pc-windows-msvc --core rfvp --release
+cargo xtask test --core rfvp
 ```
 
-- 文档：[中文](docs/zh-cn/index.md) / [English](docs/en/index.md) / [日本語](docs/ja/index.md)
-- 构建与发布：[中文](docs/zh-cn/build-and-release.md) / [English](docs/en/build-and-release.md) / [日本語](docs/ja/build-and-release.md)
-- [贡献 / Contributing](CONTRIBUTING.md)
-- [来源 / Origins](ORIGINS.md) · [第三方声明 / Third-party notices](THIRD_PARTY_NOTICES.md)
+`deps` fetches each external core's fork at the exact revision pinned in `build/cores.toml`, along with its locked native dependencies. Platform prerequisites (MSVC, Linux packages, Android NDK, the Ren'Py SDK), packaging and releases are in [Build and release](docs/en/build-and-release.md).
 
-自有代码采用 [MIT](LICENSE-MIT) 或 [Apache-2.0](LICENSE-APACHE) 双许可，第三方核心、依赖与素材保留各自许可。
+## Documentation
 
-Project-owned code is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE). Third-party cores, dependencies and assets retain their own licenses.
+| | 简体中文 | English | 日本語 |
+|---|---|---|---|
+| Overview | [index](docs/zh-cn/index.md) | [index](docs/en/index.md) | [index](docs/ja/index.md) |
+| User guide | [user-guide](docs/zh-cn/user-guide.md) | [user-guide](docs/en/user-guide.md) | [user-guide](docs/ja/user-guide.md) |
+| Core ABI | [core-abi](docs/zh-cn/core-abi.md) | [core-abi](docs/en/core-abi.md) | [core-abi](docs/ja/core-abi.md) |
+| Build and release | [build-and-release](docs/zh-cn/build-and-release.md) | [build-and-release](docs/en/build-and-release.md) | [build-and-release](docs/ja/build-and-release.md) |
+| Metadata catalog | [metadata](docs/zh-cn/metadata.md) | [metadata](docs/en/metadata.md) | [metadata](docs/ja/metadata.md) |
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. To write a new core or bring an existing engine in as a core, follow the agent skills in [`.agents/skills/`](.agents/skills/). Never commit commercial game data; tests use synthetic fixtures.
+
+## Reporting issues
+
+Use the issue forms:
+
+- [Bug report](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=bug.yml)
+- [Game compatibility report](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)
+- [Patch submission](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=patch.yml)
+
+Problems in an external engine itself may also belong upstream; each core page links its upstream project.
+
+## License
+
+Project-owned code is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. External cores, dependencies and assets keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [ORIGINS.md](ORIGINS.md). Each core release ships a sources archive with the corresponding source.
+
+[RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine) is the separate creation engine that ShinkiEMU's shared libraries come from.

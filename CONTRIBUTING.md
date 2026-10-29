@@ -2,9 +2,11 @@
 
 ## 分支与 PR
 
-从 `main` 建立功能分支，提交聚焦的普通 PR，说明行为变化、复现方式和实际运行的检查。源码、调用方、有效行为回归和文档一起更新。外部核心修改提交到对应组织 fork 的 `shinki` 分支，通过普通 PR 审查；ShinkiEMU 随后更新精确 gitlink，不复制第二份适配源码，也不改上游默认分支。
+从 `main` 建立功能分支，提交聚焦的普通 PR，说明行为变化、复现方式和实际运行的检查。源码、调用方、有效行为回归和文档一起更新。外部核心修改提交到对应组织 fork 的 `shinki` 分支，通过普通 PR 审查；ShinkiEMU 随后更新 `build/cores.toml` 中 `[cores.source].rev` 的完整提交（`cargo xtask deps` 按它拉取 fork），不复制第二份适配源码，也不改上游默认分支。外部核心不是子模块，唯一的子模块是 `ThirdParty/cpal`。
 
-Build and release entry points are `cargo xtask` commands from the repository root. Work on a topic branch from `main` and open a normal, focused PR describing behavior, reproduction and checks actually run. Update callers, behavior regressions and docs with the implementation. External-core changes belong in the corresponding fork's `shinki` branch through a normal PR; this repository then updates the exact gitlink.
+Build and release entry points are `cargo xtask` commands from the repository root. Work on a topic branch from `main` and open a normal, focused PR describing behavior, reproduction and checks actually run. Update callers, behavior regressions and docs with the implementation. External-core changes belong in the corresponding fork's `shinki` branch through a normal PR; this repository then updates the full commit in `[cores.source].rev` of `build/cores.toml`, which `cargo xtask deps` fetches. External cores are not submodules; `ThirdParty/cpal` is the only one.
+
+编写新核心或接入现有引擎 / Writing a new core or integrating an existing engine: [shinkiemu-new-core](.agents/skills/shinkiemu-new-core/SKILL.md) · [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md).
 
 ## 检查与测试 / Checks and tests
 

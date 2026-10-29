@@ -93,7 +93,7 @@ cargo xtask build --target x86_64-linux-android --manager --release
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
 ```
 
-各ビルドは `cargo ndk --locked` でコンパイルし、RFVP を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
+各ビルドは `cargo ndk --locked` でコンパイルし、`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Sena、Ethornell、ReMinori、Shinki Musica、Artemis、Ren'Py）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。
 
@@ -142,7 +142,7 @@ SDK を使った受け入れ確認では、実際の成果物のパスとサイ�
 
 ## マトリクスと CI
 
-`matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android で RFVP を静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
+`matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
