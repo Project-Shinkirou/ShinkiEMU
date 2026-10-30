@@ -23,12 +23,12 @@ ShinkiEMU 仍处于预发布阶段，构建以 beta 版发布。构建成功不�
 | 核心 | 引擎 | 桌面（动态核心） | 内嵌于 Manager |
 |---|---|---|---|
 | [`rfvp`](docs/zh-cn/cores/rfvp.md) | FVP | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
-| [`siglus_rs`](docs/zh-cn/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | iOS |
+| [`siglus_rs`](docs/zh-cn/cores/siglus-rs.md) | SiglusEngine | Windows x64、Linux x64、macOS x64/arm64 | Android、iOS |
 | [`sena-rs`](docs/zh-cn/cores/sena-rs.md) | SoftPAL | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ethornell-rs`](docs/zh-cn/cores/ethornell-rs.md) | BGI / Ethornell | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`ReMinori`](docs/zh-cn/cores/reminori.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | iOS |
 | [`shinki.emu.musica`](docs/zh-cn/cores/shinki-emu-musica.md) | Musica | Windows x64、Linux x64、macOS x64/arm64 | Android |
-| [`art3m1s-core`](docs/zh-cn/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | — |
+| [`art3m1s-core`](docs/zh-cn/cores/art3m1s-core.md) | Artemis | Windows x64、Linux x64 | Android |
 | [`renpy`](docs/zh-cn/cores/renpy.md) | Ren'Py | Windows x64、Linux x64 | Android |
 | [`shinki.emu.cmvs`](docs/zh-cn/cores/shinki-emu-cmvs.md) | CMVS | Windows x64、Linux x64、macOS x64/arm64 | — |
 | [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | Windows x64、Linux x64、macOS x64/arm64（另有独立的 Android 和 iOS 核心包） | — |

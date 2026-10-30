@@ -7,7 +7,7 @@ description: Siglus 的格式、原生行为与限制。
 
 `plugin_id: siglus_rs` · 引擎家族: SiglusEngine
 
-上游：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。适配 fork：[Project-Shinkirou/siglus_rs 的 shinki 分支](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki)。
+上游：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。适配 fork：[Project-Shinkirou/siglus_rs 的 shinki-android-isolation 分支](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-android-isolation)。
 
 ## 格式
 
@@ -16,6 +16,8 @@ description: Siglus 的格式、原生行为与限制。
 ## 原生行为与限制
 
 fork 保留 Siglus VM、renderer、文字/键盘输入和原生存档。适配层拥有执行循环并发布 CPU 帧。原生配置支持 original/chs 成对资源和 G01/movie 选择。
+
+Android Manager 静态嵌入 Siglus、RFVP、Artemis 和 Musica。Siglus 与 RFVP 使用和 Manager 相同的 wgpu 30 运行时。两者的原生 WMV 解码器保留 Rust API，不在 Manager 中启用可选 `c-abi` 导出，避免重复的 `wmv2_decoder_*` 符号。
 
 ## 存档与密钥
 

@@ -1,11 +1,16 @@
 package org.shinkirou.shinkiemu
 
+import android.app.Dialog
 import android.app.NativeActivity
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.view.PointerIcon
+import android.webkit.CookieManager
+import android.webkit.WebStorage
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import java.io.File
 
 /**
@@ -112,5 +117,75 @@ class MainActivity : NativeActivity() {
             val type = if (hidden) PointerIcon.TYPE_NULL else PointerIcon.TYPE_ARROW
             window.decorView.pointerIcon = PointerIcon.getSystemIcon(this, type)
         }
+    }
+
+    /** Page shown in the Store sign-in WebView; null while none is open. */
+    @Volatile
+    private var webLoginPage: String? = null
+
+    // UI thread only.
+    private var webLoginDialog: Dialog? = null
+    private var webLoginView: WebView? = null
+
+    /**
+     * Show the Store sign-in page in a full-screen WebView. The cookie jar is
+     * wiped first, so only this sign-in's cookies are read back; back closes it.
+     */
+    fun openWebLogin(url: String) {
+        webLoginPage = url
+        runOnUiThread {
+            dismissWebLogin()
+            val cookies = CookieManager.getInstance()
+            cookies.removeAllCookies(null)
+            cookies.setAcceptCookie(true)
+            val view = WebView(this)
+            cookies.setAcceptThirdPartyCookies(view, true)
+            view.settings.javaScriptEnabled = true
+            view.settings.domStorageEnabled = true
+            view.webViewClient = object : WebViewClient() {
+                override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                    if (webLoginView === view) webLoginPage = url
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    if (webLoginView === view) webLoginPage = url
+                }
+            }
+            val dialog = Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar)
+            dialog.setContentView(view)
+            dialog.setOnCancelListener {
+                webLoginPage = null
+                dismissWebLogin()
+            }
+            webLoginView = view
+            webLoginDialog = dialog
+            dialog.show()
+            view.loadUrl(url)
+        }
+    }
+
+    fun webLoginPage(): String? = webLoginPage
+
+    /** `Cookie` header the sign-in WebView sends to [url], HttpOnly cookies included. */
+    fun webLoginCookies(url: String): String? = CookieManager.getInstance().getCookie(url)
+
+    /** Close the sign-in WebView and wipe its cookies and site data. */
+    fun closeWebLogin() {
+        webLoginPage = null
+        runOnUiThread { dismissWebLogin() }
+    }
+
+    private fun dismissWebLogin() {
+        webLoginDialog?.dismiss()
+        webLoginDialog = null
+        webLoginView?.let { view ->
+            view.stopLoading()
+            view.clearCache(true)
+            view.destroy()
+        }
+        webLoginView = null
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
     }
 }

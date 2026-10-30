@@ -21,12 +21,21 @@ pub(super) fn fit_initial_window(window: &slint::Window) {
     }
 }
 
-/// The Manager has no custom application icon; None restores the window class default.
+/// None restores the Manager application icon on desktop platforms.
 #[cfg(not(target_os = "android"))]
 pub(super) fn set_icon(
     window: &slint::Window,
     icon: Option<FamilyWindowIcon>,
 ) -> Result<(), String> {
+    let custom = icon.is_some();
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let icon = icon.or_else(|| {
+        Some(FamilyWindowIcon {
+            width: 64,
+            height: 64,
+            rgba: include_bytes!(concat!(env!("OUT_DIR"), "/window-icon.rgba")).to_vec(),
+        })
+    });
     let icon = icon
         .map(|icon| {
             icon.validate().map_err(|error| error.to_string())?;
@@ -44,7 +53,11 @@ pub(super) fn set_icon(
                     handle.as_raw(),
                     RawWindowHandle::Win32(_) | RawWindowHandle::Xlib(_) | RawWindowHandle::Xcb(_)
                 ) {
-                    return Err("SHINKI_EMU_HOST_WINDOW_ICON_UNAVAILABLE".to_owned());
+                    return if custom {
+                        Err("SHINKI_EMU_HOST_WINDOW_ICON_UNAVAILABLE".to_owned())
+                    } else {
+                        Ok(())
+                    };
                 }
             }
             native.set_window_icon(icon);

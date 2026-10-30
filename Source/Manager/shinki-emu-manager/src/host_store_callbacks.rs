@@ -4,7 +4,8 @@ use shinki_emu_manager_ui_slint::tr;
 
 /// Store sub-page: every UI callback arrives as one [`StoreAction`]. The library
 /// folder picker is a host service, so `ChooseLibraryRoot` becomes
-/// `SetLibraryRoot` once the user picks a folder.
+/// `SetLibraryRoot` once the user picks a folder; the sign-in webview is a
+/// host service too, so `WebLogin`/`CancelWebLogin` never reach the controller.
 pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
     let Some(adapter) = wiring.adapter.upgrade() else {
         return;
@@ -23,6 +24,8 @@ pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
                 }),
             );
         }
+        StoreAction::WebLogin => web_login::open(&w),
+        StoreAction::CancelWebLogin => web_login::close(&w),
         action => w.run(|c| c.store_action(action)),
     });
 }

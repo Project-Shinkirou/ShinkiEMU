@@ -7,7 +7,7 @@ description: Siglus のフォーマット、ネイティブ動作、制約。
 
 `plugin_id: siglus_rs` · エンジンファミリー: SiglusEngine
 
-上流：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。適応 fork：[Project-Shinkirou/siglus_rs の shinki ブランチ](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki)。
+上流：[xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs)。適応 fork：[Project-Shinkirou/siglus_rs の shinki-android-isolation ブランチ](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-android-isolation)。
 
 ## フォーマット
 
@@ -16,6 +16,8 @@ description: Siglus のフォーマット、ネイティブ動作、制約。
 ## ネイティブ動作と制約
 
 fork は Siglus の VM、レンダラー、テキスト・キーボード入力、ネイティブのセーブを保持します。アダプターが実行ループを担当し、CPU フレームを公開します。ネイティブの設定では、original/chs の対になったリソースと G01/movie の選択を扱えます。
+
+Android Manager は Siglus、RFVP、Artemis、Musica を静的に組み込みます。Siglus と RFVP は Manager と同じ wgpu 30 ランタイムを使用します。両方のネイティブ WMV デコーダーは Rust API を保持し、Manager では任意の `c-abi` エクスポートを有効にしないため、`wmv2_decoder_*` シンボルの重複を防ぎます。
 
 ## セーブとキー
 

@@ -247,27 +247,14 @@ export component StoreLogin {
                     }
                 }
 
-                if root.choosing && Store.can-browser : LoginCard {
-                    title: @tr("浏览器登录");
-                    description: @tr("在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。");
-                    VerticalLayout {
-                        spacing: 12px;
-                        OutlineButton {
-                            text: @tr("打开官网登录页");
-                            enabled: Store.browser-url != "";
-                            clicked => { Store.open-browser(); }
-                        }
-                        cookies := TextField {
-                            label: "Cookie";
-                            input-type: InputType.password;
-                            accepted(text) => {
-                                if text != "" { Store.browser-login(text); self.text = ""; }
-                            }
-                        }
+                if root.choosing && Store.can-web : LoginCard {
+                    title: @tr("网页登录");
+                    description: @tr("在内置浏览器中打开 {} 的登录页。登录完成后会自动继续，登录凭据只保存在系统凭据库中。", Store.provider-name);
+                    HorizontalLayout {
+                        alignment: end;
                         FilledButton {
-                            text: @tr("使用 Cookie 登录");
-                            enabled: cookies.text != "";
-                            clicked => { Store.browser-login(cookies.text); cookies.text = ""; }
+                            text: @tr("打开登录页");
+                            clicked => { Store.web-login(); }
                         }
                     }
                 }
@@ -338,6 +325,75 @@ export component StoreLogin {
                     }
                 }
             }
+        }
+    }
+}
+
+// The store's own sign-in page. The host places the platform webview over
+// `page`, whose window position it reads from `Store.web-area-*`; Linux and
+// Android show the page in a window of their own instead.
+export component StoreWebArea {
+    in property <bool> compact;
+
+    property <length> pad: root.compact ? 8px : 16px;
+    property <length> bar: 56px;
+
+    // Logical window coordinates of `page`, pushed whenever they change.
+    property <length> page-x: root.absolute-position.x + page.x;
+    property <length> page-y: root.absolute-position.y + page.y;
+    property <length> page-width: page.width;
+    property <length> page-height: page.height;
+    function publish() {
+        Store.web-area-x = root.page-x;
+        Store.web-area-y = root.page-y;
+        Store.web-area-width = root.page-width;
+        Store.web-area-height = root.page-height;
+    }
+    init => { root.publish(); }
+    changed page-x => { root.publish(); }
+    changed page-y => { root.publish(); }
+    changed page-width => { root.publish(); }
+    changed page-height => { root.publish(); }
+
+    HorizontalLayout {
+        x: root.pad;
+        y: 0px;
+        width: root.width - 2 * root.pad;
+        height: root.bar;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            MaterialText {
+                text: @tr("在 {} 登录页中登录，完成后会自动继续。", Store.provider-name);
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextButton {
+                text: @tr("取消");
+                clicked => { Store.cancel-web-login(); }
+            }
+        }
+    }
+
+    page := Rectangle {
+        x: root.pad;
+        y: root.bar;
+        width: max(0px, root.width - 2 * root.pad);
+        height: max(0px, root.height - root.bar - root.pad);
+        border-radius: 12px;
+        background: MaterialPalette.surface-container-low;
+
+        CircularProgressIndicator {
+            width: 40px;
+            height: 40px;
+            indeterminate: true;
         }
     }
 }

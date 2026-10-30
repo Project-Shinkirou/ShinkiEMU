@@ -7,6 +7,16 @@ impl ManagerController for ShinkiEmuManagerController {
     ) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::store_action(self, action)
     }
+    fn store_web_login(&self) -> Result<&'static shinki_emu_store::WebLogin, String> {
+        ShinkiEmuManagerController::store_web_login(self)
+    }
+
+    fn store_web_signed_in(
+        &mut self,
+        cookies: Vec<shinki_emu_store::WebCookie>,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::store_web_signed_in(self, cookies)
+    }
 
     fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::prepare_library(self)

@@ -9,12 +9,11 @@ use mlua::{
     Buffer, Function, Lua, LuaOptions, LuaSerdeExt, RegistryKey, StdLib, Table, UserData,
     UserDataMethods, Value,
 };
+use parking_lot::Mutex;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    rc::Rc,
     sync::{Arc, atomic::AtomicBool},
 };
 
@@ -39,7 +38,8 @@ pub(crate) struct Execution {
     pub scripts: Vec<ScriptRecord>,
 }
 
-type FileHandle = Rc<RefCell<TaskFile>>;
+// Userdata must also support mlua's `send` feature when Artemis is embedded.
+type FileHandle = Arc<Mutex<TaskFile>>;
 
 struct Source {
     file: FileHandle,
@@ -49,15 +49,15 @@ struct Source {
 impl UserData for Source {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("size", |_, this, ()| {
-            this.file.borrow().size().map_err(mlua::Error::external)
+            this.file.lock().size().map_err(mlua::Error::external)
         });
         methods.add_method("read", |lua, this, (offset, length): (Value, Value)| {
             let offset = buffer::integer(offset)?;
             let length = buffer::integer(length)?;
-            buffer::read(lua, &mut this.file.borrow_mut(), offset, length)
+            buffer::read(lua, &mut this.file.lock(), offset, length)
         });
         methods.add_method("sha256", |_, this, ()| {
-            this.file.borrow().size().map_err(mlua::Error::external)?;
+            this.file.lock().size().map_err(mlua::Error::external)?;
             Ok(this.sha256.clone())
         });
     }
@@ -68,28 +68,28 @@ struct Output(FileHandle);
 impl UserData for Output {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("size", |_, this, ()| {
-            this.0.borrow().size().map_err(mlua::Error::external)
+            this.0.lock().size().map_err(mlua::Error::external)
         });
         methods.add_method("read", |lua, this, (offset, length): (Value, Value)| {
             buffer::read(
                 lua,
-                &mut this.0.borrow_mut(),
+                &mut this.0.lock(),
                 buffer::integer(offset)?,
                 buffer::integer(length)?,
             )
         });
         methods.add_method("write", |lua, this, (offset, bytes): (Value, Buffer)| {
             let offset = buffer::integer(offset)?;
-            buffer::input(lua, bytes, |bytes| this.0.borrow_mut().write(offset, bytes))
+            buffer::input(lua, bytes, |bytes| this.0.lock().write(offset, bytes))
         });
         methods.add_method("truncate", |_, this, length: Value| {
             this.0
-                .borrow_mut()
+                .lock()
                 .truncate(buffer::integer(length)?)
                 .map_err(mlua::Error::external)
         });
         methods.add_method("close", |_, this, ()| {
-            this.0.borrow_mut().close().map_err(mlua::Error::external)
+            this.0.lock().close().map_err(mlua::Error::external)
         });
     }
 }
@@ -99,8 +99,8 @@ struct Files {
     patch: AuthorizedRoot,
     output: AuthorizedRoot,
     cancelled: Arc<AtomicBool>,
-    inputs: RefCell<BTreeMap<(String, String), String>>,
-    outputs: RefCell<Vec<FileHandle>>,
+    inputs: Mutex<BTreeMap<(String, String), String>>,
+    outputs: Mutex<Vec<FileHandle>>,
 }
 
 impl Files {
@@ -125,7 +125,7 @@ impl Files {
     }
 
     fn record(&self, root: &str, path: &str, sha256: String) -> Result<(), PatchError> {
-        let mut inputs = self.inputs.borrow_mut();
+        let mut inputs = self.inputs.lock();
         let key = (root.to_owned(), path.to_owned());
         if let Some(previous) = inputs.get(&key) {
             if previous != &sha256 {
@@ -147,18 +147,18 @@ impl Files {
         } else {
             self.output.create(path)?
         };
-        let file = Rc::new(RefCell::new(TaskFile::new(
+        let file = Arc::new(Mutex::new(TaskFile::new(
             file,
             true,
             self.cancelled.clone(),
         )?));
-        self.outputs.borrow_mut().push(file.clone());
+        self.outputs.lock().push(file.clone());
         Ok(Output(file))
     }
 
     fn close_outputs(&self) -> Result<(), PatchError> {
-        for file in self.outputs.borrow().iter() {
-            file.borrow_mut().close()?;
+        for file in self.outputs.lock().iter() {
+            file.lock().close()?;
         }
         Ok(())
     }
@@ -167,19 +167,19 @@ impl Files {
 struct Scripts {
     root: AuthorizedRoot,
     cancelled: Arc<AtomicBool>,
-    hashes: RefCell<BTreeMap<String, String>>,
-    cache: RefCell<BTreeMap<String, RegistryKey>>,
-    loading: RefCell<BTreeSet<String>>,
+    hashes: Mutex<BTreeMap<String, String>>,
+    cache: Mutex<BTreeMap<String, RegistryKey>>,
+    loading: Mutex<BTreeSet<String>>,
 }
 
 impl Scripts {
     fn load(&self, lua: &Lua, path: &str) -> mlua::Result<Value> {
         crate::paths::relative(path, false).map_err(mlua::Error::external)?;
         check_cancelled(&self.cancelled).map_err(mlua::Error::external)?;
-        if let Some(key) = self.cache.borrow().get(path) {
+        if let Some(key) = self.cache.lock().get(path) {
             return lua.registry_value(key);
         }
-        if !self.loading.borrow_mut().insert(path.to_owned()) {
+        if !self.loading.lock().insert(path.to_owned()) {
             return Err(mlua::Error::external(PatchError::new(
                 PatchErrorKind::Script,
                 "cyclic script module load",
@@ -205,7 +205,7 @@ impl Scripts {
                 hash.update(&*chunk);
             }
             self.hashes
-                .borrow_mut()
+                .lock()
                 .insert(path.to_owned(), hex::encode(hash.finalize()));
             let value = lua
                 .load(&bytes)
@@ -213,10 +213,10 @@ impl Scripts {
                 .set_mode(mlua::chunk::ChunkMode::Text)
                 .eval::<Value>()?;
             let key = lua.create_registry_value(value.clone())?;
-            self.cache.borrow_mut().insert(path.to_owned(), key);
+            self.cache.lock().insert(path.to_owned(), key);
             Ok(value)
         })();
-        self.loading.borrow_mut().remove(path);
+        self.loading.lock().remove(path);
         result
     }
 }
@@ -263,20 +263,20 @@ pub(crate) fn execute(
         check_cancelled(&interrupt).map_err(mlua::Error::external)?;
         Ok(mlua::VmState::Continue)
     });
-    let files = Rc::new(Files {
+    let files = Arc::new(Files {
         source: AuthorizedRoot::from_input_dir(transaction.open_source()?),
         patch: AuthorizedRoot::from_input_dir(transaction.open_patch()?),
         output: AuthorizedRoot::from_dir(transaction.open_staging()?),
         cancelled: cancelled.clone(),
-        inputs: RefCell::default(),
-        outputs: RefCell::default(),
+        inputs: Mutex::default(),
+        outputs: Mutex::default(),
     });
-    let scripts = Rc::new(Scripts {
+    let scripts = Arc::new(Scripts {
         root: AuthorizedRoot::open(script_parent)?,
         cancelled: cancelled.clone(),
-        hashes: RefCell::default(),
-        cache: RefCell::default(),
-        loading: RefCell::default(),
+        hashes: Mutex::default(),
+        cache: Mutex::default(),
+        loading: Mutex::default(),
     });
     let (id, version, profile) = lua
         .scope(|scope| {
@@ -336,11 +336,11 @@ pub(crate) fn execute(
     // Scope invalidates borrowed progress callbacks; releasing the VM also
     // drops script-held userdata/closures before the transaction is published.
     drop(lua);
-    let inputs = std::mem::take(&mut *files.inputs.borrow_mut())
+    let inputs = std::mem::take(&mut *files.inputs.lock())
         .into_iter()
         .map(|((root, path), sha256)| InputRecord { root, path, sha256 })
         .collect();
-    let scripts = std::mem::take(&mut *scripts.hashes.borrow_mut())
+    let scripts = std::mem::take(&mut *scripts.hashes.lock())
         .into_iter()
         .map(|(path, sha256)| ScriptRecord { path, sha256 })
         .collect();
@@ -428,7 +428,7 @@ fn validate_profile(profile: &OutputProfile) -> Result<(), PatchError> {
     Ok(())
 }
 
-fn context(lua: &Lua, files: Rc<Files>, scripts: Rc<Scripts>) -> mlua::Result<Table> {
+fn context(lua: &Lua, files: Arc<Files>, scripts: Arc<Scripts>) -> mlua::Result<Table> {
     let ctx = lua.create_table()?;
     let state = files.clone();
     ctx.set(
@@ -442,7 +442,7 @@ fn context(lua: &Lua, files: Rc<Files>, scripts: Rc<Scripts>) -> mlua::Result<Ta
                 .record(&root, &path, sha256.clone())
                 .map_err(mlua::Error::external)?;
             Ok(Source {
-                file: Rc::new(RefCell::new(file)),
+                file: Arc::new(Mutex::new(file)),
                 sha256,
             })
         })?,

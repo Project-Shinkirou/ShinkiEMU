@@ -21,6 +21,7 @@ serde.workspace = true
 time.workspace = true
 serde_json.workspace = true
 mlua.workspace = true
+parking_lot.workspace = true
 encoding_rs.workspace = true
 blowfish.workspace = true
 rc4.workspace = true

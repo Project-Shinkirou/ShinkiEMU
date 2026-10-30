@@ -549,8 +549,8 @@ pub struct StoreViewModel {
     pub provider_name: String,
     pub can_qr: bool,
     pub can_credentials: bool,
-    pub can_browser: bool,
-    pub browser_url: String,
+    /// The provider signs in on its own pages in the embedded webview.
+    pub can_web: bool,
     pub has_branches: bool,
     pub has_depots: bool,
     pub can_verify: bool,
@@ -616,22 +616,43 @@ pub struct StoreTransferViewModel {
 /// Secret-bearing actions deliberately do not implement Debug.
 pub enum StoreAction {
     Open,
-    SelectProvider { id: String },
-    BrowserLogin { cookies: String },
-    OpenBrowser,
+    SelectProvider {
+        id: String,
+    },
+    /// Open the provider's sign-in page in the embedded webview. The host
+    /// owns the webview, so it handles this and `CancelWebLogin` itself.
+    WebLogin,
+    CancelWebLogin,
     OpenDestination,
-    Login { account: String, password: String },
+    Login {
+        account: String,
+        password: String,
+    },
     QrLogin,
     ImportLocal,
-    SubmitGuard { code: String },
+    SubmitGuard {
+        code: String,
+    },
     Logout,
     RefreshLibrary,
-    Search { query: String },
-    SelectGame { title_id: String },
-    SelectDepot { depot_id: String, selected: bool },
-    SelectBranch { branch: String, password: String },
+    Search {
+        query: String,
+    },
+    SelectGame {
+        title_id: String,
+    },
+    SelectDepot {
+        depot_id: String,
+        selected: bool,
+    },
+    SelectBranch {
+        branch: String,
+        password: String,
+    },
     ChooseLibraryRoot,
-    SetLibraryRoot { path: String },
+    SetLibraryRoot {
+        path: String,
+    },
     Download,
     Cancel,
     CheckUpdates,

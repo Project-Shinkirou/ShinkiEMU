@@ -25,7 +25,7 @@ pub fn portable(name: &str) -> Result<()> {
             || !p.as_bytes()[0].is_ascii_alphanumeric() && p.as_bytes()[0] != b'_'
             || !p
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.+-".contains(&b))
+                .all(|b| b.is_ascii_alphanumeric() || b"_.+-@~".contains(&b))
             || p.ends_with('.')
             || ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
             || (stem.len() == 4
@@ -816,6 +816,28 @@ pub fn package(
                 ),
             )?;
             write_provenance(&result, &stage.join("build.json"))?;
+            if target == "x86_64-unknown-linux-gnu" {
+                let icon = crate::icon::Icon::new()?;
+                for (size, dir) in [
+                    (16, "16x16"),
+                    (32, "32x32"),
+                    (48, "48x48"),
+                    (64, "64x64"),
+                    (128, "128x128"),
+                    (256, "256x256"),
+                ] {
+                    icon.png(
+                        size,
+                        true,
+                        &stage.join(format!("share/icons/hicolor/{dir}/apps/shinkiemu.png")),
+                    )?;
+                }
+                fs::create_dir_all(stage.join("share/applications"))?;
+                fs::write(
+                    stage.join("share/applications/shinkiemu.desktop"),
+                    "[Desktop Entry]\nType=Application\nName=ShinkiEMU\nComment=Visual novel emulator manager\nExec=shinki-emu-manager\nIcon=shinkiemu\nTerminal=false\nCategories=Game;Emulator;\n",
+                )?;
+            }
             if crate::apple::supported(target) {
                 let app = crate::apple::bundle(
                     stage,
@@ -833,9 +855,7 @@ pub fn package(
                         &app,
                         payload.join(app.file_name().context("iOS app filename")?),
                     )?;
-                    let ipa = stage.join(format!(
-                        "ShinkiEMU-{version}-{target}-adhoc-device-test.ipa"
-                    ));
+                    let ipa = stage.join(format!("ShinkiEMU-{version}-{target}-device-test.ipa"));
                     zip_entries(&tree(payload_stage.path())?, &ipa)?;
                 }
             }
@@ -1153,6 +1173,7 @@ fn package_android(
         let mut manifest = bundled.into_iter().collect::<Vec<_>>().join("\n");
         manifest.push('\n');
         fs::write(stage.join("assets/bundled.manifest"), manifest)?;
+        crate::icon::Icon::new()?.android(stage)?;
         let gradle = inv.root.join("Platforms/Android").join(if cfg!(windows) {
             "gradlew.bat"
         } else {

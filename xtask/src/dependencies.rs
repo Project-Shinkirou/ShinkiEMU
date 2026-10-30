@@ -725,6 +725,14 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
                 missing.push(format!("Linux development package providing {package}.pc"));
             }
         }
+        // Store web sign-in (wry) builds against WebKitGTK 4.1 and GTK 3.
+        if core.is_none() {
+            for package in ["gtk+-3.0", "webkit2gtk-4.1"] {
+                if capture(Command::new("pkg-config").args(["--exists", package])).is_err() {
+                    missing.push(format!("Linux development package providing {package}.pc"));
+                }
+            }
+        }
         if selected.gstreamer {
             for package in [
                 "glib-2.0 >= 2.56",

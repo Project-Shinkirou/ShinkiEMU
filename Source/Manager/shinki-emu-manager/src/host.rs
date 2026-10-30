@@ -40,6 +40,8 @@ mod pointer;
 mod settings_callbacks;
 #[path = "host_store_callbacks.rs"]
 mod store_callbacks;
+#[path = "host_web_login.rs"]
+mod web_login;
 #[path = "host_window_commands.rs"]
 mod window_commands;
 #[path = "host_events.rs"]
@@ -92,6 +94,13 @@ pub trait ManagerController: 'static {
     fn store_action(
         &mut self,
         action: shinki_emu_manager_ui_slint::StoreAction,
+    ) -> Result<ManagerViewModel, String>;
+    /// Sign-in rule the embedded webview follows for the selected store.
+    fn store_web_login(&self) -> Result<&'static shinki_emu_store::WebLogin, String>;
+    /// Sign the selected store in with the cookies its webview captured.
+    fn store_web_signed_in(
+        &mut self,
+        cookies: Vec<shinki_emu_store::WebCookie>,
     ) -> Result<ManagerViewModel, String>;
     fn game_fullscreen(&self) -> bool {
         false
@@ -825,6 +834,10 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     }).map_err(|error| HostError::Renderer(error.to_string()))?;
     crate::startup::mark("window_show_requested");
     adapter.window().show()?;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    if let Err(error) = window_commands::set_icon(adapter.window().window(), None) {
+        tracing::warn!(event = "shinki.emu.host.window_icon_failed", message = %error);
+    }
     crate::startup::mark("window_show_returned");
     let run_result = adapter.window().run();
     runtime_timer.stop();

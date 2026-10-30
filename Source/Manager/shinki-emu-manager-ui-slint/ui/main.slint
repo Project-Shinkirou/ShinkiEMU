@@ -34,6 +34,7 @@ export {
 
 export component ManagerWindow inherits MaterialWindow {
     title: Session.active && Session.title != "" ? Session.title : "ShinkiEMU";
+    icon: @image-url("../../../../Assets/Branding/shinkiemu-icon.svg");
     min-width: 360px;
     min-height: 360px;
     preferred-width: 1280px;

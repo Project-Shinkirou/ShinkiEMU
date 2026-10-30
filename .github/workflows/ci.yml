@@ -16,6 +16,10 @@ on:
         description: 'Optional comma-separated component ids within the affected matrix'
         type: string
         default: ''
+      targets:
+        description: 'Optional comma-separated target triples within the affected matrix'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -41,6 +45,7 @@ jobs:
         env:
           SINCE: ${{ inputs.since }}
           COMPONENTS: ${{ inputs.components }}
+          TARGETS: ${{ inputs.targets }}
         run: |
           args=(--json --ci)
           if [[ -n "$SINCE" ]]; then args+=(--since "$SINCE"); fi
@@ -50,6 +55,12 @@ jobs:
               ($components | split(",")) as $ids
               | .include |= map(select(.component as $id | $ids | index($id)))
               | if (.include | length) == 0 then error("No matching affected components") else . end' <<< "$matrix")
+          fi
+          if [[ -n "$TARGETS" ]]; then
+            matrix=$(jq -ce --arg targets "$TARGETS" '
+              ($targets | split(",")) as $ids
+              | .include |= map(select(.target as $id | $ids | index($id)))
+              | if (.include | length) == 0 then error("No matching affected targets") else . end' <<< "$matrix")
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   tools:
@@ -98,7 +109,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-          sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+          sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
       - uses: actions/setup-java@v6
         if: contains(matrix.target, 'android')
         with:

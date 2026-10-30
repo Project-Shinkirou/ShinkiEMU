@@ -361,6 +361,19 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         "libgobject-2.0.so.0",
         "libgio-2.0.so.0",
         "libgmodule-2.0.so.0",
+        // Manager store sign-in uses the distribution's WebKitGTK 4.1 / GTK 3.
+        "libwebkit2gtk-4.1.so.0",
+        "libjavascriptcoregtk-4.1.so.0",
+        "libsoup-3.0.so.0",
+        "libgtk-3.so.0",
+        "libgdk-3.so.0",
+        "libatk-1.0.so.0",
+        "libcairo.so.2",
+        "libcairo-gobject.so.2",
+        "libpango-1.0.so.0",
+        "libpangocairo-1.0.so.0",
+        "libgdk_pixbuf-2.0.so.0",
+        "libharfbuzz.so.0",
     ]
     .contains(&name)
 }

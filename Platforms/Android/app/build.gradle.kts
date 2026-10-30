@@ -88,6 +88,7 @@ android {
     sourceSets.getByName("main") {
         jniLibs.directories.add(generatedRoot.dir("jniLibs").asFile.absolutePath)
         assets.directories.add(generatedRoot.dir("assets").asFile.absolutePath)
+        res.directories.add(generatedRoot.dir("res").asFile.absolutePath)
     }
 
     packaging {
