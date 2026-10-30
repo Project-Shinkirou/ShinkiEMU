@@ -373,16 +373,16 @@ artifact_kind = "native-shared"
 resources = []
 static_features = ["static"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki"
-rev = "6261749f383c189f7504f7814aa454b90d5a9e93"
+branch = "shinki-unblock-linux"
+rev = "4d60012027c4e199d0e815929bf1f7a7341ae689"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
+reason = "The Linux adapter and x64-linux-dynamic triplet have not completed the native dependency, build and package gates; no green Linux remote CI receipt is available."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
@@ -390,11 +390,6 @@ reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x6
 target = "aarch64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
