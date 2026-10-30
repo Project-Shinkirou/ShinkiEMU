@@ -1015,3 +1015,25 @@ fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
             .is_err()
     );
 }
+
+#[test]
+fn apple_icon_names_remain_portable_without_allowing_traversal() {
+    for name in [
+        "ShinkiEMU.app/AppIcon83.5x83.5@2x.png",
+        "ShinkiEMU.app/Info~ipad.plist",
+        "Assets.xcassets/AppIcon.appiconset/Contents.json",
+    ] {
+        portable(name).unwrap();
+    }
+    for name in [
+        "../AppIcon.png",
+        "ShinkiEMU.app/../outside",
+        "/AppIcon.png",
+        "C:/AppIcon.png",
+        "ShinkiEMU.app\\outside",
+        "AppIcon\0.png",
+        "AppIcon\n.png",
+    ] {
+        assert!(portable(name).is_err(), "{name:?}");
+    }
+}
