@@ -53,20 +53,20 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
 branch = "shinki"
-rev = "d113af06cf44f428cf1e635d7cf8ca2975a401b8"
+rev = "d640798deee47819f34ba10143f38c06e7fd85e2"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Android static link conflicts with RFVP: duplicate wmv2_decoder_* C symbols (siglus_wmv_decoder vs wmv_decoder) and two wgpu-core instances exporting wgpu_render_bundle_*; pending symbol isolation."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Android static link conflicts with RFVP: duplicate wmv2_decoder_* C symbols (siglus_wmv_decoder vs wmv_decoder) and two wgpu-core instances exporting wgpu_render_bundle_*; pending symbol isolation."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -93,8 +93,8 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
-static_features = ["static-core"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_features = []
+static_manager_targets = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
@@ -109,10 +109,10 @@ target = "x86_64-apple-darwin"
 reason = "pending: shared FFmpeg static closure + native build not yet verified"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Artemis needs Lua 5.1 (mlua lua51) while the Manager links Luau; one binary can link only one Lua. Android embedding is pending an isolated Lua build."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "Artemis needs Lua 5.1 (mlua lua51) while the Manager links Luau; one binary can link only one Lua. Android embedding is pending an isolated Lua build."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "pending: shared FFmpeg static closure + native build not yet verified"
@@ -174,7 +174,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/sena-rs/LICENSE-MPL-2.0", "docs/licenses/sena-rs/MS-PGothic.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [cores.source]
@@ -184,10 +184,10 @@ rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574"
 upstream = "https://github.com/xmoezzz/sena-rs"
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "sena-rs adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "sena-rs adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -257,15 +257,15 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
 branch = "shinki"
@@ -330,15 +330,15 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ReMinori embedded adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+reason = "ReMinori embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
 branch = "shinki"

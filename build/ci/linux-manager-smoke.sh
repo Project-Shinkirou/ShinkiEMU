@@ -15,13 +15,18 @@ export XDG_CACHE_HOME="$work/state/cache" XDG_RUNTIME_DIR="$work/state/runtime"
 # directory cleanup fails, replacing the Manager's status.
 Xvfb -displayfd 3 -screen 0 1280x800x24 -nolisten tcp 3>"$work/display" 2>"$work/xvfb.log" &
 xvfb=$!
-for _ in $(seq 100); do
+# Xvfb can take several seconds to come up on a loaded hosted runner.
+for _ in $(seq 300); do
   [ -s "$work/display" ] && break
-  kill -0 "$xvfb" 2>/dev/null || { cat "$work/xvfb.log"; exit 1; }
+  kill -0 "$xvfb" 2>/dev/null || { echo "Xvfb exited before reporting a display:"; cat "$work/xvfb.log"; exit 1; }
   sleep 0.1
 done
 display=$(head -n 1 "$work/display")
-test -n "$display"
+if [ -z "$display" ]; then
+  echo "Xvfb reported no display within 30 s:"
+  cat "$work/xvfb.log"
+  exit 1
+fi
 set +e
 # Hosted runners have no GPU: the only adapters are Mesa's software GL and
 # lavapipe Vulkan, which Slint uses only when CPU adapters are allowed.

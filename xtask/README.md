@@ -28,6 +28,7 @@ Native requirements are scoped per component. Only consumers prepare the pinned 
 Linux kirikiroid2-web dependency builds require `libltdl-dev` in addition to
 `libtool` and `autoconf-archive`: libxcrypt's configure script uses
 `LT_SYS_SYMBOL_USCORE` from `ltdl.m4`. CI installs that package before vcpkg.
+Android FFmpeg bindings use the target's versioned API 28 triple and NDK sysroot in both `BINDGEN_EXTRA_CLANG_ARGS_<target>` forms (hyphens and underscores). Bindgen prefers the hyphenated form, preserving the API level when cargo-ndk 4.1.2 replaces the underscored form with sysroot-only flags.
 
 Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The built-in Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. Static Manager dependencies and exact Git pins must match `static_manager_targets` in the inventory; dynamic export features stay disabled. iOS packages include all five Rust cores' licenses and an `embedded-cores.json` source inventory.
 

@@ -611,12 +611,15 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         if selected.subtitle {
             dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("lib"));
         }
-        dirs.push(
-            ndk.join("toolchains/llvm/prebuilt")
-                .join(host)
-                .join("sysroot/usr/lib")
-                .join(&result.target),
-        );
+        let ndk_lib = ndk
+            .join("toolchains/llvm/prebuilt")
+            .join(host)
+            .join("sysroot/usr/lib")
+            .join(&result.target);
+        dirs.push(ndk_lib.clone());
+        // cargo-ndk builds Manager with API 26; NDK platform libraries such as
+        // libcamera2ndk.so are stored beneath the target/API directory.
+        dirs.push(ndk_lib.join("26"));
     }
     Ok(dirs)
 }
