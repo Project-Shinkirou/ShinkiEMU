@@ -548,18 +548,13 @@ fn native_sources(
     if selected.ffmpeg {
         installations.push(("ffmpeg", dependencies::ffmpeg_install(inv, target)?));
     }
-    if selected.native_vcpkg {
+    for native in dependencies::native_cores(inv, target, component) {
         installations.push((
-            "native",
-            inv.root
-                .join(".work/native-vcpkg")
-                .join(component)
+            native.id.as_str(),
+            inv.root.join(".work/native-vcpkg")
+                .join(&native.id)
                 .join("installed")
-                .join(if target == "x86_64-unknown-linux-gnu" {
-                    "x64-linux-dynamic"
-                } else {
-                    "x64-windows"
-                }),
+                .join(dependencies::native_triplet(inv, target)?),
         ));
     }
     let registry = inv.root.join(".work/vcpkg");
@@ -610,7 +605,7 @@ fn native_sources(
             "subtitle" => "build/vcpkg/subtitle".to_owned(),
             "ffmpeg" => "build/vcpkg/ffmpeg".to_owned(),
             _ => inv
-                .core(component)?
+                .core(group)?
                 .source_directory(&inv.root)?
                 .strip_prefix(&inv.root)?
                 .to_string_lossy()
@@ -619,7 +614,7 @@ fn native_sources(
         commands.push_str(&format!(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
-        if *group == "native" && inv.root.join(&manifest).join("vcpkg/ports").is_dir() {
+        if !matches!(*group, "subtitle" | "ffmpeg") && inv.root.join(&manifest).join("vcpkg/ports").is_dir() {
             commands.push_str(&format!(" --overlay-ports=\"$PWD/{manifest}/vcpkg/ports\""));
         }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
@@ -630,7 +625,7 @@ fn native_sources(
             commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         commands.push('\n');
-        if *group != "native" {
+        if matches!(*group, "subtitle" | "ffmpeg") {
             let prefix = installed
                 .parent()
                 .and_then(Path::parent)
@@ -945,8 +940,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     }
     if selected.native_vcpkg {
         instructions.push_str(&format!(
-            "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_VCPKG_INSTALLED = \"$PWD/.work/native-vcpkg/{component}/installed\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{}\"\n",
-            if target.contains("linux") { "x64-linux-dynamic" } else { "x64-windows" }
+            "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_NATIVE_VCPKG_ROOT = \"$PWD/.work/native-vcpkg\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{}\"\n",
+            dependencies::native_triplet(inv, target)?
         ));
     }
     if selected.impacto_sources || selected.renpy {
