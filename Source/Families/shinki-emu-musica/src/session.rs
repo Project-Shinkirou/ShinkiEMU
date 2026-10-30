@@ -70,8 +70,12 @@ pub(crate) struct MusicaSession {
     primary_encoding: crate::ScriptEncoding,
     gameplay_frame: Option<Arc<[u8]>>,
     save_cards: Vec<(u32, crate::storage::SaveCard)>,
+    /// `sysparams.txt` `quickSaveFileNumber`: the next quick save slot.
     quick_cursor: u32,
-    persisted_unlocks: Vec<Hash256>,
+    /// `sysparams.txt` `autoSaveFileNumber`: the next auto save slot.
+    auto_cursor: u32,
+    persisted_globals: std::collections::BTreeMap<String, i64>,
+    native: crate::native_directory::NativeFiles,
     entry_uri: String,
     title_focus: Option<u32>,
     load_from_title: bool,
@@ -94,13 +98,16 @@ impl MusicaSession {
         visible: bool,
         progress_in_background: bool,
         primary_encoding: crate::ScriptEncoding,
-        quick_cursor: u32,
+        native: crate::native_directory::NativeFiles,
     ) -> Self {
-        let persisted_unlocks = vm.state().gallery_unlocks.clone();
+        let persisted_globals = vm.state().global_variables.clone();
         let entry_uri = vm.state().script_uri.clone();
         let pending_fullscreen = vm.config().fullscreen.then_some(true);
+        let quick_cursor = native.quick_cursor();
+        let auto_cursor = native.auto_cursor();
         Self {
-            persisted_unlocks,
+            persisted_globals,
+            native,
             entry_uri,
             title_focus: None,
             load_from_title: false,
@@ -146,6 +153,7 @@ impl MusicaSession {
             gameplay_frame: None,
             save_cards: Vec::new(),
             quick_cursor,
+            auto_cursor,
             last_quick_save_pc_line: None,
         }
     }
@@ -574,7 +582,7 @@ impl MusicaSession {
         if save {
             self.quick_save()?;
         }
-        self.persist_progress()?;
+        self.persist_globals()?;
         Ok(AdvanceResponse {
             // Backpressure pauses the native VM; do not replay that wait as elapsed game time.
             reset_clock: std::mem::take(&mut self.reset_host_clock)

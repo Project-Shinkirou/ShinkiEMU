@@ -1,4 +1,3 @@
-mod config;
 use crate::{audio::SoundSnapshot, scene::error};
 use roukaku_core::Hash256;
 use serde::{Deserialize, Serialize};
@@ -9,8 +8,6 @@ use std::{
     path::{Path, PathBuf},
 };
 mod card;
-mod progress;
-mod quick;
 pub(crate) use card::SaveCard;
 
 const MAGIC: &[u8; 8] = b"AMUSSV06";

@@ -568,6 +568,9 @@ impl MusicaProvider {
         )
         .map_err(core_error)?;
         let storage = Storage::new(root)?;
+        let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
+        native.import_legacy_progress(root, game)?;
+        native.import_legacy_settings(root, game)?;
         let mut settings = vm.config().clone();
         [
             settings.bgm_volume,
@@ -577,7 +580,7 @@ impl MusicaProvider {
         [settings.bgm_muted, settings.voice_muted, settings.se_muted] = audio_preferences.muted;
         settings.progress_in_background = progress_in_background;
         settings.text_shadow = text_shadow;
-        let settings = storage.configuration(game)?.unwrap_or(settings);
+        let settings = native.configuration(settings);
         let progress_in_background = settings.progress_in_background;
         let text_shadow = settings.text_shadow;
         let audio_preferences = settings.audio_preferences();
@@ -587,18 +590,11 @@ impl MusicaProvider {
                 "native configuration is invalid",
             )
         })?;
-        let quick_cursor = storage.quick_cursor(game)?;
         let restored_message = imported
             .as_ref()
             .map(|save| eden::restore_vm(&mut vm, save, &archive, primary_encoding))
             .transpose()?;
-        vm.merge_verified_gallery_unlocks(&storage.progress(game)?)
-            .map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
-                    "global progress cannot be applied",
-                )
-            })?;
+        vm.replace_global_variables(native.globals());
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
@@ -686,9 +682,10 @@ impl MusicaProvider {
             visible,
             progress_in_background,
             primary_encoding,
-            quick_cursor,
+            native,
         );
         session.install_localization(translation_table, translation_mode);
+        session.sync_read_flags()?;
         if let Some((text, speaker)) = restored_message {
             session.install_imported_message(text, speaker)?;
         }

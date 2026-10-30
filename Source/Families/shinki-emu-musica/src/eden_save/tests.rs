@@ -7,6 +7,7 @@ pub(super) fn fixture() -> EdenSave {
     EdenSave {
         edition: EdenEdition::English,
         encoding: EdenSaveEncoding::Gbk,
+        prefix: 0,
         comment: "测试".into(),
         route: [0, 1, 2, 3],
         variables: vec![
@@ -72,7 +73,7 @@ fn rejects_delimiter_injection_and_incomplete_sections() {
 #[test]
 fn bounds_inflated_data() {
     let save = fixture();
-    let mut bytes = save.edition.magic().to_vec();
+    let mut bytes = save.edition.magic(save.prefix).to_vec();
     bytes.extend_from_slice(save.edition.signature());
     bytes.extend_from_slice(&[0; 6]);
     let mut z = ZlibEncoder::new(bytes, Compression::default());
@@ -101,5 +102,12 @@ fn edition_magic_and_explicit_encoding_are_independent() {
     save.comment = "€".into();
     let bytes = save.encode().unwrap();
     assert_eq!(&bytes[..4], &[0; 4]);
+    assert!(EdenSave::decode(&bytes, save.edition, save.encoding).unwrap() == save);
+    save.edition = EdenEdition::Perseus;
+    save.encoding = EdenSaveEncoding::ShiftJis;
+    save.prefix = 0x1234_abcd;
+    save.comment = "test".into();
+    let bytes = save.encode().unwrap();
+    assert_eq!(&bytes[..16], b"\xcd\xab\x34\x12perseus 1.00");
     assert!(EdenSave::decode(&bytes, save.edition, save.encoding).unwrap() == save);
 }

@@ -132,13 +132,13 @@ mod tests {
         .unwrap();
         vm.begin_title_launch().unwrap();
         assert_eq!(vm.title_variant(), 0);
-        let mut unlocks =
-            ["AYAME_CLEAR", "SUI_CLEAR", "REN_CLEAR"].map(|s| Hash256::from_sha256(s.as_bytes()));
-        unlocks.sort_unstable();
-        vm.merge_verified_gallery_unlocks(&unlocks).unwrap();
+        vm.replace_global_variables(
+            ["AYAME_CLEAR", "SUI_CLEAR", "REN_CLEAR"]
+                .map(|flag| (flag.to_owned(), 1))
+                .into(),
+        );
         assert_eq!(vm.title_variant(), 1);
-        vm.merge_verified_gallery_unlocks(&[Hash256::from_sha256(b"TOHKA_CLEAR")])
-            .unwrap();
+        vm.replace_global_variables(BTreeMap::from([("TOHKA_CLEAR".into(), 1)]));
         assert_eq!(vm.title_variant(), 2);
         assert_eq!(focus_at(0, 1174.0, 191.0), None);
         assert_eq!(focus_at(2, 1174.0, 191.0), Some(3));

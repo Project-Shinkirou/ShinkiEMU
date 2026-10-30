@@ -58,8 +58,10 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     let (_, mut session) = provider.open_session(req).unwrap();
     session
         .vm
-        .merge_verified_gallery_unlocks(&[roukaku_core::Hash256::from_sha256(b"TOHKA_CLEAR")])
-        .unwrap();
+        .replace_global_variables(std::collections::BTreeMap::from([(
+            "TOHKA_CLEAR".into(),
+            1,
+        )]));
     session
         .advance(
             0,

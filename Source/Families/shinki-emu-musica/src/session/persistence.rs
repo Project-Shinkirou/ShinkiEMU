@@ -7,13 +7,32 @@ impl MusicaSession {
     ) -> SessionResult<()> {
         self.message(text, speaker)
     }
-    pub(super) fn persist_progress(&mut self) -> SessionResult<()> {
-        let unlocks = &self.vm.state().gallery_unlocks;
-        if *unlocks != self.persisted_unlocks {
-            self.storage.write_progress(self.game, unlocks)?;
-            self.persisted_unlocks = unlocks.clone();
+    /// Writes `system.dat` when a `.setglobal` changed the title-wide table.
+    pub(super) fn persist_globals(&mut self) -> SessionResult<()> {
+        let globals = &self.vm.state().global_variables;
+        if *globals != self.persisted_globals {
+            self.native.store_globals(globals)?;
+            self.persisted_globals = globals.clone();
         }
         Ok(())
+    }
+    /// Writes every changed bitmap, then loads the running script's
+    /// `<stem>.tbr` once (the original flushes on `.chain` and at teardown).
+    pub(crate) fn sync_read_flags(&mut self) -> SessionResult<()> {
+        self.flush_read_flags()?;
+        let stem = self.vm.read_flags_script().to_owned();
+        if !self.vm.has_read_flags(&stem)
+            && let Some(bits) = self.native.read_flags(&stem)?
+        {
+            self.vm.install_read_flags(&stem, &bits);
+        }
+        Ok(())
+    }
+    /// Writes every bitmap changed since its last write.
+    pub(super) fn flush_read_flags(&mut self) -> SessionResult<()> {
+        let native = &mut self.native;
+        self.vm
+            .flush_read_flags(|stem, bits| native.store_read_flags(stem, bits))
     }
     pub(super) fn quick_save(&mut self) -> SessionResult<()> {
         let pc_line = self.vm.state().pc_line;
@@ -23,8 +42,7 @@ impl MusicaSession {
         let slot = 10 + self.quick_cursor;
         self.save(slot)?;
         let next = (self.quick_cursor + 1) % crate::storage::SAVE_PAGE_WIDTH;
-        self.storage.write_quick_cursor(self.game, next)?;
-        self.quick_cursor = next;
+        self.store_quick_cursor(next)?;
         self.last_quick_save_pc_line = Some(pc_line);
         tracing::debug!(event = "shinki.emu.musica.quick_save.rotated", slot, next);
         Ok(())
@@ -123,8 +141,9 @@ impl MusicaSession {
         vm.restore_native_save(&saved.vm, 1)
             .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "saved VM state is invalid"))?;
         vm.set_launch_mode(self.vm.state().launch_mode);
-        vm.merge_verified_gallery_unlocks(&self.persisted_unlocks)
-            .map_err(vm_error)?;
+        // Globals are title-wide (`system.dat`), never restored from a slot.
+        vm.replace_global_variables(self.vm.state().global_variables.clone());
+        vm.take_read_flags_from(&mut self.vm);
         let mut scene = Scene::new_scaled(
             self.scene.gpu_instance(),
             self.archive.clone(),
@@ -198,6 +217,7 @@ impl MusicaSession {
         self.pointer = None;
         self.finished = self.vm.state().terminal;
         self.reset_host_clock = true;
+        self.sync_read_flags()?;
         tracing::info!(event = "shinki.emu.musica.load.completed", slot);
         Ok(())
     }

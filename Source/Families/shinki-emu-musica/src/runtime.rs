@@ -21,6 +21,7 @@ mod wscroll2;
 use effects::*;
 pub use errors::MusicaRuntimeError;
 pub use model::*;
+pub(crate) use read_state::ReadBitmap;
 use stage::*;
 mod audio_commands;
 mod character;
@@ -98,6 +99,7 @@ pub struct MusicaVm {
     control_pressed: bool,
     config: crate::MusicaConfigState,
     config_edit: Option<config::ConfigEdit>,
+    read_flags: read_state::ReadFlags,
 }
 
 impl MusicaVm {
@@ -166,6 +168,7 @@ impl MusicaVm {
             control_pressed: false,
             config: Default::default(),
             config_edit: None,
+            read_flags: read_state::ReadFlags::new(&state.script_uri),
             script,
             labels,
             state,
@@ -243,6 +246,7 @@ impl MusicaVm {
             Some(label) => *labels.get(label).ok_or(MusicaRuntimeError::Label)?,
             None => 0,
         };
+        self.read_flags.switch_script(&script_uri);
         self.state.script_encoding = script.encoding;
         self.script = script;
         self.labels = labels;
@@ -300,6 +304,7 @@ impl MusicaVm {
         self.state = restored;
         self.config_edit = None;
         self.state.fixed_tick = restored_tick;
+        self.read_flags.resume(&self.state);
         Ok(())
     }
 
@@ -340,7 +345,6 @@ impl MusicaVm {
             self.state.movie = None;
         }
         if token_id.starts_with("musica.message.") {
-            self.mark_active_message_read()?;
             message::finish_message_loads(&mut self.state)?;
         }
         if matches!(
@@ -656,11 +660,13 @@ impl MusicaVm {
                 .instruction_count
                 .checked_add(1)
                 .ok_or(MusicaRuntimeError::Overflow)?;
+            let message_read = self.read_flags.is_read(&self.state);
             let event = execute_control(
                 command,
                 &self.labels,
                 &mut self.state,
                 self.control_pressed,
+                message_read,
                 &self.config.voice_preferences(),
                 self.config.message_speed_auto_play,
             )
@@ -676,6 +682,14 @@ impl MusicaVm {
                     tick = fixed_tick,
                 );
             })?;
+            match command.opcode.as_str() {
+                "message" => {
+                    let id = self.state.message.as_ref().map_or(-1, |m| m.message_id);
+                    self.read_flags.message_started(id);
+                }
+                "chain" | "end" => self.read_flags.finish_message(),
+                _ => {}
+            }
             if let Some(event) = event {
                 return Ok(Some(event));
             }
@@ -688,6 +702,7 @@ fn execute_control(
     labels: &BTreeMap<String, u32>,
     state: &mut MusicaRuntimeState,
     control_pressed: bool,
+    message_read: bool,
     voice_preferences: &crate::voice_preferences::VoicePreferences,
     auto_delay_units: u8,
 ) -> Result<Option<MusicaVmEvent>, MusicaRuntimeError> {
@@ -742,7 +757,7 @@ fn execute_control(
             let milliseconds = timer_ticks
                 .checked_mul(10)
                 .ok_or(MusicaRuntimeError::Overflow)?;
-            if control::fast_forward_active(state, control_pressed) {
+            if control::fast_forward_active(state, control_pressed, message_read) {
                 return Ok(None);
             }
             let token_id = format!("musica.wait.{}", state.instruction_count);

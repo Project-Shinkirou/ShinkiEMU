@@ -50,6 +50,9 @@ wgpu.workspace = true
 time = { workspace = true, features = ["local-offset"] }
 tempfile.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
+
 [dev-dependencies]
 parking_lot = "0.13.0"
 

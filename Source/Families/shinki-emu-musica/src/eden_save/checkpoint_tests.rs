@@ -245,27 +245,53 @@ fn native_restore_failure_keeps_active_state_and_rejects_unmodeled_fields() {
 }
 
 #[test]
-fn native_resave_zero_panel_fade_is_typed_and_other_values_are_rejected() {
+fn native_ct_fields_map_to_typed_values() {
+    let mut save = checkpoint_fixture();
+    for (name, value) in [
+        ("CT3", "256"),
+        ("CT5", "0"),
+        ("Ce1", "Firefly"),
+        ("Ct1", "1"),
+    ] {
+        save.backlog[0]
+            .iter_mut()
+            .find(|field| field.name == name)
+            .unwrap()
+            .value = value.into();
+    }
+    save.variables
+        .iter_mut()
+        .find(|field| field.name == "stage_BGX")
+        .unwrap()
+        .value = "256".into();
+    let message = &save.checkpoint().unwrap().history[0];
+    assert_eq!(message.background_position, [256, 0]);
+    assert_eq!(message.stand_count, 0);
+    assert_eq!(message.fire_effect, "Firefly");
+    assert_eq!(message.transition_method, 1);
+    save.backlog[0]
+        .iter_mut()
+        .find(|field| field.name == "Ct1")
+        .unwrap()
+        .value = "2".into();
+    assert!(save.checkpoint().is_err());
+}
+
+#[test]
+fn imported_stand_count_survives_live_export() {
     let mut save = checkpoint_fixture();
     save.backlog[0]
         .iter_mut()
         .find(|field| field.name == "CT5")
         .unwrap()
-        .value = "0".into();
-    assert_eq!(save.checkpoint().unwrap().history[0].panel_fade, 0);
+        .value = "10".into();
     let mut vm = vm();
     vm.restore_eden_save(&save, |_| panic!("current script"), 1)
         .unwrap();
     assert_eq!(
-        vm.export_eden_save().unwrap().checkpoint().unwrap().history[0].panel_fade,
-        0
+        vm.export_eden_save().unwrap().checkpoint().unwrap().history[0].stand_count,
+        10
     );
-    save.backlog[0]
-        .iter_mut()
-        .find(|field| field.name == "CT5")
-        .unwrap()
-        .value = "1".into();
-    assert!(save.checkpoint().is_err());
 }
 
 #[test]
@@ -333,4 +359,153 @@ fn normalized_speaker_preserves_native_history_and_internal_save_roundtrip() {
         .unwrap();
     assert!(restored.export_eden_save().is_err());
     assert!(restored.encode_native_save().is_ok());
+}
+
+fn novel_message(
+    message_id: i64,
+    next_line: u32,
+    lines: &[(&str, &str, &str, i32)],
+) -> EdenHistoryMessage {
+    let mut message = checkpoint_fixture().checkpoint().unwrap().history.remove(0);
+    message.message_id = message_id;
+    message.next_line = next_line;
+    message.voice.clear();
+    message.speaker.clear();
+    message.text.clear();
+    message.panel_mode = 2;
+    message.page = lines
+        .iter()
+        .map(|&(voice, speaker, text, top_y)| EdenHistoryLine {
+            voice: voice.into(),
+            speaker: speaker.into(),
+            text: text.into(),
+            top_y,
+        })
+        .collect();
+    message
+}
+
+fn reencode(
+    bytes: &[u8],
+    edition: EdenEdition,
+    encoding: EdenSaveEncoding,
+) -> (Vec<EdenHistoryMessage>, Vec<u8>) {
+    let history = EdenSave::decode(bytes, edition, encoding)
+        .unwrap()
+        .checkpoint()
+        .unwrap()
+        .history;
+    let again = EdenSave::from_history(edition, encoding, &history)
+        .unwrap()
+        .encode()
+        .unwrap();
+    (history, again)
+}
+
+#[test]
+fn novel_pages_roundtrip_in_original_writer_order() {
+    let base = checkpoint_fixture();
+    let (edition, encoding) = (base.edition, base.encoding);
+    let mut plain = base.checkpoint().unwrap().history.remove(0);
+    plain.message_id = 4;
+    let history = vec![
+        plain,
+        novel_message(
+            5,
+            9,
+            &[
+                ("ina-B006-0133b[100.-100]", "Ina", "first line", 32),
+                ("", "", " second line", 320),
+                ("", "Ina", "third line", 352),
+            ],
+        ),
+        novel_message(7, 12, &[("", "", "next page", 32)]),
+    ];
+    let save = EdenSave::from_history(edition, encoding, &history).unwrap();
+    let names: Vec<_> = save.backlog[1]
+        .iter()
+        .take(15)
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "LC", "L0", "L1_0", "L2_0", "L3_0", "L4_0", "L1_1", "L2_1", "L3_1", "L4_1", "L1_2",
+            "L2_2", "L3_2", "L4_2", "CS1"
+        ]
+    );
+    assert_eq!(save.backlog[1][0].value, "3");
+    assert!(save.backlog[0].iter().any(|field| field.name == "L3"));
+    let bytes = save.encode().unwrap();
+    let (parsed, again) = reencode(&bytes, edition, encoding);
+    assert_eq!(parsed, history);
+    assert_eq!(again, bytes);
+}
+
+#[test]
+fn novel_page_lines_must_match_panel_mode() {
+    let base = checkpoint_fixture();
+    let (edition, encoding) = (base.edition, base.encoding);
+    let mut empty_novel = novel_message(7, 2, &[]);
+    assert!(EdenSave::from_history(edition, encoding, std::slice::from_ref(&empty_novel)).is_err());
+    empty_novel.page = novel_message(7, 2, &[("", "", "text", 32)]).page;
+    empty_novel.panel_mode = 1;
+    assert!(EdenSave::from_history(edition, encoding, &[empty_novel]).is_err());
+    let mut gap = EdenSave::from_history(
+        edition,
+        encoding,
+        &[novel_message(7, 2, &[("", "", "a", 32), ("", "", "b", 64)])],
+    )
+    .unwrap();
+    gap.backlog[0].retain(|field| field.name != "L4_1");
+    assert!(gap.checkpoint().is_err());
+}
+
+/// eden0005 record 6098 (C006.sc 714-718): `L0=-1`, `CS3=4140`, empty lines.
+#[test]
+fn empty_trailing_novel_page_keeps_distinct_state_id() {
+    let base = checkpoint_fixture();
+    let (edition, encoding) = (base.edition, base.encoding);
+    let mut trailing = novel_message(-1, 723, &[("", "", "", 32), ("", "", "", 32)]);
+    trailing.state_message_id = Some(4140);
+    let history = vec![
+        novel_message(4140, 716, &[("", "", "page text", 32)]),
+        trailing,
+        novel_message(4141, 725, &[("", "", "after", 32)]),
+    ];
+    let save = EdenSave::from_history(edition, encoding, &history).unwrap();
+    let value = |name: &str| {
+        save.backlog[1]
+            .iter()
+            .find(|field| field.name == name)
+            .unwrap()
+            .value
+            .clone()
+    };
+    assert_eq!((value("L0"), value("CS3")), ("-1".into(), "4140".into()));
+    let bytes = save.encode().unwrap();
+    let (parsed, again) = reencode(&bytes, edition, encoding);
+    assert_eq!(parsed, history);
+    assert_eq!(again, bytes);
+
+    for (message_id, state_id, text) in [
+        (-1, 4140, "text"),
+        (5, 6, ""),
+        (-1, i64::from(i32::MAX) + 1, ""),
+    ] {
+        let mut message = novel_message(message_id, 2, &[("", "", text, 32)]);
+        message.state_message_id = Some(state_id);
+        assert!(
+            EdenSave::from_history(
+                edition,
+                encoding,
+                &[
+                    novel_message(7, 1, &[("", "", "x", 32)]),
+                    message,
+                    novel_message(7, 2, &[("", "", "y", 32)])
+                ]
+            )
+            .is_err()
+        );
+    }
 }
