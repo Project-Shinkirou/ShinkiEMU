@@ -33,6 +33,10 @@ Manager 会为匹配游戏的 hosted 附件及带附件的 external 记录提供
 
 具有 write/maintain/admin 权限的维护者审查 issue 后，添加 `compat:accepted` 或 `patch:accepted`。intake 将正文作为数据处理，记录原始正文 SHA256 和 `updated_at`，通过普通 PR 提议键控记录，不执行 issue 中的脚本。正文修改后应撤销批准并重新审查，合并前再次核对绑定。审查内容包括 schema/路径一致性、重复键、交叉引用和授权依据。本地 intake 只生成候选文件及 `approval.json`，不授予批准，也不发布附件。
 
+## 核心发行目录
+
+发布核心后，自动化会为每个平台生成一条目录记录并创建 PR。受信任的 metadata 工作流会按仓库 schema 校验记录，并在校验通过后自动 squash 合并；门户的定时构建随后发布 Manager 读取的快照。若 PR 仍未合并，请检查 metadata 校验工作流及其权限，不要另行维护一份目录。
+
 ## 命令与生成文件
 
 ```sh

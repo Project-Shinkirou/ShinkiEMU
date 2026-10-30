@@ -33,6 +33,10 @@ Manager offers a download action for applicable hosted artifacts and external en
 
 A maintainer with write/maintain/admin permission reviews the issue and applies `compat:accepted` or `patch:accepted`. Intake treats form text as data, records the raw body SHA256 and `updated_at`, and proposes the keyed entry through a normal PR. It never executes issue scripts. Editing the approved body requires removing approval and reviewing again; recheck the binding before merge. Review schema/path consistency, duplicate keys, cross-references and permission evidence. The local intake command generates candidate files and `approval.json`; it does not itself grant approval or publish an attachment.
 
+## Core release catalog
+
+Publishing a core release opens a catalog PR with one entry for each released platform. The trusted metadata workflow validates those entries against the repository schema and automatically squash-merges the PR when validation passes; the portal's scheduled build then publishes the updated snapshot consumed by Manager. If the PR remains open, check the metadata validation workflow and its permissions instead of editing a second catalog.
+
 ## Commands and generated output
 
 ```sh
