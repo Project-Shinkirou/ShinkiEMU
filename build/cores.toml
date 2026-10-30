@@ -127,7 +127,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = ["ffmpeg-vcpkg"]
 publish_blocked = ""
 [[cores.blocked]]
@@ -205,8 +205,8 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki"
-rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
+branch = "shinki-apple-xplat"
+rev = "335d1536e59b5b614867aca04dcf189158e6cd15"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
@@ -365,8 +365,8 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki"
-rev = "6261749f383c189f7504f7814aa454b90d5a9e93"
+branch = "shinki-apple-xplat"
+rev = "cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"

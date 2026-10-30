@@ -10988,6 +10988,7 @@ dependencies = [
  "cc",
  "dunce",
  "object 0.40.0",
+ "pkg-config",
  "serde",
  "serde_json",
  "tempfile",
