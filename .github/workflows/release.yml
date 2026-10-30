@@ -37,7 +37,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          $rows = @((cargo xtask matrix --json | ConvertFrom-Json).include)
+          $rows = @((cargo xtask matrix --json --ci | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
           $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
           if ($env:GITHUB_EVENT_NAME -eq 'push') {

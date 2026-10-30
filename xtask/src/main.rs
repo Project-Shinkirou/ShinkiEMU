@@ -6,6 +6,7 @@ mod ci;
 mod cli;
 mod cores;
 mod dependencies;
+mod icon;
 mod metadata;
 mod package;
 mod release;
