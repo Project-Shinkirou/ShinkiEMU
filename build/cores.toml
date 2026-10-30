@@ -420,7 +420,7 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
@@ -431,26 +431,11 @@ upstream = "https://github.com/renpy/renpy"
 target = "x86_64-unknown-linux-gnu"
 reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Linux builds are pending."
 [[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
-[[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
 [[cores.blocked]]
 target = "x86_64-linux-android"
 reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
-[[cores.blocked]]
-target = "aarch64-apple-ios"
-reason = "AppleNative iOS static Ren'Py runtime build has not run."
-[[cores.blocked]]
-target = "aarch64-apple-ios-sim"
-reason = "AppleNative iOS simulator static Ren'Py runtime build has not run."
-[[cores.blocked]]
-target = "x86_64-apple-ios"
-reason = "AppleNative iOS simulator static Ren'Py runtime build has not run."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "OHOS host integration is OhosHost's scope; no OHOS Ren'Py runtime build has run."
