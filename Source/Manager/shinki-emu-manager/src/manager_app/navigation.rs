@@ -124,10 +124,6 @@ impl ShinkiEmuManagerController {
             .game_settings(case_id)
             .map_err(|error| error.to_string())?
             .unwrap_or_default();
-        #[cfg(target_env = "ohos")]
-        let audio_output = Some(shinki_emu_manager::platform::ohos::musica_audio_sink());
-        #[cfg(not(target_env = "ohos"))]
-        let audio_output = None;
         let preference =
             self.effective_render_preference(&candidate.descriptor.plugin_id, &settings)?;
         let render_extent = render_extent::resolve_render_extent(
@@ -153,7 +149,6 @@ impl ShinkiEmuManagerController {
             modal: None,
             window_service: None,
             cancellation: shinki_emu_manager_core::NativeCancellation::new(epoch),
-            audio_output,
         })?;
         self.selected_case_id = Some(case_id.into());
         self.session_mapping = Some(session_mapping);

@@ -1,76 +1,59 @@
-import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
-import { promptAction } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import manager from 'libshinki_emu_manager.so';
+import { extractBundled, listen, reportConfiguration } from '../bridge/ManagerBridge';
+
+// OH_NativeXComponent_KeyCode KEY_BACK; the Manager maps it to Escape.
+const KEY_BACK = 2;
 
 @Entry
 @Component
 struct Index {
-  @State private status: string = 'Starting ShinkiEMU Manager…';
+  @State private failure: string = '';
+  @State private ready: boolean = false;
   private context = getContext(this) as common.UIAbilityContext;
   private started: boolean = false;
 
   aboutToAppear(): void {
-    manager.setEventListener((kind: string, payload: string) => {
-      if (kind === 'error') {
-        this.status = payload;
-        promptAction.showToast({ message: payload, duration: 5000 });
-      } else if (kind === 'pickFolder' || kind === 'pickFile' || kind === 'pickDirectory') {
-        const request = JSON.parse(payload) as { id: number, title: string, extensions: string[] };
-        manager.picker(kind, JSON.stringify({ title: request.title, extensions: request.extensions, requestId: request.id }));
-      } else if (kind === 'restart') {
-        this.status = 'Restart the application to apply changes.';
-      } else if (kind === 'openPath') {
-        this.status = payload;
-      }
-    });
-  }
-
-  private async pick(kind: string, payload: string): Promise<void> {
-    const request = JSON.parse(payload) as { id: number, title: string, extensions: string[] };
     try {
-      const picker = await import('@kit.CoreFileKit');
-      const result = kind === 'pickFolder' || kind === 'pickDirectory'
-        ? await new picker.FolderPicker().select(this.context)
-        : await new picker.DocumentViewPicker().select(this.context, { maxSelectNumber: 1 });
-      manager.completePicker(request.id, result.length > 0 ? result[0] : '', result.length > 0 ? '' : 'cancelled');
+      extractBundled(this.context);
+      listen(this.context);
+      reportConfiguration(this.context.config.colorMode);
+      this.ready = true;
     } catch (error) {
-      manager.completePicker(request.id, '', (error as BusinessError).message ?? 'picker failed');
+      this.failure = `SHINKI_EMU_OHOS_BUNDLED: ${(error as BusinessError).message}`;
     }
   }
 
-  @Builder
-  private nativeSurface(): void {
-    XComponent({ id: 'shinki-manager-surface', type: XComponentType.SURFACE, libraryName: 'shinki_emu_manager' })
-      .width('100%')
-      .height('100%')
-      .onLoad(() => {
-        if (!this.started) {
-          this.started = true;
-          manager.start(this.context.filesDir);
-        }
-      })
-      .onDestroy(() => manager.lifecycle(false, display.getDefaultDisplaySync().densityDPI / 160.0));
+  onBackPress(): boolean {
+    manager.pressKey(KEY_BACK, true);
+    manager.pressKey(KEY_BACK, false);
+    return true;
   }
 
-  build(): void {
-    Column() {
-      this.nativeSurface();
-      if (!this.started) {
-        Text(this.status).fontSize(18).fontColor(Color.White).padding(24);
+  build() {
+    Stack() {
+      if (this.ready) {
+        XComponent({ id: 'shinki-emu-manager', type: XComponentType.SURFACE, libraryname: 'shinki_emu_manager' })
+          .width('100%')
+          .height('100%')
+          .focusable(true)
+          .defaultFocus(true)
+          .onLoad(() => {
+            if (!this.started) {
+              this.started = true;
+              manager.start(this.context.filesDir);
+            }
+          })
+      } else {
+        Text(this.failure)
+          .fontSize(16)
+          .fontColor(Color.White)
+          .padding(24)
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#10131A');
-  }
-
-  onPageShow(): void {
-    manager.lifecycle(true, display.getDefaultDisplaySync().densityDPI / 160.0);
-  }
-
-  onPageHide(): void {
-    manager.lifecycle(false, display.getDefaultDisplaySync().densityDPI / 160.0);
+    .backgroundColor('#10131A')
   }
 }

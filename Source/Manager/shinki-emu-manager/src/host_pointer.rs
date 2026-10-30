@@ -293,8 +293,8 @@ impl HostPointer {
         Self::schedule_expiry(pointer, &state, window, now);
     }
 
-    /// Android reports no hover position and touch shares the activity surface,
-    /// so the stage controls the pointer whenever no host UI covers it.
+    /// Mobile platforms report no hover position and touch shares the native
+    /// surface, so the stage controls the pointer whenever no host UI covers it.
     #[cfg(any(target_os = "android", target_env = "ohos"))]
     pub(super) fn synchronize(pointer: &Rc<RefCell<Self>>, window: &ManagerWindow) {
         let mut state = pointer.borrow_mut();
@@ -308,7 +308,11 @@ impl HostPointer {
             && !session.get_menu_open();
         let now = Instant::now();
         let displayed = state.visibility.synchronize(active, controlling, now);
-        if let Err(error) = crate::platform::android::set_pointer_hidden(!displayed) {
+        #[cfg(target_os = "android")]
+        let hidden = crate::platform::android::set_pointer_hidden(!displayed);
+        #[cfg(target_env = "ohos")]
+        let hidden = crate::platform::ohos::set_pointer_hidden(!displayed);
+        if let Err(error) = hidden {
             tracing::warn!(
                 event = "shinki.emu.host.pointer_visibility_failed",
                 diagnostic_code = "SHINKI_EMU_HOST_POINTER_UNAVAILABLE",

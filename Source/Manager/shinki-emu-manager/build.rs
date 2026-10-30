@@ -4,16 +4,7 @@ use sha2::{Digest, Sha256};
 
 fn main() {
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
-        let sdk = std::path::PathBuf::from(env::var_os("OHOS_SDK_NATIVE").expect("OHOS_SDK_NATIVE is required"));
-        let bridge = "../../../Platforms/OHOS/native/bridge.c";
-        println!("cargo:rerun-if-changed={bridge}");
-        cc::Build::new().file(bridge).include(sdk.join("sysroot/usr/include")).compile("shinki_ohos_bridge");
-        for library in ["ace_napi.z", "ace_ndk.z", "native_window", "native_buffer", "native_vsync"] {
-            println!("cargo:rustc-link-lib={library}");
-        }
-        println!("cargo:rustc-link-lib=ohaudio");
-        println!("cargo:rerun-if-changed=../../../Platforms/OHOS/native/audio.c");
-        cc::Build::new().file("../../../Platforms/OHOS/native/audio.c").include(sdk.join("sysroot/usr/include")).compile("shinki_ohos_audio");
+        build_ohos_glue();
     }
     for asset in [
         "../../../Assets/Effects/dxc.lock.json",
@@ -74,4 +65,30 @@ fn hex_sha256(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+/// NAPI/XComponent and OHAudio glue from `Platforms/OHOS/native`, plus the
+/// link arguments the DevEco clang driver needs for the Manager cdylib.
+fn build_ohos_glue() {
+    let sdk = std::path::PathBuf::from(
+        env::var_os("OHOS_SDK_NATIVE").expect("SHINKI_EMU_MANAGER_BUILD_OHOS_SDK_NATIVE_MISSING"),
+    );
+    let sysroot = sdk.join("sysroot");
+    let sources = ["../../../Platforms/OHOS/native/bridge.c", "../../../Platforms/OHOS/native/audio.c"];
+    for source in sources {
+        println!("cargo:rerun-if-changed={source}");
+    }
+    println!("cargo:rerun-if-env-changed=OHOS_SDK_NATIVE");
+    cc::Build::new()
+        .files(sources)
+        .flag("--target=aarch64-linux-ohos")
+        .flag(format!("--sysroot={}", sysroot.display()))
+        .flag("-Wall")
+        .flag("-Werror")
+        .compile("shinki_ohos_glue");
+    for library in ["ace_napi.z", "ace_ndk.z", "native_window", "native_buffer", "native_vsync", "ohaudio", "hilog_ndk.z"] {
+        println!("cargo:rustc-link-lib=dylib={library}");
+    }
+    println!("cargo:rustc-link-arg-cdylib=--target=aarch64-linux-ohos");
+    println!("cargo:rustc-link-arg-cdylib=--sysroot={}", sysroot.display());
 }

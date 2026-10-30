@@ -1,0 +1,10 @@
+{
+  "apiType": "stageMode",
+  "buildOption": {
+    // libs/arm64-v8a holds the prebuilt Rust Manager staged by xtask.
+    "nativeLib": {
+      "debugSymbol": { "strip": true, "exclude": [] }
+    }
+  },
+  "targets": [{ "name": "default" }]
+}

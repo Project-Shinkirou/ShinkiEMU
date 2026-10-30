@@ -31,8 +31,11 @@ pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> {
     Ok(app.config().ui_mode_night() == ndk::configuration::UiModeNight::Yes)
 }
 
+/// The ArkTS shell forwards the ability's color mode.
 #[cfg(target_env = "ohos")]
-pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> { Ok(false) }
+pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> {
+    Ok(crate::platform::ohos::system_dark())
+}
 
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
@@ -69,11 +72,20 @@ pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState
     })
 }
 
+/// The XComponent surface exists only while the page is shown; a backgrounded
+/// ability or a destroyed surface suspends the game.
 #[cfg(target_env = "ohos")]
 pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
-    let (focused, visible) = crate::platform::ohos::lifecycle_state();
+    let (foreground, surface) = crate::platform::ohos::lifecycle_state();
     let size = window.size();
-    Ok(WindowState { width: size.width, height: size.height, scale_factor: f64::from(window.scale_factor()), focused, visible, suspended: !focused || !visible })
+    Ok(WindowState {
+        width: size.width,
+        height: size.height,
+        scale_factor: f64::from(window.scale_factor()),
+        focused: foreground,
+        visible: surface,
+        suspended: !foreground || !surface,
+    })
 }
 
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
@@ -223,17 +235,21 @@ pub(super) fn install<C: ManagerController>(
 }
 
 /// Android forwards activity lifecycle changes from `android_main`'s event
-/// listener. Physical keyboard forwarding and binding key capture are
-/// desktop-only: they read winit key codes, which the android-activity backend
-/// does not expose, so Slint's capture rows are left to the UI there.
-#[cfg(target_os = "android")]
+/// listener; OHOS forwards ability, XComponent surface and configuration
+/// changes from the ArkTS shell. Physical keyboard forwarding and binding key
+/// capture are desktop-only: they read winit key codes, which neither mobile
+/// backend exposes, so Slint's capture rows are left to the UI there.
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 pub(super) fn install<C: ManagerController>(
     adapter: &Rc<SlintManagerAdapter>,
     controller: Rc<RefCell<C>>,
     pointer: Rc<RefCell<super::pointer::HostPointer>>,
     _gamepad: Rc<RefCell<GameInputPump>>,
 ) {
+    #[cfg(target_os = "android")]
     use crate::platform::android::{LifecycleEvent, set_lifecycle_handler};
+    #[cfg(target_env = "ohos")]
+    use crate::platform::ohos::{LifecycleEvent, set_lifecycle_handler};
     let weak_adapter = Rc::downgrade(adapter);
     let weak_controller = Rc::downgrade(&controller);
     let weak_pointer = Rc::downgrade(&pointer);
@@ -277,14 +293,6 @@ pub(super) fn install<C: ManagerController>(
         });
     }));
 }
-
-#[cfg(target_env = "ohos")]
-pub(super) fn install<C: ManagerController>(
-    _adapter: &Rc<SlintManagerAdapter>,
-    _controller: Rc<RefCell<C>>,
-    _pointer: Rc<RefCell<super::pointer::HostPointer>>,
-    _gamepad: Rc<RefCell<GameInputPump>>,
-) {}
 
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn family_key(code: winit::keyboard::KeyCode) -> Option<KeyCode> {

@@ -1,76 +1,119 @@
+// OHAudio renderer behind the SDK AudioSink used by statically embedded
+// families. Writers block on a bounded interleaved f32 queue; the renderer
+// callback drains it and pads underruns with silence.
+#include <ohaudio/native_audiorenderer.h>
 #include <ohaudio/native_audiostreambuilder.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+// About 100 ms at 48 kHz; bounds latency while absorbing scheduler jitter.
+#define QUEUE_FRAMES 4800u
+
 typedef struct {
     pthread_mutex_t mutex;
+    pthread_cond_t space;
+    OH_AudioRenderer *renderer;
     float *samples;
-    uint32_t capacity;
-    uint32_t read;
-    uint32_t write;
-} ShinkiOHAudioQueue;
+    size_t capacity;
+    size_t read;
+    size_t count;
+    bool cancelled;
+} ShinkiAudioStream;
 
-static int32_t audio_write(OH_AudioRenderer *renderer, void *user_data, void *audio_data, int32_t bytes) {
+static OH_AudioData_Callback_Result fill(OH_AudioRenderer *renderer, void *user_data, void *audio_data, int32_t bytes) {
     (void)renderer;
-    ShinkiOHAudioQueue *queue = user_data;
+    ShinkiAudioStream *stream = user_data;
     float *output = audio_data;
-    uint32_t frames = (uint32_t)bytes / (sizeof(float) * 2);
-    pthread_mutex_lock(&queue->mutex);
-    uint32_t available = queue->write - queue->read;
-    uint32_t count = available < frames ? available : frames;
-    for (uint32_t index = 0; index < count; index++) {
-        uint32_t offset = (queue->read + index) % queue->capacity;
-        output[index * 2] = queue->samples[offset * 2];
-        output[index * 2 + 1] = queue->samples[offset * 2 + 1];
+    size_t wanted = (size_t)bytes / sizeof(float);
+    pthread_mutex_lock(&stream->mutex);
+    size_t available = stream->count < wanted ? stream->count : wanted;
+    for (size_t index = 0; index < available; index++) {
+        output[index] = stream->samples[(stream->read + index) % stream->capacity];
     }
-    queue->read += count;
-    pthread_mutex_unlock(&queue->mutex);
-    memset(output + count * 2, 0, (frames - count) * sizeof(float) * 2);
-    return 0;
+    stream->read = (stream->read + available) % stream->capacity;
+    stream->count -= available;
+    pthread_cond_broadcast(&stream->space);
+    pthread_mutex_unlock(&stream->mutex);
+    memset(output + available, 0, (wanted - available) * sizeof(float));
+    return AUDIO_DATA_CALLBACK_RESULT_VALID;
 }
 
-int shinki_ohos_audio_open(ShinkiOHAudioQueue **queue_out, OH_AudioRenderer **renderer_out) {
-    ShinkiOHAudioQueue *queue = calloc(1, sizeof(*queue));
-    if (!queue) return -1;
-    queue->capacity = 48000 * 2;
-    queue->samples = calloc(queue->capacity * 2, sizeof(float));
-    pthread_mutex_init(&queue->mutex, NULL);
+static void release(ShinkiAudioStream *stream) {
+    pthread_cond_destroy(&stream->space);
+    pthread_mutex_destroy(&stream->mutex);
+    free(stream->samples);
+    free(stream);
+}
+
+// Opens and starts a 32-bit float renderer. Returns 0 or an OHAudio error.
+int shinki_ohos_audio_open(ShinkiAudioStream **out, uint32_t sample_rate, uint32_t channels) {
+    ShinkiAudioStream *stream = calloc(1, sizeof(*stream));
+    if (!stream) return -1;
+    stream->capacity = (size_t)QUEUE_FRAMES * channels;
+    stream->samples = calloc(stream->capacity, sizeof(float));
+    pthread_mutex_init(&stream->mutex, NULL);
+    pthread_cond_init(&stream->space, NULL);
+    if (!stream->samples) {
+        release(stream);
+        return -1;
+    }
     OH_AudioStreamBuilder *builder = NULL;
-    int result = OH_AudioStreamBuilder_Create(&builder, AUDIOSTREAM_TYPE_RENDERER);
-    OH_AudioRenderer_Callbacks callbacks = { .OH_AudioRenderer_OnWriteData = audio_write };
-    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSamplingRate(builder, 48000);
-    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetChannelCount(builder, 2);
+    OH_AudioStream_Result result = OH_AudioStreamBuilder_Create(&builder, AUDIOSTREAM_TYPE_RENDERER);
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSamplingRate(builder, (int32_t)sample_rate);
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetChannelCount(builder, (int32_t)channels);
     if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetSampleFormat(builder, AUDIOSTREAM_SAMPLE_F32LE);
-    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetRendererCallback(builder, callbacks, queue);
-    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_GenerateRenderer(builder, renderer_out);
-    OH_AudioStreamBuilder_Destroy(builder);
-    if (result != AUDIOSTREAM_SUCCESS) { free(queue->samples); free(queue); return result; }
-    result = OH_AudioRenderer_Start(*renderer_out);
-    if (result != AUDIOSTREAM_SUCCESS) { OH_AudioRenderer_Release(*renderer_out); free(queue->samples); free(queue); return result; }
-    *queue_out = queue;
-    return 0;
-}
-
-int shinki_ohos_audio_write(ShinkiOHAudioQueue *queue, const float *samples, uint32_t frames) {
-    pthread_mutex_lock(&queue->mutex);
-    uint32_t used = queue->write - queue->read;
-    if (frames > queue->capacity - used) { pthread_mutex_unlock(&queue->mutex); return -1; }
-    for (uint32_t index = 0; index < frames; index++) {
-        uint32_t offset = (queue->write + index) % queue->capacity;
-        queue->samples[offset * 2] = samples[index * 2];
-        queue->samples[offset * 2 + 1] = samples[index * 2 + 1];
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetRendererInfo(builder, AUDIOSTREAM_USAGE_GAME);
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_SetRendererWriteDataCallback(builder, fill, stream);
+    if (result == AUDIOSTREAM_SUCCESS) result = OH_AudioStreamBuilder_GenerateRenderer(builder, &stream->renderer);
+    if (builder) OH_AudioStreamBuilder_Destroy(builder);
+    if (result == AUDIOSTREAM_SUCCESS) {
+        result = OH_AudioRenderer_Start(stream->renderer);
+        if (result != AUDIOSTREAM_SUCCESS) OH_AudioRenderer_Release(stream->renderer);
     }
-    queue->write += frames;
-    pthread_mutex_unlock(&queue->mutex);
+    if (result != AUDIOSTREAM_SUCCESS) {
+        release(stream);
+        return (int)result;
+    }
+    *out = stream;
     return 0;
 }
 
-void shinki_ohos_audio_close(ShinkiOHAudioQueue *queue, OH_AudioRenderer *renderer) {
-    OH_AudioRenderer_Stop(renderer);
-    OH_AudioRenderer_Release(renderer);
-    pthread_mutex_destroy(&queue->mutex);
-    free(queue->samples);
-    free(queue);
+// Queues `count` interleaved samples, waiting for space. Returns 0 when all
+// were queued and 1 when the stream was cancelled first.
+int shinki_ohos_audio_write(ShinkiAudioStream *stream, const float *samples, size_t count) {
+    pthread_mutex_lock(&stream->mutex);
+    size_t written = 0;
+    while (written < count && !stream->cancelled) {
+        while (stream->count == stream->capacity && !stream->cancelled) {
+            pthread_cond_wait(&stream->space, &stream->mutex);
+        }
+        size_t free_space = stream->capacity - stream->count;
+        size_t chunk = count - written < free_space ? count - written : free_space;
+        size_t tail = (stream->read + stream->count) % stream->capacity;
+        for (size_t index = 0; index < chunk; index++) {
+            stream->samples[(tail + index) % stream->capacity] = samples[written + index];
+        }
+        stream->count += chunk;
+        written += chunk;
+    }
+    bool cancelled = stream->cancelled;
+    pthread_mutex_unlock(&stream->mutex);
+    return cancelled ? 1 : 0;
+}
+
+// Wakes a blocked writer; later writes return 1 immediately.
+void shinki_ohos_audio_cancel(ShinkiAudioStream *stream) {
+    pthread_mutex_lock(&stream->mutex);
+    stream->cancelled = true;
+    pthread_cond_broadcast(&stream->space);
+    pthread_mutex_unlock(&stream->mutex);
+}
+
+void shinki_ohos_audio_close(ShinkiAudioStream *stream) {
+    OH_AudioRenderer_Stop(stream->renderer);
+    OH_AudioRenderer_Release(stream->renderer);
+    release(stream);
 }

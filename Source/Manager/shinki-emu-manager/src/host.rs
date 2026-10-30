@@ -72,6 +72,18 @@ pub struct StageTextureUpdate {
     pub content: Viewport2D,
 }
 
+/// A software-presented stage: the CPU image Slint draws, with the same
+/// geometry as [`StageTextureUpdate`]. OHOS has no WGPU surface for Slint.
+#[cfg(target_env = "ohos")]
+pub struct StageImageUpdate {
+    pub image: slint::Image,
+    pub logical_width: u32,
+    pub logical_height: u32,
+    pub raster_width: u32,
+    pub raster_height: u32,
+    pub content: Viewport2D,
+}
+
 pub trait ShinkiUnderlayRenderer: 'static {
     fn configure_filter(
         &mut self,
@@ -85,6 +97,10 @@ pub trait ShinkiUnderlayRenderer: 'static {
         Ok(None)
     }
     fn render(&mut self, context: WgpuFrameContext<'_>) -> Result<(), String>;
+    /// Converts the newest stage frame for the software renderer; None when
+    /// the shown image is current.
+    #[cfg(target_env = "ohos")]
+    fn take_stage_image_update(&mut self) -> Result<Option<StageImageUpdate>, String>;
     fn teardown(&mut self) -> Result<(), String>;
 }
 
@@ -459,36 +475,11 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     game_active: bool,
 ) -> Result<HostExit, HostError> {
     crate::startup::mark("ui_backend_begin");
-    let mut settings = slint::wgpu_30::WGPUSettings::default();
-    settings.power_preference = wgpu::PowerPreference::HighPerformance;
-    settings.device_memory_hints = wgpu::MemoryHints::Performance;
-    // The final-frame effects use compute and storage textures; Slint's UI-only
-    // WebGL2 defaults expose neither capability.
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
-    {
-        settings.device_required_limits = wgpu::Limits::default();
-    }
-    #[cfg(target_os = "android")]
-    {
-        // Keep desktop-class compute and texture budgets; only the uniform
-        // buffer baseline differs on Android. Slint negotiates texture
-        // resolution against the selected adapter's limits.
-        settings.device_required_limits = wgpu::Limits {
-            max_uniform_buffer_binding_size: wgpu::Limits::downlevel_defaults()
-                .max_uniform_buffer_binding_size,
-            ..wgpu::Limits::default()
-        };
-    }
-    settings.device_required_features |= crate::effects::FilterEngine::required_features();
+    // OHOS: `platform::ohos::start` already installed the software-rendered
+    // custom platform; Slint has no WGPU backend to select there.
     #[cfg(not(target_env = "ohos"))]
-    {
-        let selector = slint::BackendSelector::new();
-        #[cfg(not(target_os = "android"))]
-        let selector = selector.backend_name("winit".into());
-        selector
-            .require_wgpu_30(slint::wgpu_30::WGPUConfiguration::Automatic(settings))
-            .select()?;
-    }
+    select_wgpu_backend()?;
+    crate::startup::mark("ui_backend_selected");
     let adapter = std::rc::Rc::new(SlintManagerAdapter::new()?);
     crate::startup::mark("window_object_created");
     shinki_emu_manager_ui_slint::i18n::apply(&controller.language());
@@ -666,59 +657,225 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         });
     }
     let modal_ui = modals::install(&adapter, &controller);
-    let event_controller = controller.clone();
-    let event_adapter = std::rc::Rc::downgrade(&adapter);
-    let event_gamepad = gamepad.clone();
-    let event_window = adapter.window().as_weak();
-    let event_pending = async_events_pending.clone();
-    let renderer_callback = renderer.clone();
-    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
-    let initial_window_pending = std::cell::Cell::new(true);
-    let first_ui_frame_pending = std::cell::Cell::new(true);
-    let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
-    #[cfg(target_env = "ohos")]
-    adapter.window().window().set_rendering_notifier(move |state, _| {
-        if state == slint::RenderingState::AfterRendering && first_ui_frame_pending.replace(false) {
-            crate::startup::mark("first_ui_frame_rendered");
-        }
-    }).map_err(|error| HostError::Renderer(error.to_string()))?;
-    #[cfg(not(target_env = "ohos"))]
-    adapter.window().window().set_rendering_notifier(move |state, api| {
-        let slint::GraphicsAPI::WGPU30 { device, queue, .. } = api else {
-            record_fatal(&fatal_error_callback, "rendering notifier did not provide WGPU 30".into());
-            let _ = slint::quit_event_loop();
-            return;
-        };
-        let context = WgpuFrameContext { device, queue };
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match state {
-            slint::RenderingState::RenderingSetup => {
-                crate::startup::mark("ui_gpu_ready");
-                renderer_callback.borrow_mut().setup(context)?;
-                if let Some(window) = event_window.upgrade() {
-                    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
-                    if initial_window_pending.replace(false) {
-                        let weak = window.as_weak();
-                        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-                            if let Some(window) = weak.upgrade() { window_commands::fit_initial_window(window.window()); }
-                        });
-                    }
-                    if let Ok(dark) = window_events::system_theme(window.window()) { window.global::<App>().set_system_dark(dark); }
+    // Per-frame host work, run before and after Slint renders. Desktop and
+    // Android drive it from the WGPU rendering notifier; OHOS from the
+    // software platform's frame hooks.
+    let service_frame = {
+        let controller = controller.clone();
+        let weak_adapter = std::rc::Rc::downgrade(&adapter);
+        let gamepad = gamepad.clone();
+        let weak_window = adapter.window().as_weak();
+        let pending = async_events_pending.clone();
+        let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
+        move || {
+            let Some(window) = weak_window.upgrade() else {
+                return;
+            };
+            modals::service(&window, &controller, &modal_ui);
+            let input_blocked = !session_input_open(&window);
+            if input_blocked {
+                let release = controller.borrow_mut().release_inputs();
+                if let Err(error) = release {
+                    terminate_game(&controller, &weak_adapter, &window, error);
                 }
-                filters::configure(&mut *renderer_callback.borrow_mut(), &event_controller.borrow().filter_settings())?;
-                if let Some(update) = renderer_callback.borrow_mut().take_stage_texture_update()? {
-                    let window = window_weak.upgrade().ok_or_else(|| "Manager window disappeared during renderer setup".to_string())?;
-                    apply_stage_texture_update(&window, update)?;
+            }
+            if !pending.swap(false, Ordering::Acquire) {
+                return;
+            }
+            let poll_result = controller.borrow_mut().poll_platform();
+            match poll_result {
+                Ok(Some(model)) => apply_model(&weak_adapter, &model),
+                Ok(None) => {}
+                Err(error) => terminate_game(&controller, &weak_adapter, &window, error),
+            }
+            let polled = gamepad.borrow_mut().poll();
+            match polled {
+                Ok(events) => {
+                    let session = window.global::<Session>();
+                    if !session.get_active()
+                        && update_pad_state(&mut pad_pressed.borrow_mut(), &events)
+                        && let Some(adapter) = weak_adapter.upgrade()
+                    {
+                        adapter.set_pad_state(&pad_pressed.borrow());
+                    }
+                    if session.get_active() && session.get_menu_open() {
+                        let keys: Vec<_> = events
+                            .iter()
+                            .filter_map(|event| menu_key(event.button?).map(|key| (key, event.pressed)))
+                            .collect();
+                        if !keys.is_empty() {
+                            // Dispatching from inside rendering would re-enter Slint.
+                            let weak = window.as_weak();
+                            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                                if let Some(window) = weak.upgrade() {
+                                    dispatch_menu_keys(&window, &keys);
+                                }
+                            });
+                        }
+                    } else if !input_blocked && session.get_active() {
+                        for event in events.into_iter().filter(|event| !event.control.is_empty()) {
+                            let input = controller.borrow_mut().game_input(
+                                &event.control,
+                                event.pressed,
+                                event.value,
+                            );
+                            if let Err(error) = input {
+                                report_input_error(&window, &error);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    if window.global::<Session>().get_active() {
+                        terminate_game(&controller, &weak_adapter, &window, error);
+                    } else {
+                        report_error(&window, &error);
+                    }
+                }
+            }
+        }
+    };
+    let finish_frame = {
+        let controller = controller.clone();
+        let weak_adapter = std::rc::Rc::downgrade(&adapter);
+        let weak_window = adapter.window().as_weak();
+        let frame_notice = notice_host.clone();
+        let first_ui_frame_pending = Cell::new(true);
+        move || -> Result<(), String> {
+            if let Some(window) = weak_window.upgrade() {
+                frame_notice.presented(&window, &controller)?;
+            }
+            if first_ui_frame_pending.replace(false) {
+                crate::startup::mark("first_ui_frame_rendered");
+                let weak = weak_window.clone();
+                slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.global::<Library>().set_cover_loading(true);
+                    }
+                });
+                if controller.borrow().network_allowed() {
+                    let controller = controller.clone();
+                    let adapter = weak_adapter.clone();
+                    let weak = weak_window.clone();
+                    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                        let result = controller.borrow_mut().sync_metadata();
+                        match result {
+                            Ok(model) => apply_model(&adapter, &model),
+                            Err(error) => {
+                                if let Some(window) = weak.upgrade() {
+                                    report_error(&window, &error);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            Ok(())
+        }
+    };
+    #[cfg(not(target_env = "ohos"))]
+    {
+        let event_controller = controller.clone();
+        let event_window = adapter.window().as_weak();
+        let renderer_callback = renderer.clone();
+        #[cfg(not(target_os = "android"))]
+        let initial_window_pending = Cell::new(true);
+        adapter.window().window().set_rendering_notifier(move |state, api| {
+            let slint::GraphicsAPI::WGPU30 { device, queue, .. } = api else {
+                record_fatal(&fatal_error_callback, "rendering notifier did not provide WGPU 30".into());
+                let _ = slint::quit_event_loop();
+                return;
+            };
+            let context = WgpuFrameContext { device, queue };
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match state {
+                slint::RenderingState::RenderingSetup => {
+                    crate::startup::mark("ui_gpu_ready");
+                    renderer_callback.borrow_mut().setup(context)?;
+                    if let Some(window) = event_window.upgrade() {
+                        // Android windows always cover the full surface; only desktop fits.
+                        #[cfg(not(target_os = "android"))]
+                        if initial_window_pending.replace(false) {
+                            // Winit creates its native window when the event loop starts.
+                            // Defer fitting until the first render finishes applying size.
+                            let weak = window.as_weak();
+                            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                                if let Some(window) = weak.upgrade() {
+                                    window_commands::fit_initial_window(window.window());
+                                }
+                            });
+                        }
+                        if let Ok(dark) = window_events::system_theme(window.window()) {
+                            window.global::<App>().set_system_dark(dark);
+                        }
+                    }
+                    filters::configure(&mut *renderer_callback.borrow_mut(), &event_controller.borrow().filter_settings())?;
+                    if let Some(update) = renderer_callback.borrow_mut().take_stage_texture_update()? {
+                        let window = window_weak
+                            .upgrade()
+                            .ok_or_else(|| "Manager window disappeared during renderer setup".to_string())?;
+                        apply_stage_texture_update(&window, update)?;
+                    }
+                    Ok(())
+                }
+                slint::RenderingState::BeforeRendering => {
+                    service_frame();
+                    let mut renderer = renderer_callback.borrow_mut();
+                    renderer.render(context)?;
+                    if let Some(update) = renderer.take_stage_texture_update()? {
+                        let window = window_weak.upgrade().ok_or_else(|| "Manager window disappeared during texture update".to_string())?;
+                        apply_stage_texture_update(&window, update)?;
+                    }
+                    Ok(())
+                },
+                slint::RenderingState::AfterRendering => finish_frame(),
+                slint::RenderingState::RenderingTeardown => renderer_callback.borrow_mut().teardown(),
+                _ => Ok(()),
+            })).unwrap_or_else(|_| Err("underlay renderer panicked".into()));
+            if let Err(error) = result {
+                renderer_failed(&fatal_error_callback, error);
+            }
+        }).map_err(|error| HostError::Renderer(error.to_string()))?;
+    }
+    #[cfg(target_env = "ohos")]
+    {
+        if let Ok(dark) = window_events::system_theme(adapter.window().window()) {
+            adapter.window().global::<App>().set_system_dark(dark);
+        }
+        let stage_renderer = renderer.clone();
+        let before_fatal = fatal_error_callback.clone();
+        let before = move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                service_frame();
+                let update = stage_renderer.borrow_mut().take_stage_image_update()?;
+                if let Some(update) = update {
+                    let window = window_weak
+                        .upgrade()
+                        .ok_or_else(|| "Manager window disappeared during stage update".to_string())?;
+                    apply_stage_image(
+                        &window,
+                        update.image,
+                        (update.logical_width, update.logical_height),
+                        (update.raster_width, update.raster_height),
+                        update.content,
+                    );
                 }
                 Ok(())
+            }))
+            .unwrap_or_else(|_| Err("stage presentation panicked".into()));
+            if let Err(error) = result {
+                renderer_failed(&before_fatal, error);
             }
-            _ => Ok(()),
-        })).unwrap_or_else(|_| Err("underlay renderer panicked".into()));
-        if let Err(error) = result {
-            tracing::error!(event = "shinki.emu.host.renderer_failed", diagnostic_code = "SHINKI_EMU_HOST_RENDERER", message = %error);
-            record_fatal(&fatal_error_callback, error);
-            let _ = slint::quit_event_loop();
-        }
-    }).map_err(|error| HostError::Renderer(error.to_string()))?;
+        };
+        let after = move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(&finish_frame))
+                .unwrap_or_else(|_| Err("frame completion panicked".into()));
+            if let Err(error) = result {
+                renderer_failed(&fatal_error_callback, error);
+            }
+        };
+        platform::ohos::set_frame_hooks(Box::new(before), Box::new(after));
+    }
     crate::startup::mark("window_show_requested");
     adapter.window().show()?;
     crate::startup::mark("window_show_returned");
@@ -742,24 +899,82 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     Ok(host_exit.get())
 }
 
+#[cfg(not(target_env = "ohos"))]
+fn select_wgpu_backend() -> Result<(), HostError> {
+    let mut settings = slint::wgpu_30::WGPUSettings::default();
+    settings.power_preference = wgpu::PowerPreference::HighPerformance;
+    settings.device_memory_hints = wgpu::MemoryHints::Performance;
+    // The final-frame effects use compute and storage textures; Slint's UI-only
+    // WebGL2 defaults expose neither capability.
+    #[cfg(not(target_os = "android"))]
+    {
+        settings.device_required_limits = wgpu::Limits::default();
+    }
+    #[cfg(target_os = "android")]
+    {
+        // Keep desktop-class compute and texture budgets; only the uniform
+        // buffer baseline differs on Android. Slint negotiates texture
+        // resolution against the selected adapter's limits.
+        settings.device_required_limits = wgpu::Limits {
+            max_uniform_buffer_binding_size: wgpu::Limits::downlevel_defaults()
+                .max_uniform_buffer_binding_size,
+            ..wgpu::Limits::default()
+        };
+    }
+    settings.device_required_features |= crate::effects::FilterEngine::required_features();
+    let selector = slint::BackendSelector::new();
+    // Android has only the android-activity backend, installed by `android_main`;
+    // selecting there requests the wgpu-30 Skia surface the stage underlay draws into.
+    #[cfg(not(target_os = "android"))]
+    let selector = selector.backend_name("winit".into());
+    selector
+        .require_wgpu_30(slint::wgpu_30::WGPUConfiguration::Automatic(settings))
+        .select()?;
+    Ok(())
+}
+
+#[cfg(not(target_env = "ohos"))]
 fn apply_stage_texture_update(
     window: &shinki_emu_manager_ui_slint::ManagerWindow,
     update: StageTextureUpdate,
 ) -> Result<(), String> {
     let image = slint::Image::try_from(update.texture)
         .map_err(|_| "WGPU stage texture import failed".to_string())?;
+    apply_stage_image(
+        window,
+        image,
+        (update.logical_width, update.logical_height),
+        (update.raster_width, update.raster_height),
+        update.content,
+    );
+    Ok(())
+}
+
+/// Show `image` as the stage; `logical` and `raster` are (width, height).
+fn apply_stage_image(
+    window: &shinki_emu_manager_ui_slint::ManagerWindow,
+    image: slint::Image,
+    logical: (u32, u32),
+    raster: (u32, u32),
+    content: Viewport2D,
+) {
     let session = window.global::<Session>();
     session.set_frame(image);
-    session.set_output_aspect(update.raster_width as f32 / update.raster_height as f32);
-    session.set_native_width(update.logical_width as f32);
-    session.set_native_height(update.logical_height as f32);
-    session.set_raster_width(update.raster_width as f32);
-    session.set_raster_height(update.raster_height as f32);
-    session.set_content_x(update.content.x as f32);
-    session.set_content_y(update.content.y as f32);
-    session.set_content_width(update.content.width as f32);
-    session.set_content_height(update.content.height as f32);
-    Ok(())
+    session.set_output_aspect(raster.0 as f32 / raster.1 as f32);
+    session.set_native_width(logical.0 as f32);
+    session.set_native_height(logical.1 as f32);
+    session.set_raster_width(raster.0 as f32);
+    session.set_raster_height(raster.1 as f32);
+    session.set_content_x(content.x as f32);
+    session.set_content_y(content.y as f32);
+    session.set_content_width(content.width as f32);
+    session.set_content_height(content.height as f32);
+}
+
+fn renderer_failed(slot: &std::cell::RefCell<Option<String>>, error: String) {
+    tracing::error!(event = "shinki.emu.host.renderer_failed", diagnostic_code = "SHINKI_EMU_HOST_RENDERER", message = %error);
+    record_fatal(slot, error);
+    let _ = slint::quit_event_loop();
 }
 
 fn record_fatal(slot: &std::cell::RefCell<Option<String>>, error: String) {

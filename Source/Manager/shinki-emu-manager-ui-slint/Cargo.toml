@@ -11,7 +11,7 @@ doctest = false
 
 [dependencies]
 serde.workspace = true
-slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu", "unstable-fontique-011"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "serde", "unstable-fontique-011"] }
 image = { workspace = true, features = ["gif"] }
 tracing.workspace = true
 parking_lot = "0.13.0"
@@ -19,9 +19,11 @@ parking_lot = "0.13.0"
 qrcodegen = "=1.8.0"
 sys-locale = "=0.3.2"
 
-
-[target.'cfg(not(any(target_os = "android", target_env = "ohos")))'.dependencies]
+# OpenHarmony uses the Manager's custom software-rendered platform; Slint
+# itself gates winit and femtovg out of the Android graph.
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
 slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu"] }
+
 [build-dependencies]
 slint-build.workspace = true
 rspolib = "=0.1.2"

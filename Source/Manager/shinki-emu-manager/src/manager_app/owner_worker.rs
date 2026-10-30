@@ -130,7 +130,6 @@ pub(super) fn run(
                         window: request.window_service,
                         modal: request.modal,
                         cancellation: request.cancellation,
-                        audio_output: request.audio_output,
                     },
                 ) {
                     Ok(mut session) => {
@@ -268,6 +267,7 @@ pub(super) fn service_due(
 
 #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
 const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
     #[cfg(any(target_os = "android", target_env = "ohos"))]
     ("shinki.emu.musica", shinki_emu_musica::musica_query),

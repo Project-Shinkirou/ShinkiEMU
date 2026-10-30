@@ -10,8 +10,6 @@ doctest = false
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
-shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime"] }
 libloading.workspace = true
 parking_lot = "0.13.0"
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }

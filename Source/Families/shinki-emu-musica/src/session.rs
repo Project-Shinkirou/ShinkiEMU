@@ -4,7 +4,7 @@ mod gallery;
 mod lifecycle;
 mod native;
 mod tick;
-pub mod types;
+pub(crate) mod types;
 use lifecycle::vm_error;
 mod message;
 mod movie;

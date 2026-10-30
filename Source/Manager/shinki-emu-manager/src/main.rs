@@ -124,6 +124,23 @@ fn android_main(app: slint::android::AndroidApp) {
     }
 }
 
+/// Target of the ArkTS shell's NAPI `start(filesDir)`, called once per
+/// process. The Manager runs on its own thread; the ArkTS UI thread only
+/// forwards XComponent and lifecycle events.
+#[cfg(target_env = "ohos")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn shinki_ohos_start(files: *const std::ffi::c_char) {
+    // Slint layouts and Luau extensions recurse deeply; match desktop main threads.
+    const UI_THREAD_STACK_BYTES: usize = 8 * 1024 * 1024;
+    unsafe {
+        shinki_emu_manager::platform::ohos::start(
+            files,
+            UI_THREAD_STACK_BYTES,
+            manager_app::run_application,
+        )
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn attach_cli_console() {
     // The GUI subsystem does not inherit a console. Attach only for CLI paths,

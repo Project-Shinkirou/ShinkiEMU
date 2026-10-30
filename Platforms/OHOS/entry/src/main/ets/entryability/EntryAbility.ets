@@ -1,24 +1,32 @@
-import UIAbility from '@ohos.app.ability.UIAbility';
-import window from '@ohos.window';
-import { hilog } from '@kit.PerformanceAnalysisKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import manager from 'libshinki_emu_manager.so';
+import { reportConfiguration } from '../bridge/ManagerBridge';
 
 export default class EntryAbility extends UIAbility {
-  onCreate(): void {
-    this.context.filesDir;
+  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    hilog.info(0xD001, 'ShinkiEMU', 'launch reason %{public}d', launchParam.launchReason);
   }
 
   onWindowStageCreate(stage: window.WindowStage): void {
     stage.loadContent('pages/Index', (error: BusinessError) => {
-      if (error.code) hilog.error(0xD001, 'ShinkiEMU', 'loadContent failed: %{public}s', error.message);
+      if (error.code) {
+        hilog.error(0xD001, 'ShinkiEMU', 'loadContent failed: %{public}s', error.message);
+      }
     });
   }
 
   onForeground(): void {
-    hilog.info(0xD001, 'ShinkiEMU', 'Manager foregrounded');
+    manager.foreground(true);
   }
 
   onBackground(): void {
-    hilog.info(0xD001, 'ShinkiEMU', 'Manager backgrounded');
+    manager.foreground(false);
+  }
+
+  onConfigurationUpdate(configuration: Configuration): void {
+    reportConfiguration(configuration.colorMode);
   }
 }

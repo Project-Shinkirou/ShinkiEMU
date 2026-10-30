@@ -1,3 +1,6 @@
+if(NOT DEFINED ENV{OHOS_SDK_NATIVE})
+    message(FATAL_ERROR "OHOS_SDK_NATIVE must point to the DevEco native SDK")
+endif()
 file(TO_CMAKE_PATH "$ENV{OHOS_SDK_NATIVE}" SHINKI_OHOS_NATIVE)
 include("${SHINKI_OHOS_NATIVE}/build/cmake/ohos.toolchain.cmake")
 # The SDK clang locates its own toolchain. --gcc-toolchain is unused and makes

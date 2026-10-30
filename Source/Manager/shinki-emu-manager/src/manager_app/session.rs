@@ -10,8 +10,8 @@ pub(super) struct NativeFailure {
 pub(super) struct SessionServices {
     pub(super) text: Option<TextReplacementBridge>,
     pub(super) modal: Option<ModalBridge>,
+    pub(super) window: Option<WindowBridge>,
     pub(super) cancellation: shinki_emu_manager_core::NativeCancellation,
-    pub(super) audio_output: Option<shinki_emu_sdk::runtime::AudioSinkBox>,
 }
 pub(super) struct ActiveFamilySession {
     session_epoch: u64,
@@ -74,7 +74,6 @@ impl ActiveFamilySession {
                             .map(TextReplacementBridge::async_sink),
                         cancellation: services.cancellation,
                         render_extent,
-                        audio_output: services.audio_output,
                     },
                 )
                 .map_err(|error| error.to_string())

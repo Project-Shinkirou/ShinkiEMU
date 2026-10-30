@@ -14,16 +14,16 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/rfvp/LICENSE", "ThirdParty/rfvp/crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "ThirdParty/rfvp/crates/shinki-emu-rfvp/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
-[[cores.blocked]]
-target = "aarch64-unknown-linux-ohos"
-reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
-branch = "shinki-ohos"
-rev = "d145c89583fe25dcdb4232c8926a20a7016c0883"
+branch = "shinki"
+rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
 upstream = "https://github.com/xmoezzz/rfvp"
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "GStreamer is not the only OHOS blocker: RFVP's kira audio runs on cpal, which selects ALSA (alsa-sys) on aarch64-unknown-linux-ohos and has no OHAudio backend, and its mp4 movie path uses video-sys, which selects GStreamer on target_os = \"linux\"."
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
