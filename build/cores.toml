@@ -217,8 +217,8 @@ supported_targets = ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki"
-rev = "357eb513891cae70da187678957d6bd9d01aae0f"
+branch = "shinki-unblock-android-glib"
+rev = "96ce93a44c378ef428cd3188757cfecb9655fae6"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
