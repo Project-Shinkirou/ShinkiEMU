@@ -361,6 +361,7 @@ dependencies = ["native-vcpkg", "impacto-sources"]
 artifact_kind = "native-shared"
 resources = []
 static_features = ["static"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
 supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
@@ -370,29 +371,29 @@ branch = "shinki-apple-xplat"
 rev = "cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
-[[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
 [[cores.blocked]]
 target = "x86_64-linux-android"
 reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
-[[cores.blocked]]
-target = "aarch64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
-[[cores.blocked]]
-target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
-[[cores.blocked]]
-target = "x86_64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."

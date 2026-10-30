@@ -11075,6 +11075,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-impacto"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=cf889c486c91dcdc5e59e06eb21eab8f92fd416c#cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
+dependencies = [
+ "shinki-emu-abi",
+ "shinki-emu-build",
+]
+
+[[package]]
 name = "shinki-emu-manager"
 version = "0.1.0-beta.4"
 dependencies = [
@@ -11123,6 +11132,7 @@ dependencies = [
  "shinki-emu-dlsite",
  "shinki-emu-dmm",
  "shinki-emu-ethornell-rs",
+ "shinki-emu-impacto",
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",

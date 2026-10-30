@@ -268,6 +268,8 @@ pub(super) fn service_due(
 #[cfg(any(target_os = "android", target_os = "ios"))]
 const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
+    #[cfg(target_os = "ios")]
+    ("impacto", shinki_emu_impacto::QUERY),
     ("siglus_rs", shinki_emu_siglus_rs::query),
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),

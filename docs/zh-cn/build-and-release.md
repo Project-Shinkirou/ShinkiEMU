@@ -153,6 +153,7 @@ RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动
 原生静态核心通过 Cargo 构建清单记录 `native-static` 归档和运行资源。Manager 的构建记录会保留这些依赖清单，打包时将资源放入 `cores/<id>/Resources`。依赖准备按嵌入核心分别选择，`SHINKI_EMU_NATIVE_VCPKG_ROOT` 下保存各核心的安装树。Apple 静态链接会合并原生构建归档，并向 Cargo 提供目标安装树中的库及系统 framework。
 
 Artemis 的 Apple 候选在 macOS 和 iOS 上选择原生 Metal，与 Musica 复用同一固定版本的静态 FFmpeg，并使用与 Manager 一致的 Luau 解释器。iOS 通过 `static-core` 静态注册，不提供独立核心下载。只有源码提交匹配的原生构建记录和筛选后的远程 CI 均通过，候选平台才计入发布支持范围。
+Impacto 的 Apple 候选将核心库名称与独立应用 bundle 分开。iOS 使用 `static` 适配器、静态 Atrac9 和独立命名的原生 query 入口，Manager 与核心共用 `cores/impacto/Resources` 资源路径；两种 macOS 架构仍分别打包动态核心。发布支持状态以干净的原生构建记录和远程 CI 为准。
 
 RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
 

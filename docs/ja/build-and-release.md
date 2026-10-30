@@ -149,6 +149,7 @@ FFmpeg を組み込む Manager には、対象の専用インストールツリ�
 ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
 
 Artemis の Apple 候補は macOS と iOS でネイティブ Metal を選択し、Musica と同じ固定バージョンの静的 FFmpeg、および Manager と共通の Luau を使います。iOS は `static-core` による静的登録で、単体コアのダウンロードには対応しません。ソースコミットが一致するネイティブのビルド記録と対象を絞ったリモート CI の成功後に、公開対象のプラットフォームとします。
+Impacto の Apple 候補はコアのライブラリ名と単体アプリの bundle 名を分離します。iOS は `static` アダプター、静的 Atrac9、固有名の native query を使い、Manager とコアは `cores/impacto/Resources` を共有します。macOS の両アーキテクチャは個別の動的コアパッケージです。公開対象とするには、クリーンなネイティブのビルド記録とリモート CI の成功が必要です。
 
 ## マトリクスと CI
 
