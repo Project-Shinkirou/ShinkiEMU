@@ -11084,6 +11084,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-kirikiroid2-web"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=335d1536e59b5b614867aca04dcf189158e6cd15#335d1536e59b5b614867aca04dcf189158e6cd15"
+dependencies = [
+ "shinki-emu-abi",
+ "shinki-emu-build",
+]
+
+[[package]]
 name = "shinki-emu-manager"
 version = "0.1.0-beta.4"
 dependencies = [
@@ -11133,6 +11142,7 @@ dependencies = [
  "shinki-emu-dmm",
  "shinki-emu-ethornell-rs",
  "shinki-emu-impacto",
+ "shinki-emu-kirikiroid2-web",
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",
