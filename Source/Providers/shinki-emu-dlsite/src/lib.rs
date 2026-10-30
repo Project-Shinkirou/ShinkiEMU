@@ -1,30 +1,48 @@
 mod transfer;
 
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::Mutex};
 
 use reqwest::{
-    Client, StatusCode,
-    header::{COOKIE, LOCATION},
+    Client, Method, RequestBuilder, Response, StatusCode, Url,
+    header::{COOKIE, LOCATION, REFERER, SET_COOKIE},
 };
 use serde::{Deserialize, Serialize};
 use shinki_emu_store::{
-    BoxFuture, CancelToken, Capabilities, DownloadPlan, LoginKind, LoginRequest, LoginUpdate,
-    LoginUpdates, OwnedTitle, PlanOptions, ProgressUpdates, ProviderDescriptor, SecretStore,
-    StoreError, StoreProvider, StoreSession, StoredLogin, TitleDetail, TitleId, TransferSummary,
+    BoxFuture, CancelToken, Capabilities, CookieJar, DownloadPlan, LoginKind, LoginRequest,
+    LoginUpdate, LoginUpdates, OwnedTitle, PlanOptions, ProgressUpdates, ProviderDescriptor,
+    SecretStore, StoreError, StoreProvider, StoreSession, StoredLogin, TitleDetail, TitleId,
+    TransferSummary, WebCookie, WebLogin,
 };
 use tokio::sync::mpsc;
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 const ID: &str = "dlsite";
+const ACCOUNT: &str = "DLsite account";
 const PLAY: &str = "https://play.dlsite.com/api/v3";
+const PLAY_LOGIN: &str = "https://play.dlsite.com/login/";
+const PLAY_AUTHORIZE: &str = "https://play.dlsite.com/api/authorize";
 const DOWNLOAD: &str = "https://play.dlsite.com/api/v3/download";
 const PRODUCT: &str = "https://www.dlsite.com/home/api/=/product.json";
-const METHODS: &[LoginKind] = &[LoginKind::BrowserCookies];
+/// DLsite's account session; `.dlsite.com`-wide, so Play receives it too.
+const SESSION_COOKIE: &str = "__DLsite_SID";
+/// Play's login hop leads through www/login.dlsite.com and back to Play once
+/// the account is signed in; landing on Play with the account session means
+/// sign-in (including CAPTCHA and two-factor steps) finished.
+static WEB_LOGIN: WebLogin = WebLogin {
+    start_url: PLAY_LOGIN,
+    cookie_urls: &[
+        "https://play.dlsite.com/",
+        "https://www.dlsite.com/",
+        "https://login.dlsite.com/",
+    ],
+    session_cookies: &[SESSION_COOKIE],
+    completion_urls: &["https://play.dlsite.com/"],
+};
+const METHODS: &[LoginKind] = &[LoginKind::Web(&WEB_LOGIN)];
 static DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     id: ID,
     display_name: "DLsite",
     login_methods: METHODS,
-    browser_login_url: Some("https://login.dlsite.com/login"),
     capabilities: Capabilities {
         branches: false,
         depots: false,
@@ -88,14 +106,13 @@ struct PublicWork {
     #[serde(default, alias = "work_name")]
     name: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct Auth {
-    cookie_header: String,
-    account: String,
+    cookies: Vec<WebCookie>,
 }
 struct Http {
     client: Client,
-    cookie: Arc<Zeroizing<String>>,
+    jar: Mutex<CookieJar>,
 }
 struct PlannedFile {
     url: reqwest::Url,
@@ -104,8 +121,13 @@ struct PlanData {
     files: Vec<PlannedFile>,
 }
 
+fn is_dlsite_host(url: &Url) -> bool {
+    url.host_str()
+        .is_some_and(|host| host == "dlsite.com" || host.ends_with(".dlsite.com"))
+}
+
 impl Http {
-    fn new(cookie: Zeroizing<String>) -> Result<Self, StoreError> {
+    fn new(jar: CookieJar) -> Result<Self, StoreError> {
         let client = Client::builder()
             .user_agent("ShinkiEMU")
             .redirect(reqwest::redirect::Policy::none())
@@ -113,17 +135,79 @@ impl Http {
             .map_err(|_| StoreError::Network)?;
         Ok(Self {
             client,
-            cookie: Arc::new(cookie),
+            jar: Mutex::new(jar),
         })
     }
+    fn jar(&self) -> std::sync::MutexGuard<'_, CookieJar> {
+        self.jar.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    /// A request carrying exactly the cookies a browser would send to `url`.
+    fn request(&self, method: Method, url: &str) -> Result<RequestBuilder, StoreError> {
+        let url = Url::parse(url).map_err(|_| StoreError::Metadata)?;
+        Ok(self.request_url(method, url))
+    }
+    fn request_url(&self, method: Method, url: Url) -> RequestBuilder {
+        let cookie = self.jar().header(&url);
+        let request = self.client.request(method, url);
+        match cookie {
+            Some(cookie) => request.header(COOKIE, cookie.as_str()),
+            None => request,
+        }
+    }
+    /// Send and keep the cookies DLsite rotates in its responses.
+    async fn send(&self, request: RequestBuilder) -> Result<Response, StoreError> {
+        let response = request.send().await.map_err(|_| StoreError::Network)?;
+        let set_cookie: Vec<&str> = response
+            .headers()
+            .get_all(SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .collect();
+        if !set_cookie.is_empty() {
+            self.jar().update(response.url(), set_cookie);
+        }
+        Ok(response)
+    }
+    fn snapshot(&self) -> Vec<WebCookie> {
+        self.jar().cookies().to_vec()
+    }
+    /// The requests Play's web app makes after sign-in (dlsite-async
+    /// `PlayAPI.login`): the login hop links Play to the DLsite account
+    /// session and authorize issues the Play session. Whether that worked is
+    /// decided by the next Play API call, which answers 401 otherwise.
+    async fn authorize(&self) -> Result<(), StoreError> {
+        let mut url = Url::parse(PLAY_LOGIN).map_err(|_| StoreError::Metadata)?;
+        for _ in 0..10 {
+            if url.scheme() != "https" || !is_dlsite_host(&url) {
+                return Err(StoreError::SessionExpired);
+            }
+            let response = self
+                .send(self.request_url(Method::GET, url.clone()))
+                .await?;
+            if !response.status().is_redirection() {
+                break;
+            }
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or(StoreError::Metadata)?;
+            url = url.join(location).map_err(|_| StoreError::Metadata)?;
+        }
+        let response = self
+            .send(
+                self.request(Method::GET, PLAY_AUTHORIZE)?
+                    .header(REFERER, "https://play.dlsite.com/"),
+            )
+            .await?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            return Err(StoreError::SessionExpired);
+        }
+        response.error_for_status().map_err(|_| StoreError::Network)?;
+        Ok(())
+    }
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, StoreError> {
-        let r = self
-            .client
-            .get(url)
-            .header(COOKIE, self.cookie.as_str())
-            .send()
-            .await
-            .map_err(|_| StoreError::Network)?;
+        let r = self.send(self.request(Method::GET, url)?).await?;
         if r.status() == StatusCode::UNAUTHORIZED {
             return Err(StoreError::SessionExpired);
         }
@@ -147,13 +231,11 @@ impl Http {
         let mut works = Vec::new();
         for batch in purchase_batches(&sales) {
             let r = self
-                .client
-                .post(format!("{PLAY}/content/works"))
-                .header(COOKIE, self.cookie.as_str())
-                .json(&batch)
-                .send()
-                .await
-                .map_err(|_| StoreError::Network)?;
+                .send(
+                    self.request(Method::POST, &format!("{PLAY}/content/works"))?
+                        .json(&batch),
+                )
+                .await?;
             if r.status() == StatusCode::UNAUTHORIZED {
                 return Err(StoreError::SessionExpired);
             }
@@ -173,13 +255,11 @@ impl Http {
     }
     async fn metadata(&self, id: &str) -> Result<Option<PublicWork>, StoreError> {
         let r = self
-            .client
-            .get(PRODUCT)
-            .query(&[("workno", id)])
-            .header(COOKIE, self.cookie.as_str())
-            .send()
-            .await
-            .map_err(|_| StoreError::Network)?;
+            .send(
+                self.request(Method::GET, PRODUCT)?
+                    .query(&[("workno", id)]),
+            )
+            .await?;
         if !r.status().is_success() {
             return Ok(None);
         }
@@ -188,13 +268,11 @@ impl Http {
     }
     async fn download_plan(&self, id: &str) -> Result<PlanData, StoreError> {
         let response = self
-            .client
-            .get(DOWNLOAD)
-            .query(&[("workno", id)])
-            .header(COOKIE, self.cookie.as_str())
-            .send()
-            .await
-            .map_err(|_| StoreError::Network)?;
+            .send(
+                self.request(Method::GET, DOWNLOAD)?
+                    .query(&[("workno", id)]),
+            )
+            .await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             return Err(StoreError::SessionExpired);
         }
@@ -249,13 +327,7 @@ impl Http {
             if url.scheme() != "https" || url.host_str() != Some("www.dlsite.com") {
                 return Err(StoreError::Metadata);
             }
-            let response = self
-                .client
-                .get(url)
-                .header(COOKIE, self.cookie.as_str())
-                .send()
-                .await
-                .map_err(|_| StoreError::Network)?;
+            let response = self.send(self.request_url(Method::GET, url)).await?;
             if response.status().is_redirection() {
                 let location = response
                     .headers()
@@ -377,35 +449,20 @@ impl StoreProvider for Provider {
         cancel: CancelToken,
     ) -> BoxFuture<'a, Box<dyn StoreSession>> {
         Box::pin(async move {
-            let (cookie, account) = match request {
-                LoginRequest::BrowserCookies { cookies } if !cookies.trim().is_empty() => {
-                    (cookies, "DLsite account".to_owned())
-                }
-                LoginRequest::BrowserCookies { .. } => return Err(StoreError::CookiesRequired),
-                _ => return Err(StoreError::UnsupportedLogin),
+            let LoginRequest::Web { cookies } = request else {
+                return Err(StoreError::UnsupportedLogin);
             };
+            let jar = CookieJar::new(cookies);
+            if !jar.contains(SESSION_COOKIE) {
+                return Err(StoreError::WebLoginIncomplete);
+            }
             if cancel.is_cancelled() {
                 return Err(StoreError::Cancelled);
             }
             updates(LoginUpdate::Connecting);
-            let http = Http::new(cookie.clone())?;
-            http.library().await?;
-            let auth = Auth {
-                cookie_header: cookie.to_string(),
-                account: account.clone(),
-            };
-            let secret = serde_json::to_string(&auth).map_err(|_| StoreError::SecretStore)?;
-            secrets
-                .save(
-                    ID,
-                    &StoredLogin {
-                        account: account.clone(),
-                        secret,
-                    },
-                )
-                .map_err(|_| StoreError::SecretStore)?;
-            updates(LoginUpdate::SignedIn(account.clone()));
-            Ok(Box::new(Session { account, http }) as Box<dyn StoreSession>)
+            let http = connect(jar, secrets, &cancel).await?;
+            updates(LoginUpdate::SignedIn(ACCOUNT.to_owned()));
+            Ok(Box::new(Session { http }) as Box<dyn StoreSession>)
         })
     }
     fn restore<'a>(
@@ -422,17 +479,42 @@ impl StoreProvider for Provider {
             };
             let auth: Auth =
                 serde_json::from_str(&stored.secret).map_err(|_| StoreError::SessionExpired)?;
-            let http = Http::new(Zeroizing::new(auth.cookie_header.clone()))?;
-            http.library().await?;
-            Ok(Some(Box::new(Session {
-                account: auth.account.clone(),
-                http,
-            }) as Box<dyn StoreSession>))
+            let http = connect(CookieJar::new(auth.cookies.clone()), secrets, &cancel).await?;
+            Ok(Some(Box::new(Session { http }) as Box<dyn StoreSession>))
         })
     }
 }
+/// Authorize Play with the session cookies, check that the account library
+/// answers, then keep the refreshed cookies in the secret store.
+async fn connect(
+    jar: CookieJar,
+    secrets: &dyn SecretStore,
+    cancel: &CancelToken,
+) -> Result<Http, StoreError> {
+    let http = Http::new(jar)?;
+    tokio::select! {
+        result = async {
+            http.authorize().await?;
+            http.library().await
+        } => drop(result?),
+        () = cancel.cancelled() => return Err(StoreError::Cancelled),
+    }
+    let secret = serde_json::to_string(&Auth {
+        cookies: http.snapshot(),
+    })
+    .map_err(|_| StoreError::SecretStore)?;
+    secrets
+        .save(
+            ID,
+            &StoredLogin {
+                account: ACCOUNT.to_owned(),
+                secret,
+            },
+        )
+        .map_err(|_| StoreError::SecretStore)?;
+    Ok(http)
+}
 pub struct Session {
-    account: String,
     http: Http,
 }
 impl Session {
@@ -447,7 +529,7 @@ impl Session {
 }
 impl StoreSession for Session {
     fn account(&self) -> &str {
-        &self.account
+        ACCOUNT
     }
     fn library(&self) -> BoxFuture<'_, Vec<OwnedTitle>> {
         Box::pin(async move {
@@ -561,6 +643,64 @@ impl StoreSession for Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn web_cookie(name: &str, domain: &str, host_only: bool) -> WebCookie {
+        WebCookie {
+            name: name.into(),
+            value: "value".into(),
+            domain: domain.into(),
+            host_only,
+            path: "/".into(),
+            secure: true,
+            http_only: true,
+        }
+    }
+
+    #[test]
+    fn web_login_finishes_only_back_on_play_with_the_account_session() {
+        let rule = DESCRIPTOR.web_login().unwrap();
+        let captured = rule.capture([
+            web_cookie(SESSION_COOKIE, "dlsite.com", false),
+            web_cookie("play_session", "play.dlsite.com", true),
+            web_cookie("login_session", "login.dlsite.com", true),
+            web_cookie("_ga", "google-analytics.com", false),
+        ]);
+        let names: Vec<_> = captured.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, [SESSION_COOKIE, "play_session", "login_session"]);
+        assert!(!rule.is_complete("https://login.dlsite.com/login", &captured));
+        assert!(rule.is_complete("https://play.dlsite.com/", &captured));
+        // The anonymous start page has no account session yet.
+        assert!(!rule.is_complete(rule.start_url, &captured[1..]));
+    }
+
+    #[tokio::test]
+    async fn web_login_without_account_session_never_touches_the_secret_store() {
+        struct UnusedSecrets;
+        impl SecretStore for UnusedSecrets {
+            fn load(&self, _: &str) -> Result<Option<StoredLogin>, StoreError> {
+                unreachable!()
+            }
+            fn save(&self, _: &str, _: &StoredLogin) -> Result<(), StoreError> {
+                unreachable!()
+            }
+            fn clear(&self, _: &str) -> Result<(), StoreError> {
+                unreachable!()
+            }
+        }
+        let (_sender, mut codes) = mpsc::channel(1);
+        let result = Provider
+            .login(
+                LoginRequest::Web {
+                    cookies: vec![web_cookie("play_session", "play.dlsite.com", true)],
+                },
+                &UnusedSecrets,
+                &mut codes,
+                std::sync::Arc::new(|_| {}),
+                CancelToken::new(),
+            )
+            .await;
+        assert!(matches!(result, Err(StoreError::WebLoginIncomplete)));
+    }
     #[test]
     fn count_sales_and_works_real_shapes_decode() {
         let c: Count =
@@ -601,8 +741,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_installer_identity_is_never_a_false_update_result() {
         let session = Session {
-            account: "DLsite account".into(),
-            http: Http::new(Zeroizing::new("irrelevant".into())).unwrap(),
+            http: Http::new(CookieJar::default()).unwrap(),
         };
         let state = session
             .has_update(

@@ -2,10 +2,8 @@
 use super::{Http, PlanData};
 use futures_util::StreamExt;
 use reqwest::{
-    StatusCode, Url,
-    header::{
-        CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, COOKIE, LOCATION, RANGE,
-    },
+    Method, StatusCode, Url,
+    header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, LOCATION, RANGE},
 };
 use serde::Serialize;
 use shinki_emu_store::{
@@ -180,13 +178,8 @@ async fn open_download(
         if url.scheme() != "https" {
             return Err(StoreError::TransferFailed);
         }
-        let mut request = http.client.get(url.clone());
-        if url
-            .host_str()
-            .is_some_and(|host| host == "dlsite.com" || host.ends_with(".dlsite.com"))
-        {
-            request = request.header(COOKIE, http.cookie.as_str());
-        }
+        // Session cookies are domain-scoped: CDN hosts outside DLsite get none.
+        let mut request = http.request_url(Method::GET, url.clone());
         if offset != 0 {
             request = request.header(RANGE, format!("bytes={offset}-"));
         }

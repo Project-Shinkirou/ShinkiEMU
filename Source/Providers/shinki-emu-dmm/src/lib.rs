@@ -26,18 +26,18 @@ use windows_sys::Win32::{
 use protocol::{Manifest, parse_file_list};
 use reqwest::{
     Client, Url,
-    header::{HeaderMap, HeaderValue, LOCATION, SET_COOKIE},
+    header::{COOKIE, HeaderMap, HeaderValue, LOCATION, SET_COOKIE},
     redirect::Policy,
 };
 use serde::{Deserialize, Serialize};
 use shinki_emu_store::{
-    BoxFuture, CancelToken, Capabilities, DownloadPlan, LoginKind, LoginRequest, LoginUpdate,
-    LoginUpdates, OwnedTitle, PlanOptions, ProgressUpdates, ProviderDescriptor, SecretStore,
-    StoreError, StoreProvider, StoreSession, StoredLogin, TitleDetail, TitleId, TransferSummary,
-    UpdateState,
+    BoxFuture, CancelToken, Capabilities, CookieJar, DownloadPlan, LoginKind, LoginRequest,
+    LoginUpdate, LoginUpdates, OwnedTitle, PlanOptions, ProgressUpdates, ProviderDescriptor,
+    SecretStore, StoreError, StoreProvider, StoreSession, StoredLogin, TitleDetail, TitleId,
+    TransferSummary, UpdateState, WebLogin,
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -45,12 +45,20 @@ use tokio::sync::mpsc;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 const API_BASE: &str = "https://apidgp-gameplayer.games.dmm.com";
 const STORE_ID: &str = "dmm";
-static LOGIN_METHODS: &[LoginKind] = &[LoginKind::BrowserCookies, LoginKind::LocalImport];
+/// DMM accounts issues both only once the password (and any two-step check)
+/// is accepted; DGP's login URL then redirects to its callback code.
+const SESSION_COOKIES: &[&str] = &["login_secure_id", "login_session_id"];
+static WEB_LOGIN: WebLogin = WebLogin {
+    start_url: "https://accounts.dmm.com/service/login/password",
+    cookie_urls: &["https://accounts.dmm.com/", "https://www.dmm.com/"],
+    session_cookies: SESSION_COOKIES,
+    completion_urls: &[],
+};
+static LOGIN_METHODS: &[LoginKind] = &[LoginKind::Web(&WEB_LOGIN), LoginKind::LocalImport];
 static DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     id: STORE_ID,
     display_name: "DMM GAMES / FANZA GAMES",
     login_methods: LOGIN_METHODS,
-    browser_login_url: Some("https://accounts.dmm.com/"),
     capabilities: Capabilities {
         branches: false,
         depots: false,
@@ -155,7 +163,9 @@ fn callback_code(url: &Url) -> Option<String> {
         .map(|(_, value)| value.into_owned())
 }
 
-async fn login_with_cookies(cookies: &str, cancel: &CancelToken) -> Result<AuthState, StoreError> {
+/// Follow DGP's login URL with the signed-in DMM cookies until it hands out
+/// the callback code, then exchange the code for a DGP access token.
+async fn login_with_cookies(mut jar: CookieJar, cancel: &CancelToken) -> Result<AuthState, StoreError> {
     let client = http_client()?;
     let login: LoginUrl = post_api(
         &client,
@@ -166,20 +176,6 @@ async fn login_with_cookies(cookies: &str, cancel: &CancelToken) -> Result<AuthS
     )
     .await?;
     let mut url = Url::parse(&login.url).map_err(|_| StoreError::Metadata)?;
-    let mut jar = BTreeMap::<String, Zeroizing<String>>::new();
-    for field in cookies.trim().trim_start_matches("Cookie:").split(';') {
-        if let Some((key, value)) = field.trim().split_once('=')
-            && !key.trim().is_empty()
-        {
-            jar.insert(
-                key.trim().to_owned(),
-                Zeroizing::new(value.trim().to_owned()),
-            );
-        }
-    }
-    if jar.is_empty() {
-        return Err(StoreError::CookiesRequired);
-    }
     let mut code = None;
     for _ in 0..20 {
         if cancel.is_cancelled() {
@@ -193,35 +189,25 @@ async fn login_with_cookies(cookies: &str, cancel: &CancelToken) -> Result<AuthS
             break;
         }
         let mut request = client.get(url.clone());
-        if matches!(url.host_str(), Some("accounts.dmm.com" | "www.dmm.com")) {
-            let mut cookie_header = Zeroizing::new(String::new());
-            for (name, value) in &jar {
-                if !cookie_header.is_empty() {
-                    cookie_header.push_str("; ");
-                }
-                cookie_header.push_str(name);
-                cookie_header.push('=');
-                cookie_header.push_str(value.as_str());
-            }
+        if let Some(cookie) = jar.header(&url) {
             request = request.header(
-                reqwest::header::COOKIE,
-                HeaderValue::try_from(cookie_header.as_str())
-                    .map_err(|_| StoreError::CookiesRequired)?,
+                COOKIE,
+                HeaderValue::try_from(cookie.as_str())
+                    .map_err(|_| StoreError::WebLoginIncomplete)?,
             );
         }
         let response = tokio::select! {
             result = request.send() => result.map_err(map_request)?,
             () = cancel.cancelled() => return Err(StoreError::Cancelled),
         };
-        for field in response.headers().get_all(SET_COOKIE).iter() {
-            if let Ok(text) = field.to_str()
-                && let Some((key, value)) =
-                    text.split(';').next().and_then(|pair| pair.split_once('='))
-                && !key.is_empty()
-            {
-                jar.insert(key.to_owned(), Zeroizing::new(value.to_owned()));
-            }
-        }
+        jar.update(
+            response.url(),
+            response
+                .headers()
+                .get_all(SET_COOKIE)
+                .iter()
+                .filter_map(|field| field.to_str().ok()),
+        );
         if !response.status().is_redirection() {
             return Err(StoreError::UnsupportedLogin);
         }
@@ -297,11 +283,12 @@ impl StoreProvider for Provider {
             updates(LoginUpdate::Connecting);
             let client = http_client()?;
             let auth = match request {
-                LoginRequest::BrowserCookies { cookies } if cookies.trim().is_empty() => {
-                    return Err(StoreError::CookiesRequired);
-                }
-                LoginRequest::BrowserCookies { cookies } => {
-                    login_with_cookies(&cookies, &cancel).await?
+                LoginRequest::Web { cookies } => {
+                    let jar = CookieJar::new(cookies);
+                    if !SESSION_COOKIES.iter().all(|name| jar.contains(name)) {
+                        return Err(StoreError::WebLoginIncomplete);
+                    }
+                    login_with_cookies(jar, &cancel).await?
                 }
                 LoginRequest::LocalImport => {
                     let auth = import_local()?;
@@ -613,7 +600,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_browser_cookies_are_rejected_before_secret_storage() {
+    async fn web_login_without_dmm_session_is_rejected_before_secret_storage() {
         struct UnusedSecrets;
         impl SecretStore for UnusedSecrets {
             fn load(&self, _: &str) -> Result<Option<StoredLogin>, StoreError> {
@@ -629,8 +616,16 @@ mod tests {
         let (_sender, mut codes) = mpsc::channel(1);
         let response = Provider
             .login(
-                LoginRequest::BrowserCookies {
-                    cookies: Zeroizing::new(String::new()),
+                LoginRequest::Web {
+                    cookies: vec![shinki_emu_store::WebCookie {
+                        name: "login_secure_id".into(),
+                        value: "value".into(),
+                        domain: "dmm.com".into(),
+                        host_only: false,
+                        path: "/".into(),
+                        secure: true,
+                        http_only: true,
+                    }],
                 },
                 &UnusedSecrets,
                 &mut codes,
@@ -638,7 +633,7 @@ mod tests {
                 CancelToken::new(),
             )
             .await;
-        assert!(matches!(response, Err(StoreError::CookiesRequired)));
+        assert!(matches!(response, Err(StoreError::WebLoginIncomplete)));
     }
 
     #[test]

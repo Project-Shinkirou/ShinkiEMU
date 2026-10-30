@@ -4,7 +4,6 @@ use std::path::Path;
 
 pub struct Provider;
 static DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
-    browser_login_url: None,
     id: "steam",
     display_name: "Steam",
     login_methods: &[
@@ -37,7 +36,7 @@ impl StoreProvider for Provider {
                     auth::LoginMethod::Credentials { account, password }
                 }
                 LoginRequest::LocalImport => auth::LoginMethod::Token(auth::import_local()?),
-                LoginRequest::BrowserCookies { .. } => return Err(StoreError::UnsupportedLogin),
+                LoginRequest::Web { .. } => return Err(StoreError::UnsupportedLogin),
             };
             tokio::select! {
                 session = auth::login(method, secrets, codes, move |update| updates(update)) => {

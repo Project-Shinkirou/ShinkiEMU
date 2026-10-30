@@ -6,7 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+cookie = { version = "0.18.1", default-features = false }
 serde.workspace = true
 tokio.workspace = true
+url.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true

@@ -1,8 +1,12 @@
 //! Compile-in store contracts. Secrets and provider-specific plans remain in process.
+mod web;
+
 use serde::{Deserialize, Serialize};
 use std::{any::Any, future::Future, path::Path, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, watch};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+
+pub use web::{CookieJar, WebCookie, WebLogin};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, StoreError>> + Send + 'a>>;
 pub type LoginUpdates = Arc<dyn Fn(LoginUpdate) + Send + Sync>;
@@ -14,7 +18,8 @@ pub struct TitleId(pub String);
 pub enum LoginKind {
     Qr,
     Credentials,
-    BrowserCookies,
+    /// Sign in on the store's own pages in an embedded webview.
+    Web(&'static WebLogin),
     LocalImport,
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -27,8 +32,15 @@ pub struct ProviderDescriptor {
     pub id: &'static str,
     pub display_name: &'static str,
     pub login_methods: &'static [LoginKind],
-    pub browser_login_url: Option<&'static str>,
     pub capabilities: Capabilities,
+}
+impl ProviderDescriptor {
+    pub fn web_login(&self) -> Option<&'static WebLogin> {
+        self.login_methods.iter().find_map(|method| match method {
+            LoginKind::Web(login) => Some(*login),
+            _ => None,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -48,8 +60,9 @@ pub enum LoginRequest {
         account: String,
         password: Zeroizing<String>,
     },
-    BrowserCookies {
-        cookies: Zeroizing<String>,
+    /// Cookies the embedded webview captured for the provider's [`WebLogin`].
+    Web {
+        cookies: Vec<WebCookie>,
     },
     LocalImport,
 }
@@ -217,8 +230,8 @@ pub enum StoreError {
     Unavailable,
     #[error("This login method is not supported")]
     UnsupportedLogin,
-    #[error("Paste the cookies from your signed-in browser")]
-    CookiesRequired,
+    #[error("Sign-in did not finish on the store page; sign in again")]
+    WebLoginIncomplete,
     #[error("DMM catalog needs a signed-in DGP library capture")]
     CatalogCaptureRequired,
     #[error("Operation cancelled")]
@@ -248,7 +261,7 @@ impl StoreError {
             Self::Unavailable => "unavailable",
             Self::UnsupportedLogin => "unsupported_login",
             Self::Cancelled => "cancelled",
-            Self::CookiesRequired => "cookies_required",
+            Self::WebLoginIncomplete => "web_login_incomplete",
             Self::CatalogCaptureRequired => "catalog_capture_required",
             Self::DuplicateProvider => "duplicate_provider",
         }
