@@ -1610,13 +1610,17 @@ pub fn apply_environment(
         } else {
             "x86_64-linux-android28"
         };
-        cmd.env(
-            format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target.replace('-', "_")),
-            format!(
-                "--target={clang_target} --sysroot=\"{}\"",
-                sysroot.display()
-            ),
+        let clang_args = format!(
+            "--target={clang_target} --sysroot=\"{}\"",
+            sysroot.display()
         );
+        // cargo-ndk 4.1.2 replaces the underscored key with sysroot-only flags.
+        // Bindgen prefers the hyphenated target key, preserving the Android API.
+        cmd.env(format!("BINDGEN_EXTRA_CLANG_ARGS_{target}"), &clang_args)
+            .env(
+                format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target.replace('-', "_")),
+                &clang_args,
+            );
     }
     if target.ends_with("ohos") {
         let sdk = ohos_sdk_native()?;
