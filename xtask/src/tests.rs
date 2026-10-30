@@ -110,6 +110,7 @@ fn result(temp: &Path) -> BuildResult {
                 dest: "licenses/fixture/LICENSE".into(),
             }],
         }),
+        embedded_core_builds: vec![],
         source_commit: "fixture".into(),
         source_dirty: false,
         toolchain: "rustc".into(),

@@ -140,6 +140,12 @@ macOS のパッケージには実体のある `ShinkiEMU-adhoc.app` が含まれ
 
 SDK を使った受け入れ確認では、実際の成果物のパスとサイズに加え、`file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` の出力を残してください。正規の SDK がない場合、この受け入れ確認は行えません。コンパイルの成功だけでは、ゲームの実行互換性は示されません。
 
+`feat/apple-musica` 候補ブランチでは、Shinki Musica を iOS Manager の静的レジストリとコア一覧に追加し、`cc34d86` のターゲット別静的 FFmpeg ビルドを再利用します。シミュレーター・実機のパッケージと対象を絞ったリモート CI が成功するまで、3 つの iOS コア行は blocked のままです。静的依存関係の追加だけでは対応済みとしません。
+
+FFmpeg を組み込む Manager には、対象の専用インストールツリーから FFmpeg と推移的依存 port のライセンスを `licenses/ffmpeg/` に同梱します。単体コアのパッケージも同じ収集処理を使います。
+
+ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
+
 ## マトリクスと CI
 
 `matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
