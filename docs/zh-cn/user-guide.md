@@ -33,7 +33,9 @@ Manager 提供简体中文、英文和日文界面，在“设置 → 外观 →
 
 ## 商店下载
 
-在设置中允许联网后，打开“添加游戏 → 商店下载”。编译进多个商店时，先选择商店，再按它提供的方式登录。Steam 支持扫码、账号密码与 Steam Guard 验证，以及桌面客户端登录导入。DLsite 和 DMM/FANZA 使用官方网页登录与 Cookie 交接：打开官网登录页，登录你自己的账号，再把该站点的 Cookie 粘贴到密码式输入框。提交后输入框清空。Cookie 和刷新 token 只存入系统密钥库，不写入安装记录或日志；退出登录会删除对应商店保存的登录。
+在设置中允许联网后，打开“添加游戏 → 商店下载”。编译进多个商店时，先选择商店，再按它提供的方式登录。Steam 支持扫码、账号密码与 Steam Guard 验证，以及桌面客户端登录导入；DLsite 和 DMM/FANZA 在 Manager 内打开商店自己的登录页。Cookie 和刷新 token 只存入系统密钥库，不写入安装记录或日志；退出登录会删除对应商店保存的登录。
+
+**网页登录（DLsite、DMM/FANZA）：**点击“打开登录页”，Manager 会用系统网页组件显示商店官方登录页：Windows 用 WebView2，macOS 和 iOS 用 WKWebView，Linux 弹出 WebKitGTK 窗口，Android 在应用上方显示系统 WebView。在页面里正常登录，CAPTCHA 和两步验证也在这里完成。商店跳到登录后的页面并带上账号会话后，Manager 直接从网页组件读取该商店的 Cookie（包括 HttpOnly Cookie），关闭页面并完成登录，不需要复制或粘贴任何内容。网页组件每次都从空的私有 Cookie 存储开始，关闭后不留下数据；只有商店登录凭据保存在系统密钥库中。点“取消”、关闭窗口、在 Android 上返回，或离开商店页面，都会放弃这次登录。Windows 需要 Microsoft Edge WebView2 运行时（Windows 11 已自带），Linux 需要 WebKitGTK 4.1（`libwebkit2gtk-4.1`）。
 
 **Steam 登录：**可用账号密码登录，再按提示输入邮箱或手机令牌验证码、在手机上确认；也可用 Steam 手机应用扫描本地生成的二维码。桌面版还可导入 Steam 客户端的缓存登录，手机版使用密码或扫码登录。密码不会保存；刷新 token 只存入系统密钥库：Windows 凭据管理器、Linux Secret Service、macOS/iOS 钥匙串，或 AndroidKeyStore 加密的应用私有存储。退出登录会清除已保存的登录凭据。
 
@@ -50,7 +52,7 @@ Manager 提供简体中文、英文和日文界面，在“设置 → 外观 →
 
 ## DLsite 下载
 
-DLsite 使用浏览器 Cookie 完成登录。打开登录页，在浏览器中完成 CAPTCHA 或其他验证，再将会话 Cookie 粘贴到 Manager。会话只保存在系统密钥库中。库列表来自 DLsite Play 的已购作品；只有 DLsite 为账号提供原版 PC 下载时，Manager 才会下载游戏文件，不会把 Play 阅读器或媒体优化文件当作 PC 游戏安装。ZIP 会经过路径安全检查后解压。RAR 和自解压安装包保留原样，需要手动解压或安装；Manager 不会运行下载的可执行文件。目前查到的 DLsite 接口没有可靠的本地构建标识，因此更新状态显示为未知。
+DLsite 使用上面的网页登录，从 DLsite Play 的登录页开始；DLsite 带着 `__DLsite_SID` 账号会话回到 Play 时登录完成。会话只保存在系统密钥库中。库列表来自 DLsite Play 的已购作品；只有 DLsite 为账号提供原版 PC 下载时，Manager 才会下载游戏文件，不会把 Play 阅读器或媒体优化文件当作 PC 游戏安装。ZIP 会经过路径安全检查后解压。RAR 和自解压安装包保留原样，需要手动解压或安装；Manager 不会运行下载的可执行文件。目前查到的 DLsite 接口没有可靠的本地构建标识，因此更新状态显示为未知。
 
 如果作品无法解析出下载计划，请在已登录的浏览器中重现，并导出包含响应内容的 HAR。记录从 `https://play.dlsite.com/api/v3/download?workno=<已购作品编号>` 开始，直到重定向及 `/home/download`、`/home/serial` 或分卷列表请求结束。分享前删除 Cookie、序列号和签名 URL token。不要提交 HAR 文件。
 
