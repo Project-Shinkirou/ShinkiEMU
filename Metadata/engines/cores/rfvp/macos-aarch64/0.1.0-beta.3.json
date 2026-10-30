@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "RFVP",
+  "family_name": "FVP",
+  "license": "MPL-2.0",
+  "platform": "macos-aarch64",
+  "plugin_id": "rfvp",
+  "release_tag": "core-rfvp-v0.1.0-beta.3",
+  "sha256": "8cbba38f00fff1d5687753cf460daa0b3362669426272bb437e6e433a1d66f3b",
+  "size": 24441784,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-rfvp-v0.1.0-beta.3/shinki-emu-core-rfvp-0.1.0-beta.3-macos-aarch64.zip",
+  "version": "0.1.0-beta.3"
+}
