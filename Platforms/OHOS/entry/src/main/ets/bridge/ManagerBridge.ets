@@ -5,6 +5,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo, fileUri, fileShare, picker } from '@kit.CoreFileKit';
 import { display, promptAction } from '@kit.ArkUI';
 import { pointer } from '@kit.InputKit';
+import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import manager from 'libshinki_emu_manager.so';
 
@@ -35,7 +36,8 @@ export function extractBundled(context: common.UIAbilityContext): void {
     fileIo.rmdirSync(target);
   }
   const resources = context.resourceManager;
-  const manifest = new TextDecoder().decodeToString(resources.getRawFileContentSync(`${BUNDLED}/bundled.manifest`));
+  const manifest: string = util.TextDecoder.create('utf-8')
+    .decodeToString(resources.getRawFileContentSync(`${BUNDLED}/bundled.manifest`));
   for (const entry of manifest.split('\n')) {
     if (entry.length === 0) {
       continue;
