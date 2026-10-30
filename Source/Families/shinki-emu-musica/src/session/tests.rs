@@ -771,8 +771,6 @@ mod save_pages;
 
 #[path = "tests/config.rs"]
 mod config;
-#[path = "tests/eden.rs"]
-mod eden;
 #[path = "tests/exit.rs"]
 mod exit;
 #[path = "tests/gallery.rs"]

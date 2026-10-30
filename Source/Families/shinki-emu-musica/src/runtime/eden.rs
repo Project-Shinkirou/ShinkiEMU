@@ -1,9 +1,6 @@
 use super::*;
 use crate::CoreError;
 use crate::eden_save::{EdenHistoryMessage, EdenSave};
-mod export;
-pub(super) use export::{record_message, validate_context};
-
 fn invalid() -> CoreError {
     CoreError::invalid(
         "SHINKI_EMU_EDEN_SAVE_STATE",
@@ -174,11 +171,6 @@ impl MusicaVm {
         candidate.state.fixed_tick = next_fixed_tick - 1;
         validate_stage_state(candidate.state.stage.as_ref()).map_err(runtime_error)?;
         backlog::validate_state(&candidate.state).map_err(runtime_error)?;
-        candidate.state.eden_export = crate::eden_save::EdenExportState::Ready {
-            edition: save.edition,
-            encoding: save.encoding,
-            history: checkpoint.history,
-        };
         self.state = candidate.state;
         self.config_edit = None;
         Ok(event)

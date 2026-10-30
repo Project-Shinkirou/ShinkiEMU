@@ -6,13 +6,10 @@ pub mod perseus;
 #[cfg(test)]
 mod perseus_tests;
 mod position;
-mod slot;
 mod state;
-pub use slot::{EdenSlotExport, export_slot};
-mod write_checkpoint;
 pub use checkpoint::{EdenCheckpoint, EdenHistoryLine, EdenHistoryMessage};
 pub use position::EdenMessagePosition;
-pub use state::{EdenExportRejection, EdenExportState};
+pub(crate) use state::EdenExportState;
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]

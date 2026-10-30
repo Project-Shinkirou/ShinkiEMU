@@ -1,12 +1,5 @@
 use super::*;
 impl MusicaSession {
-    pub(crate) fn install_imported_message(
-        &mut self,
-        text: String,
-        speaker: Option<String>,
-    ) -> SessionResult<()> {
-        self.message(text, speaker)
-    }
     /// Writes `system.dat` when a `.setglobal` changed the title-wide table.
     pub(super) fn persist_globals(&mut self) -> SessionResult<()> {
         let globals = &self.vm.state().global_variables;

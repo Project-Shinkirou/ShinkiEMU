@@ -66,17 +66,11 @@ PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文
 
 格式研究参考 [ReMinori](https://github.com/luoyily/ReMinori) 的 `crates/formats/src/save.rs` 和恢复路径，固定参考 revision `79b00990324404bfbd496e7fa76c690cf040f744`，其许可证为 AGPL-3.0。本实现未引入该项目依赖或移植其代码。其原版 writer 和 port writer 是不同格式，README 的解析支持不作为原版互通结论；本地 Steam 汉化文件也不能按日文 CD-ROM 编码处理。
 
-只读 CLI 检查要求显式指定版本和编码，不输出路径、资源名或正文：
-
-```sh
-cargo run -p shinki-emu-musica-cli -- inspect-eden-save --file private-copy/eden0010.sav --edition english --encoding gbk
-```
 
 7 个本地原版存档副本通过严格解码及内存容器往返，覆盖 36–37 个变量、100–7590 条 backlog。七个槽的保存 PC 与消息 ID 已逐一匹配原始脚本，不进行附近搜索或位置截断。
 
 `EdenCheckpoint` 将已知消息检查点字段转换为显式类型。`MusicaVm::from_eden_save` 读取实际挂载脚本后准备恢复候选；`restore_eden_save` 校验历史消息，再一次性替换 VM 状态。Fixture 已验证恢复不执行保存点之前的命令、继续剧情、再次存读档以及失败时保留活动 VM。当前严格投影只接受七个槽中的一个，含 897 条普通消息历史；选择记录、未知字段、旋转、滤色、活动效果和不可恢复时钟等状态仍明确拒绝。
 
-实际挂载 PAZ 的恢复检查已完成该槽的 897 条历史及当前消息 VM。原版脚本名按 ASCII 大小写不敏感规则解析；名称碰撞明确拒绝。Family 支持只读 `eden_import_file`、显式 `eden_import_edition` 和既有 `script_encoding`；导入要求 direct 启动，恢复静态场景、消息和按原版加载边界重新开始的 BGM/语音。已有 GPU fixture 验证导入、物理输入推进、F5 保存、关闭和从该槽导出。真实商业片段的 Family 演出与原版独立副本读回尚未验收，其他游戏不声明原版互通。CLI `check-eden-restore` 只检查 VM 候选，不打开设备或写出存档。
 
 ## Musica 成果整合
 
@@ -110,7 +104,6 @@ cargo build -p shinki-emu-musica --features dynamic-plugin-export
 
 VM 的可序列化状态集中在 runtime/model.rs，演出命令在 runtime/effects.rs，音频命令在 runtime/audio_commands.rs，选择处理在 runtime/choices.rs。调度与存读档保留在 runtime.rs，共享演出序号仍由 VM 分配。运行错误通过 typed diagnostic_code() 返回稳定标识；未实现命令只向 Family/Manager 返回指令序号，不透传脚本文本。
 
-`export-eden-save` 从核心自有槽读取权威 VM 与音频快照，重建已知原版字段；只允许导入后仍可准确表示的普通消息检查点。选择、未知变量、动态演出、活动音频渐变等状态拒绝导出。输出必须为不存在的新文件，不覆盖原版槽。内部 VM 格式升级为 v26，保留具名历史状态而非未知原版字段；旧槽在外层 AMUSSV06 检查时拒绝，读取失败不覆盖文件。导出生成 SAV 与同名 128×80 PNG；缩略图来自该核心槽实际保存的 GPU 画面。两个目标都必须不存在，先发布 PNG、再发布 SAV；中途失败保留已产生的独立文件并报错，不覆盖既有文件。已在独立原版副本完成一个静态消息片段的导入、继续、保存、导出、读取继续；原版复存的剧情、变量、历史及媒体资源字段对齐。未验收可听音频与其他历史类型，不能据此声明全部存档兼容。
 
 原版历史 `CT5` 保存面板切换参数，支持已经核对的 0 和 10；其他值明确拒绝。逻辑画布与 GPU 光栅尺寸分别配置，eden 原版导入要求 1024×640；核心槽保存逻辑画布身份，不同画布加载在修改活动状态前拒绝。
 

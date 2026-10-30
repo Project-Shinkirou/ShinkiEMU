@@ -162,7 +162,6 @@ pub(super) fn execute_message(
         MusicaWaitState::Input { token_id }
     };
     state.wait = Some(wait.clone());
-    super::eden::record_message(state, command);
     Ok(Some(MusicaVmEvent::Message {
         presentation_sequence,
         capture_sequence,

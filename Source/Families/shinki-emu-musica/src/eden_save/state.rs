@@ -2,8 +2,7 @@ use super::{EdenEdition, EdenHistoryMessage, EdenSaveEncoding};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Export support is acquired only by importing a validated eden checkpoint.
-/// Unrepresentable execution permanently invalidates that history until import.
+/// Legacy v28 enum payload retained only for one-time `.asav` decoding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 pub enum EdenExportState {
     #[default]
