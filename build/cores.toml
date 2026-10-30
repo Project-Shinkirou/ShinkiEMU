@@ -390,7 +390,6 @@ reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x6
 target = "aarch64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
-[[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
 [[cores.blocked]]
