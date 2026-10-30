@@ -1726,6 +1726,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "color"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec7c5eb7a16992b1904d76c517d170ab353b0e0b3d5a0c81a8a0cd1037893cf"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2288,17 +2297,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "d3d12"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b28bfe653d79bd16c77f659305b195b82bb5ce0c0eb2a4846b82ddbd77586813"
-dependencies = [
- "bitflags 2.13.2",
- "libloading 0.8.9",
- "winapi",
-]
-
-[[package]]
 name = "darling"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2693,21 +2691,12 @@ dependencies = [
 
 [[package]]
 name = "ecolor"
-version = "0.27.2"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20930a432bbd57a6d55e07976089708d4893f3d556cf42a0d79e9e321fa73b10"
+checksum = "0656a7530b9e2841ee7a5f983965bdd9840c32f4012f759cfd44b912cced6b34"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "ecolor"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e6b451ff1143f6de0f33fc7f1b68fecfd2c7de06e104de96c4514de3f5396f8"
-dependencies = [
- "bytemuck",
- "emath 0.28.1",
+ "emath",
 ]
 
 [[package]]
@@ -2761,60 +2750,40 @@ dependencies = [
 
 [[package]]
 name = "egui"
-version = "0.27.2"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "584c5d1bf9a67b25778a3323af222dbe1a1feb532190e103901187f92c7fe29a"
+checksum = "dc938cc27cd911415e1e4d151bc56ff9df063d8db081374e87aeb805ea74b2ba"
 dependencies = [
+ "accesskit",
  "ahash",
- "epaint 0.27.2",
+ "bitflags 2.13.2",
+ "emath",
+ "epaint",
+ "itertools 0.15.0",
+ "log 0.4.34",
  "nohash-hasher",
-]
-
-[[package]]
-name = "egui"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20c97e70a2768de630f161bb5392cbd3874fcf72868f14df0e002e82e06cb798"
-dependencies = [
- "ahash",
- "emath 0.28.1",
- "epaint 0.28.1",
- "nohash-hasher",
+ "profiling",
+ "smallvec",
+ "unicode-segmentation",
+ "web-sys",
 ]
 
 [[package]]
 name = "egui-wgpu"
-version = "0.27.2"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "469ff65843f88a702b731a1532b7d03b0e8e96d283e70f3a22b0e06c46cb9b37"
-dependencies = [
- "bytemuck",
- "document-features",
- "egui 0.27.2",
- "epaint 0.27.2",
- "log 0.4.34",
- "thiserror 1.0.69",
- "type-map",
- "web-time 0.2.4",
- "wgpu 0.19.4",
-]
-
-[[package]]
-name = "egui-wgpu"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c7a7c707877c3362a321ebb4f32be811c0b91f7aebf345fb162405c0218b4c"
+checksum = "5cef1f6d1bba40b09a4d0d62cb822b81030922cfbf65c5373398c3a3caafc5bd"
 dependencies = [
  "ahash",
  "bytemuck",
  "document-features",
- "egui 0.28.1",
- "epaint 0.28.1",
+ "epaint",
  "log 0.4.34",
- "thiserror 1.0.69",
+ "profiling",
+ "thiserror 2.0.21",
  "type-map",
- "web-time 0.2.4",
- "wgpu 0.20.1",
+ "web-time 1.1.0",
+ "wgpu 30.0.1",
 ]
 
 [[package]]
@@ -2826,7 +2795,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "eluna_rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -2835,18 +2804,9 @@ dependencies = [
 
 [[package]]
 name = "emath"
-version = "0.27.2"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4c3a552cfca14630702449d35f41c84a0d15963273771c6059175a803620f3f"
-dependencies = [
- "bytemuck",
-]
-
-[[package]]
-name = "emath"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a6a21708405ea88f63d8309650b4d77431f4bc28fb9d8e6f77d3963b51249e6"
+checksum = "52c8d4141cf0f60fb2f7aefaf352d3ffa5171ef0ab09731c64391801e95e48f1"
 dependencies = [
  "bytemuck",
 ]
@@ -2980,33 +2940,34 @@ dependencies = [
 
 [[package]]
 name = "epaint"
-version = "0.27.2"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b381f8b149657a4acf837095351839f32cd5c4aec1817fc4df84e18d76334176"
+checksum = "a0ec0308dc23130fc1a7d4623a8534c2ed069c6dc84e258ee4f3de99615aa1a3"
 dependencies = [
- "ab_glyph",
  "ahash",
  "bytemuck",
- "ecolor 0.27.2",
- "emath 0.27.2",
+ "ecolor",
+ "emath",
+ "epaint_default_fonts",
+ "font-types 0.12.7",
+ "harfrust 0.12.0",
+ "log 0.4.34",
  "nohash-hasher",
  "parking_lot 0.12.5",
+ "profiling",
+ "self_cell",
+ "skrifa 0.44.0",
+ "smallvec",
+ "unicode-general-category",
+ "unicode-segmentation",
+ "vello_cpu",
 ]
 
 [[package]]
-name = "epaint"
-version = "0.28.1"
+name = "epaint_default_fonts"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f0dcc0a0771e7500e94cd1cb797bd13c9f23b9409bdc3c824e2cbc562b7fa01"
-dependencies = [
- "ab_glyph",
- "ahash",
- "bytemuck",
- "ecolor 0.28.1",
- "emath 0.28.1",
- "nohash-hasher",
- "parking_lot 0.12.5",
-]
+checksum = "773fa9c96dd0dbef887e39d0ed6177f141cce4d68e6041df77570aa3702dfa13"
 
 [[package]]
 name = "equivalent"
@@ -3237,6 +3198,12 @@ checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
 ]
+
+[[package]]
+name = "fearless_simd"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
 name = "femtovg"
@@ -4012,6 +3979,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "glifo"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed4a1bb24121291d27230c1b1b44e07d6a9b28cefdb32fe1581dfb84e14f940a"
+dependencies = [
+ "bytemuck",
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
+ "log 0.4.34",
+ "peniko",
+ "skrifa 0.44.0",
+ "smallvec",
+ "vello_common",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4389,6 +4372,15 @@ dependencies = [
  "gstreamer-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "guillotiere"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b17e70c989c36bad147b27a58d148c0741c51448aa5653436547323e524d0ab"
+dependencies = [
+ "euclid",
 ]
 
 [[package]]
@@ -5829,7 +5821,7 @@ dependencies = [
 [[package]]
 name = "kira"
 version = "0.9.6"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "cpal 0.15.3",
  "glam 0.29.3",
@@ -6446,21 +6438,6 @@ dependencies = [
 
 [[package]]
 name = "metal"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5637e166ea14be6063a3f8ba5ccb9a4159df7d8f6d61c02fc3d480b1f90dcfcb"
-dependencies = [
- "bitflags 2.13.2",
- "block",
- "core-graphics-types 0.1.3",
- "foreign-types 0.5.0",
- "log 0.4.34",
- "objc",
- "paste",
-]
-
-[[package]]
-name = "metal"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00c15a6f673ff72ddcc22394663290f870fb224c1bfce55734a75c414150e605"
@@ -6660,7 +6637,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -6684,7 +6661,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9a5c20026e3638ef5714c2ad7062634648c8dfcf#9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -6698,28 +6675,6 @@ version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50e3524642f53d9af419ab5e8dd29d3ba155708267667c2f3f06c88c9e130843"
 dependencies = [
- "bit-set 0.5.3",
- "bitflags 2.13.2",
- "codespan-reporting 0.11.1",
- "hexf-parse",
- "indexmap",
- "log 0.4.34",
- "num-traits",
- "petgraph 0.6.5",
- "rustc-hash 1.1.0",
- "spirv 0.3.0+sdk-1.3.268.0",
- "termcolor",
- "thiserror 1.0.69",
- "unicode-xid",
-]
-
-[[package]]
-name = "naga"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e536ae46fcab0876853bd4a632ede5df4b1c2527a58f6c5a4150fe86be858231"
-dependencies = [
- "arrayvec",
  "bit-set 0.5.3",
  "bitflags 2.13.2",
  "codespan-reporting 0.11.1",
@@ -8048,6 +8003,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "peniko"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "839c8299360d2e998bdb106dc0a6cd71dcc5f4df51df1b620361bf50e283cca6"
+dependencies = [
+ "bytemuck",
+ "color",
+ "kurbo",
+ "linebender_resource_handle",
+ "smallvec",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9229,7 +9197,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9a5c20026e3638ef5714c2ad7062634648c8dfcf#9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9243,8 +9211,8 @@ dependencies = [
  "chrono",
  "clap",
  "crossbeam-channel",
- "egui 0.27.2",
- "egui-wgpu 0.27.2",
+ "egui",
+ "egui-wgpu",
  "encoding_rs",
  "enum-map",
  "fern",
@@ -9280,9 +9248,9 @@ dependencies = [
  "ultraviolet",
  "uuid",
  "video-sys",
- "wgpu 0.19.4",
+ "wgpu 30.0.1",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=9a5c20026e3638ef5714c2ad7062634648c8dfcf)",
 ]
 
 [[package]]
@@ -10818,7 +10786,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9a5c20026e3638ef5714c2ad7062634648c8dfcf#9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -10876,7 +10844,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-siglus_rs"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "pollster 0.3.0",
  "shinki-emu-abi",
@@ -10930,7 +10898,7 @@ dependencies = [
 [[package]]
 name = "shion-xfile"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "flate2",
 ]
@@ -10950,7 +10918,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 [[package]]
 name = "siglus_assets"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -10958,13 +10926,13 @@ dependencies = [
  "hex",
  "image 0.24.9",
  "lewton",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb)",
 ]
 
 [[package]]
 name = "siglus_key_recovery"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "siglus_assets",
 ]
@@ -10972,7 +10940,7 @@ dependencies = [
 [[package]]
 name = "siglus_omv_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "anyhow",
  "lewton",
@@ -10983,7 +10951,7 @@ dependencies = [
 [[package]]
 name = "siglus_scene_vm"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "ab_glyph",
  "android_logger 0.14.1",
@@ -10992,8 +10960,8 @@ dependencies = [
  "chrono",
  "clap",
  "console_error_panic_hook",
- "egui 0.28.1",
- "egui-wgpu 0.28.1",
+ "egui",
+ "egui-wgpu",
  "eluna_rs",
  "encoding_rs",
  "env_logger",
@@ -11003,7 +10971,7 @@ dependencies = [
  "js-sys",
  "kira 0.9.6",
  "log 0.4.34",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb)",
  "ndk-context",
  "pollster 0.3.0",
  "raw-window-handle 0.6.2",
@@ -11021,7 +10989,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "web-time 1.1.0",
- "wgpu 0.20.1",
+ "wgpu 30.0.1",
  "winit 0.31.0-beta.3",
  "wmv-decoder 0.2.1",
 ]
@@ -12207,7 +12175,7 @@ dependencies = [
 [[package]]
 name = "theora-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 
 [[package]]
 name = "thiserror"
@@ -12913,6 +12881,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
 
 [[package]]
+name = "unicode-general-category"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13104,6 +13078,33 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
+name = "vello_common"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2e9aed918117e8152c9eddfd8362d73c465c23f26c44786aa331707b8a64fa2"
+dependencies = [
+ "bytemuck",
+ "fearless_simd",
+ "guillotiere",
+ "log 0.4.34",
+ "peniko",
+ "smallvec",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "vello_cpu"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac7349e1f55f6b801c7c277958df4ea53e7f20f21e8014910ad888b2ecda93ea"
+dependencies = [
+ "bytemuck",
+ "glifo",
+ "hashbrown 0.17.1",
+ "vello_common",
+]
 
 [[package]]
 name = "version-compare"
@@ -13567,32 +13568,6 @@ dependencies = [
 
 [[package]]
 name = "wgpu"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90e37c7b9921b75dfd26dd973fdcbce36f13dfa6e2dc82aece584e0ed48c355c"
-dependencies = [
- "arrayvec",
- "cfg-if",
- "cfg_aliases 0.1.1",
- "document-features",
- "js-sys",
- "log 0.4.34",
- "naga 0.20.0",
- "parking_lot 0.12.5",
- "profiling",
- "raw-window-handle 0.6.2",
- "smallvec",
- "static_assertions",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu-core 0.21.1",
- "wgpu-hal 0.21.1",
- "wgpu-types 0.20.0",
-]
-
-[[package]]
-name = "wgpu"
 version = "26.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70b6ff82bbf6e9206828e1a3178e851f8c20f1c9028e74dd3a8090741ccd5798"
@@ -13733,33 +13708,6 @@ dependencies = [
  "web-sys",
  "wgpu-hal 0.19.5",
  "wgpu-types 0.19.2",
-]
-
-[[package]]
-name = "wgpu-core"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d50819ab545b867d8a454d1d756b90cd5f15da1f2943334ca314af10583c9d39"
-dependencies = [
- "arrayvec",
- "bit-vec 0.6.3",
- "bitflags 2.13.2",
- "cfg_aliases 0.1.1",
- "codespan-reporting 0.11.1",
- "document-features",
- "indexmap",
- "log 0.4.34",
- "naga 0.20.0",
- "once_cell",
- "parking_lot 0.12.5",
- "profiling",
- "raw-window-handle 0.6.2",
- "rustc-hash 1.1.0",
- "smallvec",
- "thiserror 1.0.69",
- "web-sys",
- "wgpu-hal 0.21.1",
- "wgpu-types 0.20.0",
 ]
 
 [[package]]
@@ -14024,7 +13972,7 @@ dependencies = [
  "block",
  "cfg_aliases 0.1.1",
  "core-graphics-types 0.1.3",
- "d3d12 0.19.0",
+ "d3d12",
  "glow 0.13.1",
  "glutin_wgl_sys 0.5.0",
  "gpu-alloc",
@@ -14052,51 +14000,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "wgpu-types 0.19.2",
- "winapi",
-]
-
-[[package]]
-name = "wgpu-hal"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "172e490a87295564f3fcc0f165798d87386f6231b04d4548bca458cbbfd63222"
-dependencies = [
- "android_system_properties",
- "arrayvec",
- "ash 0.37.3+1.3.251",
- "bit-set 0.5.3",
- "bitflags 2.13.2",
- "block",
- "cfg_aliases 0.1.1",
- "core-graphics-types 0.1.3",
- "d3d12 0.20.0",
- "glow 0.13.1",
- "glutin_wgl_sys 0.5.0",
- "gpu-alloc",
- "gpu-allocator 0.25.0",
- "gpu-descriptor 0.3.2",
- "hassle-rs 0.11.0",
- "js-sys",
- "khronos-egl",
- "libc",
- "libloading 0.8.9",
- "log 0.4.34",
- "metal 0.28.0",
- "naga 0.20.0",
- "ndk-sys 0.5.0+25.2.9519653",
- "objc",
- "once_cell",
- "parking_lot 0.12.5",
- "profiling",
- "range-alloc",
- "raw-window-handle 0.6.2",
- "renderdoc-sys",
- "rustc-hash 1.1.0",
- "smallvec",
- "thiserror 1.0.69",
- "wasm-bindgen",
- "web-sys",
- "wgpu-types 0.20.0",
  "winapi",
 ]
 
@@ -14334,17 +14237,6 @@ name = "wgpu-types"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b671ff9fb03f78b46ff176494ee1ebe7d603393f42664be55b64dc8d53969805"
-dependencies = [
- "bitflags 2.13.2",
- "js-sys",
- "web-sys",
-]
-
-[[package]]
-name = "wgpu-types"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1353d9a46bff7f955a680577f34c69122628cc2076e1d6f3a9be6ef00ae793ef"
 dependencies = [
  "bitflags 2.13.2",
  "js-sys",
@@ -15458,7 +15350,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72#9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=9a5c20026e3638ef5714c2ad7062634648c8dfcf#9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -15468,7 +15360,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.1"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=d640798deee47819f34ba10143f38c06e7fd85e2#d640798deee47819f34ba10143f38c06e7fd85e2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=e78bfd1d3a53960417eaf17ea3787af1c3904dfb#e78bfd1d3a53960417eaf17ea3787af1c3904dfb"
 dependencies = [
  "byteorder",
  "log 0.4.34",

@@ -119,8 +119,8 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 - Upstream: <https://github.com/xmoezzz/rfvp>
 - Upstream version: `0.7.0`, revision `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1`
 - Native adaptation fork: <https://github.com/Project-Shinkirou/rfvp>
-- Native adaptation branch: `shinki`
-- 固定来源：[`9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72`](https://github.com/Project-Shinkirou/rfvp/commit/9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入，并添加 macOS dylib 构建身份；iOS 静态注册不导出重复查询符号。
+- Native adaptation branch: `shinki-android-isolation`
+- 固定来源：[`9a5c20026e3638ef5714c2ad7062634648c8dfcf`](https://github.com/Project-Shinkirou/rfvp/commit/9a5c20026e3638ef5714c2ad7062634648c8dfcf)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入。与 Manager、Siglus 统一使用 wgpu 30；静态注册不导出重复查询或 WMV C ABI 符号。字幕来源与宿主统一固定 RoukakuEngine `8392cf161800f7684af7704eb95f7a5526d2015d`。
 - License: Mozilla Public License 2.0.
 - Derivative source: <https://github.com/Project-Shinkirou/rfvp>
 - Shinki adapter source: fork 内 `crates/shinki-emu-rfvp/`
@@ -179,7 +179,7 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 
 ## 其他原生核心
 
-- Siglus：固定 [`Project-Shinkirou/siglus_rs@d640798deee47819f34ba10143f38c06e7fd85e2`](https://github.com/Project-Shinkirou/siglus_rs/commit/d640798deee47819f34ba10143f38c06e7fd85e2)，分支 `shinki`。适配包 `shinki/shinki-emu-siglus_rs` 保持独立 workspace 与 lockfile。MPL-2.0，完整源码及嵌套 Kira、eluna_rs 由 `ThirdParty/siglus_rs` 准备。当前原生配置支持 original/chs 成对资源和 G01/movie 选择，存档与密钥位置同上游，不执行 wrapper 机器码补丁或补造缺失字体。来源与输入边界改动见 fork 的 `shinki/MODIFICATIONS.md` 与 `shinki/THIRD_PARTY_NOTICES.md`。
+- Siglus：固定 [`Project-Shinkirou/siglus_rs@e78bfd1d3a53960417eaf17ea3787af1c3904dfb`](https://github.com/Project-Shinkirou/siglus_rs/commit/e78bfd1d3a53960417eaf17ea3787af1c3904dfb)，分支 `shinki-android-isolation`。适配包 `shinki/shinki-emu-siglus_rs` 保持独立 workspace 与 lockfile。MPL-2.0，完整源码及嵌套 Kira、eluna_rs 由 `ThirdParty/siglus_rs` 准备。原生配置支持 original/chs 成对资源和 G01/movie 选择，存档与密钥位置同上游，不执行 wrapper 机器码补丁或补造缺失字体。与 Manager、RFVP 统一使用 wgpu 30，Android 静态图不启用 WMV 的可选 `c-abi` 导出。来源与输入边界改动见 fork 的 `shinki/MODIFICATIONS.md` 与 `shinki/THIRD_PARTY_NOTICES.md`。
 - Artemis：固定 [`Project-Shinkirou/art3m1s-core@5243005cf0aaaeac89b1803e57381e9c0b14b95c`](https://github.com/Project-Shinkirou/art3m1s-core/commit/5243005cf0aaaeac89b1803e57381e9c0b14b95c)，分支 `shinki-android-isolation`，适配包为 fork 根 workspace 成员 `crates/shinki-emu-art3m1s-core`。MPL-2.0，所有平台统一使用 Luau，保留 Artemis Lua 兼容层、Vulkan/FFmpeg 与完整来源，见 `ThirdParty/art3m1s-core/LICENSE` 与 `crates/pf8/LICENSE`；差异见 fork 的 `crates/shinki-emu-art3m1s-core/MODIFICATIONS.md`。当前 `extra_archive` 直接消费显式额外 PFS，保留基包及原覆盖顺序。
 - Sena：SoftPAL 引擎的模拟器，上游 <https://github.com/xmoezzz/sena-rs>；固定 [`Project-Shinkirou/sena-rs@22ac45acc6a436516333a85a4ac3b8470e1cc574`](https://github.com/Project-Shinkirou/sena-rs/commit/22ac45acc6a436516333a85a4ac3b8470e1cc574)，分支 `shinki`，适配包 `crates/shinki-emu-sena-rs`。原生配置提供 `text_language=jp/cn/tc`，选择多语言记录字段并保留原日文单字段行为；字体由原生游戏字体路径或显式字体文件提供，光栅尺寸经 C ABI v3 `render_extent` 请求。完整 MPL-2.0 许可位于 `ThirdParty/sena-rs/LICENSE-MPL-2.0`，嵌入字体另见 `docs/licenses/sena-rs/MS-PGothic.txt`。支持范围仍为原生及 Steam Koikake，未扩大到其他 SoftPAL。
 - Ethornell：上游 <https://github.com/xmoezzz/ethornell-rs>，workspace manifest 声明 `MPL-2.0`；fork 根目录补充许可全文 `LICENSE-MPL-2.0`，核心包附该全文与 `MODIFICATIONS.md`。固定来源 [`Project-Shinkirou/ethornell-rs@f8362be7d2f4d634c25a98a317dfe56ffae56346`](https://github.com/Project-Shinkirou/ethornell-rs/commit/f8362be7d2f4d634c25a98a317dfe56ffae56346)，分支 `shinki`，适配包 `crates/shinki-emu-ethornell-rs`。当前原生能力包括仅作用于显示文本的 GBK 解码选择和每 runtime 显式字体，不代表未知补丁 handler、字体注册或资源优先级已经闭合。源码由 `build/cores.toml` 固定并准备到 `ThirdParty/ethornell-rs`。

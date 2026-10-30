@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Siglus.
 
 `plugin_id: siglus_rs` · Engine family: SiglusEngine
 
-Upstream: [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs). Adaptation fork: [Project-Shinkirou/siglus_rs, shinki branch](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki).
+Upstream: [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs). Adaptation fork: [Project-Shinkirou/siglus_rs, shinki-android-isolation branch](https://github.com/Project-Shinkirou/siglus_rs/tree/shinki-android-isolation).
 
 ## Formats
 
@@ -16,6 +16,8 @@ Upstream: [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs). Adaptation 
 ## Native behavior and limits
 
 The fork retains the Siglus VM, renderer, text/keyboard input and native saves. Its adapter owns execution and publishes CPU frames. Native configuration supports paired original/chs resources and G01/movie selection.
+
+Android Manager statically embeds Siglus alongside RFVP, Artemis and Musica. Siglus and RFVP use the same wgpu 30 runtime as Manager. Their native WMV decoders keep the Rust API without exporting the optional `c-abi` functions into Manager, preventing duplicate `wmv2_decoder_*` symbols.
 
 ## Saves and keys
 

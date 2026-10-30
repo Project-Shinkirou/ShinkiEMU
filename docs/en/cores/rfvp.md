@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of RFVP.
 
 `plugin_id: rfvp` · Engine family: FVP
 
-Upstream: [xmoezzz/rfvp](https://github.com/xmoezzz/rfvp). Adaptation fork: [Project-Shinkirou/rfvp, shinki branch](https://github.com/Project-Shinkirou/rfvp/tree/shinki).
+Upstream: [xmoezzz/rfvp](https://github.com/xmoezzz/rfvp). Adaptation fork: [Project-Shinkirou/rfvp, shinki-android-isolation branch](https://github.com/Project-Shinkirou/rfvp/tree/shinki-android-isolation).
 
 ## Formats
 
@@ -16,6 +16,8 @@ FVP uses HCB bytecode. The first little-endian u32 is the system-descriptor offs
 ## Native behavior and limits
 
 The fork retains its App, VM, GPU renderer, device audio and saves. The adapter delivers the final scene through immutable CPU leases; Manager does not reproduce syscalls or drive a host tick. Native configuration can select UTF-8 translation tables indexed by original HCB offsets and movie/BGM ASS mappings with explicit fonts and original media clocks.
+
+The Android static Manager graph shares wgpu 30 with Siglus and Manager. Native WMV decoding uses the Rust API; its optional `c-abi` exports stay disabled in Manager.
 
 WMV/ASF/WMA playback uses the fork's native movie/decoder path. Requested native fonts and game-specific resources remain real inputs. Recognizing an HCB file does not establish syscall coverage or edition compatibility.
 
