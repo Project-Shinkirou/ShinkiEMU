@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Artemis / Art3m1s.
 
 `plugin_id: art3m1s-core` · Engine family: Artemis
 
-Upstream: [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core). Adaptation fork: [Project-Shinkirou/art3m1s-core, shinki branch](https://github.com/Project-Shinkirou/art3m1s-core/tree/shinki).
+Upstream: [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core). Adaptation fork: [Project-Shinkirou/art3m1s-core, shinki-android-isolation branch](https://github.com/Project-Shinkirou/art3m1s-core/tree/shinki-android-isolation).
 
 ## Formats
 
@@ -15,7 +15,7 @@ Artemis loads `system.ini`, PFS archives (PF6/PF8) and native scenario/tag/Lua r
 
 ## Native behavior and limits
 
-The core keeps Lua 5.1, the native graphics path and FFmpeg. This Lua graph is separate from Manager's Luau recipes. The adapter owns scheduling and device audio, with bounded immutable CPU frame slots. Native modal dialogs use typed host services; exit ends the session rather than terminating Manager.
+The core uses Luau on every platform, with an Artemis compatibility layer for legacy Lua APIs, alongside the native graphics path and FFmpeg. Android Manager statically embeds Artemis and shares its Luau runtime. The adapter owns scheduling and device audio, with bounded immutable CPU frame slots. Native modal dialogs use typed host services; exit ends the session rather than terminating Manager.
 
 `extra_archive` explicitly selects an additional relative PFS after the normal active numeric chain. It does not scan backups or rewrite the base package. The descriptor does not offer adjustable render extent. Missing script targets/resources and unsupported native UI/media commands remain errors; a clickable title screen alone is not a complete-game result.
 

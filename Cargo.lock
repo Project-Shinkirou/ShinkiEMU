@@ -497,10 +497,94 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
+name = "art3m1s-core"
+version = "0.4.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "ab_glyph",
+ "art3m1s-emote",
+ "art3m1s-log",
+ "art3m1s-media",
+ "art3m1s-render",
+ "asb-interpreter",
+ "ctt-astcenc",
+ "encoding_rs",
+ "glam 0.30.10",
+ "image 0.25.10",
+ "pfs-upk-rust",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "art3m1s-emote"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+
+[[package]]
+name = "art3m1s-log"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "log 0.4.34",
+]
+
+[[package]]
+name = "art3m1s-media"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "ffmpeg-next",
+ "libc",
+]
+
+[[package]]
+name = "art3m1s-render"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "ash 0.38.0+1.3.281",
+ "glam 0.30.10",
+ "image 0.25.10",
+ "log 0.4.34",
+ "naga 29.0.4",
+ "objc2 0.6.5",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-io-surface",
+ "objc2-metal 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "shaderc",
+ "spirv-cross2",
+]
+
+[[package]]
 name = "as-raw-xcb-connection"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
+
+[[package]]
+name = "asb-decrypt"
+version = "1.1.0"
+source = "git+https://github.com/Alphaly2K/asb-decrypt#824663bd41388ee701ee10348a069005f4b72a1d"
+dependencies = [
+ "encoding_rs",
+]
+
+[[package]]
+name = "asb-interpreter"
+version = "0.2.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "asb-decrypt",
+ "encoding_rs",
+ "libc",
+ "mlua",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "asc"
@@ -1988,6 +2072,8 @@ dependencies = [
  "block2 0.6.2",
  "coreaudio-rs 0.14.2",
  "dasp_sample",
+ "futures-channel",
+ "futures-util",
  "jni 0.22.4",
  "js-sys",
  "libc",
@@ -2003,6 +2089,8 @@ dependencies = [
  "objc2-core-audio-types",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "windows 0.62.2",
  "windows-core 0.62.2",
@@ -2160,6 +2248,17 @@ dependencies = [
  "dispatch2",
  "nix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ctt-astcenc"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24a806826f523401c1c8a9afded1c5625f005fd8e6567ceba2fe6254d8c59e3e"
+dependencies = [
+ "bitflags 2.13.2",
+ "cc",
+ "paste",
 ]
 
 [[package]]
@@ -5780,6 +5879,7 @@ version = "0.12.5"
 source = "git+https://github.com/Project-Shinkirou/kira.git?rev=d3b2c85160361adcd7c899bfd91c09b31cf7979c#d3b2c85160361adcd7c899bfd91c09b31cf7979c"
 dependencies = [
  "atomic-arena",
+ "cpal 0.18.2",
  "glam 0.33.12",
  "mint",
  "pastey",
@@ -5941,6 +6041,15 @@ name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
+
+[[package]]
+name = "link-cplusplus"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f78c730aaa7d0b9336a299029ea49f9ee53b0ed06e9202e8cb7db9bae7b8c82"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -7377,6 +7486,7 @@ dependencies = [
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
+ "objc2-io-surface",
 ]
 
 [[package]]
@@ -7969,6 +8079,26 @@ name = "petitset"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1a50d821a2526af6d5756c23c68e453532a986e361a3e12c9cc7fe61d862ac"
+
+[[package]]
+name = "pf8"
+version = "0.1.6"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "encoding_rs",
+ "sha1 0.11.0",
+ "thiserror 2.0.21",
+ "walkdir",
+]
+
+[[package]]
+name = "pfs-upk-rust"
+version = "0.2.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "encoding_rs",
+ "pf8",
+]
 
 [[package]]
 name = "phf"
@@ -10288,6 +10418,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "shaderc"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ab2a6e36d1c1e2320c87e2b806a3e7b0dffaa67b82c14a39dad6cf7637208ae"
+dependencies = [
+ "libc",
+ "shaderc-sys",
+]
+
+[[package]]
+name = "shaderc-sys"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdceb85b2c6d2c27b95ffe2d341063dfded0aca8046f7f60c544bbeaeaf8bcae"
+dependencies = [
+ "cmake",
+ "libc",
+ "link-cplusplus",
+ "pkg-config",
+ "roxmltree 0.20.0",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10317,6 +10470,23 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "shinki-emu-art3m1s-core"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+dependencies = [
+ "art3m1s-core",
+ "encoding_rs",
+ "kira 0.12.5",
+ "parking_lot 0.12.5",
+ "serde",
+ "serde_json",
+ "shinki-emu-abi",
+ "shinki-emu-build",
+ "shinki-emu-sdk",
+ "tracing",
 ]
 
 [[package]]
@@ -10452,6 +10622,7 @@ dependencies = [
  "sha2 0.11.1",
  "shinki-emu-ReMinori",
  "shinki-emu-abi",
+ "shinki-emu-art3m1s-core",
  "shinki-emu-dlsite",
  "shinki-emu-dmm",
  "shinki-emu-ethornell-rs",
@@ -11222,6 +11393,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.2",
+]
+
+[[package]]
+name = "spirv-cross-sys"
+version = "0.7.4+aa217ae"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d4a12082fc9d2414042b776646d6ed9fd650410f500e611dedd3f713cf7bd1d"
+dependencies = [
+ "bytemuck",
+ "cc",
+ "num-derive",
+ "num-traits",
+]
+
+[[package]]
+name = "spirv-cross2"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a95a3933e4d55d029b09cd3b1ce91a6b52a6cec0a7659aa4a4aeffddc260836f"
+dependencies = [
+ "bitflags 2.13.2",
+ "bytemuck",
+ "memchr",
+ "spirv 0.4.0+sdk-1.4.341.0",
+ "spirv-cross-sys",
+ "spirv-cross2-derive",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "spirv-cross2-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18017a288e6ce64dd5d56510166baeabb01849483555c031f573c091b6934a64"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
