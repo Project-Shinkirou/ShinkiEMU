@@ -15,7 +15,7 @@ pub use host::{
     WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
 };
 
-// Android loads the Manager as a cdylib through NativeActivity; the
-// application modules and `android_main` come from the shared binary root.
-#[cfg(target_os = "android")]
+// Mobile native hosts load the Manager as a cdylib; platform entrypoints are
+// registered by their respective activity/NAPI modules.
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 include!("main.rs");

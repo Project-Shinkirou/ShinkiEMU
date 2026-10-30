@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "app_name", "value": "ShinkiEMU" },
+    { "name": "module_desc", "value": "ShinkiEMU OpenHarmony Manager" },
+    { "name": "EntryAbility_desc", "value": "ShinkiEMU Manager" }
+  ]
+}

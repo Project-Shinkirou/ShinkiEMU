@@ -1,4 +1,4 @@
-use crate::session::types::{AudioSinkBox, PcmFormat, PcmFormatSpec};
+use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use crate::{
     MusicaAudioCommand, MusicaMountedVfs,
     scene::{error, read_asset},

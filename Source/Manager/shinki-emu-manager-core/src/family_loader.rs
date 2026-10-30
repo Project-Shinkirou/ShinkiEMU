@@ -434,8 +434,7 @@ pub struct NativeOpenRequest {
     pub initial_window: WindowState,
     pub host: abi::HostServices,
     pub text_async: Option<abi::AsyncTextServiceV1>,
-    pub cancellation: crate::NativeCancellation,
-    pub render_extent: Option<(u32, u32)>,
+    pub audio_output: Option<shinki_emu_sdk::runtime::AudioSinkBox>,
 }
 pub fn no_host_services(cancellation: &crate::NativeCancellation) -> abi::HostServices {
     abi::HostServices {

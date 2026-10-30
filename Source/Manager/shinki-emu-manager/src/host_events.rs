@@ -1,21 +1,21 @@
 use std::{cell::RefCell, rc::Rc};
 
 use shinki_emu_manager_core::model::WindowState;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use shinki_emu_manager_core::model::{FamilyEvent, KeyCode, KeyModifiers, KeyState};
 use shinki_emu_manager_ui_slint::{App, SlintManagerAdapter, report_error};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use shinki_emu_manager_ui_slint::{GameSettings, ManagerViewModel, ManagerWindow, Settings};
 use slint::ComponentHandle;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use winit::event::{ElementState, WindowEvent};
 
 use super::ManagerController;
 use crate::gamepad::GameInputPump;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn system_theme(window: &slint::Window) -> Result<bool, String> {
     window
         .with_winit_window(|window| window.theme())
@@ -31,7 +31,10 @@ pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> {
     Ok(app.config().ui_mode_night() == ndk::configuration::UiModeNight::Yes)
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_env = "ohos")]
+pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> { Ok(false) }
+
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
     window
         .with_winit_window(|window| {
@@ -66,7 +69,14 @@ pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState
     })
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_env = "ohos")]
+pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
+    let (focused, visible) = crate::platform::ohos::lifecycle_state();
+    let size = window.size();
+    Ok(WindowState { width: size.width, height: size.height, scale_factor: f64::from(window.scale_factor()), focused, visible, suspended: !focused || !visible })
+}
+
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn install<C: ManagerController>(
     adapter: &Rc<SlintManagerAdapter>,
     controller: Rc<RefCell<C>>,
@@ -268,7 +278,15 @@ pub(super) fn install<C: ManagerController>(
     }));
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_env = "ohos")]
+pub(super) fn install<C: ManagerController>(
+    _adapter: &Rc<SlintManagerAdapter>,
+    _controller: Rc<RefCell<C>>,
+    _pointer: Rc<RefCell<super::pointer::HostPointer>>,
+    _gamepad: Rc<RefCell<GameInputPump>>,
+) {}
+
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn family_key(code: winit::keyboard::KeyCode) -> Option<KeyCode> {
     use winit::keyboard::KeyCode as W;
     Some(match code {
@@ -372,13 +390,13 @@ fn family_key(code: winit::keyboard::KeyCode) -> Option<KeyCode> {
 }
 
 /// The binding row Slint is capturing for; per-game when the game settings page owns it.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 struct CaptureTarget {
     button: slint::SharedString,
     game_id: Option<slint::SharedString>,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn capture_target(window: &ManagerWindow) -> Option<CaptureTarget> {
     let game = window.global::<GameSettings>();
     let button = game.get_capture_button();
@@ -396,7 +414,7 @@ fn capture_target(window: &ManagerWindow) -> Option<CaptureTarget> {
 }
 
 /// Mirror Slint's capture row (started, moved or cancelled by the UI) into the controller.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn sync_capture<C: ManagerController>(
     controller: &RefCell<C>,
     target: Option<&CaptureTarget>,
@@ -422,7 +440,7 @@ fn sync_capture<C: ManagerController>(
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn clear_capture(window: &ManagerWindow) {
     let game = window.global::<GameSettings>();
     game.set_capture_button("".into());

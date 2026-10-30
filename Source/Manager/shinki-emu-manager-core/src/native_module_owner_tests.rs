@@ -24,6 +24,7 @@ fn request() -> NativeOpenRequest {
         text_async: None,
         cancellation,
         render_extent: None,
+        audio_output: None,
     }
 }
 

@@ -1,0 +1,4 @@
+# Project
+app.hap
+node_modules/
+.local-secrets/

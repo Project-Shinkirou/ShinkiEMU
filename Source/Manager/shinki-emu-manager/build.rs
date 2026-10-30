@@ -3,6 +3,18 @@ use std::{env, process::Command};
 use sha2::{Digest, Sha256};
 
 fn main() {
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
+        let sdk = std::path::PathBuf::from(env::var_os("OHOS_SDK_NATIVE").expect("OHOS_SDK_NATIVE is required"));
+        let bridge = "../../../Platforms/OHOS/native/bridge.c";
+        println!("cargo:rerun-if-changed={bridge}");
+        cc::Build::new().file(bridge).include(sdk.join("sysroot/usr/include")).compile("shinki_ohos_bridge");
+        for library in ["ace_napi.z", "ace_ndk.z", "native_window", "native_buffer", "native_vsync"] {
+            println!("cargo:rustc-link-lib={library}");
+        }
+        println!("cargo:rustc-link-lib=ohaudio");
+        println!("cargo:rerun-if-changed=../../../Platforms/OHOS/native/audio.c");
+        cc::Build::new().file("../../../Platforms/OHOS/native/audio.c").include(sdk.join("sysroot/usr/include")).compile("shinki_ohos_audio");
+    }
     for asset in [
         "../../../Assets/Effects/dxc.lock.json",
         "../../../Assets/Effects/Builtin/scale.hlsl",

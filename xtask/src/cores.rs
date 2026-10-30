@@ -219,9 +219,7 @@ impl Inventory {
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
-                if !target.manager_supported
-                    || !matches!(target.platform.as_str(), "android" | "ios")
-                {
+                if !matches!(target.platform.as_str(), "android" | "ios" | "ohos") {
                     bail!("invalid static Manager integration");
                 }
             }

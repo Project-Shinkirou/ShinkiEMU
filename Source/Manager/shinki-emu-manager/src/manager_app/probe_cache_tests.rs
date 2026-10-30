@@ -301,6 +301,7 @@ fn cached_selection_is_freshly_rejected_before_open_without_probing_alternatives
             text_async: None,
             cancellation,
             render_extent: None,
+            audio_output: None,
         },
     );
     assert!(

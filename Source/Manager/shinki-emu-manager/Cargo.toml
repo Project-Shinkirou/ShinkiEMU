@@ -24,7 +24,7 @@ store-dmm = ["dep:shinki-emu-dmm"]
 shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
 shinki-emu-manager-ui-slint = { path = "../shinki-emu-manager-ui-slint" }
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
-shinki-emu-patch = { path = "../../Tools/shinki-emu-patch" }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["runtime"] }
 shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 mlua.workspace = true
 shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
@@ -69,18 +69,25 @@ wgpu = { version = "30.0.1", features = ["static-dxc"] }
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Console"] }
 
-[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))'.dependencies]
 gilrs = { workspace = true, features = ["wgi"] }
 rfd.workspace = true
 
-[target.'cfg(not(target_os = "android"))'.dependencies]
+[target.'cfg(not(any(target_os = "android", target_env = "ohos")))'.dependencies]
 slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-winit-030"] }
 winit.workspace = true
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+fontique = { version = "0.11.1", features = ["fontconfig-dlopen"] }
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["image-decoders", "svg", "serde"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "renderer-software", "image-default-formats"] }
+shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "d145c89583fe25dcdb4232c8926a20a7016c0883", default-features = false }
 
 
 [target.'cfg(target_os = "ios")'.dependencies]
 roukaku-platform.workspace = true
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "d145c89583fe25dcdb4232c8926a20a7016c0883", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d640798deee47819f34ba10143f38c06e7fd85e2", default-features = false }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
 shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346", default-features = false }
@@ -91,8 +98,9 @@ shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", r
 # be enabled too or the unified codespan API rejects naga 26's String buffer.
 naga-26 = { package = "naga", version = "26.0.0", default-features = false, features = ["termcolor"] }
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "d145c89583fe25dcdb4232c8926a20a7016c0883", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
+
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.
@@ -107,6 +115,7 @@ rustls-platform-verifier = "=0.7.1"
 
 [build-dependencies]
 sha2.workspace = true
+cc = "1.10.0"
 
 [dev-dependencies]
 crc32fast = "1.5.3"

@@ -140,6 +140,23 @@ macOS のパッケージには実体のある `ShinkiEMU-adhoc.app` が含まれ
 
 SDK を使った受け入れ確認では、実際の成果物のパスとサイズに加え、`file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` の出力を残してください。正規の SDK がない場合、この受け入れ確認は行えません。コンパイルの成功だけでは、ゲームの実行互換性は示されません。
 
+## OpenHarmony Manager
+
+ローカルビルドには DevEco Studio OpenHarmony Native SDK 5.0.0（API 12）、Rust 1.99.1、`hvigorw`、`ohpm` が必要です。`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定し、署名データは checkout 外の `.shinki-secrets/` に置きます。ネイティブ依存関係を準備して ARM64 Manager をビルドします。
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos --core rfvp
+cargo xtask deps --target aarch64-unknown-linux-ohos --core shinki.emu.musica
+cargo xtask build --target aarch64-unknown-linux-ohos --manager
+cd Platforms/OHOS
+ohpm install --all
+hvigorw assembleHap -p product=default -p buildMode=debug
+```
+
+DevEco でローカル debug 署名を設定するか、SDK の `hap-sign-tool.jar` と `.shinki-secrets/` 内の keystore、署名 profile を使います。`sign-app -mode localSign` で署名し、`verify-app` で検証します。HAP に `libs/arm64-v8a/libshinki_emu_manager.so` が含まれることを確認し、SDK の `llvm-readelf -d` で `NEEDED` ライブラリを記録してください。keystore、証明書、profile は Git にコミットしません。
+
+デバイス受け入れ確認には、DevEco Device Manager の HarmonyOS 5.0.0 **Phone（API 12）**システムイメージをインストールします。エミュレーターを起動して `hdc list targets` に表示された後、署名済み HAP ���インストールして起動します。起動確認が終わるまで target は blocked のままです。
+
 ## マトリクスと CI
 
 `matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
@@ -148,7 +165,7 @@ SDK を使った受け入れ確認では、実際の成果物のパスとサイ�
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-マニフェストで未対応とされた組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の実際の組み込みとネイティブ依存関係の制約が残ります。OHOS は現時点で未対応であり、ローカル検証のみです。このリポジトリには Slint の XComponent/OH_NativeWindow ホスト、ArkTS から Rust への N-API ライフサイクル/入力ブリッジ、署名済み Hvigor HAP のビルド手順、OHAudio 出力バックエンドがありません。DevEco ツールはインストール済みですが、`hdc` に接続済みデバイスはなく、このホストにはエミュレーターのシステムイメージもありません。そのため、実行時対応を宣言できません。署名済み HAP が実機またはエミュレーターで起動するまで `manager_supported = false` を維持します。SDK の導入を検証した OHOS CI ランナーも現在構成されていません。マニフェストで対応とされた組み合わせのコンパイルに失敗した場合は `failed` を報告し、0 以外で終了します。`--all-cores` は宣言済みの blocked の組み合わせをスキップしますが、対応している組み合わせの失敗を隠すことはありません。`publish_blocked` は配布上の制約を別に記録するもので、ビルドできないことを意味するわけではありません。
+マニフェストで未対応の組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の組み込みとネイティブ依存関係の制約が残ります。OHOS には Slint の XComponent/OH_NativeWindow ホスト、ArkTS N-API ブリッジ、OHAudio 出力、Hvigor HAP プロジェクトを追加しました。ビルドと署名はデバイス受け入れ確認と分けて扱います。`hdc list targets` に実機またはエミュレーターが表示されてから起動確認を行います。このホストには接続済みデバイスもシステムイメージもないため、署名済み HAP の起動は未確認です。`manager_supported` は `false` のままです。対応対象のコンパイルに失敗した場合は `failed` を報告して 0 以外で終了します。`--all-cores` は明示的に blocked とした組み合わせをスキップしますが、対応対象の失敗は隠しません。`publish_blocked` は配布上の制限を別に記録します。
 
 正式な CI はリモートの GitHub Actions で、リリースを公開するのもここだけです。`ci.yml` は pull request、`main` と `release/**` への push、手動実行で動きます。`Metadata/**`、`docs/**`、Markdown ファイルだけを変更した場合は実行されず、カタログの PR は `metadata-intake.yml` が検証します。
 

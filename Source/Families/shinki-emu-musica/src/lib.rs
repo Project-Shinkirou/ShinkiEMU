@@ -4,7 +4,7 @@ mod audio;
 mod movie;
 mod provider;
 mod scene;
-mod session;
+pub mod session;
 mod storage;
 mod voice_preferences;
 

@@ -2,7 +2,7 @@ mod core_package;
 mod manager_app;
 mod metadata_cache;
 mod metadata_runtime;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod patch_cli;
 mod platform_secret;
 mod stage_renderer;
@@ -11,16 +11,16 @@ mod stage_renderer;
 mod test_native;
 mod text_service;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use clap::Parser;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use std::process::ExitCode;
 
 // Native VM boot may hold large temporaries. Reserve once per session owner.
 const FAMILY_OWNER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 // The command line is desktop-only: the Android activity has no arguments.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(Parser)]
 #[command(version)]
 struct Arguments {
@@ -28,7 +28,7 @@ struct Arguments {
     command: Option<Command>,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(clap::Subcommand)]
 enum Command {
     /// Apply trusted offline file patches without starting the GUI or a core.
@@ -40,7 +40,7 @@ enum Command {
     Extension(ExtensionCommand),
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(clap::Subcommand)]
 pub(crate) enum ExtensionCommand {
     /// Install a trusted local Luau text extension, initially disabled.
@@ -64,7 +64,7 @@ pub(crate) enum ExtensionCommand {
     List,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn main() -> ExitCode {
     let arguments = match Arguments::try_parse() {
         Ok(arguments) => arguments,

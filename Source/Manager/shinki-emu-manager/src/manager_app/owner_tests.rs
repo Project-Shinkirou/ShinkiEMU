@@ -132,6 +132,7 @@ impl Harness {
             modal: None,
             window_service: None,
             cancellation: shinki_emu_manager_core::NativeCancellation::new(epoch),
+            audio_output: None,
         }
     }
     fn open(&mut self) -> u64 {

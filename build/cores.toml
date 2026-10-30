@@ -14,12 +14,15 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/rfvp/LICENSE", "ThirdParty/rfvp/crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "ThirdParty/rfvp/crates/shinki-emu-rfvp/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
 publish_blocked = ""
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
-branch = "shinki"
-rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72"
+branch = "shinki-ohos"
+rev = "d145c89583fe25dcdb4232c8926a20a7016c0883"
 upstream = "https://github.com/xmoezzz/rfvp"
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -36,9 +39,6 @@ reason = "Statically embedded in the iOS Manager; standalone dynamic-core instal
 [[cores.blocked]]
 target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 
 [[cores]]
 id = "siglus_rs"
@@ -139,7 +139,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-unknown-linux-ohos"]
 static_features = ["ffmpeg-vcpkg"]
 publish_blocked = ""
 [[cores.blocked]]
@@ -159,7 +159,7 @@ target = "x86_64-apple-ios"
 reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
 
 [[cores]]
 id = "sena-rs"

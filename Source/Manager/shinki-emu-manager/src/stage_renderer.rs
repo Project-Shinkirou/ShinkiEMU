@@ -51,13 +51,15 @@ impl ManagerStageRenderer {
         let dxc_path = env::var_os("SHINKI_EMU_DXC_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(default_dxc_path);
-        Self::with_dxc_path(mailbox, dxc_path)
+        let renderer = Self::with_dxc_path(mailbox.clone(), dxc_path);
+        #[cfg(target_env = "ohos")]
+        crate::platform::ohos::register_frame_mailbox(mailbox);
+        renderer
     }
 
     fn with_dxc_path(mailbox: FrameMailbox, dxc_path: PathBuf) -> Self {
         Self {
             mailbox,
-            device: None,
             input_texture: None,
             output_texture: None,
             filtered_texture: None,

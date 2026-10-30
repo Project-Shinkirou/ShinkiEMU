@@ -2,18 +2,21 @@
 //! pickers, the per-user data directory, bundled resources, opening a location
 //! in the system file manager, startup error reporting and restart.
 //!
-//! Desktop uses native dialogs (`rfd`) and the executable directory. Android
-//! uses the Storage Access Framework through `MainActivity`, the app-private
-//! files directory and resources extracted from the APK assets.
+//! Desktop uses native dialogs and executable-relative resources. Android and
+//! OHOS use app-private directories and native app lifecycle integration.
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(target_env = "ohos")]
+pub mod ohos;
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
 #[cfg(target_os = "android")]
 use android as imp;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(target_env = "ohos")]
+use ohos as imp;
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 use desktop as imp;
 #[cfg(target_os = "ios")]
 mod ios;

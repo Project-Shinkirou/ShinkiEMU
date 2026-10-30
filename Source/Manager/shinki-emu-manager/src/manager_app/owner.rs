@@ -74,6 +74,7 @@ pub(super) struct OpenSession {
     pub(super) modal: Option<ModalBridge>,
     pub(super) window_service: Option<shinki_emu_manager::window_service::WindowBridge>,
     pub(super) cancellation: shinki_emu_manager_core::NativeCancellation,
+    pub(super) audio_output: Option<shinki_emu_sdk::runtime::AudioSinkBox>,
 }
 
 /// UI metadata only. Native sessions, providers and GPU owners never leave the worker.
