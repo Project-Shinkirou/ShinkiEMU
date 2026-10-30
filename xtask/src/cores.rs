@@ -396,9 +396,9 @@ mod tests {
         changed
             .cores
             .iter_mut()
-            .find(|core| core.id == "art3m1s-core")
+            .find(|core| core.id == "siglus_rs")
             .unwrap()
-            .static_features = Vec::new();
+            .static_features = vec!["unexpected".into()];
         assert!(changed.validate_static_dependencies().is_err());
 
         let mut changed = inventory;
