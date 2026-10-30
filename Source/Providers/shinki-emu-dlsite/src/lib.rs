@@ -203,7 +203,9 @@ impl Http {
         if response.status() == StatusCode::UNAUTHORIZED {
             return Err(StoreError::SessionExpired);
         }
-        response.error_for_status().map_err(|_| StoreError::Network)?;
+        response
+            .error_for_status()
+            .map_err(|_| StoreError::Network)?;
         Ok(())
     }
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, StoreError> {
@@ -255,10 +257,7 @@ impl Http {
     }
     async fn metadata(&self, id: &str) -> Result<Option<PublicWork>, StoreError> {
         let r = self
-            .send(
-                self.request(Method::GET, PRODUCT)?
-                    .query(&[("workno", id)]),
-            )
+            .send(self.request(Method::GET, PRODUCT)?.query(&[("workno", id)]))
             .await?;
         if !r.status().is_success() {
             return Ok(None);

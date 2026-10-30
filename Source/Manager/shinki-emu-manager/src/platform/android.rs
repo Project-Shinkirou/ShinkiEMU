@@ -442,6 +442,69 @@ pub(crate) fn delete_secret(reference: &str) -> Result<(), String> {
     call_bridge_secret(jni_str!("deleteSecret"), reference, None).map(drop)
 }
 
+/// Show `url` in the Store sign-in WebView (`MainActivity.openWebLogin`).
+pub(crate) fn open_web_login(url: &str) -> Result<(), String> {
+    call_activity("openWebLogin", |env, activity| {
+        let url = env.new_string(url)?;
+        env.call_method(
+            activity,
+            jni_str!("openWebLogin"),
+            jni_sig!("(Ljava/lang/String;)V"),
+            &[JValue::Object(&url)],
+        )
+        .map(drop)
+    })
+}
+
+/// The page the sign-in WebView shows, or `None` once the user closed it.
+pub(crate) fn web_login_page() -> Result<Option<String>, String> {
+    call_activity("webLoginPage", |env, activity| {
+        let page = env
+            .call_method(
+                activity,
+                jni_str!("webLoginPage"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+            .l()?;
+        nullable_string(env, page)
+    })
+}
+
+/// The `Cookie` header the sign-in WebView sends to `url`, HttpOnly cookies
+/// included; `None` when it has none.
+pub(crate) fn web_login_cookies(url: &str) -> Result<Option<String>, String> {
+    call_activity("webLoginCookies", |env, activity| {
+        let url = env.new_string(url)?;
+        let header = env
+            .call_method(
+                activity,
+                jni_str!("webLoginCookies"),
+                jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+                &[JValue::Object(&url)],
+            )?
+            .l()?;
+        nullable_string(env, header)
+    })
+}
+
+/// Close the sign-in WebView and wipe its cookies and site data.
+pub(crate) fn close_web_login() -> Result<(), String> {
+    call_activity("closeWebLogin", |env, activity| {
+        env.call_method(activity, jni_str!("closeWebLogin"), jni_sig!("()V"), &[])
+            .map(drop)
+    })
+}
+
+fn nullable_string(env: &mut Env<'_>, object: JObject<'_>) -> jni::errors::Result<Option<String>> {
+    if object.as_raw().is_null() {
+        return Ok(None);
+    }
+    env.cast_local::<JString>(object)?
+        .try_to_string(env)
+        .map(Some)
+}
+
 /// `ShinkiPlatformBridge.<method>(Activity, String[, String]): String`.
 fn call_bridge_secret(
     method: &'static JNIStr,

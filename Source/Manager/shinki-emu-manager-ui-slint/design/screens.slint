@@ -614,8 +614,8 @@ export component StoreDetailPhone inherits ManagerWindow {
     }
 }
 
-// Illustrative cookie handoff; never contains account cookies.
-export component StoreBrowserSignIn inherits ManagerWindow {
+// Web sign-in choice for a store that signs in on its own pages.
+export component StoreWebSignIn inherits ManagerWindow {
     init => {
         StoreMock.signed-out(false);
         Store.provider-id = "dlsite";
@@ -623,8 +623,7 @@ export component StoreBrowserSignIn inherits ManagerWindow {
         Store.can-qr = false;
         Store.can-credentials = false;
         Store.can-import-local = false;
-        Store.can-browser = true;
-        Store.browser-url = "https://login.dlsite.com/";
+        Store.can-web = true;
         Store.has-branches = false;
         Store.has-depots = false;
     }

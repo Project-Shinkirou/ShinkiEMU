@@ -13,6 +13,9 @@ use std::sync::{
 use tokio::sync::mpsc as async_mpsc;
 use shinki_emu_manager_ui_slint::tr;
 
+/// Platforms whose Manager host can show the embedded sign-in webview.
+const WEB_LOGIN_SUPPORTED: bool = !cfg!(target_env = "ohos");
+
 fn registry() -> provider::Registry {
     let mut registry = provider::Registry::new();
     #[cfg(feature = "store-steam")]
@@ -53,10 +56,7 @@ fn provider_view(registry: &provider::Registry, id: &str, root: &Path) -> StoreV
         view.provider_name = d.display_name.into();
         view.can_qr = d.login_methods.contains(&provider::LoginKind::Qr);
         view.can_credentials = d.login_methods.contains(&provider::LoginKind::Credentials);
-        view.can_browser = d
-            .login_methods
-            .contains(&provider::LoginKind::BrowserCookies);
-        view.browser_url = d.browser_login_url.unwrap_or_default().into();
+        view.can_web = d.web_login().is_some() && WEB_LOGIN_SUPPORTED;
         view.can_import_local = d.login_methods.contains(&provider::LoginKind::LocalImport)
             && cfg!(any(
                 target_os = "windows",
@@ -184,8 +184,15 @@ impl Shared {
     }
 }
 
+/// Work for the provider thread: a UI action, or the cookies the embedded
+/// sign-in webview captured for the selected provider.
+enum Job {
+    Action(StoreAction),
+    WebLogin(Vec<provider::WebCookie>),
+}
+
 enum StoreCommand {
-    Action(StoreAction, provider::CancelToken),
+    Run(Job, provider::CancelToken),
     Disconnect,
 }
 
@@ -197,6 +204,8 @@ pub(super) struct StoreRuntime {
     completed: mpsc::Receiver<CompletedInstallation>,
     pending: Option<Worker>,
     imports: VecDeque<PathBuf>,
+    /// Embedded-webview sign-in rules by provider id.
+    web_logins: Vec<(&'static str, &'static provider::WebLogin)>,
 }
 struct Worker {
     shared: Arc<Shared>,
@@ -224,6 +233,14 @@ impl StoreRuntime {
             .map_or("", |p| p.descriptor().id)
             .to_owned();
         let work_root = data_dir.join(".shinki").join("store");
+        let web_logins = registry
+            .providers()
+            .iter()
+            .filter_map(|p| {
+                let d = p.descriptor();
+                d.web_login().map(|login| (d.id, login))
+            })
+            .collect();
         let shared = Arc::new(Shared {
             view: Mutex::new(provider_view(&registry, &selected_provider, &work_root)),
             changed: AtomicBool::new(false),
@@ -262,6 +279,7 @@ impl StoreRuntime {
             completed: completion_receiver,
             pending: Some(worker),
             imports: VecDeque::new(),
+            web_logins,
         }
     }
     pub(super) fn view(&self) -> StoreViewModel {
@@ -331,11 +349,43 @@ impl StoreRuntime {
         } else if let StoreAction::Search { query } = action {
             self.shared.update(|v| v.query = query);
             return Ok(());
-        } else if self.shared.busy.swap(true, Ordering::AcqRel) {
-            return Err(tr!("请等待当前 Store 操作完成，或先取消").into());
         } else {
-            *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = provider::CancelToken::new();
+            self.begin()?;
         }
+        self.start(Job::Action(action))
+    }
+    /// The embedded-webview sign-in rule of the selected provider, while no
+    /// other Store operation runs.
+    pub(super) fn web_login(&self) -> Result<&'static provider::WebLogin, String> {
+        if self.shared.busy.load(Ordering::Acquire) {
+            return Err(tr!("请等待当前 Store 操作完成，或先取消").into());
+        }
+        let id = self
+            .shared
+            .view
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .provider_id
+            .clone();
+        self.web_logins
+            .iter()
+            .find(|(provider, _)| *provider == id)
+            .map(|(_, login)| *login)
+            .ok_or_else(|| provider::StoreError::UnsupportedLogin.to_string())
+    }
+    /// Sign in to the selected provider with the cookies its webview captured.
+    pub(super) fn web_signed_in(&mut self, cookies: Vec<provider::WebCookie>) -> Result<(), String> {
+        self.begin()?;
+        self.start(Job::WebLogin(cookies))
+    }
+    fn begin(&self) -> Result<(), String> {
+        if self.shared.busy.swap(true, Ordering::AcqRel) {
+            return Err(tr!("请等待当前 Store 操作完成，或先取消").into());
+        }
+        *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = provider::CancelToken::new();
+        Ok(())
+    }
+    fn start(&mut self, job: Job) -> Result<(), String> {
         if let Some(worker) = self.pending.take() {
             let shared = worker.shared.clone();
             std::thread::Builder::new()
@@ -356,8 +406,8 @@ impl StoreRuntime {
                 .map_err(|e| e.to_string())?;
         }
         self.commands
-            .try_send(StoreCommand::Action(
-                action,
+            .try_send(StoreCommand::Run(
+                job,
                 self.cancel
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -403,27 +453,32 @@ impl Worker {
                     self.shared.busy.store(false, Ordering::Release);
                     continue;
                 }
-                StoreCommand::Action(action, cancel) => {
+                StoreCommand::Run(job, cancel) => {
                     self.cancel = cancel;
-                    action
+                    job
                 }
             };
-            let download = matches!(action, StoreAction::Download | StoreAction::Verify);
+            let download = matches!(
+                action,
+                Job::Action(StoreAction::Download | StoreAction::Verify)
+            );
             let auth = matches!(
                 action,
-                StoreAction::Open
-                    | StoreAction::SelectProvider { .. }
-                    | StoreAction::Login { .. }
-                    | StoreAction::QrLogin
-                    | StoreAction::BrowserLogin { .. }
-                    | StoreAction::ImportLocal
+                Job::WebLogin(_)
+                    | Job::Action(
+                        StoreAction::Open
+                            | StoreAction::SelectProvider { .. }
+                            | StoreAction::Login { .. }
+                            | StoreAction::QrLogin
+                            | StoreAction::ImportLocal
+                    )
             );
-            let logout = matches!(action, StoreAction::Logout);
+            let logout = matches!(action, Job::Action(StoreAction::Logout));
             let cancel = self.cancel.clone();
             let result = if logout || download {
-                self.execute(action).await
+                self.run_job(action).await
             } else {
-                tokio::select! { result = self.execute(action) => result, _ = cancel.cancelled() => Err(provider::StoreError::Cancelled) }
+                tokio::select! { result = self.run_job(action) => result, _ = cancel.cancelled() => Err(provider::StoreError::Cancelled) }
             };
             match result {
                 Err(provider::StoreError::Cancelled) => {
@@ -631,6 +686,15 @@ impl Worker {
             .update(|v| v.library_state = StoreLoadState::Ready);
         Ok(())
     }
+    async fn run_job(&mut self, job: Job) -> Result<(), provider::StoreError> {
+        match job {
+            Job::WebLogin(cookies) => {
+                self.authenticate(provider::LoginRequest::Web { cookies })
+                    .await
+            }
+            Job::Action(action) => self.execute(action).await,
+        }
+    }
     async fn execute(&mut self, action: StoreAction) -> Result<(), provider::StoreError> {
         match action {
             StoreAction::SelectProvider { id } => {
@@ -650,14 +714,6 @@ impl Worker {
                     self.restore().await?;
                 }
             }
-            StoreAction::OpenBrowser => {
-                let provider = self.selected()?;
-                let url = provider
-                    .descriptor()
-                    .browser_login_url
-                    .ok_or(provider::StoreError::UnsupportedLogin)?;
-                webbrowser::open(url).map_err(|_| provider::StoreError::Network)?;
-            }
             StoreAction::OpenDestination => {
                 let destination = self.view().transfer.destination;
                 if destination.is_empty() {
@@ -673,12 +729,6 @@ impl Worker {
                 .await?
             }
             StoreAction::QrLogin => self.authenticate(provider::LoginRequest::Qr).await?,
-            StoreAction::BrowserLogin { cookies } => {
-                self.authenticate(provider::LoginRequest::BrowserCookies {
-                    cookies: zeroize::Zeroizing::new(cookies),
-                })
-                .await?
-            }
             StoreAction::ImportLocal => {
                 self.authenticate(provider::LoginRequest::LocalImport)
                     .await?
@@ -787,7 +837,9 @@ impl Worker {
             StoreAction::Search { .. }
             | StoreAction::SubmitGuard { .. }
             | StoreAction::Cancel
-            | StoreAction::ChooseLibraryRoot => {}
+            | StoreAction::ChooseLibraryRoot
+            | StoreAction::WebLogin
+            | StoreAction::CancelWebLogin => {}
         }
         Ok(())
     }
@@ -982,6 +1034,24 @@ impl ShinkiEmuManagerController {
         self.store.dispatch(action)?;
         self.model()
     }
+    /// The sign-in rule the host's webview follows for the selected provider.
+    pub(super) fn store_web_login(&self) -> Result<&'static provider::WebLogin, String> {
+        if !self.network_allowed {
+            return Err(tr!("请先在设置中允许网络访问").into());
+        }
+        self.store.web_login()
+    }
+    /// Hand the cookies the webview captured to the selected provider.
+    pub(super) fn store_web_signed_in(
+        &mut self,
+        cookies: Vec<provider::WebCookie>,
+    ) -> Result<ManagerViewModel, String> {
+        if !self.network_allowed {
+            return Err(tr!("请先在设置中允许网络访问").into());
+        }
+        self.store.web_signed_in(cookies)?;
+        self.model()
+    }
     pub(super) fn poll_store(&mut self) -> Result<bool, String> {
         let mut changed = self.store.changed();
         while let Some(completed) = self.store.completed() {
@@ -1014,6 +1084,58 @@ impl ShinkiEmuManagerController {
             changed = true;
         }
         Ok(changed)
+    }
+}
+
+#[cfg(all(test, feature = "store-dlsite", feature = "store-steam"))]
+mod web_login_tests {
+    use super::*;
+
+    fn select(runtime: &StoreRuntime, id: &str) {
+        let registry = registry();
+        let view = provider_view(&registry, id, Path::new("store"));
+        runtime.shared.update(|v| *v = view);
+    }
+
+    #[test]
+    fn webview_rule_follows_selected_provider_and_waits_for_idle_store() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = StoreRuntime::new(root.path());
+        select(&runtime, "dlsite");
+        assert!(runtime.view().can_web);
+        let rule = runtime.web_login().unwrap();
+        assert!(rule.start_url.starts_with("https://") && rule.start_url.contains("dlsite.com"));
+        runtime.shared.busy.store(true, Ordering::Release);
+        assert!(runtime.web_login().is_err());
+        runtime.shared.busy.store(false, Ordering::Release);
+        select(&runtime, "steam");
+        assert!(!runtime.view().can_web);
+        assert!(runtime.web_login().is_err());
+    }
+
+    #[test]
+    fn captured_cookies_without_a_session_end_in_a_visible_error() {
+        let root = tempfile::tempdir().unwrap();
+        let mut runtime = StoreRuntime::new(root.path());
+        let (wake, wakeups) = mpsc::channel();
+        runtime.set_wake(Arc::new(move || {
+            let _ = wake.send(());
+        }));
+        runtime.pending.as_mut().unwrap().selected_provider = "dlsite".into();
+        select(&runtime, "dlsite");
+        runtime.web_signed_in(Vec::new()).unwrap();
+        assert!(runtime.web_signed_in(Vec::new()).is_err(), "a second sign-in waits for the first");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            wakeups.recv_timeout(remaining).expect("worker reports the result");
+            let view = runtime.view();
+            if view.login_state == StoreLoginState::Error && !runtime.shared.busy.load(Ordering::Acquire) {
+                assert_eq!(view.error, provider::StoreError::WebLoginIncomplete.to_string());
+                break;
+            }
+        }
+        assert!(!root.path().join(".shinki/store/dlsite/login-present").exists());
     }
 }
 

@@ -33,7 +33,6 @@ shinki-emu-store = { path = "../../Providers/shinki-emu-store" }
 shinki-emu-steam = { path = "../../Providers/shinki-emu-steam", optional = true }
 shinki-emu-dlsite = { path = "../../Providers/shinki-emu-dlsite", optional = true }
 shinki-emu-dmm = { path = "../../Providers/shinki-emu-dmm", optional = true }
-webbrowser = "1.0"
 open = "5.3"
 roukaku-observability = { workspace = true }
 roukaku-media-core = { workspace = true }
@@ -74,12 +73,25 @@ gilrs = { workspace = true, features = ["wgi"] }
 rfd.workspace = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-winit-030"] }
+slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-winit-030", "raw-window-handle-06"] }
 winit.workspace = true
+
+# Store sign-in runs in the system webview: WebView2 (Windows) and
+# WKWebView (macOS, iOS) as a child view of the Manager window, WebKitGTK in
+# its own GTK window on Linux. Android uses android.webkit.WebView over JNI.
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "ios"))'.dependencies]
+wry = { version = "=0.57.1", default-features = false }
+
+[target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
+wry = { version = "=0.57.1", default-features = false, features = ["os-webview"] }
+gtk = "=0.18.2"
 
 
 [target.'cfg(target_os = "ios")'.dependencies]
 roukaku-platform.workspace = true
+# Positions the sign-in WKWebView inside the Manager view.
+objc2.workspace = true
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2", "CFCGTypes"] }
 shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9c6cef3a1c3e265cfa74cd33d51a6efa0c2d1a72", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d640798deee47819f34ba10143f38c06e7fd85e2", default-features = false }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }

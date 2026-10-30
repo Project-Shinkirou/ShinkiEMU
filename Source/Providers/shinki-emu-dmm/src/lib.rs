@@ -165,7 +165,10 @@ fn callback_code(url: &Url) -> Option<String> {
 
 /// Follow DGP's login URL with the signed-in DMM cookies until it hands out
 /// the callback code, then exchange the code for a DGP access token.
-async fn login_with_cookies(mut jar: CookieJar, cancel: &CancelToken) -> Result<AuthState, StoreError> {
+async fn login_with_cookies(
+    mut jar: CookieJar,
+    cancel: &CancelToken,
+) -> Result<AuthState, StoreError> {
     let client = http_client()?;
     let login: LoginUrl = post_api(
         &client,

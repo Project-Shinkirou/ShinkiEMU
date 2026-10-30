@@ -58,6 +58,16 @@ impl WebLogin {
                     .any(|cookie| cookie.name == *name && !cookie.value.is_empty())
             })
     }
+
+    /// The cookies to hand to the provider once sign-in on `page` finished:
+    /// the scoped capture of `store`, or `None` while sign-in is incomplete.
+    pub fn finish(&self, page: &str, store: Vec<WebCookie>) -> Option<Vec<WebCookie>> {
+        if !self.reached(page) {
+            return None;
+        }
+        let captured = self.capture(store);
+        self.is_complete(page, &captured).then_some(captured)
+    }
 }
 
 /// One cookie read from a webview cookie store.
@@ -111,6 +121,33 @@ impl WebCookie {
                 http_only: false,
             })
             .collect()
+    }
+
+    /// A cookie read from a webview cookie store. Stores report the domain
+    /// without its leading dot, so host-only and domain cookies look alike;
+    /// each is treated as a domain cookie (its host and subdomains), which
+    /// keeps it within the domain the store accepted it for. Cookies without
+    /// a name or domain cannot be scoped and are dropped.
+    pub fn from_store(cookie: &cookie::Cookie<'_>) -> Option<Self> {
+        let domain = cookie
+            .domain()?
+            .trim_start_matches('.')
+            .to_ascii_lowercase();
+        if domain.is_empty() || cookie.name().is_empty() {
+            return None;
+        }
+        Some(Self {
+            name: cookie.name().to_owned(),
+            value: cookie.value().to_owned(),
+            domain,
+            host_only: false,
+            path: match cookie.path() {
+                Some(path) if path.starts_with('/') => path.to_owned(),
+                _ => "/".to_owned(),
+            },
+            secure: cookie.secure().unwrap_or(false),
+            http_only: cookie.http_only().unwrap_or(false),
+        })
     }
 
     fn same_slot(&self, other: &Self) -> bool {
@@ -180,7 +217,9 @@ impl CookieJar {
                 Some(path) if path.starts_with('/') => path.to_owned(),
                 _ => default_path(url.path()),
             };
-            let expired = parsed.max_age().is_some_and(|age| age.is_zero() || age.is_negative())
+            let expired = parsed
+                .max_age()
+                .is_some_and(|age| age.is_zero() || age.is_negative())
                 || parsed
                     .expires_datetime()
                     .is_some_and(|at| at <= cookie::time::OffsetDateTime::now_utc());
@@ -210,9 +249,9 @@ fn domain_matches(host: &str, domain: &str) -> bool {
 
 fn path_matches(request: &str, cookie: &str) -> bool {
     request == cookie
-        || request.strip_prefix(cookie).is_some_and(|rest| {
-            cookie.ends_with('/') || rest.starts_with('/')
-        })
+        || request
+            .strip_prefix(cookie)
+            .is_some_and(|rest| cookie.ends_with('/') || rest.starts_with('/'))
 }
 
 fn default_path(request: &str) -> String {
@@ -319,10 +358,7 @@ mod tests {
             ],
         );
         assert_eq!(jar.header(&www), None);
-        assert_eq!(
-            jar.header(&play).unwrap().as_str(),
-            "scoped=y; play=fresh"
-        );
+        assert_eq!(jar.header(&play).unwrap().as_str(), "scoped=y; play=fresh");
         assert!(!jar.contains("sid"));
         assert!(jar.contains("play"));
     }
@@ -330,9 +366,51 @@ mod tests {
     #[test]
     fn request_headers_become_host_scoped_cookies() {
         let url = Url::parse("https://accounts.dmm.com/").unwrap();
-        let cookies = WebCookie::from_request_header(&url, "login_secure_id=a; login_session_id=b;  ");
+        let cookies =
+            WebCookie::from_request_header(&url, "login_secure_id=a; login_session_id=b;  ");
         assert_eq!(names(&cookies), ["login_secure_id", "login_session_id"]);
-        assert!(cookies.iter().all(|c| c.host_only && c.domain == "accounts.dmm.com"));
+        assert!(
+            cookies
+                .iter()
+                .all(|c| c.host_only && c.domain == "accounts.dmm.com")
+        );
         assert!(!cookies[0].matches(&Url::parse("https://www.dmm.com/").unwrap()));
+    }
+
+    #[test]
+    fn store_cookies_keep_scope_and_drop_unscoped_ones() {
+        let parse = |text: &str| WebCookie::from_store(&cookie::Cookie::parse(text).unwrap());
+        let session = parse("__DLsite_SID=s; Domain=.DLsite.com; HttpOnly; Secure").unwrap();
+        assert_eq!(session.domain, "dlsite.com");
+        assert!(session.http_only && session.secure && !session.host_only);
+        assert_eq!(session.path, "/");
+        assert!(session.matches(&Url::parse("https://play.dlsite.com/library").unwrap()));
+        assert!(!session.matches(&Url::parse("https://notdlsite.com/").unwrap()));
+        let scoped = parse("a=b; Domain=play.dlsite.com; Path=/api").unwrap();
+        assert!(!scoped.matches(&Url::parse("https://play.dlsite.com/").unwrap()));
+        assert!(scoped.matches(&Url::parse("http://play.dlsite.com/api/v3").unwrap()));
+        assert!(parse("a=b").is_none());
+        let unnamed = cookie::Cookie::build(("", "b"))
+            .domain("dlsite.com")
+            .build();
+        assert!(WebCookie::from_store(&unnamed).is_none());
+    }
+
+    #[test]
+    fn finish_hands_over_only_scoped_cookies_of_a_completed_sign_in() {
+        let store = || {
+            vec![
+                cookie("__DLsite_SID", "dlsite.com", false, "/"),
+                cookie("tracker", "google.com", false, "/"),
+            ]
+        };
+        assert!(
+            DLSITE
+                .finish("https://login.dlsite.com/login", store())
+                .is_none()
+        );
+        assert!(DLSITE.finish("https://play.dlsite.com/", vec![]).is_none());
+        let handed = DLSITE.finish("https://play.dlsite.com/", store()).unwrap();
+        assert_eq!(names(&handed), ["__DLsite_SID"]);
     }
 }
