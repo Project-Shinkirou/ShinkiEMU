@@ -11,7 +11,7 @@ Upstream: [renpy/renpy](https://github.com/renpy/renpy). Adaptation fork: [Proje
 
 ## Formats and execution
 
-This core embeds the official Ren’Py runtime rather than translating its scripts to a new VM. Script execution, Screen Language, ATL, GL2 composition, media and saves keep their official behavior. The integration pins the official SDK, CPython 3.12.7, Cython 3.2.4 and SDL 2.0.20; DLL checksums and sources are recorded in `shinki/sdk.json`.
+This core embeds the official Ren’Py runtime rather than translating its scripts to a new VM. Script execution, Screen Language, ATL, GL2 composition, media and saves keep their official behavior. The integration pins the official SDK, CPython 3.12.7, Cython 3.2.4 and SDL 2.0.20; runtime checksums and sources are recorded in `shinki/sdk.json`.
 
 ## Storage
 
@@ -49,9 +49,15 @@ Windows builds generate MSVC import libraries from the official SDK DLLs in the
 Rust build helper, then link those SDK libraries into both the display extension
 and the core. The package includes the SDK-generated `renpy/vc_version.py`.
 
+Linux builds use the official SDK's combined `librenpython.so` and a native
+`display.so` extension. Both resolve the runtime relative to the installed core.
+`cargo xtask deps --core renpy --target x86_64-unknown-linux-gnu` builds a
+task-owned CPython/Cython interpreter from pinned sources; it does not require
+Windows DLLs or an interpreter from a developer's environment.
+
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.
 
-The current embedding requires Windows x64/MSVC. Upstream Ren’Py platform support does not imply the adapter is ported to those platforms. Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
+The desktop adapter targets Windows x64/MSVC and Linux x64/GNU. Other targets remain blocked until their native runtime and packaging gates pass. Upstream Ren’Py platform support does not imply the adapter is ported to those platforms. Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
 
 The runtime includes multiple licenses, including LGPL dependencies with corresponding-source and relinking obligations. Preserve official notices rather than labeling the whole runtime MIT.
 

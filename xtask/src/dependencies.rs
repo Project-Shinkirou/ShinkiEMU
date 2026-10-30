@@ -270,6 +270,17 @@ fn extract_native_archive(
                 let directory = entry.is_dir();
                 let linked = entry.is_symlink();
                 extract(&name, directory, linked, &mut entry)?;
+                #[cfg(unix)]
+                if !directory {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = entry.unix_mode().unwrap_or(0o644) & 0o777;
+                    if let Some(relative) = selected_native_path(archive, &name)? {
+                        fs::set_permissions(
+                            root.join(destination).join(relative),
+                            fs::Permissions::from_mode(mode),
+                        )?;
+                    }
+                }
             }
         }
         "tar-gz" => {
@@ -289,6 +300,16 @@ fn extract_native_archive(
                     !kind.is_dir() && !kind.is_file(),
                     &mut entry,
                 )?;
+                #[cfg(unix)]
+                if kind.is_file() {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(relative) = selected_native_path(archive, &name)? {
+                        fs::set_permissions(
+                            root.join(destination).join(relative),
+                            fs::Permissions::from_mode(entry.header().mode()? & 0o777),
+                        )?;
+                    }
+                }
             }
         }
         other => bail!("unknown native archive format {other}"),
@@ -329,8 +350,43 @@ fn prepare_native_tree(
         for (layer, input) in layers.iter().zip(&archives) {
             extract_native_archive(layer.archive, input, stage, layer.destination)?;
         }
+        if name == "sdl2" && cfg!(target_os = "linux") {
+            run(Command::new("sh")
+                .arg("configure")
+                .arg("--disable-shared")
+                .current_dir(stage))?;
+        }
         if let Some((python, cython)) = python_versions {
-            validate_build_python(&stage.join("python.exe"), python, cython)?;
+            if cfg!(target_os = "linux") {
+                run(Command::new("sh")
+                    .arg("configure")
+                    .arg("--without-ensurepip")
+                    .current_dir(stage)
+                    .env("PYTHONDONTWRITEBYTECODE", "1"))?;
+                run(Command::new("make")
+                    .args(["-j4", "python", "sharedmods"])
+                    .current_dir(stage)
+                    .env("PYTHONDONTWRITEBYTECODE", "1"))?;
+                // CPython's build tree links extension modules back to Modules/.
+                // Publish ordinary files so the verified tree remains relocatable.
+                let modules = fs::read_to_string(stage.join("pybuilddir.txt"))?;
+                native_path(modules.trim())?;
+                let stage_root = fs::canonicalize(stage)?;
+                for entry in fs::read_dir(stage.join(modules.trim()))? {
+                    let entry = entry?;
+                    if entry.file_type()?.is_symlink() {
+                        let source = fs::canonicalize(entry.path())?;
+                        if !source.starts_with(&stage_root) || !source.is_file() {
+                            bail!("CPython generated an external module link");
+                        }
+                        fs::remove_file(entry.path())?;
+                        fs::copy(source, entry.path())?;
+                    }
+                }
+                // Keep the executable distinct from CPython's Python/ source directory.
+                fs::rename(stage.join("python"), stage.join(build_python_relative()))?;
+            }
+            validate_build_python(&stage.join(build_python_relative()), python, cython)?;
         }
         let record = NativeRecord {
             schema: "shinki.emu.native_dependency.v1".into(),
@@ -344,6 +400,22 @@ fn prepare_native_tree(
         Ok(())
     })?;
     Ok(out)
+}
+
+pub(crate) fn build_python_relative() -> &'static str {
+    if cfg!(windows) {
+        "python.exe"
+    } else {
+        "build-python"
+    }
+}
+
+fn renpy_host_pin(name: &str) -> String {
+    if cfg!(target_os = "linux") {
+        format!("{name}-linux")
+    } else {
+        name.into()
+    }
 }
 
 fn validate_build_python(executable: &Path, python: &str, cython: &str) -> Result<()> {
@@ -442,8 +514,8 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
         }
     }
     if selected.renpy {
-        if !cfg!(windows) {
-            bail!("RenPy's pinned build interpreter requires a Windows x64 host");
+        if !cfg!(any(windows, target_os = "linux")) {
+            bail!("RenPy's pinned build interpreter requires a Windows or Linux x64 host");
         }
         crate::sources::prepare_renpy_build(inv)?;
         for inventory in ["python-sources.json", "native-sources.json"] {
@@ -473,9 +545,9 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
             inv.root.join("ThirdParty/renpy/shinki/sdk.json"),
         )?)?;
         let sdk_archive = get("renpy-sdk")?;
-        let python = get("python")?;
-        let cython = get("cython")?;
-        let sdl = get("sdl2")?;
+        let python = get(&renpy_host_pin("python"))?;
+        let cython = get(&renpy_host_pin("cython"))?;
+        let sdl = get(&renpy_host_pin("sdl2"))?;
         if sdk["url"] != sdk_archive.url
             || sdk["sha256"] != sdk_archive.sha256
             || sdk["python"] != python.version
@@ -493,12 +565,14 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
             }],
             None,
         )?;
-        for (name, expected) in sdk["windows_x86_64"]
-            .as_object()
-            .context("SDK runtime hashes")?
-        {
+        let (runtime_key, runtime_dir) = if cfg!(windows) {
+            ("windows_x86_64", "lib/py3-windows-x86_64")
+        } else {
+            ("linux_x86_64", "lib/py3-linux-x86_64")
+        };
+        for (name, expected) in sdk[runtime_key].as_object().context("SDK runtime hashes")? {
             package::portable(name)?;
-            if Some(package::sha256(&sdk_root.join("lib/py3-windows-x86_64").join(name))?.as_str())
+            if Some(package::sha256(&sdk_root.join(runtime_dir).join(name))?.as_str())
                 != expected.as_str()
             {
                 bail!("official RenPy SDK runtime hash mismatch: {name}");
@@ -514,7 +588,11 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
                 },
                 NativeLayer {
                     archive: cython,
-                    destination: "Lib/site-packages",
+                    destination: if cfg!(windows) {
+                        "Lib/site-packages"
+                    } else {
+                        "Lib"
+                    },
                 },
             ],
             Some((&python.version, &cython.version)),
@@ -841,9 +919,20 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         for (variable, path) in [
             (
                 "RENPY_SDK_ROOT",
-                base.join("renpy-sdk/lib/py3-windows-x86_64/libpython3.12.dll"),
+                base.join(if cfg!(windows) {
+                    "renpy-sdk/lib/py3-windows-x86_64/libpython3.12.dll"
+                } else {
+                    "renpy-sdk/lib/py3-linux-x86_64/librenpython.so"
+                }),
             ),
-            ("RENPY_PYTHON_DEV", base.join("python/include/Python.h")),
+            (
+                "RENPY_PYTHON_DEV",
+                base.join(if cfg!(windows) {
+                    "python/include/Python.h"
+                } else {
+                    "python/Include/Python.h"
+                }),
+            ),
             ("RENPY_SDL_INCLUDE", base.join("sdl2/include/SDL.h")),
             (
                 "RENPY_CYTHON_LICENSE",
@@ -860,10 +949,12 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             }
         }
         let pins = lock(inv)?;
-        if let (Some(python), Some(cython)) = (pins.native.get("python"), pins.native.get("cython"))
-        {
+        if let (Some(python), Some(cython)) = (
+            pins.native.get(&renpy_host_pin("python")),
+            pins.native.get(&renpy_host_pin("cython")),
+        ) {
             if validate_build_python(
-                &base.join("python/python.exe"),
+                &base.join("python").join(build_python_relative()),
                 &python.version,
                 &cython.version,
             )
@@ -1299,18 +1390,21 @@ pub fn apply_environment(
                     .chain(env::split_paths(&env::var_os("PATH").unwrap_or_default())),
             )?,
         );
-        if selected.renpy {
-            let base = inv.root.join(".work/native-downloads");
-            cmd.env("RENPY_SDK_ROOT", base.join("renpy-sdk"))
-                .env("RENPY_PYTHON_DEV", base.join("python"))
-                .env("RENPY_SDL_INCLUDE", base.join("sdl2/include"))
-                .env("Python3_EXECUTABLE", base.join("python/python.exe"))
-                .env(
-                    "RENPY_CYTHON_LICENSE",
-                    base.join("cython-license/LICENSE.txt"),
-                )
-                .env("PYTHONDONTWRITEBYTECODE", "1");
-        }
+    }
+    if selected.renpy {
+        let base = inv.root.join(".work/native-downloads");
+        cmd.env("RENPY_SDK_ROOT", base.join("renpy-sdk"))
+            .env("RENPY_PYTHON_DEV", base.join("python"))
+            .env("RENPY_SDL_INCLUDE", base.join("sdl2/include"))
+            .env(
+                "Python3_EXECUTABLE",
+                base.join("python").join(build_python_relative()),
+            )
+            .env(
+                "RENPY_CYTHON_LICENSE",
+                base.join("cython-license/LICENSE.txt"),
+            )
+            .env("PYTHONDONTWRITEBYTECODE", "1");
     }
     if crate::apple::supported(target) && selected.subtitle {
         // Apple triplets statically link the complete libass closure, including
@@ -1659,7 +1753,7 @@ pub fn prepare(
         return doctor(inv, target, core);
     }
     if target_spec.platform == "linux"
-        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
+        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
     {
         return doctor(inv, target, core);
     }
@@ -1938,6 +2032,54 @@ mod native_tests {
             required: vec!["source.txt".into()],
         };
         (archive, pin)
+    }
+    #[cfg(unix)]
+    #[test]
+    fn native_archives_preserve_executable_inputs() {
+        let temp = tempfile::tempdir().unwrap();
+        let bytes = b"#!/bin/sh\nexit 7\n";
+        for format in ["zip", "tar-gz"] {
+            let input = temp.path().join(format);
+            if format == "zip" {
+                let mut zip = zip::ZipWriter::new(fs::File::create(&input).unwrap());
+                zip.start_file(
+                    "fixture/tool",
+                    zip::write::SimpleFileOptions::default().unix_permissions(0o755),
+                )
+                .unwrap();
+                zip.write_all(bytes).unwrap();
+                zip.finish().unwrap();
+            } else {
+                let gzip = flate2::write::GzEncoder::new(
+                    fs::File::create(&input).unwrap(),
+                    flate2::Compression::default(),
+                );
+                let mut tar = tar::Builder::new(gzip);
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_mode(0o755);
+                header.set_cksum();
+                tar.append_data(&mut header, "fixture/tool", &bytes[..])
+                    .unwrap();
+                tar.into_inner().unwrap().finish().unwrap();
+            }
+            let pin = NativeArchive {
+                version: "fixture".into(),
+                url: "https://not-used.invalid/fixture".into(),
+                sha256: package::sha256(&input).unwrap(),
+                file_name: format.into(),
+                format: format.into(),
+                strip_prefix: "fixture".into(),
+                include: Vec::new(),
+                required: vec!["tool".into()],
+            };
+            let out = temp.path().join(format!("out-{format}"));
+            extract_native_archive(&pin, &input, &out, "bin").unwrap();
+            assert_eq!(
+                Command::new(out.join("bin/tool")).status().unwrap().code(),
+                Some(7)
+            );
+        }
     }
 
     #[test]
