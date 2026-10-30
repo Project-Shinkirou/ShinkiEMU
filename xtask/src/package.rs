@@ -630,6 +630,29 @@ fn licenses(
 ) -> Result<Vec<(PathBuf, String)>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
+    if selected.ffmpeg {
+        let share = dependencies::ffmpeg_install(inv, &result.target)?.join("share");
+        entries.push((
+            share.join("ffmpeg/copyright"),
+            "licenses/ffmpeg/copyright".into(),
+        ));
+        for entry in fs::read_dir(share)? {
+            let entry = entry?;
+            if entry.file_name() == "ffmpeg" {
+                continue;
+            }
+            let copyright = entry.path().join("copyright");
+            if copyright.is_file() {
+                entries.push((
+                    copyright,
+                    format!(
+                        "licenses/ffmpeg/{}/copyright",
+                        entry.file_name().to_string_lossy()
+                    ),
+                ));
+            }
+        }
+    }
     if selected.subtitle
         && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
     {
@@ -881,18 +904,6 @@ pub fn package(
                 .unwrap()
                 .licenses
                 .push(BuildAsset { source, dest });
-        }
-        if dependencies::needs(inv, target, component)?.ffmpeg {
-            result
-                .core_build
-                .as_mut()
-                .unwrap()
-                .licenses
-                .push(BuildAsset {
-                    source: dependencies::ffmpeg_install(inv, target)?
-                        .join("share/ffmpeg/copyright"),
-                    dest: "licenses/ffmpeg/copyright".into(),
-                });
         }
         stage_core(&result, version, out, &search_dirs(inv, &result)?)
     }
