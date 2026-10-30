@@ -205,12 +205,12 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki"
-rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
+branch = "shinki-linux-port"
+rev = "860c1d4fb0481fe65897063914eb8ee8d9d20222"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "Native dependency closure fails on Linux (vcpkg libxcrypt autoreconf: LT_SYS_SYMBOL_USCORE); port pending."
+reason = "The pinned fork contains the Linux owner and vcpkg libxcrypt autoreconf prerequisites, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "macOS native dependency closure (vcpkg gperf) has not built in CI; port pending."
@@ -365,33 +365,33 @@ supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki"
-rev = "6261749f383c189f7504f7814aa454b90d5a9e93"
+branch = "shinki-unblock-linux"
+rev = "4d60012027c4e199d0e815929bf1f7a7341ae689"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
+reason = "The pinned fork implements the Linux GNU adapter and x64-linux-dynamic vcpkg path, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
+reason = "Android static Manager packaging still lacks the native-vcpkg triplets and static CMake dependency closure required by Impacto."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
+reason = "Android static Manager packaging still lacks the native-vcpkg triplets and static CMake dependency closure required by Impacto."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -407,14 +407,16 @@ features = []
 dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
-licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
 rev = "6dc272ff4def04e4e705906fd15ab5db7e75fe66"
 upstream = "https://github.com/renpy/renpy"
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "The Linux SDK/runtime adapter is implemented, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
