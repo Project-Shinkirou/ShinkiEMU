@@ -99,7 +99,7 @@ cargo xtask build --target x86_64-linux-android --manager --release
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
 ```
 
-每次构建都以 `cargo ndk --locked` 编译，静态链接 RFVP，并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
+每次构建都以 `cargo ndk --locked` 编译，静态链接 `static_manager_targets` 含该三元组的核心（RFVP、Shinki Musica），并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
 
 首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。
 
@@ -142,7 +142,7 @@ cargo xtask package --target aarch64-apple-ios-sim --manager --version 0.1.0-bet
 
 macOS 包含真实的 `ShinkiEMU-adhoc.app`，可执行文件位于 `Contents/MacOS`，元数据和许可位于 `Contents/Resources`，`ci`/`release` 生成 ZIP。iOS Manager 在主线程使用 Slint 的 winit/UIKit 后端和 Metal 渲染器，原生 Files 选择器保留安全作用域授权及书签，应用数据存入自身 Library 沙箱。iOS 重启需由用户关闭再打开应用。共享平台会激活真实的 AVAudioSession；Manager 编译成功不代表可以在 iOS 安装任意下载的核心二进制，核心自身的嵌入与构建限制仍在清单中。
 
-RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动态核心，并在 iOS 真机和两种模拟器架构的 Manager 中静态注册。iOS 不加载下载的核心 dylib；Android 仍只静态集成 RFVP。构建会核对 Manager 依赖与 `build/cores.toml` 的提交 pin，安装包包含 `embedded-cores.json` 和各静态核心的许可文件。
+RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动态核心，并在 iOS 真机和两种模拟器架构的 Manager 中静态注册。iOS 不加载下载的核心 dylib；Android Manager 静态注册 RFVP 和 Shinki Musica。构建会核对 Manager 依赖与 `build/cores.toml` 的提交 pin，安装包包含 `embedded-cores.json` 和各静态核心的许可文件。
 
 RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
 
@@ -152,13 +152,17 @@ SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump -
 
 ## 矩阵与 CI
 
-`matrix` 从权威清单列出全部核心与 Manager 在已声明目标上的组合（包括两种 iOS 模拟器架构），并给出状态和 blocked 原因。`matrix --json` 生成 GitHub 任务矩阵，只含支持的行；blocked 组合不需要 runner。`--ci` 还会去掉 `x86_64-linux-android` 的 Manager 行，因为 `ci` 从任一 Android 三元组都会构建同一个通用 APK；发布工作流保留两行，用于逐目标的发布记录。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成 RFVP 的 Manager 与独立动态核心包是两条不同交付路径。
+`matrix` 从权威清单列出全部核心与 Manager 在已声明目标上的组合（包括两种 iOS 模拟器架构），并给出状态和 blocked 原因。`matrix --json` 生成 GitHub 任务矩阵，只含支持的行；blocked 组合不需要 runner。`--ci` 还会去掉 `x86_64-linux-android` 的 Manager 行，因为 `ci` 从任一 Android 三元组都会构建同一个通用 APK；发布工作流保留两行，用于逐目标的发布记录。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成核心的 Manager 与独立动态核心包是两条不同交付路径。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
 清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中真实的嵌入及原生依赖限制；OpenHarmony 需要原生宿主适配和 `OHOS_SDK_NATIVE`。清单声称支持的组合编译失败，报告 `failed` 并返回非零。`--all-cores` 跳过已声明的 blocked 组合，但不掩盖支持组合的失败。`publish_blocked` 单独记录分发限制，不等同于无法编译。
+
+远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
+
+本地 runner 只是推送前的可选预检，用来提前发现会让远端失败的问题。`matrix --json [--ci] --since <ref>` 只保留输入在 `<ref>` 之后有变化的行，runner 通过 `SHINKI_CI_SINCE` 传入该参数。共享输入会选中所有行，包括根目录 `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`，以及这里没有列出的任何路径。`Source/Manager/` 和 `Source/Providers/` 选中 Manager 行。`Source/Families/<目录>/` 选中 manifest 位于该目录的核心，以及该核心 `static_manager_targets` 上的 Manager 行；`build/cores.toml` 中某个 `[[cores]]` 表有改动时，对该核心的效果相同。`docs/**`、`Metadata/**` 和 Markdown 文件不选中任何行。
 
 ## 打包与发布
 
@@ -196,7 +200,9 @@ Sena 按已批准的上游分发策略保留 MS PGothic 字体。包内 `license
 
 Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plugin_id 转为小写，并把点和下划线替换为连字符，例如 `ReMinori` 对应 `reminori`；plugin_id 本身不变。`cargo xtask release --component <id> --target <三元组> --version <semver>` 打包一个目标，在 `.work/release/<tag>/<目标>/` 写入二进制 ZIP、源码 ZIP 和 `release.json`。`build/targets.toml`、`build/cores.toml` 中阻止的目标或带 `publish_blocked` 的核心不产生任何文件。对已准备的目标再次运行会直接复用该目录。
 
-`cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标，拒绝来自其他产品提交或核心固定版本的记录，也拒绝空 Release 和已发布的 Release。它把源码包和二进制包上传到 draft，替换中断运行遗留的同名 draft 附件，然后发布 draft，并在 `Metadata/engines/cores/` 下提出目录更新 PR。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
+`cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标。它拒绝来自其他产品提交或核心固定版本的记录、已指向其他提交的 tag、从其他提交创建的 draft，以及空 Release 和已发布的 Release。它在本次运行的提交上创建 draft，或复用该提交上的 draft（替换中断运行遗留的同名附件），上传源码包和二进制包后发布；tag 不存在时由 GitHub 在该提交上创建。核心发布之后，它把每个平台的目录条目提交到 `metadata/release-<tag>` 分支的 `Metadata/engines/cores/` 下，再向 `main` 提 PR。组织设置不允许 Actions 创建 PR 时，最后这一步会失败，但所有条目已在分支上，手动提 PR 即可。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
+
+发布由 `release.yml` 完成。发布单个组件时推送它的 tag。一次推送超过三个 tag 不会触发任何工作流，所以发布多个组件时手动运行该工作流，填写 `version` 和 `components`（逗号分隔的 plugin_id 和 `manager`，或用 `all` 表示所有不带 `publish_blocked` 的组件）。一次运行会构建全部组件 × 目标行，然后发布所有行都成功的组件，由 GitHub 在本次运行的提交上打 tag。运行摘要列出被跳过的组件及其失败的行。
 
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
 

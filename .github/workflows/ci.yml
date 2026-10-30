@@ -1,9 +1,21 @@
 name: CI
+# Catalog-only changes are validated by metadata-intake.yml; documentation builds nothing.
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
+    paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
   pull_request:
+    paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
   workflow_dispatch:
+    inputs:
+      since:
+        description: 'Compare build inputs against this Git ref; empty runs the full matrix'
+        type: string
+        default: ''
+      components:
+        description: 'Optional comma-separated component ids within the affected matrix'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -22,10 +34,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+          fetch-depth: 0
       - run: rustup show
       - id: matrix
         shell: bash
-        run: echo "matrix=$(cargo xtask matrix --json --ci)" >> "$GITHUB_OUTPUT"
+        env:
+          SINCE: ${{ inputs.since }}
+          COMPONENTS: ${{ inputs.components }}
+        run: |
+          args=(--json --ci)
+          if [[ -n "$SINCE" ]]; then args+=(--since "$SINCE"); fi
+          matrix=$(cargo xtask matrix "${args[@]}")
+          if [[ -n "$COMPONENTS" ]]; then
+            matrix=$(jq -ce --arg components "$COMPONENTS" '
+              ($components | split(",")) as $ids
+              | .include |= map(select(.component as $id | $ids | index($id)))
+              | if (.include | length) == 0 then error("No matching affected components") else . end' <<< "$matrix")
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   tools:
     runs-on: windows-2022
     steps:
@@ -47,6 +73,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     env:
+      # CI packages are test builds; release.yml packages the released version.
+      SHINKI_EMU_CI_VERSION: 0.0.0-ci.${{ github.run_number }}
       ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
     defaults:
       run:

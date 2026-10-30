@@ -25,6 +25,8 @@ cargo xtask ci --target aarch64-apple-ios --component manager --report .work/ios
 
 Native requirements are scoped per component. Only consumers prepare the pinned vcpkg subtitle/FFmpeg trees or DXC runtime. Subtitle lookup runs locked Cargo metadata for the selected core's own manifest and enabled build features, then uses triplets from that exact RoukakuEngine Git checkout with the workspace-owned, baseline-pinned libass manifest; it does not infer optional dependencies from the desktop Manager graph or a neighboring checkout. Android uses JDK 27, SDK 37.2, NDK 30.0.16248370 and private cargo-ndk 4.1.2. No command installs system packages.
 
+Android FFmpeg bindings use the target's versioned API 28 triple and NDK sysroot in both `BINDGEN_EXTRA_CLANG_ARGS_<target>` forms (hyphens and underscores). Bindgen prefers the hyphenated form, preserving the API level when cargo-ndk 4.1.2 replaces the underscored form with sysroot-only flags.
+
 Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The built-in Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. Static Manager dependencies and exact Git pins must match `static_manager_targets` in the inventory; dynamic export features stay disabled. iOS packages include all five Rust cores' licenses and an `embedded-cores.json` source inventory.
 
 Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7 NuGet development tree, Cython 3.2.4 cp312 Windows wheel, Cython source-license files and SDL 2.0.20 headers. Python and Cython are installed only into `.work/native-downloads/python`; no system interpreter or developer cache is used. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE`.
@@ -42,5 +44,12 @@ Packaging consumes release build receipts. Output must be new; staging is in the
 Release archives are deterministic, include build provenance and have corresponding-source ZIPs containing downloaded source archives and their vcpkg ports/patches. Source downloads must match the installed package's SPDX SHA512 values; port recipes and patches must match its recorded SHA256 values. Release sources must be committed, and aggregated platforms must share the same product revision. License or source prerequisites stop publication. A core marked `publish_blocked` may compile but its binary is not uploaded. Resolve its concrete distribution review before changing that field.
 
 `release` writes GitHub only with `--publish` and `GH_TOKEN` or `GITHUB_TOKEN`. It refuses replacement assets with different bytes. Catalog entries are created only after reading back published assets and verifying SHA256 and size, through a normal PR in this repository. Tags are `manager-v<semver>` or `core-<core-slug>-v<semver>`. Dispatch builds only upload Actions artifacts. CI records manifest-declared unsupported rows as `blocked`, with `artifact: null`; supported build/package failures remain failures.
+
+Manual `ci.yml` dispatch accepts `since`, using the existing
+`cargo xtask matrix --json --ci --since <ref>` input classifier. The matrix
+checkout fetches full history so the comparison ref is available. An optional
+`components` comma-separated list narrows that affected matrix. For example:
+`gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
+Empty inputs, pushes and pull requests retain the full matrix.
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.

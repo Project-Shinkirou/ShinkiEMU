@@ -1,3 +1,4 @@
+mod affected;
 mod apple;
 mod binary;
 mod build;
@@ -28,9 +29,15 @@ fn run() -> Result<()> {
     let inv = cores::Inventory::load(root)?;
     match cli.command {
         cli::Command::AppleImage { target } => apple::image(root, &target)?,
-        cli::Command::Matrix { json, ci } => {
+        cli::Command::Matrix { json, ci, since } => {
             if json {
-                println!("{}", serde_json::to_string(&inv.job_matrix(ci)?)?);
+                let affected = since
+                    .map(|reference| affected::since(&inv, &reference))
+                    .transpose()?;
+                println!(
+                    "{}",
+                    serde_json::to_string(&inv.job_matrix(ci, affected.as_ref())?)?
+                );
             } else {
                 for r in inv.rows()? {
                     println!(
