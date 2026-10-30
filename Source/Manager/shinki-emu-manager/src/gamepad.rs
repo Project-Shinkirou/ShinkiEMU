@@ -1,8 +1,16 @@
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 use shinki_emu_manager_core::GamepadInput;
 use shinki_emu_manager_core::InputMapping;
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 use std::{
     sync::{
         Arc, Mutex,
@@ -27,16 +35,33 @@ pub(crate) struct GameInputPump;
 
 #[cfg(target_env = "ohos")]
 impl GameInputPump {
-    pub(crate) fn new(_mapping: InputMapping) -> Result<Self, String> { Ok(Self) }
-    pub(crate) fn set_mapping(&mut self, _mapping: InputMapping) -> Result<(), String> { Ok(()) }
-    pub(crate) fn set_wake(&mut self, _wake: GameInputWake) -> Result<(), String> { Ok(()) }
-    pub(crate) fn poll(&mut self) -> Result<Vec<GameInput>, String> { Ok(Vec::new()) }
+    pub(crate) fn new(_mapping: InputMapping) -> Result<Self, String> {
+        Ok(Self)
+    }
+    pub(crate) fn set_mapping(&mut self, _mapping: InputMapping) -> Result<(), String> {
+        Ok(())
+    }
+    pub(crate) fn set_wake(&mut self, _wake: GameInputWake) -> Result<(), String> {
+        Ok(())
+    }
+    pub(crate) fn poll(&mut self) -> Result<Vec<GameInput>, String> {
+        Ok(Vec::new())
+    }
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos", target_env = "ohos"))]
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_env = "ohos"
+))]
 pub(crate) type GameInputWake = std::sync::Arc<dyn Fn() + Send + Sync + 'static>;
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 pub(crate) struct GameInputPump {
     batches: Option<Receiver<Result<Vec<GameInput>, String>>>,
     mapping: Arc<Mutex<InputMapping>>,
@@ -45,7 +70,11 @@ pub(crate) struct GameInputPump {
     worker: Option<thread::JoinHandle<()>>,
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 impl GameInputPump {
     pub(crate) fn new(mapping: InputMapping) -> Result<Self, String> {
         let mapping = Arc::new(Mutex::new(mapping));
@@ -112,7 +141,11 @@ impl GameInputPump {
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 impl Drop for GameInputPump {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
@@ -130,7 +163,11 @@ impl Drop for GameInputPump {
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 fn gamepad_worker(
     mapping: Arc<Mutex<InputMapping>>,
     wake: Arc<Mutex<Option<GameInputWake>>>,
@@ -197,7 +234,11 @@ fn gamepad_worker(
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 fn send_gamepad_batch(
     batches: &SyncSender<Result<Vec<GameInput>, String>>,
     wake: &Arc<Mutex<Option<GameInputWake>>>,
@@ -213,7 +254,11 @@ fn send_gamepad_batch(
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 fn process_gamepad_event(
     mapping: &InputMapping,
     left_x: &mut DirectionalAxis,
@@ -250,7 +295,11 @@ fn process_gamepad_event(
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 fn pad_button(button: gilrs::Button) -> Option<GamepadInput> {
     use gilrs::Button;
     Some(match button {
@@ -274,7 +323,11 @@ fn pad_button(button: gilrs::Button) -> Option<GamepadInput> {
     })
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 #[derive(Debug)]
 struct DirectionalAxis {
     press_threshold: f32,
@@ -283,7 +336,11 @@ struct DirectionalAxis {
     positive_pressed: bool,
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 impl DirectionalAxis {
     fn new(press_threshold: f32, release_threshold: f32) -> Self {
         Self {
@@ -333,7 +390,11 @@ impl DirectionalAxis {
     }
 }
 
-#[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))]
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", not(target_env = "ohos")),
+    target_os = "macos"
+))]
 fn update_button(
     previous: &mut bool,
     next: bool,

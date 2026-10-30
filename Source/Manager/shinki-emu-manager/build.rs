@@ -70,7 +70,10 @@ fn hex_sha256(bytes: &[u8]) -> String {
 /// NAPI/XComponent and OHAudio glue from `Platforms/OHOS/native` and the
 /// system libraries it uses. xtask supplies the clang target/sysroot.
 fn build_ohos_glue() {
-    let sources = ["../../../Platforms/OHOS/native/bridge.c", "../../../Platforms/OHOS/native/audio.c"];
+    let sources = [
+        "../../../Platforms/OHOS/native/bridge.c",
+        "../../../Platforms/OHOS/native/audio.c",
+    ];
     for source in sources {
         println!("cargo:rerun-if-changed={source}");
     }
@@ -79,7 +82,15 @@ fn build_ohos_glue() {
         .flag("-Wall")
         .flag("-Werror")
         .compile("shinki_ohos_glue");
-    for library in ["ace_napi.z", "ace_ndk.z", "native_window", "native_buffer", "native_vsync", "ohaudio", "hilog_ndk.z"] {
+    for library in [
+        "ace_napi.z",
+        "ace_ndk.z",
+        "native_window",
+        "native_buffer",
+        "native_vsync",
+        "ohaudio",
+        "hilog_ndk.z",
+    ] {
         println!("cargo:rustc-link-lib=dylib={library}");
     }
 }

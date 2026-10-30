@@ -8,16 +8,16 @@ use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
-#[cfg(target_env = "ohos")]
-pub mod ohos;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
+#[cfg(target_env = "ohos")]
+pub mod ohos;
 #[cfg(target_os = "android")]
 use android as imp;
-#[cfg(target_env = "ohos")]
-use ohos as imp;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 use desktop as imp;
+#[cfg(target_env = "ohos")]
+use ohos as imp;
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]

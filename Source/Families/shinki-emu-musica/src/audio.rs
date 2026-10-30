@@ -1,4 +1,3 @@
-use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use crate::{
     MusicaAudioCommand, MusicaMountedVfs,
     scene::{error, read_asset},
@@ -14,6 +13,7 @@ use kira::{
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_env = "ohos"))]
 use shinki_emu_sdk::NativeAudioOutput;
+use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use std::{
     collections::BTreeMap,

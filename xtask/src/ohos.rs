@@ -99,7 +99,10 @@ pub(crate) fn tools() -> Result<Tools> {
     .chain(tools.notices.iter().map(|(path, _)| path))
     {
         if !path.is_file() {
-            bail!("DevEco Studio/OpenHarmony SDK file missing: {}", path.display());
+            bail!(
+                "DevEco Studio/OpenHarmony SDK file missing: {}",
+                path.display()
+            );
         }
     }
     Ok(tools)
@@ -126,7 +129,13 @@ pub(crate) fn package(
         ));
         dependencies::run(
             sign_tool(&tools)
-                .args(["sign-app", "-mode", "localSign", "-keyAlias", DEBUG_KEY_ALIAS])
+                .args([
+                    "sign-app",
+                    "-mode",
+                    "localSign",
+                    "-keyAlias",
+                    DEBUG_KEY_ALIAS,
+                ])
                 .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-appCertFile"])
                 .arg(signing.join("app-cert.cer"))
                 .arg("-profileFile")
@@ -137,7 +146,7 @@ pub(crate) fn package(
                 .arg(signing.join("debug.p12"))
                 .args(["-keystorePwd", TEST_KEYSTORE_PASSWORD, "-signCode", "1"])
                 .arg("-outFile")
-                .arg(&hap)
+                .arg(&hap),
         )?;
         verify_hap(&tools, &hap, &result.target)?;
         fs::write(
@@ -161,7 +170,12 @@ pub(crate) fn package(
 
 /// Replace the generated `entry/libs` and `rawfile/bundled` trees (both
 /// ignored by Git) with this build's runtime closure and bundled files.
-fn stage_inputs(inv: &Inventory, result: &BuildResult, tools: &Tools, project: &Path) -> Result<()> {
+fn stage_inputs(
+    inv: &Inventory,
+    result: &BuildResult,
+    tools: &Tools,
+    project: &Path,
+) -> Result<()> {
     let libs = project.join("entry/libs");
     let bundled = project.join("entry/src/main/resources/rawfile/bundled");
     for generated in [&libs, &bundled] {
@@ -178,7 +192,11 @@ fn stage_inputs(inv: &Inventory, result: &BuildResult, tools: &Tools, project: &
         &package::search_dirs(inv, result)?,
         &result.target,
     )? {
-        let name = dependency.file_name().unwrap().to_string_lossy().into_owned();
+        let name = dependency
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         native.push((dependency, name));
     }
     fs::create_dir_all(libs.join(ABI))?;
@@ -206,7 +224,10 @@ fn stage_inputs(inv: &Inventory, result: &BuildResult, tools: &Tools, project: &
     }
     fs::create_dir_all(&bundled)?;
     copy_entries(&entries, &bundled)?;
-    let mut names = entries.into_iter().map(|(_, name)| name).collect::<Vec<_>>();
+    let mut names = entries
+        .into_iter()
+        .map(|(_, name)| name)
+        .collect::<Vec<_>>();
     names.sort();
     // Read by ManagerBridge.ets `extractBundled`.
     fs::write(bundled.join("bundled.manifest"), names.join("\n") + "\n")?;
@@ -239,8 +260,15 @@ fn build_hap(tools: &Tools, project: &Path, version: &str) -> Result<PathBuf> {
     dependencies::run(node(&tools.ohpm).args(["install", "--all"]))?;
     dependencies::run(
         node(&tools.hvigor)
-            .args(["--mode", "module", "-p", "product=default", "-p", "buildMode=release"])
-            .args(["assembleHap", "--no-daemon"])
+            .args([
+                "--mode",
+                "module",
+                "-p",
+                "product=default",
+                "-p",
+                "buildMode=release",
+            ])
+            .args(["assembleHap", "--no-daemon"]),
     )?;
     // Only the top level: hvigor links symbol/ to its native cache.
     let mut haps = Vec::new();
@@ -256,7 +284,10 @@ fn build_hap(tools: &Tools, project: &Path, version: &str) -> Result<PathBuf> {
         }
     }
     if haps.len() != 1 {
-        bail!("hvigor must produce exactly one unsigned HAP in {}", output.display());
+        bail!(
+            "hvigor must produce exactly one unsigned HAP in {}",
+            output.display()
+        );
     }
     Ok(haps.remove(0))
 }
@@ -286,13 +317,18 @@ fn signing_material(tools: &Tools) -> Result<PathBuf> {
     fs::create_dir_all(&directory)?;
     let temp = tempfile::tempdir_in(&directory)?;
     let work = temp.path();
-    fs::copy(tools.test_pki.join("OpenHarmony.p12"), work.join("debug.p12"))?;
+    fs::copy(
+        tools.test_pki.join("OpenHarmony.p12"),
+        work.join("debug.p12"),
+    )?;
     // hap-sign-tool accepts CA certificates only from .cer files: split the
     // SDK chain (root CA, application CA, profile-debug certificate).
     let chain = fs::read_to_string(tools.test_pki.join("OpenHarmonyProfileDebug.pem"))?;
     let certificates = pem_certificates(&chain);
     if certificates.len() != 3 {
-        bail!("OpenHarmonyProfileDebug.pem must hold root CA, application CA and profile certificate");
+        bail!(
+            "OpenHarmonyProfileDebug.pem must hold root CA, application CA and profile certificate"
+        );
     }
     fs::write(work.join("root-ca.cer"), certificates[0])?;
     fs::write(work.join("sub-ca.cer"), certificates[1])?;
@@ -305,15 +341,31 @@ fn signing_material(tools: &Tools) -> Result<PathBuf> {
     };
     let mut command = sign_tool(tools);
     command.args(["generate-keypair", "-keyAlias", DEBUG_KEY_ALIAS, "-keyPwd"]);
-    command.args([TEST_KEYSTORE_PASSWORD, "-keyAlg", "ECC", "-keySize", "NIST-P-256"]);
+    command.args([
+        TEST_KEYSTORE_PASSWORD,
+        "-keyAlg",
+        "ECC",
+        "-keySize",
+        "NIST-P-256",
+    ]);
     keystore(&mut command);
     dependencies::run(&mut command)?;
     let mut command = sign_tool(tools);
     command
         .args(["generate-app-cert", "-keyAlias", DEBUG_KEY_ALIAS])
-        .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-signAlg", "SHA256withECDSA"])
+        .args([
+            "-keyPwd",
+            TEST_KEYSTORE_PASSWORD,
+            "-signAlg",
+            "SHA256withECDSA",
+        ])
         .args(["-issuer", APP_CA, "-issuerKeyAlias", APP_CA_KEY_ALIAS])
-        .args(["-issuerKeyPwd", TEST_KEYSTORE_PASSWORD, "-subject", DEBUG_SUBJECT])
+        .args([
+            "-issuerKeyPwd",
+            TEST_KEYSTORE_PASSWORD,
+            "-subject",
+            DEBUG_SUBJECT,
+        ])
         .args(["-validity", "3650", "-rootCaCertFile", "root-ca.cer"])
         .args(["-subCaCertFile", "sub-ca.cer", "-outForm", "certChain"])
         .args(["-outFile", "app-cert.cer"]);
@@ -345,10 +397,19 @@ fn signing_material(tools: &Tools) -> Result<PathBuf> {
         .as_object_mut()
         .context("profile template")?
         .remove("debug-info");
-    fs::write(work.join("profile.json"), serde_json::to_vec_pretty(&profile)?)?;
+    fs::write(
+        work.join("profile.json"),
+        serde_json::to_vec_pretty(&profile)?,
+    )?;
     let mut command = sign_tool(tools);
     command
-        .args(["sign-profile", "-mode", "localSign", "-keyAlias", PROFILE_KEY_ALIAS])
+        .args([
+            "sign-profile",
+            "-mode",
+            "localSign",
+            "-keyAlias",
+            PROFILE_KEY_ALIAS,
+        ])
         .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-profileCertFile"])
         .arg(tools.test_pki.join("OpenHarmonyProfileDebug.pem"))
         .args(["-inFile", "profile.json", "-signAlg", "SHA256withECDSA"])
@@ -358,7 +419,7 @@ fn signing_material(tools: &Tools) -> Result<PathBuf> {
     dependencies::run(
         sign_tool(tools)
             .args(["verify-profile", "-inFile", "profile.p7b"])
-            .current_dir(work)
+            .current_dir(work),
     )?;
     for name in files {
         fs::rename(work.join(name), directory.join(name))?;
@@ -416,7 +477,7 @@ fn verify_hap(tools: &Tools, hap: &Path, target: &str) -> Result<()> {
             .arg("-outCertChain")
             .arg(evidence.path().join("chain.cer"))
             .arg("-outProfile")
-            .arg(evidence.path().join("profile.p7b"))
+            .arg(evidence.path().join("profile.p7b")),
     )?;
     let extracted = tempfile::tempdir()?;
     let mut archive = zip::ZipArchive::new(fs::File::open(hap)?)?;
@@ -453,11 +514,7 @@ fn verify_hap(tools: &Tools, hap: &Path, target: &str) -> Result<()> {
     for (library, name) in tree(&dir)? {
         let info = binary::inspect(&library, target, false)?;
         println!("HAP libs/{ABI}/{name} NEEDED: {:?}", info.dependencies);
-        dependencies::run(
-            Command::new(&tools.readelf)
-                .arg("-d")
-                .arg(&library)
-        )?;
+        dependencies::run(Command::new(&tools.readelf).arg("-d").arg(&library))?;
         binary::closure(&library, std::slice::from_ref(&dir), target)?;
     }
     Ok(())

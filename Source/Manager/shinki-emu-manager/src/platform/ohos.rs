@@ -18,10 +18,14 @@ use std::{
     time::Duration,
 };
 
-use shinki_emu_sdk::runtime::{AudioSink, AudioSinkBox, PcmFormat, PcmFormatSpec, SessionError, SessionResult};
+use shinki_emu_sdk::runtime::{
+    AudioSink, AudioSinkBox, PcmFormat, PcmFormatSpec, SessionError, SessionResult,
+};
 use slint::platform::{
     EventLoopProxy, Key, Platform, PointerEventButton, WindowAdapter, WindowEvent,
-    software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType, SoftwareRenderer},
+    software_renderer::{
+        MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType, SoftwareRenderer,
+    },
 };
 
 use super::{FileFilter, PickDone};
@@ -60,6 +64,8 @@ enum TouchPhase {
 
 /// Runs before Slint renders a frame and after the frame reached the surface.
 pub type FrameHook = Box<dyn FnMut()>;
+/// Shared so delivery can release the slot before running the handler.
+type LifecycleHandler = Rc<dyn Fn(LifecycleEvent)>;
 
 static EVENTS: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
 static FILES: OnceLock<PathBuf> = OnceLock::new();
@@ -70,7 +76,7 @@ static DARK: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static PENDING_PICKERS: RefCell<HashMap<u32, PickDone>> = RefCell::new(HashMap::new());
-    static LIFECYCLE_HANDLER: RefCell<Option<Rc<dyn Fn(LifecycleEvent)>>> = RefCell::new(None);
+    static LIFECYCLE_HANDLER: RefCell<Option<LifecycleHandler>> = RefCell::new(None);
     static FRAME_HOOKS: RefCell<Option<(FrameHook, FrameHook)>> = RefCell::new(None);
 }
 
@@ -174,7 +180,8 @@ impl OhosPlatform {
             Event::Frame | Event::Quit => {}
             Event::Invoke(callback) => callback(),
             Event::Resize(width, height) => {
-                self.window.set_size(slint::PhysicalSize::new(width, height));
+                self.window
+                    .set_size(slint::PhysicalSize::new(width, height));
                 self.window.request_redraw();
                 lifecycle(LifecycleEvent::ConfigChanged);
             }
@@ -269,12 +276,16 @@ fn request_frame() {
 /// OH_NativeXComponent_KeyCode values to Slint key text.
 fn key_text(code: i32) -> Option<slint::SharedString> {
     Some(match code {
-        2000..=2009 => char::from_u32((code - 2000 + 48) as u32)?.to_string().into(),
+        2000..=2009 => char::from_u32((code - 2000 + 48) as u32)?
+            .to_string()
+            .into(),
         2012 => Key::UpArrow.into(),
         2013 => Key::DownArrow.into(),
         2014 => Key::LeftArrow.into(),
         2015 => Key::RightArrow.into(),
-        2017..=2042 => char::from_u32((code - 2017 + 97) as u32)?.to_string().into(),
+        2017..=2042 => char::from_u32((code - 2017 + 97) as u32)?
+            .to_string()
+            .into(),
         2043 => ",".into(),
         2044 => ".".into(),
         2049 => Key::Tab.into(),
@@ -296,14 +307,29 @@ fn key_text(code: i32) -> Option<slint::SharedString> {
     })
 }
 
-unsafe extern "C" fn draw(data: *mut c_void, pixels: *mut u8, width: i32, height: i32, stride: i32) {
-    if data.is_null() || pixels.is_null() || width <= 0 || height <= 0 || stride < width * 4 || stride % 4 != 0 {
+unsafe extern "C" fn draw(
+    data: *mut c_void,
+    pixels: *mut u8,
+    width: i32,
+    height: i32,
+    stride: i32,
+) {
+    if data.is_null()
+        || pixels.is_null()
+        || width <= 0
+        || height <= 0
+        || stride < width * 4
+        || stride % 4 != 0
+    {
         return;
     }
     let renderer = unsafe { &*data.cast::<SoftwareRenderer>() };
     let line = stride as usize / 4;
     let pixels = unsafe {
-        std::slice::from_raw_parts_mut(pixels.cast::<PremultipliedRgbaColor>(), line * height as usize)
+        std::slice::from_raw_parts_mut(
+            pixels.cast::<PremultipliedRgbaColor>(),
+            line * height as usize,
+        )
     };
     renderer.render(pixels, line);
 }
@@ -318,7 +344,9 @@ fn c_string(value: *const c_char) -> String {
     if value.is_null() {
         String::new()
     } else {
-        unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
@@ -341,7 +369,10 @@ unsafe extern "C" fn shinki_ohos_event(kind: i32, x: f64, y: f64, text: *const c
         3 => Event::Key(x as i32, y == 0.0),
         5 => Event::Surface(x != 0.0),
         6 => Event::Foreground(x != 0.0),
-        7 => Event::Configuration { dark: x != 0.0, scale: y as f32 },
+        7 => Event::Configuration {
+            dark: x != 0.0,
+            scale: y as f32,
+        },
         _ => return,
     };
     send(event);
@@ -386,7 +417,8 @@ pub unsafe fn start(
             let result = shinki_emu_sdk::runtime::install_host_audio_output(open_audio_output)
                 .map_err(|error| error.to_string())
                 .and_then(|()| {
-                    slint::platform::set_platform(Box::new(platform)).map_err(|error| error.to_string())
+                    slint::platform::set_platform(Box::new(platform))
+                        .map_err(|error| error.to_string())
                 })
                 .and_then(|()| run().map_err(|error| error.to_string()));
             if let Err(error) = result {
@@ -413,13 +445,16 @@ pub fn set_frame_hooks(before: FrameHook, after: FrameHook) {
 /// Register the lifecycle handler, replacing the previous one. Must be called
 /// on the Slint event-loop thread, where events are delivered.
 pub fn set_lifecycle_handler(handler: Box<dyn Fn(LifecycleEvent)>) {
-    let handler: Rc<dyn Fn(LifecycleEvent)> = Rc::from(handler);
+    let handler: LifecycleHandler = Rc::from(handler);
     LIFECYCLE_HANDLER.with(|slot| *slot.borrow_mut() = Some(handler));
 }
 
 /// `(foreground, surface)` as last reported by the ArkTS shell.
 pub fn lifecycle_state() -> (bool, bool) {
-    (FOREGROUND.load(Ordering::Acquire), SURFACE.load(Ordering::Acquire))
+    (
+        FOREGROUND.load(Ordering::Acquire),
+        SURFACE.load(Ordering::Acquire),
+    )
 }
 
 /// Whether the system color mode is dark.
@@ -444,7 +479,13 @@ fn notify(kind: &str, payload: &str) -> Result<(), String> {
     }
 }
 
-fn request_picker(kind: &str, title: &str, extensions: &[&str], default_name: &str, done: PickDone) {
+fn request_picker(
+    kind: &str,
+    title: &str,
+    extensions: &[&str],
+    default_name: &str,
+    done: PickDone,
+) {
     let id = NEXT_PICK_ID.fetch_add(1, Ordering::Relaxed);
     PENDING_PICKERS.with(|pending| pending.borrow_mut().insert(id, done));
     let payload = serde_json::json!({
@@ -482,7 +523,10 @@ pub(super) fn report_startup_error(message: &str) {
 }
 
 pub(super) fn default_data_dir() -> Result<PathBuf, String> {
-    Ok(FILES.get().ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?.join("ShinkiEMU"))
+    Ok(FILES
+        .get()
+        .ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?
+        .join("ShinkiEMU"))
 }
 
 /// The HAP's native library; nothing is executed from this path.
@@ -512,7 +556,11 @@ struct AudioStream {
 }
 
 unsafe extern "C" {
-    fn shinki_ohos_audio_open(stream: *mut *mut AudioStream, sample_rate: u32, channels: u32) -> i32;
+    fn shinki_ohos_audio_open(
+        stream: *mut *mut AudioStream,
+        sample_rate: u32,
+        channels: u32,
+    ) -> i32;
     fn shinki_ohos_audio_write(stream: *mut AudioStream, samples: *const f32, count: usize) -> i32;
     fn shinki_ohos_audio_cancel(stream: *mut AudioStream);
     fn shinki_ohos_audio_close(stream: *mut AudioStream);
@@ -556,13 +604,19 @@ impl AudioSink for OhosAudioOutput {
             ));
         }
         self.stream.set(OhosAudioStream(stream)).map_err(|_| {
-            SessionError::invalid("SHINKI_EMU_OHOS_AUDIO_CONFIGURED", "audio output is already configured")
+            SessionError::invalid(
+                "SHINKI_EMU_OHOS_AUDIO_CONFIGURED",
+                "audio output is already configured",
+            )
         })
     }
 
     fn write(&self, samples: Vec<f32>) -> SessionResult<Option<Vec<f32>>> {
         let stream = self.stream.get().ok_or_else(|| {
-            SessionError::invalid("SHINKI_EMU_OHOS_AUDIO_UNCONFIGURED", "audio output was not configured")
+            SessionError::invalid(
+                "SHINKI_EMU_OHOS_AUDIO_UNCONFIGURED",
+                "audio output was not configured",
+            )
         })?;
         match unsafe { shinki_ohos_audio_write(stream.0, samples.as_ptr(), samples.len()) } {
             0 => Ok(Some(samples)),

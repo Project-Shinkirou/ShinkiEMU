@@ -1575,7 +1575,10 @@ pub fn apply_environment(
             // OHOS ships libc++ (no libstdc++); apps bundle libc++_shared.so.
             // Read by cc and luau0-src, which otherwise default to stdc++.
             .env(format!("CXXSTDLIB_{target_key}"), "c++_shared")
-            .env(format!("BINDGEN_EXTRA_CLANG_ARGS_{target_key}"), &clang_args)
+            .env(
+                format!("BINDGEN_EXTRA_CLANG_ARGS_{target_key}"),
+                &clang_args,
+            )
             // The cmake crate drives the SDK's ohos.toolchain.cmake; use the
             // SDK's CMake and Ninja, not the host default generator (NMake on
             // Windows).

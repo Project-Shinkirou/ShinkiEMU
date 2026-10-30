@@ -9,13 +9,13 @@ pub mod window_service;
 
 extern crate self as shinki_emu_manager;
 
+#[cfg(target_env = "ohos")]
+pub use host::StageImageUpdate;
 pub use host::{
     CloseDecision, ConfigPathPick, FilterApply, HostError, HostExit, HostWake, KeyCaptureState,
     ManagerController, ShinkiUnderlayRenderer, SnackbarOutcome, StageTextureUpdate,
     WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
 };
-#[cfg(target_env = "ohos")]
-pub use host::StageImageUpdate;
 
 // Android (NativeActivity) and OHOS (NAPI) load the Manager as a cdylib; the
 // application modules and their entrypoints come from the shared binary root.

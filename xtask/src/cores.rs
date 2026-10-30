@@ -190,7 +190,10 @@ impl Inventory {
                 bail!("target needs a Manager blocked reason");
             }
             if t.manager_supported && t.manager_local_build {
-                bail!("{}: manager_local_build applies only to unsupported Managers", t.triple);
+                bail!(
+                    "{}: manager_local_build applies only to unsupported Managers",
+                    t.triple
+                );
             }
         }
         for c in &self.cores {

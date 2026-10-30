@@ -34,15 +34,20 @@ pub(super) struct SoftwarePresentation {
 }
 
 impl SoftwarePresentation {
-    pub(super) fn update(&mut self, mailbox: &FrameMailbox) -> Result<Option<StageImageUpdate>, String> {
+    pub(super) fn update(
+        &mut self,
+        mailbox: &FrameMailbox,
+    ) -> Result<Option<StageImageUpdate>, String> {
         let Some(frame) = mailbox.snapshot()? else {
             if self.identity.take().is_none() {
                 return Ok(None);
             }
             self.shown = None;
             self.spare = None;
-            let ((logical_width, logical_height), content) =
-                self.geometry.take().ok_or("SHINKI_EMU_HOST_FRAME_BASELINE")?;
+            let ((logical_width, logical_height), content) = self
+                .geometry
+                .take()
+                .ok_or("SHINKI_EMU_HOST_FRAME_BASELINE")?;
             return Ok(Some(StageImageUpdate {
                 image: Image::default(),
                 logical_width,
@@ -61,29 +66,50 @@ impl SoftwarePresentation {
         let required = info.required_bytes().ok_or("SHINKI_EMU_HOST_FRAME_SIZE")?;
         let source = source.get(..required).ok_or("SHINKI_EMU_HOST_FRAME_SIZE")?;
         let mut buffer = match self.spare.take() {
-            Some(buffer) if buffer.width() == info.width && buffer.height() == info.height => buffer,
+            Some(buffer) if buffer.width() == info.width && buffer.height() == info.height => {
+                buffer
+            }
             _ => SharedPixelBuffer::new(info.width, info.height),
         };
-        let bgra = matches!(info.format, FrameFormat::Bgra8Srgb { .. } | FrameFormat::Bgra8Linear { .. });
-        let linear = matches!(info.format, FrameFormat::Rgba8Linear { .. } | FrameFormat::Bgra8Linear { .. });
+        let bgra = matches!(
+            info.format,
+            FrameFormat::Bgra8Srgb { .. } | FrameFormat::Bgra8Linear { .. }
+        );
+        let linear = matches!(
+            info.format,
+            FrameFormat::Rgba8Linear { .. } | FrameFormat::Bgra8Linear { .. }
+        );
         let opaque = info.format.alpha() == FrameAlpha::Ignored;
         let encode = &*LINEAR_TO_SRGB;
         let stride = info.stride as usize;
         let destination = buffer.make_mut_bytes();
-        for (y, row) in destination.chunks_exact_mut(width * 4).take(height).enumerate() {
+        for (y, row) in destination
+            .chunks_exact_mut(width * 4)
+            .take(height)
+            .enumerate()
+        {
             let source_y = match info.rows {
                 FrameRowOrder::TopToBottom => y,
                 FrameRowOrder::BottomToTop => height - 1 - y,
             };
             let source_row = &source[source_y * stride..source_y * stride + width * 4];
-            for (output, input) in row.chunks_exact_mut(4).zip(source_row.chunks_exact(4)) {
+            for (output, input) in row
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(source_row.as_chunks::<4>().0)
+            {
                 let (r, g, b) = if bgra {
                     (input[2], input[1], input[0])
                 } else {
                     (input[0], input[1], input[2])
                 };
                 let (r, g, b) = if linear {
-                    (encode[usize::from(r)], encode[usize::from(g)], encode[usize::from(b)])
+                    (
+                        encode[usize::from(r)],
+                        encode[usize::from(g)],
+                        encode[usize::from(b)],
+                    )
                 } else {
                     (r, g, b)
                 };

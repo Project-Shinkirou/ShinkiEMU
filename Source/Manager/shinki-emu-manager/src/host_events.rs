@@ -266,10 +266,10 @@ pub(super) fn install<C: ManagerController>(
                 return;
             };
             let window = adapter.window();
-            if event == LifecycleEvent::ConfigChanged {
-                if let Ok(dark) = system_theme(window.window()) {
-                    window.global::<App>().set_system_dark(dark);
-                }
+            if event == LifecycleEvent::ConfigChanged
+                && let Ok(dark) = system_theme(window.window())
+            {
+                window.global::<App>().set_system_dark(dark);
             }
             let result = current_window_state(window.window()).and_then(|state| {
                 // Before the first surface exists there is no drawable extent to

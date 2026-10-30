@@ -701,7 +701,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                     if session.get_active() && session.get_menu_open() {
                         let keys: Vec<_> = events
                             .iter()
-                            .filter_map(|event| menu_key(event.button?).map(|key| (key, event.pressed)))
+                            .filter_map(|event| {
+                                menu_key(event.button?).map(|key| (key, event.pressed))
+                            })
                             .collect();
                         if !keys.is_empty() {
                             // Dispatching from inside rendering would re-enter Slint.
@@ -781,61 +783,84 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let renderer_callback = renderer.clone();
         #[cfg(not(target_os = "android"))]
         let initial_window_pending = Cell::new(true);
-        adapter.window().window().set_rendering_notifier(move |state, api| {
-            let slint::GraphicsAPI::WGPU30 { device, queue, .. } = api else {
-                record_fatal(&fatal_error_callback, "rendering notifier did not provide WGPU 30".into());
-                let _ = slint::quit_event_loop();
-                return;
-            };
-            let context = WgpuFrameContext { device, queue };
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match state {
-                slint::RenderingState::RenderingSetup => {
-                    crate::startup::mark("ui_gpu_ready");
-                    renderer_callback.borrow_mut().setup(context)?;
-                    if let Some(window) = event_window.upgrade() {
-                        // Android windows always cover the full surface; only desktop fits.
-                        #[cfg(not(target_os = "android"))]
-                        if initial_window_pending.replace(false) {
-                            // Winit creates its native window when the event loop starts.
-                            // Defer fitting until the first render finishes applying size.
-                            let weak = window.as_weak();
-                            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-                                if let Some(window) = weak.upgrade() {
-                                    window_commands::fit_initial_window(window.window());
+        adapter
+            .window()
+            .window()
+            .set_rendering_notifier(move |state, api| {
+                let slint::GraphicsAPI::WGPU30 { device, queue, .. } = api else {
+                    record_fatal(
+                        &fatal_error_callback,
+                        "rendering notifier did not provide WGPU 30".into(),
+                    );
+                    let _ = slint::quit_event_loop();
+                    return;
+                };
+                let context = WgpuFrameContext { device, queue };
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match state {
+                        slint::RenderingState::RenderingSetup => {
+                            crate::startup::mark("ui_gpu_ready");
+                            renderer_callback.borrow_mut().setup(context)?;
+                            if let Some(window) = event_window.upgrade() {
+                                // Android windows always cover the full surface; only desktop fits.
+                                #[cfg(not(target_os = "android"))]
+                                if initial_window_pending.replace(false) {
+                                    // Winit creates its native window when the event loop starts.
+                                    // Defer fitting until the first render finishes applying size.
+                                    let weak = window.as_weak();
+                                    slint::Timer::single_shot(
+                                        std::time::Duration::ZERO,
+                                        move || {
+                                            if let Some(window) = weak.upgrade() {
+                                                window_commands::fit_initial_window(
+                                                    window.window(),
+                                                );
+                                            }
+                                        },
+                                    );
                                 }
-                            });
+                                if let Ok(dark) = window_events::system_theme(window.window()) {
+                                    window.global::<App>().set_system_dark(dark);
+                                }
+                            }
+                            filters::configure(
+                                &mut *renderer_callback.borrow_mut(),
+                                &event_controller.borrow().filter_settings(),
+                            )?;
+                            if let Some(update) =
+                                renderer_callback.borrow_mut().take_stage_texture_update()?
+                            {
+                                let window = window_weak.upgrade().ok_or_else(|| {
+                                    "Manager window disappeared during renderer setup".to_string()
+                                })?;
+                                apply_stage_texture_update(&window, update)?;
+                            }
+                            Ok(())
                         }
-                        if let Ok(dark) = window_events::system_theme(window.window()) {
-                            window.global::<App>().set_system_dark(dark);
+                        slint::RenderingState::BeforeRendering => {
+                            service_frame();
+                            let mut renderer = renderer_callback.borrow_mut();
+                            renderer.render(context)?;
+                            if let Some(update) = renderer.take_stage_texture_update()? {
+                                let window = window_weak.upgrade().ok_or_else(|| {
+                                    "Manager window disappeared during texture update".to_string()
+                                })?;
+                                apply_stage_texture_update(&window, update)?;
+                            }
+                            Ok(())
                         }
-                    }
-                    filters::configure(&mut *renderer_callback.borrow_mut(), &event_controller.borrow().filter_settings())?;
-                    if let Some(update) = renderer_callback.borrow_mut().take_stage_texture_update()? {
-                        let window = window_weak
-                            .upgrade()
-                            .ok_or_else(|| "Manager window disappeared during renderer setup".to_string())?;
-                        apply_stage_texture_update(&window, update)?;
-                    }
-                    Ok(())
+                        slint::RenderingState::AfterRendering => finish_frame(),
+                        slint::RenderingState::RenderingTeardown => {
+                            renderer_callback.borrow_mut().teardown()
+                        }
+                        _ => Ok(()),
+                    }))
+                    .unwrap_or_else(|_| Err("underlay renderer panicked".into()));
+                if let Err(error) = result {
+                    renderer_failed(&fatal_error_callback, error);
                 }
-                slint::RenderingState::BeforeRendering => {
-                    service_frame();
-                    let mut renderer = renderer_callback.borrow_mut();
-                    renderer.render(context)?;
-                    if let Some(update) = renderer.take_stage_texture_update()? {
-                        let window = window_weak.upgrade().ok_or_else(|| "Manager window disappeared during texture update".to_string())?;
-                        apply_stage_texture_update(&window, update)?;
-                    }
-                    Ok(())
-                },
-                slint::RenderingState::AfterRendering => finish_frame(),
-                slint::RenderingState::RenderingTeardown => renderer_callback.borrow_mut().teardown(),
-                _ => Ok(()),
-            })).unwrap_or_else(|_| Err("underlay renderer panicked".into()));
-            if let Err(error) = result {
-                renderer_failed(&fatal_error_callback, error);
-            }
-        }).map_err(|error| HostError::Renderer(error.to_string()))?;
+            })
+            .map_err(|error| HostError::Renderer(error.to_string()))?;
     }
     #[cfg(target_env = "ohos")]
     {
@@ -849,9 +874,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                 service_frame();
                 let update = stage_renderer.borrow_mut().take_stage_image_update()?;
                 if let Some(update) = update {
-                    let window = window_weak
-                        .upgrade()
-                        .ok_or_else(|| "Manager window disappeared during stage update".to_string())?;
+                    let window = window_weak.upgrade().ok_or_else(|| {
+                        "Manager window disappeared during stage update".to_string()
+                    })?;
                     apply_stage_image(
                         &window,
                         update.image,
