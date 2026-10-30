@@ -551,9 +551,7 @@ fn native_sources(
     for native in dependencies::native_cores(inv, target, component) {
         installations.push((
             native.id.as_str(),
-            inv.root.join(".work/native-vcpkg")
-                .join(&native.id)
-                .join("installed")
+            dependencies::native_install(inv, target, &native.id)?
                 .join(dependencies::native_triplet(inv, target)?),
         ));
     }
