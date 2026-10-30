@@ -374,13 +374,19 @@ resources = []
 static_features = ["static"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-apple-xplat"
 rev = "cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
 upstream = "https://github.com/CommitteeOfZero/impacto"
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
