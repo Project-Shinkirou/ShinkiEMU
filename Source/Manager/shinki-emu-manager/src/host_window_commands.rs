@@ -29,11 +29,13 @@ pub(super) fn set_icon(
 ) -> Result<(), String> {
     let custom = icon.is_some();
     #[cfg(any(target_os = "windows", target_os = "linux"))]
-    let icon = icon.or_else(|| Some(FamilyWindowIcon {
-        width: 64,
-        height: 64,
-        rgba: include_bytes!(concat!(env!("OUT_DIR"), "/window-icon.rgba")).to_vec(),
-    }));
+    let icon = icon.or_else(|| {
+        Some(FamilyWindowIcon {
+            width: 64,
+            height: 64,
+            rgba: include_bytes!(concat!(env!("OUT_DIR"), "/window-icon.rgba")).to_vec(),
+        })
+    });
     let icon = icon
         .map(|icon| {
             icon.validate().map_err(|error| error.to_string())?;

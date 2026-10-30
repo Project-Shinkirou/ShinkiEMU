@@ -9,8 +9,8 @@ fn write_runtime_icon() {
         &usvg::Options::default(),
     )
     .expect("SHINKI_EMU_MANAGER_ICON_INVALID");
-    let mut pixmap = tiny_skia::Pixmap::new(64, 64)
-        .expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
+    let mut pixmap =
+        tiny_skia::Pixmap::new(64, 64).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
     pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
     resvg::render(
         &tree,
@@ -39,8 +39,8 @@ fn embed_windows_icon() {
     let output = env::var_os("OUT_DIR").expect("SHINKI_EMU_MANAGER_OUT_DIR_MISSING");
     let mut icons = IconDir::new(ResourceType::Icon);
     for size in [16, 24, 32, 48, 64, 128, 256] {
-        let mut pixmap = tiny_skia::Pixmap::new(size, size)
-            .expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size, size).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
         pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
         resvg::render(
             &tree,
@@ -56,9 +56,8 @@ fn embed_windows_icon() {
                 .expect("SHINKI_EMU_MANAGER_ICON_ENCODING_FAILED"),
         ))
         .expect("SHINKI_EMU_MANAGER_ICON_PNG_INVALID");
-        icons.add_entry(
-            IconDirEntry::encode(&image).expect("SHINKI_EMU_MANAGER_ICON_ENTRY_FAILED"),
-        );
+        icons
+            .add_entry(IconDirEntry::encode(&image).expect("SHINKI_EMU_MANAGER_ICON_ENTRY_FAILED"));
     }
     let icon_path = std::path::PathBuf::from(output).join("shinkiemu.ico");
     icons

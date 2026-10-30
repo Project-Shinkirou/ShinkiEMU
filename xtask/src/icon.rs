@@ -81,20 +81,35 @@ impl Icon {
             fs::copy(root.join(&name), catalog.join(&name))?;
             images.push(serde_json::json!({"idiom":idiom,"size":format!("{points}x{points}"),"scale":format!("{scale}x"),"filename":name}));
         }
-        fs::write(catalog.join("Contents.json"), serde_json::to_vec(&serde_json::json!({"images":images,"info":{"author":"xcode","version":1}}))?)?;
+        fs::write(
+            catalog.join("Contents.json"),
+            serde_json::to_vec(
+                &serde_json::json!({"images":images,"info":{"author":"xcode","version":1}}),
+            )?,
+        )?;
         Ok(())
     }
 
     pub fn icns(&self, path: &Path) -> Result<()> {
         let mut chunks = Vec::new();
-        for (size, kind) in [(16, *b"icp4"), (32, *b"icp5"), (64, *b"icp6"), (128, *b"ic07"), (256, *b"ic08"), (512, *b"ic09"), (1024, *b"ic10")] {
+        for (size, kind) in [
+            (16, *b"icp4"),
+            (32, *b"icp5"),
+            (64, *b"icp6"),
+            (128, *b"ic07"),
+            (256, *b"ic08"),
+            (512, *b"ic09"),
+            (1024, *b"ic10"),
+        ] {
             let png = self.render(size, true)?.encode_png()?;
             chunks.extend_from_slice(&kind);
             chunks.extend_from_slice(&u32::try_from(png.len() + 8)?.to_be_bytes());
             chunks.extend_from_slice(&png);
         }
         let size = u32::try_from(chunks.len() + 8)?;
-        if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let mut data = Vec::with_capacity(size as usize);
         data.extend_from_slice(b"icns");
         data.extend_from_slice(&size.to_be_bytes());
@@ -113,16 +128,41 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let icon = Icon::new().unwrap();
         icon.android(temp.path()).unwrap();
-        let density = tiny_skia::Pixmap::load_png(temp.path().join("res/mipmap-xxxhdpi/ic_launcher.png")).unwrap();
+        let density =
+            tiny_skia::Pixmap::load_png(temp.path().join("res/mipmap-xxxhdpi/ic_launcher.png"))
+                .unwrap();
         assert_eq!((density.width(), density.height()), (192, 192));
-        assert!(density.data().chunks_exact(4).all(|pixel| pixel[3] == 255));
-        assert!(fs::read_to_string(temp.path().join("res/mipmap-anydpi-v26/ic_launcher.xml")).unwrap().contains("adaptive-icon"));
+        assert!(
+            density
+                .data()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 255)
+        );
+        assert!(
+            fs::read_to_string(temp.path().join("res/mipmap-anydpi-v26/ic_launcher.xml"))
+                .unwrap()
+                .contains("adaptive-icon")
+        );
         icon.ios(temp.path()).unwrap();
         let ios = tiny_skia::Pixmap::load_png(temp.path().join("AppIcon60x60@3x.png")).unwrap();
         assert_eq!((ios.width(), ios.height()), (180, 180));
-        let catalog: serde_json::Value = serde_json::from_slice(&fs::read(temp.path().join("Assets.xcassets/AppIcon.appiconset/Contents.json")).unwrap()).unwrap();
+        let catalog: serde_json::Value = serde_json::from_slice(
+            &fs::read(
+                temp.path()
+                    .join("Assets.xcassets/AppIcon.appiconset/Contents.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         for image in catalog["images"].as_array().unwrap() {
-            assert!(temp.path().join("Assets.xcassets/AppIcon.appiconset").join(image["filename"].as_str().unwrap()).is_file());
+            assert!(
+                temp.path()
+                    .join("Assets.xcassets/AppIcon.appiconset")
+                    .join(image["filename"].as_str().unwrap())
+                    .is_file()
+            );
         }
     }
 
@@ -133,7 +173,10 @@ mod tests {
         Icon::new().unwrap().icns(&path).unwrap();
         let bytes = fs::read(path).unwrap();
         assert_eq!(&bytes[..4], b"icns");
-        assert_eq!(u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize, bytes.len());
+        assert_eq!(
+            u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize,
+            bytes.len()
+        );
         let mut at = 8;
         let mut count = 0;
         while at < bytes.len() {

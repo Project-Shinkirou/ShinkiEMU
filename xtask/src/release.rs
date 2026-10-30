@@ -395,7 +395,8 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
         };
         let archive = work.join(&filename);
         if target.contains("android") && component == "manager" {
-            let android: Value = serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
+            let android: Value =
+                serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
             let apk = android["apk"].as_str().context("Android APK filename")?;
             fs::copy(package_dir.join(apk), &archive)?;
         } else {

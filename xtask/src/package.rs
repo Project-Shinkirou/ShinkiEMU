@@ -818,11 +818,25 @@ pub fn package(
             write_provenance(&result, &stage.join("build.json"))?;
             if target == "x86_64-unknown-linux-gnu" {
                 let icon = crate::icon::Icon::new()?;
-                for (size, dir) in [(16, "16x16"), (32, "32x32"), (48, "48x48"), (64, "64x64"), (128, "128x128"), (256, "256x256") ] {
-                    icon.png(size, true, &stage.join(format!("share/icons/hicolor/{dir}/apps/shinkiemu.png")))?;
+                for (size, dir) in [
+                    (16, "16x16"),
+                    (32, "32x32"),
+                    (48, "48x48"),
+                    (64, "64x64"),
+                    (128, "128x128"),
+                    (256, "256x256"),
+                ] {
+                    icon.png(
+                        size,
+                        true,
+                        &stage.join(format!("share/icons/hicolor/{dir}/apps/shinkiemu.png")),
+                    )?;
                 }
                 fs::create_dir_all(stage.join("share/applications"))?;
-                fs::write(stage.join("share/applications/shinkiemu.desktop"), "[Desktop Entry]\nType=Application\nName=ShinkiEMU\nComment=Visual novel emulator manager\nExec=shinki-emu-manager\nIcon=shinkiemu\nTerminal=false\nCategories=Game;Emulator;\n")?;
+                fs::write(
+                    stage.join("share/applications/shinkiemu.desktop"),
+                    "[Desktop Entry]\nType=Application\nName=ShinkiEMU\nComment=Visual novel emulator manager\nExec=shinki-emu-manager\nIcon=shinkiemu\nTerminal=false\nCategories=Game;Emulator;\n",
+                )?;
             }
             if crate::apple::supported(target) {
                 let app = crate::apple::bundle(
