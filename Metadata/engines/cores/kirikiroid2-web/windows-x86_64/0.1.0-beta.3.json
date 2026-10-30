@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "KiriKiri2",
+  "family_name": "KiriKiri",
+  "license": "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2",
+  "platform": "windows-x86_64",
+  "plugin_id": "kirikiroid2-web",
+  "release_tag": "core-kirikiroid2-web-v0.1.0-beta.3",
+  "sha256": "013c57af12e6df9f56e24ec406f3f0f60cd92671bbfbc2c3a6ca6dc51c93c3e9",
+  "size": 29947534,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-kirikiroid2-web-v0.1.0-beta.3/shinki-emu-core-kirikiroid2-web-0.1.0-beta.3-windows-x86_64.zip",
+  "version": "0.1.0-beta.3"
+}
