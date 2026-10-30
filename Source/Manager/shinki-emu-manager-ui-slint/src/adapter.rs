@@ -226,13 +226,9 @@ impl SlintManagerAdapter {
         let h = handler.clone();
         store.on_select_provider(move |id| h(StoreAction::SelectProvider { id: id.to_string() }));
         let h = handler.clone();
-        store.on_browser_login(move |cookies| {
-            h(StoreAction::BrowserLogin {
-                cookies: cookies.to_string(),
-            })
-        });
+        store.on_web_login(move || h(StoreAction::WebLogin));
         let h = handler.clone();
-        store.on_open_browser(move || h(StoreAction::OpenBrowser));
+        store.on_cancel_web_login(move || h(StoreAction::CancelWebLogin));
         let h = handler.clone();
         store.on_open_destination(move || h(StoreAction::OpenDestination));
         let h = handler.clone();
@@ -553,8 +549,7 @@ impl SlintManagerAdapter {
         store.set_provider_name(view.provider_name.as_str().into());
         store.set_can_qr(view.can_qr);
         store.set_can_credentials(view.can_credentials);
-        store.set_can_browser(view.can_browser);
-        store.set_browser_url(view.browser_url.as_str().into());
+        store.set_can_web(view.can_web);
         store.set_has_branches(view.has_branches);
         store.set_has_depots(view.has_depots);
         store.set_can_verify(view.can_verify);

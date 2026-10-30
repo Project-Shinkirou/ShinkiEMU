@@ -322,6 +322,7 @@ fn fallback_title(code: &str) -> &'static str {
         "PRESET" => tr!("推荐配置出错"),
         "AUDIO" => tr!("声音输出出错"),
         "MODAL" | "MANAGER" => tr!("管理器出错"),
+        "WEB" => tr!("网页登录出错"),
         _ => tr!("发生错误"),
     }
 }

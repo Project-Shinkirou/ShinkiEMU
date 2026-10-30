@@ -590,17 +590,20 @@ msgstr "QR login"
 msgid "导入 {} 客户端登录"
 msgstr "Import {} client sign-in"
 
-msgid "浏览器登录"
-msgstr "Browser sign-in"
+msgid "网页登录"
+msgstr "Sign in on the web"
 
-msgid "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。"
-msgstr "Sign in to your own account on the store's website, then paste that site's cookie. The cookie is stored only in the system keyring."
+msgid "在内置浏览器中打开 {} 的登录页。登录完成后会自动继续，登录凭据只保存在系统凭据库中。"
+msgstr "Opens the {} sign-in page in a built-in browser. ShinkiEMU continues on its own once you have signed in, and keeps the sign-in only in the system credential store."
 
-msgid "打开官网登录页"
+msgid "打开登录页"
 msgstr "Open sign-in page"
 
-msgid "使用 Cookie 登录"
-msgstr "Sign in with cookie"
+msgid "在 {} 登录页中登录，完成后会自动继续。"
+msgstr "Sign in on the {} page. ShinkiEMU continues on its own when you are done."
+
+msgid "网页登录出错"
+msgstr "Web sign-in failed"
 
 msgid "正在连接 {}"
 msgstr "Connecting to {}"

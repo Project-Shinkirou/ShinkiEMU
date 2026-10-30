@@ -655,8 +655,14 @@ export global Store {
     in-out property <string> provider-name;
     in-out property <bool> can-qr;
     in-out property <bool> can-credentials;
-    in-out property <bool> can-browser;
-    in-out property <string> browser-url;
+    in-out property <bool> can-web;
+    // Set by the host while the embedded sign-in webview is open.
+    in-out property <bool> web-active;
+    // Window position of the sign-in page area, set by StoreWebArea.
+    in-out property <length> web-area-x;
+    in-out property <length> web-area-y;
+    in-out property <length> web-area-width;
+    in-out property <length> web-area-height;
     in-out property <bool> has-branches;
     in-out property <bool> has-depots;
     in-out property <bool> can-verify;
@@ -692,8 +698,8 @@ export global Store {
 
     callback open();
     callback select-provider(string);
-    callback browser-login(string);
-    callback open-browser();
+    callback web-login();
+    callback cancel-web-login();
     callback open-destination();
     callback login(string, string);
     callback qr-login();

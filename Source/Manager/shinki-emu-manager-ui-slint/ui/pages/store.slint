@@ -2,7 +2,7 @@ import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, ScrollV
 import { App, Store } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme } from "../theme.slint";
-import { StoreLogin } from "./store/login.slint";
+import { StoreLogin, StoreWebArea } from "./store/login.slint";
 import { StoreDetail } from "./store/detail.slint";
 import { StoreGameRow, StateMessage, ErrorBanner, TransferPanel } from "./store/parts.slint";
 import { ChoiceSelect } from "../components/select.slint";
@@ -211,13 +211,20 @@ export component StorePage {
             label: @tr("商店");
             choices: Store.providers;
             value: Store.provider-id;
-            enabled: (Store.login-state == "signed-out" || Store.login-state == "signed-in" || Store.login-state == "error") && !(Store.transfer.state == "preparing" || Store.transfer.state == "downloading" || Store.transfer.state == "verifying" || Store.transfer.state == "cancelling");
+            enabled: !Store.web-active && (Store.login-state == "signed-out" || Store.login-state == "signed-in" || Store.login-state == "error") && !(Store.transfer.state == "preparing" || Store.transfer.state == "downloading" || Store.transfer.state == "verifying" || Store.transfer.state == "cancelling");
             selected(id) => { Store.detail-open = false; Store.select-provider(id); }
         }
     }
 
+    if !root.signed-in && !Store.web-active : StoreLogin {
+        x: 0px;
+        y: root.content-top;
+        width: root.width;
+        height: root.height - root.content-top;
+        compact: root.compact;
+    }
 
-    if !root.signed-in : StoreLogin {
+    if !root.signed-in && Store.web-active : StoreWebArea {
         x: 0px;
         y: root.content-top;
         width: root.width;
