@@ -493,8 +493,6 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     crate::startup::mark("window_object_created");
     shinki_emu_manager_ui_slint::i18n::apply(&controller.language());
     adapter.apply(&controller.model().map_err(HostError::Renderer)?);
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    window_commands::set_icon(adapter.window().window(), None).map_err(HostError::Renderer)?;
     if !controller
         .onboarding_completed()
         .map_err(HostError::Renderer)?
@@ -827,6 +825,10 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     }).map_err(|error| HostError::Renderer(error.to_string()))?;
     crate::startup::mark("window_show_requested");
     adapter.window().show()?;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    if let Err(error) = window_commands::set_icon(adapter.window().window(), None) {
+        tracing::warn!(event = "shinki.emu.host.window_icon_failed", message = %error);
+    }
     crate::startup::mark("window_show_returned");
     let run_result = adapter.window().run();
     runtime_timer.stop();

@@ -16,6 +16,10 @@ on:
         description: 'Optional comma-separated component ids within the affected matrix'
         type: string
         default: ''
+      targets:
+        description: 'Optional comma-separated target triples within the affected matrix'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -41,6 +45,7 @@ jobs:
         env:
           SINCE: ${{ inputs.since }}
           COMPONENTS: ${{ inputs.components }}
+          TARGETS: ${{ inputs.targets }}
         run: |
           args=(--json --ci)
           if [[ -n "$SINCE" ]]; then args+=(--since "$SINCE"); fi
@@ -50,6 +55,12 @@ jobs:
               ($components | split(",")) as $ids
               | .include |= map(select(.component as $id | $ids | index($id)))
               | if (.include | length) == 0 then error("No matching affected components") else . end' <<< "$matrix")
+          fi
+          if [[ -n "$TARGETS" ]]; then
+            matrix=$(jq -ce --arg targets "$TARGETS" '
+              ($targets | split(",")) as $ids
+              | .include |= map(select(.target as $id | $ids | index($id)))
+              | if (.include | length) == 0 then error("No matching affected targets") else . end' <<< "$matrix")
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   tools:
