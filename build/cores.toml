@@ -86,7 +86,7 @@ dependencies = ["ffmpeg"]
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android", "x86_64-linux-android"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android", "x86_64-linux-android", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 static_features = ["static-core"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
@@ -95,12 +95,6 @@ repo = "https://github.com/Project-Shinkirou/art3m1s-core"
 branch = "shinki-android-isolation"
 rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c"
 upstream = "https://github.com/Alphaly2K/art3m1s-core"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "The Apple candidate is undergoing native dependency/build/package acceptance; no clean source-matching receipt and remote CI approval is recorded for this revision."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "The Apple candidate is undergoing native dependency/build/package acceptance; no clean source-matching receipt and remote CI approval is recorded for this revision."
 [[cores.blocked]]
 
 target = "aarch64-apple-ios"
@@ -204,19 +198,13 @@ resources = []
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki-apple-xplat"
-rev = "335d1536e59b5b614867aca04dcf189158e6cd15"
+branch = "shinki-apple-ports"
+rev = "580eb5d5c71899ce012e384c6d8996a3b25df73b"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "The combined Apple candidate includes Autotools and cocos2dx routing fixes, but no clean source-matching core/package receipt or filtered remote CI approval is recorded for this revision."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "The combined Apple candidate includes Autotools and cocos2dx routing fixes, but no clean source-matching core/package receipt or filtered remote CI approval is recorded for this revision."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -365,19 +353,13 @@ resources = []
 static_features = ["static"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-apple-xplat"
 rev = "cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
 upstream = "https://github.com/CommitteeOfZero/impacto"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "Apple library identity, native static linkage and resources are implemented on the candidate; native dependency/build/package receipts and filtered remote CI are not yet available for this revision."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -412,19 +394,13 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki-apple-xplat"
-rev = "3dc7566f8a867a881a8746a52102c6a9d7eb9396"
+branch = "shinki-apple-ports"
+rev = "e4506835d109d9e385768fd14ce37d315871dde7"
 upstream = "https://github.com/renpy/renpy"
-[[cores.blocked]]
-target = "x86_64-apple-darwin"
-reason = "The adapter still selects lib/py3-mac-x86_64/librenpython.so, while the verified SDK supplies lib/py3-mac-universal/librenpython.dylib. Per-target thinning, native link and runtime packaging have not been implemented or exercised."
-[[cores.blocked]]
-target = "aarch64-apple-darwin"
-reason = "The adapter still selects lib/py3-mac-x86_64/librenpython.so, while the verified SDK supplies lib/py3-mac-universal/librenpython.dylib. Per-target thinning, native link and runtime packaging have not been implemented or exercised."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
