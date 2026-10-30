@@ -218,7 +218,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki-unblock-android-glib"
-rev = "511ff29e2782a8cf985a335f613db9a99b2246ff"
+rev = "da0fab5c8f30765264fb7da455e4f415b6ae9a1b"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
