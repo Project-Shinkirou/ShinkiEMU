@@ -169,3 +169,11 @@ jobs:
           fi
           jq -n --arg sha "$sha" '{name:"metadata-review",head_sha:$sha,status:"completed",conclusion:"success",output:{title:"Metadata validated",summary:"Trusted main validator and live approval binding passed."}}' > check.json
           gh api --method POST "repos/$GH_REPO/check-runs" --input check.json
+          if [[ "$head" == metadata/release-core-* ]]; then
+            # Release automation creates data-only branches; merge only those after
+            # the trusted validator and metadata-review check have succeeded.
+            while IFS= read -r changed; do
+              case "$changed" in Metadata/engines/cores/*.json) ;; *) echo "Unexpected release catalog change: $changed"; exit 1;; esac
+            done < paths.txt
+            gh pr merge "$number" --squash --delete-branch
+          fi
