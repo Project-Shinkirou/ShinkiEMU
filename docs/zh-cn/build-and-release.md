@@ -152,20 +152,17 @@ SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump -
 
 ## OpenHarmony Manager
 
-本地构建需要 DevEco Studio OpenHarmony Native SDK 5.0.0（API 12）、Rust 1.99.1、`hvigorw` 和 `ohpm`。将 `OHOS_SDK_NATIVE` 指向 `sdk/default/openharmony/native`，签名材料放在仓库外的 `.shinki-secrets/`。先准备依赖并编译 ARM64 Manager：
+本地构建需要 DevEco Studio 自带的 OpenHarmony Native SDK 5.0.5（API 17，HAP 面向 API 12 及以上）和 Rust 1.99.1。将 `OHOS_SDK_NATIVE` 指向 `sdk/default/openharmony/native`，xtask 会在同一 DevEco 安装中找到 Node、hvigor、ohpm、CMake/Ninja、`hap-sign-tool.jar` 和 `llvm-readelf`。把 `SHINKI_EMU_OHOS_SIGNING_DIR` 设为仓库外的目录（例如 `.shinki-secrets/ohos-debug`）：
 
 ```sh
-cargo xtask deps --target aarch64-unknown-linux-ohos --core rfvp
-cargo xtask deps --target aarch64-unknown-linux-ohos --core shinki.emu.musica
-cargo xtask build --target aarch64-unknown-linux-ohos --manager
-cd Platforms/OHOS
-ohpm install --all
-hvigorw assembleHap -p product=default -p buildMode=debug
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
 ```
 
-在 DevEco 中配置本地 debug 签名，或用 SDK 的 `hap-sign-tool.jar` 和保存在 `.shinki-secrets/` 的 keystore、签名 profile 签名。使用 `sign-app -mode localSign` 签名 HAP，再运行 `verify-app` 检查。确认 HAP 内含 `libs/arm64-v8a/libshinki_emu_manager.so`，并用 SDK 的 `llvm-readelf -d` 记录 `NEEDED` 库。不要把 keystore、证书或 profile 提交到 Git。
+`deps` 用 `arm64-ohos` triplet 构建 libass 和 FFmpeg，Meson 1.12 的前缀与 Android triplet 一样改用 Windows 扩展路径。构建使用 SDK clang 链接，并打包 `libc++_shared.so`。`package` 把 Manager 库放入 `Platforms/OHOS/entry/libs/arm64-v8a`，把元数据快照、声明和许可证放入 `rawfile/bundled`，然后运行 `ohpm install` 和 `hvigorw assembleHap`。首次运行时，它用 SDK 自带的 OpenHarmony 测试 PKI 生成 debug 签名材料：在 `OpenHarmony.p12` 的副本中新建密钥，由测试应用 CA 签发应用证书，再用 profile-debug 密钥签出 `org.shinkirou.shinkiemu` 的 debug profile。签名用 `sign-app`，之后运行 `verify-app`、列出包内文件，并对每个打包的库输出 `llvm-readelf -d`。剩下的 `NEEDED` 项必须都是 OHOS 系统库。输出目录包含 `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json` 和 `build.json`。不要把 keystore、证书或 profile 提交到 Git。
 
-设备验收需要 DevEco Device Manager 的 HarmonyOS 5.0.0 **Phone（API 12）**系统镜像。启动模拟器后，先确认 `hdc list targets` 能看到目标，再安装并启动签名 HAP。成功启动前，目标保持 blocked。
+测试 PKI 签名只证明包结构正确，不能当作设备安装用的 profile。HarmonyOS 真机和 DevEco 模拟器要求通过 DevEco/AppGallery Connect 签发的 debug profile。设备验收时换用这种 profile 签名，启动 DevEco Device Manager 的手机模拟器（API 12 及以上），确认 `hdc list targets` 能看到它，再安装并启动 HAP。成功启动前，目标保持 blocked。
 
 ## 矩阵与 CI
 
@@ -175,7 +172,7 @@ hvigorw assembleHap -p product=default -p buildMode=debug
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中的嵌入及原生依赖限制。OHOS 已加入 Slint XComponent/OH_NativeWindow 宿主、ArkTS N-API 桥接、OHAudio 输出和 Hvigor HAP 工程。构建签名与设备验收分开处理：`hdc list targets` 必须列出真机或模拟器才能开始启动验收。本机没有连接设备，也未安装模拟器镜像，因此签名 HAP 尚未完成设备启动验证，`manager_supported` 仍为 `false`。支持组合编译失败时报告 `failed` 并返回非零；`--all-cores` 会跳过明确标记为 blocked 的组合，但不会隐藏支持组合的失败。`publish_blocked` 单独记录分发限制。
+清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中的嵌入及原生依赖限制。OHOS Manager 可在本地构建并签名（`manager_local_build`），但在签名 HAP 于 `hdc list targets` 列出的真机或模拟器上成功启动前，它不进入 CI 矩阵和发布，`manager_supported` 仍为 `false`。支持组合编译失败时报告 `failed` 并返回非零；`--all-cores` 会跳过明确标记为 blocked 的组合，但不会隐藏支持组合的失败。`publish_blocked` 单独记录分发限制。
 
 远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
 
