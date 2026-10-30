@@ -195,11 +195,17 @@ pub fn link_apple_static_core(
     native: &Path,
     installations: &[PathBuf],
 ) -> Result<PathBuf> {
-    fn archives(directory: &Path, result: &mut std::collections::BTreeSet<PathBuf>) -> Result<()> {
+    fn archives(
+        directory: &Path,
+        staged: &Path,
+        result: &mut std::collections::BTreeSet<PathBuf>,
+    ) -> Result<()> {
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
-                archives(&entry.path(), result)?;
+                if entry.path() != staged {
+                    archives(&entry.path(), staged, result)?;
+                }
             } else if entry
                 .path()
                 .extension()
@@ -220,7 +226,7 @@ pub fn link_apple_static_core(
         bail!("Apple static linking requires an Apple target");
     }
     let mut inputs = std::collections::BTreeSet::new();
-    archives(native, &mut inputs)?;
+    archives(native, &native.join("install"), &mut inputs)?;
     if inputs.is_empty() {
         bail!("native core {core} produced no static archives");
     }
