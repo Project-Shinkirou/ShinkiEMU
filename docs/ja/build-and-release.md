@@ -146,6 +146,8 @@ FFmpeg を組み込む Manager には、対象の専用インストールツリ�
 
 ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
 
+Kirikiroid2 の Apple 候補には cocos2dx の iOS ルーティング修正と macOS の Autotools 準備を含めます。iOS は固有名の query からネイティブ静的アーカイブをリンクし、実行時リソースを `cores/kirikiroid2-web/Resources` に配置します。macOS の両アーキテクチャは動的コアパッケージを維持します。コミットが一致するネイティブのビルド記録と対象を絞ったリモート CI に基づいて、各行の公開可否を決めます。
+
 ## マトリクスと CI
 
 `matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。

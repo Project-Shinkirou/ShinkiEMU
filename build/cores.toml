@@ -212,14 +212,25 @@ features = []
 dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki"
-rev = "61a28531186c253be4707a554a2424cf143c1cbb"
+branch = "shinki-apple-xplat"
+rev = "335d1536e59b5b614867aca04dcf189158e6cd15"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
 reason = "Native dependency closure fails on Linux (vcpkg libxcrypt autoreconf: LT_SYS_SYMBOL_USCORE); port pending."

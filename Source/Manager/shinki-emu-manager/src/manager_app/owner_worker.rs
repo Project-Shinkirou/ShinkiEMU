@@ -270,6 +270,8 @@ const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     #[cfg(target_os = "ios")]
+    ("kirikiroid2-web", shinki_emu_kirikiroid2_web::QUERY),
+    #[cfg(target_os = "ios")]
     ("siglus_rs", shinki_emu_siglus_rs::query),
     #[cfg(target_os = "ios")]
     ("sena-rs", shinki_emu_sena_rs::shinki_emu_query),
