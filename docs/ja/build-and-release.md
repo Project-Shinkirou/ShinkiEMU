@@ -148,7 +148,7 @@ SDK を使った受け入れ確認では、実際の成果物のパスとサイ�
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-マニフェストで未対応とされた組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の実際の組み込みとネイティブ依存関係の制約が残ります。OpenHarmony には、ネイティブホストの対応と `OHOS_SDK_NATIVE` の両方が必要です。マニフェストで対応とされた組み合わせのコンパイルに失敗した場合は `failed` を報告し、0 以外で終了します。`--all-cores` は宣言済みの blocked の組み合わせをスキップしますが、対応している組み合わせの失敗を隠すことはありません。`publish_blocked` は配布上の制約を別に記録するもので、ビルドできないことを意味するわけではありません。
+マニフェストで未対応とされた組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の実際の組み込みとネイティブ依存関係の制約が残ります。OHOS は現時点で未対応であり、ローカル検証のみです。このリポジトリには Slint の XComponent/OH_NativeWindow ホスト、ArkTS から Rust への N-API ライフサイクル/入力ブリッジ、署名済み Hvigor HAP のビルド手順、OHAudio 出力バックエンドがありません。DevEco ツールはインストール済みですが、`hdc` に接続済みデバイスはなく、このホストにはエミュレーターのシステムイメージもありません。そのため、実行時対応を宣言できません。署名済み HAP が実機またはエミュレーターで起動するまで `manager_supported = false` を維持します。SDK の導入を検証した OHOS CI ランナーも現在構成されていません。マニフェストで対応とされた組み合わせのコンパイルに失敗した場合は `failed` を報告し、0 以外で終了します。`--all-cores` は宣言済みの blocked の組み合わせをスキップしますが、対応している組み合わせの失敗を隠すことはありません。`publish_blocked` は配布上の制約を別に記録するもので、ビルドできないことを意味するわけではありません。
 
 正式な CI はリモートの GitHub Actions で、リリースを公開するのもここだけです。`ci.yml` は pull request、`main` と `release/**` への push、手動実行で動きます。`Metadata/**`、`docs/**`、Markdown ファイルだけを変更した場合は実行されず、カタログの PR は `metadata-intake.yml` が検証します。
 

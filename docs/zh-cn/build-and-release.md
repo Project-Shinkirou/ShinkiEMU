@@ -158,7 +158,7 @@ SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump -
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中真实的嵌入及原生依赖限制；OpenHarmony 需要原生宿主适配和 `OHOS_SDK_NATIVE`。清单声称支持的组合编译失败，报告 `failed` 并返回非零。`--all-cores` 跳过已声明的 blocked 组合，但不掩盖支持组合的失败。`publish_blocked` 单独记录分发限制，不等同于无法编译。
+清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中真实的嵌入及原生依赖限制。OHOS 当前仍不受支持，且只适合本地验证：本仓库尚无 Slint XComponent/OH_NativeWindow 宿主、ArkTS 到 Rust 的 N-API 生命周期与输入桥接、已签名的 Hvigor HAP 构建流程或 OHAudio 输出后端。虽然已安装 DevEco 工具，`hdc` 没有发现已连接设备，主机也没有安装模拟器系统镜像，因此不能宣称运行时支持。只有签名 HAP 能在真机或模拟器启动后，才能将 `manager_supported` 设为 `true`；目前也未配置经过 SDK 安装验证的 OHOS CI runner。清单声称支持的组合编译失败，报告 `failed` 并返回非零。`--all-cores` 跳过已声明的 blocked 组合，但不掩盖支持组合的失败。`publish_blocked` 单独记录分发限制，不等同于无法编译。
 
 远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
 
