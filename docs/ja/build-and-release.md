@@ -154,6 +154,7 @@ Kirikiroid2 の Apple 候補には cocos2dx の iOS ルーティング修正と 
 
 Apple Kirikiri と iOS Manager の CI は Autotools、Bison、gperf を明示的に用意し、古いシステム版ではなく Homebrew の Bison/gperf を優先します。FFmpeg overlay は初回アーキテクチャの未構成ディレクトリを clean しません。Libarchive は圧縮と XML の依存関係を明示し、arm64 クロスビルドで MacPorts の x86_64 ライブラリを検出しないようにします。
 Ren'Py の Apple 入力準備は専用の POSIX CPython/Cython ソースと、検証した公式 `lib/py3-mac-universal/librenpython.dylib` を使います。macOS アダプターは対象アーキテクチャを抽出し、ライブラリ ID と参照を `@rpath` に変更します。コアと display 拡張の rpath はパッケージ内の Resources を参照します。iOS には上流 renpy-build の `renios` による静的 CPython・モジュールのビルド、静的アダプターと実行時リソースのパッケージが必要です。公開対象はネイティブのビルド記録、パッケージ監査、対象を絞ったリモート CI に基づいて決めます。
+ネイティブ vcpkg のインストール先は `.work/native-vcpkg/<core>/installed-<triplet>/<triplet>` です。別の ABI の依存関係が削除されないよう、ビルド補助ライブラリと xtask が同じパスマッピングを使います。Android の静的リンクにはコア内部のネイティブライブラリ、ターゲットの vcpkg アーカイブ、pkg-config の private 依存関係を含め、APK には NDK の C++ 共有ランタイムを同梱します。Windows ホストでは vcpkg のビルドロックを共有するため、作業ツリーをまたぐ依存関係のインストールも直列に実行してください。
 
 ## マトリクスと CI
 

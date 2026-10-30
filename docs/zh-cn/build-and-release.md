@@ -158,6 +158,7 @@ Kirikiroid2 的 Apple 候选包含 cocos2dx 的 iOS 路由修复和 macOS Autoto
 
 Apple Kirikiri 和 iOS Manager 的 CI 显式安装 Autotools、Bison 与 gperf，并优先使用 Homebrew 的 Bison/gperf，避免选中旧版系统工具。FFmpeg overlay 首次构建架构前不再清理尚未配置的目录。Libarchive 显式声明压缩和 XML 依赖，避免 arm64 交叉构建误用 MacPorts 的 x86_64 库。
 Ren'Py 的 Apple 输入准备使用任务独占的 POSIX CPython/Cython 源码，并核对官方 `lib/py3-mac-universal/librenpython.dylib`。macOS 适配器按目标架构拆分运行库，将库标识和引用改成 `@rpath`，核心与 display 扩展通过 rpath 查找打包后的 Resources 目录。iOS 还需要上游 renpy-build 的 `renios` 静态 CPython/模块构建、静态适配器及运行资源打包。平台支持状态以原生构建记录、包审计和筛选后的远程 CI 为准。
+原生 vcpkg 清单按 `.work/native-vcpkg/<core>/installed-<triplet>/<triplet>` 隔离安装树，准备一个 ABI 时不会删掉另一个 ABI 的依赖。构建辅助库和 xtask 共用路径映射。Android 静态链接包含核心自带的原生库、目标 vcpkg 归档及 pkg-config 的私有依赖，APK 保留 NDK 的 C++ 共享运行库。Windows 构建机上的依赖安装必须跨工作树串行执行，避免争用 vcpkg 工具目录的构建锁。
 
 RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
 

@@ -797,13 +797,8 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         if selected.bison {
             paths.push(inv.root.join(".work/bison/win_bison.exe"));
         }
-        if selected.native_vcpkg {
-            paths.push(
-                inv.root
-                    .join(".work/native-vcpkg")
-                    .join(core.context("native core id")?)
-                    .join("installed/vcpkg/status"),
-            );
+        for native in native_cores(inv, target, core.unwrap_or("manager")) {
+            paths.push(native_install(inv, target, &native.id)?.join("vcpkg/status"));
         }
         for p in paths {
             if !p.is_file() {
@@ -1190,6 +1185,14 @@ pub fn subtitle_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
             .join("installed")
             .join(l.subtitle_windows_triplet)
     })
+}
+
+pub(crate) fn native_install(inv: &Inventory, target: &str, core: &str) -> Result<PathBuf> {
+    Ok(shinki_emu_build::native_vcpkg_install_root(
+        &inv.root.join(".work/native-vcpkg"),
+        core,
+        &native_triplet(inv, target)?,
+    ))
 }
 
 pub(crate) fn native_triplet(inv: &Inventory, target: &str) -> Result<String> {
@@ -1598,11 +1601,7 @@ pub fn apply_environment(
             paths.push(subtitle.join("lib/pkgconfig"));
         }
         for native in native_cores(inv, target, component) {
-            let installation = inv
-                .root
-                .join(".work/native-vcpkg")
-                .join(&native.id)
-                .join("installed")
+            let installation = native_install(inv, target, &native.id)?
                 .join(native_triplet(inv, target)?);
             paths.push(installation.join("lib/pkgconfig"));
             paths.push(installation.join("share/pkgconfig"));
@@ -1975,11 +1974,7 @@ pub fn prepare(
                 source.display()
             );
         }
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(&native.id)
-            .join("installed");
+        let installed = native_install(inv, target, &native.id)?;
         let mut command = vcpkg_install_command(inv, &binary)?;
         command
             .arg("--x-wait-for-lock")
