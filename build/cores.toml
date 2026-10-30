@@ -420,13 +420,28 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki"
-rev = "6dc272ff4def04e4e705906fd15ab5db7e75fe66"
+branch = "shinki-apple-xplat"
+rev = "3dc7566f8a867a881a8746a52102c6a9d7eb9396"
 upstream = "https://github.com/renpy/renpy"
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "The adapter still selects lib/py3-mac-x86_64/librenpython.so, while the verified SDK supplies lib/py3-mac-universal/librenpython.dylib. Per-target thinning, native link and runtime packaging have not been implemented or exercised."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "The adapter still selects lib/py3-mac-x86_64/librenpython.so, while the verified SDK supplies lib/py3-mac-universal/librenpython.dylib. Per-target thinning, native link and runtime packaging have not been implemented or exercised."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."

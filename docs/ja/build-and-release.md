@@ -146,6 +146,8 @@ FFmpeg を組み込む Manager には、対象の専用インストールツリ�
 
 ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
 
+Ren'Py の Apple 入力準備は専用の POSIX CPython/Cython ソースと、検証した公式 `lib/py3-mac-universal/librenpython.dylib` を使います。Apple 行は blocked のままです。アダプターは旧 x86_64 `.so` 配置を選択しており、iOS には上流 renpy-build の `renios` による静的 CPython・モジュールのビルド、静的アダプターと実行時リソースのパッケージが必要です。SDK 入力の検証だけでは、ネイティブビルドやゲームの受け入れ確認を満たしません。
+
 ## マトリクスと CI
 
 `matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。

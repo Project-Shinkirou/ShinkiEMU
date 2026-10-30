@@ -365,21 +365,21 @@ fn prepare_native_tree(
         for (layer, input) in layers.iter().zip(&archives) {
             extract_native_archive(layer.archive, input, stage, layer.destination)?;
         }
-        if name == "sdl2" && cfg!(target_os = "linux") {
+        if name == "sdl2" && cfg!(unix) {
             run(Command::new("sh")
                 .arg("configure")
                 .arg("--disable-shared")
                 .current_dir(stage))?;
         }
         if let Some((python, cython)) = python_versions {
-            if cfg!(target_os = "linux") {
+            if cfg!(unix) {
                 run(Command::new("sh")
                     .arg("configure")
                     .arg("--without-ensurepip")
                     .current_dir(stage)
                     .env("PYTHONDONTWRITEBYTECODE", "1"))?;
                 run(Command::new("make")
-                    .args(["-j4", "python", "sharedmods"])
+                    .args(["-j3", "all"])
                     .current_dir(stage)
                     .env("PYTHONDONTWRITEBYTECODE", "1"))?;
                 // CPython's build tree links extension modules back to Modules/.
@@ -399,7 +399,14 @@ fn prepare_native_tree(
                     }
                 }
                 // Keep the executable distinct from CPython's Python/ source directory.
-                fs::rename(stage.join("python"), stage.join(build_python_relative()))?;
+                let makefile = fs::read_to_string(stage.join("Makefile"))?;
+                let suffix = makefile.lines().find_map(|line| {
+                    let (name, value) = line.split_once('=')?;
+                    (name.trim() == "BUILDEXE").then(|| value.trim())
+                }).context("CPython BUILDEXE output")?;
+                let executable = format!("python{suffix}");
+                native_path(&executable)?;
+                fs::rename(stage.join(executable), stage.join(build_python_relative()))?;
             }
             validate_build_python(&stage.join(build_python_relative()), python, cython)?;
         }
@@ -426,8 +433,8 @@ pub(crate) fn build_python_relative() -> &'static str {
 }
 
 fn renpy_host_pin(name: &str) -> String {
-    if cfg!(target_os = "linux") {
-        format!("{name}-linux")
+    if !cfg!(windows) {
+        format!("{name}-posix")
     } else {
         name.into()
     }
@@ -529,8 +536,8 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
         }
     }
     if selected.renpy {
-        if !cfg!(any(windows, target_os = "linux")) {
-            bail!("RenPy's pinned build interpreter requires a Windows or Linux x64 host");
+        if !cfg!(any(windows, target_os = "linux", target_os = "macos")) {
+            bail!("RenPy's pinned build interpreter requires a Windows, Linux or macOS host");
         }
         crate::sources::prepare_renpy_build(inv)?;
         for inventory in ["python-sources.json", "native-sources.json"] {
@@ -582,6 +589,8 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
         )?;
         let (runtime_key, runtime_dir) = if cfg!(windows) {
             ("windows_x86_64", "lib/py3-windows-x86_64")
+        } else if cfg!(target_os = "macos") {
+            ("mac_universal", "lib/py3-mac-universal")
         } else {
             ("linux_x86_64", "lib/py3-linux-x86_64")
         };
@@ -928,6 +937,8 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
                 "RENPY_SDK_ROOT",
                 base.join(if cfg!(windows) {
                     "renpy-sdk/lib/py3-windows-x86_64/libpython3.12.dll"
+                } else if cfg!(target_os = "macos") {
+                    "renpy-sdk/lib/py3-mac-universal/librenpython.dylib"
                 } else {
                     "renpy-sdk/lib/py3-linux-x86_64/librenpython.so"
                 }),
@@ -1736,7 +1747,7 @@ pub fn prepare(
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     if crate::apple::supported(target) {
         crate::apple::preflight(target)?;
-        if (selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
+        if (selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
             && !cfg!(target_os = "macos")
         {
             bail!("Apple native dependency preparation requires a native macOS host with Xcode");
@@ -1760,7 +1771,7 @@ pub fn prepare(
         }
     }
     if crate::apple::supported(target)
-        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
+        && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
     {
         return doctor(inv, target, core);
     }
