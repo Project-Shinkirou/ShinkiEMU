@@ -17,6 +17,8 @@ Artemis loads `system.ini`, PFS archives (PF6/PF8) and native scenario/tag/Lua r
 
 The core uses Luau on every platform, with an Artemis compatibility layer for legacy Lua APIs, alongside the native graphics path and FFmpeg. Android Manager statically embeds Artemis and shares its Luau runtime. The adapter owns scheduling and device audio, with bounded immutable CPU frame slots. Native modal dialogs use typed host services; exit ends the session rather than terminating Manager.
 
+Embedding enables mlua's thread-safe userdata contract across the Manager graph. Offline patch source/output handles use shared mutex-protected files so they remain compatible with that contract; recipe scheduling and file authority stay unchanged.
+
 `extra_archive` explicitly selects an additional relative PFS after the normal active numeric chain. It does not scan backups or rewrite the base package. The descriptor does not offer adjustable render extent. Missing script targets/resources and unsupported native UI/media commands remain errors; a clickable title screen alone is not a complete-game result.
 
 ## Save paths

@@ -10799,6 +10799,7 @@ dependencies = [
  "libc",
  "md-5 0.11.0",
  "mlua",
+ "parking_lot 0.13.0",
  "rc4",
  "repugnant-pickle",
  "roukaku-byte-source",

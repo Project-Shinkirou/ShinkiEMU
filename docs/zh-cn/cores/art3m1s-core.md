@@ -17,6 +17,8 @@ Artemis 读取 `system.ini`、PFS（PF6/PF8）及原生剧情/tag/Lua 资源。�
 
 核心在所有平台统一使用 Luau，通过 Artemis 兼容层提供旧 Lua API，保留原生图形路径和 FFmpeg。Android Manager 静态嵌入 Artemis，共用 Luau 运行时。适配层拥有调度和设备音频，用有界不可变 CPU 槽交付帧。原生模态对话框走类型化宿主服务，退出只结束会话，不结束 Manager 进程。
 
+嵌入后，整个 Manager 依赖图都启用 mlua 的线程安全 userdata 契约。离线补丁的输入和输出句柄使用 mutex 保护的共享文件，兼容这一契约；补丁调度和文件访问权限保持不变。
+
 `extra_archive` 显式选择相对路径 PFS，挂在正常数字补丁链之后；不扫描备份、不重写基包。descriptor 不提供可调渲染尺寸。缺脚本目标、缺资源或未支持的原生 UI/媒体命令仍报错；能点击标题界面不代表完整游戏流程可用。
 
 ## 存档路径
