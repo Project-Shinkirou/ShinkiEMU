@@ -44,7 +44,7 @@ cargo xtask test
 
 build では `--manager`、`--core`、`--all-cores` のいずれか 1 つを必ず指定します。check は Manager または単一のコアを選びます。test はホスト上で実行され、`--target` 引数はありません。選択なしの test は xtask とビルド補助ライブラリのテストを実行します。ネイティブ挙動の回帰テストには、実際の GPU、音声デバイス、公開フィクスチャーが必要な場合があります。
 
-各コアの `build.rs` は自身のターゲットと入力を検証し、Cargo の `OUT_DIR` に `core-build.json` を書き出します。C++ のアダプターはこれを通じて実際の CMake ビルドを駆動し、純粋な Rust コアはこれまでどおり Cargo がコンパイルします。ビルドスクリプトが Cargo を再帰的に実行したり、Release を公開したりすることはありません。xtask は `compiler-artifact` と `build-script-executed` の JSON から実際の成果物を読み取り、target のパスを推測しません。各コンポーネントは `.work/target/<target>/<component>` を使い、ビルド記録は `.work/build/` に書き込まれます。Artemis の Lua 5.1 と Manager の Luau の依存グラフは独立させたままにし、ワークスペース全体を混ぜた all-features ビルドは行いません。
+各コアの `build.rs` は自身のターゲットと入力を検証し、Cargo の `OUT_DIR` に `core-build.json` を書き出します。C++ のアダプターはこれを通じて実際の CMake ビルドを駆動し、純粋な Rust コアはこれまでどおり Cargo がコンパイルします。ビルドスクリプトが Cargo を再帰的に実行したり、Release を公開したりすることはありません。xtask は `compiler-artifact` と `build-script-executed` の JSON から実際の成果物を読み取り、target のパスを推測しません。各コンポーネントは `.work/target/<target>/<component>` を使い、ビルド記録は `.work/build/` に書き込まれます。Artemis はすべてのプラットフォームで Luau を使用し、Android への静的組み込みでは Manager とランタイムを共有します。
 
 Manager は、ネットワーククライアントやワーカースレッドを作る前に、プロセス全体の Rustls 暗号プロバイダーを一度だけ初期化します。選ぶのは、reqwest 0.13 とプラットフォームの証明書検証スタックに合わせた AWS-LC です。VNDB が現在使っている reqwest 0.12 は ring も有効にするため、feature による自動選択には頼れません。Steam などの provider は、プロセス全体の既定実装を自分ではインストールしません。
 
@@ -93,7 +93,7 @@ cargo xtask build --target x86_64-linux-android --manager --release
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
 ```
 
-各ビルドは `cargo ndk --locked` でコンパイルし、`static_manager_targets` にそのトリプルを含むコア（RFVP、Shinki Musica）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
+各ビルドは `cargo ndk --locked` でコンパイルし、`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Shinki Musica、Artemis）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。Release はユニバーサルな release 署名 APK を 1 つだけアップロードし、対応する sources ZIP も公開します。
 

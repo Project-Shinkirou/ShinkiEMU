@@ -7,7 +7,7 @@ description: RFVP 的格式、原生行为与限制。
 
 `plugin_id: rfvp` · 引擎家族: FVP
 
-上游：[xmoezzz/rfvp](https://github.com/xmoezzz/rfvp)。适配 fork：[Project-Shinkirou/rfvp 的 shinki 分支](https://github.com/Project-Shinkirou/rfvp/tree/shinki)。
+上游：[xmoezzz/rfvp](https://github.com/xmoezzz/rfvp)。适配 fork：[Project-Shinkirou/rfvp 的 shinki-android-isolation 分支](https://github.com/Project-Shinkirou/rfvp/tree/shinki-android-isolation)。
 
 ## 格式
 
@@ -16,6 +16,8 @@ FVP 使用 HCB 字节码。文件首个 little-endian u32 是系统描述区偏�
 ## 原生行为与限制
 
 fork 保留原 App、VM、GPU renderer、设备音频和存档。适配层用不可变 CPU 租约交付最终场景，Manager 不重写 syscall，也不通过宿主 tick 推进。原生配置可选择按原 HCB 偏移索引的 UTF-8 翻译表，以及使用明确字体和原媒体时钟的 movie/BGM ASS 映射。
+
+Android 静态 Manager 依赖图中，RFVP 与 Siglus、Manager 共用 wgpu 30。原生 WMV 解码使用 Rust API，Manager 不启用可选的 `c-abi` 导出。
 
 WMV/ASF/WMA 走 fork 原生影片及 decoder 路径。原生请求的字体和游戏资源仍是实际输入；识别出 HCB 不代表 syscall 已全部实现或所有发行版可用。
 

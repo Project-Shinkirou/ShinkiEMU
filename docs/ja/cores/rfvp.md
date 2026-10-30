@@ -7,7 +7,7 @@ description: RFVP のフォーマット、ネイティブ動作、制約。
 
 `plugin_id: rfvp` · エンジンファミリー: FVP
 
-上流：[xmoezzz/rfvp](https://github.com/xmoezzz/rfvp)。適応 fork：[Project-Shinkirou/rfvp の shinki ブランチ](https://github.com/Project-Shinkirou/rfvp/tree/shinki)。
+上流：[xmoezzz/rfvp](https://github.com/xmoezzz/rfvp)。適応 fork：[Project-Shinkirou/rfvp の shinki-android-isolation ブランチ](https://github.com/Project-Shinkirou/rfvp/tree/shinki-android-isolation)。
 
 ## フォーマット
 
@@ -16,6 +16,8 @@ FVP は HCB バイトコードを使います。ファイル先頭の little-end
 ## ネイティブ動作と制約
 
 fork は元の App、VM、GPU レンダラー、デバイス音声、セーブを保持します。アダプターは不変の CPU リースで最終的なシーンを渡し、Manager は syscall を書き直すことも、ホストの tick で進めることもしません。ネイティブの設定では、元の HCB オフセットで索引付けした UTF-8 の翻訳テーブルや、明示的なフォントと元のメディアクロックを使う movie/BGM の ASS マッピングを選べます。
+
+Android の静的 Manager 依存グラフでは、RFVP、Siglus、Manager が wgpu 30 を共有します。ネイティブ WMV デコーダーは Rust API を使い、Manager では任意の `c-abi` エクスポートを有効にしません。
 
 WMV/ASF/WMA は fork のネイティブの動画・デコーダーのパスで再生します。ネイティブが要求するフォントやゲームのリソースは引き続き実際の入力として必要です。HCB を認識できても、syscall がすべて実装済みであることや、すべてのリリースで動作することを意味するわけではありません。
 

@@ -18,7 +18,7 @@ Contract docs, which you link to rather than copy: [Core ABI](../../../docs/en/c
 | ReMinori | Rust, AGPL | `crates/shinki` (`lib.rs:965-1000`, `build.rs`, `MODIFICATIONS.md`) | `shinki_emu_ReMinori::shinki_emu_query` |
 | sena-rs | Rust | `crates/shinki-emu-sena-rs`; `lib.rs:41-53`: `cfg_attr(feature = "diagnostic-bridge", no_mangle)` + `pub const QUERY`; worker in `session.rs:131-191` | `shinki_emu_sena_rs::QUERY` |
 | ethornell-rs | Rust | `crates/shinki-emu-ethornell-rs` (`lib.rs:1282-1317`) | `shinki_emu_ethornell_rs::QUERY` |
-| art3m1s-core | Rust + Lua 5.1 | `crates/shinki-emu-art3m1s-core`, feature `static-core` | `shinki_emu_art3m1s_core::artemis_query` |
+| art3m1s-core | Rust + Luau | `crates/shinki-emu-art3m1s-core`, feature `static-core` | `shinki_emu_art3m1s_core::artemis_query` |
 | impacto | C++ | `shinki/` Cargo wrapper + `src/shinki/core.cpp`; vendored `vendor/shinki-emu-abi/include/shinki_emu.h` | (not embedded) |
 | kirikiroid2-web | C++ | native shared library with the vendored header | (not embedded) |
 | renpy | C++ + Python | `shinki/core.cpp` + `shinki_renpy_bridge.py`; embeds the official Ren'Py SDK | `shinki_emu_renpy::QUERY` |
@@ -88,7 +88,7 @@ Most engines own a `loop { poll events; update; render; present }` and a window.
 
 - Add a `[[cores]]` entry with `manifest = "ThirdParty/<dir>/<adapter>/Cargo.toml"`, `[cores.source]`, `licenses = ["ThirdParty/<dir>/LICENSE", ...]`, and one supported or blocked entry per triple in `build/targets.toml`. See [shinkiemu-new-core §5](../shinkiemu-new-core/SKILL.md#5-register-the-core) for the field rules.
 - For Android/iOS static embedding, set `static_manager_targets` and `static_features`. Add the fork under the matching `[target.'cfg(target_os = "…")'.dependencies]` in `Source/Manager/shinki-emu-manager/Cargo.toml` with `git` = `[cores.source].repo`, `rev` = the same full SHA, and `default-features = false` (lines 86-101). Then add the Rust-path query to `STATIC_CORES` in `Source/Manager/shinki-emu-manager/src/manager_app/owner_worker.rs:268-287`. `validate_static_dependencies` (`xtask/src/cores.rs:228-298`) fails when the repo, rev or features differ from the inventory.
-- A statically linked core shares the Manager's dependency graph. It must resolve to the same kira (patched to `Project-Shinkirou/kira` in the root `[patch.crates-io]`, `Cargo.toml:181-185`), the same mlua/mlua-sys, cpal and wgpu majors. Two versions of a `links =` crate fail resolution. Align the fork rather than adding another patch. Artemis keeps Lua 5.1 only because its graph stays separate from Manager's Luau (`ThirdParty/README.md`).
+- A statically linked core shares the Manager's dependency graph. It must resolve to the same kira (patched to `Project-Shinkirou/kira` in the root `[patch.crates-io]`, `Cargo.toml:181-185`), the same mlua/mlua-sys, cpal and wgpu majors. Two versions of a `links =` crate fail resolution. Align the fork rather than adding another patch. Artemis uses Luau on every platform, including Android static embedding (`ThirdParty/README.md`).
 
 ## 7. Licenses and the sources bundle
 
