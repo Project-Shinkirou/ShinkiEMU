@@ -64,7 +64,7 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
                 report.artifact = Some(staged.join(apk));
             } else if component == "manager" && target == "aarch64-apple-ios" {
                 report.artifact = Some(staged.join(format!(
-                    "ShinkiEMU-{version}-{target}-adhoc-device-test.ipa"
+                    "ShinkiEMU-{version}-{target}-device-test.ipa"
                 )));
             } else {
                 report.artifact = Some(archive_package(&staged, &out)?);

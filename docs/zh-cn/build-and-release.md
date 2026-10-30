@@ -101,7 +101,9 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 每次构建都以 `cargo ndk --locked` 编译，静态链接 `static_manager_targets` 含该三元组的核心（RFVP、Shinki Musica），并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
 
-首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。
+首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。Release 发布一个通用的 release 签名 APK，并保留对应的 sources ZIP。
+
+所有 Manager 安装包共用 `Assets/Branding/shinkiemu-icon.svg`。Rust 构建或打包时生成 Windows EXE 内嵌 ICO、macOS ICNS、iOS app icon set、Android 自适应启动器 mipmap 和 Linux hicolor PNG。Linux ZIP 还包含 `share/applications/shinkiemu.desktop`，可将它和 `share/icons/hicolor` 安装到相应的应用与图标目录。游戏替换窗口图标后，桌面运行时会在退出游戏时恢复 Manager 图标。
 
 运行限制：原版 Slint 1.18.1 在 SwiftShader/软件 Vulkan 模拟器上存在只渲染首帧、后续界面不再更新的问题；请使用 `-gpu host` 或实体设备。独立的单 Text、单 Timer 应用在五次冷启动中均复现了更新停滞；同一 Manager 测试 APK 在主机 GPU 模式下五次冷启动均正常显示中文引导及图标。构建、打包成功不代表游戏兼容性已验证。
 
@@ -140,13 +142,13 @@ cargo xtask package --target aarch64-apple-ios-sim --manager --version 0.1.0-bet
 
 每个目标单独准备镜像并选择对应 SDK。镜像固定 Rust、osxcross 和 vcpkg 输入，提供 LLVM/LLD、C/C++、CMake 和 Apple triplet；宿主编译器与目标编译器分开配置。原生依赖许可导出到 `.work/apple-native/<target>`，镜像身份相同时才复用。缺 SDK、镜像或 Rust target 时 `doctor` 返回错误；支持目标的真实编译错误仍然按失败处理。
 
-macOS 包含真实的 `ShinkiEMU-adhoc.app`，可执行文件位于 `Contents/MacOS`，元数据和许可位于 `Contents/Resources`，`ci`/`release` 生成 ZIP。iOS Manager 在主线程使用 Slint 的 winit/UIKit 后端和 Metal 渲染器，原生 Files 选择器保留安全作用域授权及书签，应用数据存入自身 Library 沙箱。iOS 重启需由用户关闭再打开应用。共享平台会激活真实的 AVAudioSession；Manager 编译成功不代表可以在 iOS 安装任意下载的核心二进制，核心自身的嵌入与构建限制仍在清单中。
+macOS 包含真实的 `ShinkiEMU.app`，可执行文件位于 `Contents/MacOS`，元数据和许可位于 `Contents/Resources`，`ci`/`release` 生成 ZIP。Apple bundle 也包含 ShinkiEMU 应用图标。iOS Manager 在主线程使用 Slint 的 winit/UIKit 后端和 Metal 渲染器，原生 Files 选择器保留安全作用域授权及书签，应用数据存入自身 Library 沙箱。iOS 重启需由用户关闭再打开应用。共享平台会激活真实的 AVAudioSession；Manager 编译成功不代表可以在 iOS 安装任意下载的核心二进制，核心自身的嵌入与构建限制仍在清单中。
 
 RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动态核心，并在 iOS 真机和两种模拟器架构的 Manager 中静态注册。iOS 不加载下载的核心 dylib；Android Manager 静态注册 RFVP 和 Shinki Musica。构建会核对 Manager 依赖与 `build/cores.toml` 的提交 pin，安装包包含 `embedded-cores.json` 和各静态核心的许可文件。
 
 RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
 
-模拟器包包含 `simulator-test.app`；设备打包生成带 `Payload/*.app` 的 `adhoc-device-test.ipa`，`ci` 报告该 IPA 的真实路径。打包先校验单架构 Mach-O、设备/模拟器平台以及系统/随包依赖闭包，再签署副本。Linux 使用 `rcodesign sign` 并逐个验证 Mach-O，原生 macOS 使用 `codesign`。ad-hoc 签名是真实签名，但不提供 Apple provisioning、公证或 App Store 身份。设备安装仍需有效的 Apple 签名及 provisioning，这些产物用于测试与集成，不是正式安装包。Release 名称包含 iOS 的设备/模拟器 variant，避免同架构附件重名。
+模拟器包包含 `simulator-test.app`；设备打包生成带 `Payload/*.app` 的 `device-test.ipa`，`ci` 报告该 IPA 的真实路径。打包先校验单架构 Mach-O、设备/模拟器平台以及系统/随包依赖闭包，再签署副本。Linux 使用 `rcodesign sign` 并逐个验证 Mach-O，原生 macOS 使用 `codesign`。ad-hoc 签名是真实签名，但不提供 Apple provisioning、公证或 App Store 身份。设备安装仍需有效的 Apple 签名及 provisioning，这些产物用于测试与集成，不是正式安装包。Release 名称包含 iOS 的设备/模拟器 variant，避免同架构附件重名。
 
 SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` 的输出。缺少合法 SDK 时，这项验收仍受阻；编译成功本身不代表游戏运行兼容。
 

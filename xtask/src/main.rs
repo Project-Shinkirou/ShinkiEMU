@@ -7,6 +7,7 @@ mod cli;
 mod cores;
 mod dependencies;
 mod metadata;
+mod icon;
 mod package;
 mod release;
 mod rust_licenses;

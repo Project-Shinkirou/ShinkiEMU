@@ -347,7 +347,9 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
             "release requires a clean build receipt at the configured source revision; rebuild after committing/pinning sources"
         );
     }
-    let platform = if spec.platform == "ios" {
+    let platform = if component == "manager" && target.contains("android") {
+        "android-universal".to_owned()
+    } else if spec.platform == "ios" {
         format!("ios-{}-{}-test", spec.architecture, spec.variant)
     } else {
         format!("{}-{}", spec.platform, spec.architecture)
@@ -357,30 +359,48 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     } else {
         "core"
     };
+    let extension = if component == "manager" && target.contains("android") {
+        "apk"
+    } else {
+        "zip"
+    };
     let filename = format!(
-        "shinki-emu-{kind}-{}-{version}-{platform}.zip",
+        "shinki-emu-{kind}-{}-{version}-{platform}.{extension}",
         slug(component)
     );
+    let sources_platform = if component == "manager" && target.contains("android") {
+        format!("android-{}", spec.architecture)
+    } else {
+        platform.clone()
+    };
     let sources = format!(
-        "shinki-emu-{}-{version}-{platform}-sources.zip",
+        "shinki-emu-{}-{version}-{sources_platform}-sources.zip",
         slug(component)
     );
     package::atomic_directory(&root, |work| {
         let staged = work.join("package");
         let package_dir = package::package(inv, target, component, version, &staged)?;
-        let publish_blocked = if target.contains("android") {
+        let publish_blocked = if component == "manager" && target.contains("android") {
             let android: Value =
                 serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
-            if android["signing"] == "release" {
-                ""
-            } else {
+            if android["signing"] != "release" {
                 "This bundle contains a debug-signed CI test APK; it is not a Release installer."
+            } else if target == "x86_64-linux-android" {
+                "The universal Android APK is published once from the aarch64 build row."
+            } else {
+                ""
             }
         } else {
             ""
         };
         let archive = work.join(&filename);
-        package::zip_entries(&package::tree(&package_dir)?, &archive)?;
+        if target.contains("android") && component == "manager" {
+            let android: Value = serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
+            let apk = android["apk"].as_str().context("Android APK filename")?;
+            fs::copy(package_dir.join(apk), &archive)?;
+        } else {
+            package::zip_entries(&package::tree(&package_dir)?, &archive)?;
+        }
         fs::remove_dir_all(&staged)?;
         crate::sources::bundle(inv, component, target, &work.join(&sources))?;
         let record = json!({"schema":"shinki.emu.release.v1","component":component,"version":version,"target":target,"platform":platform,
@@ -452,7 +472,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
     let notes = format!(
-        "{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nEach `-sources.zip` holds the exact product/fork revisions, the copyleft Rust crate sources, and the native library source archives and recipes needed to modify and relink. Android debug-signed test APKs remain Actions artifacts.\n",
+        "{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nEach `-sources.zip` holds the exact product/fork revisions, the copyleft Rust crate sources, and the native library source archives and recipes needed to modify and relink. The universal Android Release APK is uploaded once; matching Actions matrix rows do not duplicate it.\n",
         blocked.join("\n")
     );
     let gh = GitHub::new()?;

@@ -7,7 +7,9 @@
     <application
         android:allowBackup="false"
         android:hasFragileUserData="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="ShinkiEMU"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/ShinkiEmuTheme">
         <activity
             android:name=".MainActivity"

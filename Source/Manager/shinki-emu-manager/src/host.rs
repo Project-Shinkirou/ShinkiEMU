@@ -493,6 +493,8 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     crate::startup::mark("window_object_created");
     shinki_emu_manager_ui_slint::i18n::apply(&controller.language());
     adapter.apply(&controller.model().map_err(HostError::Renderer)?);
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    window_commands::set_icon(adapter.window().window(), None).map_err(HostError::Renderer)?;
     if !controller
         .onboarding_completed()
         .map_err(HostError::Renderer)?

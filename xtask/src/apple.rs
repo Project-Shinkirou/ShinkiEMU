@@ -340,16 +340,13 @@ pub fn bundle(
         }
     }
     let ios = target.contains("-ios");
-    let suffix = if ios {
-        if sdk_name(target) == "iphonesimulator" {
-            "simulator-test"
-        } else {
-            "adhoc-device-test"
-        }
+    let simulator = ios && sdk_name(target) == "iphonesimulator";
+    let bundle_name = if simulator {
+        format!("{name}-simulator-test.app")
     } else {
-        "adhoc"
+        format!("{name}.app")
     };
-    let app = stage.join(format!("{name}-{suffix}.app"));
+    let app = stage.join(bundle_name);
     let entries = fs::read_dir(stage)?
         .map(|entry| entry.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -404,6 +401,12 @@ pub fn bundle(
     };
     fs::create_dir_all(&binary_dir)?;
     fs::create_dir_all(&resources)?;
+    let icon = crate::icon::Icon::new()?;
+    if ios {
+        icon.ios(&resources)?;
+    } else {
+        icon.icns(&resources.join("ShinkiEMU.icns"))?;
+    }
     let main = binary_dir.join(executable);
     for entry in entries {
         if fs::symlink_metadata(&entry)?.file_type().is_symlink() {
@@ -442,13 +445,17 @@ pub fn bundle(
     } else {
         "<key>LSMinimumSystemVersion</key><string>13.0</string><key>NSHighResolutionCapable</key><true/>"
     };
+    let icon_metadata = if ios {
+        "<key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array><key>UIPrerenderedIcon</key><true/></dict></dict><key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon76x76</string><string>AppIcon83.5x83.5</string></array></dict></dict>"
+    } else {
+        "<key>CFBundleIconFile</key><string>ShinkiEMU</string>"
+    };
     fs::write(
         contents.join("Info.plist"),
         format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>CFBundleExecutable</key><string>{executable}</string><key>CFBundleIdentifier</key><string>{id}</string><key>CFBundleName</key><string>{name}</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>1</string><key>CFBundleSupportedPlatforms</key><array><string>{platform}</string></array>{minimum}</dict></plist>"
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>CFBundleExecutable</key><string>{executable}</string><key>CFBundleIdentifier</key><string>{id}</string><key>CFBundleName</key><string>{name}</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>1</string><key>CFBundleSupportedPlatforms</key><array><string>{platform}</string></array>{icon_metadata}{minimum}</dict></plist>"
         ),
     )?;
-    // @rpath libraries are beside the executable, not resolved from the build host.
     let install_name_tool = if cfg!(target_os = "macos") {
         "install_name_tool"
     } else {
