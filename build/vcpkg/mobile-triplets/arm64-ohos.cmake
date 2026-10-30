@@ -11,3 +11,8 @@ set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DOHOS_ARCH=arm64-v8a -DOHOS_PLATFORM_LEVEL=12
 # Like the Android triplets: libass keeps its fontconfig provider (it refuses
 # to configure without a system font provider); release only.
 set(VCPKG_BUILD_TYPE release)
+# Meson 1.12 validates prefixes using Linux/POSIX path semantics.
+# Windows' extended path form is absolute for both the build and target hosts.
+if(CMAKE_HOST_WIN32 AND DEFINED CURRENT_PACKAGES_DIR)
+    set(VCPKG_MESON_CONFIGURE_OPTIONS --prefix "//?/${CURRENT_PACKAGES_DIR}")
+endif()

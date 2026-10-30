@@ -4,7 +4,6 @@
   "builtin-baseline": "0c2a9ace1964b818b15f7ae50ba1c42404918a7b",
   "dependencies": ["libass"],
   "overrides": [
-    { "name": "libass", "version": "0.17.5" },
-    { "name": "vcpkg-tool-meson", "version": "1.9.0" }
+    { "name": "libass", "version": "0.17.5" }
   ]
 }
