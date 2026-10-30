@@ -56,14 +56,14 @@ component NoticeCard {
                 overflow: clip;
             }
             if root.notice.code != "" : MaterialText {
-                text: "错误代码 " + root.notice.code;
+                text: @tr("错误代码 {}", root.notice.code);
                 style: MaterialTypography.label-small;
                 color: MaterialPalette.on-surface-variant;
             }
             HorizontalLayout {
                 alignment: start;
                 TextButton {
-                    text: "查看日志";
+                    text: @tr("查看日志");
                     clicked => { Notices.view-logs(root.notice.core); }
                 }
             }
@@ -73,7 +73,7 @@ component NoticeCard {
             alignment: start;
             IconButton {
                 icon: Icons.close;
-                tooltip: "关闭";
+                tooltip: @tr("关闭");
                 clicked => { Notices.dismiss(root.notice.id); }
             }
         }
@@ -100,7 +100,7 @@ export component NoticeStack {
         }
 
         if Notices.items.length > 3 : MaterialText {
-            text: "另有 " + (Notices.items.length - 3) + " 条通知";
+            text: @tr("另有 {n} 条通知" | "另有 {n} 条通知" % (Notices.items.length - 3));
             style: MaterialTypography.label-medium;
             color: MaterialPalette.on-surface-variant;
         }
@@ -187,7 +187,7 @@ export component SnackbarHost {
                 horizontal-stretch: 0;
                 icon: Icons.close;
                 inverse: true;
-                tooltip: "关闭";
+                tooltip: @tr("关闭");
                 clicked => {
                     root.shown = false;
                     timer.running = false;

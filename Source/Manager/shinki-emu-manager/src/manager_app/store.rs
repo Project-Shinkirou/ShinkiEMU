@@ -11,6 +11,7 @@ use std::sync::{
     mpsc,
 };
 use tokio::sync::mpsc as async_mpsc;
+use shinki_emu_manager_ui_slint::tr;
 
 fn registry() -> provider::Registry {
     let mut registry = provider::Registry::new();
@@ -298,7 +299,7 @@ impl StoreRuntime {
         self.cancel();
         if self.pending.is_none() {
             self.commands.try_send(StoreCommand::Disconnect)
-                .map_err(|_| "无法停止 Store 连接，请重新打开管理器 / Cannot stop the Store connection; restart Manager".to_owned())?;
+                .map_err(|_| tr!("无法停止 Store 连接，请重新打开管理器").to_owned())?;
         }
         Ok(())
     }
@@ -316,7 +317,7 @@ impl StoreRuntime {
             return self
                 .codes
                 .try_send(code)
-                .map_err(|_| "请等待验证码提交完成 / Wait for the current code submission".into());
+                .map_err(|_| tr!("请等待验证码提交完成").into());
         }
         if matches!(action, StoreAction::Cancel) {
             self.cancel();
@@ -331,7 +332,7 @@ impl StoreRuntime {
             self.shared.update(|v| v.query = query);
             return Ok(());
         } else if self.shared.busy.swap(true, Ordering::AcqRel) {
-            return Err("请等待当前 Store 操作完成，或先取消 / Wait for the current Store operation or cancel it".into());
+            return Err(tr!("请等待当前 Store 操作完成，或先取消").into());
         } else {
             *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = provider::CancelToken::new();
         }
@@ -364,7 +365,7 @@ impl StoreRuntime {
             ))
             .map_err(|_| {
                 self.shared.busy.store(false, Ordering::Release);
-                "Store 工作线程不可用，请重新打开管理器 / Store worker unavailable; restart Manager"
+                tr!("Store 工作线程不可用，请重新打开管理器")
                     .into()
             })
     }
@@ -904,7 +905,7 @@ impl Worker {
         self.shared.update(|v| {
             v.transfer.state = StoreTransferState::Complete;
             v.transfer.progress = Some(1.0);
-            v.transfer.status = "下载完成，正在识别核心 / Download complete, probing cores".into();
+            v.transfer.status = tr!("下载完成，正在识别核心").into();
             v.transfer.notice = result
                 .notice
                 .map_or_else(String::new, |notice| notice.to_string());
@@ -976,7 +977,7 @@ impl ShinkiEmuManagerController {
                     | StoreAction::SelectBranch { .. }
             )
         {
-            return Err("请先在设置中允许网络访问 / Allow network access in settings first".into());
+            return Err(tr!("请先在设置中允许网络访问").into());
         }
         self.store.dispatch(action)?;
         self.model()

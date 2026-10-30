@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     /// Persist the directory as a library root, then import it (loading cores first if needed).
@@ -11,7 +12,10 @@ impl ShinkiEmuManagerController {
             return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into());
         }
         if self.patch_job.is_some() {
-            return Err("SHINKI_EMU_PATCH_INVALID_REQUEST: 文件补丁转换期间不能扫描游戏".into());
+            return Err(format!(
+                "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
+                tr!("文件补丁转换期间不能扫描游戏")
+            ));
         }
         let root = fs::canonicalize(path)
             .ok()
@@ -113,7 +117,7 @@ impl ShinkiEmuManagerController {
         }
         self.last_excluded = Some(game_id.to_owned());
         self.show_snackbar(
-            format!("已从资料库移除《{}》", game.display_title()),
+            tr!("已从资料库移除《{title}》", title = game.display_title()),
             Some(snackbar::SnackbarAction::Undo),
         );
         self.model()
@@ -238,6 +242,7 @@ impl ShinkiEmuManagerController {
             selected_case_id: None,
             search_query: String::new(),
             diagnostic: String::new(),
+            retired_diagnostic: None,
             diagnostic_severity: "info",
             plugin_errors: BTreeMap::new(),
             store: store::StoreRuntime::new(&data_dir),

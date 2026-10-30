@@ -33,7 +33,7 @@ export component ResaleNoticeSlot {
 
     height: max(root.wide ? 210px : 0px, root.content-height);
     accessible-role: groupbox;
-    accessible-label: "防倒卖声明";
+    accessible-label: @tr("防倒卖声明");
 
 }
 
@@ -41,10 +41,10 @@ export component ResaleNoticeSlot {
 // `ResaleNoticeState.checked`; a toggle goes to Rust, which decides.
 export component ResaleNoticeAck {
     property <bool> stored: ResaleNoticeState.checked;
-    property <string> status: ResaleNoticeState.acknowledged ? "已确认，可以继续"
-        : ResaleNoticeState.remaining-seconds > 0 ? "请阅读上方说明，还需 " + ResaleNoticeState.remaining-seconds + " 秒"
-        : root.stored ? "正在确认…"
-        : "勾选后即可继续";
+    property <string> status: ResaleNoticeState.acknowledged ? @tr("已确认，可以继续")
+        : ResaleNoticeState.remaining-seconds > 0 ? @tr("请阅读上方说明，还需 {n} 秒" | "请阅读上方说明，还需 {n} 秒" % ResaleNoticeState.remaining-seconds)
+        : root.stored ? @tr("正在确认…")
+        : @tr("勾选后即可继续");
 
     min-height: l.min-height;
     preferred-height: l.preferred-height;

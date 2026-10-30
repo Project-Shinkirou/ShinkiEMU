@@ -67,7 +67,7 @@ pub struct NoticeRasterizer {
 }
 impl NoticeRasterizer {
     pub fn new() -> Result<Self, String> {
-        let bytes = include_bytes!("../../../../Assets/Fonts/NotoSansSC-Variable.ttf");
+        let bytes = shinki_emu_manager_ui_slint::fonts::NOTO_SANS_SC;
         let font = PackagedFont {
             asset_id: "asset:/font/manager/notice-sc".into(),
             family: FAMILY.into(),

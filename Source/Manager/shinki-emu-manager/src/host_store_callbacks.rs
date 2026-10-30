@@ -1,5 +1,6 @@
 use super::*;
 use shinki_emu_manager_ui_slint::StoreAction;
+use shinki_emu_manager_ui_slint::tr;
 
 /// Store sub-page: every UI callback arrives as one [`StoreAction`]. The library
 /// folder picker is a host service, so `ChooseLibraryRoot` becomes
@@ -13,7 +14,7 @@ pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
         StoreAction::ChooseLibraryRoot => {
             let w = w.clone();
             platform::pick_folder(
-                "选择 Store 游戏库目录",
+                tr!("选择 Store 游戏库目录"),
                 Box::new(move |picked| {
                     w.run(|c| {
                         let path = picked?.to_string_lossy().into_owned();

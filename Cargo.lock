@@ -10507,9 +10507,11 @@ dependencies = [
  "image 0.25.10",
  "parking_lot 0.13.0",
  "qrcodegen",
+ "rspolib",
  "serde",
  "slint",
  "slint-build",
+ "sys-locale",
  "tempfile",
  "tracing",
 ]

@@ -182,11 +182,11 @@ export global Theme {
     }
 
     public pure function status-label(status: string) -> string {
-        return status == "perfect" ? "完美"
-            : status == "completable" ? "可通关"
-            : status == "flawed" ? "有瑕疵"
-            : status == "boot_only" ? "仅能启动"
-            : status == "unplayable" ? "无法运行"
-            : "未评级";
+        return status == "perfect" ? @tr("完美")
+            : status == "completable" ? @tr("可通关")
+            : status == "flawed" ? @tr("有瑕疵")
+            : status == "boot_only" ? @tr("仅能启动")
+            : status == "unplayable" ? @tr("无法运行")
+            : @tr("未评级");
     }
 }

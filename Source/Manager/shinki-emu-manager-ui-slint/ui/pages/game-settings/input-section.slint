@@ -13,10 +13,10 @@ export component InputSection {
                 spacing: Theme.space-lg;
                 SectionTitle {
                     horizontal-stretch: 1;
-                    text: "为这部作品单独设置按键";
+                    text: @tr("为这部作品单独设置按键");
                     description: GameSettings.input-override
-                        ? "这部作品使用下方的按键映射，不受全局设置影响。"
-                        : "关闭时沿用 设置→输入与手柄 中的全局映射。开启时会先复制一份全局映射。";
+                        ? @tr("这部作品使用下方的按键映射，不受全局设置影响。")
+                        : @tr("关闭时沿用 设置→输入与手柄 中的全局映射。开启时会先复制一份全局映射。");
                 }
                 VerticalLayout {
                     horizontal-stretch: 0;
@@ -24,7 +24,7 @@ export component InputSection {
                     Switch {
                         property <bool> stored: GameSettings.input-override;
                         checked: self.stored;
-                        accessible-label: "为这部作品单独设置按键";
+                        accessible-label: @tr("为这部作品单独设置按键");
                         changed stored => { self.checked = self.stored; }
                         checked-state-changed(value) => {
                             if value != self.stored {
@@ -44,8 +44,8 @@ export component InputSection {
                 padding: Theme.space-lg;
                 padding-bottom: 0px;
                 SectionTitle {
-                    text: "手柄按钮 → 键盘键";
-                    description: "点击一行后按下想绑定的键盘按键，Esc 也可以绑定。点「取消」放弃修改。";
+                    text: @tr("手柄按钮 → 键盘键");
+                    description: @tr("点击一行后按下想绑定的键盘按键，Esc 也可以绑定。点「取消」放弃修改。");
                 }
             }
             VerticalLayout {

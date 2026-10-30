@@ -144,7 +144,7 @@ export component DetailPanel {
                                 if !root.sheet : Rectangle { horizontal-stretch: 1; }
                                 IconButton {
                                     icon: Icons.close;
-                                    tooltip: "关闭";
+                                    tooltip: @tr("关闭");
                                     clicked => { root.close(); }
                                 }
                             }
@@ -212,7 +212,7 @@ export component DetailPanel {
                         spacing: 12px;
 
                         if Selection.emulator-choices.length > 0 : ChoiceSelect {
-                            label: "模拟器";
+                            label: @tr("模拟器");
                             choices: Selection.emulator-choices;
                             value: Selection.game.emulator-id;
                             selected(id) => { Selection.choose-emulator(id); }
@@ -223,19 +223,19 @@ export component DetailPanel {
                             FilledButton {
                                 horizontal-stretch: 1;
                                 icon: Icons.play-arrow;
-                                text: "开始游戏";
+                                text: @tr("开始游戏");
                                 enabled: Selection.game.launchable;
                                 clicked => { Library.launch(Selection.game.id); }
                             }
                             TonalButton {
                                 horizontal-stretch: 0;
                                 icon: Icons.tune;
-                                text: "游戏设置";
+                                text: @tr("游戏设置");
                                 clicked => { GameNav.open-settings(Selection.game.id, "emulator"); }
                             }
                             more := IconButton {
                                 icon: Icons.more-vert;
-                                tooltip: "更多操作";
+                                tooltip: @tr("更多操作");
                                 clicked => {
                                     menu.open(Selection.game.id, Selection.game.launchable,
                                         self.absolute-position.x - root.absolute-position.x - 168px,
@@ -257,7 +257,7 @@ export component DetailPanel {
                             }
                             MaterialText {
                                 horizontal-stretch: 1;
-                                text: Selection.game.problem != "" ? Selection.game.problem : "暂时无法启动";
+                                text: Selection.game.problem != "" ? Selection.game.problem : @tr("暂时无法启动");
                                 style: MaterialTypography.body-medium;
                                 color: MaterialPalette.error;
                                 wrap: word-wrap;
@@ -267,7 +267,7 @@ export component DetailPanel {
                     }
 
                     TabBar {
-                        items: [{ text: "概览" }, { text: "兼容性" }, { text: "记录" }];
+                        items: [{ text: @tr("概览") }, { text: @tr("兼容性") }, { text: @tr("记录") }];
                         current-index <=> root.tab;
                     }
                     HorizontalDivider { }
@@ -284,18 +284,18 @@ export component DetailPanel {
                             wrap: word-wrap;
                             overflow: clip;
                         }
-                        InfoRow { label: "游玩时长"; value: Selection.game.play-time != "" ? Selection.game.play-time : "未开始"; }
-                        InfoRow { label: "上次游玩"; value: Selection.game.last-played != "" ? Selection.game.last-played : "从未"; }
-                        if Selection.game.developer != "" : InfoRow { label: "开发商"; value: Selection.game.developer; }
-                        if Selection.game.release-date != "" : InfoRow { label: "发售日"; value: Selection.game.release-date; }
-                        if Selection.game.platforms != "" : InfoRow { label: "平台"; value: Selection.game.platforms; }
-                        if Selection.game.aliases != "" : InfoRow { label: "别名"; value: Selection.game.aliases; }
-                        if Selection.game.tags != "" : InfoRow { label: "标签"; value: Selection.game.tags; }
+                        InfoRow { label: @tr("游玩时长"); value: Selection.game.play-time != "" ? Selection.game.play-time : @tr("未开始"); }
+                        InfoRow { label: @tr("上次游玩"); value: Selection.game.last-played != "" ? Selection.game.last-played : @tr("从未"); }
+                        if Selection.game.developer != "" : InfoRow { label: @tr("开发商"); value: Selection.game.developer; }
+                        if Selection.game.release-date != "" : InfoRow { label: @tr("发售日"); value: Selection.game.release-date; }
+                        if Selection.game.platforms != "" : InfoRow { label: @tr("平台"); value: Selection.game.platforms; }
+                        if Selection.game.aliases != "" : InfoRow { label: @tr("别名"); value: Selection.game.aliases; }
+                        if Selection.game.tags != "" : InfoRow { label: @tr("标签"); value: Selection.game.tags; }
 
                         Card {
-                            SectionTitle { text: "作品资料"; }
+                            SectionTitle { text: @tr("作品资料"); }
                             MaterialText {
-                                text: Selection.metadata-status != "" ? Selection.metadata-status : "尚未关联 VNDB 或 Bangumi 作品资料。";
+                                text: Selection.metadata-status != "" ? Selection.metadata-status : @tr("尚未关联 VNDB 或 Bangumi 作品资料。");
                                 style: MaterialTypography.body-medium;
                                 color: MaterialPalette.on-surface-variant;
                                 wrap: word-wrap;
@@ -304,7 +304,7 @@ export component DetailPanel {
                             HorizontalLayout {
                                 alignment: start;
                                 OutlineButton {
-                                    text: "关联作品资料…";
+                                    text: @tr("关联作品资料…");
                                     clicked => { GameNav.open-settings(Selection.game.id, "metadata"); }
                                 }
                             }
@@ -312,7 +312,7 @@ export component DetailPanel {
 
                         // Each installed copy stays its own library entry; this only navigates between them.
                         if Selection.other-versions.length > 0 : Card {
-                            SectionTitle { text: "同一作品的其他版本"; }
+                            SectionTitle { text: @tr("同一作品的其他版本"); }
                             for version in Selection.other-versions : SelectableTile {
                                 text: version.label;
                                 clicked => { Library.select(version.id); }
@@ -352,9 +352,9 @@ export component DetailPanel {
                                     }
                                 }
                                 if Selection.compat.release-id != "" || Selection.compat.emulator-label != "" : MaterialText {
-                                    text: (Selection.compat.release-id != "" ? "发行版本 " + Selection.compat.release-id : "")
-                                        + (Selection.compat.release-id != "" && Selection.compat.emulator-label != "" ? " · " : "")
-                                        + Selection.compat.emulator-label;
+                                    text: Selection.compat.release-id == "" ? Selection.compat.emulator-label
+                                        : Selection.compat.emulator-label == "" ? @tr("发行版本 {}", Selection.compat.release-id)
+                                        : @tr("发行版本 {0} · {1}", Selection.compat.release-id, Selection.compat.emulator-label);
                                     style: MaterialTypography.body-medium;
                                     color: MaterialPalette.on-surface-variant;
                                     wrap: word-wrap;
@@ -375,19 +375,19 @@ export component DetailPanel {
                                     overflow: clip;
                                 }
                                 if Selection.compat.updated != "" : MaterialText {
-                                    text: "更新于 " + Selection.compat.updated;
+                                    text: @tr("更新于 {}", Selection.compat.updated);
                                     style: MaterialTypography.label-small;
                                     color: MaterialPalette.on-surface-variant;
                                 }
                             }
                         }
 
-                        SectionTitle { text: "发行版本"; }
+                        SectionTitle { text: @tr("发行版本"); }
                         if Selection.releases.length > 0 : ChoiceSelect {
-                            label: "发行版本";
+                            label: @tr("发行版本");
                             choices: Selection.releases;
                             value: Selection.pinned-release;
-                            supporting-text: Selection.pinned-release == "" ? "选择你的发行版本以匹配兼容性记录" : "";
+                            supporting-text: Selection.pinned-release == "" ? @tr("选择你的发行版本以匹配兼容性记录") : "";
                             selected(id) => { Selection.pin-release(id); }
                         }
                         HorizontalLayout {
@@ -395,12 +395,12 @@ export component DetailPanel {
                             spacing: 8px;
                             if Selection.releases.length == 0 : TonalButton {
                                 icon: Icons.download;
-                                text: "获取版本列表";
+                                text: @tr("获取版本列表");
                                 enabled: !Selection.metadata-busy;
                                 clicked => { Selection.fetch-releases(); }
                             }
                             if Selection.releases.length > 0 && Selection.pinned-release != "" : TextButton {
-                                text: "取消指定版本";
+                                text: @tr("取消指定版本");
                                 clicked => { Selection.pin-release(""); }
                             }
                         }
@@ -410,13 +410,13 @@ export component DetailPanel {
                             alignment: start;
                             OutlineButton {
                                 icon: Icons.public;
-                                text: "报告兼容性";
+                                text: @tr("报告兼容性");
                                 enabled: Selection.compat.report-url != "";
                                 clicked => { Platform.open-url(Selection.compat.report-url); }
                             }
                         }
                         if Selection.compat.report-url == "" : MaterialText {
-                            text: "先关联 VNDB 作品";
+                            text: @tr("先关联 VNDB 作品");
                             style: MaterialTypography.body-small;
                             color: MaterialPalette.on-surface-variant;
                         }
@@ -427,9 +427,9 @@ export component DetailPanel {
                         padding: root.pad;
                         spacing: 12px;
 
-                        SectionTitle { text: "游玩记录"; }
+                        SectionTitle { text: @tr("游玩记录"); }
                         if Selection.history.length == 0 : MaterialText {
-                            text: "还没有游玩记录";
+                            text: @tr("还没有游玩记录");
                             style: MaterialTypography.body-medium;
                             color: MaterialPalette.on-surface-variant;
                         }
@@ -473,8 +473,8 @@ export component DetailPanel {
                                     y: 0px;
                                     width: max(self.min-width, min(status-flick.width, self.preferred-width));
                                     height: Theme.control-height;
-                                    label: "Bangumi 状态";
-                                    items: ["想玩", "在玩", "玩过", "搁置", "抛弃"];
+                                    label: @tr("Bangumi 状态");
+                                    items: [@tr("想玩"), @tr("在玩"), @tr("玩过"), @tr("搁置"), @tr("抛弃")];
                                     index: root.bangumi-index(Selection.bangumi.status);
                                     selected(index) => {
                                         root.update-bangumi(root.bangumi-id(index), Selection.bangumi.rating, Selection.bangumi.note);
@@ -485,7 +485,7 @@ export component DetailPanel {
                                 spacing: 12px;
                                 MaterialText {
                                     horizontal-stretch: 0;
-                                    text: "评分";
+                                    text: @tr("评分");
                                     style: MaterialTypography.body-medium;
                                     color: MaterialPalette.on-surface-variant;
                                     vertical-alignment: center;
@@ -495,14 +495,14 @@ export component DetailPanel {
                                     maximum: 10;
                                     step: 1;
                                     value: max(1, Selection.bangumi.rating);
-                                    accessible-label: "评分";
+                                    accessible-label: @tr("评分");
                                     released(value) => {
                                         root.update-bangumi(Selection.bangumi.status, round(value), Selection.bangumi.note);
                                     }
                                 }
                                 MaterialText {
                                     width: 48px;
-                                    text: Selection.bangumi.rating > 0 ? Selection.bangumi.rating + " 分" : "未评分";
+                                    text: Selection.bangumi.rating > 0 ? @tr("{} 分", Selection.bangumi.rating) : @tr("未评分");
                                     style: MaterialTypography.label-large;
                                     color: MaterialPalette.on-surface;
                                     vertical-alignment: center;
@@ -510,7 +510,7 @@ export component DetailPanel {
                                 }
                             }
                             TextField {
-                                label: "备注";
+                                label: @tr("备注");
                                 text: Selection.bangumi.note;
                                 edited(text) => {
                                     root.update-bangumi(Selection.bangumi.status, Selection.bangumi.rating, text);
@@ -519,7 +519,7 @@ export component DetailPanel {
                             HorizontalLayout {
                                 alignment: start;
                                 FilledButton {
-                                    text: "同步到 Bangumi";
+                                    text: @tr("同步到 Bangumi");
                                     enabled: !Selection.metadata-busy && root.bangumi-index(Selection.bangumi.status) >= 0;
                                     clicked => { Selection.sync-bangumi(Selection.bangumi); }
                                 }

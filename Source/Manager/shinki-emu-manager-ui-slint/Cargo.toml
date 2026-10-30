@@ -11,15 +11,17 @@ doctest = false
 
 [dependencies]
 serde.workspace = true
-slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu", "unstable-fontique-011"] }
 image = { workspace = true, features = ["gif"] }
 tracing.workspace = true
 parking_lot = "0.13.0"
 # Steam QR login is rendered locally; the challenge URL never leaves the device.
 qrcodegen = "=1.8.0"
+sys-locale = "=0.3.2"
 
 [build-dependencies]
 slint-build.workspace = true
+rspolib = "=0.1.2"
 
 [dev-dependencies]
 tempfile.workspace = true

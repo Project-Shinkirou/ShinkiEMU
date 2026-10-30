@@ -120,11 +120,11 @@ export component ManagerWindow inherits MaterialWindow {
     property <[string]> nav-pages: ["library", "patch", "cores", "filters", "settings"];
     property <int> page-index: App.page == "patch" ? 1 : App.page == "cores" ? 2 : App.page == "filters" ? 3 : App.page == "settings" ? 4 : 0;
     property <[NavigationItem]> nav-items: [
-        { icon: Icons.library-books, text: "游戏库" },
-        { icon: Icons.build, text: "补丁" },
-        { icon: Icons.memory, text: "核心", badge: Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
-        { icon: Icons.filter-vintage, text: "滤镜" },
-        { icon: Icons.settings, text: "设置" },
+        { icon: Icons.library-books, text: @tr("游戏库") },
+        { icon: Icons.build, text: @tr("补丁") },
+        { icon: Icons.memory, text: @tr("核心"), badge: Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
+        { icon: Icons.filter-vintage, text: @tr("滤镜") },
+        { icon: Icons.settings, text: @tr("设置") },
     ];
 
     function navigate(index: int) {
@@ -242,7 +242,7 @@ export component ManagerWindow inherits MaterialWindow {
             y: root.usable-y;
             width: root.usable-width - 12px;
             height: root.bar-height;
-            title: "游戏库";
+            title: @tr("游戏库");
         }
 
         pages := Rectangle {

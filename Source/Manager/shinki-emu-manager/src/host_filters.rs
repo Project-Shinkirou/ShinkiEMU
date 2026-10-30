@@ -1,5 +1,6 @@
 use super::*;
 use shinki_emu_manager_core::FilterSettings;
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) fn configure(
     renderer: &mut dyn ShinkiUnderlayRenderer,
@@ -74,7 +75,7 @@ pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
     filters.on_load_source(move || {
         let run = run.clone();
         platform::pick_file(
-            "选择外部画面效果（HLSL）",
+            tr!("选择外部画面效果（HLSL）"),
             &[platform::FileFilter {
                 label: "HLSL",
                 extensions: &["hlsl"],

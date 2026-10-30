@@ -2,6 +2,7 @@ use super::*;
 use owner::PrepareProgress;
 use probe_worker::{ScanKind, ScanReport, ScanRequest};
 use std::sync::{atomic::AtomicBool, Arc};
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) enum StartupState {
     Waiting,
@@ -35,40 +36,44 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn startup_status(&self) -> String {
         match &self.startup_state {
-            StartupState::Waiting => "点击“准备”加载模拟器核心并扫描资料库。".into(),
+            StartupState::Waiting => tr!("点击“准备”加载模拟器核心并扫描资料库。").into(),
             StartupState::Loading => match self.prepare_progress {
                 Some(PrepareProgress::Cores { loaded, total }) => {
-                    format!("正在加载模拟器核心（{loaded}/{total}）…")
+                    tr!("正在加载模拟器核心（{loaded}/{total}）…", loaded = loaded, total = total)
                 }
-                _ => "正在加载模拟器核心…".into(),
+                _ => tr!("正在加载模拟器核心…").into(),
             },
             StartupState::Scanning(kind) => {
-                let action = if *kind == ScanKind::Import {
-                    "正在导入游戏目录"
-                } else {
-                    "正在扫描资料库"
-                };
-                match self.prepare_progress {
-                    Some(PrepareProgress::Scan { directories, games }) => {
-                        format!("{action}：已检查 {directories} 个目录，识别 {games} 部作品…")
-                    }
-                    _ => format!("{action}…"),
+                let import = *kind == ScanKind::Import;
+                match (self.prepare_progress, import) {
+                    (Some(PrepareProgress::Scan { directories, games }), true) => tr!(
+                        "正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…",
+                        directories = directories,
+                        games = games
+                    ),
+                    (Some(PrepareProgress::Scan { directories, games }), false) => tr!(
+                        "正在扫描资料库：已检查 {directories} 个目录，识别 {games} 部作品…",
+                        directories = directories,
+                        games = games
+                    ),
+                    (_, true) => tr!("正在导入游戏目录…").into(),
+                    (_, false) => tr!("正在扫描资料库…").into(),
                 }
             }
             StartupState::Failed(error) if self.registry.is_ready() => {
-                format!("游戏扫描失败：{error}")
+                tr!("游戏扫描失败：{error}", error = error)
             }
             StartupState::Failed(error) => {
-                format!("核心加载或后台运行失败：{error}。请修复后重启应用。")
+                tr!("核心加载或后台运行失败：{error}。请修复后重启应用。", error = error)
             }
             StartupState::Ready if self.registry.descriptors().next().is_none() => {
-                "未加载模拟器核心，请检查核心安装和加载错误后重启应用。".into()
+                tr!("未加载模拟器核心，请检查核心安装和加载错误后重启应用。").into()
             }
-            StartupState::Ready if !self.plugin_errors.is_empty() => format!(
-                "有 {} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。",
-                self.plugin_errors.len()
+            StartupState::Ready if !self.plugin_errors.is_empty() => tr!(
+                "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。",
+                count = self.plugin_errors.len()
             ),
-            StartupState::Ready => "资料库已准备好。更换核心文件后需重启应用。".into(),
+            StartupState::Ready => tr!("资料库已准备好。更换核心文件后需重启应用。").into(),
         }
     }
 
@@ -82,11 +87,11 @@ impl ShinkiEmuManagerController {
             _ => None,
         };
         match self.startup_state {
-            StartupState::Waiting => ("unprepared", "准备", None, false),
-            StartupState::Loading => ("loading-cores", "准备", progress, false),
-            StartupState::Scanning(_) => ("scanning", "刷新资料库", None, true),
-            StartupState::Ready => ("ready", "刷新资料库", None, false),
-            StartupState::Failed(_) => ("failed", "准备", None, false),
+            StartupState::Waiting => ("unprepared", tr!("准备"), None, false),
+            StartupState::Loading => ("loading-cores", tr!("准备"), progress, false),
+            StartupState::Scanning(_) => ("scanning", tr!("刷新资料库"), None, true),
+            StartupState::Ready => ("ready", tr!("刷新资料库"), None, false),
+            StartupState::Failed(_) => ("failed", tr!("准备"), None, false),
         }
     }
 
@@ -144,7 +149,10 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn begin_scan(&mut self, kind: ScanKind, paths: Vec<PathBuf>) -> Result<(), String> {
         if self.patch_job.is_some() {
-            return Err("SHINKI_EMU_PATCH_INVALID_REQUEST: 文件补丁转换期间不能扫描游戏".into());
+            return Err(format!(
+                "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
+                tr!("文件补丁转换期间不能扫描游戏")
+            ));
         }
         if self.startup_busy() {
             return Err("SHINKI_EMU_FAMILY_INITIALIZING".into());
@@ -207,9 +215,9 @@ impl ShinkiEmuManagerController {
                                     if kind == ScanKind::Full {
                                         self.show_snackbar(
                                             if added > 0 {
-                                                format!("发现 {added} 部新作品")
+                                                tr!("发现 {added} 部新作品", added = added)
                                             } else {
-                                                "资料库已是最新".into()
+                                                tr!("资料库已是最新").into()
                                             },
                                             None,
                                         );
@@ -230,7 +238,7 @@ impl ShinkiEmuManagerController {
                             if self.patch_import.take().is_some() {
                                 self.patch_import_failed(error);
                             }
-                            self.show_snackbar("已取消扫描", None);
+                            self.show_snackbar(tr!("已取消扫描"), None);
                         }
                         Err(error) => self.background_failed(error),
                     }
@@ -391,14 +399,14 @@ impl ShinkiEmuManagerController {
                 self.selected_case_id = Some(id.clone());
             }
             if imported.is_empty() {
-                self.diagnostic = "所选目录中未发现当前核心支持的游戏。请选择原生游戏目录，或检查运行包包含的核心。".into();
+                self.diagnostic = tr!("所选目录中未发现当前核心支持的游戏。请选择原生游戏目录，或检查运行包包含的核心。").into();
                 self.diagnostic_severity = "warning";
             }
         }
         if report.missing > 0 {
-            self.diagnostic = format!(
-                "有 {} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。",
-                report.missing
+            self.diagnostic = tr!(
+                "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。",
+                count = report.missing
             );
             self.diagnostic_severity = "warning";
         }

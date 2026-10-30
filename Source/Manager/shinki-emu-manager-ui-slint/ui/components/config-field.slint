@@ -150,7 +150,7 @@ export component ConfigFieldRow {
                 input := TextField {
                     property <bool> focused: self.has-focus;
                     horizontal-stretch: 1;
-                    label: root.field.label + (root.field.unit != "" ? "（" + root.field.unit + "）" : "");
+                    label: root.field.unit != "" ? @tr("{0}（{1}）", root.field.label, root.field.unit) : root.field.label;
                     text: root.field.value;
                     input-type: root.numeric ? InputType.decimal : InputType.text;
                     enabled: root.enabled;
@@ -190,12 +190,12 @@ export component ConfigFieldRow {
                     HorizontalLayout {
                         spacing: 4px;
                         TextButton {
-                            text: "选择…";
+                            text: @tr("选择…");
                             enabled: root.enabled;
                             clicked => { root.pick(root.field.key); }
                         }
                         TextButton {
-                            text: "清除";
+                            text: @tr("清除");
                             enabled: root.enabled && root.field.value != "";
                             clicked => { root.changed(root.field.key, ""); }
                         }
@@ -214,7 +214,7 @@ export component ConfigFieldRow {
             alignment: center;
             horizontal-stretch: 0;
             TextButton {
-                text: "恢复默认";
+                text: @tr("恢复默认");
                 enabled: root.enabled;
                 clicked => { root.reset(root.field.key); }
             }
@@ -268,7 +268,7 @@ export component ConfigFieldList {
             alignment: start;
             padding-bottom: 12px;
             TextButton {
-                text: root.advanced-open ? "收起高级设置" : "高级设置（" + root.advanced-count + "）";
+                text: root.advanced-open ? @tr("收起高级设置") : @tr("高级设置（{}）", root.advanced-count);
                 icon: root.advanced-open ? Icons.expand-less : Icons.expand-more;
                 clicked => { root.advanced-open = !root.advanced-open; }
             }

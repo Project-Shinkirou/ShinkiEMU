@@ -1,6 +1,7 @@
 use super::*;
 use crate::metadata_cache::tests::{compatibility_json, files, index, sample_catalog, patch_catalog_json};
 use shinki_emu_manager_core::{ExternalIdentityRecord, FamilyProbeReport, INDEPENDENT_FAMILY_ABI_FINGERPRINT};
+use shinki_emu_manager_ui_slint::tr;
 
 const MUSICA: &str = "shinki.emu.musica";
 const SENA: &str = "sena-rs";
@@ -129,7 +130,7 @@ fn several_releases_without_a_pin_are_undecided() {
     let linked = identities(&app, "game");
     assert_eq!(app.compatibility_status("game", &linked), "");
     let view = app.compat_view("game", &linked, 2);
-    assert_eq!(view.hint, RELEASE_HINT);
+    assert_eq!(view.hint, tr!("选择发行版本以查看兼容性"));
     assert!(view.status.is_empty());
 
     app.candidates.remove("game");
@@ -169,7 +170,7 @@ fn report_url_carries_release_emulator_and_versions() {
     .unwrap();
     let view = app.compat_view("unlinked", &[], 2);
     assert!(view.report_url.is_empty());
-    assert_eq!(view.hint, VNDB_LINK_HINT);
+    assert_eq!(view.hint, tr!("先关联 VNDB 作品"));
 }
 
 #[test]
@@ -224,10 +225,10 @@ fn patch_recipes_match_the_vndb_work_and_an_emulator_of_the_game() {
     assert!(ids(&app).is_empty());
     let (recipes, hint) = app.patch_choices("game", &identities(&app, "game")).unwrap();
     assert!(recipes.is_empty());
-    assert_eq!(hint, file_patch::PATCH_NO_RECIPE_HINT);
+    assert_eq!(hint, tr!("补丁目录中没有适用于这部作品和当前模拟器的补丁，可以选择本地脚本。"));
     let (recipes, hint) = app.patch_choices("game", &[]).unwrap();
     assert!(recipes.is_empty());
-    assert_eq!(hint, file_patch::PATCH_VNDB_HINT);
+    assert_eq!(hint, tr!("先在 游戏设置→作品资料 关联 VNDB 作品"));
 }
 
 #[test]

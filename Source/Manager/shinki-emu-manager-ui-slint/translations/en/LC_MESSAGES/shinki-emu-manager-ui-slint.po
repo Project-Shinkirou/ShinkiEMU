@@ -1,0 +1,2331 @@
+# ShinkiEMU Manager UI, English translation. Source language: zh-CN (msgid).
+# Edit msgstr only; build.rs rejects missing, fuzzy or placeholder-mismatched entries.
+msgid ""
+msgstr ""
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "核心"
+msgstr "Cores"
+
+msgid "游戏库"
+msgstr "Library"
+
+msgid "滤镜"
+msgstr "Filters"
+
+msgid "补丁"
+msgstr "Patches"
+
+msgid "设置"
+msgstr "Settings"
+
+msgid "语言"
+msgstr "Language"
+
+msgid "跟随系统"
+msgstr "Follow system"
+
+# library
+msgid "完美"
+msgstr "Perfect"
+
+msgid "可通关"
+msgstr "Completable"
+
+msgid "有瑕疵"
+msgstr "Flawed"
+
+msgid "仅能启动"
+msgstr "Boot only"
+
+msgid "无法运行"
+msgstr "Unplayable"
+
+msgid "未评级"
+msgstr "Unrated"
+
+msgid "准备失败"
+msgstr "Preparation failed"
+
+msgid "正在加载模拟器核心"
+msgstr "Loading cores"
+
+msgid "正在扫描游戏目录"
+msgstr "Scanning library folders"
+
+msgid "查看核心"
+msgstr "View cores"
+
+msgid "重启 ShinkiEMU"
+msgstr "Restart ShinkiEMU"
+
+msgid "引擎 · 模拟器"
+msgstr "Engine · Core"
+
+msgid "兼容性"
+msgstr "Compatibility"
+
+msgid "先准备资料库"
+msgstr "Prepare library first"
+
+msgid "ShinkiEMU 会加载模拟器核心，再扫描你的游戏目录。"
+msgstr "ShinkiEMU will load cores and scan your library folders."
+
+msgid "换个关键词试试。"
+msgstr "Try different keywords."
+
+msgid "清除搜索"
+msgstr "Clear search"
+
+msgid "添加第一个游戏目录"
+msgstr "Add your first library folder"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会识别其中的作品。"
+msgstr "Choose folders containing your games. ShinkiEMU will detect titles inside."
+
+msgid "没有符合筛选条件的作品"
+msgstr "No titles match the filter"
+
+msgid "显示全部"
+msgstr "Show all"
+
+msgid "这些目录里还没有识别到作品"
+msgstr "No titles detected in these folders"
+
+msgid "可以添加其他目录，或在 设置→库目录 中管理已有目录。"
+msgstr "Add more folders or manage them in Settings → Library folders."
+
+msgid "上次游玩"
+msgstr "Last played"
+
+msgid "最近游玩"
+msgstr "Recently played"
+
+msgid "游玩时长"
+msgstr "Play time"
+
+msgid "全部"
+msgstr "All"
+
+msgid "网格"
+msgstr "Grid"
+
+msgid "列表"
+msgstr "List"
+
+msgid "视图"
+msgstr "View"
+
+msgid "取消"
+msgstr "Cancel"
+
+msgid "排序"
+msgstr "Sort"
+
+msgid "标题"
+msgstr "Title"
+
+msgid "添加游戏"
+msgstr "Add game"
+
+msgid "搜索标题、别名或开发商"
+msgstr "Search titles, aliases or developers"
+
+msgid "没有找到“{}”"
+msgstr "No results for “{}”"
+
+msgid "{n} 部作品"
+msgid_plural "{n} 部作品"
+msgstr[0] "{n} game"
+msgstr[1] "{n} games"
+
+# patch
+msgid "第 {0} 步：{1}"
+msgstr "Step {0}: {1}"
+
+msgid "选择…"
+msgstr "Choose…"
+
+msgid "已关联 VNDB"
+msgstr "Linked to VNDB"
+
+msgid "未关联 VNDB"
+msgstr "Not linked to VNDB"
+
+msgid "{0}，{1}，{2}"
+msgstr "{0}, {1}, {2}"
+
+msgid "选择游戏"
+msgstr "Choose game"
+
+msgid "选择补丁"
+msgstr "Choose patch"
+
+msgid "目录"
+msgstr "Directories"
+
+msgid "执行"
+msgstr "Run"
+
+msgid "完成"
+msgstr "Finish"
+
+msgid "补丁 · {}"
+msgstr "Patches · {}"
+
+msgid "返回游戏库"
+msgstr "Back to library"
+
+msgid "搜索游戏"
+msgstr "Search games"
+
+msgid "没有与“{}”匹配的游戏。"
+msgstr "No games match “{}”."
+
+msgid "资料库中还没有游戏。先在游戏库添加游戏目录并完成准备。"
+msgstr "The library has no games yet. Add a game folder in Library and finish preparing it first."
+
+msgid "更换"
+msgstr "Change"
+
+msgid "恢复原文件"
+msgstr "Restore original files"
+
+msgid "还原最近一次原位覆盖，修改过的补丁文件不会被覆盖。"
+msgstr "Restores the latest in-place overwrite. Patched files you edited are not overwritten."
+
+msgid "还原最近一次补丁"
+msgstr "Restore latest patch"
+
+msgid "下面列出补丁目录中适用于这部作品和当前模拟器的补丁；也可以使用本地的 Luau 转换脚本。"
+msgstr "Patches from the catalog that fit this title and its current core are listed below. You can also use a local Luau recipe."
+
+msgid "补丁目录中没有适用于这部作品的补丁。"
+msgstr "The catalog has no patches for this title."
+
+msgid "推荐"
+msgstr "Recommended"
+
+msgid "本地脚本"
+msgstr "Local recipe"
+
+msgid "下载补丁"
+msgstr "Download patch"
+
+msgid "选择本地脚本…"
+msgstr "Choose local recipe…"
+
+msgid "补丁输入目录默认是游戏目录；可选择新目录或原位覆盖。原位覆盖会把修改前的文件保存在游戏目录的 .shinki/backup。"
+msgstr "The patch input directory defaults to the game directory. Choose New directory or In-place overwrite; in-place mode keeps the original files in the game's .shinki/backup."
+
+msgid "新目录"
+msgstr "New directory"
+
+msgid "原位覆盖"
+msgstr "In-place overwrite"
+
+msgid "补丁输入目录"
+msgstr "Patch input directory"
+
+msgid "使用游戏目录"
+msgstr "Use game directory"
+
+msgid "输出目录"
+msgstr "Output directory"
+
+msgid "尚未选择"
+msgstr "Not chosen yet"
+
+msgid "必须是不存在或为空的目录"
+msgstr "Must be a new or empty directory"
+
+msgid "正在转换"
+msgstr "Converting"
+
+msgid "转换失败"
+msgstr "Conversion failed"
+
+msgid "开始转换"
+msgstr "Start conversion"
+
+msgid "原文件备份到 .shinki/backup；取消前不会修改游戏文件。"
+msgstr "Original files are backed up to .shinki/backup. Game files stay unchanged until the run finishes."
+
+msgid "确认下面的设置后开始。转换期间可以随时取消，取消时不会生成输出目录。"
+msgstr "Check the settings below, then start. You can cancel at any time; cancelling leaves no output directory."
+
+msgid "补丁：{}"
+msgstr "Patch: {}"
+
+msgid "已从补丁目录选择"
+msgstr "chosen from the catalog"
+
+msgid "未选择"
+msgstr "not chosen"
+
+msgid "补丁输入目录：{}"
+msgstr "Patch input directory: {}"
+
+msgid "游戏目录"
+msgstr "game directory"
+
+msgid "输出目录：{}"
+msgstr "Output directory: {}"
+
+msgid "重新开始"
+msgstr "Start again"
+
+msgid "转换完成"
+msgstr "Conversion complete"
+
+msgid "转换结果已保存。"
+msgstr "The result has been saved."
+
+msgid "游戏目录：{}"
+msgstr "Game directory: {}"
+
+msgid "转换其他游戏"
+msgstr "Convert another game"
+
+msgid "返回游戏"
+msgstr "Back to game"
+
+msgid "打开新作品"
+msgstr "Open new title"
+
+msgid "上一步"
+msgstr "Back"
+
+msgid "下一步"
+msgstr "Next"
+
+# translation
+msgid "{} 秒"
+msgstr "{} s"
+
+msgid "实时翻译"
+msgstr "Live translation"
+
+msgid "启用实时翻译"
+msgstr "Enable live translation"
+
+msgid "需要先在 联网与资料 中允许联网"
+msgstr "Allow network access in Network & metadata first"
+
+msgid "需要先填写并保存下方的接口配置"
+msgstr "Fill in and save the provider settings below first"
+
+msgid "游戏运行时把对白发送到翻译服务，并显示译文。"
+msgstr "Sends dialogue to the translation service while a game runs and shows the translation."
+
+msgid "翻译接口"
+msgstr "Translation provider"
+
+msgid "修改后点「保存」才会生效。"
+msgstr "Changes take effect after you click Save."
+
+msgid "服务商"
+msgstr "Provider"
+
+msgid "请填写接口地址"
+msgstr "Enter the endpoint URL"
+
+msgid "需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。"
+msgstr "HTTPS is required; local services (localhost / 127.0.0.1) may use HTTP."
+
+msgid "恢复默认地址"
+msgstr "Restore default URL"
+
+msgid "API 密钥（已保存，留空沿用）"
+msgstr "API key (saved; leave empty to keep it)"
+
+msgid "API 密钥"
+msgstr "API key"
+
+msgid "密钥保存在系统凭据库中，不会写入配置文件。"
+msgstr "The key is stored in the system credential store, never in the config file."
+
+msgid "接口格式"
+msgstr "API format"
+
+msgid "模型"
+msgstr "Model"
+
+msgid "先「测试连接」获取模型列表"
+msgstr "Run Test connection to load models"
+
+msgid "手动输入…"
+msgstr "Enter manually…"
+
+msgid "测试连接成功后可以从列表中选择模型。"
+msgstr "After a successful connection test you can pick a model from the list."
+
+msgid "模型名称"
+msgstr "Model name"
+
+msgid "请填写模型名称"
+msgstr "Enter a model name"
+
+msgid "目标语言"
+msgstr "Target language"
+
+msgid "语言代码"
+msgstr "Language code"
+
+msgid "BCP 47 语言代码，例如 zh-CN、fr、de。"
+msgstr "BCP 47 language code, e.g. zh-CN, fr, de."
+
+msgid "超时"
+msgstr "Timeout"
+
+msgid "收起高级设置"
+msgstr "Hide advanced settings"
+
+msgid "高级设置"
+msgstr "Advanced settings"
+
+msgid "追加提示词"
+msgstr "Extra prompt"
+
+msgid "附加在翻译指令后的风格要求，例如人名译法或语气。"
+msgstr "Style notes appended to the translation instructions, such as how to render names or tone."
+
+msgid "不能超过 2000 字"
+msgstr "Must not exceed 2000 characters"
+
+msgid "上下文段数"
+msgstr "Context lines"
+
+msgid "随请求附带的前文对白条数，0 表示不带上下文。"
+msgstr "Number of preceding dialogue lines sent with each request; 0 sends none."
+
+msgid "上下文字符上限"
+msgstr "Context character limit"
+
+msgid "连接状态"
+msgstr "Connection status"
+
+msgid "有未保存的修改"
+msgstr "Unsaved changes"
+
+msgid "测试连接"
+msgstr "Test connection"
+
+msgid "保存"
+msgstr "Save"
+
+msgid "测试连接需要先允许联网。"
+msgstr "Testing the connection requires network access."
+
+# detail+login
+msgid "关闭"
+msgstr "Close"
+
+msgid "模拟器"
+msgstr "Emulator"
+
+msgid "开始游戏"
+msgstr "Start game"
+
+msgid "游戏设置"
+msgstr "Game settings"
+
+msgid "更多操作"
+msgstr "More actions"
+
+msgid "暂时无法启动"
+msgstr "Can't start right now"
+
+msgid "概览"
+msgstr "Overview"
+
+msgid "记录"
+msgstr "History"
+
+msgid "未开始"
+msgstr "Not started"
+
+msgid "从未"
+msgstr "Never"
+
+msgid "开发商"
+msgstr "Developer"
+
+msgid "发售日"
+msgstr "Release date"
+
+msgid "平台"
+msgstr "Platforms"
+
+msgid "别名"
+msgstr "Aliases"
+
+msgid "标签"
+msgstr "Tags"
+
+msgid "作品资料"
+msgstr "Metadata"
+
+msgid "尚未关联 VNDB 或 Bangumi 作品资料。"
+msgstr "Not linked to VNDB or Bangumi metadata yet."
+
+msgid "关联作品资料…"
+msgstr "Link metadata…"
+
+msgid "同一作品的其他版本"
+msgstr "Other editions of this title"
+
+msgid "发行版本 {}"
+msgstr "Release {}"
+
+msgid "发行版本 {0} · {1}"
+msgstr "Release {0} · {1}"
+
+msgid "更新于 {}"
+msgstr "Updated {}"
+
+msgid "发行版本"
+msgstr "Release"
+
+msgid "选择你的发行版本以匹配兼容性记录"
+msgstr "Choose your release to match compatibility reports"
+
+msgid "获取版本列表"
+msgstr "Fetch releases"
+
+msgid "取消指定版本"
+msgstr "Clear release"
+
+msgid "报告兼容性"
+msgstr "Report compatibility"
+
+msgid "先关联 VNDB 作品"
+msgstr "Link a VNDB title first"
+
+msgid "游玩记录"
+msgstr "Play history"
+
+msgid "还没有游玩记录"
+msgstr "No play history yet"
+
+msgid "Bangumi 状态"
+msgstr "Bangumi status"
+
+msgid "想玩"
+msgstr "Wish"
+
+msgid "在玩"
+msgstr "Playing"
+
+msgid "玩过"
+msgstr "Played"
+
+msgid "搁置"
+msgstr "On hold"
+
+msgid "抛弃"
+msgstr "Dropped"
+
+msgid "评分"
+msgstr "Rating"
+
+msgid "{} 分"
+msgstr "{} / 10"
+
+msgid "未评分"
+msgstr "Not rated"
+
+msgid "备注"
+msgstr "Notes"
+
+msgid "同步到 Bangumi"
+msgstr "Sync to Bangumi"
+
+msgid "{} 账户名"
+msgstr "{} account name"
+
+msgid "密码"
+msgstr "Password"
+
+msgid "密码只用于本次登录；登录凭据保存在系统凭据库中。"
+msgstr "The password is used only for this sign-in; the sign-in credential is stored in the system credential store."
+
+msgid "登录"
+msgstr "Sign in"
+
+msgid "邮箱验证码"
+msgstr "Email code"
+
+msgid "手机令牌验证码"
+msgstr "Mobile authenticator code"
+
+msgid "验证码已发送至你的邮箱。"
+msgstr "A code has been sent to your email."
+
+msgid "打开商店手机应用，输入令牌中显示的验证码。"
+msgstr "Open the store's mobile app and enter the code shown by its authenticator."
+
+msgid "提交"
+msgstr "Submit"
+
+msgid "登录 {} 后可以下载你已拥有的游戏。"
+msgstr "Sign in to {} to download games you own."
+
+msgid "登录失败"
+msgstr "Sign-in failed"
+
+msgid "账户密码登录"
+msgstr "Account and password"
+
+msgid "其他登录方式"
+msgstr "Other sign-in options"
+
+msgid "扫码登录"
+msgstr "QR login"
+
+msgid "导入 {} 客户端登录"
+msgstr "Import {} client sign-in"
+
+msgid "浏览器登录"
+msgstr "Browser sign-in"
+
+msgid "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。"
+msgstr "Sign in to your own account on the store's website, then paste that site's cookie. The cookie is stored only in the system keyring."
+
+msgid "打开官网登录页"
+msgstr "Open sign-in page"
+
+msgid "使用 Cookie 登录"
+msgstr "Sign in with cookie"
+
+msgid "正在连接 {}"
+msgstr "Connecting to {}"
+
+msgid "验证码验证"
+msgstr "Verification code"
+
+msgid "账户：{}"
+msgstr "Account: {}"
+
+msgid "请在 {} 手机应用中确认"
+msgstr "Confirm in the {} mobile app"
+
+msgid "在手机上批准这次登录后会自动继续。"
+msgstr "Sign-in continues automatically once you approve it on your phone."
+
+msgid "用 {} 手机应用扫描二维码并确认登录。"
+msgstr "Scan the QR code with the {} mobile app and confirm the sign-in."
+
+msgid "登录二维码"
+msgstr "Sign-in QR code"
+
+# cores
+msgid "可更新"
+msgstr "Update available"
+
+msgid "已加载"
+msgstr "Loaded"
+
+msgid "加载失败"
+msgstr "Load failed"
+
+msgid "重启后安装"
+msgstr "Install on restart"
+
+msgid "重启后更新"
+msgstr "Update on restart"
+
+msgid "重启后移除"
+msgstr "Remove on restart"
+
+msgid "可安装"
+msgstr "Available"
+
+msgid "随附"
+msgstr "Bundled"
+
+msgid "用户安装"
+msgstr "User-installed"
+
+msgid "在线"
+msgstr "Online"
+
+msgid "版本未知"
+msgstr "Version unknown"
+
+msgid "更新到 {}"
+msgstr "Update to {}"
+
+msgid "安装"
+msgstr "Install"
+
+msgid "收起默认设置"
+msgstr "Hide defaults"
+
+msgid "默认设置"
+msgstr "Default settings"
+
+msgid "查看日志"
+msgstr "View log"
+
+msgid "卸载"
+msgstr "Uninstall"
+
+msgid "模拟器默认设置"
+msgstr "Emulator defaults"
+
+msgid "没有单独设置的游戏使用这里的值；修改立即保存。"
+msgstr "Games without individual settings use these values; changes save immediately."
+
+msgid "这个模拟器没有其他可调参数。"
+msgstr "This emulator has no other tunable settings."
+
+msgid "核心有变更，重启 ShinkiEMU 后生效。"
+msgstr "Cores have changed; restart ShinkiEMU to apply."
+
+msgid "立即重启"
+msgstr "Restart now"
+
+msgid "在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。"
+msgstr "The online core catalog comes from ShinkiEMU metadata; downloads take effect after a restart."
+
+msgid "允许联网后可以在线安装和更新核心。"
+msgstr "Enable network access to install and update cores online."
+
+msgid "从本地安装…"
+msgstr "Install from file…"
+
+msgid "没有找到核心。可以从本地安装核心包，或允许联网后在线安装。"
+msgstr "No cores found. Install a core package from a file or enable network access to install online."
+
+msgid "待重启（{}）"
+msgstr "Pending restart ({})"
+
+msgid "加载失败（{}）"
+msgstr "Load failed ({})"
+
+msgid "已安装（{}）"
+msgstr "Installed ({})"
+
+msgid "可安装（{}）"
+msgstr "Available ({})"
+
+# onboarding
+msgid "第 {0} 步，共 {1} 步"
+msgstr "Step {0} of {1}"
+
+msgid "开始之前"
+msgstr "Before you begin"
+
+msgid "请先阅读以下说明。以后可以在 设置→关于 再次查看。"
+msgstr "Please read the notices below. You can view them again in Settings → About."
+
+msgid "添加库目录"
+msgstr "Add library folders"
+
+msgid "选择存放游戏的文件夹，ShinkiEMU 会在其中识别作品。以后也可以在 设置→库目录 修改，这一步可以跳过。"
+msgstr "Choose folders containing your games; ShinkiEMU scans them for titles. You can change them later in Settings → Library folders. This step is optional."
+
+msgid "还没有添加目录。"
+msgstr "No folders added yet."
+
+msgid "添加目录"
+msgstr "Add folder"
+
+msgid "联网服务"
+msgstr "Network services"
+
+msgid "ShinkiEMU 默认不联网。开启后可以使用以下服务，随时可以在 设置→联网与资料 关闭。"
+msgstr "ShinkiEMU doesn't connect to the network by default. Enable it to use the services below; you can turn them off anytime in Settings → Network & metadata."
+
+msgid "允许联网"
+msgstr "Allow network access"
+
+msgid "涵盖 VNDB 资料与封面、Bangumi 同步、ShinkiEMU 元数据（兼容性、推荐配置、补丁）与核心更新，以及实时翻译。"
+msgstr "Covers VNDB metadata and cover art, Bangumi sync, ShinkiEMU metadata (compatibility, recommended settings, patches) and core updates, plus live translation."
+
+msgid "准备资料库"
+msgstr "Prepare library"
+
+msgid "加载模拟器核心并扫描库目录。作品较多时可能需要一些时间，可以先完成引导，在游戏库中查看进度。"
+msgstr "Load emulator cores and scan library folders. This may take a moment if you have many titles; you can finish onboarding first and watch progress in the library."
+
+msgid "重新扫描"
+msgstr "Re-scan"
+
+msgid "重试"
+msgstr "Retry"
+
+msgid "开始准备"
+msgstr "Start"
+
+msgid "正在加载核心…"
+msgstr "Loading cores…"
+
+msgid "正在扫描…"
+msgstr "Scanning…"
+
+msgid "欢迎使用 ShinkiEMU"
+msgstr "Welcome to ShinkiEMU"
+
+msgid "跳过引导"
+msgstr "Skip onboarding"
+
+msgid "下一步（{} 秒）"
+msgstr "Next ({} s)"
+
+# onboarding
+msgid "准备失败，请查看核心诊断"
+msgstr "Preparation failed; check core diagnostics"
+
+msgid "资料库已准备好，共 {n} 部作品"
+msgid_plural "资料库已准备好，共 {n} 部作品"
+msgstr[0] "Library ready: {n} title"
+msgstr[1] "Library ready: {n} titles"
+
+# game-view
+msgid "游戏画面"
+msgstr "Game viewport"
+
+msgid "打开游戏菜单"
+msgstr "Open game menu"
+
+msgid "封面"
+msgstr "Cover"
+
+msgid "正在启动"
+msgstr "Starting"
+
+msgid "正在启动…"
+msgstr "Starting…"
+
+msgid "游戏菜单"
+msgstr "Game menu"
+
+msgid "继续游戏"
+msgstr "Resume"
+
+msgid "画面滤镜"
+msgstr "Screen filter"
+
+msgid "退出全屏"
+msgstr "Exit fullscreen"
+
+msgid "全屏"
+msgstr "Fullscreen"
+
+msgid "↑↓ 选择 · Enter 确认 · Esc 关闭"
+msgstr "↑↓ Select · Enter Confirm · Esc Close"
+
+msgid "返回"
+msgstr "Back"
+
+msgid "改动立即生效"
+msgstr "Changes take effect immediately"
+
+msgid "预设"
+msgstr "Presets"
+
+msgid "原画"
+msgstr "Original"
+
+msgid "不做处理"
+msgstr "No processing"
+
+msgid "平滑放大"
+msgstr "Smooth upscale"
+
+msgid "按倍率放大画面"
+msgstr "Scale the picture by a factor"
+
+msgid "锐化"
+msgstr "Sharpen"
+
+msgid "增强线条边缘"
+msgstr "Enhance line edges"
+
+msgid "修复线条并放大 2 倍"
+msgstr "Restore lines and upscale 2×"
+
+msgid "外部效果…"
+msgstr "External effect…"
+
+msgid "从文件加载 HLSL 效果"
+msgstr "Load an HLSL effect from a file"
+
+msgid "效果参数"
+msgstr "Effect parameters"
+
+msgid "当前预设没有可调参数"
+msgstr "This preset has no tunable parameters"
+
+msgid "恢复默认参数"
+msgstr "Restore defaults"
+
+# onboarding-appearance
+msgid "外观"
+msgstr "Appearance"
+
+msgid "选择界面主题和游戏库封面大小。更多选项在 设置→外观。"
+msgstr "Choose the theme and library cover size. More options are in Settings → Appearance."
+
+# store
+msgid "{0}。{1}"
+msgstr "{0}. {1}"
+
+msgid "作品 ID {}"
+msgstr "Title ID {}"
+
+msgid "已选 {0} 个内容仓库，共 {1}"
+msgstr "Depots selected: {0}, {1} total"
+
+msgid "已选 {} 个内容仓库"
+msgstr "Depots selected: {}"
+
+msgid "已登录：{}"
+msgstr "Signed in: {}"
+
+msgid "已登录 {}"
+msgstr "Signed in to {}"
+
+msgid "{} 下载"
+msgstr "{} downloads"
+
+msgid "商店下载"
+msgstr "Store downloads"
+
+msgid "内容仓库 {}"
+msgstr "Depot {}"
+
+msgid "返回添加游戏"
+msgstr "Back to Add game"
+
+msgid "返回游戏列表"
+msgstr "Back to games"
+
+msgid "搜索已拥有的游戏"
+msgstr "Search owned games"
+
+msgid "这个账户还没有游戏"
+msgstr "This account has no games yet"
+
+msgid "在商店购买或领取游戏后，刷新即可看到。"
+msgstr "Buy or claim games in the store, then refresh to see them here."
+
+msgid "刷新"
+msgstr "Refresh"
+
+msgid "选择一款游戏"
+msgstr "Select a game"
+
+msgid "选择内容仓库、语言和分支后即可下载。"
+msgstr "Choose depots, languages and a branch, then download."
+
+msgid "内容仓库"
+msgstr "Depots"
+
+msgid "正在读取内容仓库…"
+msgstr "Loading depots…"
+
+msgid "默认选中 Windows 版本。"
+msgstr "The Windows version is selected by default."
+
+msgid "额外下载的语言内容。"
+msgstr "Extra language content to download."
+
+msgid "分支"
+msgstr "Branch"
+
+msgid "分支密码"
+msgstr "Branch password"
+
+msgid "已输入分支密码"
+msgstr "Branch password entered"
+
+msgid "测试分支需要密码时填写；不会保存。"
+msgstr "Required for password-protected beta branches; not saved."
+
+msgid "游戏库目录"
+msgstr "Library folder"
+
+msgid "请选择下载到哪个文件夹。"
+msgstr "Choose a folder to download to."
+
+msgid "应用"
+msgstr "Apply"
+
+msgid "正在准备下载"
+msgstr "Preparing download"
+
+msgid "正在下载"
+msgstr "Downloading"
+
+msgid "正在校验文件"
+msgstr "Verifying files"
+
+msgid "已取消"
+msgstr "Cancelled"
+
+msgid "正在取消"
+msgstr "Cancelling"
+
+msgid "下载完成"
+msgstr "Download complete"
+
+msgid "下载失败"
+msgstr "Download failed"
+
+msgid "下载"
+msgstr "Download"
+
+msgid "检查更新"
+msgstr "Check updates"
+
+msgid "有可用更新"
+msgstr "Update available"
+
+msgid "下载更新"
+msgstr "Download update"
+
+msgid "已安装"
+msgstr "Installed"
+
+msgid "校验并修复"
+msgstr "Verify and repair"
+
+msgid "打开下载目录"
+msgstr "Open download folder"
+
+msgid "商店"
+msgstr "Store"
+
+msgid "退出登录"
+msgstr "Sign out"
+
+msgid "刷新游戏库"
+msgstr "Refresh library"
+
+msgid "加载游戏库"
+msgstr "Load library"
+
+msgid "游戏库加载失败"
+msgstr "Couldn't load the library"
+
+# settings
+msgid "Bangumi 访问令牌"
+msgstr "Bangumi access token"
+
+msgid "ShinkiEMU 使用的开源组件及其许可证"
+msgstr "Open-source components used by ShinkiEMU and their licenses"
+
+msgid "ShinkiEMU 元数据"
+msgstr "ShinkiEMU metadata"
+
+msgid "下载敏感封面"
+msgstr "Download sensitive covers"
+
+msgid "中"
+msgstr "Medium"
+
+msgid "主题"
+msgstr "Theme"
+
+msgid "从资料库移除的作品不会在扫描时重新加入，恢复后会重新出现。"
+msgstr "Titles removed from the library are skipped by later scans. Restore them to bring them back."
+
+msgid "低"
+msgstr "Low"
+
+msgid "免责声明"
+msgstr "Disclaimer"
+
+msgid "关于"
+msgstr "About"
+
+msgid "关闭时，VNDB 标记为敏感的封面不会下载，以占位图代替。"
+msgstr "When off, covers VNDB marks as sensitive are not downloaded and a placeholder is shown instead."
+
+msgid "关闭界面过渡动画。"
+msgstr "Turn off interface transition animations."
+
+msgid "兼容性数据"
+msgstr "Compatibility data"
+
+msgid "兼容性记录、推荐配置、补丁目录和在线核心列表来自元数据仓库。"
+msgstr "Compatibility records, recommended settings, the patch catalog and the online core list come from the metadata repository."
+
+msgid "准备资料库时会扫描这些目录及其子目录。"
+msgstr "Preparing the library scans these folders and their subfolders."
+
+msgid "减少动态效果"
+msgstr "Reduce motion"
+
+msgid "启用手柄"
+msgstr "Enable controller"
+
+msgid "在游戏封面上显示兼容性状态。"
+msgstr "Show compatibility status on game covers."
+
+msgid "大"
+msgstr "Large"
+
+msgid "密度"
+msgstr "Density"
+
+msgid "封面兼容性徽章"
+msgstr "Compatibility badges on covers"
+
+msgid "封面大小"
+msgstr "Cover size"
+
+msgid "小"
+msgstr "Small"
+
+msgid "已保存（输入新令牌可替换）"
+msgstr "Saved (enter a new token to replace it)"
+
+msgid "已移除的作品"
+msgstr "Removed titles"
+
+msgid "库目录"
+msgstr "Library folders"
+
+msgid "开启后才会访问 VNDB 资料与封面、Bangumi、ShinkiEMU 元数据与核心更新，以及实时翻译服务。关闭时 ShinkiEMU 不发出任何网络请求。"
+msgstr "When on, ShinkiEMU can reach VNDB metadata and covers, Bangumi, ShinkiEMU metadata and core updates, and live translation services. When off, ShinkiEMU makes no network requests at all."
+
+msgid "恢复"
+msgstr "Restore"
+
+msgid "恢复《{}》"
+msgstr "Restore “{}”"
+
+msgid "恢复推荐按键"
+msgstr "Restore recommended keys"
+
+msgid "手柄"
+msgstr "Controller"
+
+msgid "手柄状态"
+msgstr "Controller status"
+
+msgid "打开数据目录"
+msgstr "Open data folder"
+
+msgid "打开日志目录"
+msgstr "Open log folder"
+
+msgid "把手柄按键映射为游戏的键盘输入。"
+msgstr "Map controller buttons to the game's keyboard input."
+
+msgid "报告问题时请附上日志"
+msgstr "Attach logs when reporting a problem"
+
+msgid "按下手柄按钮即可在下方查看对应的按键"
+msgstr "Press a controller button to see its mapped key below"
+
+msgid "按键映射"
+msgstr "Key mapping"
+
+msgid "摇杆偏移小于死区时不产生输入；摇杆漂移明显时调高。"
+msgstr "Stick movement inside the dead zone is ignored. Raise it if your stick drifts."
+
+msgid "摇杆死区"
+msgstr "Stick dead zone"
+
+msgid "数据来源"
+msgstr "Data sources"
+
+msgid "显示"
+msgstr "Display"
+
+msgid "未同步"
+msgstr "Not synced"
+
+msgid "未知"
+msgstr "unknown"
+
+msgid "正在同步…"
+msgstr "Syncing…"
+
+msgid "正在按下的按钮会在下方高亮"
+msgstr "Buttons you press are highlighted below"
+
+msgid "没有可用的按键映射。"
+msgstr "No key mapping available."
+
+msgid "没有已移除的作品。"
+msgstr "No removed titles."
+
+msgid "浅色"
+msgstr "Light"
+
+msgid "深色"
+msgstr "Dark"
+
+msgid "清除"
+msgstr "Clear"
+
+msgid "游戏库视图"
+msgstr "Library view"
+
+msgid "点击一行后按下键盘按键完成绑定。Esc 也可以绑定。"
+msgstr "Click a row, then press a keyboard key to bind it. Esc can be bound too."
+
+msgid "版本 {0} · 构建 {1}"
+msgstr "Version {0} · build {1}"
+
+msgid "版本 {}"
+msgstr "Version {}"
+
+msgid "用于同步收藏状态与评分。令牌保存在系统凭据库中。"
+msgstr "Used to sync collection status and ratings. The token is stored in the system credential store."
+
+msgid "界面框架"
+msgstr "UI framework"
+
+msgid "移除"
+msgstr "Remove"
+
+msgid "立即同步"
+msgstr "Sync now"
+
+msgid "第三方许可"
+msgstr "Third-party licenses"
+
+msgid "紧凑"
+msgstr "Compact"
+
+msgid "紧凑模式会缩小间距和封面。"
+msgstr "Compact mode reduces spacing and cover size."
+
+msgid "细节"
+msgstr "Details"
+
+msgid "联网"
+msgstr "Network"
+
+msgid "联网与资料"
+msgstr "Network & metadata"
+
+msgid "舒适"
+msgstr "Comfortable"
+
+msgid "访问令牌"
+msgstr "Access token"
+
+msgid "资料库、设置、封面缓存和用户安装的核心"
+msgstr "Library database, settings, cover cache and user-installed cores"
+
+msgid "输入与手柄"
+msgstr "Input & controllers"
+
+msgid "重新查看说明，选择库目录、联网与外观"
+msgstr "Review the notes and choose library folders, network and appearance again"
+
+msgid "重新运行首次设置"
+msgstr "Run first-time setup again"
+
+msgid "防倒卖声明"
+msgstr "Anti-resale notice"
+
+msgid "需要先允许联网"
+msgstr "Network access must be allowed first"
+
+msgid "高"
+msgstr "High"
+
+# game-settings
+msgid "ShinkiEMU 元数据为这部作品和当前模拟器提供了推荐参数。"
+msgstr "ShinkiEMU metadata has recommended settings for this title and the current emulator."
+
+msgid "为这部作品单独设置按键"
+msgstr "Use separate keys for this title"
+
+msgid "修复线条并 2 倍放大"
+msgstr "Clean up lines and upscale 2×"
+
+msgid "关联"
+msgstr "Link"
+
+msgid "关联作品资料"
+msgstr "Link title metadata"
+
+msgid "关闭时沿用 设置→输入与手柄 中的全局映射。开启时会先复制一份全局映射。"
+msgstr "When off, the global mapping in Settings → Input & controllers is used. Turning it on starts from a copy of the global mapping."
+
+msgid "准备"
+msgstr "Prepare"
+
+msgid "前往设置"
+msgstr "Go to Settings"
+
+msgid "加载 HLSL 效果文件"
+msgstr "Load an HLSL effect file"
+
+msgid "参数"
+msgstr "Parameters"
+
+msgid "发行日期"
+msgstr "Release date"
+
+msgid "在 {} 中搜索"
+msgstr "Search {}"
+
+msgid "套用"
+msgstr "Apply"
+
+msgid "平滑放大到窗口大小"
+msgstr "Smoothly scale to the window size"
+
+msgid "当前资料"
+msgstr "Current metadata"
+
+msgid "当前预设没有可调参数。"
+msgstr "This preset has no adjustable parameters."
+
+msgid "手柄按钮 → 键盘键"
+msgstr "Controller button → keyboard key"
+
+msgid "按标题搜索，在结果中选择对应的作品后点「关联」。"
+msgstr "Search by title, select the matching title in the results, then click Link."
+
+msgid "按键"
+msgstr "Keys"
+
+msgid "搜索"
+msgstr "Search"
+
+msgid "搜索和刷新作品资料需要先在 设置→联网与资料 中允许联网。解除关联不需要联网。"
+msgstr "Searching and refreshing metadata requires allowing network access in Settings → Network & metadata. Unlinking works offline."
+
+msgid "改动立即保存，只对这部作品生效；标有「恢复默认」的项目已单独设置。"
+msgstr "Changes are saved immediately and apply only to this title. Items showing Reset have been set for this title."
+
+msgid "有推荐配置"
+msgstr "Recommended settings available"
+
+msgid "未识别到可用的模拟器。先在游戏库中准备资料库，或到“核心”页安装对应核心。"
+msgstr "No usable emulator was found. Prepare the library first, or install the matching core on the Cores page."
+
+msgid "本地目录"
+msgstr "Local folder"
+
+msgid "核心内部绘制画面时使用的分辨率，与窗口大小和画面滤镜无关。"
+msgstr "The resolution the core renders at internally, independent of window size and filters."
+
+msgid "模拟器与渲染"
+msgstr "Emulator & rendering"
+
+msgid "模拟器参数"
+msgstr "Emulator parameters"
+
+msgid "渲染"
+msgstr "Rendering"
+
+msgid "游戏设置 · {}"
+msgstr "Game settings · {}"
+
+msgid "游戏设置分区"
+msgstr "Game settings sections"
+
+msgid "滤镜作用于模拟器输出的画面，游戏中也可以在菜单里调整。"
+msgstr "Filters apply to the emulator's output and can also be changed from the in-game menu."
+
+msgid "点击一行后按下想绑定的键盘按键，Esc 也可以绑定。点「取消」放弃修改。"
+msgstr "Click a row, then press the keyboard key to bind. Esc can be bound too. Click Cancel to discard the change."
+
+msgid "登录商店，下载你已拥有的 PC 游戏到游戏库目录。"
+msgstr "Sign in to a store and download PC games you own into a library folder."
+
+msgid "缩放"
+msgstr "Scaling"
+
+msgid "解除 {} 关联"
+msgstr "Unlink {}"
+
+msgid "资料来源"
+msgstr "Metadata source"
+
+msgid "还没有关联作品资料。"
+msgstr "No metadata linked yet."
+
+msgid "这个模拟器没有可调整的参数。"
+msgstr "This emulator has no adjustable parameters."
+
+msgid "这部作品使用下方的按键映射，不受全局设置影响。"
+msgstr "This title uses the key mapping below, independent of the global settings."
+
+msgid "选择文件…"
+msgstr "Choose file…"
+
+msgid "选择模拟器后可调整它的参数。"
+msgstr "Choose an emulator to adjust its parameters."
+
+msgid "选择游戏的来源。"
+msgstr "Choose where your games come from."
+
+msgid "选择用哪个模拟器运行这部作品。更换后，下方参数会切换到该模拟器的设置。"
+msgstr "Choose which emulator runs this title. Switching changes the parameters below to that emulator's settings."
+
+msgid "选择电脑或设备上已有的游戏文件夹，ShinkiEMU 会识别其中的作品。"
+msgstr "Choose a game folder already on your computer or device and ShinkiEMU will identify the titles in it."
+
+msgid "需要允许联网"
+msgstr "Network access required"
+
+# components
+msgid "ShinkiEMU 不附带任何游戏内容。请只使用你合法拥有的游戏副本。"
+msgstr "ShinkiEMU includes no game content. Use only game copies you legally own."
+
+msgid "ShinkiEMU 是独立开发的开源工具，与各游戏及游戏引擎的开发商、发行商和其他权利人没有隶属、授权或认可关系。"
+msgstr "ShinkiEMU is an independently developed open-source tool. It is not affiliated with, licensed by or endorsed by the developers, publishers or other rights holders of any game or game engine."
+
+msgid "{0}（{1}）"
+msgstr "{0} ({1})"
+
+msgid "{0}，{1}"
+msgstr "{0}, {1}"
+
+msgid "仅此核心"
+msgstr "This core only"
+
+msgid "从资料库移除"
+msgstr "Remove from library"
+
+msgid "全部记录"
+msgstr "All entries"
+
+msgid "兼容性：{}"
+msgstr "Compatibility: {}"
+
+msgid "勾选后即可继续"
+msgstr "Check the box to continue"
+
+msgid "可以启动"
+msgstr "Ready to start"
+
+msgid "宽"
+msgstr "Width"
+
+msgid "已确认，可以继续"
+msgstr "Confirmed. You can continue."
+
+msgid "恢复默认"
+msgstr "Reset"
+
+msgid "打开所在目录"
+msgstr "Open containing folder"
+
+msgid "支持范围 {0} – {1}"
+msgstr "Supported range {0} – {1}"
+
+msgid "文中提及的游戏名、引擎名和商标归各自权利人所有。"
+msgstr "Game names, engine names and trademarks mentioned here belong to their respective owners."
+
+msgid "日志"
+msgstr "Logs"
+
+msgid "日志范围"
+msgstr "Log scope"
+
+msgid "未绑定"
+msgstr "Unbound"
+
+msgid "本软件按所附开源许可证“现状”提供，不作任何明示或暗示的担保。"
+msgstr "This software is provided “as is” under the accompanying open-source licences, without warranty of any kind, express or implied."
+
+msgid "核心：{}"
+msgstr "Core: {}"
+
+msgid "正在确认…"
+msgstr "Confirming…"
+
+msgid "此模拟器不支持调整渲染分辨率，可以在“滤镜”页使用显示滤镜"
+msgstr "This emulator can't change its render resolution. Use a display filter on the Filters page instead."
+
+msgid "渲染分辨率"
+msgstr "Render resolution"
+
+msgid "知道了"
+msgstr "Got it"
+
+msgid "结束游戏"
+msgstr "End game"
+
+msgid "补丁和翻译可能修改游戏文件。应用前请备份，使用风险由你自行承担。"
+msgstr "Patches and translations may modify game files. Back up before applying; you use them at your own risk."
+
+msgid "请按下键盘按键…"
+msgstr "Press a keyboard key…"
+
+msgid "退出游戏"
+msgstr "Quit game"
+
+msgid "错误代码 {}"
+msgstr "Error code {}"
+
+msgid "高级设置（{}）"
+msgstr "Advanced settings ({})"
+
+msgid "（当前排序）"
+msgstr " (current sort)"
+
+msgid "共 {n} 条（最近 200 条）"
+msgid_plural "共 {n} 条（最近 200 条）"
+msgstr[0] "{n} entry (latest 200)"
+msgstr[1] "{n} entries (latest 200)"
+
+msgid "另有 {n} 条通知"
+msgid_plural "另有 {n} 条通知"
+msgstr[0] "{n} more notification"
+msgstr[1] "{n} more notifications"
+
+msgid "请阅读上方说明，还需 {n} 秒"
+msgid_plural "请阅读上方说明，还需 {n} 秒"
+msgstr[0] "Please read the notice above, {n} second left"
+msgstr[1] "Please read the notice above, {n} seconds left"
+
+msgid "模拟器核心尚未加载"
+msgstr "Cores aren't loaded yet"
+
+msgid "请先在游戏库点击“准备”。"
+msgstr "Click \"Prepare\" in Library first."
+
+msgid "核心仍在加载或扫描中"
+msgstr "Cores are still loading or scanning"
+
+msgid "请稍候再试。"
+msgstr "Please wait and try again."
+
+msgid "正在准备资料库"
+msgstr "Preparing the library"
+
+msgid "请等待当前的核心加载或扫描结束。"
+msgstr "Wait for the current core loading or scan to finish."
+
+msgid "当前没有可取消的扫描"
+msgstr "No scan to cancel"
+
+msgid "核心加载阶段不能取消。"
+msgstr "Core loading can't be cancelled."
+
+msgid "资料库准备失败"
+msgstr "Library preparation failed"
+
+msgid "请查看核心诊断，修复后重启 ShinkiEMU。"
+msgstr "Check core diagnostics, fix the problem, then restart ShinkiEMU."
+
+msgid "已取消扫描"
+msgstr "Scan cancelled"
+
+msgid "资料库保持不变。"
+msgstr "The library is unchanged."
+
+msgid "无法使用这个目录"
+msgstr "Can't use this folder"
+
+msgid "目录不存在或无法访问。"
+msgstr "The folder doesn't exist or can't be accessed."
+
+msgid "没有可撤销的移除"
+msgstr "Nothing to undo"
+
+msgid "作品可以在 设置→库目录 中恢复。"
+msgstr "Titles can be restored in Settings → Library folders."
+
+msgid "无法打开所在目录"
+msgstr "Can't open the folder"
+
+msgid "系统文件管理器未能启动。"
+msgstr "The system file manager didn't start."
+
+msgid "没有正在设置的按键"
+msgstr "No key is being bound"
+
+msgid "请先点选要绑定的手柄按钮。"
+msgstr "Select the gamepad button to bind first."
+
+msgid "这个补丁不适用于所选游戏"
+msgstr "This patch doesn't apply to the selected game"
+
+msgid "补丁列表可能已随元数据同步或模拟器选择更新，请重新选择。"
+msgstr "The patch list may have changed after a metadata sync or emulator change. Choose again."
+
+msgid "请先选择游戏"
+msgstr "Choose a game first"
+
+msgid "在补丁页的第一步选择要转换的游戏。"
+msgstr "Choose the game to convert in the first step of the Patches page."
+
+msgid "无法识别的手柄按钮"
+msgstr "Unknown gamepad button"
+
+msgid "请从按键列表中选择。"
+msgstr "Choose one from the button list."
+
+msgid "已有游戏正在运行"
+msgstr "A game is already running"
+
+msgid "请先返回游戏库结束当前游戏。"
+msgstr "Return to the library and end the current game first."
+
+msgid "游戏正在关闭，请稍候"
+msgstr "The game is closing, please wait"
+
+msgid "核心释放完成后即可继续操作。"
+msgstr "You can continue once the core has shut down."
+
+msgid "这部作品尚未识别"
+msgstr "This title hasn't been identified"
+
+msgid "请重新扫描游戏目录。"
+msgstr "Rescan the game folder."
+
+msgid "需要选择模拟器"
+msgstr "Choose an emulator"
+
+msgid "有多个模拟器可以运行这部作品，请在作品详情中选择一个。"
+msgstr "Several emulators can run this title. Choose one in the title details."
+
+msgid "找不到这部作品"
+msgstr "Title not found"
+
+msgid "它可能已被移除，请刷新资料库。"
+msgstr "It may have been removed. Refresh the library."
+
+msgid "核心已加载"
+msgstr "Cores are already loaded"
+
+msgid "更换核心后需要重启 ShinkiEMU。"
+msgstr "Restart ShinkiEMU after changing cores."
+
+msgid "核心后台意外退出"
+msgstr "The core backend exited unexpectedly"
+
+msgid "请重启 ShinkiEMU 并查看日志。"
+msgstr "Restart ShinkiEMU and check the log."
+
+msgid "无法加载核心文件"
+msgstr "Can't load the core file"
+
+msgid "文件可能已损坏，或缺少它依赖的运行库。"
+msgstr "The file may be damaged, or a runtime library it needs is missing."
+
+msgid "核心版本与 ShinkiEMU 不兼容"
+msgstr "The core version isn't compatible with ShinkiEMU"
+
+msgid "请安装与当前版本匹配的核心。"
+msgstr "Install a core that matches this version."
+
+msgid "核心信息无效"
+msgstr "Invalid core information"
+
+msgid "核心文件可能已损坏。"
+msgstr "The core file may be damaged."
+
+msgid "发现重复的核心"
+msgstr "Duplicate core found"
+
+msgid "同一个核心存在多份文件，已全部停用。删除多余的一份后重启。"
+msgstr "The same core exists in several files, so all copies were disabled. Delete the extra copy and restart."
+
+msgid "核心文件位置无效"
+msgstr "Invalid core file location"
+
+msgid "请检查核心文件是否仍然存在。"
+msgstr "Check that the core file still exists."
+
+msgid "核心不符合安全要求"
+msgstr "The core doesn't meet security requirements"
+
+msgid "已停用这个核心。"
+msgstr "This core has been disabled."
+
+msgid "核心诊断初始化失败"
+msgstr "Core diagnostics failed to start"
+
+msgid "请查看日志。"
+msgstr "Check the log."
+
+msgid "无法读取核心目录"
+msgstr "Can't read the cores folder"
+
+msgid "请检查目录权限。"
+msgstr "Check the folder permissions."
+
+msgid "无法重试"
+msgstr "Can't retry"
+
+msgid "这个错误不支持重试，请结束游戏。"
+msgstr "This error can't be retried. End the game."
+
+msgid "输入过多"
+msgstr "Too much input"
+
+msgid "游戏未能及时处理输入，多余的输入已丢弃。"
+msgstr "The game couldn't keep up with input, so extra input was dropped."
+
+msgid "渲染分辨率设置无效"
+msgstr "Invalid render resolution"
+
+msgid "预设只能选 720p、1080p、1440p 或 2160p，自定义宽高须在 1 到 16384 之间。"
+msgstr "Presets are 720p, 1080p, 1440p or 2160p; custom width and height must be between 1 and 16384."
+
+msgid "自定义分辨率超出该模拟器支持范围"
+msgstr "The custom resolution is outside what this emulator supports"
+
+msgid "请在游戏设置中查看该模拟器支持的分辨率范围。"
+msgstr "See the supported resolution range in Game settings."
+
+msgid "需要先选择模拟器"
+msgstr "Choose an emulator first"
+
+msgid "选定模拟器后才能修改这部作品的模拟器设置。"
+msgstr "Emulator settings for this title can be changed after you choose an emulator."
+
+msgid "无法使用所选路径"
+msgstr "Can't use the selected path"
+
+msgid "文件或目录不存在或无法访问。"
+msgstr "The file or folder doesn't exist or can't be accessed."
+
+msgid "所选路径包含无法保存的字符"
+msgstr "The selected path contains characters that can't be saved"
+
+msgid "请把文件放到路径只含常规字符的位置后重新选择。"
+msgstr "Move the file to a path with only regular characters, then choose it again."
+
+msgid "设置值无效"
+msgstr "Invalid setting value"
+
+msgid "取值不在允许范围内，已保留原来的设置。"
+msgstr "The value is out of range; the previous setting was kept."
+
+msgid "发行版本编号无效"
+msgstr "Invalid release ID"
+
+msgid "VNDB 发行版本编号应为 r 加数字，例如 r12345，且不超过 64 个字符。"
+msgstr "A VNDB release ID is r followed by digits, such as r12345, and at most 64 characters."
+
+msgid "兼容性数据有重复条目"
+msgstr "Duplicate compatibility entries"
+
+msgid "同一发行版本和模拟器出现了多条记录，本次更新未采用。"
+msgstr "The same release and emulator appear in several records, so this update wasn't applied."
+
+msgid "尚未配置翻译服务"
+msgstr "No translation service configured"
+
+msgid "请在 设置→实时翻译 中填写并保存。"
+msgstr "Fill it in and save it in Settings → Live translation."
+
+msgid "尚未允许联网"
+msgstr "Network access not allowed"
+
+msgid "需要先在 设置→联网与资料 中允许联网"
+msgstr "Allow network access in Settings → Network & metadata first"
+
+msgid "请填写 Bangumi 访问令牌"
+msgstr "Enter a Bangumi access token"
+
+msgid "令牌为空时无法保存。"
+msgstr "An empty token can't be saved."
+
+msgid "不是有效的核心文件"
+msgstr "Not a valid core file"
+
+msgid "请选择核心包（.zip）或文件名以 shinki_emu_ 开头的本系统动态库。"
+msgstr "Choose a core package (.zip) or a native library whose name starts with shinki_emu_."
+
+msgid "复制核心文件失败"
+msgstr "Couldn't copy the core file"
+
+msgid "请检查磁盘空间和目录权限。"
+msgstr "Check disk space and folder permissions."
+
+msgid "随包核心不能卸载"
+msgstr "Bundled cores can't be uninstalled"
+
+msgid "可以安装同名核心来覆盖它。"
+msgstr "Install a core with the same name to replace it."
+
+msgid "应用待安装的核心失败"
+msgstr "Couldn't apply the pending core"
+
+msgid "请查看日志后重试。"
+msgstr "Check the log, then try again."
+
+msgid "核心目录结构不正确"
+msgstr "Invalid cores folder layout"
+
+msgid "cores 下每个核心目录必须恰好包含一个 shinki_emu_ 核心库，请重新安装该核心。"
+msgstr "Each core folder under cores must contain exactly one shinki_emu_ core library. Reinstall the core."
+
+msgid "无法读取核心包"
+msgstr "Can't read the core package"
+
+msgid "请检查文件是否存在且可以访问。"
+msgstr "Check that the file exists and can be accessed."
+
+msgid "核心包已损坏"
+msgstr "The core package is damaged"
+
+msgid "文件不是有效的 zip 核心包。"
+msgstr "The file isn't a valid zip core package."
+
+msgid "核心包过大"
+msgstr "The core package is too large"
+
+msgid "核心包的文件数或解压后大小超出上限。"
+msgstr "The package's file count or unpacked size exceeds the limit."
+
+msgid "核心包包含不安全的路径"
+msgstr "The core package contains unsafe paths"
+
+msgid "包内有绝对路径、上级目录或符号链接，已拒绝安装。"
+msgstr "The package contains absolute paths, parent folders or symbolic links, so installation was refused."
+
+msgid "核心包包含重复文件"
+msgstr "The core package contains duplicate files"
+
+msgid "已拒绝安装这个核心包。"
+msgstr "Installation of this core package was refused."
+
+msgid "核心包的文件清单无效"
+msgstr "Invalid core package manifest"
+
+msgid "core.json 缺失、格式错误、ABI 不匹配或与包内文件不一致。"
+msgstr "core.json is missing or malformed, its ABI doesn't match, or it disagrees with the package contents."
+
+msgid "核心包与所选核心不符"
+msgstr "The core package doesn't match the selected core"
+
+msgid "下载的核心包声明了另一个模拟器，已拒绝安装。"
+msgstr "The downloaded package declares a different emulator, so installation was refused."
+
+msgid "核心包文件校验失败"
+msgstr "Core package file check failed"
+
+msgid "包内文件的 SHA-256 与 core.json 不一致，已拒绝安装。"
+msgstr "A file's SHA-256 doesn't match core.json, so installation was refused."
+
+msgid "没有可安装的核心版本"
+msgstr "No installable core version"
+
+msgid "元数据中没有适用于当前平台和接口版本的发布，请先同步元数据。"
+msgstr "The metadata has no release for this platform and interface version. Sync metadata first."
+
+msgid "核心正在下载"
+msgstr "A core is downloading"
+
+msgid "请等待当前下载完成。"
+msgstr "Wait for the current download to finish."
+
+msgid "核心下载地址无效"
+msgstr "Invalid core download URL"
+
+msgid "只允许从 GitHub Releases 下载核心。"
+msgstr "Cores can only be downloaded from GitHub Releases."
+
+msgid "核心下载被重定向到未知地址"
+msgstr "The core download was redirected to an unknown address"
+
+msgid "只允许跳转到 GitHub 的发布文件服务器，已停止下载。"
+msgstr "Only redirects to GitHub's release file servers are allowed, so the download was stopped."
+
+msgid "核心下载失败"
+msgstr "Core download failed"
+
+msgid "请检查网络连接后重试。"
+msgstr "Check your network connection and try again."
+
+msgid "核心包大小不符"
+msgstr "Core package size mismatch"
+
+msgid "下载的文件大小与元数据记录不一致，已丢弃。"
+msgstr "The downloaded file's size doesn't match the metadata, so it was discarded."
+
+msgid "核心包校验失败"
+msgstr "Core package check failed"
+
+msgid "下载文件的 SHA-256 与元数据记录不一致，已丢弃。"
+msgstr "The downloaded file's SHA-256 doesn't match the metadata, so it was discarded."
+
+msgid "这个操作已失效"
+msgstr "This action has expired"
+
+msgid "提示已过期，请重新操作。"
+msgstr "The notice expired. Try the action again."
+
+msgid "元数据校验失败"
+msgstr "Metadata check failed"
+
+msgid "下载的文件与索引记录不一致，已保留原有数据。"
+msgstr "The downloaded file doesn't match the index, so the existing data was kept."
+
+msgid "无法保存元数据"
+msgstr "Can't save metadata"
+
+msgid "写入数据目录失败，已保留原有数据。请检查磁盘空间和目录权限。"
+msgstr "Writing to the data folder failed, so the existing data was kept. Check disk space and folder permissions."
+
+msgid "无法读取元数据缓存"
+msgstr "Can't read the metadata cache"
+
+msgid "请检查数据目录权限。"
+msgstr "Check the data folder permissions."
+
+msgid "元数据内容无效"
+msgstr "Invalid metadata"
+
+msgid "同步到的数据无法解析，已保留原有数据。"
+msgstr "The synced data couldn't be parsed, so the existing data was kept."
+
+msgid "作品资料服务拒绝了请求"
+msgstr "The metadata service rejected the request"
+
+msgid "VNDB 不接受这次查询。请更新 ShinkiEMU 后重试，仍失败请反馈问题。"
+msgstr "VNDB didn't accept this query. Update ShinkiEMU and try again; if it still fails, please report it."
+
+msgid "作品资料请求过于频繁"
+msgstr "Too many metadata requests"
+
+msgid "VNDB 或 Bangumi 暂时限制了请求，请稍后再试。"
+msgstr "VNDB or Bangumi is temporarily limiting requests. Try again later."
+
+msgid "推荐配置无法套用"
+msgstr "Can't apply the recommended settings"
+
+msgid "其中有当前模拟器不支持的设置项或取值，已恢复原来的设置。"
+msgstr "They contain settings or values this emulator doesn't support; the previous settings were restored."
+
+msgid "没有推荐配置"
+msgstr "No recommended settings"
+
+msgid "当前发行版本和模拟器没有推荐配置。"
+msgstr "There are no recommended settings for this release and emulator."
+
+msgid "无法读取日志"
+msgstr "Can't read the log"
+
+msgid "当前无法执行这个操作"
+msgstr "This action isn't available right now"
+
+msgid "请在游戏画面中稍后再试。"
+msgstr "Try again later from the game screen."
+
+msgid "模拟器核心出错"
+msgstr "Core error"
+
+msgid "窗口或显示出错"
+msgstr "Window or display error"
+
+msgid "实时翻译出错"
+msgstr "Live translation error"
+
+msgid "作品资料服务出错"
+msgstr "Metadata service error"
+
+msgid "兼容性数据出错"
+msgstr "Compatibility data error"
+
+msgid "画面滤镜出错"
+msgstr "Screen filter error"
+
+msgid "文件补丁处理失败"
+msgstr "File patching failed"
+
+msgid "输入设备出错"
+msgstr "Input device error"
+
+msgid "游戏库出错"
+msgstr "Library error"
+
+msgid "推荐配置出错"
+msgstr "Recommended settings error"
+
+msgid "声音输出出错"
+msgstr "Audio output error"
+
+msgid "管理器出错"
+msgstr "Manager error"
+
+msgid "发生错误"
+msgstr "Something went wrong"
+
+msgid "{done} 个文件"
+msgstr "Files: {done}"
+
+msgid "{done} / {total} 个文件"
+msgstr "Files: {done} / {total}"
+
+msgid "剩余 {s} 秒"
+msgstr "{s}s left"
+
+msgid "剩余 {m} 分 {s} 秒"
+msgstr "{m}m {s}s left"
+
+msgid "剩余 {h} 小时 {m} 分"
+msgstr "{h}h {m}m left"
+
+# Rust: manager
+msgid "Anime4K 固定为 2 倍"
+msgstr "Anime4K is fixed at 2×"
+
+msgid "Luau 脚本"
+msgstr "Luau script"
+
+msgid "ShinkiEMU 启动失败"
+msgstr "ShinkiEMU failed to start"
+
+msgid "Store 工作线程不可用，请重新打开管理器"
+msgstr "The Store worker is unavailable. Restart Manager."
+
+msgid "{n} 分钟前"
+msgstr "{n} min ago"
+
+msgid "{n} 天前"
+msgstr "{n} d ago"
+
+msgid "{n} 小时前"
+msgstr "{n} h ago"
+
+msgid "上次实际生效 {width}×{height}"
+msgstr "Last applied {width}×{height}"
+
+msgid "下载完成，正在识别核心"
+msgstr "Download complete, detecting cores"
+
+msgid "下载：{url}\nSHA256：{sha256}\n大小：{size} 字节"
+msgstr "Download: {url}\nSHA256: {sha256}\nSize: {size} bytes"
+
+msgid "从本地安装核心"
+msgstr "Install a core from a local file"
+
+msgid "使用本地缓存"
+msgstr "Using local cache"
+
+msgid "使用随包数据"
+msgstr "Using bundled data"
+
+msgid "元数据已更新"
+msgstr "Metadata updated"
+
+msgid "先在 游戏设置→作品资料 关联 VNDB 作品"
+msgstr "Link a VNDB title first in Game settings → Metadata"
+
+msgid "关闭程序"
+msgstr "App closed"
+
+msgid "准备文件补丁任务…"
+msgstr "Preparing the file patch job…"
+
+msgid "刚刚"
+msgstr "Just now"
+
+msgid "刷新资料库"
+msgstr "Refresh library"
+
+msgid "原位覆盖完成，正在重新探测游戏…"
+msgstr "In-place overwrite finished. Re-detecting the game…"
+
+msgid "原位覆盖完成，游戏已重新探测"
+msgstr "In-place overwrite finished. The game was re-detected"
+
+msgid "原文件已还原，正在重新探测游戏…"
+msgstr "Original files restored. Re-detecting the game…"
+
+msgid "发现 {added} 部新作品"
+msgstr "Found {added} new titles"
+
+msgid "发行版本未限定（未验证所有版本）"
+msgstr "Not limited to a release (not verified on every release)"
+
+msgid "可调渲染分辨率"
+msgstr "Adjustable render resolution"
+
+msgid "同步需手动点击，不会自动上传。"
+msgstr "Sync runs only when you click it; nothing is uploaded automatically."
+
+msgid "已从资料库移除《{title}》"
+msgstr "Removed “{title}” from the library"
+
+msgid "已关联 {provider}：{title}"
+msgstr "Linked to {provider}: {title}"
+
+msgid "已关联：{title}"
+msgstr "Linked: {title}"
+
+msgid "已取消，游戏文件保持不变"
+msgstr "Canceled. Game files are unchanged"
+
+msgid "已同步 · {when}"
+msgstr "Synced · {when}"
+
+msgid "已收录 {records} 条兼容性记录、{presets} 份推荐配置"
+msgstr "{records} compatibility records, {presets} recommended settings"
+
+msgid "已有文件补丁任务或导入正在进行"
+msgstr "A file patch job or import is already running"
+
+msgid "已自动关联：{title}"
+msgstr "Linked automatically: {title}"
+
+msgid "已解除关联"
+msgstr "Unlinked"
+
+msgid "异常结束"
+msgstr "Crashed"
+
+msgid "所选目录中未发现当前核心支持的游戏。请选择原生游戏目录，或检查运行包包含的核心。"
+msgstr "No games supported by the installed cores were found in the selected folder. Choose the original game folder, or check which cores your package includes."
+
+msgid "找到 {count} 个作品，请选择关联"
+msgstr "Found {count} titles. Choose one to link"
+
+msgid "授权：{url}"
+msgstr "Authorization: {url}"
+
+msgid "撤销"
+msgstr "Undo"
+
+msgid "文件补丁转换或导入尚未结束，暂不能启动游戏"
+msgstr "A file patch or import is still running, so the game can't start yet"
+
+msgid "文件补丁转换或导入期间不能启动游戏"
+msgstr "Games can't start while a file patch or import is running"
+
+msgid "文件补丁转换期间不能扫描游戏"
+msgstr "Games can't be scanned while a file patch is running"
+
+msgid "文件转换完成，导入失败"
+msgstr "Files converted, but the import failed"
+
+msgid "文件转换完成，导入失败：{error}"
+msgstr "Files converted, but the import failed: {error}"
+
+msgid "文件转换完成，已加入独立库条目"
+msgstr "Files converted and added as a separate library entry"
+
+msgid "文件转换完成，正在导入独立目录…"
+msgstr "Files converted. Importing the separate folder…"
+
+msgid "无法停止 Store 连接，请重新打开管理器"
+msgstr "Can't stop the Store connection. Restart Manager."
+
+msgid "暂无相关日志"
+msgstr "No related logs"
+
+msgid "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。"
+msgstr "{count} cores failed to load. Check core diagnostics, and restart the app after fixing or replacing them."
+
+msgid "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。"
+msgstr "{count} game folders are unavailable. Their library entries are kept; restore the folders, then click “Refresh library”."
+
+msgid "未加载模拟器核心，请检查核心安装和加载错误后重启应用。"
+msgstr "No cores are loaded. Check the core installation and load errors, then restart the app."
+
+msgid "未在 VNDB 找到匹配作品"
+msgstr "No matching title on VNDB"
+
+msgid "未能自动关联，找到 {count} 个候选，请手动选择"
+msgstr "Couldn't link automatically. Found {count} candidates; choose one"
+
+msgid "未识别到可用的模拟器"
+msgstr "No compatible core detected"
+
+msgid "未识别引擎"
+msgstr "Unknown engine"
+
+msgid "来源：{url}"
+msgstr "Source: {url}"
+
+msgid "核心加载或后台运行失败：{error}。请修复后重启应用。"
+msgstr "Loading cores or a background task failed: {error}. Fix it and restart the app."
+
+msgid "核心包或核心文件"
+msgstr "Core package or core file"
+
+msgid "核心已下载，重启后生效"
+msgstr "Core downloaded. Restart to use it"
+
+msgid "核心设置项已不存在。旧存档文件夹：{value}\n请将其中的存档复制到该核心当前的存档位置。核心文档：https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+msgstr "A core setting no longer exists. Old save folder: {value}\nCopy its saves to the core's current save location. Core docs: https://project-shinkirou.github.io/en/shinkiemu/cores/{slug}/"
+
+msgid "正在 VNDB 自动匹配…"
+msgstr "Matching on VNDB…"
+
+msgid "正在下载并验证补丁文件…"
+msgstr "Downloading and verifying the patch…"
+
+msgid "正在加载模拟器核心…"
+msgstr "Loading cores…"
+
+msgid "正在加载模拟器核心（{loaded}/{total}）…"
+msgstr "Loading cores ({loaded}/{total})…"
+
+msgid "正在取消…"
+msgstr "Canceling…"
+
+msgid "正在取消补丁下载…"
+msgstr "Canceling the patch download…"
+
+msgid "正在取消，等待文件句柄和工作线程回收…"
+msgstr "Canceling. Waiting for file handles and worker threads to close…"
+
+msgid "正在导入游戏目录…"
+msgstr "Importing game folder…"
+
+msgid "正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…"
+msgstr "Importing game folder: checked {directories} folders, found {games} titles…"
+
+msgid "正在扫描资料库…"
+msgstr "Scanning library…"
+
+msgid "正在扫描资料库：已检查 {directories} 个目录，识别 {games} 部作品…"
+msgstr "Scanning library: checked {directories} folders, found {games} titles…"
+
+msgid "正在搜索…"
+msgstr "Searching…"
+
+msgid "正在测试翻译服务连接…"
+msgstr "Testing the translation service connection…"
+
+msgid "正在自动关联…"
+msgstr "Linking automatically…"
+
+msgid "正在还原最近一次补丁…"
+msgstr "Restoring the most recent patch…"
+
+msgid "没有可用的核心"
+msgstr "No cores available"
+
+msgid "没有找到作品，请尝试原名、译名或其他关键词"
+msgstr "No titles found. Try the original title, a translated title or other keywords"
+
+msgid "游戏已结束"
+msgstr "Game ended"
+
+msgid "游戏扫描失败：{error}"
+msgstr "Game scan failed: {error}"
+
+msgid "点击“准备”加载模拟器核心并扫描资料库。"
+msgstr "Click “Prepare” to load cores and scan the library."
+
+msgid "结束游戏后才能应用文件补丁"
+msgstr "Close the game before applying a file patch"
+
+msgid "缩放倍率"
+msgstr "Scale factor"
+
+msgid "翻译配置已保存"
+msgstr "Translation settings saved"
+
+msgid "自定义…"
+msgstr "Custom…"
+
+msgid "补丁下载失败"
+msgstr "Patch download failed"
+
+msgid "补丁已下载并验证，已设置补丁输入目录"
+msgstr "Patch downloaded and verified; patch input directory set"
+
+msgid "补丁目录中没有适用于这部作品和当前模拟器的补丁，可以选择本地脚本。"
+msgstr "The patch catalog has no patch for this title and core. You can choose a local script."
+
+msgid "许可：{license}"
+msgstr "License: {license}"
+
+msgid "请先准备资料库"
+msgstr "Prepare the library first"
+
+msgid "请先在设置中允许网络访问"
+msgstr "Allow network access in Settings first"
+
+msgid "请在“核心”页安装核心，或使用包含 cores 目录的完整运行包。"
+msgstr "Install a core on the Cores page, or use the full package that includes the cores folder."
+
+msgid "请求失败，请检查错误信息后重试"
+msgstr "The request failed. Check the error and try again"
+
+msgid "请等待当前 Store 操作完成，或先取消"
+msgstr "Wait for the current Store operation to finish, or cancel it"
+
+msgid "请等待资料库准备完成"
+msgstr "Wait for the library to finish preparing"
+
+msgid "请等待验证码提交完成"
+msgstr "Wait for the code submission to finish"
+
+msgid "请选择脚本和新的输出目录"
+msgstr "Choose a script and a new output directory"
+
+msgid "资料库已准备好。更换核心文件后需重启应用。"
+msgstr "The library is ready. Restart the app after replacing core files."
+
+msgid "资料库已是最新"
+msgstr "The library is up to date"
+
+msgid "软件渲染"
+msgstr "Software rendering"
+
+msgid "还原失败"
+msgstr "Restore failed"
+
+msgid "这个键不能用于映射"
+msgstr "This key can't be mapped"
+
+msgid "这是尚未发布的临时目录，不能启动"
+msgstr "This is an unpublished temporary folder and can't be launched"
+
+msgid "进行中"
+msgstr "In progress"
+
+msgid "连接失败：{error}"
+msgstr "Connection failed: {error}"
+
+msgid "连接成功（{latency} ms，{models} 个可用模型）"
+msgstr "Connected ({latency} ms, {models} models available)"
+
+msgid "适应窗口"
+msgstr "Fit to window"
+
+msgid "选择 Store 游戏库目录"
+msgstr "Choose a Store library folder"
+
+msgid "选择发行版本以查看兼容性"
+msgstr "Choose a release to see compatibility"
+
+msgid "选择可信的本地 Luau 补丁脚本"
+msgstr "Choose a trusted local Luau patch script"
+
+msgid "选择外部画面效果（HLSL）"
+msgstr "Choose an external screen effect (HLSL)"
+
+msgid "选择尚不存在的新输出目录名称"
+msgstr "Choose a name for a new output directory that doesn't exist yet"
+
+msgid "选择游戏目录"
+msgstr "Choose a game folder"
+
+msgid "选择补丁输入目录"
+msgstr "Choose the patch input directory"
+
+msgid "锐化强度"
+msgstr "Sharpening strength"
+
+msgid "需要先准备资料库"
+msgstr "Prepare the library first"
+
+msgid "非阻塞翻译"
+msgstr "Non-blocking translation"
+
+msgid "默认（核心原生）"
+msgstr "Default (core native)"
+
+msgid "默认（跟随模拟器设置）"
+msgstr "Default (follow emulator settings)"

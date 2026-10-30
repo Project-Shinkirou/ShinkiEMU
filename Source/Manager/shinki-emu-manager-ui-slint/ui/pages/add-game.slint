@@ -121,8 +121,8 @@ export component AddGamePage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: "添加游戏";
-        leading-button: { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true };
+        title: @tr("添加游戏");
+        leading-button: { icon: Icons.arrow-back, tooltip: @tr("返回游戏库"), enabled: true };
         leading-button-clicked => { App.page = "library"; }
     }
 
@@ -146,7 +146,7 @@ export component AddGamePage {
                 alignment: start;
 
                 MaterialText {
-                    text: "选择游戏的来源。";
+                    text: @tr("选择游戏的来源。");
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-surface-variant;
                     wrap: word-wrap;
@@ -155,8 +155,8 @@ export component AddGamePage {
 
                 SourceTile {
                     icon: Icons.folder-open;
-                    title: "本地目录";
-                    description: "选择电脑或设备上已有的游戏文件夹，ShinkiEMU 会识别其中的作品。";
+                    title: @tr("本地目录");
+                    description: @tr("选择电脑或设备上已有的游戏文件夹，ShinkiEMU 会识别其中的作品。");
                     activate => {
                         // The scan reports its progress on the library page.
                         App.page = "library";
@@ -166,8 +166,8 @@ export component AddGamePage {
 
                 SourceTile {
                     icon: Icons.download;
-                    title: "商店下载";
-                    description: "登录商店，下载你已拥有的 PC 游戏到游戏库目录。";
+                    title: @tr("商店下载");
+                    description: @tr("登录商店，下载你已拥有的 PC 游戏到游戏库目录。");
                     activate => {
                         App.page = "store";
                         Store.open();

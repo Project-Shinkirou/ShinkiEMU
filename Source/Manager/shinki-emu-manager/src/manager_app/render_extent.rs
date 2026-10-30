@@ -3,6 +3,7 @@ use shinki_emu_manager_core::{
     GameSettings, RenderPreference, RenderSupport, SurfaceRecord, RENDER_PRESET_HEIGHTS,
 };
 use shinki_emu_manager_ui_slint::{ChoiceViewModel, RenderViewModel};
+use shinki_emu_manager_ui_slint::tr;
 
 const RENDER_UNSUPPORTED: &str = "SHINKI_EMU_RENDER_EXTENT_UNSUPPORTED";
 
@@ -104,9 +105,10 @@ pub(super) fn render_view(
 ) -> RenderViewModel {
     let note = last_surface
         .map(|surface| {
-            format!(
-                "上次实际生效 {}×{}",
-                surface.raster_width, surface.raster_height
+            tr!(
+                "上次实际生效 {width}×{height}",
+                width = surface.raster_width,
+                height = surface.raster_height
             )
         })
         .unwrap_or_default();
@@ -125,13 +127,13 @@ pub(super) fn render_view(
         choice(
             "default".into(),
             if game_scope {
-                "默认（跟随模拟器设置）"
+                tr!("默认（跟随模拟器设置）")
             } else {
-                "默认（核心原生）"
+                tr!("默认（核心原生）")
             }
             .into(),
         ),
-        choice("adaptive".into(), "适应窗口".into()),
+        choice("adaptive".into(), tr!("适应窗口").into()),
     ];
     for height in RENDER_PRESET_HEIGHTS {
         let width = (f64::from(height) * ratio).round() as u32;
@@ -142,7 +144,7 @@ pub(super) fn render_view(
             ));
         }
     }
-    options.push(choice("custom".into(), "自定义…".into()));
+    options.push(choice("custom".into(), tr!("自定义…").into()));
     let (custom_width, custom_height) = match pref {
         Some(RenderPreference::Custom { width, height }) => (*width as i32, *height as i32),
         _ => (0, 0),

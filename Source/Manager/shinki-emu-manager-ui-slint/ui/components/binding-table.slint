@@ -22,7 +22,7 @@ export component BindingTable {
                     : touch.has-hover ? MaterialPalette.on-surface.with-alpha(MaterialPalette.state-layer-opacity-hover)
                     : transparent;
                 accessible-role: button;
-                accessible-label: binding.label + " → " + (binding.key == "" ? "未绑定" : binding.key);
+                accessible-label: binding.label + " → " + (binding.key == "" ? @tr("未绑定") : binding.key);
                 accessible-action-default => { root.begin-capture(binding.id); }
 
                 for pad in root.pressed : Rectangle {
@@ -51,7 +51,7 @@ export component BindingTable {
 
                     if !capturing : MaterialText {
                         horizontal-stretch: 0;
-                        text: binding.key == "" ? "未绑定" : binding.key;
+                        text: binding.key == "" ? @tr("未绑定") : binding.key;
                         style: MaterialTypography.label-large;
                         color: binding.key == "" ? MaterialPalette.on-surface-variant : MaterialPalette.primary;
                         vertical-alignment: center;
@@ -59,7 +59,7 @@ export component BindingTable {
 
                     if capturing : MaterialText {
                         horizontal-stretch: 0;
-                        text: root.capture-hint != "" ? root.capture-hint : "请按下键盘按键…";
+                        text: root.capture-hint != "" ? root.capture-hint : @tr("请按下键盘按键…");
                         style: MaterialTypography.label-large;
                         color: root.capture-hint != "" ? MaterialPalette.error : MaterialPalette.on-secondary-container;
                         vertical-alignment: center;
@@ -67,7 +67,7 @@ export component BindingTable {
 
                     if capturing : TextButton {
                         horizontal-stretch: 0;
-                        text: "取消";
+                        text: @tr("取消");
                         clicked => { root.cancel-capture(); }
                     }
                 }

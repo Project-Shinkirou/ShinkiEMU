@@ -96,6 +96,9 @@ struct ShinkiEmuManagerController {
     selected_case_id: Option<String>,
     search_query: String,
     diagnostic: String,
+    /// The diagnostic text last written by `report_retired_configuration`; new
+    /// retired-path notices append while `diagnostic` still equals it.
+    retired_diagnostic: Option<String>,
     diagnostic_severity: &'static str,
     plugin_errors: BTreeMap<String, String>,
     data_dir: PathBuf,

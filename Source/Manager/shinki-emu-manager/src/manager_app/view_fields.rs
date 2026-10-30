@@ -27,6 +27,7 @@ impl ShinkiEmuManagerController {
             view_mode: self.appearance.view_mode.clone(),
             reduce_motion: self.appearance.reduce_motion,
             cover_badges: self.appearance.cover_badges,
+            language: self.appearance.language.clone(),
         }
     }
 

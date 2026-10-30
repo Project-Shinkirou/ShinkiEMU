@@ -38,12 +38,12 @@ component RecommendedBanner {
             spacing: 2px;
             alignment: center;
             MaterialText {
-                text: "有推荐配置";
+                text: @tr("有推荐配置");
                 style: MaterialTypography.title-small;
                 color: MaterialPalette.on-surface;
             }
             MaterialText {
-                text: root.summary != "" ? root.summary : "ShinkiEMU 元数据为这部作品和当前模拟器提供了推荐参数。";
+                text: root.summary != "" ? root.summary : @tr("ShinkiEMU 元数据为这部作品和当前模拟器提供了推荐参数。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -55,7 +55,7 @@ component RecommendedBanner {
             horizontal-stretch: 0;
             alignment: center;
             TonalButton {
-                text: "套用";
+                text: @tr("套用");
                 clicked => { root.apply(); }
             }
         }
@@ -70,17 +70,17 @@ export component EmulatorSection {
 
         Panel {
             SectionTitle {
-                text: "模拟器";
-                description: "选择用哪个模拟器运行这部作品。更换后，下方参数会切换到该模拟器的设置。";
+                text: @tr("模拟器");
+                description: @tr("选择用哪个模拟器运行这部作品。更换后，下方参数会切换到该模拟器的设置。");
             }
             if GameSettings.emulator-choices.length > 0 : ChoiceSelect {
-                label: "模拟器";
+                label: @tr("模拟器");
                 choices: GameSettings.emulator-choices;
                 value: GameSettings.emulator-id;
                 selected(id) => { GameSettings.set-emulator(id); }
             }
             if GameSettings.emulator-choices.length == 0 : MaterialText {
-                text: "未识别到可用的模拟器。先在游戏库中准备资料库，或到“核心”页安装对应核心。";
+                text: @tr("未识别到可用的模拟器。先在游戏库中准备资料库，或到“核心”页安装对应核心。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -95,8 +95,8 @@ export component EmulatorSection {
 
         Panel {
             SectionTitle {
-                text: "渲染";
-                description: "核心内部绘制画面时使用的分辨率，与窗口大小和画面滤镜无关。";
+                text: @tr("渲染");
+                description: @tr("核心内部绘制画面时使用的分辨率，与窗口大小和画面滤镜无关。");
             }
             RenderPicker {
                 supported: GameSettings.render-supported;
@@ -115,10 +115,10 @@ export component EmulatorSection {
 
         Panel {
             SectionTitle {
-                text: "模拟器参数";
+                text: @tr("模拟器参数");
                 description: GameSettings.fields.length > 0
-                    ? "改动立即保存，只对这部作品生效；标有「恢复默认」的项目已单独设置。"
-                    : GameSettings.emulator-id != "" ? "这个模拟器没有可调整的参数。" : "选择模拟器后可调整它的参数。";
+                    ? @tr("改动立即保存，只对这部作品生效；标有「恢复默认」的项目已单独设置。")
+                    : GameSettings.emulator-id != "" ? @tr("这个模拟器没有可调整的参数。") : @tr("选择模拟器后可调整它的参数。");
             }
             if GameSettings.fields.length > 0 : ConfigFieldList {
                 fields: GameSettings.fields;

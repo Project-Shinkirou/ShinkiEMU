@@ -6,6 +6,8 @@ use shinki_emu_manager_ui_slint::{
     PatchGameViewModel, PatchViewModel, PlaySessionViewModel, SelectedGameViewModel,
     SelectionViewModel, SessionViewModel, SettingsViewModel, describe_error,
 };
+use shinki_emu_manager_ui_slint::tr;
+use shinki_emu_manager_ui_slint::i18n::pick;
 
 impl ShinkiEmuManagerController {
     pub(super) fn model(&mut self) -> Result<ManagerViewModel, String> {
@@ -77,7 +79,7 @@ impl ShinkiEmuManagerController {
                     patch.artifacts = self.matching_artifacts(&game.game_id, linked)
                         .into_iter().map(|item| shinki_emu_manager_ui_slint::RecipeViewModel {
                             id: item.id,
-                            title: item.title["zh-CN"].clone(),
+                            title: pick(&item.title).to_owned(),
                             recommended: false,
                         }).collect();
                     patch.game = row.clone();
@@ -281,7 +283,7 @@ impl ShinkiEmuManagerController {
             .family_id
             .as_deref()
             .map(|id| self.engine_label(id))
-            .unwrap_or_else(|| "未识别引擎".to_owned());
+            .unwrap_or_else(|| tr!("未识别引擎").to_owned());
         match self.launch_candidate_for_game(game) {
             Some(candidate) => format!("{engine} · {}", candidate.descriptor.display_name),
             None => engine,
@@ -338,11 +340,11 @@ impl ShinkiEmuManagerController {
                 started: local_time_label(session.start_unix_ms),
                 duration: human_duration(session.duration_ms),
                 ended_by: match session.ended_by {
-                    Some(PlaySessionEndReason::Leave) => "返回游戏库".into(),
-                    Some(PlaySessionEndReason::Finished) => "游戏已结束".into(),
-                    Some(PlaySessionEndReason::Shutdown) => "关闭程序".into(),
-                    Some(PlaySessionEndReason::Crash) => "异常结束".into(),
-                    None => "进行中".into(),
+                    Some(PlaySessionEndReason::Leave) => tr!("返回游戏库").into(),
+                    Some(PlaySessionEndReason::Finished) => tr!("游戏已结束").into(),
+                    Some(PlaySessionEndReason::Shutdown) => tr!("关闭程序").into(),
+                    Some(PlaySessionEndReason::Crash) => tr!("异常结束").into(),
+                    None => tr!("进行中").into(),
                 },
             })
             .collect();
@@ -419,7 +421,7 @@ impl ShinkiEmuManagerController {
                 rating: self.bangumi_rating,
                 note: self.bangumi_note.clone(),
             },
-            bangumi_summary: "同步需手动点击，不会自动上传。".into(),
+            bangumi_summary: tr!("同步需手动点击，不会自动上传。").into(),
             metadata_busy: self
                 .pending_metadata
                 .values()
@@ -430,7 +432,7 @@ impl ShinkiEmuManagerController {
                 .cloned()
                 .or_else(|| {
                     metadata.map(|record| {
-                        format!("已关联 {}：{}", record.provider.as_str(), record.title)
+                        tr!("已关联 {provider}：{title}", provider = record.provider.as_str(), title = record.title)
                     })
                 })
                 .unwrap_or_default(),
@@ -518,8 +520,8 @@ impl ShinkiEmuManagerController {
             notices.push(NoticeViewModel {
                 id: "no-cores".into(),
                 severity: "warning".into(),
-                title: "没有可用的核心".into(),
-                detail: "请在“核心”页安装核心，或使用包含 cores 目录的完整运行包。".into(),
+                title: tr!("没有可用的核心").into(),
+                detail: tr!("请在“核心”页安装核心，或使用包含 cores 目录的完整运行包。").into(),
                 code: String::new(),
                 core: String::new(),
             });
@@ -566,24 +568,24 @@ impl ShinkiEmuManagerController {
 
     fn game_problem(&self, game: &GameRecord) -> String {
         if shinki_emu_patch::is_staging_path(Path::new(&game.location)) {
-            return "这是尚未发布的临时目录，不能启动".into();
+            return tr!("这是尚未发布的临时目录，不能启动").into();
         }
         if self.patch_busy() {
-            return "文件补丁转换或导入尚未结束，暂不能启动游戏".into();
+            return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
         }
         if self.launch_candidate_for_game(game).is_some() {
             return String::new();
         }
         match self.startup_state {
-            background::StartupState::Waiting => "需要先准备资料库".into(),
+            background::StartupState::Waiting => tr!("需要先准备资料库").into(),
             background::StartupState::Loading | background::StartupState::Scanning(_) => {
-                "正在准备资料库".into()
+                tr!("正在准备资料库").into()
             }
-            background::StartupState::Failed(_) => "准备失败，请查看核心诊断".into(),
+            background::StartupState::Failed(_) => tr!("准备失败，请查看核心诊断").into(),
             background::StartupState::Ready if self.probe_choices.contains_key(&game.game_id) => {
-                "需要选择模拟器".into()
+                tr!("需要选择模拟器").into()
             }
-            background::StartupState::Ready => "未识别到可用的模拟器".into(),
+            background::StartupState::Ready => tr!("未识别到可用的模拟器").into(),
         }
     }
 

@@ -4,6 +4,7 @@ use shinki_emu_manager_core::{FamilyCapability, INDEPENDENT_FAMILY_ABI_FINGERPRI
 use shinki_emu_manager_ui_slint::{CoreViewModel, CoresViewModel, describe_error};
 use shinki_emu_metadata::CoreCatalogEntry;
 use std::io::{self, BufRead, Seek, SeekFrom};
+use shinki_emu_manager_ui_slint::tr;
 
 /// Release platform of this Manager build, e.g. `windows-x86_64`.
 pub(super) fn core_platform() -> String {
@@ -22,10 +23,10 @@ fn is_newer(candidate: &str, installed: &str) -> bool {
 
 fn capability_label(capability: FamilyCapability) -> &'static str {
     match capability {
-        FamilyCapability::CpuFrame => "软件渲染",
-        FamilyCapability::RenderExtent => "可调渲染分辨率",
-        FamilyCapability::TextReplacement => "实时翻译",
-        FamilyCapability::AsyncTextReplacement => "非阻塞翻译",
+        FamilyCapability::CpuFrame => tr!("软件渲染"),
+        FamilyCapability::RenderExtent => tr!("可调渲染分辨率"),
+        FamilyCapability::TextReplacement => tr!("实时翻译"),
+        FamilyCapability::AsyncTextReplacement => tr!("非阻塞翻译"),
     }
 }
 
@@ -232,7 +233,7 @@ impl ShinkiEmuManagerController {
     pub(super) fn core_staged(&mut self, stem: &str, version: &str) {
         tracing::info!(event = "shinki.emu.manager.core_staged", core = %stem, version = %version);
         self.show_snackbar(
-            "核心已下载，重启后生效",
+            tr!("核心已下载，重启后生效"),
             Some(snackbar::SnackbarAction::Restart),
         );
     }

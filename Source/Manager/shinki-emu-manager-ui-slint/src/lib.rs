@@ -1,6 +1,8 @@
 mod adapter;
 mod config_model;
 mod covers;
+pub mod fonts;
+pub mod i18n;
 mod list_model;
 mod notices;
 
@@ -78,6 +80,7 @@ pub struct AppearanceViewModel {
     pub view_mode: String,
     pub reduce_motion: bool,
     pub cover_badges: bool,
+    pub language: String,
 }
 
 impl Default for AppearanceViewModel {
@@ -89,6 +92,7 @@ impl Default for AppearanceViewModel {
             view_mode: "grid".into(),
             reduce_motion: false,
             cover_badges: true,
+            language: "system".into(),
         }
     }
 }
@@ -130,7 +134,7 @@ impl Default for LibraryViewModel {
             sort: "title".into(),
             compat_filter: "all".into(),
             prepare_state: "unprepared".into(),
-            prepare_label: "准备".into(),
+            prepare_label: tr!("准备").into(),
             prepare_detail: String::new(),
             prepare_progress: None,
             can_cancel_prepare: false,

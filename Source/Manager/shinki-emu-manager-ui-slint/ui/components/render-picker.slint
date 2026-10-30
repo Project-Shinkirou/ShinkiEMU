@@ -45,7 +45,7 @@ export component RenderPicker {
     in property <string> note;
     in property <string> error;
     in property <bool> enabled: true;
-    in property <string> unsupported-text: "此模拟器不支持调整渲染分辨率，可以在“滤镜”页使用显示滤镜";
+    in property <string> unsupported-text: @tr("此模拟器不支持调整渲染分辨率，可以在“滤镜”页使用显示滤镜");
     callback set-render(mode: string, width: int, height: int);
 
     property <bool> picking-custom;
@@ -75,7 +75,7 @@ export component RenderPicker {
         }
 
         if root.supported : ChoiceSelect {
-            label: "渲染分辨率";
+            label: @tr("渲染分辨率");
             choices: root.options;
             value: root.show-custom ? "custom" : root.mode;
             enabled: root.enabled;
@@ -96,7 +96,7 @@ export component RenderPicker {
             spacing: 12px;
             ExtentField {
                 horizontal-stretch: 1;
-                label: "宽";
+                label: @tr("宽");
                 stored: root.draft-width;
                 enabled: root.enabled;
                 has-error: root.error != "";
@@ -114,7 +114,7 @@ export component RenderPicker {
             }
             ExtentField {
                 horizontal-stretch: 1;
-                label: "高";
+                label: @tr("高");
                 stored: root.draft-height;
                 enabled: root.enabled;
                 has-error: root.error != "";
@@ -126,7 +126,7 @@ export component RenderPicker {
         }
 
         if root.supported && root.show-custom : MaterialText {
-            text: root.error != "" ? root.error : root.min != "" ? "支持范围 " + root.min + " – " + root.max : "";
+            text: root.error != "" ? root.error : root.min != "" ? @tr("支持范围 {0} – {1}", root.min, root.max) : "";
             style: MaterialTypography.body-small;
             color: root.error != "" ? MaterialPalette.error : MaterialPalette.on-surface-variant;
             wrap: word-wrap;

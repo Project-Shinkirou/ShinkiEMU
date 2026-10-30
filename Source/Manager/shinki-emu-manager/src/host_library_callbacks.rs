@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
     let Some(window) = wiring.window.upgrade() else {
@@ -17,7 +18,7 @@ pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>) {
             Ok((text, count)) => {
                 let logs = window.global::<Logs>();
                 logs.set_text(if count == 0 {
-                    "暂无相关日志".into()
+                    tr!("暂无相关日志").into()
                 } else {
                     text.into()
                 });
@@ -41,7 +42,7 @@ fn install_library<C: ManagerController>(
     library.on_add_directory(move || {
         let w = w.clone();
         platform::pick_folder(
-            "选择游戏目录",
+            tr!("选择游戏目录"),
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );
     });
@@ -212,9 +213,9 @@ fn install_patch<C: ManagerController>(
     patch.on_pick_script(move || {
         let w = w.clone();
         platform::pick_file(
-            "选择可信的本地 Luau 补丁脚本",
+            tr!("选择可信的本地 Luau 补丁脚本"),
             &[platform::FileFilter {
-                label: "Luau 脚本",
+                label: tr!("Luau 脚本"),
                 extensions: &["luau"],
             }],
             Box::new(move |picked| w.run(|c| c.set_patch_script(&picked?))),
@@ -237,9 +238,13 @@ fn install_patch<C: ManagerController>(
         if output {
             // A folder picker only returns existing directories; the platform names
             // a new one, which the conversion creates.
-            platform::pick_new_directory("选择尚不存在的新输出目录名称", "localized-output", done);
+            platform::pick_new_directory(
+                tr!("选择尚不存在的新输出目录名称"),
+                "localized-output",
+                done,
+            );
         } else {
-            platform::pick_folder("选择补丁输入目录", done);
+            platform::pick_folder(tr!("选择补丁输入目录"), done);
         }
     });
     let w = wiring.clone();

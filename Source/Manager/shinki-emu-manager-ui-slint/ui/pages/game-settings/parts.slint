@@ -85,7 +85,7 @@ export component SelectableTile {
     min-height: tile.min-height;
     preferred-height: tile.preferred-height;
     accessible-role: list-item;
-    accessible-label: root.supporting-text != "" ? root.text + "，" + root.supporting-text : root.text;
+    accessible-label: root.supporting-text != "" ? @tr("{0}，{1}", root.text, root.supporting-text) : root.text;
     accessible-enabled: root.enabled;
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;

@@ -17,6 +17,12 @@ The bilingual image is rasterized in Rust and displayed in the onboarding and Ab
 
 The image follows the current light/dark theme and its surface/text colors, including custom theme colors. Changing the theme refreshes the raster without resetting accumulated reading time.
 
+## Language
+
+Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.
+
+Game titles, descriptions and patch notes come from metadata. Manager shows the entry for the current language, falls back to English when a Japanese entry is missing, and falls back to Simplified Chinese when English is missing too. The anti-resale notice is always bilingual (Chinese and English).
+
 ## Add games and install cores
 
 In Settings, add the directories containing your legally obtained game installations, then scan the library. Select the detected game and check the selected core and game-specific configuration before starting. An engine probe identifies a format; encrypted resources can still require a private profile. Keep all keys local.

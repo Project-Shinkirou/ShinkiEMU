@@ -68,23 +68,23 @@ component PasswordForm {
         spacing: 12px;
 
         account := TextField {
-            label: Store.provider-name + " 账户名";
+            label: @tr("{} 账户名", Store.provider-name);
             text: Store.account-name;
             enabled: root.enabled;
             input-type: InputType.text;
             accepted => { password.focus(); }
         }
         password := TextField {
-            label: "密码";
+            label: @tr("密码");
             enabled: root.enabled;
             input-type: InputType.password;
-            supporting-text: "密码只用于本次登录；登录凭据保存在系统凭据库中。";
+            supporting-text: @tr("密码只用于本次登录；登录凭据保存在系统凭据库中。");
             accepted => { root.submit(); }
         }
         HorizontalLayout {
             alignment: end;
             FilledButton {
-                text: "登录";
+                text: @tr("登录");
                 enabled: root.ready && root.enabled;
                 clicked => { root.submit(); }
             }
@@ -112,21 +112,21 @@ component GuardForm {
         spacing: 12px;
 
         code := TextField {
-            label: root.email ? "邮箱验证码" : "手机令牌验证码";
+            label: root.email ? @tr("邮箱验证码") : @tr("手机令牌验证码");
             input-type: InputType.text;
             supporting-text: Store.guard-hint != "" ? Store.guard-hint
-                : root.email ? "验证码已发送至你的邮箱。" : "打开商店手机应用，输入令牌中显示的验证码。";
+                : root.email ? @tr("验证码已发送至你的邮箱。") : @tr("打开商店手机应用，输入令牌中显示的验证码。");
             accepted => { root.submit(); }
         }
         HorizontalLayout {
             alignment: end;
             spacing: 8px;
             TextButton {
-                text: "取消";
+                text: @tr("取消");
                 clicked => { Store.logout(); }
             }
             FilledButton {
-                text: "提交";
+                text: @tr("提交");
                 enabled: code.text != "";
                 clicked => { root.submit(); }
             }
@@ -178,7 +178,7 @@ component PendingStep {
         HorizontalLayout {
             alignment: end;
             TextButton {
-                text: "取消";
+                text: @tr("取消");
                 clicked => { Store.logout(); }
             }
         }
@@ -213,7 +213,7 @@ export component StoreLogin {
                 alignment: start;
 
                 if root.choosing : MaterialText {
-                    text: "登录 " + Store.provider-name + " 后可以下载你已拥有的游戏。";
+                    text: @tr("登录 {} 后可以下载你已拥有的游戏。", Store.provider-name);
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-surface-variant;
                     wrap: word-wrap;
@@ -221,39 +221,39 @@ export component StoreLogin {
                 }
 
                 if Store.error != "" : ErrorBanner {
-                    title: "登录失败";
+                    title: @tr("登录失败");
                     text: Store.error;
                 }
 
                 if root.choosing && Store.can-credentials : LoginCard {
-                    title: "账户密码登录";
+                    title: @tr("账户密码登录");
                     PasswordForm { }
                 }
 
                 if root.choosing && (Store.can-qr || Store.can-import-local) : LoginCard {
-                    title: "其他登录方式";
+                    title: @tr("其他登录方式");
                     VerticalLayout {
                         spacing: 8px;
                         if Store.can-qr : TonalButton {
                             icon: Icons.qr-code;
-                            text: "扫码登录";
+                            text: @tr("扫码登录");
                             clicked => { Store.qr-login(); }
                         }
                         if Store.can-import-local : OutlineButton {
                             icon: Icons.upload-file;
-                            text: "导入 " + Store.provider-name + " 客户端登录";
+                            text: @tr("导入 {} 客户端登录", Store.provider-name);
                             clicked => { Store.import-local(); }
                         }
                     }
                 }
 
                 if root.choosing && Store.can-browser : LoginCard {
-                    title: "浏览器登录";
-                    description: "在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。";
+                    title: @tr("浏览器登录");
+                    description: @tr("在商店官网登录你自己的账号，再粘贴该站点的 Cookie。Cookie 仅通过系统密钥库存储。");
                     VerticalLayout {
                         spacing: 12px;
                         OutlineButton {
-                            text: "打开官网登录页";
+                            text: @tr("打开官网登录页");
                             enabled: Store.browser-url != "";
                             clicked => { Store.open-browser(); }
                         }
@@ -265,7 +265,7 @@ export component StoreLogin {
                             }
                         }
                         FilledButton {
-                            text: "使用 Cookie 登录";
+                            text: @tr("使用 Cookie 登录");
                             enabled: cookies.text != "";
                             clicked => { Store.browser-login(cookies.text); cookies.text = ""; }
                         }
@@ -274,27 +274,27 @@ export component StoreLogin {
 
                 if root.state == "connecting" : LoginCard {
                     PendingStep {
-                        title: "正在连接 " + Store.provider-name;
+                        title: @tr("正在连接 {}", Store.provider-name);
                         body: Store.status;
                     }
                 }
 
                 if root.state == "email-code" || root.state == "mobile-code" : LoginCard {
-                    title: "验证码验证";
-                    description: Store.account-name != "" ? "账户：" + Store.account-name : "";
+                    title: @tr("验证码验证");
+                    description: Store.account-name != "" ? @tr("账户：{}", Store.account-name) : "";
                     GuardForm { email: root.state == "email-code"; }
                 }
 
                 if root.state == "mobile-confirmation" : LoginCard {
                     PendingStep {
-                        title: "请在 " + Store.provider-name + " 手机应用中确认";
-                        body: Store.guard-hint != "" ? Store.guard-hint : "在手机上批准这次登录后会自动继续。";
+                        title: @tr("请在 {} 手机应用中确认", Store.provider-name);
+                        body: Store.guard-hint != "" ? Store.guard-hint : @tr("在手机上批准这次登录后会自动继续。");
                     }
                 }
 
                 if root.state == "qr-code" : LoginCard {
-                    title: "扫码登录";
-                    description: "用 " + Store.provider-name + " 手机应用扫描二维码并确认登录。";
+                    title: @tr("扫码登录");
+                    description: @tr("用 {} 手机应用扫描二维码并确认登录。", Store.provider-name);
 
                     HorizontalLayout {
                         alignment: center;
@@ -305,7 +305,7 @@ export component StoreLogin {
                             // Quiet zone stays white in dark mode so the code scans.
                             background: white;
                             accessible-role: image;
-                            accessible-label: "登录二维码";
+                            accessible-label: @tr("登录二维码");
 
                             if Store.qr.width > 0 : Image {
                                 width: 200px;
@@ -332,7 +332,7 @@ export component StoreLogin {
                     HorizontalLayout {
                         alignment: end;
                         TextButton {
-                            text: "取消";
+                            text: @tr("取消");
                             clicked => { Store.logout(); }
                         }
                     }

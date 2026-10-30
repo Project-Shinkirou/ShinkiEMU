@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
     pub(super) fn update_window_state(&mut self, mut state: WindowState) -> Result<(), String> {
@@ -431,7 +432,7 @@ impl ShinkiEmuManagerController {
             .as_mut()
             .ok_or("SHINKI_EMU_KEY_CAPTURE_INACTIVE")?;
         let Some(key) = shinki_emu_manager_core::input_key_name(code) else {
-            capture.hint = UNMAPPABLE_KEY_HINT.into();
+            capture.hint = tr!("这个键不能用于映射").into();
             return self.model();
         };
         let KeyCapture {
@@ -443,8 +444,6 @@ impl ShinkiEmuManagerController {
         }
     }
 }
-
-pub(super) const UNMAPPABLE_KEY_HINT: &str = "这个键不能用于映射";
 
 pub(super) struct KeyCapture {
     button: String,

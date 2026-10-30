@@ -1,6 +1,7 @@
 use super::*;
 use shinki_emu_manager::SnackbarOutcome;
 use shinki_emu_manager_ui_slint::SnackbarViewModel;
+use shinki_emu_manager_ui_slint::tr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum SnackbarAction {
@@ -11,8 +12,8 @@ pub(super) enum SnackbarAction {
 impl SnackbarAction {
     fn label(&self) -> &'static str {
         match self {
-            Self::Undo => "撤销",
-            Self::Restart => "立即重启",
+            Self::Undo => tr!("撤销"),
+            Self::Restart => tr!("立即重启"),
         }
     }
 }

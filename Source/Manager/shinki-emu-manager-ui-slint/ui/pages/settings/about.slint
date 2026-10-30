@@ -72,7 +72,7 @@ component LinkRow {
 }
 
 export component AboutSection inherits PageScroll {
-    title: "关于";
+    title: @tr("关于");
 
     property <{x: length, y: length, width: length, height: length}> viewport: {
         x: root.viewport-x,
@@ -113,7 +113,9 @@ export component AboutSection inherits PageScroll {
                     color: MaterialPalette.on-surface;
                 }
                 MaterialText {
-                    text: "版本 " + (App.version != "" ? App.version : "未知") + (App.build != "" ? " · 构建 " + App.build : "");
+                    text: App.build != ""
+                        ? @tr("版本 {0} · 构建 {1}", App.version != "" ? App.version : @tr("未知"), App.build)
+                        : @tr("版本 {}", App.version != "" ? App.version : @tr("未知"));
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface-variant;
                     wrap: word-wrap;
@@ -130,7 +132,7 @@ export component AboutSection inherits PageScroll {
             padding-left: 4px;
             padding-right: 4px;
             MaterialText {
-                text: "防倒卖声明";
+                text: @tr("防倒卖声明");
                 style: MaterialTypography.title-small;
                 color: MaterialPalette.primary;
             }
@@ -142,7 +144,7 @@ export component AboutSection inherits PageScroll {
     }
 
     SettingGroup {
-        title: "免责声明";
+        title: @tr("免责声明");
         DisclaimerText { }
     }
 
@@ -150,29 +152,29 @@ export component AboutSection inherits PageScroll {
         flush: true;
 
         LinkRow {
-            text: "第三方许可";
-            supporting-text: "ShinkiEMU 使用的开源组件及其许可证";
+            text: @tr("第三方许可");
+            supporting-text: @tr("ShinkiEMU 使用的开源组件及其许可证");
             icon: Icons.info;
             clicked => { App.open-path("third-party-notices"); }
         }
         HorizontalDivider { }
         LinkRow {
-            text: "打开数据目录";
-            supporting-text: "资料库、设置、封面缓存和用户安装的核心";
+            text: @tr("打开数据目录");
+            supporting-text: @tr("资料库、设置、封面缓存和用户安装的核心");
             icon: Icons.folder-open;
             clicked => { App.open-path("data"); }
         }
         HorizontalDivider { }
         LinkRow {
-            text: "打开日志目录";
-            supporting-text: "报告问题时请附上日志";
+            text: @tr("打开日志目录");
+            supporting-text: @tr("报告问题时请附上日志");
             icon: Icons.history;
             clicked => { App.open-path("logs"); }
         }
         HorizontalDivider { }
         LinkRow {
-            text: "重新运行首次设置";
-            supporting-text: "重新查看说明，选择库目录、联网与外观";
+            text: @tr("重新运行首次设置");
+            supporting-text: @tr("重新查看说明，选择库目录、联网与外观");
             icon: Icons.restart-alt;
             clicked => {
                 Onboarding.step = 0;
@@ -182,7 +184,7 @@ export component AboutSection inherits PageScroll {
     }
 
     SettingGroup {
-        title: "界面框架";
+        title: @tr("界面框架");
         HorizontalLayout {
             alignment: center;
             AboutSlint {

@@ -7,17 +7,17 @@ import { PageScroll, SettingGroup, StatusChip } from "./settings/common.slint";
 
 export global CoreText {
     public pure function state-label(core: CoreInfo) -> string {
-        return core.state == "loaded" ? (core.update-version != "" ? "可更新" : "已加载")
-            : core.state == "failed" ? "加载失败"
-            : core.state == "pending-install" ? "重启后安装"
-            : core.state == "pending-update" ? "重启后更新"
-            : core.state == "pending-removal" ? "重启后移除"
-            : core.state == "available" ? "可安装"
+        return core.state == "loaded" ? (core.update-version != "" ? @tr("可更新") : @tr("已加载"))
+            : core.state == "failed" ? @tr("加载失败")
+            : core.state == "pending-install" ? @tr("重启后安装")
+            : core.state == "pending-update" ? @tr("重启后更新")
+            : core.state == "pending-removal" ? @tr("重启后移除")
+            : core.state == "available" ? @tr("可安装")
             : core.state;
     }
 
     public pure function source-label(source: string) -> string {
-        return source == "bundled" ? "随附" : source == "user" ? "用户安装" : source == "online" ? "在线" : source;
+        return source == "bundled" ? @tr("随附") : source == "user" ? @tr("用户安装") : source == "online" ? @tr("在线") : source;
     }
 
     public pure function is-pending(state: string) -> bool {
@@ -70,7 +70,7 @@ component CoreRow {
                 }
                 MaterialText {
                     text: (root.core.engine != "" ? root.core.engine + " · " : "")
-                        + (root.core.version != "" ? root.core.version : "版本未知")
+                        + (root.core.version != "" ? root.core.version : @tr("版本未知"))
                         + (root.update ? " → " + root.core.update-version : "")
                         + (root.core.source != "" ? " · " + CoreText.source-label(root.core.source) : "");
                     style: MaterialTypography.body-medium;
@@ -132,30 +132,30 @@ component CoreRow {
                 spacing: 0px;
 
                 if root.update : TextButton {
-                    text: "更新到 " + root.core.update-version;
+                    text: @tr("更新到 {}", root.core.update-version);
                     icon: Icons.download;
                     enabled: Network.allowed;
                     clicked => { Cores.install-online(root.core.id); }
                 }
                 if root.core.state == "available" : TextButton {
-                    text: "安装";
+                    text: @tr("安装");
                     icon: Icons.download;
                     enabled: Network.allowed;
                     clicked => { Cores.install-online(root.core.id); }
                 }
                 if root.core.state == "loaded" : TextButton {
-                    text: root.editing ? "收起默认设置" : "默认设置";
+                    text: root.editing ? @tr("收起默认设置") : @tr("默认设置");
                     icon: root.editing ? Icons.expand-less : Icons.tune;
                     accessible-expandable: true;
                     accessible-expanded: root.editing;
                     clicked => { root.edit-defaults(); }
                 }
                 if root.core.state == "loaded" || root.failed : TextButton {
-                    text: "查看日志";
+                    text: @tr("查看日志");
                     clicked => { Cores.view-logs(root.core.id); }
                 }
                 if root.core.removable && (root.core.state == "loaded" || root.failed) : TextButton {
-                    text: "卸载";
+                    text: @tr("卸载");
                     icon: Icons.delete;
                     clicked => { Cores.uninstall(root.core.id); }
                 }
@@ -185,12 +185,12 @@ component DefaultsEditor {
                 VerticalLayout {
                     spacing: 4px;
                     MaterialText {
-                        text: "模拟器默认设置";
+                        text: @tr("模拟器默认设置");
                         style: MaterialTypography.title-small;
                         color: MaterialPalette.primary;
                     }
                     MaterialText {
-                        text: "没有单独设置的游戏使用这里的值；修改立即保存。";
+                        text: @tr("没有单独设置的游戏使用这里的值；修改立即保存。");
                         style: MaterialTypography.body-small;
                         color: MaterialPalette.on-surface-variant;
                         wrap: word-wrap;
@@ -212,7 +212,7 @@ component DefaultsEditor {
                 }
 
                 if Cores.default-fields.length == 0 : MaterialText {
-                    text: "这个模拟器没有其他可调参数。";
+                    text: @tr("这个模拟器没有其他可调参数。");
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface-variant;
                 }
@@ -292,8 +292,8 @@ export component CoresPage {
         y: 0px;
         width: root.width;
         height: root.bar-height;
-        title: "核心";
-        leading-button: root.compact ? { icon: Icons.arrow-back, tooltip: "返回游戏库", enabled: true } : { };
+        title: @tr("核心");
+        leading-button: root.compact ? { icon: Icons.arrow-back, tooltip: @tr("返回游戏库"), enabled: true } : { };
         leading-button-clicked => { App.page = "library"; }
     }
 
@@ -322,7 +322,7 @@ export component CoresPage {
                 }
                 MaterialText {
                     horizontal-stretch: 1;
-                    text: "核心有变更，重启 ShinkiEMU 后生效。";
+                    text: @tr("核心有变更，重启 ShinkiEMU 后生效。");
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-tertiary-container;
                     vertical-alignment: center;
@@ -333,7 +333,7 @@ export component CoresPage {
                     alignment: center;
                     horizontal-stretch: 0;
                     FilledButton {
-                        text: "立即重启";
+                        text: @tr("立即重启");
                         clicked => { Cores.restart(); }
                     }
                 }
@@ -344,7 +344,7 @@ export component CoresPage {
             spacing: 12px;
             MaterialText {
                 horizontal-stretch: 1;
-                text: Network.allowed ? "在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。" : "允许联网后可以在线安装和更新核心。";
+                text: Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 vertical-alignment: center;
@@ -355,7 +355,7 @@ export component CoresPage {
                 alignment: center;
                 horizontal-stretch: 0;
                 OutlineButton {
-                    text: "从本地安装…";
+                    text: @tr("从本地安装…");
                     icon: Icons.upload-file;
                     clicked => { Cores.install-local(); }
                 }
@@ -364,7 +364,7 @@ export component CoresPage {
 
         if Cores.items.length == 0 : SettingGroup {
             MaterialText {
-                text: "没有找到核心。可以从本地安装核心包，或允许联网后在线安装。";
+                text: @tr("没有找到核心。可以从本地安装核心包，或允许联网后在线安装。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -373,19 +373,19 @@ export component CoresPage {
         }
 
         if pending.count > 0 : CoreGroup {
-            title: "待重启（" + pending.count + "）";
+            title: @tr("待重启（{}）", pending.count);
             group: "pending";
         }
         if failed.count > 0 : CoreGroup {
-            title: "加载失败（" + failed.count + "）";
+            title: @tr("加载失败（{}）", failed.count);
             group: "failed";
         }
         if installed.count > 0 : CoreGroup {
-            title: "已安装（" + installed.count + "）";
+            title: @tr("已安装（{}）", installed.count);
             group: "installed";
         }
         if available.count > 0 : CoreGroup {
-            title: "可安装（" + available.count + "）";
+            title: @tr("可安装（{}）", available.count);
             group: "available";
         }
     }
