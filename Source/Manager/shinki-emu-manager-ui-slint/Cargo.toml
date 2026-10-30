@@ -24,6 +24,12 @@ sys-locale = "=0.3.2"
 [target.'cfg(not(target_env = "ohos"))'.dependencies]
 slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu"] }
 
+# The winit and android-activity backends turn on Slint's embedded image/SVG
+# decoding; the OHOS custom platform has no Slint backend, so enable it on the
+# same i-slint-core version directly (the generated UI loads embedded SVGs).
+[target.'cfg(target_env = "ohos")'.dependencies]
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["image-decoders", "svg"] }
+
 [build-dependencies]
 slint-build.workspace = true
 rspolib = "=0.1.2"

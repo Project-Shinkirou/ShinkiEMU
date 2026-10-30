@@ -74,7 +74,7 @@ fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<Pa
     Ok(directory)
 }
 pub fn load_receipt(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
-    inv.require_supported(component, target)?;
+    inv.require_buildable(component, target)?;
     let path = receipt_path(inv, target, component);
     let r: BuildResult = serde_json::from_slice(&fs::read(&path).with_context(|| {
         format!(
@@ -112,7 +112,7 @@ pub fn execute(
     action: &str,
     release: bool,
 ) -> Result<Option<BuildResult>> {
-    inv.require_supported(component, target)?;
+    inv.require_buildable(component, target)?;
     dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
     let core = if component == "manager" {
         None
@@ -211,7 +211,9 @@ pub fn execute(
     if release {
         cmd.arg("--release");
     }
-    if core.is_some() || target.contains("android") {
+    // Android and OHOS load the Manager as a cdylib from their app shells.
+    let library_host = target.contains("android") || target.ends_with("ohos");
+    if core.is_some() || library_host {
         cmd.arg("--lib");
     } else {
         cmd.args(["--bin", "shinki-emu-manager"]);
@@ -252,7 +254,7 @@ pub fn execute(
             continue;
         }
         if value["reason"] == "compiler-artifact" {
-            if core.is_none() && !target.contains("android") {
+            if core.is_none() && !library_host {
                 if let Some(s) = value["executable"].as_str() {
                     libraries.push(PathBuf::from(s));
                 }
