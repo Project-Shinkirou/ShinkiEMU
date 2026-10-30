@@ -2,6 +2,9 @@
 //! This codec preserves fields and does not establish that a VM can restore them.
 mod body;
 mod checkpoint;
+pub mod perseus;
+#[cfg(test)]
+mod perseus_tests;
 mod position;
 mod slot;
 mod state;
@@ -110,7 +113,11 @@ pub struct EdenSave {
     pub prefix: u32,
     pub comment: String,
     pub route: [u8; 4],
+    /// Engine fields, written with a `!` prefix in native writer order.
     pub variables: Vec<EdenSaveField>,
+    /// Script `.set` variables from the same native map, names verbatim.
+    /// Encoded in map (byte) order after the `!` block.
+    pub script_variables: Vec<(String, String)>,
     pub backlog: Vec<Vec<EdenSaveField>>,
 }
 impl EdenSave {
@@ -163,15 +170,16 @@ impl EdenSave {
         }
         raw.truncate(decoder.total_out() as usize);
         let text = encoding.decode(&raw)?;
-        let (variables, backlog) = body::parse(&text)?;
+        let body = body::parse(&text, encoding)?;
         Ok(Self {
             edition,
             encoding,
             prefix,
             comment,
             route,
-            variables,
-            backlog,
+            variables: body.variables,
+            script_variables: body.script_variables,
+            backlog: body.backlog,
         })
     }
     /// Container serialization only. Callers must validate VM representability separately.
