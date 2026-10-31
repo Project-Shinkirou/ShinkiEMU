@@ -407,6 +407,9 @@ pub fn stage_core(
             }
             return Ok(());
         }
+        if result.target.contains("apple") && entries.iter().any(|(source, _)| source == &path) {
+            return Ok(());
+        }
         if key.starts_with("shinki_emu_")
             || key.starts_with("libshinki_emu_")
             || ["core.json", "build.json", "licenses", "resources"].contains(&key.as_str())
@@ -482,7 +485,11 @@ pub fn stage_core(
         copy_entries(&entries, &dir)?;
         let staged_library = dir.join(library);
         if crate::apple::supported(&result.target) {
-            crate::apple::sign_binary(&staged_library)?;
+            for (_, relative) in &entries {
+                if is_runtime(Path::new(relative)) {
+                    crate::apple::sign_core_binary(&dir.join(relative))?;
+                }
+            }
         }
         let mut packaged_result = result.clone();
         packaged_result.library = staged_library;
@@ -555,6 +562,18 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
             .context("library parent")?
             .to_owned(),
     ];
+    if result.target.contains("apple") {
+        for manifest in &result.embedded_core_builds {
+            for asset in &manifest.resources {
+                if asset.dest == "Resources" {
+                    let frameworks = asset.source.join("Frameworks");
+                    if frameworks.is_dir() {
+                        dirs.push(frameworks);
+                    }
+                }
+            }
+        }
+    }
     if selected.ffmpeg
         && let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)?
     {
@@ -807,7 +826,11 @@ pub fn package(
                     "THIRD_PARTY_NOTICES.md".into(),
                 ),
             ];
+            entries.extend(static_core_entries(inv, &result, temp.path())?);
             for dep in binary::closure(&result.library, &search_dirs(inv, &result)?, target)? {
+                if entries.iter().any(|(source, _)| source == &dep) {
+                    continue;
+                }
                 entries.push((
                     dep.clone(),
                     dep.file_name().unwrap().to_string_lossy().into_owned(),
@@ -826,7 +849,6 @@ pub fn package(
             }
             entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
-            entries.extend(static_core_entries(inv, &result, temp.path())?);
             copy_entries(&entries, stage)?;
             drop(temp);
             fs::create_dir_all(stage.join("cores"))?;
@@ -993,7 +1015,15 @@ fn static_core_entries(
             native.validate()?;
             for asset in &native.resources {
                 for (source, destination) in asset_entries(asset)? {
-                    entries.push((source, format!("cores/{}/{destination}", core.id)));
+                    let destination = if result.target.contains("apple") {
+                        destination
+                            .strip_prefix("Resources/Frameworks/")
+                            .map(|path| format!("Frameworks/{path}"))
+                            .unwrap_or_else(|| format!("cores/{}/{destination}", core.id))
+                    } else {
+                        format!("cores/{}/{destination}", core.id)
+                    };
+                    entries.push((source, destination));
                 }
             }
             for asset in &native.licenses {

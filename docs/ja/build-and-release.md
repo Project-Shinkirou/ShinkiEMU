@@ -153,7 +153,7 @@ Impacto の Apple 候補はコアのライブラリ名と単体アプリの bund
 Kirikiroid2 の Apple 候補には cocos2dx の iOS ルーティング修正と macOS の Autotools 準備を含めます。iOS は固有名の query からネイティブ静的アーカイブをリンクし、実行時リソースを `cores/kirikiroid2-web/Resources` に配置します。macOS の両アーキテクチャは動的コアパッケージを維持します。コミットが一致するネイティブのビルド記録と対象を絞ったリモート CI に基づいて、各行の公開可否を決めます。
 
 Apple Kirikiri と iOS Manager の CI は Autotools、Bison、gperf を明示的に用意し、古いシステム版ではなく Homebrew の Bison/gperf を優先します。FFmpeg overlay は初回アーキテクチャの未構成ディレクトリを clean しません。Libarchive は圧縮と XML の依存関係を明示し、arm64 クロスビルドで MacPorts の x86_64 ライブラリを検出しないようにします。
-Ren'Py の Apple 入力準備は専用の POSIX CPython/Cython ソースと、検証した公式 `lib/py3-mac-universal/librenpython.dylib` を使います。macOS アダプターは対象アーキテクチャを抽出し、ライブラリ ID と参照を `@rpath` に変更します。コアと display 拡張の rpath はパッケージ内の Resources を参照します。iOS には上流 renpy-build の `renios` による静的 CPython・モジュールのビルド、静的アダプターと実行時リソースのパッケージが必要です。公開対象はネイティブのビルド記録、パッケージ監査、対象を絞ったリモート CI に基づいて決めます。
+Ren'Py の Apple ビルド用 CPython/Cython は固定の OpenSSL 3 にリンクし、CPython と互換性のない Homebrew OpenSSL 4 を使用しません。macOS のアダプター、display 拡張、検証済み公式 SDK ランタイムは x86_64/arm64 の両スライスと再配置可能な `@rpath` を保持します。iOS は公式 Renios の静的 CPython・モジュール、ターゲット用ヘッダー、独立した SDL2 と MetalANGLE を使用します。Manager は Python owner 作成前に `cores/renpy/Resources` を設定し、フレームワークを標準の `Frameworks` に配置します。ソースには公式バイナリ内に記録された MetalANGLE revision を含めます。候補ターゲットの公開には、ソースが一致するネイティブ記録、パッケージ・署名監査、exact-head CI の成功が必要です。
 ネイティブ vcpkg のインストール先は `.work/native-vcpkg/<core>/installed-<triplet>/<triplet>` です。別の ABI の依存関係が削除されないよう、ビルド補助ライブラリと xtask が同じパスマッピングを使います。Android の静的リンクにはコア内部のネイティブライブラリ、ターゲットの vcpkg アーカイブ、pkg-config の private 依存関係を含め、APK には NDK の C++ 共有ランタイムを同梱します。Windows ホストでは vcpkg のビルドロックを共有するため、作業ツリーをまたぐ依存関係のインストールも直列に実行してください。
 
 ## マトリクスと CI

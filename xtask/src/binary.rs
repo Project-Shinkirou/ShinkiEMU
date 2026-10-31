@@ -3,7 +3,7 @@ use object::{
     Object, ObjectKind,
     read::{
         elf::{Dyn, FileHeader, ProgramHeader},
-        macho::MachHeader,
+        macho::{FatArch, MachHeader, MachOFatFile, MachOFatFile32, MachOFatFile64},
         pe::ImageNtHeaders,
     },
 };
@@ -133,11 +133,39 @@ fn macho<'a, M: MachHeader>(
     }
     Ok(())
 }
+fn fat_slice<'a, A: FatArch>(
+    file: &MachOFatFile<'a, A>,
+    bytes: &'a [u8],
+    architecture: object::Architecture,
+) -> Result<&'a [u8]> {
+    let mut matches = file
+        .arches()
+        .iter()
+        .filter(|arch| arch.architecture() == architecture);
+    let arch = matches
+        .next()
+        .context("universal binary lacks the requested architecture")?;
+    if matches.next().is_some() {
+        bail!("universal binary repeats the requested architecture");
+    }
+    Ok(arch.data(bytes)?)
+}
+
+pub(crate) fn target_slice(bytes: &[u8], architecture: object::Architecture) -> Result<&[u8]> {
+    match object::FileKind::parse(bytes)? {
+        object::FileKind::MachOFat32 => {
+            fat_slice(&MachOFatFile32::parse(bytes)?, bytes, architecture)
+        }
+        object::FileKind::MachOFat64 => {
+            fat_slice(&MachOFatFile64::parse(bytes)?, bytes, architecture)
+        }
+        _ => Ok(bytes),
+    }
+}
+
 pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryInfo> {
     crate::package::plain(path)?;
     let bytes = fs::read(path)?;
-    let file = object::File::parse(bytes.as_slice())
-        .with_context(|| format!("parsing {}", path.display()))?;
     let arch = if target.starts_with("x86_64-") {
         object::Architecture::X86_64
     } else if target.starts_with("aarch64-") {
@@ -145,6 +173,8 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     } else {
         bail!("unsupported architecture {target}");
     };
+    let file = object::File::parse(target_slice(&bytes, arch)?)
+        .with_context(|| format!("parsing {}", path.display()))?;
     if file.architecture() != arch {
         bail!(
             "{}: architecture {:?} does not match {target}",
@@ -194,6 +224,9 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
         _ => bail!("unsupported binary format"),
     }
     for r in &info.rpaths {
+        if target.ends_with("apple-darwin") && r == "@executable_path/../Frameworks" {
+            continue;
+        }
         if !(r == "$ORIGIN"
             || r.starts_with("$ORIGIN/")
             || r == "@loader_path"
@@ -210,19 +243,29 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     }
     for dependency in &info.dependencies {
         if target.contains("apple") {
-            if !system(dependency, target)
-                && (!(dependency.starts_with("@rpath/")
-                    || dependency.starts_with("@loader_path/")
-                    || dependency.starts_with("@executable_path/"))
-                    || dependency.split('/').any(|part| part == ".."))
-            {
-                bail!("non-relocatable Mach-O dependency {dependency}");
+            if !system(dependency, target) {
+                apple_dependency(dependency)?;
             }
         } else if dependency.contains(['/', '\\']) {
             bail!("non-relocatable binary dependency {dependency}");
         }
     }
     Ok(info)
+}
+
+/// Bundle-relative install name, including a framework directory when present.
+pub(crate) fn apple_dependency(name: &str) -> Result<&str> {
+    let relative = ["@rpath/", "@loader_path/", "@executable_path/"]
+        .iter()
+        .find_map(|prefix| name.strip_prefix(prefix))
+        .with_context(|| format!("non-relocatable Mach-O dependency {name}"))?;
+    crate::package::portable(relative)?;
+    if let Some((directory, binary)) = relative.split_once('/') {
+        if directory.strip_suffix(".framework") != Some(binary) {
+            bail!("unsupported Mach-O framework dependency {name}");
+        }
+    }
+    Ok(relative)
 }
 
 pub(crate) fn system(name: &str, target: &str) -> bool {
@@ -414,6 +457,13 @@ pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<P
                     continue;
                 }
                 crate::package::plain(dir)?;
+                if target.contains("apple") && dep.contains(".framework/") {
+                    let candidate = dir.join(apple_dependency(&dep)?);
+                    if candidate.is_file() {
+                        matches.push(candidate);
+                    }
+                    continue;
+                }
                 for entry in fs::read_dir(dir)? {
                     let entry = entry?;
                     if entry

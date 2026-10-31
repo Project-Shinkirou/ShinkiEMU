@@ -11149,6 +11149,7 @@ dependencies = [
  "shinki-emu-musica",
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
+ "shinki-emu-renpy",
  "shinki-emu-rfvp",
  "shinki-emu-sena-rs",
  "shinki-emu-siglus_rs",
@@ -11331,6 +11332,18 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "toml_parser",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "shinki-emu-renpy"
+version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/renpy?rev=3f0321ad1bb99fba70c5f241312d3dcc82ca0e80#3f0321ad1bb99fba70c5f241312d3dcc82ca0e80"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "sha2 0.10.9",
+ "shinki-emu-abi",
+ "shinki-emu-build",
 ]
 
 [[package]]

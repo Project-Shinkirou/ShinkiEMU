@@ -377,11 +377,27 @@ fn prepare_native_tree(
         }
         if let Some((python, cython)) = python_versions {
             if cfg!(unix) {
-                run(Command::new("sh")
+                let openssl = stage.join("host-openssl");
+                if cfg!(target_os = "macos") {
+                    let source = stage.join("build-openssl");
+                    run(Command::new("perl")
+                        .arg("Configure")
+                        .args(["no-shared", "no-tests", "--openssldir=/etc/ssl"])
+                        .arg(format!("--prefix={}", openssl.display()))
+                        .current_dir(&source))?;
+                    run(Command::new("make").arg("-j3").current_dir(&source))?;
+                    run(Command::new("make").arg("install_sw").current_dir(&source))?;
+                }
+                let mut configure = Command::new("sh");
+                configure
                     .arg("configure")
                     .arg("--without-ensurepip")
                     .current_dir(stage)
-                    .env("PYTHONDONTWRITEBYTECODE", "1"))?;
+                    .env("PYTHONDONTWRITEBYTECODE", "1");
+                if cfg!(target_os = "macos") {
+                    configure.arg(format!("--with-openssl={}", openssl.display()));
+                }
+                run(&mut configure)?;
                 run(Command::new("make")
                     .args(["-j3", "all"])
                     .current_dir(stage)
@@ -523,7 +539,12 @@ fn git_archive(repo: &str, rev: &str, sha: &str, out: &Path) -> Result<()> {
     Ok(())
 }
 
-fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) -> Result<()> {
+fn prepare_native_inputs(
+    inv: &Inventory,
+    lock: &Lock,
+    selected: NativeNeeds,
+    target: &str,
+) -> Result<()> {
     let get = |name: &str| {
         lock.native
             .get(name)
@@ -609,23 +630,30 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
                 bail!("official RenPy SDK runtime hash mismatch: {name}");
             }
         }
+        let mut python_layers = vec![
+            NativeLayer {
+                archive: python,
+                destination: "",
+            },
+            NativeLayer {
+                archive: cython,
+                destination: if cfg!(windows) {
+                    "Lib/site-packages"
+                } else {
+                    "Lib"
+                },
+            },
+        ];
+        if cfg!(target_os = "macos") {
+            python_layers.push(NativeLayer {
+                archive: get("renpy-host-openssl")?,
+                destination: "build-openssl",
+            });
+        }
         prepare_native_tree(
             &inv.root,
             "python",
-            &[
-                NativeLayer {
-                    archive: python,
-                    destination: "",
-                },
-                NativeLayer {
-                    archive: cython,
-                    destination: if cfg!(windows) {
-                        "Lib/site-packages"
-                    } else {
-                        "Lib"
-                    },
-                },
-            ],
+            &python_layers,
             Some((&python.version, &cython.version)),
         )?;
         prepare_native_tree(
@@ -646,6 +674,59 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
             }],
             None,
         )?;
+        if target.contains("apple-ios") {
+            let ios = get("renpy-ios")?;
+            if sdk["ios"]["url"] != ios.url || sdk["ios"]["sha256"] != ios.sha256 {
+                bail!("RenPy sdk.json and iOS runtime pins disagree");
+            }
+            run(Command::new("rustup").args(["component", "add", "llvm-tools-preview"]))?;
+            let renios = prepare_native_tree(
+                &inv.root,
+                "renpy-ios",
+                &[NativeLayer {
+                    archive: ios,
+                    destination: "",
+                }],
+                None,
+            )?;
+            let metalangle = get("renpy-metalangle")?;
+            if sdk["ios"]["metalangle"]["url"] != metalangle.url
+                || sdk["ios"]["metalangle"]["sha256"] != metalangle.sha256
+                || sdk["ios"]["metalangle"]["rev"] != metalangle.version
+            {
+                bail!("RenPy sdk.json and MetalANGLE source pins disagree");
+            }
+            let metalangle = prepare_native_tree(
+                &inv.root,
+                "renpy-metalangle",
+                &[NativeLayer {
+                    archive: metalangle,
+                    destination: "",
+                }],
+                None,
+            )?;
+            let interpreter = inv
+                .root
+                .join(".work/native-downloads/python")
+                .join(build_python_relative());
+            let script = inv
+                .core("renpy")?
+                .source_directory(&inv.root)?
+                .join("shinki/prepare_ios.py");
+            run(Command::new(&interpreter)
+                .arg(script)
+                .arg(inv.root.join(".work/renpy-build"))
+                .arg(renios)
+                .arg(sdk_root)
+                .arg(&interpreter)
+                .arg(
+                    inv.root
+                        .join(".work/native-downloads/renpy-static")
+                        .join(target),
+                )
+                .arg(metalangle)
+                .arg(target))?;
+        }
     }
     Ok(())
 }
@@ -974,6 +1055,22 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
                     "{variable}: {} (cargo xtask deps --target {target} --core renpy)",
                     path.display()
                 ));
+            }
+        }
+        if target.contains("apple-ios") {
+            let runtime = base.join("renpy-static").join(target);
+            for relative in [
+                "include/python3.12/pyconfig.h",
+                "lib/libpython3.12.a",
+                "lib/librenpy.a",
+                "runtime.json",
+            ] {
+                if !runtime.join(relative).is_file() {
+                    missing.push(format!(
+                        "Ren'Py iOS target runtime: {}",
+                        runtime.join(relative).display()
+                    ));
+                }
             }
         }
         let pins = lock(inv)?;
@@ -1441,6 +1538,9 @@ pub fn apply_environment(
                 base.join("cython-license/LICENSE.txt"),
             )
             .env("PYTHONDONTWRITEBYTECODE", "1");
+        if target.contains("apple-ios") {
+            cmd.env("RENPY_STATIC_ROOT", base.join("renpy-static").join(target));
+        }
     }
     if crate::apple::supported(target) && selected.subtitle {
         // Apple triplets statically link the complete libass closure, including
@@ -1590,7 +1690,10 @@ pub fn apply_environment(
         }
     }
     if (crate::apple::supported(target) || target.contains("android") || target.ends_with("ohos"))
-        && (selected.ffmpeg || selected.subtitle || selected.native_vcpkg)
+        && (selected.ffmpeg
+            || selected.subtitle
+            || selected.native_vcpkg
+            || (selected.renpy && target.contains("apple-ios")))
     {
         let mut paths = Vec::new();
         if selected.ffmpeg {
@@ -1605,6 +1708,14 @@ pub fn apply_environment(
                 native_install(inv, target, &native.id)?.join(native_triplet(inv, target)?);
             paths.push(installation.join("lib/pkgconfig"));
             paths.push(installation.join("share/pkgconfig"));
+        }
+        if selected.renpy && target.contains("apple-ios") {
+            paths.push(
+                inv.root
+                    .join(".work/native-downloads/renpy-static")
+                    .join(target)
+                    .join("lib/pkgconfig"),
+            );
         }
         // Both private closures are static. Never discover host/Homebrew .pc files.
         for var in [
@@ -1808,7 +1919,7 @@ pub fn prepare(
         return doctor(inv, target, core);
     }
     let pins = lock(inv)?;
-    prepare_native_inputs(inv, &pins, selected)?;
+    prepare_native_inputs(inv, &pins, selected, target)?;
     if selected.dxc {
         dxc(inv)?;
     }

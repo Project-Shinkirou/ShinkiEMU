@@ -29,7 +29,27 @@ fn checked(command: &mut Command) -> Result<()> {
     }
     Ok(())
 }
-pub fn sign_binary(path: &Path) -> Result<()> {
+/// Make copied core dylibs relocatable, then sign every staged native binary.
+pub fn sign_core_binary(path: &Path) -> Result<()> {
+    if path
+        .extension()
+        .is_some_and(|extension| extension == "dylib")
+    {
+        let tool = if cfg!(target_os = "macos") {
+            "install_name_tool"
+        } else {
+            "llvm-install-name-tool"
+        };
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("core dylib filename")?;
+        checked(
+            Command::new(tool)
+                .args(["-id", &format!("@rpath/{name}")])
+                .arg(path),
+        )?;
+    }
     if cfg!(target_os = "macos") {
         checked(
             Command::new("codesign")
@@ -224,14 +244,14 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
     Ok(())
 }
 
-fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<String>, bool)> {
+fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<String>, bool, bool)> {
     let bytes = fs::read(path)?;
-    let file = object::File::parse(bytes.as_slice())?;
     let architecture = if target.starts_with("aarch64") {
         object::Architecture::Aarch64
     } else {
         object::Architecture::X86_64
     };
+    let file = object::File::parse(crate::binary::target_slice(&bytes, architecture)?)?;
     if file.architecture() != architecture
         || file.format() != object::BinaryFormat::MachO
         || (executable && file.kind() != object::ObjectKind::Executable)
@@ -242,7 +262,7 @@ fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<Stri
         );
     }
     let object::File::MachO64(macho) = file else {
-        bail!("Apple bundles require a thin 64-bit Mach-O");
+        bail!("Apple bundles require a 64-bit Mach-O slice");
     };
     let endian = macho.endian();
     let mut commands = macho
@@ -258,6 +278,12 @@ fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<Stri
     let mut platform = None;
     let mut dependencies = BTreeSet::new();
     let mut executable_rpath = false;
+    let framework_rpath = if target.contains("apple-ios") {
+        "@executable_path/Frameworks"
+    } else {
+        "@executable_path/../Frameworks"
+    };
+    let mut has_framework_rpath = false;
     while let Some(command) = commands.next()? {
         match command.cmd() {
             object::macho::LC_BUILD_VERSION => {
@@ -275,35 +301,26 @@ fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<Stri
             object::macho::LC_RPATH => {
                 let rpath: &object::macho::RpathCommand<_> = command.data()?;
                 let value = std::str::from_utf8(command.string(endian, rpath.path)?)?;
-                if !matches!(value, "@executable_path" | "@loader_path") {
+                if !matches!(value, "@executable_path" | "@loader_path") && value != framework_rpath
+                {
                     bail!(
                         "{} has an unbundled runtime search path {value}",
                         path.display()
                     );
                 }
                 executable_rpath |= value == "@executable_path";
+                has_framework_rpath |= value == framework_rpath;
             }
             _ => {}
         }
-        if let Some(dylib) = command.dylib()? {
+        if command.cmd() != object::macho::LC_ID_DYLIB
+            && let Some(dylib) = command.dylib()?
+        {
             let name = std::str::from_utf8(command.string(endian, dylib.dylib.name)?)?;
             if name.starts_with("/usr/lib/") || name.starts_with("/System/Library/Frameworks/") {
                 continue;
             }
-            if !(name.starts_with("@rpath/")
-                || name.starts_with("@loader_path/")
-                || name.starts_with("@executable_path/"))
-                || name.split('/').count() != 2
-                || name.split('/').any(|part| matches!(part, "" | "." | ".."))
-            {
-                bail!("{} has a non-relocatable dependency {name}", path.display());
-            }
-            dependencies.insert(
-                name.rsplit('/')
-                    .next()
-                    .context("dylib filename")?
-                    .to_owned(),
-            );
+            dependencies.insert(crate::binary::apple_dependency(name)?.to_owned());
         }
     }
     if platform != Some(expected_platform) {
@@ -312,7 +329,7 @@ fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<Stri
             path.display()
         );
     }
-    Ok((dependencies, executable_rpath))
+    Ok((dependencies, executable_rpath, has_framework_rpath))
 }
 
 /// Convert validated flat staging to a bundle. Rewriting and signing only touch staging.
@@ -366,17 +383,39 @@ pub fn bundle(
             })
             .cloned(),
     );
+    let frameworks = stage.join("Frameworks");
+    let has_frameworks = frameworks.is_dir();
+    if has_frameworks {
+        for entry in fs::read_dir(&frameworks)? {
+            let framework = entry?.path();
+            crate::package::plain(&framework)?;
+            let name = framework
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("framework name")?;
+            let binary = name
+                .strip_suffix(".framework")
+                .context("Apple Frameworks contains a non-framework directory")?;
+            binaries.push(framework.join(binary));
+        }
+    }
     let available: BTreeSet<_> = binaries
         .iter()
-        .filter_map(|path| path.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
+        .filter_map(|path| {
+            path.strip_prefix(&frameworks)
+                .or_else(|_| path.strip_prefix(stage))
+                .ok()
+        })
+        .map(|name| name.to_string_lossy().replace('\\', "/"))
         .collect();
     let mut main_has_rpath = false;
+    let mut main_has_framework_rpath = false;
     for path in &binaries {
         let is_main = path == &stage.join(executable);
-        let (dependencies, has_rpath) = inspect(path, target, is_main)?;
+        let (dependencies, has_rpath, has_framework_rpath) = inspect(path, target, is_main)?;
         if is_main {
             main_has_rpath = has_rpath;
+            main_has_framework_rpath = has_framework_rpath;
         }
         for dependency in dependencies {
             if !available.contains(&dependency) {
@@ -416,7 +455,9 @@ pub fn bundle(
         let binary = leaf == executable || entry.extension().is_some_and(|e| e == "dylib");
         fs::rename(
             &entry,
-            if binary {
+            if leaf == "Frameworks" {
+                contents.join(leaf)
+            } else if binary {
                 binary_dir.join(leaf)
             } else {
                 resources.join(leaf)
@@ -461,10 +502,29 @@ pub fn bundle(
     } else {
         "llvm-install-name-tool"
     };
-    if !main_has_rpath && binaries.len() > 1 {
+    if !main_has_rpath
+        && binaries.iter().any(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "dylib")
+        })
+    {
         checked(
             Command::new(install_name_tool)
                 .args(["-add_rpath", "@executable_path"])
+                .arg(&main),
+        )?;
+    }
+    if has_frameworks && !main_has_framework_rpath {
+        checked(
+            Command::new(install_name_tool)
+                .args([
+                    "-add_rpath",
+                    if ios {
+                        "@executable_path/Frameworks"
+                    } else {
+                        "@executable_path/../Frameworks"
+                    },
+                ])
                 .arg(&main),
         )?;
     }
@@ -482,11 +542,12 @@ pub fn bundle(
     } else {
         checked(Command::new("rcodesign").arg("sign").arg(&app))?;
         for binary in binaries {
-            checked(
-                Command::new("rcodesign")
-                    .arg("verify")
-                    .arg(binary_dir.join(binary.file_name().context("signed binary filename")?)),
-            )?;
+            let signed = if let Ok(relative) = binary.strip_prefix(&frameworks) {
+                contents.join("Frameworks").join(relative)
+            } else {
+                binary_dir.join(binary.file_name().context("signed binary filename")?)
+            };
+            checked(Command::new("rcodesign").arg("verify").arg(signed))?;
         }
     }
     Ok(app)

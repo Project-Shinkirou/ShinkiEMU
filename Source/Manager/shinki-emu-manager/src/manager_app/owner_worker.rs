@@ -272,6 +272,8 @@ const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("impacto", shinki_emu_impacto::QUERY),
     #[cfg(target_os = "ios")]
     ("kirikiroid2-web", shinki_emu_kirikiroid2_web::QUERY),
+    #[cfg(target_os = "ios")]
+    ("renpy", shinki_emu_renpy::QUERY),
     ("siglus_rs", shinki_emu_siglus_rs::query),
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),
@@ -288,6 +290,24 @@ fn initialize(
     directories: &[PathBuf],
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<BTreeMap<String, String>, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let runtime = executable
+            .parent()
+            .ok_or("iOS Manager executable has no parent")?
+            .join("cores/renpy/Resources");
+        let path = runtime
+            .to_str()
+            .ok_or("Ren'Py resource directory is not UTF-8")?;
+        let mut error = shinki_emu_abi::Error::default();
+        if shinki_emu_renpy::set_resource_root(path, &mut error) != shinki_emu_abi::OK {
+            return Err(format!(
+                "Cannot initialize embedded Ren'Py resources: {}",
+                String::from_utf8_lossy(&error.message[..error.message_len as usize])
+            ));
+        }
+    }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     for (id, query) in STATIC_CORES {
         unsafe { registry.register_static(*query) }.map_err(|error| error.to_string())?;

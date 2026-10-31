@@ -395,27 +395,29 @@ artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = ["static"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki-apple-ports"
-rev = "e4506835d109d9e385768fd14ce37d315871dde7"
+rev = "3f0321ad1bb99fba70c5f241312d3dcc82ca0e80"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "The static adapter feature remains unimplemented and still builds a shared desktop runtime. The pinned upstream renpy-build renios recipes have been located, but no iOS static CPython/modules build or Manager integration was attempted."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
+reason = "Android embedding requires the Android-owned source-built runtime, NDK adapter toolchain and extracted asset-root integration; those target gates are not complete."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
+reason = "Android embedding requires the Android-owned source-built runtime, NDK adapter toolchain and extracted asset-root integration; those target gates are not complete."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "OHOS host integration is OhosHost's scope; no OHOS Ren'Py runtime build has run."

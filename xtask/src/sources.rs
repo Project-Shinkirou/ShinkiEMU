@@ -685,7 +685,7 @@ fn native_sources(
         }
     }
     if selected.renpy {
-        renpy_sources(inv, root)?;
+        renpy_sources(inv, root, target)?;
     }
     Ok(commands)
 }
@@ -781,7 +781,7 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
 /// Ren'Py's LGPL relink material: the pinned renpy-build recipes, the source
 /// archives inventoried by the fork (downloaded and hash-checked by `deps`),
 /// and the prepared SDK/Python/SDL trees the adapter build consumes.
-fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
+fn renpy_sources(inv: &Inventory, root: &Path, target: &str) -> Result<()> {
     let repo = inv.root.join(".work/renpy-build");
     checkout_root(&repo).context(
         "Ren'Py corresponding source requires .work/renpy-build; run cargo xtask deps --core renpy",
@@ -833,6 +833,18 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
             &inv.root.join(".work/native-downloads").join(name),
             &root.join(".work/native-downloads").join(name),
         )?;
+    }
+    if target.contains("apple-ios") {
+        for relative in [
+            "renpy-ios".to_owned(),
+            "renpy-metalangle".to_owned(),
+            format!("renpy-static/{target}"),
+        ] {
+            copy_tree(
+                &inv.root.join(".work/native-downloads").join(&relative),
+                &root.join(".work/native-downloads").join(relative),
+            )?;
+        }
     }
     Ok(())
 }
@@ -957,6 +969,11 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              $env:RENPY_CYTHON_LICENSE = \"$PWD/.work/native-downloads/cython-license/LICENSE.txt\"\n",
              dependencies::build_python_relative()
         ));
+        if target.contains("apple-ios") {
+            instructions.push_str(&format!(
+                "$env:RENPY_STATIC_ROOT = \"$PWD/.work/native-downloads/renpy-static/{target}\"\n"
+            ));
+        }
     }
     if selected.bison {
         instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
@@ -990,7 +1007,25 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         );
     }
     if selected.renpy {
-        instructions.push_str(
+        if target.contains("apple-ios") {
+            instructions.push_str(&format!(
+                "\n## Ren'Py iOS static runtime rebuild and relink\n\n\
+                 The source bundle includes the exact Renios archives, target headers/static libraries, \
+                 the complete pinned renpy-build recipes and their native source archives. \
+                 MetalANGLE source revision 850c87ba5b744c7c39f30c66bacdc9648d15067a is included at \
+                 .work/native-downloads/renpy-metalangle; its revision matches the official framework's embedded ANGLE version string.\n\n\
+                 Modify LGPL components in native/renpy-build.tar and rebuild their unprefixed archives with \
+                 the upstream iOS recipes and legally obtained Apple SDKs (see its README.rst). \
+                 Replace the matching device/simulator archives under .work/native-downloads/renpy-ios/prototype/prebuilt. \
+                 Remove the generated .work/native-downloads/renpy-static/{target} cache and rerun the fork's \
+                 shinki/prepare_ios.py with the recipe root, Renios root, SDK root, host Python executable, \
+                 target output root, MetalANGLE source root and {target}, in that order. \
+                 This regenerates target headers, rebuilds private SDL2, namespaces the replacement archives \
+                 and stages the framework. Rebuild Manager using RENPY_STATIC_ROOT above to relink the modified libraries. \
+                 The complete adapter/Manager sources are supplied; no proprietary relink object is required.\n"
+            ));
+        } else {
+            instructions.push_str(
             "\n## Ren'Py combined-runtime rebuild and relink\n\n\
              The shipped SDK is 8.5.3.26051504, SHA256 ff57648f9c04f27e381c48af6d8e3ee3cdec296bed4d3831f47f09b0a71b505e. \
              Its SDK metadata names Ren'Py source 39895c1e017f0b36ffea2447d97eccd69d76ee1c and renpy-build tag renpy-8.5.3.26051504, resolved to 7bfab40c1174f622f644b24669afd5fb167fbb79. \
@@ -1012,6 +1047,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              Replace .work/native-downloads/renpy-sdk/lib/py3-windows-x86_64/librenpython.dll with the rebuilt DLL and rebuild the adapter above. \
              The adapter's shinki/CMakeLists.txt rebuilds Resources/overrides/display.pyd from the modified fork source and installs the bridge; replacing only display.pyd does not relink FFmpeg/FriBidi.\n"
         );
+        }
         fs::write(root.join("native/renpy-offline.py"), renpy_offline_driver())?;
     }
     if !target.contains("windows") {
