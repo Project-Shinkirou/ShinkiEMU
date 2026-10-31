@@ -93,6 +93,8 @@ Ren'Py 核心包带有 SDK 运行库和安装后的 `Resources`；Impacto 与 Ki
 Linux Manager 的 `deps` 检查发行版提供的开发库，不调用 `apt`。核心的 `deps` 在各目标独立的目录中准备锁定的 vcpkg 原生库，并生成可重定位的共享库普通文件供打包使用。在打包目录中运行 `./shinki-emu-manager`。打包会检查 ELF 架构、加载路径和依赖闭包，收集许可证及离线元数据快照；`ci` 报告的 ZIP 保留执行权限。CI 与发布任务使用同一组依赖和 xtask 命令。核心可用性仍以 `matrix` 为准，声明为 blocked 的核心不产生二进制附件。
 Linux 包使用发行版提供的 glibc、libstdc++、OpenSSL 3、fontconfig、udev 和 ALSA ABI 库，商店网页登录另需 GTK 3 和 WebKitGTK 4.1。目标系统需安装对应运行包（Ubuntu 上安装 `libwebkit2gtk-4.1-0`，会一并装上 GTK 3），并提供带图形驱动的 X11 或 Wayland 桌面。
 Impacto 的 Linux VA-API 库还依赖发行版的 `libdrm.so.2`（Ubuntu 包名 `libdrm2`），该库属于系统图形栈，不随核心打包。
+KiriKiri2 还使用发行版的 OpenGL 分发库 `libGL.so.1`、`libGLX.so.0` 和 `libOpenGL.so.0`（Ubuntu 包名 `libgl1 libglx0 libopengl0`）。
+X11 和 OpenMP 分别使用发行版的 `libX11.so.6` 与 `libgomp.so.1`（Ubuntu 包名 `libx11-6 libgomp1`）。
 
 RFVP 还依赖发行版提供的 GStreamer 1.x（至少 1.14）、GLib 2.x（至少 2.56）及 base、good、libav 插件，用于原生影片解码。这些库作为系统运行要求声明，不随核心复制。在 Ubuntu 上安装 `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`。包内 `build.json` 的 `system_dependencies` 记录实际依赖的系统 SONAME。
 
