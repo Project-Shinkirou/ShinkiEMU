@@ -902,6 +902,13 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
          $env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
     );
     let selected = dependencies::needs(inv, target, component)?;
+    if target.contains("android") {
+        instructions.push_str(
+            "# Rebuild on a Linux host with the Android NDK revision pinned in build/dependencies.toml.\n\
+             : \"${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to the pinned Android NDK}\"\n\
+             export ANDROID_NDK_HOME\n",
+        );
+    }
     if !native_commands.is_empty() {
         instructions.push_str(
             "$env:VCPKG_DOWNLOADS = \"$PWD/.work/vcpkg-downloads\"\n\
@@ -961,7 +968,11 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         );
     }
     if selected.bison {
-        instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
+        if target.contains("windows") {
+            instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
+        } else {
+            instructions.push_str("$env:BISON_EXECUTABLE = \"$(command -v bison)\"\n");
+        }
     }
     let build_command = if target.contains("android") && component == "manager" {
         format!(

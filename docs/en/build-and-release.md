@@ -197,6 +197,8 @@ Standalone Android cores ship native core packages, not APKs. The release APK-si
 Standalone Android native cores resolve the pinned NDK's OpenMP runtime through
 Clang's `--print-file-name=libomp.so`, bundle it when the binary closure needs it,
 and ship the NDK's `NOTICE` and `NOTICE.toolchain` texts alongside core licenses.
+Android corresponding-source recipes run on a Linux build host, require the pinned
+NDK through `ANDROID_NDK_HOME`, and resolve the host Bison rather than WinFlexBison.
 
 The bundle copies inputs that `deps` and `build` already verified: it does not re-hash `.work/downloads`, re-verify recipes, re-resolve Cargo offline or check for dirty trees a second time. `release` itself refuses a dirty product checkout and a build receipt from another source revision.
 
