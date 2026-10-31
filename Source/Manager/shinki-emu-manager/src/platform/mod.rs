@@ -2,19 +2,22 @@
 //! pickers, the per-user data directory, bundled resources, opening a location
 //! in the system file manager, startup error reporting and restart.
 //!
-//! Desktop uses native dialogs (`rfd`) and the executable directory. Android
-//! uses the Storage Access Framework through `MainActivity`, the app-private
-//! files directory and resources extracted from the APK assets.
+//! Desktop uses native dialogs and executable-relative resources. Android and
+//! OHOS use app-private directories and native app lifecycle integration.
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
+#[cfg(target_env = "ohos")]
+pub mod ohos;
 #[cfg(target_os = "android")]
 use android as imp;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 use desktop as imp;
+#[cfg(target_env = "ohos")]
+use ohos as imp;
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]
@@ -41,7 +44,11 @@ pub fn pick_file(title: &str, filters: &[FileFilter<'_>], done: PickDone) {
     imp::pick_file(title, filters, done);
 }
 
-/// Name a directory that does not exist yet; the caller creates it.
+/// Choose a location for a new directory without creating it. Desktop selects
+/// its parent and proposes an unused `default_name` child; mobile platforms
+/// resolve a writable destination through their native/sandbox services.
+/// The returned path is a proposal, not a reservation: callers must publish
+/// without replacing anything that appeared there after selection.
 pub fn pick_new_directory(title: &str, default_name: &str, done: PickDone) {
     imp::pick_new_directory(title, default_name, done);
 }

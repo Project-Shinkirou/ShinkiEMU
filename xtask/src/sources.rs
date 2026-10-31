@@ -548,18 +548,14 @@ fn native_sources(
     if selected.ffmpeg {
         installations.push(("ffmpeg", dependencies::ffmpeg_install(inv, target)?));
     }
-    if selected.native_vcpkg {
+    for native in dependencies::native_cores(inv, target, component) {
         installations.push((
-            "native",
+            native.id.as_str(),
             inv.root
                 .join(".work/native-vcpkg")
-                .join(component)
+                .join(&native.id)
                 .join("installed")
-                .join(if target == "x86_64-unknown-linux-gnu" {
-                    "x64-linux-dynamic"
-                } else {
-                    "x64-windows"
-                }),
+                .join(dependencies::native_triplet(inv, target)?),
         ));
     }
     let registry = inv.root.join(".work/vcpkg");
@@ -610,7 +606,7 @@ fn native_sources(
             "subtitle" => "build/vcpkg/subtitle".to_owned(),
             "ffmpeg" => "build/vcpkg/ffmpeg".to_owned(),
             _ => inv
-                .core(component)?
+                .core(group)?
                 .source_directory(&inv.root)?
                 .strip_prefix(&inv.root)?
                 .to_string_lossy()
@@ -619,18 +615,20 @@ fn native_sources(
         commands.push_str(&format!(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
-        if *group == "native" && inv.root.join(&manifest).join("vcpkg/ports").is_dir() {
+        if !matches!(*group, "subtitle" | "ffmpeg")
+            && inv.root.join(&manifest).join("vcpkg/ports").is_dir()
+        {
             commands.push_str(&format!(" --overlay-ports=\"$PWD/{manifest}/vcpkg/ports\""));
         }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
-            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
+            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         if *group == "ffmpeg" {
             commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         commands.push('\n');
-        if *group != "native" {
+        if matches!(*group, "subtitle" | "ffmpeg") {
             let prefix = installed
                 .parent()
                 .and_then(Path::parent)
@@ -945,8 +943,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     }
     if selected.native_vcpkg {
         instructions.push_str(&format!(
-            "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_VCPKG_INSTALLED = \"$PWD/.work/native-vcpkg/{component}/installed\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{}\"\n",
-            if target.contains("linux") { "x64-linux-dynamic" } else { "x64-windows" }
+            "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_NATIVE_VCPKG_ROOT = \"$PWD/.work/native-vcpkg\"\n$env:SHINKI_EMU_VCPKG_INSTALLED = \"$PWD/.work/native-vcpkg/{component}/installed\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{}\"\n",
+            dependencies::native_triplet(inv, target)?
         ));
     }
     if selected.impacto_sources || selected.renpy {
@@ -964,7 +962,12 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         ));
     }
     if selected.bison {
-        instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
+        let bison = if target.contains("windows") {
+            "win_bison.exe"
+        } else {
+            "bison"
+        };
+        instructions.push_str(&format!("$env:BISON_EXECUTABLE = (Get-Command {bison}).Source\n"));
     }
     let build_command = if target.contains("android") && component == "manager" {
         format!(
@@ -983,15 +986,34 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         "--bin shinki-emu-manager"
     };
-    instructions.push_str(&format!(
-        "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
-    ));
+    if target.ends_with("ohos") && component == "manager" {
+        instructions.push_str(&format!(
+            "cargo xtask build --target {target} --manager --release\n```\n"
+        ));
+    } else {
+        instructions.push_str(&format!(
+            "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
+        ));
+    }
     if !native_commands.is_empty() {
         instructions.push_str(
             "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the fork snapshot. \
              .work/vcpkg-downloads/ holds the original source archives vcpkg consumed. \
              Static libraries can be modified, rebuilt with these recipes, and relinked by rebuilding the consumer above. \
              Compatible replacement and reverse engineering for debugging modifications to LGPL components are permitted.\n",
+        );
+    }
+    if component == "kirikiroid2-web" && target == "x86_64-unknown-linux-gnu" {
+        instructions.push_str(
+            "\n## Cocos and FMOD Linux inputs\n\n\
+             Cocos2d-x 3.17.2 source is MIT licensed with its original per-file and third-party notices retained. \
+             Its separately supplied FMOD runtime remains a proprietary Firelight component; see ThirdParty/kirikiri2/shinki/licenses/FMOD.txt for original attribution, exact input hashes and the project owner's redistribution authorization.\n\n\
+             The checksum-matched cocos2d-x-3rd-party-libs-bin.tar.gz in .work/vcpkg-downloads contains the original FMOD headers and prebuilt Linux runtime, not FMOD implementation source. \
+             DownloadDeps.cmake in the pinned fork supplies the exact archive URL and SHA512. Rebuild the supplied Cocos/core source against those headers and that binary; no FMOD implementation source is invented or substituted. \
+             Install the Linux host packages listed in docs/en/build-and-release.md, including Bison and patchelf. \
+             After rebuilding, run `cargo xtask deps --target x86_64-unknown-linux-gnu --core kirikiroid2-web` and \
+             `cargo xtask package --target x86_64-unknown-linux-gnu --core kirikiroid2-web --version <version> --out <new-directory>` \
+             to stage the reviewed FMOD input under its SONAME libfmod.so.6 and apply relative $ORIGIN lookup.\n",
         );
     }
     if selected.renpy {

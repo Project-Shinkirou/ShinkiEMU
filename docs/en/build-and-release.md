@@ -75,6 +75,8 @@ dependency closure. These packages are host prerequisites; `cargo xtask deps`
 does not install them.
 `python3-venv` supplies ensurepip for libsystemd's isolated build environment.
 `libxxf86vm-dev` supplies the Xxf86vm linker input required by Linux Cocos.
+The CI and component-release workflows install the same prerequisite list, so
+release-only native dependency builds receive these tools too.
 
 ```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
@@ -103,11 +105,13 @@ KiriKiri2 also uses the distribution's OpenGL dispatch libraries `libGL.so.1`,
 `libGLX.so.0` and `libOpenGL.so.0` (Ubuntu packages `libgl1 libglx0 libopengl0`).
 Its X11 and OpenMP dependencies use the distribution's `libX11.so.6` and
 `libgomp.so.1` (Ubuntu packages `libx11-6 libgomp1`).
-KiriKiri2 Linux remains blocked: the built Cocos library requires `libfmod.so.6`
-from the pinned external binary archive (SDK header version 1.06.08). The archive
-has no FMOD notice, and applicable redistribution/source permission is not
-established. [FMOD's current EULA](https://www.fmod.com/legal) restricts engine/tool
-distribution; upstream inclusion alone does not authorize a ShinkiEMU package.
+KiriKiri2 Linux bundles the pinned Cocos FMOD runtime as `libfmod.so.6`,
+using relative `$ORIGIN` lookup. It is a third-party runtime, not a system ABI.
+The project owner authorized its redistribution on 2026-10-31. The package's
+`licenses/kirikiroid2-web/FMOD.txt` preserves Firelight attribution and exact
+binary/archive provenance. Cocos source remains MIT; FMOD is not relicensed MIT.
+The source bundle contains the original dependency archive and rebuild recipes,
+including genuine FMOD headers/prebuilt input, not invented FMOD source or EULA.
 
 RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
 
@@ -177,23 +181,60 @@ macOS packaging produces a real `ShinkiEMU.app` with its executable in `Contents
 
 RFVP, Siglus, Sena, Ethornell and ReMinori build as dynamic cores on both macOS architectures and are statically registered in the iOS Manager on device and both simulator architectures. iOS does not load downloaded core dylibs. The Android Manager statically registers RFVP, Siglus, Shinki Musica and Artemis. Manager dependency pins are checked against `build/cores.toml`; packages include `embedded-cores.json` and each embedded core's license assets.
 
+Shinki Musica is included in the iOS Manager's static registry and inventory, with target-isolated static FFmpeg dependencies. Isolated commit `72ac926e1d15a452dc81ca84f3e82776aa302a26` passed exact-head CI and native compilation, packaging, signature, dependency and license checks for the device and both simulator targets. Later Manager releases combining this port with native saves require fresh integrated-head gates. Standalone dynamic-core installation remains unsupported on iOS; device launch acceptance is waived.
+
+Artemis desktop packages support both macOS architectures using fork `5243005cf0aaaeac89b1803e57381e9c0b14b95c`. The staged core dylib's install ID is normalized to `@rpath/<filename>` before signing; the source build artifact is unchanged. This isolated packaging behavior comes from `f6f72cc` as exercised by Apple candidate `e295f536`; universal/framework/Python bundle changes and unverified iOS or other-core pins are not part of this desktop cutover. Each isolated release candidate runs new exact-head desktop gates.
+
+Manager packages with embedded FFmpeg include the FFmpeg notice and every transitive port notice from the selected target's private installation under `licenses/ffmpeg/`; the same collector is used for standalone core packages.
+
+Native static cores record `native-static` archives and runtime assets in their Cargo build manifests. Manager receipts retain those dependency manifests, and packaging stages their assets under `cores/<id>/Resources` rather than discarding them. Dependency preparation selects each embedded native core independently; `SHINKI_EMU_NATIVE_VCPKG_ROOT` contains its per-core installation. Apple static linking combines native-build archives and publishes the prepared port libraries/frameworks to Cargo.
+
 RFVP's Apple subtitle dependency is built on native macOS/Xcode using the pinned vcpkg libass 0.17.5 manifest. Each target has its own static installation (`arm64-osx`, `x64-osx`, `arm64-ios`, `arm64-ios-simulator`, `x64-ios`). The overlay triplets in `build/vcpkg/apple-triplets/` set the deployment targets (macOS 13.0, iOS 16.0) and build libass with CoreText instead of fontconfig. `deps` clears the `*_DEPLOYMENT_TARGET` variables so that macOS host tools are never built for iOS. pkg-config passes private static libraries and Apple frameworks to Rust. Apple RFVP uses native Rust WMV/MPEG decoders, not GStreamer. CoreAudio is supplied by the system. FFmpeg, C++ native and CMVS Apple blockers remain unchanged in the inventory.
 
 Simulator packages contain a `simulator-test.app`; device packaging creates a `device-test.ipa` with `Payload/*.app`, and `ci` reports that IPA path. Packaging checks thin Mach-O architecture, device/simulator platform and system/bundled dependency closure before signing copied files. Linux uses `rcodesign sign` and verifies every Mach-O; native macOS uses `codesign`. Ad-hoc signatures are real but provide no Apple provisioning, notarization or App Store identity. Device installation needs valid Apple signing/provisioning; these are test/integration artifacts, not production installers. Release names include the iOS device/simulator variant to avoid collisions.
 
 For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `llvm-objdump --macho --dylibs-used --private-headers <executable>` and `rcodesign verify <executable>` output. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
 
+## OpenHarmony Manager
+
+Use DevEco Studio with its OpenHarmony native SDK 5.0.5 (API 17; the HAP targets API 12 and newer) and Rust 1.99.1. Set `OHOS_SDK_NATIVE` to `sdk/default/openharmony/native`; xtask finds Node, hvigor, ohpm, CMake/Ninja, `hap-sign-tool.jar` and `llvm-readelf` in that DevEco installation. Set `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside the checkout (for example `.shinki-secrets/ohos-debug`):
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` builds libass and FFmpeg with the `arm64-ohos` triplet (Meson 1.12 gets a Windows extended-path prefix, as the Android triplets do). The build links with the SDK clang and bundles `libc++_shared.so`. `package` stages the Manager libraries into `Platforms/OHOS/entry/libs/arm64-v8a` and the metadata snapshot, notices and licenses into `rawfile/bundled`, then runs `ohpm install` and `hvigorw assembleHap`. On first use it creates debug signing material from the SDK's OpenHarmony test PKI: a new key in a copy of `OpenHarmony.p12`, an app certificate issued by the test application CA, and a debug profile for `org.shinkirou.shinkiemu` signed with the profile-debug key. It signs with `sign-app`, then runs `verify-app`, lists the archive, and prints `llvm-readelf -d` for every bundled library. Every remaining `NEEDED` entry must be an OHOS system library. The output holds `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`, `ohos.json` and `build.json`. Never commit keystores, certificates or profiles.
+
+The test-PKI HAP is an experimental distribution. Its signature, packaged files and native-library closure are verified, but neither device/emulator launch nor retail installability has been verified. Device launch checks were waived for this release; a DevEco/AppGallery Connect-issued profile would be needed for an installability assessment.
+
 ## Matrix and CI
 
-`matrix` reads the authoritative manifests and lists each core and Manager across all declared target triples, including both iOS simulator architectures, with its status and blocked reason. `matrix --json` emits the GitHub job matrix with only the supported rows; blocked combinations need no runner. `--ci` also drops the `x86_64-linux-android` Manager row, because `ci` builds the same universal APK from either Android triple; the release workflow keeps both rows for its per-target records. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Static-in-Manager integration on Android is distinct from standalone dynamic-core packaging.
+`matrix` lists every declared Manager/core combination and its blocked reason. `matrix --json` selects hosted-runner jobs; the supported OHOS Manager uses `runner = "local-only"` and is excluded from hosted CI while its exact-head HAP is packaged with DevEco. `--ci` also drops the duplicate x86_64 Android Manager row. Read the current combinations in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/).
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-Declared unsupported combinations produce `blocked`, a concrete reason and `artifact: null`. Apple core rows retain their source-level embedding/native-dependency restrictions; OpenHarmony requires both its native host adaptation and `OHOS_SDK_NATIVE`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations but does not hide supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
+Unsupported combinations report `blocked` with `artifact: null`. The OHOS Manager is supported for experimental test-signed packaging only; its local-only build is joined to a successful exact-head GitHub CI run before publication. A supported build failure reports `failed` and exits nonzero. `publish_blocked` denotes distribution restrictions independently of build availability.
 
-Remote GitHub Actions is the CI of record and the only place releases are published. `ci.yml` runs on pull requests, pushes to `main` and `release/**`, and manual dispatch. Changes that touch only `Metadata/**`, `docs/**` or Markdown files skip it; `metadata-intake.yml` validates catalog PRs.
+GitHub Actions is the CI of record and builds the hosted-platform release assets. The DevEco-only OHOS HAP is prepared and uploaded in the gated local handoff below.
+For a Manager release containing a local-only OHOS target, push the release branch and require `ci.yml` to finish successfully at the exact release commit. Dispatch `release.yml` for that commit with `components=manager` and the version; its `publish (manager)` job checks all hosted build rows and leaves publication to the local handoff. In a clean checkout of that exact commit, download every `release-files-manager@*` artifact from the release run into `.work/release/` (`gh run download <release-run-id> -R Project-Shinkirou/ShinkiEMU -p 'release-files-manager@*' -D <scratch>`; copy each artifact's `<tag>/<target>/` directory into `.work/release/<tag>/`). Then, with DevEco and the signing directory set, run:
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
+SHINKI_EMU_RELEASE_CI_RUN_ID=<successful-ci-run-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<successful-handoff-run-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
+```
+
+Before the final publish command, create the draft `manager-v<version>` at the exact release commit. Upload the OHOS HAP, its source ZIP and a copy of its `release.json` named `ohos-handoff.json`. Dispatch `release.yml` at the same commit with `components=manager`, the version and `verify_local_manager=true`. This verification-only run downloads the actual draft assets and checks their hashes, HAP layout, native dependency closure and corresponding-source revision without requiring the hosted runner to have DevEco. It retains the verified files as `verified-ohos-handoff`. Set `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` to that successful run. The local DevEco packaging step verifies the test-PKI signature; the hosted handoff checks artifact integrity and does not claim a second signature or device check.
+
+Publication checks each record's exact product commit and both archive hashes, requires all hosted artifacts (except the duplicate Android x86_64 row) and the OHOS HAP, and queries both exact-head workflow gates. The release name and notes identify the HAP as debug-test-signed and state the waived launch verification.
+
+The source bundle's subtitle rebuild commands include `build/vcpkg/mobile-triplets`, which supplies the OHOS `arm64-ohos` triplet alongside the bundled native source archives.
+The verification-only job needs repository `contents: write` permission to read unpublished draft assets; its steps do not publish or alter the draft.
 
 Local runners are optional pre-checks that catch failures before a push. `matrix --json [--ci] --since <ref>` keeps only the rows whose inputs changed since `<ref>`, and the runners pass it from `SHINKI_CI_SINCE`. Shared inputs select every row: the root `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `xtask/`, `Source/{SDK,FamilyApi,Tools}/`, `build/targets.toml`, `build/vcpkg/` and `build/ci/`, and any path not listed here. `Source/Manager/` and `Source/Providers/` select the Manager rows. `Source/Families/<dir>/` selects the core whose manifest is in that directory, plus the Manager rows on its `static_manager_targets`; an edited `[[cores]]` table in `build/cores.toml` does the same for that core. `docs/**`, `Metadata/**` and Markdown files select nothing.
 
@@ -235,6 +276,6 @@ Release tags are `manager-v<semver>` or `core-<slug>-v<semver>`. Slugs lowercase
 
 `cargo xtask release --component <id> --version <semver> --publish` (with `GH_TOKEN` or `GITHUB_TOKEN`) collects every prepared target of that tag. It refuses records from another product commit or core pin, a tag that already names another commit, a draft opened from another commit, and an empty or already-published Release. It creates a draft at the run's commit or reuses that draft (replacing same-name assets from an interrupted run), uploads the source and binary archives, and publishes it; GitHub creates a missing tag at that commit. For a core it then commits every platform's catalog entry under `Metadata/engines/cores/` to `metadata/release-<tag>` and opens a PR to `main`. If the organization does not allow Actions to create PRs, that last step fails with every entry already on the branch; open the PR by hand. Catalog URLs are built from the final tag, never from the draft's `untagged-*` URL. Manager releases are independent of core releases. Debug-signed Android test APKs are recorded as blocked and never uploaded.
 
-`release.yml` publishes. To release one component, push its tag. To release several, run the workflow manually with `version` and `components` (comma-separated plugin_ids and `manager`, or `all` for every component without `publish_blocked`); a push that creates more than three tags starts no workflow. One run builds every component × target row, then publishes each component whose rows all succeeded, with GitHub tagging the run's commit. The run summary lists each skipped component and its failed rows.
+`release.yml` builds all selected hosted component × target rows and publishes components without local-only targets. A Manager release with the supported OHOS target stays unpublished until the gated local handoff above supplies its HAP and sources. To release one core, push its tag; to release several components, dispatch the workflow with `version` and `components` (comma-separated plugin_ids, or `all`). Pushing more than three new tags at once triggers no workflow.
 
 Metadata commands are described in [Metadata](metadata.md); native package requirements in [Core ABI](core-abi.md).

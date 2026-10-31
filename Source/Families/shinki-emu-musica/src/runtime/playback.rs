@@ -98,7 +98,7 @@ mod tests {
         }
     }
     #[test]
-    fn auto_delay_bounds_and_saved_mode() {
+    fn auto_delay_bounds_and_in_memory_mode() {
         let mut machine = vm(b".message 1  speaker First\r\n.end\r\n");
         assert!(machine.set_auto_delay_units(101).is_err());
         machine.set_auto_delay_units(0).unwrap();
@@ -111,7 +111,9 @@ mod tests {
                 ..
             })
         ));
-        let state = MusicaVm::decode_native_save(&machine.encode_native_save().unwrap()).unwrap();
+        let state =
+            MusicaVm::checked_test_state(&MusicaVm::checked_test_state(machine.state()).unwrap())
+                .unwrap();
         assert_eq!(state.system_ui.play_mode, MusicaPlayMode::Auto);
     }
 }

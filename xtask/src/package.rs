@@ -328,7 +328,7 @@ fn reject_overlap(source: &Path, out: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
+pub(crate) fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
     let info = binary::inspect(&result.library, &result.target, result.core_build.is_some())?;
     let provenance = serde_json::json!({
         "schema":"shinki.emu.build_identity.v1","component":result.component,"target":result.target,
@@ -546,7 +546,7 @@ pub fn verify_core(dir: &Path) -> Result<CorePackage> {
     }
     Ok(m)
 }
-fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
+pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut dirs = vec![
         result
@@ -576,15 +576,22 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         && let Some(p) = &native.native_library
     {
         dirs.push(p.parent().context("native library parent")?.to_owned());
+        dirs.push(p.parent().context("native library parent")?.join("lib"));
     }
-    if selected.native_vcpkg {
+    for native in dependencies::native_cores(inv, &result.target, &result.component) {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_runtime(inv, &result.target, &result.component)
+            dependencies::linux_runtime(inv, &result.target, &native.id)
         } else {
             inv.root
                 .join(".work/native-vcpkg")
-                .join(&result.component)
-                .join("installed/x64-windows/bin")
+                .join(&native.id)
+                .join("installed")
+                .join(dependencies::native_triplet(inv, &result.target)?)
+                .join(if result.target.contains("windows") {
+                    "bin"
+                } else {
+                    "lib"
+                })
         });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
@@ -598,6 +605,10 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
                 }
             }
         }
+    }
+    if result.target.ends_with("ohos") {
+        // libc++_shared.so; system libraries come from the device.
+        dirs.push(dependencies::ohos_sdk_native()?.join("llvm/lib/aarch64-linux-ohos"));
     }
     if result.target.contains("android") {
         let ndk = dependencies::ndk_root(inv)?;
@@ -623,13 +634,36 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     }
     Ok(dirs)
 }
-fn licenses(
+pub(crate) fn licenses(
     inv: &Inventory,
     result: &BuildResult,
     scratch: &Path,
 ) -> Result<Vec<(PathBuf, String)>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut entries = vec![];
+    if selected.ffmpeg {
+        let share = dependencies::ffmpeg_install(inv, &result.target)?.join("share");
+        entries.push((
+            share.join("ffmpeg/copyright"),
+            "licenses/ffmpeg/copyright".into(),
+        ));
+        for entry in fs::read_dir(share)? {
+            let entry = entry?;
+            if entry.file_name() == "ffmpeg" {
+                continue;
+            }
+            let copyright = entry.path().join("copyright");
+            if copyright.is_file() {
+                entries.push((
+                    copyright,
+                    format!(
+                        "licenses/ffmpeg/{}/copyright",
+                        entry.file_name().to_string_lossy()
+                    ),
+                ));
+            }
+        }
+    }
     if selected.subtitle
         && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
     {
@@ -658,16 +692,14 @@ fn licenses(
             ));
         }
     }
-    let native_share = inv
-        .root
-        .join(".work/native-vcpkg")
-        .join(&result.component)
-        .join(if result.target == "x86_64-unknown-linux-gnu" {
-            "installed/x64-linux-dynamic/share"
-        } else {
-            "installed/x64-windows/share"
-        });
-    if selected.native_vcpkg && native_share.is_dir() {
+    for native in dependencies::native_cores(inv, &result.target, &result.component) {
+        let native_share = inv
+            .root
+            .join(".work/native-vcpkg")
+            .join(&native.id)
+            .join("installed")
+            .join(dependencies::native_triplet(inv, &result.target)?)
+            .join("share");
         for item in fs::read_dir(native_share)? {
             let path = item?.path().join("copyright");
             if path.is_file() {
@@ -678,7 +710,7 @@ fn licenses(
                     .to_string_lossy();
                 entries.push((
                     path.clone(),
-                    format!("licenses/native-vcpkg/{port}/copyright"),
+                    format!("licenses/native-vcpkg/{}/{port}/copyright", native.id),
                 ));
             }
         }
@@ -709,7 +741,7 @@ fn licenses(
     )?);
     Ok(entries)
 }
-fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(PathBuf, String)>> {
+pub(crate) fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(PathBuf, String)>> {
     let out = stage.join("snapshot");
     // Use the same metadata command as the online snapshot, with a new private output.
     crate::metadata::run(crate::metadata::MetadataCommand::Build {
@@ -759,7 +791,7 @@ pub fn package(
     version: &str,
     out: &Path,
 ) -> Result<PathBuf> {
-    inv.require_supported(component, target)?;
+    inv.require_buildable(component, target)?;
     semver::Version::parse(version)?;
     let mut result = build::load_receipt(inv, target, component)?;
     reject_overlap(&result.library, out)?;
@@ -769,6 +801,9 @@ pub fn package(
     if component == "manager" {
         if target.contains("android") {
             return package_android(inv, &result, version, out);
+        }
+        if target.ends_with("ohos") {
+            return crate::ohos::package(inv, &result, version, out);
         }
         atomic_directory(out, |stage| {
             let temp = tempfile::tempdir_in(stage)?;
@@ -808,7 +843,7 @@ pub fn package(
             entries.extend(static_core_entries(inv, &result, temp.path())?);
             copy_entries(&entries, stage)?;
             drop(temp);
-            fs::create_dir(stage.join("cores"))?;
+            fs::create_dir_all(stage.join("cores"))?;
             fs::write(
                 stage.join("README.md"),
                 format!(
@@ -902,23 +937,11 @@ pub fn package(
                 .licenses
                 .push(BuildAsset { source, dest });
         }
-        if dependencies::needs(inv, target, component)?.ffmpeg {
-            result
-                .core_build
-                .as_mut()
-                .unwrap()
-                .licenses
-                .push(BuildAsset {
-                    source: dependencies::ffmpeg_install(inv, target)?
-                        .join("share/ffmpeg/copyright"),
-                    dest: "licenses/ffmpeg/copyright".into(),
-                });
-        }
         stage_core(&result, version, out, &search_dirs(inv, &result)?)
     }
 }
 /// Resolve license inputs from the actual Cargo checkouts used for embedding.
-fn static_core_entries(
+pub(crate) fn static_core_entries(
     inv: &Inventory,
     result: &BuildResult,
     scratch: &Path,
@@ -968,6 +991,32 @@ fn static_core_entries(
             } else {
                 // Some inventory assets belong to the product, not the fork.
                 entries.push((inv.root.join(path), license.clone()));
+            }
+        }
+        let native = result
+            .embedded_core_builds
+            .iter()
+            .find(|build| build.plugin_id == core.id);
+        if core.artifact_kind == "native-shared" && native.is_none() {
+            bail!(
+                "embedded native core {} has no recorded build manifest",
+                core.id
+            );
+        }
+        if let Some(native) = native {
+            native.validate()?;
+            for asset in &native.resources {
+                for (source, destination) in asset_entries(asset)? {
+                    entries.push((source, format!("cores/{}/{destination}", core.id)));
+                }
+            }
+            for asset in &native.licenses {
+                for (source, destination) in asset_entries(asset)? {
+                    entries.push((
+                        source,
+                        format!("licenses/embedded/{}/{destination}", core.id),
+                    ));
+                }
             }
         }
         embedded.push(serde_json::json!({

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn native_gpu_particle_family_save_restore_and_pause() {
+fn native_gpu_particle_in_memory_resume_and_pause() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".effect Firefly glow 20 1000\r\n.effect2 Snow\r\n.wait 1000\r\n.effect end\r\n.effect2 fadeout\r\n.end\r\n");
@@ -20,16 +20,14 @@ fn native_gpu_particle_family_save_restore_and_pause() {
     .map(|name| (name, png.get_ref().as_slice()));
     fixture::assets(root.path(), "sys", &entries);
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut capture = Capture(Vec::new());
-    opened.session.advance(16_666_667, &[]).unwrap();
-    opened.session.advance(16_666_667, &[]).unwrap();
-    opened.session.advance(64_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(64_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let saved = capture.0.clone();
     assert!(
         saved
@@ -38,31 +36,22 @@ fn native_gpu_particle_family_save_restore_and_pause() {
             .iter()
             .any(|pixel| pixel[..3] != [0, 0, 0])
     );
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened.session.advance(64_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    let checkpoint = capture_transient_vm(&session);
+    session.advance(64_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let later = capture.0.clone();
     assert_ne!(saved, later);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    resume_vm_for_test(&mut session, &checkpoint);
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(saved, capture.0);
-    opened.session.advance(64_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(64_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(later, capture.0);
-    opened
-        .session
+    session
         .advance(0, &[RuntimeEvent::WindowSuspended { suspended: true }])
         .unwrap();
-    opened.session.advance(64_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(64_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(later, capture.0);
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }

@@ -16,9 +16,7 @@ use crate::{
     audio::Audio,
     provider::SessionLease,
     scene::{Scene, error},
-    storage::{Snapshot, Storage},
 };
-use roukaku_core::Hash256;
 use shinki_emu_sdk::runtime::*;
 use std::{
     sync::Arc,
@@ -45,8 +43,6 @@ pub(crate) struct MusicaSession {
     pending: Option<PendingText>,
     voice_duration: Option<(std::sync::mpsc::Receiver<SessionResult<u32>>, Instant)>,
     generation: u64,
-    storage: Storage,
-    game: Hash256,
     _lease: SessionLease,
     message: Option<(String, Option<String>)>,
     translation_table: Option<Arc<crate::MusicaTranslationTable>>,
@@ -70,8 +66,12 @@ pub(crate) struct MusicaSession {
     primary_encoding: crate::ScriptEncoding,
     gameplay_frame: Option<Arc<[u8]>>,
     save_cards: Vec<(u32, crate::storage::SaveCard)>,
+    /// `sysparams.txt` `quickSaveFileNumber`: the next quick save slot.
     quick_cursor: u32,
-    persisted_unlocks: Vec<Hash256>,
+    /// `sysparams.txt` `autoSaveFileNumber`: the next auto save slot.
+    auto_cursor: u32,
+    persisted_globals: std::collections::BTreeMap<String, i64>,
+    native: crate::native_directory::NativeFiles,
     entry_uri: String,
     title_focus: Option<u32>,
     load_from_title: bool,
@@ -83,24 +83,29 @@ impl MusicaSession {
         info: FrameInfo,
         _session_epoch: u64,
         archive: Arc<MusicaMountedVfs>,
-        vm: MusicaVm,
+        mut vm: MusicaVm,
         scene: Scene,
         audio: Audio,
         replacement: Option<crate::native::text::TextBridge>,
-        storage: Storage,
-        game: Hash256,
         lease: SessionLease,
         focused: bool,
         visible: bool,
         progress_in_background: bool,
         primary_encoding: crate::ScriptEncoding,
-        quick_cursor: u32,
+        native: crate::native_directory::NativeFiles,
     ) -> Self {
-        let persisted_unlocks = vm.state().gallery_unlocks.clone();
+        let persisted_globals = vm.state().global_variables.clone();
         let entry_uri = vm.state().script_uri.clone();
         let pending_fullscreen = vm.config().fullscreen.then_some(true);
+        let quick_cursor = native.quick_cursor();
+        let auto_cursor = native.auto_cursor();
+        vm.set_native_auto_cycle(native.auto_save_cycle());
+        if let Some(edition) = native.edition() {
+            vm.set_native_edition(edition);
+        }
         Self {
-            persisted_unlocks,
+            persisted_globals,
+            native,
             entry_uri,
             title_focus: None,
             load_from_title: false,
@@ -117,8 +122,6 @@ impl MusicaSession {
             replacement,
             hook_failed: false,
             choice_text: None,
-            storage,
-            game,
             _lease: lease,
             pending: None,
             voice_duration: None,
@@ -146,6 +149,7 @@ impl MusicaSession {
             gameplay_frame: None,
             save_cards: Vec::new(),
             quick_cursor,
+            auto_cursor,
             last_quick_save_pc_line: None,
         }
     }
@@ -367,12 +371,12 @@ impl MusicaSession {
                     code: KeyCode::F5,
                     state: KeyState::Pressed,
                     ..
-                } => save = true,
+                } => save = !self.vm.save_load_prohibited(),
                 RuntimeEvent::Key {
                     code: KeyCode::F9,
                     state: KeyState::Pressed,
                     ..
-                } => load = true,
+                } => load = !self.vm.save_load_prohibited(),
                 RuntimeEvent::Key {
                     code: KeyCode::Enter | KeyCode::Space,
                     state: KeyState::Pressed,
@@ -574,7 +578,7 @@ impl MusicaSession {
         if save {
             self.quick_save()?;
         }
-        self.persist_progress()?;
+        self.persist_globals()?;
         Ok(AdvanceResponse {
             // Backpressure pauses the native VM; do not replay that wait as elapsed game time.
             reset_clock: std::mem::take(&mut self.reset_host_clock)

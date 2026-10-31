@@ -126,17 +126,17 @@ mod tests {
         assert!(vm.move_save_page(0).is_err());
         assert_eq!(vm.state().system_ui.focus_index, 99);
         assert_eq!(vm.state().wait, wait);
-        let bytes = vm.encode_native_save().unwrap();
+        let bytes = MusicaVm::checked_test_state(vm.state()).unwrap();
         assert_eq!(
-            MusicaVm::decode_native_save(&bytes)
+            MusicaVm::checked_test_state(&bytes)
                 .unwrap()
                 .system_ui
                 .focus_index,
             99
         );
-        let mut corrupt = MusicaVm::decode_native_save(&bytes).unwrap();
+        let mut corrupt = MusicaVm::checked_test_state(&bytes).unwrap();
         corrupt.system_ui.focus_index = 100;
-        assert!(MusicaVm::decode_native_save(&postcard::to_allocvec(&corrupt).unwrap()).is_err());
+        assert!(MusicaVm::checked_test_state(&corrupt).is_err());
         vm.close_gameplay_system_page().unwrap();
         vm.open_load_page().unwrap();
         assert_eq!(vm.state().system_ui.focus_index, 20);

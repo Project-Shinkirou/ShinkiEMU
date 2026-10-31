@@ -11,13 +11,24 @@ doctest = false
 
 [dependencies]
 serde.workspace = true
-slint = { workspace = true, features = ["std", "compat-1-2", "serde", "backend-winit", "renderer-femtovg-wgpu", "unstable-fontique-011"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "serde", "unstable-fontique-011"] }
 image = { workspace = true, features = ["gif"] }
 tracing.workspace = true
 parking_lot = "0.13.0"
 # Steam QR login is rendered locally; the challenge URL never leaves the device.
 qrcodegen = "=1.8.0"
 sys-locale = "=0.3.2"
+
+# OpenHarmony uses the Manager's custom software-rendered platform; Slint
+# itself gates winit and femtovg out of the Android graph.
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
+slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu"] }
+
+# The winit and android-activity backends turn on Slint's embedded image/SVG
+# decoding; the OHOS custom platform has no Slint backend, so enable it on the
+# same i-slint-core version directly (the generated UI loads embedded SVGs).
+[target.'cfg(target_env = "ohos")'.dependencies]
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["image-decoders", "svg"] }
 
 [build-dependencies]
 slint-build.workspace = true

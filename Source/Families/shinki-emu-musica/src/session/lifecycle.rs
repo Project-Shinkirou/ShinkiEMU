@@ -55,6 +55,7 @@ impl MusicaSession {
         Ok(self.published_frame.poll(after))
     }
     pub(crate) fn close(mut self: Box<Self>) -> SessionResult<()> {
+        let reads = self.flush_read_flags();
         let text = self.cancel_text();
         let movie = self
             .movie
@@ -63,6 +64,7 @@ impl MusicaSession {
             .transpose();
         let audio = self.audio.shutdown();
         tracing::info!(event = "shinki.emu.musica.session.close");
+        reads?;
         text?;
         movie?;
         audio
@@ -70,6 +72,7 @@ impl MusicaSession {
 }
 impl Drop for MusicaSession {
     fn drop(&mut self) {
+        let _ = self.flush_read_flags();
         let _ = self.cancel_text();
         if let Some(movie) = self.movie.take() {
             let _ = movie.close(&self.audio);

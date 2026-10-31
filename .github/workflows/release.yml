@@ -13,6 +13,10 @@ on:
       components:
         description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
         required: true
+      verify_local_manager:
+        description: 'Verify staged OHOS HAP/source in the draft Manager release; no rebuild or publication'
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -24,6 +28,7 @@ jobs:
       matrix: ${{ steps.select.outputs.matrix }}
       components: ${{ steps.select.outputs.components }}
       version: ${{ steps.select.outputs.version }}
+      local_manager: ${{ steps.select.outputs.local_manager }}
     steps:
       # The inventory needs the cpal submodule for workspace resolution, not LFS payloads.
       - uses: actions/checkout@v7
@@ -37,6 +42,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          $localManager = @((cargo xtask matrix) | Where-Object { $_ -match '^manager\taarch64-unknown-linux-ohos\tsupported\t' }).Count -gt 0
           $rows = @((cargo xtask matrix --json --ci | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
           $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
@@ -68,8 +74,10 @@ jobs:
           "matrix=$(@{include=$include} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
           "components=$(ConvertTo-Json -Compress -InputObject @($requested))" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
+          "local_manager=$($localManager.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "Release $version`: $($requested -join ', ') ($($include.Count) build rows)" >> $env:GITHUB_STEP_SUMMARY
   build:
+    if: ${{ inputs.verify_local_manager != true }}
     needs: select
     strategy:
       fail-fast: false
@@ -105,8 +113,8 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-          sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+          sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
       - uses: actions/setup-java@v6
         if: contains(matrix.target, 'android')
         with:
@@ -168,10 +176,42 @@ jobs:
           path: .work/release/
           include-hidden-files: true
           if-no-files-found: error
+  verify-ohos-handoff:
+    needs: select
+    if: ${{ inputs.verify_local_manager == true }}
+    runs-on: ubuntu-24.04
+    # GitHub hides draft releases from read-only tokens. This job only downloads
+    # and verifies the unpublished assets; it never publishes the draft.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: rustup show
+      - name: Download actual test-signed HAP and corresponding source from draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=".work/release/manager-v$VERSION/aarch64-unknown-linux-ohos"
+          mkdir -p "$root"
+          gh release download "manager-v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$root" \
+            --pattern '*ohos*' --pattern ohos-handoff.json
+          mv "$root/ohos-handoff.json" "$root/release.json"
+          cargo xtask release --component manager --version "$VERSION" --verify-handoff
+          echo "Verified exact-head OHOS HAP/source hashes and native closure. DevEco verified the test-PKI signature locally; no device launch or retail-installability acceptance." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-ohos-handoff
+          path: .work/release/
+          if-no-files-found: error
   publish:
     needs: [select, build]
     # Failed build rows fail only their own component's publish job.
-    if: ${{ !cancelled() && needs.select.result == 'success' }}
+    if: ${{ !cancelled() && needs.select.result == 'success' && inputs.verify_local_manager != true }}
     strategy:
       fail-fast: false
       matrix:
@@ -210,8 +250,13 @@ jobs:
             echo "::error::$COMPONENT not published; build rows failed or were cancelled: $missing"
             exit 1
           fi
+      - name: Local Manager artifact handoff
+        if: matrix.component == 'manager' && needs.select.outputs.local_manager == 'true'
+        run: |
+          echo "Manager $VERSION requires its DevEco-signed local-only artifact. Download all release-files-manager@* artifacts from this exact-head run, prepare the OHOS release record locally, and publish only after ci.yml succeeds at the same head SHA." >> "$GITHUB_STEP_SUMMARY"
       - name: Publish every prepared platform as one Release
         id: publish
+        if: matrix.component != 'manager' || needs.select.outputs.local_manager != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --publish

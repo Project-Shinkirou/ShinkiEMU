@@ -1,6 +1,22 @@
 use super::*;
 use crate::{MusicaConfigChange, MusicaConfigControl, MusicaSystemPage};
 impl MusicaSession {
+    /// Persists `sysparams.txt` `quickSaveFileNumber`, then advances the cursor.
+    pub(super) fn store_quick_cursor(&mut self, next: u32) -> SessionResult<()> {
+        check_cursor(next)?;
+        self.native.store_quick_cursor(next)?;
+        self.quick_cursor = next;
+        Ok(())
+    }
+
+    /// Persists `sysparams.txt` `autoSaveFileNumber`, then advances the cursor.
+    pub(super) fn store_auto_cursor(&mut self, next: u32) -> SessionResult<()> {
+        check_cursor(next)?;
+        self.native.store_auto_cursor(next)?;
+        self.auto_cursor = next;
+        Ok(())
+    }
+
     pub(super) fn config_event(&mut self, event: &RuntimeEvent) -> SessionResult<bool> {
         if self.vm.state().system_ui.page != MusicaSystemPage::Config {
             if matches!(
@@ -75,7 +91,7 @@ impl MusicaSession {
         };
         if control == MusicaConfigControl::Apply {
             let config = self.vm.config_for_presentation().map_err(vm_error)?;
-            self.storage.write_configuration(self.game, config)?;
+            self.native.store_configuration(config)?;
             if config.fullscreen != self.vm.config().fullscreen {
                 self.pending_fullscreen = Some(config.fullscreen);
             }
@@ -107,4 +123,14 @@ impl MusicaSession {
         tracing::debug!(event="shinki.emu.musica.config.input",page=?self.vm.state().system_ui.page);
         Ok(true)
     }
+}
+
+fn check_cursor(next: u32) -> SessionResult<()> {
+    if next >= crate::storage::SAVE_PAGE_WIDTH {
+        return Err(error(
+            "SHINKI_EMU_MUSICA_QUICK_CURSOR",
+            "save cursor is outside the save page",
+        ));
+    }
+    Ok(())
 }

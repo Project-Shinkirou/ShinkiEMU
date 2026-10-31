@@ -13,9 +13,8 @@ use shinki_emu_metadata::{
     ReleaseUse, SyncOutcome, VndbProvider, VndbProviderConfig, MAX_CORE_PACKAGE_BYTES,
 };
 use sha2::{Digest, Sha256};
-// bangumi-api still links native-tls, which has no Android OpenSSL provider;
-// see shinki-emu-metadata's Cargo.toml for the target gate.
-#[cfg(not(target_os = "android"))]
+// bangumi-api enables native-tls, which has no Android or OHOS OpenSSL provider.
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use shinki_emu_metadata::{BangumiProvider, BangumiProviderConfig};
 
 const COMMAND_CAPACITY: usize = 64;
@@ -24,7 +23,7 @@ const COMMAND_CAPACITY: usize = 64;
 pub enum MetadataCommandKind {
     Search(MetadataSearchQuery),
     Fetch(String),
-    #[cfg_attr(target_os = "android", allow(dead_code))]
+    #[cfg_attr(any(target_os = "android", target_env = "ohos"), allow(dead_code))]
     SyncBangumi(BangumiPlayUpdate),
     /// Synchronize the ShinkiEMU-metadata index. Not tied to a provider; the
     /// command's `provider` field is a placeholder for this variant.
@@ -49,7 +48,7 @@ pub struct MetadataCommand {
     pub request_id: String,
     pub case_identity: String,
     pub provider: MetadataProviderId,
-    #[cfg_attr(target_os = "android", allow(dead_code))]
+    #[cfg_attr(any(target_os = "android", target_env = "ohos"), allow(dead_code))]
     pub access_token: Option<String>,
     pub allow_sensitive_cover: bool,
     pub kind: MetadataCommandKind,
@@ -62,7 +61,7 @@ pub enum MetadataPayload {
         record: Box<MetadataRecord>,
         cover: Option<CoverAsset>,
     },
-    #[cfg_attr(target_os = "android", allow(dead_code))]
+    #[cfg_attr(any(target_os = "android", target_env = "ohos"), allow(dead_code))]
     BangumiPlaySynced,
     Synced(Box<SyncOutcome>),
     CoreStaged {
@@ -238,15 +237,14 @@ async fn execute(
             execute_provider(provider, command).await
         }
         MetadataProviderId::Bangumi => {
-            #[cfg(target_os = "android")]
+            #[cfg(any(target_os = "android", target_env = "ohos"))]
             {
                 Err(
-                    "SHINKI_EMU_ANDROID_BANGUMI_UNAVAILABLE: Bangumi progress sync requires a \
-                     native-tls OpenSSL provider that Android does not ship"
+                    "SHINKI_EMU_BANGUMI_UNAVAILABLE: Bangumi progress sync requires the native-tls OpenSSL provider, unavailable on this mobile target"
                         .to_string(),
                 )
             }
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
             {
                 let provider = BangumiProvider::new(BangumiProviderConfig {
                     access_token: command.access_token.clone(),

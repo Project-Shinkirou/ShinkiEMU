@@ -1,41 +1,5 @@
-//! Musica-private owner startup and in-process PCM output values.
+//! Musica-private owner startup values.
 use shinki_emu_sdk::runtime::*;
-use shinki_emu_sdk::runtime::{SessionError, SessionResult};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PcmFormat {
-    F32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PcmFormatSpec {
-    pub sample_rate: u32,
-    pub channels: u16,
-    pub format: PcmFormat,
-}
-
-impl PcmFormatSpec {
-    pub fn validate(&self) -> SessionResult<()> {
-        if !(8_000..=192_000).contains(&self.sample_rate) || self.channels == 0 {
-            return Err(SessionError::invalid(
-                "SHINKI_EMU_FAMILY_PCM_FORMAT",
-                "PCM sample rate or channel count is outside the supported range",
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// In-process PCM output used by deterministic runtime tests. Production owners open their own device.
-pub trait AudioSink: Send + Sync {
-    fn configure(&self, format: PcmFormatSpec) -> SessionResult<()>;
-    /// Return the reusable source buffer, or None when cancellation stops playback.
-    fn write(&self, samples: Vec<f32>) -> SessionResult<Option<Vec<f32>>>;
-    fn cancel(&self) -> SessionResult<()>;
-}
-
-pub type AudioSinkBox = Box<dyn AudioSink>;
-
 pub struct OpenRequest {
     pub game_path: String,
     pub session_epoch: u64,

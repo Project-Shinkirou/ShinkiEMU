@@ -212,6 +212,7 @@ fn validate_axis_scroll_state(
     }
     Ok(())
 }
+#[cfg(test)]
 pub(super) fn validate_state(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     if let Some(scroll) = &state.axis_scroll {
         validate_axis_scroll_state(
@@ -395,7 +396,7 @@ mod tests {
             ));
             let mut restored = vm(source.as_bytes());
             restored
-                .restore_native_save(&original.encode_native_save().unwrap(), 4)
+                .install_test_state(&MusicaVm::checked_test_state(original.state()).unwrap(), 4)
                 .unwrap();
             for delta in [500_000, 32_000_000, 1_000_000] {
                 assert_eq!(
@@ -422,15 +423,14 @@ mod tests {
         let mut machine = vm(source);
         machine.step(1).unwrap();
         machine.step(2).unwrap();
-        let valid = machine.encode_native_save().unwrap();
+        let valid = MusicaVm::checked_test_state(machine.state()).unwrap();
         let mut state = machine.state().clone();
         state.axis_scroll.as_mut().unwrap().current = 90;
-        let bad = postcard::to_allocvec(&state).unwrap();
         assert_eq!(
-            machine.restore_native_save(&bad, 3).unwrap_err(),
+            machine.install_test_state(&state, 3).unwrap_err(),
             MusicaRuntimeError::AxisScroll
         );
-        assert_eq!(machine.encode_native_save().unwrap(), valid);
+        assert_eq!(machine.state(), &valid);
         machine.step(3).unwrap();
         assert_eq!(
             machine

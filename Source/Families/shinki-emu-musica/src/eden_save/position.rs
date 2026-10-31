@@ -1,5 +1,7 @@
 use super::*;
-use crate::{ScLineKind, ScScript, ScriptEncoding};
+#[cfg(test)]
+use crate::ScriptEncoding;
+use crate::{ScLineKind, ScScript};
 /// A checked native message boundary, not a reconstructed VM state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EdenMessagePosition {
@@ -21,13 +23,7 @@ impl EdenSave {
                 "saved script identity or message boundary does not match",
             )
         };
-        if self.variable("script_Filename") != Some(filename)
-            || !matches!(
-                (self.encoding, script.encoding),
-                (EdenSaveEncoding::ShiftJis, ScriptEncoding::ShiftJis)
-                    | (EdenSaveEncoding::Gbk, ScriptEncoding::Gbk)
-            )
-        {
+        if self.variable("script_Filename") != Some(filename) {
             return Err(invalid_position());
         }
         let next_line_index = self
@@ -58,7 +54,12 @@ impl EdenSave {
             return Err(invalid_position());
         }
         let tokens = command.tokens().map_err(|_| invalid_position())?;
-        if tokens.len() < 4 || tokens[0].parse::<i64>().ok() != Some(message_id) {
+        let authored_id = if tokens.len() < 4 {
+            Some(-1)
+        } else {
+            tokens[0].parse::<i64>().ok()
+        };
+        if authored_id != Some(message_id) {
             return Err(invalid_position());
         }
         Ok(EdenMessagePosition {

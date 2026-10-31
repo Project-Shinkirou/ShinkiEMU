@@ -22,8 +22,6 @@ pub enum MusicaRuntimeError {
     Waiting,
     #[error("SHINKI_EMU_MUSICA_RUNTIME_OVERFLOW: deterministic counter overflowed")]
     Overflow,
-    #[error("SHINKI_EMU_MUSICA_NATIVE_SAVE_FORMAT: native save data is malformed")]
-    NativeSaveFormat,
     #[error("SHINKI_EMU_MUSICA_RUNTIME_CHAIN: chain target is outside the script mount")]
     ChainTarget,
     #[error("SHINKI_EMU_MUSICA_RUNTIME_AUDIO_RESOURCE: audio resource specification is invalid")]
@@ -70,7 +68,6 @@ impl MusicaRuntimeError {
             Self::NonYieldingCycle => "SHINKI_EMU_MUSICA_RUNTIME_NON_YIELDING_CYCLE",
             Self::Waiting => "SHINKI_EMU_MUSICA_RUNTIME_WAIT",
             Self::Overflow => "SHINKI_EMU_MUSICA_RUNTIME_OVERFLOW",
-            Self::NativeSaveFormat => "SHINKI_EMU_MUSICA_NATIVE_SAVE_FORMAT",
             Self::ChainTarget => "SHINKI_EMU_MUSICA_RUNTIME_CHAIN",
             Self::AudioResource => "SHINKI_EMU_MUSICA_RUNTIME_AUDIO_RESOURCE",
             Self::Effect => "SHINKI_EMU_MUSICA_RUNTIME_EFFECT",

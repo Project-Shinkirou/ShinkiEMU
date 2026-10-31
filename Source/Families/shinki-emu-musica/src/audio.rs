@@ -1,18 +1,18 @@
-use crate::session::types::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use crate::{
     MusicaAudioCommand, MusicaMountedVfs,
     scene::{error, read_asset},
 };
+#[cfg(test)]
+use kira::sound::PlaybackState;
 use kira::{
     AudioManager, AudioManagerSettings, Decibels, Panning, Tween,
     backend::{Backend, Renderer},
-    sound::{
-        PlaybackState,
-        static_sound::{StaticSoundData, StaticSoundHandle},
-    },
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_env = "ohos"))]
 use shinki_emu_sdk::NativeAudioOutput;
+use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use std::{
     collections::BTreeMap,
@@ -55,6 +55,7 @@ pub(crate) struct SoundSnapshot {
 }
 enum Command {
     Apply(Vec<MusicaAudioCommand>),
+    #[cfg(test)]
     Snapshot(SyncSender<SessionResult<Vec<SoundSnapshot>>>),
     Restore(Vec<SoundSnapshot>, SyncSender<SessionResult<()>>),
     Suspend(bool),
@@ -221,6 +222,7 @@ impl Audio {
         self.send(Command::VoiceLevel(tx))?;
         Ok(rx)
     }
+    #[cfg(test)]
     pub fn snapshot(&self) -> SessionResult<Vec<SoundSnapshot>> {
         let (tx, rx) = sync_channel(1);
         self.send(Command::Snapshot(tx))?;
@@ -294,6 +296,46 @@ impl Drop for Audio {
         let _ = self.shutdown();
     }
 }
+/// The PCM destination: the SDK device backend, or a host-provided sink.
+enum Output {
+    #[cfg(not(target_env = "ohos"))]
+    Device(NativeAudioOutput),
+    Sink(Arc<AudioSinkBox>),
+}
+impl Output {
+    fn open(sink: Option<Arc<AudioSinkBox>>, stop: &Arc<AtomicBool>) -> SessionResult<Self> {
+        match sink {
+            Some(sink) => Ok(Self::Sink(sink)),
+            #[cfg(not(target_env = "ohos"))]
+            None => Ok(Self::Device(NativeAudioOutput::open(stop.clone())?)),
+            #[cfg(target_env = "ohos")]
+            None => {
+                let _ = stop;
+                Err(error(
+                    "SHINKI_EMU_MUSICA_AUDIO_OUTPUT",
+                    "this platform has no SDK device audio; the host must install an audio output",
+                ))
+            }
+        }
+    }
+    fn write(&mut self, samples: Vec<f32>, stop: &AtomicBool) -> SessionResult<Option<Vec<f32>>> {
+        match self {
+            #[cfg(not(target_env = "ohos"))]
+            Self::Device(device) => device.write(samples, stop),
+            Self::Sink(sink) => {
+                let _ = stop;
+                sink.write(samples)
+            }
+        }
+    }
+    fn finish(self) -> SessionResult<()> {
+        match self {
+            #[cfg(not(target_env = "ohos"))]
+            Self::Device(device) => device.check(),
+            Self::Sink(_) => Ok(()),
+        }
+    }
+}
 fn run(
     archive: Arc<MusicaMountedVfs>,
     sink: Option<Arc<AudioSinkBox>>,
@@ -303,11 +345,7 @@ fn run(
     #[cfg(feature = "ffmpeg-vcpkg")] movie: Arc<Mutex<Option<Arc<MoviePcm>>>>,
 ) -> SessionResult<()> {
     let mut mixer = Mixer::new()?;
-    let mut device = if sink.is_none() {
-        Some(NativeAudioOutput::open(stop.clone())?)
-    } else {
-        None
-    };
+    let mut output = Output::open(sink, &stop)?;
     let _ = ready.send(Ok(()));
     let mut samples = vec![0.0; 512 * 2];
     let mut suspended = false;
@@ -327,6 +365,7 @@ fn run(
                         }
                     }
                 }
+                #[cfg(test)]
                 Command::Snapshot(reply) => {
                     let _ = reply.send(Ok(mixer.snapshot()));
                 }
@@ -379,11 +418,7 @@ fn run(
         } else {
             None
         };
-        let next = if let Some(device) = &mut device {
-            device.write(samples, &stop)?
-        } else {
-            sink.as_ref().unwrap().write(samples)?
-        };
+        let next = output.write(samples, &stop)?;
         match next {
             Some(recycled) => {
                 samples = recycled;
@@ -401,10 +436,7 @@ fn run(
             }
         }
     }
-    if let Some(device) = device {
-        device.check()?;
-    }
-    Ok(())
+    output.finish()
 }
 fn cancelled_error() -> SessionError {
     error("SHINKI_EMU_AUDIO_CANCELLED", "audio operation cancelled")

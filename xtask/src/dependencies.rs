@@ -80,6 +80,25 @@ pub(crate) fn needs(inv: &Inventory, target: &str, component: &str) -> Result<Na
     Ok(result)
 }
 
+pub(crate) fn native_cores<'a>(
+    inv: &'a Inventory,
+    target: &'a str,
+    component: &'a str,
+) -> impl Iterator<Item = &'a crate::cores::Core> {
+    inv.cores.iter().filter(move |core| {
+        core.dependencies
+            .iter()
+            .any(|dependency| dependency == "native-vcpkg")
+            && if component == "manager" {
+                core.static_manager_targets
+                    .iter()
+                    .any(|triple| triple == target)
+            } else {
+                core.id == component
+            }
+    })
+}
+
 const NATIVE_RECORD: &str = ".shinki-native.json";
 
 #[derive(Serialize)]
@@ -910,9 +929,9 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         println!("Xcode: using xcode-select developer directory");
     }
     if t.platform == "ohos"
-        && let Err(error) = ohos_sdk_native()
+        && let Err(error) = crate::ohos::tools()
     {
-        missing.push(error.to_string());
+        missing.push(format!("{error:#}"));
     }
     if selected.renpy {
         let base = inv.root.join(".work/native-downloads");
@@ -1274,6 +1293,30 @@ fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> R
             .arg(&output))?;
         crate::binary::inspect(&output, target, false)?;
     }
+    // Cocos' pinned Linux SDK keeps FMOD outside lib/ and omits its SONAME link.
+    // This is an authorized bundled runtime, never a distribution/system ABI.
+    let fmod = install.join("share/cocos2dx/linux-specific/fmod/prebuilt/64-bit/libfmod.so");
+    if fmod.is_file() {
+        package::plain(&fmod)?;
+        if package::sha256(&fmod)?
+            != "d4454884763c746c70c4ea2a9b0ca35555fef2bf174072be21924cb9a80d84a9"
+        {
+            bail!("Cocos FMOD runtime differs from the reviewed SDK 1.06.08 input");
+        }
+        let soname = capture(Command::new("patchelf").arg("--print-soname").arg(&fmod))?;
+        if String::from_utf8(soname)?.trim() != "libfmod.so.6" {
+            bail!("Cocos FMOD runtime must declare SONAME libfmod.so.6");
+        }
+        let output = runtime.join("libfmod.so.6");
+        if fs::symlink_metadata(&output).is_ok() {
+            package::plain(&output)?;
+        }
+        fs::copy(&fmod, &output)?;
+        run(Command::new("patchelf")
+            .args(["--set-rpath", "$ORIGIN"])
+            .arg(&output))?;
+        crate::binary::inspect(&output, target, false)?;
+    }
     Ok(())
 }
 fn vcpkg_install_command(inv: &Inventory, executable: &Path) -> Result<Command> {
@@ -1423,7 +1466,7 @@ pub fn apply_environment(
             .env("PKG_CONFIG_ALL_STATIC", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
     }
-    if target == "x86_64-unknown-linux-gnu" && selected.bison {
+    if !target.contains("windows") && selected.bison {
         cmd.env(
             "BISON_EXECUTABLE",
             executable("bison").context("Linux Bison is missing")?,
@@ -1477,27 +1520,7 @@ pub fn apply_environment(
             .env("ANDROID_NDK_ROOT", ndk)
             .env("PKG_CONFIG_ALLOW_CROSS", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
-        let pkg_config = if let Some(path) = env::var_os("PKG_CONFIG") {
-            PathBuf::from(path)
-        } else if cfg!(windows) {
-            // Use vcpkg's native Windows pkgconf, not an unrelated Perl/MSYS
-            // wrapper from PATH (which can drop or rewrite cross include flags).
-            let tools = inv.root.join(".work/vcpkg-downloads/tools/msys2");
-            walkdir::WalkDir::new(&tools)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .find(|e| {
-                    e.file_type().is_file()
-                        && e.path().ends_with("mingw64/bin/pkgconf.exe")
-                })
-                .map(|e| e.path().to_owned())
-                .context("vcpkg's native pkgconf is missing; run cargo xtask deps for this Android target")?
-        } else {
-            executable("pkgconf")
-                .or_else(|| executable("pkg-config"))
-                .context("pkg-config is required for Android subtitle dependencies")?
-        };
-        cmd.env("PKG_CONFIG", pkg_config);
+        cmd.env("PKG_CONFIG", cross_pkg_config(inv, target)?);
         if let Some(jar) = env::var_os("ANDROID_JAR") {
             cmd.env("ANDROID_JAR", jar);
         } else if let Some(sdk) =
@@ -1538,26 +1561,23 @@ pub fn apply_environment(
             )?,
         );
     }
-    if component != "manager" && inv.core(component)?.artifact_kind == "native-shared" {
+    if selected.native_vcpkg || selected.renpy {
+        cmd.env_remove("SHINKI_EMU_VCPKG_INSTALLED")
+            .env(
+                "SHINKI_EMU_NATIVE_VCPKG_ROOT",
+                inv.root.join(".work/native-vcpkg"),
+            )
+            .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?)
+            .env(
+                "SHINKI_EMU_NATIVE_DOWNLOADS",
+                inv.root.join(".work/native-downloads"),
+            );
         if selected.native_vcpkg {
             cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
         }
-        cmd.env(
-            "SHINKI_EMU_NATIVE_DOWNLOADS",
-            inv.root.join(".work/native-downloads"),
-        );
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(component)
-            .join("installed");
-        if installed.is_dir() {
-            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed)
-                .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?);
-        }
     }
     if (crate::apple::supported(target) || target.contains("android") || target.ends_with("ohos"))
-        && (selected.ffmpeg || selected.subtitle)
+        && (selected.ffmpeg || selected.subtitle || selected.native_vcpkg)
     {
         let mut paths = Vec::new();
         if selected.ffmpeg {
@@ -1566,6 +1586,16 @@ pub fn apply_environment(
         }
         if selected.subtitle {
             paths.push(subtitle.join("lib/pkgconfig"));
+        }
+        for native in native_cores(inv, target, component) {
+            let installation = inv
+                .root
+                .join(".work/native-vcpkg")
+                .join(&native.id)
+                .join("installed")
+                .join(native_triplet(inv, target)?);
+            paths.push(installation.join("lib/pkgconfig"));
+            paths.push(installation.join("share/pkgconfig"));
         }
         // Both private closures are static. Never discover host/Homebrew .pc files.
         for var in [
@@ -1635,7 +1665,51 @@ pub fn apply_environment(
         let suffix = if cfg!(windows) { ".exe" } else { "" };
         let tools = sdk.join("llvm/bin");
         let target_key = target.replace('-', "_");
+        let sysroot = sdk.join("sysroot");
+        let clang_args = format!(
+            "--target=aarch64-linux-ohos --sysroot=\"{}\"",
+            sysroot.display()
+        );
+        // The cc crate splits *FLAGS on whitespace without honoring quotes, and
+        // the DevEco path contains a space: pass the flags as a response file.
+        let response = inv.root.join(".work/ohos/clang-target.rsp");
+        fs::create_dir_all(response.parent().context("response file parent")?)?;
+        fs::write(
+            &response,
+            format!(
+                "--target=aarch64-linux-ohos\n\"--sysroot={}\"\n",
+                sysroot.to_string_lossy().replace('\\', "/")
+            ),
+        )?;
+        let cc_flags = format!("@{}", response.to_string_lossy().replace('\\', "/"));
+        if cc_flags.contains(char::is_whitespace) {
+            bail!("the repository path must not contain whitespace for OHOS builds");
+        }
+        // Rust's default linker name (aarch64-unknown-linux-ohos-clang) is a
+        // shell wrapper in the SDK: link with the clang driver and give every
+        // final link (Manager and dependency cdylibs alike) target and sysroot.
+        // With --target, Cargo applies these flags to target crates only.
+        let existing = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_else(|_| {
+            env::var("RUSTFLAGS")
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join("\x1f")
+        });
+        let link = format!("-C\x1flink-arg={cc_flags}");
+        cmd.env(
+            "CARGO_ENCODED_RUSTFLAGS",
+            if existing.is_empty() {
+                link
+            } else {
+                format!("{existing}\x1f{link}")
+            },
+        );
         cmd.env("OHOS_SDK_NATIVE", &sdk)
+            .env(
+                format!("CARGO_TARGET_{}_LINKER", target_key.to_ascii_uppercase()),
+                tools.join(format!("clang{suffix}")),
+            )
             .env(
                 format!("CC_{target_key}"),
                 tools.join(format!("clang{suffix}")),
@@ -1648,29 +1722,54 @@ pub fn apply_environment(
                 format!("AR_{target_key}"),
                 tools.join(format!("llvm-ar{suffix}")),
             )
-            .env(
-                format!("CFLAGS_{target_key}"),
-                format!(
-                    "--target=aarch64-linux-ohos --sysroot=\"{}\"",
-                    sdk.join("sysroot").display()
-                ),
-            )
-            .env(
-                format!("CXXFLAGS_{target_key}"),
-                format!(
-                    "--target=aarch64-linux-ohos --sysroot=\"{}\"",
-                    sdk.join("sysroot").display()
-                ),
-            )
+            .env(format!("CFLAGS_{target_key}"), &cc_flags)
+            .env(format!("CXXFLAGS_{target_key}"), &cc_flags)
+            // OHOS ships libc++ (no libstdc++); apps bundle libc++_shared.so.
+            // Read by cc and luau0-src, which otherwise default to stdc++.
+            .env(format!("CXXSTDLIB_{target_key}"), "c++_shared")
             .env(
                 format!("BINDGEN_EXTRA_CLANG_ARGS_{target_key}"),
-                format!(
-                    "--target=aarch64-linux-ohos --sysroot=\"{}\"",
-                    sdk.join("sysroot").display()
-                ),
+                &clang_args,
+            )
+            // The cmake crate drives the SDK's ohos.toolchain.cmake; use the
+            // SDK's CMake and Ninja, not the host default generator (NMake on
+            // Windows).
+            .env(format!("CMAKE_GENERATOR_{target_key}"), "Ninja")
+            .env(
+                "PATH",
+                env::join_paths(
+                    std::iter::once(sdk.join("build-tools/cmake/bin"))
+                        .chain(env::split_paths(&env::var_os("PATH").unwrap_or_default())),
+                )?,
             );
+        if selected.ffmpeg || selected.subtitle {
+            cmd.env("PKG_CONFIG", cross_pkg_config(inv, target)?);
+        }
     }
     Ok(())
+}
+
+/// pkg-config for Android/OHOS cross builds. On Windows this is vcpkg's native
+/// pkgconf, not an unrelated Perl/MSYS wrapper from PATH (which can drop or
+/// rewrite cross include flags).
+fn cross_pkg_config(inv: &Inventory, target: &str) -> Result<PathBuf> {
+    if let Some(path) = env::var_os("PKG_CONFIG") {
+        return Ok(PathBuf::from(path));
+    }
+    if cfg!(windows) {
+        let tools = inv.root.join(".work/vcpkg-downloads/tools/msys2");
+        return walkdir::WalkDir::new(&tools)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_type().is_file() && e.path().ends_with("mingw64/bin/pkgconf.exe"))
+            .map(|e| e.path().to_owned())
+            .with_context(|| {
+                format!("vcpkg's native pkgconf is missing; run cargo xtask deps --target {target}")
+            });
+    }
+    executable("pkgconf")
+        .or_else(|| executable("pkg-config"))
+        .with_context(|| format!("pkg-config is required for {target} native dependencies"))
 }
 fn prepare_ffmpeg(inv: &Inventory, target: &str, binary: &Path) -> Result<()> {
     let root = ffmpeg_root(inv, target);
@@ -1746,6 +1845,17 @@ pub fn prepare(
     }
     if let Some(id) = core {
         crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
+    }
+    if core.is_none() {
+        for embedded in inv.cores.iter().filter(|entry| {
+            entry
+                .static_manager_targets
+                .iter()
+                .any(|triple| triple == target)
+                && entry.source.is_some()
+        }) {
+            crate::sources::prepare(inv, embedded, allow_dirty_sources)?;
+        }
     }
     if crate::apple::supported(target)
         && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
@@ -1914,8 +2024,7 @@ pub fn prepare(
     if selected.ffmpeg {
         prepare_ffmpeg(inv, target, &binary)?;
     }
-    if selected.native_vcpkg {
-        let native = inv.core(core.context("native core selection missing")?)?;
+    for native in native_cores(inv, target, core.unwrap_or("manager")) {
         let source = inv
             .root
             .join(native.manifest.components().take(2).collect::<PathBuf>());

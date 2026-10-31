@@ -41,10 +41,10 @@ pub fn metadata_json_schemas() -> std::collections::BTreeMap<String, serde_json:
     ])
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod bangumi;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub use bangumi::{BangumiProvider, BangumiProviderConfig};
 pub use compatibility::{
     COMPATIBILITY_SCHEMA_VERSION, CompatibilityDatabase, CompatibilityEntry, CompatibilityError,

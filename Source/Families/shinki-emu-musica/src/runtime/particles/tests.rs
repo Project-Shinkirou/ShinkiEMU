@@ -2,7 +2,7 @@ use super::*;
 use crate::{ScOpcodeCatalog, parse_sc};
 
 #[test]
-fn particle_mechanisms_roundtrip_through_native_save_and_finish_fading() {
+fn particle_mechanisms_resume_in_memory_state_and_finish_fading() {
     for (start, stop) in [
         ("effect Firefly glow 20 1000", "effect end"),
         ("effect2 SnowH", "effect2 fadeout"),
@@ -21,12 +21,12 @@ fn particle_mechanisms_roundtrip_through_native_save_and_finish_fading() {
         };
         let mut original = make_vm();
         original.step(1).unwrap();
-        original.encode_native_save().unwrap();
+        MusicaVm::checked_test_state(original.state()).unwrap();
         original.advance_firefly_clock(32_000_000).unwrap();
         original.advance_secondary_effect_clock(32_000_000).unwrap();
-        let saved = original.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(original.state()).unwrap();
         let mut restored = make_vm();
-        restored.restore_native_save(&saved, 2).unwrap();
+        restored.install_test_state(&saved, 2).unwrap();
         original.advance_firefly_clock(16_000_000).unwrap();
         restored.advance_firefly_clock(16_000_000).unwrap();
         original.advance_secondary_effect_clock(16_000_000).unwrap();
@@ -42,6 +42,6 @@ fn particle_mechanisms_roundtrip_through_native_save_and_finish_fading() {
         original.advance_secondary_effect_clock(64_000_000).unwrap();
         assert!(original.state().firefly.is_none());
         assert!(original.state().secondary_effect.is_none());
-        original.encode_native_save().unwrap();
+        MusicaVm::checked_test_state(original.state()).unwrap();
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn native_gpu_message_inline_load_restores_mid_crossfade() {
+fn native_gpu_message_inline_load_resumes_in_memory_crossfade() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".char load 1 A.png\r\n.char pos 1 16 0\r\n.message 1   Body\\x{load,30,1,B.png,100,255}\r\n.end\r\n");
@@ -16,47 +16,38 @@ fn native_gpu_message_inline_load_restores_mid_crossfade() {
     let green = png([0, 255, 0, 255]);
     fixture::assets(root.path(), "st", &[("A.png", &red), ("B.png", &green)]);
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut capture = Capture(Vec::new());
     for _ in 0..3 {
-        opened.session.advance(16_666_667, &[]).unwrap();
+        session.advance(16_666_667, &[]).unwrap();
     }
-    opened.session.advance(30_000_000, &[]).unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(30_000_000, &[]).unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let saved = capture.0.clone();
     let index = (704 * 1280 + 8) * 4;
     assert!(saved[index] > 0 && saved[index + 1] > 0);
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    let checkpoint = capture_transient_vm(&session);
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let later = capture.0.clone();
     assert_ne!(later, saved);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    resume_vm_for_test(&mut session, &checkpoint);
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(capture.0, saved);
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(capture.0, later);
     assert_eq!(
-        opened
-            .session
+        session
             .advance(16_666_667, &[key(KeyCode::Enter)])
             .unwrap()
             .status,
         RuntimeStatus::Finished
     );
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }
 
 #[test]
@@ -66,17 +57,17 @@ fn native_gpu_message_voice_wait_queries_existing_decoded_audio() {
     fixture::game(root.path(), b".message 1 tone.ogg  Body\\v\r\n.end\r\n");
     fixture::asset(root.path(), "voice", "tone.ogg", &fixture::wave());
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     assert_eq!(
-        opened.session.advance(16_666_667, &[]).unwrap().status,
+        session.advance(16_666_667, &[]).unwrap().status,
         RuntimeStatus::Waiting
     );
     let mut finished = false;
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
-        if opened.session.advance(16_666_667, &[]).unwrap().status == RuntimeStatus::Finished {
+        if session.advance(16_666_667, &[]).unwrap().status == RuntimeStatus::Finished {
             finished = true;
             break;
         }
@@ -86,5 +77,5 @@ fn native_gpu_message_voice_wait_queries_existing_decoded_audio() {
         finished,
         "voice duration response did not release message wait"
     );
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }

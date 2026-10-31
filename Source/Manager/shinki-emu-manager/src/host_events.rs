@@ -1,21 +1,21 @@
 use std::{cell::RefCell, rc::Rc};
 
 use shinki_emu_manager_core::model::WindowState;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use shinki_emu_manager_core::model::{FamilyEvent, KeyCode, KeyModifiers, KeyState};
 use shinki_emu_manager_ui_slint::{App, SlintManagerAdapter, report_error};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use shinki_emu_manager_ui_slint::{GameSettings, ManagerViewModel, ManagerWindow, Settings};
 use slint::ComponentHandle;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use slint::winit_030::{EventResult, WinitWindowAccessor};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use winit::event::{ElementState, WindowEvent};
 
 use super::ManagerController;
 use crate::gamepad::GameInputPump;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn system_theme(window: &slint::Window) -> Result<bool, String> {
     window
         .with_winit_window(|window| window.theme())
@@ -31,7 +31,13 @@ pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> {
     Ok(app.config().ui_mode_night() == ndk::configuration::UiModeNight::Yes)
 }
 
-#[cfg(not(target_os = "android"))]
+/// The ArkTS shell forwards the ability's color mode.
+#[cfg(target_env = "ohos")]
+pub(super) fn system_theme(_window: &slint::Window) -> Result<bool, String> {
+    Ok(crate::platform::ohos::system_dark())
+}
+
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
     window
         .with_winit_window(|window| {
@@ -66,7 +72,23 @@ pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState
     })
 }
 
-#[cfg(not(target_os = "android"))]
+/// The XComponent surface exists only while the page is shown; a backgrounded
+/// ability or a destroyed surface suspends the game.
+#[cfg(target_env = "ohos")]
+pub(super) fn current_window_state(window: &slint::Window) -> Result<WindowState, String> {
+    let (foreground, surface) = crate::platform::ohos::lifecycle_state();
+    let size = window.size();
+    Ok(WindowState {
+        width: size.width,
+        height: size.height,
+        scale_factor: f64::from(window.scale_factor()),
+        focused: foreground,
+        visible: surface,
+        suspended: !foreground || !surface,
+    })
+}
+
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn install<C: ManagerController>(
     adapter: &Rc<SlintManagerAdapter>,
     controller: Rc<RefCell<C>>,
@@ -213,17 +235,21 @@ pub(super) fn install<C: ManagerController>(
 }
 
 /// Android forwards activity lifecycle changes from `android_main`'s event
-/// listener. Physical keyboard forwarding and binding key capture are
-/// desktop-only: they read winit key codes, which the android-activity backend
-/// does not expose, so Slint's capture rows are left to the UI there.
-#[cfg(target_os = "android")]
+/// listener; OHOS forwards ability, XComponent surface and configuration
+/// changes from the ArkTS shell. Physical keyboard forwarding and binding key
+/// capture are desktop-only: they read winit key codes, which neither mobile
+/// backend exposes, so Slint's capture rows are left to the UI there.
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 pub(super) fn install<C: ManagerController>(
     adapter: &Rc<SlintManagerAdapter>,
     controller: Rc<RefCell<C>>,
     pointer: Rc<RefCell<super::pointer::HostPointer>>,
     _gamepad: Rc<RefCell<GameInputPump>>,
 ) {
+    #[cfg(target_os = "android")]
     use crate::platform::android::{LifecycleEvent, set_lifecycle_handler};
+    #[cfg(target_env = "ohos")]
+    use crate::platform::ohos::{LifecycleEvent, set_lifecycle_handler};
     let weak_adapter = Rc::downgrade(adapter);
     let weak_controller = Rc::downgrade(&controller);
     let weak_pointer = Rc::downgrade(&pointer);
@@ -240,10 +266,10 @@ pub(super) fn install<C: ManagerController>(
                 return;
             };
             let window = adapter.window();
-            if event == LifecycleEvent::ConfigChanged {
-                if let Ok(dark) = system_theme(window.window()) {
-                    window.global::<App>().set_system_dark(dark);
-                }
+            if event == LifecycleEvent::ConfigChanged
+                && let Ok(dark) = system_theme(window.window())
+            {
+                window.global::<App>().set_system_dark(dark);
             }
             let result = current_window_state(window.window()).and_then(|state| {
                 // Before the first surface exists there is no drawable extent to
@@ -268,7 +294,7 @@ pub(super) fn install<C: ManagerController>(
     }));
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn family_key(code: winit::keyboard::KeyCode) -> Option<KeyCode> {
     use winit::keyboard::KeyCode as W;
     Some(match code {
@@ -372,13 +398,13 @@ fn family_key(code: winit::keyboard::KeyCode) -> Option<KeyCode> {
 }
 
 /// The binding row Slint is capturing for; per-game when the game settings page owns it.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 struct CaptureTarget {
     button: slint::SharedString,
     game_id: Option<slint::SharedString>,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn capture_target(window: &ManagerWindow) -> Option<CaptureTarget> {
     let game = window.global::<GameSettings>();
     let button = game.get_capture_button();
@@ -396,7 +422,7 @@ fn capture_target(window: &ManagerWindow) -> Option<CaptureTarget> {
 }
 
 /// Mirror Slint's capture row (started, moved or cancelled by the UI) into the controller.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn sync_capture<C: ManagerController>(
     controller: &RefCell<C>,
     target: Option<&CaptureTarget>,
@@ -422,7 +448,7 @@ fn sync_capture<C: ManagerController>(
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn clear_capture(window: &ManagerWindow) {
     let game = window.global::<GameSettings>();
     game.set_capture_button("".into());

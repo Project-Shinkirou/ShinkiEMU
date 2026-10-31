@@ -5122,6 +5122,7 @@ version = "1.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f519a8611a4982921e46e391015e5e40ceac5cc63813333ef91ada77df180d8"
 dependencies = [
+ "bytemuck",
  "calloop 0.14.5",
  "cfg_aliases 0.2.2",
  "drm 0.14.1",
@@ -5129,6 +5130,7 @@ dependencies = [
  "i-slint-core",
  "i-slint-renderer-femtovg",
  "i-slint-renderer-skia",
+ "i-slint-renderer-software",
  "input",
  "libseat",
  "memmap2",
@@ -5147,12 +5149,26 @@ dependencies = [
  "cfg_aliases 0.2.2",
  "i-slint-backend-android-activity",
  "i-slint-backend-linuxkms",
+ "i-slint-backend-testing",
  "i-slint-backend-winit",
  "i-slint-common",
  "i-slint-core",
  "i-slint-core-macros",
  "i-slint-renderer-femtovg",
  "i-slint-renderer-skia",
+]
+
+[[package]]
+name = "i-slint-backend-testing"
+version = "1.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01943d6c5ea5bc913d497bdaa423c309e7627afff47a6794bfd13be5c564209f"
+dependencies = [
+ "cfg_aliases 0.2.2",
+ "i-slint-common",
+ "i-slint-core",
+ "i-slint-renderer-software",
+ "vtable",
 ]
 
 [[package]]
@@ -5165,6 +5181,7 @@ dependencies = [
  "accesskit_winit",
  "arboard",
  "block2 0.6.2",
+ "bytemuck",
  "cfg-if",
  "cfg_aliases 0.2.2",
  "futures",
@@ -5175,6 +5192,8 @@ dependencies = [
  "i-slint-core-macros",
  "i-slint-renderer-femtovg",
  "i-slint-renderer-skia",
+ "i-slint-renderer-software",
+ "imgref",
  "lyon_path",
  "muda",
  "objc2 0.6.5",
@@ -5184,6 +5203,7 @@ dependencies = [
  "objc2-ui-kit 0.3.2",
  "pin-weak",
  "raw-window-handle 0.6.2",
+ "rgb",
  "scoped-tls-hkt",
  "scopeguard",
  "softbuffer",
@@ -10988,6 +11008,7 @@ dependencies = [
  "cc",
  "dunce",
  "object 0.40.0",
+ "pkg-config",
  "serde",
  "serde_json",
  "tempfile",
@@ -11075,17 +11096,19 @@ dependencies = [
 
 [[package]]
 name = "shinki-emu-manager"
-version = "0.1.0-beta.4"
+version = "0.1.0-beta.6"
 dependencies = [
  "android-activity 0.6.1",
  "cap-fs-ext",
  "cap-std",
+ "cc",
  "clap",
  "crc32fast",
  "crossbeam-channel",
  "ctrlc",
  "directories",
  "flate2",
+ "fontique",
  "gilrs",
  "gtk",
  "hassle-rs 0.12.0",
@@ -11129,6 +11152,7 @@ dependencies = [
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
  "shinki-emu-rfvp",
+ "shinki-emu-sdk",
  "shinki-emu-sena-rs",
  "shinki-emu-siglus_rs",
  "shinki-emu-steam",
@@ -11172,6 +11196,7 @@ dependencies = [
 name = "shinki-emu-manager-ui-slint"
 version = "0.1.0"
 dependencies = [
+ "i-slint-core",
  "image 0.25.10",
  "parking_lot 0.13.0",
  "qrcodegen",
@@ -11215,7 +11240,6 @@ name = "shinki-emu-musica"
 version = "0.1.0"
 dependencies = [
  "blowfish",
- "cpal 0.18.2",
  "crc32fast",
  "encoding_rs",
  "flate2",
@@ -11248,6 +11272,7 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "tracing",
  "wgpu 30.0.1",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

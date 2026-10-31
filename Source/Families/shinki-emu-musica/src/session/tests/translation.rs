@@ -346,8 +346,8 @@ fn delayed_translation_keeps_frames_audio_and_input_alive_and_drops_skip_and_loa
     );
     session.advance(16_666_667, &[]).unwrap();
     assert!(session.pending.is_none());
-    assert_eq!(session.message.as_ref().unwrap().0, "First");
-    assert_eq!(service.acknowledgements.load(Ordering::Acquire), 0);
+    assert_eq!(session.message.as_ref().unwrap().0, "Translated");
+    assert_eq!(service.acknowledgements.load(Ordering::Acquire), 1);
     Box::new(session).close().unwrap();
 }
 
@@ -494,7 +494,7 @@ fn overlay_tab_release_and_save_restore_preserve_chinese_base_and_cached_text() 
     session.advance(0, &[released]).unwrap();
     assert!(session.translation_visible);
     session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    assert!(!session.translation_visible);
+    assert!(session.translation_visible); // Native slots do not restore session-only visibility.
     assert_eq!(
         session.translation_overlay.as_deref(),
         Some("Native dialogue")

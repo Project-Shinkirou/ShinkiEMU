@@ -2,14 +2,13 @@
 //! This codec preserves fields and does not establish that a VM can restore them.
 mod body;
 mod checkpoint;
+mod export;
+pub mod perseus;
+#[cfg(test)]
+mod perseus_tests;
 mod position;
-mod slot;
-mod state;
-pub use slot::{EdenSlotExport, export_slot};
-mod write_checkpoint;
-pub use checkpoint::{EdenCheckpoint, EdenHistoryMessage};
+pub use checkpoint::{EdenCheckpoint, EdenHistoryLine, EdenHistoryMessage, EdenStand};
 pub use position::EdenMessagePosition;
-pub use state::{EdenExportRejection, EdenExportState};
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
@@ -28,18 +27,60 @@ const MAX_BODY: usize = 16 * 1024 * 1024;
 pub enum EdenEdition {
     Japanese,
     English,
+    /// perseus.exe `sub_470C50` writes the SerialCode CRC32 (`sub_47EFB0`)
+    /// as the u32 header and `sub_46A860` rejects a mismatch. The signature
+    /// literal is pushed by `sub_481970`/`sub_481A90`.
+    Perseus,
+}
+pub(crate) struct NovelLayout {
+    pub width: u32,
+    pub speaker_width: u32,
+    pub body_width: u32,
+    pub font: u32,
+    pub line_height: u32,
+    pub top: i32,
 }
 impl EdenEdition {
-    fn magic(self) -> &'static [u8; 4] {
+    // eden_en.exe sub_4E93D0 and perseus.exe sub_446510, panel case 2.
+    pub(crate) fn novel_layout(self) -> NovelLayout {
+        if self == Self::Perseus {
+            NovelLayout {
+                width: 902,
+                speaker_width: 88,
+                body_width: 814,
+                font: 26,
+                line_height: 38,
+                top: 72,
+            }
+        } else {
+            NovelLayout {
+                width: 858,
+                speaker_width: 110,
+                body_width: 748,
+                font: 22,
+                line_height: 32,
+                top: 32,
+            }
+        }
+    }
+    fn magic(self, prefix: u32) -> [u8; 4] {
         match self {
-            Self::Japanese => b";\n!\xaa",
-            Self::English => &[0; 4],
+            Self::Japanese => *b";\n!\xaa",
+            Self::English => [0; 4],
+            Self::Perseus => prefix.to_le_bytes(),
         }
     }
     fn signature(self) -> &'static [u8] {
         match self {
             Self::Japanese => b"eden 1.00",
             Self::English => b"eden_en 1.00",
+            Self::Perseus => b"perseus 1.00",
+        }
+    }
+    pub fn for_title(title: crate::minori_data::MinoriTitle) -> Self {
+        match title {
+            crate::minori_data::MinoriTitle::EdenEnglish => Self::English,
+            crate::minori_data::MinoriTitle::Perseus => Self::Perseus,
         }
     }
 }
@@ -52,6 +93,12 @@ pub enum EdenSaveEncoding {
     Windows1252,
 }
 impl EdenSaveEncoding {
+    pub(crate) fn from_script(encoding: crate::ScriptEncoding) -> Self {
+        match encoding {
+            crate::ScriptEncoding::ShiftJis => Self::ShiftJis,
+            crate::ScriptEncoding::Gbk => Self::Gbk,
+        }
+    }
     fn encoding(self) -> &'static Encoding {
         match self {
             Self::ShiftJis => SHIFT_JIS,
@@ -94,9 +141,15 @@ pub struct EdenSaveField {
 pub struct EdenSave {
     pub edition: EdenEdition,
     pub encoding: EdenSaveEncoding,
+    /// Header u32 of Perseus slots (SerialCode CRC32); zero for eden.
+    pub prefix: u32,
     pub comment: String,
     pub route: [u8; 4],
+    /// Engine fields, written with a `!` prefix in native writer order.
     pub variables: Vec<EdenSaveField>,
+    /// Script `.set` variables from the same native map, names verbatim.
+    /// Encoded in map (byte) order after the `!` block.
+    pub script_variables: Vec<(String, String)>,
     pub backlog: Vec<Vec<EdenSaveField>>,
 }
 impl EdenSave {
@@ -106,11 +159,17 @@ impl EdenSave {
         edition: EdenEdition,
         encoding: EdenSaveEncoding,
     ) -> Result<Self, CoreError> {
-        if bytes.len() > MAX_CONTAINER {
+        if bytes.len() > MAX_CONTAINER || bytes.len() < 4 {
             return Err(invalid("BOUND", "save container exceeds the byte limit"));
         }
+        let header = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+        let prefix = if edition == EdenEdition::Perseus {
+            header
+        } else {
+            0
+        };
         let suffix = bytes
-            .strip_prefix(edition.magic())
+            .strip_prefix(&edition.magic(prefix))
             .and_then(|b| b.strip_prefix(edition.signature()))
             .and_then(|b| b.strip_prefix(&[0]))
             .ok_or_else(|| invalid("SIGNATURE", "save edition signature does not match"))?;
@@ -143,14 +202,16 @@ impl EdenSave {
         }
         raw.truncate(decoder.total_out() as usize);
         let text = encoding.decode(&raw)?;
-        let (variables, backlog) = body::parse(&text)?;
+        let body = body::parse(&text, encoding)?;
         Ok(Self {
             edition,
             encoding,
+            prefix,
             comment,
             route,
-            variables,
-            backlog,
+            variables: body.variables,
+            script_variables: body.script_variables,
+            backlog: body.backlog,
         })
     }
     /// Container serialization only. Callers must validate VM representability separately.
@@ -165,7 +226,7 @@ impl EdenSave {
             return Err(invalid("BOUND", "save body exceeds the byte limit"));
         }
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(self.edition.magic());
+        bytes.extend_from_slice(&self.edition.magic(self.prefix));
         bytes.extend_from_slice(self.edition.signature());
         bytes.push(0);
         bytes.extend_from_slice(&comment);

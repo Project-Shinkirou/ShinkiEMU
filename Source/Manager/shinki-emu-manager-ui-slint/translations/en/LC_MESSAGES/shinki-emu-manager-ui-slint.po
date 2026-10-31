@@ -2309,8 +2309,8 @@ msgstr "Choose a trusted local Luau patch script"
 msgid "选择外部画面效果（HLSL）"
 msgstr "Choose an external screen effect (HLSL)"
 
-msgid "选择尚不存在的新输出目录名称"
-msgstr "Choose a name for a new output directory that doesn't exist yet"
+msgid "选择输出位置（将在其中新建转换目录）"
+msgstr "Choose an output location (a new conversion directory will be created inside)"
 
 msgid "选择游戏目录"
 msgstr "Choose a game folder"
