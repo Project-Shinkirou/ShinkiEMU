@@ -150,6 +150,14 @@ jobs:
           } else {
             cargo xtask deps --target $env:TARGET --core $env:COMPONENT
           }
+      - name: Preserve failed Renpy host NASM configuration
+        if: failure() && matrix.component == 'manager' && contains(matrix.target, 'android')
+        uses: actions/upload-artifact@v7
+        with:
+          name: renpy-nasm-host-config-${{ matrix.component }}-${{ matrix.target }}
+          path: .work/renpy-build/tmp/build/nasm.host/nasm-2.14.02/config.log
+          include-hidden-files: true
+          if-no-files-found: warn
       - name: Build and package
         env:
           TARGET: ${{ matrix.target }}
