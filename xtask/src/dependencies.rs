@@ -80,6 +80,25 @@ pub(crate) fn needs(inv: &Inventory, target: &str, component: &str) -> Result<Na
     Ok(result)
 }
 
+pub(crate) fn native_cores<'a>(
+    inv: &'a Inventory,
+    target: &'a str,
+    component: &'a str,
+) -> impl Iterator<Item = &'a crate::cores::Core> {
+    inv.cores.iter().filter(move |core| {
+        core.dependencies
+            .iter()
+            .any(|dependency| dependency == "native-vcpkg")
+            && if component == "manager" {
+                core.static_manager_targets
+                    .iter()
+                    .any(|triple| triple == target)
+            } else {
+                core.id == component
+            }
+    })
+}
+
 const NATIVE_RECORD: &str = ".shinki-native.json";
 
 #[derive(Serialize)]
@@ -1423,7 +1442,7 @@ pub fn apply_environment(
             .env("PKG_CONFIG_ALL_STATIC", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
     }
-    if target == "x86_64-unknown-linux-gnu" && selected.bison {
+    if !target.contains("windows") && selected.bison {
         cmd.env(
             "BISON_EXECUTABLE",
             executable("bison").context("Linux Bison is missing")?,
@@ -1518,26 +1537,23 @@ pub fn apply_environment(
             )?,
         );
     }
-    if component != "manager" && inv.core(component)?.artifact_kind == "native-shared" {
+    if selected.native_vcpkg || selected.renpy {
+        cmd.env_remove("SHINKI_EMU_VCPKG_INSTALLED")
+            .env(
+                "SHINKI_EMU_NATIVE_VCPKG_ROOT",
+                inv.root.join(".work/native-vcpkg"),
+            )
+            .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?)
+            .env(
+                "SHINKI_EMU_NATIVE_DOWNLOADS",
+                inv.root.join(".work/native-downloads"),
+            );
         if selected.native_vcpkg {
             cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
         }
-        cmd.env(
-            "SHINKI_EMU_NATIVE_DOWNLOADS",
-            inv.root.join(".work/native-downloads"),
-        );
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(component)
-            .join("installed");
-        if installed.is_dir() {
-            cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed)
-                .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?);
-        }
     }
     if (crate::apple::supported(target) || target.contains("android") || target.ends_with("ohos"))
-        && (selected.ffmpeg || selected.subtitle)
+        && (selected.ffmpeg || selected.subtitle || selected.native_vcpkg)
     {
         let mut paths = Vec::new();
         if selected.ffmpeg {
@@ -1546,6 +1562,16 @@ pub fn apply_environment(
         }
         if selected.subtitle {
             paths.push(subtitle.join("lib/pkgconfig"));
+        }
+        for native in native_cores(inv, target, component) {
+            let installation = inv
+                .root
+                .join(".work/native-vcpkg")
+                .join(&native.id)
+                .join("installed")
+                .join(native_triplet(inv, target)?);
+            paths.push(installation.join("lib/pkgconfig"));
+            paths.push(installation.join("share/pkgconfig"));
         }
         // Both private closures are static. Never discover host/Homebrew .pc files.
         for var in [
@@ -1796,6 +1822,17 @@ pub fn prepare(
     if let Some(id) = core {
         crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
     }
+    if core.is_none() {
+        for embedded in inv.cores.iter().filter(|entry| {
+            entry
+                .static_manager_targets
+                .iter()
+                .any(|triple| triple == target)
+                && entry.source.is_some()
+        }) {
+            crate::sources::prepare(inv, embedded, allow_dirty_sources)?;
+        }
+    }
     if crate::apple::supported(target)
         && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg)
     {
@@ -1963,8 +2000,7 @@ pub fn prepare(
     if selected.ffmpeg {
         prepare_ffmpeg(inv, target, &binary)?;
     }
-    if selected.native_vcpkg {
-        let native = inv.core(core.context("native core selection missing")?)?;
+    for native in native_cores(inv, target, core.unwrap_or("manager")) {
         let source = inv
             .root
             .join(native.manifest.components().take(2).collect::<PathBuf>());

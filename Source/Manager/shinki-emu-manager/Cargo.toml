@@ -105,6 +105,7 @@ objc2.workspace = true
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2", "CFCGTypes"] }
 shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d0923af499912b82a3021b7998f44b2c88d52f84", default-features = false }
+shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
 shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346", default-features = false }
 shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00", default-features = false }

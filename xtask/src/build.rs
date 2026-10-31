@@ -17,6 +17,7 @@ pub struct BuildResult {
     pub profile: String,
     pub library: PathBuf,
     pub core_build: Option<CoreBuildManifest>,
+    pub embedded_core_builds: Vec<CoreBuildManifest>,
     pub source_commit: String,
     pub source_dirty: bool,
     pub toolchain: String,
@@ -250,6 +251,23 @@ pub fn execute(
         {
             eprint!("{s}");
         }
+        if value["reason"] == "build-script-executed"
+            && (value["package_id"] == package_id || component == "manager")
+            && let Some(dir) = value["out_dir"].as_str()
+        {
+            let path = Path::new(dir).join("core-build.json");
+            if path.is_file() {
+                match fs::read(&path)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| {
+                        serde_json::from_slice::<CoreBuildManifest>(&bytes)
+                            .map_err(anyhow::Error::from)
+                    }) {
+                    Ok(m) => manifests.push(m),
+                    Err(e) => parse_error = Some(e),
+                }
+            }
+        }
         if value["package_id"] != package_id {
             continue;
         }
@@ -274,22 +292,6 @@ pub fn execute(
                     {
                         libraries.push(p.to_owned());
                     }
-                }
-            }
-        }
-        if value["reason"] == "build-script-executed"
-            && let Some(dir) = value["out_dir"].as_str()
-        {
-            let path = Path::new(dir).join("core-build.json");
-            if path.is_file() {
-                match fs::read(&path)
-                    .map_err(anyhow::Error::from)
-                    .and_then(|bytes| {
-                        serde_json::from_slice::<CoreBuildManifest>(&bytes)
-                            .map_err(anyhow::Error::from)
-                    }) {
-                    Ok(m) => manifests.push(m),
-                    Err(e) => parse_error = Some(e),
                 }
             }
         }
@@ -324,6 +326,30 @@ pub fn execute(
             .and_then(|t| t["name"].as_str())
             .context("Android Manager cdylib target missing")?;
         libraries.push(ndk_output.join(abi).join(format!("lib{library_target}.so")));
+    }
+    let mut embedded_core_builds = Vec::new();
+    if component == "manager" {
+        for manifest in manifests.drain(..) {
+            let embedded = inv.core(&manifest.plugin_id)?;
+            manifest.validate()?;
+            if !embedded
+                .static_manager_targets
+                .iter()
+                .any(|triple| triple == target)
+                || manifest.target != target
+                || manifest.profile != if release { "release" } else { "debug" }
+                || !matches!(
+                    manifest.artifact_kind.as_str(),
+                    "native-static" | "rust-cdylib"
+                )
+            {
+                bail!(
+                    "native build manifest does not match embedded core {}",
+                    embedded.id
+                );
+            }
+            embedded_core_builds.push(manifest);
+        }
     }
     libraries.sort();
     libraries.dedup();
@@ -370,6 +396,7 @@ pub fn execute(
         profile: if release { "release" } else { "debug" }.into(),
         library,
         core_build,
+        embedded_core_builds,
         source_commit,
         source_dirty,
         toolchain,

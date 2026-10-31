@@ -172,6 +172,11 @@ cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <ver
 `deps` は `arm64-ohos` triplet で libass と FFmpeg をビルドします。Meson 1.12 の prefix には、Android の triplet と同じく Windows の拡張パスを使います。ビルドは SDK の clang でリンクし、`libc++_shared.so` を同梱します。`package` は Manager のライブラリを `Platforms/OHOS/entry/libs/arm64-v8a` に、メタデータのスナップショット、通知、ライセンスを `rawfile/bundled` に配置し、`ohpm install` と `hvigorw assembleHap` を実行します。初回は SDK の OpenHarmony テスト PKI から debug 署名データを作ります。`OpenHarmony.p12` のコピーに新しい鍵を作り、テスト用アプリ CA でアプリ証明書を発行し、profile-debug 鍵で `org.shinkirou.shinkiemu` の debug profile に署名します。`sign-app` で署名した後、`verify-app` で検証し、アーカイブの内容と、同梱した各ライブラリの `llvm-readelf -d` を出力します。残る `NEEDED` はすべて OHOS のシステムライブラリでなければなりません。出力先には `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json`、`build.json` が入ります。keystore、証明書、profile は Git にコミットしません。
 
 テスト PKI で署名した HAP は実験用のテスト配布です。署名、内容、同梱ライブラリの依存関係を確認します。デバイス・エミュレーターでの起動確認は免除されており、市販デバイスへのインストール可能性は未確認です。インストール確認には DevEco/AppGallery Connect が発行した profile が必要です。
+`feat/apple-musica` 候補ブランチでは、Shinki Musica を iOS Manager の静的レジストリとコア一覧に追加し、`cc34d86` のターゲット別静的 FFmpeg ビルドを再利用します。シミュレーター・実機のパッケージと対象を絞ったリモート CI が成功するまで、3 つの iOS コア行は blocked のままです。静的依存関係の追加だけでは対応済みとしません。
+
+FFmpeg を組み込む Manager には、対象の専用インストールツリーから FFmpeg と推移的依存 port のライセンスを `licenses/ffmpeg/` に同梱します。単体コアのパッケージも同じ収集処理を使います。
+
+ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
 
 ## マトリクスと CI
 
