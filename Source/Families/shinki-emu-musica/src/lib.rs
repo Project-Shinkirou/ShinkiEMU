@@ -2,6 +2,7 @@ mod configuration;
 pub use configuration::*;
 mod audio;
 mod movie;
+mod native_directory;
 mod provider;
 mod scene;
 mod session;
@@ -51,3 +52,4 @@ pub(crate) use provider::{MusicaProvider, musica_descriptor};
 mod test_fixture;
 
 pub mod eden_save;
+pub mod minori_data;

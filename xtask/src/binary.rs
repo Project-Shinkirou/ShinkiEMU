@@ -373,6 +373,8 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         "libfontconfig.so.1",
         "libudev.so.1",
         "libasound.so.2",
+        // VA-API talks to the distribution's DRM device/driver ABI.
+        "libdrm.so.2",
         // RFVP's Linux video-sys backend uses the distribution media stack.
         "libgstreamer-1.0.so.0",
         "libgstapp-1.0.so.0",

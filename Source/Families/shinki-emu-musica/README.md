@@ -56,31 +56,25 @@ PAZ 探测只识别引擎，不能据此得出密钥已安装。Manager 只选�
 
 PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文件变化校验保留。SDK 的 `ArchiveManifest` 是核心本地索引，不是 Host VFS 或产品 package。配置相对路径以游戏目录为基准，资源始终限于游戏目录内；公共读取错误使用 `SHINKI_EMU_PROFILE_*`。读取不运行 managed helper、BinaryFormatter 或 executable patch。
 
-核心自有 slot 位于游戏目录 `.shinki/musica/saves/slot-000.asav`。首次使用时把旧 `.shinki-musica/saves/` 中的文件迁至新路径，绝不覆盖已有新存档，此后只读取新路径。容器 `AMUSSV06` 包含长度、SHA-256 与 postcard snapshot，保存 VM、当前文本、翻译层文本/可见性、等待进度以及 sound resource/播放位置/volume/pan/repeat。它绑定同一 archive/profile/localization/font identity；加载重建脚本、场景和声音后提交。临时文件 flush 后原子替换；损坏、异版本或外部格式文件拒绝覆盖。此格式不宣称兼容原版存档。加载恢复声音的当前参数、位置与尚未完成的音量渐变。渐变保存分贝起止值、总采样数、已推进采样数和结束停止意图；按剩余采样继续，暂停不推进渐变。新音量命令替换旧渐变。旧 AMUSSV05 及更早内部格式明确拒绝，不覆盖旧 slot。
+运行时统一使用原版 eden/Perseus 的 `.sav` 与同名 `.png`，路径、槽位编号、缩略图和限制见[存档说明](../../../docs/zh-cn/cores/shinki-emu-musica.md#存档)。旧 beta `.asav`（`AMUSSV06` 及更早格式）不兼容，既不读取也不转换、搬迁或删除；请保留备份并新建原生槽位。
 
 ## eden 原版存档与检查点
 
-`eden_save::EdenSave` 提供有界读取与容器编码，已补充严格检查点投影和 VM 恢复候选接口，Family 已接入严格子集的设备恢复和当前消息导出；已完成一个静态消息片段的原版读回与继续，范围见下文。`EdenEdition` 显式区分日文 CD-ROM 签名和本地 Steam English 签名：前者为 `;\n!`、`0xAA` 与 `eden 1.00`，后者为四个零字节与 `eden_en 1.00`。签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
+`eden_save::EdenSave` 提供有界容器编解码、严格检查点投影和运行时原生存读档。`EdenEdition` 显式区分日文 CD-ROM、Steam English 和 Perseus 签名；签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
 
 `EdenSaveEncoding` 由调用方显式选择 Shift-JIS、GBK 或 Windows-1252。解码须无替换字符，重新编码须还原原字节；写入不可表达字符直接失败。变量及 backlog 保留原字段顺序，包括多语言 `L1_0` 等字段，不补默认字段或丢弃未知字段。重复字段、结构注入、截尾、压缩校验失败、追加压缩流和大小超限均拒绝；容器和解压体各限 16 MiB。类型不实现 Debug，避免误打出正文。
 
 格式研究参考 [ReMinori](https://github.com/luoyily/ReMinori) 的 `crates/formats/src/save.rs` 和恢复路径，固定参考 revision `79b00990324404bfbd496e7fa76c690cf040f744`，其许可证为 AGPL-3.0。本实现未引入该项目依赖或移植其代码。其原版 writer 和 port writer 是不同格式，README 的解析支持不作为原版互通结论；本地 Steam 汉化文件也不能按日文 CD-ROM 编码处理。
 
-只读 CLI 检查要求显式指定版本和编码，不输出路径、资源名或正文：
-
-```sh
-cargo run -p shinki-emu-musica-cli -- inspect-eden-save --file private-copy/eden0010.sav --edition english --encoding gbk
-```
 
 7 个本地原版存档副本通过严格解码及内存容器往返，覆盖 36–37 个变量、100–7590 条 backlog。七个槽的保存 PC 与消息 ID 已逐一匹配原始脚本，不进行附近搜索或位置截断。
 
-`EdenCheckpoint` 将已知消息检查点字段转换为显式类型。`MusicaVm::from_eden_save` 读取实际挂载脚本后准备恢复候选；`restore_eden_save` 校验历史消息，再一次性替换 VM 状态。Fixture 已验证恢复不执行保存点之前的命令、继续剧情、再次存读档以及失败时保留活动 VM。当前严格投影只接受七个槽中的一个，含 897 条普通消息历史；选择记录、未知字段、旋转、滤色、活动效果和不可恢复时钟等状态仍明确拒绝。
+`EdenCheckpoint` 显式保存脚本变量、背景、组合前景、立绘位置与偏移、BGM、消息历史和小说整页。`MusicaVm::from_eden_save` 读取实际脚本并按当前语音设置准备候选；`restore_eden_save` 不执行保存点之前的命令。小说页保留 `CP1=2` 和 `L1_n..L4_n`，默认 panel 2 使用 `fullPanel.png`。活动效果、旋转、滤色及尚未支持的附加图层状态明确拒绝，无内部快照回退。设备或原版游戏启动不属于本次构建与私有存档语义检查。
 
-实际挂载 PAZ 的恢复检查已完成该槽的 897 条历史及当前消息 VM。原版脚本名按 ASCII 大小写不敏感规则解析；名称碰撞明确拒绝。Family 支持只读 `eden_import_file`、显式 `eden_import_edition` 和既有 `script_encoding`；导入要求 direct 启动，恢复静态场景、消息和按原版加载边界重新开始的 BGM/语音。已有 GPU fixture 验证导入、物理输入推进、F5 保存、关闭和从该槽导出。真实商业片段的 Family 演出与原版独立副本读回尚未验收，其他游戏不声明原版互通。CLI `check-eden-restore` 只检查 VM 候选，不打开设备或写出存档。
 
 ## Musica 成果整合
 
-`.select` 支持 1–4 个 `display:label` 对，原始字节保留以支持源码往返；每个目标标签在解析时校验。VM 持有选择等待和焦点，GPU 文字层显示选项，上下键循环切换，Enter/Space 确认当前项。鼠标悬停更新焦点，主键只确认命中项；命中区域与显示共用布局，行间空白和边界外点击不确认。F5/F9 保存和恢复焦点，显示文字从同一已验证脚本重建；损坏索引或不一致等待状态拒绝恢复。原生 Family GPU fixture 已覆盖选择、焦点变化、中途存读档和确认，鼠标回归覆盖悬停高亮、空白点击和对应分支；真实游戏界面验收尚未完成。
+`.select` 支持 1–4 个 `display:label` 对，原始字节保留以支持源码往返；每个目标标签在解析时校验。VM 持有选择等待和焦点，GPU 文字层显示选项，上下键循环切换，Enter/Space 确认当前项。鼠标悬停更新焦点，主键只确认命中项；命中区域与显示共用布局。选择开始前触发原生自动存档，记录此前的消息边界，原生槽不保存选择焦点。
 
 已吸收来源分支未提交修改中的 `.chain file.sc#label` 语法，合入同一个 Musica parser、VM 和原生 session。文件与标签分别校验，标签在目标脚本中解析成功后才切换脚本；缺标签保持原 VM 状态。省略标签仍从脚本起点执行，存档使用现有目标脚本身份和剧情位置，不新增存档格式。
 
@@ -110,7 +104,6 @@ cargo build -p shinki-emu-musica --features dynamic-plugin-export
 
 VM 的可序列化状态集中在 runtime/model.rs，演出命令在 runtime/effects.rs，音频命令在 runtime/audio_commands.rs，选择处理在 runtime/choices.rs。调度与存读档保留在 runtime.rs，共享演出序号仍由 VM 分配。运行错误通过 typed diagnostic_code() 返回稳定标识；未实现命令只向 Family/Manager 返回指令序号，不透传脚本文本。
 
-`export-eden-save` 从核心自有槽读取权威 VM 与音频快照，重建已知原版字段；只允许导入后仍可准确表示的普通消息检查点。选择、未知变量、动态演出、活动音频渐变等状态拒绝导出。输出必须为不存在的新文件，不覆盖原版槽。内部 VM 格式升级为 v26，保留具名历史状态而非未知原版字段；旧槽在外层 AMUSSV06 检查时拒绝，读取失败不覆盖文件。导出生成 SAV 与同名 128×80 PNG；缩略图来自该核心槽实际保存的 GPU 画面。两个目标都必须不存在，先发布 PNG、再发布 SAV；中途失败保留已产生的独立文件并报错，不覆盖既有文件。已在独立原版副本完成一个静态消息片段的导入、继续、保存、导出、读取继续；原版复存的剧情、变量、历史及媒体资源字段对齐。未验收可听音频与其他历史类型，不能据此声明全部存档兼容。
 
 原版历史 `CT5` 保存面板切换参数，支持已经核对的 0 和 10；其他值明确拒绝。逻辑画布与 GPU 光栅尺寸分别配置，eden 原版导入要求 1024×640；核心槽保存逻辑画布身份，不同画布加载在修改活动状态前拒绝。
 

@@ -7,15 +7,22 @@ impl MusicaVm {
     }
 
     pub fn fast_forward_active(&self) -> bool {
-        fast_forward_active(&self.state, self.control_pressed)
+        fast_forward_active(
+            &self.state,
+            self.control_pressed,
+            self.read_flags.is_read(&self.state),
+        )
     }
 }
 
-pub(super) fn fast_forward_active(state: &MusicaRuntimeState, pressed: bool) -> bool {
+pub(super) fn fast_forward_active(
+    state: &MusicaRuntimeState,
+    pressed: bool,
+    message_read: bool,
+) -> bool {
     state.system_ui.skip_enabled
         && ((state.system_ui.control_enabled && pressed)
-            || (state.system_ui.play_mode == MusicaPlayMode::Skip
-                && super::read_state::is_read(state)))
+            || (state.system_ui.play_mode == MusicaPlayMode::Skip && message_read))
 }
 
 pub(super) fn execute_pragma(
@@ -57,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn pragma_gates_are_independent_and_saved_without_physical_keys() {
+    fn pragma_gates_are_independent_and_resume_without_physical_keys() {
         let source = b".pragma skip_disable\r\n.pragma enable_control\r\n.wait 1\r\n.pragma skip_enable\r\n.wait 1\r\n.end\r\n";
         let mut original = vm(source);
         original.set_control_pressed(true);
@@ -66,9 +73,9 @@ mod tests {
             Some(MusicaVmEvent::Wait(_))
         ));
         assert!(!original.fast_forward_active());
-        let save = original.encode_native_save().unwrap();
+        let save = MusicaVm::checked_test_state(original.state()).unwrap();
         let mut restored = vm(source);
-        restored.restore_native_save(&save, 2).unwrap();
+        restored.install_test_state(&save, 2).unwrap();
         assert!(restored.state().system_ui.control_enabled);
         assert!(!restored.state().system_ui.skip_enabled);
         let token = match restored.state().wait.as_ref().unwrap() {

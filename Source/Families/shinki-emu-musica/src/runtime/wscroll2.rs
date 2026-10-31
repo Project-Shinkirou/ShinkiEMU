@@ -72,6 +72,7 @@ pub(super) fn execute(
         sequence,
     })))
 }
+#[cfg(test)]
 pub(super) fn validate_wscroll2_state(
     scroll: &MusicaWScroll2State,
 ) -> Result<(), MusicaRuntimeError> {
@@ -163,9 +164,9 @@ mod tests {
             ),
             (60, -48, -9, -3)
         );
-        let saved = machine.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
         let mut restored = vm(source);
-        restored.restore_native_save(&saved, 3).unwrap();
+        restored.install_test_state(&saved, 3).unwrap();
         assert_eq!(
             machine.advance_wscroll2_clock(16_666_667).unwrap(),
             restored.advance_wscroll2_clock(16_666_667).unwrap()
@@ -174,10 +175,10 @@ mod tests {
         machine.step(3).unwrap();
         assert!(machine.state().wscroll2.is_none());
         assert!(machine.advance_wscroll2_clock(1_000_000).unwrap().is_none());
-        let mut corrupt = MusicaVm::decode_native_save(&saved).unwrap();
+        let mut corrupt = MusicaVm::checked_test_state(&saved).unwrap();
         corrupt.wscroll2.as_mut().unwrap().foreground_offset -= 1;
         assert_eq!(
-            MusicaVm::decode_native_save(&postcard::to_allocvec(&corrupt).unwrap()).unwrap_err(),
+            MusicaVm::checked_test_state(&corrupt).unwrap_err(),
             MusicaRuntimeError::WScroll2
         );
     }

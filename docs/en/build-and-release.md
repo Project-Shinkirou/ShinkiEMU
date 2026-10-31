@@ -64,7 +64,7 @@ Manager initializes the process-wide Rustls crypto provider once, before creatin
 Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 libxtst-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
 sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
@@ -73,6 +73,8 @@ sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer
 native dependency generator, and `libxtst-dev` is required by its Linux GTK
 dependency closure. These packages are host prerequisites; `cargo xtask deps`
 does not install them.
+`python3-venv` supplies ensurepip for libsystemd's isolated build environment.
+`libxxf86vm-dev` supplies the Xxf86vm linker input required by Linux Cocos.
 
 ```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
@@ -95,6 +97,8 @@ The Ren'Py package includes its SDK runtime and installed `Resources`; Impacto a
 
 Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix`; declared blocked cores produce no binary artifact.
 The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfig, udev and ALSA ABI libraries, plus GTK 3 and WebKitGTK 4.1 for store web sign-in. Install their runtime packages (on Ubuntu `libwebkit2gtk-4.1-0`, which pulls in GTK 3) on the destination system and provide an X11 or Wayland desktop with a graphics driver.
+Impacto's Linux VA-API libraries also require the distribution's `libdrm.so.2`
+(Ubuntu package `libdrm2`), which remains part of the system graphics stack.
 
 RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
 

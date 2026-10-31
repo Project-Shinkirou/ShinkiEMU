@@ -72,4 +72,4 @@ DLsite 使用上面的网页登录，从 DLsite Play 的登录页开始；DLsite
 
 ShinkiEMU 使用新的平台应用数据目录，可从设置中打开。桌面可用 `SHINKI_EMU_DATA_DIR` 指定绝对路径；Android 使用应用私有目录。更名前的应用数据库、缓存和产品自有存档不自动导入。此次切换不改动原游戏安装和原商业存档。
 
-存档规则由核心决定。Musica 的自有存档位于 `<game>/.shinki/musica/saves/`；首次使用时，旧 `.shinki-musica/saves/` 中的文件会迁移过去，不覆盖新目录中的文件，此后只读取新路径。ReMinori 使用单独的保存根目录。两个核心属于同一家族，也不能据此交换存档。备份数据或更换核心前，先结束活动会话。
+存档规则由核心决定。[Musica](cores/shinki-emu-musica.md) 在 `<game>/.shinki/musica/minori/<title>/` 下使用原版 eden/Perseus 的 `.sav` 和 `.png`。旧 beta 的 `.asav` 不兼容，不读取、不改动，也不提供转换。ReMinori 使用单独的存档目录。备份数据或交换兼容的原版格式文件前，先结束活动会话。

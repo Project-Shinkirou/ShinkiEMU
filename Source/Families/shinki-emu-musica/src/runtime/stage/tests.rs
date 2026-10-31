@@ -28,11 +28,11 @@ fn native_stage_sequence_and_stand_parameters_survive_save_and_restore() {
     assert_eq!(stage.stands[0].position, 640);
     assert_eq!(stage.stands[0].resource_parameter, 1685);
     assert_eq!(live.state().stage.as_ref(), Some(&stage));
-    let saved = live.encode_native_save().unwrap();
-    let decoded = MusicaVm::decode_native_save(&saved).unwrap();
+    let saved = MusicaVm::checked_test_state(live.state()).unwrap();
+    let decoded = MusicaVm::checked_test_state(&saved).unwrap();
     assert_eq!(decoded.stage.as_ref(), Some(&stage));
     let mut restored = vm(source);
-    restored.restore_native_save(&saved, 1).unwrap();
+    restored.install_test_state(&saved, 1).unwrap();
     assert_eq!(restored.state().stage.as_ref(), Some(&stage));
 }
 
@@ -166,8 +166,8 @@ fn armed_transition_snapshots_previous_stage_with_native_duration() {
         active.previous.background.as_ref().unwrap().resource_uri,
         "musica:/bg/a.png"
     );
-    let saved = machine.encode_native_save().unwrap();
-    let decoded = MusicaVm::decode_native_save(&saved).unwrap();
+    let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
+    let decoded = MusicaVm::checked_test_state(&saved).unwrap();
     assert_eq!(
         decoded
             .transition_active
@@ -176,7 +176,7 @@ fn armed_transition_snapshots_previous_stage_with_native_duration() {
         Some(30)
     );
     let mut restored = vm(source);
-    restored.restore_native_save(&saved, 4).unwrap();
+    restored.install_test_state(&saved, 4).unwrap();
     assert!(
         !restored
             .advance_transition_clock(active.duration_ns)
@@ -208,8 +208,6 @@ fn masked_transition_methods_arm_with_native_phase_durations() {
     let active = machine.state().transition_active.as_ref().unwrap();
     assert_eq!(active.method, 1);
     assert_eq!(active.duration_ns, 512 * 100_000_000 / 300);
-    let saved = machine.encode_native_save().unwrap();
-    assert!(MusicaVm::decode_native_save(&saved).is_ok());
 
     let mut machine = vm(
         b".transition 18 fadeSide2.png 50\r\n.stage * a.png 0 0\r\n.stage * b.png 0 0\r\n.end\r\n",
@@ -287,11 +285,9 @@ fn restore_rejects_invalid_stage_before_changing_live_state() {
                     y: 0,
                 });
             }
-            _ => invalid.schema = "shinki.emu.musica.runtime_state.v26".into(),
+            _ => invalid.script_hash = Hash256::from_sha256(b"different script"),
         }
-        let bytes = postcard::to_allocvec(&invalid).unwrap();
-        assert!(MusicaVm::decode_native_save(&bytes).is_err());
-        assert!(live.restore_native_save(&bytes, 2).is_err());
+        assert!(live.install_test_state(&invalid, 2).is_err());
         assert_eq!(live.state(), &previous);
     }
 }
@@ -371,9 +367,6 @@ fn ani_patch_clock_walks_eye_sequence_and_flaps_mouth_on_level() {
         .get("musica:/bg/back.png")
         .unwrap();
     assert_eq!(patch.characters[0].mouth_state, 2);
-
-    let saved = machine.encode_native_save().unwrap();
-    assert!(MusicaVm::decode_native_save(&saved).is_ok());
 }
 
 #[test]
@@ -402,13 +395,13 @@ fn animation_save_restores_fractional_clocks_and_rng_continuation() {
     machine
         .advance_ani_patch_clock(5_000_000, None, None)
         .unwrap();
-    let saved = machine.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
     assert_eq!(
-        MusicaVm::decode_native_save(&saved).unwrap(),
+        MusicaVm::checked_test_state(&saved).unwrap(),
         *machine.state()
     );
     let mut restored = vm(source);
-    restored.restore_native_save(&saved, 2).unwrap();
+    restored.install_test_state(&saved, 2).unwrap();
     assert_eq!(restored.state(), machine.state());
     for vm in [&mut machine, &mut restored] {
         vm.advance_image_animation_clock(45_000_000).unwrap();
@@ -466,14 +459,14 @@ fn active_mask_transition_keeps_submitted_rule_when_pending_settings_change() {
             .as_deref(),
         Some("rule.png")
     );
-    let saved = machine.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
     let mut restored = vm(source);
-    restored.restore_native_save(&saved, 4).unwrap();
+    restored.install_test_state(&saved, 4).unwrap();
     assert_eq!(restored.state(), machine.state());
 }
 
 #[test]
-fn malformed_animation_saves_do_not_replace_live_state() {
+fn malformed_animation_state_does_not_replace_live_state() {
     let source =
         b".transition 1 rule.png 300\r\n.stage * a.png 0 0\r\n.stage * b.png 0 0\r\n.end\r\n";
     let mut live = vm(source);
@@ -609,13 +602,12 @@ fn malformed_animation_saves_do_not_replace_live_state() {
                 patch.characters.resize(11, patch.characters[0].clone());
             }
         }
-        let bytes = postcard::to_allocvec(&invalid).unwrap();
         assert!(
-            MusicaVm::decode_native_save(&bytes).is_err(),
+            MusicaVm::checked_test_state(&invalid).is_err(),
             "accepted variant {variant}"
         );
         assert!(
-            live.restore_native_save(&bytes, 3).is_err(),
+            live.install_test_state(&invalid, 3).is_err(),
             "restored variant {variant}"
         );
         assert_eq!(live.state(), &previous);

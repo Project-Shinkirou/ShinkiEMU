@@ -39,6 +39,10 @@ fn native_gpu_backlog_navigation_voice_save_restore_and_return() {
         .unwrap();
     assert_ne!(capture.0, first_history);
     opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
+    opened
+        .session
+        .advance(0, &[key(KeyCode::PageUp), key(KeyCode::ArrowUp)])
+        .unwrap();
     capture
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
@@ -90,16 +94,12 @@ fn backlog_replay_does_not_replace_pending_message_voice_duration() {
         &[("short.ogg", &short), ("long.ogg", &long)],
     );
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
-    opened.session.advance(16_666_667, &[]).unwrap();
-    opened
-        .session
-        .advance(16_666_667, &[key(KeyCode::Enter)])
-        .unwrap();
-    opened
-        .session
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    session
         .advance(
             0,
             &[
@@ -110,11 +110,17 @@ fn backlog_replay_does_not_replace_pending_message_voice_duration() {
             ],
         )
         .unwrap();
-    let saved = crate::storage::Storage::new(root.path())
-        .unwrap()
-        .read(10)
-        .unwrap();
-    let state = MusicaVm::decode_native_save(&saved.vm).unwrap();
+    let saved =
+        crate::native_directory::NativeFiles::open(root.path(), crate::ScriptEncoding::ShiftJis)
+            .unwrap()
+            .slot(0)
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        saved.checkpoint().unwrap().history.last().unwrap().voice,
+        "long.ogg"
+    );
+    let state = session.vm.state();
     assert!(matches!(
         state.wait,
         Some(crate::MusicaWaitState::Voice {
@@ -122,9 +128,8 @@ fn backlog_replay_does_not_replace_pending_message_voice_duration() {
             ..
         })
     ));
-    opened
-        .session
+    session
         .advance(0, &[key(KeyCode::F9), key(KeyCode::Escape)])
         .unwrap();
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }

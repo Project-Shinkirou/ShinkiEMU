@@ -58,11 +58,14 @@ fn native_gpu_gbk_script_guards_chain_choices_and_restore() {
 fn native_gpu_mixed_encoding_chain_keeps_primary_and_restores_another_encoding() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
+    // An odd half-width byte in the inactive branch disambiguates CP932 from
+    // GBK. The displayed Japanese text is representable in the native GBK slot.
     let (first, _, _) = encoding_rs::SHIFT_JIS
-        .encode("[e].message 1   Wrong\r\n[j].message 2   ｱ\r\n.chain next.sc\r\n");
+        .encode("[e].message 1   Wrongｱ\r\n[j].message 2   あ\r\n.chain next.sc\r\n");
     let (next, _, _) = encoding_rs::GBK
         .encode("[j].message 1   Wrong\r\n[e].message 2  姓名 中文剧情\r\n.chain tail.sc\r\n");
-    let (tail, _, _) = encoding_rs::SHIFT_JIS.encode("[j].message 3   ｲ\r\n.chain ascii.sc\r\n");
+    let (tail, _, _) = encoding_rs::SHIFT_JIS
+        .encode("[e].message 1   Wrongｲ\r\n[j].message 3   い\r\n.chain ascii.sc\r\n");
     let ascii = b"[j].message 1   Wrong\r\n[e].message 2   Primary\r\n.end\r\n";
     fixture::game(root.path(), &first);
     fixture::assets(
@@ -85,7 +88,7 @@ fn native_gpu_mixed_encoding_chain_keeps_primary_and_restores_another_encoding()
     };
     let mut session = open();
     session.advance(16_666_667, &[]).unwrap();
-    assert_eq!(session.message.as_ref().unwrap().0, "ｱ");
+    assert_eq!(session.message.as_ref().unwrap().0, "あ");
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     session.advance(16_666_667, &[]).unwrap();
     assert_eq!(session.message.as_ref().unwrap().0, "中文剧情");
@@ -95,7 +98,7 @@ fn native_gpu_mixed_encoding_chain_keeps_primary_and_restores_another_encoding()
     let chinese = capture.0.clone();
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     session.advance(16_666_667, &[]).unwrap();
-    assert_eq!(session.message.as_ref().unwrap().0, "ｲ");
+    assert_eq!(session.message.as_ref().unwrap().0, "い");
     assert_eq!(
         session.vm.state().script_encoding,
         crate::ScriptEncoding::ShiftJis

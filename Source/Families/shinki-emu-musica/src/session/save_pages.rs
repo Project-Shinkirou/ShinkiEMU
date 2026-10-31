@@ -12,7 +12,7 @@ impl MusicaSession {
         let base = self.vm.state().system_ui.focus_index / SAVE_PAGE_WIDTH * SAVE_PAGE_WIDTH;
         let mut cards = Vec::new();
         for slot in base..base + SAVE_PAGE_WIDTH {
-            if let Some(card) = self.storage.card(slot, self.game)? {
+            if let Some(card) = self.native.card(slot)? {
                 cards.push((slot, card));
             }
         }
@@ -53,6 +53,7 @@ impl MusicaSession {
             if self.vm.state().system_ui.page == MusicaSystemPage::None
                 && self.vm.state().wait.is_some()
                 && !self.finished
+                && !self.vm.save_load_prohibited()
                 && let RuntimeEvent::Key {
                     code: KeyCode::F6 | KeyCode::F8,
                     state: KeyState::Pressed,

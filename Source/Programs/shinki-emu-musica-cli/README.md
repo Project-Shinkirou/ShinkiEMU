@@ -1,6 +1,6 @@
 # Musica 本地工具
 
-`shinki-emu-musica-cli` 在独立 Emulator workspace 中运行，提供 PAZ 目录盘点、SC/媒体 census、eden 存档工具和开发者密钥转换。生产运行时与 Manager 只读取 `shinki.emu.musica.keys.v2` 的 `key.toml`；GARbro、旧 keys.v1 TOML 和 profile.v1 JSON reader 全部留在 CLI，不再由 Family 或 Manager 提供。转换不创建游戏会话、不初始化 GPU，也不运行 patch。
+`shinki-emu-musica-cli` 在独立 Emulator workspace 中运行，提供 PAZ 目录盘点、SC/媒体 census 和开发者密钥转换。生产运行时与 Manager 只读取 `shinki.emu.musica.keys.v2` 的 `key.toml`；GARbro、旧 keys.v1 TOML 和 profile.v1 JSON reader 全部留在 CLI，不再由 Family 或 Manager 提供。转换不创建游戏会话、不初始化 GPU，也不运行 patch。
 
 从仓库根目录运行：
 
@@ -12,8 +12,6 @@ cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- import
 cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- import-json-profile --file .tmp/legacy/musica.profile.json --output .tmp/private/converted/key.toml
 cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- census-scripts --game-dir .tmp/musica-game --profile /absolute/private/key.toml
 cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- census-media --game-dir .tmp/musica-game --profile key.toml
-cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- check-eden-restore --file .tmp/native/eden0000.sav --game-dir .tmp/musica-game --profile key.toml --edition japanese --encoding shift-jis
-cargo run --manifest-path Emulator/Cargo.toml -p shinki-emu-musica-cli -- export-eden-save --game-dir .tmp/musica-game --profile key.toml --slot 0 --output .tmp/native/eden0020.sav
 ```
 
 示例中的算法数值只展示语法，必须换成来源明确的实际值。GARbro 的 `Version` 是 PAZ 版本的权威来源；已支持的 `PazScheme` 字段没有索引 XOR 和 RC4 CRC 跳过选项，转换时必须显式传入 `--index-size-xor` 与 `--rc4-skip-crc true|false`。keys.v1 缺少三个算法选项，因此 `import-key-profile` 还必须传入 `--paz-version`。不能按标题猜测、尝试其他 key，或补上未确认的选项。

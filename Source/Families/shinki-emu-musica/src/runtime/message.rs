@@ -115,7 +115,7 @@ pub(super) fn execute_message(
     super::backlog::append_backlog_entry(
         state,
         MusicaBacklogEntry {
-            source: command.span,
+            source: Some(command.span),
             message_id,
             text: text.clone(),
             speaker: speaker.clone(),
@@ -162,7 +162,17 @@ pub(super) fn execute_message(
         MusicaWaitState::Input { token_id }
     };
     state.wait = Some(wait.clone());
-    super::eden::record_message(state, command);
+    super::native_save::record_message(
+        message_id,
+        voice.unwrap_or_default(),
+        if tokens.len() >= 4 {
+            tokens[2].clone()
+        } else {
+            String::new()
+        },
+        authored_text,
+        state,
+    )?;
     Ok(Some(MusicaVmEvent::Message {
         presentation_sequence,
         capture_sequence,
@@ -265,6 +275,7 @@ pub(super) fn finish_message_loads(
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn validate_state(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     if state.message_loads.len() > 128
         || (!state.message_loads.is_empty() && state.message.is_none())
