@@ -206,7 +206,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki-linux61"
-rev = "889d87bf2e4e08bbc868600d620d1ef215db668d"
+rev = "c9ad29faec5917dc1404b7b79534ec01d7321221"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
