@@ -110,6 +110,11 @@ pub struct Target {
     pub tools: Vec<String>,
     pub manager_supported: bool,
     pub manager_blocked: String,
+    /// The Manager builds and packages locally while `manager_supported` is
+    /// false (e.g. signed but never launched on a device). It stays blocked in
+    /// the CI matrix and for releases.
+    #[serde(default)]
+    pub manager_local_build: bool,
     /// Non-empty: every component on this target is blocked with this reason,
     /// overriding core `supported_targets` and `manager_supported`.
     #[serde(default)]
@@ -184,6 +189,12 @@ impl Inventory {
             if !t.manager_supported && t.manager_blocked.is_empty() {
                 bail!("target needs a Manager blocked reason");
             }
+            if t.manager_supported && t.manager_local_build {
+                bail!(
+                    "{}: manager_local_build applies only to unsupported Managers",
+                    t.triple
+                );
+            }
         }
         for c in &self.cores {
             if c.id == "manager" || !ids.insert(&c.id) || !slugs.insert(slug(&c.id)) {
@@ -219,8 +230,8 @@ impl Inventory {
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
-                if !target.manager_supported
-                    || !matches!(target.platform.as_str(), "android" | "ios")
+                if !(target.manager_supported || target.manager_local_build)
+                    || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
                 {
                     bail!("invalid static Manager integration");
                 }
@@ -234,9 +245,12 @@ impl Inventory {
             self.root
                 .join("Source/Manager/shinki-emu-manager/Cargo.toml"),
         )?)?;
-        for platform in ["android", "ios"] {
-            let key = format!("cfg(target_os = \"{platform}\")");
-            let dependencies = manifest["target"][&key]["dependencies"]
+        for (platform, key) in [
+            ("android", "cfg(target_os = \"android\")"),
+            ("ios", "cfg(target_os = \"ios\")"),
+            ("ohos", "cfg(target_env = \"ohos\")"),
+        ] {
+            let dependencies = manifest["target"][key]["dependencies"]
                 .as_table()
                 .context("Manager target dependencies")?;
             for core in &self.cores {
@@ -331,6 +345,15 @@ impl Inventory {
             bail!("{component}/{triple} blocked: {reason}");
         }
         Ok(())
+    }
+    /// Like [`Self::require_supported`], but admits a Manager whose target
+    /// allows local builds of an unsupported Manager.
+    pub fn require_buildable(&self, component: &str, triple: &str) -> Result<()> {
+        let t = self.target(triple)?;
+        if component == "manager" && t.blocked.is_empty() && t.manager_local_build {
+            return Ok(());
+        }
+        self.require_supported(component, triple)
     }
     /// Every Manager/core combination on every declared target, with its blocked reason.
     pub fn rows(&self) -> Result<Vec<MatrixRow>> {
@@ -453,6 +476,39 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn locally_buildable_manager_stays_blocked_for_ci_and_cores() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inventory = Inventory::load(root).unwrap();
+        let triple = "aarch64-unknown-linux-ohos";
+        assert!(inventory.require_buildable("manager", triple).is_ok());
+        assert!(inventory.require_supported("manager", triple).is_err());
+        assert!(inventory.require_buildable("rfvp", triple).is_err());
+        assert!(
+            !inventory
+                .job_matrix(false, None)
+                .unwrap()
+                .include
+                .iter()
+                .any(|row| row.target == triple)
+        );
+        let target = inventory
+            .targets
+            .iter_mut()
+            .find(|target| target.triple == triple)
+            .unwrap();
+        target.blocked = "deferred".into();
+        assert!(inventory.require_buildable("manager", triple).is_err());
+        let mut supported = Inventory::load(root).unwrap();
+        let target = supported
+            .targets
+            .iter_mut()
+            .find(|target| target.triple == triple)
+            .unwrap();
+        target.manager_supported = true;
+        assert!(supported.validate().is_err());
     }
 
     #[test]

@@ -152,6 +152,20 @@ Simulator packages contain a `simulator-test.app`; device packaging creates a `d
 
 For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `llvm-objdump --macho --dylibs-used --private-headers <executable>` and `rcodesign verify <executable>` output. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
 
+## OpenHarmony Manager
+
+Use DevEco Studio with its OpenHarmony native SDK 5.0.5 (API 17; the HAP targets API 12 and newer) and Rust 1.99.1. Set `OHOS_SDK_NATIVE` to `sdk/default/openharmony/native`; xtask finds Node, hvigor, ohpm, CMake/Ninja, `hap-sign-tool.jar` and `llvm-readelf` in that DevEco installation. Set `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside the checkout (for example `.shinki-secrets/ohos-debug`):
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` builds libass and FFmpeg with the `arm64-ohos` triplet (Meson 1.12 gets a Windows extended-path prefix, as the Android triplets do). The build links with the SDK clang and bundles `libc++_shared.so`. `package` stages the Manager libraries into `Platforms/OHOS/entry/libs/arm64-v8a` and the metadata snapshot, notices and licenses into `rawfile/bundled`, then runs `ohpm install` and `hvigorw assembleHap`. On first use it creates debug signing material from the SDK's OpenHarmony test PKI: a new key in a copy of `OpenHarmony.p12`, an app certificate issued by the test application CA, and a debug profile for `org.shinkirou.shinkiemu` signed with the profile-debug key. It signs with `sign-app`, then runs `verify-app`, lists the archive, and prints `llvm-readelf -d` for every bundled library. Every remaining `NEEDED` entry must be an OHOS system library. The output holds `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`, `ohos.json` and `build.json`. Never commit keystores, certificates or profiles.
+
+Test-PKI signing proves the package is well formed; it is not a device install profile. HarmonyOS devices and DevEco emulators expect a debug profile issued through DevEco/AppGallery Connect. For launch acceptance, sign with such a profile, start a DevEco Device Manager phone emulator (API 12 or newer), confirm it appears in `hdc list targets`, then install and launch the HAP. The target stays blocked until a launch succeeds.
+
 ## Matrix and CI
 
 `matrix` reads the authoritative manifests and lists each core and Manager across all declared target triples, including both iOS simulator architectures, with its status and blocked reason. `matrix --json` emits the GitHub job matrix with only the supported rows; blocked combinations need no runner. `--ci` also drops the `x86_64-linux-android` Manager row, because `ci` builds the same universal APK from either Android triple; the release workflow keeps both rows for its per-target records. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Static-in-Manager integration on Android is distinct from standalone dynamic-core packaging.
@@ -160,7 +174,7 @@ For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-Declared unsupported combinations produce `blocked`, a concrete reason and `artifact: null`. Apple core rows retain their source-level embedding/native-dependency restrictions; OpenHarmony requires both its native host adaptation and `OHOS_SDK_NATIVE`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations but does not hide supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
+Declared unsupported combinations produce `blocked`, a concrete reason and `artifact: null`. Apple core rows retain their source-level embedding/native-dependency restrictions. The OHOS Manager is built and signed locally (`manager_local_build`) but stays out of the CI matrix and releases, with `manager_supported = false`, until a signed HAP launches on a device or emulator listed by `hdc list targets`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations without hiding supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
 
 Remote GitHub Actions is the CI of record and the only place releases are published. `ci.yml` runs on pull requests, pushes to `main` and `release/**`, and manual dispatch. Changes that touch only `Metadata/**`, `docs/**` or Markdown files skip it; `metadata-intake.yml` validates catalog PRs.
 

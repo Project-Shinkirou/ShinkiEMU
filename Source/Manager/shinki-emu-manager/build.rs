@@ -76,6 +76,9 @@ fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         embed_windows_icon();
     }
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
+        build_ohos_glue();
+    }
     for asset in [
         "../../../Assets/Effects/dxc.lock.json",
         "../../../Assets/Effects/Builtin/scale.hlsl",
@@ -135,4 +138,32 @@ fn hex_sha256(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+/// NAPI/XComponent and OHAudio glue from `Platforms/OHOS/native` and the
+/// system libraries it uses. xtask supplies the clang target/sysroot.
+fn build_ohos_glue() {
+    let sources = [
+        "../../../Platforms/OHOS/native/bridge.c",
+        "../../../Platforms/OHOS/native/audio.c",
+    ];
+    for source in sources {
+        println!("cargo:rerun-if-changed={source}");
+    }
+    cc::Build::new()
+        .files(sources)
+        .flag("-Wall")
+        .flag("-Werror")
+        .compile("shinki_ohos_glue");
+    for library in [
+        "ace_napi.z",
+        "ace_ndk.z",
+        "native_window",
+        "native_buffer",
+        "native_vsync",
+        "ohaudio",
+        "hilog_ndk.z",
+    ] {
+        println!("cargo:rustc-link-lib=dylib={library}");
+    }
 }

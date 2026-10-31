@@ -17,8 +17,7 @@ dynamic-plugin-export = []
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
-cpal.workspace = true
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "device-audio", "runtime"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "runtime"] }
 roukaku-platform = { workspace = true }
 roukaku-platform-common = { workspace = true }
 pollster.workspace = true
@@ -53,6 +52,9 @@ tempfile.workspace = true
 [dev-dependencies]
 parking_lot = "0.13.0"
 
+# OHOS has no SDK device-audio backend: the host installs an SDK audio output.
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "device-audio", "runtime"] }
 
 [build-dependencies]
 shinki-emu-build = { path = "../../Tools/shinki-emu-build" }

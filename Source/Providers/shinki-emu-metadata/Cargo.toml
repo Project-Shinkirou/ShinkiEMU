@@ -27,10 +27,10 @@ unicode-normalization.workspace = true
 url.workspace = true
 vn.workspace = true
 
-# bangumi-api still uses reqwest's default native-tls; Android has no system
-# OpenSSL and a vendored build is not acceptable, so the Bangumi provider is
-# compiled out there and the manager reports a typed diagnostic instead.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# bangumi-api 0.1.2 still enables reqwest's default native-tls backend. Android
+# and OHOS have no system OpenSSL provider; keep this optional provider out of
+# those targets rather than cross-building OpenSSL.
+[target.'cfg(not(any(target_os = "android", target_env = "ohos")))'.dependencies]
 bangumi-api.workspace = true
 
 [dev-dependencies]

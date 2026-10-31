@@ -142,6 +142,20 @@ macOS のパッケージには `ShinkiEMU.app` が含まれ、実行ファイル
 
 SDK を使った受け入れ確認では、実際の成果物のパスとサイズに加え、`file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` の出力を残してください。正規の SDK がない場合、この受け入れ確認は行えません。コンパイルの成功だけでは、ゲームの実行互換性は示されません。
 
+## OpenHarmony Manager
+
+ローカルビルドには DevEco Studio 付属の OpenHarmony Native SDK 5.0.5（API 17。HAP は API 12 以降が対象）と Rust 1.99.1 が必要です。`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定すると、xtask は同じ DevEco インストールから Node、hvigor、ohpm、CMake/Ninja、`hap-sign-tool.jar`、`llvm-readelf` を見つけます。`SHINKI_EMU_OHOS_SIGNING_DIR` は checkout 外のディレクトリ（例：`.shinki-secrets/ohos-debug`）に設定します。
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` は `arm64-ohos` triplet で libass と FFmpeg をビルドします。Meson 1.12 の prefix には、Android の triplet と同じく Windows の拡張パスを使います。ビルドは SDK の clang でリンクし、`libc++_shared.so` を同梱します。`package` は Manager のライブラリを `Platforms/OHOS/entry/libs/arm64-v8a` に、メタデータのスナップショット、通知、ライセンスを `rawfile/bundled` に配置し、`ohpm install` と `hvigorw assembleHap` を実行します。初回は SDK の OpenHarmony テスト PKI から debug 署名データを作ります。`OpenHarmony.p12` のコピーに新しい鍵を作り、テスト用アプリ CA でアプリ証明書を発行し、profile-debug 鍵で `org.shinkirou.shinkiemu` の debug profile に署名します。`sign-app` で署名した後、`verify-app` で検証し、アーカイブの内容と、同梱した各ライブラリの `llvm-readelf -d` を出力します。残る `NEEDED` はすべて OHOS のシステムライブラリでなければなりません。出力先には `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json`、`build.json` が入ります。keystore、証明書、profile は Git にコミットしません。
+
+テスト PKI の署名で確認できるのはパッケージ構造の正しさだけで、デバイスへのインストール用 profile にはなりません。HarmonyOS の実機と DevEco エミュレーターには、DevEco/AppGallery Connect で発行した debug profile が必要です。デバイス受け入れ確認では、その profile で署名し直し、DevEco Device Manager のスマートフォンエミュレーター（API 12 以降）を起動して `hdc list targets` に表示されることを確認してから、HAP をインストールして起動します。起動に成功するまで target は blocked のままです。
+
 ## マトリクスと CI
 
 `matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
@@ -150,7 +164,7 @@ SDK を使った受け入れ確認では、実際の成果物のパスとサイ�
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-マニフェストで未対応とされた組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の実際の組み込みとネイティブ依存関係の制約が残ります。OpenHarmony には、ネイティブホストの対応と `OHOS_SDK_NATIVE` の両方が必要です。マニフェストで対応とされた組み合わせのコンパイルに失敗した場合は `failed` を報告し、0 以外で終了します。`--all-cores` は宣言済みの blocked の組み合わせをスキップしますが、対応している組み合わせの失敗を隠すことはありません。`publish_blocked` は配布上の制約を別に記録するもので、ビルドできないことを意味するわけではありません。
+マニフェストで未対応の組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の組み込みとネイティブ依存関係の制約が残ります。OHOS Manager はローカルでビルドと署名ができます（`manager_local_build`）。ただし `hdc list targets` に表示された実機またはエミュレーターで署名済み HAP の起動に成功するまでは、CI マトリクスにもリリースにも含めず、`manager_supported` は `false` のままです。対応対象のコンパイルに失敗した場合は `failed` を報告して 0 以外で終了します。`--all-cores` は明示的に blocked とした組み合わせをスキップしますが、対応対象の失敗は隠しません。`publish_blocked` は配布上の制限を別に記録します。
 
 正式な CI はリモートの GitHub Actions で、リリースを公開するのもここだけです。`ci.yml` は pull request、`main` と `release/**` への push、手動実行で動きます。`Metadata/**`、`docs/**`、Markdown ファイルだけを変更した場合は実行されず、カタログの PR は `metadata-intake.yml` が検証します。
 

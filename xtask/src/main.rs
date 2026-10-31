@@ -8,6 +8,7 @@ mod cores;
 mod dependencies;
 mod icon;
 mod metadata;
+mod ohos;
 mod package;
 mod release;
 mod rust_licenses;

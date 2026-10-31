@@ -4,6 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+#[cfg(target_env = "ohos")]
+use shinki_emu_manager::StageImageUpdate;
 use shinki_emu_manager::{
     ShinkiUnderlayRenderer, StageTextureUpdate, WgpuFrameContext,
     effects::{FilterConfiguration, FilterEngine, FilterPreset, PreparedFilter},
@@ -21,6 +23,9 @@ mod filter;
 mod frame;
 #[path = "stage_pixels.rs"]
 mod pixels;
+#[cfg(target_env = "ohos")]
+#[path = "stage_software.rs"]
+mod software;
 pub(crate) use frame::FrameMailbox;
 
 pub(crate) struct ManagerStageRenderer {
@@ -44,6 +49,8 @@ pub(crate) struct ManagerStageRenderer {
     filter_configuration: FilterConfiguration,
     filter_dirty: bool,
     filter_activation: filter::FilterActivation,
+    #[cfg(target_env = "ohos")]
+    software: software::SoftwarePresentation,
 }
 
 impl ManagerStageRenderer {
@@ -76,6 +83,8 @@ impl ManagerStageRenderer {
             filter_configuration: FilterConfiguration::default(),
             filter_dirty: false,
             filter_activation: filter::FilterActivation::default(),
+            #[cfg(target_env = "ohos")]
+            software: software::SoftwarePresentation::default(),
         }
     }
 
@@ -320,6 +329,14 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         config: &FilterConfiguration,
         source: Option<&str>,
     ) -> Result<(), String> {
+        // The software-presented OHOS stage has no WGPU device for filters.
+        #[cfg(target_env = "ohos")]
+        if config.preset != FilterPreset::None {
+            return Err(
+                "SHINKI_EMU_OHOS_FILTERS_UNAVAILABLE: final-frame filters need WGPU compute, which the OHOS software presenter lacks"
+                    .into(),
+            );
+        }
         self.configure_filter_inner(config, source)
     }
 
@@ -408,6 +425,11 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         result
     }
 
+    #[cfg(target_env = "ohos")]
+    fn take_stage_image_update(&mut self) -> Result<Option<StageImageUpdate>, String> {
+        self.software.update(&self.mailbox)
+    }
+
     fn teardown(&mut self) -> Result<(), String> {
         self.input_texture = None;
         self.output_texture = None;
@@ -427,6 +449,10 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         self.filter_configuration = FilterConfiguration::default();
         self.filter_dirty = false;
         self.filter_activation = filter::FilterActivation::default();
+        #[cfg(target_env = "ohos")]
+        {
+            self.software = software::SoftwarePresentation::default();
+        }
         Ok(())
     }
 }

@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "ShinkiEMU Manager entry",
+  "main": "",
+  "author": "Project-Shinkirou",
+  "license": "MIT OR Apache-2.0",
+  "dependencies": {
+    "libshinki_emu_manager.so": "file:./src/main/cpp/types/libshinki_emu_manager"
+  }
+}

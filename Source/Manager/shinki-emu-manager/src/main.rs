@@ -2,7 +2,7 @@ mod core_package;
 mod manager_app;
 mod metadata_cache;
 mod metadata_runtime;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod patch_cli;
 mod platform_secret;
 mod stage_renderer;
@@ -11,16 +11,16 @@ mod stage_renderer;
 mod test_native;
 mod text_service;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use clap::Parser;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use std::process::ExitCode;
 
 // Native VM boot may hold large temporaries. Reserve once per session owner.
 const FAMILY_OWNER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 // The command line is desktop-only: the Android activity has no arguments.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(Parser)]
 #[command(version)]
 struct Arguments {
@@ -28,7 +28,7 @@ struct Arguments {
     command: Option<Command>,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(clap::Subcommand)]
 enum Command {
     /// Apply trusted offline file patches without starting the GUI or a core.
@@ -40,7 +40,7 @@ enum Command {
     Extension(ExtensionCommand),
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(clap::Subcommand)]
 pub(crate) enum ExtensionCommand {
     /// Install a trusted local Luau text extension, initially disabled.
@@ -64,7 +64,7 @@ pub(crate) enum ExtensionCommand {
     List,
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn main() -> ExitCode {
     let arguments = match Arguments::try_parse() {
         Ok(arguments) => arguments,
@@ -121,6 +121,23 @@ fn android_main(app: slint::android::AndroidApp) {
             error = %error
         );
         platform::report_startup_error(&error.to_string());
+    }
+}
+
+/// Target of the ArkTS shell's NAPI `start(filesDir)`, called once per
+/// process. The Manager runs on its own thread; the ArkTS UI thread only
+/// forwards XComponent and lifecycle events.
+#[cfg(target_env = "ohos")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn shinki_ohos_start(files: *const std::ffi::c_char) {
+    // Slint layouts and Luau extensions recurse deeply; match desktop main threads.
+    const UI_THREAD_STACK_BYTES: usize = 8 * 1024 * 1024;
+    unsafe {
+        shinki_emu_manager::platform::ohos::start(
+            files,
+            UI_THREAD_STACK_BYTES,
+            manager_app::run_application,
+        )
     }
 }
 

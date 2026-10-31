@@ -507,7 +507,7 @@ fn map_status(status: reqwest::StatusCode) -> StoreError {
 fn import_local() -> Result<AuthState, StoreError> {
     #[cfg(not(windows))]
     {
-        return Err(StoreError::ImportUnsupported);
+        Err(StoreError::ImportUnsupported)
     }
     #[cfg(windows)]
     {

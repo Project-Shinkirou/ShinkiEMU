@@ -152,6 +152,20 @@ RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建
 
 SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` 的输出。缺少合法 SDK 时，这项验收仍受阻；编译成功本身不代表游戏运行兼容。
 
+## OpenHarmony Manager
+
+本地构建需要 DevEco Studio 自带的 OpenHarmony Native SDK 5.0.5（API 17，HAP 面向 API 12 及以上）和 Rust 1.99.1。将 `OHOS_SDK_NATIVE` 指向 `sdk/default/openharmony/native`，xtask 会在同一 DevEco 安装中找到 Node、hvigor、ohpm、CMake/Ninja、`hap-sign-tool.jar` 和 `llvm-readelf`。把 `SHINKI_EMU_OHOS_SIGNING_DIR` 设为仓库外的目录（例如 `.shinki-secrets/ohos-debug`）：
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` 用 `arm64-ohos` triplet 构建 libass 和 FFmpeg，Meson 1.12 的前缀与 Android triplet 一样改用 Windows 扩展路径。构建使用 SDK clang 链接，并打包 `libc++_shared.so`。`package` 把 Manager 库放入 `Platforms/OHOS/entry/libs/arm64-v8a`，把元数据快照、声明和许可证放入 `rawfile/bundled`，然后运行 `ohpm install` 和 `hvigorw assembleHap`。首次运行时，它用 SDK 自带的 OpenHarmony 测试 PKI 生成 debug 签名材料：在 `OpenHarmony.p12` 的副本中新建密钥，由测试应用 CA 签发应用证书，再用 profile-debug 密钥签出 `org.shinkirou.shinkiemu` 的 debug profile。签名用 `sign-app`，之后运行 `verify-app`、列出包内文件，并对每个打包的库输出 `llvm-readelf -d`。剩下的 `NEEDED` 项必须都是 OHOS 系统库。输出目录包含 `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json` 和 `build.json`。不要把 keystore、证书或 profile 提交到 Git。
+
+测试 PKI 签名只证明包结构正确，不能当作设备安装用的 profile。HarmonyOS 真机和 DevEco 模拟器要求通过 DevEco/AppGallery Connect 签发的 debug profile。设备验收时换用这种 profile 签名，启动 DevEco Device Manager 的手机模拟器（API 12 及以上），确认 `hdc list targets` 能看到它，再安装并启动 HAP。成功启动前，目标保持 blocked。
+
 ## 矩阵与 CI
 
 `matrix` 从权威清单列出全部核心与 Manager 在已声明目标上的组合（包括两种 iOS 模拟器架构），并给出状态和 blocked 原因。`matrix --json` 生成 GitHub 任务矩阵，只含支持的行；blocked 组合不需要 runner。`--ci` 还会去掉 `x86_64-linux-android` 的 Manager 行，因为 `ci` 从任一 Android 三元组都会构建同一个通用 APK；发布工作流保留两行，用于逐目标的发布记录。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成核心的 Manager 与独立动态核心包是两条不同交付路径。
@@ -160,7 +174,7 @@ SDK 验收需保留真实产物路径、大小，以及 `file`、`llvm-objdump -
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中真实的嵌入及原生依赖限制；OpenHarmony 需要原生宿主适配和 `OHOS_SDK_NATIVE`。清单声称支持的组合编译失败，报告 `failed` 并返回非零。`--all-cores` 跳过已声明的 blocked 组合，但不掩盖支持组合的失败。`publish_blocked` 单独记录分发限制，不等同于无法编译。
+清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中的嵌入及原生依赖限制。OHOS Manager 可在本地构建并签名（`manager_local_build`），但在签名 HAP 于 `hdc list targets` 列出的真机或模拟器上成功启动前，它不进入 CI 矩阵和发布，`manager_supported` 仍为 `false`。支持组合编译失败时报告 `failed` 并返回非零；`--all-cores` 会跳过明确标记为 blocked 的组合，但不会隐藏支持组合的失败。`publish_blocked` 单独记录分发限制。
 
 远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
 

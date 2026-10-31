@@ -27,9 +27,9 @@ pub(super) fn run(
         let cores = data_dir.join("cores");
         fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
         let pending_failures = core_package::apply_pending(&cores);
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
         let directories = core_directories(&cores)?;
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", target_env = "ohos"))]
         let directories = Vec::new();
         let mut errors = initialize(&mut registry, &directories, &mut |loaded, total| {
             let _ = results.send(BackgroundEvent::Progress(PrepareProgress::Cores {
@@ -265,11 +265,13 @@ pub(super) fn service_due(
     }
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
 const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     ("siglus_rs", shinki_emu_siglus_rs::query),
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     #[cfg(target_os = "android")]
     ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),
@@ -280,14 +282,14 @@ fn initialize(
     directories: &[PathBuf],
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<BTreeMap<String, String>, String> {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
     for (id, query) in STATIC_CORES {
         unsafe { registry.register_static(*query) }.map_err(|error| error.to_string())?;
         tracing::info!(event = "shinki.emu.core.static_registered", core = id);
     }
-    #[cfg_attr(any(target_os = "android", target_os = "ios"), allow(unused_mut))]
+    #[cfg_attr(any(target_os = "android", target_os = "ios", target_env = "ohos"), allow(unused_mut))]
     let mut errors = BTreeMap::new();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
     {
         let discovery = shinki_emu_manager_core::discover_core_directories(directories)
             .map_err(|error| error.to_string())?;
@@ -305,7 +307,7 @@ fn initialize(
             errors.insert(stem, diagnostic);
         }
     }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
     let _ = (directories, progress);
     Ok(errors)
 }

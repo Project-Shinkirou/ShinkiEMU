@@ -22,6 +22,9 @@ branch = "shinki-android-isolation"
 rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 upstream = "https://github.com/xmoezzz/rfvp"
 [[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "GStreamer is not the only OHOS blocker: RFVP's kira audio runs on cpal, which selects ALSA (alsa-sys) on aarch64-unknown-linux-ohos and has no OHAudio backend, and its mp4 movie path uses video-sys, which selects GStreamer on target_os = \"linux\"."
+[[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
@@ -36,9 +39,6 @@ reason = "Statically embedded in the iOS Manager; standalone dynamic-core instal
 [[cores.blocked]]
 target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 
 [[cores]]
 id = "siglus_rs"
@@ -127,7 +127,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-unknown-linux-ohos"]
 static_features = ["ffmpeg-vcpkg"]
 publish_blocked = ""
 [[cores.blocked]]
@@ -147,7 +147,7 @@ target = "x86_64-apple-ios"
 reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
 
 [[cores]]
 id = "sena-rs"

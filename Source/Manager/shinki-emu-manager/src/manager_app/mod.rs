@@ -39,7 +39,7 @@ mod background;
 mod connection_test;
 mod controller;
 mod cores;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod extensions;
 mod family_config;
 mod file_patch;
@@ -74,7 +74,7 @@ mod store;
 mod support;
 mod translation;
 mod view_fields;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn run_extension_command(command: crate::ExtensionCommand) -> Result<(), String> {
     extensions::run(command)
 }
