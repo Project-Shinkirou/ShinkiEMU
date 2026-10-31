@@ -690,12 +690,7 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             paths.push(inv.root.join(".work/dxc/dxcompiler.dll"));
         }
         if selected.native_vcpkg {
-            paths.push(
-                inv.root
-                    .join(".work/native-vcpkg")
-                    .join(core.context("native core id")?)
-                    .join("installed/vcpkg/status"),
-            );
+            paths.push(native_install(inv, target, core.context("native core id")?)?.join("vcpkg/status"));
         }
         for p in paths {
             if !p.is_file() {
@@ -1075,6 +1070,15 @@ pub(crate) fn native_triplet(inv: &Inventory, target: &str) -> Result<String> {
     }
 }
 
+/// Manifest-mode vcpkg installs prune unrelated triplets from a shared root.
+pub(crate) fn native_install(inv: &Inventory, target: &str, core: &str) -> Result<PathBuf> {
+    Ok(inv
+        .root
+        .join(".work/native-vcpkg")
+        .join(core)
+        .join(format!("installed-{}", native_triplet(inv, target)?)))
+}
+
 /// One installation per target; manifest mode must not prune another SDK's ports.
 pub(crate) fn ffmpeg_install(inv: &Inventory, target: &str) -> Result<PathBuf> {
     let triplet = ffmpeg_triplet(inv, target)?;
@@ -1450,11 +1454,7 @@ pub fn apply_environment(
             "SHINKI_EMU_NATIVE_DOWNLOADS",
             inv.root.join(".work/native-downloads"),
         );
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(component)
-            .join("installed");
+        let installed = native_install(inv, target, component)?;
         if installed.is_dir() {
             cmd.env("SHINKI_EMU_VCPKG_INSTALLED", installed)
                 .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?);
@@ -1829,11 +1829,7 @@ pub fn prepare(
                 source.display()
             );
         }
-        let installed = inv
-            .root
-            .join(".work/native-vcpkg")
-            .join(&native.id)
-            .join("installed");
+        let installed = native_install(inv, target, &native.id)?;
         let mut command = vcpkg_install_command(inv, &binary)?;
         command
             .arg("--x-wait-for-lock")
@@ -1906,6 +1902,19 @@ mod native_tests {
         assert!(selected.bison);
         assert!(windows_host_bison(selected.bison, true));
         assert!(!windows_host_bison(selected.bison, false));
+    }
+
+    #[test]
+    fn native_manifest_installations_keep_each_target_closure() {
+        let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let windows = native_install(&inv, "x86_64-pc-windows-msvc", "kirikiroid2-web").unwrap();
+        let arm = native_install(&inv, "aarch64-linux-android", "kirikiroid2-web").unwrap();
+        let x64 = native_install(&inv, "x86_64-linux-android", "kirikiroid2-web").unwrap();
+        assert!(windows.ends_with("kirikiroid2-web/installed-x64-windows"));
+        assert!(arm.ends_with("kirikiroid2-web/installed-arm64-android-ffmpeg"));
+        assert!(x64.ends_with("kirikiroid2-web/installed-x64-android-ffmpeg"));
+        assert_ne!(windows, arm);
+        assert_ne!(arm, x64);
     }
 
     #[test]

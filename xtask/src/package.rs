@@ -581,10 +581,9 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, &result.component)
         } else {
-            inv.root
-                .join(".work/native-vcpkg")
-                .join(&result.component)
-                .join("installed/x64-windows/bin")
+            dependencies::native_install(inv, &result.target, &result.component)?
+                .join(dependencies::native_triplet(inv, &result.target)?)
+                .join("bin")
         });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
@@ -658,15 +657,9 @@ fn licenses(
             ));
         }
     }
-    let native_share = inv
-        .root
-        .join(".work/native-vcpkg")
-        .join(&result.component)
-        .join(if result.target == "x86_64-unknown-linux-gnu" {
-            "installed/x64-linux-dynamic/share"
-        } else {
-            "installed/x64-windows/share"
-        });
+    let native_share = dependencies::native_install(inv, &result.target, &result.component)?
+        .join(dependencies::native_triplet(inv, &result.target)?)
+        .join("share");
     if selected.native_vcpkg && native_share.is_dir() {
         for item in fs::read_dir(native_share)? {
             let path = item?.path().join("copyright");

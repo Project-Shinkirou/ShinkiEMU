@@ -186,6 +186,8 @@ Rust dependencies are identified by the unchanged `Cargo.lock` (registry checksu
 
 Native sources cover every installed vcpkg port of the selected installation, followed from `vcpkg/status` including host-triplet build tools. `native/ports/<group>/` holds each registry port's recipe and patches, extracted from the pinned registry tree recorded by its SPDX `gitoid`; overlay ports have no tree identity and are part of the fork snapshot. `.work/vcpkg-downloads/` contains the archives whose SHA512 the installed SPDX records. The instructions clone the pinned vcpkg revision. Impacto additionally retains the prepared LibAtrac9/magic_enum sources; its in-fork mspack is in the fork snapshot.
 
+Native vcpkg manifest installations use one `installed-<triplet>` root per core and target. Running Windows, Android arm64 and Android x64 `deps` sequentially therefore preserves each target's dependency and license closure; CMake receives that root and the matching explicit triplet rather than inferring a different Android triplet.
+
 The bundle copies inputs that `deps` and `build` already verified: it does not re-hash `.work/downloads`, re-verify recipes, re-resolve Cargo offline or check for dirty trees a second time. `release` itself refuses a dirty product checkout and a build receipt from another source revision.
 
 `cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` prepares the pinned `.work/renpy-build` checkout and its recursive submodules. It preserves dirty existing checkouts by failing before any update; release collection remains read-only.
