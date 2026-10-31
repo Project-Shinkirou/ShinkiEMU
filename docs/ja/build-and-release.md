@@ -151,6 +151,8 @@ FFmpeg を組み込む Manager には、対象の専用インストールツリ�
 Artemis の Apple 候補は macOS と iOS でネイティブ Metal を選択し、Musica と同じ固定バージョンの静的 FFmpeg、および Manager と共通の Luau を使います。iOS は `static-core` による静的登録で、単体コアのダウンロードには対応しません。ソースコミットが一致するネイティブのビルド記録と対象を絞ったリモート CI の成功後に、公開対象のプラットフォームとします。
 Impacto の Apple 候補はコアのライブラリ名と単体アプリの bundle 名を分離します。iOS は `static` アダプター、静的 Atrac9、固有名の native query を使い、Manager とコアは `cores/impacto/Resources` を共有します。macOS の両アーキテクチャは個別の動的コアパッケージです。公開対象とするには、クリーンなネイティブのビルド記録とリモート CI の成功が必要です。
 Kirikiroid2 の Apple 候補には cocos2dx の iOS ルーティング修正と macOS の Autotools 準備を含めます。iOS は固有名の query からネイティブ静的アーカイブをリンクし、実行時リソースを `cores/kirikiroid2-web/Resources` に配置します。macOS の両アーキテクチャは動的コアパッケージを維持します。コミットが一致するネイティブのビルド記録と対象を絞ったリモート CI に基づいて、各行の公開可否を決めます。
+
+Apple Kirikiri と iOS Manager の CI は Autotools、Bison、gperf を明示的に用意し、古いシステム版ではなく Homebrew の Bison/gperf を優先します。FFmpeg overlay は初回アーキテクチャの未構成ディレクトリを clean しません。Libarchive は圧縮と XML の依存関係を明示し、arm64 クロスビルドで MacPorts の x86_64 ライブラリを検出しないようにします。
 Ren'Py の Apple 入力準備は専用の POSIX CPython/Cython ソースと、検証した公式 `lib/py3-mac-universal/librenpython.dylib` を使います。macOS アダプターは対象アーキテクチャを抽出し、ライブラリ ID と参照を `@rpath` に変更します。コアと display 拡張の rpath はパッケージ内の Resources を参照します。iOS には上流 renpy-build の `renios` による静的 CPython・モジュールのビルド、静的アダプターと実行時リソースのパッケージが必要です。公開対象はネイティブのビルド記録、パッケージ監査、対象を絞ったリモート CI に基づいて決めます。
 
 ## マトリクスと CI

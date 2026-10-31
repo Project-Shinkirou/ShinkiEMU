@@ -155,6 +155,8 @@ RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动
 Artemis 的 Apple 候选在 macOS 和 iOS 上选择原生 Metal，与 Musica 复用同一固定版本的静态 FFmpeg，并使用与 Manager 一致的 Luau 解释器。iOS 通过 `static-core` 静态注册，不提供独立核心下载。只有源码提交匹配的原生构建记录和筛选后的远程 CI 均通过，候选平台才计入发布支持范围。
 Impacto 的 Apple 候选将核心库名称与独立应用 bundle 分开。iOS 使用 `static` 适配器、静态 Atrac9 和独立命名的原生 query 入口，Manager 与核心共用 `cores/impacto/Resources` 资源路径；两种 macOS 架构仍分别打包动态核心。发布支持状态以干净的原生构建记录和远程 CI 为准。
 Kirikiroid2 的 Apple 候选包含 cocos2dx 的 iOS 路由修复和 macOS Autotools 依赖准备。iOS 通过独立命名的 query 入口链接原生静态归档，资源放入 `cores/kirikiroid2-web/Resources`；两种 macOS 架构继续打包动态核心。每个平台是否发布，由提交匹配的原生构建记录和筛选后的远程 CI 决定。
+
+Apple Kirikiri 和 iOS Manager 的 CI 显式安装 Autotools、Bison 与 gperf，并优先使用 Homebrew 的 Bison/gperf，避免选中旧版系统工具。FFmpeg overlay 首次构建架构前不再清理尚未配置的目录。Libarchive 显式声明压缩和 XML 依赖，避免 arm64 交叉构建误用 MacPorts 的 x86_64 库。
 Ren'Py 的 Apple 输入准备使用任务独占的 POSIX CPython/Cython 源码，并核对官方 `lib/py3-mac-universal/librenpython.dylib`。macOS 适配器按目标架构拆分运行库，将库标识和引用改成 `@rpath`，核心与 display 扩展通过 rpath 查找打包后的 Resources 目录。iOS 还需要上游 renpy-build 的 `renios` 静态 CPython/模块构建、静态适配器及运行资源打包。平台支持状态以原生构建记录、包审计和筛选后的远程 CI 为准。
 
 RFVP 的 Apple 字幕依赖在原生 macOS/Xcode 上按固定 vcpkg 清单构建 libass 0.17.5。每个目标单独安装静态库，triplet 分别为 `arm64-osx`、`x64-osx`、`arm64-ios`、`arm64-ios-simulator`、`x64-ios`。`build/vcpkg/apple-triplets/` 中的 overlay triplet 固定部署目标（macOS 13.0、iOS 16.0），并让 libass 用 CoreText 代替 fontconfig；`deps` 会清掉 `*_DEPLOYMENT_TARGET` 环境变量，避免 macOS 构建机工具被编成 iOS 目标。pkg-config 将私有静态依赖和 Apple framework 传给 Rust。RFVP 的 Apple WMV/MPEG 解码使用原生 Rust 实现，不依赖 GStreamer；CoreAudio 由系统提供。FFmpeg、C++ 原生核心和 CMVS 在 Apple 上的阻塞原因保持不变。
