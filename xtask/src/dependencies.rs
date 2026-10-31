@@ -513,6 +513,182 @@ fn git_archive(repo: &str, rev: &str, sha: &str, out: &Path) -> Result<()> {
     Ok(())
 }
 
+fn renpy_android_root(inv: &Inventory, target: &str) -> Result<PathBuf> {
+    let recipe = inv
+        .core("renpy")?
+        .source_directory(&inv.root)?
+        .join("shinki");
+    let builder = package::sha256(&recipe.join("android_runtime.py"))?;
+    let patch = package::sha256(&recipe.join("android/SDL2-offscreen-default-display.patch"))?;
+    let sdk = package::sha256(&recipe.join("sdk.json"))?;
+    let python = package::sha256(&recipe.join("../licenses/renpy/python-sources.json"))?;
+    Ok(inv
+        .root
+        .join(".work/native-downloads/renpy-android")
+        .join(target)
+        .join(format!(
+            "{}-{}-{}-{}",
+            &builder[..12],
+            &patch[..12],
+            &sdk[..12],
+            &python[..12]
+        )))
+}
+
+fn validate_renpy_android(inv: &Inventory, target: &str, root: &Path) -> Result<()> {
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("runtime.json")).with_context(|| {
+            format!("target Ren'Py runtime receipt missing: {}", root.display())
+        })?)?;
+    let recipe = inv
+        .core("renpy")?
+        .source_directory(&inv.root)?
+        .join("shinki");
+    let sdk: serde_json::Value = serde_json::from_slice(&fs::read(recipe.join("sdk.json"))?)?;
+    if receipt["target"] != target
+        || receipt["renpy_build"] != sdk["android"]["renpy_build"]
+        || receipt["renpy_source"] != sdk["source_revision"]
+        || receipt["ndk_sha256"] != sdk["android"]["ndk_sha256"]
+    {
+        bail!(
+            "target Ren'Py runtime provenance mismatch: {}",
+            root.display()
+        );
+    }
+    for (key, relative) in [
+        ("builder_sha256", "android_runtime.py"),
+        (
+            "sdl_patch_sha256",
+            "android/SDL2-offscreen-default-display.patch",
+        ),
+        ("sdk_sha256", "sdk.json"),
+        (
+            "python_sources_sha256",
+            "../licenses/renpy/python-sources.json",
+        ),
+    ] {
+        if receipt[key].as_str() != Some(package::sha256(&recipe.join(relative))?.as_str()) {
+            bail!("target Ren'Py runtime recipe mismatch: {relative}");
+        }
+    }
+    for (name, sha) in receipt["archives"]
+        .as_object()
+        .context("Ren'Py runtime archive hashes")?
+    {
+        package::portable(name)?;
+        if sha.as_str() != Some(package::sha256(&root.join("lib").join(name))?.as_str()) {
+            bail!("target Ren'Py runtime archive hash mismatch: {name}");
+        }
+    }
+    for relative in [
+        "include/python3.12/Python.h",
+        "include/python3.12/pyconfig.h",
+        "include/SDL2/SDL.h",
+        "include/shinki-renpy-symbols.h",
+        "lib/libpython3.12.a",
+        "lib/librenpy.a",
+        "lib/libSDL2.a",
+        "lib/pkgconfig/shinki-renpy-runtime.pc",
+        "LICENSE-CPython.txt",
+        "LICENSE-Cubism-Headers.md",
+        "Resources/lib/python3.12/encodings/__init__.py",
+    ] {
+        if !root.join(relative).is_file() {
+            bail!(
+                "target Ren'Py runtime input missing: {}",
+                root.join(relative).display()
+            );
+        }
+    }
+    let sysconfig = root
+        .join("Resources/lib")
+        .join(target)
+        .join("python3.12/_sysconfigdata__linux_.py");
+    if !sysconfig.is_file() {
+        bail!(
+            "target Ren'Py sysconfig input missing: {}",
+            sysconfig.display()
+        );
+    }
+    Ok(())
+}
+
+fn prepare_renpy_android(inv: &Inventory, target: &str) -> Result<()> {
+    let root = renpy_android_root(inv, target)?;
+    if root.exists() {
+        return validate_renpy_android(inv, target, &root);
+    }
+    let recipe = inv
+        .core("renpy")?
+        .source_directory(&inv.root)?
+        .join("shinki");
+    if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        bail!(
+            "Android Ren'Py needs target archives built on Ubuntu 24.04 x64: run {} --build-root <official-renpy-build> --target {target} --output {} on that host, then transfer that complete output here",
+            recipe.join("android_runtime.py").display(),
+            root.display()
+        );
+    }
+    let sdk: serde_json::Value = serde_json::from_slice(&fs::read(recipe.join("sdk.json"))?)?;
+    if sdk["android"]["renpy_build"] != crate::sources::RENPY_BUILD_PIN {
+        bail!("Ren'Py Android recipe and corresponding-source build pins disagree");
+    }
+    let build = inv.root.join(".work/renpy-build");
+    let source = build.join("renpy");
+    if !source.exists() {
+        run(Command::new("git")
+            .args([
+                "clone",
+                "--no-checkout",
+                "https://github.com/renpy/renpy.git",
+            ])
+            .arg(&source))?;
+        run(Command::new("git")
+            .arg("-C")
+            .arg(&source)
+            .args(["checkout", "--detach"])
+            .arg(
+                sdk["source_revision"]
+                    .as_str()
+                    .context("Ren'Py Android source revision")?,
+            ))?;
+    }
+    fs::create_dir_all(build.join("tars"))?;
+    download(
+        sdk["android"]["ndk_url"]
+            .as_str()
+            .context("Ren'Py Android NDK URL")?,
+        sdk["android"]["ndk_sha256"]
+            .as_str()
+            .context("Ren'Py Android NDK SHA256")?,
+        &build.join("tars/android-ndk-r29-linux.zip"),
+    )?;
+    download(
+        sdk["android"]["cubism_url"]
+            .as_str()
+            .context("Ren'Py Cubism header SDK URL")?,
+        sdk["android"]["cubism_sha256"]
+            .as_str()
+            .context("Ren'Py Cubism header SDK SHA256")?,
+        &build.join("tars/CubismSdkForNative-4-r.6.2.zip"),
+    )?;
+    let python = executable("python3").context("official Ren'Py Android builds require Python 3 with Jinja2 and the upstream Ubuntu build prerequisites")?;
+    run(Command::new(python)
+        .arg(recipe.join("android_runtime.py"))
+        .arg("--build-root")
+        .arg(build)
+        .args(["--target", target])
+        .arg("--output")
+        .arg(&root)
+        .arg("--host-python")
+        .arg(
+            inv.root
+                .join(".work/native-downloads/python")
+                .join(build_python_relative()),
+        ))?;
+    validate_renpy_android(inv, target, &root)
+}
+
 fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) -> Result<()> {
     let get = |name: &str| {
         lock.native
@@ -982,6 +1158,12 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         } else {
             missing.push("CPython/Cython dependency pins".into());
         }
+        if target.ends_with("-linux-android")
+            && let Err(error) =
+                validate_renpy_android(inv, target, &renpy_android_root(inv, target)?)
+        {
+            missing.push(error.to_string());
+        }
     }
     if !missing.is_empty() {
         bail!("missing prerequisites:\n  {}", missing.join("\n  "));
@@ -1427,6 +1609,9 @@ pub fn apply_environment(
                 base.join("cython-license/LICENSE.txt"),
             )
             .env("PYTHONDONTWRITEBYTECODE", "1");
+        if target.ends_with("-linux-android") {
+            cmd.env("RENPY_STATIC_ROOT", renpy_android_root(inv, target)?);
+        }
     }
     if crate::apple::supported(target) && selected.subtitle {
         // Apple triplets statically link the complete libass closure, including
@@ -1576,7 +1761,7 @@ pub fn apply_environment(
         }
     }
     if (crate::apple::supported(target) || target.contains("android") || target.ends_with("ohos"))
-        && (selected.ffmpeg || selected.subtitle || selected.native_vcpkg)
+        && (selected.ffmpeg || selected.subtitle || selected.native_vcpkg || selected.renpy)
     {
         let mut paths = Vec::new();
         if selected.ffmpeg {
@@ -1591,6 +1776,9 @@ pub fn apply_environment(
                 native_install(inv, target, &native.id)?.join(native_triplet(inv, target)?);
             paths.push(installation.join("lib/pkgconfig"));
             paths.push(installation.join("share/pkgconfig"));
+        }
+        if selected.renpy && target.ends_with("-linux-android") {
+            paths.push(renpy_android_root(inv, target)?.join("lib/pkgconfig"));
         }
         // Both private closures are static. Never discover host/Homebrew .pc files.
         for var in [
@@ -1795,6 +1983,9 @@ pub fn prepare(
     }
     let pins = lock(inv)?;
     prepare_native_inputs(inv, &pins, selected)?;
+    if selected.renpy && target_spec.platform == "android" {
+        prepare_renpy_android(inv, target)?;
+    }
     if selected.dxc {
         dxc(inv)?;
     }
