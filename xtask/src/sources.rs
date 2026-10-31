@@ -939,7 +939,10 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     if selected.native_vcpkg {
         let install = dependencies::native_install(inv, target, component)?;
         let triplet = dependencies::native_triplet(inv, target)?;
-        let relative = install.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/");
+        let relative = install
+            .strip_prefix(&inv.root)?
+            .to_string_lossy()
+            .replace('\\', "/");
         instructions.push_str(&format!(
             "$env:VCPKG_ROOT = \"$PWD/.work/vcpkg\"\n$env:SHINKI_EMU_VCPKG_INSTALLED = \"$PWD/{relative}\"\n$env:SHINKI_EMU_VCPKG_TRIPLET = \"{triplet}\"\n"
         ));

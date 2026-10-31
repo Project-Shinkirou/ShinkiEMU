@@ -690,7 +690,9 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             paths.push(inv.root.join(".work/dxc/dxcompiler.dll"));
         }
         if selected.native_vcpkg {
-            paths.push(native_install(inv, target, core.context("native core id")?)?.join("vcpkg/status"));
+            paths.push(
+                native_install(inv, target, core.context("native core id")?)?.join("vcpkg/status"),
+            );
         }
         for p in paths {
             if !p.is_file() {
@@ -706,7 +708,10 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
     if windows_host_bison(selected.bison, cfg!(windows)) {
         let bison = inv.root.join(".work/bison/win_bison.exe");
         if !bison.is_file() {
-            missing.push(format!("{} (cargo xtask deps --target {target})", bison.display()));
+            missing.push(format!(
+                "{} (cargo xtask deps --target {target})",
+                bison.display()
+            ));
         }
     }
     if crate::apple::supported(target) && selected.subtitle {
@@ -1312,7 +1317,10 @@ pub fn apply_environment(
         let bison = inv.root.join(".work/bison");
         let path = env::var_os("PATH").unwrap_or_default();
         cmd.env("BISON_EXECUTABLE", bison.join("win_bison.exe"))
-            .env("PATH", env::join_paths(std::iter::once(bison).chain(env::split_paths(&path)))?);
+            .env(
+                "PATH",
+                env::join_paths(std::iter::once(bison).chain(env::split_paths(&path)))?,
+            );
     }
     if crate::apple::supported(target) && selected.subtitle {
         // Apple triplets statically link the complete libass closure, including

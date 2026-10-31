@@ -171,7 +171,8 @@ pub fn configure_native_environment(work_root: &Path, command: &mut Command) -> 
 
 fn should_auto_select_ninja(host: &str, target: &str, generator_override: bool) -> bool {
     !generator_override
-        && (target.ends_with("windows-msvc") || (host.contains("windows") && target.contains("android")))
+        && (target.ends_with("windows-msvc")
+            || (host.contains("windows") && target.contains("android")))
 }
 
 /// Configure an OUT_DIR-owned native tree, then build the requested real targets.
@@ -385,10 +386,26 @@ mod tests {
     use super::*;
     #[test]
     fn ninja_auto_selection_respects_host_target_and_override() {
-        assert!(should_auto_select_ninja("x86_64-pc-windows-msvc", "x86_64-pc-windows-msvc", false));
-        assert!(should_auto_select_ninja("x86_64-pc-windows-msvc", "aarch64-linux-android", false));
-        assert!(!should_auto_select_ninja("x86_64-unknown-linux-gnu", "aarch64-linux-android", false));
-        assert!(!should_auto_select_ninja("x86_64-pc-windows-msvc", "x86_64-pc-windows-msvc", true));
+        assert!(should_auto_select_ninja(
+            "x86_64-pc-windows-msvc",
+            "x86_64-pc-windows-msvc",
+            false
+        ));
+        assert!(should_auto_select_ninja(
+            "x86_64-pc-windows-msvc",
+            "aarch64-linux-android",
+            false
+        ));
+        assert!(!should_auto_select_ninja(
+            "x86_64-unknown-linux-gnu",
+            "aarch64-linux-android",
+            false
+        ));
+        assert!(!should_auto_select_ninja(
+            "x86_64-pc-windows-msvc",
+            "x86_64-pc-windows-msvc",
+            true
+        ));
     }
 
     #[test]
