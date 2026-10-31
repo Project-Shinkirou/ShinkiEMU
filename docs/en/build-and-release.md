@@ -75,6 +75,8 @@ dependency closure. These packages are host prerequisites; `cargo xtask deps`
 does not install them.
 `python3-venv` supplies ensurepip for libsystemd's isolated build environment.
 `libxxf86vm-dev` supplies the Xxf86vm linker input required by Linux Cocos.
+The CI and component-release workflows install the same prerequisite list, so
+release-only native dependency builds receive these tools too.
 
 ```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
