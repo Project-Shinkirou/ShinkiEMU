@@ -90,6 +90,7 @@ Linux パッケージは、ディストリビューションが提供する glib
 Impacto の Linux VA-API ライブラリは、システムのグラフィックススタックに含まれる `libdrm.so.2`（Ubuntu パッケージ `libdrm2`）も必要とし、コアには同梱しません。
 KiriKiri2 は、ディストリビューションの OpenGL ディスパッチライブラリ `libGL.so.1`、`libGLX.so.0`、`libOpenGL.so.0`（Ubuntu パッケージ `libgl1 libglx0 libopengl0`）も使います。
 X11 と OpenMP には、ディストリビューションの `libX11.so.6` と `libgomp.so.1`（Ubuntu パッケージ `libx11-6 libgomp1`）を使います。
+KiriKiri2 Linux は引き続き blocked です。ビルド済み Cocos は、固定された外部バイナリアーカイブの `libfmod.so.6`（SDK ヘッダーのバージョンは 1.06.08）を必要とします。このアーカイブに FMOD のライセンス文書はなく、適用される再配布・ソース配布の許可も確認できていません。[FMOD の現行 EULA](https://www.fmod.com/legal) はエンジン・ツールとしての配布を制限しており、上流に含まれることだけでは ShinkiEMU での配布を認める根拠になりません。
 
 RFVP は、ネイティブの動画デコードのために、ディストリビューションが提供する GStreamer 1.x（1.14 以上）、GLib 2.x（2.56 以上）、および base、good、libav プラグインも必要とします。これらはシステムの実行要件として宣言され、コアには同梱されません。Ubuntu では `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav` をインストールします。パッケージ内の `build.json` の `system_dependencies` には、実際に依存するシステムの SONAME が記録されます。
 

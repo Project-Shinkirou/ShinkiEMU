@@ -95,6 +95,7 @@ Linux 包使用发行版提供的 glibc、libstdc++、OpenSSL 3、fontconfig、u
 Impacto 的 Linux VA-API 库还依赖发行版的 `libdrm.so.2`（Ubuntu 包名 `libdrm2`），该库属于系统图形栈，不随核心打包。
 KiriKiri2 还使用发行版的 OpenGL 分发库 `libGL.so.1`、`libGLX.so.0` 和 `libOpenGL.so.0`（Ubuntu 包名 `libgl1 libglx0 libopengl0`）。
 X11 和 OpenMP 分别使用发行版的 `libX11.so.6` 与 `libgomp.so.1`（Ubuntu 包名 `libx11-6 libgomp1`）。
+KiriKiri2 Linux 仍标记为 blocked：编译后的 Cocos 依赖固定外部二进制归档中的 `libfmod.so.6`（SDK 头文件版本为 1.06.08）。归档没有 FMOD 许可证文本，也未取得适用的重分发及源码分发许可证明。[FMOD 现行 EULA](https://www.fmod.com/legal) 限制引擎和工具分发；上游已收录该库，不能作为 ShinkiEMU 获准分发的依据。
 
 RFVP 还依赖发行版提供的 GStreamer 1.x（至少 1.14）、GLib 2.x（至少 2.56）及 base、good、libav 插件，用于原生影片解码。这些库作为系统运行要求声明，不随核心复制。在 Ubuntu 上安装 `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`。包内 `build.json` 的 `system_dependencies` 记录实际依赖的系统 SONAME。
 

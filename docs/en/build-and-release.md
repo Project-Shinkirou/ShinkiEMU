@@ -103,6 +103,11 @@ KiriKiri2 also uses the distribution's OpenGL dispatch libraries `libGL.so.1`,
 `libGLX.so.0` and `libOpenGL.so.0` (Ubuntu packages `libgl1 libglx0 libopengl0`).
 Its X11 and OpenMP dependencies use the distribution's `libX11.so.6` and
 `libgomp.so.1` (Ubuntu packages `libx11-6 libgomp1`).
+KiriKiri2 Linux remains blocked: the built Cocos library requires `libfmod.so.6`
+from the pinned external binary archive (SDK header version 1.06.08). The archive
+has no FMOD notice, and applicable redistribution/source permission is not
+established. [FMOD's current EULA](https://www.fmod.com/legal) restricts engine/tool
+distribution; upstream inclusion alone does not authorize a ShinkiEMU package.
 
 RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
 

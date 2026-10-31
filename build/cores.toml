@@ -201,13 +201,16 @@ dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki-linux61"
 rev = "4c78a4da18d944ad567813da61d3f86bd322440a"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "Native build passes, but libcocos2d requires libfmod.so.6 (FMOD SDK header 1.06.08); package closure and applicable FMOD redistribution/source permission are unproven."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "macOS native dependency closure (vcpkg gperf) has not built in CI; port pending."
