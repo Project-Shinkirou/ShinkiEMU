@@ -388,7 +388,7 @@ pub fn configure_cmake(
     if let Some(generator) = env::var_os("CMAKE_GENERATOR") {
         configure.arg("-G").arg(generator);
     } else if cfg!(windows)
-        && target.ends_with("windows-msvc")
+        && (target.ends_with("windows-msvc") || target.contains("android"))
         && env::var_os("VCToolsInstallDir").is_some()
         && env::var_os("LIB").is_some()
         && env::var_os("INCLUDE").is_some()
