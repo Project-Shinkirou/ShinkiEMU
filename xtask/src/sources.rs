@@ -962,12 +962,11 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         ));
     }
     if selected.bison {
-        let bison = if target.contains("windows") {
-            "win_bison.exe"
+        if target.contains("windows") {
+            instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
         } else {
-            "bison"
-        };
-        instructions.push_str(&format!("$env:BISON_EXECUTABLE = (Get-Command {bison}).Source\n"));
+            instructions.push_str("$env:BISON_EXECUTABLE = \"$(command -v bison)\"\n");
+        }
     }
     let build_command = if target.contains("android") && component == "manager" {
         format!(
