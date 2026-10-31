@@ -691,6 +691,33 @@ fn macho_load_commands_require_relocatable_rpaths_and_a_complete_closure() {
 }
 
 #[test]
+fn macho_runtime_bundles_keep_architecture_dependency_and_query_checks() {
+    let temp = tempfile::tempdir().unwrap();
+    let module = temp.path().join("display.so");
+    let mut bytes = synthetic_macho(b"@rpath/libpython3.12.dylib\0", "@loader_path");
+    bytes[12..16].copy_from_slice(&object::macho::MH_BUNDLE.0.to_le_bytes());
+    fs::write(&module, &bytes).unwrap();
+    let info = binary::inspect(&module, "x86_64-apple-darwin", false).unwrap();
+    assert!(info.dependencies.contains("@rpath/libpython3.12.dylib"));
+    assert!(binary::inspect(&module, "aarch64-apple-darwin", false).is_err());
+    assert!(binary::inspect(&module, "x86_64-apple-darwin", true).is_err());
+    assert!(binary::closure(&module, &[], "x86_64-apple-darwin").is_err());
+    let dependency = temp.path().join("libpython3.12.dylib");
+    fs::write(
+        &dependency,
+        synthetic_macho(b"/usr/lib/libSystem.B.dylib\0", "@loader_path"),
+    )
+    .unwrap();
+    assert_eq!(
+        binary::closure(&module, &[temp.path().into()], "x86_64-apple-darwin").unwrap(),
+        vec![dependency]
+    );
+    bytes[12..16].copy_from_slice(&object::macho::MH_OBJECT.0.to_le_bytes());
+    fs::write(&module, bytes).unwrap();
+    assert!(binary::inspect(&module, "x86_64-apple-darwin", false).is_err());
+}
+
+#[test]
 fn universal_macho_inspection_selects_and_bounds_checks_each_target_slice() {
     let temp = tempfile::tempdir().unwrap();
     let x86 = synthetic_macho(b"/usr/lib/libSystem.B.dylib\0", "@loader_path");

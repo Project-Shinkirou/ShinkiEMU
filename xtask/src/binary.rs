@@ -189,8 +189,18 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     } else {
         object::BinaryFormat::Elf
     };
+    let runtime_bundle = !require_query
+        && match &file {
+            object::File::MachO32(f) => {
+                f.macho_header().filetype(f.endian()) == object::macho::MH_BUNDLE
+            }
+            object::File::MachO64(f) => {
+                f.macho_header().filetype(f.endian()) == object::macho::MH_BUNDLE
+            }
+            _ => false,
+        };
     if file.format() != format
-        || !matches!(file.kind(), ObjectKind::Dynamic | ObjectKind::Executable)
+        || !(matches!(file.kind(), ObjectKind::Dynamic | ObjectKind::Executable) || runtime_bundle)
     {
         bail!("{}: not a target executable/shared library", path.display());
     }
