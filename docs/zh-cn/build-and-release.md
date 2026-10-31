@@ -204,6 +204,8 @@ SHINKI_EMU_RELEASE_CI_RUN_ID=<成功的-ci-运行编号> SHINKI_EMU_RELEASE_HAND
 
 发布命令核对所有产物的提交、归档 SHA256 和全部托管平台产物（Android x86_64 重复行除外），要求 OHOS HAP，并向 GitHub 核对同一提交的两项工作流门禁。发布名称和说明写明测试签名与启动验收豁免。
 
+源码包的字幕库重建命令包含 `build/vcpkg/mobile-triplets`，其中提供 OHOS 的 `arm64-ohos` triplet；对应原生源码归档随包提供。
+
 本地 runner 只是推送前的可选预检，用来提前发现会让远端失败的问题。`matrix --json [--ci] --since <ref>` 只保留输入在 `<ref>` 之后有变化的行，runner 通过 `SHINKI_CI_SINCE` 传入该参数。共享输入会选中所有行，包括根目录 `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`，以及这里没有列出的任何路径。`Source/Manager/` 和 `Source/Providers/` 选中 Manager 行。`Source/Families/<目录>/` 选中 manifest 位于该目录的核心，以及该核心 `static_manager_targets` 上的 Manager 行；`build/cores.toml` 中某个 `[[cores]]` 表有改动时，对该核心的效果相同。`docs/**`、`Metadata/**` 和 Markdown 文件不选中任何行。
 
 ## 打包与发布

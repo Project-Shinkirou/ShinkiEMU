@@ -624,7 +624,7 @@ fn native_sources(
         }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
-            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
+            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         if *group == "ffmpeg" {
             commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
