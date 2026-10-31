@@ -203,7 +203,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki-apple-ports"
-rev = "98854e5c292f502ac5dabb289c1b0e239b5f971a"
+rev = "204b07c622ba483c2652092b208efa4feb706c68"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
@@ -358,7 +358,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-apple-ports"
-rev = "9e44ee639830ff4f66ad9f8f2498c8322a67cd50"
+rev = "39fb99bb1a56c834802b458af4f937e4f1a2baa6"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
@@ -401,7 +401,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki-apple-ports"
-rev = "3216dde9052bdc1ac604a5c71aa2b8e75499ec60"
+rev = "36484c044f9c1fce6ee634ac3fa26e13b5195aac"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "aarch64-apple-ios"

@@ -845,6 +845,12 @@ fn renpy_sources(inv: &Inventory, root: &Path, target: &str) -> Result<()> {
                 &root.join(".work/native-downloads").join(relative),
             )?;
         }
+        copy_input(
+            &inv.root.join(
+                ".work/downloads/metalangle-850c87ba5b744c7c39f30c66bacdc9648d15067a.tar.gz",
+            ),
+            &root.join("native/metalangle-850c87ba5b744c7c39f30c66bacdc9648d15067a.tar.gz"),
+        )?;
     }
     Ok(())
 }
@@ -1012,8 +1018,10 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
                 "\n## Ren'Py iOS static runtime rebuild and relink\n\n\
                  The source bundle includes the exact Renios archives, target headers/static libraries, \
                  the complete pinned renpy-build recipes and their native source archives. \
-                 MetalANGLE source revision 850c87ba5b744c7c39f30c66bacdc9648d15067a is included at \
-                 .work/native-downloads/renpy-metalangle; its revision matches the official framework's embedded ANGLE version string.\n\n\
+                 MetalANGLE source revision 850c87ba5b744c7c39f30c66bacdc9648d15067a is included in full at \
+                 native/metalangle-850c87ba5b744c7c39f30c66bacdc9648d15067a.tar.gz, preserving upstream symlinks; \
+                 .work/native-downloads/renpy-metalangle holds its staged license. \
+                 Its revision matches the official framework's embedded ANGLE version string.\n\n\
                  Modify LGPL components in native/renpy-build.tar and rebuild their unprefixed archives with \
                  the upstream iOS recipes and legally obtained Apple SDKs (see its README.rst). \
                  Replace the matching device/simulator archives under .work/native-downloads/renpy-ios/prototype/prebuilt. \

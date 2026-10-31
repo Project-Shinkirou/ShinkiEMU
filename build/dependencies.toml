@@ -71,7 +71,8 @@ sha256 = "f17a957d210acb29504f873583e8f5341e253a9b7fadbdfb4cae14eee9944f43"
 file_name = "metalangle-850c87ba5b744c7c39f30c66bacdc9648d15067a.tar.gz"
 format = "tar-gz"
 strip_prefix = "metalangle-850c87ba5b744c7c39f30c66bacdc9648d15067a"
-required = ["src", "include", "LICENSE", "ios", "DEPS"]
+include = ["LICENSE"]
+required = ["LICENSE"]
 
 [native.python]
 version = "3.12.7"
