@@ -11077,7 +11077,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-impacto"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/impacto?rev=cf889c486c91dcdc5e59e06eb21eab8f92fd416c#cf889c486c91dcdc5e59e06eb21eab8f92fd416c"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=9e44ee639830ff4f66ad9f8f2498c8322a67cd50#9e44ee639830ff4f66ad9f8f2498c8322a67cd50"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
@@ -11086,7 +11086,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-kirikiroid2-web"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=580eb5d5c71899ce012e384c6d8996a3b25df73b#580eb5d5c71899ce012e384c6d8996a3b25df73b"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=98854e5c292f502ac5dabb289c1b0e239b5f971a#98854e5c292f502ac5dabb289c1b0e239b5f971a"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
