@@ -86,9 +86,13 @@ pub(crate) fn native_cores<'a>(
     component: &'a str,
 ) -> impl Iterator<Item = &'a crate::cores::Core> {
     inv.cores.iter().filter(move |core| {
-        core.dependencies.iter().any(|dependency| dependency == "native-vcpkg")
+        core.dependencies
+            .iter()
+            .any(|dependency| dependency == "native-vcpkg")
             && if component == "manager" {
-                core.static_manager_targets.iter().any(|triple| triple == target)
+                core.static_manager_targets
+                    .iter()
+                    .any(|triple| triple == target)
             } else {
                 core.id == component
             }
@@ -1461,9 +1465,15 @@ pub fn apply_environment(
     }
     if selected.native_vcpkg || selected.renpy {
         cmd.env_remove("SHINKI_EMU_VCPKG_INSTALLED")
-            .env("SHINKI_EMU_NATIVE_VCPKG_ROOT", inv.root.join(".work/native-vcpkg"))
+            .env(
+                "SHINKI_EMU_NATIVE_VCPKG_ROOT",
+                inv.root.join(".work/native-vcpkg"),
+            )
             .env("SHINKI_EMU_VCPKG_TRIPLET", native_triplet(inv, target)?)
-            .env("SHINKI_EMU_NATIVE_DOWNLOADS", inv.root.join(".work/native-downloads"));
+            .env(
+                "SHINKI_EMU_NATIVE_DOWNLOADS",
+                inv.root.join(".work/native-downloads"),
+            );
         if selected.native_vcpkg {
             cmd.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
         }
@@ -1480,8 +1490,12 @@ pub fn apply_environment(
             paths.push(subtitle.join("lib/pkgconfig"));
         }
         for native in native_cores(inv, target, component) {
-            let installation = inv.root.join(".work/native-vcpkg")
-                .join(&native.id).join("installed").join(native_triplet(inv, target)?);
+            let installation = inv
+                .root
+                .join(".work/native-vcpkg")
+                .join(&native.id)
+                .join("installed")
+                .join(native_triplet(inv, target)?);
             paths.push(installation.join("lib/pkgconfig"));
             paths.push(installation.join("share/pkgconfig"));
         }
@@ -1667,7 +1681,10 @@ pub fn prepare(
     }
     if core.is_none() {
         for embedded in inv.cores.iter().filter(|entry| {
-            entry.static_manager_targets.iter().any(|triple| triple == target)
+            entry
+                .static_manager_targets
+                .iter()
+                .any(|triple| triple == target)
                 && entry.source.is_some()
         }) {
             crate::sources::prepare(inv, embedded, allow_dirty_sources)?;

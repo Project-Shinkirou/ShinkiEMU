@@ -551,7 +551,8 @@ fn native_sources(
     for native in dependencies::native_cores(inv, target, component) {
         installations.push((
             native.id.as_str(),
-            inv.root.join(".work/native-vcpkg")
+            inv.root
+                .join(".work/native-vcpkg")
                 .join(&native.id)
                 .join("installed")
                 .join(dependencies::native_triplet(inv, target)?),
@@ -614,7 +615,9 @@ fn native_sources(
         commands.push_str(&format!(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
-        if !matches!(*group, "subtitle" | "ffmpeg") && inv.root.join(&manifest).join("vcpkg/ports").is_dir() {
+        if !matches!(*group, "subtitle" | "ffmpeg")
+            && inv.root.join(&manifest).join("vcpkg/ports").is_dir()
+        {
             commands.push_str(&format!(" --overlay-ports=\"$PWD/{manifest}/vcpkg/ports\""));
         }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
