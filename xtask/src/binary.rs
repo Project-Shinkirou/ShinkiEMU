@@ -260,10 +260,10 @@ pub(crate) fn apple_dependency(name: &str) -> Result<&str> {
         .find_map(|prefix| name.strip_prefix(prefix))
         .with_context(|| format!("non-relocatable Mach-O dependency {name}"))?;
     crate::package::portable(relative)?;
-    if let Some((directory, binary)) = relative.split_once('/') {
-        if directory.strip_suffix(".framework") != Some(binary) {
-            bail!("unsupported Mach-O framework dependency {name}");
-        }
+    if let Some((directory, binary)) = relative.split_once('/')
+        && directory.strip_suffix(".framework") != Some(binary)
+    {
+        bail!("unsupported Mach-O framework dependency {name}");
     }
     Ok(relative)
 }
