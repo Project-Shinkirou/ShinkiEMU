@@ -401,7 +401,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki-apple-ports"
-rev = "36484c044f9c1fce6ee634ac3fa26e13b5195aac"
+rev = "009deecc7dc02bb49ec95b6be7bf5a409eb8c515"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
