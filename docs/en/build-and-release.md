@@ -170,7 +170,7 @@ macOS packaging produces a real `ShinkiEMU.app` with its executable in `Contents
 
 RFVP, Siglus, Sena, Ethornell and ReMinori build as dynamic cores on both macOS architectures and are statically registered in the iOS Manager on device and both simulator architectures. iOS does not load downloaded core dylibs. The Android Manager statically registers RFVP, Siglus, Shinki Musica and Artemis. Manager dependency pins are checked against `build/cores.toml`; packages include `embedded-cores.json` and each embedded core's license assets.
 
-The `feat/apple-musica` candidate adds Shinki Musica to the iOS Manager's static registry and inventory, reusing the target-isolated static FFmpeg path from `cc34d86`. The three iOS core rows remain blocked until the simulator/device packages and filtered remote CI pass; adding a static dependency alone is not platform acceptance.
+Shinki Musica is included in the iOS Manager's static registry and inventory, with target-isolated static FFmpeg dependencies. Isolated commit `72ac926e1d15a452dc81ca84f3e82776aa302a26` passed exact-head CI and native compilation, packaging, signature, dependency and license checks for the device and both simulator targets. Later Manager releases combining this port with native saves require fresh integrated-head gates. Standalone dynamic-core installation remains unsupported on iOS; device launch acceptance is waived.
 
 Manager packages with embedded FFmpeg include the FFmpeg notice and every transitive port notice from the selected target's private installation under `licenses/ffmpeg/`; the same collector is used for standalone core packages.
 

@@ -162,7 +162,7 @@ macOS 包含真实的 `ShinkiEMU.app`，可执行文件位于 `Contents/MacOS`�
 
 RFVP、Siglus、Sena、Ethornell 和 ReMinori 在两种 macOS 架构上构建动态核心，并在 iOS 真机和两种模拟器架构的 Manager 中静态注册。iOS 不加载下载的核心 dylib；Android Manager 静态注册 RFVP、Siglus、Shinki Musica 和 Artemis。构建会核对 Manager 依赖与 `build/cores.toml` 的提交 pin，安装包包含 `embedded-cores.json` 和各静态核心的许可文件。
 
-`feat/apple-musica` 候选分支将 Shinki Musica 加入 iOS Manager 的静态注册表和核心清单，复用 `cc34d86` 的按目标隔离的静态 FFmpeg 构建路径。三条 iOS 核心记录保留阻塞状态，直到模拟器、真机打包和筛选后的远程 CI 通过；加入静态依赖不代表平台验收通过。
+Shinki Musica 已加入 iOS Manager 的静态注册表和核心清单，FFmpeg 依赖按目标隔离。独立提交 `72ac926e1d15a452dc81ca84f3e82776aa302a26` 的精确提交 CI，以及真机目标和两种模拟器目标的原生编译、打包、签名、依赖闭包和许可检查均已通过。后续 Manager 将此移植与原生存档合并时，仍须运行新集成提交的完整门禁。iOS 不支持单独安装动态核心；设备启动验收已获豁免。
 
 静态链接 FFmpeg 的 Manager 会将该目标独立安装树中的 FFmpeg 及传递依赖许可一并放入 `licenses/ffmpeg/`；独立核心包复用同一收集路径。
 

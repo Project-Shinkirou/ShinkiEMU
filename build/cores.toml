@@ -138,13 +138,13 @@ target = "x86_64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "iOS static Manager embedding is pending AppleNative build and verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "iOS static Manager embedding is pending AppleNative build and verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "iOS static Manager embedding is pending AppleNative build and verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
