@@ -358,7 +358,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-apple-ports"
-rev = "39fb99bb1a56c834802b458af4f937e4f1a2baa6"
+rev = "7102a018850a5415cb2f9c5ca4ddbcac204980fb"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
