@@ -363,7 +363,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-linux61"
-rev = "6c7884d7cff1d767298570abbb4f4503c0a1c2f3"
+rev = "ec511185223f948ca23e23bb41ca69712c8b0283"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-apple-darwin"

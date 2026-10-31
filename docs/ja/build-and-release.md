@@ -58,12 +58,13 @@ Manager は、ネットワーククライアントやワーカースレッドを
 リポジトリで固定された Rust 1.99.1 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 libxtst-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
 sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
 `libltdl-dev` は vcpkg の `libxcrypt` autoreconf ステップが使う
 `LT_SYS_SYMBOL_USCORE` マクロを提供します。kirikiroid2-web のネイティブ依存関係ジェネレーターには `python3-jinja2`、Linux GTK 依存閉包には `libxtst-dev` も必要です。これらはビルドホストの前提条件であり、`cargo xtask deps` はシステムパッケージをインストールしません。
+`python3-venv` は libsystemd の隔離ビルド環境に ensurepip を提供し、`libxxf86vm-dev` は Linux Cocos のリンクに必要な Xxf86vm ライブラリを提供します。
 
 ```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
