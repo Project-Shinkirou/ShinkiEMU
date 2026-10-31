@@ -1,130 +1,185 @@
 use super::*;
+use crate::eden_save::EdenSave;
+
 impl MusicaSession {
-    pub(crate) fn install_imported_message(
-        &mut self,
-        text: String,
-        speaker: Option<String>,
-    ) -> SessionResult<()> {
-        self.message(text, speaker)
-    }
-    pub(super) fn persist_progress(&mut self) -> SessionResult<()> {
-        let unlocks = &self.vm.state().gallery_unlocks;
-        if *unlocks != self.persisted_unlocks {
-            self.storage.write_progress(self.game, unlocks)?;
-            self.persisted_unlocks = unlocks.clone();
+    /// Writes `system.dat` when a `.setglobal` changed the title-wide table.
+    pub(super) fn persist_globals(&mut self) -> SessionResult<()> {
+        let globals = &self.vm.state().global_variables;
+        if *globals != self.persisted_globals {
+            self.native.store_globals(globals)?;
+            self.persisted_globals = globals.clone();
         }
         Ok(())
+    }
+    /// Writes every changed bitmap, then loads the running script's
+    /// `<stem>.tbr` once (the original flushes on `.chain` and at teardown).
+    pub(crate) fn sync_read_flags(&mut self) -> SessionResult<()> {
+        self.flush_read_flags()?;
+        let stem = self.vm.read_flags_script().to_owned();
+        if !self.vm.has_read_flags(&stem)
+            && let Some(bits) = self.native.read_flags(&stem)?
+        {
+            self.vm.install_read_flags(&stem, &bits);
+        }
+        Ok(())
+    }
+    pub(super) fn flush_read_flags(&mut self) -> SessionResult<()> {
+        let native = &mut self.native;
+        self.vm
+            .flush_read_flags(|stem, bits| native.store_read_flags(stem, bits))
     }
     pub(super) fn quick_save(&mut self) -> SessionResult<()> {
         let pc_line = self.vm.state().pc_line;
         if self.last_quick_save_pc_line == Some(pc_line) {
             return Ok(());
         }
-        let slot = 10 + self.quick_cursor;
-        self.save(slot)?;
-        let next = (self.quick_cursor + 1) % crate::storage::SAVE_PAGE_WIDTH;
-        self.storage.write_quick_cursor(self.game, next)?;
-        self.quick_cursor = next;
+        let perseus = self.native.is_perseus()?;
+        let slot = if perseus {
+            self.quick_cursor
+        } else {
+            self.quick_cursor.max(1)
+        };
+        self.save_with_comment(
+            slot,
+            if perseus {
+                "クイックセーブ"
+            } else {
+                "快速存档"
+            },
+        )?;
+        let next = if perseus {
+            (self.quick_cursor + 1) % 10
+        } else {
+            slot % 9 + 1
+        };
+        self.store_quick_cursor(next)?;
         self.last_quick_save_pc_line = Some(pc_line);
         tracing::debug!(event = "shinki.emu.musica.quick_save.rotated", slot, next);
         Ok(())
     }
     pub(super) fn quick_load(&mut self) -> SessionResult<()> {
-        self.load(
-            10 + (self.quick_cursor + crate::storage::SAVE_PAGE_WIDTH - 1)
-                % crate::storage::SAVE_PAGE_WIDTH,
-        )
+        let slot = if self.native.is_perseus()? {
+            (self.quick_cursor + 9) % 10
+        } else if self.quick_cursor <= 1 {
+            9
+        } else {
+            self.quick_cursor - 1
+        };
+        self.load(slot)
     }
-
     pub(super) fn save(&mut self, slot: u32) -> SessionResult<()> {
-        let sounds = self.audio.snapshot()?;
-        self.poll_voice_duration()?;
-        let vm = self
-            .vm
-            .encode_native_save()
-            .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "VM state cannot be saved"))?;
-        let mut state = MusicaVm::decode_native_save(&vm).map_err(vm_error)?;
-        if matches!(
-            state.system_ui.page,
-            crate::MusicaSystemPage::Save | crate::MusicaSystemPage::Load
-        ) {
-            state.system_ui.page = crate::MusicaSystemPage::None;
-            state.system_ui.focus_index = 0;
+        self.save_with_comment(slot, "")
+    }
+    pub(super) fn auto_save(
+        &mut self,
+        mut checkpoint: crate::eden_save::EdenCheckpoint,
+    ) -> SessionResult<()> {
+        let limit = self.native.auto_save_backlog_limit();
+        if limit > 0 && checkpoint.history.len() > limit {
+            checkpoint.history.drain(..checkpoint.history.len() - limit);
         }
-        let vm = postcard::to_allocvec(&state)
-            .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "VM state cannot be saved"))?;
+        let perseus = self.native.is_perseus()?;
+        let slot = if perseus { 10 + self.auto_cursor } else { 0 };
+        self.write_checkpoint(
+            slot,
+            if perseus {
+                "オートセーブ"
+            } else {
+                "Auto save"
+            },
+            checkpoint,
+        )?;
+        if perseus {
+            self.store_auto_cursor((self.auto_cursor + 1) % 10)?;
+        }
+        Ok(())
+    }
+    fn save_with_comment(&mut self, slot: u32, comment: &str) -> SessionResult<()> {
+        if self
+            .vm
+            .state()
+            .global_variables
+            .get("prohibitSaveLoad")
+            .is_some_and(|value| *value != 0)
+        {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_SAVE_PROHIBITED",
+                "script prohibits saving and loading",
+            ));
+        }
+        self.poll_voice_duration()?;
+        let checkpoint = self.vm.native_checkpoint().map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_STATE",
+                "current VM message cannot be represented by a native slot",
+            )
+        })?;
+        self.write_checkpoint(slot, comment, checkpoint)
+    }
+    fn write_checkpoint(
+        &mut self,
+        slot: u32,
+        comment: &str,
+        checkpoint: crate::eden_save::EdenCheckpoint,
+    ) -> SessionResult<()> {
+        self.persist_globals()?;
+        let (edition, encoding, prefix) = self.native.save_edition()?;
+        let save =
+            EdenSave::from_checkpoint(&checkpoint, edition, encoding, prefix, comment.into())
+                .map_err(crate::scene::core_error)?;
         let pixels = self.gameplay_frame.as_ref().unwrap_or(&self.scene.pixels);
-        let card = crate::storage::SaveCard::capture(
+        let thumbnail = crate::storage::SaveCard::capture_thumbnail(
+            edition,
             self.info.logical_width,
             self.info.logical_height,
             self.info.width,
             self.info.height,
             pixels,
         )?;
-        self.storage.write(
-            slot,
-            &Snapshot {
-                logical_extent: [self.info.logical_width, self.info.logical_height],
-                card,
-                game: self.game,
-                vm,
-                message: self.message.clone(),
-                translation_visible: self.translation_visible,
-                translation_overlay: self.translation_overlay.clone(),
-                wait_ns: self.wait_ns,
-                sounds,
-            },
-        )?;
+        self.native.write_slot(slot, &save, &thumbnail)?;
         tracing::info!(event = "shinki.emu.musica.save.completed", slot);
         Ok(())
     }
     pub(super) fn load(&mut self, slot: u32) -> SessionResult<()> {
-        let mut saved = self.storage.read(slot)?;
-        if saved.logical_extent != [self.info.logical_width, self.info.logical_height] {
+        if self
+            .vm
+            .state()
+            .global_variables
+            .get("prohibitSaveLoad")
+            .is_some_and(|value| *value != 0)
+        {
             return Err(error(
-                "SHINKI_EMU_MUSICA_SAVE_CANVAS",
-                "save logical canvas differs from this session",
+                "SHINKI_EMU_MUSICA_SAVE_PROHIBITED",
+                "script prohibits saving and loading",
             ));
         }
-        if saved.game != self.game {
-            return Err(error(
-                "SHINKI_EMU_MUSICA_SAVE_GAME",
-                "save belongs to another archive/profile identity",
-            ));
-        }
-        let state = MusicaVm::decode_native_save(&saved.vm)
-            .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "VM save is invalid"))?;
-        let loaded = crate::script_loader::load_script(
+        let saved = self.native.slot(slot)?.ok_or_else(|| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_OPEN",
+                "native save slot does not exist",
+            )
+        })?;
+        let encoding = match saved.encoding {
+            crate::eden_save::EdenSaveEncoding::Gbk => crate::ScriptEncoding::Gbk,
+            crate::eden_save::EdenSaveEncoding::ShiftJis => crate::ScriptEncoding::ShiftJis,
+            crate::eden_save::EdenSaveEncoding::Windows1252 => {
+                return Err(error(
+                    "SHINKI_EMU_MUSICA_SAVE_ENCODING",
+                    "native save encoding is unsupported",
+                ));
+            }
+        };
+        let (mut vm, event) = MusicaVm::from_eden_save(
+            &saved,
             &self.archive,
-            &state.script_uri,
-            self.primary_encoding,
-        )?;
-        if loaded.hash != state.script_hash {
-            return Err(error(
-                "SHINKI_EMU_MUSICA_SAVE_SCRIPT",
-                "saved script or include has changed",
-            ));
-        }
-        if loaded.script.encoding != state.script_encoding {
-            return Err(error(
-                "SHINKI_EMU_MUSICA_SAVE_ENCODING",
-                "saved script encoding no longer matches",
-            ));
-        }
-        let script = loaded.script;
-        let mut vm = MusicaVm::new(
-            state.script_uri,
-            state.script_hash,
-            script,
-            state.session_seed,
+            self.vm.state().session_seed,
+            self.vm.config().clone(),
         )
-        .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "saved script is invalid"))?;
-        vm.set_config(self.vm.config().clone()).map_err(vm_error)?;
-        vm.restore_native_save(&saved.vm, 1)
-            .map_err(|_| error("SHINKI_EMU_MUSICA_SAVE_STATE", "saved VM state is invalid"))?;
+        .map_err(crate::scene::core_error)?;
+        vm.set_native_auto_cycle(self.native.auto_save_cycle());
         vm.set_launch_mode(self.vm.state().launch_mode);
-        vm.merge_verified_gallery_unlocks(&self.persisted_unlocks)
-            .map_err(vm_error)?;
+        // `system.dat` is title-wide; the slot carries only script variables.
+        vm.replace_global_variables(self.vm.state().global_variables.clone());
         let mut scene = Scene::new_scaled(
             self.scene.gpu_instance(),
             self.archive.clone(),
@@ -133,30 +188,21 @@ impl MusicaSession {
             self.info.width,
             self.info.height,
             self.scene.texture_overrides(),
-            state.script_encoding,
+            encoding,
         )?;
         scene.set_text_shadow(self.scene.text_shadow());
         scene.set_configured_font(self.scene.configured_font())?;
-        scene.set_translation_overlay(saved.translation_overlay.clone(), saved.translation_visible);
-        #[cfg(feature = "ffmpeg-vcpkg")]
-        {
-            scene.set_subtitle_catalog(self.scene.subtitle_catalog());
-            if let Some(movie) = vm.state().movie.as_ref() {
-                scene.begin_movie(&movie.resource_uri)?;
+        scene.set_translation_overlay(None, self.translation_visible);
+        let message = match &event {
+            MusicaVmEvent::Message { text, speaker, .. } => Some((text.clone(), speaker.clone())),
+            _ => {
+                return Err(error(
+                    "SHINKI_EMU_MUSICA_SAVE_STATE",
+                    "slot is not a message boundary",
+                ));
             }
-        }
-        let choices = Self::localized_choices_for(
-            &vm,
-            self.translation_table.as_deref(),
-            self.translation_mode,
-        )?;
-        scene.render(
-            vm.state(),
-            saved.message.as_ref(),
-            choices
-                .as_ref()
-                .map(|(labels, index)| (labels.as_slice(), *index)),
-        )?;
+        };
+        scene.render(vm.state(), message.as_ref(), None)?;
         self.cancel_text()?;
         self.generation = self.generation.checked_add(1).ok_or_else(|| {
             error(
@@ -164,22 +210,27 @@ impl MusicaSession {
                 "text generation overflowed",
             )
         })?;
-        for sound in &mut saved.sounds {
-            if sound.id == 4 && !self.vm.voice_preferences().enabled(&sound.uri) {
-                sound.playing = false;
-                sound.fade = None;
-            }
-        }
         if let Some(movie) = self.movie.take() {
             movie.close(&self.audio)?;
         }
-        self.audio.restore(saved.sounds)?;
-        let movie = vm
+        let sounds = vm
             .state()
-            .movie
-            .as_ref()
-            .map(|state| crate::movie::Movie::open(&self.archive, state))
-            .transpose()?;
+            .audio
+            .iter()
+            .filter(|(id, audio)| **id == 0 && audio.playing)
+            .map(|(id, audio)| crate::audio::SoundSnapshot {
+                id: *id,
+                uri: audio.resource_uri.clone(),
+                position: 0.0,
+                volume: f32::from(audio.volume_milli) / 1000.0,
+                pan: f32::from(audio.pan_milli) / 1000.0,
+                repeat: audio.looped,
+                playing: true,
+                fade: None,
+            })
+            .collect();
+        self.audio.restore(sounds)?;
+        vm.take_read_flags_from(&mut self.vm);
         vm.set_control_pressed(self.control_keys != 0);
         self.voice_duration = None;
         self.load_from_title = false;
@@ -187,17 +238,21 @@ impl MusicaSession {
         self.gameplay_frame = None;
         self.save_cards.clear();
         self.vm = vm;
-        self.movie = movie;
         self.scene = scene;
-        self.message = saved.message;
-        self.translation_visible = saved.translation_visible;
-        self.translation_overlay = saved.translation_overlay;
-        self.wait_ns = saved.wait_ns;
+        if let Some(stage) = self.vm.state().stage.clone() {
+            self.attach_stage_animations(&stage)?;
+        }
+        self.message = message;
+        self.translation_overlay = None;
+        let event = self.semantic_event(Some(event))?;
+        self.apply_event(event)?;
+        self.wait_ns = 0;
         self.phase = 0;
         self.input_pending = false;
         self.pointer = None;
-        self.finished = self.vm.state().terminal;
+        self.finished = false;
         self.reset_host_clock = true;
+        self.sync_read_flags()?;
         tracing::info!(event = "shinki.emu.musica.load.completed", slot);
         Ok(())
     }

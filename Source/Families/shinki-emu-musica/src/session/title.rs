@@ -14,6 +14,7 @@ impl MusicaSession {
         self.vm
             .start_menu_script(uri, loaded.hash, loaded.script)
             .map_err(vm_error)?;
+        self.sync_read_flags()?;
         self.scene
             .set_text_encoding(self.vm.state().script_encoding);
         self.generation = generation;

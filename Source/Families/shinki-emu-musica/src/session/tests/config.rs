@@ -13,6 +13,12 @@ fn click(x: f32, y: f32) -> [RuntimeEvent; 3] {
         },
     ]
 }
+/// The configuration a fresh session reads back from `sysparams.txt`.
+fn stored_config(root: &std::path::Path) -> crate::MusicaConfigState {
+    crate::native_directory::NativeFiles::open(root, crate::ScriptEncoding::ShiftJis)
+        .unwrap()
+        .configuration(crate::MusicaConfigState::default())
+}
 #[test]
 fn native_gpu_config_applies_cancels_persists_tests_audio_and_preserves_gameplay_wait() {
     let _lock = PROVIDER_SESSION.lock();
@@ -83,11 +89,7 @@ fn native_gpu_config_applies_cancels_persists_tests_audio_and_preserves_gameplay
     assert!(!session.vm.state().audio[&0xffff_ff00].playing);
     assert!(!session.vm.state().audio[&0xffff_ff01].playing);
     assert!(!session.vm.state().audio[&0xffff_ff02].playing);
-    let saved = session
-        .storage
-        .configuration(session.game)
-        .unwrap()
-        .unwrap();
+    let saved = stored_config(root.path());
     assert_eq!(&saved, session.vm.config());
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     let wait = session.vm.state().wait.clone();
@@ -178,14 +180,7 @@ fn native_gpu_config_requests_fullscreen_once_and_restores_on_cold_start() {
         Some(WindowCommand::SetFullscreen(true))
     );
     assert!(session.vm.config().fullscreen);
-    assert!(
-        session
-            .storage
-            .configuration(session.game)
-            .unwrap()
-            .unwrap()
-            .fullscreen
-    );
+    assert!(stored_config(root.path()).fullscreen);
     assert_eq!(session.advance(0, &[]).unwrap().window_command, None);
     Box::new(session).close().unwrap();
     let (_, mut session) = provider

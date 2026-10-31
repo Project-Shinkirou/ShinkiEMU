@@ -1,7 +1,7 @@
 use super::*;
 use crate::{ScOpcodeCatalog, parse_sc};
 #[test]
-fn character_stage_retention_and_native_restore() {
+fn character_stage_retention_and_in_memory_resume() {
     let source = b".char load -1 Stand.png\r\n.char pos 1 16 4\r\n.stage * * 0 0\r\n.char keep 1\r\n.stage * * 0 0\r\n.stage * * 0 0\r\n.end\r\n";
     let make_vm = || {
         MusicaVm::new(
@@ -21,9 +21,9 @@ fn character_stage_retention_and_native_restore() {
     assert_eq!(character.anchor_position, [16, 4]);
     assert!(!character.pending_stage);
     vm.step(4).unwrap();
-    let saved = vm.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
     let mut restored = make_vm();
-    restored.restore_native_save(&saved, 5).unwrap();
+    restored.install_test_state(&saved, 5).unwrap();
     vm.step(5).unwrap();
     restored.step(5).unwrap();
     assert_eq!(vm.state().characters, restored.state().characters);

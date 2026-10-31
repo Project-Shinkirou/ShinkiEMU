@@ -1,6 +1,7 @@
 use super::*;
 const MUSICA_CHARACTER_MAX_SLOTS: usize = 64;
 const MUSICA_CHARACTER_MAX_SLOT_ID: u32 = 4096;
+#[cfg(test)]
 const MUSICA_CHARACTER_RESOURCE_COUNT: usize = 1;
 const MUSICA_CHARACTER_MAX_COORDINATE: i32 = 65_536;
 const MUSICA_CHARACTER_MAX_TRANSITION_MS: u32 = 60_000;
@@ -207,6 +208,7 @@ fn parse_native_bool(token: &str) -> bool {
         .first()
         .is_some_and(|value| matches!(value, b'1'..=b'9' | b't' | b'T'))
 }
+#[cfg(test)]
 pub(super) fn validate_character_state(
     characters: &BTreeMap<u32, MusicaCharacterState>,
 ) -> Result<(), MusicaRuntimeError> {
@@ -356,6 +358,7 @@ pub(super) fn complete_character_transition_state(
     character.opacity_256 = transition.target_opacity_256;
     Ok(())
 }
+#[cfg(test)]
 pub(super) fn validate_state(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     validate_character_state(&state.characters)?;
     let transition_slot = state.characters.iter().find_map(|(slot, character)| {

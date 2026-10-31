@@ -14,7 +14,6 @@ use shinki_emu_musica::{
 };
 
 mod diagnostics;
-mod eden_save;
 mod inventory;
 mod private_output;
 mod profile_import;
@@ -37,39 +36,6 @@ enum Command {
     Data {
         #[command(subcommand)]
         command: diagnostics::Diagnostic,
-    },
-    /// Export an eligible core-owned slot into a new native eden save file.
-    ExportEdenSave {
-        #[arg(long)]
-        game_dir: PathBuf,
-        #[arg(long, help = "Production keys.v2 key.toml, game-relative or absolute")]
-        profile: PathBuf,
-        #[arg(long)]
-        slot: u32,
-        #[arg(long)]
-        output: PathBuf,
-    },
-    /// Validate native eden restoration against mounted scripts; no device playback.
-    CheckEdenRestore {
-        #[arg(long)]
-        file: PathBuf,
-        #[arg(long)]
-        game_dir: PathBuf,
-        #[arg(long, help = "Production keys.v2 key.toml, game-relative or absolute")]
-        profile: PathBuf,
-        #[arg(long, value_enum)]
-        edition: eden_save::Edition,
-        #[arg(long, value_enum)]
-        encoding: eden_save::Encoding,
-    },
-    /// Inspect a native eden container without restoring or changing it.
-    InspectEdenSave {
-        #[arg(long)]
-        file: PathBuf,
-        #[arg(long, value_enum)]
-        edition: eden_save::Edition,
-        #[arg(long, value_enum)]
-        encoding: eden_save::Encoding,
     },
     ScanArchives {
         #[arg(long)]
@@ -131,9 +97,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let action = match &command {
         Command::Data { .. } => "data",
-        Command::ExportEdenSave { .. } => "export_eden_save",
-        Command::CheckEdenRestore { .. } => "check_eden_restore",
-        Command::InspectEdenSave { .. } => "inspect_eden_save",
         Command::ScanArchives { .. } => "scan_archives",
         Command::ImportGarbroScheme { .. } => "import_garbro_scheme",
         Command::ImportKeyProfile { .. } => "import_key_profile",
@@ -145,24 +108,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(event = "shinki.emu.musica_cli.start", action);
     let result = match command {
         Command::Data { command } => diagnostics::run(command),
-        Command::ExportEdenSave {
-            game_dir,
-            profile,
-            slot,
-            output,
-        } => eden_save::export(&game_dir, &profile, slot, &output),
-        Command::CheckEdenRestore {
-            file,
-            game_dir,
-            profile,
-            edition,
-            encoding,
-        } => eden_save::check_restore(&file, &game_dir, &profile, edition, encoding),
-        Command::InspectEdenSave {
-            file,
-            edition,
-            encoding,
-        } => eden_save::inspect(&file, edition, encoding),
         Command::ScanArchives { game_dir } => {
             let report = inventory::scan_archive_inventory(&game_dir)?;
             println!("{}", serde_json::to_string(&report)?);

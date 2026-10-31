@@ -124,6 +124,8 @@ pub(crate) fn game(root: &Path, script: &[u8]) {
         toml::to_string_pretty(&key).unwrap(),
     )
     .unwrap();
+    // A recognized executable gives the session an original save directory.
+    std::fs::write(root.join("perseus.exe"), b"").unwrap();
 }
 pub(crate) fn wave() -> Vec<u8> {
     let samples = (0..4800)

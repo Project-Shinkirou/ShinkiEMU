@@ -91,10 +91,10 @@ mod tests {
         .unwrap();
         assert!(vm.open_config().is_err());
         vm.begin_title_launch().unwrap();
-        let slot = vm.encode_native_save().unwrap();
+        let slot = MusicaVm::checked_test_state(vm.state()).unwrap();
         vm.open_config().unwrap();
         assert!(vm.open_config().is_err());
-        assert!(vm.encode_native_save().is_err());
+        assert!(MusicaVm::checked_test_state(vm.state()).is_err());
         vm.apply_config_control(MusicaConfigControl::MessageSpeedAutoPlay(25))
             .unwrap();
         vm.apply_config_control(MusicaConfigControl::ToggleCharacterVoice(0))
@@ -123,9 +123,9 @@ mod tests {
         assert_eq!(vm.config().message_speed_auto_play, 25);
         assert!(!vm.voice_preferences().character_voice_enabled[0]);
         vm.open_config().unwrap();
-        assert!(vm.restore_native_save(&[0], 1).is_err());
+        assert!(vm.install_test_state(&slot, 0).is_err());
         assert!(vm.config_for_presentation().is_ok());
-        vm.restore_native_save(&slot, 1).unwrap();
+        vm.install_test_state(&slot, 1).unwrap();
         assert_eq!(vm.config().message_speed_auto_play, 25);
         assert!(vm.config_edit.is_none());
         assert_eq!(vm.state.system_ui.page, MusicaSystemPage::Title);

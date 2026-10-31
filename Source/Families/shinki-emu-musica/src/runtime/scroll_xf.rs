@@ -204,7 +204,7 @@ mod tests {
             assert_eq!(state.visible_offset, [offset, offset]);
             let mut restored = vm(source.as_bytes());
             restored
-                .restore_native_save(&original.encode_native_save().unwrap(), 3)
+                .install_test_state(&MusicaVm::checked_test_state(original.state()).unwrap(), 3)
                 .unwrap();
             assert_eq!(
                 original.advance_scroll_xf_clock(10_000_000).unwrap(),
@@ -240,9 +240,9 @@ mod tests {
             machine.state().scroll_xf.as_ref().unwrap().visible_offset,
             [6, 6]
         );
-        let saved = machine.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
         assert_eq!(
-            MusicaVm::decode_native_save(&saved).unwrap().scroll_xf,
+            MusicaVm::checked_test_state(&saved).unwrap().scroll_xf,
             machine.state().scroll_xf
         );
         machine.step(3).unwrap();
@@ -264,9 +264,8 @@ mod tests {
                 1 => xf.visible_extent = [0, 0],
                 _ => xf.easing = 3,
             }
-            let bytes = postcard::to_allocvec(&state).unwrap();
             assert_eq!(
-                MusicaVm::decode_native_save(&bytes).unwrap_err(),
+                MusicaVm::checked_test_state(&state).unwrap_err(),
                 MusicaRuntimeError::ScrollXf
             );
         }

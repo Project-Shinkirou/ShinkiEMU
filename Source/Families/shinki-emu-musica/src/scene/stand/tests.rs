@@ -156,7 +156,7 @@ fn native_stand_gpu_uses_metadata_crop_and_restore_without_changing_cached_pixel
     let cropped = scene.pixels.clone();
     let mut restored_vm = make_vm();
     restored_vm
-        .restore_native_save(&vm.encode_native_save().unwrap(), 1)
+        .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
         .unwrap();
     let mut restored = Scene::new(
         crate::test_fixture::gpu_instance(),

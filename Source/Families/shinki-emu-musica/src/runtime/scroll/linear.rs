@@ -240,7 +240,7 @@ mod tests {
         ));
         let mut restored = vm(source);
         restored
-            .restore_native_save(&original.encode_native_save().unwrap(), 4)
+            .install_test_state(&MusicaVm::checked_test_state(original.state()).unwrap(), 4)
             .unwrap();
         for delta in [500_000, 39_000_000] {
             assert_eq!(
@@ -265,7 +265,7 @@ mod tests {
         let mut machine = vm(source);
         machine.step(1).unwrap();
         machine.step(2).unwrap();
-        let valid = machine.encode_native_save().unwrap();
+        let valid = MusicaVm::checked_test_state(machine.state()).unwrap();
         for mutation in 0..3 {
             let mut state = machine.state().clone();
             let scroll = state.linear_scroll.as_mut().unwrap();
@@ -274,16 +274,15 @@ mod tests {
                 1 => scroll.speed_tenths = 0,
                 _ => scroll.elapsed_ns = u64::MAX,
             }
-            let bad = postcard::to_allocvec(&state).unwrap();
             assert_eq!(
-                MusicaVm::decode_native_save(&bad).unwrap_err(),
+                MusicaVm::checked_test_state(&state).unwrap_err(),
                 MusicaRuntimeError::LinearScroll
             );
             assert_eq!(
-                machine.restore_native_save(&bad, 3).unwrap_err(),
+                machine.install_test_state(&state, 3).unwrap_err(),
                 MusicaRuntimeError::LinearScroll
             );
-            assert_eq!(machine.encode_native_save().unwrap(), valid);
+            assert_eq!(machine.state(), &valid);
         }
         machine.step(3).unwrap();
         assert_eq!(

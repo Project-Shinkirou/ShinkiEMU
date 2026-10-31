@@ -1,6 +1,6 @@
 use super::*;
 #[test]
-fn native_gpu_character_mirror_transition_wait_and_save_restore() {
+fn native_gpu_character_mirror_transition_wait_and_in_memory_resume() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".char load -1 Stand.png\r\n.char pos 1 16 0\r\n.char trans 1 100 0\r\n.wait 1000\r\n.end\r\n");
@@ -16,48 +16,36 @@ fn native_gpu_character_mirror_transition_wait_and_save_restore() {
     .unwrap();
     fixture::stand(root.path(), png.get_ref());
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut capture = Capture(Vec::new());
-    opened.session.advance(16_666_667, &[]).unwrap();
-    opened.session.advance(16_666_667, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let index = (704 * 1280 + 8) * 4;
     assert_eq!(&capture.0[index..index + 4], &[0, 255, 0, 255]);
-    opened.session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
     assert_eq!(
-        opened.session.advance(40_000_000, &[]).unwrap().status,
+        session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Waiting
     );
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let saved = capture.0.clone();
     assert!(saved[index + 1] > 0 && saved[index + 1] < 255);
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    let checkpoint = capture_transient_vm(&session);
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     let later = capture.0.clone();
     assert!(later[index + 1] < saved[index + 1]);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    resume_vm_for_test(&mut session, &checkpoint);
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(capture.0, saved);
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(capture.0, later);
-    opened.session.advance(40_000_000, &[]).unwrap();
-    capture
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    capture.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(&capture.0[index..index + 4], &[0, 0, 0, 255]);
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }
