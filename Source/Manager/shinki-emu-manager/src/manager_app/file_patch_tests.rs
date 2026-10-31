@@ -93,6 +93,56 @@ fn recipe(path: &Path, body: &str, configuration: &str) {
 }
 
 #[test]
+fn selected_output_path_is_previewed_then_created_only_by_successful_conversion() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, source, _) = controller(root.path());
+    let script = root.path().join("convert.luau");
+    recipe(&script, "", "{launch_mode=\"title\"}");
+    let parent = root.path().join("chosen-output-location");
+    fs::create_dir(&parent).unwrap();
+    let output = parent.join("localized-output");
+    app.set_patch_script(&script).unwrap();
+    app.set_patch_directory("output", &output).unwrap();
+    assert_eq!(app.patch_state.output_directory, output.to_str().unwrap());
+    assert_eq!(fs::read_dir(&parent).unwrap().count(), 0);
+    app.start_patch().unwrap();
+    settle(&mut app, |app| !app.patch_busy() && !app.startup_busy());
+    assert!(app.patch_state.error.is_empty(), "{}", app.patch_state.error);
+    assert_eq!(fs::read_dir(&parent).unwrap().count(), 1);
+    assert_eq!(fs::read(output.join("payload.bin")).unwrap(), b"original public payload");
+    assert_eq!(fs::read(source.join("payload.bin")).unwrap(), b"original public payload");
+    assert!(output.join("shinki-patch-result.json").is_file());
+}
+
+#[test]
+fn occupied_or_source_contained_output_is_rejected_without_mutation() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, source, _) = controller(root.path());
+    let script = root.path().join("convert.luau");
+    recipe(&script, "", "{launch_mode=\"title\"}");
+    let empty = root.path().join("occupied-empty");
+    fs::create_dir(&empty).unwrap();
+    let nonempty = root.path().join("occupied-data");
+    fs::create_dir(&nonempty).unwrap();
+    fs::write(nonempty.join("keep"), b"user data").unwrap();
+    let file = root.path().join("occupied-file");
+    fs::write(&file, b"user file").unwrap();
+    let contained = source.join("localized-output");
+    for output in [&empty, &nonempty, &file, &source, &contained] {
+        app.start_file_patch(&script, Path::new(""), output).unwrap();
+        settle(&mut app, |app| !app.patch_busy());
+        assert!(!app.patch_state.error.is_empty(), "{output:?}");
+        assert_eq!(fs::read(source.join("payload.bin")).unwrap(), b"original public payload");
+        assert_eq!(fs::read(source.join("save/slot.bin")).unwrap(), b"original public save");
+        assert_eq!(fs::read_dir(&empty).unwrap().count(), 0);
+        assert_eq!(fs::read(nonempty.join("keep")).unwrap(), b"user data");
+        assert_eq!(fs::read(&file).unwrap(), b"user file");
+        assert!(!contained.exists());
+    }
+    assert_eq!(app.library.list_games().unwrap().len(), 1);
+}
+
+#[test]
 fn completion_uses_output_identity_after_selection_changes_without_copying_source_state() {
     let root = tempfile::tempdir().unwrap();
     let (mut app, source, source_id) = controller(root.path());
@@ -275,7 +325,9 @@ fn running_patch_blocks_launch_scan_and_second_job_but_cancel_joins_and_allows_r
     let (mut app, source, source_id) = controller(root.path());
     let script = root.path().join("cancel.luau");
     recipe(&script, "ctx.create('partial'):write(0,buffer.fromstring('partial')); ctx.progress('public waiting',0,nil); while true do end", "{launch_mode=\"title\"}");
-    let output = root.path().join("cancelled-output");
+    let parent = root.path().join("chosen-output-location");
+    fs::create_dir(&parent).unwrap();
+    let output = parent.join("localized-output");
     app.start_file_patch(&script, Path::new(""), &output)
         .unwrap();
     settle(&mut app, |app| app.patch_state.phase == "public waiting");
@@ -290,6 +342,8 @@ fn running_patch_blocks_launch_scan_and_second_job_but_cancel_joins_and_allows_r
     app.cancel_file_patch().unwrap();
     settle(&mut app, |app| app.patch_job.is_none());
     assert!(!output.exists());
+    assert!(parent.is_dir());
+    assert_eq!(fs::read_dir(&parent).unwrap().count(), 0);
     assert!(app.patch_state_view().can_start);
     recipe(&script, "", "{launch_mode=\"title\"}");
     app.start_file_patch(&script, Path::new(""), &output)
