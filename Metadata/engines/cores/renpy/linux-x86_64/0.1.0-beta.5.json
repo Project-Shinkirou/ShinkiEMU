@@ -1,0 +1,13 @@
+{
+  "abi": "shinki.emu.native.c.v3",
+  "display_name": "Ren’Py",
+  "family_name": "Ren’Py",
+  "license": "MIT AND LGPL-2.1-or-later",
+  "platform": "linux-x86_64",
+  "plugin_id": "renpy",
+  "release_tag": "core-renpy-v0.1.0-beta.5",
+  "sha256": "4968cfdd5a450bab3935f84f93d9d07aeb8e3dc09aa5f26b7ab66f188a2f75bd",
+  "size": 39867900,
+  "url": "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/core-renpy-v0.1.0-beta.5/shinki-emu-core-renpy-0.1.0-beta.5-linux-x86_64.zip",
+  "version": "0.1.0-beta.5"
+}
