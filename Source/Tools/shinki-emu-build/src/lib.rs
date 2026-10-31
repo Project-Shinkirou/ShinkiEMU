@@ -381,6 +381,8 @@ pub fn configure_cmake(
         .arg("-DVCPKG_MANIFEST_INSTALL=OFF");
     if let Some(generator) = env::var_os("CMAKE_GENERATOR") {
         configure.arg("-G").arg(generator);
+    } else if target.ends_with("-linux-android") {
+        configure.args(["-G", "Ninja"]);
     } else if cfg!(windows)
         && target.ends_with("windows-msvc")
         && env::var_os("VCToolsInstallDir").is_some()
