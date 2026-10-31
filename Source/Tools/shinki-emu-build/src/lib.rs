@@ -266,7 +266,9 @@ pub fn link_android_static_core(native: &Path, installations: &[PathBuf]) -> Res
     link_static_installations(&[native.join("install")])?;
     link_static_installations(installations)?;
     println!("cargo:rustc-link-lib=c++_shared");
-    for library in ["android", "log", "dl", "m", "EGL", "GLESv3", "OpenSLES", "mediandk"] {
+    for library in [
+        "android", "log", "dl", "m", "EGL", "GLESv3", "OpenSLES", "mediandk",
+    ] {
         println!("cargo:rustc-link-lib={library}");
     }
     Ok(())
