@@ -173,10 +173,12 @@ OHOS Manager を含むリリースでは、release ブランチを push し、�
 cargo xtask deps --target aarch64-unknown-linux-ohos
 cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
 cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
-SHINKI_EMU_RELEASE_CI_RUN_ID=<成功した-ci-実行-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
+SHINKI_EMU_RELEASE_CI_RUN_ID=<成功した-ci-実行-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<成功した-handoff-実行-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
 ```
 
-公開処理は、同一コミット、全 archive の SHA256、全ホスト行（重複する Android x86_64 行を除く）と OHOS HAP を確認し、GitHub API で同一コミットの成功した `ci.yml` を照合します。OHOS パッケージ処理は署名・ネイティブライブラリの依存関係・対応ソースを確認します。公開名と説明にはテスト署名と起動検証の免除を明記します。
+最後の公開コマンドの前に、同じコミットで `manager-v<version>` のドラフトを作成し、OHOS HAP、対応ソース ZIP、`ohos-handoff.json` という名前にした OHOS の `release.json` をアップロードします。同じコミットの `release.yml` に `components=manager`、バージョン、`verify_local_manager=true` を指定します。この検証専用実行は実際のドラフト成果物を取得し、SHA256、HAP の内容、ネイティブ依存関係と対応ソースのコミットを確認します。ホスト runner に DevEco は不要です。検証済みファイルは `verified-ohos-handoff` artifact に保存されます。成功した実行 ID を `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` に設定します。テスト PKI 署名はローカル DevEco で確認し、ホスト側は成果物の完全性を確認します。ホスト側での再署名検証やデバイス検証は行いません。
+
+公開処理は同一コミット、全 archive の SHA256、全ホスト行（重複する Android x86_64 行を除く）と OHOS HAP、および同一コミットの両ワークフロー成功を照合します。公開名と説明にはテスト署名と起動検証の免除を明記します。
 
 ローカルランナーは push 前の任意の事前チェックで、リモートで失敗する問題を先に見つけるためのものです。`matrix --json [--ci] --since <ref>` は、入力が `<ref>` 以降に変わった行だけを残します。ランナーは `SHINKI_CI_SINCE` からこの引数を渡します。共有の入力はすべての行を選びます。対象はルートの `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`、およびここに挙げていないすべてのパスです。`Source/Manager/` と `Source/Providers/` は Manager の行を選びます。`Source/Families/<ディレクトリ>/` は、そのディレクトリにマニフェストがあるコアと、そのコアの `static_manager_targets` 上の Manager の行を選びます。`build/cores.toml` の `[[cores]]` テーブルが変わった場合も、そのコアについて同じです。`docs/**`、`Metadata/**`、Markdown ファイルはどの行も選びません。
 

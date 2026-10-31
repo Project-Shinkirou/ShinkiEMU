@@ -124,11 +124,17 @@ fn run() -> Result<()> {
             component,
             target,
             version,
-            publish,
-        } => match target {
-            Some(target) if !publish => release::prepare(&inv, &target, &component, &version)?,
-            _ => release::publish(&inv, &component, &version)?,
-        },
+            publish: _,
+            verify_handoff,
+        } => {
+            if verify_handoff {
+                release::verify_ohos_handoff(&inv, &component, &version)?;
+            } else if let Some(target) = target {
+                release::prepare(&inv, &target, &component, &version)?;
+            } else {
+                release::publish(&inv, &component, &version)?;
+            }
+        }
         cli::Command::Metadata { cmd } => metadata::run(cmd)?,
         cli::Command::Ci {
             target,

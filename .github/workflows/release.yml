@@ -13,6 +13,10 @@ on:
       components:
         description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
         required: true
+      verify_local_manager:
+        description: 'Verify staged OHOS HAP/source in the draft Manager release; no rebuild or publication'
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -73,6 +77,7 @@ jobs:
           "local_manager=$($localManager.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "Release $version`: $($requested -join ', ') ($($include.Count) build rows)" >> $env:GITHUB_STEP_SUMMARY
   build:
+    if: ${{ inputs.verify_local_manager != true }}
     needs: select
     strategy:
       fail-fast: false
@@ -171,10 +176,38 @@ jobs:
           path: .work/release/
           include-hidden-files: true
           if-no-files-found: error
+  verify-ohos-handoff:
+    needs: select
+    if: ${{ inputs.verify_local_manager == true }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - run: rustup show
+      - name: Download actual test-signed HAP and corresponding source from draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=".work/release/manager-v$VERSION/aarch64-unknown-linux-ohos"
+          mkdir -p "$root"
+          gh release download "manager-v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$root" \
+            --pattern '*ohos*' --pattern ohos-handoff.json
+          mv "$root/ohos-handoff.json" "$root/release.json"
+          cargo xtask release --component manager --version "$VERSION" --verify-handoff
+          echo "Verified exact-head OHOS HAP/source hashes and native closure. DevEco verified the test-PKI signature locally; no device launch or retail-installability acceptance." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-ohos-handoff
+          path: .work/release/
+          if-no-files-found: error
   publish:
     needs: [select, build]
     # Failed build rows fail only their own component's publish job.
-    if: ${{ !cancelled() && needs.select.result == 'success' }}
+    if: ${{ !cancelled() && needs.select.result == 'success' && inputs.verify_local_manager != true }}
     strategy:
       fail-fast: false
       matrix:

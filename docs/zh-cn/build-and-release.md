@@ -183,10 +183,12 @@ GitHub Actions 是权威 CI，构建有托管 runner 的发布产物。仅 DevEc
 cargo xtask deps --target aarch64-unknown-linux-ohos
 cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
 cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <版本>
-SHINKI_EMU_RELEASE_CI_RUN_ID=<成功的-ci-运行编号> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <版本> --publish
+SHINKI_EMU_RELEASE_CI_RUN_ID=<成功的-ci-运行编号> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<成功的-handoff-运行编号> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <版本> --publish
 ```
 
-发布命令核对所有产物的提交、归档 SHA256 和全部托管平台产物（Android x86_64 重复行除外），要求 OHOS HAP，并向 GitHub 核对该提交的成功 `ci.yml`。OHOS 打包会核对 HAP 签名、原生依赖闭包及对应源码。发布名称和说明须写明测试签名与免做启动验收。
+执行最后的发布命令前，在同一提交创建 `manager-v<版本>` 草稿发布，上传 OHOS HAP、对应源码 ZIP，以及重命名为 `ohos-handoff.json` 的 OHOS `release.json`。以同一提交触发 `release.yml`，传入 `components=manager`、版本和 `verify_local_manager=true`。此运行只验证、不重建或发布：下载草稿中的实际产物，核对 SHA256、HAP 内容、原生依赖闭包与对应源码提交，无需托管 runner 安装 DevEco。已核验文件保留为 `verified-ohos-handoff` artifact。将成功运行编号设为 `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID`。测试 PKI 签名由本地 DevEco 打包核验；托管交接门禁核验产物完整性，不将其描述为再次验签或设备验收。
+
+发布命令核对所有产物的提交、归档 SHA256 和全部托管平台产物（Android x86_64 重复行除外），要求 OHOS HAP，并向 GitHub 核对同一提交的两项工作流门禁。发布名称和说明写明测试签名与启动验收豁免。
 
 本地 runner 只是推送前的可选预检，用来提前发现会让远端失败的问题。`matrix --json [--ci] --since <ref>` 只保留输入在 `<ref>` 之后有变化的行，runner 通过 `SHINKI_CI_SINCE` 传入该参数。共享输入会选中所有行，包括根目录 `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`，以及这里没有列出的任何路径。`Source/Manager/` 和 `Source/Providers/` 选中 Manager 行。`Source/Families/<目录>/` 选中 manifest 位于该目录的核心，以及该核心 `static_manager_targets` 上的 Manager 行；`build/cores.toml` 中某个 `[[cores]]` 表有改动时，对该核心的效果相同。`docs/**`、`Metadata/**` 和 Markdown 文件不选中任何行。
 

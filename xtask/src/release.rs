@@ -68,7 +68,9 @@ impl GitHub {
         let mut jobs = Vec::new();
         for page in 1.. {
             let response = self
-                .get_optional(&format!("{API}/actions/runs/{number}/jobs?per_page=100&page={page}"))?
+                .get_optional(&format!(
+                    "{API}/actions/runs/{number}/jobs?per_page=100&page={page}"
+                ))?
                 .context("CI run jobs not found")?;
             let rows = response["jobs"].as_array().context("CI jobs")?;
             jobs.extend(rows.iter().cloned());
@@ -78,18 +80,53 @@ impl GitHub {
         }
         for target in targets {
             if !jobs.iter().any(|job| {
-                job["name"]
-                    .as_str()
-                    .is_some_and(|name| name.starts_with("component (") && name.contains("manager") && name.contains(target))
-                    && job["conclusion"] == "success"
+                job["name"].as_str().is_some_and(|name| {
+                    name.starts_with("component (")
+                        && name.contains("manager")
+                        && name.contains(target)
+                }) && job["conclusion"] == "success"
             }) {
                 bail!("CI run {id} has no successful Manager build for {target}");
             }
         }
-        if !jobs.iter().any(|job| job["name"] == "tools" && job["conclusion"] == "success") {
+        if !jobs
+            .iter()
+            .any(|job| job["name"] == "tools" && job["conclusion"] == "success")
+        {
             bail!("CI run {id} has no successful tooling gate");
         }
         Ok(run["html_url"].as_str().context("CI run URL")?.to_owned())
+    }
+    fn require_ohos_handoff_ci(&self, commit: &str) -> Result<String> {
+        let id = env::var("SHINKI_EMU_RELEASE_HANDOFF_RUN_ID").context(
+            "set SHINKI_EMU_RELEASE_HANDOFF_RUN_ID to the exact-head release.yml handoff run",
+        )?;
+        let number = id.parse::<u64>()?;
+        let run = self
+            .get_optional(&format!("{API}/actions/runs/{number}"))?
+            .context("release handoff run not found")?;
+        if run["path"] != ".github/workflows/release.yml"
+            || run["head_sha"] != commit
+            || run["status"] != "completed"
+            || run["conclusion"] != "success"
+        {
+            bail!("handoff run {id} must be completed/successful release.yml at {commit}");
+        }
+        let response = self
+            .get_optional(&format!("{API}/actions/runs/{number}/jobs?per_page=100"))?
+            .context("release handoff jobs not found")?;
+        if !response["jobs"]
+            .as_array()
+            .context("handoff jobs")?
+            .iter()
+            .any(|job| job["name"] == "verify-ohos-handoff" && job["conclusion"] == "success")
+        {
+            bail!("release run {id} did not verify the staged OHOS artifact");
+        }
+        Ok(run["html_url"]
+            .as_str()
+            .context("handoff run URL")?
+            .to_owned())
     }
     /// Upload into the draft, replacing a same-name asset an interrupted run left.
     fn upload(&self, release: &Value, path: &Path) -> Result<Value> {
@@ -471,6 +508,83 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     Ok(())
 }
 
+/// Hosted integrity/native/source gate for the exact locally signed HAP.
+/// Signature verification itself is performed by the DevEco packager.
+pub fn verify_ohos_handoff(inv: &Inventory, component: &str, version: &str) -> Result<()> {
+    if component != "manager" {
+        bail!("the local OHOS handoff is only defined for manager");
+    }
+    let target = "aarch64-unknown-linux-ohos";
+    let id = identity(inv, component, version)?;
+    let directory = id.root.join(target);
+    let record_path = directory.join("release.json");
+    let record: Value = serde_json::from_slice(&fs::read(&record_path)?)?;
+    require_same_release(&record, &id, component, version, &record_path)?;
+    for key in ["archive", "sources"] {
+        let name = record[key]["name"].as_str().context("handoff asset name")?;
+        package::portable(name)?;
+        if package::sha256(&directory.join(name))?
+            != record[key]["sha256"].as_str().context("handoff SHA256")?
+        {
+            bail!("{name}: handoff SHA256 mismatch");
+        }
+    }
+    let hap = directory.join(record["archive"]["name"].as_str().unwrap());
+    let extracted = tempfile::tempdir()?;
+    let mut archive = zip::ZipArchive::new(fs::File::open(&hap)?)?;
+    for required in [
+        "module.json",
+        "ets/modules.abc",
+        "resources/rawfile/bundled/bundled.manifest",
+        "resources/rawfile/bundled/metadata/index.json",
+    ] {
+        archive
+            .by_name(required)
+            .with_context(|| format!("HAP lacks {required}"))?;
+    }
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let name = entry.name()?.into_owned();
+        if name.starts_with("libs/") && name.ends_with(".so") {
+            package::portable(&name)?;
+            let path = extracted.path().join(&name);
+            fs::create_dir_all(path.parent().unwrap())?;
+            std::io::copy(&mut entry, &mut fs::File::create(path)?)?;
+        }
+    }
+    let libs = extracted.path().join("libs/arm64-v8a");
+    if !libs.join("libshinki_emu_manager.so").is_file() {
+        bail!("HAP lacks the arm64 Manager library");
+    }
+    for (path, _) in package::tree(&libs)? {
+        crate::binary::closure(&path, std::slice::from_ref(&libs), target)?;
+    }
+    let sources = directory.join(record["sources"]["name"].as_str().unwrap());
+    let mut archive = zip::ZipArchive::new(fs::File::open(sources)?)?;
+    archive.by_name("BUILD-FROM-SOURCE.md")?;
+    let source = archive.by_name("source.tar")?;
+    let mut tar = tar::Archive::new(source);
+    let mut references = None;
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        if entry.path()?.as_ref() == Path::new("./source-references.json")
+            || entry.path()?.as_ref() == Path::new("source-references.json")
+        {
+            references = Some(serde_json::from_reader::<_, Value>(&mut entry)?);
+        }
+    }
+    let references = references.context("source archive lacks source-references.json")?;
+    if references["product"]["rev"] != id.commit || references["target"] != target {
+        bail!("corresponding source does not match the OHOS build revision/target");
+    }
+    println!(
+        "OHOS handoff verified: source={}, HAP SHA256={}",
+        id.commit,
+        package::sha256(&hap)?
+    );
+    Ok(())
+}
+
 /// Publish every prepared target of `component` as one GitHub Release, then
 /// propose the core catalog entries.
 pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
@@ -498,7 +612,10 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         let path = directory.join("release.json");
         if !path.is_file() {
             if local_manager && !(component == "manager" && t.triple == "x86_64-linux-android") {
-                bail!("Manager release requires a prepared exact-head artifact for {}", t.triple);
+                bail!(
+                    "Manager release requires a prepared exact-head artifact for {}",
+                    t.triple
+                );
             }
             blocked.push(format!(
                 "- {}: no successful build/package in this release run (artifact=null)",
@@ -510,7 +627,9 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         require_same_release(&record, &id, component, version, &path)?;
         for key in ["archive", "sources"] {
             let name = record[key]["name"].as_str().context("release asset name")?;
-            let expected = record[key]["sha256"].as_str().context("release asset SHA256")?;
+            let expected = record[key]["sha256"]
+                .as_str()
+                .context("release asset SHA256")?;
             let actual = package::sha256(&directory.join(name))?;
             if actual != expected {
                 bail!("{name}: release asset hash differs from prepared record");
@@ -546,11 +665,17 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         let targets = inv
             .targets
             .iter()
-            .filter(|t| t.manager_supported && t.runner != "local-only" && t.triple != "x86_64-linux-android")
+            .filter(|t| {
+                t.manager_supported
+                    && t.runner != "local-only"
+                    && t.triple != "x86_64-linux-android"
+            })
             .map(|t| t.triple.as_str())
             .collect::<Vec<_>>();
         let url = gh.require_manager_ci(&id.commit, &targets)?;
-        format!("\nExact-head GitHub CI: {url}.\n")
+        verify_ohos_handoff(inv, component, version)?;
+        let handoff = gh.require_ohos_handoff_ci(&id.commit)?;
+        format!("\nExact-head GitHub CI: {url}.\nOHOS artifact handoff gate: {handoff}.\n")
     } else {
         String::new()
     };
@@ -559,7 +684,9 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         blocked.join("\n")
     );
     let notes = if local_manager {
-        format!("{notes}\nThe OHOS HAP is experimental, signed with the OpenHarmony SDK test PKI. Its signature and native dependency closure were verified by the local DevEco packager. Device/emulator launch and retail installability were not verified.\n")
+        format!(
+            "{notes}\nThe OHOS HAP is experimental, signed with the OpenHarmony SDK test PKI. Its signature and native dependency closure were verified by the local DevEco packager. Device/emulator launch and retail installability were not verified.\n"
+        )
     } else {
         notes
     };

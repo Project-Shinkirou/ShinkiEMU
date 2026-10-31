@@ -497,15 +497,15 @@ mod tests {
                 .iter()
                 .any(|row| row.target == triple)
         );
-        let target = inventory
+        let index = inventory
             .targets
-            .iter_mut()
-            .find(|target| target.triple == triple)
+            .iter()
+            .position(|target| target.triple == triple)
             .unwrap();
-        target.blocked = "deferred".into();
+        inventory.targets[index].blocked = "deferred".into();
         assert!(inventory.require_buildable("manager", triple).is_err());
-        target.blocked.clear();
-        target.manager_supported = false;
+        inventory.targets[index].blocked.clear();
+        inventory.targets[index].manager_supported = false;
         assert!(inventory.validate().is_err());
     }
 
