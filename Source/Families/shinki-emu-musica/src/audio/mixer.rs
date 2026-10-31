@@ -371,6 +371,7 @@ impl Mixer {
             offset = end;
         }
     }
+    #[cfg(test)]
     pub(super) fn snapshot(&mut self) -> Vec<SoundSnapshot> {
         self.manager
             .backend_mut()

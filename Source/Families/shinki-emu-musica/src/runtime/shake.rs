@@ -189,7 +189,7 @@ mod tests {
             );
             let mut restored = vm(source.as_bytes());
             restored
-                .restore_native_save(&original.encode_native_save().unwrap(), 2)
+                .install_test_state(&MusicaVm::checked_test_state(original.state()).unwrap(), 2)
                 .unwrap();
             for delta in [1_000_000, 100_000_000, 29_000_000, 1_000_000] {
                 assert_eq!(
@@ -222,7 +222,7 @@ mod tests {
             machine.state().screen_shake.as_ref().unwrap().offset,
             [0, -4]
         );
-        let valid = machine.encode_native_save().unwrap();
+        let valid = MusicaVm::checked_test_state(machine.state()).unwrap();
         for mutation in 0..4 {
             let mut state = machine.state().clone();
             let shake = state.screen_shake.as_mut().unwrap();
@@ -232,16 +232,15 @@ mod tests {
                 2 => shake.offset = [4, 4],
                 _ => shake.elapsed_ns = 30_000_000,
             }
-            let bad = postcard::to_allocvec(&state).unwrap();
             assert_eq!(
-                MusicaVm::decode_native_save(&bad).unwrap_err(),
+                MusicaVm::checked_test_state(&state).unwrap_err(),
                 MusicaRuntimeError::ScreenShake
             );
             assert_eq!(
-                machine.restore_native_save(&bad, 2).unwrap_err(),
+                machine.install_test_state(&state, 2).unwrap_err(),
                 MusicaRuntimeError::ScreenShake
             );
-            assert_eq!(machine.encode_native_save().unwrap(), valid);
+            assert_eq!(machine.state(), &valid);
         }
         for source in [
             b".shakescreen X 4 30\r\n".as_slice(),

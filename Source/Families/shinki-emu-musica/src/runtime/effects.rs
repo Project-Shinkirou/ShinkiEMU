@@ -91,12 +91,33 @@ pub(super) fn execute_panel(
                 resource_uri: format!("musica:/sys/{filename}"),
             })
         }
+        [mode] if mode == "2" => Some(MusicaPanelState {
+            mode: 2,
+            resource_uri: "musica:/sys/fullPanel.png".into(),
+        }),
+        [mode, filename] if mode == "2" => {
+            let filename = if filename.is_empty() {
+                "fullPanel.png"
+            } else {
+                filename
+            };
+            validate_scene_filename(filename).map_err(|_| MusicaRuntimeError::Panel)?;
+            Some(MusicaPanelState {
+                mode: 2,
+                resource_uri: format!("musica:/sys/{filename}"),
+            })
+        }
         [mode] if mode == "3" => Some(MusicaPanelState {
             mode: 3,
             resource_uri: "musica:/sys/fullPanel.png".into(),
         }),
         _ => return Err(MusicaRuntimeError::Panel),
     };
+    if panel.as_ref().is_none_or(|panel| panel.mode != 2)
+        || state.panel.as_ref().is_none_or(|panel| panel.mode != 2)
+    {
+        state.native_novel_page.clear();
+    }
     state.panel = panel;
     next_effect_sequence(state)?;
     Ok(Some(MusicaVmEvent::Panel {

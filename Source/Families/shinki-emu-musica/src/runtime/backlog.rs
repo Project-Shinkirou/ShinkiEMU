@@ -226,7 +226,7 @@ mod tests {
         .unwrap();
         vm.step(1).unwrap();
         vm.open_backlog().unwrap();
-        let saved = vm.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
         for field in 0..3 {
             let mut state = vm.state().clone();
             match field {
@@ -234,11 +234,8 @@ mod tests {
                 1 => state.backlog_bytes += 1,
                 _ => state.backlog[0].text.push('!'),
             }
-            assert!(
-                vm.restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
-                    .is_err()
-            );
-            assert_eq!(vm.encode_native_save().unwrap(), saved);
+            assert!(vm.install_test_state(&state, 1).is_err());
+            assert_eq!(vm.state(), &saved);
         }
         vm.move_backlog(-1).unwrap();
         vm.move_backlog(1).unwrap();

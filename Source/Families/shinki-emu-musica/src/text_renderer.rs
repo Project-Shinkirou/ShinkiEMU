@@ -250,6 +250,65 @@ impl MusicaTextRenderer {
         self.frame(&mut [layout])
     }
 
+    pub(crate) fn novel_commands(
+        &mut self,
+        page: &[crate::eden_save::EdenHistoryLine],
+        edition: crate::eden_save::EdenEdition,
+        width: u32,
+    ) -> Result<Vec<SceneCommand>, String> {
+        let native = edition.novel_layout();
+        let left = (i64::from(width) - i64::from(native.width)) / 2;
+        let left = i32::try_from(left).map_err(|_| "SHINKI_EMU_MUSICA_TEXT_BOUNDS")?;
+        let mut regions = Vec::with_capacity(page.len() * 2);
+        for (index, line) in page.iter().enumerate() {
+            let text = crate::parse_musica_message_markup(&line.text)
+                .map_err(|_| "SHINKI_EMU_MUSICA_TEXT_MARKUP")?
+                .visible_text;
+            let height = u32::try_from(native.top + 576 - line.top_y)
+                .map_err(|_| "SHINKI_EMU_MUSICA_TEXT_BOUNDS")?;
+            if text.is_empty() || height == 0 {
+                continue;
+            }
+            regions.push(layout_request(
+                &format!("musica.novel.{index}.body"),
+                &text,
+                Region {
+                    x: left + native.speaker_width as i32,
+                    y: line.top_y,
+                    width: native.body_width,
+                    height,
+                    font_size: native.font as f32,
+                    line_height: native.line_height as f32,
+                    max_lines: height.div_ceil(native.line_height),
+                },
+            ));
+            if !line.speaker.is_empty() {
+                regions.push(layout_request(
+                    &format!("musica.novel.{index}.speaker"),
+                    &line.speaker,
+                    Region {
+                        x: left,
+                        y: line.top_y,
+                        width: native.speaker_width,
+                        height: native.line_height,
+                        font_size: native.font as f32,
+                        line_height: native.line_height as f32,
+                        max_lines: 1,
+                    },
+                ));
+            }
+        }
+        if self.shadow {
+            for region in &mut regions {
+                region.outline = Some(TextOutline {
+                    radius: 2,
+                    rgba: [0, 0, 0, 192],
+                });
+            }
+        }
+        self.frame(&mut regions)
+    }
+
     pub fn commands(
         &mut self,
         message: Option<(&str, Option<&str>)>,

@@ -503,10 +503,14 @@ impl Scene {
                         )
                     })?
                 }
-                3 => 0,
+                2 | 3 => 0,
                 _ => return Err(error("SHINKI_EMU_MUSICA_PANEL_MODE", "invalid panel mode")),
             };
-            self.layer(&mut commands, &panel.resource_uri, 0, y, 1.0)?;
+            // Native panel 2 continues without a bitmap when its optional
+            // filename cannot be found (including the authored "-" name).
+            if panel.mode != 2 || self.archive.stat(&panel.resource_uri).is_ok() {
+                self.layer(&mut commands, &panel.resource_uri, 0, y, 1.0)?;
+            }
         }
         if state.scroll_xf.is_some() {
             commands.push(SceneCommand::PopTransform);
@@ -517,13 +521,19 @@ impl Scene {
             commands.push(SceneCommand::PopClip);
             commands.push(SceneCommand::PopTransform);
         }
-        let text_commands = self
-            .text
-            .commands(
-                message.map(|(text, speaker)| (text.as_str(), speaker.as_deref())),
-                choices,
-            )
-            .map_err(|code| error(&code, "message could not be rendered"))?;
+        let text_commands =
+            if state.panel.as_ref().is_some_and(|panel| panel.mode == 2) && choices.is_none() {
+                self.text
+                    .novel_commands(&state.native_novel_page, state.native_edition, self.width)
+                    .map_err(|code| error(&code, "novel page could not be rendered"))?
+            } else {
+                self.text
+                    .commands(
+                        message.map(|(text, speaker)| (text.as_str(), speaker.as_deref())),
+                        choices,
+                    )
+                    .map_err(|code| error(&code, "message could not be rendered"))?
+            };
         self.append_text_commands(&mut commands, text_commands);
         if self.overlay_text.is_some() || self.overlay_renderer.is_some() {
             if self.overlay_renderer.is_none() {

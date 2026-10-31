@@ -329,7 +329,7 @@ fn native_container_images_use_shared_gpu_cache_and_restore() {
         )
         .unwrap();
         vm.step(1).unwrap();
-        let saved = vm.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
         let mut scene = Scene::new(
             crate::test_fixture::gpu_instance(),
             archive.clone(),
@@ -363,7 +363,7 @@ fn native_container_images_use_shared_gpu_cache_and_restore() {
         );
         assert_eq!(scene.pixels, expected);
         assert_eq!(scene.textures.resident_bytes(), 4);
-        vm.restore_native_save(&saved, 1).unwrap();
+        vm.install_test_state(&saved, 1).unwrap();
         let mut restored = Scene::new(
             crate::test_fixture::gpu_instance(),
             archive,

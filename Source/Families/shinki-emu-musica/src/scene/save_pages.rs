@@ -90,7 +90,7 @@ impl Scene {
             let (x, y) = slot_position(slot % 10);
             commands.push(SceneCommand::Texture {
                 id: format!("musica.save.thumbnail.{slot}"),
-                frame: card.texture()?,
+                frame: card.thumbnail.clone(),
                 destination: RectI {
                     x: x + 10,
                     y: y + 15,

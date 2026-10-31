@@ -132,6 +132,9 @@ impl MusicaSession {
             }
         }
         let event = self.vm.step(tick).map_err(vm_error)?;
+        if let Some(checkpoint) = self.vm.take_native_autosave() {
+            self.auto_save(checkpoint)?;
+        }
         let event = self.semantic_event(event)?;
         let changed = self.apply_event(event)?;
         Ok(changed || visual_completion)
@@ -194,9 +197,11 @@ impl MusicaSession {
                     .replace_script(uri, loaded.hash, loaded.script, label)
                     .map_err(vm_error)?;
                 self.scene.set_text_encoding(encoding);
+                self.sync_read_flags()?;
                 Ok(false)
             }
             Some(MusicaVmEvent::Stage(stage)) => {
+                self.record_cg_views(&stage)?;
                 self.attach_stage_animations(&stage)?;
                 Ok(true)
             }
@@ -329,6 +334,27 @@ impl MusicaSession {
             patches.insert(uri.to_owned(), (names, seed));
         }
         self.vm.attach_ani_patches(patches).map_err(vm_error)?;
+        Ok(())
+    }
+    /// Every `.stage` image from the bg archive goes into `cgv.dat` as a
+    /// lowercase file name, as in the real eden/Perseus files and ReMinori's
+    /// stage hook.
+    fn record_cg_views(&mut self, stage: &crate::MusicaStageCommand) -> SessionResult<()> {
+        let names = stage
+            .foreground
+            .uris_in_order()
+            .into_iter()
+            .chain(
+                stage
+                    .background
+                    .as_ref()
+                    .map(|layer| layer.resource_uri.as_str()),
+            )
+            .filter_map(|uri| uri.strip_prefix("musica:/bg/"))
+            .map(str::to_ascii_lowercase);
+        for name in names {
+            self.native.record_cg(&name)?;
+        }
         Ok(())
     }
 

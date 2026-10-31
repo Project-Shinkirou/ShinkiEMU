@@ -35,7 +35,6 @@ image.workspace = true
 lru.workspace = true
 png = "=0.18.1"
 kira.workspace = true
-postcard.workspace = true
 rc4.workspace = true
 schemars.workspace = true
 serde.workspace = true
@@ -49,7 +48,11 @@ wgpu.workspace = true
 time = { workspace = true, features = ["local-offset"] }
 tempfile.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
+
 [dev-dependencies]
+postcard.workspace = true
 parking_lot = "0.13.0"
 
 # OHOS has no SDK device-audio backend: the host installs an SDK audio output.

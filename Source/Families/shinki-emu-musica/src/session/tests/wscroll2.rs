@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn native_gpu_wscroll2_family_input_restores_and_suspends_the_animation() {
+fn native_gpu_wscroll2_resumes_in_memory_state_and_suspends_animation() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(root.path(), b".stage BG.png BG.png 0 0\r\n.effect WScroll2 sync:walk.txt 60 -8\r\n.wait 1000\r\n.effect end\r\n.end\r\n");
@@ -14,54 +14,40 @@ fn native_gpu_wscroll2_family_input_restores_and_suspends_the_animation() {
     fixture::asset(root.path(), "bg", "BG.png", png.get_ref());
     fixture::asset(root.path(), "st", "walk.txt", b"13\r\n16\r\n");
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut frame = Capture(Vec::new());
-    opened.session.advance(16_666_667, &[]).unwrap();
-    opened.session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
     assert_eq!(
-        opened.session.advance(40_000_000, &[]).unwrap().status,
+        session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Waiting
     );
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let saved = frame.0.clone();
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    let checkpoint = capture_transient_vm(&session);
+    session.advance(40_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let later = frame.0.clone();
     assert_ne!(later, saved);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    resume_vm_for_test(&mut session, &checkpoint);
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, saved);
-    opened.session.advance(40_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, later);
-    opened
-        .session
+    session
         .advance(0, &[RuntimeEvent::WindowSuspended { suspended: true }])
         .unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, later);
-    opened
-        .session
+    session
         .advance(0, &[RuntimeEvent::WindowSuspended { suspended: false }])
         .unwrap();
-    opened.session.advance(40_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(40_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_ne!(frame.0, later);
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }

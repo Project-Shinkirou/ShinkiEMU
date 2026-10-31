@@ -228,7 +228,7 @@ mod tests {
         let expected = scene.pixels.clone();
         let mut restored = make_vm();
         restored
-            .restore_native_save(&vm.encode_native_save().unwrap(), 3)
+            .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 3)
             .unwrap();
         let mut restored_scene = Scene::new(
             crate::test_fixture::gpu_instance(),

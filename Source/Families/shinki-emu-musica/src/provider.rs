@@ -5,7 +5,6 @@ use crate::{
     profile::mount_musica_with_resources,
     scene::{Scene, core_error, error},
     session::MusicaSession,
-    storage::Storage,
 };
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
 use shinki_emu_sdk::runtime::*;
@@ -16,7 +15,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-mod eden;
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 pub(crate) struct SessionLease;
 impl SessionLease {
@@ -143,15 +141,6 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "直接进入脚本时从 scr 归档加载的 .sc 文件名，只能填写单个文件名。",
         )
         .flags(ADVANCED),
-        MusicaField::new(
-            "eden_import_file",
-            "导入 eden 原版存档",
-            "文件",
-            ConfigKind::String { max_bytes: 256 },
-            ConfigValue::String("".into()),
-            "启动时只读导入的 eden 原版存档，路径相对游戏目录且须位于游戏目录内；留空则不导入。",
-        )
-        .flags(FILE | GAME_RELATIVE),
         MusicaField::text(
             "scr_archive",
             "脚本归档",
@@ -208,14 +197,13 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "replace",
             "加载翻译表后，译文直接替换原文，或与原文叠加显示。",
         ),
-        eden::edition_field(),
         MusicaField::choice(
             "launch_mode",
             "启动方式",
             "播放",
             &[("direct", "直接进入脚本"), ("title", "标题菜单启动")],
             "title",
-            "从标题菜单正常启动，或跳过标题直接运行入口脚本；导入 eden 存档时须直接进入脚本。",
+            "从标题菜单正常启动，或跳过标题直接运行入口脚本。",
         ),
         MusicaField::new(
             "message_speed_auto_play",
@@ -512,28 +500,7 @@ impl MusicaProvider {
         }
         let archive = Arc::new(archive);
         let primary_encoding = encoding;
-        let imported =
-            eden::read_import(root, &get("eden_import_file")?, &config, primary_encoding)?;
-        if imported.is_some() && [logical_width, logical_height] != [1024, 640] {
-            return Err(error(
-                "SHINKI_EMU_EDEN_SAVE_CANVAS",
-                "eden native saves require a 1024 by 640 logical canvas",
-            ));
-        }
-        if imported.is_some() && title_launch {
-            return Err(error(
-                "SHINKI_EMU_EDEN_SAVE_LAUNCH",
-                "native eden import requires direct launch",
-            ));
-        }
-        let script_name = imported
-            .as_ref()
-            .map(|save| {
-                save.variable("script_Filename")
-                    .expect("read_import validated the checkpoint")
-            })
-            .unwrap_or(&entry);
-        let uri = format!("musica:/scr/{script_name}");
+        let uri = format!("musica:/scr/{entry}");
         let loaded = crate::script_loader::load_script(&archive, &uri, primary_encoding)?;
         if let Some(service) = &replacement {
             service.check_cancelled()?;
@@ -567,7 +534,9 @@ impl MusicaProvider {
             subtitle_catalog.as_ref().map(|catalog| catalog.identity()),
         )
         .map_err(core_error)?;
-        let storage = Storage::new(root)?;
+        let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
+        native.import_legacy_progress(root, game)?;
+        native.import_legacy_settings(root, game)?;
         let mut settings = vm.config().clone();
         [
             settings.bgm_volume,
@@ -577,7 +546,7 @@ impl MusicaProvider {
         [settings.bgm_muted, settings.voice_muted, settings.se_muted] = audio_preferences.muted;
         settings.progress_in_background = progress_in_background;
         settings.text_shadow = text_shadow;
-        let settings = storage.configuration(game)?.unwrap_or(settings);
+        let settings = native.configuration(settings);
         let progress_in_background = settings.progress_in_background;
         let text_shadow = settings.text_shadow;
         let audio_preferences = settings.audio_preferences();
@@ -587,18 +556,7 @@ impl MusicaProvider {
                 "native configuration is invalid",
             )
         })?;
-        let quick_cursor = storage.quick_cursor(game)?;
-        let restored_message = imported
-            .as_ref()
-            .map(|save| eden::restore_vm(&mut vm, save, &archive, primary_encoding))
-            .transpose()?;
-        vm.merge_verified_gallery_unlocks(&storage.progress(game)?)
-            .map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
-                    "global progress cannot be applied",
-                )
-            })?;
+        vm.replace_global_variables(native.globals());
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
@@ -639,7 +597,7 @@ impl MusicaProvider {
                 .map_err(|_| error("SHINKI_EMU_MUSICA_TITLE", "title session cannot start"))?;
             scene.render_title(vm.title_variant(), None)?;
         } else {
-            scene.render(vm.state(), restored_message.as_ref(), None)?;
+            scene.render(vm.state(), None, None)?;
         }
         if let Some(service) = &replacement {
             service.check_cancelled()?;
@@ -647,9 +605,6 @@ impl MusicaProvider {
         let audio = Audio::start(archive.clone(), request.audio_output)?;
         audio.set_preferences(audio_preferences)?;
         audio.suspend(!visible || (!focused && !progress_in_background))?;
-        if imported.is_some() {
-            eden::restore_audio(&audio, vm.state())?;
-        }
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
@@ -679,19 +634,15 @@ impl MusicaProvider {
             scene,
             audio,
             replacement,
-            storage,
-            game,
             lease,
             focused,
             visible,
             progress_in_background,
             primary_encoding,
-            quick_cursor,
+            native,
         );
         session.install_localization(translation_table, translation_mode);
-        if let Some((text, speaker)) = restored_message {
-            session.install_imported_message(text, speaker)?;
-        }
+        session.sync_read_flags()?;
         tracing::info!(event = "shinki.emu.musica.session.open");
         Ok((response, session))
     }

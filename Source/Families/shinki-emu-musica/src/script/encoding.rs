@@ -54,6 +54,16 @@ impl ScriptEncoding {
         .decode_without_bom_handling_and_without_replacement(bytes)
     }
 
+    /// Strict inverse of `decode`; `None` when `text` has no representation.
+    pub(crate) fn encode(self, text: &str) -> Option<Cow<'_, [u8]>> {
+        let (bytes, _, unmappable) = match self {
+            Self::ShiftJis => SHIFT_JIS,
+            Self::Gbk => GBK,
+        }
+        .encode(text);
+        (!unmappable).then_some(bytes)
+    }
+
     pub(crate) fn language(self) -> char {
         match self {
             Self::ShiftJis => 'j',

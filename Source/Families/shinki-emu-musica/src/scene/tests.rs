@@ -38,7 +38,7 @@ fn native_stage_gpu_restore_preserves_position_and_rejects_invalid_sequences() {
     let expected = scene.pixels.clone();
     let mut restored_vm = make_vm();
     restored_vm
-        .restore_native_save(&vm.encode_native_save().unwrap(), 1)
+        .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
         .unwrap();
     let mut restored_scene = Scene::new(
         crate::test_fixture::gpu_instance(),
@@ -118,7 +118,7 @@ fn dual_stage_screen_prefix_orders_layers_and_restores_without_partial_frames() 
     assert_eq!(pixel(&scene, 5, 10), [83, 100, 220, 255]);
     let mut restored_vm = make_vm();
     restored_vm
-        .restore_native_save(&vm.encode_native_save().unwrap(), 1)
+        .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
         .unwrap();
     let mut restored = make_scene();
     restored.render(restored_vm.state(), None, None).unwrap();
@@ -200,7 +200,7 @@ fn panel_modes_draw_at_native_positions_and_clear_after_restore() {
         }
         let mut restored = make_vm();
         restored
-            .restore_native_save(&vm.encode_native_save().unwrap(), 1)
+            .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
             .unwrap();
         scene.render(restored.state(), None, None).unwrap();
         assert_eq!(scene.pixels, expected);
@@ -254,7 +254,7 @@ fn screen_shake_gpu_preserves_composed_clipping_and_restores_mid_interval() {
     vm.advance_screen_shake_clock(29_000_000).unwrap();
     let mut restored = make_vm();
     restored
-        .restore_native_save(&vm.encode_native_save().unwrap(), 3)
+        .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 3)
         .unwrap();
     vm.advance_screen_shake_clock(1_000_000).unwrap();
     restored.advance_screen_shake_clock(1_000_000).unwrap();
@@ -566,7 +566,7 @@ fn ani_patch_selection_draws_matching_eye_and_mouth_rows() {
         .unwrap();
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [0, 255, 255, 255]);
-    let saved = machine.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(machine.state()).unwrap();
     let mut restored = MusicaVm::new(
         "musica:/scr/test.sc".into(),
         Hash256::from_sha256(source),
@@ -574,7 +574,7 @@ fn ani_patch_selection_draws_matching_eye_and_mouth_rows() {
         1,
     )
     .unwrap();
-    restored.restore_native_save(&saved, 2).unwrap();
+    restored.install_test_state(&saved, 2).unwrap();
     scene.render(restored.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [0, 255, 255, 255]);
     for vm in [&mut machine, &mut restored] {
@@ -632,7 +632,7 @@ fn scrollxf_gpu_crops_translates_and_accepts_empty_extent() {
     }
     let mut restored = make_vm();
     restored
-        .restore_native_save(&vm.encode_native_save().unwrap(), 3)
+        .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 3)
         .unwrap();
     scene.render(restored.state(), None, None).unwrap();
     assert_eq!(scene.pixels, cropped);

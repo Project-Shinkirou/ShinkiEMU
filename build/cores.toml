@@ -361,16 +361,13 @@ artifact_kind = "native-shared"
 resources = []
 static_features = ["static"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki"
-rev = "6261749f383c189f7504f7814aa454b90d5a9e93"
+branch = "shinki-linux61"
+rev = "1d2662a685148a61d466f4728bcff86d38fa6e02"
 upstream = "https://github.com/CommitteeOfZero/impacto"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "Linux candidate build/package and ELF closure gates have not completed; the released fork pin remains Windows-only."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."

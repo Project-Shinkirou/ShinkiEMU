@@ -26,9 +26,9 @@ fn movie_cursor_restores_and_completion_clears_the_media_wait() {
     vm.update_movie_position(&movie.media_id, &movie.fence_id, 123456)
         .unwrap();
     vm.advance_waiting_tick(2).unwrap();
-    let saved = vm.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
     let mut restored = machine(source);
-    restored.restore_native_save(&saved, 10).unwrap();
+    restored.install_test_state(&saved, 10).unwrap();
     assert_eq!(
         restored.state().movie.as_ref().unwrap().continuation_pts,
         123456
@@ -74,9 +74,8 @@ fn movie_restore_rejects_corrupt_identity_resource_and_wait_without_replacing_st
             5 => corrupt.movie = None,
             _ => corrupt.terminal = true,
         }
-        let bytes = postcard::to_allocvec(&corrupt).unwrap();
-        assert!(MusicaVm::decode_native_save(&bytes).is_err());
-        assert!(vm.restore_native_save(&bytes, 2).is_err());
+        assert!(MusicaVm::checked_test_state(&corrupt).is_err());
+        assert!(vm.install_test_state(&corrupt, 2).is_err());
         assert_eq!(vm.state(), &before);
     }
 }
