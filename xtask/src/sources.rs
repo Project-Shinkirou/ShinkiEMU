@@ -563,7 +563,13 @@ fn native_git_source(downloads: &Path, port: &str, location: &str, dest: &Path) 
         checkout = tempfile::tempdir()?;
         dependencies::run(git_committed_bytes(checkout.path()).args(["init", "-q"]))?;
         dependencies::run(git_committed_bytes(checkout.path()).args([
-            "fetch", "-q", "--depth", "1", "--no-tags", repo, rev,
+            "fetch",
+            "-q",
+            "--depth",
+            "1",
+            "--no-tags",
+            repo,
+            rev,
         ]))?;
         let actual = dependencies::capture(
             git_committed_bytes(checkout.path()).args(["rev-parse", "FETCH_HEAD"]),
@@ -1367,8 +1373,8 @@ mod tests {
             &output,
         )
         .unwrap();
-        let archive = fs::File::open(output.join(format!("native-dependency-{first}.tar.gz")))
-            .unwrap();
+        let archive =
+            fs::File::open(output.join(format!("native-dependency-{first}.tar.gz"))).unwrap();
         let extracted = temp.path().join("extracted-git-source");
         tar::Archive::new(flate2::read::GzDecoder::new(archive))
             .unpack(&extracted)
