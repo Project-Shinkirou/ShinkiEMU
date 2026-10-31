@@ -643,7 +643,16 @@ fn native_sources(
                     .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA512"))
                     .and_then(|c| c["checksumValue"].as_str())
                 {
-                    required.insert(checksum.to_ascii_lowercase());
+                    if let Some(filename) = resource["packageFileName"].as_str() {
+                        copy_named_archive(
+                            &inv.root.join(".work/vcpkg-downloads"),
+                            filename,
+                            checksum,
+                            &root.join(".work/vcpkg-downloads"),
+                        )?;
+                    } else {
+                        required.insert(checksum.to_ascii_lowercase());
+                    }
                 } else {
                     native_git_source(
                         &inv.root.join(".work/vcpkg-downloads"),
@@ -753,6 +762,18 @@ fn native_sources(
         renpy_sources(inv, root)?;
     }
     Ok(commands)
+}
+
+fn copy_named_archive(downloads: &Path, filename: &str, checksum: &str, dest: &Path) -> Result<()> {
+    package::portable(filename)?;
+    let source = downloads.join(filename);
+    if !sha512(&source)?.eq_ignore_ascii_case(checksum) {
+        bail!(
+            "native source archive SHA512 mismatch: {}",
+            source.display()
+        );
+    }
+    copy_input(&source, &dest.join(filename))
 }
 
 /// Copy the downloaded archives vcpkg recorded by SHA512 in the installed SPDX.
@@ -1355,6 +1376,39 @@ mod tests {
             fs::read_to_string(extracted.join("nested/payload.txt")).unwrap(),
             "second public source\n"
         );
+    }
+
+    #[test]
+    fn named_native_source_caches_keep_nested_paths_and_reject_modified_archives() {
+        let (temp, _inv, _core, upstream, first, _second) = fixture();
+        let downloads = temp.path().join("downloads");
+        let filename = "native-cache/library/source.tar.gz";
+        let source = downloads.join(filename);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        dependencies::run(
+            git_committed_bytes(&upstream)
+                .args(["archive", "--format=tar.gz", "-o"])
+                .arg(&source)
+                .arg(&first),
+        )
+        .unwrap();
+        let checksum = sha512(&source).unwrap();
+        let output = temp.path().join("copied-source");
+        copy_named_archive(&downloads, filename, &checksum, &output).unwrap();
+        let extracted = temp.path().join("nested-source");
+        tar::Archive::new(flate2::read::GzDecoder::new(
+            fs::File::open(output.join(filename)).unwrap(),
+        ))
+        .unpack(&extracted)
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(extracted.join("payload.txt")).unwrap(),
+            "first public source\n"
+        );
+        fs::write(source, b"modified source archive").unwrap();
+        let rejected = temp.path().join("rejected-source");
+        assert!(copy_named_archive(&downloads, filename, &checksum, &rejected).is_err());
+        assert!(!rejected.exists());
     }
 
     #[test]
