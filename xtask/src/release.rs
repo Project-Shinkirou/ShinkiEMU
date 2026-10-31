@@ -368,7 +368,7 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     package::atomic_directory(&root, |work| {
         let staged = work.join("package");
         let package_dir = package::package(inv, target, component, version, &staged)?;
-        let publish_blocked = if target.contains("android") {
+        let publish_blocked = if component == "manager" && target.contains("android") {
             let android: Value =
                 serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
             if android["signing"] == "release" {

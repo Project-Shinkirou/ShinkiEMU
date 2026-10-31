@@ -619,7 +619,7 @@ fn native_sources(
         if *group == "subtitle" {
             commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
         }
-        if *group == "ffmpeg" {
+        if matches!(*group, "ffmpeg" | "native") {
             commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         commands.push('\n');
