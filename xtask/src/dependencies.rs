@@ -714,6 +714,9 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             ));
         }
     }
+    if !cfg!(windows) && selected.bison && executable("bison").is_none() {
+        missing.push("Bison host executable".into());
+    }
     if crate::apple::supported(target) && selected.subtitle {
         let pc = subtitle_install(inv, target)?.join("lib/pkgconfig/libass.pc");
         if !pc.is_file() {
@@ -1339,10 +1342,10 @@ pub fn apply_environment(
             .env("PKG_CONFIG_ALL_STATIC", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
     }
-    if target == "x86_64-unknown-linux-gnu" && selected.bison {
+    if !cfg!(windows) && selected.bison {
         cmd.env(
             "BISON_EXECUTABLE",
-            executable("bison").context("Linux Bison is missing")?,
+            executable("bison").context("Bison host executable is missing")?,
         );
     }
     if target == "x86_64-unknown-linux-gnu" && (selected.subtitle || selected.ffmpeg) {

@@ -13,6 +13,10 @@ Every file written by ShinkiEMU itself inside a game directory belongs under `<g
 
 Clone the repository with its recursive submodules. Use Rust/Cargo and the target's native toolchain. Windows native builds require an x64 MSVC developer environment, CMake, Ninja and Git. Android uses JDK 27, NDK 30.0.16248370 and cargo-ndk 4.1.2. Tool versions and downloads are inputs in `build/dependencies.toml`; core manifests/features/licenses are in `build/cores.toml`, and target/runner definitions in `build/targets.toml`.
 
+KiriKiri's parser generator runs on the build host, including Android cross-builds.
+Windows uses the pinned WinFlexBison prepared by `deps`; other hosts require Bison
+on `PATH`. CI installs Bison/Flex for its Linux-hosted Android rows.
+
 Ren’Py additionally needs the official pinned SDK: `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE` and the official Cython 3.2.4 compiler matching CPython 3.12.7. These are upstream build/runtime dependencies, not replacement product build tools. Inspect the selected fork's `shinki/sdk.json` for SDK inputs.
 
 All workspace crates use Rust 2024 with MSRV 1.99. The toolchain is Rust 1.99.1. Android packaging uses Gradle 9.8.2, AGP 9.4.1 with built-in Kotlin, JDK 27, platform 37.2, build-tools 37.0.0 and stable NDK r30 (30.0.16248370). CMVS has no Win32 dependency and builds as a dynamic core for Windows x64, Linux x64 and both macOS architectures; Android and iOS wait on static Manager embedding.
