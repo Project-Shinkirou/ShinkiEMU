@@ -17,6 +17,8 @@ impacto retains its MAGES SC3 VM, native resource readers and game-specific conf
 
 The Android build links the adapter statically into the Manager for `arm64-v8a` and `x86_64`; it does not install a separate dynamic core. The package includes Impacto profiles, shaders and resources under `cores/impacto/Resources`. An empty `resources_root` setting resolves to that extracted bundle; an explicit user setting is preserved.
 
+Bundled assets stream to app-private storage with a 32 MiB per-file limit, accommodating the upstream Noto CJK bold font (17,032,620 bytes) without allocating a full font-sized buffer.
+
 The bundled minilua functions and `lua_ident` data symbol use the `shinki_impacto_` prefix so they remain separate from the Manager's Luau VM. Native dependency installations are isolated by ABI. Build, APK closure and signing checks are separate from device/game acceptance.
 
 ## Storage
