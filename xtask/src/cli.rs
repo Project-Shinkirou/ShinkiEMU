@@ -107,12 +107,15 @@ pub enum Command {
     Release {
         #[arg(long)]
         component: String,
-        #[arg(long, required_unless_present = "publish", conflicts_with = "publish")]
+        #[arg(long, required_unless_present_any = ["publish", "verify_handoff"], conflicts_with_all = ["publish", "verify_handoff"])]
         target: Option<String>,
         #[arg(long)]
         version: String,
         #[arg(long)]
         publish: bool,
+        /// Verify the staged OHOS HAP and corresponding source without DevEco.
+        #[arg(long, conflicts_with = "publish")]
+        verify_handoff: bool,
     },
     Metadata {
         #[command(subcommand)]

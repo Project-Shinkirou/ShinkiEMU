@@ -1,13 +1,13 @@
 use shinki_emu_manager_core::model::FamilyWindowIcon;
 use shinki_emu_manager_ui_slint::Session;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use slint::winit_030::WinitWindowAccessor;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// Let the window manager fit the initial window when the preferred UI size
 /// exceeds the current display, including its native decorations.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn fit_initial_window(window: &slint::Window) {
     let oversized = window.with_winit_window(|window| {
         window.current_monitor().is_some_and(|monitor| {
@@ -22,7 +22,7 @@ pub(super) fn fit_initial_window(window: &slint::Window) {
 }
 
 /// None restores the Manager application icon on desktop platforms.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn set_icon(
     window: &slint::Window,
     icon: Option<FamilyWindowIcon>,
@@ -67,7 +67,7 @@ pub(super) fn set_icon(
 }
 
 /// The activity has no per-window icon; None is the default state.
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 pub(super) fn set_icon(
     _window: &slint::Window,
     icon: Option<FamilyWindowIcon>,
@@ -81,7 +81,7 @@ pub(super) fn set_icon(
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn execute(
     window: &shinki_emu_manager_ui_slint::ManagerWindow,
     pointer: &std::rc::Rc<std::cell::RefCell<super::pointer::HostPointer>>,
@@ -180,7 +180,7 @@ pub(super) fn execute(
 
 /// The activity surface is always full-window: only the fullscreen flag and
 /// minimizing are under host control.
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_env = "ohos"))]
 pub(super) fn execute(
     window: &shinki_emu_manager_ui_slint::ManagerWindow,
     pointer: &std::rc::Rc<std::cell::RefCell<super::pointer::HostPointer>>,

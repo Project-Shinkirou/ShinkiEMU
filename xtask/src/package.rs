@@ -328,7 +328,7 @@ fn reject_overlap(source: &Path, out: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
+pub(crate) fn write_provenance(result: &BuildResult, path: &Path) -> Result<()> {
     let info = binary::inspect(&result.library, &result.target, result.core_build.is_some())?;
     let provenance = serde_json::json!({
         "schema":"shinki.emu.build_identity.v1","component":result.component,"target":result.target,
@@ -546,7 +546,7 @@ pub fn verify_core(dir: &Path) -> Result<CorePackage> {
     }
     Ok(m)
 }
-fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
+pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut dirs = vec![
         result
@@ -599,6 +599,10 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
             }
         }
     }
+    if result.target.ends_with("ohos") {
+        // libc++_shared.so; system libraries come from the device.
+        dirs.push(dependencies::ohos_sdk_native()?.join("llvm/lib/aarch64-linux-ohos"));
+    }
     if result.target.contains("android") {
         let ndk = dependencies::ndk_root(inv)?;
         let host = if cfg!(windows) {
@@ -623,7 +627,7 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
     }
     Ok(dirs)
 }
-fn licenses(
+pub(crate) fn licenses(
     inv: &Inventory,
     result: &BuildResult,
     scratch: &Path,
@@ -709,7 +713,7 @@ fn licenses(
     )?);
     Ok(entries)
 }
-fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(PathBuf, String)>> {
+pub(crate) fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(PathBuf, String)>> {
     let out = stage.join("snapshot");
     // Use the same metadata command as the online snapshot, with a new private output.
     crate::metadata::run(crate::metadata::MetadataCommand::Build {
@@ -759,7 +763,7 @@ pub fn package(
     version: &str,
     out: &Path,
 ) -> Result<PathBuf> {
-    inv.require_supported(component, target)?;
+    inv.require_buildable(component, target)?;
     semver::Version::parse(version)?;
     let mut result = build::load_receipt(inv, target, component)?;
     reject_overlap(&result.library, out)?;
@@ -769,6 +773,9 @@ pub fn package(
     if component == "manager" {
         if target.contains("android") {
             return package_android(inv, &result, version, out);
+        }
+        if target.ends_with("ohos") {
+            return crate::ohos::package(inv, &result, version, out);
         }
         atomic_directory(out, |stage| {
             let temp = tempfile::tempdir_in(stage)?;
@@ -918,7 +925,7 @@ pub fn package(
     }
 }
 /// Resolve license inputs from the actual Cargo checkouts used for embedding.
-fn static_core_entries(
+pub(crate) fn static_core_entries(
     inv: &Inventory,
     result: &BuildResult,
     scratch: &Path,

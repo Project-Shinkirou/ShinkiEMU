@@ -64,8 +64,17 @@ Manager initializes the process-wide Rustls crypto provider once, before creatin
 Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 libxtst-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+`libltdl-dev` supplies the `LT_SYS_SYMBOL_USCORE` macro used by the vcpkg
+`libxcrypt` autoreconf step. `python3-jinja2` is required by the kirikiroid2-web
+native dependency generator, and `libxtst-dev` is required by its Linux GTK
+dependency closure. These packages are host prerequisites; `cargo xtask deps`
+does not install them.
+
+```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
 cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
 cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
@@ -74,6 +83,15 @@ cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-
 cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version 0.1.0-beta.1 --out .work/linux-siglus
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
+
+For an individual native Linux core, replace `CORE` with `renpy`, `impacto`, or `kirikiroid2-web`:
+
+```sh
+cargo xtask deps --target x86_64-unknown-linux-gnu --core CORE
+cargo xtask ci --target x86_64-unknown-linux-gnu --component CORE --report .work/linux-core-ci.json
+```
+
+The Ren'Py package includes its SDK runtime and installed `Resources`; Impacto and KiriKiri2 include the pinned native shared-library closure. Each core package records system SONAME requirements in `build.json`.
 
 Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix`; declared blocked cores produce no binary artifact.
 The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfig, udev and ALSA ABI libraries, plus GTK 3 and WebKitGTK 4.1 for store web sign-in. Install their runtime packages (on Ubuntu `libwebkit2gtk-4.1-0`, which pulls in GTK 3) on the destination system and provide an X11 or Wayland desktop with a graphics driver.
@@ -152,17 +170,46 @@ Simulator packages contain a `simulator-test.app`; device packaging creates a `d
 
 For SDK-backed acceptance, retain the actual artifact paths/sizes plus `file`, `llvm-objdump --macho --dylibs-used --private-headers <executable>` and `rcodesign verify <executable>` output. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
 
+## OpenHarmony Manager
+
+Use DevEco Studio with its OpenHarmony native SDK 5.0.5 (API 17; the HAP targets API 12 and newer) and Rust 1.99.1. Set `OHOS_SDK_NATIVE` to `sdk/default/openharmony/native`; xtask finds Node, hvigor, ohpm, CMake/Ninja, `hap-sign-tool.jar` and `llvm-readelf` in that DevEco installation. Set `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside the checkout (for example `.shinki-secrets/ohos-debug`):
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` builds libass and FFmpeg with the `arm64-ohos` triplet (Meson 1.12 gets a Windows extended-path prefix, as the Android triplets do). The build links with the SDK clang and bundles `libc++_shared.so`. `package` stages the Manager libraries into `Platforms/OHOS/entry/libs/arm64-v8a` and the metadata snapshot, notices and licenses into `rawfile/bundled`, then runs `ohpm install` and `hvigorw assembleHap`. On first use it creates debug signing material from the SDK's OpenHarmony test PKI: a new key in a copy of `OpenHarmony.p12`, an app certificate issued by the test application CA, and a debug profile for `org.shinkirou.shinkiemu` signed with the profile-debug key. It signs with `sign-app`, then runs `verify-app`, lists the archive, and prints `llvm-readelf -d` for every bundled library. Every remaining `NEEDED` entry must be an OHOS system library. The output holds `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`, `ohos.json` and `build.json`. Never commit keystores, certificates or profiles.
+
+The test-PKI HAP is an experimental distribution. Its signature, packaged files and native-library closure are verified, but neither device/emulator launch nor retail installability has been verified. Device launch checks were waived for this release; a DevEco/AppGallery Connect-issued profile would be needed for an installability assessment.
+
 ## Matrix and CI
 
-`matrix` reads the authoritative manifests and lists each core and Manager across all declared target triples, including both iOS simulator architectures, with its status and blocked reason. `matrix --json` emits the GitHub job matrix with only the supported rows; blocked combinations need no runner. `--ci` also drops the `x86_64-linux-android` Manager row, because `ci` builds the same universal APK from either Android triple; the release workflow keeps both rows for its per-target records. Read current combinations and reasons in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/), rather than copying a support table into documentation. Static-in-Manager integration on Android is distinct from standalone dynamic-core packaging.
+`matrix` lists every declared Manager/core combination and its blocked reason. `matrix --json` selects hosted-runner jobs; the supported OHOS Manager uses `runner = "local-only"` and is excluded from hosted CI while its exact-head HAP is packaged with DevEco. `--ci` also drops the duplicate x86_64 Android Manager row. Read the current combinations in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/).
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-Declared unsupported combinations produce `blocked`, a concrete reason and `artifact: null`. Apple core rows retain their source-level embedding/native-dependency restrictions; OpenHarmony requires both its native host adaptation and `OHOS_SDK_NATIVE`. A compilation failure for a declared supported combination is `failed` and exits nonzero. `--all-cores` skips declared blocked combinations but does not hide supported-core failures. `publish_blocked` records distribution restrictions separately from build availability.
+Unsupported combinations report `blocked` with `artifact: null`. The OHOS Manager is supported for experimental test-signed packaging only; its local-only build is joined to a successful exact-head GitHub CI run before publication. A supported build failure reports `failed` and exits nonzero. `publish_blocked` denotes distribution restrictions independently of build availability.
 
-Remote GitHub Actions is the CI of record and the only place releases are published. `ci.yml` runs on pull requests, pushes to `main` and `release/**`, and manual dispatch. Changes that touch only `Metadata/**`, `docs/**` or Markdown files skip it; `metadata-intake.yml` validates catalog PRs.
+GitHub Actions is the CI of record and builds the hosted-platform release assets. The DevEco-only OHOS HAP is prepared and uploaded in the gated local handoff below.
+For a Manager release containing a local-only OHOS target, push the release branch and require `ci.yml` to finish successfully at the exact release commit. Dispatch `release.yml` for that commit with `components=manager` and the version; its `publish (manager)` job checks all hosted build rows and leaves publication to the local handoff. In a clean checkout of that exact commit, download every `release-files-manager@*` artifact from the release run into `.work/release/` (`gh run download <release-run-id> -R Project-Shinkirou/ShinkiEMU -p 'release-files-manager@*' -D <scratch>`; copy each artifact's `<tag>/<target>/` directory into `.work/release/<tag>/`). Then, with DevEco and the signing directory set, run:
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
+SHINKI_EMU_RELEASE_CI_RUN_ID=<successful-ci-run-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<successful-handoff-run-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
+```
+
+Before the final publish command, create the draft `manager-v<version>` at the exact release commit. Upload the OHOS HAP, its source ZIP and a copy of its `release.json` named `ohos-handoff.json`. Dispatch `release.yml` at the same commit with `components=manager`, the version and `verify_local_manager=true`. This verification-only run downloads the actual draft assets and checks their hashes, HAP layout, native dependency closure and corresponding-source revision without requiring the hosted runner to have DevEco. It retains the verified files as `verified-ohos-handoff`. Set `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` to that successful run. The local DevEco packaging step verifies the test-PKI signature; the hosted handoff checks artifact integrity and does not claim a second signature or device check.
+
+Publication checks each record's exact product commit and both archive hashes, requires all hosted artifacts (except the duplicate Android x86_64 row) and the OHOS HAP, and queries both exact-head workflow gates. The release name and notes identify the HAP as debug-test-signed and state the waived launch verification.
+
+The source bundle's subtitle rebuild commands include `build/vcpkg/mobile-triplets`, which supplies the OHOS `arm64-ohos` triplet alongside the bundled native source archives.
+The verification-only job needs repository `contents: write` permission to read unpublished draft assets; its steps do not publish or alter the draft.
 
 Local runners are optional pre-checks that catch failures before a push. `matrix --json [--ci] --since <ref>` keeps only the rows whose inputs changed since `<ref>`, and the runners pass it from `SHINKI_CI_SINCE`. Shared inputs select every row: the root `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `xtask/`, `Source/{SDK,FamilyApi,Tools}/`, `build/targets.toml`, `build/vcpkg/` and `build/ci/`, and any path not listed here. `Source/Manager/` and `Source/Providers/` select the Manager rows. `Source/Families/<dir>/` selects the core whose manifest is in that directory, plus the Manager rows on its `static_manager_targets`; an edited `[[cores]]` table in `build/cores.toml` does the same for that core. `docs/**`, `Metadata/**` and Markdown files select nothing.
 
@@ -204,6 +251,6 @@ Release tags are `manager-v<semver>` or `core-<slug>-v<semver>`. Slugs lowercase
 
 `cargo xtask release --component <id> --version <semver> --publish` (with `GH_TOKEN` or `GITHUB_TOKEN`) collects every prepared target of that tag. It refuses records from another product commit or core pin, a tag that already names another commit, a draft opened from another commit, and an empty or already-published Release. It creates a draft at the run's commit or reuses that draft (replacing same-name assets from an interrupted run), uploads the source and binary archives, and publishes it; GitHub creates a missing tag at that commit. For a core it then commits every platform's catalog entry under `Metadata/engines/cores/` to `metadata/release-<tag>` and opens a PR to `main`. If the organization does not allow Actions to create PRs, that last step fails with every entry already on the branch; open the PR by hand. Catalog URLs are built from the final tag, never from the draft's `untagged-*` URL. Manager releases are independent of core releases. Debug-signed Android test APKs are recorded as blocked and never uploaded.
 
-`release.yml` publishes. To release one component, push its tag. To release several, run the workflow manually with `version` and `components` (comma-separated plugin_ids and `manager`, or `all` for every component without `publish_blocked`); a push that creates more than three tags starts no workflow. One run builds every component × target row, then publishes each component whose rows all succeeded, with GitHub tagging the run's commit. The run summary lists each skipped component and its failed rows.
+`release.yml` builds all selected hosted component × target rows and publishes components without local-only targets. A Manager release with the supported OHOS target stays unpublished until the gated local handoff above supplies its HAP and sources. To release one core, push its tag; to release several components, dispatch the workflow with `version` and `components` (comma-separated plugin_ids, or `all`). Pushing more than three new tags at once triggers no workflow.
 
 Metadata commands are described in [Metadata](metadata.md); native package requirements in [Core ABI](core-abi.md).

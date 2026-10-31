@@ -37,7 +37,7 @@ pub(super) fn run(
             focused: window.focused != 0,
             visible: window.suspended == 0,
         },
-        audio_output: None,
+        audio_output: shinki_emu_sdk::runtime::open_host_audio_output().transpose()?,
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;

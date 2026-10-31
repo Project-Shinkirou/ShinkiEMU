@@ -95,50 +95,48 @@ impl Movie {
         if let Some(audio) = &self.audio {
             audio.paused.store(paused, Ordering::Release);
         }
-        if self.pending {
-            if let Some(result) = self.decoder.poll().map_err(core_error)? {
-                self.pending = false;
-                match result {
-                    DecodeCompletion::Opened(config) => {
-                        if !config.has_video || self.position >= config.duration_us {
-                            return Err(error(
-                                "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
-                                "movie has no video or invalid saved position",
-                            ));
-                        }
-                        self.duration = config.duration_us;
-                        self.has_audio = config.has_audio;
-                        if self.position != 0 {
-                            self.decoder
-                                .request_seek(self.position)
-                                .map_err(core_error)?;
-                            self.pending = true;
-                        } else {
-                            self.start_audio(host, 1)?;
-                        }
+        if self.pending
+            && let Some(result) = self.decoder.poll().map_err(core_error)?
+        {
+            self.pending = false;
+            match result {
+                DecodeCompletion::Opened(config) => {
+                    if !config.has_video || self.position >= config.duration_us {
+                        return Err(error(
+                            "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
+                            "movie has no video or invalid saved position",
+                        ));
                     }
-                    DecodeCompletion::Seeked { generation } => {
-                        self.start_audio(host, generation)?
+                    self.duration = config.duration_us;
+                    self.has_audio = config.has_audio;
+                    if self.position != 0 {
+                        self.decoder
+                            .request_seek(self.position)
+                            .map_err(core_error)?;
+                        self.pending = true;
+                    } else {
+                        self.start_audio(host, 1)?;
                     }
-                    DecodeCompletion::Packets { packets, eof } => {
-                        self.eof = eof;
-                        for packet in packets {
-                            match packet {
-                                DecodedMediaPacket::Audio { packet, samples } => {
-                                    self.audio
-                                        .as_ref()
-                                        .ok_or_else(|| {
-                                            error(
-                                                "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
-                                                "unexpected audio packet",
-                                            )
-                                        })?
-                                        .push(packet, samples)?;
-                                }
-                                DecodedMediaPacket::Video { packet, bgra8 } => {
-                                    self.video_bytes += bgra8.len();
-                                    self.frames.push_back((packet, bgra8));
-                                }
+                }
+                DecodeCompletion::Seeked { generation } => self.start_audio(host, generation)?,
+                DecodeCompletion::Packets { packets, eof } => {
+                    self.eof = eof;
+                    for packet in packets {
+                        match packet {
+                            DecodedMediaPacket::Audio { packet, samples } => {
+                                self.audio
+                                    .as_ref()
+                                    .ok_or_else(|| {
+                                        error(
+                                            "SHINKI_EMU_MUSICA_MOVIE_FORMAT",
+                                            "unexpected audio packet",
+                                        )
+                                    })?
+                                    .push(packet, samples)?;
+                            }
+                            DecodedMediaPacket::Video { packet, bgra8 } => {
+                                self.video_bytes += bgra8.len();
+                                self.frames.push_back((packet, bgra8));
                             }
                         }
                     }

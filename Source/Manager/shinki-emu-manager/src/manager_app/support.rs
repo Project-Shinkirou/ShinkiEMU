@@ -27,7 +27,7 @@ pub(super) fn platform_data_dir() -> Result<PathBuf, String> {
     shinki_emu_manager::platform::default_data_dir()
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(super) fn core_directories(user_cores: &Path) -> Result<Vec<PathBuf>, String> {
     let bundled = shinki_emu_manager::platform::bundled_resource_dir()
         .ok_or("SHINKI_EMU_EXECUTABLE_LOCATION")?

@@ -624,7 +624,7 @@ fn native_sources(
         }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
-            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\"");
+            commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
         }
         if *group == "ffmpeg" {
             commands.push_str(" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
@@ -954,13 +954,14 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             .push_str("$env:SHINKI_EMU_NATIVE_DOWNLOADS = \"$PWD/.work/native-downloads\"\n");
     }
     if selected.renpy {
-        instructions.push_str(
+        instructions.push_str(&format!(
             "$env:RENPY_SDK_ROOT = \"$PWD/.work/native-downloads/renpy-sdk\"\n\
              $env:RENPY_PYTHON_DEV = \"$PWD/.work/native-downloads/python\"\n\
              $env:RENPY_SDL_INCLUDE = \"$PWD/.work/native-downloads/sdl2/include\"\n\
-             $env:Python3_EXECUTABLE = \"$PWD/.work/native-downloads/python/python.exe\"\n\
-             $env:RENPY_CYTHON_LICENSE = \"$PWD/.work/native-downloads/cython-license/LICENSE.txt\"\n"
-        );
+             $env:Python3_EXECUTABLE = \"$PWD/.work/native-downloads/python/{}\"\n\
+             $env:RENPY_CYTHON_LICENSE = \"$PWD/.work/native-downloads/cython-license/LICENSE.txt\"\n",
+             dependencies::build_python_relative()
+        ));
     }
     if selected.bison {
         instructions.push_str("$env:BISON_EXECUTABLE = (Get-Command win_bison.exe).Source\n");
@@ -982,9 +983,15 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         "--bin shinki-emu-manager"
     };
-    instructions.push_str(&format!(
-        "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
-    ));
+    if target.ends_with("ohos") && component == "manager" {
+        instructions.push_str(&format!(
+            "cargo xtask build --target {target} --manager --release\n```\n"
+        ));
+    } else {
+        instructions.push_str(&format!(
+            "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
+        ));
+    }
     if !native_commands.is_empty() {
         instructions.push_str(
             "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the fork snapshot. \

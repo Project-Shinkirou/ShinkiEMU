@@ -1,0 +1,6 @@
+{
+  "name": "libshinki_emu_manager.so",
+  "types": "./index.d.ts",
+  "version": "1.0.0",
+  "description": "NAPI surface of the Rust ShinkiEMU Manager (Platforms/OHOS/native/bridge.c)"
+}

@@ -55,11 +55,17 @@ Manager は、ネットワーククライアントやワーカースレッドを
 
 ### Linux デスクトップ
 
-リポジトリで固定された Rust 1.98.0 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
+リポジトリで固定された Rust 1.99.1 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 libxtst-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+`libltdl-dev` は vcpkg の `libxcrypt` autoreconf ステップが使う
+`LT_SYS_SYMBOL_USCORE` マクロを提供します。kirikiroid2-web のネイティブ依存関係ジェネレーターには `python3-jinja2`、Linux GTK 依存閉包には `libxtst-dev` も必要です。これらはビルドホストの前提条件であり、`cargo xtask deps` はシステムパッケージをインストールしません。
+
+```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
 cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
 cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
@@ -68,6 +74,15 @@ cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-
 cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version 0.1.0-beta.1 --out .work/linux-siglus
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
+
+Linux のネイティブコアを個別にビルドする場合、`CORE` を `renpy`、`impacto`、または `kirikiroid2-web` に置き換えてください。
+
+```sh
+cargo xtask deps --target x86_64-unknown-linux-gnu --core CORE
+cargo xtask ci --target x86_64-unknown-linux-gnu --component CORE --report .work/linux-core-ci.json
+```
+
+Ren'Py のパッケージには SDK ランタイムとインストール済みの `Resources` が含まれます。Impacto と KiriKiri2 のパッケージには、固定されたネイティブ共有ライブラリの依存閉包が含まれます。各パッケージの `build.json` はシステムの SONAME 要件を記録します。
 
 Linux の Manager 向け `deps` は、ディストリビューションが提供する開発ライブラリを確認するだけで、`apt` は呼び出しません。コア向けの `deps` は、ターゲットごとに独立したディレクトリでロックされた vcpkg のネイティブライブラリを準備し、パッケージング用に再配置可能な共有ライブラリの通常ファイルを生成します。パッケージのディレクトリで `./shinki-emu-manager` を実行してください。パッケージングでは ELF のアーキテクチャ、ローダーのパス、依存関係の閉包を確認し、ライセンス表記とオフラインのメタデータスナップショットを同梱します。`ci` が報告する ZIP では実行権限が保持されます。CI とリリースのジョブは、同じ依存関係と xtask コマンドを使います。コアが利用できるかどうかは引き続き `matrix` に従い、blocked と宣言されたコアにはバイナリの添付ファイルが作られません。
 Linux パッケージは、ディストリビューションが提供する glibc、libstdc++、OpenSSL 3、fontconfig、udev、ALSA の ABI ライブラリに加え、ストアの Web サインイン用に GTK 3 と WebKitGTK 4.1 を使います。導入先のシステムには対応するランタイムパッケージ（Ubuntu では GTK 3 も一緒に入る `libwebkit2gtk-4.1-0`）をインストールし、グラフィックドライバーを備えた X11 または Wayland のデスクトップを用意してください。
@@ -142,17 +157,46 @@ macOS のパッケージには `ShinkiEMU.app` が含まれ、実行ファイル
 
 SDK を使った受け入れ確認では、実際の成果物のパスとサイズに加え、`file`、`llvm-objdump --macho --dylibs-used --private-headers <executable>`、`rcodesign verify <executable>` の出力を残してください。正規の SDK がない場合、この受け入れ確認は行えません。コンパイルの成功だけでは、ゲームの実行互換性は示されません。
 
+## OpenHarmony Manager
+
+ローカルビルドには DevEco Studio 付属の OpenHarmony Native SDK 5.0.5（API 17。HAP は API 12 以降が対象）と Rust 1.99.1 が必要です。`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定すると、xtask は同じ DevEco インストールから Node、hvigor、ohpm、CMake/Ninja、`hap-sign-tool.jar`、`llvm-readelf` を見つけます。`SHINKI_EMU_OHOS_SIGNING_DIR` は checkout 外のディレクトリ（例：`.shinki-secrets/ohos-debug`）に設定します。
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+```
+
+`deps` は `arm64-ohos` triplet で libass と FFmpeg をビルドします。Meson 1.12 の prefix には、Android の triplet と同じく Windows の拡張パスを使います。ビルドは SDK の clang でリンクし、`libc++_shared.so` を同梱します。`package` は Manager のライブラリを `Platforms/OHOS/entry/libs/arm64-v8a` に、メタデータのスナップショット、通知、ライセンスを `rawfile/bundled` に配置し、`ohpm install` と `hvigorw assembleHap` を実行します。初回は SDK の OpenHarmony テスト PKI から debug 署名データを作ります。`OpenHarmony.p12` のコピーに新しい鍵を作り、テスト用アプリ CA でアプリ証明書を発行し、profile-debug 鍵で `org.shinkirou.shinkiemu` の debug profile に署名します。`sign-app` で署名した後、`verify-app` で検証し、アーカイブの内容と、同梱した各ライブラリの `llvm-readelf -d` を出力します。残る `NEEDED` はすべて OHOS のシステムライブラリでなければなりません。出力先には `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json`、`build.json` が入ります。keystore、証明書、profile は Git にコミットしません。
+
+テスト PKI で署名した HAP は実験用のテスト配布です。署名、内容、同梱ライブラリの依存関係を確認します。デバイス・エミュレーターでの起動確認は免除されており、市販デバイスへのインストール可能性は未確認です。インストール確認には DevEco/AppGallery Connect が発行した profile が必要です。
+
 ## マトリクスと CI
 
-`matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
+`matrix` はすべての Manager/コアの組み合わせと blocked 理由を表示します。`matrix --json` は GitHub runner のある行のみをジョブとして選びます。OHOS Manager は実験用のテスト署名配布に対応しますが `runner = "local-only"` であり、DevEco でビルドした成果物をローカルから引き渡します。`--ci` は重複する Android x86_64 Manager 行も除きます。現在の対応状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-マニフェストで未対応とされた組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の実際の組み込みとネイティブ依存関係の制約が残ります。OpenHarmony には、ネイティブホストの対応と `OHOS_SDK_NATIVE` の両方が必要です。マニフェストで対応とされた組み合わせのコンパイルに失敗した場合は `failed` を報告し、0 以外で終了します。`--all-cores` は宣言済みの blocked の組み合わせをスキップしますが、対応している組み合わせの失敗を隠すことはありません。`publish_blocked` は配布上の制約を別に記録するもので、ビルドできないことを意味するわけではありません。
+未対応の組み合わせは `blocked`、`artifact: null` を報告します。OHOS Manager のローカル署名ビルドは、同じコミットの成功したリモート CI と結合してから公開します。対応対象のビルド失敗は `failed` を返します。`publish_blocked` は配布上の制限を別に記録します。
 
-正式な CI はリモートの GitHub Actions で、リリースを公開するのもここだけです。`ci.yml` は pull request、`main` と `release/**` への push、手動実行で動きます。`Metadata/**`、`docs/**`、Markdown ファイルだけを変更した場合は実行されず、カタログの PR は `metadata-intake.yml` が検証します。
+GitHub Actions が正式な CI であり、ホストされたプラットフォームのリリース成果物をビルドします。DevEco が必要な OHOS HAP は、以下のゲート付きローカル引き渡しで追加します。
+OHOS Manager を含むリリースでは、release ブランチを push し、同じコミットの `ci.yml` の成功を確認します。`components=manager` で `release.yml` を実行します。このワークフローは全ホスト行の成功を要求し、Manager の公開はローカル引き渡しに残します。実行中の `release-files-manager@*` artifact をすべてダウンロードし、その `<tag>/<target>/` を同じコミットのクリーンな checkout の `.work/release/<tag>/` に配置します。DevEco と checkout 外の署名ディレクトリを設定して、次を実行します。
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
+SHINKI_EMU_RELEASE_CI_RUN_ID=<成功した-ci-実行-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<成功した-handoff-実行-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
+```
+
+最後の公開コマンドの前に、同じコミットで `manager-v<version>` のドラフトを作成し、OHOS HAP、対応ソース ZIP、`ohos-handoff.json` という名前にした OHOS の `release.json` をアップロードします。同じコミットの `release.yml` に `components=manager`、バージョン、`verify_local_manager=true` を指定します。この検証専用実行は実際のドラフト成果物を取得し、SHA256、HAP の内容、ネイティブ依存関係と対応ソースのコミットを確認します。ホスト runner に DevEco は不要です。検証済みファイルは `verified-ohos-handoff` artifact に保存されます。成功した実行 ID を `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` に設定します。テスト PKI 署名はローカル DevEco で確認し、ホスト側は成果物の完全性を確認します。ホスト側での再署名検証やデバイス検証は行いません。
+
+公開処理は同一コミット、全 archive の SHA256、全ホスト行（重複する Android x86_64 行を除く）と OHOS HAP、および同一コミットの両ワークフロー成功を照合します。公開名と説明にはテスト署名と起動検証の免除を明記します。
+
+ソースバンドルの字幕ライブラリ再ビルドコマンドは `build/vcpkg/mobile-triplets` を含み、OHOS の `arm64-ohos` triplet と同梱のネイティブソースアーカイブを使用します。
+検証専用ジョブは未公開のドラフト成果物を取得するためにリポジトリの `contents: write` 権限を必要としますが、ドラフトの公開や変更は行いません。
 
 ローカルランナーは push 前の任意の事前チェックで、リモートで失敗する問題を先に見つけるためのものです。`matrix --json [--ci] --since <ref>` は、入力が `<ref>` 以降に変わった行だけを残します。ランナーは `SHINKI_CI_SINCE` からこの引数を渡します。共有の入力はすべての行を選びます。対象はルートの `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`、およびここに挙げていないすべてのパスです。`Source/Manager/` と `Source/Providers/` は Manager の行を選びます。`Source/Families/<ディレクトリ>/` は、そのディレクトリにマニフェストがあるコアと、そのコアの `static_manager_targets` 上の Manager の行を選びます。`build/cores.toml` の `[[cores]]` テーブルが変わった場合も、そのコアについて同じです。`docs/**`、`Metadata/**`、Markdown ファイルはどの行も選びません。
 
@@ -184,6 +228,6 @@ Release タグは `manager-v<semver>` または `core-<slug>-v<semver>` です�
 
 `cargo xtask release --component <id> --version <semver> --publish`（`GH_TOKEN` または `GITHUB_TOKEN` が必要）は、その tag で準備済みのターゲットをすべて集めます。別の製品コミットや別のコア固定 revision の記録、別のコミットを指す既存の tag、別のコミットから作られた draft、空の Release、公開済みの Release は拒否します。実行中のコミットで draft を作るか、そのコミットの draft を再利用し（中断した実行が残した同名の添付ファイルは置き換えます）、ソースとバイナリのアーカイブをアップロードして公開します。tag がなければ GitHub がそのコミットに作成します。コアの場合は続けて、各プラットフォームのカタログエントリを `metadata/release-<tag>` ブランチの `Metadata/engines/cores/` にコミットし、`main` への PR を作ります。組織の設定で Actions による PR 作成が許可されていない場合、この最後の手順は失敗しますが、エントリはすべてブランチにあるので、PR を手動で作成してください。カタログ URL は最終 tag から作り、draft の `untagged-*` URL は使いません。Manager とコアは別々にリリースされます。Android の debug 署名テスト用 APK はブロック扱いとなり、アップロードされません。
 
-公開は `release.yml` が行います。1 つのコンポーネントをリリースするには、その tag を push します。1 回の push で 4 つ以上の tag を作るとワークフローは起動しないため、複数のコンポーネントは `version` と `components`（カンマ区切りの plugin_id と `manager`、または `publish_blocked` のないすべてのコンポーネントを表す `all`）を指定してワークフローを手動実行します。1 回の実行でコンポーネント × ターゲットの全行をビルドし、全行が成功したコンポーネントを公開します。tag は GitHub が実行中のコミットに作ります。実行のサマリーには、スキップしたコンポーネントと失敗した行が載ります。
+`release.yml` は選択したコンポーネントのホスト対象行をすべてビルドし、ローカル専用ターゲットのないコンポーネントを公開します。OHOS 対応 Manager は、上記のゲート付きローカル引き渡しで HAP とソースを揃えてから公開します。単一のコアは tag を push してリリースできます。複数のコンポーネントは `version` と `components` を指定してワークフローを実行します。新しい tag を一度に 4 件以上 push してもワークフローは起動しません。
 
 メタデータのコマンドは [Metadata](metadata.md)、コアパッケージの契約は[コア ABI](core-abi.md) を参照してください。

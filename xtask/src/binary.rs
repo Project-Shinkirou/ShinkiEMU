@@ -332,6 +332,26 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         ]
         .contains(&n.as_str());
     }
+    if target.ends_with("ohos") {
+        // OpenHarmony NDK libraries from the device image (sysroot/usr/lib/aarch64-linux-ohos).
+        return [
+            "libc.so",
+            "libace_napi.z.so",
+            "libace_ndk.z.so",
+            "libnative_window.so",
+            "libnative_buffer.so",
+            "libnative_vsync.so",
+            "libohaudio.so",
+            "libhilog_ndk.z.so",
+            // Pulled by iana-time-zone's OHOS backend (chrono local time).
+            "libtime_service_ndk.so",
+            "librawfile.z.so",
+            "libEGL.so",
+            "libGLESv3.so",
+            "libz.so",
+        ]
+        .contains(&name);
+    }
     if target.contains("apple") {
         return name.starts_with("/usr/lib/") || name.starts_with("/System/Library/Frameworks/");
     }
@@ -341,6 +361,7 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         "libdl.so.2",
         "libpthread.so.0",
         "librt.so.1",
+        "libutil.so.1",
         "ld-linux-x86-64.so.2",
         "ld-linux-aarch64.so.1",
         "libgcc_s.so.1",

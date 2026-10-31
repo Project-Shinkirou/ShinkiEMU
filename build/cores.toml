@@ -22,6 +22,9 @@ branch = "shinki-android-isolation"
 rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf"
 upstream = "https://github.com/xmoezzz/rfvp"
 [[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "GStreamer is not the only OHOS blocker: RFVP's kira audio runs on cpal, which selects ALSA (alsa-sys) on aarch64-unknown-linux-ohos and has no OHAudio backend, and its mp4 movie path uses video-sys, which selects GStreamer on target_os = \"linux\"."
+[[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
@@ -36,9 +39,6 @@ reason = "Statically embedded in the iOS Manager; standalone dynamic-core instal
 [[cores.blocked]]
 target = "x86_64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 
 [[cores]]
 id = "siglus_rs"
@@ -127,7 +127,7 @@ artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-unknown-linux-ohos"]
 static_features = ["ffmpeg-vcpkg"]
 publish_blocked = ""
 [[cores.blocked]]
@@ -147,7 +147,7 @@ target = "x86_64-apple-ios"
 reason = "iOS static Manager embedding is pending AppleNative build and verification."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
+reason = "Statically embedded in the OHOS Manager; standalone dynamic-core installation is not supported."
 
 [[cores]]
 id = "sena-rs"
@@ -210,7 +210,7 @@ rev = "f7c351ac3f4b82eb70b18d96e3c103f49f019b88"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "Native dependency closure fails on Linux (vcpkg libxcrypt autoreconf: LT_SYS_SYMBOL_USCORE); port pending."
+reason = "Linux candidate build/package and ELF closure gates have not completed; the released fork pin remains Windows-only."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "macOS native dependency closure (vcpkg gperf) has not built in CI; port pending."
@@ -370,28 +370,28 @@ rev = "6261749f383c189f7504f7814aa454b90d5a9e93"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only native Windows x64/MSVC. The Linux/GNU entry, x64-linux-dynamic triplet, SDL owner and ELF install path live on the fork tag shinki-linux-port (8db2fd87), not yet built against its Linux native dependencies; no Linux core artifact, ELF closure or Manager load is verified."
+reason = "Linux candidate build/package and ELF closure gates have not completed; the released fork pin remains Windows-only."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
+reason = "Android static Manager packaging still lacks the native-vcpkg triplets and static CMake dependency closure required by Impacto."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; native C++ CMake static-library packaging still requires xtask native-vcpkg Android triplets (arm64-android-ffmpeg/x64-android-ffmpeg)."
+reason = "Android static Manager packaging still lacks the native-vcpkg triplets and static CMake dependency closure required by Impacto."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -408,16 +408,13 @@ dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
-rev = "a3b698e3af5369cc6573a3392f9c63065e7a029d"
+rev = "6dc272ff4def04e4e705906fd15ab5db7e75fe66"
 upstream = "https://github.com/renpy/renpy"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Linux builds are pending."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
@@ -426,10 +423,10 @@ target = "aarch64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "Android native embedding is not implemented: the fork's static feature does not build a static adapter, runtime selection still resolves the desktop SDK, and Manager packaging discards embedded runtime resources. Official RAPT supplies librenpython.so but no static archives or Android pyconfig.h; target headers, native linking and extracted asset-root initialization must be implemented before restoring Manager integration."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "AppleNative iOS static Ren'Py runtime build has not run."

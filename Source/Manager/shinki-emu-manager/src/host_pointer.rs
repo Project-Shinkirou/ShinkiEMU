@@ -12,21 +12,21 @@ use std::{
 use shinki_emu_manager_core::model::FamilyPointerRequest;
 use shinki_emu_manager_ui_slint::{Dialogs, ManagerWindow, Session, SlintManagerAdapter};
 use slint::ComponentHandle;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use slint::winit_030::WinitWindowAccessor;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 use winit::{dpi::PhysicalPosition, event::WindowEvent};
 
 pub(super) struct HostPointer {
     visibility: PointerVisibility,
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     position: Option<PhysicalPosition<f64>>,
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     inside_window: bool,
     timer: slint::Timer,
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     after_event: slint::Timer,
 }
 
@@ -106,12 +106,12 @@ impl HostPointer {
     pub(super) fn install(adapter: &Rc<SlintManagerAdapter>) -> Rc<RefCell<Self>> {
         let pointer = Rc::new(RefCell::new(Self {
             visibility: PointerVisibility::new(Instant::now()),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
             position: None,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
             inside_window: false,
             timer: slint::Timer::default(),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_env = "ohos")))]
             after_event: slint::Timer::default(),
         }));
         let weak_pointer = Rc::downgrade(&pointer);
@@ -129,7 +129,7 @@ impl HostPointer {
         pointer
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     pub(super) fn apply(
         pointer: &Rc<RefCell<Self>>,
         window: &ManagerWindow,
@@ -193,7 +193,7 @@ impl HostPointer {
         Ok(())
     }
 
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
     pub(super) fn apply(
         pointer: &Rc<RefCell<Self>>,
         window: &ManagerWindow,
@@ -214,7 +214,7 @@ impl HostPointer {
         Ok(())
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     pub(super) fn observe(
         pointer: &Rc<RefCell<Self>>,
         window: &ManagerWindow,
@@ -255,7 +255,7 @@ impl HostPointer {
         );
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     fn synchronize(pointer: &Rc<RefCell<Self>>, window: &ManagerWindow) {
         let mut state = pointer.borrow_mut();
         state.timer.stop();
@@ -293,9 +293,9 @@ impl HostPointer {
         Self::schedule_expiry(pointer, &state, window, now);
     }
 
-    /// Android reports no hover position and touch shares the activity surface,
-    /// so the stage controls the pointer whenever no host UI covers it.
-    #[cfg(target_os = "android")]
+    /// Mobile platforms report no hover position and touch shares the native
+    /// surface, so the stage controls the pointer whenever no host UI covers it.
+    #[cfg(any(target_os = "android", target_env = "ohos"))]
     pub(super) fn synchronize(pointer: &Rc<RefCell<Self>>, window: &ManagerWindow) {
         let mut state = pointer.borrow_mut();
         state.timer.stop();
@@ -308,7 +308,11 @@ impl HostPointer {
             && !session.get_menu_open();
         let now = Instant::now();
         let displayed = state.visibility.synchronize(active, controlling, now);
-        if let Err(error) = crate::platform::android::set_pointer_hidden(!displayed) {
+        #[cfg(target_os = "android")]
+        let hidden = crate::platform::android::set_pointer_hidden(!displayed);
+        #[cfg(target_env = "ohos")]
+        let hidden = crate::platform::ohos::set_pointer_hidden(!displayed);
+        if let Err(error) = hidden {
             tracing::warn!(
                 event = "shinki.emu.host.pointer_visibility_failed",
                 diagnostic_code = "SHINKI_EMU_HOST_POINTER_UNAVAILABLE",
@@ -341,7 +345,7 @@ impl HostPointer {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn map_position(
     x: Option<i32>,
     y: Option<i32>,
@@ -471,7 +475,7 @@ mod tests {
         assert!(!state.synchronize(true, true, moved));
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     #[test]
     fn stage_warp_uses_content_viewport_dpi_and_preserves_other_axis() {
         let rect = [100.0, 80.0, 640.0, 360.0];
