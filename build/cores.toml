@@ -367,7 +367,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-android-ports"
-rev = "17fd731031712fdd6491b712804cb23d00663634"
+rev = "011a78682362c9ba770fff0cf18a7835692e9053"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
