@@ -1,5 +1,5 @@
 use super::*;
-use crate::{MusicaSystemPage, storage::Storage};
+use crate::MusicaSystemPage;
 
 fn game(root: &std::path::Path) {
     fixture::game(
@@ -73,23 +73,22 @@ fn native_gpu_save_pages_navigate_save_and_restore_gameplay() {
     assert!(session.save_cards.is_empty());
     session.advance(0, &click(470.0, 100.0)).unwrap();
     assert_eq!(session.vm.state().system_ui.focus_index, 21);
-    let saved = Storage::new(root.path()).unwrap().read(21).unwrap();
-    assert_eq!(saved.message.as_ref().unwrap().0, "First");
+    let saved = session.native.slot(21).unwrap().unwrap();
     assert_eq!(
-        MusicaVm::decode_native_save(&saved.vm)
-            .unwrap()
-            .system_ui
-            .page,
-        MusicaSystemPage::None
+        saved.checkpoint().unwrap().history.last().unwrap().text,
+        "First"
     );
-    let thumbnail = saved.card.texture().unwrap();
-    let expected = image::imageops::resize(
-        &image::RgbaImage::from_raw(1280, 720, first.to_vec()).unwrap(),
-        96,
-        54,
-        image::imageops::FilterType::Triangle,
+    let thumbnail = session.native.card(21).unwrap().unwrap().thumbnail;
+    assert_eq!((thumbnail.width, thumbnail.height), (106, 60));
+    assert_eq!(&thumbnail.rgba8[..4], &[0, 0, 0, 255]);
+    assert!(
+        thumbnail
+            .rgba8
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[..3] != [0, 0, 0])
     );
-    assert_eq!(&thumbnail.rgba8[..], expected.as_raw().as_slice());
     session.advance(0, &[key(KeyCode::Escape)]).unwrap();
     assert!(session.scene.pixels == first);
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
@@ -119,16 +118,19 @@ fn native_gpu_save_page_rejects_corrupt_cards_without_overwriting() {
     let _lock = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     game(root.path());
-    let folder = root.path().join(".shinki/musica/saves");
+    let folder = root
+        .path()
+        .join(".shinki/musica/minori")
+        .join(crate::minori_data::MinoriTitle::Perseus.directory());
     std::fs::create_dir_all(&folder).unwrap();
-    let slot = folder.join("slot-020.asav");
+    let slot = folder.join("perseus_0020.sav");
     std::fs::write(&slot, b"original corrupt slot").unwrap();
     let (_, mut session) = fixture::provider()
         .open_session(request(root.path(), Sink::default()))
         .unwrap();
     session.advance(16_666_667, &[]).unwrap();
     let cause = session.advance(0, &[key(KeyCode::F6)]).unwrap_err();
-    assert_eq!(cause.code(), "SHINKI_EMU_MUSICA_SAVE_FORMAT");
+    assert_eq!(cause.code(), "SHINKI_EMU_EDEN_SAVE_SIGNATURE");
     assert_eq!(std::fs::read(&slot).unwrap(), b"original corrupt slot");
     Box::new(session).close().unwrap();
 }
@@ -149,7 +151,6 @@ fn native_gpu_quick_save_rotates_skips_same_line_and_survives_restart() {
     session.advance(16_666_667, &[]).unwrap();
     session.save(0).unwrap();
     session.save(20).unwrap();
-    let storage = Storage::new(root.path()).unwrap();
     let stored_cursor = || {
         crate::native_directory::NativeFiles::open(root.path(), crate::ScriptEncoding::ShiftJis)
             .unwrap()
@@ -169,11 +170,12 @@ fn native_gpu_quick_save_rotates_skips_same_line_and_survives_restart() {
             "same source line must not consume another slot"
         );
     }
-    assert_eq!(storage.read(10).unwrap().message.unwrap().0, "Line10");
-    assert_eq!(storage.read(11).unwrap().message.unwrap().0, "Line11");
-    assert_eq!(storage.read(12).unwrap().message.unwrap().0, "Line2");
-    for slot in [0, 20] {
-        assert_eq!(storage.read(slot).unwrap().message.unwrap().0, "Line0");
+    for (slot, text) in [(0, "Line10"), (1, "Line11"), (2, "Line2"), (20, "Line0")] {
+        let saved = session.native.slot(slot).unwrap().unwrap();
+        assert_eq!(
+            saved.checkpoint().unwrap().history.last().unwrap().text,
+            text
+        );
     }
     Box::new(session).close().unwrap();
     let (_, mut reopened) = provider
@@ -186,6 +188,60 @@ fn native_gpu_quick_save_rotates_skips_same_line_and_survives_restart() {
         .advance(16_666_667, &[key(KeyCode::Enter)])
         .unwrap();
     reopened.advance(0, &[key(KeyCode::F5)]).unwrap();
-    assert_eq!(storage.read(12).unwrap().message.unwrap().0, "Line12");
+    assert_eq!(
+        reopened
+            .native
+            .slot(2)
+            .unwrap()
+            .unwrap()
+            .checkpoint()
+            .unwrap()
+            .history
+            .last()
+            .unwrap()
+            .text,
+        "Line12"
+    );
     Box::new(reopened).close().unwrap();
+}
+
+#[test]
+fn native_save_prohibition_ignores_shortcuts_without_poisoning_gameplay() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    fixture::game(root.path(), b".setglobal prohibitSaveLoad = 1\n.message 1   Blocked\n.setglobal prohibitSaveLoad = 0\n.message 2   Allowed\n.end\n");
+    let (_, mut session) = fixture::provider()
+        .open_session(request(root.path(), Sink::default()))
+        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    let pc = session.vm.state().pc_line;
+    session
+        .advance(
+            0,
+            &[
+                key(KeyCode::F5),
+                key(KeyCode::F6),
+                key(KeyCode::F8),
+                key(KeyCode::F9),
+            ],
+        )
+        .unwrap();
+    assert!(!session.poisoned);
+    assert_eq!(session.vm.state().pc_line, pc);
+    assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::None);
+    assert!(session.native.slot(0).unwrap().is_none());
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    session.advance(0, &[key(KeyCode::F5)]).unwrap();
+    assert_eq!(
+        session
+            .native
+            .slot(0)
+            .unwrap()
+            .unwrap()
+            .checkpoint()
+            .unwrap()
+            .message_id,
+        2
+    );
+    Box::new(session).close().unwrap();
 }

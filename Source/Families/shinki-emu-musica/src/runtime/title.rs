@@ -39,6 +39,7 @@ pub(super) fn return_to_title(state: &mut MusicaRuntimeState) {
         ..Default::default()
     };
 }
+#[cfg(test)]
 pub(super) fn validate(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     if state.system_ui.page == MusicaSystemPage::Title
         && (state.launch_mode != MusicaLaunchMode::Title
@@ -144,6 +145,5 @@ mod tests {
         assert_eq!(focus_at(2, 1174.0, 191.0), Some(3));
         assert_eq!(focus_at(2, f32::NAN, 191.0), None);
         assert!(vm.set_title_focus(5).is_err());
-        assert!(vm.encode_native_save().is_ok());
     }
 }

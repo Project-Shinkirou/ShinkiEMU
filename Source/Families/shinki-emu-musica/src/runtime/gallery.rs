@@ -33,6 +33,7 @@ pub(crate) fn bgm_uri(focus: u32) -> Result<String, MusicaRuntimeError> {
         .ok_or(MusicaRuntimeError::State)?;
     Ok(format!("musica:/bgm/BGM{track:03}.ogg"))
 }
+#[cfg(test)]
 pub(super) fn validate(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     if let Some(count) = count(&state.system_ui.page)
         && (state.launch_mode != MusicaLaunchMode::Title
@@ -138,7 +139,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gallery_snapshot_focus_and_audio_keep_native_bounds() {
+    fn gallery_state_focus_and_audio_keep_native_bounds() {
         let source = b".end\r\n";
         let mut vm = MusicaVm::new(
             "musica:/scr/test.sc".into(),
@@ -160,16 +161,14 @@ mod tests {
         ] {
             let last = count(&page).unwrap() - 1;
             vm.set_gallery_page(page.clone(), last).unwrap();
-            let saved = vm.encode_native_save().unwrap();
-            vm.restore_native_save(&saved, 1).unwrap();
+            let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
+            vm.install_test_state(&saved, 1).unwrap();
             assert_eq!(vm.state.system_ui.page, page);
             assert_eq!(vm.state.system_ui.focus_index, last);
             assert!(vm.set_gallery_page(page, last + 1).is_err());
             let mut corrupt = vm.state.clone();
             corrupt.system_ui.focus_index = last + 1;
-            assert!(
-                MusicaVm::decode_native_save(&postcard::to_allocvec(&corrupt).unwrap()).is_err()
-            );
+            assert!(MusicaVm::checked_test_state(&corrupt).is_err());
         }
         vm.set_gallery_page(MusicaSystemPage::GalleryBgm, 0)
             .unwrap();

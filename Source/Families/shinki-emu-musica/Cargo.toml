@@ -36,7 +36,6 @@ image.workspace = true
 lru.workspace = true
 png = "=0.18.1"
 kira.workspace = true
-postcard.workspace = true
 rc4.workspace = true
 schemars.workspace = true
 serde.workspace = true
@@ -54,6 +53,7 @@ tempfile.workspace = true
 windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
 
 [dev-dependencies]
+postcard.workspace = true
 parking_lot = "0.13.0"
 
 

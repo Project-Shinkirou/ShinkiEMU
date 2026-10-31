@@ -10,10 +10,6 @@ impl MusicaSession {
     }
 
     /// Persists `sysparams.txt` `autoSaveFileNumber`, then advances the cursor.
-    #[allow(
-        dead_code,
-        reason = "perseus auto save arrives with the native slot writer"
-    )]
     pub(super) fn store_auto_cursor(&mut self, next: u32) -> SessionResult<()> {
         check_cursor(next)?;
         self.native.store_auto_cursor(next)?;

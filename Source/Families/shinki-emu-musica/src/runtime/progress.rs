@@ -44,7 +44,7 @@ impl MusicaVm {
 mod tests {
     use super::*;
     #[test]
-    fn gallery_progress_records_only_verified_clear_values_and_rejects_corrupt_saves() {
+    fn gallery_progress_records_only_verified_clear_values_and_rejects_corrupt_state() {
         let source = b".setglobal REN_CLEAR = 0\r\n.setglobal OTHER_CLEAR = 1\r\n.setglobal AYAME_CLEAR = 1\r\n.setglobal AYAME_CLEAR = 1\r\n.end\r\n";
         let mut vm = MusicaVm::new(
             "musica:/scr/test.sc".into(),
@@ -56,13 +56,12 @@ mod tests {
         vm.step(1).unwrap();
         let id = Hash256::from_sha256(b"AYAME_CLEAR");
         assert_eq!(vm.state().gallery_unlocks, vec![id]);
-        let saved = vm.encode_native_save().unwrap();
+        let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
         let mut corrupt = vm.state().clone();
         corrupt.gallery_unlocks.push(id);
-        let bytes = postcard::to_allocvec(&corrupt).unwrap();
-        assert!(MusicaVm::decode_native_save(&bytes).is_err());
-        assert!(vm.restore_native_save(&bytes, 1).is_err());
-        assert_eq!(vm.encode_native_save().unwrap(), saved);
+        assert!(MusicaVm::checked_test_state(&corrupt).is_err());
+        assert!(vm.install_test_state(&corrupt, 1).is_err());
+        assert_eq!(vm.state(), &saved);
         assert!(unlocked_flags(&[Hash256::from_sha256(b"UNKNOWN")]).is_err());
         assert_eq!(
             unlocked_flags(&[Hash256::from_sha256(b"TOHKA_CLEAR")]).unwrap(),

@@ -96,6 +96,10 @@ pub fn parse_musica_message_markup(
         let visible_byte_offset =
             u32::try_from(visible_text.len()).map_err(|_| MusicaMessageMarkupError::Bounds)?;
         let control = match command {
+            'n' => {
+                visible_text.push('\n');
+                continue;
+            }
             'v' => MusicaMessageControl::WaitForVoice {
                 visible_byte_offset,
             },

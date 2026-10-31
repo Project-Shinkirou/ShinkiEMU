@@ -166,58 +166,55 @@ fn until(test: impl Fn() -> bool) {
         std::thread::sleep(Duration::from_millis(1));
     }
 }
+fn capture_transient_vm(session: &crate::session::MusicaSession) -> crate::MusicaRuntimeState {
+    assert!(session.vm.native_checkpoint().is_err());
+    MusicaVm::checked_test_state(session.vm.state()).unwrap()
+}
+fn resume_vm_for_test(
+    session: &mut crate::session::MusicaSession,
+    state: &crate::MusicaRuntimeState,
+) {
+    session
+        .vm
+        .install_test_state(state, state.fixed_tick + 1)
+        .unwrap();
+    session.finished = false;
+    session.phase = 0;
+    session.wait_ns = 0;
+    session
+        .scene
+        .render(session.vm.state(), session.message.as_ref(), None)
+        .unwrap();
+}
 
 #[test]
-fn native_gpu_choice_focus_save_restore_and_confirm_follow_the_selected_branch() {
+fn native_gpu_choice_autosave_restores_message_then_resets_focus_and_confirms_branch() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
-    fixture::game(root.path(), b".select First:left Second:right\r\n.label left\r\n.message 1   Wrong\r\n.end\r\n.label right\r\n.message 2   Selected\r\n.end\r\n");
-    let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    fixture::game(root.path(), b".message 0   Before choice\r\n.select First:left Second:right\r\n.label left\r\n.message 1   Wrong\r\n.end\r\n.label right\r\n.message 2   Selected\r\n.end\r\n");
+    let (_, mut session) = fixture::provider()
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
-    assert_eq!(
-        opened.session.advance(16_666_667, &[]).unwrap().status,
-        RuntimeStatus::Waiting
-    );
+    session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     let mut frame = Capture(Vec::new());
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let first = frame.0.clone();
-    assert!(first.as_chunks::<4>().0.iter().any(|p| p[0] != 0));
-    opened
-        .session
-        .advance(0, &[key(KeyCode::ArrowDown)])
-        .unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(0, &[key(KeyCode::ArrowDown)]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let second = frame.0.clone();
     assert_ne!(first, second);
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened
-        .session
-        .advance(0, &[key(KeyCode::ArrowDown)])
-        .unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
-    assert_eq!(frame.0, first);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    assert_eq!(session.auto_cursor, 1);
+    session.load(10).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "Before choice");
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.choice_display().unwrap().unwrap().1, 0);
+    session.advance(0, &[key(KeyCode::ArrowDown)]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, second);
-    opened
-        .session
-        .advance(16_666_667, &[key(KeyCode::Enter)])
-        .unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
-    assert_ne!(frame.0, second);
-    opened.session.close().unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "Selected");
+    Box::new(session).close().unwrap();
 }
 
 #[test]
@@ -603,7 +600,7 @@ fn native_gpu_control_keys_respect_release_focus_and_choice_boundaries() {
 }
 
 #[test]
-fn native_gpu_screen_shake_advances_during_wait_and_restores_through_family_input() {
+fn native_gpu_screen_shake_advances_during_wait_and_resumes_in_memory_state() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     fixture::game(
@@ -611,61 +608,53 @@ fn native_gpu_screen_shake_advances_during_wait_and_restores_through_family_inpu
         b".stage BG.png 0 0 * 0 0\r\n.shakescreen V 4 30\r\n.wait 1000\r\n.end\r\n",
     );
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut frame = Capture(Vec::new());
-    opened.session.advance(16_666_667, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let original = frame.0.clone();
-    opened.session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
     assert_eq!(
-        opened.session.advance(30_000_000, &[]).unwrap().status,
+        session.advance(30_000_000, &[]).unwrap().status,
         RuntimeStatus::Waiting
     );
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let negative = frame.0.clone();
     assert_ne!(negative, original);
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    opened.session.advance(30_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    assert!(session.vm.native_checkpoint().is_err()); // A raw wait is not a native message slot.
+    let saved = MusicaVm::checked_test_state(session.vm.state()).unwrap();
+    session.advance(30_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let positive = frame.0.clone();
     assert_ne!(positive, negative);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
+    session
+        .vm
+        .install_test_state(&saved, saved.fixed_tick + 1)
         .unwrap();
-    assert_eq!(frame.0, negative);
-    opened.session.advance(30_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
+    session.phase = 0;
+    session
+        .scene
+        .render(session.vm.state(), None, None)
         .unwrap();
+    assert_eq!(&session.scene.pixels[..], negative.as_slice());
+    session.advance(30_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, positive);
-    opened
-        .session
+    session
         .advance(0, &[RuntimeEvent::WindowSuspended { suspended: true }])
         .unwrap();
-    opened.session.advance(30_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(30_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, positive);
-    opened
-        .session
+    session
         .advance(0, &[RuntimeEvent::WindowSuspended { suspended: false }])
         .unwrap();
-    opened.session.advance(30_000_000, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(30_000_000, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, negative);
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }
 
 fn assert_scroll_restores_background_position(command: &str, middle_pixel: usize) {
@@ -676,23 +665,19 @@ fn assert_scroll_restores_background_position(command: &str, middle_pixel: usize
         format!(".stage * BG.png 0 0\r\n.{command}\r\n.endscroll false\r\n.end\r\n").as_bytes(),
     );
     let mut provider = fixture::provider();
-    let mut opened = provider
-        .open(request(root.path(), Sink::default()))
+    let (_, mut session) = provider
+        .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut frame = Capture(Vec::new());
-    opened.session.advance(16_666_667, &[]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    session.advance(16_666_667, &[]).unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let original = frame.0.clone();
-    opened.session.advance(16_666_667, &[]).unwrap();
+    session.advance(16_666_667, &[]).unwrap();
     assert_eq!(
-        opened.session.advance(40_000_000, &[]).unwrap().status,
+        session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Waiting
     );
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let middle = frame.0.clone();
     assert_ne!(middle, original);
     assert_eq!(&middle[..4], &[0, 0, 0, 255]);
@@ -700,30 +685,33 @@ fn assert_scroll_restores_background_position(command: &str, middle_pixel: usize
         &middle[middle_pixel * 4..middle_pixel * 4 + 4],
         &original[..4]
     );
-    opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
+    assert!(session.vm.native_checkpoint().is_err());
+    let saved = MusicaVm::checked_test_state(session.vm.state()).unwrap();
     assert_eq!(
-        opened.session.advance(40_000_000, &[]).unwrap().status,
+        session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Finished
     );
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     let finished = frame.0.clone();
     assert_ne!(finished, middle);
-    opened.session.advance(0, &[key(KeyCode::F9)]).unwrap();
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
+    session
+        .vm
+        .install_test_state(&saved, saved.fixed_tick + 1)
         .unwrap();
-    assert_eq!(frame.0, middle);
+    session.finished = false;
+    session.phase = 0;
+    session
+        .scene
+        .render(session.vm.state(), None, None)
+        .unwrap();
+    assert_eq!(&session.scene.pixels[..], middle.as_slice());
     assert_eq!(
-        opened.session.advance(40_000_000, &[]).unwrap().status,
+        session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Finished
     );
-    frame
-        .read(opened.session.acquire_frame(None).unwrap())
-        .unwrap();
+    frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, finished);
-    opened.session.close().unwrap();
+    Box::new(session).close().unwrap();
 }
 
 #[test]
@@ -799,12 +787,10 @@ fn native_gpu_ani_companion_uses_wrapping_seed_and_shared_source_cache() {
         .open_session(request(root.path(), Sink::default()))
         .unwrap();
     let mut state =
-        MusicaVm::decode_native_save(&session.vm.encode_native_save().unwrap()).unwrap();
+        MusicaVm::checked_test_state(&MusicaVm::checked_test_state(session.vm.state()).unwrap())
+            .unwrap();
     state.random_state = u64::MAX;
-    session
-        .vm
-        .restore_native_save(&postcard::to_allocvec(&state).unwrap(), 1)
-        .unwrap();
+    session.vm.install_test_state(&state, 1).unwrap();
     let stage = crate::MusicaStageCommand {
         foreground: crate::MusicaForegroundLayers::default(),
         reference_position: None,
@@ -824,7 +810,6 @@ fn native_gpu_ani_companion_uses_wrapping_seed_and_shared_source_cache() {
     let patch = &session.vm.state().ani_patches["musica:/bg/BG.png"];
     assert_eq!(patch.rng, 0);
     assert_eq!(patch.characters[0].name, "speaker");
-    assert!(session.vm.encode_native_save().is_ok());
     Box::new(session).close().unwrap();
 }
 

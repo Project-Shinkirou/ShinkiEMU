@@ -132,6 +132,9 @@ impl MusicaSession {
             }
         }
         let event = self.vm.step(tick).map_err(vm_error)?;
+        if let Some(checkpoint) = self.vm.take_native_autosave() {
+            self.auto_save(checkpoint)?;
+        }
         let event = self.semantic_event(event)?;
         let changed = self.apply_event(event)?;
         Ok(changed || visual_completion)

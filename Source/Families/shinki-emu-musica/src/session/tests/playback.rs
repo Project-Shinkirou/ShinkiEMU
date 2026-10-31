@@ -16,10 +16,14 @@ fn native_gpu_auto_play_waits_restores_and_pauses_in_backlog() {
     });
     let mut opened = provider.open(req).unwrap();
     opened.session.advance(16_666_667, &[]).unwrap();
+    let mut capture = Capture(Vec::new());
+    capture
+        .read(opened.session.acquire_frame(None).unwrap())
+        .unwrap();
+    let normal_first = capture.0.clone();
     opened.session.advance(0, &[key(KeyCode::A)]).unwrap();
     opened.session.advance(40_000_000, &[]).unwrap();
     opened.session.advance(0, &[key(KeyCode::F5)]).unwrap();
-    let mut capture = Capture(Vec::new());
     capture
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
@@ -34,7 +38,18 @@ fn native_gpu_auto_play_waits_restores_and_pauses_in_backlog() {
     capture
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
-    assert_eq!(capture.0, first);
+    assert!(
+        capture.0 == normal_first,
+        "native load restores the message without snapshot-only AUTO mode"
+    );
+    opened.session.advance(0, &[key(KeyCode::A)]).unwrap();
+    capture
+        .read(opened.session.acquire_frame(None).unwrap())
+        .unwrap();
+    assert!(
+        capture.0 == first,
+        "enabling AUTO restores its message label"
+    );
     opened.session.advance(0, &[key(KeyCode::PageUp)]).unwrap();
     opened.session.advance(1_000_000_000, &[]).unwrap();
     opened.session.advance(0, &[key(KeyCode::Escape)]).unwrap();
@@ -42,7 +57,7 @@ fn native_gpu_auto_play_waits_restores_and_pauses_in_backlog() {
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
     assert_eq!(capture.0, first);
-    opened.session.advance(70_000_000, &[]).unwrap();
+    opened.session.advance(110_000_000, &[]).unwrap();
     capture
         .read(opened.session.acquire_frame(None).unwrap())
         .unwrap();
@@ -68,13 +83,17 @@ fn native_gpu_background_preference_gates_clocks_and_preserves_explicit_suspend(
     let _session = PROVIDER_SESSION.lock();
     for background in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        fixture::game(root.path(), b".playbgm tone.ogg\r\n.wait 1000\r\n.end\r\n");
+        fixture::game(
+            root.path(),
+            b".playbgm tone.ogg\r\n.message 1   Waiting\r\n.end\r\n",
+        );
         let mut req = request(root.path(), Sink::default());
         req.configuration.push(ConfigEntry {
             id: "progress_in_background".into(),
             value: ConfigValue::Bool(background),
         });
         let (_, mut session) = fixture::provider().open_session(req).unwrap();
+        session.advance(16_666_667, &[]).unwrap();
         session.advance(16_666_667, &[]).unwrap();
         session
             .advance(

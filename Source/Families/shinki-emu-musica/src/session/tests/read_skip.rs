@@ -38,7 +38,7 @@ fn native_gpu_read_skip_follows_tbr_across_load_and_restart() {
     assert_eq!(read_flags(root.path()).unwrap()[0], 0x60);
     assert_eq!(
         session.vm.state().system_ui.play_mode,
-        crate::MusicaPlayMode::Skip
+        crate::MusicaPlayMode::Normal
     );
     assert!(session.vm.active_message_is_read().unwrap());
     assert!(session.vm.state().read_message_identities.is_empty());

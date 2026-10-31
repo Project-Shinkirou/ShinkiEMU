@@ -18,6 +18,7 @@ use std::{
 };
 
 mod legacy;
+mod slots;
 mod sysparams;
 #[cfg(test)]
 mod tests;

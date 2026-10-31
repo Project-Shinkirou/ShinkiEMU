@@ -1,4 +1,5 @@
 use super::*;
+use crate::MusicaVm;
 
 #[test]
 fn select_terminal_separator_preserves_three_choices_and_runtime_transition() {
@@ -173,7 +174,7 @@ fn gbk_script_round_trips_and_disassembles_without_replacement() {
 }
 
 #[test]
-fn native_save_rejects_a_different_script_encoding() {
+fn state_installation_rejects_a_different_script_encoding() {
     let bytes = b".message 1   Hello\r\n.end\r\n";
     let make = |encoding| {
         crate::MusicaVm::new(
@@ -184,10 +185,10 @@ fn native_save_rejects_a_different_script_encoding() {
         )
         .unwrap()
     };
-    let saved = make(ScriptEncoding::ShiftJis).encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(make(ScriptEncoding::ShiftJis).state()).unwrap();
     assert!(
         make(ScriptEncoding::Gbk)
-            .restore_native_save(&saved, 1)
+            .install_test_state(&saved, 1)
             .is_err()
     );
 }

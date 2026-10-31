@@ -29,6 +29,8 @@ description: Musica 的格式、原生行为与限制。
 | `sysparams.txt` | 设置、快速存档和自动存档游标（Tab 分隔，CRLF） |
 | `<script>.tbr` | 单个脚本的已读消息位图 |
 | `cgv.dat` | 已看过的 CG 列表 |
+| `edenNNNN.sav` / `edenPMNNNN.sav`、`perseus_NNNN.sav` | 原生消息检查点与历史 |
+| 同名 `.png` | 不透明 RGB 区域均值缩略图：eden 128×80，Perseus 106×60 |
 
 想沿用原版安装的进度或设置，把 `Documents\minori\<title>\` 里的文件复制到 `.shinki/musica/minori/<title>/`；要回到原版 exe 继续玩，按同样方式复制回去。`sysparams.txt` 中 Musica 用不到的键（如字体名、窗口尺寸）原样保留。原版没有对应键的设置存放在 `.shinki/musica/musica-settings.txt`，格式相同；eden 的五个角色语音开关就放在这里。
 
@@ -36,9 +38,13 @@ description: Musica 的格式、原生行为与限制。
 
 已知差异：`system.dat`、`sysparams.txt` 和文件前缀与原版逐字节一致。经 zlib 压缩的 `.tbr` 和 `cgv.dat` 解压后的内容相同，但压缩后的字节通常不同，因为 Musica 的 deflate 编码器与原版 zlib 的取舍不一样。原版 exe 可以正常读取这些文件。Musica 只在内容变化时才重写文件，所以复制过来的文件在记录新的已读标记或 CG 之前保持原样。
 
-早期 Musica 以 JSON 形式存放在 `.shinki/musica/saves/` 的设置、快速存档游标和全局进度，会一次性导入原生文件。已有的原生文件不会被覆盖，导入完成的 JSON 改名为 `*.imported`。JSON 属于别的游戏或已损坏时，导入中止，不改动任何文件。遇到无法识别的 exe 时，Musica 不写原生文件：旧 JSON 和 `.asav` 槽位照常读取，日志记录一次 `SHINKI_EMU_MUSICA_SAVE_TITLE`，设置和进度的修改只在本次会话内有效。
+早期 `.shinki/musica/saves/` 中的 JSON 设置、快速存档游标和全局进度，仍按一次性、不覆盖的规则导入原生文件。无法识别的 exe 不能读写原生槽位。
 
-产品自有槽位于 `.shinki/musica/saves/`，绑定 archive/profile/localization/font 身份。首次使用时，旧 `.shinki-musica/saves/` 中的文件会搬迁过去，不覆盖已有的新存档，此后只读取新路径。无效候选不改变活动状态或覆盖现有文件。原版 eden 存档互通仅限明确支持的消息检查点，不代表通用原版存档兼容。
+运行时存读档统一使用原生后端。检查点恢复脚本变量、背景、组合前景、立绘位置与偏移、BGM、消息历史，以及小说模式（`CP1=2`）的整页文本和 `L4_n` 位置。读档会重新开始当前消息及语音；播放时钟、翻译文本和菜单焦点不写入原生槽。不支持的效果或附加图层状态会明确拒绝，不回退到内部快照。
+
+eden 的自动槽为 0，快速槽为 1–9；`AppendPlaying` 切换到 `edenPM` 命名空间。Perseus 的快速槽为 0–9，自动槽为 10–19，手动槽从 20 开始。自动存档按原生命令计数周期触发，也在不超过四项的选择和视频开始前触发；局部 `exitFromEvent`、`prohibitAutoSave` 或全局 `prohibitSaveLoad` 非零时禁止自动存档。`prohibitSaveLoad` 同时禁止手动存读档。先写缩略图，再写压缩槽位，两者分别原子替换。
+
+旧 beta 的 `.asav`（`AMUSSV06` 及更早格式）不兼容。Musica 不读取、转换、搬迁、改名或删除 `.shinki-musica/saves/` 和 `.shinki/musica/saves/` 中的旧文件。请保留备份，重新建立原生存档。
 
 [ReMinori](reminori.md) 是另一个实现，执行器、配置和存档各自独立。
 

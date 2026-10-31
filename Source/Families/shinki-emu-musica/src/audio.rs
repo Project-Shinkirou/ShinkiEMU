@@ -3,13 +3,12 @@ use crate::{
     MusicaAudioCommand, MusicaMountedVfs,
     scene::{error, read_asset},
 };
+#[cfg(test)]
+use kira::sound::PlaybackState;
 use kira::{
     AudioManager, AudioManagerSettings, Decibels, Panning, Tween,
     backend::{Backend, Renderer},
-    sound::{
-        PlaybackState,
-        static_sound::{StaticSoundData, StaticSoundHandle},
-    },
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 use serde::{Deserialize, Serialize};
 use shinki_emu_sdk::NativeAudioOutput;
@@ -55,6 +54,7 @@ pub(crate) struct SoundSnapshot {
 }
 enum Command {
     Apply(Vec<MusicaAudioCommand>),
+    #[cfg(test)]
     Snapshot(SyncSender<SessionResult<Vec<SoundSnapshot>>>),
     Restore(Vec<SoundSnapshot>, SyncSender<SessionResult<()>>),
     Suspend(bool),
@@ -221,6 +221,7 @@ impl Audio {
         self.send(Command::VoiceLevel(tx))?;
         Ok(rx)
     }
+    #[cfg(test)]
     pub fn snapshot(&self) -> SessionResult<Vec<SoundSnapshot>> {
         let (tx, rx) = sync_channel(1);
         self.send(Command::Snapshot(tx))?;
@@ -327,6 +328,7 @@ fn run(
                         }
                     }
                 }
+                #[cfg(test)]
                 Command::Snapshot(reply) => {
                     let _ = reply.send(Ok(mixer.snapshot()));
                 }

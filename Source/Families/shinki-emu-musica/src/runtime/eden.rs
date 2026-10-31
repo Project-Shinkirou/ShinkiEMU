@@ -14,6 +14,7 @@ impl MusicaVm {
         save: &EdenSave,
         archive: &crate::MusicaMountedVfs,
         session_seed: u64,
+        config: crate::MusicaConfigState,
     ) -> Result<(Self, MusicaVmEvent), CoreError> {
         let checkpoint = save.checkpoint()?;
         let encoding = match save.encoding {
@@ -26,24 +27,16 @@ impl MusicaVm {
             crate::script_loader::load_script(archive, &uri, encoding).map_err(script_error)?;
         let mut vm =
             Self::new(uri, loaded.hash, loaded.script, session_seed).map_err(runtime_error)?;
-        let event = vm.restore_eden_save(
-            save,
-            |name| {
-                crate::script_loader::load_script(archive, &format!("musica:/scr/{name}"), encoding)
-                    .map(|loaded| loaded.script)
-                    .map_err(script_error)
-            },
-            1,
-        )?;
+        vm.set_config(config).map_err(runtime_error)?;
+        let event = vm.restore_eden_save(save, 1)?;
         Ok((vm, event))
     }
 
     /// Prepare the entire restored state before replacing the active VM.
-    /// The resolver only reads scripts; no command before the saved PC is run.
+    /// Historical CLog text is self-contained; only the active PC binds to source.
     pub fn restore_eden_save(
         &mut self,
         save: &EdenSave,
-        mut read_script: impl FnMut(&str) -> Result<ScScript, CoreError>,
         next_fixed_tick: u64,
     ) -> Result<MusicaVmEvent, CoreError> {
         let checkpoint = save.checkpoint()?;
@@ -53,9 +46,6 @@ impl MusicaVm {
             return Err(invalid());
         }
         let position = save.validate_message_position(&checkpoint.script, &self.script)?;
-        let mut scripts = BTreeMap::new();
-        scripts.insert(checkpoint.script.clone(), self.script.clone());
-        let mut script_bytes = script_size(&self.script)?;
         let mut candidate = Self::new(
             self.state.script_uri.clone(),
             self.state.script_hash,
@@ -67,25 +57,42 @@ impl MusicaVm {
             .set_config(self.config.clone())
             .map_err(runtime_error)?;
         candidate.state.launch_mode = self.state.launch_mode;
+        candidate.replace_global_variables(self.state.global_variables.clone());
+        candidate.state.native_edition = save.edition;
+        candidate.state.variables = checkpoint.script_variables.clone();
+        candidate.state.native_message_variables = checkpoint.script_variables.clone();
+        candidate.state.native_message_saveable = true;
         candidate.state.transition = MusicaTransitionState {
             mode: 0,
             resource: None,
             param: checkpoint.transition_ticks,
         };
         candidate.state.stage = Some(MusicaStageCommand {
-            foreground: MusicaForegroundLayers::default(),
-            reference_position: None,
+            foreground: stage::parse_foreground_spec(&checkpoint.foreground)
+                .map_err(runtime_error)?,
+            reference_position: Some(checkpoint.foreground_position),
             background: (!checkpoint.background.is_empty()).then(|| MusicaStageLayer {
                 resource_uri: format!("musica:/bg/{}", checkpoint.background),
                 x: checkpoint.background_position[0],
                 y: checkpoint.background_position[1],
             }),
-            stands: Vec::new(),
+            stands: checkpoint
+                .stands
+                .iter()
+                .map(|stand| MusicaStandLayer {
+                    resource_uri: format!("musica:/st/{}", stand.resource),
+                    position: stand.position,
+                    resource_parameter: stand.offset,
+                })
+                .collect(),
             transition: candidate.state.transition.clone(),
         });
+        candidate.state.native_foreground = checkpoint.foreground.clone();
+        candidate.state.native_stand_slots =
+            u32::try_from(checkpoint.stands.len()).map_err(|_| invalid())?;
         candidate.state.panel = match checkpoint.panel_mode {
             0 => None,
-            1 | 3 => Some(MusicaPanelState {
+            1..=3 => Some(MusicaPanelState {
                 mode: checkpoint.panel_mode,
                 resource_uri: format!(
                     "musica:/sys/{}",
@@ -105,7 +112,7 @@ impl MusicaVm {
         if !checkpoint.bgm.is_empty() {
             let spec = parse_audio_resource_spec(&checkpoint.bgm).map_err(runtime_error)?;
             validate_audio_relative_path(&spec.resource).map_err(runtime_error)?;
-            if spec.volume_percent != 100 || spec.pan_percent != 0 {
+            if spec.volume_percent != 100 {
                 return Err(invalid());
             }
             candidate.state.audio.insert(
@@ -115,42 +122,17 @@ impl MusicaVm {
                     resource_uri: format!("musica:/bgm/{}", spec.resource),
                     looped: true,
                     volume_milli: checkpoint.bgm_volume * 10,
-                    pan_milli: 0,
+                    pan_milli: spec.pan_percent * 10,
                     playing: true,
                     continuation_pts: 0,
                 },
             );
         }
-        let mut history_state = candidate.state.clone();
         for record in &checkpoint.history[..checkpoint.history.len() - 1] {
-            if !scripts.contains_key(&record.script) {
-                if scripts.len() >= 64 {
-                    return Err(invalid());
-                }
-                let script = read_script(&record.script)?;
-                script_bytes = script_bytes
-                    .checked_add(script_size(&script)?)
-                    .filter(|bytes| *bytes <= 64 * 1024 * 1024)
-                    .ok_or_else(invalid)?;
-                scripts.insert(record.script.clone(), script);
-            }
-            let script = scripts.get(&record.script).ok_or_else(invalid)?;
-            let command = checked_command(record, script)?;
-            // Decode only the recorded message, not its preceding execution path.
-            history_state.message_loads.clear();
-            history_state.audio.clear();
-            history_state.backlog_bytes = 0;
-            execute_message(
-                command,
-                &mut history_state,
-                &self.config.voice_preferences(),
-                self.config.message_speed_auto_play,
-            )
-            .map_err(runtime_error)?;
-            let entry = history_state.backlog.pop().ok_or_else(invalid)?;
-            backlog::append_backlog_entry(&mut candidate.state, entry).map_err(runtime_error)?;
+            append_native_history(&mut candidate.state, record, false)?;
         }
         let last = checkpoint.history.last().ok_or_else(invalid)?;
+        append_native_history(&mut candidate.state, last, true)?;
         let command = checked_command(last, &self.script)?;
         candidate.state.pc_line = position.next_line_index;
         candidate.state.instruction_count = 1;
@@ -163,26 +145,91 @@ impl MusicaVm {
         .map_err(runtime_error)?
         .ok_or_else(invalid)?;
         // Native save has no clock for delayed character loads or auto-advance.
-        if !candidate.state.message_loads.is_empty()
-            || !matches!(candidate.state.wait, Some(MusicaWaitState::Input { .. }))
-        {
+        if !candidate.state.message_loads.is_empty() {
             return Err(invalid());
         }
+        candidate.state.native_history = checkpoint.history.clone();
+        candidate.state.native_novel_page = last.page.clone();
         candidate.state.fixed_tick = next_fixed_tick - 1;
         validate_stage_state(candidate.state.stage.as_ref()).map_err(runtime_error)?;
         backlog::validate_state(&candidate.state).map_err(runtime_error)?;
         self.state = candidate.state;
+        self.read_flags.resume(&self.state);
         self.config_edit = None;
         Ok(event)
     }
 }
 
-fn script_size(script: &ScScript) -> Result<usize, CoreError> {
-    script.lines.iter().try_fold(0usize, |size, line| {
-        size.checked_add(line.raw.len())
-            .filter(|bytes| *bytes <= 16 * 1024 * 1024)
-            .ok_or_else(invalid)
-    })
+fn append_native_history(
+    state: &mut MusicaRuntimeState,
+    record: &EdenHistoryMessage,
+    omit_current: bool,
+) -> Result<(), CoreError> {
+    if record.page.is_empty() {
+        if !omit_current {
+            append_native_line(
+                state,
+                record.message_id,
+                &record.voice,
+                &record.speaker,
+                &record.text,
+            )?;
+        }
+    } else {
+        let end = record.page.len() - usize::from(omit_current);
+        for line in &record.page[..end] {
+            append_native_line(
+                state,
+                record.message_id,
+                &line.voice,
+                &line.speaker,
+                &line.text,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn append_native_line(
+    state: &mut MusicaRuntimeState,
+    message_id: i64,
+    voice_token: &str,
+    speaker: &str,
+    text: &str,
+) -> Result<(), CoreError> {
+    let text = crate::parse_musica_message_markup(text)
+        .map_err(|_| invalid())?
+        .visible_text;
+    let speaker = message::native_speaker_name(speaker);
+    let voice = if voice_token.is_empty() {
+        None
+    } else {
+        let spec = parse_audio_resource_spec(voice_token).map_err(runtime_error)?;
+        validate_audio_relative_path(&spec.resource).map_err(runtime_error)?;
+        Some(MusicaMessageVoice {
+            resource_uri: format!("musica:/voice/{}", spec.resource),
+            volume_milli: spec.volume_percent * 10,
+            pan_milli: spec.pan_percent * 10,
+        })
+    };
+    backlog::append_backlog_entry(
+        state,
+        MusicaBacklogEntry {
+            source: None,
+            message_id,
+            text_hash: Hash256::from_sha256(text.as_bytes()),
+            speaker_hash: speaker
+                .as_ref()
+                .map(|name| Hash256::from_sha256(name.as_bytes())),
+            voice_hash: voice
+                .as_ref()
+                .map(|_| Hash256::from_sha256(voice_token.as_bytes())),
+            text,
+            speaker,
+            voice,
+        },
+    )
+    .map_err(runtime_error)
 }
 
 fn checked_command<'a>(
@@ -196,21 +243,68 @@ fn checked_command<'a>(
     let ScLineKind::Command { command } = &line.kind else {
         return Err(invalid());
     };
+    // CLog also records an empty novel page when `.panel 2` creates it.
+    // Its Params retain the preceding script ID, while L0 remains -1.
+    let empty_page = record.panel_mode == 2
+        && record.message_id == -1
+        && record.state_message_id.is_some()
+        && record
+            .page
+            .iter()
+            .all(|line| line.voice.is_empty() && line.speaker.is_empty() && line.text.is_empty());
+    if empty_page
+        && command.opcode == "panel"
+        && command
+            .tokens()
+            .map_err(|_| invalid())?
+            .first()
+            .is_some_and(|mode| mode == "2")
+    {
+        return Ok(command);
+    }
     if command.opcode != "message"
         || line
             .language_guard
             .is_some_and(|guard| guard != script.encoding.language())
     {
-        return Err(invalid());
+        return Err(CoreError::invalid(
+            "SHINKI_EMU_EDEN_SAVE_STATE",
+            format!(
+                "native history PC {} is not an active message",
+                record.next_line
+            ),
+        ));
     }
+    let (voice, speaker, text) = if let Some(line) = record.page.last() {
+        (&line.voice, &line.speaker, &line.text)
+    } else {
+        (&record.voice, &record.speaker, &record.text)
+    };
     let tokens = command.tokens().map_err(|_| invalid())?;
-    if tokens.len() < 4
-        || tokens[0].parse::<i64>().ok() != Some(record.message_id)
-        || tokens[1] != record.voice
-        || tokens[2] != record.speaker
-        || tokens[3..].join(" ") != record.text
+    let empty = tokens.len() < 4
+        && record.message_id == -1
+        && voice.is_empty()
+        && speaker.is_empty()
+        && text.is_empty();
+    if !empty
+        && (tokens.len() < 4
+            || tokens[0].parse::<i64>().ok() != Some(record.message_id)
+            || tokens[1] != *voice
+            || tokens[2] != *speaker
+            || tokens[3..].join(" ") != *text)
     {
-        return Err(invalid());
+        return Err(CoreError::invalid(
+            "SHINKI_EMU_EDEN_SAVE_STATE",
+            format!(
+                "native history message mismatch at line {} (id={}, voice={}, speaker={}, text={})",
+                record.next_line,
+                tokens.first().and_then(|token| token.parse::<i64>().ok())
+                    == Some(record.message_id),
+                tokens.get(1) == Some(voice),
+                tokens.get(2) == Some(speaker),
+                tokens.len() >= 4 && tokens[3..].join(" ") == *text
+            ),
+        ));
     }
     Ok(command)
 }

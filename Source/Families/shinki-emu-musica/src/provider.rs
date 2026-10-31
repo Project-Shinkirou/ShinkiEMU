@@ -5,7 +5,6 @@ use crate::{
     profile::mount_musica_with_resources,
     scene::{Scene, core_error, error},
     session::MusicaSession,
-    storage::Storage,
 };
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
 use shinki_emu_sdk::runtime::*;
@@ -535,7 +534,6 @@ impl MusicaProvider {
             subtitle_catalog.as_ref().map(|catalog| catalog.identity()),
         )
         .map_err(core_error)?;
-        let storage = Storage::new(root)?;
         let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
         native.import_legacy_progress(root, game)?;
         native.import_legacy_settings(root, game)?;
@@ -636,8 +634,6 @@ impl MusicaProvider {
             scene,
             audio,
             replacement,
-            storage,
-            game,
             lease,
             focused,
             visible,

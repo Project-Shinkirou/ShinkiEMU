@@ -15,21 +15,18 @@ fn choice_restores_focus_and_commits_the_selected_label() {
     assert_eq!(vm.step(1).unwrap(), Some(MusicaVmEvent::Choice));
     vm.move_choice(-1).unwrap();
     assert_eq!(vm.choice_display().unwrap().unwrap().1, 1);
-    let saved = vm.encode_native_save().unwrap();
+    let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
     vm.move_choice(1).unwrap();
-    vm.restore_native_save(&saved, 2).unwrap();
+    vm.install_test_state(&saved, 2).unwrap();
     vm.commit_choice().unwrap();
     assert_eq!(vm.step(2).unwrap(), Some(MusicaVmEvent::Terminal));
     assert_eq!(vm.state().global_variables.get("branch"), Some(&2));
     let before = vm.state().clone();
-    let mut corrupt = MusicaVm::decode_native_save(&saved).unwrap();
-    assert!(vm.restore_native_save(&saved, 0).is_err());
+    let mut corrupt = MusicaVm::checked_test_state(&saved).unwrap();
+    assert!(vm.install_test_state(&saved, 0).is_err());
     assert_eq!(vm.state(), &before);
     corrupt.choice.as_mut().unwrap().selected_index = Some(9);
-    assert!(
-        vm.restore_native_save(&postcard::to_allocvec(&corrupt).unwrap(), 3)
-            .is_err()
-    );
+    assert!(vm.install_test_state(&corrupt, 3).is_err());
     assert_eq!(vm.state(), &before);
 }
 
@@ -55,9 +52,9 @@ fn musica_crossfade_reuses_timeline_and_empty_effect_releases_primary_slot() {
         assert_eq!(vm.step(2).unwrap(), Some(MusicaVmEvent::EffectCleared));
         assert!(vm.state().effect.is_none());
         assert_eq!(vm.advance_effect_clock(100_000_000).unwrap(), None);
-        let save = vm.encode_native_save().unwrap();
+        let save = MusicaVm::checked_test_state(vm.state()).unwrap();
         assert!(
-            MusicaVm::decode_native_save(&save)
+            MusicaVm::checked_test_state(&save)
                 .unwrap()
                 .effect
                 .is_none()
@@ -84,7 +81,7 @@ fn additional_musica_audio_buses_are_independent_and_saved() {
     assert_eq!(vm.state().audio[&0].bus, "bgm");
     assert_eq!(vm.state().audio[&5].bus, "bgm2");
     assert_eq!(vm.state().audio[&6].bus, "se4");
-    let save = vm.encode_native_save().unwrap();
+    let save = MusicaVm::checked_test_state(vm.state()).unwrap();
     let saved = vm.state().clone();
     assert!(matches!(
         vm.step(4).unwrap(),
@@ -93,7 +90,7 @@ fn additional_musica_audio_buses_are_independent_and_saved() {
     assert!(!vm.state().audio[&5].playing);
     assert!(vm.state().audio[&0].playing);
     assert!(vm.state().audio[&6].playing);
-    vm.restore_native_save(&save, 4).unwrap();
+    vm.install_test_state(&save, 4).unwrap();
     assert_eq!(vm.state(), &saved);
 }
 
@@ -136,11 +133,11 @@ fn deterministic_control_flow_wait_and_native_save_round_trip() {
     assert_eq!(timer_ticks, 20);
     assert_eq!(milliseconds, 200);
     assert_eq!(vm.state().variables.get("count"), Some(&3));
-    let save = vm.encode_native_save().unwrap();
+    let save = MusicaVm::checked_test_state(vm.state()).unwrap();
     let state = vm.state().clone();
     vm.resolve_wait(&token_id).unwrap();
     assert_eq!(vm.step(2).unwrap(), Some(MusicaVmEvent::Terminal));
-    vm.restore_native_save(&save, 2).unwrap();
+    vm.install_test_state(&save, 2).unwrap();
     assert_eq!(vm.state(), &state);
 }
 
@@ -181,14 +178,8 @@ fn panel_mode_one_uses_the_verified_message_panel_resource() {
             resource_uri: "musica:/sys/msgPanel.png".into(),
         })
     );
-    let save = vm.encode_native_save().unwrap();
-    assert_eq!(
-        MusicaVm::decode_native_save(&save).unwrap().panel,
-        vm.state().panel
-    );
 
     for source in [
-        b".panel 2\r\n".as_slice(),
         b".panel 1 -1\r\n".as_slice(),
         b".panel 1 * ../private.png\r\n".as_slice(),
     ] {
@@ -247,8 +238,8 @@ fn crossfade2_keeps_the_verified_resource_and_timeline_state() {
     assert_eq!(effect.visible_current_index, 1);
     assert_eq!(effect.visible_next_index, 2);
     assert_eq!(effect.visible_alpha_255, 0);
-    let save = vm.encode_native_save().unwrap();
-    let restored = MusicaVm::decode_native_save(&save).unwrap();
+    let save = MusicaVm::checked_test_state(vm.state()).unwrap();
+    let restored = MusicaVm::checked_test_state(&save).unwrap();
     assert_eq!(restored.effect, vm.state().effect);
     assert_eq!(restored.effect_sequence, vm.state().effect_sequence);
 }
@@ -639,11 +630,11 @@ fn chain_label_is_resolved_before_replacing_script_and_survives_save_restore() {
         Some("entry"),
     )
     .unwrap();
-    let save = vm.encode_native_save().unwrap();
+    let save = MusicaVm::checked_test_state(vm.state()).unwrap();
     assert_eq!(vm.step(2).unwrap(), Some(MusicaVmEvent::Terminal));
     assert!(!vm.state().global_variables.contains_key("skipped"));
     assert_eq!(vm.state().global_variables.get("reached"), Some(&1));
-    vm.restore_native_save(&save, 2).unwrap();
+    vm.install_test_state(&save, 2).unwrap();
     assert_eq!(vm.step(2).unwrap(), Some(MusicaVmEvent::Terminal));
     assert!(!vm.state().global_variables.contains_key("skipped"));
 }
@@ -708,7 +699,9 @@ fn panel_modes_replace_clear_and_roundtrip_native_save() {
             matches!(vm.step(tick).unwrap(), Some(MusicaVmEvent::Panel { sequence }) if sequence == tick)
         );
         assert_eq!(vm.state().panel, expected);
-        let restored = MusicaVm::decode_native_save(&vm.encode_native_save().unwrap()).unwrap();
+        let restored =
+            MusicaVm::checked_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap())
+                .unwrap();
         assert_eq!(restored.panel, expected);
     }
 }

@@ -4,13 +4,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const MUSICA_RUNTIME_STATE_SCHEMA: &str = "shinki.emu.musica.runtime_state.v28";
 // Five foreground slots, one background and at most ten stands.
 pub(crate) const MUSICA_STAGE_RESOURCE_LIMIT: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct MusicaRuntimeState {
-    pub schema: String,
     pub script_uri: String,
     pub script_hash: Hash256,
     pub script_encoding: crate::ScriptEncoding,
@@ -22,7 +20,18 @@ pub struct MusicaRuntimeState {
     pub message: Option<MusicaMessageState>,
     pub backlog: Vec<MusicaBacklogEntry>,
     pub backlog_bytes: u64,
-    pub eden_export: crate::eden_save::EdenExportState,
+    pub native_edition: crate::eden_save::EdenEdition,
+    pub native_message_variables: BTreeMap<String, i64>,
+    pub native_message_saveable: bool,
+    /// Native CLog history, including records beyond the bounded visual backlog.
+    #[serde(skip)]
+    pub native_history: Vec<crate::eden_save::EdenHistoryMessage>,
+    #[serde(skip)]
+    pub native_foreground: String,
+    #[serde(skip)]
+    pub native_stand_slots: u32,
+    #[serde(skip)]
+    pub native_novel_page: Vec<crate::eden_save::EdenHistoryLine>,
     pub read_message_identities: Vec<Hash256>,
     pub gallery_unlocks: Vec<Hash256>,
     pub message_loads: Vec<MusicaMessageLoadState>,
@@ -629,7 +638,8 @@ pub struct MusicaMessageLoadState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct MusicaBacklogEntry {
-    pub source: SourceSpan,
+    /// Native CLog history has no source byte span; the active message does.
+    pub source: Option<SourceSpan>,
     pub message_id: i64,
     pub text: String,
     pub speaker: Option<String>,

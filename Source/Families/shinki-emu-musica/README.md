@@ -56,11 +56,11 @@ PAZ 探测只识别引擎，不能据此得出密钥已安装。Manager 只选�
 
 PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文件变化校验保留。SDK 的 `ArchiveManifest` 是核心本地索引，不是 Host VFS 或产品 package。配置相对路径以游戏目录为基准，资源始终限于游戏目录内；公共读取错误使用 `SHINKI_EMU_PROFILE_*`。读取不运行 managed helper、BinaryFormatter 或 executable patch。
 
-核心自有 slot 位于游戏目录 `.shinki/musica/saves/slot-000.asav`。首次使用时把旧 `.shinki-musica/saves/` 中的文件迁至新路径，绝不覆盖已有新存档，此后只读取新路径。容器 `AMUSSV06` 包含长度、SHA-256 与 postcard snapshot，保存 VM、当前文本、翻译层文本/可见性、等待进度以及 sound resource/播放位置/volume/pan/repeat。它绑定同一 archive/profile/localization/font identity；加载重建脚本、场景和声音后提交。临时文件 flush 后原子替换；损坏、异版本或外部格式文件拒绝覆盖。此格式不宣称兼容原版存档。加载恢复声音的当前参数、位置与尚未完成的音量渐变。渐变保存分贝起止值、总采样数、已推进采样数和结束停止意图；按剩余采样继续，暂停不推进渐变。新音量命令替换旧渐变。旧 AMUSSV05 及更早内部格式明确拒绝，不覆盖旧 slot。
+运行时统一使用原版 eden/Perseus 的 `.sav` 与同名 `.png`，路径、槽位编号、缩略图和限制见[存档说明](../../../docs/zh-cn/cores/shinki-emu-musica.md#存档)。旧 beta `.asav`（`AMUSSV06` 及更早格式）不兼容，既不读取也不转换、搬迁或删除；请保留备份并新建原生槽位。
 
 ## eden 原版存档与检查点
 
-`eden_save::EdenSave` 提供有界读取与容器编码，已补充严格检查点投影和 VM 恢复候选接口，Family 已接入严格子集的设备恢复和当前消息导出；已完成一个静态消息片段的原版读回与继续，范围见下文。`EdenEdition` 显式区分日文 CD-ROM 签名和本地 Steam English 签名：前者为 `;\n!`、`0xAA` 与 `eden 1.00`，后者为四个零字节与 `eden_en 1.00`。签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
+`eden_save::EdenSave` 提供有界容器编解码、严格检查点投影和运行时原生存读档。`EdenEdition` 显式区分日文 CD-ROM、Steam English 和 Perseus 签名；签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
 
 `EdenSaveEncoding` 由调用方显式选择 Shift-JIS、GBK 或 Windows-1252。解码须无替换字符，重新编码须还原原字节；写入不可表达字符直接失败。变量及 backlog 保留原字段顺序，包括多语言 `L1_0` 等字段，不补默认字段或丢弃未知字段。重复字段、结构注入、截尾、压缩校验失败、追加压缩流和大小超限均拒绝；容器和解压体各限 16 MiB。类型不实现 Debug，避免误打出正文。
 
@@ -69,12 +69,12 @@ PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文
 
 7 个本地原版存档副本通过严格解码及内存容器往返，覆盖 36–37 个变量、100–7590 条 backlog。七个槽的保存 PC 与消息 ID 已逐一匹配原始脚本，不进行附近搜索或位置截断。
 
-`EdenCheckpoint` 将已知消息检查点字段转换为显式类型。`MusicaVm::from_eden_save` 读取实际挂载脚本后准备恢复候选；`restore_eden_save` 校验历史消息，再一次性替换 VM 状态。Fixture 已验证恢复不执行保存点之前的命令、继续剧情、再次存读档以及失败时保留活动 VM。当前严格投影只接受七个槽中的一个，含 897 条普通消息历史；选择记录、未知字段、旋转、滤色、活动效果和不可恢复时钟等状态仍明确拒绝。
+`EdenCheckpoint` 显式保存脚本变量、背景、组合前景、立绘位置与偏移、BGM、消息历史和小说整页。`MusicaVm::from_eden_save` 读取实际脚本并按当前语音设置准备候选；`restore_eden_save` 不执行保存点之前的命令。小说页保留 `CP1=2` 和 `L1_n..L4_n`，默认 panel 2 使用 `fullPanel.png`。活动效果、旋转、滤色及尚未支持的附加图层状态明确拒绝，无内部快照回退。设备或原版游戏启动不属于本次构建与私有存档语义检查。
 
 
 ## Musica 成果整合
 
-`.select` 支持 1–4 个 `display:label` 对，原始字节保留以支持源码往返；每个目标标签在解析时校验。VM 持有选择等待和焦点，GPU 文字层显示选项，上下键循环切换，Enter/Space 确认当前项。鼠标悬停更新焦点，主键只确认命中项；命中区域与显示共用布局，行间空白和边界外点击不确认。F5/F9 保存和恢复焦点，显示文字从同一已验证脚本重建；损坏索引或不一致等待状态拒绝恢复。原生 Family GPU fixture 已覆盖选择、焦点变化、中途存读档和确认，鼠标回归覆盖悬停高亮、空白点击和对应分支；真实游戏界面验收尚未完成。
+`.select` 支持 1–4 个 `display:label` 对，原始字节保留以支持源码往返；每个目标标签在解析时校验。VM 持有选择等待和焦点，GPU 文字层显示选项，上下键循环切换，Enter/Space 确认当前项。鼠标悬停更新焦点，主键只确认命中项；命中区域与显示共用布局。选择开始前触发原生自动存档，记录此前的消息边界，原生槽不保存选择焦点。
 
 已吸收来源分支未提交修改中的 `.chain file.sc#label` 语法，合入同一个 Musica parser、VM 和原生 session。文件与标签分别校验，标签在目标脚本中解析成功后才切换脚本；缺标签保持原 VM 状态。省略标签仍从脚本起点执行，存档使用现有目标脚本身份和剧情位置，不新增存档格式。
 

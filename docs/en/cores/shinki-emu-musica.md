@@ -29,6 +29,8 @@ When the game directory holds `eden_en.exe` or `perseus.exe`, Musica reads and w
 | `sysparams.txt` | Settings, quick save and auto save cursors (tab-separated, CRLF) |
 | `<script>.tbr` | Read-message bitmap of one script |
 | `cgv.dat` | Viewed CG list |
+| `edenNNNN.sav` / `edenPMNNNN.sav`, `perseus_NNNN.sav` | Native message checkpoint and history |
+| Matching `.png` | Opaque RGB box-average thumbnail: eden 128×80, Perseus 106×60 |
 
 To use an original installation's progress or settings, copy the files from `Documents\minori\<title>\` into `.shinki/musica/minori/<title>/`; copy them back the same way to continue in the original executable. `sysparams.txt` keys Musica does not use, such as the font name or window size, are kept as they are. Settings the original has no key for are stored in `.shinki/musica/musica-settings.txt` in the same layout; for eden this holds the five per-character voice toggles.
 
@@ -36,9 +38,13 @@ Compressed files start with a prefix derived from the Perseus `SerialCode`. On W
 
 Known difference: `system.dat`, `sysparams.txt` and the file prefixes are byte-identical to the original. For the zlib-compressed `.tbr` and `cgv.dat`, the decompressed contents are identical but the compressed bytes usually differ, because Musica's deflate encoder makes different choices than the original's zlib. The original executable reads these files normally. Musica rewrites a file only when its contents change, so copied files stay byte-for-byte as they were until a new read flag or CG is recorded.
 
-Settings, quick save cursor and global progress that earlier Musica builds stored as JSON in `.shinki/musica/saves/` are imported once into the native files. An existing native file is never overwritten, and an imported JSON file is renamed to `*.imported`. A foreign or damaged JSON file stops the import without changing any file. With an unrecognised executable Musica writes no native files: it still reads the old JSON files and `.asav` slots, logs `SHINKI_EMU_MUSICA_SAVE_TITLE` once, and keeps setting and progress changes only for the session.
+Earlier JSON settings, quick-save cursors and global progress in `.shinki/musica/saves/` retain their one-time, no-clobber import into native files. Unknown executables cannot read or write native slots.
 
-Product-owned slots live under `.shinki/musica/saves/` and bind archive/profile/localization/font identities. At first use, existing `.shinki-musica/saves/` files move there without overwriting newer files; subsequent reads only use the new path. Invalid candidates leave live state and existing files intact. Original eden save interchange is an explicit strict subset of known message checkpoints, not general native-save compatibility.
+All live save/load actions use the native backend. Checkpoints restore script variables, background, composite foreground, stand positions/offsets, BGM, message history and novel-mode (`CP1=2`) page lines with `L4_n` positions. Loading restarts the recorded message and its voice; playback clocks, translations and menu focus are not stored. Unsupported effect/secondary-layer state is rejected, with no snapshot fallback.
+
+eden uses auto slot 0 and quick slots 1–9; `AppendPlaying` selects the `edenPM` namespace. Perseus uses quick slots 0–9, auto slots 10–19 and manual slots 20 onward. Autosaves run at the native command-count cycle, before selections of up to four choices, and before movies; local `exitFromEvent`/`prohibitAutoSave` and global `prohibitSaveLoad` prohibit autosaving. `prohibitSaveLoad` also blocks manual save/load. The native thumbnail is written before the compressed slot, each by atomic replacement.
+
+Old beta `.asav` files (`AMUSSV06` and earlier) are incompatible. Musica does not read, convert, move, rename or delete them in either `.shinki-musica/saves/` or `.shinki/musica/saves/`. Keep backups and start a new native slot.
 
 [ReMinori](reminori.md) is a separate implementation with different execution, configuration and saves.
 

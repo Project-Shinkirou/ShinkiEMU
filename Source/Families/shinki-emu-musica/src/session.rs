@@ -16,9 +16,7 @@ use crate::{
     audio::Audio,
     provider::SessionLease,
     scene::{Scene, error},
-    storage::{Snapshot, Storage},
 };
-use roukaku_core::Hash256;
 use shinki_emu_sdk::runtime::*;
 use std::{
     sync::Arc,
@@ -45,8 +43,6 @@ pub(crate) struct MusicaSession {
     pending: Option<PendingText>,
     voice_duration: Option<(std::sync::mpsc::Receiver<SessionResult<u32>>, Instant)>,
     generation: u64,
-    storage: Storage,
-    game: Hash256,
     _lease: SessionLease,
     message: Option<(String, Option<String>)>,
     translation_table: Option<Arc<crate::MusicaTranslationTable>>,
@@ -87,12 +83,10 @@ impl MusicaSession {
         info: FrameInfo,
         _session_epoch: u64,
         archive: Arc<MusicaMountedVfs>,
-        vm: MusicaVm,
+        mut vm: MusicaVm,
         scene: Scene,
         audio: Audio,
         replacement: Option<crate::native::text::TextBridge>,
-        storage: Storage,
-        game: Hash256,
         lease: SessionLease,
         focused: bool,
         visible: bool,
@@ -105,6 +99,10 @@ impl MusicaSession {
         let pending_fullscreen = vm.config().fullscreen.then_some(true);
         let quick_cursor = native.quick_cursor();
         let auto_cursor = native.auto_cursor();
+        vm.set_native_auto_cycle(native.auto_save_cycle());
+        if let Some(edition) = native.edition() {
+            vm.set_native_edition(edition);
+        }
         Self {
             persisted_globals,
             native,
@@ -124,8 +122,6 @@ impl MusicaSession {
             replacement,
             hook_failed: false,
             choice_text: None,
-            storage,
-            game,
             _lease: lease,
             pending: None,
             voice_duration: None,
@@ -375,12 +371,12 @@ impl MusicaSession {
                     code: KeyCode::F5,
                     state: KeyState::Pressed,
                     ..
-                } => save = true,
+                } => save = !self.vm.save_load_prohibited(),
                 RuntimeEvent::Key {
                     code: KeyCode::F9,
                     state: KeyState::Pressed,
                     ..
-                } => load = true,
+                } => load = !self.vm.save_load_prohibited(),
                 RuntimeEvent::Key {
                     code: KeyCode::Enter | KeyCode::Space,
                     state: KeyState::Pressed,

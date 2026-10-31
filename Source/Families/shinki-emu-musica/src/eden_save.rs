@@ -2,14 +2,13 @@
 //! This codec preserves fields and does not establish that a VM can restore them.
 mod body;
 mod checkpoint;
+mod export;
 pub mod perseus;
 #[cfg(test)]
 mod perseus_tests;
 mod position;
-mod state;
-pub use checkpoint::{EdenCheckpoint, EdenHistoryLine, EdenHistoryMessage};
+pub use checkpoint::{EdenCheckpoint, EdenHistoryLine, EdenHistoryMessage, EdenStand};
 pub use position::EdenMessagePosition;
-pub(crate) use state::EdenExportState;
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
@@ -33,7 +32,37 @@ pub enum EdenEdition {
     /// literal is pushed by `sub_481970`/`sub_481A90`.
     Perseus,
 }
+pub(crate) struct NovelLayout {
+    pub width: u32,
+    pub speaker_width: u32,
+    pub body_width: u32,
+    pub font: u32,
+    pub line_height: u32,
+    pub top: i32,
+}
 impl EdenEdition {
+    // eden_en.exe sub_4E93D0 and perseus.exe sub_446510, panel case 2.
+    pub(crate) fn novel_layout(self) -> NovelLayout {
+        if self == Self::Perseus {
+            NovelLayout {
+                width: 902,
+                speaker_width: 88,
+                body_width: 814,
+                font: 26,
+                line_height: 38,
+                top: 72,
+            }
+        } else {
+            NovelLayout {
+                width: 858,
+                speaker_width: 110,
+                body_width: 748,
+                font: 22,
+                line_height: 32,
+                top: 32,
+            }
+        }
+    }
     fn magic(self, prefix: u32) -> [u8; 4] {
         match self {
             Self::Japanese => *b";\n!\xaa",
@@ -64,6 +93,12 @@ pub enum EdenSaveEncoding {
     Windows1252,
 }
 impl EdenSaveEncoding {
+    pub(crate) fn from_script(encoding: crate::ScriptEncoding) -> Self {
+        match encoding {
+            crate::ScriptEncoding::ShiftJis => Self::ShiftJis,
+            crate::ScriptEncoding::Gbk => Self::Gbk,
+        }
+    }
     fn encoding(self) -> &'static Encoding {
         match self {
             Self::ShiftJis => SHIFT_JIS,

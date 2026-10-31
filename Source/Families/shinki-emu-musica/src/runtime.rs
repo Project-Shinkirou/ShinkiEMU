@@ -7,6 +7,7 @@ mod effects;
 mod errors;
 pub(crate) mod gallery;
 mod model;
+mod native_save;
 pub(crate) mod particles;
 mod playback;
 pub(crate) mod progress;
@@ -100,6 +101,9 @@ pub struct MusicaVm {
     config: crate::MusicaConfigState,
     config_edit: Option<config::ConfigEdit>,
     read_flags: read_state::ReadFlags,
+    native_auto_cycle: u64,
+    native_auto_count: u64,
+    native_auto_pending: Option<crate::eden_save::EdenCheckpoint>,
 }
 
 impl MusicaVm {
@@ -110,6 +114,7 @@ impl MusicaVm {
         self.config.backlog_voice_playback = value.backlog_voice_playback;
         self.config.character_voice_enabled = value.character_voice_enabled;
     }
+    #[cfg(test)]
     pub(crate) fn voice_preferences(&self) -> crate::voice_preferences::VoicePreferences {
         self.config.voice_preferences()
     }
@@ -122,7 +127,6 @@ impl MusicaVm {
     ) -> Result<Self, MusicaRuntimeError> {
         let labels = build_labels(&script)?;
         let state = MusicaRuntimeState {
-            schema: MUSICA_RUNTIME_STATE_SCHEMA.into(),
             script_uri,
             script_hash,
             script_encoding: script.encoding,
@@ -137,7 +141,13 @@ impl MusicaVm {
             gallery_unlocks: Vec::new(),
             backlog: Vec::new(),
             backlog_bytes: 0,
-            eden_export: crate::eden_save::EdenExportState::Unavailable,
+            native_edition: crate::eden_save::EdenEdition::English,
+            native_message_variables: BTreeMap::new(),
+            native_message_saveable: false,
+            native_history: Vec::new(),
+            native_foreground: String::new(),
+            native_stand_slots: 0,
+            native_novel_page: Vec::new(),
             choice: None,
             stage: None,
             transition: MusicaTransitionState::default(),
@@ -169,6 +179,9 @@ impl MusicaVm {
             config: Default::default(),
             config_edit: None,
             read_flags: read_state::ReadFlags::new(&state.script_uri),
+            native_auto_cycle: 0,
+            native_auto_count: 0,
+            native_auto_pending: None,
             script,
             labels,
             state,
@@ -203,33 +216,20 @@ impl MusicaVm {
             _ => None,
         }
     }
-    pub fn encode_native_save(&self) -> Result<Vec<u8>, MusicaRuntimeError> {
-        save_pages::validate_state(&self.state)?;
-        movie::validate_movie_state(&self.state)?;
-        validate_stage_state(self.state.stage.as_ref())?;
-        validate_transition_and_animations(&self.state)?;
-        scroll::validate_state(&self.state)?;
-        if let Some(shake) = &self.state.screen_shake {
-            shake::validate_screen_shake_state(shake)?;
-        }
-        postcard::to_allocvec(&self.state).map_err(|_| MusicaRuntimeError::NativeSaveFormat)
-    }
 
-    pub fn decode_native_save(bytes: &[u8]) -> Result<MusicaRuntimeState, MusicaRuntimeError> {
-        let state: MusicaRuntimeState =
-            postcard::from_bytes(bytes).map_err(|_| MusicaRuntimeError::NativeSaveFormat)?;
-        if state.schema != MUSICA_RUNTIME_STATE_SCHEMA {
-            return Err(MusicaRuntimeError::State);
-        }
+    #[cfg(test)]
+    pub(crate) fn checked_test_state(
+        state: &MusicaRuntimeState,
+    ) -> Result<MusicaRuntimeState, MusicaRuntimeError> {
         validate_stage_state(state.stage.as_ref())?;
-        validate_transition_and_animations(&state)?;
-        save_pages::validate_state(&state)?;
-        movie::validate_movie_state(&state)?;
-        scroll::validate_state(&state)?;
+        validate_transition_and_animations(state)?;
+        save_pages::validate_state(state)?;
+        movie::validate_movie_state(state)?;
+        scroll::validate_state(state)?;
         if let Some(shake) = &state.screen_shake {
             shake::validate_screen_shake_state(shake)?;
         }
-        Ok(state)
+        Ok(state.clone())
     }
 
     pub fn replace_script(
@@ -270,15 +270,13 @@ impl MusicaVm {
         Ok(())
     }
 
-    pub fn restore_native_save(
+    #[cfg(test)]
+    pub(crate) fn install_test_state(
         &mut self,
-        bytes: &[u8],
+        restored: &MusicaRuntimeState,
         next_fixed_tick: u64,
     ) -> Result<(), MusicaRuntimeError> {
-        let restored: MusicaRuntimeState =
-            postcard::from_bytes(bytes).map_err(|_| MusicaRuntimeError::NativeSaveFormat)?;
-        if restored.schema != MUSICA_RUNTIME_STATE_SCHEMA
-            || restored.script_uri != self.state.script_uri
+        if restored.script_uri != self.state.script_uri
             || restored.script_hash != self.state.script_hash
             || restored.script_encoding != self.script.encoding
             || restored.session_seed != self.state.session_seed
@@ -286,19 +284,19 @@ impl MusicaVm {
         {
             return Err(MusicaRuntimeError::State);
         }
-        choices::validate_choice(&self.script, &restored)?;
-        save_pages::validate_state(&restored)?;
-        movie::validate_movie_state(&restored)?;
+        choices::validate_choice(&self.script, restored)?;
+        save_pages::validate_state(restored)?;
+        movie::validate_movie_state(restored)?;
         validate_stage_state(restored.stage.as_ref())?;
-        validate_transition_and_animations(&restored)?;
-        scroll::validate_state(&restored)?;
+        validate_transition_and_animations(restored)?;
+        scroll::validate_state(restored)?;
         if let Some(shake) = &restored.screen_shake {
             shake::validate_screen_shake_state(shake)?;
         }
         let restored_tick = next_fixed_tick
             .checked_sub(1)
             .ok_or(MusicaRuntimeError::State)?;
-        self.state = restored;
+        self.state = restored.clone();
         self.config_edit = None;
         self.state.fixed_tick = restored_tick;
         self.read_flags.resume(&self.state);
@@ -657,6 +655,24 @@ impl MusicaVm {
                 .instruction_count
                 .checked_add(1)
                 .ok_or(MusicaRuntimeError::Overflow)?;
+            self.native_auto_count = self.native_auto_count.saturating_add(1);
+            let periodic = command.opcode == "message"
+                && self.native_auto_cycle > 0
+                && self.native_auto_count >= self.native_auto_cycle;
+            let explicit = command.opcode == "movie"
+                || (command.opcode == "select"
+                    && matches!(&command.control_flow, ScControlFlow::Choice { targets } if targets.len() <= 4));
+            if periodic || explicit {
+                if !native_save::autosave_prohibited(&self.state)
+                    && !self.state.native_history.is_empty()
+                {
+                    self.native_auto_pending = Some(native_save::checkpoint(&self.state, false)?);
+                    self.native_auto_count = 0;
+                }
+                if periodic {
+                    self.native_auto_count = 0;
+                }
+            }
             let message_read = self.read_flags.is_read(&self.state);
             let event = execute_control(
                 command,
@@ -934,6 +950,7 @@ fn build_labels(script: &ScScript) -> Result<BTreeMap<String, u32>, MusicaRuntim
     Ok(labels)
 }
 
+#[cfg(test)]
 pub(crate) fn validate_transition_and_animations(
     state: &MusicaRuntimeState,
 ) -> Result<(), MusicaRuntimeError> {

@@ -215,6 +215,24 @@ impl NativeDirectory {
 }
 
 impl NativeFiles {
+    pub(crate) fn auto_save_cycle(&self) -> u64 {
+        self.settings
+            .as_ref()
+            .and_then(|table| number(table, b"autoSaveCycle"))
+            .unwrap_or_else(|| match self.dir.as_ref().map(|dir| dir.title) {
+                Some(MinoriTitle::EdenEnglish) => 200,
+                Some(MinoriTitle::Perseus) => 400,
+                None => 0,
+            })
+            .max(0) as u64
+    }
+    pub(crate) fn auto_save_backlog_limit(&self) -> usize {
+        self.settings
+            .as_ref()
+            .and_then(|table| number(table, b"autoSaveBacklogLimit"))
+            .unwrap_or(100)
+            .max(0) as usize
+    }
     /// The stored configuration over `fallback`; `fallback` itself while no
     /// `sysparams.txt` exists.
     pub(crate) fn configuration(&self, mut fallback: MusicaConfigState) -> MusicaConfigState {

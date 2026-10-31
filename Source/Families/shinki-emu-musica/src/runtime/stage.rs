@@ -75,6 +75,8 @@ pub(super) fn execute_stage(
     };
     validate_stage_state(Some(&stage))?;
     next_effect_sequence(state)?;
+    state.native_foreground = tokens[0].clone();
+    state.native_stand_slots = 10;
     let previous = state.stage.clone();
     state.characters.retain(|_, character| {
         let retained = character.keep_once || character.pending_stage;

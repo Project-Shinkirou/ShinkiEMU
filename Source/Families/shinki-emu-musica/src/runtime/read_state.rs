@@ -1,5 +1,6 @@
 use super::*;
 use crate::minori_data::READ_FLAG_BYTES;
+#[cfg(test)]
 const MAX_READ_MESSAGES: usize = 131_072;
 
 /// One script's original `<script>.tbr` bitmap: bit `0x80 >> (id & 7)` of
@@ -119,6 +120,7 @@ impl ReadFlags {
     }
 }
 
+#[cfg(test)]
 pub(super) fn validate(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeError> {
     if state.read_message_identities.len() > MAX_READ_MESSAGES
         || state
@@ -130,7 +132,7 @@ pub(super) fn validate(state: &MusicaRuntimeState) -> Result<(), MusicaRuntimeEr
     }
     if let Some(message) = &state.message {
         let entry = state.backlog.last().ok_or(MusicaRuntimeError::State)?;
-        if entry.source != message.source
+        if entry.source != Some(message.source)
             || entry.message_id != message.message_id
             || identity(
                 state.script_hash,
