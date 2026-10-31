@@ -401,6 +401,7 @@ features = []
 dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
+licenses = ["ThirdParty/renpy/shinki/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
