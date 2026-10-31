@@ -194,6 +194,10 @@ Native vcpkg manifest installations use one `installed-<triplet>` root per core 
 
 Standalone Android cores ship native core packages, not APKs. The release APK-signing restriction applies only to Android Manager installers.
 
+Standalone Android native cores resolve the pinned NDK's OpenMP runtime through
+Clang's `--print-file-name=libomp.so`, bundle it when the binary closure needs it,
+and ship the NDK's `NOTICE` and `NOTICE.toolchain` texts alongside core licenses.
+
 The bundle copies inputs that `deps` and `build` already verified: it does not re-hash `.work/downloads`, re-verify recipes, re-resolve Cargo offline or check for dirty trees a second time. `release` itself refuses a dirty product checkout and a build receipt from another source revision.
 
 `cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` prepares the pinned `.work/renpy-build` checkout and its recursive submodules. It preserves dirty existing checkouts by failing before any update; release collection remains read-only.
