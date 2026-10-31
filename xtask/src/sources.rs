@@ -982,9 +982,15 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         "--bin shinki-emu-manager"
     };
-    instructions.push_str(&format!(
-        "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
-    ));
+    if target.ends_with("ohos") && component == "manager" {
+        instructions.push_str(&format!(
+            "cargo xtask build --target {target} --manager --release\n```\n"
+        ));
+    } else {
+        instructions.push_str(&format!(
+            "{build_command} --locked --release --manifest-path {manifest_relative} -p {package} {artifact}{feature_args}\n```\n"
+        ));
+    }
     if !native_commands.is_empty() {
         instructions.push_str(
             "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the fork snapshot. \

@@ -164,19 +164,29 @@ cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <ver
 
 `deps` 用 `arm64-ohos` triplet 构建 libass 和 FFmpeg，Meson 1.12 的前缀与 Android triplet 一样改用 Windows 扩展路径。构建使用 SDK clang 链接，并打包 `libc++_shared.so`。`package` 把 Manager 库放入 `Platforms/OHOS/entry/libs/arm64-v8a`，把元数据快照、声明和许可证放入 `rawfile/bundled`，然后运行 `ohpm install` 和 `hvigorw assembleHap`。首次运行时，它用 SDK 自带的 OpenHarmony 测试 PKI 生成 debug 签名材料：在 `OpenHarmony.p12` 的副本中新建密钥，由测试应用 CA 签发应用证书，再用 profile-debug 密钥签出 `org.shinkirou.shinkiemu` 的 debug profile。签名用 `sign-app`，之后运行 `verify-app`、列出包内文件，并对每个打包的库输出 `llvm-readelf -d`。剩下的 `NEEDED` 项必须都是 OHOS 系统库。输出目录包含 `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json` 和 `build.json`。不要把 keystore、证书或 profile 提交到 Git。
 
-测试 PKI 签名只证明包结构正确，不能当作设备安装用的 profile。HarmonyOS 真机和 DevEco 模拟器要求通过 DevEco/AppGallery Connect 签发的 debug profile。设备验收时换用这种 profile 签名，启动 DevEco Device Manager 的手机模拟器（API 12 及以上），确认 `hdc list targets` 能看到它，再安装并启动 HAP。成功启动前，目标保持 blocked。
+测试 PKI 签名的 HAP 按实验性测试包发布；签名、包内容和原生库依赖闭包会核验。设备/模拟器启动验收已获豁免，未验证零售设备可安装性；要核验可安装性，需要 DevEco/AppGallery Connect 签发的 profile。
 
 ## 矩阵与 CI
 
-`matrix` 从权威清单列出全部核心与 Manager 在已声明目标上的组合（包括两种 iOS 模拟器架构），并给出状态和 blocked 原因。`matrix --json` 生成 GitHub 任务矩阵，只含支持的行；blocked 组合不需要 runner。`--ci` 还会去掉 `x86_64-linux-android` 的 Manager 行，因为 `ci` 从任一 Android 三元组都会构建同一个通用 APK；发布工作流保留两行，用于逐目标的发布记录。当前组合和原因见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，文档不另抄一份支持状态表。Android 中静态集成核心的 Manager 与独立动态核心包是两条不同交付路径。
+`matrix` 列出全部已声明的 Manager/核心组合及阻塞原因。`matrix --json` 只安排有 GitHub runner 的任务；OHOS Manager 标记为支持实验性测试签名交付，但 `runner = "local-only"`，其 DevEco 构建在本地交付。`--ci` 还会去掉重复的 Android x86_64 Manager 行。当前组合见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-清单中未适配的组合报告 `blocked`、具体原因和 `artifact: null`。Apple 核心行保留源码中的嵌入及原生依赖限制。OHOS Manager 可在本地构建并签名（`manager_local_build`），但在签名 HAP 于 `hdc list targets` 列出的真机或模拟器上成功启动前，它不进入 CI 矩阵和发布，`manager_supported` 仍为 `false`。支持组合编译失败时报告 `failed` 并返回非零；`--all-cores` 会跳过明确标记为 blocked 的组合，但不会隐藏支持组合的失败。`publish_blocked` 单独记录分发限制。
+未支持的组合报告 `blocked` 和 `artifact: null`。OHOS Manager 本地签名构建必须与同一提交的成功远端 CI 汇合后才能发布；受支持组合编译失败仍报告 `failed`。`publish_blocked` 单独记录分发限制。
 
-远端 GitHub Actions 是权威 CI，也是唯一的发布途径。`ci.yml` 在 pull request、推送到 `main` 和 `release/**`、手动触发时运行；只改动 `Metadata/**`、`docs/**` 或 Markdown 文件的变更不会触发它，目录 PR 由 `metadata-intake.yml` 校验。
+GitHub Actions 是权威 CI，构建有托管 runner 的发布产物。仅 DevEco 可构建的 OHOS HAP 由下述有门禁的本地流程提交。
+发布含 OHOS Manager 的版本时，先推送 release 分支，等待同一提交的 `ci.yml` 成功。以该分支和版本触发 `release.yml`，传入 `components=manager`；工作流核对全部托管平台构建行，不会自动发布 Manager。把此运行的每份 `release-files-manager@*` artifact 下载到临时目录，并将其中的 `<tag>/<target>/` 合并到干净且处于同一提交的 `.work/release/<tag>/`。设置 DevEco SDK 与仓库外签名目录后执行：
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <版本>
+SHINKI_EMU_RELEASE_CI_RUN_ID=<成功的-ci-运行编号> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <版本> --publish
+```
+
+发布命令核对所有产物的提交、归档 SHA256 和全部托管平台产物（Android x86_64 重复行除外），要求 OHOS HAP，并向 GitHub 核对该提交的成功 `ci.yml`。OHOS 打包会核对 HAP 签名、原生依赖闭包及对应源码。发布名称和说明须写明测试签名与免做启动验收。
 
 本地 runner 只是推送前的可选预检，用来提前发现会让远端失败的问题。`matrix --json [--ci] --since <ref>` 只保留输入在 `<ref>` 之后有变化的行，runner 通过 `SHINKI_CI_SINCE` 传入该参数。共享输入会选中所有行，包括根目录 `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`，以及这里没有列出的任何路径。`Source/Manager/` 和 `Source/Providers/` 选中 Manager 行。`Source/Families/<目录>/` 选中 manifest 位于该目录的核心，以及该核心 `static_manager_targets` 上的 Manager 行；`build/cores.toml` 中某个 `[[cores]]` 表有改动时，对该核心的效果相同。`docs/**`、`Metadata/**` 和 Markdown 文件不选中任何行。
 
@@ -218,7 +228,7 @@ Release 标签为 `manager-v<semver>` 或 `core-<slug>-v<semver>`。slug 将 plu
 
 `cargo xtask release --component <id> --version <semver> --publish`（需要 `GH_TOKEN` 或 `GITHUB_TOKEN`）收集该 tag 下所有已准备的目标。它拒绝来自其他产品提交或核心固定版本的记录、已指向其他提交的 tag、从其他提交创建的 draft，以及空 Release 和已发布的 Release。它在本次运行的提交上创建 draft，或复用该提交上的 draft（替换中断运行遗留的同名附件），上传源码包和二进制包后发布；tag 不存在时由 GitHub 在该提交上创建。核心发布之后，它把每个平台的目录条目提交到 `metadata/release-<tag>` 分支的 `Metadata/engines/cores/` 下，再向 `main` 提 PR。组织设置不允许 Actions 创建 PR 时，最后这一步会失败，但所有条目已在分支上，手动提 PR 即可。目录 URL 用最终 tag 构造，不使用 draft 的 `untagged-*` URL。Manager 与核心独立发布；Android debug 签名测试包记为阻止，不会上传。
 
-发布由 `release.yml` 完成。发布单个组件时推送它的 tag。一次推送超过三个 tag 不会触发任何工作流，所以发布多个组件时手动运行该工作流，填写 `version` 和 `components`（逗号分隔的 plugin_id 和 `manager`，或用 `all` 表示所有不带 `publish_blocked` 的组件）。一次运行会构建全部组件 × 目标行，然后发布所有行都成功的组件，由 GitHub 在本次运行的提交上打 tag。运行摘要列出被跳过的组件及其失败的行。
+`release.yml` 构建所选组件在托管平台的所有行，并自动发布不含本地专用目标的组件。含受支持 OHOS 目标的 Manager 由上文有门禁的本地流程补齐 HAP 与源码后发布。单个核心可推送 tag；多个组件用 `version` 和 `components` 手动触发工作流。一次推送超过三个新 tag 不会触发工作流。
 
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
 

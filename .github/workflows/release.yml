@@ -24,6 +24,7 @@ jobs:
       matrix: ${{ steps.select.outputs.matrix }}
       components: ${{ steps.select.outputs.components }}
       version: ${{ steps.select.outputs.version }}
+      local_manager: ${{ steps.select.outputs.local_manager }}
     steps:
       # The inventory needs the cpal submodule for workspace resolution, not LFS payloads.
       - uses: actions/checkout@v7
@@ -37,6 +38,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          $localManager = @((cargo xtask matrix) | Where-Object { $_ -match '^manager\taarch64-unknown-linux-ohos\tsupported\t' }).Count -gt 0
           $rows = @((cargo xtask matrix --json --ci | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
           $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
@@ -68,6 +70,7 @@ jobs:
           "matrix=$(@{include=$include} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
           "components=$(ConvertTo-Json -Compress -InputObject @($requested))" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
+          "local_manager=$($localManager.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "Release $version`: $($requested -join ', ') ($($include.Count) build rows)" >> $env:GITHUB_STEP_SUMMARY
   build:
     needs: select
@@ -210,8 +213,13 @@ jobs:
             echo "::error::$COMPONENT not published; build rows failed or were cancelled: $missing"
             exit 1
           fi
+      - name: Local Manager artifact handoff
+        if: matrix.component == 'manager' && needs.select.outputs.local_manager == 'true'
+        run: |
+          echo "Manager $VERSION requires its DevEco-signed local-only artifact. Download all release-files-manager@* artifacts from this exact-head run, prepare the OHOS release record locally, and publish only after ci.yml succeeds at the same head SHA." >> "$GITHUB_STEP_SUMMARY"
       - name: Publish every prepared platform as one Release
         id: publish
+        if: matrix.component != 'manager' || needs.select.outputs.local_manager != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --publish

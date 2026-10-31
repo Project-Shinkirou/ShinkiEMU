@@ -154,19 +154,29 @@ cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <ver
 
 `deps` は `arm64-ohos` triplet で libass と FFmpeg をビルドします。Meson 1.12 の prefix には、Android の triplet と同じく Windows の拡張パスを使います。ビルドは SDK の clang でリンクし、`libc++_shared.so` を同梱します。`package` は Manager のライブラリを `Platforms/OHOS/entry/libs/arm64-v8a` に、メタデータのスナップショット、通知、ライセンスを `rawfile/bundled` に配置し、`ohpm install` と `hvigorw assembleHap` を実行します。初回は SDK の OpenHarmony テスト PKI から debug 署名データを作ります。`OpenHarmony.p12` のコピーに新しい鍵を作り、テスト用アプリ CA でアプリ証明書を発行し、profile-debug 鍵で `org.shinkirou.shinkiemu` の debug profile に署名します。`sign-app` で署名した後、`verify-app` で検証し、アーカイブの内容と、同梱した各ライブラリの `llvm-readelf -d` を出力します。残る `NEEDED` はすべて OHOS のシステムライブラリでなければなりません。出力先には `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json`、`build.json` が入ります。keystore、証明書、profile は Git にコミットしません。
 
-テスト PKI の署名で確認できるのはパッケージ構造の正しさだけで、デバイスへのインストール用 profile にはなりません。HarmonyOS の実機と DevEco エミュレーターには、DevEco/AppGallery Connect で発行した debug profile が必要です。デバイス受け入れ確認では、その profile で署名し直し、DevEco Device Manager のスマートフォンエミュレーター（API 12 以降）を起動して `hdc list targets` に表示されることを確認してから、HAP をインストールして起動します。起動に成功するまで target は blocked のままです。
+テスト PKI で署名した HAP は実験用のテスト配布です。署名、内容、同梱ライブラリの依存関係を確認します。デバイス・エミュレーターでの起動確認は免除されており、市販デバイスへのインストール可能性は未確認です。インストール確認には DevEco/AppGallery Connect が発行した profile が必要です。
 
 ## マトリクスと CI
 
-`matrix` は信頼できる唯一のマニフェストから、すべてのコアと Manager について、宣言済みターゲット（iOS シミュレーターの 2 つのアーキテクチャを含む）との組み合わせを、状態と blocked の理由付きで一覧します。`matrix --json` は GitHub のジョブマトリクスを出力し、対応している行だけを含みます。blocked の組み合わせにはランナーが要らないからです。`--ci` はさらに `x86_64-linux-android` の Manager 行を除きます。`ci` はどちらの Android トリプルからでも同じユニバーサル APK をビルドするためです。リリースのワークフローは、ターゲットごとのリリース記録のために両方の行を残します。現在の組み合わせとその理由は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。ドキュメントに対応状況表を別途書き写すことはしません。Android でコアを静的統合した Manager と、単体の動的コアパッケージは、別々の配布経路です。
+`matrix` はすべての Manager/コアの組み合わせと blocked 理由を表示します。`matrix --json` は GitHub runner のある行のみをジョブとして選びます。OHOS Manager は実験用のテスト署名配布に対応しますが `runner = "local-only"` であり、DevEco でビルドした成果物をローカルから引き渡します。`--ci` は重複する Android x86_64 Manager 行も除きます。現在の対応状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。
 
 ```sh
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-マニフェストで未対応の組み合わせは、`blocked`、具体的な理由、`artifact: null` を報告します。Apple のコア行には、ソース上の組み込みとネイティブ依存関係の制約が残ります。OHOS Manager はローカルでビルドと署名ができます（`manager_local_build`）。ただし `hdc list targets` に表示された実機またはエミュレーターで署名済み HAP の起動に成功するまでは、CI マトリクスにもリリースにも含めず、`manager_supported` は `false` のままです。対応対象のコンパイルに失敗した場合は `failed` を報告して 0 以外で終了します。`--all-cores` は明示的に blocked とした組み合わせをスキップしますが、対応対象の失敗は隠しません。`publish_blocked` は配布上の制限を別に記録します。
+未対応の組み合わせは `blocked`、`artifact: null` を報告します。OHOS Manager のローカル署名ビルドは、同じコミットの成功したリモート CI と結合してから公開します。対応対象のビルド失敗は `failed` を返します。`publish_blocked` は配布上の制限を別に記録します。
 
-正式な CI はリモートの GitHub Actions で、リリースを公開するのもここだけです。`ci.yml` は pull request、`main` と `release/**` への push、手動実行で動きます。`Metadata/**`、`docs/**`、Markdown ファイルだけを変更した場合は実行されず、カタログの PR は `metadata-intake.yml` が検証します。
+GitHub Actions が正式な CI であり、ホストされたプラットフォームのリリース成果物をビルドします。DevEco が必要な OHOS HAP は、以下のゲート付きローカル引き渡しで追加します。
+OHOS Manager を含むリリースでは、release ブランチを push し、同じコミットの `ci.yml` の成功を確認します。`components=manager` で `release.yml` を実行します。このワークフローは全ホスト行の成功を要求し、Manager の公開はローカル引き渡しに残します。実行中の `release-files-manager@*` artifact をすべてダウンロードし、その `<tag>/<target>/` を同じコミットのクリーンな checkout の `.work/release/<tag>/` に配置します。DevEco と checkout 外の署名ディレクトリを設定して、次を実行します。
+
+```sh
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
+SHINKI_EMU_RELEASE_CI_RUN_ID=<成功した-ci-実行-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
+```
+
+公開処理は、同一コミット、全 archive の SHA256、全ホスト行（重複する Android x86_64 行を除く）と OHOS HAP を確認し、GitHub API で同一コミットの成功した `ci.yml` を照合します。OHOS パッケージ処理は署名・ネイティブライブラリの依存関係・対応ソースを確認します。公開名と説明にはテスト署名と起動検証の免除を明記します。
 
 ローカルランナーは push 前の任意の事前チェックで、リモートで失敗する問題を先に見つけるためのものです。`matrix --json [--ci] --since <ref>` は、入力が `<ref>` 以降に変わった行だけを残します。ランナーは `SHINKI_CI_SINCE` からこの引数を渡します。共有の入力はすべての行を選びます。対象はルートの `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`、およびここに挙げていないすべてのパスです。`Source/Manager/` と `Source/Providers/` は Manager の行を選びます。`Source/Families/<ディレクトリ>/` は、そのディレクトリにマニフェストがあるコアと、そのコアの `static_manager_targets` 上の Manager の行を選びます。`build/cores.toml` の `[[cores]]` テーブルが変わった場合も、そのコアについて同じです。`docs/**`、`Metadata/**`、Markdown ファイルはどの行も選びません。
 
@@ -198,6 +208,6 @@ Release タグは `manager-v<semver>` または `core-<slug>-v<semver>` です�
 
 `cargo xtask release --component <id> --version <semver> --publish`（`GH_TOKEN` または `GITHUB_TOKEN` が必要）は、その tag で準備済みのターゲットをすべて集めます。別の製品コミットや別のコア固定 revision の記録、別のコミットを指す既存の tag、別のコミットから作られた draft、空の Release、公開済みの Release は拒否します。実行中のコミットで draft を作るか、そのコミットの draft を再利用し（中断した実行が残した同名の添付ファイルは置き換えます）、ソースとバイナリのアーカイブをアップロードして公開します。tag がなければ GitHub がそのコミットに作成します。コアの場合は続けて、各プラットフォームのカタログエントリを `metadata/release-<tag>` ブランチの `Metadata/engines/cores/` にコミットし、`main` への PR を作ります。組織の設定で Actions による PR 作成が許可されていない場合、この最後の手順は失敗しますが、エントリはすべてブランチにあるので、PR を手動で作成してください。カタログ URL は最終 tag から作り、draft の `untagged-*` URL は使いません。Manager とコアは別々にリリースされます。Android の debug 署名テスト用 APK はブロック扱いとなり、アップロードされません。
 
-公開は `release.yml` が行います。1 つのコンポーネントをリリースするには、その tag を push します。1 回の push で 4 つ以上の tag を作るとワークフローは起動しないため、複数のコンポーネントは `version` と `components`（カンマ区切りの plugin_id と `manager`、または `publish_blocked` のないすべてのコンポーネントを表す `all`）を指定してワークフローを手動実行します。1 回の実行でコンポーネント × ターゲットの全行をビルドし、全行が成功したコンポーネントを公開します。tag は GitHub が実行中のコミットに作ります。実行のサマリーには、スキップしたコンポーネントと失敗した行が載ります。
+`release.yml` は選択したコンポーネントのホスト対象行をすべてビルドし、ローカル専用ターゲットのないコンポーネントを公開します。OHOS 対応 Manager は、上記のゲート付きローカル引き渡しで HAP とソースを揃えてから公開します。単一のコアは tag を push してリリースできます。複数のコンポーネントは `version` と `components` を指定してワークフローを実行します。新しい tag を一度に 4 件以上 push してもワークフローは起動しません。
 
 メタデータのコマンドは [Metadata](metadata.md)、コアパッケージの契約は[コア ABI](core-abi.md) を参照してください。

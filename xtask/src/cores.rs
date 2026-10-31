@@ -110,9 +110,9 @@ pub struct Target {
     pub tools: Vec<String>,
     pub manager_supported: bool,
     pub manager_blocked: String,
-    /// The Manager builds and packages locally while `manager_supported` is
-    /// false (e.g. signed but never launched on a device). It stays blocked in
-    /// the CI matrix and for releases.
+    /// Buildable and publishable on a host with the native SDK, but never
+    /// scheduled on a GitHub runner. Publication requires an exact-head
+    /// local artifact and successful remote CI.
     #[serde(default)]
     pub manager_local_build: bool,
     /// Non-empty: every component on this target is blocked with this reason,
@@ -189,9 +189,9 @@ impl Inventory {
             if !t.manager_supported && t.manager_blocked.is_empty() {
                 bail!("target needs a Manager blocked reason");
             }
-            if t.manager_supported && t.manager_local_build {
+            if t.manager_local_build && (t.runner != "local-only" || !t.manager_supported) {
                 bail!(
-                    "{}: manager_local_build applies only to unsupported Managers",
+                    "{}: locally built Manager must be supported and use a local-only runner",
                     t.triple
                 );
             }
@@ -380,11 +380,10 @@ impl Inventory {
         }
         Ok(rows)
     }
-    /// GitHub job matrix: supported combinations only. Blocked combinations need no
-    /// runner; `rows()` and release notes still report them. `affected` keeps only
-    /// rows a change can reach. With `ci`, Android Manager rows after the first are
-    /// dropped: `xtask ci` builds every Android ABI into the same universal APK from
-    /// either triple.
+    /// GitHub job matrix: supported combinations with hosted runners only.
+    /// Local-only packages join at the exact-head publication handoff. With
+    /// `ci`, Android Manager rows after the first are dropped because either
+    /// row builds the same universal APK.
     pub fn job_matrix(&self, ci: bool, affected: Option<&Affected>) -> Result<Matrix> {
         let mut android_manager = false;
         let include = self
@@ -392,6 +391,7 @@ impl Inventory {
             .into_iter()
             .filter(|row| {
                 if row.blocked.is_some()
+                    || row.runner == "local-only"
                     || affected.is_some_and(|a| !a.row(&row.component, &row.target))
                 {
                     return false;
@@ -479,16 +479,19 @@ mod tests {
     }
 
     #[test]
-    fn locally_buildable_manager_stays_blocked_for_ci_and_cores() {
+    fn local_only_manager_joins_release_but_never_runs_on_hosted_ci() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inventory = Inventory::load(root).unwrap();
         let triple = "aarch64-unknown-linux-ohos";
+        assert!(inventory.require_supported("manager", triple).is_ok());
         assert!(inventory.require_buildable("manager", triple).is_ok());
-        assert!(inventory.require_supported("manager", triple).is_err());
         assert!(inventory.require_buildable("rfvp", triple).is_err());
+        assert!(inventory.rows().unwrap().iter().any(|row| {
+            row.target == triple && row.component == "manager" && row.blocked.is_none()
+        }));
         assert!(
             !inventory
-                .job_matrix(false, None)
+                .job_matrix(true, None)
                 .unwrap()
                 .include
                 .iter()
@@ -501,14 +504,9 @@ mod tests {
             .unwrap();
         target.blocked = "deferred".into();
         assert!(inventory.require_buildable("manager", triple).is_err());
-        let mut supported = Inventory::load(root).unwrap();
-        let target = supported
-            .targets
-            .iter_mut()
-            .find(|target| target.triple == triple)
-            .unwrap();
-        target.manager_supported = true;
-        assert!(supported.validate().is_err());
+        target.blocked.clear();
+        target.manager_supported = false;
+        assert!(inventory.validate().is_err());
     }
 
     #[test]

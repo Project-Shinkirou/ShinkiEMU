@@ -49,6 +49,48 @@ impl GitHub {
             .error_for_status()?
             .json()?)
     }
+    /// A local-only Manager release must be tied to a successful exact-head
+    /// GitHub CI run; a passed build at another revision is not release proof.
+    fn require_manager_ci(&self, commit: &str, targets: &[&str]) -> Result<String> {
+        let id = env::var("SHINKI_EMU_RELEASE_CI_RUN_ID")
+            .context("set SHINKI_EMU_RELEASE_CI_RUN_ID to the successful exact-head ci.yml run")?;
+        let number = id.parse::<u64>()?;
+        let run = self
+            .get_optional(&format!("{API}/actions/runs/{number}"))?
+            .context("CI run not found")?;
+        if run["path"] != ".github/workflows/ci.yml"
+            || run["head_sha"] != commit
+            || run["status"] != "completed"
+            || run["conclusion"] != "success"
+        {
+            bail!("CI run {id} must be completed/successful ci.yml at product commit {commit}");
+        }
+        let mut jobs = Vec::new();
+        for page in 1.. {
+            let response = self
+                .get_optional(&format!("{API}/actions/runs/{number}/jobs?per_page=100&page={page}"))?
+                .context("CI run jobs not found")?;
+            let rows = response["jobs"].as_array().context("CI jobs")?;
+            jobs.extend(rows.iter().cloned());
+            if rows.len() < 100 {
+                break;
+            }
+        }
+        for target in targets {
+            if !jobs.iter().any(|job| {
+                job["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("component (") && name.contains("manager") && name.contains(target))
+                    && job["conclusion"] == "success"
+            }) {
+                bail!("CI run {id} has no successful Manager build for {target}");
+            }
+        }
+        if !jobs.iter().any(|job| job["name"] == "tools" && job["conclusion"] == "success") {
+            bail!("CI run {id} has no successful tooling gate");
+        }
+        Ok(run["html_url"].as_str().context("CI run URL")?.to_owned())
+    }
     /// Upload into the draft, replacing a same-name asset an interrupted run left.
     fn upload(&self, release: &Value, path: &Path) -> Result<Value> {
         let name = path
@@ -351,6 +393,8 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
         "android-universal".to_owned()
     } else if spec.platform == "ios" {
         format!("ios-{}-{}-test", spec.architecture, spec.variant)
+    } else if component == "manager" && spec.platform == "ohos" {
+        format!("ohos-{}-debug-test-signed", spec.architecture)
     } else {
         format!("{}-{}", spec.platform, spec.architecture)
     };
@@ -359,11 +403,16 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     } else {
         "core"
     };
-    let extension = if component == "manager" && target.contains("android") {
-        "apk"
-    } else {
-        "zip"
-    };
+    let extension =
+        if component == "manager" && (target.contains("android") || target.ends_with("ohos")) {
+            if target.ends_with("ohos") {
+                "hap"
+            } else {
+                "apk"
+            }
+        } else {
+            "zip"
+        };
     let filename = format!(
         "shinki-emu-{kind}-{}-{version}-{platform}.{extension}",
         slug(component)
@@ -394,11 +443,15 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
             ""
         };
         let archive = work.join(&filename);
-        if target.contains("android") && component == "manager" {
-            let android: Value =
-                serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
-            let apk = android["apk"].as_str().context("Android APK filename")?;
-            fs::copy(package_dir.join(apk), &archive)?;
+        if component == "manager" && (target.contains("android") || target.ends_with("ohos")) {
+            let (metadata, key) = if target.ends_with("ohos") {
+                ("ohos.json", "hap")
+            } else {
+                ("android.json", "apk")
+            };
+            let package: Value = serde_json::from_slice(&fs::read(package_dir.join(metadata))?)?;
+            let name = package[key].as_str().context("mobile package filename")?;
+            fs::copy(package_dir.join(name), &archive)?;
         } else {
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
         }
@@ -407,7 +460,7 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
         let record = json!({"schema":"shinki.emu.release.v1","component":component,"version":version,"target":target,"platform":platform,
             "source_commit":id.commit,"core_source":id.core_source,
             "archive":{"name":filename,"sha256":package::sha256(&archive)?,"size":fs::metadata(&archive)?.len()},
-            "sources":{"name":sources},"publish_blocked":publish_blocked});
+            "sources":{"name":sources,"sha256":package::sha256(&work.join(&sources))?},"publish_blocked":publish_blocked});
         fs::write(
             work.join("release.json"),
             serde_json::to_vec_pretty(&record)?,
@@ -429,6 +482,11 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     {
         bail!("tag does not match component/version");
     }
+    let local_manager = component == "manager"
+        && inv
+            .targets
+            .iter()
+            .any(|t| t.manager_local_build && t.manager_supported);
     let mut records = Vec::new();
     let mut blocked = Vec::new();
     for t in &inv.targets {
@@ -439,6 +497,9 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         let directory = id.root.join(&t.triple);
         let path = directory.join("release.json");
         if !path.is_file() {
+            if local_manager && !(component == "manager" && t.triple == "x86_64-linux-android") {
+                bail!("Manager release requires a prepared exact-head artifact for {}", t.triple);
+            }
             blocked.push(format!(
                 "- {}: no successful build/package in this release run (artifact=null)",
                 t.triple
@@ -447,6 +508,14 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         }
         let record: Value = serde_json::from_slice(&fs::read(&path)?)?;
         require_same_release(&record, &id, component, version, &path)?;
+        for key in ["archive", "sources"] {
+            let name = record[key]["name"].as_str().context("release asset name")?;
+            let expected = record[key]["sha256"].as_str().context("release asset SHA256")?;
+            let actual = package::sha256(&directory.join(name))?;
+            if actual != expected {
+                bail!("{name}: release asset hash differs from prepared record");
+            }
+        }
         if let Some(reason) = record["publish_blocked"].as_str().filter(|s| !s.is_empty()) {
             blocked.push(format!(
                 "- {}: publish_blocked: {reason} (artifact=null)",
@@ -472,11 +541,28 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         })
         .collect::<Vec<_>>()
         .join("\n");
+    let gh = GitHub::new()?;
+    let ci = if local_manager {
+        let targets = inv
+            .targets
+            .iter()
+            .filter(|t| t.manager_supported && t.runner != "local-only" && t.triple != "x86_64-linux-android")
+            .map(|t| t.triple.as_str())
+            .collect::<Vec<_>>();
+        let url = gh.require_manager_ci(&id.commit, &targets)?;
+        format!("\nExact-head GitHub CI: {url}.\n")
+    } else {
+        String::new()
+    };
     let notes = format!(
-        "{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nEach `-sources.zip` holds the exact product/fork revisions, the copyleft Rust crate sources, and the native library source archives and recipes needed to modify and relink. The universal Android Release APK is uploaded once; matching Actions matrix rows do not duplicate it.\n",
+        "{component} {version}\n\nArtifacts:\n{artifacts}\n\nBlocked platforms:\n{}\n\nEach `-sources.zip` holds the exact product/fork revisions, the copyleft Rust crate sources, and the native library source archives and recipes needed to modify and relink. The universal Android Release APK is uploaded once; matching Actions matrix rows do not duplicate it.{ci}",
         blocked.join("\n")
     );
-    let gh = GitHub::new()?;
+    let notes = if local_manager {
+        format!("{notes}\nThe OHOS HAP is experimental, signed with the OpenHarmony SDK test PKI. Its signature and native dependency closure were verified by the local DevEco packager. Device/emulator launch and retail installability were not verified.\n")
+    } else {
+        notes
+    };
     let existing = release_target(
         &gh.releases_for_tag(tag)?,
         gh.tag_commit(tag)?.as_deref(),

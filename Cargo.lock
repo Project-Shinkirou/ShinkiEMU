@@ -11095,7 +11095,7 @@ dependencies = [
 
 [[package]]
 name = "shinki-emu-manager"
-version = "0.1.0-beta.4"
+version = "0.1.0-beta.5"
 dependencies = [
  "android-activity 0.6.1",
  "cap-fs-ext",
