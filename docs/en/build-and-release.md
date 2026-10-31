@@ -104,6 +104,12 @@ The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfi
 Impacto's Linux VA-API libraries also require the distribution's `libdrm.so.2`
 (Ubuntu package `libdrm2`), which remains part of the system graphics stack.
 
+Impacto's Linux shared core installs runtime libraries beside the core with
+`$ORIGIN` loader lookup. Its native-install boundary resolves SONAME links only
+within that install root and copies their bytes into regular files; the package
+reader continues to reject links and special inputs. The Linux closure repair
+uses source release sequence 3, distinct from the frozen Manager's sequence 2.
+
 RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
 
 For unreliable archive downloads, preseed `.work/vcpkg-downloads` with the exact pinned source/tool archives. Transfer with resumable chunks or `rsync --partial`; vcpkg still checks each archive's SHA512 against its selected versioned port. Do not substitute a distribution libass/FFmpeg for the pinned native build.

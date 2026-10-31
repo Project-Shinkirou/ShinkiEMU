@@ -11098,7 +11098,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-impacto"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/impacto?rev=910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157#910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=34b89c29123d025d96f73ac9a746fb388e572065#34b89c29123d025d96f73ac9a746fb388e572065"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
