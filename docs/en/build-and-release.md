@@ -64,8 +64,17 @@ Manager initializes the process-wide Rustls crypto provider once, before creatin
 Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-sudo apt-get install -y --no-install-recommends autoconf-archive libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 libxtst-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+`libltdl-dev` supplies the `LT_SYS_SYMBOL_USCORE` macro used by the vcpkg
+`libxcrypt` autoreconf step. `python3-jinja2` is required by the kirikiroid2-web
+native dependency generator, and `libxtst-dev` is required by its Linux GTK
+dependency closure. These packages are host prerequisites; `cargo xtask deps`
+does not install them.
+
+```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
 cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
 cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
@@ -74,6 +83,15 @@ cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-
 cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --version 0.1.0-beta.1 --out .work/linux-siglus
 cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
 ```
+
+For an individual native Linux core, replace `CORE` with `renpy`, `impacto`, or `kirikiroid2-web`:
+
+```sh
+cargo xtask deps --target x86_64-unknown-linux-gnu --core CORE
+cargo xtask ci --target x86_64-unknown-linux-gnu --component CORE --report .work/linux-core-ci.json
+```
+
+The Ren'Py package includes its SDK runtime and installed `Resources`; Impacto and KiriKiri2 include the pinned native shared-library closure. Each core package records system SONAME requirements in `build.json`.
 
 Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix`; declared blocked cores produce no binary artifact.
 The Linux package uses the distribution's glibc, libstdc++, OpenSSL 3, fontconfig, udev and ALSA ABI libraries, plus GTK 3 and WebKitGTK 4.1 for store web sign-in. Install their runtime packages (on Ubuntu `libwebkit2gtk-4.1-0`, which pulls in GTK 3) on the destination system and provide an X11 or Wayland desktop with a graphics driver.
