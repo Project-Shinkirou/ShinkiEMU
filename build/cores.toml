@@ -359,14 +359,15 @@ features = []
 dependencies = ["native-vcpkg", "impacto-sources"]
 artifact_kind = "native-shared"
 resources = []
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 static_features = ["static"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-linux-android"]
+supported_targets = ["x86_64-pc-windows-msvc"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki-unblock-linux"
-rev = "4d60012027c4e199d0e815929bf1f7a7341ae689"
+branch = "shinki-android-ports"
+rev = "a43ad8a27dfd692e3a19e74b118fda429e62ae35"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
@@ -377,6 +378,12 @@ reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x6
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "ThirdParty/impacto/shinki/build.rs:66 accepts only a native Windows x64/MSVC HOST and TARGET; its native dependency/install paths have no Apple implementation."
@@ -420,10 +427,10 @@ target = "aarch64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "The pinned adapter builds SHARED and resolves Android to desktop Linux SDK libraries. Official Ren'Py 8.5.3 RAPT supplies librenpython.so but no target Python.h/pyconfig.h or static development archives; a matching Android runtime development build and static adapter are required before Manager embedding."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "The Ren'Py SDK and build interpreter are only prepared on a Windows x64 host; Android embedding is pending."
+reason = "The pinned adapter builds SHARED and resolves Android to desktop Linux SDK libraries. Official Ren'Py 8.5.3 RAPT supplies librenpython.so but no target Python.h/pyconfig.h or static development archives; a matching Android runtime development build and static adapter are required before Manager embedding."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "AppleNative iOS static Ren'Py runtime build has not run."
