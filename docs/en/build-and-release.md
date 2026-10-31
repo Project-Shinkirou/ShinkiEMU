@@ -209,6 +209,7 @@ Before the final publish command, create the draft `manager-v<version>` at the e
 Publication checks each record's exact product commit and both archive hashes, requires all hosted artifacts (except the duplicate Android x86_64 row) and the OHOS HAP, and queries both exact-head workflow gates. The release name and notes identify the HAP as debug-test-signed and state the waived launch verification.
 
 The source bundle's subtitle rebuild commands include `build/vcpkg/mobile-triplets`, which supplies the OHOS `arm64-ohos` triplet alongside the bundled native source archives.
+The verification-only job needs repository `contents: write` permission to read unpublished draft assets; its steps do not publish or alter the draft.
 
 Local runners are optional pre-checks that catch failures before a push. `matrix --json [--ci] --since <ref>` keeps only the rows whose inputs changed since `<ref>`, and the runners pass it from `SHINKI_CI_SINCE`. Shared inputs select every row: the root `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `xtask/`, `Source/{SDK,FamilyApi,Tools}/`, `build/targets.toml`, `build/vcpkg/` and `build/ci/`, and any path not listed here. `Source/Manager/` and `Source/Providers/` select the Manager rows. `Source/Families/<dir>/` selects the core whose manifest is in that directory, plus the Manager rows on its `static_manager_targets`; an edited `[[cores]]` table in `build/cores.toml` does the same for that core. `docs/**`, `Metadata/**` and Markdown files select nothing.
 

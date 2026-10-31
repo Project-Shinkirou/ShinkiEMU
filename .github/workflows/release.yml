@@ -180,6 +180,10 @@ jobs:
     needs: select
     if: ${{ inputs.verify_local_manager == true }}
     runs-on: ubuntu-24.04
+    # GitHub hides draft releases from read-only tokens. This job only downloads
+    # and verifies the unpublished assets; it never publishes the draft.
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.select.outputs.version }}
