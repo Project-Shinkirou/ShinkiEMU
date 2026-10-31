@@ -201,16 +201,13 @@ dependencies = ["native-vcpkg", "bison"]
 artifact_kind = "native-shared"
 resources = []
 licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
 branch = "shinki-linux-port"
 rev = "860c1d4fb0481fe65897063914eb8ee8d9d20222"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "The pinned fork contains the Linux owner and vcpkg libxcrypt autoreconf prerequisites, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "macOS native dependency closure (vcpkg gperf) has not built in CI; port pending."
@@ -361,16 +358,13 @@ artifact_kind = "native-shared"
 resources = []
 static_features = ["static"]
 licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-unblock-linux"
 rev = "4d60012027c4e199d0e815929bf1f7a7341ae689"
 upstream = "https://github.com/CommitteeOfZero/impacto"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "The pinned fork implements the Linux GNU adapter and x64-linux-dynamic vcpkg path, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "ThirdParty/impacto/shinki/build.rs accepts no Apple host/target build; its native dependency and install paths have no verified Apple implementation."
@@ -407,16 +401,13 @@ features = []
 dependencies = ["renpy"]
 artifact_kind = "native-shared"
 resources = []
-supported_targets = ["x86_64-pc-windows-msvc"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
 branch = "shinki"
 rev = "6dc272ff4def04e4e705906fd15ab5db7e75fe66"
 upstream = "https://github.com/renpy/renpy"
-[[cores.blocked]]
-target = "x86_64-unknown-linux-gnu"
-reason = "The Linux SDK/runtime adapter is implemented, but this product head has no matching ArchLXC deps+ci receipt, ELF dependency-closure audit, Manager load smoke, or filtered GitHub CI result. Keep blocked until all four pass at the pushed head SHA."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
 reason = "AppleNative build has not run for the generalized Ren'Py SDK adapter; macOS SDK/runtime and Cython inputs require Apple verification."
