@@ -531,6 +531,57 @@ pub(crate) fn port_recipe(spdx: &Value, registry: &Path, dest: &Path) -> Result<
     Ok(true)
 }
 
+fn native_git_source(downloads: &Path, port: &str, location: &str, dest: &Path) -> Result<()> {
+    let (repo, rev) = location
+        .strip_prefix("git+")
+        .and_then(|source| source.rsplit_once('@'))
+        .context("native Git source requires a repository and commit")?;
+    if !repo.starts_with("https://")
+        || rev.len() != 40
+        || !rev.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        bail!("native Git source requires an HTTPS repository and exact commit");
+    }
+    package::portable(port)?;
+    let archive = dest.join(format!("{port}-{rev}.tar.gz"));
+    if archive.exists() {
+        return Ok(());
+    }
+    let cached = downloads.join("git-tmp");
+    let cached_rev = dependencies::capture(
+        git_committed_bytes(&cached)
+            .args(["rev-parse", "--verify"])
+            .arg(format!("{rev}^{{commit}}")),
+    );
+    let checkout;
+    let source = if cached_rev
+        .as_ref()
+        .is_ok_and(|actual| String::from_utf8_lossy(actual).trim() == rev)
+    {
+        cached.as_path()
+    } else {
+        checkout = tempfile::tempdir()?;
+        dependencies::run(git_committed_bytes(checkout.path()).args(["init", "-q"]))?;
+        dependencies::run(git_committed_bytes(checkout.path()).args([
+            "fetch", "-q", "--depth", "1", "--no-tags", repo, rev,
+        ]))?;
+        let actual = dependencies::capture(
+            git_committed_bytes(checkout.path()).args(["rev-parse", "FETCH_HEAD"]),
+        )?;
+        if String::from_utf8_lossy(&actual).trim() != rev {
+            bail!("native Git repository did not return pinned commit {rev}");
+        }
+        checkout.path()
+    };
+    fs::create_dir_all(dest)?;
+    dependencies::run(
+        git_committed_bytes(source)
+            .args(["archive", "--format=tar.gz", "-o"])
+            .arg(archive)
+            .arg(rev),
+    )
+}
+
 /// Collect installed target ports and their host-tool dependency closure:
 /// recipes/patches and the original source archives vcpkg consumed.
 fn native_sources(
@@ -581,12 +632,22 @@ fn native_sources(
                 {
                     continue;
                 }
-                let checksum = resource["checksums"]
+                if let Some(checksum) = resource["checksums"]
                     .as_array()
                     .and_then(|a| a.iter().find(|c| c["algorithm"] == "SHA512"))
                     .and_then(|c| c["checksumValue"].as_str())
-                    .context("native source resource missing SHA512")?;
-                required.insert(checksum.to_ascii_lowercase());
+                {
+                    required.insert(checksum.to_ascii_lowercase());
+                } else {
+                    native_git_source(
+                        &inv.root.join(".work/vcpkg-downloads"),
+                        &port,
+                        resource["downloadLocation"]
+                            .as_str()
+                            .context("native source resource missing SHA512 or Git location")?,
+                        &root.join(".work/vcpkg-downloads"),
+                    )?;
+                }
             }
         }
         let triplet = installed
@@ -1287,6 +1348,38 @@ mod tests {
         assert_eq!(
             fs::read_to_string(extracted.join("nested/payload.txt")).unwrap(),
             "second public source\n"
+        );
+    }
+
+    #[test]
+    fn native_git_sources_archive_the_pinned_commit_without_touching_working_edits() {
+        let (temp, _inv, _core, upstream, first, _second) = fixture();
+        let downloads = temp.path().join("downloads");
+        fs::create_dir(&downloads).unwrap();
+        let cached = downloads.join("git-tmp");
+        fs::rename(upstream, &cached).unwrap();
+        fs::write(cached.join("payload.txt"), "preserved working edit\n").unwrap();
+        let output = temp.path().join("sources");
+        native_git_source(
+            &downloads,
+            "native-dependency",
+            &format!("git+https://example.invalid/native-source@{first}"),
+            &output,
+        )
+        .unwrap();
+        let archive = fs::File::open(output.join(format!("native-dependency-{first}.tar.gz")))
+            .unwrap();
+        let extracted = temp.path().join("extracted-git-source");
+        tar::Archive::new(flate2::read::GzDecoder::new(archive))
+            .unpack(&extracted)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(extracted.join("payload.txt")).unwrap(),
+            "first public source\n"
+        );
+        assert_eq!(
+            fs::read_to_string(cached.join("payload.txt")).unwrap(),
+            "preserved working edit\n"
         );
     }
 

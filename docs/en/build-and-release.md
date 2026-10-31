@@ -190,6 +190,11 @@ Rust dependencies are identified by the unchanged `Cargo.lock` (registry checksu
 
 Native sources cover every installed vcpkg port of the selected installation, followed from `vcpkg/status` including host-triplet build tools. `native/ports/<group>/` holds each registry port's recipe and patches, extracted from the pinned registry tree recorded by its SPDX `gitoid`; overlay ports have no tree identity and are part of the fork snapshot. `.work/vcpkg-downloads/` contains the archives whose SHA512 the installed SPDX records. The instructions clone the pinned vcpkg revision. Impacto additionally retains the prepared LibAtrac9/magic_enum sources; its in-fork mspack is in the fork snapshot.
 
+SPDX Git resources use their exact `git+https://…@<commit>` identity instead of a
+download checksum. The bundle archives that committed tree from vcpkg's Git object
+cache, or fetches the pinned commit into a private temporary repository when it is
+absent. It writes vcpkg's `<port>-<commit>.tar.gz` cache name for offline rebuilds.
+
 Native vcpkg manifest installations use one `installed-<triplet>` root per core and target. Running Windows, Android arm64 and Android x64 `deps` sequentially therefore preserves each target's dependency and license closure; CMake receives that root and the matching explicit triplet rather than inferring a different Android triplet. Corresponding-source rebuild commands retain the Apple/mobile triplet overlays used by `deps`, including the standalone Android core's `*-android-ffmpeg` triplets.
 
 Standalone Android cores ship native core packages, not APKs. The release APK-signing restriction applies only to Android Manager installers.
