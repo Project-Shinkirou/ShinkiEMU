@@ -330,12 +330,21 @@ pub fn execute(
         for manifest in manifests.drain(..) {
             let embedded = inv.core(&manifest.plugin_id)?;
             manifest.validate()?;
-            if !embedded.static_manager_targets.iter().any(|triple| triple == target)
+            if !embedded
+                .static_manager_targets
+                .iter()
+                .any(|triple| triple == target)
                 || manifest.target != target
                 || manifest.profile != if release { "release" } else { "debug" }
-                || !matches!(manifest.artifact_kind.as_str(), "native-static" | "rust-cdylib")
+                || !matches!(
+                    manifest.artifact_kind.as_str(),
+                    "native-static" | "rust-cdylib"
+                )
             {
-                bail!("native build manifest does not match embedded core {}", embedded.id);
+                bail!(
+                    "native build manifest does not match embedded core {}",
+                    embedded.id
+                );
             }
             embedded_core_builds.push(manifest);
         }

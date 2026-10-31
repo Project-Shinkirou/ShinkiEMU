@@ -584,7 +584,11 @@ fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<PathBuf>> {
         } else {
             dependencies::native_install(inv, &result.target, &native.id)?
                 .join(dependencies::native_triplet(inv, &result.target)?)
-                .join(if result.target.contains("windows") { "bin" } else { "lib" })
+                .join(if result.target.contains("windows") {
+                    "bin"
+                } else {
+                    "lib"
+                })
         });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
@@ -975,9 +979,15 @@ fn static_core_entries(
                 entries.push((inv.root.join(path), license.clone()));
             }
         }
-        let native = result.embedded_core_builds.iter().find(|build| build.plugin_id == core.id);
+        let native = result
+            .embedded_core_builds
+            .iter()
+            .find(|build| build.plugin_id == core.id);
         if core.artifact_kind == "native-shared" && native.is_none() {
-            bail!("embedded native core {} has no recorded build manifest", core.id);
+            bail!(
+                "embedded native core {} has no recorded build manifest",
+                core.id
+            );
         }
         if let Some(native) = native {
             native.validate()?;
@@ -988,7 +998,10 @@ fn static_core_entries(
             }
             for asset in &native.licenses {
                 for (source, destination) in asset_entries(asset)? {
-                    entries.push((source, format!("licenses/embedded/{}/{destination}", core.id)));
+                    entries.push((
+                        source,
+                        format!("licenses/embedded/{}/{destination}", core.id),
+                    ));
                 }
             }
         }
