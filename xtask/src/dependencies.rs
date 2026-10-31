@@ -1940,7 +1940,16 @@ pub fn prepare(
 ) -> Result<()> {
     let target_spec = inv.target(target)?;
     if let Some(core) = core {
-        inv.require_supported(core, target)?;
+        if inv
+            .core(core)?
+            .static_manager_targets
+            .iter()
+            .any(|triple| triple == target)
+        {
+            inv.require_supported("manager", target)?;
+        } else {
+            inv.require_supported(core, target)?;
+        }
     }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     if crate::apple::supported(target) {
