@@ -202,8 +202,8 @@ supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-a
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki-apple-ports"
-rev = "b93b207e8c25cc58657c333623c628b1994edbd4"
+branch = "shinki-apple-ios63"
+rev = "9a4b23dbf1c4732bcd1ea083e52915f2f1c4af59"
 upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
