@@ -7,6 +7,9 @@ set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_CMAKE_SYSTEM_NAME iOS)
 set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
 
+# iOS target programs cannot run on a Darwin host with the same CPU.
+set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-apple-ios")
+
 # CoreText is the Apple system provider; never pick up a Homebrew fontconfig
 # that the static pkg-config closure cannot resolve.
 if(PORT STREQUAL "libass")

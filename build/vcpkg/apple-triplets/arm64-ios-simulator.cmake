@@ -8,6 +8,9 @@ set(VCPKG_CMAKE_SYSTEM_NAME iOS)
 set(VCPKG_OSX_SYSROOT iphonesimulator)
 set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
 
+# The simulator SDK remains selected above; the build host is native Darwin.
+set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-apple-ios")
+
 # CoreText is the Apple system provider; never pick up a Homebrew fontconfig
 # that the static pkg-config closure cannot resolve.
 if(PORT STREQUAL "libass")
