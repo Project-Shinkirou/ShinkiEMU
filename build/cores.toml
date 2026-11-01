@@ -357,8 +357,8 @@ supported_targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-a
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki-apple-ports"
-rev = "6c57ed2be9e14566d2aea03724e2160d80c2e8a9"
+branch = "shinki-apple-ios65"
+rev = "bef01e20d20681254ffd89e3ad24c34b907079b0"
 upstream = "https://github.com/CommitteeOfZero/impacto"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
