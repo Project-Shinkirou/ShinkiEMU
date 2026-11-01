@@ -714,6 +714,7 @@ fn prepare_native_inputs(
                 .source_directory(&inv.root)?
                 .join("shinki/prepare_ios.py");
             run(Command::new(&interpreter)
+                .env("PYTHONDONTWRITEBYTECODE", "1")
                 .arg(script)
                 .arg(inv.root.join(".work/renpy-build"))
                 .arg(renios)
