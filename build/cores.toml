@@ -400,8 +400,8 @@ static_features = ["static"]
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki-apple-ports"
-rev = "fb8c2f77b14cbb26a11054c366267962401620bb"
+branch = "shinki-apple-ios63"
+rev = "abaddcb1d89e8ad201fe007caa229c6ebfe3e440"
 upstream = "https://github.com/renpy/renpy"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
