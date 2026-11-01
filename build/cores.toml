@@ -92,8 +92,8 @@ static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarc
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/art3m1s-core"
-branch = "shinki-android-isolation"
-rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+branch = "shinki-apple-ios65"
+rev = "55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 upstream = "https://github.com/Alphaly2K/art3m1s-core"
 [[cores.blocked]]
 

@@ -499,7 +499,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 [[package]]
 name = "art3m1s-core"
 version = "0.4.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "ab_glyph",
  "art3m1s-emote",
@@ -519,12 +519,12 @@ dependencies = [
 [[package]]
 name = "art3m1s-emote"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 
 [[package]]
 name = "art3m1s-log"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "log 0.4.34",
 ]
@@ -532,7 +532,7 @@ dependencies = [
 [[package]]
 name = "art3m1s-media"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "ffmpeg-next",
  "libc",
@@ -541,7 +541,7 @@ dependencies = [
 [[package]]
 name = "art3m1s-render"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "ash 0.38.0+1.3.281",
  "glam 0.30.10",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "asb-interpreter"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "asb-decrypt",
  "encoding_rs",
@@ -8486,7 +8486,7 @@ checksum = "6b1a50d821a2526af6d5756c23c68e453532a986e361a3e12c9cc7fe61d862ac"
 [[package]]
 name = "pf8"
 version = "0.1.6"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "encoding_rs",
  "sha1 0.11.0",
@@ -8497,7 +8497,7 @@ dependencies = [
 [[package]]
 name = "pfs-upk-rust"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "encoding_rs",
  "pf8",
@@ -10966,7 +10966,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-art3m1s-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=5243005cf0aaaeac89b1803e57381e9c0b14b95c#5243005cf0aaaeac89b1803e57381e9c0b14b95c"
+source = "git+https://github.com/Project-Shinkirou/art3m1s-core?rev=55c954e9b443c3c72e37205e2f792ec52c8efcc7#55c954e9b443c3c72e37205e2f792ec52c8efcc7"
 dependencies = [
  "art3m1s-core",
  "encoding_rs",

@@ -95,7 +95,7 @@ objc2-core-foundation = { version = "0.3.2", default-features = false, features 
 shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d0923af499912b82a3021b7998f44b2c88d52f84", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
-shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c", default-features = false, features = ["static-core"] }
+shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "55c954e9b443c3c72e37205e2f792ec52c8efcc7", default-features = false, features = ["static-core"] }
 shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "6c57ed2be9e14566d2aea03724e2160d80c2e8a9", default-features = false, features = ["static"] }
 shinki-emu-kirikiroid2-web = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "a82245dba35dd0095bb482c5d20a9cec62d072d4", default-features = false }
 shinki-emu-renpy = { git = "https://github.com/Project-Shinkirou/renpy", rev = "abaddcb1d89e8ad201fe007caa229c6ebfe3e440", default-features = false, features = ["static"] }
@@ -111,7 +111,7 @@ naga-26 = { package = "naga", version = "26.0.0", default-features = false, feat
 shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d0923af499912b82a3021b7998f44b2c88d52f84", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
-shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c", default-features = false, features = ["static-core"] }
+shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "55c954e9b443c3c72e37205e2f792ec52c8efcc7", default-features = false, features = ["static-core"] }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.
