@@ -529,6 +529,21 @@ pub fn bundle(
         )?;
     }
     if cfg!(target_os = "macos") {
+        if has_frameworks {
+            for entry in fs::read_dir(contents.join("Frameworks"))? {
+                let framework = entry?.path();
+                checked(
+                    Command::new("codesign")
+                        .args(["--force", "--sign", "-"])
+                        .arg(&framework),
+                )?;
+                checked(
+                    Command::new("codesign")
+                        .args(["--verify", "--strict"])
+                        .arg(&framework),
+                )?;
+            }
+        }
         checked(
             Command::new("codesign")
                 .args(["--force", "--deep", "--sign", "-"])
