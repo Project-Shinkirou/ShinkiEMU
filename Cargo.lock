@@ -11078,7 +11078,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-impacto"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/impacto?rev=a620e2f64e207d2d3ce90bf00caeb6eb2d40940e#a620e2f64e207d2d3ce90bf00caeb6eb2d40940e"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=281ca9131eb4d08a39e1f8e53b20edc77c3f5b55#281ca9131eb4d08a39e1f8e53b20edc77c3f5b55"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
@@ -11087,10 +11087,15 @@ dependencies = [
 [[package]]
 name = "shinki-emu-kirikiroid2-web"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=7b11d945febdb2bd081aa0dafb591eb5f67eb24c#7b11d945febdb2bd081aa0dafb591eb5f67eb24c"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=84c2ee48857042f10698f48a340f402361467d49#84c2ee48857042f10698f48a340f402361467d49"
 dependencies = [
+ "flate2",
+ "serde_json",
+ "sha2 0.11.1",
  "shinki-emu-abi",
  "shinki-emu-build",
+ "shlex 1.3.0",
+ "tar",
 ]
 
 [[package]]

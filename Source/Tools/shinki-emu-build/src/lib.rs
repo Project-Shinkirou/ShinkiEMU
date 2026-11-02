@@ -275,9 +275,11 @@ pub fn link_android_static_core(native: &Path, installations: &[PathBuf]) -> Res
 }
 
 fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
+    let apple_ios = env::var("TARGET")?.contains("apple-ios");
     for installation in installations {
         let libraries = installation.join("lib");
         println!("cargo:rustc-link-search=native={}", libraries.display());
+        let mut static_libraries = std::collections::BTreeSet::new();
         let mut entries = fs::read_dir(&libraries)?.collect::<std::io::Result<Vec<_>>>()?;
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
@@ -289,6 +291,9 @@ fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
                     .context("archive name")?;
                 let library = stem.strip_prefix("lib").context("native archive prefix")?;
                 println!("cargo:rustc-link-lib=static={library}");
+                if apple_ios {
+                    static_libraries.insert(library.to_owned());
+                }
             }
         }
         for directory in [
@@ -301,11 +306,48 @@ fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
             for entry in fs::read_dir(directory)? {
                 let path = entry?.path();
                 if path.extension().is_some_and(|extension| extension == "pc") {
-                    pkg_config::Config::new().statik(true).probe(
-                        path.file_stem()
-                            .and_then(|value| value.to_str())
-                            .context("pkg-config name")?,
-                    )?;
+                    let dependency = pkg_config::Config::new()
+                        .statik(true)
+                        .cargo_metadata(!apple_ios)
+                        .probe(
+                            path.file_stem()
+                                .and_then(|value| value.to_str())
+                                .context("pkg-config name")?,
+                        )?;
+                    if !apple_ios {
+                        continue;
+                    }
+                    let static_module = dependency
+                        .libs
+                        .iter()
+                        .any(|name| static_libraries.contains(name));
+                    let framework_module = !dependency.frameworks.is_empty()
+                        && dependency.libs.iter().all(|name| {
+                            matches!(
+                                name.as_str(),
+                                "c++" | "c++abi" | "System" | "objc" | "m" | "c"
+                                    | "pthread" | "dl" | "z" | "bz2" | "iconv" | "resolv"
+                            )
+                        });
+                    // A prepared but unselected dynamic-only module (such as
+                    // vulkan-loader) is not part of this static core's closure.
+                    if !static_module && !framework_module {
+                        continue;
+                    }
+                    for search in dependency.link_paths {
+                        println!("cargo:rustc-link-search=native={}", search.display());
+                    }
+                    for library in dependency.libs {
+                        if !static_libraries.contains(&library) {
+                            println!("cargo:rustc-link-lib={library}");
+                        }
+                    }
+                    for search in dependency.framework_paths {
+                        println!("cargo:rustc-link-search=framework={}", search.display());
+                    }
+                    for framework in dependency.frameworks {
+                        println!("cargo:rustc-link-lib=framework={framework}");
+                    }
                 }
             }
         }
