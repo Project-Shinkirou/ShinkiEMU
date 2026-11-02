@@ -55,6 +55,18 @@
  */
 #define ShinkiEmuCAP_ASYNC_TEXT 32
 
+/**
+ * Validates an explicit converted-script hash and isolates its saves/read state;
+ * markerless games retain their existing native storage namespace.
+ */
+#define ShinkiEmuCAP_NATIVE_SCRIPT_IDENTITY 64
+
+/**
+ * A configured font is the primary face for script, restored and UI text,
+ * ahead of authored or restored family choices, including ruby.
+ */
+#define ShinkiEmuCAP_CONFIGURED_FONT_PRIORITY 128
+
 #define ShinkiEmuMAX_DISPLAY_NAME_BYTES 64
 
 #define ShinkiEmuMAX_RENDER_EXTENT 16384
