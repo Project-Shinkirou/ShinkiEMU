@@ -11086,7 +11086,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-kirikiroid2-web"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=d0f954c6ace7ba0e417948bc1aff9c87437654da#d0f954c6ace7ba0e417948bc1aff9c87437654da"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=7b11d945febdb2bd081aa0dafb591eb5f67eb24c#7b11d945febdb2bd081aa0dafb591eb5f67eb24c"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
@@ -11337,7 +11337,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-renpy"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/renpy?rev=abaddcb1d89e8ad201fe007caa229c6ebfe3e440#abaddcb1d89e8ad201fe007caa229c6ebfe3e440"
+source = "git+https://github.com/Project-Shinkirou/renpy?rev=def396b3f247d8ac3d43e842987970c8eafecdb3#def396b3f247d8ac3d43e842987970c8eafecdb3"
 dependencies = [
  "anyhow",
  "serde_json",
