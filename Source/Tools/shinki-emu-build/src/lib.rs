@@ -325,8 +325,18 @@ fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
                         && dependency.libs.iter().all(|name| {
                             matches!(
                                 name.as_str(),
-                                "c++" | "c++abi" | "System" | "objc" | "m" | "c"
-                                    | "pthread" | "dl" | "z" | "bz2" | "iconv" | "resolv"
+                                "c++"
+                                    | "c++abi"
+                                    | "System"
+                                    | "objc"
+                                    | "m"
+                                    | "c"
+                                    | "pthread"
+                                    | "dl"
+                                    | "z"
+                                    | "bz2"
+                                    | "iconv"
+                                    | "resolv"
                             )
                         });
                     // A prepared but unselected dynamic-only module (such as
