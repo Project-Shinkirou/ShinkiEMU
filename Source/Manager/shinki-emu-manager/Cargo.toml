@@ -92,7 +92,7 @@ roukaku-platform.workspace = true
 # Positions the sign-in WKWebView inside the Manager view.
 objc2.workspace = true
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2", "CFCGTypes"] }
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d0923af499912b82a3021b7998f44b2c88d52f84", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "55c954e9b443c3c72e37205e2f792ec52c8efcc7", default-features = false, features = ["static-core"] }
@@ -108,7 +108,7 @@ shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", r
 # be enabled too or the unified codespan API rejects naga 26's String buffer.
 naga-26 = { package = "naga", version = "26.0.0", default-features = false, features = ["termcolor"] }
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "9a5c20026e3638ef5714c2ad7062634648c8dfcf", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "d0923af499912b82a3021b7998f44b2c88d52f84", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "55c954e9b443c3c72e37205e2f792ec52c8efcc7", default-features = false, features = ["static-core"] }

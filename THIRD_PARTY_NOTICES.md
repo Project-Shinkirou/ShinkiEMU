@@ -119,8 +119,8 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 - Upstream: <https://github.com/xmoezzz/rfvp>
 - Upstream version: `0.7.0`, revision `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1`
 - Native adaptation fork: <https://github.com/Project-Shinkirou/rfvp>
-- Native adaptation branch: `shinki-android-isolation`
-- 固定来源：[`9a5c20026e3638ef5714c2ad7062634648c8dfcf`](https://github.com/Project-Shinkirou/rfvp/commit/9a5c20026e3638ef5714c2ad7062634648c8dfcf)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入。与 Manager、Siglus 统一使用 wgpu 30；静态注册不导出重复查询或 WMV C ABI 符号。字幕来源与宿主统一固定 RoukakuEngine `8392cf161800f7684af7704eb95f7a5526d2015d`。
+- Native adaptation branch: `shinki`
+- 固定来源：[`cc0cc5c9648d481693cfa353c11e1d61311f6246`](https://github.com/Project-Shinkirou/rfvp/commit/cc0cc5c9648d481693cfa353c11e1d61311f6246)，适配包为 `crates/shinki-emu-rfvp`，保留原生生命周期、字幕和 C ABI v3 接入。与 Manager、Siglus 统一使用 wgpu 30；静态注册不导出重复查询或 WMV C ABI 符号。字幕来源与宿主统一固定 RoukakuEngine `374a7a20780153766d9d0256e4cf4d7754fd02f9`。
 - License: Mozilla Public License 2.0.
 - Derivative source: <https://github.com/Project-Shinkirou/rfvp>
 - Shinki adapter source: fork 内 `crates/shinki-emu-rfvp/`
