@@ -177,6 +177,10 @@ impl ShinkiEmuManagerController {
         library
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
+        // No native core can be resident yet in a fresh Manager process.
+        // Reconcile staged installs before the first core inventory is built.
+        let core_install_errors =
+            core_package::apply_pending(&data_dir.join("cores")).into_iter().collect();
 
         let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone());
 
@@ -246,7 +250,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             retired_diagnostic: None,
             diagnostic_severity: "info",
-            plugin_errors: BTreeMap::new(),
+            plugin_errors: core_install_errors,
             store: store::StoreRuntime::new(&data_dir),
             data_dir,
             extensions: None,

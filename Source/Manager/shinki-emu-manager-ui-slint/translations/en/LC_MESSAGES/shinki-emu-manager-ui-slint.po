@@ -669,6 +669,9 @@ msgstr "Update available"
 msgid "已加载"
 msgstr "Loaded"
 
+msgid "已安装，尚未加载"
+msgstr "Installed, not loaded"
+
 msgid "加载失败"
 msgstr "Load failed"
 
