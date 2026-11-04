@@ -1,5 +1,6 @@
 import { App, Appearance } from "../../globals.slint";
 import { Segments } from "../../components/segments.slint";
+import { ChoiceSelect } from "../../components/select.slint";
 import { PageScroll, SettingGroup, SwitchRow, FieldBlock } from "./common.slint";
 
 export global AppearanceEdit {
@@ -55,13 +56,27 @@ export component ThemeChooser inherits FieldBlock {
 }
 
 // Language names stay in their own script so each is findable in any UI language.
+// Four segments do not fit a phone column, so narrow widths use a dropdown with the same choices.
 export component LanguageChooser inherits FieldBlock {
     label: @tr("语言");
-    Segments {
+    property <bool> narrow: root.width < 400px;
+    property <string> current: App.appearance.language == "zh-CN" || App.appearance.language == "en" || App.appearance.language == "ja" ? App.appearance.language : "system";
+    if !root.narrow : Segments {
         label: @tr("语言");
         items: [@tr("跟随系统"), "简体中文", "English", "日本語"];
-        index: App.appearance.language == "zh-CN" ? 1 : App.appearance.language == "en" ? 2 : App.appearance.language == "ja" ? 3 : 0;
+        index: root.current == "zh-CN" ? 1 : root.current == "en" ? 2 : root.current == "ja" ? 3 : 0;
         selected(i) => { AppearanceEdit.set-language(i == 1 ? "zh-CN" : i == 2 ? "en" : i == 3 ? "ja" : "system"); }
+    }
+    if root.narrow : ChoiceSelect {
+        label: @tr("语言");
+        value: root.current;
+        choices: [
+            { id: "system", label: @tr("跟随系统") },
+            { id: "zh-CN", label: "简体中文" },
+            { id: "en", label: "English" },
+            { id: "ja", label: "日本語" },
+        ];
+        selected(id) => { AppearanceEdit.set-language(id); }
     }
 }
 

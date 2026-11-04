@@ -239,10 +239,16 @@ export component DetailPanel {
                                 enabled: Selection.game.launchable;
                                 clicked => { Library.launch(Selection.game.id); }
                             }
-                            TonalButton {
+                            // A phone sheet has no room for three labelled actions; 游戏设置 keeps its icon and tooltip.
+                            if !root.sheet : TonalButton {
                                 horizontal-stretch: 0;
                                 icon: Icons.tune;
                                 text: @tr("游戏设置");
+                                clicked => { GameNav.open-settings(Selection.game.id, "emulator"); }
+                            }
+                            if root.sheet : IconButton {
+                                icon: Icons.tune;
+                                tooltip: @tr("游戏设置");
                                 clicked => { GameNav.open-settings(Selection.game.id, "emulator"); }
                             }
                             more := IconButton {
