@@ -353,7 +353,7 @@ export component LibraryPage {
                     spacing: 8px;
                     ChoiceSelect {
                         horizontal-stretch: 1;
-                        min-width: 100px;
+                        min-width: 140px;
                         label: @tr("排序");
                         value: Library.sort;
                         choices: [
@@ -377,21 +377,36 @@ export component LibraryPage {
                 }
 
                 // Compatibility filter chips (single select).
-                chips-flick := Flickable {
+                Rectangle {
                     height: Theme.chip-row-height;
-                    content-width: chips.preferred-width;
-                    content-height: Theme.chip-row-height;
-                    interactive: chips.preferred-width > self.width;
+                    clip: true;
+                    
+                    chips-flick := Flickable {
+                        width: parent.width;
+                        height: parent.height;
+                        content-width: chips.preferred-width;
+                        content-height: Theme.chip-row-height;
+                        interactive: chips.preferred-width > self.width;
 
-                    chips := HorizontalLayout {
-                        spacing: 8px;
-                        CompatChip { id: "all"; text: @tr("全部"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "perfect"; text: @tr("完美"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "completable"; text: @tr("可通关"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "flawed"; text: @tr("有瑕疵"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "boot_only"; text: @tr("仅能启动"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "unplayable"; text: @tr("无法运行"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                        CompatChip { id: "unknown"; text: @tr("未评级"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                        chips := HorizontalLayout {
+                            spacing: 8px;
+                            CompatChip { id: "all"; text: @tr("全部"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "perfect"; text: @tr("完美"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "completable"; text: @tr("可通关"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "flawed"; text: @tr("有瑕疵"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "boot_only"; text: @tr("仅能启动"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "unplayable"; text: @tr("无法运行"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                            CompatChip { id: "unknown"; text: @tr("未评级"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
+                        }
+                    }
+                    
+                    // Edge fade when scrollable
+                    if chips.preferred-width > chips-flick.width : Rectangle {
+                        x: parent.width - 48px;
+                        y: 0px;
+                        width: 48px;
+                        height: parent.height;
+                        background: @linear-gradient(90deg, transparent 0%, MaterialPalette.surface 100%);
                     }
                 }
 
