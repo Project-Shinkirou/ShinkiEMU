@@ -18,7 +18,7 @@ ShinkiEMU はプレリリース段階で、ビルドは beta として公開し�
 
 ## 互換性
 
-ShinkiEMU は 11 のコアで 10 のエンジンファミリーに対応しています。各コアはエンジン本来の VM、描画、音声、メニュー、セーブを保持します。9 つのコアは既存のオープンソースのエンジン再実装に載せたアダプター（[謝辞](#謝辞)を参照）で、Musica と CMVS は ShinkiEMU 独自の実装です。コアの一覧は [`build/cores.toml`](build/cores.toml) で定義しています。
+ShinkiEMU は 12 のコアで 10 のエンジンファミリーに対応しています。各コアはエンジン本来の VM、描画、音声、メニュー、セーブを保持します。10 のコアは既存のオープンソースのエンジン再実装に載せたアダプター（[謝辞](#謝辞)を参照）で、Musica と CMVS は ShinkiEMU 独自の実装です。コアの一覧は [`build/cores.toml`](build/cores.toml) で定義しています。
 
 | コア | エンジンファミリー | コアが読み込むもの |
 |---|---|---|
@@ -31,6 +31,7 @@ ShinkiEMU は 11 のコアで 10 のエンジンファミリーに対応して�
 | [`art3m1s-core`](docs/ja/cores/art3m1s-core.md) | Artemis | `system.ini`、PFS（PF6/PF8）アーカイブ、番号付きパッチボリューム `.pfs.NNN` |
 | [`renpy`](docs/ja/cores/renpy.md) | Ren'Py | 公式の Ren'Py 8.5.3 ランタイムを実行 |
 | [`shinki.emu.cmvs`](docs/ja/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 アーカイブと PS2A スクリプト |
+| [`cmvs-rs`](docs/ja/cores/cmvs-rs.md) | CMVS / CVNS | [上流に登録された作品](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt) のみ。独自 CMVS コアと共存 |
 | [`kirikiroid2-web`](docs/ja/cores/kirikiroid2-web.md) | KiriKiri | XP3 アーカイブと KAG/TJS スクリプト |
 | [`impacto`](docs/ja/cores/impacto.md) | MAGES. | MAGES. SC3 スクリプトとゲームごとの設定 |
 
@@ -58,10 +59,13 @@ ShinkiEMU は 11 のコアで 10 のエンジンファミリーに対応して�
 | `art3m1s-core` | ✓ | ✓ | ✓ | 組み込み | — | — |
 | `renpy` | ✓ | ✓ | ✓ | 組み込み | — | — |
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
+| `cmvs-rs` | 未公開 | 未公開 | 未公開 | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | 組み込み | — | — |
 | `impacto` | ✓ | ✓ | ✓ | 組み込み | — | — |
 
 ✓ はデスクトップ版のコアカタログで公開済みであることを示します。「組み込み」は [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7) に組み込まれたコアで、Android は 7 つ、iOS は 6 つ、OpenHarmony は Musica のみです。Android と iOS の Manager は組み込みのコアを使い、デスクトップ版はカタログからダウンロードしたコアを読み込みます。
+
+`cmvs-rs` は公開を保留しています。ローカルの CMVS サンプル 2 件とも上流の登録と一致せず、実作品のフレーム検証は未完了です。
 
 - **Windows、Linux、macOS**：x64 向けの ZIP パッケージ。macOS には Apple Silicon 版もあります。
 - **Android**：リリース署名鍵で署名したユニバーサル APK がひとつ。debug 署名の CI APK はテスト用です。
@@ -116,6 +120,7 @@ Manager の表示言語は簡体字中国語、英語、日本語です。設定
 | `ReMinori` | Musica | [luoyily/ReMinori](https://github.com/luoyily/ReMinori) | [@luoyily](https://github.com/luoyily) | [AGPL-3.0](https://github.com/luoyily/ReMinori/blob/79b00990324404bfbd496e7fa76c690cf040f744/LICENSE) |
 | `art3m1s-core` | Artemis | [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core) | Alphaly（[@Alphaly2K](https://github.com/Alphaly2K)） | [MPL-2.0](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE)、`crates/pf8` は [MIT](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/crates/pf8/LICENSE) |
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project（[@renpy](https://github.com/renpy)）、ソースの著作権者 Tom Rothamel | [MIT（一部 LGPL）](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
+| `cmvs-rs` | CMVS / CVNS | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) | [@Shizuku-in](https://github.com/Shizuku-in) とコントリビューター | [MIT](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-MIT) OR [Apache-2.0](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-APACHE)、上流の第三者通知を保持 |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web)（[2468785842/krkr2](https://github.com/2468785842/krkr2) のフォーク） | [@fenghengzhi](https://github.com/fenghengzhi)、KiriKiri2 の著作権者 W.Dee and contributors | [KiriKiri2 ライセンスと同梱コンポーネントのライセンス](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors（[@CommitteeOfZero](https://github.com/CommitteeOfZero)） | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 

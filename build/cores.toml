@@ -435,3 +435,43 @@ reason = "AppleNative iOS simulator static Ren'Py runtime build has not run."
 target = "aarch64-unknown-linux-ohos"
 reason = "OHOS host integration is OhosHost's scope; no OHOS Ren'Py runtime build has run."
 
+[[cores]]
+id = "cmvs-rs"
+display_name = "cmvs-rs"
+family_name = "CMVS / CVNS"
+license = "MIT OR Apache-2.0"
+manifest = "ThirdParty/cmvs-rs/crates/shinki-emu-cmvs-rs/Cargo.toml"
+package = "shinki-emu-cmvs-rs"
+features = ["dynamic-plugin-export"]
+dependencies = []
+artifact_kind = "rust-cdylib"
+resources = []
+licenses = ["ThirdParty/cmvs-rs/LICENSE-MIT", "ThirdParty/cmvs-rs/LICENSE-APACHE", "ThirdParty/cmvs-rs/THIRD_PARTY_NOTICES.txt", "ThirdParty/cmvs-rs/MODIFICATIONS.md"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+publish_blocked = "Local CMVS samples do not match upstream-registered releases; real-game headless frame acceptance is blocked."
+[cores.source]
+repo = "https://github.com/Project-Shinkirou/cmvs-rs"
+branch = "shinki"
+rev = "e99d641aacdcc687964450df4b45e4e26b2a3c1f"
+upstream = "https://github.com/Shizuku-in/cmvs-rs"
+release_sequence = 1
+upstream_identity = { repo = "https://github.com/Shizuku-in/cmvs-rs", ref_kind = "branch", ref_name = "main", commit = "b9fed68ba05f80444338331bb3999f14c8f4f976" }
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "cmvs-audio selects CPAL native output without an OHAudio backend; no OHOS host lifecycle/static Manager integration is implemented."
+

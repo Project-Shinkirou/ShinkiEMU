@@ -12,6 +12,7 @@ ShinkiEMU starts a new Git history. Its code and data come from repositories by 
 | AstraEngine `Examples/NativeVN/Assets/Fonts`, `Engine/Fixtures/PublicDomainFonts` | as above | `Assets/Fonts` (Noto Sans JP/SC, SIL OFL 1.1) |
 | AstraEngine `Engine/Fixtures/PublicDomainMedia/flower-roar.mp4` | as above | `Fixtures/Media` (derived from MDN interactive-examples media, CC0-1.0) |
 | https://github.com/Project-Shinkirou/Project-Shinkirou.github.io (`main`) | `59853af07f2a6ed32bc21b4ab6d014287f8f3814` | `docs/assets/readme-banner-{dark,light}.png`, rendered from the portal's `MirageScene.astro` night scene, `theme.css` night and dawn tokens, and `LogoMark.astro` mark |
+| https://github.com/Shizuku-in/cmvs-rs (`main`) | `b9fed68ba05f80444338331bb3999f14c8f4f976` | External CMVS/CVNS core `cmvs-rs`, alongside the independent `shinki.emu.cmvs`; fork `Project-Shinkirou/cmvs-rs`, branch `shinki`, adapter pin `e99d641aacdcc687964450df4b45e4e26b2a3c1f`. Copyright 2026 gkouen, MIT OR Apache-2.0; third-party MIT work attributed to X'moe in upstream notices. |
 
 External cores live in organization forks that keep their upstream history and attribution; ShinkiEMU pins them as submodules on their `shinki` branches (`cpal` and `kira` on version maintenance branches).
 
