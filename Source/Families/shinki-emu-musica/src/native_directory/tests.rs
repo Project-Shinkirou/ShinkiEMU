@@ -1,6 +1,12 @@
 use super::*;
 use std::time::{Duration, SystemTime};
 
+fn legacy_flags() -> Vec<String> {
+    ["TOHKA_CLEAR", "AYAME_CLEAR", "SUI_CLEAR", "REN_CLEAR"]
+        .map(str::to_owned)
+        .into()
+}
+
 /// Synthetic release descriptor; production never branches on these names.
 pub(crate) fn identity_fixture(root: &Path, extended: bool) -> SaveIdentity {
     let identity = SaveIdentity {
@@ -178,13 +184,17 @@ fn legacy_progress_imports_once_and_never_overwrites_native_files() {
     )
     .unwrap();
     let mut files = open(root.path());
-    files.import_legacy_progress(root.path(), id).unwrap();
+    files
+        .import_legacy_progress(root.path(), id, &legacy_flags())
+        .unwrap();
     assert_eq!(files.globals(), globals(&[("REN_CLEAR", 1)]));
     assert!(!saves.join(legacy::PROGRESS).exists());
     let imported = saves.join("global-progress.json.imported");
     assert!(imported.exists());
     let mut again = open(root.path());
-    again.import_legacy_progress(root.path(), id).unwrap();
+    again
+        .import_legacy_progress(root.path(), id, &legacy_flags())
+        .unwrap();
     assert_eq!(again.globals(), globals(&[("REN_CLEAR", 1)]));
     assert!(imported.exists());
 
@@ -192,7 +202,8 @@ fn legacy_progress_imports_once_and_never_overwrites_native_files() {
     let second = progress_json(id, &["SUI_CLEAR"]);
     std::fs::write(saves.join(legacy::PROGRESS), &second).unwrap();
     let mut kept = open(root.path());
-    kept.import_legacy_progress(root.path(), id).unwrap();
+    kept.import_legacy_progress(root.path(), id, &legacy_flags())
+        .unwrap();
     assert_eq!(kept.globals(), globals(&[("REN_CLEAR", 1)]));
     assert_eq!(std::fs::read(saves.join(legacy::PROGRESS)).unwrap(), second);
 }
@@ -210,7 +221,7 @@ fn damaged_or_foreign_progress_fails_without_touching_any_file() {
         let mut files = open(root.path());
         assert_eq!(
             files
-                .import_legacy_progress(root.path(), Hash256::from_sha256(b"game"))
+                .import_legacy_progress(root.path(), Hash256::from_sha256(b"game"), &legacy_flags())
                 .unwrap_err()
                 .code,
             "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS"
@@ -242,7 +253,9 @@ fn unknown_executable_imports_legacy_progress_and_persists_changes() {
         files.dir.root,
         root.path().join(".shinki/musica/generic-v1")
     );
-    files.import_legacy_progress(root.path(), id).unwrap();
+    files
+        .import_legacy_progress(root.path(), id, &legacy_flags())
+        .unwrap();
     assert_eq!(files.globals(), globals(&[("TOHKA_CLEAR", 1)]));
     files
         .store_globals(&globals(&[("TOHKA_CLEAR", 1), ("x", 2)]))
@@ -295,16 +308,23 @@ fn configuration_round_trips_through_sysparams_and_keeps_native_keys() {
         config.text_shadow = false;
         config.voice_volume = 33;
         config.se_muted = true;
-        config.character_voice_enabled = [true, false, true, true, false];
+        config.character_voices = ["ren", "sui", "aya", "tou", "mot"]
+            .into_iter()
+            .zip([true, false, true, true, false])
+            .map(
+                |(prefix, enabled)| crate::voice_preferences::VoiceCharacter {
+                    prefix: prefix.into(),
+                    label: prefix.into(),
+                    enabled,
+                },
+            )
+            .collect();
         files.store_configuration(&config).unwrap();
         files.store_quick_cursor(4).unwrap();
         files.store_auto_cursor(6).unwrap();
 
         let reopened = open(root.path());
-        assert_eq!(
-            reopened.configuration(crate::MusicaConfigState::default()),
-            config
-        );
+        assert_eq!(reopened.configuration(config.clone()), config);
         assert_eq!(reopened.quick_cursor(), 4);
         assert_eq!(reopened.auto_cursor(), 6);
         let stored = minori_data::decode_settings(&std::fs::read(&path).unwrap()).unwrap();
@@ -678,4 +698,59 @@ fn incomplete_legacy_native_identity_requires_configuration_without_losing_data(
     .unwrap();
     assert_eq!(files.globals(), globals(&[("route", 9)]));
     assert_eq!(open(root.path()).globals(), globals(&[("route", 9)]));
+}
+
+#[test]
+fn unmapped_legacy_hashes_keep_sources_and_complete_after_configuration() {
+    let root = game(None);
+    let id = Hash256::from_sha256(b"unknown-release");
+    let saves = root.path().join(".shinki/musica/saves");
+    std::fs::create_dir_all(&saves).unwrap();
+    let bytes = progress_json(id, &["chapter_complete", "bonus_available"]);
+    std::fs::write(saves.join(legacy::PROGRESS), &bytes).unwrap();
+    let mut files = open(root.path());
+    files.import_legacy_progress(root.path(), id, &[]).unwrap();
+    assert!(files.globals().is_empty());
+    assert_eq!(std::fs::read(saves.join(legacy::PROGRESS)).unwrap(), bytes);
+    files
+        .import_legacy_progress(root.path(), id, &["chapter_complete".into()])
+        .unwrap();
+    assert_eq!(files.globals(), globals(&[("chapter_complete", 1)]));
+    let diagnostic: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(saves.join(legacy::UNMAPPED_PROGRESS)).unwrap())
+            .unwrap();
+    assert_eq!(
+        diagnostic["game_directory"],
+        root.path().to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        diagnostic["unresolved"],
+        serde_json::json!([Hash256::from_sha256(b"bonus_available")])
+    );
+    assert_eq!(std::fs::read(saves.join(legacy::PROGRESS)).unwrap(), bytes);
+    files
+        .store_globals(&globals(&[("chapter_complete", 0), ("foreign", 63)]))
+        .unwrap();
+    let mut reopened = open(root.path());
+    reopened
+        .import_legacy_progress(
+            root.path(),
+            id,
+            &["chapter_complete".into(), "bonus_available".into()],
+        )
+        .unwrap();
+    assert_eq!(
+        reopened.globals(),
+        globals(&[
+            ("chapter_complete", 0),
+            ("bonus_available", 1),
+            ("foreign", 63)
+        ])
+    );
+    assert!(!saves.join(legacy::PROGRESS).exists());
+    assert!(!saves.join(legacy::UNMAPPED_PROGRESS).exists());
+    assert_eq!(
+        std::fs::read(saves.join("global-progress.json.imported")).unwrap(),
+        bytes
+    );
 }

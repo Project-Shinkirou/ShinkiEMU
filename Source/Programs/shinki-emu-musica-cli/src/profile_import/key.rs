@@ -1,9 +1,7 @@
 use serde::Deserialize;
-use shinki_emu_musica_keys::{
-    MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
-};
+use shinki_emu_musica_keys::{MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs::File,
     io::{ErrorKind, Read},
     path::Path,
@@ -26,6 +24,11 @@ struct KeyFile {
 struct ArchiveKey {
     index_key_hex: String,
     data_key_hex: String,
+    #[serde(default = "required_default")]
+    required: bool,
+}
+fn required_default() -> bool {
+    true
 }
 
 /// Import the confirmed native keys.v1 TOML schema. Algorithm options were held
@@ -85,15 +88,6 @@ fn decode(
     if key.schema != KEY_SCHEMA {
         return Err("SHINKI_EMU_MUSICA_KEY_SCHEMA: expected shinki.emu.musica.keys.v1".into());
     }
-    if key
-        .archive_keys
-        .keys()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>()
-        != REQUIRED_ARCHIVE_ROLES.into_iter().collect()
-    {
-        return Err("SHINKI_EMU_MUSICA_KEY_ROLES: key file must contain exactly the eight Musica archive roles".into());
-    }
     for (kind, password) in &key.type_passwords {
         if !matches!(kind.as_str(), "png" | "ogg" | "sc" | "avi") {
             return Err("SHINKI_EMU_MUSICA_KEY_TYPE: unknown type password field".into());
@@ -118,6 +112,7 @@ fn decode(
             Ok((
                 role,
                 MusicaArchiveKey {
+                    required: value.required,
                     index_key_hex: value.index_key_hex,
                     data_key_hex: value.data_key_hex,
                     type_passwords: key.type_passwords.clone(),
@@ -160,7 +155,7 @@ mod tests {
     fn fixture() -> String {
         let mut text =
             format!("schema = '{KEY_SCHEMA}'\n[type_passwords]\nsc = 'public-fixture'\n");
-        for role in REQUIRED_ARCHIVE_ROLES {
+        for role in ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"] {
             let data = if role == "mov" { "" } else { "05060708" };
             text += &format!(
                 "[archive_keys.{role}]\nindex_key_hex = '01020304'\ndata_key_hex = '{data}'\n"
@@ -186,11 +181,30 @@ mod tests {
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
     }
     #[test]
+    fn imports_eight_roles_or_declared_subset_and_preserves_optional_status() {
+        let text = fixture();
+        let complete = decode(text.as_bytes(), 0, 0, true).unwrap();
+        assert_eq!(complete.archive_keys.len(), 8);
+        assert!(complete.archive_keys.values().all(|key| key.required));
+        let subset = format!(
+            "schema = '{KEY_SCHEMA}'\n[archive_keys.scr]\nindex_key_hex='01020304'\ndata_key_hex='05060708'\n[archive_keys.sound]\nrequired=false\nindex_key_hex='01020304'\ndata_key_hex='05060708'\n"
+        );
+        let imported = decode(subset.as_bytes(), 0, 0, true).unwrap();
+        assert_eq!(imported.archive_keys.len(), 2);
+        assert!(imported.archive_keys["scr"].required);
+        assert!(!imported.archive_keys["sound"].required);
+        let roundtrip =
+            shinki_emu_musica_keys::parse_key_file(toml::to_string(&imported).unwrap().as_bytes())
+                .unwrap();
+        assert!(!roundtrip.archive_keys["sound"].required);
+    }
+
+    #[test]
     fn rejects_unknown_schema_fields_roles_and_private_parser_diagnostics() {
         let text = fixture();
         for bad in [
             text.replace(KEY_SCHEMA, "unknown"),
-            text.replace("[archive_keys.bg]", "[archive_keys.wrong]"),
+            text.replace("[archive_keys.bg]", "[archive_keys.'../wrong']"),
             format!("{text}\nprivate-secret = [bad\n"),
         ] {
             let error = decode(bad.as_bytes(), 2, 0, true)

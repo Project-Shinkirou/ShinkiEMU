@@ -48,7 +48,7 @@ fn fixture_archive(role: &str, version: u8) -> Vec<u8> {
 }
 
 fn mount_fixture(root: &Path, version: u8) -> MusicaMountedVfs {
-    let configs = REQUIRED_ARCHIVE_ROLES
+    let configs = FIXTURE_ARCHIVE_ROLES
         .iter()
         .map(|role| PazArchiveConfig {
             role: (*role).into(),
@@ -58,7 +58,7 @@ fn mount_fixture(root: &Path, version: u8) -> MusicaMountedVfs {
             index_size_xor: if version == 0 { 0 } else { 0x5a5a5a5a },
         })
         .collect();
-    let roles = REQUIRED_ARCHIVE_ROLES
+    let roles = FIXTURE_ARCHIVE_ROLES
         .into_iter()
         .map(|role| {
             (
@@ -169,7 +169,7 @@ fn required_roles_are_strict() {
 #[test]
 fn v0_fixture_mounts_all_roles_and_reads_across_a_volume_boundary() {
     let temp = tempfile::tempdir().unwrap();
-    for role in REQUIRED_ARCHIVE_ROLES {
+    for role in FIXTURE_ARCHIVE_ROLES {
         let archive = fixture_archive(role, 0);
         let path = temp.path().join(format!("{role}.paz"));
         if role == "scr" {
@@ -181,7 +181,7 @@ fn v0_fixture_mounts_all_roles_and_reads_across_a_volume_boundary() {
         }
     }
     let vfs = mount_fixture(temp.path(), 0);
-    assert_eq!(vfs.manifest().entries.len(), REQUIRED_ARCHIVE_ROLES.len());
+    assert_eq!(vfs.manifest().entries.len(), FIXTURE_ARCHIVE_ROLES.len());
     for entry in &vfs.manifest().entries {
         let source = vfs
             .manifest()
@@ -192,7 +192,7 @@ fn v0_fixture_mounts_all_roles_and_reads_across_a_volume_boundary() {
         assert_eq!(entry.source_revision, source.source_revision);
     }
     let root = vfs.read_dir("musica:/").unwrap();
-    assert_eq!(root.len(), REQUIRED_ARCHIVE_ROLES.len());
+    assert_eq!(root.len(), FIXTURE_ARCHIVE_ROLES.len());
     assert!(
         root.iter()
             .all(|node| node.kind == ArchiveNodeKind::Directory)
@@ -205,7 +205,7 @@ fn v0_fixture_mounts_all_roles_and_reads_across_a_volume_boundary() {
 #[test]
 fn source_mutation_after_mount_is_blocking() {
     let temp = tempfile::tempdir().unwrap();
-    for role in REQUIRED_ARCHIVE_ROLES {
+    for role in FIXTURE_ARCHIVE_ROLES {
         fs::write(
             temp.path().join(format!("{role}.paz")),
             fixture_archive(role, 0),
@@ -231,7 +231,7 @@ fn source_mutation_after_mount_is_blocking() {
 fn v1_and_v2_fixtures_apply_archive_xor_and_random_reads() {
     for version in [1, 2] {
         let temp = tempfile::tempdir().unwrap();
-        for role in REQUIRED_ARCHIVE_ROLES {
+        for role in FIXTURE_ARCHIVE_ROLES {
             fs::write(
                 temp.path().join(format!("{role}.paz")),
                 fixture_archive(role, version),
@@ -248,7 +248,7 @@ fn v1_and_v2_fixtures_apply_archive_xor_and_random_reads() {
 fn movie_spooling_preserves_range_limit_and_streams_large_payloads() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let temp = tempfile::tempdir().unwrap();
-    for role in REQUIRED_ARCHIVE_ROLES {
+    for role in FIXTURE_ARCHIVE_ROLES {
         if role != "mov" {
             fs::write(
                 temp.path().join(format!("{role}.paz")),
@@ -337,7 +337,7 @@ fn movie_spooling_matches_entry_decryption_across_archive_parts() {
     use std::sync::atomic::AtomicBool;
     for version in [0, 1, 2] {
         let temp = tempfile::tempdir().unwrap();
-        for role in REQUIRED_ARCHIVE_ROLES {
+        for role in FIXTURE_ARCHIVE_ROLES {
             let bytes = fixture_archive(role, version);
             let path = temp.path().join(format!("{role}.paz"));
             if role == "mov" {
@@ -367,7 +367,7 @@ fn movie_spooling_matches_entry_decryption_across_archive_parts() {
 fn movie_type_password_is_used_across_cipher_and_volume_boundaries() {
     use std::sync::atomic::AtomicBool;
     let temp = tempfile::tempdir().unwrap();
-    for role in REQUIRED_ARCHIVE_ROLES {
+    for role in FIXTURE_ARCHIVE_ROLES {
         if role != "mov" {
             fs::write(
                 temp.path().join(format!("{role}.paz")),
@@ -469,7 +469,7 @@ fn explicit_crc_skip_option_decrypts_both_native_v2_entry_variants() {
         let mut encrypted = plaintext.to_vec();
         cipher.apply_keystream(&mut encrypted);
         let encrypted = blowfish_encrypt(FIXTURE_KEY, &encrypted);
-        let roles = REQUIRED_ARCHIVE_ROLES
+        let roles = FIXTURE_ARCHIVE_ROLES
             .into_iter()
             .map(|role| {
                 (

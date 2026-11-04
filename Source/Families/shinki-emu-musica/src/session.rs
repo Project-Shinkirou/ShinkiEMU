@@ -530,13 +530,9 @@ impl MusicaSession {
             )?;
         } else if dirty && self.vm.state().system_ui.page == crate::MusicaSystemPage::Title {
             self.scene
-                .render_title(self.vm.title_variant(), self.title_focus)?;
-        } else if dirty && crate::runtime::gallery::count(&self.vm.state().system_ui.page).is_some()
-        {
-            self.scene.render_gallery(
-                &self.vm.state().system_ui.page,
-                self.vm.state().system_ui.focus_index,
-            )?;
+                .render_title(self.vm.title().map_err(vm_error)?, self.title_focus)?;
+        } else if dirty && crate::runtime::gallery::is_gallery(&self.vm.state().system_ui.page) {
+            self.scene.render_gallery(&self.vm)?;
         } else if dirty && self.is_save_page() {
             self.scene.render_save_page(
                 self.vm.state().system_ui.page.clone(),

@@ -93,6 +93,8 @@ fn catalog_excludes_unrelated_values_and_rejects_duplicate_titles() {
     }
 }
 
+const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
+
 #[test]
 fn imports_valid_nrbf_into_canonical_toml_without_executable_patch() {
     let mut fixture = Fixture::new();
@@ -105,8 +107,8 @@ fn imports_valid_nrbf_into_canonical_toml_without_executable_patch() {
     fixture.id();
     fixture
         .bytes
-        .extend((REQUIRED_ARCHIVE_ROLES.len() as i32).to_le_bytes());
-    for role in REQUIRED_ARCHIVE_ROLES {
+        .extend((FIXTURE_ARCHIVE_ROLES.len() as i32).to_le_bytes());
+    for role in FIXTURE_ARCHIVE_ROLES {
         fixture.object("Fixture.Pair", &["key", "value"]);
         fixture.string(role);
         fixture.object("Fixture.PazKey", &["IndexKey", "DataKey"]);
@@ -131,7 +133,7 @@ fn imports_valid_nrbf_into_canonical_toml_without_executable_patch() {
     assert_eq!(profile.paz_version, 0);
     assert_eq!(profile.index_size_xor, 123);
     assert!(!profile.rc4_skip_crc);
-    assert_eq!(profile.archive_keys.len(), REQUIRED_ARCHIVE_ROLES.len());
+    assert_eq!(profile.archive_keys.len(), FIXTURE_ARCHIVE_ROLES.len());
     assert_eq!(profile.archive_keys["bg"].index_key_hex, "01020304");
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }

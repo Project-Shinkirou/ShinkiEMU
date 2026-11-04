@@ -6,7 +6,7 @@ use std::{
 
 use roukaku_core::Hash256;
 use serde::Serialize;
-use shinki_emu_musica_keys::REQUIRED_ARCHIVE_ROLES;
+use shinki_emu_musica_keys::{MUSICA_KEY_FILE, load_musica_key_file};
 
 const MAX_SCANNED_FILES: usize = 100_000;
 
@@ -94,11 +94,23 @@ pub fn scan_archive_inventory(
         return Err("SHINKI_EMU_MUSICA_INVENTORY_MISSING".into());
     }
 
-    let required = REQUIRED_ARCHIVE_ROLES
-        .into_iter()
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>();
-    let required_role_set_match = roles.keys().cloned().collect::<BTreeSet<_>>() == required;
+    let profile_path = game_root.join(MUSICA_KEY_FILE);
+    let profile = if profile_path.exists() {
+        Some(load_musica_key_file(&profile_path)?)
+    } else {
+        None
+    };
+    let required = profile.as_ref().map(|profile| {
+        profile
+            .archive_keys
+            .iter()
+            .filter(|(_, key)| key.required)
+            .map(|(role, _)| role.clone())
+            .collect::<BTreeSet<_>>()
+    });
+    let required_role_set_match = required
+        .as_ref()
+        .is_some_and(|required| required.iter().all(|role| roles.contains_key(role)));
     let mut physical_file_count = 0u64;
     let mut physical_byte_count = 0u64;
     let mut hash_material = Vec::new();
@@ -128,7 +140,9 @@ pub fn scan_archive_inventory(
             .checked_add(bytes)
             .ok_or("SHINKI_EMU_MUSICA_INVENTORY_SIZE")?;
         archives.push(ArchiveInventoryRole {
-            required: REQUIRED_ARCHIVE_ROLES.contains(&role.as_str()),
+            required: required
+                .as_ref()
+                .is_some_and(|required| required.contains(&role)),
             role,
             physical_file_count: count,
             physical_byte_count: bytes,
@@ -188,7 +202,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let nested = root.path().join("archives");
         fs::create_dir(&nested).unwrap();
-        for role in REQUIRED_ARCHIVE_ROLES {
+        for role in ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"] {
             fs::write(nested.join(format!("{role}.paz")), [1]).unwrap();
         }
         for letter in b'A'..=b'J' {
@@ -198,7 +212,7 @@ mod tests {
         assert_eq!(report.logical_archive_count, 8);
         assert_eq!(report.physical_file_count, 18);
         assert_eq!(report.physical_byte_count, 18);
-        assert!(report.required_role_set_match);
+        assert!(!report.required_role_set_match); // No private role declaration.
         let bg = report
             .archives
             .iter()

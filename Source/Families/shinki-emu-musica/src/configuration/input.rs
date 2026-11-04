@@ -1,5 +1,15 @@
 use super::*;
-pub(crate) fn config_control_at(x: i32, y: i32) -> Option<MusicaConfigControl> {
+pub(crate) fn config_control_at(
+    x: i32,
+    y: i32,
+    character_count: usize,
+) -> Option<MusicaConfigControl> {
+    for index in 0..character_count {
+        let [left, top, width, height] = voice_control_rect(character_count, index);
+        if (left..left + width).contains(&x) && (top..top + height).contains(&y) {
+            return Some(MusicaConfigControl::ToggleCharacterVoice(index));
+        }
+    }
     let slider_value = |track_left: i32| {
         let position = (x - track_left - 11).clamp(0, 200);
         u8::try_from(position * 100 / 200).expect("clamped config slider fits u8")
@@ -61,16 +71,6 @@ fn config_non_slider_control_at(x: i32, y: i32) -> Option<MusicaConfigControl> {
         MusicaConfigControl::TestAudio(MusicaConfigAudioBus::Voice)
     } else if hit(744, 268, 780, 292) {
         MusicaConfigControl::TestAudio(MusicaConfigAudioBus::Se)
-    } else if hit(578, 433, 688, 465) {
-        MusicaConfigControl::ToggleCharacterVoice(0)
-    } else if hit(578, 470, 688, 502) {
-        MusicaConfigControl::ToggleCharacterVoice(1)
-    } else if hit(578, 508, 688, 540) {
-        MusicaConfigControl::ToggleCharacterVoice(2)
-    } else if hit(578, 545, 688, 577) {
-        MusicaConfigControl::ToggleCharacterVoice(3)
-    } else if hit(699, 433, 776, 465) {
-        MusicaConfigControl::ToggleCharacterVoice(4)
     } else if hit(592, 600, 648, 640) {
         MusicaConfigControl::Apply
     } else if hit(701, 600, 775, 640) {
@@ -79,4 +79,16 @@ fn config_non_slider_control_at(x: i32, y: i32) -> Option<MusicaConfigControl> {
         return None;
     };
     Some(control)
+}
+
+pub(crate) fn voice_control_rect(count: usize, index: usize) -> [i32; 4] {
+    let rows = count.clamp(1, 8);
+    let columns = count.div_ceil(rows).max(1);
+    let width = 220 / columns as i32;
+    [
+        570 + index.div_euclid(rows) as i32 * width,
+        420 + (index % rows) as i32 * 21,
+        width,
+        21,
+    ]
 }

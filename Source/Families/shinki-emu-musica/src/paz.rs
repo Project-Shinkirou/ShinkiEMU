@@ -27,7 +27,8 @@ use sha2::{Digest, Sha256};
 use crate::archive::{CacheIdentity, PlaintextCache, PlaintextCacheError};
 
 use crate::{MUSICA_DECRYPT_DESCRIPTOR_SCHEMA, MUSICA_DECRYPT_PROVIDER_ID, MUSICA_READER_ID};
-use shinki_emu_musica_keys::REQUIRED_ARCHIVE_ROLES;
+#[cfg(test)]
+const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
 type PazError = crate::CoreError;
 
@@ -81,22 +82,17 @@ impl MusicaPazDecryptProvider {
         private_profile_hash: Hash256,
         roles: BTreeMap<String, PazRoleScheme>,
     ) -> Result<Self, PazError> {
-        if roles
-            .keys()
-            .any(|role| !REQUIRED_ARCHIVE_ROLES.contains(&role.as_str()))
+        if roles.is_empty()
+            || roles
+                .keys()
+                .any(|role| !shinki_emu_musica_keys::valid_archive_role(role))
         {
             return Err(error(
                 "SHINKI_EMU_MUSICA_DECODER_CONFIG",
-                "decoder id or archive role is invalid",
+                "decoder must declare safe archive roles",
             ));
         }
-        for role in REQUIRED_ARCHIVE_ROLES {
-            let scheme = roles.get(role).ok_or_else(|| {
-                error(
-                    "SHINKI_EMU_MUSICA_DECODER_ROLE",
-                    "decoder is missing a required archive role",
-                )
-            })?;
+        for (role, scheme) in &roles {
             validate_blowfish_key(&scheme.index_key)?;
             if role != "mov" {
                 validate_blowfish_key(&scheme.data_key)?;
@@ -882,7 +878,7 @@ impl DecodedRange {
 fn validate_role_set(configs: &[PazArchiveConfig]) -> Result<(), PazError> {
     let mut roles = BTreeSet::new();
     for config in configs {
-        if !REQUIRED_ARCHIVE_ROLES.contains(&config.role.as_str())
+        if !shinki_emu_musica_keys::valid_archive_role(&config.role)
             || !roles.insert(config.role.as_str())
         {
             return Err(error(
@@ -891,13 +887,10 @@ fn validate_role_set(configs: &[PazArchiveConfig]) -> Result<(), PazError> {
             ));
         }
     }
-    if REQUIRED_ARCHIVE_ROLES
-        .iter()
-        .any(|role| !roles.contains(role))
-    {
+    if configs.is_empty() {
         return Err(error(
             "SHINKI_EMU_MUSICA_ARCHIVE_MISSING",
-            "all required PAZ roles must be supplied",
+            "at least one declared PAZ role must be supplied",
         ));
     }
     Ok(())

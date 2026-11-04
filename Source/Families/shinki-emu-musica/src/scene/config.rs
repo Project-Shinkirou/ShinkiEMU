@@ -73,17 +73,6 @@ impl Scene {
                 checks.push(position);
             }
         }
-        for (enabled, position) in config.character_voice_enabled.iter().zip([
-            (575, 424),
-            (575, 461),
-            (575, 499),
-            (575, 536),
-            (696, 424),
-        ]) {
-            if *enabled {
-                checks.push(position);
-            }
-        }
         for (left, top) in checks {
             self.layer(&mut commands, "musica:/sys/checkmark.png", left, top, 1.0)?;
         }
@@ -99,6 +88,11 @@ impl Scene {
                 self.layer(&mut commands, "musica:/sys/circle.png", left, 584, 1.0)?;
             }
         }
+        let text = self
+            .text
+            .voice_controls(&config.character_voices)
+            .map_err(|code| error(&code, "voice controls could not be rendered"))?;
+        self.append_text_commands(&mut commands, text);
         self.submit(commands)
     }
 }

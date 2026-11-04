@@ -1,60 +1,45 @@
 use super::*;
-use crate::{MusicaSystemPage as Page, runtime::gallery};
-
+use crate::MusicaSystemPage as Page;
 #[test]
 fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     let _lock = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
     title::game(root.path());
-    let mut assets = Vec::new();
-    for name in [
-        "topMenu0.png",
-        "topMenu0Over.png",
-        "topMenu2.png",
-        "topMenu2Over.png",
-        "memories.png",
-        "musicPage1.png",
-        "musicPage2.png",
-        "musicPage3.png",
-        "cgmode0.png",
-        "cgmode0box.png",
-        "flash0.png",
-    ] {
-        assets.push((name.to_owned(), title::png(1280, 720, [20, 30, 40, 255])));
-    }
-    for (name, w, h, color) in [
-        ("musicNote.png", 32, 32, [200, 100, 50, 255]),
-        ("cgpage001.png", 64, 32, [20, 30, 40, 255]),
-        ("cgpage002.png", 64, 32, [20, 30, 40, 255]),
-        ("cgmode0menu.png", 384, 64, [20, 30, 40, 255]),
-        ("flash0menu.png", 384, 64, [20, 30, 40, 255]),
-        ("cgthumb/test.png", 128, 72, [220, 30, 40, 255]),
-    ] {
-        assets.push((name.to_owned(), title::png(w, h, color)));
-    }
-    fixture::assets(
+    fixture::asset(
         root.path(),
-        "sys",
-        &assets
-            .iter()
-            .map(|(n, b)| (n.as_str(), b.as_slice()))
-            .collect::<Vec<_>>(),
+        "bg",
+        "memory.png",
+        &title::png(1280, 720, [220, 30, 40, 255]),
     );
     let wave = fixture::wave();
     fixture::assets(
         root.path(),
         "bgm",
-        &[("BGM001.ogg", &wave), ("BGM084.ogg", &wave)],
+        &[("arbitrary-song.ogg", &wave), ("other-song.ogg", &wave)],
     );
-    let mut scripts = vec![("test.sc", b".message 1   Main\r\n.end\r\n".as_slice())];
-    for name in gallery::REPLAYS.into_iter().chain(gallery::MOVIES) {
-        scripts.push((name, b".message 1   Gallery\r\n.end\r\n".as_slice()));
-    }
-    fixture::assets(root.path(), "scr", &scripts);
-    let mut provider = fixture::provider();
+    fixture::assets(
+        root.path(),
+        "scr",
+        &[
+            ("test.sc", b".message 1   Main\r\n.end\r\n"),
+            ("memory-alpha.sc", b".message 1   Gallery\r\n.end\r\n"),
+            ("credits.sc", b".message 1   Gallery\r\n.end\r\n"),
+            ("original-index.sc", b".chain memory-alpha.sc\r\n.end\r\n"),
+        ],
+    );
     let mut req = title::title_request(root.path());
+    let mut data = title::menu_data(false);
+    data["replay_index"] = serde_json::json!("musica:/scr/original-index.sc");
+    data["movies"] = serde_json::json!([{"label":"Credits","resource":"musica:/scr/credits.sc"}]);
+    data["cg"] = serde_json::json!([{"label":"Memory","resource":"musica:/bg/memory.png"}]);
+    req.configuration
+        .iter_mut()
+        .find(|entry| entry.id == "frontend")
+        .unwrap()
+        .value = ConfigValue::String(data.to_string());
     let sink = Sink::default();
     req.audio_output = Some(Box::new(sink.clone()));
+    let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(req).unwrap();
     session
         .vm
@@ -77,7 +62,7 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     session.advance(0, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().system_ui.page, Page::GalleryCg);
     let pixel = ((97 * 1280 + 65) * 4) as usize;
-    assert_eq!(&session.scene.pixels[pixel..pixel + 4], &[100, 30, 40, 255]);
+    assert_eq!(&session.scene.pixels[pixel..pixel + 4], &[220, 30, 40, 255]);
     session
         .advance(500_000_000, &[key(KeyCode::ArrowDown)])
         .unwrap();
@@ -99,44 +84,34 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
         .unwrap();
     assert_eq!(
         session.vm.state().audio[&0].resource_uri,
-        "musica:/bgm/BGM084.ogg"
+        "musica:/bgm/other-song.ogg"
     );
     let deadline = Instant::now() + Duration::from_secs(2);
     while !sink.nonzero.load(Ordering::Acquire) && Instant::now() < deadline {
         std::thread::yield_now();
     }
     assert!(sink.nonzero.load(Ordering::Acquire));
-    let click = RuntimeEvent::PointerButton {
-        button: PointerButton::Primary,
-        state: KeyState::Pressed,
-    };
-    session
-        .advance(
-            0,
-            &[
-                RuntimeEvent::PointerMove { x: 760.0, y: 590.0 },
-                click.clone(),
-            ],
-        )
-        .unwrap();
+    session.advance(0, &[key(KeyCode::Backspace)]).unwrap();
     assert!(!session.vm.state().audio[&0].playing);
     session
         .advance(
             0,
             &[
-                key(KeyCode::ArrowDown),
-                RuntimeEvent::PointerMove { x: 180.0, y: 100.0 },
-                click.clone(),
+                RuntimeEvent::PointerMove { x: 180.0, y: 80.0 },
+                RuntimeEvent::PointerButton {
+                    button: PointerButton::Primary,
+                    state: KeyState::Pressed,
+                },
             ],
         )
         .unwrap();
     assert_eq!(
         session.vm.state().audio[&0].resource_uri,
-        "musica:/bgm/BGM001.ogg"
+        "musica:/bgm/arbitrary-song.ogg"
     );
     session.advance(0, &[key(KeyCode::Escape)]).unwrap();
     assert!(!session.vm.state().audio[&0].playing);
-    for (focus, expected) in [(1, gallery::REPLAYS[0]), (3, gallery::MOVIES[0])] {
+    for (focus, expected) in [(1, "memory-alpha.sc"), (3, "credits.sc")] {
         session.vm.set_gallery_page(Page::Memories, focus).unwrap();
         session.advance(0, &[key(KeyCode::Enter)]).unwrap();
         session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
@@ -151,18 +126,8 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.message.as_ref().unwrap().0, "Main");
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
-    session.vm.set_gallery_page(Page::GalleryBgm, 46).unwrap();
-    let failure = session
-        .advance(
-            0,
-            &[RuntimeEvent::PointerMove { x: 180.0, y: 580.0 }, click],
-        )
-        .unwrap_err();
-    assert_eq!(failure.code(), "SHINKI_EMU_MUSICA_GALLERY_BGM_POINTER");
-    assert_eq!(session.vm.state().system_ui.focus_index, 46);
-    assert_eq!(
-        session.advance(0, &[]).unwrap_err().code(),
-        "SHINKI_EMU_MUSICA_POISONED"
-    );
+    let before = session.vm.state().clone();
+    assert!(session.vm.set_gallery_page(Page::GalleryBgm, 2).is_err());
+    assert_eq!(session.vm.state(), &before);
     Box::new(session).close().unwrap();
 }

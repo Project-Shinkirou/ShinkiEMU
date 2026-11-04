@@ -10,8 +10,8 @@ fn manager_voice_preferences_keep_history_and_authored_voice_wait() {
     let mut provider = fixture::provider();
     let mut req = request(root.path(), sink.clone());
     req.configuration.push(ConfigEntry {
-        id: "voice_aya".into(),
-        value: ConfigValue::Bool(false),
+        id: "voice_characters".into(),
+        value: ConfigValue::String(r#"[{"prefix":"aya","label":"Aya","enabled":false}]"#.into()),
     });
     let mut opened = provider.open(req).unwrap();
     opened.session.advance(16_666_667, &[]).unwrap();
@@ -63,28 +63,6 @@ fn manager_voice_preferences_keep_history_and_authored_voice_wait() {
 }
 
 #[test]
-fn voice_preferences_are_typed_and_resolved_from_descriptor() {
-    let descriptor = crate::musica_descriptor();
-    descriptor.validate().unwrap();
-    let defaults = resolve_config(&descriptor.configuration, &[]).unwrap();
-    let preferences = crate::voice_preferences::VoicePreferences::resolve(&defaults).unwrap();
-    assert!(preferences.backlog_voice_playback);
-    for prefix in ["ren", "sui", "aya", "tou", "mot", "other"] {
-        assert!(preferences.enabled(&format!("musica:/voice/{prefix}-test.ogg")));
-    }
-    assert!(
-        resolve_config(
-            &descriptor.configuration,
-            &[ConfigEntry {
-                id: "voice_aya".into(),
-                value: ConfigValue::String("false".into())
-            }]
-        )
-        .is_err()
-    );
-}
-
-#[test]
 fn current_manager_preferences_override_saved_voice_playback() {
     let _session = PROVIDER_SESSION.lock();
     let root = tempfile::tempdir().unwrap();
@@ -105,8 +83,8 @@ fn current_manager_preferences_override_saved_voice_playback() {
     let sink = Sink::default();
     let mut req = request(root.path(), sink.clone());
     req.configuration.push(ConfigEntry {
-        id: "voice_aya".into(),
-        value: ConfigValue::Bool(false),
+        id: "voice_characters".into(),
+        value: ConfigValue::String(r#"[{"prefix":"aya","label":"Aya","enabled":false}]"#.into()),
     });
     let mut loaded = provider.open(req).unwrap();
     loaded.session.advance(0, &[key(KeyCode::F9)]).unwrap();
