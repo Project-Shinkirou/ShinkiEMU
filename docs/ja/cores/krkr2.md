@@ -20,3 +20,5 @@ description: モバイル Manager 向けの独立したネイティブ KrKr2 コ
 このブランチは Android/iOS Manager に統合します。単体コア配布は宣言していません。構築には対象 SDK、Bison、コア専用 vcpkg 依存関係が必要です。リリース受け入れと実ゲームの互換性は別途記録します。ライセンスと変更内容は fork の `LICENSE` と `MODIFICATIONS.md` にあります。
 
 Linux のビルドホストには Yasm も必要です（Ubuntu では `apt-get install yasm`）。固定した FFmpeg の x86/x64 ポートは依存関係の準備中にこのツールを検出します。
+
+macOS で x86/x64 向けにビルドする場合も、`brew install yasm` が必要です。

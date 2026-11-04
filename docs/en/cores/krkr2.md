@@ -20,3 +20,5 @@ The adapter runs this upstream's own modular C++ TJS VM, KAG scripts, renderer, 
 This branch integrates the Android/iOS Manager paths. Standalone desktop/mobile core packages are not declared. Building requires the target SDK, Bison and the core-specific prepared vcpkg closure. Release acceptance and actual game compatibility are recorded separately from this integration. Licenses and changes are in the fork's `LICENSE` and `MODIFICATIONS.md`.
 
 Linux build hosts also need Yasm (`apt-get install yasm` on Ubuntu); the pinned FFmpeg x86/x64 recipe requires this assembler tool during dependency preparation.
+
+macOS hosts also need Yasm for x86/x64 inputs: `brew install yasm`.

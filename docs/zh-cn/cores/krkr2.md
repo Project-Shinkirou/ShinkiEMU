@@ -20,3 +20,5 @@ description: 移动端 Manager 的独立原生 KrKr2 核心。
 本分支接入 Android/iOS Manager 路径，不声明独立桌面或移动端核心包。构建需要目标 SDK、Bison 和本核心的 vcpkg 依赖闭包。发布验收和真实游戏兼容性另行记录。原许可与修改范围见 fork 的 `LICENSE`、`MODIFICATIONS.md`。
 
 Linux 构建主机还需安装 Yasm（Ubuntu 使用 `apt-get install yasm`）；固定版本的 FFmpeg x86/x64 配方会在依赖准备阶段检查这个工具。
+
+macOS 主机构建 x86/x64 输入时同样需要 Yasm，使用 `brew install yasm` 安装。
