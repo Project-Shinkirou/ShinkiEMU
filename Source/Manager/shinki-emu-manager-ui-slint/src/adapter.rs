@@ -1040,7 +1040,18 @@ fn translation_provider(value: &TranslationProviderViewModel) -> TranslationProv
         preset: value.preset.as_str().into(),
         active: value.active,
         form: translation_form(&value.form),
+        host: url_host(&value.form.base_url).into(),
     }
+}
+
+/// Authority of an endpoint URL without scheme, path or user info; the input
+/// itself when it has no scheme.
+fn url_host(url: &str) -> &str {
+    let Some((_, rest)) = url.split_once("://") else {
+        return url;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    authority.rsplit('@').next().unwrap_or(authority)
 }
 
 fn translation_form(value: &TranslationFormViewModel) -> TranslationForm {

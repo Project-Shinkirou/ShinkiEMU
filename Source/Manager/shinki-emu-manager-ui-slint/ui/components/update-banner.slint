@@ -2,17 +2,64 @@ import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, TextBu
 import { App, SelfUpdate } from "../globals.slint";
 import { Icons } from "../icons.slint";
 
-// Compact new-version notice: the version, at most two lines of release
-// notes and the actions. It never takes focus or blocks the page below; the
-// host shows it while SelfUpdate.banner-visible is set. The notes row opens
-// 设置 → 更新, which shows the full notes.
-export component UpdateBanner {
-    // Buttons pad their label by 24px per side; 下载 adds an 18px icon and 8px gap.
-    property <length> row-width: skip.preferred-width + download.preferred-width + 2 * 48px + 26px + 4px;
-    property <bool> stacked: root.row-width > root.width - 24px;
+// Release notes excerpt on one line; the row opens 设置 → 更新 with the full notes.
+component NotesLink {
+    callback activated();
 
-    min-height: body.min-height;
-    preferred-height: body.preferred-height;
+    min-height: 32px;
+    preferred-height: 32px;
+    accessible-role: button;
+    accessible-label: @tr("查看详情");
+    accessible-description: SelfUpdate.notes-headline;
+    accessible-action-default => { root.activated(); }
+
+    Rectangle {
+        x: -8px;
+        width: root.width + 8px;
+        border-radius: 8px;
+        background: touch.has-hover ? MaterialPalette.on-surface.with-alpha(0.08) : transparent;
+    }
+
+    HorizontalLayout {
+        spacing: 4px;
+        MaterialText {
+            horizontal-stretch: 1;
+            text: SelfUpdate.notes-headline != "" ? SelfUpdate.notes-headline : @tr("查看详情");
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                width: 20px;
+                height: 20px;
+                source: Icons.chevron-right;
+                colorize: MaterialPalette.on-surface-variant;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+// Compact new-version notice above the page content; the host moves the page
+// down while it shows, so it never covers a control. Wide windows get one
+// row; narrow ones stack the version, the notes excerpt and the actions.
+// Hidden while a game runs (the host checks Session.active).
+export component UpdateBanner {
+    property <bool> wide: root.width >= 720px;
+    // Buttons pad their label by 24px per side; 下载 adds an 18px icon and 8px gap.
+    property <length> actions-width: skip.preferred-width + download.preferred-width + 2 * 48px + 26px + 4px;
+    property <bool> stacked: root.actions-width > root.width - 24px;
+
+    min-height: root.wide ? row.min-height : column.min-height;
+    preferred-height: root.wide ? row.preferred-height : column.preferred-height;
     accessible-role: groupbox;
     accessible-label: @tr("发现新版本 {}", SelfUpdate.latest-version);
 
@@ -27,12 +74,9 @@ export component UpdateBanner {
         background: MaterialPalette.surface-container-high;
         border-width: 1px;
         border-color: MaterialPalette.outline-variant;
-        drop-shadow-blur: 12px;
-        drop-shadow-offset-y: 4px;
-        drop-shadow-color: MaterialPalette.shadow-30;
     }
 
-    // Label measurements for `row-width`; never drawn.
+    // Label measurements for `actions-width`; never drawn.
     Rectangle {
         visible: false;
         width: 0px;
@@ -50,7 +94,70 @@ export component UpdateBanner {
     // Swallow clicks so they do not reach the page underneath.
     TouchArea { }
 
-    body := VerticalLayout {
+    row := HorizontalLayout {
+        visible: root.wide;
+        padding-left: 16px;
+        padding-right: 4px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                width: 20px;
+                height: 20px;
+                source: Icons.download;
+                colorize: MaterialPalette.primary;
+            }
+        }
+        MaterialText {
+            horizontal-stretch: 0;
+            text: @tr("发现新版本 {}", SelfUpdate.latest-version);
+            style: MaterialTypography.title-small;
+            color: MaterialPalette.on-surface;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            NotesLink {
+                activated => { root.open-details(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextButton {
+                text: @tr("忽略");
+                accessible-label: @tr("忽略此版本");
+                clicked => { SelfUpdate.ignore-version(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            FilledButton {
+                text: @tr("下载");
+                accessible-label: @tr("前往下载");
+                icon: Icons.download;
+                clicked => { SelfUpdate.open-download(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            IconButton {
+                icon: Icons.close;
+                tooltip: @tr("稍后");
+                clicked => { SelfUpdate.dismiss(); }
+            }
+        }
+    }
+
+    column := VerticalLayout {
+        visible: !root.wide;
         padding-left: 16px;
         padding-right: 4px;
         padding-top: 4px;
@@ -58,7 +165,7 @@ export component UpdateBanner {
 
         HorizontalLayout {
             spacing: 12px;
-            height: 48px;
+            min-height: 48px;
 
             VerticalLayout {
                 alignment: center;
@@ -76,7 +183,9 @@ export component UpdateBanner {
                 style: MaterialTypography.title-small;
                 color: MaterialPalette.on-surface;
                 vertical-alignment: center;
-                overflow: elide;
+                // Long translations take a second line instead of losing the version.
+                wrap: word-wrap;
+                overflow: clip;
             }
             VerticalLayout {
                 alignment: center;
@@ -89,48 +198,10 @@ export component UpdateBanner {
             }
         }
 
-        // Release notes excerpt; the whole row opens the full notes.
-        details := Rectangle {
-            accessible-role: button;
-            accessible-label: @tr("查看详情");
-            accessible-action-default => { root.open-details(); }
-            min-height: notes.min-height;
-            preferred-height: notes.preferred-height;
-
-            Rectangle {
-                x: -8px;
-                width: parent.width;
-                border-radius: 8px;
-                background: touch.has-hover ? MaterialPalette.on-surface.with-alpha(0.08) : transparent;
-            }
-
-            notes := HorizontalLayout {
-                padding-right: 8px;
-                spacing: 4px;
-                MaterialText {
-                    horizontal-stretch: 1;
-                    text: SelfUpdate.notes-headline != "" ? SelfUpdate.notes-headline : @tr("查看详情");
-                    style: MaterialTypography.body-medium;
-                    color: MaterialPalette.on-surface-variant;
-                    // One line; 设置 → 更新 shows the full notes.
-                    overflow: elide;
-                    vertical-alignment: center;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Icon {
-                        width: 20px;
-                        height: 20px;
-                        source: Icons.chevron-right;
-                        colorize: MaterialPalette.on-surface-variant;
-                    }
-                }
-            }
-
-            touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.open-details(); }
+        HorizontalLayout {
+            padding-right: 8px;
+            NotesLink {
+                activated => { root.open-details(); }
             }
         }
 

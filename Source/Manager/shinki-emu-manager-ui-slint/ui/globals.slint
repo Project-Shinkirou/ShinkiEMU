@@ -334,6 +334,8 @@ export struct TranslationProvider {
     preset: string,
     active: bool,
     form: TranslationForm,
+    // Host of form.base-url, e.g. "api.openai.com", for the one-line card summary.
+    host: string,
 }
 
 // The provider editor sheet: "preset" picks a preset for a new card,

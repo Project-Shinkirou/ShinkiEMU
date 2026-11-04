@@ -60,6 +60,13 @@ export component ManagerWindow inherits MaterialWindow {
     property <length> bar-height: 64px;
     property <length> bottom-nav-height: 80px;
     property <length> nav-bottom: root.show-bottom-nav ? root.bottom-nav-height : 0px;
+    // The new-version banner sits above the page content, which moves down by
+    // `banner-inset` while it shows so no control is covered.
+    property <bool> banner-shown: SelfUpdate.banner-visible && !Session.active && !root.onboarding;
+    property <length> banner-margin: root.compact ? 8px : 12px;
+    property <length> banner-inset: root.banner-shown ? banner.preferred-height + root.banner-margin : 0px;
+    property <length> content-x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
+    property <length> content-width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
     // Set by the navigation widgets so a page switch they caused keeps focus on
     // the activated item instead of moving it to the root key scope.
     property <bool> nav-driven;
@@ -256,17 +263,17 @@ export component ManagerWindow inherits MaterialWindow {
         if root.show-library-bar : SmallAppBar {
             // SmallAppBar pads only 4px; match the 16px page headers.
             x: root.usable-x + 12px;
-            y: root.usable-y;
+            y: root.usable-y + root.banner-inset;
             width: root.usable-width - 12px;
             height: root.bar-height;
             title: @tr("游戏库");
         }
 
         pages := Rectangle {
-            x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
-            y: root.usable-y + (root.show-library-bar ? root.bar-height : 0px);
-            width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
-            height: root.usable-height - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
+            x: root.content-x;
+            y: root.usable-y + root.banner-inset + (root.show-library-bar ? root.bar-height : 0px);
+            width: root.content-width;
+            height: root.usable-height - root.banner-inset - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
             clip: true;
 
             if App.page == "library" : LibraryPage {
@@ -362,11 +369,11 @@ export component ManagerWindow inherits MaterialWindow {
             height: root.usable-height;
         }
 
-        // New Manager version: a floating card that leaves the page usable.
-        if SelfUpdate.banner-visible && !Session.active && !root.onboarding : UpdateBanner {
-            x: root.compact ? root.usable-x + 8px : root.usable-x + root.usable-width - self.width - 16px;
-            y: root.usable-y + (root.compact ? 8px : 16px);
-            width: root.compact ? root.usable-width - 16px : min(380px, root.usable-width - root.rail-width - 32px);
+        banner := UpdateBanner {
+            visible: root.banner-shown;
+            x: root.content-x + root.banner-margin;
+            y: root.usable-y + root.banner-margin;
+            width: root.content-width - 2 * root.banner-margin;
             height: self.preferred-height;
         }
 

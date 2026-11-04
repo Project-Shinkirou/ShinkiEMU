@@ -85,15 +85,33 @@ component CoreRow {
                     color: MaterialPalette.on-surface;
                     overflow: elide;
                 }
-                MaterialText {
-                    text: (root.core.engine != "" ? root.core.engine + " · " : "")
-                        + (root.core.version != "" ? root.core.version : @tr("版本未知"))
-                        + (root.update ? " → " + root.core.update-version : "")
-                        + (root.core.source != "" ? " · " + CoreText.source-label(root.core.source) : "");
-                    style: MaterialTypography.body-medium;
-                    color: MaterialPalette.on-surface-variant;
-                    wrap: word-wrap;
-                    overflow: clip;
+                // Each part stays whole; a part that no longer fits moves to the next line.
+                FlexboxLayout {
+                    spacing: 6px;
+                    if root.core.engine != "" : MaterialText {
+                        min-width: self.preferred-width;
+                        text: root.core.engine + " ·";
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    MaterialText {
+                        min-width: self.preferred-width;
+                        text: root.core.version != "" ? root.core.version : @tr("版本未知");
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    if root.update : MaterialText {
+                        min-width: self.preferred-width;
+                        text: "→ " + root.core.update-version;
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    if root.core.source != "" : MaterialText {
+                        min-width: self.preferred-width;
+                        text: "· " + CoreText.source-label(root.core.source);
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
                 }
             }
 
@@ -483,31 +501,43 @@ export component CoresPage {
             border-radius: 16px;
             background: MaterialPalette.tertiary-container;
 
-            HorizontalLayout {
+            // Narrow pages put 立即重启 under the message.
+            VerticalLayout {
                 padding: 16px;
-                spacing: 16px;
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Icon {
-                        width: 24px;
-                        height: 24px;
-                        source: Icons.restart-alt;
-                        colorize: MaterialPalette.on-tertiary-container;
+                padding-bottom: root.narrow ? 12px : 16px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 16px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Icon {
+                            width: 24px;
+                            height: 24px;
+                            source: Icons.restart-alt;
+                            colorize: MaterialPalette.on-tertiary-container;
+                        }
+                    }
+                    MaterialText {
+                        horizontal-stretch: 1;
+                        text: @tr("核心有变更，重启 ShinkiEMU 后生效。");
+                        style: MaterialTypography.body-large;
+                        color: MaterialPalette.on-tertiary-container;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    if !root.narrow : VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        FilledButton {
+                            text: @tr("立即重启");
+                            clicked => { Cores.restart(); }
+                        }
                     }
                 }
-                MaterialText {
-                    horizontal-stretch: 1;
-                    text: @tr("核心有变更，重启 ShinkiEMU 后生效。");
-                    style: MaterialTypography.body-large;
-                    color: MaterialPalette.on-tertiary-container;
-                    vertical-alignment: center;
-                    wrap: word-wrap;
-                    overflow: clip;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
+                if root.narrow : HorizontalLayout {
+                    alignment: end;
                     FilledButton {
                         text: @tr("立即重启");
                         clicked => { Cores.restart(); }

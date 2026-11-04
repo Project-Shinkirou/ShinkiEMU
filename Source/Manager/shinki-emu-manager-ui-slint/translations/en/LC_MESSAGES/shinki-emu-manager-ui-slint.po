@@ -2533,9 +2533,6 @@ msgstr "API type"
 msgid "恢复预设地址"
 msgstr "Restore preset URL"
 
-msgid "API Key（已保存，留空沿用）"
-msgstr "API key (saved; leave empty to keep)"
-
 msgid "本地服务通常不校验密钥，可以填写任意内容。"
 msgstr "Local services usually do not check the key; any text works."
 
@@ -2643,3 +2640,6 @@ msgstr "Delete"
 
 msgid "名称"
 msgstr "Name"
+
+msgid "已保存密钥；留空则继续使用。"
+msgstr "A key is saved; leave this empty to keep it."

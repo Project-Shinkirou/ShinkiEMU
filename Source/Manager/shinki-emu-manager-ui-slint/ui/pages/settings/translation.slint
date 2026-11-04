@@ -81,13 +81,14 @@ component Hint inherits HorizontalLayout {
 // One saved provider: name, endpoint and model, and its actions.
 component ProviderCard {
     in property <TranslationProvider> provider;
-    // Narrow cards use icon-only actions so all three fit on one row.
+    // Narrow cards use icon-only actions and put 启用 on the action row.
     property <bool> narrow: root.width < 420px;
 
     min-height: l.min-height;
     preferred-height: l.preferred-height;
     accessible-role: groupbox;
     accessible-label: root.provider.name;
+    accessible-description: root.provider.form.model + " · " + root.provider.form.base-url;
 
     Rectangle {
         border-radius: 12px;
@@ -131,23 +132,22 @@ component ProviderCard {
                     wrap: word-wrap;
                     overflow: clip;
                 }
+                // Model and endpoint host stay on one line each; 编辑 shows them in full.
                 MaterialText {
                     text: root.provider.form.model;
                     style: MaterialTypography.body-medium;
                     color: root.provider.active ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
-                    wrap: char-wrap;
-                    overflow: clip;
+                    overflow: elide;
                 }
                 MaterialText {
-                    text: root.provider.form.base-url;
+                    text: root.provider.host;
                     style: MaterialTypography.body-small;
                     color: root.provider.active ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
-                    wrap: char-wrap;
-                    overflow: clip;
+                    overflow: elide;
                 }
             }
 
-            VerticalLayout {
+            if root.provider.active || !root.narrow : VerticalLayout {
                 alignment: start;
                 horizontal-stretch: 0;
                 if root.provider.active : StatusChip {
@@ -172,7 +172,7 @@ component ProviderCard {
             }
             TextButton {
                 text: @tr("复制");
-                icon: Icons.add;
+                icon: Icons.content-copy;
                 clicked => { Settings.duplicate-translation-provider(root.provider.id); }
             }
             TextButton {
@@ -184,15 +184,19 @@ component ProviderCard {
             }
         }
         if root.narrow : HorizontalLayout {
-            alignment: end;
             spacing: 4px;
+            if !root.provider.active : TonalButton {
+                text: @tr("启用");
+                clicked => { Settings.activate-translation-provider(root.provider.id); }
+            }
+            Rectangle { horizontal-stretch: 1; }
             IconButton {
                 icon: Icons.tune;
                 tooltip: @tr("编辑");
                 clicked => { ProviderEditor.edit(root.provider); }
             }
             IconButton {
-                icon: Icons.add;
+                icon: Icons.content-copy;
                 tooltip: @tr("复制");
                 clicked => { Settings.duplicate-translation-provider(root.provider.id); }
             }
@@ -231,9 +235,27 @@ export component TranslationSection {
             }
         }
 
-        SettingGroup {
-            title: @tr("翻译服务商");
-            description: @tr("可以保存多个服务商，游戏使用标为“使用中”的那一个。API Key 保存在系统凭据库中。");
+        // Cards carry their own surface, so the group has no frame of its own.
+        VerticalLayout {
+            spacing: 8px;
+
+            VerticalLayout {
+                spacing: 4px;
+                padding-left: 4px;
+                padding-right: 4px;
+                MaterialText {
+                    text: @tr("翻译服务商");
+                    style: MaterialTypography.title-small;
+                    color: MaterialPalette.primary;
+                }
+                MaterialText {
+                    text: @tr("可以保存多个服务商，游戏使用标为“使用中”的那一个。API Key 保存在系统凭据库中。");
+                    style: MaterialTypography.body-medium;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+            }
 
             if !root.has-providers : MaterialText {
                 text: @tr("还没有服务商。添加一个并填写 API Key 后即可使用实时翻译。");
@@ -248,6 +270,7 @@ export component TranslationSection {
             }
 
             HorizontalLayout {
+                padding-top: 8px;
                 alignment: start;
                 FilledButton {
                     text: @tr("添加服务商");
@@ -344,12 +367,16 @@ component PresetGroup {
         }
     }
 
+    // Spacing 0: every preset has a (possibly empty) slot in the `for`.
     l := VerticalLayout {
-        spacing: 4px;
-        if root.count > 0 : MaterialText {
-            text: Presets.category-label(root.category);
-            style: MaterialTypography.title-small;
-            color: MaterialPalette.primary;
+        spacing: 0px;
+        if root.count > 0 : HorizontalLayout {
+            padding-bottom: 4px;
+            MaterialText {
+                text: Presets.category-label(root.category);
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.primary;
+            }
         }
         for preset in Presets.all : VerticalLayout {
             if preset.category == root.category && Presets.matches(preset, root.query) : PresetRow {
@@ -512,7 +539,9 @@ component ProviderEditorSheet {
             HorizontalLayout {
                 padding-left: 8px;
                 padding-right: 16px;
-                height: 64px;
+                min-height: 64px;
+                padding-top: 8px;
+                padding-bottom: 8px;
                 spacing: 4px;
                 VerticalLayout {
                     alignment: center;
@@ -534,7 +563,8 @@ component ProviderEditorSheet {
                     style: MaterialTypography.title-large;
                     color: MaterialPalette.on-surface;
                     vertical-alignment: center;
-                    overflow: elide;
+                    wrap: word-wrap;
+                    overflow: clip;
                 }
             }
 
@@ -648,9 +678,12 @@ component ProviderEditorSheet {
                         spacing: 4px;
                         TextField {
                             text <=> root.secret;
-                            label: root.is-new ? "API Key" : @tr("API Key（已保存，留空沿用）");
+                            label: "API Key";
                             input-type: InputType.password;
                             has-error: root.key-required && root.name != "";
+                        }
+                        if !root.is-new : Hint {
+                            text: @tr("已保存密钥；留空则继续使用。");
                         }
                         Hint {
                             text: Presets.is-local(root.preset) ? @tr("本地服务通常不校验密钥，可以填写任意内容。") : @tr("密钥保存在系统凭据库中，不会写入配置文件。");
