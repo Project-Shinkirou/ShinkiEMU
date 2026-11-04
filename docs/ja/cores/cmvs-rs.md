@@ -15,6 +15,8 @@ description: 外部 CMVS/CVNS コアの上流対応範囲、設定、ホスト�
 
 上流に登録された CMVS/CVNS 作品のみを対象とします。対象リリース、形式の分岐、実行上の制約は[上流の登録一覧](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt) と[状態報告](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/docs/status.md) を参照してください。PS2A プローブの一致はエンジンデータの検出であり、動作保証ではありません。未登録のデータや実行ファイルは open 時に上流が拒否します。アダプターはその判定を保持し、作品ホワイトリストを追加しません。
 
+未登録リリースの open は ABI `NO_MATCH`（8）を返します。対象は上流の `SelectionError::UnknownGame` と `UnknownBinary` のみで、拒否条件やメッセージは変更しません。初回調査では `UnknownGame` が status 6（`game data matches no recorded game`）として返されましたが、アダプターでは通常の不一致に分類します。I/O、リソース不足、デコードの失敗は `CORE_ERROR` のままです。実作品の open、スクリーンショット、フレーム hash の検証は、登録済みサンプルの確保まで延期します。
+
 worker は上流の `Startup`、CPU/フォント描画、CMV/MGV 動画デコーダー、ネイティブ Vorbis 音声、スナップショットとセーブの実装を利用します。フレームリースは完成した不変のエンジン画面を所有し、close 後も読み取り・返却できます。動的ビルドは C ABI v3 query を公開し、静的ビルドは衝突するシンボルを公開せず Rust パスの query を提供します。
 
 ## 設定とセーブ

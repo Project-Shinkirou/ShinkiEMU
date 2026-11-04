@@ -15,6 +15,8 @@ Publication is blocked while real-game frame acceptance lacks an upstream-regist
 
 Only upstream-registered CMVS/CVNS releases are supported. The [upstream game registry](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt) and [status report](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/docs/status.md) describe the actual formats and per-release limits. A PS2A probe match identifies an engine installation, not a supported or playable release. Upstream rejects unregistered data or executables during open; the adapter keeps this check and adds no title whitelist.
 
+Unregistered releases return ABI `NO_MATCH` (8). Only upstream `SelectionError::UnknownGame` and `UnknownBinary` are translated this way; rejection conditions and messages are unchanged. The initial investigation surfaced `UnknownGame` as status 6 (`game data matches no recorded game`); the adapter now classifies it as a normal non-match. I/O, missing-resource and decode failures remain `CORE_ERROR`. Real-game open, screenshots and frame-hash acceptance are deferred pending a registered sample.
+
 The worker uses upstream's `Startup`, CPU/font scene composition, CMV/MGV movie decoders, native Vorbis audio and snapshot/save implementations. Frame leases own immutable complete engine canvases and remain valid after close. Dynamic builds export C ABI v3 query; static builds provide the same Rust-path query without exporting a conflicting symbol.
 
 ## Configuration and saves

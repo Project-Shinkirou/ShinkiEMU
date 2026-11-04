@@ -15,6 +15,8 @@ description: 外部 CMVS/CVNS 核心的上游覆盖范围、配置和宿主限�
 
 仅支持上游登记的 CMVS/CVNS 作品。具体发行版本、格式分支和运行限制见[上游登记清单](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt)和[上游状态报告](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/docs/status.md)。PS2A 格式探测命中只表示找到了引擎数据，不代表对应发行版本受支持或可玩。未登记的数据或可执行文件会被上游在 open 时拒绝；adapter 保留这项检查，不另加作品白名单。
 
+未登记发行版 open 返回 ABI `NO_MATCH`（8）。只有上游的 `SelectionError::UnknownGame` 和 `UnknownBinary` 做这项状态翻译，拒绝条件与错误消息不变。初次调查中 `UnknownGame` 曾以 status 6（`game data matches no recorded game`）返回，现已正确归类为正常不匹配；IO、缺失资源与解码失败仍为 `CORE_ERROR`。真实 open、截图与帧 hash 验收按用户决定标为“待样本”。
+
 worker 使用上游 `Startup`、CPU/字体场景合成、CMV/MGV 视频解码、原生 Vorbis 音频和快照/存档实现。帧租约持有不可变的完整引擎画布，close 后仍可读取和归还。动态构建导出 C ABI v3 query；静态构建提供相同的 Rust 路径 query，不导出冲突的未修饰符号。
 
 ## 配置与存档

@@ -452,7 +452,7 @@ publish_blocked = "Local CMVS samples do not match upstream-registered releases;
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/cmvs-rs"
 branch = "shinki"
-rev = "e99d641aacdcc687964450df4b45e4e26b2a3c1f"
+rev = "b8de741dca3737d03351a5a45531616dff7ea39a"
 upstream = "https://github.com/Shizuku-in/cmvs-rs"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/Shizuku-in/cmvs-rs", ref_kind = "branch", ref_name = "main", commit = "b9fed68ba05f80444338331bb3999f14c8f4f976" }
