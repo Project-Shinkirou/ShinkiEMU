@@ -734,22 +734,58 @@ export component PatchPage {
         y: root.body-y;
         width: root.column;
         height: root.body-height;
-        alignment: start;
+        alignment: center;
         spacing: Theme.space-md;
-        padding-top: Theme.space-lg;
+
+        // Empty state illustration
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 120px;
+                height: 96px;
+                border-radius: 8px;
+                background: @linear-gradient(160deg, MaterialPalette.primary-container 0%, MaterialPalette.surface-container-highest 100%);
+                border-width: 1px;
+                border-color: MaterialPalette.outline-variant;
+                HorizontalLayout {
+                    alignment: center;
+                    Icon {
+                        width: 48px;
+                        colorize: MaterialPalette.on-primary-container;
+                        source: Icons.library-books;
+                    }
+                }
+            }
+        }
 
         MaterialText {
-            text: Patch.query != "" ? @tr("没有与“{}”匹配的游戏。", Patch.query) : @tr("资料库中还没有游戏。先在游戏库添加游戏目录并完成准备。");
+            text: Patch.query != "" ? @tr("没有与「{}」匹配的游戏。", Patch.query) : @tr("资料库中还没有游戏。");
+            style: MaterialTypography.title-medium;
+            color: MaterialPalette.on-surface;
+            wrap: word-wrap;
+            overflow: clip;
+            horizontal-alignment: center;
+        }
+        MaterialText {
+            text: Patch.query != "" ? @tr("尝试其他关键词或清除搜索。") : @tr("先在游戏库添加游戏目录并完成准备。");
             style: MaterialTypography.body-medium;
             color: MaterialPalette.on-surface-variant;
             wrap: word-wrap;
             overflow: clip;
+            horizontal-alignment: center;
         }
-        if Patch.query != "" : HorizontalLayout {
-            alignment: start;
-            TextButton {
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            if Patch.query != "" : TextButton {
                 text: @tr("清除搜索");
                 clicked => { root.clear-search(); }
+            }
+            if Patch.query == "" : FilledButton {
+                text: @tr("前往游戏库");
+                icon: Icons.play-arrow;
+                clicked => { App.page = "library"; }
             }
         }
     }
@@ -1089,7 +1125,7 @@ export component PatchPage {
 
     if root.footer-shown : HorizontalLayout {
         x: root.column-x;
-        y: root.height - root.footer-height;
+        y: root.height - root.footer-height - (root.compact ? 80px : 0px);
         width: root.column;
         height: root.footer-height;
         padding-top: root.short ? 4px : Theme.space-sm;

@@ -2459,3 +2459,18 @@ msgstr "Pre-releases bring new features sooner but may be unstable. On by defaul
 
 msgid "GitHub 请求已达速率限制，请稍后再试"
 msgstr "GitHub rate limit reached. Try again later."
+
+msgid "资料库中还没有游戏。"
+msgstr "No games in library yet."
+
+msgid "先在游戏库添加游戏目录并完成准备。"
+msgstr "Add game directories in the library first."
+
+msgid "尝试其他关键词或清除搜索。"
+msgstr "Try other keywords or clear the search."
+
+msgid "前往游戏库"
+msgstr "Go to Library"
+
+msgid "没有与「{}」匹配的游戏。"
+msgstr "No games match \"{}\".)"
