@@ -294,6 +294,8 @@ Android の正式配布用証明書 SHA256 は引き続き `c415bd462d26574758ed
 
 [Impacto 連番3のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-impacto-tag-0-10-8-930-96de7434c8b1a57df7ff24dcee829282194873fe596677056fa168485cb1555e) は、製品コミット `5b197c1c656186d3a535bb3486311623516166e5`、upstream `0.10.8.930`、adapter `34b89c29123d025d96f73ac9a746fb388e572065` から Windows、Linux、両 macOS アーキテクチャのパッケージを公開しています。4対象の対応ソース・ネイティブ入力・ライセンス・パッケージ監査と、認証なしでの全8バイナリ/ソース添付ファイルの実ダウンロード・ハッシュ照合が完了しました。この単独版は Manager6 内蔵の `910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157`/連番2を置き換えず、公開済み連番1の資産も変更しません。カタログは公開完了の順番ではなく連番3を選びます。
 
+開発ブランチの Impacto pin には、[Windows で KiriKiri と同時にロードできない問題（#37）](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)の [fmt v11 互換性修正](https://github.com/Project-Shinkirou/impacto/pull/2)が含まれます。vcpkg manifest は fmt を 11.2.0 に固定し、KiriKiri、spdlog、OpenAL の v11 ABI に合わせます。Windows はファイル名でロード済みの `fmt.dll` を再利用するため、DLL ディレクトリの検索フラグでは異なる ABI を分離できません。次の Impacto 公開は連番4を使い、公開済みの連番1–3は変更しません。
+
 [Ren’Py 連番1のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-renpy-tag-8-5-3-26051504-5f537560e1a1b852070dec65946d6c027e9f4f7482bddd8349ed47960c383133) は、製品コミット `05326439dcfafb81df79f3dabe0997fb696ad3f3`、upstream `8.5.3.26051504`、adapter `a52d9d9c006223c2b5a276c05e1b97ffeecbe66f` から4デスクトップ対象を公開しています。全対応ソースパッケージで、107バイトのシンボリックリンク先を含む固定再ビルド用レシピ389/389項目の実物確認が完了しました。公開された全8バイナリ/ソース添付ファイルを認証なしで実際に取得し、受け入れ済み記録とハッシュを照合しました。元のネイティブライセンス本文も固定 fork と原入力に対してバイト単位で確認済みです。
 
 同じ index に `cores-v2.json`（`shinki.emu.cores.v2`）を追加し、旧エントリと新識別子を収録します。`cores.json` は v1 と identity のない公開済みエントリを維持するため、旧 Manager のダウンロードは継続します。新 Manager は index にある v2 を優先し、旧 v1 snapshot も受け入れます。公開済み beta のタグ、添付ファイルや来歴は変更せず、引き続きインストールできます。更新は adapter crate の版ではなくパッケージの識別子を比較します。
