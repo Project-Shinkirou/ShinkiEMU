@@ -67,11 +67,11 @@ PAZ 探测只识别引擎，不能据此得出密钥已安装。Manager 只选�
 
 PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文件变化校验保留。SDK 的 `ArchiveManifest` 是核心本地索引，不是 Host VFS 或产品 package。配置相对路径以游戏目录为基准，资源始终限于游戏目录内；公共读取错误使用 `SHINKI_EMU_PROFILE_*`。读取不运行 managed helper、BinaryFormatter 或 executable patch。
 
-运行时统一使用原版 eden/Perseus 的 `.sav` 与同名 `.png`，路径、槽位编号、缩略图和限制见[存档说明](../../../docs/zh-cn/cores/shinki-emu-musica.md#存档)。旧 beta `.asav`（`AMUSSV06` 及更早格式）不兼容，既不读取也不转换、搬迁或删除；请保留备份并新建原生槽位。
+存档身份先从原版 `system.dat` 和编号 `.sav` 解析，再由发行版 Metadata preset 的 `native_save` JSON 描述补充；核心不按作品名或 exe 名选择目录与格式。解析不了且没有描述时，仍在 `<game>/.shinki/musica/generic-v1/` 真实持久化全部状态，按游戏目录隔离。通用槽使用独立签名，与未知原版 exe 不互通；配置了已恢复的原生布局时保留原版字节格式，可显式写入原版目录。字段来源、格式差异和旧数据迁移见[存档说明](../../../docs/zh-cn/cores/shinki-emu-musica.md#存档)。旧 beta `.asav`（`AMUSSV06` 及更早）不兼容，保持原样，请备份并新建槽位。
 
 ## eden 原版存档与检查点
 
-`eden_save::EdenSave` 提供有界容器编解码、严格检查点投影和运行时原生存读档。`EdenEdition` 显式区分日文 CD-ROM、Steam English 和 Perseus 签名；签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
+`eden_save::EdenSave` 提供有界容器编解码、严格检查点投影和运行时存读档。公开 `EdenEdition` 保留历史日文 CD-ROM、Steam English、Perseus codec/layout 名称，供已有调用方使用；运行时存档身份另由数据描述提供签名、目录及命名模板。签名后依次为 NUL、有界注释、NUL、四字节 route 和单个 zlib 流。不会搜索压缩魔数来猜测偏移。
 
 `EdenSaveEncoding` 由调用方显式选择 Shift-JIS、GBK 或 Windows-1252。解码须无替换字符，重新编码须还原原字节；写入不可表达字符直接失败。变量及 backlog 保留原字段顺序，包括多语言 `L1_0` 等字段，不补默认字段或丢弃未知字段。重复字段、结构注入、截尾、压缩校验失败、追加压缩流和大小超限均拒绝；容器和解压体各限 16 MiB。类型不实现 Debug，避免误打出正文。
 

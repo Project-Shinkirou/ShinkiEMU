@@ -40,7 +40,7 @@ fn thumbnail() -> Vec<u8> {
 #[test]
 fn native_slots_are_independent_and_reject_out_of_range() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("perseus.exe"), []).unwrap();
+    crate::native_directory::tests::identity_fixture(root.path(), true);
     let files = NativeFiles::open(root.path(), ScriptEncoding::ShiftJis).unwrap();
     let save = save();
     let png = thumbnail();
@@ -61,7 +61,7 @@ fn native_slots_are_independent_and_reject_out_of_range() {
     let path = root
         .path()
         .join(".shinki/musica/minori")
-        .join(crate::minori_data::MinoriTitle::Perseus.directory())
+        .join("夏空のペルセウス")
         .join("perseus_0020.sav");
     std::fs::write(&path, b"damaged native slot").unwrap();
     assert!(reopened.write_slot(20, &save, &png).is_err());
@@ -78,7 +78,7 @@ fn old_beta_slots_are_untouched_in_both_namespaces() {
         )
         .unwrap();
     }
-    std::fs::write(root.path().join("perseus.exe"), []).unwrap();
+    crate::native_directory::tests::identity_fixture(root.path(), true);
     let files = NativeFiles::open(root.path(), ScriptEncoding::ShiftJis).unwrap();
     assert!(files.slot(20).unwrap().is_none());
     files.write_slot(20, &save(), &thumbnail()).unwrap();
@@ -149,7 +149,7 @@ fn save_cards_use_native_dimensions_and_reject_invalid_frames() {
 #[test]
 fn append_playing_selects_independent_eden_slot_and_thumbnail_namespaces() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("eden_en.exe"), []).unwrap();
+    crate::native_directory::tests::identity_fixture(root.path(), false);
     let mut files = NativeFiles::open(root.path(), ScriptEncoding::ShiftJis).unwrap();
     let checkpoint = save().checkpoint().unwrap();
     let normal = EdenSave::from_checkpoint(
@@ -192,7 +192,7 @@ fn append_playing_selects_independent_eden_slot_and_thumbnail_namespaces() {
     let directory = root
         .path()
         .join(".shinki/musica/minori")
-        .join(crate::minori_data::MinoriTitle::EdenEnglish.directory());
+        .join("eden (English edition)");
     for name in [
         "eden0001.sav",
         "eden0001.png",

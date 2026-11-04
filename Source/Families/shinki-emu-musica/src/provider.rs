@@ -165,6 +165,15 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "目录中的 .sc 文件优先于 scr 归档中的同名脚本，路径相对游戏目录；留空则不使用。",
         )
         .flags(DIRECTORY | GAME_RELATIVE | ADVANCED),
+        MusicaField::new(
+            "native_save",
+            "原生存档描述",
+            "文件",
+            ConfigKind::String { max_bytes: 4096 },
+            ConfigValue::String(String::new()),
+            "发行版 preset 提供的存档身份 JSON；先解析原版文件，缺少格式信息时使用描述，均无可用信息时写入游戏目录内的通用存档。",
+        )
+        .flags(ADVANCED),
         MusicaField::text(
             "subtitle_map",
             "影片字幕映射",
@@ -495,7 +504,16 @@ impl MusicaProvider {
             subtitle_catalog.as_ref().map(|catalog| catalog.identity()),
         )
         .map_err(core_error)?;
-        let mut native = crate::native_directory::NativeFiles::open(root, primary_encoding)?;
+        let native_save = get("native_save")?;
+        let mut native = if native_save.is_empty() {
+            crate::native_directory::NativeFiles::open(root, primary_encoding)?
+        } else {
+            crate::native_directory::NativeFiles::open_configured(
+                root,
+                primary_encoding,
+                &native_save,
+            )?
+        };
         native.set_name_resource_identity(
             archive
                 .name_resources

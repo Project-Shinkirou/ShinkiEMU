@@ -33,21 +33,21 @@ impl MusicaSession {
         if self.last_quick_save_pc_line == Some(pc_line) {
             return Ok(());
         }
-        let perseus = self.native.is_perseus()?;
-        let slot = if perseus {
+        let slot_banks = self.native.uses_slot_banks()?;
+        let slot = if slot_banks {
             self.quick_cursor
         } else {
             self.quick_cursor.max(1)
         };
         self.save_with_comment(
             slot,
-            if perseus {
+            if slot_banks {
                 "クイックセーブ"
             } else {
                 "快速存档"
             },
         )?;
-        let next = if perseus {
+        let next = if slot_banks {
             (self.quick_cursor + 1) % 10
         } else {
             slot % 9 + 1
@@ -58,7 +58,7 @@ impl MusicaSession {
         Ok(())
     }
     pub(super) fn quick_load(&mut self) -> SessionResult<()> {
-        let slot = if self.native.is_perseus()? {
+        let slot = if self.native.uses_slot_banks()? {
             (self.quick_cursor + 9) % 10
         } else if self.quick_cursor <= 1 {
             9
@@ -78,18 +78,18 @@ impl MusicaSession {
         if limit > 0 && checkpoint.history.len() > limit {
             checkpoint.history.drain(..checkpoint.history.len() - limit);
         }
-        let perseus = self.native.is_perseus()?;
-        let slot = if perseus { 10 + self.auto_cursor } else { 0 };
+        let slot_banks = self.native.uses_slot_banks()?;
+        let slot = if slot_banks { 10 + self.auto_cursor } else { 0 };
         self.write_checkpoint(
             slot,
-            if perseus {
+            if slot_banks {
                 "オートセーブ"
             } else {
                 "Auto save"
             },
             checkpoint,
         )?;
-        if perseus {
+        if slot_banks {
             self.store_auto_cursor((self.auto_cursor + 1) % 10)?;
         }
         Ok(())

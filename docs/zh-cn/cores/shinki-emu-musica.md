@@ -21,7 +21,7 @@ description: Musica 的格式、原生行为与限制。
 
 ## 存档
 
-游戏目录里有 `eden_en.exe` 或 `perseus.exe` 时，Musica 在 `<game>/.shinki/musica/minori/<title>/` 下按字节兼容的格式读写原版 minori 文件。原版把同样的文件放在 `Documents\minori\<title>\`；Musica 不会写入 Documents。eden 的标题目录名是 `eden (English edition)`，Perseus 是 `夏空のペルセウス`。原版 Perseus 用 ANSI API 处理这个名字，所以系统代码页不是 CP932 时，它在 Documents 下的目录名会显示为乱码（GBK 下为 `壞嬻偺儁儖僙僂僗`）。
+Musica 从原版文件解析存档身份，不按 exe 文件名或作品名选择。解析范围包括游戏根目录、`save/`、`savedata/` 和已有的 `.shinki/musica/minori/*/`。可解码的 `system.dat` 确定 RC4/Blowfish 封装；有效的编号 `.sav` 提供实际目录、文件名前缀与数字宽度、NUL 结尾的容器签名、四字节前缀，以及基础/扩展检查点布局。只有两套命名都存在时，才能从文件中推导追加篇命名空间。单凭签名或 SerialCode 无法确定其余参数。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -29,22 +29,43 @@ description: Musica 的格式、原生行为与限制。
 | `sysparams.txt` | 设置、快速存档和自动存档游标（Tab 分隔，CRLF） |
 | `<script>.tbr` | 单个脚本的已读消息位图 |
 | `cgv.dat` | 已看过的 CG 列表 |
-| `edenNNNN.sav` / `edenPMNNNN.sav`、`perseus_NNNN.sav` | 原生消息检查点与历史 |
-| 同名 `.png` | 不透明 RGB 区域均值缩略图：eden 128×80，Perseus 106×60 |
+| `<prefix><number>.sav` | 按解析或配置的命名模板保存消息检查点与历史 |
+| 同名 `.png` | 不透明 RGB 区域均值缩略图：基础布局 128×80，扩展布局 106×60 |
 
-想沿用原版安装的进度或设置，把 `Documents\minori\<title>\` 里的文件复制到 `.shinki/musica/minori/<title>/`；要回到原版 exe 继续玩，按同样方式复制回去。`sysparams.txt` 中 Musica 用不到的键（如字体名、窗口尺寸）原样保留。原版没有对应键的设置存放在 `.shinki/musica/musica-settings.txt`，格式相同；eden 的五个角色语音开关就放在这里。
+原版文件不足以确定格式时，由发行版本绑定的 Metadata preset（`Metadata/engines/presets/<rid>/<plugin_id>.json`，`shinki.emu.presets.v1`）提供 `configuration.native_save`，值为 JSON **字符串**。解码后的描述如下：
 
-压缩文件开头有一个由 Perseus `SerialCode` 算出的前缀。在 Windows 上，Musica 读取 `HKLM\Software\minori\perseus` 的 `SerialCode` 并取 CRC32。读不到时沿用目录里已有原版文件的前缀，再没有就写 0。eden 始终用 0。
+```json
+{
+  "version": 1,
+  "directory": "save",
+  "slot_prefix": "slot_",
+  "append_slot_prefix": null,
+  "slot_digits": 4,
+  "signature": "engine-release 1.00",
+  "system_format": "Rc4",
+  "extended": false,
+  "serial_key": null,
+  "prefix": 0,
+  "auto_save_cycle": 200,
+  "voice_keys": null
+}
+```
 
-已知差异：`system.dat`、`sysparams.txt` 和文件前缀与原版逐字节一致。经 zlib 压缩的 `.tbr` 和 `cgv.dat` 解压后的内容相同，但压缩后的字节通常不同，因为 Musica 的 deflate 编码器与原版 zlib 的取舍不一样。原版 exe 可以正常读取这些文件。Musica 只在内容变化时才重写文件，所以复制过来的文件在记录新的已读标记或 CG 之前保持原样。
+`directory` 可以是游戏内相对路径，也可以显式指定原版存档的绝对路径（含 Documents）；核心不自动搜索 Documents。`system_format` 可选 `Rc4` 或 `Blowfish`；`extended` 选择已恢复的扩展检查点布局和快速/自动槽位组，与作品名无关。`append_slot_prefix` 补充源文件中尚未出现的追加篇命名空间。`voice_keys` 可将现有五组前端语音开关映射到原生设置键，本切片不改变前端资源绑定。不支持的描述版本会明确报错。
 
-早期 `.shinki/musica/saves/` 中的 JSON 设置、快速存档游标和全局进度，仍按一次性、不覆盖的规则导入原生文件。无法识别的 exe 不能读写原生槽位。
+能从原版文件确定的参数优先采用解析结果；注册表路径、缺失的追加篇前缀、设置键和命令计数周期由描述补充。解析完成的描述保存在 `.shinki/musica/save-identity.json`，尚未建立槽位时重启也不会改变配置。本次只增加配置字段，不删除旧字段。原有 minori 目录保持原位；旧文件不足以确定完整身份时，启动报 `SHINKI_EMU_MUSICA_SAVE_CONFIG`，要求补充 `native_save`，不会静默切换并隐藏旧进度。
 
-运行时存读档统一使用原生后端。检查点恢复脚本变量、背景、组合前景、立绘位置与偏移、BGM、消息历史，以及小说模式（`CP1=2`）的整页文本和 `L4_n` 位置。读档会重新开始当前消息及语音；播放时钟、翻译文本和菜单焦点不写入原生槽。不支持的效果或附加图层状态会明确拒绝，不回退到内部快照。
+Windows 上，`serial_key` 指定 HKLM 注册表键，对其 ANSI `SerialCode` 字节（到第一个 NUL 为止）取 CRC32。读不到时，依次使用显式 `prefix`、已有有效压缩文件的前缀，最后使用非严格校验的零前缀。四字节前缀不能反推出注册表键或保存目录。例如 eden 风格描述使用原版 `eden` / `edenPM` 命名、`eden_en 1.00` 签名、RC4 与基础槽；Perseus 风格描述提供 `perseus_`、`perseus 1.00`、Blowfish、扩展槽及其注册表键。这些属于发行版配置，核心没有对应的作品表。
 
-eden 的自动槽为 0，快速槽为 1–9；`AppendPlaying` 切换到 `edenPM` 命名空间。Perseus 的快速槽为 0–9，自动槽为 10–19，手动槽从 20 开始。自动存档按原生命令计数周期触发，也在不超过四项的选择和视频开始前触发；局部 `exitFromEvent`、`prohibitAutoSave` 或全局 `prohibitSaveLoad` 非零时禁止自动存档。`prohibitSaveLoad` 同时禁止手动存读档。先写缩略图，再写压缩槽位，两者分别原子替换。
+格式已恢复时，全局变量、设置、CG、已读记录与槽位保持原生字节格式。显式指定原版目录时直接写回该目录；旧的 `.shinki/musica/minori/<folder>/` 保持原位，可与原版安装互相复制兼容文件。`system.dat`、`sysparams.txt` 和前缀保持原版表示；zlib 压缩字节可能不同，解压内容相同。未映射的设置字节原样保留，纯前端设置仍写入 `.shinki/musica/musica-settings.txt`。
 
-旧 beta 的 `.asav`（`AMUSSV06` 及更早格式）不兼容。Musica 不读取、转换、搬迁、改名或删除 `.shinki-musica/saves/` 和 `.shinki/musica/saves/` 中的旧文件。请保留备份，重新建立原生存档。
+**无法解析原生身份且没有描述时**，仍创建完整后端，将全部状态真实写入 `<game>/.shinki/musica/generic-v1/`，按游戏目录隔离。`slot_NNNN.sav` 使用独立的 `shinki.musica.save.v1` 签名和已恢复的基础检查点正文；辅助文件采用 RC4 全局表、Tab 分隔设置及零前缀 zlib CG/已读表。这是 ShinkiEMU 通用格式，不代表未知原版 exe 可以读取。仅有熟悉的 exe 文件名不会改变选择。切换描述会选择另一个后端，不删除或合并旧文件，请保留备份。
+
+早期 `.shinki/musica/saves/` 中的 JSON 设置、快速槽游标和全局进度，可一次性、不覆盖地导入**两种后端**。只有写入成功后才把源文件改名为 `.imported`；已有目标文件优先。旧 beta `.asav`（`AMUSSV06` 及更早）仍不兼容，两个旧位置中的文件都保持不动，请备份并新建槽位。
+
+检查点恢复脚本变量、背景、组合前景、立绘位置与偏移、BGM、消息历史，以及小说模式（`CP1=2`）的整页文本和 `L4_n` 位置。读档重新开始当前消息及语音；播放时钟、翻译文本和菜单焦点不保存。不支持的效果或附加图层明确拒绝，不回退到内部快照。
+
+基础布局使用自动槽 0、快速槽 1–9，`AppendPlaying` 选择配置的追加篇前缀；扩展布局使用快速槽 0–9、自动槽 10–19、手动槽 20 起。传入对应源文件或描述后，eden/Perseus 的轮转行为保持不变。自动存档按配置的命令计数周期、四项以内的选择前及视频前触发；`exitFromEvent`、`prohibitAutoSave`、`prohibitSaveLoad` 的禁止规则保持不变。先写缩略图，再写槽位，两者分别原子替换。
 
 [ReMinori](reminori.md) 是另一个实现，执行器、配置和存档各自独立。
 

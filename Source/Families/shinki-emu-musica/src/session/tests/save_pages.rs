@@ -121,7 +121,7 @@ fn native_gpu_save_page_rejects_corrupt_cards_without_overwriting() {
     let folder = root
         .path()
         .join(".shinki/musica/minori")
-        .join(crate::minori_data::MinoriTitle::Perseus.directory());
+        .join("夏空のペルセウス");
     std::fs::create_dir_all(&folder).unwrap();
     let slot = folder.join("perseus_0020.sav");
     std::fs::write(&slot, b"original corrupt slot").unwrap();
@@ -244,4 +244,58 @@ fn native_save_prohibition_ignores_shortcuts_without_poisoning_gameplay() {
         2
     );
     Box::new(session).close().unwrap();
+}
+
+#[test]
+fn unidentified_session_persists_and_restores_with_generic_or_preset_identity() {
+    let _lock = PROVIDER_SESSION.lock();
+    for configured in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        fixture::game(root.path(), b".setglobal route = 9\n.set score = 17\n.message 1   First\n.message 2   Second\n.end\n");
+        let mut identity = crate::native_directory::tests::identity_fixture(root.path(), false);
+        std::fs::remove_file(root.path().join(".shinki/musica/save-identity.json")).unwrap();
+        identity.directory = ".shinki/musica/preset-test".into();
+        identity.signature = "unlisted-release 1.0".into();
+        identity.slot_prefix = "custom_".into();
+        let mut request = request(root.path(), Sink::default());
+        if configured {
+            request.configuration.push(ConfigEntry {
+                id: "native_save".into(),
+                value: ConfigValue::String(serde_json::to_string(&identity).unwrap()),
+            });
+        }
+        let mut provider = fixture::provider();
+        let (_, mut session) = provider.open_session(request).unwrap();
+        session.advance(16_666_667, &[]).unwrap();
+        session.save(20).unwrap();
+        session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+        Box::new(session).close().unwrap();
+        let folder = if configured {
+            ".shinki/musica/preset-test"
+        } else {
+            ".shinki/musica/generic-v1"
+        };
+        let slot = if configured {
+            "custom_0020.sav"
+        } else {
+            "slot_0020.sav"
+        };
+        assert!(
+            root.path()
+                .join(folder)
+                .join(slot)
+                .metadata()
+                .unwrap()
+                .len()
+                > 0
+        );
+        let (_, mut reopened) = provider
+            .open_session(super::request(root.path(), Sink::default()))
+            .unwrap();
+        assert_eq!(reopened.native.globals().get("route"), Some(&9));
+        reopened.load(20).unwrap();
+        assert_eq!(reopened.message.as_ref().unwrap().0, "First");
+        assert_eq!(reopened.vm.state().variables.get("score"), Some(&17));
+        Box::new(reopened).close().unwrap();
+    }
 }

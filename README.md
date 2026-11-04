@@ -27,7 +27,7 @@ ShinkiEMU supports ten engine families through eleven cores. Each core keeps its
 | [`sena-rs`](docs/en/cores/sena-rs.md) | SoftPAL | `SCRIPT.SRC` bytecode with its `.DAT` tables; scope is the native and Steam releases of Koikake |
 | [`ethornell-rs`](docs/en/cores/ethornell-rs.md) | BGI / Ethornell | BCS scenarios, BP system programs and DSC-compressed archive entries |
 | [`ReMinori`](docs/en/cores/reminori.md) | Musica | PAZ archives; built around eden* |
-| [`shinki.emu.musica`](docs/en/cores/shinki-emu-musica.md) | Musica | PAZ archives and SC scripts; original eden/Perseus `.sav` saves |
+| [`shinki.emu.musica`](docs/en/cores/shinki-emu-musica.md) | Musica | PAZ archives and SC scripts; data-driven native saves and game-local generic persistence |
 | [`art3m1s-core`](docs/en/cores/art3m1s-core.md) | Artemis | `system.ini`, PFS (PF6/PF8) archives and numbered `.pfs.NNN` patch volumes |
 | [`renpy`](docs/en/cores/renpy.md) | Ren'Py | Runs the official Ren'Py 8.5.3 runtime |
 | [`shinki.emu.cmvs`](docs/en/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 archives and PS2A scripts |
@@ -68,7 +68,7 @@ The [user guide](docs/en/user-guide.md) describes each of these in detail.
 - **iOS:** device and simulator packages, published as test builds.
 - **OpenHarmony:** an experimental HAP signed with the OpenHarmony SDK test PKI. Launch on a device and retail installation have not been verified.
 
-Save behavior is core-specific. External cores keep their upstream save locations and formats. Musica stores original-format eden/Perseus `.sav` files under `<game>/.shinki/musica/`. Files that ShinkiEMU itself writes in a game directory go under `<game>/.shinki/`. Close the game before you back up saves or exchange supported original-format save files.
+Save behavior is core-specific. External cores keep upstream locations and formats. Musica derives save identity from original files, fills missing format information from a release-bound preset's `native_save` descriptor, and otherwise persists real saves under `<game>/.shinki/musica/generic-v1/`, isolated by game directory. Generic slots use a distinct signature and are not original-executable compatible; configured native layouts retain their original byte formats and can use an explicit original save directory. See [Musica saves](docs/en/cores/shinki-emu-musica.md#saves) for descriptor parameters, format differences and migration. Other files ShinkiEMU itself writes in a game directory go under `<game>/.shinki/`. Close the game before backing up or exchanging saves.
 
 ## Download and quick start
 
