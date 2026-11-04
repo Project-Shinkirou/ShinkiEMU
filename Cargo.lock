@@ -11151,7 +11151,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-krkr2"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/krkr2?rev=377585ba045b094a27d7798c99d0bb2ff743cc6d#377585ba045b094a27d7798c99d0bb2ff743cc6d"
+source = "git+https://github.com/Project-Shinkirou/krkr2?rev=559754c0f1f8a85056f8af84786f116bec187b3c#559754c0f1f8a85056f8af84786f116bec187b3c"
 dependencies = [
  "flate2",
  "serde_json",

@@ -455,7 +455,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/krkr2"
 branch = "shinki"
-rev = "377585ba045b094a27d7798c99d0bb2ff743cc6d"
+rev = "559754c0f1f8a85056f8af84786f116bec187b3c"
 upstream = "https://github.com/2468785842/krkr2"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
