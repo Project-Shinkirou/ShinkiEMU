@@ -18,3 +18,5 @@ Probe recognizes loose `startup.tjs` at confidence 9400 and `data.xp3` at 9300. 
 The adapter runs this upstream's own modular C++ TJS VM, KAG scripts, renderer, plugins, fonts and save/preferences behavior. It does not forward to kirikiroid2-web. Android and iOS link a private static native closure; Android also uses private Java/JNI packages. Frames are immutable CPU leases from the original game texture. Pause/resume and input reach the native owner thread; cancellation and close join its workers.
 
 This branch integrates the Android/iOS Manager paths. Standalone desktop/mobile core packages are not declared. Building requires the target SDK, Bison and the core-specific prepared vcpkg closure. Release acceptance and actual game compatibility are recorded separately from this integration. Licenses and changes are in the fork's `LICENSE` and `MODIFICATIONS.md`.
+
+Linux build hosts also need Yasm (`apt-get install yasm` on Ubuntu); the pinned FFmpeg x86/x64 recipe requires this assembler tool during dependency preparation.

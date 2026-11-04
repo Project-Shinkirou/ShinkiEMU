@@ -18,3 +18,5 @@ description: 移动端 Manager 的独立原生 KrKr2 核心。
 适配器运行此上游自己的模块化 C++ TJS VM、KAG、渲染、插件、字体和存档/偏好设置路径，不转发给 kirikiroid2-web。Android/iOS 静态链接独立的原生符号闭包，Android 的 Java/JNI 包也单独命名。原始游戏纹理通过不可变 CPU 帧租约输出；暂停、恢复和输入交给原生 owner 线程，取消和关闭会等待其工作线程退出。
 
 本分支接入 Android/iOS Manager 路径，不声明独立桌面或移动端核心包。构建需要目标 SDK、Bison 和本核心的 vcpkg 依赖闭包。发布验收和真实游戏兼容性另行记录。原许可与修改范围见 fork 的 `LICENSE`、`MODIFICATIONS.md`。
+
+Linux 构建主机还需安装 Yasm（Ubuntu 使用 `apt-get install yasm`）；固定版本的 FFmpeg x86/x64 配方会在依赖准备阶段检查这个工具。

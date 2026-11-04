@@ -18,3 +18,5 @@ description: モバイル Manager 向けの独立したネイティブ KrKr2 コ
 上流独自のモジュール化 C++ TJS VM、KAG、描画、プラグイン、フォント、セーブと設定を使用します。kirikiroid2-web への転送は行いません。Android/iOS のネイティブ静的シンボルを分離し、Android の Java/JNI パッケージも独立させています。元のゲームテクスチャを不変 CPU フレームとして公開し、入力と一時停止/再開はネイティブ owner スレッドに渡します。キャンセルと終了時にはワーカーを join します。
 
 このブランチは Android/iOS Manager に統合します。単体コア配布は宣言していません。構築には対象 SDK、Bison、コア専用 vcpkg 依存関係が必要です。リリース受け入れと実ゲームの互換性は別途記録します。ライセンスと変更内容は fork の `LICENSE` と `MODIFICATIONS.md` にあります。
+
+Linux のビルドホストには Yasm も必要です（Ubuntu では `apt-get install yasm`）。固定した FFmpeg の x86/x64 ポートは依存関係の準備中にこのツールを検出します。
