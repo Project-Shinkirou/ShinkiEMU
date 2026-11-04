@@ -19,7 +19,7 @@ Ren’Py 另需固定的官方 SDK，设置 `RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV
 POSIX SDL 2.0.20 源码从 SDL 官方 GitHub Release 下载，SHA256 仍为 `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06`，归档内容和 SDK ABI 不变。Android Ren’Py 源码构建还需要 LLVM 18/Clang 18、LLD、ccache 及原生开发包；CI 和 Release 安装同一份既有依赖清单，只有 Android SDK/NDK 不够。
 
 
-工作区统一使用 Rust 2024 edition，最低 Rust 版本为 1.99，固定工具链为 Rust 1.99.1。Android 打包使用 Gradle 9.8.2、AGP 9.4.1 内置 Kotlin、JDK 27、platform 37.2、build-tools 37.0.0 和稳定版 NDK r30（30.0.16248370）。CMVS 不依赖 Win32，以动态核心构建 Windows x64、Linux x64 和两种 macOS 架构；Android 与 iOS 需等 Manager 静态嵌入。
+工作区统一使用 Rust 2024 edition，最低 Rust 版本为 1.99，固定工具链为 Rust 1.99.1。Android 打包使用 Gradle 9.8.2、AGP 9.4.1 内置 Kotlin、JDK 27、platform 37.2、build-tools 37.0.0 和稳定版 NDK r30（30.0.16248370）。CMVS 不依赖 Win32，以动态核心构建 Windows x64、Linux x64 和两种 macOS 架构；Android 与 iOS 版 Manager 静态内嵌 CMVS，不发布独立移动端 CMVS 核心包。
 
 原生库固定 vcpkg baseline `0c2a9ace1964b818b15f7ae50ba1c42404918a7b`，对应 FFmpeg 9.0.2#2、libass 0.17.5、HarfBuzz 14.6.0、FriBidi 1.0.17、FreeType 2.14.3。CI 使用 NASM 3.02，DXC 固定为 1.9.2609。构建运行在 JDK 27 上，Java/Kotlin 字节码仍以 JVM 17 为目标，保持 Android 兼容性。RoukakuEngine 固定到已发布 revision `374a7a20780153766d9d0256e4cf4d7754fd02f9`，包含 Android 离屏 Vulkan 后端；外部核心来源由独立任务合入。Bangumi/VNDB SDK 的公开 API 仍要求 reqwest 0.12 类型，因此保留最新补丁版 0.12.28，应用自己的 HTTP 请求使用 0.13.5。Ren’Py 的 CPython/Cython/SDL 输入继续匹配其固定 SDK 的 ABI。Android 静态核心通过来源 patch 共用工作区的 ABI 与构建辅助库，不再解析第二份同版本的构建辅助包。
 
