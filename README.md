@@ -32,6 +32,7 @@ ShinkiEMU supports ten engine families through eleven cores. Each core keeps its
 | [`renpy`](docs/en/cores/renpy.md) | Ren'Py | Runs the official Ren'Py 8.5.3 runtime |
 | [`shinki.emu.cmvs`](docs/en/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 archives and PS2A scripts |
 | [`kirikiroid2-web`](docs/en/cores/kirikiroid2-web.md) | KiriKiri | XP3 archives and KAG/TJS scripts |
+| [`krkr2`](docs/en/cores/krkr2.md) | KiriKiri | Independent native C++ core; XP3 archives and KAG/TJS scripts |
 | [`impacto`](docs/en/cores/impacto.md) | MAGES. | MAGES. SC3 scripts with per-game configuration |
 
 Recognizing an engine is not a playability result. Results for specific games, platforms and releases are on the portal's [compatibility page](https://project-shinkirou.github.io/en/shinkiemu/compatibility/); a game without a report is unreported. To add one, use the [game compatibility report](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml) form.
@@ -59,9 +60,12 @@ The [user guide](docs/en/user-guide.md) describes each of these in detail.
 | `renpy` | ✓ | ✓ | ✓ | Built in | — | — |
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | Built in | — | — |
+| `krkr2` | — | — | — | Candidate | Candidate | — |
 | `impacto` | ✓ | ✓ | ✓ | Built in | — | — |
 
 ✓ means the core is published in the desktop core catalog. "Built in" is the set embedded in [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7): seven cores on Android, six on iOS and Musica on OpenHarmony. Android and iOS Managers use their built-in cores; desktop Managers load cores downloaded from the catalog.
+
+The `krkr2` candidate is a separate Android/iOS native integration on this branch; it does not change the published beta.7 inventory above.
 
 - **Windows, Linux and macOS:** ZIP bundles for x64, plus Apple Silicon on macOS.
 - **Android:** one universal APK signed with the release key. Debug-signed CI APKs are test builds.
@@ -117,6 +121,7 @@ The external cores are thin adapters on these open-source engine projects. Thank
 | `art3m1s-core` | Artemis | [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core) | Alphaly ([@Alphaly2K](https://github.com/Alphaly2K)) | [MPL-2.0](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE); `crates/pf8` is [MIT](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/crates/pf8/LICENSE) |
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project ([@renpy](https://github.com/renpy)); source copyright Tom Rothamel | [MIT, with LGPL portions](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web), a fork of [2468785842/krkr2](https://github.com/2468785842/krkr2) | [@fenghengzhi](https://github.com/fenghengzhi); KiriKiri2 copyright W.Dee and contributors | [KiriKiri2 license and bundled component licenses](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
+| `krkr2` | KiriKiri | [2468785842/krkr2](https://github.com/2468785842/krkr2) | KiriKiri copyright W.Dee and contributors; KrKr2 contributors | [KiriKiri and bundled component licenses](https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors ([@CommitteeOfZero](https://github.com/CommitteeOfZero)) | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 
 License links point to the upstream revision pinned in [`build/cores.toml`](build/cores.toml). [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has the full notices for the cores and their dependencies.

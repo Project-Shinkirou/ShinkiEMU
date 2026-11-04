@@ -32,6 +32,7 @@ ShinkiEMU 用 11 个核心支持 10 个引擎家族。每个核心保留引擎�
 | [`renpy`](docs/zh-cn/cores/renpy.md) | Ren'Py | 运行官方 Ren'Py 8.5.3 运行时 |
 | [`shinki.emu.cmvs`](docs/zh-cn/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 归档和 PS2A 脚本 |
 | [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | XP3 归档和 KAG/TJS 脚本 |
+| [`krkr2`](docs/zh-cn/cores/krkr2.md) | KiriKiri | 独立原生 C++ 核心；XP3 归档和 KAG/TJS 脚本 |
 | [`impacto`](docs/zh-cn/cores/impacto.md) | MAGES. | MAGES. SC3 脚本及逐游戏配置 |
 
 能识别引擎不代表游戏可玩。具体游戏、平台和发行版本的结论见门户的[兼容性页面](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)，没有报告的游戏视为未报告。要提交结论，请使用[游戏兼容性报告](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)表单。
@@ -59,9 +60,12 @@ ShinkiEMU 用 11 个核心支持 10 个引擎家族。每个核心保留引擎�
 | `renpy` | ✓ | ✓ | ✓ | 内置 | — | — |
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | 内置 | — | — |
+| `krkr2` | — | — | — | 候选接入 | 候选接入 | — |
 | `impacto` | ✓ | ✓ | ✓ | 内置 | — | — |
 
 ✓ 表示该核心已在桌面版核心目录中发布。“内置”指 [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7) 内嵌的核心：Android 7 个，iOS 6 个，OpenHarmony 只有 Musica。Android 与 iOS 版 Manager 使用内置核心，桌面版加载从核心目录下载的核心。
+
+`krkr2` 是本分支独立的 Android/iOS 原生核心候选接入，不改写上述已发布 beta.7 的核心清单。
 
 - **Windows、Linux、macOS**：x64 的 ZIP 包，macOS 另有 Apple Silicon 版本。
 - **Android**：一个通用 APK，使用发布签名密钥。debug 签名的 CI APK 只作测试。
@@ -117,6 +121,7 @@ Manager 界面提供简体中文、英文和日文。配置、存档、元数据
 | `art3m1s-core` | Artemis | [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core) | Alphaly（[@Alphaly2K](https://github.com/Alphaly2K)） | [MPL-2.0](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE)；`crates/pf8` 为 [MIT](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/crates/pf8/LICENSE) |
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project（[@renpy](https://github.com/renpy)）；源码版权人 Tom Rothamel | [MIT，部分为 LGPL](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web)，fork 自 [2468785842/krkr2](https://github.com/2468785842/krkr2) | [@fenghengzhi](https://github.com/fenghengzhi)；KiriKiri2 版权人 W.Dee and contributors | [KiriKiri2 许可及所含组件的许可](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
+| `krkr2` | KiriKiri | [2468785842/krkr2](https://github.com/2468785842/krkr2) | KiriKiri 版权人 W.Dee and contributors；KrKr2 贡献者 | [KiriKiri 及所含组件的许可](https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors（[@CommitteeOfZero](https://github.com/CommitteeOfZero)） | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 
 许可证链接指向 [`build/cores.toml`](build/cores.toml) 固定的上游版本。核心及其依赖的完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

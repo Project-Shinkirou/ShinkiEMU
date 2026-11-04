@@ -15,4 +15,6 @@ ShinkiEMU starts a new Git history. Its code and data come from repositories by 
 
 External cores live in organization forks that keep their upstream history and attribution; ShinkiEMU pins them as submodules on their `shinki` branches (`cpal` and `kira` on version maintenance branches).
 
+The independent `krkr2` core uses [2468785842/krkr2](https://github.com/2468785842/krkr2) at `dca7264572a63e753c1b07ca7053513d1751ce70`, hosted at [Project-Shinkirou/krkr2](https://github.com/Project-Shinkirou/krkr2/tree/shinki). Its adapter ports the MIT OR Apache-2.0 embedding seams from the organization's kirikiroid2-web fork to KrKr2's modular engine. Both cores retain separate IDs, VM implementations and native symbol closures.
+
 All own identifiers were renamed (`astra-emu-*` → `shinki-emu-*`, `astra_emu_query` → `shinki_emu_query`, `astra.emu.*` → `shinki.emu.*`, shared engine crates `astra-*` → `roukaku-*` from [RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine)). Data directories, packages, caches and saves written by AstraEMU are not read by ShinkiEMU; original game saves are untouched.

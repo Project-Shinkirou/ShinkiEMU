@@ -113,6 +113,22 @@ pub fn initialize(app: AndroidApp) -> Result<(), String> {
     if status != shinki_emu_abi::OK {
         return Err(format!("KRKR_ANDROID_HOST_INITIALIZATION ({status})"));
     }
+    let status = context
+        .vm
+        .attach_current_thread(|_env| -> jni::errors::Result<_> {
+            // SAFETY: the independent KrKr2 JNI closure retains only the
+            // application Context, under its own Java package namespace.
+            Ok(unsafe {
+                shinki_emu_krkr2::initialize_android(
+                    context.app.vm_as_ptr().cast(),
+                    context.app.activity_as_ptr().cast(),
+                )
+            })
+        })
+        .map_err(|error| format!("KRKR2_ANDROID_HOST_JNI: {error}"))?;
+    if status != shinki_emu_abi::OK {
+        return Err(format!("KRKR2_ANDROID_HOST_INITIALIZATION ({status})"));
+    }
     extract_bundled_assets()
 }
 

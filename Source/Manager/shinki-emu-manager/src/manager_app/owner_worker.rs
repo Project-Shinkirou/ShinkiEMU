@@ -292,6 +292,12 @@ fn initialize(
         if status != shinki_emu_abi::OK {
             return Err(format!("KRKR_RESOURCE_ROOT ({status})"));
         }
+        let resources = root.join("cores/krkr2/Resources");
+        let path = resources.to_str().ok_or("KRKR2_RESOURCE_ROOT_ENCODING")?;
+        let status = shinki_emu_krkr2::set_resource_root(path);
+        if status != shinki_emu_abi::OK {
+            return Err(format!("KRKR2_RESOURCE_ROOT ({status})"));
+        }
     }
     for (id, query) in STATIC_CORES {
         unsafe { registry.register_static(*query) }.map_err(|error| error.to_string())?;
