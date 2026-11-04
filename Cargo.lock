@@ -11153,6 +11153,7 @@ name = "shinki-emu-manager"
 version = "0.1.0-beta.6"
 dependencies = [
  "android-activity 0.6.1",
+ "bytes",
  "cap-fs-ext",
  "cap-std",
  "cc",
@@ -11163,6 +11164,7 @@ dependencies = [
  "directories",
  "flate2",
  "fontique",
+ "futures-util",
  "gilrs",
  "gtk",
  "hassle-rs 0.12.0",
