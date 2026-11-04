@@ -143,6 +143,7 @@ impl ShinkiEmuManagerController {
         let metadata_changed = self.poll_metadata()?;
         let store_changed = self.poll_store()?;
         let self_update_changed = self.poll_self_update();
+        let cores_changed = self.poll_core_downloads();
         if background_changed
             || patch_changed
             || owner_changed
@@ -150,6 +151,7 @@ impl ShinkiEmuManagerController {
             || connection_changed
             || store_changed
             || self_update_changed
+            || cores_changed
         {
             Ok(Some(self.model()?))
         } else {

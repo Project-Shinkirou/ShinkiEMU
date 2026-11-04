@@ -177,6 +177,7 @@ impl ShinkiEmuManagerController {
         library
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
+        translation::migrate_provider_book(&mut library)?;
 
         let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone());
 
@@ -290,7 +291,12 @@ impl ShinkiEmuManagerController {
             translation_enabled,
             translation_models: Vec::new(),
             translation_status: String::new(),
+            translation_test_for: String::new(),
+            translation_saved: 0,
             connection_test: None,
+            core_downloads: crate::core_download::CoreDownloads::github(),
+            core_failures: BTreeMap::new(),
+            core_batch: None,
             held_controls: BTreeSet::new(),
             key_modifiers: KeyModifiers {
                 shift: false,

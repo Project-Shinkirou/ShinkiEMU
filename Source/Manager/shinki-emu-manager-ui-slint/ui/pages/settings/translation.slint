@@ -1,82 +1,215 @@
-import { MaterialPalette, MaterialText, MaterialTypography, TextField, TextButton, FilledButton, TonalButton } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, TextField, TextButton, FilledButton, TonalButton, IconButton, Icon, ScrollView } from "@material";
 import { TextEdit } from "std-widgets.slint";
-import { Network, Settings, TranslationForm, Choice } from "../../globals.slint";
+import { Network, Settings, TranslationForm, TranslationProvider, ProviderEditor } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { ChoiceSelect } from "../../components/select.slint";
-import { PageScroll, SettingGroup, SwitchRow, FieldBlock, FormField, SliderField, RowText } from "./common.slint";
+import { Scrim, DialogSurface } from "../../components/dialogs.slint";
+import { PageScroll, SettingGroup, SwitchRow, FieldBlock, FormField, SliderField, RowText, StatusChip } from "./common.slint";
 import { Segments } from "../../components/segments.slint";
 import { ListSelect } from "./list-select.slint";
 
-export component TranslationSection {
-    in property <bool> show-title;
+struct Preset {
+    id: string,
+    name: string,
+    // official | cloud | local | custom
+    category: string,
+    provider: string,
+    base-url: string,
+    openai-api: string,
+    // Extra search terms.
+    keywords: string,
+}
 
-    // Draft of the endpoint form; only 「保存」 persists it.
-    property <TranslationForm> stored: Settings.translation;
-    property <string> provider: Settings.translation.provider != "" ? Settings.translation.provider : "openai";
-    property <string> base-url: Settings.translation.base-url != "" ? Settings.translation.base-url : root.default-url(root.provider);
-    property <string> openai-api: Settings.translation.openai-api != "" ? Settings.translation.openai-api : "responses";
-    property <string> model: Settings.translation.model;
-    property <string> language: Settings.translation.language != "" ? Settings.translation.language : "zh-CN";
-    property <int> timeout-s: Settings.translation.timeout-s > 0 ? Settings.translation.timeout-s : 15;
-    property <string> custom-prompt: Settings.translation.custom-prompt;
-    property <int> context-segments: Settings.translation.context-segments;
-    property <int> context-chars: Settings.translation.context-chars >= 1000 ? Settings.translation.context-chars : 6000;
-    property <bool> model-manual-chosen;
-    property <bool> language-manual-chosen;
-    property <bool> advanced-open;
+global Presets {
+    out property <[Preset]> all: [
+        { id: "openai", name: "OpenAI", category: "official", provider: "openai", base-url: "https://api.openai.com/v1", openai-api: "responses", keywords: "gpt chatgpt" },
+        { id: "anthropic", name: "Anthropic", category: "official", provider: "anthropic", base-url: "https://api.anthropic.com/v1", openai-api: "responses", keywords: "claude" },
+        { id: "google", name: "Google Gemini", category: "official", provider: "google", base-url: "https://generativelanguage.googleapis.com/v1beta", openai-api: "responses", keywords: "gemini" },
+        { id: "deepseek", name: "DeepSeek", category: "cloud", provider: "openai", base-url: "https://api.deepseek.com/v1", openai-api: "chat_completions", keywords: "深度求索" },
+        { id: "dashscope", name: @tr("阿里云百炼"), category: "cloud", provider: "openai", base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1", openai-api: "chat_completions", keywords: "qwen tongyi dashscope 通义 千问 aliyun" },
+        { id: "moonshot", name: "Moonshot AI", category: "cloud", provider: "openai", base-url: "https://api.moonshot.cn/v1", openai-api: "chat_completions", keywords: "kimi 月之暗面" },
+        { id: "siliconflow", name: @tr("硅基流动"), category: "cloud", provider: "openai", base-url: "https://api.siliconflow.cn/v1", openai-api: "chat_completions", keywords: "siliconflow" },
+        { id: "openrouter", name: "OpenRouter", category: "cloud", provider: "openai", base-url: "https://openrouter.ai/api/v1", openai-api: "chat_completions", keywords: "" },
+        { id: "ollama", name: "Ollama", category: "local", provider: "openai", base-url: "http://localhost:11434/v1", openai-api: "chat_completions", keywords: "local" },
+        { id: "lmstudio", name: "LM Studio", category: "local", provider: "openai", base-url: "http://localhost:1234/v1", openai-api: "chat_completions", keywords: "local lmstudio" },
+        { id: "custom", name: @tr("自定义"), category: "custom", provider: "openai", base-url: "", openai-api: "chat_completions", keywords: "custom compatible" },
+    ];
 
-    property <bool> profile-saved: Settings.translation.model != "";
-    property <int> prompt-length: root.custom-prompt.character-count;
-    property <int> model-matches: round(model-counter.preferred-height / 1px);
-    property <bool> model-manual: root.model-manual-chosen || Settings.models.length == 0 || (root.model != "" && root.model-matches == 0);
-    property <bool> language-known: root.language == "zh-CN" || root.language == "zh-TW" || root.language == "en" || root.language == "ja" || root.language == "ko";
-    property <bool> language-manual: root.language-manual-chosen || !root.language-known;
-    property <bool> form-valid: root.base-url != "" && root.model != "" && root.language != "" && root.prompt-length <= 2000;
-    property <TranslationForm> form: {
-        provider: root.provider,
-        base-url: root.base-url,
-        openai-api: root.openai-api,
-        model: root.model,
-        language: root.language,
-        timeout-s: root.timeout-s,
-        custom-prompt: root.custom-prompt,
-        context-segments: root.context-segments,
-        context-chars: root.context-chars,
-    };
-    property <bool> dirty: root.form != root.stored || key.text != "";
+    public pure function category-label(category: string) -> string {
+        return category == "official" ? @tr("官方")
+            : category == "cloud" ? @tr("云服务与聚合")
+            : category == "local" ? @tr("本地服务")
+            : @tr("自定义");
+    }
 
-    pure function default-url(provider: string) -> string {
+    public pure function matches(preset: Preset, query: string) -> bool {
+        if query == "" {
+            return true;
+        }
+        // Slint strings have no `contains`; a removed match changes the text.
+        return (preset.name + " " + preset.base-url + " " + preset.keywords).to-lowercase().replace-all(query.to-lowercase(), "")
+            != (preset.name + " " + preset.base-url + " " + preset.keywords).to-lowercase();
+    }
+
+    public pure function is-local(preset: string) -> bool {
+        return preset == "ollama" || preset == "lmstudio";
+    }
+
+    public pure function default-url(provider: string) -> string {
         return provider == "anthropic" ? "https://api.anthropic.com/v1"
             : provider == "google" ? "https://generativelanguage.googleapis.com/v1beta"
             : "https://api.openai.com/v1";
     }
+}
 
-    function reload() {
-        self.provider = Settings.translation.provider != "" ? Settings.translation.provider : "openai";
-        self.base-url = Settings.translation.base-url != "" ? Settings.translation.base-url : self.default-url(self.provider);
-        self.openai-api = Settings.translation.openai-api != "" ? Settings.translation.openai-api : "responses";
-        self.model = Settings.translation.model;
-        self.language = Settings.translation.language != "" ? Settings.translation.language : "zh-CN";
-        self.timeout-s = Settings.translation.timeout-s > 0 ? Settings.translation.timeout-s : 15;
-        self.custom-prompt = Settings.translation.custom-prompt;
-        self.context-segments = Settings.translation.context-segments;
-        self.context-chars = Settings.translation.context-chars >= 1000 ? Settings.translation.context-chars : 6000;
-        self.model-manual-chosen = false;
-        self.language-manual-chosen = false;
+// Supporting text under a field; wraps instead of eliding on narrow sheets.
+component Hint inherits HorizontalLayout {
+    in property <string> text;
+    in property <bool> error;
+
+    padding-left: 16px;
+    padding-right: 16px;
+    MaterialText {
+        text: root.text;
+        style: MaterialTypography.body-small;
+        color: root.error ? MaterialPalette.error : MaterialPalette.on-surface-variant;
+        wrap: word-wrap;
+        overflow: clip;
+    }
+}
+
+// One saved provider: name, endpoint and model, and its actions.
+component ProviderCard {
+    in property <TranslationProvider> provider;
+    // Narrow cards use icon-only actions so all three fit on one row.
+    property <bool> narrow: root.width < 420px;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: root.provider.name;
+
+    Rectangle {
+        border-radius: 12px;
+        background: root.provider.active ? MaterialPalette.secondary-container : MaterialPalette.surface-container;
+        border-width: root.provider.active ? 2px : 1px;
+        border-color: root.provider.active ? MaterialPalette.primary : MaterialPalette.outline-variant;
     }
 
-    changed stored => { root.reload(); }
+    l := VerticalLayout {
+        padding: 16px;
+        padding-bottom: 8px;
+        spacing: 8px;
 
-    model-counter := VerticalLayout {
-        x: 0px;
-        y: 0px;
-        width: 0px;
-        height: 0px;
-        visible: false;
-        for m in Settings.models : Rectangle {
-            height: m == root.model ? 1px : 0px;
+        HorizontalLayout {
+            spacing: 16px;
+
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: root.provider.active ? MaterialPalette.primary : MaterialPalette.surface-container-highest;
+                    Icon {
+                        width: 24px;
+                        height: 24px;
+                        source: root.provider.active ? Icons.check : Icons.translate;
+                        colorize: root.provider.active ? MaterialPalette.on-primary : MaterialPalette.on-surface-variant;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                MaterialText {
+                    text: root.provider.name;
+                    style: MaterialTypography.title-medium;
+                    color: root.provider.active ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+                MaterialText {
+                    text: root.provider.form.model;
+                    style: MaterialTypography.body-medium;
+                    color: root.provider.active ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
+                    wrap: char-wrap;
+                    overflow: clip;
+                }
+                MaterialText {
+                    text: root.provider.form.base-url;
+                    style: MaterialTypography.body-small;
+                    color: root.provider.active ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
+                    wrap: char-wrap;
+                    overflow: clip;
+                }
+            }
+
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                if root.provider.active : StatusChip {
+                    text: @tr("使用中");
+                    background: MaterialPalette.primary;
+                    foreground: MaterialPalette.on-primary;
+                }
+                if !root.provider.active : TonalButton {
+                    text: @tr("启用");
+                    clicked => { Settings.activate-translation-provider(root.provider.id); }
+                }
+            }
+        }
+
+        if !root.narrow : HorizontalLayout {
+            alignment: end;
+            spacing: 0px;
+            TextButton {
+                text: @tr("编辑");
+                icon: Icons.tune;
+                clicked => { ProviderEditor.edit(root.provider); }
+            }
+            TextButton {
+                text: @tr("复制");
+                icon: Icons.add;
+                clicked => { Settings.duplicate-translation-provider(root.provider.id); }
+            }
+            TextButton {
+                text: @tr("删除");
+                icon: Icons.delete;
+                // The enabled card stays until another one is enabled.
+                enabled: !root.provider.active;
+                clicked => { ProviderEditor.confirm-delete = root.provider; }
+            }
+        }
+        if root.narrow : HorizontalLayout {
+            alignment: end;
+            spacing: 4px;
+            IconButton {
+                icon: Icons.tune;
+                tooltip: @tr("编辑");
+                clicked => { ProviderEditor.edit(root.provider); }
+            }
+            IconButton {
+                icon: Icons.add;
+                tooltip: @tr("复制");
+                clicked => { Settings.duplicate-translation-provider(root.provider.id); }
+            }
+            IconButton {
+                icon: Icons.delete;
+                tooltip: @tr("删除");
+                enabled: !root.provider.active;
+                clicked => { ProviderEditor.confirm-delete = root.provider; }
+            }
         }
     }
+}
+
+export component TranslationSection {
+    in property <bool> show-title;
+
+    property <bool> has-providers: Settings.translation-providers.length > 0;
 
     PageScroll {
         x: 0px;
@@ -90,221 +223,740 @@ export component TranslationSection {
             SwitchRow {
                 label: @tr("启用实时翻译");
                 description: !Network.allowed ? @tr("需要先在 联网与资料 中允许联网")
-                    : !root.profile-saved ? @tr("需要先填写并保存下方的接口配置")
+                    : !root.has-providers ? @tr("需要先添加一个翻译服务商")
                     : @tr("游戏运行时把对白发送到翻译服务，并显示译文。");
-                value: Settings.translation-enabled && Network.allowed && root.profile-saved;
-                enabled: Network.allowed && root.profile-saved;
+                value: Settings.translation-enabled && Network.allowed && root.has-providers;
+                enabled: Network.allowed && root.has-providers;
                 toggled(on) => { Settings.set-translation-enabled(on); }
             }
         }
 
         SettingGroup {
-            title: @tr("翻译接口");
-            description: @tr("修改后点「保存」才会生效。");
+            title: @tr("翻译服务商");
+            description: @tr("可以保存多个服务商，游戏使用标为“使用中”的那一个。API Key 保存在系统凭据库中。");
 
-            FieldBlock {
-                label: @tr("服务商");
-                Segments {
-                    label: @tr("服务商");
-                    items: ["OpenAI", "Anthropic", "Google"];
-                    index: root.provider == "anthropic" ? 1 : root.provider == "google" ? 2 : 0;
-                    selected(i) => {
-                        root.provider = i == 1 ? "anthropic" : i == 2 ? "google" : "openai";
-                        root.base-url = root.default-url(root.provider);
-                    }
-                }
+            if !root.has-providers : MaterialText {
+                text: @tr("还没有服务商。添加一个并填写 API Key 后即可使用实时翻译。");
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
             }
 
-            VerticalLayout {
-                spacing: 4px;
-                FormField {
-                    label: "Base URL";
-                    value: root.base-url;
-                    input-type: InputType.text;
-                    has-error: root.base-url == "";
-                    supporting-text: root.base-url == "" ? @tr("请填写接口地址") : @tr("需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。");
-                    edited(text) => { root.base-url = text; }
-                }
-                HorizontalLayout {
-                    alignment: end;
-                    TextButton {
-                        text: @tr("恢复默认地址");
-                        icon: Icons.restart-alt;
-                        enabled: root.base-url != root.default-url(root.provider);
-                        clicked => { root.base-url = root.default-url(root.provider); }
-                    }
-                }
-            }
-
-            key := TextField {
-                label: Settings.secret-saved ? @tr("API 密钥（已保存，留空沿用）") : @tr("API 密钥");
-                input-type: InputType.password;
-                supporting-text: @tr("密钥保存在系统凭据库中，不会写入配置文件。");
-            }
-
-            if root.provider == "openai" : FieldBlock {
-                label: @tr("接口格式");
-                Segments {
-                    label: @tr("接口格式");
-                    items: ["Responses", "Chat Completions"];
-                    index: root.openai-api == "chat_completions" ? 1 : 0;
-                    selected(i) => { root.openai-api = i == 1 ? "chat_completions" : "responses"; }
-                }
-            }
-
-            ListSelect {
-                label: @tr("模型");
-                items: Settings.models;
-                value: root.model-manual ? "" : root.model;
-                placeholder: @tr("先「测试连接」获取模型列表");
-                extra-label: @tr("手动输入…");
-                extra-active: root.model-manual;
-                supporting-text: Settings.models.length == 0 ? @tr("测试连接成功后可以从列表中选择模型。") : "";
-                selected(value) => {
-                    root.model = value;
-                    root.model-manual-chosen = false;
-                }
-                extra => { root.model-manual-chosen = true; }
-            }
-
-            if root.model-manual : FormField {
-                label: @tr("模型名称");
-                value: root.model;
-                has-error: root.model == "";
-                supporting-text: root.model == "" ? @tr("请填写模型名称") : "";
-                edited(text) => { root.model = text; }
-            }
-
-            ChoiceSelect {
-                label: @tr("目标语言");
-                choices: [
-                    { id: "zh-CN", label: "简体中文（zh-CN）" },
-                    { id: "zh-TW", label: "繁體中文（zh-TW）" },
-                    { id: "en", label: "English（en）" },
-                    { id: "ja", label: "日本語（ja）" },
-                    { id: "ko", label: "한국어（ko）" },
-                    { id: "manual", label: @tr("手动输入…") },
-                ];
-                value: root.language-manual ? "manual" : root.language;
-                selected(id) => {
-                    if id == "manual" {
-                        root.language-manual-chosen = true;
-                    } else {
-                        root.language = id;
-                        root.language-manual-chosen = false;
-                    }
-                }
-            }
-
-            if root.language-manual : FormField {
-                label: @tr("语言代码");
-                value: root.language;
-                has-error: root.language == "";
-                supporting-text: @tr("BCP 47 语言代码，例如 zh-CN、fr、de。");
-                edited(text) => { root.language = text; }
-            }
-
-            SliderField {
-                label: @tr("超时");
-                seconds: true;
-                minimum: 5;
-                maximum: 120;
-                step: 1;
-                value: root.timeout-s;
-                released(v) => { root.timeout-s = round(v); }
+            for provider in Settings.translation-providers : ProviderCard {
+                provider: provider;
             }
 
             HorizontalLayout {
                 alignment: start;
-                TextButton {
-                    text: root.advanced-open ? @tr("收起高级设置") : @tr("高级设置");
-                    icon: root.advanced-open ? Icons.expand-less : Icons.expand-more;
-                    accessible-expandable: true;
-                    accessible-expanded: root.advanced-open;
-                    clicked => { root.advanced-open = !root.advanced-open; }
-                }
-            }
-
-            if root.advanced-open : VerticalLayout {
-                spacing: 20px;
-
-                FieldBlock {
-                    label: @tr("追加提示词");
-                    description: @tr("附加在翻译指令后的风格要求，例如人名译法或语气。");
-                    trailing: root.prompt-length + " / 2000";
-                    TextEdit {
-                        height: 120px;
-                        text: root.custom-prompt;
-                        wrap: word-wrap;
-                        accessible-label: @tr("追加提示词");
-                        edited(text) => { root.custom-prompt = text; }
-                    }
-                    if root.prompt-length > 2000 : MaterialText {
-                        text: @tr("不能超过 2000 字");
-                        style: MaterialTypography.body-small;
-                        color: MaterialPalette.error;
-                    }
-                }
-
-                SliderField {
-                    label: @tr("上下文段数");
-                    description: @tr("随请求附带的前文对白条数，0 表示不带上下文。");
-                    minimum: 0;
-                    maximum: 16;
-                    step: 1;
-                    value: root.context-segments;
-                    released(v) => { root.context-segments = round(v); }
-                }
-
-                SliderField {
-                    label: @tr("上下文字符上限");
-                    minimum: 1000;
-                    maximum: 12000;
-                    step: 500;
-                    value: root.context-chars;
-                    released(v) => { root.context-chars = round(v); }
-                }
-            }
-
-            if Settings.translation-status != "" : RowText {
-                label: @tr("连接状态");
-                description: Settings.translation-status;
-            }
-
-            HorizontalLayout {
-                alignment: end;
-                spacing: 8px;
-
-                if root.dirty : MaterialText {
-                    horizontal-stretch: 1;
-                    text: @tr("有未保存的修改");
-                    style: MaterialTypography.body-small;
-                    color: MaterialPalette.on-surface-variant;
-                    vertical-alignment: center;
-                }
-
-                TonalButton {
-                    text: @tr("测试连接");
-                    enabled: Network.allowed && root.base-url != "" && root.prompt-length <= 2000;
-                    clicked => { Settings.test-translation(root.form, key.text); }
-                }
                 FilledButton {
-                    text: @tr("保存");
-                    icon: Icons.save;
-                    enabled: root.form-valid && root.dirty;
-                    clicked => {
-                        Settings.save-translation(root.form, key.text);
-                        key.text = "";
-                    }
+                    text: @tr("添加服务商");
+                    icon: Icons.add;
+                    clicked => { ProviderEditor.add(); }
                 }
-            }
-
-            if !Network.allowed : MaterialText {
-                text: @tr("测试连接需要先允许联网。");
-                style: MaterialTypography.body-small;
-                color: MaterialPalette.on-surface-variant;
-                horizontal-alignment: right;
             }
         }
+    }
+}
+
+component PresetRow {
+    in property <Preset> preset;
+    callback chosen();
+
+    min-height: 56px;
+    preferred-height: l.preferred-height;
+    accessible-role: button;
+    accessible-label: root.preset.name;
+    accessible-action-default => { root.chosen(); }
+
+    Rectangle {
+        border-radius: 12px;
+        background: touch.has-hover ? MaterialPalette.on-surface.with-alpha(0.08) : transparent;
+    }
+
+    l := HorizontalLayout {
+        padding: 8px;
+        padding-left: 12px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                width: 24px;
+                height: 24px;
+                source: root.preset.category == "custom" ? Icons.tune : root.preset.category == "local" ? Icons.memory : Icons.public;
+                colorize: MaterialPalette.on-surface-variant;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            MaterialText {
+                text: root.preset.name;
+                style: MaterialTypography.body-large;
+                color: MaterialPalette.on-surface;
+                overflow: elide;
+            }
+            MaterialText {
+                text: root.preset.base-url != "" ? root.preset.base-url : @tr("填写任意 OpenAI、Anthropic 或 Gemini 兼容地址");
+                style: MaterialTypography.body-small;
+                color: MaterialPalette.on-surface-variant;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                width: 20px;
+                height: 20px;
+                source: Icons.chevron-right;
+                colorize: MaterialPalette.on-surface-variant;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.chosen(); }
+    }
+}
+
+// Presets of one category that match the search.
+component PresetGroup {
+    in property <string> category;
+    in property <string> query;
+    callback chosen(preset: Preset);
+
+    property <int> count: round(counter.preferred-height / 1px);
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+
+    counter := VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        for preset in Presets.all : Rectangle {
+            height: preset.category == root.category && Presets.matches(preset, root.query) ? 1px : 0px;
+        }
+    }
+
+    l := VerticalLayout {
+        spacing: 4px;
+        if root.count > 0 : MaterialText {
+            text: Presets.category-label(root.category);
+            style: MaterialTypography.title-small;
+            color: MaterialPalette.primary;
+        }
+        for preset in Presets.all : VerticalLayout {
+            if preset.category == root.category && Presets.matches(preset, root.query) : PresetRow {
+                preset: preset;
+                chosen => { root.chosen(preset); }
+            }
+        }
+    }
+}
+
+// Add/edit sheet: a preset list for new cards, then the endpoint form.
+component ProviderEditorSheet {
+    property <bool> wide: root.width >= 600px;
+    property <TranslationProvider> source: ProviderEditor.source;
+    property <bool> is-new: root.source.id == "";
+    property <bool> choosing: ProviderEditor.step == "preset";
+
+    // Draft; only 保存 persists it.
+    property <string> name;
+    property <string> preset;
+    property <string> provider;
+    property <string> base-url;
+    property <string> openai-api;
+    property <string> model;
+    property <string> language;
+    property <int> timeout-s;
+    property <string> custom-prompt;
+    property <int> context-segments;
+    property <int> context-chars;
+    property <string> query;
+    // API key typed into the form; empty keeps the stored key.
+    property <string> secret;
+    property <bool> model-manual-chosen;
+    property <bool> language-manual-chosen;
+    property <bool> advanced-open;
+    property <string> preset-url;
+
+    property <bool> own-models: Settings.translation-test-for == root.source.id;
+    property <int> prompt-length: root.custom-prompt.character-count;
+    property <int> model-matches: round(model-counter.preferred-height / 1px);
+    property <bool> model-manual: root.model-manual-chosen || !root.own-models || Settings.models.length == 0 || (root.model != "" && root.model-matches == 0);
+    property <bool> language-known: root.language == "zh-CN" || root.language == "zh-TW" || root.language == "en" || root.language == "ja" || root.language == "ko";
+    property <bool> language-manual: root.language-manual-chosen || !root.language-known;
+    property <bool> key-required: root.is-new && root.secret == "";
+    property <bool> form-valid: root.name != "" && root.base-url != "" && root.model != "" && root.language != "" && root.prompt-length <= 2000 && !root.key-required;
+    property <TranslationForm> form: {
+        provider: root.provider,
+        base-url: root.base-url,
+        openai-api: root.openai-api,
+        model: root.model,
+        language: root.language,
+        timeout-s: root.timeout-s,
+        custom-prompt: root.custom-prompt,
+        context-segments: root.context-segments,
+        context-chars: root.context-chars,
+    };
+    property <bool> dirty: !root.choosing && (root.name != root.source.name || root.preset != root.source.preset || root.form != root.source.form || root.secret != "");
+    changed dirty => { ProviderEditor.dirty = root.dirty; }
+    property <bool> narrow: sheet.width < 480px;
+    property <bool> can-fetch: Network.allowed && root.base-url != "" && (root.secret != "" || !root.is-new);
+
+    function choose-model(value: string) {
+        root.model = value;
+        root.model-manual-chosen = false;
+    }
+
+    function load() {
+        self.name = self.source.name;
+        self.preset = self.source.preset;
+        self.provider = self.source.form.provider != "" ? self.source.form.provider : "openai";
+        self.base-url = self.source.form.base-url;
+        self.openai-api = self.source.form.openai-api != "" ? self.source.form.openai-api : "responses";
+        self.model = self.source.form.model;
+        self.language = self.source.form.language != "" ? self.source.form.language : "zh-CN";
+        self.timeout-s = self.source.form.timeout-s > 0 ? self.source.form.timeout-s : 15;
+        self.custom-prompt = self.source.form.custom-prompt;
+        self.context-segments = self.source.form.context-segments;
+        self.context-chars = self.source.form.context-chars >= 1000 ? self.source.form.context-chars : 6000;
+        self.model-manual-chosen = false;
+        self.language-manual-chosen = false;
+        self.preset-url = self.base-url;
+        self.secret = "";
+    }
+
+    function choose(p: Preset) {
+        ProviderEditor.source = {
+            id: "",
+            name: p.id == "custom" ? "" : p.name,
+            preset: p.id,
+            active: false,
+            form: {
+                provider: p.provider,
+                base-url: p.base-url,
+                openai-api: p.openai-api,
+                model: "",
+                language: root.source.form.language,
+                timeout-s: root.source.form.timeout-s,
+                custom-prompt: "",
+                context-segments: root.source.form.context-segments,
+                context-chars: root.source.form.context-chars,
+            },
+        };
+        ProviderEditor.step = "form";
+        root.load();
+    }
+
+    init => {
+        root.load();
+        sheet.focus();
+    }
+    changed source => { root.load(); }
+    // A successful save changes Settings.translation-saved; the sheet is done.
+    property <int> saved: Settings.translation-saved;
+    changed saved => { ProviderEditor.close(); }
+
+    model-counter := VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        for m in Settings.models : Rectangle {
+            height: m == root.model ? 1px : 0px;
+        }
+    }
+
+    Scrim {
+        width: 100%;
+        height: 100%;
+        dismiss => { ProviderEditor.request-close(); }
+    }
+
+    sheet := Rectangle {
+        x: root.wide ? (root.width - self.width) / 2 : 0px;
+        y: root.wide ? (root.height - self.height) / 2 : 0px;
+        width: root.wide ? min(640px, root.width - 48px) : root.width;
+        height: root.wide ? min(760px, root.height - 48px) : root.height;
+        border-radius: root.wide ? 28px : 0px;
+        background: MaterialPalette.surface-container-low;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: MaterialPalette.shadow-30;
+        clip: true;
+        forward-focus: keys;
+        accessible-role: groupbox;
+        accessible-label: header.text;
+
+        TouchArea { }
+
+        keys := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape || event.text == Key.Back {
+                    ProviderEditor.request-close();
+                    return accept;
+                }
+                reject
+            }
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 16px;
+                height: 64px;
+                spacing: 4px;
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: root.choosing || !root.is-new ? Icons.close : Icons.arrow-back;
+                        tooltip: root.choosing || !root.is-new ? @tr("关闭") : @tr("返回预设列表");
+                        clicked => {
+                            if root.choosing || !root.is-new {
+                                ProviderEditor.request-close();
+                            } else {
+                                ProviderEditor.back-to-presets();
+                            }
+                        }
+                    }
+                }
+                header := MaterialText {
+                    horizontal-stretch: 1;
+                    text: root.choosing ? @tr("添加服务商：选择预设") : root.is-new ? @tr("添加服务商：填写信息") : @tr("编辑服务商");
+                    style: MaterialTypography.title-large;
+                    color: MaterialPalette.on-surface;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            if root.choosing : VerticalLayout {
+                vertical-stretch: 1;
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 8px;
+
+                TextField {
+                    label: @tr("搜索预设");
+                    leading-icon: Icons.search;
+                    text <=> root.query;
+                }
+
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-bottom: 16px;
+                        spacing: 16px;
+                        alignment: start;
+                        PresetGroup {
+                            category: "official";
+                            query: root.query;
+                            chosen(p) => { root.choose(p); }
+                        }
+                        PresetGroup {
+                            category: "cloud";
+                            query: root.query;
+                            chosen(p) => { root.choose(p); }
+                        }
+                        PresetGroup {
+                            category: "local";
+                            query: root.query;
+                            chosen(p) => { root.choose(p); }
+                        }
+                        PresetGroup {
+                            category: "custom";
+                            query: root.query;
+                            chosen(p) => { root.choose(p); }
+                        }
+                    }
+                }
+            }
+
+            if !root.choosing : ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 8px;
+                    padding-bottom: 16px;
+                    spacing: 20px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        FormField {
+                            label: @tr("名称");
+                            value: root.name;
+                            has-error: root.name == "";
+                            edited(text) => { root.name = text; }
+                        }
+                        if root.name == "" : Hint {
+                            text: @tr("请填写名称，用来区分不同的服务商");
+                            error: true;
+                        }
+                    }
+
+                    FieldBlock {
+                        label: @tr("接口类型");
+                        Segments {
+                            label: @tr("接口类型");
+                            items: ["OpenAI", "Anthropic", "Google"];
+                            index: root.provider == "anthropic" ? 1 : root.provider == "google" ? 2 : 0;
+                            selected(i) => {
+                                root.provider = i == 1 ? "anthropic" : i == 2 ? "google" : "openai";
+                                if root.preset == "custom" || root.base-url == "" {
+                                    root.base-url = Presets.default-url(root.provider);
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        FormField {
+                            label: "Base URL";
+                            value: root.base-url;
+                            input-type: InputType.text;
+                            has-error: root.base-url == "";
+                            edited(text) => { root.base-url = text; }
+                        }
+                        Hint {
+                            text: root.base-url == "" ? @tr("请填写接口地址") : @tr("需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。");
+                            error: root.base-url == "";
+                        }
+                        if root.preset-url != "" : HorizontalLayout {
+                            alignment: end;
+                            TextButton {
+                                text: @tr("恢复预设地址");
+                                icon: Icons.restart-alt;
+                                enabled: root.base-url != root.preset-url;
+                                clicked => { root.base-url = root.preset-url; }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        TextField {
+                            text <=> root.secret;
+                            label: root.is-new ? "API Key" : @tr("API Key（已保存，留空沿用）");
+                            input-type: InputType.password;
+                            has-error: root.key-required && root.name != "";
+                        }
+                        Hint {
+                            text: Presets.is-local(root.preset) ? @tr("本地服务通常不校验密钥，可以填写任意内容。") : @tr("密钥保存在系统凭据库中，不会写入配置文件。");
+                        }
+                    }
+
+                    if root.provider == "openai" : FieldBlock {
+                        label: @tr("接口格式");
+                        Segments {
+                            label: @tr("接口格式");
+                            items: ["Responses", "Chat Completions"];
+                            index: root.openai-api == "chat_completions" ? 1 : 0;
+                            selected(i) => { root.openai-api = i == 1 ? "chat_completions" : "responses"; }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 8px;
+                        // Narrow sheets put 获取模型 under the select so the value stays readable.
+                        if !root.narrow : HorizontalLayout {
+                            spacing: 8px;
+                            ListSelect {
+                                horizontal-stretch: 1;
+                                label: @tr("模型");
+                                items: root.own-models ? Settings.models : [];
+                                value: root.model-manual ? "" : root.model;
+                                placeholder: @tr("点“获取模型”读取列表");
+                                extra-label: @tr("手动输入…");
+                                extra-active: root.model-manual;
+                                selected(value) => { root.choose-model(value); }
+                                extra => { root.model-manual-chosen = true; }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 0;
+                                alignment: start;
+                                padding-top: 8px;
+                                TonalButton {
+                                    text: @tr("获取模型");
+                                    icon: Icons.refresh;
+                                    enabled: root.can-fetch;
+                                    clicked => { Settings.test-translation(root.source.id, root.form, root.secret); }
+                                }
+                            }
+                        }
+                        if root.narrow : ListSelect {
+                            label: @tr("模型");
+                            items: root.own-models ? Settings.models : [];
+                            value: root.model-manual ? "" : root.model;
+                            placeholder: @tr("点“获取模型”读取列表");
+                            extra-label: @tr("手动输入…");
+                            extra-active: root.model-manual;
+                            selected(value) => { root.choose-model(value); }
+                            extra => { root.model-manual-chosen = true; }
+                        }
+                        if root.narrow : HorizontalLayout {
+                            alignment: end;
+                            TonalButton {
+                                text: @tr("获取模型");
+                                icon: Icons.refresh;
+                                enabled: root.can-fetch;
+                                clicked => { Settings.test-translation(root.source.id, root.form, root.secret); }
+                            }
+                        }
+                        if root.model-manual : FormField {
+                            label: @tr("模型名称");
+                            value: root.model;
+                            has-error: root.model == "";
+                            edited(text) => { root.model = text; }
+                        }
+                        if root.model-manual && root.model == "" : Hint {
+                            text: @tr("请填写模型名称，或先获取模型列表");
+                            error: true;
+                        }
+                        if root.own-models && Settings.translation-status != "" : MaterialText {
+                            text: Settings.translation-status;
+                            style: MaterialTypography.body-small;
+                            color: MaterialPalette.on-surface-variant;
+                            wrap: word-wrap;
+                            overflow: clip;
+                        }
+                        if !Network.allowed : MaterialText {
+                            text: @tr("获取模型和测试连接需要先允许联网。");
+                            style: MaterialTypography.body-small;
+                            color: MaterialPalette.on-surface-variant;
+                            wrap: word-wrap;
+                            overflow: clip;
+                        }
+                    }
+
+                    ChoiceSelect {
+                        label: @tr("目标语言");
+                        choices: [
+                            { id: "zh-CN", label: "简体中文（zh-CN）" },
+                            { id: "zh-TW", label: "繁體中文（zh-TW）" },
+                            { id: "en", label: "English（en）" },
+                            { id: "ja", label: "日本語（ja）" },
+                            { id: "ko", label: "한국어（ko）" },
+                            { id: "manual", label: @tr("手动输入…") },
+                        ];
+                        value: root.language-manual ? "manual" : root.language;
+                        selected(id) => {
+                            if id == "manual" {
+                                root.language-manual-chosen = true;
+                            } else {
+                                root.language = id;
+                                root.language-manual-chosen = false;
+                            }
+                        }
+                    }
+
+                    if root.language-manual : VerticalLayout {
+                        spacing: 4px;
+                        FormField {
+                            label: @tr("语言代码");
+                            value: root.language;
+                            has-error: root.language == "";
+                            edited(text) => { root.language = text; }
+                        }
+                        Hint { text: @tr("BCP 47 语言代码，例如 zh-CN、fr、de。"); }
+                    }
+
+                    SliderField {
+                        label: @tr("超时");
+                        seconds: true;
+                        minimum: 5;
+                        maximum: 120;
+                        step: 1;
+                        value: root.timeout-s;
+                        released(v) => { root.timeout-s = round(v); }
+                    }
+
+                    HorizontalLayout {
+                        alignment: start;
+                        TextButton {
+                            text: root.advanced-open ? @tr("收起高级设置") : @tr("高级设置");
+                            icon: root.advanced-open ? Icons.expand-less : Icons.expand-more;
+                            accessible-expandable: true;
+                            accessible-expanded: root.advanced-open;
+                            clicked => { root.advanced-open = !root.advanced-open; }
+                        }
+                    }
+
+                    if root.advanced-open : VerticalLayout {
+                        spacing: 20px;
+
+                        FieldBlock {
+                            label: @tr("追加提示词");
+                            description: @tr("附加在翻译指令后的风格要求，例如人名译法或语气。");
+                            trailing: root.prompt-length + " / 2000";
+                            TextEdit {
+                                height: 120px;
+                                text: root.custom-prompt;
+                                wrap: word-wrap;
+                                accessible-label: @tr("追加提示词");
+                                edited(text) => { root.custom-prompt = text; }
+                            }
+                            if root.prompt-length > 2000 : MaterialText {
+                                text: @tr("不能超过 2000 字");
+                                style: MaterialTypography.body-small;
+                                color: MaterialPalette.error;
+                            }
+                        }
+
+                        SliderField {
+                            label: @tr("上下文段数");
+                            description: @tr("随请求附带的前文对白条数，0 表示不带上下文。");
+                            minimum: 0;
+                            maximum: 16;
+                            step: 1;
+                            value: root.context-segments;
+                            released(v) => { root.context-segments = round(v); }
+                        }
+
+                        SliderField {
+                            label: @tr("上下文字符上限");
+                            minimum: 1000;
+                            maximum: 12000;
+                            step: 500;
+                            value: root.context-chars;
+                            released(v) => { root.context-chars = round(v); }
+                        }
+                    }
+                }
+            }
+
+            if !root.choosing : Rectangle {
+                height: footer.preferred-height;
+                background: MaterialPalette.surface-container;
+
+                footer := HorizontalLayout {
+                    padding: 12px;
+                    padding-left: 24px;
+                    padding-right: 16px;
+                    spacing: 8px;
+                    alignment: end;
+
+                    if root.dirty && root.wide : MaterialText {
+                        horizontal-stretch: 1;
+                        text: @tr("有未保存的修改");
+                        style: MaterialTypography.body-small;
+                        color: MaterialPalette.on-surface-variant;
+                        vertical-alignment: center;
+                    }
+                    TextButton {
+                        text: @tr("测试连接");
+                        enabled: Network.allowed && root.base-url != "" && (root.secret != "" || !root.is-new) && root.prompt-length <= 2000;
+                        clicked => { Settings.test-translation(root.source.id, root.form, root.secret); }
+                    }
+                    FilledButton {
+                        text: @tr("保存");
+                        icon: Icons.save;
+                        enabled: root.form-valid && (root.dirty || root.is-new);
+                        clicked => {
+                            Settings.save-translation-provider(root.source.id, root.name, root.preset, root.form, root.secret);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if ProviderEditor.confirm-discard : Scrim {
+        width: 100%;
+        height: 100%;
+    }
+    if ProviderEditor.confirm-discard : DialogSurface {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width-limit: root.width - 32px;
+        height-limit: root.height - 32px;
+        surface-max-width: 400px;
+        title: @tr("放弃未保存的修改？");
+        escape => { ProviderEditor.confirm-discard = false; }
+        init => { self.focus(); }
+
+        MaterialText {
+            text: @tr("离开后，这次编辑的内容不会保存。");
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            TextButton {
+                text: @tr("继续编辑");
+                clicked => { ProviderEditor.confirm-discard = false; }
+            }
+            FilledButton {
+                text: @tr("放弃");
+                clicked => { ProviderEditor.discard(); }
+            }
+        }
+    }
+}
+
+component DeleteProviderDialog {
+    Scrim {
+        width: 100%;
+        height: 100%;
+        dismiss => { ProviderEditor.confirm-delete = { }; }
+    }
+    DialogSurface {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width-limit: root.width - 32px;
+        height-limit: root.height - 32px;
+        surface-max-width: 400px;
+        title: @tr("删除服务商“{}”？", ProviderEditor.confirm-delete.name);
+        escape => { ProviderEditor.confirm-delete = { }; }
+        init => { self.focus(); }
+
+        MaterialText {
+            text: @tr("这个服务商的 API Key 也会从系统凭据库中删除。");
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            TextButton {
+                text: @tr("取消");
+                clicked => { ProviderEditor.confirm-delete = { }; }
+            }
+            FilledButton {
+                text: @tr("删除");
+                clicked => {
+                    Settings.delete-translation-provider(ProviderEditor.confirm-delete.id);
+                    ProviderEditor.confirm-delete = { };
+                }
+            }
+        }
+    }
+}
+
+// Window-level layer for the provider editor and the delete confirmation.
+export component TranslationOverlays {
+    if ProviderEditor.open : ProviderEditorSheet {
+        width: root.width;
+        height: root.height;
+    }
+    if ProviderEditor.confirm-delete.id != "" : DeleteProviderDialog {
+        width: root.width;
+        height: root.height;
     }
 }

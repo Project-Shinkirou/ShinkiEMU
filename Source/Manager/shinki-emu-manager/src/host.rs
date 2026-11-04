@@ -212,16 +212,37 @@ pub trait ManagerController: 'static {
     fn model(&mut self) -> Result<ManagerViewModel, String>;
     fn select_case(&mut self, case_id: &str) -> Result<ManagerViewModel, String>;
     fn search(&mut self, query: &str) -> Result<ManagerViewModel, String>;
-    fn save_translation_profile(
+    /// Create (empty `provider_id`) or update a translation provider card; an
+    /// empty `secret` keeps the card's stored key.
+    fn save_translation_provider(
         &mut self,
+        provider_id: &str,
+        name: &str,
+        preset: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
     ) -> Result<ManagerViewModel, String>;
-    /// Test the form values; an empty secret falls back to the stored one.
+    /// Fetch the model list of the form's endpoint; an empty secret uses the
+    /// key stored for `provider_id`.
     fn test_translation_connection(
         &mut self,
+        provider_id: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
+    ) -> Result<ManagerViewModel, String>;
+    /// Translate game sessions through card `provider_id`.
+    fn activate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String>;
+    fn duplicate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String>;
+    /// Delete a card that is not enabled, with its key.
+    fn delete_translation_provider(
+        &mut self,
+        provider_id: &str,
     ) -> Result<ManagerViewModel, String>;
     fn set_translation_enabled(&mut self, enabled: bool) -> Result<ManagerViewModel, String>;
     /// One persisted switch for VNDB, Bangumi, metadata sync, core downloads and translation.
@@ -303,6 +324,15 @@ pub trait ManagerController: 'static {
     fn install_core(&mut self, source: &std::path::Path) -> Result<ManagerViewModel, String>;
     /// Download the newest catalog release of a core; needs network permission.
     fn install_online_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    /// Download every installed core with a newer release, a bounded number at a time.
+    fn update_all_cores(&mut self) -> Result<ManagerViewModel, String>;
+    /// Run the failed cores of the finished 全部更新 run again.
+    fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String>;
+    /// Stop a queued or transferring download; nothing is staged.
+    fn cancel_core_download(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    fn cancel_core_batch(&mut self) -> Result<ManagerViewModel, String>;
+    /// Hide the summary of a finished 全部更新 run.
+    fn dismiss_core_batch(&mut self) -> Result<ManagerViewModel, String>;
     /// `core_id` is a `Cores.items` id (plugin id, or directory stem for failed cores).
     fn uninstall_core(&mut self, core_id: &str) -> Result<ManagerViewModel, String>;
     fn log_text(&self, core: &str) -> Result<(String, usize), String>;

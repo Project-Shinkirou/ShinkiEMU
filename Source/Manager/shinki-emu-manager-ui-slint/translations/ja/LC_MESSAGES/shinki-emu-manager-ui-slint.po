@@ -351,35 +351,14 @@ msgstr "リアルタイム翻訳を有効にする"
 msgid "需要先在 联网与资料 中允许联网"
 msgstr "先に「ネットワークとメタデータ」でネットワーク接続を許可してください"
 
-msgid "需要先填写并保存下方的接口配置"
-msgstr "先に下のプロバイダー設定を入力して保存してください"
-
 msgid "游戏运行时把对白发送到翻译服务，并显示译文。"
 msgstr "ゲーム実行中に台詞を翻訳サービスへ送り、訳文を表示します。"
-
-msgid "翻译接口"
-msgstr "翻訳プロバイダー"
-
-msgid "修改后点「保存」才会生效。"
-msgstr "変更は「保存」を押すと反映されます。"
-
-msgid "服务商"
-msgstr "プロバイダー"
 
 msgid "请填写接口地址"
 msgstr "エンドポイント URL を入力してください"
 
 msgid "需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。"
 msgstr "HTTPS が必要です。ローカルサービス（localhost / 127.0.0.1）は HTTP でも構いません。"
-
-msgid "恢复默认地址"
-msgstr "既定の URL に戻す"
-
-msgid "API 密钥（已保存，留空沿用）"
-msgstr "API キー（保存済み。空欄なら現在のキーを使用）"
-
-msgid "API 密钥"
-msgstr "API キー"
 
 msgid "密钥保存在系统凭据库中，不会写入配置文件。"
 msgstr "キーはシステムの資格情報ストアに保存され、設定ファイルには書き込まれません。"
@@ -390,20 +369,11 @@ msgstr "API 形式"
 msgid "模型"
 msgstr "モデル"
 
-msgid "先「测试连接」获取模型列表"
-msgstr "「接続テスト」でモデル一覧を取得"
-
 msgid "手动输入…"
 msgstr "手動で入力…"
 
-msgid "测试连接成功后可以从列表中选择模型。"
-msgstr "接続テストに成功すると、一覧からモデルを選べます。"
-
 msgid "模型名称"
 msgstr "モデル名"
-
-msgid "请填写模型名称"
-msgstr "モデル名を入力してください"
 
 msgid "目标语言"
 msgstr "翻訳先の言語"
@@ -441,9 +411,6 @@ msgstr "リクエストに添える直前の台詞の数。0 にするとコン�
 msgid "上下文字符上限"
 msgstr "コンテキスト文字数の上限"
 
-msgid "连接状态"
-msgstr "接続状態"
-
 msgid "有未保存的修改"
 msgstr "未保存の変更があります"
 
@@ -452,9 +419,6 @@ msgstr "接続テスト"
 
 msgid "保存"
 msgstr "保存"
-
-msgid "测试连接需要先允许联网。"
-msgstr "接続テストにはネットワーク接続の許可が必要です。"
 
 # detail+login
 msgid "关闭"
@@ -2214,9 +2178,6 @@ msgstr "ライブラリをスキャン中：{directories} 個のフォルダー�
 msgid "正在搜索…"
 msgstr "検索中…"
 
-msgid "正在测试翻译服务连接…"
-msgstr "翻訳サービスへの接続をテスト中…"
-
 msgid "正在自动关联…"
 msgstr "自動で連携中…"
 
@@ -2243,9 +2204,6 @@ msgstr "ファイルパッチはゲームを終了してから適用できます
 
 msgid "缩放倍率"
 msgstr "拡大倍率"
-
-msgid "翻译配置已保存"
-msgstr "翻訳設定を保存しました"
 
 msgid "自定义…"
 msgstr "カスタム…"
@@ -2392,9 +2350,6 @@ msgstr "アップデート"
 msgid "发现新版本 {}"
 msgstr "新しいバージョン {} があります"
 
-msgid "当前版本 {}"
-msgstr "現在のバージョン {}"
-
 msgid "当前版本"
 msgstr "現在のバージョン"
 
@@ -2454,3 +2409,232 @@ msgstr "プレリリース版は新機能を早く試せますが、不安定な
 
 msgid "GitHub 请求已达速率限制，请稍后再试"
 msgstr "GitHub のリクエスト制限に達しました。しばらくしてから再試行してください。"
+
+# manager UX: core downloads, update banner, translation providers
+msgid "排队中"
+msgstr "待機中"
+
+msgid "正在校验"
+msgstr "検証中"
+
+msgid "正在安装"
+msgstr "インストール中"
+
+msgid "正在连接…"
+msgstr "接続中…"
+
+msgid "等待其他核心下载完成"
+msgstr "ほかのコアのダウンロード完了を待っています"
+
+msgid "正在核对文件大小和 SHA-256"
+msgstr "ファイルサイズと SHA-256 を確認しています"
+
+msgid "正在写入待安装区，重启后生效"
+msgstr "インストール待ち領域に書き込んでいます。再起動後に反映されます"
+
+msgid "下载失败：{}"
+msgstr "ダウンロード失敗：{}"
+
+msgid "全部更新（{}）"
+msgstr "すべて更新（{}）"
+
+msgid "正在更新核心"
+msgstr "コアを更新しています"
+
+msgid "部分核心更新失败"
+msgstr "一部のコアの更新に失敗しました"
+
+msgid "核心更新完成"
+msgstr "コアの更新が完了しました"
+
+msgid "已完成 {0}/{1}"
+msgstr "{0}/{1} 完了"
+
+msgid "成功 {0} 个，失败 {1} 个"
+msgstr "成功 {0} 件、失敗 {1} 件"
+
+msgid "，取消 {} 个"
+msgstr "、キャンセル {} 件"
+
+msgid "全部取消"
+msgstr "すべてキャンセル"
+
+msgid "重试失败项（{}）"
+msgstr "失敗分を再試行（{}）"
+
+msgid "忽略"
+msgstr "スキップ"
+
+msgid "查看详情"
+msgstr "詳細を見る"
+
+msgid "阿里云百炼"
+msgstr "Alibaba Cloud Model Studio"
+
+msgid "硅基流动"
+msgstr "SiliconFlow"
+
+msgid "官方"
+msgstr "公式"
+
+msgid "云服务与聚合"
+msgstr "クラウドとアグリゲーター"
+
+msgid "本地服务"
+msgstr "ローカルサービス"
+
+msgid "使用中"
+msgstr "使用中"
+
+msgid "需要先添加一个翻译服务商"
+msgstr "先に翻訳サービスを追加してください"
+
+msgid "翻译服务商"
+msgstr "翻訳サービス"
+
+msgid "可以保存多个服务商，游戏使用标为“使用中”的那一个。API Key 保存在系统凭据库中。"
+msgstr "複数のサービスを保存でき、ゲームでは「使用中」のものが使われます。API キーはシステムの資格情報ストアに保存されます。"
+
+msgid "还没有服务商。添加一个并填写 API Key 后即可使用实时翻译。"
+msgstr "サービスがまだありません。API キーを入力して追加すると、リアルタイム翻訳を使えます。"
+
+msgid "添加服务商"
+msgstr "サービスを追加"
+
+msgid "填写任意 OpenAI、Anthropic 或 Gemini 兼容地址"
+msgstr "OpenAI・Anthropic・Gemini 互換の任意のエンドポイント"
+
+msgid "返回预设列表"
+msgstr "プリセット一覧に戻る"
+
+msgid "添加服务商：选择预设"
+msgstr "サービスを追加：プリセットを選択"
+
+msgid "添加服务商：填写信息"
+msgstr "サービスを追加：詳細を入力"
+
+msgid "编辑服务商"
+msgstr "サービスを編集"
+
+msgid "搜索预设"
+msgstr "プリセットを検索"
+
+msgid "请填写名称，用来区分不同的服务商"
+msgstr "サービスを区別する名前を入力してください"
+
+msgid "接口类型"
+msgstr "API の種類"
+
+msgid "恢复预设地址"
+msgstr "プリセットの URL に戻す"
+
+msgid "API Key（已保存，留空沿用）"
+msgstr "API キー（保存済み、空欄なら現在のまま）"
+
+msgid "本地服务通常不校验密钥，可以填写任意内容。"
+msgstr "ローカルサービスは通常キーを検証しないため、任意の文字列で構いません。"
+
+msgid "点“获取模型”读取列表"
+msgstr "「モデルを取得」で一覧を読み込みます"
+
+msgid "获取模型"
+msgstr "モデルを取得"
+
+msgid "请填写模型名称，或先获取模型列表"
+msgstr "モデル名を入力するか、先にモデル一覧を取得してください"
+
+msgid "获取模型和测试连接需要先允许联网。"
+msgstr "モデルの取得と接続テストにはネットワークの許可が必要です。"
+
+msgid "放弃未保存的修改？"
+msgstr "保存していない変更を破棄しますか？"
+
+msgid "离开后，这次编辑的内容不会保存。"
+msgstr "このまま離れると、今回の編集内容は保存されません。"
+
+msgid "继续编辑"
+msgstr "編集を続ける"
+
+msgid "放弃"
+msgstr "破棄"
+
+msgid "删除服务商“{}”？"
+msgstr "サービス「{}」を削除しますか？"
+
+msgid "这个服务商的 API Key 也会从系统凭据库中删除。"
+msgstr "このサービスの API キーもシステムの資格情報ストアから削除されます。"
+
+msgid "已取消下载"
+msgstr "ダウンロードをキャンセルしました"
+
+msgid "核心下载失败：{reason}"
+msgstr "コアのダウンロードに失敗しました：{reason}"
+
+msgid "已取消全部更新"
+msgstr "すべての更新をキャンセルしました"
+
+msgid "已更新 {count} 个核心，重启后生效"
+msgstr "{count} 個のコアを更新しました。再起動後に反映されます"
+
+msgid "{count} 个核心更新失败，可以在核心页重试"
+msgstr "{count} 個のコアの更新に失敗しました。コアページで再試行できます"
+
+msgid "已更新 {succeeded} 个核心，{failed} 个失败"
+msgstr "{succeeded} 個のコアを更新、{failed} 個は失敗しました"
+
+msgid "API Key 无效或没有权限（HTTP {code}），请检查密钥"
+msgstr "API キーが無効か権限がありません（HTTP {code}）。キーを確認してください"
+
+msgid "找不到模型列表接口（HTTP {code}），请检查 Base URL 和接口类型"
+msgstr "モデル一覧の API が見つかりません（HTTP {code}）。Base URL と API の種類を確認してください"
+
+msgid "服务返回 HTTP {code}，请稍后再试"
+msgstr "サービスが HTTP {code} を返しました。しばらくしてから再試行してください"
+
+msgid "返回内容不是模型列表，请检查 Base URL 和接口类型"
+msgstr "応答がモデル一覧ではありません。Base URL と API の種類を確認してください"
+
+msgid "连接超时，请检查网络或调大超时时间"
+msgstr "タイムアウトしました。ネットワークを確認するか、タイムアウトを長くしてください"
+
+msgid "无法连接到服务，请检查网络和 Base URL"
+msgstr "サービスに接続できません。ネットワークと Base URL を確認してください"
+
+msgid "读取 API Key 失败，请重新填写"
+msgstr "API キーを読み取れません。もう一度入力してください"
+
+msgid "测试中断，请重试"
+msgstr "テストが中断されました。再試行してください"
+
+msgid "正在获取模型列表…"
+msgstr "モデル一覧を取得しています…"
+
+msgid "服务商已保存"
+msgstr "サービスを保存しました"
+
+msgid "已切换到 {name}"
+msgstr "{name} に切り替えました"
+
+msgid "{name} 副本"
+msgstr "{name} のコピー"
+
+msgid "服务商已删除"
+msgstr "サービスを削除しました"
+
+msgid "自定义"
+msgstr "カスタム"
+
+msgid "启用"
+msgstr "使用する"
+
+msgid "编辑"
+msgstr "編集"
+
+msgid "复制"
+msgstr "複製"
+
+msgid "删除"
+msgstr "削除"
+
+msgid "名称"
+msgstr "名前"

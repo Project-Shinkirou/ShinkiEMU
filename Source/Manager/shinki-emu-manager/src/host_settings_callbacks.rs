@@ -96,12 +96,34 @@ fn install_settings<C: ManagerController>(
 ) {
     let settings = window.global::<Settings>();
     let w = wiring.clone();
-    settings.on_save_translation(move |form, secret| {
-        w.run(|c| c.save_translation_profile(&translation_form(&form), secret.as_str()))
+    settings.on_save_translation_provider(move |id, name, preset, form, secret| {
+        w.run(|c| {
+            c.save_translation_provider(
+                id.as_str(),
+                name.as_str(),
+                preset.as_str(),
+                &translation_form(&form),
+                secret.as_str(),
+            )
+        })
     });
     let w = wiring.clone();
-    settings.on_test_translation(move |form, secret| {
-        w.run(|c| c.test_translation_connection(&translation_form(&form), secret.as_str()))
+    settings.on_test_translation(move |id, form, secret| {
+        w.run(|c| {
+            c.test_translation_connection(id.as_str(), &translation_form(&form), secret.as_str())
+        })
+    });
+    let w = wiring.clone();
+    settings.on_activate_translation_provider(move |id| {
+        w.run(|c| c.activate_translation_provider(id.as_str()))
+    });
+    let w = wiring.clone();
+    settings.on_duplicate_translation_provider(move |id| {
+        w.run(|c| c.duplicate_translation_provider(id.as_str()))
+    });
+    let w = wiring.clone();
+    settings.on_delete_translation_provider(move |id| {
+        w.run(|c| c.delete_translation_provider(id.as_str()))
     });
     let w = wiring.clone();
     settings
@@ -155,6 +177,17 @@ fn install_cores<C: ManagerController>(
     });
     let w = wiring.clone();
     cores.on_install_online(move |plugin_id| w.run(|c| c.install_online_core(plugin_id.as_str())));
+    let w = wiring.clone();
+    cores.on_update_all(move || w.run(|c| c.update_all_cores()));
+    let w = wiring.clone();
+    cores.on_retry_failed(move || w.run(|c| c.retry_failed_cores()));
+    let w = wiring.clone();
+    cores
+        .on_cancel_download(move |plugin_id| w.run(|c| c.cancel_core_download(plugin_id.as_str())));
+    let w = wiring.clone();
+    cores.on_cancel_all(move || w.run(|c| c.cancel_core_batch()));
+    let w = wiring.clone();
+    cores.on_dismiss_batch(move || w.run(|c| c.dismiss_core_batch()));
     let w = wiring.clone();
     cores.on_uninstall(move |core_id| w.run(|c| c.uninstall_core(core_id.as_str())));
     let restart_app = restart.clone();

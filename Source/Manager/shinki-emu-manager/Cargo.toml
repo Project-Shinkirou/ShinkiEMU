@@ -52,6 +52,8 @@ tokio.workspace = true
 directories.workspace = true
 pollster.workspace = true
 reqwest.workspace = true
+bytes = "1.12.1"
+futures-util.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 parking_lot = "0.13.0"
 serde_json.workspace = true

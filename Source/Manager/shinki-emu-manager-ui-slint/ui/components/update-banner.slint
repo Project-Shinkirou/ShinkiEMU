@@ -1,19 +1,26 @@
-import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, TextButton, Icon } from "@material";
-import { SelfUpdate } from "../globals.slint";
+import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, TextButton, IconButton, Icon } from "@material";
+import { App, SelfUpdate } from "../globals.slint";
 import { Icons } from "../icons.slint";
 
-// Floating new-version notice. It never takes focus or blocks the page below;
-// the host shows it while SelfUpdate.banner-visible is set.
+// Compact new-version notice: the version, at most two lines of release
+// notes and the actions. It never takes focus or blocks the page below; the
+// host shows it while SelfUpdate.banner-visible is set. The notes row opens
+// 设置 → 更新, which shows the full notes.
 export component UpdateBanner {
-    // Actions stack when one row would not fit, so long translations stay whole.
-    // Each button pads its label by 24px per side; 前往下载 adds an 18px icon and 8px gap.
-    property <length> row-width: later.preferred-width + ignore.preferred-width + download.preferred-width + 3 * 48px + 26px + 2 * 4px;
-    property <bool> stacked: root.row-width > root.width - 32px;
+    // Buttons pad their label by 24px per side; 下载 adds an 18px icon and 8px gap.
+    property <length> row-width: skip.preferred-width + download.preferred-width + 2 * 48px + 26px + 4px;
+    property <bool> stacked: root.row-width > root.width - 24px;
 
     min-height: body.min-height;
     preferred-height: body.preferred-height;
     accessible-role: groupbox;
     accessible-label: @tr("发现新版本 {}", SelfUpdate.latest-version);
+
+    function open-details() {
+        SelfUpdate.dismiss();
+        App.settings-category = "updates";
+        App.page = "settings";
+    }
 
     Rectangle {
         border-radius: 16px;
@@ -30,16 +37,12 @@ export component UpdateBanner {
         visible: false;
         width: 0px;
         height: 0px;
-        later := MaterialText {
-            text: @tr("稍后");
-            style: MaterialTypography.label-large;
-        }
-        ignore := MaterialText {
-            text: @tr("忽略此版本");
+        skip := MaterialText {
+            text: @tr("忽略");
             style: MaterialTypography.label-large;
         }
         download := MaterialText {
-            text: @tr("前往下载");
+            text: @tr("下载");
             style: MaterialTypography.label-large;
         }
     }
@@ -48,95 +51,123 @@ export component UpdateBanner {
     TouchArea { }
 
     body := VerticalLayout {
-        padding: 16px;
+        padding-left: 16px;
+        padding-right: 4px;
+        padding-top: 4px;
         padding-bottom: 8px;
-        spacing: 12px;
 
         HorizontalLayout {
-            spacing: 16px;
+            spacing: 12px;
+            height: 48px;
 
             VerticalLayout {
-                alignment: start;
+                alignment: center;
                 horizontal-stretch: 0;
-                Rectangle {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 20px;
-                    background: MaterialPalette.primary-container;
-                    Icon {
-                        width: 24px;
-                        height: 24px;
-                        source: Icons.download;
-                        colorize: MaterialPalette.on-primary-container;
-                    }
+                Icon {
+                    width: 20px;
+                    height: 20px;
+                    source: Icons.download;
+                    colorize: MaterialPalette.primary;
                 }
             }
-
-            VerticalLayout {
+            MaterialText {
                 horizontal-stretch: 1;
-                spacing: 4px;
-                MaterialText {
-                    text: @tr("发现新版本 {}", SelfUpdate.latest-version);
-                    style: MaterialTypography.title-medium;
-                    color: MaterialPalette.on-surface;
-                    wrap: word-wrap;
-                    overflow: clip;
-                }
-                MaterialText {
-                    text: @tr("当前版本 {}", SelfUpdate.current-version);
-                    style: MaterialTypography.body-small;
-                    color: MaterialPalette.on-surface-variant;
-                    wrap: word-wrap;
-                    overflow: clip;
-                }
-                if SelfUpdate.notes-summary != "" : MaterialText {
-                    text: SelfUpdate.notes-summary;
-                    style: MaterialTypography.body-medium;
-                    color: MaterialPalette.on-surface-variant;
-                    wrap: word-wrap;
-                    vertical-alignment: top;
-                    // Four body-medium lines; the release page has the rest.
-                    overflow: clip;
-                    max-height: 80px;
+                text: @tr("发现新版本 {}", SelfUpdate.latest-version);
+                style: MaterialTypography.title-small;
+                color: MaterialPalette.on-surface;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: Icons.close;
+                    tooltip: @tr("稍后");
+                    clicked => { SelfUpdate.dismiss(); }
                 }
             }
         }
 
+        // Release notes excerpt; the whole row opens the full notes.
+        details := Rectangle {
+            accessible-role: button;
+            accessible-label: @tr("查看详情");
+            accessible-action-default => { root.open-details(); }
+            min-height: notes.min-height;
+            preferred-height: notes.preferred-height;
+
+            Rectangle {
+                x: -8px;
+                width: parent.width;
+                border-radius: 8px;
+                background: touch.has-hover ? MaterialPalette.on-surface.with-alpha(0.08) : transparent;
+            }
+
+            notes := HorizontalLayout {
+                padding-right: 8px;
+                spacing: 4px;
+                MaterialText {
+                    horizontal-stretch: 1;
+                    text: SelfUpdate.notes-headline != "" ? SelfUpdate.notes-headline : @tr("查看详情");
+                    style: MaterialTypography.body-medium;
+                    color: MaterialPalette.on-surface-variant;
+                    // One line; 设置 → 更新 shows the full notes.
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Icon {
+                        width: 20px;
+                        height: 20px;
+                        source: Icons.chevron-right;
+                        colorize: MaterialPalette.on-surface-variant;
+                    }
+                }
+            }
+
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open-details(); }
+            }
+        }
+
         if !root.stacked : HorizontalLayout {
+            padding-top: 4px;
+            padding-right: 8px;
             alignment: end;
             spacing: 4px;
             TextButton {
-                text: @tr("稍后");
-                clicked => { SelfUpdate.dismiss(); }
-            }
-            TextButton {
-                text: @tr("忽略此版本");
+                text: @tr("忽略");
+                accessible-label: @tr("忽略此版本");
                 clicked => { SelfUpdate.ignore-version(); }
             }
             FilledButton {
-                text: @tr("前往下载");
+                text: @tr("下载");
+                accessible-label: @tr("前往下载");
                 icon: Icons.download;
                 clicked => { SelfUpdate.open-download(); }
             }
         }
 
         if root.stacked : VerticalLayout {
+            padding-top: 4px;
+            padding-right: 12px;
             spacing: 4px;
             FilledButton {
-                text: @tr("前往下载");
+                text: @tr("下载");
+                accessible-label: @tr("前往下载");
                 icon: Icons.download;
                 clicked => { SelfUpdate.open-download(); }
             }
             HorizontalLayout {
                 alignment: end;
-                spacing: 4px;
                 TextButton {
-                    text: @tr("忽略此版本");
+                    text: @tr("忽略");
+                    accessible-label: @tr("忽略此版本");
                     clicked => { SelfUpdate.ignore-version(); }
-                }
-                TextButton {
-                    text: @tr("稍后");
-                    clicked => { SelfUpdate.dismiss(); }
                 }
             }
         }

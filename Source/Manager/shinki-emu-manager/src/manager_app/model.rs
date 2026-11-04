@@ -203,7 +203,6 @@ impl ShinkiEmuManagerController {
             .into_iter()
             .map(|root| root.path)
             .collect();
-        let profile = self.profile()?;
         Ok(ManagerViewModel {
             app: AppViewModel {
                 version: shinki_emu_manager::version().into(),
@@ -235,11 +234,12 @@ impl ShinkiEmuManagerController {
                 snackbar: self.snackbar.view(),
             },
             settings: SettingsViewModel {
-                translation: translation::profile_form(profile.as_ref()),
+                translation_providers: self.translation_provider_views()?,
                 translation_enabled: self.translation_enabled,
-                secret_saved: profile.is_some(),
                 models: self.translation_models.clone(),
                 translation_status: self.translation_status.clone(),
+                translation_test_for: self.translation_test_for.clone(),
+                translation_saved: self.translation_saved,
                 sensitive_covers: self.sensitive_covers,
                 bangumi_token_saved: self
                     .metadata_tokens

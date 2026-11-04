@@ -433,10 +433,27 @@ pub struct GameSettingsViewModel {
 pub struct CoresViewModel {
     pub items: Vec<CoreViewModel>,
     pub restart_required: bool,
+    /// Installed cores with a newer release, for the navigation badge.
     pub updates_available: i32,
+    /// Of those, the ones 全部更新 would start now.
+    pub update_all_count: i32,
+    pub batch: CoreBatchViewModel,
     pub default_fields: Vec<ConfigFieldViewModel>,
     pub default_plugin: String,
     pub default_render: RenderViewModel,
+}
+
+/// One 全部更新 run; `state` is empty when none was started this session.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CoreBatchViewModel {
+    /// `"" | running | finished`
+    pub state: String,
+    pub total: i32,
+    pub succeeded: i32,
+    pub failed: i32,
+    pub cancelled: i32,
+    /// Share of the batch done, 0..=1; a running item counts by its bytes.
+    pub progress: f32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -453,6 +470,20 @@ pub struct CoreViewModel {
     pub capabilities: Vec<String>,
     pub removable: bool,
     pub update_version: String,
+    pub download: CoreDownloadViewModel,
+}
+
+/// Online install or update of one core.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CoreDownloadViewModel {
+    /// `"" | queued | downloading | verifying | installing | failed`
+    pub phase: String,
+    pub received: u64,
+    /// Zero while the size is unknown.
+    pub total: u64,
+    pub bytes_per_second: u64,
+    /// Localized reason while `phase` is `failed`.
+    pub error: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -492,6 +523,18 @@ pub struct TranslationFormViewModel {
     pub context_chars: i32,
 }
 
+/// One saved translation service provider card.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TranslationProviderViewModel {
+    pub id: String,
+    pub name: String,
+    /// Preset id the card was created from, `custom` otherwise.
+    pub preset: String,
+    /// Game sessions translate through this card.
+    pub active: bool,
+    pub form: TranslationFormViewModel,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExcludedViewModel {
     pub id: String,
@@ -501,11 +544,14 @@ pub struct ExcludedViewModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsViewModel {
-    pub translation: TranslationFormViewModel,
+    pub translation_providers: Vec<TranslationProviderViewModel>,
     pub translation_enabled: bool,
-    pub secret_saved: bool,
     pub models: Vec<String>,
     pub translation_status: String,
+    /// Card id `models` and `translation_status` belong to; empty for an unsaved card.
+    pub translation_test_for: String,
+    /// Changes after every successful card save.
+    pub translation_saved: u32,
     pub sensitive_covers: bool,
     pub bangumi_token_saved: bool,
     pub compat_summary: String,
@@ -519,11 +565,12 @@ pub struct SettingsViewModel {
 impl Default for SettingsViewModel {
     fn default() -> Self {
         Self {
-            translation: TranslationFormViewModel::default(),
+            translation_providers: Vec::new(),
             translation_enabled: false,
-            secret_saved: false,
             models: Vec::new(),
             translation_status: String::new(),
+            translation_test_for: String::new(),
+            translation_saved: 0,
             sensitive_covers: false,
             bangumi_token_saved: false,
             compat_summary: String::new(),

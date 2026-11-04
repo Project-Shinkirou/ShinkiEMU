@@ -208,10 +208,11 @@ impl ManagerController for ShinkiEmuManagerController {
     }
     fn test_translation_connection(
         &mut self,
+        provider_id: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
     ) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::test_translation_connection(self, form, secret)
+        ShinkiEmuManagerController::test_translation_connection(self, provider_id, form, secret)
     }
     fn set_window_state(&mut self, state: WindowState) -> Result<(), String> {
         self.update_window_state(state)
@@ -234,12 +235,43 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::search(self, query)
     }
 
-    fn save_translation_profile(
+    fn save_translation_provider(
         &mut self,
+        provider_id: &str,
+        name: &str,
+        preset: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
     ) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::save_translation_profile(self, form, secret)
+        ShinkiEmuManagerController::save_translation_provider(
+            self,
+            provider_id,
+            name,
+            preset,
+            form,
+            secret,
+        )
+    }
+
+    fn activate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::activate_translation_provider(self, provider_id)
+    }
+
+    fn duplicate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::duplicate_translation_provider(self, provider_id)
+    }
+
+    fn delete_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::delete_translation_provider(self, provider_id)
     }
 
     fn set_translation_enabled(&mut self, enabled: bool) -> Result<ManagerViewModel, String> {
@@ -537,6 +569,26 @@ impl ManagerController for ShinkiEmuManagerController {
 
     fn install_online_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::install_online_core(self, plugin_id)
+    }
+
+    fn update_all_cores(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::update_all_cores(self)
+    }
+
+    fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::retry_failed_cores(self)
+    }
+
+    fn cancel_core_download(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::cancel_core_download(self, plugin_id)
+    }
+
+    fn cancel_core_batch(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::cancel_core_batch(self)
+    }
+
+    fn dismiss_core_batch(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::dismiss_core_batch(self)
     }
 
     fn uninstall_core(&mut self, core_id: &str) -> Result<ManagerViewModel, String> {

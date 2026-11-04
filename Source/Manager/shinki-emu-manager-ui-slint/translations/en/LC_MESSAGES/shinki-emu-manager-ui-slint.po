@@ -352,35 +352,14 @@ msgstr "Enable live translation"
 msgid "需要先在 联网与资料 中允许联网"
 msgstr "Allow network access in Network & metadata first"
 
-msgid "需要先填写并保存下方的接口配置"
-msgstr "Fill in and save the provider settings below first"
-
 msgid "游戏运行时把对白发送到翻译服务，并显示译文。"
 msgstr "Sends dialogue to the translation service while a game runs and shows the translation."
-
-msgid "翻译接口"
-msgstr "Translation provider"
-
-msgid "修改后点「保存」才会生效。"
-msgstr "Changes take effect after you click Save."
-
-msgid "服务商"
-msgstr "Provider"
 
 msgid "请填写接口地址"
 msgstr "Enter the endpoint URL"
 
 msgid "需要 HTTPS；本机服务（localhost / 127.0.0.1）可以用 HTTP。"
 msgstr "HTTPS is required; local services (localhost / 127.0.0.1) may use HTTP."
-
-msgid "恢复默认地址"
-msgstr "Restore default URL"
-
-msgid "API 密钥（已保存，留空沿用）"
-msgstr "API key (saved; leave empty to keep it)"
-
-msgid "API 密钥"
-msgstr "API key"
 
 msgid "密钥保存在系统凭据库中，不会写入配置文件。"
 msgstr "The key is stored in the system credential store, never in the config file."
@@ -391,20 +370,11 @@ msgstr "API format"
 msgid "模型"
 msgstr "Model"
 
-msgid "先「测试连接」获取模型列表"
-msgstr "Run Test connection to load models"
-
 msgid "手动输入…"
 msgstr "Enter manually…"
 
-msgid "测试连接成功后可以从列表中选择模型。"
-msgstr "After a successful connection test you can pick a model from the list."
-
 msgid "模型名称"
 msgstr "Model name"
-
-msgid "请填写模型名称"
-msgstr "Enter a model name"
 
 msgid "目标语言"
 msgstr "Target language"
@@ -442,9 +412,6 @@ msgstr "Number of preceding dialogue lines sent with each request; 0 sends none.
 msgid "上下文字符上限"
 msgstr "Context character limit"
 
-msgid "连接状态"
-msgstr "Connection status"
-
 msgid "有未保存的修改"
 msgstr "Unsaved changes"
 
@@ -453,9 +420,6 @@ msgstr "Test connection"
 
 msgid "保存"
 msgstr "Save"
-
-msgid "测试连接需要先允许联网。"
-msgstr "Testing the connection requires network access."
 
 # detail+login
 msgid "关闭"
@@ -2219,9 +2183,6 @@ msgstr "Scanning library: checked {directories} folders, found {games} titles…
 msgid "正在搜索…"
 msgstr "Searching…"
 
-msgid "正在测试翻译服务连接…"
-msgstr "Testing the translation service connection…"
-
 msgid "正在自动关联…"
 msgstr "Linking automatically…"
 
@@ -2248,9 +2209,6 @@ msgstr "Close the game before applying a file patch"
 
 msgid "缩放倍率"
 msgstr "Scale factor"
-
-msgid "翻译配置已保存"
-msgstr "Translation settings saved"
 
 msgid "自定义…"
 msgstr "Custom…"
@@ -2397,9 +2355,6 @@ msgstr "Updates"
 msgid "发现新版本 {}"
 msgstr "New version {} available"
 
-msgid "当前版本 {}"
-msgstr "Current version {}"
-
 msgid "当前版本"
 msgstr "Current version"
 
@@ -2459,3 +2414,232 @@ msgstr "Pre-releases bring new features sooner but may be unstable. On by defaul
 
 msgid "GitHub 请求已达速率限制，请稍后再试"
 msgstr "GitHub rate limit reached. Try again later."
+
+# manager UX: core downloads, update banner, translation providers
+msgid "排队中"
+msgstr "Queued"
+
+msgid "正在校验"
+msgstr "Verifying"
+
+msgid "正在安装"
+msgstr "Installing"
+
+msgid "正在连接…"
+msgstr "Connecting…"
+
+msgid "等待其他核心下载完成"
+msgstr "Waiting for other core downloads to finish"
+
+msgid "正在核对文件大小和 SHA-256"
+msgstr "Checking file size and SHA-256"
+
+msgid "正在写入待安装区，重启后生效"
+msgstr "Staging the package; it takes effect after a restart"
+
+msgid "下载失败：{}"
+msgstr "Download failed: {}"
+
+msgid "全部更新（{}）"
+msgstr "Update all ({})"
+
+msgid "正在更新核心"
+msgstr "Updating cores"
+
+msgid "部分核心更新失败"
+msgstr "Some cores failed to update"
+
+msgid "核心更新完成"
+msgstr "Cores updated"
+
+msgid "已完成 {0}/{1}"
+msgstr "{0} of {1} done"
+
+msgid "成功 {0} 个，失败 {1} 个"
+msgstr "{0} succeeded, {1} failed"
+
+msgid "，取消 {} 个"
+msgstr ", {} cancelled"
+
+msgid "全部取消"
+msgstr "Cancel all"
+
+msgid "重试失败项（{}）"
+msgstr "Retry failed ({})"
+
+msgid "忽略"
+msgstr "Skip"
+
+msgid "查看详情"
+msgstr "View details"
+
+msgid "阿里云百炼"
+msgstr "Alibaba Cloud Model Studio"
+
+msgid "硅基流动"
+msgstr "SiliconFlow"
+
+msgid "官方"
+msgstr "Official"
+
+msgid "云服务与聚合"
+msgstr "Cloud and aggregators"
+
+msgid "本地服务"
+msgstr "Local services"
+
+msgid "使用中"
+msgstr "In use"
+
+msgid "需要先添加一个翻译服务商"
+msgstr "Add a translation provider first"
+
+msgid "翻译服务商"
+msgstr "Translation providers"
+
+msgid "可以保存多个服务商，游戏使用标为“使用中”的那一个。API Key 保存在系统凭据库中。"
+msgstr "Save several providers; games use the one marked “In use”. API keys are kept in the system credential store."
+
+msgid "还没有服务商。添加一个并填写 API Key 后即可使用实时翻译。"
+msgstr "No providers yet. Add one with its API key to use live translation."
+
+msgid "添加服务商"
+msgstr "Add provider"
+
+msgid "填写任意 OpenAI、Anthropic 或 Gemini 兼容地址"
+msgstr "Any OpenAI, Anthropic or Gemini compatible endpoint"
+
+msgid "返回预设列表"
+msgstr "Back to presets"
+
+msgid "添加服务商：选择预设"
+msgstr "Add provider: choose a preset"
+
+msgid "添加服务商：填写信息"
+msgstr "Add provider: details"
+
+msgid "编辑服务商"
+msgstr "Edit provider"
+
+msgid "搜索预设"
+msgstr "Search presets"
+
+msgid "请填写名称，用来区分不同的服务商"
+msgstr "Enter a name to tell providers apart"
+
+msgid "接口类型"
+msgstr "API type"
+
+msgid "恢复预设地址"
+msgstr "Restore preset URL"
+
+msgid "API Key（已保存，留空沿用）"
+msgstr "API key (saved; leave empty to keep)"
+
+msgid "本地服务通常不校验密钥，可以填写任意内容。"
+msgstr "Local services usually do not check the key; any text works."
+
+msgid "点“获取模型”读取列表"
+msgstr "Use “Fetch models” to load the list"
+
+msgid "获取模型"
+msgstr "Fetch models"
+
+msgid "请填写模型名称，或先获取模型列表"
+msgstr "Enter a model name, or fetch the model list first"
+
+msgid "获取模型和测试连接需要先允许联网。"
+msgstr "Fetching models and testing the connection need network access."
+
+msgid "放弃未保存的修改？"
+msgstr "Discard unsaved changes?"
+
+msgid "离开后，这次编辑的内容不会保存。"
+msgstr "If you leave now, these edits are not saved."
+
+msgid "继续编辑"
+msgstr "Keep editing"
+
+msgid "放弃"
+msgstr "Discard"
+
+msgid "删除服务商“{}”？"
+msgstr "Delete provider “{}”?"
+
+msgid "这个服务商的 API Key 也会从系统凭据库中删除。"
+msgstr "Its API key is also removed from the system credential store."
+
+msgid "已取消下载"
+msgstr "Download cancelled"
+
+msgid "核心下载失败：{reason}"
+msgstr "Core download failed: {reason}"
+
+msgid "已取消全部更新"
+msgstr "All updates cancelled"
+
+msgid "已更新 {count} 个核心，重启后生效"
+msgstr "Updated {count} cores; restart to apply"
+
+msgid "{count} 个核心更新失败，可以在核心页重试"
+msgstr "{count} cores failed to update; retry on the Cores page"
+
+msgid "已更新 {succeeded} 个核心，{failed} 个失败"
+msgstr "Updated {succeeded} cores, {failed} failed"
+
+msgid "API Key 无效或没有权限（HTTP {code}），请检查密钥"
+msgstr "The API key is invalid or lacks permission (HTTP {code}); check the key"
+
+msgid "找不到模型列表接口（HTTP {code}），请检查 Base URL 和接口类型"
+msgstr "Model list endpoint not found (HTTP {code}); check the Base URL and API type"
+
+msgid "服务返回 HTTP {code}，请稍后再试"
+msgstr "The service returned HTTP {code}; try again later"
+
+msgid "返回内容不是模型列表，请检查 Base URL 和接口类型"
+msgstr "The response is not a model list; check the Base URL and API type"
+
+msgid "连接超时，请检查网络或调大超时时间"
+msgstr "Timed out; check the network or raise the timeout"
+
+msgid "无法连接到服务，请检查网络和 Base URL"
+msgstr "Cannot reach the service; check the network and Base URL"
+
+msgid "读取 API Key 失败，请重新填写"
+msgstr "Could not read the API key; enter it again"
+
+msgid "测试中断，请重试"
+msgstr "The test stopped; try again"
+
+msgid "正在获取模型列表…"
+msgstr "Fetching the model list…"
+
+msgid "服务商已保存"
+msgstr "Provider saved"
+
+msgid "已切换到 {name}"
+msgstr "Switched to {name}"
+
+msgid "{name} 副本"
+msgstr "{name} copy"
+
+msgid "服务商已删除"
+msgstr "Provider deleted"
+
+msgid "自定义"
+msgstr "Custom"
+
+msgid "启用"
+msgstr "Use"
+
+msgid "编辑"
+msgstr "Edit"
+
+msgid "复制"
+msgstr "Duplicate"
+
+msgid "删除"
+msgstr "Delete"
+
+msgid "名称"
+msgstr "Name"

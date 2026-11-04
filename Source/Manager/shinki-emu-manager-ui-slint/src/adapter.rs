@@ -8,18 +8,18 @@ use crate::tr;
 
 use crate::{
     App, Appearance, AppearanceViewModel, BangumiProgress, BangumiViewModel, Choice,
-    ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreInfo, CoreViewModel, Cores,
-    EngineAction, EngineActionViewModel, Excluded, ExcludedViewModel, Filters, GameCard,
-    GameCardViewModel, GameSettings, GamepadBinding, GamepadBindingViewModel, Library,
-    ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel, Network, Notices, Onboarding,
-    Patch, PatchCheck, PatchCheckViewModel, PatchDownload, PatchDownloadViewModel, PatchGame,
-    PatchGameViewModel, PatchState, PatchStateViewModel, PatchVerify, PlaySession,
+    ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreBatch, CoreInfo,
+    CoreViewModel, Cores, EngineAction, EngineActionViewModel, Excluded, ExcludedViewModel,
+    Filters, GameCard, GameCardViewModel, GameSettings, GamepadBinding, GamepadBindingViewModel,
+    Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel, Network, Notices,
+    Onboarding, Patch, PatchCheck, PatchCheckViewModel, PatchDownload, PatchDownloadViewModel,
+    PatchGame, PatchGameViewModel, PatchState, PatchStateViewModel, PatchVerify, PlaySession,
     PlaySessionViewModel, Recipe, RecipeViewModel, Release, ReleaseViewModel, RenderState,
     RenderViewModel, ResaleNoticeState, SelectedGame, Selection, SelfUpdate, SelfUpdateAction,
     Session, Settings, Store, StoreAction, StoreDepot, StoreDepotViewModel, StoreGame,
     StoreGameViewModel, StoreLoadState, StoreLoginState, StoreTransfer, StoreTransferState,
-    StoreTransferViewModel, TranslationForm, TranslationFormViewModel, covers,
-    list_model::ListModel, notices,
+    StoreTransferViewModel, TranslationForm, TranslationFormViewModel, TranslationProvider,
+    TranslationProviderViewModel, covers, list_model::ListModel, notices,
 };
 
 pub struct SlintManagerAdapter {
@@ -43,6 +43,7 @@ pub struct SlintManagerAdapter {
     default_fields: Rc<VecModel<ConfigField>>,
     default_render_options: ListModel<ChoiceViewModel, Choice>,
     models: ListModel<String, SharedString>,
+    translation_providers: ListModel<TranslationProviderViewModel, TranslationProvider>,
     bindings: ListModel<GamepadBindingViewModel, GamepadBinding>,
     pad_state: ListModel<String, SharedString>,
     roots: ListModel<String, SharedString>,
@@ -62,7 +63,6 @@ pub struct SlintManagerAdapter {
     cached_default_fields: RefCell<Vec<ConfigFieldViewModel>>,
     cached_filter_fields: RefCell<Vec<ConfigFieldViewModel>>,
     cached_bangumi: RefCell<Option<(String, BangumiViewModel)>>,
-    cached_translation: RefCell<Option<TranslationFormViewModel>>,
     cached_snackbar: RefCell<u32>,
     cached_launch: RefCell<String>,
 }
@@ -90,6 +90,7 @@ impl SlintManagerAdapter {
             default_fields: Rc::new(VecModel::default()),
             default_render_options: ListModel::new(choice),
             models: ListModel::strings(),
+            translation_providers: ListModel::new(translation_provider),
             bindings: ListModel::new(binding),
             pad_state: ListModel::strings(),
             roots: ListModel::strings(),
@@ -109,7 +110,6 @@ impl SlintManagerAdapter {
             cached_default_fields: RefCell::default(),
             cached_filter_fields: RefCell::default(),
             cached_bangumi: RefCell::default(),
-            cached_translation: RefCell::default(),
             cached_snackbar: RefCell::new(0),
             cached_launch: RefCell::default(),
             window,
@@ -156,6 +156,7 @@ impl SlintManagerAdapter {
 
         let settings = window.global::<Settings>();
         settings.set_models(self.models.model());
+        settings.set_translation_providers(self.translation_providers.model());
         settings.set_bindings(self.bindings.model());
         settings.set_pad_state(self.pad_state.model());
         settings.set_roots(self.roots.model());
@@ -367,6 +368,13 @@ impl SlintManagerAdapter {
         update.set_failure_reason(view.failure_reason.as_str().into());
         update.set_latest_version(view.latest_version.as_str().into());
         update.set_notes_summary(view.notes_summary.as_str().into());
+        let headline: Vec<&str> = view
+            .notes_summary
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        update.set_notes_headline(headline.join(" ").into());
         update.set_download_url(view.download_url.as_str().into());
         update.set_last_checked(view.last_checked.as_str().into());
         update.set_ignored_version(view.ignored_version.as_str().into());
@@ -501,6 +509,15 @@ impl SlintManagerAdapter {
         self.cores.update(&view.items);
         cores.set_restart_required(view.restart_required);
         cores.set_updates_available(view.updates_available);
+        cores.set_update_all_count(view.update_all_count);
+        cores.set_batch(CoreBatch {
+            state: view.batch.state.as_str().into(),
+            total: view.batch.total,
+            succeeded: view.batch.succeeded,
+            failed: view.batch.failed,
+            cancelled: view.batch.cancelled,
+            progress: view.batch.progress,
+        });
         crate::config_model::update(
             &self.default_fields,
             &self.cached_default_fields,
@@ -530,14 +547,13 @@ impl SlintManagerAdapter {
     fn apply_settings(&self, model: &ManagerViewModel) {
         let settings = self.window.global::<Settings>();
         let view = &model.settings;
-        if self.cached_translation.borrow().as_ref() != Some(&view.translation) {
-            settings.set_translation(translation_form(&view.translation));
-            *self.cached_translation.borrow_mut() = Some(view.translation.clone());
-        }
+        self.translation_providers
+            .update(&view.translation_providers);
         settings.set_translation_enabled(view.translation_enabled);
-        settings.set_secret_saved(view.secret_saved);
         self.models.update(&view.models);
         settings.set_translation_status(view.translation_status.as_str().into());
+        settings.set_translation_test_for(view.translation_test_for.as_str().into());
+        settings.set_translation_saved(view.translation_saved as i32);
         settings.set_sensitive_covers(view.sensitive_covers);
         settings.set_bangumi_token_saved(view.bangumi_token_saved);
         settings.set_compat_summary(view.compat_summary.as_str().into());
@@ -982,6 +998,18 @@ fn render_state(value: &RenderViewModel, options: ModelRc<Choice>) -> RenderStat
 }
 
 fn core_info(value: &CoreViewModel) -> CoreInfo {
+    let download = &value.download;
+    let transferring = download.phase == "downloading";
+    let download_bytes = match (transferring, download.total) {
+        (false, _) => String::new(),
+        (true, 0) => byte_text(download.received),
+        (true, total) => format!("{} / {}", byte_text(download.received), byte_text(total)),
+    };
+    let download_speed = if transferring && download.bytes_per_second > 0 {
+        format!("{}/s", byte_text(download.bytes_per_second))
+    } else {
+        String::new()
+    };
     CoreInfo {
         id: value.id.as_str().into(),
         name: value.name.as_str().into(),
@@ -993,6 +1021,25 @@ fn core_info(value: &CoreViewModel) -> CoreInfo {
         capabilities: strings(&value.capabilities),
         removable: value.removable,
         update_version: value.update_version.as_str().into(),
+        download_phase: download.phase.as_str().into(),
+        download_progress: if transferring && download.total > 0 {
+            (download.received as f64 / download.total as f64).clamp(0.0, 1.0) as f32
+        } else {
+            -1.0
+        },
+        download_bytes: download_bytes.into(),
+        download_speed: download_speed.into(),
+        download_error: download.error.as_str().into(),
+    }
+}
+
+fn translation_provider(value: &TranslationProviderViewModel) -> TranslationProvider {
+    TranslationProvider {
+        id: value.id.as_str().into(),
+        name: value.name.as_str().into(),
+        preset: value.preset.as_str().into(),
+        active: value.active,
+        form: translation_form(&value.form),
     }
 }
 

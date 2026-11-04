@@ -112,7 +112,6 @@ fn metadata_search_rejects_invalid_input_and_overlapping_requests() {
         "existing".into(),
         PendingMetadata {
             game_id: Some("first".into()),
-            core: None,
         },
     );
     assert_eq!(

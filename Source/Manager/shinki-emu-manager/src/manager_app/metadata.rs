@@ -84,7 +84,6 @@ impl ShinkiEmuManagerController {
             request_id.clone(),
             PendingMetadata {
                 game_id: Some(game.game_id.clone()),
-                core: None,
             },
         );
         self.metadata_status.remove(&game.game_id);
@@ -187,7 +186,6 @@ impl ShinkiEmuManagerController {
                     self.diagnostic_severity = "error";
                 }
             }
-            MetadataPayload::CoreStaged { stem, version } => self.core_staged(&stem, &version),
         }
         Ok(())
     }

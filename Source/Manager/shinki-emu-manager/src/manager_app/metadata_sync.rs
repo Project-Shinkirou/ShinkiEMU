@@ -292,10 +292,7 @@ impl ShinkiEmuManagerController {
         })?;
         self.pending_metadata.insert(
             request_id.clone(),
-            PendingMetadata {
-                game_id: None,
-                core: None,
-            },
+            PendingMetadata { game_id: None },
         );
         self.metadata_sync.request = Some(request_id);
         self.model()

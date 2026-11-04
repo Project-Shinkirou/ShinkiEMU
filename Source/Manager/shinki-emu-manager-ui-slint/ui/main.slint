@@ -5,7 +5,7 @@ import { Icons } from "./icons.slint";
 import {
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
-    PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
+    PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
     StoreGame, StoreDepot, StoreTransfer, Store,
 } from "./globals.slint";
@@ -19,6 +19,7 @@ import { PatchPage } from "./pages/patch.slint";
 import { CoresPage } from "./pages/cores.slint";
 import { FiltersPage } from "./pages/filters.slint";
 import { SettingsPage } from "./pages/settings.slint";
+import { TranslationOverlays } from "./pages/settings/translation.slint";
 import { OnboardingPage } from "./pages/onboarding.slint";
 import { GameView } from "./pages/game-view.slint";
 import { AddGamePage } from "./pages/add-game.slint";
@@ -28,7 +29,7 @@ export {
     MaterialWindowAdapter,
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
-    PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
+    PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
     StoreGame, StoreDepot, StoreTransfer, Store,
 }
@@ -182,6 +183,20 @@ export component ManagerWindow inherits MaterialWindow {
             }
             if Logs.open {
                 Logs.open = false;
+                return accept;
+            }
+            // The provider editor and its confirmations handle Back themselves
+            // while focused; this catches Back when focus is elsewhere.
+            if ProviderEditor.confirm-delete.id != "" {
+                ProviderEditor.confirm-delete = { };
+                return accept;
+            }
+            if ProviderEditor.open {
+                if ProviderEditor.confirm-discard {
+                    ProviderEditor.confirm-discard = false;
+                } else {
+                    ProviderEditor.request-close();
+                }
                 return accept;
             }
             if Dialogs.fatal-active {
@@ -351,8 +366,17 @@ export component ManagerWindow inherits MaterialWindow {
         if SelfUpdate.banner-visible && !Session.active && !root.onboarding : UpdateBanner {
             x: root.compact ? root.usable-x + 8px : root.usable-x + root.usable-width - self.width - 16px;
             y: root.usable-y + (root.compact ? 8px : 16px);
-            width: root.compact ? root.usable-width - 16px : min(420px, root.usable-width - root.rail-width - 32px);
+            width: root.compact ? root.usable-width - 16px : min(380px, root.usable-width - root.rail-width - 32px);
             height: self.preferred-height;
+        }
+
+        // Translation provider editor: modal over the whole window so no
+        // navigation can drop an unsaved draft.
+        if !Session.active && (ProviderEditor.open || ProviderEditor.confirm-delete.id != "") : TranslationOverlays {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
         }
 
         SnackbarHost {

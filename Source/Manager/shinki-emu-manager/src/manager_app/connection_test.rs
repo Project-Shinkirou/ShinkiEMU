@@ -1,9 +1,16 @@
 use super::*;
-use shinki_emu_translation::ConnectionTestResult;
-use std::sync::{mpsc, Arc};
+use shinki_emu_translation::{ConnectionTestResult, TranslationError};
+use std::sync::{Arc, mpsc};
+
+/// Why a model list request produced no list.
+pub(super) enum TestFailure {
+    Provider(TranslationError),
+    /// The worker ended without an answer.
+    Stopped,
+}
 
 pub(super) struct ConnectionTest {
-    receiver: mpsc::Receiver<Result<ConnectionTestResult, String>>,
+    receiver: mpsc::Receiver<Result<ConnectionTestResult, TranslationError>>,
     task: tokio::task::JoinHandle<()>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -23,7 +30,7 @@ impl ConnectionTest {
             .map_err(|_| "SHINKI_EMU_TRANSLATION_TEST_RUNTIME")?;
         let (sender, receiver) = mpsc::sync_channel(1);
         let task = runtime.spawn(async move {
-            let result = client.test_connection().await.map_err(|e| e.to_string());
+            let result = client.test_connection().await;
             if sender.send(result).is_ok() {
                 wake();
             }
@@ -35,13 +42,11 @@ impl ConnectionTest {
         })
     }
 
-    pub(super) fn poll(&self) -> Option<Result<ConnectionTestResult, String>> {
+    pub(super) fn poll(&self) -> Option<Result<ConnectionTestResult, TestFailure>> {
         match self.receiver.try_recv() {
-            Ok(result) => Some(result),
+            Ok(result) => Some(result.map_err(TestFailure::Provider)),
             Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                Some(Err("SHINKI_EMU_TRANSLATION_TEST_WORKER_STOPPED".into()))
-            }
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(TestFailure::Stopped)),
         }
     }
 }

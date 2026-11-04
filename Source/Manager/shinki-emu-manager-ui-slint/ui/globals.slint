@@ -66,6 +66,8 @@ export global SelfUpdate {
     in-out property <string> status: "idle";
     in-out property <string> failure-reason;
     in-out property <string> latest-version;
+    // The notes as one paragraph, for the two-line banner excerpt.
+    in-out property <string> notes-headline;
     in-out property <string> notes-summary;
     in-out property <string> download-url;
     in-out property <string> last-checked;
@@ -325,6 +327,85 @@ export struct TranslationForm {
     context-chars: int,
 }
 
+// A saved translation service provider; `active` marks the one games use.
+export struct TranslationProvider {
+    id: string,
+    name: string,
+    preset: string,
+    active: bool,
+    form: TranslationForm,
+}
+
+// The provider editor sheet: "preset" picks a preset for a new card,
+// "form" edits `source` (id "" while it is unsaved).
+export global ProviderEditor {
+    in-out property <bool> open;
+    in-out property <string> step: "form";
+    in-out property <TranslationProvider> source;
+    // Set while the draft differs from `source`.
+    in-out property <bool> dirty;
+    // Asks before discarding a dirty draft.
+    in-out property <bool> confirm-discard;
+    // Discarding returns to the preset list instead of closing.
+    in-out property <bool> discard-to-presets;
+    // Card awaiting delete confirmation; empty id when none.
+    in-out property <TranslationProvider> confirm-delete;
+
+    public function add() {
+        self.source = { form: { provider: "openai", openai-api: "responses", language: "zh-CN", timeout-s: 15, context-segments: 8, context-chars: 6000 } };
+        self.step = "preset";
+        self.dirty = false;
+        self.confirm-discard = false;
+        self.open = true;
+    }
+
+    public function edit(provider: TranslationProvider) {
+        self.source = provider;
+        self.step = "form";
+        self.dirty = false;
+        self.confirm-discard = false;
+        self.open = true;
+    }
+
+    // Close, asking first when the draft has unsaved changes.
+    public function request-close() {
+        self.discard-to-presets = false;
+        if self.dirty {
+            self.confirm-discard = true;
+        } else {
+            self.close();
+        }
+    }
+
+    // A new card's form steps back to the preset list, asking first when dirty.
+    public function back-to-presets() {
+        self.discard-to-presets = true;
+        if self.dirty {
+            self.confirm-discard = true;
+        } else {
+            self.discard();
+        }
+    }
+
+    public function discard() {
+        if self.discard-to-presets {
+            self.step = "preset";
+            self.dirty = false;
+            self.confirm-discard = false;
+            self.discard-to-presets = false;
+        } else {
+            self.close();
+        }
+    }
+
+    public function close() {
+        self.open = false;
+        self.dirty = false;
+        self.confirm-discard = false;
+        self.discard-to-presets = false;
+    }
+}
+
 export struct Excluded {
     id: string,
     title: string,
@@ -332,13 +413,21 @@ export struct Excluded {
 }
 
 export global Settings {
-    in-out property <TranslationForm> translation;
+    in-out property <[TranslationProvider]> translation-providers;
     in-out property <bool> translation-enabled;
-    in-out property <bool> secret-saved;
     in-out property <[string]> models;
     in-out property <string> translation-status;
-    callback save-translation(TranslationForm, string);
-    callback test-translation(TranslationForm, string);
+    // Provider id `models` and `translation-status` belong to ("" while unsaved).
+    in-out property <string> translation-test-for;
+    // Changes after every successful provider save.
+    in-out property <int> translation-saved;
+    // id ("" creates a card), name, preset, form, API key ("" keeps the stored key).
+    callback save-translation-provider(string, string, string, TranslationForm, string);
+    // id, form, API key ("" uses the key stored for id).
+    callback test-translation(string, TranslationForm, string);
+    callback activate-translation-provider(string);
+    callback duplicate-translation-provider(string);
+    callback delete-translation-provider(string);
     callback set-translation-enabled(bool);
 
     in-out property <bool> sensitive-covers;
@@ -437,6 +526,24 @@ export struct CoreInfo {
     capabilities: [string],
     removable: bool,
     update-version: string,
+    // Online install or update: "" | queued | downloading | verifying | installing | failed.
+    download-phase: string,
+    // 0..1 while downloading; -1 while the size is unknown.
+    download-progress: float,
+    // "1.2 MB / 8.4 MB", and the rate such as "3.1 MB/s"; empty when unknown.
+    download-bytes: string,
+    download-speed: string,
+    download-error: string,
+}
+
+// One 全部更新 run; state is "" | running | finished.
+export struct CoreBatch {
+    state: string,
+    total: int,
+    succeeded: int,
+    failed: int,
+    cancelled: int,
+    progress: float,
 }
 
 export global Logs {
@@ -452,11 +559,18 @@ export global Cores {
     in-out property <[CoreInfo]> items;
     in-out property <bool> restart-required;
     in-out property <int> updates-available;
+    in-out property <int> update-all-count;
+    in-out property <CoreBatch> batch;
     in-out property <[ConfigField]> default-fields;
     in-out property <string> default-plugin;
     in-out property <RenderState> default-render;
     callback install-local();
     callback install-online(string);
+    callback update-all();
+    callback retry-failed();
+    callback cancel-download(string);
+    callback cancel-all();
+    callback dismiss-batch();
     callback uninstall(string);
     callback restart();
     callback view-logs(string);

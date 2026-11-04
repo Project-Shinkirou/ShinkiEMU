@@ -96,7 +96,6 @@ impl MetadataStatus {
 
 struct PendingMetadata {
     game_id: Option<String>,
-    core: Option<String>,
 }
 
 struct ShinkiEmuManagerController {
@@ -155,7 +154,15 @@ struct ShinkiEmuManagerController {
     translation_enabled: bool,
     translation_models: Vec<String>,
     translation_status: String,
+    /// Card id (empty for an unsaved card) the model list and status belong to.
+    translation_test_for: String,
+    /// Bumped by every successful card save.
+    translation_saved: u32,
     connection_test: Option<connection_test::ConnectionTest>,
+    core_downloads: crate::core_download::CoreDownloads,
+    /// Last download error of each core, by plugin id, until it is retried.
+    core_failures: BTreeMap<String, String>,
+    core_batch: Option<cores::CoreBatch>,
     held_controls: BTreeSet<String>,
     key_modifiers: KeyModifiers,
     pointer_position: (f32, f32),

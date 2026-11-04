@@ -1,10 +1,53 @@
 use super::*;
+use crate::core_download::Phase;
 use crate::core_package::{self, PendingKind};
 use shinki_emu_manager_core::{FamilyCapability, INDEPENDENT_FAMILY_ABI_FINGERPRINT};
 use shinki_emu_manager_ui_slint::tr;
-use shinki_emu_manager_ui_slint::{CoreViewModel, CoresViewModel, describe_error};
+use shinki_emu_manager_ui_slint::{
+    CoreBatchViewModel, CoreDownloadViewModel, CoreViewModel, CoresViewModel, describe_error,
+};
 use shinki_emu_metadata::CoreCatalogEntry;
 use std::io::{self, BufRead, Seek, SeekFrom};
+
+/// One 全部更新 run: every member ends succeeded, failed or cancelled.
+#[derive(Debug, Default)]
+pub(super) struct CoreBatch {
+    /// Plugin id and package size of every core in the run.
+    members: BTreeMap<String, u64>,
+    succeeded: BTreeSet<String>,
+    failed: BTreeSet<String>,
+    cancelled: BTreeSet<String>,
+    /// The end-of-run snackbar was shown.
+    summarized: bool,
+}
+
+impl CoreBatch {
+    fn is_done(&self, plugin_id: &str) -> bool {
+        self.succeeded.contains(plugin_id)
+            || self.failed.contains(plugin_id)
+            || self.cancelled.contains(plugin_id)
+    }
+
+    fn finished(&self) -> bool {
+        self.members.keys().all(|id| self.is_done(id))
+    }
+
+    /// A failed or cancelled member retried on its own leaves the run.
+    fn forget(&mut self, plugin_id: &str) {
+        if self.failed.remove(plugin_id) || self.cancelled.remove(plugin_id) {
+            self.members.remove(plugin_id);
+        }
+    }
+}
+
+fn phase_name(phase: Phase) -> &'static str {
+    match phase {
+        Phase::Queued => "queued",
+        Phase::Downloading => "downloading",
+        Phase::Verifying => "verifying",
+        Phase::Installing => "installing",
+    }
+}
 
 /// Release platform of this Manager build, e.g. `windows-x86_64`.
 pub(super) fn core_platform() -> String {
@@ -91,7 +134,9 @@ impl ShinkiEmuManagerController {
             let installed_identity = meta.release_identity.as_ref();
             let update_version = self
                 .online_core(&meta.descriptor.plugin_id)
-                .filter(|entry| entry.is_update_for(installed_version, installed_identity))
+                .filter(|entry| {
+                    state == "loaded" && entry.is_update_for(installed_version, installed_identity)
+                })
                 .map(CoreCatalogEntry::display_version)
                 .unwrap_or_default();
             items.push((
@@ -116,6 +161,7 @@ impl ShinkiEmuManagerController {
                     message: String::new(),
                     removable: !meta.bundled,
                     update_version,
+                    download: self.download_view(&meta.descriptor.plugin_id),
                 },
                 meta.stem.clone(),
             ));
@@ -124,6 +170,12 @@ impl ShinkiEmuManagerController {
         let updates_available = items
             .iter()
             .filter(|(item, _)| !item.update_version.is_empty())
+            .count();
+        let update_all_count = items
+            .iter()
+            .filter(|(item, _)| {
+                !item.update_version.is_empty() && !self.core_downloads.is_running(&item.id)
+            })
             .count();
         for (stem, raw) in &self.plugin_errors {
             let described = describe_error(raw);
@@ -191,6 +243,7 @@ impl ShinkiEmuManagerController {
                         version: entry.display_version(),
                         state: "available".into(),
                         source: "online".into(),
+                        download: self.download_view(&entry.plugin_id),
                         ..CoreViewModel::default()
                     },
                     String::new(),
@@ -203,6 +256,8 @@ impl ShinkiEmuManagerController {
                 items,
                 restart_required: !pending.is_empty() && self.cores_started(),
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
+                update_all_count: i32::try_from(update_all_count).unwrap_or(i32::MAX),
+                batch: self.batch_view(),
                 ..CoresViewModel::default()
             },
             stems,
@@ -228,51 +283,278 @@ impl ShinkiEmuManagerController {
         self.model()
     }
 
-    /// Download the newest released package of a core into the pending area.
-    pub(super) fn install_online_core(
-        &mut self,
-        plugin_id: &str,
-    ) -> Result<ManagerViewModel, String> {
+    fn download_view(&self, plugin_id: &str) -> CoreDownloadViewModel {
+        if let Some(progress) = self.core_downloads.progress(plugin_id) {
+            return CoreDownloadViewModel {
+                phase: phase_name(progress.phase).into(),
+                received: progress.received,
+                total: progress.total,
+                bytes_per_second: progress.bytes_per_second,
+                error: String::new(),
+            };
+        }
+        self.core_failures
+            .get(plugin_id)
+            .map(|raw| CoreDownloadViewModel {
+                phase: "failed".into(),
+                error: describe_error(raw).title,
+                ..CoreDownloadViewModel::default()
+            })
+            .unwrap_or_default()
+    }
+
+    fn batch_view(&self) -> CoreBatchViewModel {
+        let Some(batch) = &self.core_batch else {
+            return CoreBatchViewModel::default();
+        };
+        let count = |set: &BTreeSet<String>| i32::try_from(set.len()).unwrap_or(i32::MAX);
+        let done: f64 = batch
+            .members
+            .iter()
+            .map(|(id, size)| {
+                if batch.is_done(id) {
+                    return 1.0;
+                }
+                match self.core_downloads.progress(id) {
+                    Some(progress) if progress.phase != Phase::Downloading => 1.0,
+                    Some(progress) if *size > 0 => progress.received as f64 / *size as f64,
+                    _ => 0.0,
+                }
+            })
+            .sum();
+        CoreBatchViewModel {
+            state: if batch.finished() { "finished" } else { "running" }.into(),
+            total: i32::try_from(batch.members.len()).unwrap_or(i32::MAX),
+            succeeded: count(&batch.succeeded),
+            failed: count(&batch.failed),
+            cancelled: count(&batch.cancelled),
+            progress: if batch.members.is_empty() {
+                0.0
+            } else {
+                (done / batch.members.len() as f64).clamp(0.0, 1.0) as f32
+            },
+        }
+    }
+
+    /// Queue the newest release of a core; returns its package size.
+    fn start_core_download(&mut self, plugin_id: &str) -> Result<u64, String> {
         self.require_network()?;
         let entry = self
             .online_core(plugin_id)
             .cloned()
             .ok_or_else(|| "SHINKI_EMU_CORE_NOT_AVAILABLE".to_owned())?;
-        if self
-            .pending_metadata
-            .values()
-            .any(|pending| pending.core.as_deref() == Some(plugin_id))
-        {
-            return Err("SHINKI_EMU_CORE_DOWNLOAD_PENDING".into());
+        let wake = self
+            .host_wake
+            .clone()
+            .ok_or("SHINKI_EMU_HOST_WAKE_REQUIRED")?;
+        let size = entry.size;
+        let pending = self.cores_dir().join(core_package::PENDING);
+        self.core_downloads.start(entry, pending, wake)?;
+        self.core_failures.remove(plugin_id);
+        Ok(size)
+    }
+
+    /// Download the newest released package of a core into the pending area.
+    pub(super) fn install_online_core(
+        &mut self,
+        plugin_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        self.start_core_download(plugin_id)?;
+        if let Some(batch) = &mut self.core_batch {
+            batch.forget(plugin_id);
+            if batch.members.is_empty() {
+                self.core_batch = None;
+            }
         }
-        let request_id = self.next_metadata_id("core")?;
-        self.metadata.submit(MetadataCommand {
-            request_id: request_id.clone(),
-            case_identity: String::new(),
-            provider: MetadataProviderId::Vndb,
-            access_token: None,
-            allow_sensitive_cover: false,
-            kind: MetadataCommandKind::InstallCore {
-                entry: Box::new(entry),
-                pending: self.cores_dir().join(core_package::PENDING),
-            },
-        })?;
-        self.pending_metadata.insert(
-            request_id,
-            PendingMetadata {
-                game_id: None,
-                core: Some(plugin_id.into()),
-            },
-        );
         self.model()
     }
 
-    pub(super) fn core_staged(&mut self, stem: &str, version: &str) {
-        tracing::info!(event = "shinki.emu.manager.core_staged", core = %stem, version = %version);
-        self.show_snackbar(
-            tr!("核心已下载，重启后生效"),
-            Some(snackbar::SnackbarAction::Restart),
+    /// Plugin ids of installed cores 全部更新 would download now.
+    fn updatable_cores(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .cores_view()?
+            .items
+            .into_iter()
+            .filter(|item| {
+                !item.update_version.is_empty() && !self.core_downloads.is_running(&item.id)
+            })
+            .map(|item| item.id)
+            .collect())
+    }
+
+    /// Download every installed core that has a newer release, at most
+    /// `core_download::MAX_PARALLEL` at a time.
+    pub(super) fn update_all_cores(&mut self) -> Result<ManagerViewModel, String> {
+        self.require_network()?;
+        if self.core_batch.as_ref().is_some_and(|batch| !batch.finished()) {
+            return Err("SHINKI_EMU_CORE_DOWNLOAD_PENDING".into());
+        }
+        let targets = self.updatable_cores()?;
+        self.start_core_batch(targets)
+    }
+
+    /// Start a new run with the failed members of the last one.
+    pub(super) fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String> {
+        self.require_network()?;
+        let failed: Vec<String> = self
+            .core_batch
+            .as_ref()
+            .filter(|batch| batch.finished())
+            .map(|batch| batch.failed.iter().cloned().collect())
+            .unwrap_or_default();
+        self.start_core_batch(failed)
+    }
+
+    fn start_core_batch(&mut self, targets: Vec<String>) -> Result<ManagerViewModel, String> {
+        if targets.is_empty() {
+            return Err("SHINKI_EMU_CORE_NO_UPDATES".into());
+        }
+        let mut batch = CoreBatch::default();
+        for plugin_id in targets {
+            match self.start_core_download(&plugin_id) {
+                Ok(size) => {
+                    batch.members.insert(plugin_id, size);
+                }
+                Err(error) => {
+                    batch.members.insert(plugin_id.clone(), 0);
+                    batch.failed.insert(plugin_id.clone());
+                    self.core_failures.insert(plugin_id, error);
+                }
+            }
+        }
+        tracing::info!(
+            event = "shinki.emu.manager.core_batch_started",
+            cores = batch.members.len()
         );
+        self.core_batch = Some(batch);
+        self.summarize_core_batch();
+        self.model()
+    }
+
+    pub(super) fn cancel_core_download(
+        &mut self,
+        plugin_id: &str,
+    ) -> Result<ManagerViewModel, String> {
+        if self.core_downloads.cancel(plugin_id)? {
+            match &mut self.core_batch {
+                Some(batch) if batch.members.contains_key(plugin_id) => {
+                    batch.cancelled.insert(plugin_id.into());
+                    self.summarize_core_batch();
+                }
+                _ => self.show_snackbar(tr!("已取消下载"), None),
+            }
+        }
+        self.model()
+    }
+
+    /// Cancel every member still queued or transferring; members already
+    /// being installed finish normally.
+    pub(super) fn cancel_core_batch(&mut self) -> Result<ManagerViewModel, String> {
+        let running: Vec<String> = self
+            .core_batch
+            .as_ref()
+            .map(|batch| {
+                batch
+                    .members
+                    .keys()
+                    .filter(|id| !batch.is_done(id))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        for plugin_id in running {
+            if self.core_downloads.cancel(&plugin_id).unwrap_or(false)
+                && let Some(batch) = &mut self.core_batch
+            {
+                batch.cancelled.insert(plugin_id);
+            }
+        }
+        self.summarize_core_batch();
+        self.model()
+    }
+
+    /// Hide the summary of a finished run.
+    pub(super) fn dismiss_core_batch(&mut self) -> Result<ManagerViewModel, String> {
+        if self.core_batch.as_ref().is_some_and(CoreBatch::finished) {
+            self.core_batch = None;
+        }
+        self.model()
+    }
+
+    /// Collect finished downloads; true while anything changed or runs.
+    pub(super) fn poll_core_downloads(&mut self) -> bool {
+        let finished = self.core_downloads.finished();
+        let changed = !finished.is_empty() || !self.core_downloads.is_idle();
+        for done in finished {
+            let batch = self
+                .core_batch
+                .as_mut()
+                .filter(|batch| batch.members.contains_key(&done.plugin_id));
+            match done.result {
+                Ok(stem) => {
+                    self.core_failures.remove(&done.plugin_id);
+                    tracing::info!(
+                        event = "shinki.emu.manager.core_staged",
+                        core = %stem,
+                        version = %done.version
+                    );
+                    match batch {
+                        Some(batch) => {
+                            batch.succeeded.insert(done.plugin_id);
+                        }
+                        None => self.show_snackbar(
+                            tr!("核心已下载，重启后生效"),
+                            Some(snackbar::SnackbarAction::Restart),
+                        ),
+                    }
+                }
+                Err(error) => {
+                    let reason = describe_error(&error).title;
+                    self.core_failures.insert(done.plugin_id.clone(), error);
+                    match batch {
+                        Some(batch) => {
+                            batch.failed.insert(done.plugin_id);
+                        }
+                        None => self.show_snackbar(
+                            tr!("核心下载失败：{reason}", reason = reason),
+                            None,
+                        ),
+                    }
+                }
+            }
+        }
+        self.summarize_core_batch();
+        changed
+    }
+
+    /// One snackbar per finished run, offering a single restart.
+    fn summarize_core_batch(&mut self) {
+        let Some(batch) = &mut self.core_batch else {
+            return;
+        };
+        if batch.summarized || !batch.finished() {
+            return;
+        }
+        batch.summarized = true;
+        let (succeeded, failed) = (batch.succeeded.len(), batch.failed.len());
+        tracing::info!(
+            event = "shinki.emu.manager.core_batch_finished",
+            succeeded,
+            failed,
+            cancelled = batch.cancelled.len()
+        );
+        let text = match (succeeded, failed) {
+            (0, 0) => tr!("已取消全部更新").to_owned(),
+            (_, 0) => tr!("已更新 {count} 个核心，重启后生效", count = succeeded),
+            (0, _) => tr!("{count} 个核心更新失败，可以在核心页重试", count = failed),
+            _ => tr!(
+                "已更新 {succeeded} 个核心，{failed} 个失败",
+                succeeded = succeeded,
+                failed = failed
+            ),
+        };
+        let action = (succeeded > 0).then_some(snackbar::SnackbarAction::Restart);
+        self.show_snackbar(text, action);
     }
 
     /// Core directory stem of a core list entry (plugin id or stem).
@@ -530,5 +812,209 @@ mod tests {
         assert_eq!(count, 1);
         let (_, count_all) = app.log_text("").unwrap();
         assert_eq!(count_all, 3);
+    }
+
+    use crate::core_download::{
+        CoreDownloads,
+        tests::{Served, entry as package_entry, package_for, serve},
+    };
+
+    const PLUGINS: [(&str, &str); 3] = [
+        ("shinki.emu.alpha", "shinki_emu_alpha"),
+        ("shinki.emu.beta", "shinki_emu_beta"),
+        ("shinki.emu.gamma", "shinki_emu_gamma"),
+    ];
+
+    /// A controller whose catalog lists the three fixture cores and whose
+    /// downloads come from memory.
+    fn online_app(root: &Path) -> (ShinkiEmuManagerController, BTreeMap<String, Vec<u8>>) {
+        let mut app = ShinkiEmuManagerController::open_library(
+            root.into(),
+            FrameMailbox::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let packages: BTreeMap<String, Vec<u8>> = PLUGINS
+            .iter()
+            .map(|(id, stem)| ((*id).to_owned(), package_for(id, stem)))
+            .collect();
+        let mut catalog = crate::metadata_cache::tests::sample_catalog(root);
+        catalog.cores.entries = packages
+            .iter()
+            .map(|(id, bytes)| package_entry(id, bytes))
+            .collect();
+        app.metadata_catalog = Some(catalog);
+        app.network_allowed = true;
+        app.host_wake = Some(std::sync::Arc::new(|| {}));
+        (app, packages)
+    }
+
+    /// Poll until every download ended and its result was applied.
+    fn settle(app: &mut ShinkiEmuManagerController) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let changed = app.poll_core_downloads();
+            if !changed && app.core_downloads.is_idle() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "downloads did not finish");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn item(app: &ShinkiEmuManagerController, id: &str) -> CoreViewModel {
+        app.cores_view()
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|item| item.id == id)
+            .unwrap()
+    }
+
+    #[test]
+    fn download_shows_byte_progress_then_stages_with_one_restart_prompt() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let (id, stem) = PLUGINS[0];
+        let gate = std::sync::Arc::new(tokio::sync::Notify::new());
+        app.core_downloads = CoreDownloads::new(serve(Served {
+            packages: packages.clone(),
+            gates: BTreeMap::from([(id.to_owned(), std::sync::Arc::clone(&gate))]),
+            failing: Vec::new(),
+        }));
+        app.install_online_core(id).unwrap();
+        assert_eq!(
+            app.install_online_core(id).unwrap_err(),
+            "SHINKI_EMU_CORE_DOWNLOAD_PENDING"
+        );
+        let half = (packages[id].len() / 2) as u64;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while item(&app, id).download.received != half {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let downloading = item(&app, id).download;
+        assert_eq!(downloading.phase, "downloading");
+        assert_eq!(downloading.total, packages[id].len() as u64);
+        gate.notify_one();
+        settle(&mut app);
+        let staged = item(&app, id);
+        assert_eq!(staged.state, "pending-install");
+        assert_eq!(staged.download.phase, "");
+        assert!(root.path().join("cores").join(core_package::PENDING).join(stem).is_dir());
+        let snackbar = app.snackbar.view();
+        assert_eq!(snackbar.text, tr!("核心已下载，重启后生效"));
+        assert_eq!(snackbar.action, tr!("立即重启"));
+    }
+
+    #[test]
+    fn cancel_leaves_no_package_and_records_no_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let (id, _) = PLUGINS[1];
+        let gate = std::sync::Arc::new(tokio::sync::Notify::new());
+        app.core_downloads = CoreDownloads::new(serve(Served {
+            packages: packages.clone(),
+            gates: BTreeMap::from([(id.to_owned(), gate)]),
+            failing: Vec::new(),
+        }));
+        app.install_online_core(id).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while item(&app, id).download.received == 0 {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        app.cancel_core_download(id).unwrap();
+        assert!(app.core_downloads.is_idle());
+        let cancelled = item(&app, id);
+        assert_eq!(cancelled.state, "available");
+        assert_eq!(cancelled.download.phase, "");
+        assert_eq!(app.snackbar.view().text, tr!("已取消下载"));
+        let pending = root.path().join("cores").join(core_package::PENDING);
+        while std::fs::read_dir(&pending).is_ok_and(|mut entries| entries.next().is_some()) {
+            assert!(Instant::now() < deadline, "cancelled download left files");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(core_package::pending_entries(&root.path().join("cores")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn batch_continues_past_a_failure_summarizes_once_and_retries_the_failed() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let failing = PLUGINS[2].0;
+        app.core_downloads = CoreDownloads::new(serve(Served {
+            packages: packages.clone(),
+            gates: BTreeMap::new(),
+            failing: vec![failing.to_owned()],
+        }));
+        app.start_core_batch(PLUGINS.iter().map(|(id, _)| (*id).to_owned()).collect())
+            .unwrap();
+        assert_eq!(app.batch_view().state, "running");
+        assert_eq!(
+            app.update_all_cores().unwrap_err(),
+            "SHINKI_EMU_CORE_DOWNLOAD_PENDING"
+        );
+        let serial = app.snackbar.view().serial;
+        settle(&mut app);
+        let batch = app.batch_view();
+        assert_eq!(
+            (batch.state.as_str(), batch.total, batch.succeeded, batch.failed),
+            ("finished", 3, 2, 1)
+        );
+        assert_eq!(batch.progress, 1.0);
+        let snackbar = app.snackbar.view();
+        assert_eq!(snackbar.serial, serial.wrapping_add(1), "one summary per run");
+        assert_eq!(
+            snackbar.text,
+            tr!("已更新 {succeeded} 个核心，{failed} 个失败", succeeded = 2, failed = 1)
+        );
+        assert_eq!(snackbar.action, tr!("立即重启"));
+        assert_eq!(item(&app, failing).download.phase, "failed");
+        for (id, _) in &PLUGINS[..2] {
+            assert_eq!(item(&app, id).state, "pending-install");
+        }
+
+        app.core_downloads = CoreDownloads::new(serve(Served {
+            packages,
+            gates: BTreeMap::new(),
+            failing: Vec::new(),
+        }));
+        app.retry_failed_cores().unwrap();
+        settle(&mut app);
+        let retried = app.batch_view();
+        assert_eq!((retried.total, retried.succeeded, retried.failed), (1, 1, 0));
+        assert_eq!(item(&app, failing).state, "pending-install");
+        assert!(app.core_failures.is_empty());
+        app.dismiss_core_batch().unwrap();
+        assert_eq!(app.batch_view().state, "");
+    }
+
+    #[test]
+    fn cancelling_a_batch_stops_queued_members() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let gates: BTreeMap<String, std::sync::Arc<tokio::sync::Notify>> = PLUGINS
+            .iter()
+            .map(|(id, _)| ((*id).to_owned(), std::sync::Arc::new(tokio::sync::Notify::new())))
+            .collect();
+        app.core_downloads = CoreDownloads::new(serve(Served {
+            packages,
+            gates,
+            failing: Vec::new(),
+        }));
+        app.start_core_batch(PLUGINS.iter().map(|(id, _)| (*id).to_owned()).collect())
+            .unwrap();
+        let queued = PLUGINS
+            .iter()
+            .filter(|(id, _)| item(&app, id).download.phase == "queued")
+            .count();
+        assert!(queued >= 1, "at most {} run at once", crate::core_download::MAX_PARALLEL);
+        app.cancel_core_batch().unwrap();
+        settle(&mut app);
+        let batch = app.batch_view();
+        assert_eq!((batch.state.as_str(), batch.cancelled), ("finished", 3));
+        assert_eq!(app.snackbar.view().text, tr!("已取消全部更新"));
+        assert_eq!(app.snackbar.view().action, "");
     }
 }

@@ -211,11 +211,11 @@ global Mock {
         Settings.compat-summary = "共 128 条兼容性记录，涉及 96 个发行版本";
         Settings.bangumi-token-saved = true;
         Settings.excluded = [{ id: "g9", title: "サクラノ詩 -櫻の森の上を舞う-", location: "D:\\Games\\VN\\SakuraNoUta" }];
-        Settings.translation = { provider: "openai", base-url: "https://api.openai.com/v1", openai-api: "responses", model: "gpt-4.1-mini", language: "zh-CN", timeout-s: 15, custom-prompt: "", context-segments: 8, context-chars: 6000 };
-        Settings.secret-saved = true;
+        Settings.translation-providers = [
+            { id: "provider-1", name: "OpenAI", preset: "openai", active: true, form: { provider: "openai", base-url: "https://api.openai.com/v1", openai-api: "responses", model: "gpt-4.1-mini", language: "zh-CN", timeout-s: 15, custom-prompt: "", context-segments: 8, context-chars: 6000 } },
+            { id: "provider-2", name: "DeepSeek", preset: "deepseek", active: false, form: { provider: "openai", base-url: "https://api.deepseek.com/v1", openai-api: "chat_completions", model: "deepseek-chat", language: "zh-CN", timeout-s: 15, custom-prompt: "", context-segments: 8, context-chars: 6000 } },
+        ];
         Settings.translation-enabled = true;
-        Settings.models = ["gpt-4.1", "gpt-4.1-mini", "gpt-4o-mini"];
-        Settings.translation-status = "连接正常 · 312 ms · 3 个模型";
         Cores.updates-available = 1;
     }
 
