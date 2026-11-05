@@ -73,9 +73,16 @@ impl From<steamroom::Error> for Error {
             steamroom::Error::Connection(steamroom::error::ConnectionError::DepotAccessDenied(
                 _,
             )) => Self::AccessDenied,
-            steamroom::Error::Connection(steamroom::error::ConnectionError::LogonFailed(_)) => {
-                Self::SessionExpired
-            }
+            steamroom::Error::Connection(steamroom::error::ConnectionError::LogonFailed(_))
+            | steamroom::Error::Connection(
+                steamroom::error::ConnectionError::ServiceMethodFailed(
+                    steamroom::enums::EResultError::InvalidPassword
+                    | steamroom::enums::EResultError::LoggedInElsewhere
+                    | steamroom::enums::EResultError::NotLoggedOn
+                    | steamroom::enums::EResultError::Expired
+                    | steamroom::enums::EResultError::LogonSessionReplaced,
+                ),
+            ) => Self::SessionExpired,
             _ => Self::Network,
         }
     }

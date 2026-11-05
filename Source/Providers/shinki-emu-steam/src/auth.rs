@@ -4,6 +4,7 @@ use prost::Message;
 use shinki_emu_store::{LoginUpdate, SecretStore, StoredLogin};
 use std::{
     future::Future,
+    path::PathBuf,
     pin::Pin,
     sync::{Arc, Mutex},
     time::Duration,
@@ -260,10 +261,71 @@ pub async fn login(
     })
 }
 
+fn steam_dir_from_candidates(
+    registry_path: Option<PathBuf>,
+    program_files_x86: Option<PathBuf>,
+) -> Option<PathBuf> {
+    registry_path
+        .into_iter()
+        .chain(program_files_x86.map(|path| path.join("Steam")))
+        .find(|path| path.join("config").join("loginusers.vdf").is_file())
+}
+
+#[cfg(windows)]
+fn registry_steam_path() -> Option<PathBuf> {
+    use std::ffi::CString;
+    use std::ptr;
+
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn RegOpenKeyExA(hkey: isize, subkey: *const u8, options: u32, access: u32, result: *mut isize) -> i32;
+        fn RegQueryValueExA(key: isize, value: *const u8, reserved: *mut u32, kind: *mut u32, data: *mut u8, size: *mut u32) -> i32;
+        fn RegCloseKey(key: isize) -> i32;
+    }
+    const HKEY_CURRENT_USER: isize = 0x80000001u32 as isize;
+    const KEY_READ: u32 = 0x20019;
+    const ERROR_SUCCESS: i32 = 0;
+    const REG_SZ: u32 = 1;
+    const REG_EXPAND_SZ: u32 = 2;
+    let subkey = CString::new(r"Software\Valve\Steam").ok()?;
+    let value = CString::new("SteamPath").ok()?;
+    let mut key = 0;
+    if unsafe { RegOpenKeyExA(HKEY_CURRENT_USER, subkey.as_ptr().cast(), 0, KEY_READ, &mut key) }
+        != ERROR_SUCCESS
+    {
+        return None;
+    }
+    let mut data = [0u8; 1024];
+    let mut size = data.len() as u32;
+    let mut kind = 0;
+    let result = unsafe {
+        RegQueryValueExA(key, value.as_ptr().cast(), ptr::null_mut(), &mut kind, data.as_mut_ptr(), &mut size)
+    };
+    unsafe { RegCloseKey(key) };
+    if result != ERROR_SUCCESS || !matches!(kind, REG_SZ | REG_EXPAND_SZ) || size == 0 {
+        return None;
+    }
+    let end = data[..size as usize].iter().position(|byte| *byte == 0).unwrap_or(size as usize);
+    String::from_utf8(data[..end].to_vec()).ok().map(PathBuf::from)
+}
+
+#[cfg(windows)]
+fn steam_dir() -> Option<PathBuf> {
+    let program_files_x86 = std::env::var_os("PROGRAMFILES(X86)")
+        .map(PathBuf::from)
+        .or_else(|| Some(PathBuf::from(r"C:\Program Files (x86)")));
+    steam_dir_from_candidates(registry_steam_path(), program_files_x86)
+}
+
+#[cfg(not(windows))]
+fn steam_dir() -> Option<PathBuf> {
+    steamroom_client::steam_creds::steam_dir()
+}
+
 pub fn import_local() -> Result<StoredLogin, Error> {
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     {
-        let dir = steamroom_client::steam_creds::steam_dir().ok_or(Error::NoLocalLogin)?;
+        let dir = steam_dir().ok_or(Error::NoLocalLogin)?;
         let account =
             steamroom_client::steam_creds::detect_username(&dir).ok_or(Error::NoLocalLogin)?;
         let cached =
@@ -293,5 +355,29 @@ mod tests {
             GuardType::DeviceCode
         );
         assert!(guard_kind(&[GuardType::DeviceConfirmation]).is_err());
+    }
+    #[test]
+    fn steam_dir_finds_program_files_fixture() {
+        let root = tempfile::tempdir().unwrap();
+        let program_files = root.path().join("Program Files (x86)");
+        let steam = program_files.join("Steam");
+        std::fs::create_dir_all(steam.join("config")).unwrap();
+        std::fs::write(steam.join("config").join("loginusers.vdf"), b"fixture").unwrap();
+        assert_eq!(steam_dir_from_candidates(None, Some(program_files)), Some(steam));
+    }
+
+    #[test]
+    fn steam_dir_prefers_registry_fixture() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = root.path().join("registry-steam");
+        let standard = root.path().join("Program Files (x86)");
+        for path in [&registry, &standard.join("Steam")] {
+            std::fs::create_dir_all(path.join("config")).unwrap();
+            std::fs::write(path.join("config").join("loginusers.vdf"), b"fixture").unwrap();
+        }
+        assert_eq!(
+            steam_dir_from_candidates(Some(registry.clone()), Some(standard)),
+            Some(registry)
+        );
     }
 }
