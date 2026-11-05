@@ -1,10 +1,9 @@
 name: CI
+# The full matrix runs only on push/dispatch; pull requests use pr-ci.yml.
 # Catalog-only changes are validated by metadata-intake.yml; documentation builds nothing.
 on:
   push:
     branches: [main, 'release/**']
-    paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
-  pull_request:
     paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
   workflow_dispatch:
     inputs:

@@ -66,6 +66,6 @@ Manual `ci.yml` dispatch accepts `since`, using the existing
 checkout fetches full history so the comparison ref is available. An optional
 `components` comma-separated list narrows that affected matrix. For example:
 `gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
-Empty inputs, pushes and pull requests retain the full matrix.
+Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the base branch, limited to the Windows and Linux x86_64 targets.
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.

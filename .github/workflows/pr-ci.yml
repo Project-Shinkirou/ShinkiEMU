@@ -1,0 +1,158 @@
+name: PR CI
+# Catalog-only changes are validated by metadata-intake.yml; documentation builds nothing.
+on:
+  pull_request:
+    paths-ignore: ['Metadata/**', 'docs/**', '**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pr-ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has-components: ${{ steps.matrix.outputs.has-components }}
+    steps:
+      # Workspace resolution needs the cpal submodule; the inventory needs no LFS payloads.
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          fetch-depth: 0
+      - run: rustup show
+      - id: matrix
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          matrix=$(cargo xtask matrix --json --ci --since "origin/$BASE_REF")
+          # Native Apple/Android builds stay in the full push/dispatch CI and releases.
+          matrix=$(jq -c '.include |= map(select(.platform == "windows" or .platform == "linux"))' <<< "$matrix")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "has-components=$(jq -r '.include | length > 0' <<< "$matrix")" >> "$GITHUB_OUTPUT"
+  tools:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          lfs: true
+      - run: rustup show
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: cargo fmt --check
+      - run: cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings
+      - run: cargo test --locked -p xtask -p shinki-emu-build
+      - run: cargo xtask metadata validate
+  component:
+    needs: matrix
+    if: needs.matrix.outputs.has-components == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      # CI packages are test builds; release.yml packages the released version.
+      SHINKI_EMU_CI_VERSION: 0.0.0-ci.${{ github.run_number }}
+      ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          lfs: true
+      - run: rustup show
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - uses: ilammy/setup-nasm@v1
+        with:
+          version: '3.02'
+      - name: Linux desktop prerequisites
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm yasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+          sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Prepare target dependencies
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup target add $env:TARGET
+          if ($env:COMPONENT -eq 'manager') {
+            cargo xtask deps --target $env:TARGET
+          } else {
+            cargo xtask deps --target $env:TARGET --core $env:COMPONENT
+          }
+      - name: Build and package
+        env:
+          TARGET: ${{ matrix.target }}
+          COMPONENT: ${{ matrix.component }}
+        run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
+      - name: Prepare KiriKiri corresponding source
+        if: matrix.component == 'kirikiroid2-web'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo xtask release --component kirikiroid2-web --target $env:TARGET
+      - uses: actions/setup-python@v6
+        if: matrix.component == 'kirikiroid2-web'
+        with:
+          python-version: '3.13'
+      - name: Verify actual KiriKiri desktop package
+        if: matrix.component == 'kirikiroid2-web'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python Tools/verify-krkr-desktop.py --target $env:TARGET --report .work/krkr-desktop-proof.json
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.component == 'kirikiroid2-web'
+        with:
+          name: native-proof-kirikiroid2-web-${{ matrix.target }}
+          path: |
+            .work/krkr-desktop-proof.json
+            .work/build/${{ matrix.target }}/kirikiroid2-web.json
+            .work/native-vcpkg/kirikiroid2-web/installed-*/**/share/**/vcpkg.spdx.json
+            .work/native-vcpkg/kirikiroid2-web/installed-*/**/share/**/copyright
+            .work/native-vcpkg/kirikiroid2-web/installed-*/vcpkg/status
+            .work/native-vcpkg/kirikiroid2-web/installed-*/vcpkg/info/*.list
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.component == 'kirikiroid2-web'
+        with:
+          name: source-closure-kirikiroid2-web-${{ matrix.target }}
+          path: .work/release/core-kirikiroid2-web-*/${{ matrix.target }}/
+          if-no-files-found: error
+      - name: Smoke packaged Linux Manager
+        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
+        shell: bash
+        run: |
+          bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: report-${{ matrix.component }}-${{ matrix.target }}
+          path: .work/ci-report.json
+          if-no-files-found: error
+      - name: Select real distributable artifact
+        id: artifact
+        env:
+          REPORT: .work/ci-report.json
+        run: |
+          $report = Get-Content -Raw $env:REPORT | ConvertFrom-Json
+          if ($null -ne $report.artifact) { "path=$($report.artifact)" >> $env:GITHUB_OUTPUT }
+      - uses: actions/upload-artifact@v7
+        if: steps.artifact.outputs.path != ''
+        with:
+          name: ${{ matrix.component }}-${{ matrix.target }}
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
