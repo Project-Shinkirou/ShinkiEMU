@@ -124,8 +124,8 @@ pub(crate) fn game(root: &Path, script: &[u8]) {
         toml::to_string_pretty(&key).unwrap(),
     )
     .unwrap();
-    // A recognized executable gives the session an original save directory.
-    std::fs::write(root.join("perseus.exe"), b"").unwrap();
+    // A release-bound descriptor supplies native facts absent from the fixture.
+    crate::native_directory::tests::identity_fixture(root, true);
 }
 pub(crate) fn wave() -> Vec<u8> {
     let samples = (0..4800)

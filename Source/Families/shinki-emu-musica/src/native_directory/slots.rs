@@ -12,11 +12,19 @@ impl NativeDirectory {
                 "native save slot is out of range",
             ));
         }
-        Ok(match self.title {
-            MinoriTitle::EdenEnglish if append_playing => format!("edenPM{slot:04}"),
-            MinoriTitle::EdenEnglish => format!("eden{slot:04}"),
-            MinoriTitle::Perseus => format!("perseus_{slot:04}"),
-        })
+        let identity = &self.identity;
+        let prefix = if append_playing {
+            identity
+                .append_slot_prefix
+                .as_ref()
+                .unwrap_or(&identity.slot_prefix)
+        } else {
+            &identity.slot_prefix
+        };
+        Ok(format!(
+            "{prefix}{slot:0width$}",
+            width = usize::from(identity.slot_digits)
+        ))
     }
     fn slot_save(
         &self,
@@ -28,13 +36,16 @@ impl NativeDirectory {
         let Some(bytes) = read_optional(&self.slot_root.join(format!("{stem}.sav")))? else {
             return Ok(None);
         };
-        let edition = EdenEdition::for_title(self.title);
+        let edition = self.identity.edition();
         let encoding = EdenSaveEncoding::from_script(encoding);
-        let save = EdenSave::decode(&bytes, edition, encoding).map_err(core_error)?;
-        if self.title == MinoriTitle::Perseus
-            && self.prefix.strict
-            && save.prefix != self.prefix.value
-        {
+        let save = EdenSave::decode_with_signature(
+            &bytes,
+            edition,
+            encoding,
+            self.identity.signature.as_bytes(),
+        )
+        .map_err(core_error)?;
+        if self.prefix.strict && minori_data::file_prefix(&bytes) != Some(self.prefix.value) {
             return Err(error(
                 "SHINKI_EMU_MUSICA_SAVE_PREFIX",
                 "slot serial code does not match this game",
@@ -49,36 +60,25 @@ impl NativeFiles {
         &mut self,
         identity: Option<Hash256>,
     ) -> SessionResult<()> {
-        if let Some(dir) = self.dir.as_mut() {
-            dir.slot_root = match identity {
-                Some(identity) => dir.root.join("name-resources").join(identity.to_hex()),
-                None => dir.root.clone(),
-            };
-            std::fs::create_dir_all(&dir.slot_root).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_SAVE_PATH",
-                    "native slot directory cannot be created",
-                )
-            })?;
-        }
+        let dir = &mut self.dir;
+        dir.slot_root = match identity {
+            Some(identity) => dir.root.join("name-resources").join(identity.to_hex()),
+            None => dir.root.clone(),
+        };
+        std::fs::create_dir_all(&dir.slot_root).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_PATH",
+                "native slot directory cannot be created",
+            )
+        })?;
         Ok(())
     }
 
     pub(crate) fn edition(&self) -> Option<EdenEdition> {
-        self.dir
-            .as_ref()
-            .map(|dir| EdenEdition::for_title(dir.title))
-    }
-    fn slot_dir(&self) -> SessionResult<&NativeDirectory> {
-        self.dir.as_ref().ok_or_else(|| {
-            error(
-                "SHINKI_EMU_MUSICA_SAVE_TITLE",
-                "native slots require an identified original game executable",
-            )
-        })
+        Some(self.dir.identity.edition())
     }
     pub(crate) fn slot(&self, slot: u32) -> SessionResult<Option<EdenSave>> {
-        let dir = self.slot_dir()?;
+        let dir = &self.dir;
         let append = self
             .globals()
             .get("AppendPlaying")
@@ -86,7 +86,7 @@ impl NativeFiles {
         dir.slot_save(slot, append, self.encoding)
     }
     pub(crate) fn card(&self, slot: u32) -> SessionResult<Option<SaveCard>> {
-        let dir = self.slot_dir()?;
+        let dir = &self.dir;
         let append = self
             .globals()
             .get("AppendPlaying")
@@ -117,9 +117,9 @@ impl NativeFiles {
         save: &EdenSave,
         thumbnail_png: &[u8],
     ) -> SessionResult<()> {
-        let dir = self.slot_dir()?;
-        if save.edition != EdenEdition::for_title(dir.title)
-            || (dir.title == MinoriTitle::Perseus && save.prefix != dir.prefix.value)
+        let dir = &self.dir;
+        if save.edition != dir.identity.edition()
+            || (dir.identity.extended && save.prefix != dir.prefix.value)
         {
             return Err(error(
                 "SHINKI_EMU_MUSICA_SAVE_GAME",
@@ -136,21 +136,23 @@ impl NativeFiles {
             self.globals().get("AppendPlaying").is_some_and(|v| *v != 0),
             self.encoding,
         )?;
-        let bytes = save.encode().map_err(core_error)?;
+        let bytes = save
+            .encode_with_signature(dir.identity.signature.as_bytes())
+            .map_err(core_error)?;
         // Native writer persists the bitmap first, then the compressed slot.
         replace_file(&dir.slot_root, &format!("{stem}.png"), thumbnail_png)?;
         replace_file(&dir.slot_root, &format!("{stem}.sav"), &bytes)
     }
     pub(crate) fn save_edition(&self) -> SessionResult<(EdenEdition, EdenSaveEncoding, u32)> {
-        let dir = self.slot_dir()?;
+        let dir = &self.dir;
         Ok((
-            EdenEdition::for_title(dir.title),
+            dir.identity.edition(),
             EdenSaveEncoding::from_script(self.encoding),
             dir.prefix.value,
         ))
     }
-    pub(crate) fn is_perseus(&self) -> SessionResult<bool> {
-        Ok(self.slot_dir()?.title == MinoriTitle::Perseus)
+    pub(crate) fn uses_slot_banks(&self) -> SessionResult<bool> {
+        Ok(self.dir.identity.extended)
     }
 }
 
@@ -161,7 +163,7 @@ mod tests {
     #[test]
     fn patched_slot_namespaces_never_read_or_replace_unpatched_slots() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("eden_en.exe"), b"").unwrap();
+        super::super::tests::identity_fixture(root.path(), false);
         let source = b".stage front.png 0 0 back.png 0 0\n.panel 1\n.message 1  Ren Body\n.end\n";
         let mut vm = crate::MusicaVm::new(
             "musica:/scr/test.sc".into(),

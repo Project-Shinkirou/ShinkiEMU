@@ -138,7 +138,7 @@ fn format_properties(properties: &Properties, crlf: bool) -> Result<Vec<u8>, Cor
 /// zero u32 followed by RC4("minori") over the property table (eden_en.exe
 /// `sub_4C1700`/`sub_4BFE60`); Perseus encrypts `[u32 length][zlib(table + NUL)]`
 /// with little-endian Blowfish and zero padding.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SystemFormat {
     Rc4,
     Blowfish,
@@ -283,55 +283,89 @@ pub fn encode_cg_names(names: &[Vec<u8>], prefix: u32) -> Result<Vec<u8>, CoreEr
     encode_zfile(&plain, prefix)
 }
 
-/// Original titles whose save layout is established from their executables.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MinoriTitle {
-    EdenEnglish,
-    Perseus,
+/// Save identity is data, never an executable-name or title lookup.
+/// A release-bound Metadata preset can supply this descriptor as `native_save`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SaveIdentity {
+    pub version: u32,
+    pub directory: std::path::PathBuf,
+    pub slot_prefix: String,
+    pub append_slot_prefix: Option<String>,
+    pub slot_digits: u8,
+    pub signature: String,
+    pub system_format: SystemFormat,
+    /// Extended checkpoint fields, ten quick slots and ten rotating auto slots.
+    pub extended: bool,
+    pub serial_key: Option<String>,
+    pub prefix: Option<u32>,
+    pub auto_save_cycle: u64,
+    /// Existing frontend voice groups; resource-driven frontend is a separate layer.
+    pub voice_keys: Option<[String; 5]>,
 }
 
-impl MinoriTitle {
-    const ALL: [Self; 2] = [Self::EdenEnglish, Self::Perseus];
-
-    /// Folder below `minori/`. Both names are compiled-in literals: eden_en.exe
-    /// `sub_4BB980` pushes 0x56AAE8, perseus.exe `sub_4705F0` pushes the CP932
-    /// bytes at 0x4FEC8C. The original passes them to ANSI APIs, so a non-CP932
-    /// system shows the Perseus folder as mojibake (GBK: 壞嬻偺儁儖僙僂僗).
-    pub fn directory(self) -> &'static str {
-        match self {
-            Self::EdenEnglish => "eden (English edition)",
-            Self::Perseus => "夏空のペルセウス",
+impl SaveIdentity {
+    /// Deliberately distinct signature and game-local location, not native compatibility.
+    pub fn generic() -> Self {
+        Self {
+            version: 1,
+            directory: ".shinki/musica/generic-v1".into(),
+            slot_prefix: "slot_".into(),
+            append_slot_prefix: None,
+            slot_digits: 4,
+            signature: "shinki.musica.save.v1".into(),
+            system_format: SystemFormat::Rc4,
+            extended: false,
+            serial_key: None,
+            prefix: Some(0),
+            auto_save_cycle: 200,
+            voice_keys: None,
         }
     }
 
-    pub fn executable(self) -> &'static str {
-        match self {
-            Self::EdenEnglish => "eden_en.exe",
-            Self::Perseus => "perseus.exe",
+    pub fn validate(&self) -> Result<(), CoreError> {
+        fn filename(value: &str) -> bool {
+            !value.chars().any(|c| {
+                matches!(
+                    c,
+                    '/' | '\\' | ':' | '\0' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
+            }) && value != "."
+                && value != ".."
         }
+        if self.version != 1
+            || self.directory.as_os_str().is_empty()
+            || self
+                .directory
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            || !filename(&self.slot_prefix)
+            || self
+                .append_slot_prefix
+                .as_ref()
+                .is_some_and(|p| !filename(p))
+            || !(1..=8).contains(&self.slot_digits)
+            || self.signature.is_empty()
+            || self.signature.len() > 128
+            || self.signature.contains('\0')
+            || self.voice_keys.as_ref().is_some_and(|keys| {
+                keys.iter()
+                    .any(|key| key.is_empty() || key.contains(['\0', '\t', '\r', '\n']))
+            })
+        {
+            return Err(invalid(
+                "save identity descriptor is invalid or has an unsupported version",
+            ));
+        }
+        Ok(())
     }
 
-    pub fn system_format(self) -> SystemFormat {
-        match self {
-            Self::EdenEnglish => SystemFormat::Rc4,
-            Self::Perseus => SystemFormat::Blowfish,
+    pub fn edition(&self) -> crate::eden_save::EdenEdition {
+        if self.extended {
+            crate::eden_save::EdenEdition::Perseus
+        } else {
+            crate::eden_save::EdenEdition::English
         }
-    }
-
-    /// `HKLM` key whose `SerialCode` feeds the file prefix (perseus.exe
-    /// `sub_47EFB0`). eden_en.exe has no serial and always writes zero.
-    pub fn serial_key(self) -> Option<&'static str> {
-        match self {
-            Self::EdenEnglish => None,
-            Self::Perseus => Some("Software\\minori\\perseus"),
-        }
-    }
-
-    /// The title whose original executable sits in the game directory.
-    pub fn detect(game_root: &std::path::Path) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|title| game_root.join(title.executable()).is_file())
     }
 }
 
@@ -344,21 +378,15 @@ pub struct FilePrefix {
     pub strict: bool,
 }
 
-/// Precedence: the title's registry `SerialCode` (CRC32 of the string bytes),
-/// then the prefix of an existing original file in the native directory, then
-/// zero. Titles without a serial always use a strict zero.
+/// Precedence: registry SerialCode bytes, explicit prefix, validated source
+/// file prefix, then a non-strict zero. A registry key is supplied by the preset.
 pub fn resolve_prefix(
-    title: MinoriTitle,
+    serial_key: Option<&str>,
+    configured: Option<u32>,
     registry_serial: impl FnOnce(&str) -> Option<Vec<u8>>,
     existing_file: Option<u32>,
 ) -> FilePrefix {
-    let Some(key) = title.serial_key() else {
-        return FilePrefix {
-            value: 0,
-            strict: true,
-        };
-    };
-    if let Some(serial) = registry_serial(key) {
+    if let Some(serial) = serial_key.and_then(registry_serial) {
         let end = serial
             .iter()
             .position(|byte| *byte == 0)
@@ -368,7 +396,7 @@ pub fn resolve_prefix(
             strict: true,
         };
     }
-    match existing_file {
+    match configured.or(existing_file) {
         Some(value) => FilePrefix {
             value,
             strict: true,
@@ -462,57 +490,49 @@ mod tests {
         let absent = |_: &str| None;
         let crc = crc32fast::hash(b"ABCD-1234");
         assert_eq!(
-            resolve_prefix(MinoriTitle::Perseus, serial(b"ABCD-1234\0junk"), Some(7)),
+            resolve_prefix(
+                Some("Software\\minori\\perseus"),
+                None,
+                serial(b"ABCD-1234\0junk"),
+                Some(7)
+            ),
             FilePrefix {
                 value: crc,
                 strict: true
             }
         );
         assert_eq!(
-            resolve_prefix(MinoriTitle::Perseus, serial(b""), Some(7)),
+            resolve_prefix(
+                Some("Software\\minori\\perseus"),
+                None,
+                serial(b""),
+                Some(7)
+            ),
             FilePrefix {
                 value: 0,
                 strict: true
             }
         );
         assert_eq!(
-            resolve_prefix(MinoriTitle::Perseus, absent, Some(7)),
+            resolve_prefix(Some("Software\\minori\\perseus"), None, absent, Some(7)),
             FilePrefix {
                 value: 7,
                 strict: true
             }
         );
         assert_eq!(
-            resolve_prefix(MinoriTitle::Perseus, absent, None),
+            resolve_prefix(Some("Software\\minori\\perseus"), None, absent, None),
             FilePrefix {
                 value: 0,
                 strict: false
             }
         );
         assert_eq!(
-            resolve_prefix(MinoriTitle::EdenEnglish, serial(b"ignored"), Some(7)),
+            resolve_prefix(None, Some(0), serial(b"ignored"), Some(7)),
             FilePrefix {
                 value: 0,
                 strict: true
             }
-        );
-    }
-
-    #[test]
-    fn title_is_detected_from_the_original_executable() {
-        let root = tempfile::tempdir().unwrap();
-        assert_eq!(MinoriTitle::detect(root.path()), None);
-        std::fs::write(root.path().join("perseus.exe"), b"").unwrap();
-        assert_eq!(MinoriTitle::detect(root.path()), Some(MinoriTitle::Perseus));
-        assert_eq!(
-            encoding_rs::SHIFT_JIS
-                .encode(MinoriTitle::Perseus.directory())
-                .0
-                .as_ref(),
-            [
-                0x89, 0xc4, 0x8b, 0xf3, 0x82, 0xcc, 0x83, 0x79, 0x83, 0x8b, 0x83, 0x5a, 0x83, 0x45,
-                0x83, 0x58
-            ]
         );
     }
 }

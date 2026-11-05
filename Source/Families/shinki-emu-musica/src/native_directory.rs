@@ -1,12 +1,9 @@
-//! The original minori save directory, relocated to
-//! `<game>/.shinki/musica/minori/<title>/` with the same relative layout and
-//! byte formats the original executable uses under `Documents\minori\<title>\`.
-//! Compressed files decode to the original plaintext and envelope; only the
-//! deflate stream differs because Musica compresses with miniz.
+//! Data-driven native save directories and a game-local generic persistence
+//! format for installations whose original format cannot be established.
 
 use crate::{
     ScriptEncoding,
-    minori_data::{self, FilePrefix, MinoriTitle, Properties},
+    minori_data::{self, FilePrefix, Properties, SaveIdentity},
     scene::{core_error, error},
 };
 use roukaku_core::Hash256;
@@ -21,10 +18,11 @@ mod legacy;
 mod slots;
 mod sysparams;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 const SYSTEM: &str = "system.dat";
 const CG_VIEWS: &str = "cgv.dat";
+const IDENTITY: &str = "save-identity.json";
 
 fn read_optional(path: &Path) -> SessionResult<Option<Vec<u8>>> {
     match std::fs::read(path) {
@@ -54,7 +52,7 @@ fn replace_file(dir: &Path, name: &str, bytes: &[u8]) -> SessionResult<()> {
 }
 
 struct NativeDirectory {
-    title: MinoriTitle,
+    identity: SaveIdentity,
     game_root: PathBuf,
     root: PathBuf,
     slot_root: PathBuf,
@@ -62,19 +60,29 @@ struct NativeDirectory {
 }
 
 impl NativeDirectory {
-    fn open(game_root: &Path, title: MinoriTitle) -> SessionResult<Self> {
-        let root = game_root
-            .join(".shinki/musica/minori")
-            .join(title.directory());
+    fn open(game_root: &Path, identity: SaveIdentity) -> SessionResult<Self> {
+        identity.validate().map_err(core_error)?;
+        let root = game_root.join(&identity.directory);
         std::fs::create_dir_all(&root).map_err(|_| {
             error(
                 "SHINKI_EMU_MUSICA_SAVE_PATH",
                 "native save directory cannot be created",
             )
         })?;
-        let prefix = minori_data::resolve_prefix(title, registry_serial, existing_prefix(&root));
+        let prefix = minori_data::resolve_prefix(
+            identity.serial_key.as_deref(),
+            identity.prefix,
+            registry_serial,
+            existing_prefix(&root),
+        );
+        if !identity.extended && prefix.value != 0 {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                "basic checkpoint layout requires a zero container prefix",
+            ));
+        }
         Ok(Self {
-            title,
+            identity,
             game_root: game_root.to_path_buf(),
             slot_root: root.clone(),
             root,
@@ -84,7 +92,7 @@ impl NativeDirectory {
 
     fn system_data(&self) -> SessionResult<Option<Properties>> {
         read_optional(&self.root.join(SYSTEM))?
-            .map(|bytes| minori_data::decode_system(&bytes, self.title.system_format()))
+            .map(|bytes| minori_data::decode_system(&bytes, self.identity.system_format))
             .transpose()
             .map_err(core_error)
     }
@@ -97,7 +105,7 @@ impl NativeDirectory {
         {
             return Ok(());
         }
-        let bytes = minori_data::encode_system(properties, self.title.system_format())
+        let bytes = minori_data::encode_system(properties, self.identity.system_format)
             .map_err(core_error)?;
         replace_file(&self.root, SYSTEM, &bytes)
     }
@@ -119,6 +127,223 @@ impl NativeDirectory {
     }
 }
 
+/// Candidate locations are layout conventions, not game identities. Existing
+/// portable minori folders are scanned by their contents, without naming titles.
+fn discover_identity(
+    game_root: &Path,
+    encoding: ScriptEncoding,
+    preset: Option<&SaveIdentity>,
+) -> SessionResult<Option<SaveIdentity>> {
+    if let Some(preset) = preset {
+        return parse_directory_identity(game_root, &game_root.join(&preset.directory), encoding);
+    }
+    let mut directories = vec![
+        game_root.to_path_buf(),
+        game_root.join("save"),
+        game_root.join("savedata"),
+    ];
+    let portable = game_root.join(".shinki/musica/minori");
+    match std::fs::read_dir(&portable) {
+        Ok(entries) => {
+            for entry in entries {
+                let entry = entry.map_err(|_| {
+                    error(
+                        "SHINKI_EMU_MUSICA_SAVE_READ",
+                        "save directory cannot be listed",
+                    )
+                })?;
+                if entry.path().is_dir() {
+                    directories.push(entry.path());
+                }
+            }
+        }
+        Err(cause) if cause.kind() == ErrorKind::NotFound => {}
+        Err(_) => {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_SAVE_READ",
+                "save directory cannot be listed",
+            ));
+        }
+    }
+    directories.sort();
+    let mut found = None;
+    for directory in directories {
+        let Some(identity) = parse_directory_identity(game_root, &directory, encoding)? else {
+            if directory.starts_with(&portable)
+                && std::fs::read_dir(&directory)
+                    .map_err(|_| {
+                        error(
+                            "SHINKI_EMU_MUSICA_SAVE_READ",
+                            "save directory cannot be listed",
+                        )
+                    })?
+                    .next()
+                    .is_some()
+            {
+                return Err(error(
+                    "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                    "existing portable saves need a native_save descriptor; original files were left untouched",
+                ));
+            }
+            continue;
+        };
+        if found.replace(identity).is_some() {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                "multiple native save identities require an explicit descriptor",
+            ));
+        }
+    }
+    Ok(found)
+}
+
+fn parse_directory_identity(
+    game_root: &Path,
+    directory: &Path,
+    encoding: ScriptEncoding,
+) -> SessionResult<Option<SaveIdentity>> {
+    use crate::eden_save::{EdenEdition, EdenSave, EdenSaveEncoding};
+    let Some(system) = read_optional(&directory.join(SYSTEM))? else {
+        return Ok(None);
+    };
+    let system_format = [
+        minori_data::SystemFormat::Rc4,
+        minori_data::SystemFormat::Blowfish,
+    ]
+    .into_iter()
+    .find(|format| minori_data::decode_system(&system, *format).is_ok());
+    let Some(system_format) = system_format else {
+        return Ok(None);
+    };
+    let mut paths = std::fs::read_dir(directory)
+        .map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_READ",
+                "save directory cannot be listed",
+            )
+        })?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_READ",
+                "save directory cannot be listed",
+            )
+        })?;
+    paths.sort();
+    let mut identities: Vec<SaveIdentity> = Vec::new();
+    for path in paths {
+        if path.extension().is_none_or(|extension| extension != "sav") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let digits = stem.bytes().rev().take_while(u8::is_ascii_digit).count();
+        if !(1..=8).contains(&digits) {
+            continue;
+        }
+        let slot_prefix = &stem[..stem.len() - digits];
+        if identities
+            .iter()
+            .any(|identity| identity.slot_prefix == slot_prefix)
+        {
+            continue;
+        }
+        let bytes = read_optional(&path)?.unwrap_or_default();
+        let Some(raw) = bytes.get(4..) else { continue };
+        let Some(end) = raw
+            .iter()
+            .position(|byte| *byte == 0)
+            .filter(|end| (1..=128).contains(end))
+        else {
+            continue;
+        };
+        let Ok(signature) = std::str::from_utf8(&raw[..end]) else {
+            continue;
+        };
+        // Layout is established from decoded fields, not from the signature text.
+        let edition = if minori_data::file_prefix(&bytes) == Some(0) {
+            EdenEdition::English
+        } else {
+            EdenEdition::Perseus
+        };
+        let Ok(save) = EdenSave::decode_with_signature(
+            &bytes,
+            edition,
+            EdenSaveEncoding::from_script(encoding),
+            signature.as_bytes(),
+        ) else {
+            continue;
+        };
+        let extended = save
+            .variables
+            .iter()
+            .any(|field| field.name == "eff2_Count");
+        if !extended && save.prefix != 0 {
+            continue;
+        }
+        let identity = SaveIdentity {
+            version: 1,
+            directory: {
+                let relative = directory.strip_prefix(game_root).unwrap_or(directory);
+                if relative.as_os_str().is_empty() {
+                    ".".into()
+                } else {
+                    relative.to_path_buf()
+                }
+            },
+            slot_prefix: slot_prefix.to_owned(),
+            append_slot_prefix: None,
+            slot_digits: digits as u8,
+            signature: signature.to_owned(),
+            system_format,
+            extended,
+            serial_key: None,
+            prefix: minori_data::file_prefix(&bytes),
+            auto_save_cycle: if extended { 400 } else { 200 },
+            voice_keys: None,
+        };
+        identity.validate().map_err(core_error)?;
+        identities.push(identity);
+    }
+    identities.sort_by(|a, b| {
+        a.slot_prefix
+            .len()
+            .cmp(&b.slot_prefix.len())
+            .then(a.slot_prefix.cmp(&b.slot_prefix))
+    });
+    let Some(mut identity) = identities.first().cloned() else {
+        return Ok(None);
+    };
+    for other in identities.iter().skip(1) {
+        if other.signature != identity.signature
+            || other.extended != identity.extended
+            || other.prefix != identity.prefix
+            || other.slot_digits != identity.slot_digits
+        {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                "native save files disagree on their format",
+            ));
+        }
+        if other.slot_prefix != identity.slot_prefix {
+            if identity
+                .append_slot_prefix
+                .as_ref()
+                .is_some_and(|prefix| prefix != &other.slot_prefix)
+            {
+                return Err(error(
+                    "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                    "native slot naming is ambiguous",
+                ));
+            }
+            identity.append_slot_prefix = Some(other.slot_prefix.clone());
+        }
+    }
+    Ok(Some(identity))
+}
+
 /// The prefix of the first readable compressed original file, in name order.
 fn existing_prefix(dir: &Path) -> Option<u32> {
     let mut names: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -126,15 +351,20 @@ fn existing_prefix(dir: &Path) -> Option<u32> {
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| {
             path.file_name().is_some_and(|name| name == CG_VIEWS)
-                || path
-                    .extension()
-                    .is_some_and(|extension| extension == "tbr" || extension == "sav")
+                || path.extension().is_some_and(|extension| extension == "tbr")
         })
         .collect();
     names.sort();
-    names
-        .into_iter()
-        .find_map(|path| minori_data::file_prefix(&std::fs::read(path).ok()?))
+    names.into_iter().find_map(|path| {
+        let bytes = std::fs::read(&path).ok()?;
+        let prefix = minori_data::file_prefix(&bytes)?;
+        let valid = if path.file_name().is_some_and(|name| name == CG_VIEWS) {
+            minori_data::decode_cg_names(&bytes, prefix).is_ok()
+        } else {
+            minori_data::decode_read_flags(&bytes, prefix).is_ok()
+        };
+        valid.then_some(prefix)
+    })
 }
 
 #[cfg(windows)]
@@ -230,14 +460,10 @@ fn read_flags_name(stem: &str) -> SessionResult<String> {
     Ok(format!("{stem}.tbr"))
 }
 
-/// Session view of the title-wide original files: `system.dat` holds every
-/// `.setglobal` value and `cgv.dat` the background images already shown.
-///
-/// Without a recognized executable there is no original directory: the
-/// previous JSON progress stays readable, and background persistence is
-/// skipped with one warning instead of failing the session.
+/// Session view of globals, CGs, settings, read flags and message checkpoints.
+/// Every successful mutation is persisted, including unidentified installations.
 pub(crate) struct NativeFiles {
-    dir: Option<NativeDirectory>,
+    dir: NativeDirectory,
     encoding: ScriptEncoding,
     system: Properties,
     cg: BTreeSet<Vec<u8>>,
@@ -245,35 +471,84 @@ pub(crate) struct NativeFiles {
     settings: Option<Properties>,
     /// `musica-settings.txt`: settings without an original key.
     musica: Properties,
-    legacy_globals: BTreeMap<String, i64>,
-    legacy_config: Option<crate::MusicaConfigState>,
-    legacy_quick_cursor: Option<u32>,
-    warned: bool,
 }
 
 impl NativeFiles {
     pub(crate) fn open(game_root: &Path, encoding: ScriptEncoding) -> SessionResult<Self> {
+        Self::open_configured(game_root, encoding, "")
+    }
+
+    pub(crate) fn open_configured(
+        game_root: &Path,
+        encoding: ScriptEncoding,
+        configured: &str,
+    ) -> SessionResult<Self> {
+        // Parse original files first. A preset supplies facts that cannot be
+        // recovered from them, and resolves ambiguous source directories.
+        let cached = if configured.is_empty() {
+            read_optional(&game_root.join(".shinki/musica").join(IDENTITY))?
+        } else {
+            Some(configured.as_bytes().to_vec())
+        };
+        let preset: Option<SaveIdentity> = cached
+            .as_deref()
+            .map(serde_json::from_slice)
+            .transpose()
+            .map_err(|_| {
+                error(
+                    "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                    "save identity JSON is invalid",
+                )
+            })?;
+        if let Some(preset) = &preset {
+            preset.validate().map_err(core_error)?;
+        }
+        let parsed = discover_identity(game_root, encoding, preset.as_ref())?;
+        let identity = match (parsed, preset) {
+            (Some(mut source), Some(preset)) => {
+                if preset.append_slot_prefix.as_ref() == Some(&source.slot_prefix) {
+                    source.slot_prefix = preset.slot_prefix;
+                }
+                source.serial_key = preset.serial_key;
+                source.append_slot_prefix = source.append_slot_prefix.or(preset.append_slot_prefix);
+                source.voice_keys = preset.voice_keys;
+                source.auto_save_cycle = preset.auto_save_cycle;
+                source
+            }
+            (Some(source), None) => source,
+            (None, Some(preset)) => preset,
+            (None, None) => SaveIdentity::generic(),
+        };
+        let dir = NativeDirectory::open(game_root, identity)?;
         let mut files = Self {
-            dir: None,
+            dir,
             encoding,
             system: Properties::new(),
             cg: BTreeSet::new(),
             settings: None,
             musica: Properties::new(),
-            legacy_globals: BTreeMap::new(),
-            legacy_config: None,
-            legacy_quick_cursor: None,
-            warned: false,
         };
-        let Some(title) = MinoriTitle::detect(game_root) else {
-            return Ok(files);
-        };
-        let dir = NativeDirectory::open(game_root, title)?;
+        let dir = &files.dir;
         files.system = dir.system_data()?.unwrap_or_default();
         files.cg = dir.cg_names()?.into_iter().collect();
         files.settings = dir.settings()?;
         files.musica = dir.musica_settings()?;
-        files.dir = Some(dir);
+        let cache_dir = game_root.join(".shinki/musica");
+        std::fs::create_dir_all(&cache_dir).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_PATH",
+                "save configuration directory cannot be created",
+            )
+        })?;
+        let bytes = serde_json::to_vec(&files.dir.identity).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_SAVE_CONFIG",
+                "save identity cannot be serialized",
+            )
+        })?;
+        if read_optional(&cache_dir.join(IDENTITY))?.as_deref() != Some(bytes.as_slice()) {
+            replace_file(&cache_dir, IDENTITY, &bytes)?;
+        }
         Ok(files)
     }
 
@@ -286,19 +561,14 @@ impl NativeFiles {
         game: Hash256,
     ) -> SessionResult<()> {
         let saves = game_root.join(".shinki/musica/saves");
-        if let Some(dir) = &self.dir
-            && dir.system_data()?.is_some()
-        {
+        let dir = &self.dir;
+        if dir.system_data()?.is_some() {
             return Ok(());
         }
         let Some(unlocks) = legacy::progress(&saves, game)? else {
             return Ok(());
         };
         let globals = legacy::unlocked_globals(&unlocks)?;
-        let Some(dir) = &self.dir else {
-            self.legacy_globals = globals;
-            return Ok(());
-        };
         let system: Properties = globals
             .into_iter()
             .map(|(flag, value)| (flag.into_bytes(), value.to_string().into_bytes()))
@@ -310,9 +580,6 @@ impl NativeFiles {
 
     /// The `.setglobal` table stored in `system.dat`.
     pub(crate) fn globals(&self) -> BTreeMap<String, i64> {
-        if self.dir.is_none() {
-            return self.legacy_globals.clone();
-        }
         self.system
             .iter()
             .filter_map(|(key, value)| global(self.encoding, key, value))
@@ -322,10 +589,7 @@ impl NativeFiles {
     /// Replaces the representable entries of `system.dat` with `globals`;
     /// entries Musica cannot decode stay verbatim.
     pub(crate) fn store_globals(&mut self, globals: &BTreeMap<String, i64>) -> SessionResult<()> {
-        let Some(dir) = &self.dir else {
-            self.warn_unpersisted();
-            return Ok(());
-        };
+        let dir = &self.dir;
         let encoding = self.encoding;
         let mut system: Properties = self
             .system
@@ -349,10 +613,7 @@ impl NativeFiles {
 
     /// Adds one shown background image (lowercase file name) to `cgv.dat`.
     pub(crate) fn record_cg(&mut self, name: &str) -> SessionResult<()> {
-        let Some(dir) = &self.dir else {
-            self.warn_unpersisted();
-            return Ok(());
-        };
+        let dir = &self.dir;
         let bytes = self.encoding.encode(name).ok_or_else(|| {
             error(
                 "SHINKI_EMU_MUSICA_SAVE_WRITE",
@@ -374,9 +635,7 @@ impl NativeFiles {
         &self,
         stem: &str,
     ) -> SessionResult<Option<crate::runtime::ReadBitmap>> {
-        let Some(dir) = &self.dir else {
-            return Ok(None);
-        };
+        let dir = &self.dir;
         read_optional(&dir.root.join(read_flags_name(stem)?))?
             .map(|bytes| minori_data::decode_read_flags(&bytes, dir.prefix.value))
             .transpose()
@@ -389,21 +648,9 @@ impl NativeFiles {
         stem: &str,
         bits: &crate::runtime::ReadBitmap,
     ) -> SessionResult<()> {
-        let Some(dir) = &self.dir else {
-            self.warn_unpersisted();
-            return Ok(());
-        };
+        let dir = &self.dir;
         let name = read_flags_name(stem)?;
         let bytes = minori_data::encode_read_flags(bits, dir.prefix.value).map_err(core_error)?;
         replace_file(&dir.root, &name, &bytes)
-    }
-
-    fn warn_unpersisted(&mut self) {
-        if !std::mem::replace(&mut self.warned, true) {
-            tracing::warn!(
-                event = "shinki.emu.musica.native.unpersisted",
-                diagnostic_code = "SHINKI_EMU_MUSICA_SAVE_TITLE"
-            );
-        }
     }
 }
