@@ -13,6 +13,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.io.File
 import org.shinkirou.krkr.KrkrHost
+import org.shinkirou.krk2.KrkrHost as Krkr2Host
 
 /**
  * NativeActivity host for the Rust Manager (`android_main` in libshinki_emu_manager).
@@ -37,10 +38,12 @@ class MainActivity : NativeActivity() {
     override fun onResume() {
         super.onResume()
         KrkrHost.onResume()
+        Krkr2Host.onResume()
     }
 
     override fun onPause() {
         KrkrHost.onPause()
+        Krkr2Host.onPause()
         super.onPause()
     }
 
@@ -49,6 +52,7 @@ class MainActivity : NativeActivity() {
         // the private core helpers release their Java Activity references.
         super.onDestroy()
         KrkrHost.destroy(this)
+        Krkr2Host.destroy(this)
     }
 
     private class PendingPick(val requestId: Long, val kind: Int, val destDir: File)

@@ -8,6 +8,8 @@ External cores retain their complete fork history, upstream attribution and nati
 
 The authoritative build inventory is `build/cores.toml` at the repository root. It supplies exact plugin IDs, manifests, packages, features, license inputs and target status. External IDs keep upstream names and case. The `kirikiri2/` checkout corresponds to `kirikiroid2-web`; Musica and CMVS are in-tree cores under `Source/Families/`.
 
+`krkr2/` is the independent [Project-Shinkirou/krkr2](https://github.com/Project-Shinkirou/krkr2) checkout. It coexists with `kirikiri2/`; its own `shinki/` adapter and static symbol closure do not link or forward to kirikiroid2-web.
+
 ## ABI and build ownership / ABI 与构建职责
 
 所有核心使用 ShinkiEMU 的 `shinki-emu-abi`（C ABI v3），C++ 使用同一来源生成的 `shinki_emu.h`。共享底层库来自精确 revision 的 RoukakuEngine。VM、原生图形、音频、菜单及存档仍由核心负责；SDK 只复用公共机制。

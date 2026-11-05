@@ -16,6 +16,8 @@ pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("renpy", shinki_emu_renpy::query),
     #[cfg(target_os = "android")]
     ("kirikiroid2-web", shinki_emu_kirikiroid2_web::query),
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    ("krkr2", shinki_emu_krkr2::query),
     #[cfg(target_os = "ios")]
     ("sena-rs", shinki_emu_sena_rs::shinki_emu_query),
     #[cfg(target_os = "ios")]

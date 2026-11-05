@@ -475,3 +475,56 @@ reason = "cmvs-native has no iOS font host and the adapter's native audio/sessio
 target = "aarch64-unknown-linux-ohos"
 reason = "cmvs-audio selects CPAL native output without an OHAudio backend; no OHOS host lifecycle/static Manager integration is implemented."
 
+[[cores]]
+id = "krkr2"
+display_name = "KrKr2"
+family_name = "KiriKiri"
+license = "LicenseRef-KiriKiri2"
+manifest = "ThirdParty/krkr2/shinki/Cargo.toml"
+package = "shinki-emu-krkr2"
+features = []
+dependencies = ["native-vcpkg", "bison"]
+artifact_kind = "native-static"
+resources = []
+licenses = ["ThirdParty/krkr2/LICENSE", "ThirdParty/krkr2/MODIFICATIONS.md"]
+supported_targets = []
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = ["static"]
+publish_blocked = ""
+[cores.source]
+repo = "https://github.com/Project-Shinkirou/krkr2"
+branch = "shinki"
+rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82"
+upstream = "https://github.com/2468785842/krkr2"
+release_sequence = 1
+upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
+[[cores.blocked]]
+target = "x86_64-pc-windows-msvc"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."

@@ -33,6 +33,7 @@ ShinkiEMU 用 12 个核心支持 10 个引擎家族。每个核心保留引擎�
 | [`shinki.emu.cmvs`](docs/zh-cn/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 归档和 PS2A 脚本 |
 | [`cmvs-rs`](docs/zh-cn/cores/cmvs-rs.md) | CMVS / CVNS | 仅支持[上游登记的作品](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt)，与自研 CMVS 并存 |
 | [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | XP3 归档和 KAG/TJS 脚本 |
+| [`krkr2`](docs/zh-cn/cores/krkr2.md) | KiriKiri | 独立原生 C++ 核心；XP3 归档和 KAG/TJS 脚本 |
 | [`impacto`](docs/zh-cn/cores/impacto.md) | MAGES. | MAGES. SC3 脚本及逐游戏配置 |
 
 能识别引擎不代表游戏可玩。具体游戏、平台和发行版本的结论见门户的[兼容性页面](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)，没有报告的游戏视为未报告。要提交结论，请使用[游戏兼容性报告](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)表单。
@@ -61,11 +62,14 @@ ShinkiEMU 用 12 个核心支持 10 个引擎家族。每个核心保留引擎�
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
 | `cmvs-rs` | 未发布 | 未发布 | 未发布 | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | 内置 | — | — |
+| `krkr2` | — | — | — | 候选接入 | 候选接入 | — |
 | `impacto` | ✓ | ✓ | ✓ | 内置 | — | — |
 
 ✓ 表示该核心已在桌面版核心目录中发布。“内置”指 [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7) 内嵌的核心：Android 7 个，iOS 6 个，OpenHarmony 只有 Musica。Android 与 iOS 版 Manager 使用内置核心，桌面版加载从核心目录下载的核心。
 
 `cmvs-rs` 暂停发布：两份本地 CMVS 样本均不符合上游登记，真实游戏出帧验收尚未通过。
+
+`krkr2` 是本分支独立的 Android/iOS 原生核心候选接入，不改写上述已发布 beta.7 的核心清单。
 
 - **Windows、Linux、macOS**：x64 的 ZIP 包，macOS 另有 Apple Silicon 版本。
 - **Android**：一个通用 APK，使用发布签名密钥。debug 签名的 CI APK 只作测试。
@@ -122,6 +126,7 @@ Manager 界面提供简体中文、英文和日文。配置、存档、元数据
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project（[@renpy](https://github.com/renpy)）；源码版权人 Tom Rothamel | [MIT，部分为 LGPL](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
 | `cmvs-rs` | CMVS / CVNS | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) | [@Shizuku-in](https://github.com/Shizuku-in) 及贡献者 | [MIT](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-MIT) OR [Apache-2.0](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-APACHE)，另保留上游第三方 notice |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web)，fork 自 [2468785842/krkr2](https://github.com/2468785842/krkr2) | [@fenghengzhi](https://github.com/fenghengzhi)；KiriKiri2 版权人 W.Dee and contributors | [KiriKiri2 许可及所含组件的许可](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
+| `krkr2` | KiriKiri | [2468785842/krkr2](https://github.com/2468785842/krkr2) | KiriKiri 版权人 W.Dee and contributors；KrKr2 贡献者 | [KiriKiri 及所含组件的许可](https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors（[@CommitteeOfZero](https://github.com/CommitteeOfZero)） | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 
 许可证链接指向 [`build/cores.toml`](build/cores.toml) 固定的上游版本。核心及其依赖的完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

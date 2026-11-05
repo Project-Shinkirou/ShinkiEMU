@@ -195,3 +195,8 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 - Adapter: `crates/shinki-emu-cmvs-rs`, using upstream VM, CPU/font/movie rendering, native audio and save/config behavior. The existing `shinki.emu.cmvs` implementation is unchanged and remains a separate core.
 - `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES.txt` and `MODIFICATIONS.md` are declared in both the adapter build manifest and `build/cores.toml`. Full pinned fork source accompanies corresponding-source archives. User-provided fonts and commercial game data are not included.
 
+## KrKr2 独立核心
+
+- 上游：<https://github.com/2468785842/krkr2>，基线 `dca7264572a63e753c1b07ca7053513d1751ce70`；组织 fork 为 <https://github.com/Project-Shinkirou/krkr2/tree/shinki>，精确适配 revision 见 `build/cores.toml`。
+- 核心 ID 为 `krkr2`，与 `kirikiroid2-web` 并存。使用该上游自己的模块化 C++ VM、渲染、Oboe/OpenAL 混音和存档路径，不链接另一个核心。适配层移植了组织 kirikiroid2-web fork 的 MIT OR Apache-2.0 会话 owner、C ABI 和静态符号隔离代码，来源与修改范围见 fork 的 `MODIFICATIONS.md`。
+- 保留上游 `LICENSE` 中的 KiriKiri BSD 风格条款及全部所含组件条款；`LicenseRef-KiriKiri2` 不将整个依赖闭包重新许可为 BSD。运行资源、Cocos Java 代码和 vcpkg 依赖 copyright 文件由实际构建清单随包保留；源码包包含完整 fork 及适配修改。

@@ -33,6 +33,7 @@ ShinkiEMU は 12 のコアで 10 のエンジンファミリーに対応して�
 | [`shinki.emu.cmvs`](docs/ja/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 アーカイブと PS2A スクリプト |
 | [`cmvs-rs`](docs/ja/cores/cmvs-rs.md) | CMVS / CVNS | [上流に登録された作品](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt) のみ。独自 CMVS コアと共存 |
 | [`kirikiroid2-web`](docs/ja/cores/kirikiroid2-web.md) | KiriKiri | XP3 アーカイブと KAG/TJS スクリプト |
+| [`krkr2`](docs/ja/cores/krkr2.md) | KiriKiri | 独立したネイティブ C++ コア、XP3 アーカイブと KAG/TJS スクリプト |
 | [`impacto`](docs/ja/cores/impacto.md) | MAGES. | MAGES. SC3 スクリプトとゲームごとの設定 |
 
 エンジンを認識できても、そのゲームが遊べるとは限りません。ゲーム・プラットフォーム・リリースごとの結果はポータルの[互換性ページ](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)にあり、レポートのないゲームは未報告です。結果を追加するには[ゲーム互換性報告](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)フォームを使ってください。
@@ -61,11 +62,14 @@ ShinkiEMU は 12 のコアで 10 のエンジンファミリーに対応して�
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
 | `cmvs-rs` | 未公開 | 未公開 | 未公開 | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | 組み込み | — | — |
+| `krkr2` | — | — | — | 統合候補 | 統合候補 | — |
 | `impacto` | ✓ | ✓ | ✓ | 組み込み | — | — |
 
 ✓ はデスクトップ版のコアカタログで公開済みであることを示します。「組み込み」は [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7) に組み込まれたコアで、Android は 7 つ、iOS は 6 つ、OpenHarmony は Musica のみです。Android と iOS の Manager は組み込みのコアを使い、デスクトップ版はカタログからダウンロードしたコアを読み込みます。
 
 `cmvs-rs` は公開を保留しています。ローカルの CMVS サンプル 2 件とも上流の登録と一致せず、実作品のフレーム検証は未完了です。
+
+`krkr2` はこのブランチの Android/iOS ネイティブ統合候補です。上記の公開済み beta.7 のコア一覧は変更しません。
 
 - **Windows、Linux、macOS**：x64 向けの ZIP パッケージ。macOS には Apple Silicon 版もあります。
 - **Android**：リリース署名鍵で署名したユニバーサル APK がひとつ。debug 署名の CI APK はテスト用です。
@@ -122,6 +126,7 @@ Manager の表示言語は簡体字中国語、英語、日本語です。設定
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project（[@renpy](https://github.com/renpy)）、ソースの著作権者 Tom Rothamel | [MIT（一部 LGPL）](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
 | `cmvs-rs` | CMVS / CVNS | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) | [@Shizuku-in](https://github.com/Shizuku-in) とコントリビューター | [MIT](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-MIT) OR [Apache-2.0](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-APACHE)、上流の第三者通知を保持 |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web)（[2468785842/krkr2](https://github.com/2468785842/krkr2) のフォーク） | [@fenghengzhi](https://github.com/fenghengzhi)、KiriKiri2 の著作権者 W.Dee and contributors | [KiriKiri2 ライセンスと同梱コンポーネントのライセンス](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
+| `krkr2` | KiriKiri | [2468785842/krkr2](https://github.com/2468785842/krkr2) | KiriKiri 著作権者 W.Dee and contributors、KrKr2 contributors | [KiriKiri と同梱コンポーネントのライセンス](https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors（[@CommitteeOfZero](https://github.com/CommitteeOfZero)） | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 
 ライセンスのリンク先は [`build/cores.toml`](build/cores.toml) で固定した上流のリビジョンです。コアと依存ライブラリの完全な告知は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。
