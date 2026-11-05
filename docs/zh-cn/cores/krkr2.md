@@ -24,3 +24,5 @@ Linux 构建主机还需安装 Yasm（Ubuntu 使用 `apt-get install yasm`）；
 macOS 主机构建 x86/x64 输入时同样需要 Yasm，使用 `brew install yasm` 安装。
 
 语法文件要求 GNU Bison 至少为 3.8.2。macOS 使用 `brew install bison`；适配器会检查 `BISON_EXECUTABLE` 的实际版本，也能直接选择 Homebrew 的 keg-only Bison。
+
+Apple 静态构建还需执行 `rustup component add llvm-tools-preview`。适配器优先检查当前 Rust sysroot，再查找 PATH 上同名的 LLVM 工具；缺工具时会在 C++ 编译前报告具体路径。

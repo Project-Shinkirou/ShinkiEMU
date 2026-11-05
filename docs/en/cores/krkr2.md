@@ -24,3 +24,5 @@ Linux build hosts also need Yasm (`apt-get install yasm` on Ubuntu); the pinned 
 macOS hosts also need Yasm for x86/x64 inputs: `brew install yasm`.
 
 The grammar requires GNU Bison 3.8.2 or newer. On macOS, install it with `brew install bison`; the adapter validates `BISON_EXECUTABLE` and can select Homebrew's keg-only Bison directly.
+
+Apple static builds also require `rustup component add llvm-tools-preview`. The adapter checks the active Rust sysroot first, then the exact LLVM tool names on PATH, and reports missing tool paths before compiling C++.
