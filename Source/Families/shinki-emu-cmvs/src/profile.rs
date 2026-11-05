@@ -8,6 +8,7 @@ use std::{
 };
 
 pub const CMVS_PROFILE_SCHEMA: &str = "shinki.emu.cmvs.profile.v2";
+const PREVIOUS_PROFILE_SCHEMA: &str = "astra.emu.cmvs.profile.v2";
 pub const CMVS_PROFILE_FILE: &str = "cmvs.profile.json";
 
 /// Local private configuration, never a log or package payload.
@@ -66,7 +67,7 @@ fn resolve_sources(
 
 impl CmvsProfile {
     pub fn validate(&self) -> Result<(), CoreError> {
-        if self.schema != CMVS_PROFILE_SCHEMA
+        if !matches!(self.schema.as_str(), CMVS_PROFILE_SCHEMA | PREVIOUS_PROFILE_SCHEMA)
             || self.archives.is_empty()
             || self.archives.len() > 256
             || self.loose_files.len() > 256
@@ -152,7 +153,16 @@ mod tests {
         );
         assert_eq!(resolved[0].1.file_name().unwrap(), "patch.cpz");
         assert_eq!(resolved[1].1.file_name().unwrap(), "base.cpz");
+        // Existing local profiles were created before the engine rename; the
+        // serialized profile shape and scheme are unchanged.
+        let mut installed = profile_value();
+        installed["schema"] = serde_json::json!(PREVIOUS_PROFILE_SCHEMA);
+        serde_json::from_value::<CmvsProfile>(installed)
+            .unwrap()
+            .validate()
+            .unwrap();
     }
+
 
     #[test]
     fn duplicate_archive_roles_and_old_unordered_profiles_are_rejected() {
