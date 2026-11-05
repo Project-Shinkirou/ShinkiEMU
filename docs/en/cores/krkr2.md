@@ -22,3 +22,5 @@ This branch integrates the Android/iOS Manager paths. Standalone desktop/mobile 
 Linux build hosts also need Yasm (`apt-get install yasm` on Ubuntu); the pinned FFmpeg x86/x64 recipe requires this assembler tool during dependency preparation.
 
 macOS hosts also need Yasm for x86/x64 inputs: `brew install yasm`.
+
+The grammar requires GNU Bison 3.8.2 or newer. On macOS, install it with `brew install bison`; the adapter validates `BISON_EXECUTABLE` and can select Homebrew's keg-only Bison directly.

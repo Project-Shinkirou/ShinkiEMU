@@ -106,7 +106,7 @@ jobs:
       - name: Apple native assembler prerequisite
         if: runner.os == 'macOS' && (matrix.component == 'kirikiroid2-web' || (matrix.component == 'manager' && contains(matrix.target, 'ios')))
         shell: bash
-        run: brew install yasm
+        run: brew install bison yasm
       - name: Linux desktop prerequisites
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash

@@ -22,3 +22,5 @@ description: モバイル Manager 向けの独立したネイティブ KrKr2 コ
 Linux のビルドホストには Yasm も必要です（Ubuntu では `apt-get install yasm`）。固定した FFmpeg の x86/x64 ポートは依存関係の準備中にこのツールを検出します。
 
 macOS で x86/x64 向けにビルドする場合も、`brew install yasm` が必要です。
+
+文法ファイルには GNU Bison 3.8.2 以降が必要です。macOS では `brew install bison` を実行してください。アダプターは `BISON_EXECUTABLE` の実際のバージョンを確認し、Homebrew の keg-only Bison も直接選択します。

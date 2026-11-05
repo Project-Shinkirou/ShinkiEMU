@@ -22,3 +22,5 @@ description: 移动端 Manager 的独立原生 KrKr2 核心。
 Linux 构建主机还需安装 Yasm（Ubuntu 使用 `apt-get install yasm`）；固定版本的 FFmpeg x86/x64 配方会在依赖准备阶段检查这个工具。
 
 macOS 主机构建 x86/x64 输入时同样需要 Yasm，使用 `brew install yasm` 安装。
+
+语法文件要求 GNU Bison 至少为 3.8.2。macOS 使用 `brew install bison`；适配器会检查 `BISON_EXECUTABLE` 的实际版本，也能直接选择 Homebrew 的 keg-only Bison。
