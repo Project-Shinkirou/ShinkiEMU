@@ -313,6 +313,8 @@ Android 正式发行证书 SHA256 仍为 `c415bd462d26574758ed455055ff528a3bd603
 
 [Impacto 序号 3 发行版](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-impacto-tag-0-10-8-930-96de7434c8b1a57df7ff24dcee829282194873fe596677056fa168485cb1555e) 已公开 Windows、Linux 和两种 macOS 架构的包，产品提交为 `5b197c1c656186d3a535bb3486311623516166e5`，上游为 `0.10.8.930`，适配提交为 `34b89c29123d025d96f73ac9a746fb388e572065`。四个平台的对应源码、原生输入、许可和包审计均通过，八个公开二进制/源码附件也已无认证实际下载并核对哈希。此独立发行不替换 Manager6 内置的 `910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157`/序号 2，也不改写已公开的序号 1 资产；目录按序号选中 3，不按发布完成先后排序。
 
+开发分支的 Impacto pin 已包含 [fmt v11 兼容修复](https://github.com/Project-Shinkirou/impacto/pull/2)，解决 [Windows 下与 KiriKiri 同进程加载失败的问题（#37）](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)。vcpkg manifest 将 fmt 固定为 11.2.0，与 KiriKiri、spdlog 和 OpenAL 使用的 v11 ABI 一致。Windows 按文件名复用已加载的 `fmt.dll`，调整 DLL 目录搜索标志不能隔离不同 ABI。下次 Impacto 发布使用序号 4，已发布的序号 1–3 核心包保持不变。
+
 [Ren’Py 序号 1 发行版](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-renpy-tag-8-5-3-26051504-5f537560e1a1b852070dec65946d6c027e9f4f7482bddd8349ed47960c383133) 已公开四个桌面平台，产品提交为 `05326439dcfafb81df79f3dabe0997fb696ad3f3`，上游为 `8.5.3.26051504`，适配提交为 `a52d9d9c006223c2b5a276c05e1b97ffeecbe66f`。每份真实对应源码包的固定重构建配方均逐项核验通过 389/389，包括 107 字节的符号链接目标。八个公开二进制/源码附件已无认证实际下载，哈希均与已验收记录一致；原生许可正文也已逐字节核对固定 fork 和原始输入。
 
 同一索引额外发布 `cores-v2.json`（`shinki.emu.cores.v2`），包含旧记录和新身份。`cores.json` 保留 v1 以及所有无 identity 的已发布记录，旧 Manager 仍能下载；新 Manager 优先读索引中的 v2，也接受旧 v1 快照。已有 beta 的标签、附件与来历均不改写，仍可安装。安装更新比较包身份，不比较适配 crate 自身的版本号。
