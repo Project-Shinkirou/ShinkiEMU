@@ -167,6 +167,30 @@ fn valid_package_is_staged_and_apply_pending_replaces_the_core_directory() {
 }
 
 #[test]
+fn installed_entries_scan_manifests_without_loading_native_code() {
+    let root = tempfile::tempdir().unwrap();
+    let cores = root.path().join("cores");
+    let archive = root.path().join("core.zip");
+    valid_package(&archive, "shinki.emu.fixture");
+    stage_package(
+        &archive,
+        Some(("shinki.emu.fixture", "0.2.0", None)),
+        &cores.join(PENDING),
+    )
+    .unwrap();
+    assert!(apply_pending(&cores).is_empty());
+    fs::write(cores.join("unrelated.dll"), b"dependency").unwrap();
+    fs::create_dir_all(cores.join("not_a_core")).unwrap();
+    fs::write(cores.join("not_a_core").join("README.txt"), b"not a core").unwrap();
+
+    let installed = installed_entries(&cores).unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(installed[0].0, "shinki_emu_fixture");
+    assert_eq!(installed[0].1.plugin_id, "shinki.emu.fixture");
+    assert_eq!(installed[0].1.version, "0.2.0");
+}
+
+#[test]
 fn removal_marker_deletes_the_core_directory() {
     let root = tempfile::tempdir().unwrap();
     let cores = root.path().join("cores");

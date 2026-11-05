@@ -668,6 +668,9 @@ msgstr "更新可能"
 msgid "已加载"
 msgstr "読み込み済み"
 
+msgid "已安装，尚未加载"
+msgstr "インストール済み、未読み込み"
+
 msgid "加载失败"
 msgstr "読み込み失敗"
 

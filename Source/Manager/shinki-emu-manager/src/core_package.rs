@@ -321,6 +321,31 @@ pub(crate) fn read_manifest(directory: &Path) -> Option<CoreManifest> {
     Some(manifest)
 }
 
+/// Read every valid installed core directory without loading native code.
+pub(crate) fn installed_entries(cores: &Path) -> Result<Vec<(String, CoreManifest)>, String> {
+    let entries = match fs::read_dir(cores) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("SHINKI_EMU_CORE_INVENTORY: {}", error.kind())),
+    };
+    let mut installed = Vec::new();
+    for entry in entries {
+        let entry =
+            entry.map_err(|error| format!("SHINKI_EMU_CORE_INVENTORY: {}", error.kind()))?;
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        if !is_stem(&name) || !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        if let Some(manifest) = read_manifest(&entry.path()) {
+            installed.push((name, manifest));
+        }
+    }
+    installed.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(installed)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingKind {
     Install,

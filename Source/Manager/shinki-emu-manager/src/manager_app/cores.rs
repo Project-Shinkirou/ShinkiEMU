@@ -71,11 +71,13 @@ impl ShinkiEmuManagerController {
             })
     }
 
-    /// Loaded, failed, pending and online-available cores in one list, plus each
-    /// item's core directory stem (empty for online-only entries).
+    /// Loaded, failed, installed, pending and online-available cores in one
+    /// list, plus each item's core directory stem (empty for online-only entries).
     fn core_items(&self) -> Result<(CoresViewModel, Vec<String>), String> {
         let cores = self.cores_dir();
         let pending = core_package::pending_entries(&cores)?;
+        let installed: BTreeMap<_, _> =
+            core_package::installed_entries(&cores)?.into_iter().collect();
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
         let mut loaded_stems = BTreeSet::new();
@@ -121,27 +123,96 @@ impl ShinkiEmuManagerController {
             ));
         }
         items.sort_by(|left, right| left.0.name.cmp(&right.0.name));
-        let updates_available = items
-            .iter()
-            .filter(|(item, _)| !item.update_version.is_empty())
-            .count();
         for (stem, raw) in &self.plugin_errors {
+            let staged_manifest = if pending.contains_key(stem) {
+                core_package::read_manifest(&cores.join(core_package::PENDING).join(stem))
+            } else {
+                None
+            };
+            let manifest = installed.get(stem).or(staged_manifest.as_ref());
+            let plugin_id = manifest.map(|manifest| manifest.plugin_id.clone());
+            let online = plugin_id.as_deref().and_then(|id| self.online_core(id));
             let described = describe_error(raw);
+            listed_plugins.extend(plugin_id.clone());
             items.push((
                 CoreViewModel {
-                    id: stem.clone(),
-                    name: stem.clone(),
+                    id: plugin_id.unwrap_or_else(|| stem.clone()),
+                    name: online.map_or_else(
+                        || {
+                            manifest.map_or_else(
+                                || stem.clone(),
+                                |manifest| manifest.plugin_id.clone(),
+                            )
+                        },
+                        |entry| entry.display_name.clone(),
+                    ),
+                    engine: online
+                        .map(|entry| entry.family_name.clone())
+                        .unwrap_or_default(),
+                    version: manifest
+                        .map(|manifest| {
+                            manifest.identity.as_ref().map_or_else(
+                                || manifest.version.clone(),
+                                shinki_emu_metadata::CoreIdentity::display_version,
+                            )
+                        })
+                        .unwrap_or_default(),
                     state: "failed".into(),
                     source: "user".into(),
                     message: described.title,
-                    removable: cores.join(stem).is_dir(),
+                    removable: cores.join(stem).is_dir()
+                        || cores.join(core_package::PENDING).join(stem).is_dir(),
+                    ..CoreViewModel::default()
+                },
+                stem.clone(),
+            ));
+        }
+        for (stem, manifest) in &installed {
+            if loaded_stems.contains(stem) || self.plugin_errors.contains_key(stem) {
+                continue;
+            }
+            listed_plugins.insert(manifest.plugin_id.clone());
+            let state = match pending.get(stem) {
+                Some(PendingKind::Remove) => "pending-removal",
+                Some(PendingKind::Install) => "pending-update",
+                None => "installed",
+            };
+            let online = self.online_core(&manifest.plugin_id);
+            let update_version = online
+                .filter(|entry| {
+                    entry.is_update_for(&manifest.version, manifest.identity.as_ref())
+                })
+                .map(CoreCatalogEntry::display_version)
+                .unwrap_or_default();
+            items.push((
+                CoreViewModel {
+                    id: manifest.plugin_id.clone(),
+                    name: online.map_or_else(
+                        || manifest.plugin_id.clone(),
+                        |entry| entry.display_name.clone(),
+                    ),
+                    engine: online
+                        .map(|entry| entry.family_name.clone())
+                        .unwrap_or_default(),
+                    version: manifest.identity.as_ref().map_or_else(
+                        || manifest.version.clone(),
+                        shinki_emu_metadata::CoreIdentity::display_version,
+                    ),
+                    state: state.into(),
+                    source: "user".into(),
+                    update_version,
+                    removable: true,
                     ..CoreViewModel::default()
                 },
                 stem.clone(),
             ));
         }
         for (stem, kind) in &pending {
-            if *kind != PendingKind::Install || loaded_stems.contains(stem) {
+            if *kind != PendingKind::Install
+                || loaded_stems.contains(stem)
+                || installed.contains_key(stem)
+                || self.plugin_errors.contains_key(stem)
+            {
                 continue;
             }
             let manifest =
@@ -197,11 +268,15 @@ impl ShinkiEmuManagerController {
                 ));
             }
         }
+        let updates_available = items
+            .iter()
+            .filter(|(item, _)| !item.update_version.is_empty())
+            .count();
         let (items, stems) = items.into_iter().unzip();
         Ok((
             CoresViewModel {
                 items,
-                restart_required: !pending.is_empty() && self.cores_started(),
+                restart_required: !pending.is_empty(),
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
                 ..CoresViewModel::default()
             },
@@ -456,6 +531,41 @@ fn render_log_line(value: &serde_json::Value) -> String {
 mod tests {
     use super::*;
 
+    fn write_fixture(root: &Path, pending: bool, version: &str) -> (PathBuf, PathBuf) {
+        let library = format!(
+            "{}shinki_emu_fixture{}",
+            std::env::consts::DLL_PREFIX,
+            std::env::consts::DLL_SUFFIX
+        );
+        let bytes = b"fixture core";
+        let manifest = core_package::CoreManifest {
+            schema: core_package::CORE_PACKAGE_SCHEMA.into(),
+            plugin_id: "shinki.emu.fixture".into(),
+            library: library.clone(),
+            version: version.into(),
+            identity: None,
+            abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
+            files: vec![core_package::CoreFile {
+                path: library.clone(),
+                sha256: core_package::sha256_hex(bytes),
+            }],
+        };
+        let cores = root.join("cores");
+        let directory = if pending {
+            cores.join(core_package::PENDING).join("shinki_emu_fixture")
+        } else {
+            cores.join("shinki_emu_fixture")
+        };
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join(&library), bytes).unwrap();
+        fs::write(
+            directory.join(core_package::CORE_MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        (cores, directory)
+    }
+
     #[test]
     fn cores_view_lists_online_cores_and_gates_downloads() {
         let root = tempfile::tempdir().unwrap();
@@ -501,6 +611,85 @@ mod tests {
         );
         assert!(entry("0.10.0").is_update_for("0.9.1", None));
         assert!(!entry("0.2.0").is_update_for("0.2.0", None));
+    }
+
+    #[test]
+    fn installed_core_is_not_offered_for_download_before_owner_starts() {
+        let root = tempfile::tempdir().unwrap();
+        write_fixture(root.path(), false, "0.2.0");
+        let mut app = ShinkiEmuManagerController::open_library(
+            root.path().into(),
+            FrameMailbox::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let mut catalog = crate::metadata_cache::tests::sample_catalog(root.path());
+        catalog.cores.entries = vec![CoreCatalogEntry {
+            plugin_id: "shinki.emu.fixture".into(),
+            display_name: "Fixture".into(),
+            family_name: "Fixture Engine".into(),
+            version: "0.2.0".into(),
+            abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
+            platform: core_platform(),
+            url: "https://github.com/Project-Shinkirou/ShinkiEMU/releases/download/emu-v0.2.0/core.zip".into(),
+            sha256: "a".repeat(64),
+            size: 1,
+            license: "MIT".into(),
+            release_tag: "emu-v0.2.0".into(),
+            identity: None,
+        }];
+        app.metadata_catalog = Some(catalog);
+
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.items.len(), 1);
+        assert_eq!(view.items[0].id, "shinki.emu.fixture");
+        assert_eq!(view.items[0].name, "Fixture");
+        assert_eq!(view.items[0].state, "installed");
+        assert_eq!(view.items[0].source, "user");
+        assert_eq!(view.items[0].version, "0.2.0");
+    }
+
+    #[test]
+    fn startup_applies_pending_install_before_building_core_inventory() {
+        let root = tempfile::tempdir().unwrap();
+        let (cores, staged) = write_fixture(root.path(), true, "0.2.0");
+        assert!(staged.is_dir());
+
+        let app = ShinkiEmuManagerController::open_library(
+            root.path().into(),
+            FrameMailbox::new(),
+            Vec::new(),
+        )
+        .unwrap();
+
+        assert!(!staged.exists());
+        assert!(cores.join("shinki_emu_fixture").is_dir());
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.items.len(), 1);
+        assert_eq!(view.items[0].state, "installed");
+        assert!(!view.restart_required);
+    }
+
+    #[test]
+    fn installed_core_with_load_error_is_not_listed_as_available() {
+        let root = tempfile::tempdir().unwrap();
+        write_fixture(root.path(), false, "0.2.0");
+        let mut app = ShinkiEmuManagerController::open_library(
+            root.path().into(),
+            FrameMailbox::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        app.plugin_errors.insert(
+            "shinki_emu_fixture".into(),
+            "SHINKI_EMU_FAMILY_LOAD_LIBRARY: SHINKI_EMU_FAMILY_LOAD_LIBRARY".into(),
+        );
+
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.items.len(), 1);
+        assert_eq!(view.items[0].id, "shinki.emu.fixture");
+        assert_eq!(view.items[0].state, "failed");
+        assert_eq!(view.items[0].source, "user");
     }
 
     #[test]
