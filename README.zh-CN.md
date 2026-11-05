@@ -18,7 +18,7 @@ ShinkiEMU 仍处于预发布阶段，构建以 beta 版发布。构建成功不�
 
 ## 兼容性
 
-ShinkiEMU 用 11 个核心支持 10 个引擎家族。每个核心保留引擎自己的 VM、渲染、音频、菜单和存档。其中 9 个核心是现有开源引擎复刻实现上的适配层（见[致谢](#致谢)），Musica 和 CMVS 由 ShinkiEMU 自行实现。核心列表由 [`build/cores.toml`](build/cores.toml) 定义。
+ShinkiEMU 用 12 个核心支持 10 个引擎家族。每个核心保留引擎自己的 VM、渲染、音频、菜单和存档。其中 10 个核心是现有开源引擎复刻实现上的适配层（见[致谢](#致谢)），Musica 和 CMVS 由 ShinkiEMU 自行实现。核心列表由 [`build/cores.toml`](build/cores.toml) 定义。
 
 | 核心 | 引擎家族 | 核心读取的内容 |
 |---|---|---|
@@ -31,6 +31,7 @@ ShinkiEMU 用 11 个核心支持 10 个引擎家族。每个核心保留引擎�
 | [`art3m1s-core`](docs/zh-cn/cores/art3m1s-core.md) | Artemis | `system.ini`、PFS（PF6/PF8）归档和编号补丁卷 `.pfs.NNN` |
 | [`renpy`](docs/zh-cn/cores/renpy.md) | Ren'Py | 运行官方 Ren'Py 8.5.3 运行时 |
 | [`shinki.emu.cmvs`](docs/zh-cn/cores/shinki-emu-cmvs.md) | CMVS | CPZ5 归档和 PS2A 脚本 |
+| [`cmvs-rs`](docs/zh-cn/cores/cmvs-rs.md) | CMVS / CVNS | 仅支持[上游登记的作品](https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/crates/cmvs-core/profiles/games.txt)，与自研 CMVS 并存 |
 | [`kirikiroid2-web`](docs/zh-cn/cores/kirikiroid2-web.md) | KiriKiri | XP3 归档和 KAG/TJS 脚本 |
 | [`impacto`](docs/zh-cn/cores/impacto.md) | MAGES. | MAGES. SC3 脚本及逐游戏配置 |
 
@@ -58,10 +59,13 @@ ShinkiEMU 用 11 个核心支持 10 个引擎家族。每个核心保留引擎�
 | `art3m1s-core` | ✓ | ✓ | ✓ | 内置 | — | — |
 | `renpy` | ✓ | ✓ | ✓ | 内置 | — | — |
 | `shinki.emu.cmvs` | ✓ | ✓ | ✓ | — | — | — |
+| `cmvs-rs` | 未发布 | 未发布 | 未发布 | — | — | — |
 | `kirikiroid2-web` | ✓ | ✓ | ✓ | 内置 | — | — |
 | `impacto` | ✓ | ✓ | ✓ | 内置 | — | — |
 
 ✓ 表示该核心已在桌面版核心目录中发布。“内置”指 [Manager 0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7) 内嵌的核心：Android 7 个，iOS 6 个，OpenHarmony 只有 Musica。Android 与 iOS 版 Manager 使用内置核心，桌面版加载从核心目录下载的核心。
+
+`cmvs-rs` 暂停发布：两份本地 CMVS 样本均不符合上游登记，真实游戏出帧验收尚未通过。
 
 - **Windows、Linux、macOS**：x64 的 ZIP 包，macOS 另有 Apple Silicon 版本。
 - **Android**：一个通用 APK，使用发布签名密钥。debug 签名的 CI APK 只作测试。
@@ -116,6 +120,7 @@ Manager 界面提供简体中文、英文和日文。配置、存档、元数据
 | `ReMinori` | Musica | [luoyily/ReMinori](https://github.com/luoyily/ReMinori) | [@luoyily](https://github.com/luoyily) | [AGPL-3.0](https://github.com/luoyily/ReMinori/blob/79b00990324404bfbd496e7fa76c690cf040f744/LICENSE) |
 | `art3m1s-core` | Artemis | [Alphaly2K/art3m1s-core](https://github.com/Alphaly2K/art3m1s-core) | Alphaly（[@Alphaly2K](https://github.com/Alphaly2K)） | [MPL-2.0](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE)；`crates/pf8` 为 [MIT](https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/crates/pf8/LICENSE) |
 | `renpy` | Ren'Py | [renpy/renpy](https://github.com/renpy/renpy) | The Ren'Py Visual Novel Engine Project（[@renpy](https://github.com/renpy)）；源码版权人 Tom Rothamel | [MIT，部分为 LGPL](https://github.com/renpy/renpy/blob/39895c1e017f0b36ffea2447d97eccd69d76ee1c/sphinx/source/license.rst) |
+| `cmvs-rs` | CMVS / CVNS | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) | [@Shizuku-in](https://github.com/Shizuku-in) 及贡献者 | [MIT](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-MIT) OR [Apache-2.0](https://github.com/Shizuku-in/cmvs-rs/blob/main/LICENSE-APACHE)，另保留上游第三方 notice |
 | `kirikiroid2-web` | KiriKiri | [fenghengzhi/kirikiroid2-web](https://github.com/fenghengzhi/kirikiroid2-web)，fork 自 [2468785842/krkr2](https://github.com/2468785842/krkr2) | [@fenghengzhi](https://github.com/fenghengzhi)；KiriKiri2 版权人 W.Dee and contributors | [KiriKiri2 许可及所含组件的许可](https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE) |
 | `impacto` | MAGES. | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) | Committee of Zero and contributors（[@CommitteeOfZero](https://github.com/CommitteeOfZero)） | [ISC](https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE) |
 
