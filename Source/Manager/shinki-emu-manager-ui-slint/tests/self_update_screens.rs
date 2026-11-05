@@ -4,10 +4,11 @@
 //! same model again draws the same frame.
 //!
 //! Set `SHINKI_UI_SCREENSHOT_DIR` to keep PNGs of every state in zh-CN, en
-//! and ja at 1280x800 and 360x780; without it zh-CN is rendered at 360x780
-//! only. All text is synthetic.
+//! and ja at 1280x800 and 360x780; without it zh-CN is rendered at compact,
+//! medium and desktop widths. All text is synthetic.
 
 use std::{
+    cell::Cell,
     collections::HashMap,
     path::PathBuf,
     rc::Rc,
@@ -15,12 +16,13 @@ use std::{
 };
 
 use shinki_emu_manager_ui_slint::{
-    App, ManagerViewModel, SelfUpdateViewModel, SlintManagerAdapter, i18n,
+    App, ManagerViewModel, SelfUpdate, SelfUpdateAction, SelfUpdateViewModel, SlintManagerAdapter,
+    i18n,
 };
 use slint::{
     ComponentHandle,
     platform::{
-        Platform, WindowAdapter, WindowEvent,
+        Platform, PointerEventButton, WindowAdapter, WindowEvent,
         software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     },
 };
@@ -209,7 +211,7 @@ fn self_update_states_render_distinct_stable_frames() {
     let (languages, sizes): (&[&str], &[(u32, u32)]) = if output.is_some() {
         (&["zh-CN", "en", "ja"], &[(1280, 800), (360, 780)])
     } else {
-        (&["zh-CN"], &[(360, 780)])
+        (&["zh-CN"], &[(360, 780), (840, 800), (1280, 800)])
     };
     if let Some(dir) = &output {
         std::fs::create_dir_all(dir).expect("screenshot dir");
@@ -269,6 +271,67 @@ fn self_update_states_render_distinct_stable_frames() {
                     );
                 }
             }
+            // Click the actual close hit target, including an unbroken notes
+            // headline that must elide rather than push actions offscreen.
+            let dismissed = Rc::new(Cell::new(0));
+            let callbacks = dismissed.clone();
+            adapter.set_on_self_update_action(move |action| {
+                assert!(matches!(action, SelfUpdateAction::DismissUntilLater));
+                callbacks.set(callbacks.get() + 1);
+            });
+            for (case, notes) in [NOTES.to_owned(), "release-notes".repeat(100)]
+                .into_iter()
+                .enumerate()
+            {
+                let state = SelfUpdateViewModel {
+                    banner_visible: true,
+                    notes_summary: notes,
+                    ..states()
+                        .into_iter()
+                        .find(|(id, ..)| *id == "banner-library")
+                        .unwrap()
+                        .3
+                };
+                let before = show(
+                    &adapter,
+                    &software,
+                    language,
+                    "library",
+                    "appearance",
+                    &state,
+                    size,
+                );
+                let compact = width < 600;
+                let margin = if compact { 8.0 } else { 12.0 };
+                let position =
+                    slint::LogicalPosition::new(width as f32 - margin - 28.0, margin + 28.0);
+                software.dispatch_event(WindowEvent::PointerMoved { position });
+                software.dispatch_event(WindowEvent::PointerPressed {
+                    position,
+                    button: PointerEventButton::Left,
+                });
+                software.dispatch_event(WindowEvent::PointerReleased {
+                    position,
+                    button: PointerEventButton::Left,
+                });
+                assert!(
+                    !adapter.window().global::<SelfUpdate>().get_banner_visible(),
+                    "{language} {width}x{height}: close button did not hide the banner"
+                );
+                let after = render(&software, width, height);
+                assert!(before != after, "dismissal must remove the rendered banner");
+                if let Some(dir) = &output {
+                    for (phase, rgba) in [("visible", before), ("dismissed", after)] {
+                        image::RgbaImage::from_raw(width, height, rgba)
+                            .expect("frame size")
+                            .save(dir.join(format!(
+                                "banner-close-{case}-{phase}-{language}-{width}x{height}.png"
+                            )))
+                            .expect("write dismissal png");
+                    }
+                }
+            }
+            assert_eq!(dismissed.get(), 2, "one dismissal callback per click");
         }
     }
     adapter.window().hide().expect("hide");

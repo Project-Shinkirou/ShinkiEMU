@@ -114,16 +114,16 @@ impl ShinkiEmuManagerController {
             })
     }
 
-    /// Loaded, failed, pending and online-available cores in one list, plus each
-    /// item's core directory stem (empty for online-only entries).
+    /// Loaded, installed-but-unloaded, failed, pending and online-available
+    /// cores, plus each item's directory stem (empty for online-only entries).
     fn core_items(&self) -> Result<(CoresViewModel, Vec<String>), String> {
         let cores = self.cores_dir();
         let pending = core_package::pending_entries(&cores)?;
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
-        let mut loaded_stems = BTreeSet::new();
+        let mut listed_stems = BTreeSet::new();
         for meta in self.registry.core_metadata() {
-            loaded_stems.insert(meta.stem.clone());
+            listed_stems.insert(meta.stem.clone());
             listed_plugins.insert(meta.descriptor.plugin_id.clone());
             let state = match pending.get(&meta.stem) {
                 Some(PendingKind::Remove) => "pending-removal",
@@ -166,6 +166,61 @@ impl ShinkiEmuManagerController {
                 meta.stem.clone(),
             ));
         }
+        // Before Prepare there is no registry metadata. Installed manifests
+        // still belong in the inventory, with no claim that their DLL loaded.
+        if !self.registry.is_ready() {
+            let entries = fs::read_dir(&cores)
+                .map_err(|error| format!("SHINKI_EMU_CORE_PENDING_APPLY: {}", error.kind()))?;
+            for entry in entries {
+                let entry = entry
+                    .map_err(|error| format!("SHINKI_EMU_CORE_PENDING_APPLY: {}", error.kind()))?;
+                let Ok(stem) = entry.file_name().into_string() else {
+                    continue;
+                };
+                if listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem) {
+                    continue;
+                }
+                let Some(manifest) = core_package::read_manifest(&entry.path()) else {
+                    continue;
+                };
+                let state = match pending.get(&stem) {
+                    Some(PendingKind::Remove) => "pending-removal",
+                    Some(PendingKind::Install) => "pending-update",
+                    None => "installed",
+                };
+                let online = self.online_core(&manifest.plugin_id);
+                let update_version = online
+                    .filter(|entry| {
+                        state == "installed"
+                            && entry.is_update_for(&manifest.version, manifest.identity.as_ref())
+                    })
+                    .map(CoreCatalogEntry::display_version)
+                    .unwrap_or_default();
+                listed_stems.insert(stem.clone());
+                listed_plugins.insert(manifest.plugin_id.clone());
+                items.push((
+                    CoreViewModel {
+                        id: manifest.plugin_id.clone(),
+                        name: online.map_or_else(
+                            || manifest.plugin_id.clone(),
+                            |entry| entry.display_name.clone(),
+                        ),
+                        engine: online.map(|entry| entry.family_name.clone()).unwrap_or_default(),
+                        version: manifest.identity.as_ref().map_or_else(
+                            || manifest.version.clone(),
+                            shinki_emu_metadata::CoreIdentity::display_version,
+                        ),
+                        state: state.into(),
+                        source: "user".into(),
+                        removable: true,
+                        update_version,
+                        download: self.download_view(&manifest.plugin_id),
+                        ..CoreViewModel::default()
+                    },
+                    stem,
+                ));
+            }
+        }
         items.sort_by(|left, right| left.0.name.cmp(&right.0.name));
         let updates_available = items
             .iter()
@@ -193,7 +248,7 @@ impl ShinkiEmuManagerController {
             ));
         }
         for (stem, kind) in &pending {
-            if *kind != PendingKind::Install || loaded_stems.contains(stem) {
+            if *kind != PendingKind::Install || listed_stems.contains(stem) {
                 continue;
             }
             let manifest =
@@ -869,6 +924,60 @@ mod tests {
             .into_iter()
             .find(|item| item.id == id)
             .unwrap()
+    }
+
+    #[test]
+    fn restart_applies_install_update_and_removal_before_prepare() {
+        let root = tempfile::tempdir().unwrap();
+        let (id, stem) = PLUGINS[0];
+        let library = root.path().join(format!("{stem}.{}", env::consts::DLL_EXTENSION));
+        fs::write(&library, b"first installed library").unwrap();
+        let open = || {
+            ShinkiEmuManagerController::open_library(
+                root.path().into(),
+                FrameMailbox::new(),
+                Vec::new(),
+            )
+            .unwrap()
+        };
+        let mut app = open();
+        app.install_core(&library).unwrap();
+        // A bare library uses its stem until an exported descriptor is loaded.
+        assert_eq!(item(&app, stem).state, "pending-install");
+        drop(app);
+
+        let mut app = open();
+        assert!(!app.cores_started());
+        assert_eq!(item(&app, stem).state, "installed");
+        assert!(!app.cores_view().unwrap().restart_required);
+        let cores = root.path().join("cores");
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+        assert_eq!(
+            fs::read(cores.join(stem).join(library.file_name().unwrap())).unwrap(),
+            b"first installed library"
+        );
+
+        let archive = root.path().join("update.zip");
+        fs::write(&archive, package_for(id, stem)).unwrap();
+        app.install_core(&archive).unwrap();
+        assert_eq!(item(&app, stem).state, "pending-update");
+        drop(app);
+
+        let mut app = open();
+        let installed = item(&app, id);
+        assert_eq!(installed.state, "installed");
+        assert_eq!(installed.version, "0.2.0");
+        assert!(!app.cores_started());
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+        assert_eq!(app.cores_view().unwrap().items.len(), 1);
+
+        app.uninstall_core(id).unwrap();
+        assert_eq!(item(&app, id).state, "pending-removal");
+        drop(app);
+        let app = open();
+        assert!(!cores.join(stem).exists());
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+        assert!(app.cores_view().unwrap().items.is_empty());
     }
 
     #[test]

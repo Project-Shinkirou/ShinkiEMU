@@ -178,6 +178,11 @@ impl ShinkiEmuManagerController {
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
         translation::migrate_provider_book(&mut library)?;
+        // The owner loads lazily after “Prepare”; settle last session's staged
+        // operations before the first model, even if the user never prepares.
+        let cores = data_dir.join("cores");
+        fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
+        let pending_failures = core_package::apply_pending(&cores);
 
         let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone());
 
@@ -247,7 +252,7 @@ impl ShinkiEmuManagerController {
             diagnostic: String::new(),
             retired_diagnostic: None,
             diagnostic_severity: "info",
-            plugin_errors: BTreeMap::new(),
+            plugin_errors: pending_failures.into_iter().collect(),
             store: store::StoreRuntime::new(&data_dir),
             data_dir,
             extensions: None,

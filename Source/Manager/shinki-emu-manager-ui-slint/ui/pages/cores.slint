@@ -8,6 +8,7 @@ import { PageScroll, SettingGroup, StatusChip } from "./settings/common.slint";
 export global CoreText {
     public pure function state-label(core: CoreInfo) -> string {
         return core.state == "loaded" ? (core.update-version != "" ? @tr("可更新") : @tr("已加载"))
+            : core.state == "installed" ? (core.update-version != "" ? @tr("可更新") : @tr("已安装，尚未加载"))
             : core.state == "failed" ? @tr("加载失败")
             : core.state == "pending-install" ? @tr("重启后安装")
             : core.state == "pending-update" ? @tr("重启后更新")
@@ -45,7 +46,7 @@ component CoreRow {
     callback edit-defaults();
 
     property <bool> failed: root.core.state == "failed";
-    property <bool> update: root.core.state == "loaded" && root.core.update-version != "";
+    property <bool> update: (root.core.state == "loaded" || root.core.state == "installed") && root.core.update-version != "";
     property <bool> downloading: CoreText.is-downloading(root.core);
     property <bool> download-failed: root.core.download-phase == "failed";
     property <bool> determinate: root.core.download-phase == "downloading" && root.core.download-progress >= 0;
@@ -241,7 +242,7 @@ component CoreRow {
                     text: @tr("查看日志");
                     clicked => { Cores.view-logs(root.core.id); }
                 }
-                if root.core.removable && (root.core.state == "loaded" || root.failed) : TextButton {
+                if root.core.removable && (root.core.state == "loaded" || root.core.state == "installed" || root.failed) : TextButton {
                     text: @tr("卸载");
                     icon: Icons.delete;
                     clicked => { Cores.uninstall(root.core.id); }
@@ -326,7 +327,7 @@ component GroupCounter {
 
     l := VerticalLayout {
         for core in Cores.items : Rectangle {
-            height: (root.group == "installed" && core.state == "loaded")
+            height: (root.group == "installed" && (core.state == "loaded" || core.state == "installed"))
                 || (root.group == "available" && core.state == "available")
                 || (root.group == "failed" && core.state == "failed")
                 || (root.group == "pending" && CoreText.is-pending(core.state)) ? 1px : 0px;
@@ -339,7 +340,7 @@ component CoreGroup inherits SettingGroup {
     flush: true;
 
     for core in Cores.items : VerticalLayout {
-        if (root.group == "installed" && core.state == "loaded")
+        if (root.group == "installed" && (core.state == "loaded" || core.state == "installed"))
             || (root.group == "available" && core.state == "available")
             || (root.group == "failed" && core.state == "failed")
             || (root.group == "pending" && CoreText.is-pending(core.state)) : VerticalLayout {

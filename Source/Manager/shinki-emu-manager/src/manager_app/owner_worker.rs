@@ -26,6 +26,8 @@ pub(super) fn run(
         }
         let cores = data_dir.join("cores");
         fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
+        // App startup settled the previous session's operations. Also apply
+        // packages staged in this session before the first lazy core load.
         let pending_failures = core_package::apply_pending(&cores);
         #[cfg(not(any(target_os = "android", target_env = "ohos")))]
         let directories = core_directories(&cores)?;
