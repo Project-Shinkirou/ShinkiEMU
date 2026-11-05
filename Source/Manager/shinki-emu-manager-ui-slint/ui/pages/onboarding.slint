@@ -351,20 +351,21 @@ export component OnboardingPage {
         background: MaterialPalette.surface-container;
 
         HorizontalLayout {
-            padding-left: root.pad;
-            padding-right: root.pad;
+            padding-left: root.phone ? 8px : root.pad;
+            padding-right: root.phone ? 8px : root.pad;
             spacing: 8px;
             alignment: center;
 
             HorizontalLayout {
-                width: min(600px, root.width - 2 * root.pad);
-                spacing: 8px;
+                width: min(600px, root.width - 2 * (root.phone ? 8px : root.pad));
+                spacing: root.phone ? 4px : 8px;
 
+                // On phones Skip collapses to its short label so Back and the primary action stay whole.
                 VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
                     TextButton {
-                        text: @tr("跳过引导");
+                        text: root.phone ? @tr("跳过") : @tr("跳过引导");
                         enabled: root.can-leave;
                         clicked => { root.finish(); }
                     }
@@ -388,7 +389,7 @@ export component OnboardingPage {
                         text: root.step == 4 ? @tr("完成")
                             : root.step == 0 && !ResaleNoticeState.acknowledged && ResaleNoticeState.remaining-seconds > 0 ? @tr("下一步（{} 秒）", ResaleNoticeState.remaining-seconds)
                             : @tr("下一步");
-                        icon: root.step == 4 ? Icons.check : @image-url("");
+                        icon: root.step == 4 && !root.phone ? Icons.check : @image-url("");
                         enabled: root.step != 0 || ResaleNoticeState.acknowledged;
                         clicked => {
                             if root.step == 4 {
