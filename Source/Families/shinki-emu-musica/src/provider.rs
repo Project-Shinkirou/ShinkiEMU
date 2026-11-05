@@ -174,6 +174,22 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "发行版 preset 提供的存档身份 JSON；先解析原版文件，缺少格式信息时使用描述，均无可用信息时写入游戏目录内的通用存档。",
         )
         .flags(ADVANCED),
+        MusicaField::new(
+            "frontend",
+            "前端菜单与鉴赏数据",
+            "播放",
+            ConfigKind::String { max_bytes: 4096 },
+            ConfigValue::String(String::new()),
+            "发行版前端 JSON：titles 的图像、解锁全局变量与按钮矩形，以及 replays、movies、cg、bgm 和原版索引 replay_index、movie_index。原版脚本菜单使用直接启动。",
+        ),
+        MusicaField::new(
+            "legacy_progress_flags",
+            "旧版进度变量名",
+            "播放",
+            ConfigKind::String { max_bytes: 4096 },
+            ConfigValue::String("[]".into()),
+            "旧版哈希进度缺少原始变量名时，由发行版 preset 提供 JSON 字符串数组；先使用入口脚本声明与 frontend 条件，未匹配记录保留并写本地诊断，补齐后自动继续迁移。",
+        ),
         MusicaField::text(
             "subtitle_map",
             "影片字幕映射",
@@ -195,8 +211,8 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "启动方式",
             "播放",
             &[("direct", "直接进入脚本"), ("title", "标题菜单启动")],
-            "title",
-            "从标题菜单正常启动，或跳过标题直接运行入口脚本。",
+            "direct",
+            "默认运行原版入口脚本；原生 EXE 菜单通过发行版 frontend 配置选择标题启动。",
         ),
         MusicaField::new(
             "message_speed_auto_play",
@@ -289,10 +305,7 @@ impl MusicaProvider {
     pub(crate) fn probe(&self, request: ProbeRequest) -> SessionResult<Option<ProbeReport>> {
         request.validate()?;
         let root = Path::new(request.game_path.as_str());
-        if !shinki_emu_musica_keys::REQUIRED_ARCHIVE_ROLES
-            .iter()
-            .all(|r| root.join(format!("{r}.paz")).is_file())
-        {
+        if !probe_musica(root) {
             return Ok(None);
         }
         let report = ProbeReport {
@@ -363,7 +376,12 @@ impl MusicaProvider {
         let profile = get("profile_file")?;
         let entry = get("entry_script")?;
         relative(&entry)?;
-        if entry.contains('/') || entry.contains('\\') || !entry.ends_with(".sc") {
+        if entry.contains('/')
+            || entry.contains('\\')
+            || !entry
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("sc"))
+        {
             return Err(error(
                 "SHINKI_EMU_MUSICA_ENTRY",
                 "entry script must name one .sc file in the scr archive",
@@ -480,8 +498,25 @@ impl MusicaProvider {
         let mut vm = MusicaVm::new(uri, loaded.hash, loaded.script, 0)
             .map_err(|_| error("SHINKI_EMU_MUSICA_VM", "entry script cannot be initialized"))?;
         vm.set_name_resources(archive.name_resources.clone());
+        let frontend = get("frontend")?;
+        if title_launch {
+            vm.set_frontend(crate::runtime::title::FrontendData::load(
+                &archive,
+                &frontend,
+                primary_encoding,
+                logical_width,
+                logical_height,
+            )?);
+        } else if !frontend.is_empty() {
+            // Direct script launch still uses declared requirement names for
+            // legacy progress migration, without scanning unused gallery data.
+            vm.set_frontend(
+                serde_json::from_str(&frontend)
+                    .map_err(|_| error("SHINKI_EMU_MUSICA_FRONTEND", "invalid frontend JSON"))?,
+            );
+        }
         vm.set_voice_preferences(crate::voice_preferences::VoicePreferences::resolve(
-            &config,
+            &config, &archive,
         )?);
         let auto_delay = config
             .iter()
@@ -520,7 +555,28 @@ impl MusicaProvider {
                 .as_ref()
                 .and_then(|names| names.resource_identity),
         )?;
-        native.import_legacy_progress(root, game)?;
+        let mut progress_flags = vm.progress_flag_names();
+        // Priority 3: release preset names absent from the original script and
+        // frontend requirements. First declarations win in the hash resolver.
+        let configured_flags: Vec<String> = serde_json::from_str(&get("legacy_progress_flags")?)
+            .map_err(|_| {
+                error(
+                    "SHINKI_EMU_MUSICA_CONFIG",
+                    "invalid legacy progress flag names",
+                )
+            })?;
+        if configured_flags.iter().any(|name| {
+            name.is_empty()
+                || name.len() > MAX_SYMBOL_BYTES
+                || name.contains(['\0', '\r', '\n', '\t'])
+        }) {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_CONFIG",
+                "invalid legacy progress variable name",
+            ));
+        }
+        progress_flags.extend(configured_flags);
+        native.import_legacy_progress(root, game, &progress_flags)?;
         native.import_legacy_settings(root, game)?;
         let mut settings = vm.config().clone();
         [
@@ -580,7 +636,11 @@ impl MusicaProvider {
         if title_launch {
             vm.begin_title_launch()
                 .map_err(|_| error("SHINKI_EMU_MUSICA_TITLE", "title session cannot start"))?;
-            scene.render_title(vm.title_variant(), None)?;
+            scene.render_title(
+                vm.title()
+                    .map_err(|_| error("SHINKI_EMU_MUSICA_TITLE", "no unlocked title variant"))?,
+                None,
+            )?;
         } else {
             scene.render(vm.state(), None, None)?;
         }
@@ -645,4 +705,33 @@ fn relative(value: &str) -> SessionResult<()> {
     } else {
         Ok(())
     }
+}
+
+/// The encrypted index has no universal magic. With the private profile, mount
+/// validates the actual PAZ structure and probe recognizes a parsable SC entry.
+pub(crate) fn probe_musica(root: &Path) -> bool {
+    let Ok(archive) = crate::mount_musica(root, Path::new(MUSICA_KEY_FILE)) else {
+        return false;
+    };
+    archive
+        .manifest()
+        .entries
+        .iter()
+        .filter(|entry| {
+            entry.uri.starts_with("musica:/scr/")
+                && entry
+                    .uri
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("sc"))
+        })
+        .any(|entry| {
+            crate::script_loader::load_script(&archive, &entry.uri, ScriptEncoding::ShiftJis)
+                .is_ok_and(|loaded| {
+                    loaded
+                        .script
+                        .lines
+                        .iter()
+                        .any(|line| matches!(line.kind, crate::ScLineKind::Command { .. }))
+                })
+        })
 }

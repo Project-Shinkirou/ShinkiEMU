@@ -2,8 +2,8 @@ use crate::{
     CoreError, MusicaMountedVfs, MusicaPazDecryptProvider, PazArchiveConfig, PazRoleScheme,
 };
 use shinki_emu_musica_keys::{
-    KeyFileError, MAX_KEY_BYTES, MAX_TEXTURE_OVERRIDE_BYTES, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
-    key_file_error, parse_key_file,
+    KeyFileError, MAX_KEY_BYTES, MAX_TEXTURE_OVERRIDE_BYTES, MusicaKeyFile, key_file_error,
+    parse_key_file,
 };
 use std::{
     collections::BTreeMap,
@@ -50,10 +50,11 @@ pub fn mount_musica_with_resources(
             .map_err(configured_key_error)?;
     let key = parse_key_file(&bytes).map_err(core_error)?;
     let texture_overrides = resolve_texture_overrides(&key, &root)?;
-    let configs = REQUIRED_ARCHIVE_ROLES
+    let configs = key
+        .archive_keys
         .iter()
-        .map(|role| {
-            let alias = match *role {
+        .filter_map(|(role, archive_key)| {
+            let alias = match role.as_str() {
                 "scr" => resources.scr_archive.as_str(),
                 "sys" => resources.sys_archive.as_str(),
                 _ => "",
@@ -61,15 +62,37 @@ pub fn mount_musica_with_resources(
             let path = if alias.is_empty() {
                 root.join(format!("{role}.paz"))
             } else {
-                crate::resources::resource_file(&root, alias)?
+                match crate::resources::resource_file(&root, alias) {
+                    Ok(path) => path,
+                    Err(error) => return Some(Err(error)),
+                }
             };
-            Ok(PazArchiveConfig {
-                role: (*role).into(),
+            match path.try_exists() {
+                Ok(false) if !archive_key.required => return None,
+                Ok(false) => {
+                    return Some(Err(CoreError::invalid(
+                        "SHINKI_EMU_MUSICA_ARCHIVE_MISSING",
+                        format!(
+                            "required archive role {role} is missing: {}",
+                            path.display()
+                        ),
+                    )));
+                }
+                Err(_) => {
+                    return Some(Err(CoreError::invalid(
+                        "SHINKI_EMU_MUSICA_ARCHIVE_PATH",
+                        format!("archive role {role} is inaccessible"),
+                    )));
+                }
+                Ok(true) => {}
+            }
+            Some(Ok(PazArchiveConfig {
+                role: role.clone(),
                 path,
                 game_root: root.clone(),
                 version: key.paz_version,
                 index_size_xor: key.index_size_xor,
-            })
+            }))
         })
         .collect::<Result<Vec<_>, CoreError>>()?;
     let decrypt = MusicaPazDecryptProvider::new(hash, into_schemes(&key))?;

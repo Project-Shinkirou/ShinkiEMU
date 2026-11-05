@@ -1,102 +1,196 @@
 use shinki_emu_sdk::runtime::*;
-
-const FIELDS: [(&str, &str, &str); 6] = [
-    (
-        "backlog_voice_playback",
-        "回想中播放语音",
-        "是否允许在回想记录中重播角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-    (
-        "voice_ren",
-        "Ren 的语音",
-        "是否播放语音文件名以 ren 开头的角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-    (
-        "voice_sui",
-        "Sui 的语音",
-        "是否播放语音文件名以 sui 开头的角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-    (
-        "voice_aya",
-        "Aya 的语音",
-        "是否播放语音文件名以 aya 开头的角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-    (
-        "voice_tou",
-        "Tou 的语音",
-        "是否播放语音文件名以 tou 开头的角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-    (
-        "voice_mot",
-        "其他角色语音",
-        "是否播放语音文件名以 mot 开头的其他角色语音；游戏内尚未保存设置时作为初始值。",
-    ),
-];
-
-// Startup preferences belong to Manager configuration, not a game save slot.
-#[derive(Clone, Debug)]
-pub(crate) struct VoicePreferences {
-    pub backlog_voice_playback: bool,
-    pub character_voice_enabled: [bool; 5],
+use std::{borrow::Cow, collections::BTreeSet};
+#[derive(
+    Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceCharacter {
+    pub prefix: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default = "enabled_default")]
+    pub enabled: bool,
 }
-impl Default for VoicePreferences {
+fn enabled_default() -> bool {
+    true
+}
+#[derive(Clone, Debug)]
+pub(crate) struct VoicePreferences<'a> {
+    pub backlog_voice_playback: bool,
+    pub characters: Cow<'a, [VoiceCharacter]>,
+}
+impl Default for VoicePreferences<'_> {
     fn default() -> Self {
         Self {
             backlog_voice_playback: true,
-            character_voice_enabled: [true; 5],
+            characters: Cow::Borrowed(&[]),
         }
     }
 }
-impl VoicePreferences {
+fn prefix(name: &str) -> &str {
+    let stem = name
+        .rsplit('/')
+        .next()
+        .unwrap_or(name)
+        .split('.')
+        .next()
+        .unwrap_or(name);
+    stem.split(['-', '_'])
+        .next()
+        .unwrap_or(stem)
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+}
+impl VoicePreferences<'static> {
     pub(crate) fn fields() -> Vec<crate::provider::MusicaField> {
-        FIELDS
-            .iter()
-            .map(|(id, label, description)| {
-                crate::provider::MusicaField::new(
-                    id,
-                    label,
-                    "初始语音设置",
-                    ConfigKind::Bool,
-                    ConfigValue::Bool(true),
-                    description,
-                )
-            })
-            .collect()
+        vec![
+            crate::provider::MusicaField::new(
+                "backlog_voice_playback",
+                "回想中播放语音",
+                "初始语音设置",
+                ConfigKind::Bool,
+                ConfigValue::Bool(true),
+                "是否允许在回想记录中重播角色语音。",
+            ),
+            crate::provider::MusicaField::new(
+                "voice_characters",
+                "角色语音列表",
+                "初始语音设置",
+                ConfigKind::String { max_bytes: 4096 },
+                ConfigValue::String("[]".into()),
+                "JSON 数组：prefix、label、enabled；实际声档前缀优先发现，发行版配置补充名称、顺序和初始开关。",
+            ),
+        ]
     }
-    pub fn resolve(entries: &[ConfigEntry]) -> SessionResult<Self> {
-        let mut flags = [true; 6];
-        for (index, (id, _, _)) in FIELDS.iter().enumerate() {
-            flags[index] = match entries
-                .iter()
-                .find(|entry| entry.id == *id)
-                .map(|entry| &entry.value)
+    pub fn resolve(
+        entries: &[ConfigEntry],
+        archive: &crate::MusicaMountedVfs,
+    ) -> SessionResult<Self> {
+        let backlog = entries
+            .iter()
+            .find(|entry| entry.id == "backlog_voice_playback")
+            .map(|entry| &entry.value);
+        let json = entries
+            .iter()
+            .find(|entry| entry.id == "voice_characters")
+            .map(|entry| &entry.value);
+        let (Some(ConfigValue::Bool(backlog)), Some(ConfigValue::String(json))) = (backlog, json)
+        else {
+            return Err(SessionError::invalid(
+                "SHINKI_EMU_MUSICA_CONFIG",
+                "voice preferences are missing or invalid",
+            ));
+        };
+        let mut characters: Vec<VoiceCharacter> = serde_json::from_str(json).map_err(|_| {
+            SessionError::invalid("SHINKI_EMU_MUSICA_CONFIG", "invalid voice characters JSON")
+        })?;
+        let mut seen = BTreeSet::new();
+        for character in &mut characters {
+            if character.prefix.is_empty()
+                || character.prefix.len() > 64
+                || !character.prefix.bytes().all(|b| b.is_ascii_alphanumeric())
+                || !seen.insert(character.prefix.clone())
+                || character.label.len() > 256
             {
-                Some(ConfigValue::Bool(value)) => *value,
-                _ => {
-                    return Err(SessionError::invalid(
-                        "SHINKI_EMU_MUSICA_CONFIG",
-                        "voice preference is missing or invalid",
-                    ));
+                return Err(SessionError::invalid(
+                    "SHINKI_EMU_MUSICA_CONFIG",
+                    "invalid or duplicated voice character",
+                ));
+            }
+            if character.label.is_empty() {
+                character.label = character.prefix.clone();
+            }
+        }
+        for entry in &archive.manifest().entries {
+            if let Some(name) = entry.uri.strip_prefix("musica:/voice/")
+                && entry
+                    .uri
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("ogg"))
+            {
+                let prefix = prefix(name);
+                if !prefix.is_empty() && seen.insert(prefix.into()) {
+                    characters.push(VoiceCharacter {
+                        prefix: prefix.into(),
+                        label: prefix.into(),
+                        enabled: true,
+                    });
                 }
-            };
+            }
+        }
+        if characters.len() > 64 {
+            return Err(SessionError::invalid(
+                "SHINKI_EMU_MUSICA_CONFIG",
+                "voice character count exceeds 64",
+            ));
         }
         Ok(Self {
-            backlog_voice_playback: flags[0],
-            character_voice_enabled: flags[1..].try_into().unwrap(),
+            backlog_voice_playback: *backlog,
+            characters: Cow::Owned(characters),
         })
     }
+}
+impl VoicePreferences<'_> {
     pub fn enabled(&self, uri: &str) -> bool {
         let Some(name) = uri.strip_prefix("musica:/voice/") else {
             return true;
         };
-        let index = match name.split('-').next().unwrap_or_default() {
-            "ren" => 0,
-            "sui" => 1,
-            "aya" => 2,
-            "tou" => 3,
-            "mot" => 4,
-            _ => return true,
+        self.characters
+            .iter()
+            .find(|character| character.prefix == prefix(name))
+            .is_none_or(|character| character.enabled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn discovered_characters_and_declared_order_drive_voice_and_config_controls() {
+        let root = tempfile::tempdir().unwrap();
+        crate::test_fixture::game(root.path(), b".end\r\n");
+        crate::test_fixture::assets(
+            root.path(),
+            "voice",
+            &[
+                ("visitor-001.ogg", b"directory-fixture"),
+                ("guest_003.ogg", b"directory-fixture"),
+                ("actor007.ogg", b"directory-fixture"),
+            ],
+        );
+        let archive = crate::mount_musica(root.path(), std::path::Path::new("key.toml")).unwrap();
+        let entries = resolve_config(
+            &crate::musica_descriptor().configuration,
+            &[ConfigEntry {
+                id: "voice_characters".into(),
+                value: ConfigValue::String(
+                    r#"[{"prefix":"visitor","label":"Visitor","enabled":false}]"#.into(),
+                ),
+            }],
+        )
+        .unwrap();
+        let preferences = VoicePreferences::resolve(&entries, &archive).unwrap();
+        assert_eq!(preferences.characters.len(), 3);
+        assert_eq!(preferences.characters[0].prefix, "visitor");
+        assert!(!preferences.enabled("musica:/voice/visitor-002.ogg"));
+        assert!(preferences.enabled("musica:/voice/guest_003.ogg"));
+        assert!(preferences.enabled("musica:/voice/actor008.ogg"));
+        assert!(preferences.enabled("musica:/voice/unlisted-001.ogg"));
+        let mut config = crate::MusicaConfigState {
+            character_voices: preferences.characters.into_owned(),
+            ..Default::default()
         };
-        self.character_voice_enabled[index]
+        config
+            .edit(crate::MusicaConfigControl::ToggleCharacterVoice(2))
+            .unwrap();
+        assert!(
+            !config
+                .voice_preferences()
+                .enabled("musica:/voice/guest_003.ogg")
+        );
+        assert!(
+            config
+                .edit(crate::MusicaConfigControl::ToggleCharacterVoice(3))
+                .is_err()
+        );
     }
 }

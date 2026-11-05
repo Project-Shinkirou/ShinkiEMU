@@ -33,6 +33,11 @@ struct LegacyRole {
     type_passwords: BTreeMap<String, String>,
     archive_xor: Option<u32>,
     video_key: Option<Vec<u8>>,
+    #[serde(default = "legacy_required")]
+    required: bool,
+}
+fn legacy_required() -> bool {
+    true
 }
 
 // profile.v1 defined an omitted rc4_skip_crc as true. Preserve that schema's
@@ -106,6 +111,7 @@ fn decode(bytes: &[u8]) -> Result<MusicaKeyFile, Box<dyn std::error::Error>> {
                 (
                     role,
                     MusicaArchiveKey {
+                        required: value.required,
                         index_key_hex: super::encode_hex(&value.index_key),
                         data_key_hex: super::encode_hex(&value.data_key),
                         type_passwords: value.type_passwords,
@@ -125,10 +131,12 @@ fn decode(bytes: &[u8]) -> Result<MusicaKeyFile, Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
-    use shinki_emu_musica_keys::{REQUIRED_ARCHIVE_ROLES, load_musica_key_file};
+    use shinki_emu_musica_keys::load_musica_key_file;
+    const FIXTURE_ARCHIVE_ROLES: [&str; 8] =
+        ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
     fn fixture() -> Value {
-        let roles = REQUIRED_ARCHIVE_ROLES.into_iter().enumerate().map(|(index, role)| {
+        let roles = FIXTURE_ARCHIVE_ROLES.into_iter().enumerate().map(|(index, role)| {
             (role.to_owned(), json!({
                 "index_key": [1, 2, 3, 4],
                 "data_key": if role == "mov" { vec![] } else { vec![5, 6, 7, 8] },
@@ -160,7 +168,7 @@ mod tests {
         assert_eq!(imported.paz_version, 2);
         assert_eq!(imported.index_size_xor, 123);
         assert!(!imported.rc4_skip_crc);
-        for (index, role) in REQUIRED_ARCHIVE_ROLES.into_iter().enumerate() {
+        for (index, role) in FIXTURE_ARCHIVE_ROLES.into_iter().enumerate() {
             let key = &imported.archive_keys[role];
             assert_eq!(key.index_key_hex, "01020304");
             assert_eq!(

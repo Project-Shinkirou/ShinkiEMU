@@ -2,10 +2,10 @@ use blowfish::{
     Blowfish,
     cipher::{BlockCipherEncrypt, KeyInit},
 };
-use shinki_emu_musica_keys::{
-    MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
-};
+use shinki_emu_musica_keys::{MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile};
 use std::{collections::BTreeMap, io::Cursor, path::Path};
+pub(crate) const FIXTURE_ARCHIVE_ROLES: [&str; 8] =
+    ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 const KEY: &[u8] = b"public-fixture-key";
 const KEY_HEX: &str = "7075626c69632d666978747572652d6b6579";
 // The test binary is the graphics owner; sessions still own separate devices.
@@ -80,7 +80,7 @@ pub(crate) fn game(root: &Path, script: &[u8]) {
         .write_to(&mut png, image::ImageFormat::Png)
         .unwrap();
     let wave = wave();
-    for role in REQUIRED_ARCHIVE_ROLES {
+    for role in FIXTURE_ARCHIVE_ROLES {
         let (name, payload) = match role {
             "scr" => ("test.sc", script),
             "bg" => ("BG.png", png.get_ref().as_slice()),
@@ -99,12 +99,13 @@ pub(crate) fn game(root: &Path, script: &[u8]) {
         index_size_xor: 0,
         rc4_skip_crc: true,
         texture_overrides: BTreeMap::new(),
-        archive_keys: REQUIRED_ARCHIVE_ROLES
+        archive_keys: FIXTURE_ARCHIVE_ROLES
             .iter()
             .map(|role| {
                 (
                     (*role).into(),
                     MusicaArchiveKey {
+                        required: true,
                         index_key_hex: KEY_HEX.into(),
                         data_key_hex: if *role == "mov" {
                             String::new()

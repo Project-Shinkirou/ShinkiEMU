@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_fixture::FIXTURE_ARCHIVE_ROLES;
 use roukaku_core::Hash256;
 use shinki_emu_musica_keys::{MUSICA_KEY_FILE, MUSICA_KEY_SCHEMA, MusicaArchiveKey};
 use std::fs::File;
@@ -9,12 +10,13 @@ fn key_file() -> MusicaKeyFile {
         paz_version: 2,
         index_size_xor: 123,
         rc4_skip_crc: false,
-        archive_keys: REQUIRED_ARCHIVE_ROLES
+        archive_keys: FIXTURE_ARCHIVE_ROLES
             .into_iter()
             .map(|role| {
                 (
                     role.into(),
                     MusicaArchiveKey {
+                        required: true,
                         index_key_hex: "01aB23CD".into(),
                         data_key_hex: if role == "mov" {
                             String::new()
@@ -77,7 +79,7 @@ fn canonical_toml_mount_preserves_raw_hash_decryption_and_path_confinement() {
     );
     assert_eq!(
         archive.manifest().entries.len(),
-        REQUIRED_ARCHIVE_ROLES.len()
+        FIXTURE_ARCHIVE_ROLES.len()
     );
     assert_eq!(
         archive
@@ -175,4 +177,40 @@ fn canonical_key_errors_preserve_codes_and_do_not_echo_private_details() {
         .err()
         .unwrap();
     assert_eq!(error.code(), "SHINKI_EMU_PROFILE_MISSING");
+}
+
+#[test]
+fn declared_custom_roles_allow_missing_optional_files_and_report_required_paths() {
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b".end\r\n");
+    let profile_path = root.path().join(MUSICA_KEY_FILE);
+    let mut key = shinki_emu_musica_keys::load_musica_key_file(&profile_path).unwrap();
+    key.archive_keys
+        .retain(|role, _| role == "scr" || role == "mov");
+    key.archive_keys.get_mut("mov").unwrap().required = false;
+    key.archive_keys
+        .insert("arbitrary".into(), key.archive_keys["scr"].clone());
+    crate::test_fixture::asset(root.path(), "arbitrary", "resource.bin", b"payload");
+    std::fs::remove_file(root.path().join("mov.paz")).unwrap();
+    std::fs::write(&profile_path, toml::to_string(&key).unwrap()).unwrap();
+    let archive = mount_musica(root.path(), Path::new(MUSICA_KEY_FILE)).unwrap();
+    assert_eq!(
+        &*archive
+            .read_range("musica:/arbitrary/resource.bin", 0, 7)
+            .unwrap()
+            .bytes,
+        b"payload"
+    );
+    assert!(crate::provider::probe_musica(root.path()));
+    std::fs::remove_file(root.path().join("scr.paz")).unwrap();
+    assert!(!crate::provider::probe_musica(root.path()));
+    let error = mount_musica(root.path(), Path::new(MUSICA_KEY_FILE))
+        .err()
+        .unwrap();
+    assert!(error.message().contains("scr"));
+    assert!(
+        error
+            .message()
+            .contains(root.path().join("scr.paz").to_str().unwrap())
+    );
 }

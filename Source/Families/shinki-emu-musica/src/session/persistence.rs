@@ -176,6 +176,7 @@ impl MusicaSession {
             self.vm.config().clone(),
         )
         .map_err(crate::scene::core_error)?;
+        vm.inherit_frontend(&self.vm);
         vm.set_native_auto_cycle(self.native.auto_save_cycle());
         vm.set_launch_mode(self.vm.state().launch_mode);
         // `system.dat` is title-wide; the slot carries only script variables.

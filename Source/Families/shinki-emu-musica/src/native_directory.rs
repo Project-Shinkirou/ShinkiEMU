@@ -552,30 +552,78 @@ impl NativeFiles {
         Ok(files)
     }
 
-    /// One-time, no-clobber import of `<game>/.shinki/musica/saves/global-progress.json`
-    /// into `system.dat`; the source becomes `global-progress.json.imported`.
-    /// An existing `system.dat` is never overwritten and the JSON stays put.
+    /// No-clobber legacy import. Unmapped hashes retain their source and a local
+    /// diagnostic; a later startup can complete the import after configuration.
     pub(crate) fn import_legacy_progress(
         &mut self,
         game_root: &Path,
         game: Hash256,
+        candidates: &[String],
     ) -> SessionResult<()> {
         let saves = game_root.join(".shinki/musica/saves");
+        let diagnostic = saves.join(legacy::UNMAPPED_PROGRESS);
         let dir = &self.dir;
-        if dir.system_data()?.is_some() {
+        let existing = dir.system_data()?;
+        if existing.is_some() && !diagnostic.is_file() {
             return Ok(());
         }
         let Some(unlocks) = legacy::progress(&saves, game)? else {
             return Ok(());
         };
-        let globals = legacy::unlocked_globals(&unlocks)?;
-        let system: Properties = globals
-            .into_iter()
-            .map(|(flag, value)| (flag.into_bytes(), value.to_string().into_bytes()))
-            .collect();
-        dir.write_system_data(&system)?;
+        let (globals, unresolved) = legacy::unlocked_globals(&unlocks, candidates)?;
+        if !unresolved.is_empty() {
+            let bytes = serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "shinki.musica.legacy_progress_unmapped.v1",
+                "game": game,
+                "game_directory": game_root.to_string_lossy(),
+                "unresolved": unresolved,
+            }))
+            .map_err(|_| {
+                error(
+                    "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
+                    "legacy progress diagnostic cannot be encoded",
+                )
+            })?;
+            // Publish the pending marker before creating system.dat, so a crash
+            // cannot make a partial import look like a pre-existing destination.
+            replace_file(&saves, legacy::UNMAPPED_PROGRESS, &bytes)?;
+        }
+        let had_system = existing.is_some();
+        let mut system = existing.unwrap_or_default();
+        let mut changed = false;
+        for (flag, value) in globals {
+            let key = self
+                .encoding
+                .encode(&flag)
+                .ok_or_else(|| {
+                    error(
+                        "SHINKI_EMU_MUSICA_SAVE_WRITE",
+                        "legacy variable name has no native encoding",
+                    )
+                })?
+                .into_owned();
+            if let std::collections::btree_map::Entry::Vacant(entry) = system.entry(key) {
+                entry.insert(value.to_string().into_bytes());
+                changed = true;
+            }
+        }
+        if changed || (!had_system && unresolved.is_empty()) {
+            dir.write_system_data(&system)?;
+        }
         self.system = system;
-        legacy::mark_imported(&saves, legacy::PROGRESS)
+        if !unresolved.is_empty() {
+            return Ok(());
+        }
+        legacy::mark_imported(&saves, legacy::PROGRESS)?;
+        if diagnostic.is_file() {
+            std::fs::remove_file(diagnostic).map_err(|_| {
+                error(
+                    "SHINKI_EMU_MUSICA_GLOBAL_PROGRESS",
+                    "completed legacy progress diagnostic cannot be removed",
+                )
+            })?;
+        }
+        Ok(())
     }
 
     /// The `.setglobal` table stored in `system.dat`.

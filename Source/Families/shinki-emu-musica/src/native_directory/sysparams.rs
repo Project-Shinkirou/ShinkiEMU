@@ -9,14 +9,6 @@ pub(super) const MUSICA_SETTINGS: &str = "musica-settings.txt";
 const QUICK_SAVE: &[u8] = b"quickSaveFileNumber";
 const AUTO_SAVE: &[u8] = b"autoSaveFileNumber";
 
-const MUSICA_VOICE_KEYS: [&[u8]; 5] = [
-    b"voice_ren",
-    b"voice_sui",
-    b"voice_aya",
-    b"voice_tou",
-    b"voice_mot",
-];
-
 fn read_table(path: &Path) -> SessionResult<Option<Properties>> {
     read_optional(path)?
         .map(|bytes| minori_data::decode_settings(&bytes))
@@ -109,17 +101,17 @@ fn read_config(
             *field = value;
         }
     }
-    let native_keys = identity
-        .voice_keys
-        .as_ref()
-        .map(|keys| keys.each_ref().map(|key| key.as_bytes()));
-    let (table, keys) = match native_keys {
-        Some(keys) => (sysparams, keys),
-        None => (musica, MUSICA_VOICE_KEYS),
-    };
-    for (field, key) in config.character_voice_enabled.iter_mut().zip(keys) {
+    for (index, character) in config.character_voices.iter_mut().enumerate() {
+        let local_key = format!("voice_{}", character.prefix);
+        let (table, key) = identity
+            .voice_keys
+            .as_ref()
+            .and_then(|keys| keys.get(index))
+            .map_or((musica, local_key.as_bytes()), |key| {
+                (sysparams, key.as_bytes())
+            });
         if let Some(value) = flag(table, key) {
-            *field = value;
+            character.enabled = value;
         }
     }
 }
@@ -171,16 +163,20 @@ fn write_config(
     put_flag(sysparams, b"muteBGM", config.bgm_muted);
     put_flag(sysparams, b"muteVoice", config.voice_muted);
     put_flag(sysparams, b"muteSE", config.se_muted);
-    let native_keys = identity
-        .voice_keys
-        .as_ref()
-        .map(|keys| keys.each_ref().map(|key| key.as_bytes()));
-    let (table, keys) = match native_keys {
-        Some(keys) => (sysparams, keys),
-        None => (musica, MUSICA_VOICE_KEYS),
-    };
-    for (enabled, key) in config.character_voice_enabled.iter().zip(keys) {
-        put_flag(table, key, *enabled);
+    for (index, character) in config.character_voices.iter().enumerate() {
+        if let Some(key) = identity
+            .voice_keys
+            .as_ref()
+            .and_then(|keys| keys.get(index))
+        {
+            put_flag(sysparams, key.as_bytes(), character.enabled);
+        } else {
+            put_flag(
+                musica,
+                format!("voice_{}", character.prefix).as_bytes(),
+                character.enabled,
+            );
+        }
     }
 }
 
@@ -315,5 +311,77 @@ impl NativeFiles {
             legacy::mark_imported(&saves, legacy::QUICK_CURSOR)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod frontend_tests {
+    use super::*;
+    #[test]
+    fn declared_voice_order_encodes_identical_legacy_native_bytes() {
+        for extended in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let identity = crate::native_directory::tests::identity_fixture(root.path(), extended);
+            let mut config = MusicaConfigState::default();
+            let mut old_sysparams = Properties::new();
+            let mut old_musica = Properties::new();
+            write_config(&identity, &mut old_sysparams, &mut old_musica, &config);
+            let values = [true, false, true, true, false];
+            let prefixes = ["ren", "sui", "aya", "tou", "mot"];
+            // Oracle: the pre-migration five-position native mapping.
+            let keys = if extended {
+                ["ren", "sui", "aya", "tou", "etc"]
+            } else {
+                [
+                    "voice_ren",
+                    "voice_sui",
+                    "voice_aya",
+                    "voice_tou",
+                    "voice_mot",
+                ]
+            };
+            let table = if extended {
+                &mut old_sysparams
+            } else {
+                &mut old_musica
+            };
+            for (key, enabled) in keys.into_iter().zip(values) {
+                put_flag(table, key.as_bytes(), enabled);
+            }
+            config.character_voices = prefixes
+                .into_iter()
+                .zip(values)
+                .map(
+                    |(prefix, enabled)| crate::voice_preferences::VoiceCharacter {
+                        prefix: prefix.into(),
+                        label: prefix.into(),
+                        enabled,
+                    },
+                )
+                .collect();
+            let mut sysparams = Properties::new();
+            let mut musica = Properties::new();
+            write_config(&identity, &mut sysparams, &mut musica, &config);
+            assert_eq!(
+                minori_data::encode_settings(&sysparams).unwrap(),
+                minori_data::encode_settings(&old_sysparams).unwrap()
+            );
+            assert_eq!(
+                minori_data::encode_settings(&musica).unwrap(),
+                minori_data::encode_settings(&old_musica).unwrap()
+            );
+            for character in &mut config.character_voices {
+                character.enabled = !character.enabled;
+            }
+            read_config(&identity, &sysparams, &musica, &mut config);
+            assert_eq!(
+                config
+                    .character_voices
+                    .iter()
+                    .map(|character| character.enabled)
+                    .collect::<Vec<_>>(),
+                values
+            );
+        }
     }
 }

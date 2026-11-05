@@ -100,6 +100,7 @@ pub struct MusicaVm {
     control_pressed: bool,
     config: crate::MusicaConfigState,
     config_edit: Option<config::ConfigEdit>,
+    frontend: std::sync::Arc<title::FrontendData>,
     read_flags: read_state::ReadFlags,
     native_auto_cycle: u64,
     native_auto_count: u64,
@@ -113,13 +114,13 @@ impl MusicaVm {
 
     pub(crate) fn set_voice_preferences(
         &mut self,
-        value: crate::voice_preferences::VoicePreferences,
+        value: crate::voice_preferences::VoicePreferences<'_>,
     ) {
         self.config.backlog_voice_playback = value.backlog_voice_playback;
-        self.config.character_voice_enabled = value.character_voice_enabled;
+        self.config.character_voices = value.characters.into_owned();
     }
     #[cfg(test)]
-    pub(crate) fn voice_preferences(&self) -> crate::voice_preferences::VoicePreferences {
+    pub(crate) fn voice_preferences(&self) -> crate::voice_preferences::VoicePreferences<'_> {
         self.config.voice_preferences()
     }
 
@@ -183,6 +184,7 @@ impl MusicaVm {
             control_pressed: false,
             config: Default::default(),
             config_edit: None,
+            frontend: std::sync::Arc::default(),
             read_flags: read_state::ReadFlags::new(&state.script_uri),
             native_auto_cycle: 0,
             native_auto_count: 0,
@@ -705,7 +707,7 @@ fn execute_control(
     state: &mut MusicaRuntimeState,
     control_pressed: bool,
     message_read: bool,
-    voice_preferences: &crate::voice_preferences::VoicePreferences,
+    voice_preferences: &crate::voice_preferences::VoicePreferences<'_>,
     auto_delay_units: u8,
 ) -> Result<Option<MusicaVmEvent>, MusicaRuntimeError> {
     match command.opcode.as_str() {
