@@ -116,7 +116,7 @@ shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "37
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "a0aa629fb5ce467e91c83e2be0fffb3320404527", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
-shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346", default-features = false }
+shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "ace042bcda4ac3765a9f9198b5ffda1792b5f717", default-features = false }
 shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00", default-features = false }
 shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82", default-features = false, features = ["static"] }
 # The static iOS graph links ReMinori's naga 26 and Ruffle's naga 27; both share

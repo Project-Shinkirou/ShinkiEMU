@@ -3135,7 +3135,7 @@ checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
 [[package]]
 name = "ethornell-app"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "ab_glyph",
  "chardetng",
@@ -3149,7 +3149,7 @@ dependencies = [
  "ethornell-vm",
  "image 0.25.10",
  "libc",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717)",
  "pelite",
  "pollster 0.3.0",
  "ruffle_core",
@@ -3164,7 +3164,7 @@ dependencies = [
 [[package]]
 name = "ethornell-archive"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "byteorder",
  "encoding_rs",
@@ -3175,7 +3175,7 @@ dependencies = [
 [[package]]
 name = "ethornell-audio"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "ethornell-core",
  "kira 0.8.7",
@@ -3186,7 +3186,7 @@ dependencies = [
 [[package]]
 name = "ethornell-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "thiserror 1.0.69",
  "tracing-subscriber",
@@ -3195,7 +3195,7 @@ dependencies = [
 [[package]]
 name = "ethornell-image"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "byteorder",
  "ethornell-core",
@@ -3206,7 +3206,7 @@ dependencies = [
 [[package]]
 name = "ethornell-render"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "ab_glyph",
  "bytemuck",
@@ -3222,7 +3222,7 @@ dependencies = [
 [[package]]
 name = "ethornell-script"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "byteorder",
  "encoding_rs",
@@ -3233,7 +3233,7 @@ dependencies = [
 [[package]]
 name = "ethornell-vm"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "encoding_rs",
  "ethornell-archive",
@@ -7042,7 +7042,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -11095,7 +11095,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-ethornell-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=f8362be7d2f4d634c25a98a317dfe56ffae56346#f8362be7d2f4d634c25a98a317dfe56ffae56346"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=ace042bcda4ac3765a9f9198b5ffda1792b5f717#ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 dependencies = [
  "ethornell-app",
  "ethornell-archive",

@@ -256,11 +256,11 @@ target = "x86_64-linux-android"
 reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
-branch = "shinki"
-rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346"
+branch = "shinki-upstream-3ee43dab"
+rev = "ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 upstream = "https://github.com/xmoezzz/ethornell-rs"
 release_sequence = 1
-upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "b5de417e4cff681bd2afb929e22e903d64602456" }
+upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "3ee43dab43854e2f9c614dd1d26213e17911d877" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
