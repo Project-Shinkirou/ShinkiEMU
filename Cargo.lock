@@ -7052,7 +7052,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=cc0cc5c9648d481693cfa353c11e1d61311f6246#cc0cc5c9648d481693cfa353c11e1d61311f6246"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -9704,7 +9704,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=cc0cc5c9648d481693cfa353c11e1d61311f6246#cc0cc5c9648d481693cfa353c11e1d61311f6246"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9758,7 +9758,7 @@ dependencies = [
  "video-sys",
  "wgpu 30.0.1",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=cc0cc5c9648d481693cfa353c11e1d61311f6246)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae)",
 ]
 
 [[package]]
@@ -11442,7 +11442,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=cc0cc5c9648d481693cfa353c11e1d61311f6246#cc0cc5c9648d481693cfa353c11e1d61311f6246"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -16202,7 +16202,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=cc0cc5c9648d481693cfa353c11e1d61311f6246#cc0cc5c9648d481693cfa353c11e1d61311f6246"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
 dependencies = [
  "byteorder",
  "log 0.4.34",

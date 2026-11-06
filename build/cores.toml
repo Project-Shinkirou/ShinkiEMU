@@ -19,7 +19,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
 branch = "shinki"
-rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246"
+rev = "37f4d1fe10855aca034185a5afaa2123a36465ae"
 upstream = "https://github.com/xmoezzz/rfvp"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/rfvp", ref_kind = "tag", ref_name = "0.7.0", commit = "99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1" }
