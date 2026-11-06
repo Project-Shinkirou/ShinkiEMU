@@ -101,6 +101,19 @@ fn controller_with_capabilities(
     (app, source, id)
 }
 
+#[cfg(windows)]
+#[test]
+fn patch_directory_uses_normal_windows_path_without_changing_game_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, source, id) = controller(root.path());
+    assert_eq!(app.patch_state.patch_directory, dunce::simplified(&source).to_str().unwrap());
+    assert_eq!(app.game(&id).unwrap().location, source.to_str().unwrap());
+    app.set_patch_directory("patch", Path::new(r"\\?\C:\RewritePlus")).unwrap();
+    assert_eq!(app.patch_state.patch_directory, r"C:\RewritePlus");
+    app.set_patch_directory("patch", Path::new(r"C:\RewritePlus")).unwrap();
+    assert_eq!(app.patch_state.patch_directory, r"C:\RewritePlus");
+}
+
 fn recipe(path: &Path, body: &str, configuration: &str) {
     fs::write(
         path,

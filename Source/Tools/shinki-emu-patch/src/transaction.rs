@@ -381,11 +381,26 @@ fn target_exists_error(error: &io::Error) -> bool {
 #[cfg(unix)]
 type FileIdentity = (u64, u64);
 #[cfg(windows)]
-type FileIdentity = (u64, [u8; 16]);
+#[derive(Eq, PartialEq)]
+enum FileIdentity {
+    Extended(u64, [u8; 16]),
+    Legacy(u32, u64),
+}
 
 /// Compare identities of the opened objects, including case and mount aliases.
 pub(crate) fn same_file(left: &File, right: &File) -> io::Result<bool> {
-    Ok(file_identity(left)? == file_identity(right)?)
+    let left_id = file_identity(left)?;
+    let right_id = file_identity(right)?;
+    #[cfg(windows)]
+    if matches!((&left_id, &right_id),
+        (FileIdentity::Extended(..), FileIdentity::Legacy(..))
+        | (FileIdentity::Legacy(..), FileIdentity::Extended(..)))
+    {
+        // Compare both opened objects in the same native ID domain. Never
+        // truncate an extended ID or treat different query support as inequality.
+        return Ok(legacy_file_identity(left)? == legacy_file_identity(right)?);
+    }
+    Ok(left_id == right_id)
 }
 
 #[cfg(unix)]
@@ -403,16 +418,40 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
         Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
     };
     let mut info = FILE_ID_INFO::default();
-    unsafe {
+    match unsafe {
         GetFileInformationByHandleEx(
             HANDLE(file.as_raw_handle()),
             FileIdInfo,
             (&mut info as *mut FILE_ID_INFO).cast(),
             std::mem::size_of::<FILE_ID_INFO>() as u32,
         )
+    } {
+        Ok(()) => Ok(FileIdentity::Extended(info.VolumeSerialNumber, info.FileId.Identifier)),
+        Err(error) => {
+            let error = win_error(error);
+            // Sandbox mapped folders expose stable legacy IDs but reject FileIdInfo.
+            if error.raw_os_error() != Some(50) {
+                return Err(error);
+            }
+            legacy_file_identity(file)
+        }
     }
-    .map_err(win_error)?;
-    Ok((info.VolumeSerialNumber, info.FileId.Identifier))
+}
+
+#[cfg(windows)]
+fn legacy_file_identity(file: &File) -> io::Result<FileIdentity> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle},
+    };
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut info) }
+        .map_err(win_error)?;
+    Ok(FileIdentity::Legacy(
+        info.dwVolumeSerialNumber,
+        (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+    ))
 }
 
 /// Derive a final, absolute path from the opened object, not the request string.
@@ -841,6 +880,61 @@ fn reopen_staging(parent: &Dir, name: &OsString, identity: FileIdentity) -> io::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn legacy_native_identity_distinguishes_files_and_matches_reopened_handles() {
+        let root = tempfile::tempdir().unwrap();
+        let first_path = root.path().join("first");
+        let first = File::create(&first_path).unwrap();
+        let reopened = File::open(&first_path).unwrap();
+        let second = File::create(root.path().join("second")).unwrap();
+        assert!(legacy_file_identity(&first).unwrap() == legacy_file_identity(&reopened).unwrap());
+        assert!(legacy_file_identity(&first).unwrap() != legacy_file_identity(&second).unwrap());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires SHINKI_PATCH_MAPPED_ROOT pointing to a read-only Sandbox fixture share"]
+    fn mapped_input_publishes_and_still_rejects_overlap_and_output_links() {
+        use std::io::{Read, Write};
+        let source = PathBuf::from(std::env::var_os("SHINKI_PATCH_MAPPED_ROOT").unwrap());
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("published");
+        let mut request = PatchRequest {
+            script: root.path().join("unused.luau"),
+            source: source.clone(),
+            patch: source.clone(),
+            mode: PatchMode::NewDirectory { output: output.clone() },
+        };
+        let transaction = Transaction::new(&request).unwrap();
+        let input = crate::paths::AuthorizedRoot::open(&source).unwrap();
+        let mut bytes = Vec::new();
+        input.open_read("original.bin").unwrap().read_to_end(&mut bytes).unwrap();
+        let staging = transaction.open_staging().unwrap();
+        let alias = transaction.staging_path().join("alias");
+        assert!(std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"]).arg(&alias).arg(&source)
+            .status().unwrap().success());
+        let writable = crate::paths::AuthorizedRoot::from_dir(staging);
+        assert!(writable.create("alias/escape.bin").is_err());
+        std::fs::remove_dir(&alias).unwrap();
+        writable.create("copied.bin").unwrap().write_all(&bytes).unwrap();
+        drop(writable);
+        transaction.publish(&AtomicBool::new(false)).unwrap();
+        assert_eq!(std::fs::read(output.join("copied.bin")).unwrap(), bytes);
+        request.mode = PatchMode::NewDirectory { output: source.join("overlap") };
+        assert_eq!(Transaction::new(&request).err().unwrap().kind(), PatchErrorKind::InvalidRequest);
+        let alias = root.path().join("input-alias");
+        assert!(std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"]).arg(&alias).arg(&source)
+            .status().unwrap().success());
+        request.mode = PatchMode::NewDirectory { output: alias.join("overlap") };
+        assert_eq!(Transaction::new(&request).err().unwrap().kind(), PatchErrorKind::InvalidRequest);
+        std::fs::remove_dir(alias).unwrap();
+        assert!(!source.join("escape.bin").exists());
+        assert!(!source.join("overlap").exists());
+    }
 
     struct Fixture {
         directory: tempfile::TempDir,

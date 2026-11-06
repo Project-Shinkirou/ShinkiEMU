@@ -50,6 +50,7 @@ cap-std = "=4.0.3"
 cap-fs-ext = "=4.0.3"
 tokio.workspace = true
 directories.workspace = true
+dunce.workspace = true
 pollster.workspace = true
 reqwest.workspace = true
 bytes = "1.12.1"
