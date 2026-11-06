@@ -91,6 +91,9 @@ fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         embed_windows_icon();
     }
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        link_android_compiler_runtime();
+    }
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
         build_ohos_glue();
     }
@@ -146,6 +149,28 @@ fn main() {
         );
     }
     println!("cargo:rerun-if-env-changed=RUSTC");
+}
+
+fn link_android_compiler_runtime() {
+    // Native embedded cores use compiler-rt helpers (including libffi's
+    // instruction-cache flush). Rust's compiler_builtins is not the NDK's
+    // compiler-rt archive, and allowing unresolved cdylib symbols postpones
+    // this link failure until System.loadLibrary on the device.
+    let compiler = cc::Build::new().get_compiler();
+    let output = compiler
+        .to_command()
+        .arg("--print-libgcc-file-name")
+        .output()
+        .expect("Android compiler runtime lookup");
+    assert!(output.status.success(), "Android compiler runtime lookup failed");
+    let archive = String::from_utf8(output.stdout).expect("Android compiler runtime path");
+    let archive = archive.trim();
+    assert!(
+        std::path::Path::new(archive).is_file(),
+        "Android compiler runtime archive missing: {archive}"
+    );
+    println!("cargo:rustc-link-arg-cdylib={archive}");
+    println!("cargo:rustc-link-arg-cdylib=-Wl,--no-undefined");
 }
 
 fn write_embedded_core_identities() {

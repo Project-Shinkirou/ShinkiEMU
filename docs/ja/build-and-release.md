@@ -136,6 +136,9 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 各ビルドは `cargo ndk-env` のツールチェーン環境を取り込み、Cargo を `--locked` で直接実行します。`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Shinki Musica、CMVS、Artemis、Impacto、Ren’Py、KiriKiri）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
+Manager のビルドスクリプトは Clang の `--print-libgcc-file-name` で対象 NDK の compiler-rt アーカイブを取得してリンクし、`--no-undefined` で未解決シンボルを含む cdylib を拒否します。組み込みネイティブライブラリが呼ぶ `__clear_cache` などは Rust の compiler_builtins だけでは解決できないため、Android の `System.loadLibrary` まで失敗を持ち越さず、リンク時に解決します。
+`ANDROID_NDK_HOME` を設定して `python Tools/test-android-compiler-runtime.py` を実行すると、実際の AArch64 キャッシュフラッシュ呼び出しで検証します。compiler-rt を省くリンクは失敗し、アーカイブを明示したリンクは成功する必要があります。
+
 CMVS は同じ静的レジストリの `cmvs_query` と `video-ffmpeg` を使います。SDK デコーダーは Musica の API 28 静的 FFmpeg vcpkg triplet と xtask の依存準備を共有します。Manager の `embedded-cores.json`、対応ソース、ライセンスに CMVS を含めます。APK 検証は `assets/licenses/shinki.emu.cmvs/` 内のライセンスをマニフェストの入力とバイト単位で比較します。Android 実機・エミュレーターでの実行はユーザーの指定により未検証です。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。Release はユニバーサルな release 署名 APK を 1 つだけアップロードし、対応する sources ZIP も公開します。
