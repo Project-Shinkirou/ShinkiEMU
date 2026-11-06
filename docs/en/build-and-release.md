@@ -194,6 +194,7 @@ Each build imports the `cargo ndk-env` toolchain and invokes Cargo directly with
 
 The Manager build script links the target NDK compiler-rt archive reported by Clang's `--print-libgcc-file-name` and rejects unresolved cdylib symbols with `--no-undefined`. Embedded native libraries can call helpers such as `__clear_cache` that Rust's compiler_builtins does not supply; these must resolve at link time, before Android's `System.loadLibrary` runs.
 Run `python Tools/test-android-compiler-runtime.py` with `ANDROID_NDK_HOME` set to exercise an actual AArch64 cache-flush link: omitting compiler-rt must fail, while the explicit archive must resolve the helper.
+Android native-core preparation also uses `build/vcpkg/mobile-ports`: its pinned fmt 11.2.0 recipe adds the direct `<cstdlib>` include needed for `malloc`/`free` with NDK r30's libc++, without changing the library version or disabling compiler checks.
 
 CMVS uses `cmvs_query` in the same static registry and enables `video-ffmpeg`. Its SDK decoder shares Musica's API 28 static FFmpeg vcpkg triplets and xtask dependency path. The Manager package includes CMVS in `embedded-cores.json`, corresponding sources and licenses. APK verification compares its license bytes under `assets/licenses/shinki.emu.cmvs/` with the inventory inputs. Android device/emulator execution is unverified at the user's request.
 

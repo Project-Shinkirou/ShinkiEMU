@@ -2325,7 +2325,10 @@ pub fn prepare(
                 inv.root.join("build/vcpkg/mobile-triplets").display()
             ));
         if target.contains("android") {
-            command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
+            command.env("ANDROID_NDK_HOME", ndk_root(inv)?).arg(format!(
+                "--overlay-ports={}",
+                inv.root.join("build/vcpkg/mobile-ports").display()
+            ));
         }
         if target.ends_with("ohos") {
             command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);

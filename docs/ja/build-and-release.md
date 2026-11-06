@@ -138,6 +138,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 Manager のビルドスクリプトは Clang の `--print-libgcc-file-name` で対象 NDK の compiler-rt アーカイブを取得してリンクし、`--no-undefined` で未解決シンボルを含む cdylib を拒否します。組み込みネイティブライブラリが呼ぶ `__clear_cache` などは Rust の compiler_builtins だけでは解決できないため、Android の `System.loadLibrary` まで失敗を持ち越さず、リンク時に解決します。
 `ANDROID_NDK_HOME` を設定して `python Tools/test-android-compiler-runtime.py` を実行すると、実際の AArch64 キャッシュフラッシュ呼び出しで検証します。compiler-rt を省くリンクは失敗し、アーカイブを明示したリンクは成功する必要があります。
+Android のネイティブコア依存準備には `build/vcpkg/mobile-ports` も使います。fmt 11.2.0 の固定レシピに `<cstdlib>` の直接インクルードを追加し、NDK r30 の libc++ で `malloc`/`free` を解決します。ライブラリのバージョン変更やコンパイル検査の無効化は行いません。
 
 CMVS は同じ静的レジストリの `cmvs_query` と `video-ffmpeg` を使います。SDK デコーダーは Musica の API 28 静的 FFmpeg vcpkg triplet と xtask の依存準備を共有します。Manager の `embedded-cores.json`、対応ソース、ライセンスに CMVS を含めます。APK 検証は `assets/licenses/shinki.emu.cmvs/` 内のライセンスをマニフェストの入力とバイト単位で比較します。Android 実機・エミュレーターでの実行はユーザーの指定により未検証です。
 
