@@ -73,6 +73,7 @@ ShinkiEMU は 12 のコアで 10 のエンジンファミリーに対応して�
 
 - **Windows、Linux、macOS**：x64 向けの ZIP パッケージ。macOS には Apple Silicon 版もあります。
 - **Android**：リリース署名鍵で署名したユニバーサル APK がひとつ。debug 署名の CI APK はテスト用です。
+  現在のソース候補版は Android 9（API 28）以降が必要です。Android 8.0/8.1 はサポート対象外となり、既存の公開パッケージは変更しません。
 - **iOS**：実機向けとシミュレーター向けのパッケージを、テストビルドとして公開しています。
 - **OpenHarmony**：OpenHarmony SDK のテスト PKI で署名した実験的な HAP。実機での起動と製品端末へのインストールは未確認です。
 

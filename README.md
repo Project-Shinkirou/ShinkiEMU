@@ -73,6 +73,7 @@ The `krkr2` candidate is a separate Android/iOS native integration on this branc
 
 - **Windows, Linux and macOS:** ZIP bundles for x64, plus Apple Silicon on macOS.
 - **Android:** one universal APK signed with the release key. Debug-signed CI APKs are test builds.
+  Current source candidates require Android 9 (API 28) or later; Android 8.0/8.1 are no longer supported. Historical release packages remain unchanged.
 - **iOS:** device and simulator packages, published as test builds.
 - **OpenHarmony:** an experimental HAP signed with the OpenHarmony SDK test PKI. Launch on a device and retail installation have not been verified.
 
