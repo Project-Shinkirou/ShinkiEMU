@@ -144,6 +144,7 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 Manager 构建脚本通过 Clang 的 `--print-libgcc-file-name` 定位并链接目标 NDK 的 compiler-rt 静态库，用 `--no-undefined` 拒绝含未解析符号的 cdylib。嵌入的原生库会调用 `__clear_cache` 等 Rust compiler_builtins 未提供的函数，必须在链接时解析，不能留到 Android 的 `System.loadLibrary` 阶段失败。
 设置 `ANDROID_NDK_HOME` 后运行 `python Tools/test-android-compiler-runtime.py`，会用真实 AArch64 缓存刷新调用验证链接行为：缺少 compiler-rt 时必须链接失败，显式提供静态库后必须解析成功。
 Android 原生核心依赖准备还会使用 `build/vcpkg/mobile-ports`。其中固定为 fmt 11.2.0 的配方补上 `<cstdlib>` 直接引用，使 NDK r30 的 libc++ 能解析 `malloc`/`free`，不改变库版本，也不关闭编译检查。
+Android 最低 API 为 28，与既有嵌入原生依赖的 triplet 一致。Manager 链接器、系统库搜索和 APK minSdk 使用同一版本，避免用 API 26 系统 stub 链接原生静态库中的 iconv、glob、posix_spawn 等 API 28 导入。
 
 CMVS 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`，SDK 解码器复用 Musica 的 API 28 静态 FFmpeg vcpkg triplet 和 xtask 依赖通路。Manager 包的 `embedded-cores.json`、对应源码和许可证包含 CMVS。APK 验证会逐字节比对 `assets/licenses/shinki.emu.cmvs/` 中的许可证与清单输入。Android 实际运行按用户要求未验证。
 

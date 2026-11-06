@@ -334,7 +334,7 @@ pub fn execute(
         let mut environment = Command::new("cargo");
         environment
             .current_dir(&inv.root)
-            .args(["ndk-env", "--target", target, "-P", "26", "--json"]);
+            .args(["ndk-env", "--target", target, "-P", "28", "--json"]);
         dependencies::apply_environment(inv, target, component, &mut environment)?;
         let environment: std::collections::BTreeMap<String, String> =
             serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
@@ -344,8 +344,8 @@ pub fn execute(
         // ndk-env omits the two private variables its linker wrapper requires.
         cmd.envs(&environment)
             .env("_CARGO_NDK_LINK_CLANG", clang)
-            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}26"))
-            .env("ANDROID_PLATFORM", "26")
+            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}28"))
+            .env("ANDROID_PLATFORM", "28")
             .env("ANDROID_ABI", abi)
             .env("CARGO_NDK_ANDROID_PLATFORM", abi);
     }

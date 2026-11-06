@@ -39,7 +39,7 @@ android {
 
     defaultConfig {
         applicationId = "org.shinkirou.shinkiemu"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 37
         versionCode = providers.environmentVariable("SHINKI_EMU_ANDROID_VERSION_CODE")
             .orElse("1")
