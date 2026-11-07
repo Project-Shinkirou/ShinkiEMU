@@ -35,6 +35,26 @@ class MainActivity : NativeActivity() {
         private const val FIRST_REQUEST_CODE = 0xA500
     }
 
+    private external fun nativeInitializeHosts(): Int
+    private val nativeHosts = java.util.concurrent.CompletableFuture<Int>()
+
+    /** Called only by the native app thread, never by the UI thread. */
+    fun awaitNativeHosts(): Int = nativeHosts.join()
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // NativeActivity has started its thread, but onStart has not begun its
+        // synchronous poll handshake. Complete all UI-thread core setup here.
+        try {
+            val status = nativeInitializeHosts()
+            nativeHosts.complete(status)
+            check(status == 0) { "SHINKI_EMU_ANDROID_HOST_INITIALIZATION ($status)" }
+        } catch (failure: Throwable) {
+            nativeHosts.completeExceptionally(failure)
+            throw failure
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         KrkrHost.onResume()
@@ -48,6 +68,7 @@ class MainActivity : NativeActivity() {
     }
 
     override fun onDestroy() {
+        nativeHosts.completeExceptionally(IllegalStateException("Activity destroyed"))
         // NativeActivity's teardown completes the native app/owner before
         // the private core helpers release their Java Activity references.
         super.onDestroy()

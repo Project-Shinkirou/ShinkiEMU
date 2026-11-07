@@ -197,6 +197,8 @@ Run `python Tools/test-android-compiler-runtime.py` with `ANDROID_NDK_HOME` set 
 Android native-core preparation also uses `build/vcpkg/mobile-ports`: its pinned fmt 11.2.0 recipe adds the direct `<cstdlib>` include needed for `malloc`/`free` with NDK r30's libc++, without changing the library version or disabling compiler checks.
 The Android minimum is API 28, matching the existing embedded-native triplets. Manager's linker, platform-library search and APK minSdk use that same level: iconv, glob and posix_spawn imports from those archives cannot link against API 26 system stubs.
 
+Android's UI thread initializes both native core hosts in `MainActivity.onCreate`, after `super.onCreate` and before `onStart`. Only the native app thread awaits the Activity instance's completion result, before TLS/resource startup. Initialization failures complete that result exceptionally or with an error status and fail startup; destruction releases any pending waiter. This prevents the UI `onStart` lifecycle handshake from waiting on a native thread that is itself waiting for a UI-posted core initializer. The native Activity context is replaced on recreation and released on Destroy.
+
 CMVS uses `cmvs_query` in the same static registry and enables `video-ffmpeg`. Its SDK decoder shares Musica's API 28 static FFmpeg vcpkg triplets and xtask dependency path. The Manager package includes CMVS in `embedded-cores.json`, corresponding sources and licenses. APK verification compares its license bytes under `assets/licenses/shinki.emu.cmvs/` with the inventory inputs. Android device/emulator execution is unverified at the user's request.
 
 KiriKiri is also statically embedded on both Android ABIs. Its native-static

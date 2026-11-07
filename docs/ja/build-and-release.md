@@ -141,6 +141,8 @@ Manager のビルドスクリプトは Clang の `--print-libgcc-file-name` で�
 Android のネイティブコア依存準備には `build/vcpkg/mobile-ports` も使います。fmt 11.2.0 の固定レシピに `<cstdlib>` の直接インクルードを追加し、NDK r30 の libc++ で `malloc`/`free` を解決します。ライブラリのバージョン変更やコンパイル検査の無効化は行いません。
 Android の最小 API は既存の組み込みネイティブ triplet と同じ 28 です。Manager のリンカー、システムライブラリ検索、APK minSdk も統一し、iconv、glob、posix_spawn などの API 28 インポートを API 26 のスタブへリンクしないようにします。
 
+AndroidのUIスレッドは `MainActivity.onCreate` の `super.onCreate` 後、`onStart` 前に両ネイティブコアのホストを初期化します。native appスレッドだけがActivityインスタンスの完了結果を待ってからTLSとリソースを初期化します。例外・エラーは起動失敗として伝わり、破棄時は未完了の待機を解除します。UIのonStart待機とnativeからUIへの初期化待機によるデッドロックを防ぎ、Activity再作成時にはnativeコンテキストを置き換え、Destroyで解放します。
+
 CMVS は同じ静的レジストリの `cmvs_query` と `video-ffmpeg` を使います。SDK デコーダーは Musica の API 28 静的 FFmpeg vcpkg triplet と xtask の依存準備を共有します。Manager の `embedded-cores.json`、対応ソース、ライセンスに CMVS を含めます。APK 検証は `assets/licenses/shinki.emu.cmvs/` 内のライセンスをマニフェストの入力とバイト単位で比較します。Android 実機・エミュレーターでの実行はユーザーの指定により未検証です。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。Release はユニバーサルな release 署名 APK を 1 つだけアップロードし、対応する sources ZIP も公開します。

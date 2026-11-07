@@ -146,6 +146,8 @@ Manager 构建脚本通过 Clang 的 `--print-libgcc-file-name` 定位并链接�
 Android 原生核心依赖准备还会使用 `build/vcpkg/mobile-ports`。其中固定为 fmt 11.2.0 的配方补上 `<cstdlib>` 直接引用，使 NDK r30 的 libc++ 能解析 `malloc`/`free`，不改变库版本，也不关闭编译检查。
 Android 最低 API 为 28，与既有嵌入原生依赖的 triplet 一致。Manager 链接器、系统库搜索和 APK minSdk 使用同一版本，避免用 API 26 系统 stub 链接原生静态库中的 iconv、glob、posix_spawn 等 API 28 导入。
 
+Android UI线程在 `MainActivity.onCreate` 中、`super.onCreate` 返回后且 `onStart` 之前初始化两个原生核心宿主。只有native app线程等待此Activity实例的完成结果，随后才初始化TLS和资源；初始化异常或错误状态会使启动失败，销毁会解除尚未完成的等待。这样不会出现UI线程等待native处理onStart、native线程却在等UI执行初始化的互等。Activity重建时替换native上下文，Destroy时释放。
+
 CMVS 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`，SDK 解码器复用 Musica 的 API 28 静态 FFmpeg vcpkg triplet 和 xtask 依赖通路。Manager 包的 `embedded-cores.json`、对应源码和许可证包含 CMVS。APK 验证会逐字节比对 `assets/licenses/shinki.emu.cmvs/` 中的许可证与清单输入。Android 实际运行按用户要求未验证。
 
 首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。Release 发布一个通用的 release 签名 APK，并保留对应的 sources ZIP。
