@@ -699,9 +699,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         });
     }
     let modal_ui = modals::install(&adapter, &controller);
-    // Per-frame host work, run before and after Slint renders. Desktop and
-    // Android drive it from the WGPU rendering notifier; OHOS from the
-    // software platform's frame hooks.
+    // Model/modal updates must run outside Slint's rendering borrow. WGPU
+    // notifiers schedule this work on the event loop; OHOS calls it before
+    // entering its software render pass.
     let service_frame = {
         let controller = controller.clone();
         let weak_adapter = std::rc::Rc::downgrade(&adapter);
@@ -709,7 +709,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let weak_window = adapter.window().as_weak();
         let pending = async_events_pending.clone();
         let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
-        move || {
+        std::rc::Rc::new(move || {
             let Some(window) = weak_window.upgrade() else {
                 return;
             };
@@ -778,7 +778,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                     }
                 }
             }
-        }
+        })
     };
     let finish_frame = {
         let controller = controller.clone();
@@ -825,6 +825,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let renderer_callback = renderer.clone();
         #[cfg(not(target_os = "android"))]
         let initial_window_pending = Cell::new(true);
+        let service_timer = slint::Timer::default();
         adapter
             .window()
             .window()
@@ -880,7 +881,14 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                             Ok(())
                         }
                         slint::RenderingState::BeforeRendering => {
-                            service_frame();
+                            if !service_timer.running() {
+                                let service = service_frame.clone();
+                                service_timer.start(
+                                    slint::TimerMode::SingleShot,
+                                    std::time::Duration::ZERO,
+                                    move || service(),
+                                );
+                            }
                             let mut renderer = renderer_callback.borrow_mut();
                             renderer.render(context)?;
                             if let Some(update) = renderer.take_stage_texture_update()? {

@@ -9,6 +9,7 @@ import argparse
 import os
 from pathlib import Path
 import subprocess
+import time
 
 APP = 'org.shinkirou.shinkiemu'
 
@@ -19,6 +20,8 @@ def main():
     parser.add_argument('--adb', type=Path, default=Path(os.environ.get(
         'ANDROID_HOME', '')) / 'platform-tools' / ('adb.exe' if os.name == 'nt' else 'adb'))
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--prepare-tap', type=int, nargs=2, metavar=('X', 'Y'),
+                        help='Tap the visible prepare/rescan button at these device coordinates')
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=False)
 
@@ -41,6 +44,16 @@ def main():
             raise AssertionError('NativeActivity lifecycle did not finish: ' + launch)
         adb('exec-out', 'screencap', '-p', name=phase + '.png')
         adb('shell', 'dumpsys', 'activity', 'activities', name=phase + '-activities.txt')
+    if args.prepare_tap:
+        before = adb('shell', 'pidof', APP, name='prepare-before-pid.txt').strip()
+        adb('shell', 'input', 'tap', *map(str, args.prepare_tap), name='prepare-tap.txt')
+        time.sleep(5)
+        after = adb('shell', 'pidof', APP, name='prepare-after-pid.txt').strip()
+        adb('exec-out', 'screencap', '-p', name='prepare-result.png')
+        adb('logcat', '-d', '--pid=' + before, '-v', 'threadtime', name='prepare-logcat.txt')
+        if not before or after != before:
+            raise AssertionError('Library preparation terminated/restarted the app')
+        print('Preparation did not reproduce the renderer-borrow abort; inspect result screenshot.')
     print('Cold-start and background/resume lifecycle handshakes passed.')
     print('Inspect screenshots and test actual game input for UI/game acceptance.')
 
