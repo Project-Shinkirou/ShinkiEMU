@@ -77,6 +77,7 @@ pub unsafe extern "C" fn cmvs_query(version: u32, output: *mut *const abi::CoreA
     unsafe { output.write(&API) };
     abi::OK
 }
+#[cfg(feature = "dynamic-plugin-export")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn shinki_emu_query(
     version: u32,
@@ -94,6 +95,9 @@ unsafe extern "C" fn initialize(
         if !diagnostics.header.accepts::<abi::Diagnostics>() || diagnostics.emit.is_none() {
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
+        // Static embedding shares the Manager's installed tracing subscriber.
+        // Only an independent dynamic module owns a separate callback bridge.
+        #[cfg(feature = "dynamic-plugin-export")]
         unsafe { abi::diagnostic_bridge::install(*diagnostics) }.map_err(|status| {
             Failure::new(
                 status,

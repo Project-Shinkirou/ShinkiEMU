@@ -135,3 +135,64 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     std::thread::spawn(move || drop(retained)).join().unwrap();
     assert_eq!(leases.load(Ordering::Acquire), 0);
 }
+
+#[cfg(not(feature = "dynamic-plugin-export"))]
+#[test]
+fn static_initialize_preserves_the_installed_host_subscriber() {
+    // A Manager has already installed diagnostics before registering static cores.
+    tracing::subscriber::set_global_default(tracing::subscriber::NoSubscriber::default()).unwrap();
+    static CALLBACKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    unsafe extern "C" fn emit(_: *mut std::ffi::c_void, _: *const abi::LogRecord) {
+        CALLBACKS.fetch_add(1, Ordering::Relaxed);
+    }
+    unsafe extern "C" fn flush(_: *mut std::ffi::c_void) {
+        CALLBACKS.fetch_add(1, Ordering::Relaxed);
+    }
+    let diagnostics = abi::Diagnostics {
+        header: abi::Header::of::<abi::Diagnostics>(),
+        context: std::ptr::null_mut(),
+        emit: Some(emit),
+        flush: Some(flush),
+    };
+    let mut error = abi::Error::default();
+    assert_eq!(unsafe { initialize(&diagnostics, &mut error) }, abi::OK);
+    let mut descriptor = std::mem::MaybeUninit::uninit();
+    assert_eq!(unsafe { describe(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
+    tracing::info!(event = "cmvs.static.initialized");
+    assert!(tracing::dispatcher::get_default(|dispatch| {
+        dispatch.downcast_ref::<tracing::subscriber::NoSubscriber>().is_some()
+    }));
+    assert_eq!(CALLBACKS.load(Ordering::Relaxed), 0);
+}
+
+#[cfg(feature = "dynamic-plugin-export")]
+#[test]
+fn dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement() {
+    static RECORDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    unsafe extern "C" fn emit(_: *mut std::ffi::c_void, _: *const abi::LogRecord) {
+        RECORDS.fetch_add(1, Ordering::Relaxed);
+    }
+    unsafe extern "C" fn flush(_: *mut std::ffi::c_void) {}
+    let diagnostics = abi::Diagnostics {
+        header: abi::Header::of::<abi::Diagnostics>(),
+        context: std::ptr::null_mut(),
+        emit: Some(emit),
+        flush: Some(flush),
+    };
+    let mut api = std::ptr::null();
+    assert_eq!(unsafe { shinki_emu_query(abi::ABI_VERSION, &mut api) }, abi::OK);
+    let api = unsafe { &*api };
+    let mut error = abi::Error::default();
+    assert_eq!(unsafe { api.initialize.unwrap()(&diagnostics, &mut error) }, abi::OK);
+    tracing::error!(event = "cmvs.dynamic.diagnostic_roundtrip");
+    assert!(RECORDS.load(Ordering::Relaxed) > 0);
+    assert_eq!(unsafe { api.initialize.unwrap()(&diagnostics, &mut error) }, abi::OK);
+    let conflicting = abi::Diagnostics {
+        context: std::ptr::dangling_mut::<u8>().cast(),
+        ..diagnostics
+    };
+    assert_eq!(
+        unsafe { api.initialize.unwrap()(&conflicting, &mut error) },
+        abi::INVALID_STATE
+    );
+}
