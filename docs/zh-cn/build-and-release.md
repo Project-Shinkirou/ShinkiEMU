@@ -141,6 +141,16 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 每次构建先读取 `cargo ndk-env` 的工具链环境，再直接调用 `Cargo --locked` 编译，静态链接 `static_manager_targets` 含该三元组的核心（RFVP、Siglus、Shinki Musica、CMVS、Artemis、Impacto、Ren’Py、KiriKiri），并在构建记录所指 target 目录的 `android-inputs/` 中收集 JNI 运行依赖、元数据和许可。打包需要**两个三元组**来自同一源码提交的 release 构建记录。Gradle 随后生成含 `arm64-v8a`、`x86_64` 和 `assets/metadata/` 的通用 APK；xtask 检查签名及每个原生库的依赖闭包。没有签名密钥时，输出为 `ShinkiEMU-<version>-android-universal-debug-signed.apk`，这是 debug 签名的 CI 测试包，不是正式安装包。测试密钥生成在 `GRADLE_USER_HOME` 中。证书验证器的 Kotlin 组件由 Gradle 从官方 Maven archive 获取，版本与 `Cargo.lock` 中的 Android shim 同步，不再从 Cargo 源码目录复制 AAR。
 
+Manager 构建脚本通过 Clang 的 `--print-libgcc-file-name` 定位并链接目标 NDK 的 compiler-rt 静态库，用 `--no-undefined` 拒绝含未解析符号的 cdylib。嵌入的原生库会调用 `__clear_cache` 等 Rust compiler_builtins 未提供的函数，必须在链接时解析，不能留到 Android 的 `System.loadLibrary` 阶段失败。
+设置 `ANDROID_NDK_HOME` 后运行 `python Tools/test-android-compiler-runtime.py`，会用真实 AArch64 缓存刷新调用验证链接行为：缺少 compiler-rt 时必须链接失败，显式提供静态库后必须解析成功。
+Android 原生核心依赖准备还会使用 `build/vcpkg/mobile-ports`。其中固定为 fmt 11.2.0 的配方补上 `<cstdlib>` 直接引用，使 NDK r30 的 libc++ 能解析 `malloc`/`free`，不改变库版本，也不关闭编译检查。
+Android 最低 API 为 28，与既有嵌入原生依赖的 triplet 一致。Manager 链接器、系统库搜索和 APK minSdk 使用同一版本，避免用 API 26 系统 stub 链接原生静态库中的 iconv、glob、posix_spawn 等 API 28 导入。
+
+Android UI线程在 `MainActivity.onCreate` 中、`super.onCreate` 返回后且 `onStart` 之前初始化两个原生核心宿主。只有native app线程等待此Activity实例的完成结果，随后才初始化TLS和资源；初始化异常或错误状态会使启动失败，销毁会解除尚未完成的等待。这样不会出现UI线程等待native处理onStart、native线程却在等UI执行初始化的互等。Activity重建时替换native上下文，Destroy时释放。
+在已解锁的真机上运行 `python Tools/test-android-startup.py --adb <adb> --serial <设备> --out <新目录>`，回归冷启动和后台恢复的生命周期完成情况。它只停止已安装的Manager、保留数据、保存启动结果与截图，并拒绝原onStart超时。截图仍须实际查看，游戏输入另行验收，不能将此门禁当作可玩UI通过。
+WGPU绘制回调仍在有效图形上下文中执行GPU舞台绘制和纹理发布；worker完成模型、通知和modal更新交给一个可复用的Slint零延时单次timer，在绘制回调退出后执行。已有待执行timer时合并重复调度，避免绘制过程中销毁item tree时重入借用Skia缓存；service仅弱持有window/adapter，timer随绘制notifier释放。在可见准备页面给真机回归命令添加 `--prepare-tap X Y`，即可点击实际按钮并记录结果，成功完成仍须查看截图确认。
+CMVS仅在独立核心构建启用 `dynamic-plugin-export`，导出 `shinki_emu_query` 并安装该模块的诊断回调bridge。静态Manager不启用此feature，通过 `cmvs_query` 注册，验证诊断header及emit/flush回调后沿用host已有tracing subscriber，不再次安装进程全局subscriber。无效诊断参数返回ABI错误，不破坏已完成的初始化。
+
 CMVS 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`，SDK 解码器复用 Musica 的 API 28 静态 FFmpeg vcpkg triplet 和 xtask 依赖通路。Manager 包的 `embedded-cores.json`、对应源码和许可证包含 CMVS。APK 验证会逐字节比对 `assets/licenses/shinki.emu.cmvs/` 中的许可证与清单输入。Android 实际运行按用户要求未验证。
 
 首次下载 Gradle 依赖后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 传入 `--offline`；每次打包都使用新的输出目录。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` 构建两个 ABI，并报告实际 APK 路径。CI 先为两个三元组准备依赖，只运行一次该命令：`matrix --json --ci` 去掉了 `x86_64-linux-android` 的 Manager 行，那一行生成的是同一个通用 APK。Release 发布一个通用的 release 签名 APK，并保留对应的 sources ZIP。

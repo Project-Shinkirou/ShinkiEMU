@@ -677,9 +677,9 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
             .join("sysroot/usr/lib")
             .join(&result.target);
         dirs.push(ndk_lib.clone());
-        // cargo-ndk builds Manager with API 26; NDK platform libraries such as
-        // libcamera2ndk.so are stored beneath the target/API directory.
-        dirs.push(ndk_lib.join("26"));
+        // Embedded native dependencies and Manager share API 28; platform
+        // libraries such as libcamera2ndk.so live in the target/API directory.
+        dirs.push(ndk_lib.join("28"));
     }
     Ok(dirs)
 }

@@ -73,6 +73,7 @@ ShinkiEMU 用 12 个核心支持 10 个引擎家族。每个核心保留引擎�
 
 - **Windows、Linux、macOS**：x64 的 ZIP 包，macOS 另有 Apple Silicon 版本。
 - **Android**：一个通用 APK，使用发布签名密钥。debug 签名的 CI APK 只作测试。
+  当前源码候选最低要求 Android 9（API 28），不再支持 Android 8.0/8.1；历史发行包保持不变。
 - **iOS**：真机和模拟器包，作为测试构建发布。
 - **OpenHarmony**：实验性 HAP，使用 OpenHarmony SDK 测试 PKI 签名，尚未验证真机启动和零售设备安装。
 
