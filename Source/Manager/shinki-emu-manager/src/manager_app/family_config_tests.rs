@@ -4,14 +4,14 @@ fn configuration_provider(
     configure: impl FnOnce(&mut crate::test_native::Fixture),
 ) -> shinki_emu_manager_core::LoadedFamilyPlugin {
     let mut fixture =
-        crate::test_native::Fixture::new(PLUGIN, "config-test-family", "config.test");
+        crate::test_native::Fixture::new(PLUGIN, "musica", "config.test");
     fixture.config = true;
     configure(&mut fixture);
     crate::test_native::install(0, fixture)
 }
 
 fn configuration_candidate() -> Candidate {
-    Candidate { plugin_id: PLUGIN.into(), family_id: "config-test-family".into() }
+    Candidate { plugin_id: PLUGIN.into(), family_id: "musica".into() }
 }
 
 fn configuration_controller(root: &std::path::Path) -> ShinkiEmuManagerController {
@@ -24,6 +24,7 @@ pub(in crate::manager_app) fn configured_controller(
     root: &std::path::Path,
     configure: impl FnOnce(&mut crate::test_native::Fixture) + Send + 'static,
 ) -> ShinkiEmuManagerController {
+    super::super::recognition_tests::manifest(root, PLUGIN, "configuration", b"explicitly registered ABI configuration fixture");
     let mut controller = ShinkiEmuManagerController::open_library(
         root.to_path_buf(),
         crate::stage_renderer::FrameMailbox::new(),
@@ -58,7 +59,7 @@ pub(in crate::manager_app) fn configured_controller(
             title: "Configuration test".into(),
             user_title: None,
             location: location.to_str().unwrap().into(),
-            family_id: Some("config-test-family".into()),
+            family_id: Some("musica".into()),
             content_fingerprint: None,
             added_at_unix_ms: 1,
         })

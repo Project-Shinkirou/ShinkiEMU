@@ -184,9 +184,14 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let mut app = ShinkiEmuManagerController::open_library(root.path().into(), FrameMailbox::new(), Vec::new()).unwrap();
     fs::remove_dir(root.path().join("cores")).unwrap();
     fs::write(root.path().join("cores"), b"not a directory").unwrap();
-    app.prepare_library().unwrap();
+    assert!(app.prepare_library().is_err(), "invalid inventory also fails the immediate model read");
     assert!(app.cancel_prepare().is_err());
-    settle_background(&mut app);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.startup_busy() {
+        let _ = app.poll_platform(); // The deliberately invalid directory also prevents model rendering.
+        assert!(Instant::now() < deadline, "failed inventory owner did not settle");
+        std::thread::yield_now();
+    }
     assert!(!app.cores_ready());
     assert!(app.prepare_library().is_err());
     assert!(app.add_game_directory(root.path()).is_err());
@@ -681,7 +686,7 @@ fn patch_selection_keeps_choices_and_reports_steps() {
     assert!(!model.patch.game.linked);
     assert!(model.patch.recipes.is_empty());
     assert_eq!(model.patch.hint, shinki_emu_manager_ui_slint::tr!("先在 游戏设置→作品资料 关联 VNDB 作品"));
-    assert_eq!(model.patch.state.patch_directory, location);
+    assert_eq!(model.patch.state.patch_directory, dunce::simplified(Path::new(location)).to_str().unwrap());
     assert_eq!(
         app.select_patch_recipe("missing").unwrap_err(),
         "SHINKI_EMU_PATCH_RECIPE_UNKNOWN"
