@@ -273,7 +273,18 @@ unsafe extern "C" fn open<const N: usize>(
 ) -> abi::Status {
     let raw = unsafe { &*raw };
     fixture::<N, _>(|v| {
-        record(&v.calls, "open", String::new());
+        let entries = match unsafe { abi::borrowed_array(raw.configuration, raw.configuration_count, abi::MAX_CONFIG_FIELDS) } {
+            Ok(entries) => entries,
+            Err(status) => return status,
+        };
+        let mut enums = Vec::new();
+        for entry in entries.iter().filter(|entry| entry.value.kind == abi::VALUE_ENUM) {
+            let (Ok(id), Ok(value)) = (unsafe { entry.id.text(abi::MAX_CONFIG_TEXT) }, unsafe { entry.value.text.text(abi::MAX_CONFIG_TEXT) }) else {
+                return abi::INVALID_ARGUMENT;
+            };
+            enums.push(format!("{id}={value}"));
+        }
+        record(&v.calls, "open", enums.join(","));
         if let Some(entered) = &v.entered {
             let _ = entered.send(());
         }

@@ -740,6 +740,16 @@ mod tests {
         let invalid = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("invalid".into()) }];
         assert!(library.apply_patch_profile("output", "fvp", "rfvp", &schema, &invalid).is_err());
         assert_eq!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap(), Some(pending));
+        let before = library.family_overrides("rfvp", "output").unwrap();
+        library.connection.execute_batch(
+            "CREATE TEMP TRIGGER reject_pending_consume BEFORE DELETE ON app_state
+             BEGIN SELECT RAISE(ABORT,'injected consumption failure'); END;"
+        ).unwrap();
+        let values = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("gbk".into()) }];
+        assert!(library.apply_patch_profile("output", "fvp", "rfvp", &schema, &values).is_err());
+        assert_eq!(library.family_overrides("rfvp", "output").unwrap(), before);
+        assert!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap().is_some());
+        library.connection.execute_batch("DROP TRIGGER reject_pending_consume").unwrap();
         let values = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("gbk".into()) }];
         library.apply_patch_profile("output", "fvp", "rfvp", &schema, &values).unwrap();
         assert!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap().is_none());

@@ -242,8 +242,18 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
         app.library.game_settings(&other_id).unwrap(),
         other_settings
     );
+    let unprepared = app.select_case(&output_id).unwrap().game_settings;
+    assert_eq!(unprepared.configuration_state, "unprepared");
+    assert!(unprepared.fields.is_empty());
+    let pending_key = format!("pending-patch-configuration:{output_id}");
+    let pending = app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap();
+    assert!(pending.is_some());
+    assert!(app.apply_pending_profile(&output_id, "siglus_rs").is_err());
+    assert_eq!(app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap(), pending);
     app.prepare_game_configuration(&output_id).unwrap();
     settle(&mut app, |app| !app.startup_busy());
+    assert_eq!(app.model().unwrap().game_settings.configuration_state, "ready");
+    assert!(app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap().is_none());
     let schema = app.registry.configuration("rfvp").unwrap();
     let values = app
         .library

@@ -275,6 +275,48 @@ mod native_consumer {
     }
 
     #[test]
+    fn imported_enum_requires_game_preparation_even_when_core_is_loaded_and_after_reopen() {
+        for reopen in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let data = root.path().join("manager");
+            let library = install(&data, "SHINKI_TEST_NATIVE_FIXTURE", "rfvp", "selected");
+            let game = root.path().join("converted");
+            write_game(&game);
+            fs::write(game.join("shinki-patch-result.json"), serde_json::to_vec(&serde_json::json!({
+                "schema": "shinki.emu.file_patch.v1",
+                "profile": { "plugin_id": "rfvp", "configuration": { "launch_mode": "title" } }
+            })).unwrap()).unwrap();
+            let mut app = open(&data);
+            app.diagnose_core("rfvp").unwrap();
+            settle(&mut app);
+            let calls = Counters::open(&library);
+            let activated = calls.values();
+            let id = import(&mut app, &game);
+            let key = format!("pending-patch-configuration:{id}");
+            assert_eq!(calls.values(), activated, "import must remain data-only");
+            if reopen {
+                drop(app);
+                app = open(&data);
+            }
+            let model = app.select_case(&id).unwrap();
+            assert_eq!(model.game_settings.configuration_state, "unprepared");
+            assert!(model.game_settings.fields.is_empty());
+            assert!(app.library.app_state::<BTreeMap<String, String>>(&key).unwrap().is_some());
+            app.prepare_game_configuration(&id).unwrap();
+            settle(&mut app);
+            assert_eq!(app.model().unwrap().game_settings.configuration_state, "ready");
+            assert!(app.library.app_state::<BTreeMap<String, String>>(&key).unwrap().is_none());
+            assert_eq!(app.library.family_overrides("rfvp", &id).unwrap(), [
+                ConfigEntry { id: "launch_mode".into(), value: ConfigValue::Enum("title".into()) }
+            ]);
+            app.set_game_config(&id, "launch_mode", "direct").unwrap();
+            app.prepare_game_configuration(&id).unwrap();
+            settle(&mut app);
+            assert_eq!(app.library.family_overrides("rfvp", &id).unwrap()[0].value, ConfigValue::Enum("direct".into()));
+        }
+    }
+
+    #[test]
     fn scoped_configuration_error_follows_game_plugin_and_survives_unrelated_notices() {
         let root = tempfile::tempdir().unwrap();
         let data = root.path().join("manager");

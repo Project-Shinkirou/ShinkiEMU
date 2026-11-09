@@ -88,6 +88,8 @@ Windows mapped input folders, including read-only Sandbox shares, use their nati
 
 New Musica patches require Musica core beta.5 or later; Yorino requires capability bits 256 and 512. RFVP native-script patches require isolated script saves and configured-font priority. Import preserves receipt settings without loading cores. Explicit advanced configuration and launch validate those settings and capabilities against the selected native descriptor. A failure leaves the library entry and receipt intact and explains the required correction or core update; a version label alone is insufficient. Older Managers continue reading the retained v1 patch catalog and legacy scripts.
 
+A converted game's advanced configuration remains unprepared while its receipt is pending, even if the core is already loaded for another entry. **Load configuration** validates and saves that game's receipt against the selected core. Success consumes the pending settings once; failure preserves both the previous settings and the receipt for retry.
+
 ## Data and saves
 
 ShinkiEMU uses a new per-platform application data directory. Open its location from Settings; desktop deployments can set `SHINKI_EMU_DATA_DIR` to an absolute path. Android uses the application's private data directory. Pre-rename application databases, caches and product-owned saves are not imported. Existing game installations and original commercial saves remain untouched by that cutover.

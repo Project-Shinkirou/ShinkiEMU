@@ -479,6 +479,20 @@ impl ShinkiEmuManagerController {
             .map(|preset| preset.summary.clone());
         let selected_plugin = self.library.game_settings(game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
         let configuration_error = self.game_configuration_error(game_id, selected_plugin.as_deref()).to_owned();
+        let mut configuration_state = if configuration_error.is_empty() {
+            self.configuration_state(selected_plugin.as_deref())
+        } else {
+            "failed"
+        };
+        // A loaded implementation has a schema, but this game's imported receipt
+        // still needs explicit validation before its settings can be edited.
+        if configuration_state == "ready"
+            && self.library.app_state::<BTreeMap<String, String>>(
+                &format!("pending-patch-configuration:{game_id}"),
+            ).map_err(|error| error.to_string())?.is_some()
+        {
+            configuration_state = "unprepared";
+        }
         Ok(GameSettingsViewModel {
             game_id: game_id.into(),
             title: game.display_title().into(),
@@ -491,11 +505,11 @@ impl ShinkiEmuManagerController {
                     label: self.emulator_label(&choice.plugin_id),
                 })
                 .collect(),
-            configuration_state: if configuration_error.is_empty() { self.configuration_state(selected_plugin.as_deref()) } else { "failed" }.into(),
+            configuration_state: configuration_state.into(),
             configuration_error,
             emulator_id: selected_plugin.unwrap_or_default(),
             render: self.game_render_view(game_id)?,
-            fields: self.game_config_fields(game_id)?,
+            fields: if configuration_state == "ready" { self.game_config_fields(game_id)? } else { Vec::new() },
             recommended_available: recommended.is_some(),
             recommended_summary: recommended.unwrap_or_default(),
             input_override: override_mapping.is_some(),

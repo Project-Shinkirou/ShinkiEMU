@@ -141,6 +141,42 @@ fn field<'a>(fields: &'a [ConfigFieldViewModel], key: &str) -> &'a ConfigFieldVi
 }
 
 #[test]
+fn deferred_enum_profile_reaches_native_open_and_is_consumed_only_once() {
+    let root = tempfile::tempdir().unwrap();
+    let calls = Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let native_calls = calls.clone();
+    let mut app = configured_controller(root.path(), move |fixture| fixture.calls = native_calls);
+    let game = app.game("game").unwrap();
+    fs::write(Path::new(&game.location).join("shinki-patch-result.json"), serde_json::to_vec(&serde_json::json!({
+        "schema": "shinki.emu.file_patch.v1",
+        "profile": { "plugin_id": PLUGIN, "configuration": { "launch_mode": "title" } }
+    })).unwrap()).unwrap();
+    let profile = shinki_emu_patch::OutputProfile {
+        plugin_id: PLUGIN.into(),
+        configuration: BTreeMap::from([("launch_mode".into(), "title".into())]),
+        required_capabilities: 0,
+    };
+    app.apply_import_profile("game", vec![configuration_candidate()], 0, &profile).unwrap();
+    assert_eq!(app.model().unwrap().game_settings.configuration_state, "unprepared");
+    app.set_host_wake(Arc::new(|| {}));
+    app.window_state = Some(WindowState { width: 1, height: 1, scale_factor: 1.0, focused: true, visible: true, suspended: false });
+    app.launch("game").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app.active.as_ref().is_some_and(|active| active.opened) {
+        app.poll_platform().unwrap();
+        assert!(Instant::now() < deadline, "native open did not complete: {}", app.diagnostic);
+        std::thread::yield_now();
+    }
+    assert_eq!(calls.lock().iter().find(|call| call.name == "open").unwrap().key, "launch_mode=title");
+    assert!(app.library.app_state::<BTreeMap<String, String>>("pending-patch-configuration:game").unwrap().is_none());
+    app.leave_game().unwrap();
+    app.set_game_config("game", "launch_mode", "direct").unwrap();
+    app.prepare_game_configuration("game").unwrap();
+    super::super::recognition_tests::settle(&mut app);
+    assert_eq!(overrides(&app, "game")[0].value, ConfigValue::Enum("direct".into()));
+}
+
+#[test]
 fn game_config_stores_only_the_changed_override_and_reset_removes_it() {
     let root = tempfile::tempdir().unwrap();
     let mut controller = configuration_controller(root.path());
