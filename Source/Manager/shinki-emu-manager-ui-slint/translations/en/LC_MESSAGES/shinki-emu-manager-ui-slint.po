@@ -2725,3 +2725,30 @@ msgstr "Loading the selected core's default configuration…"
 msgid "安装核心"
 msgstr "Install core"
 
+msgid "缺少所选核心，请安装后重新准备资料库"
+msgstr "The selected core is missing. Install it, then prepare the library again."
+
+msgid "已识别引擎，缺少兼容核心"
+msgstr "The engine was recognized, but no compatible core is installed."
+
+msgid "这次只初始化所选核心。修复后可以重试。"
+msgstr "Only the selected core is initialized. Fix the problem, then retry."
+
+msgid "点击“准备”识别游戏并扫描资料库。"
+msgstr "Choose Prepare to recognize games and scan the library."
+
+msgid "正在读取核心安装清单…"
+msgstr "Reading the installed core list…"
+
+msgid "游戏目录当前不可用"
+msgstr "The game folder is currently unavailable"
+
+msgid "核心清单或后台运行失败：{error}。请修复后重启应用。"
+msgstr "The core list or background task failed: {error}. Fix it, then restart the app."
+
+msgid "有 {count} 个核心文件处理失败，请查看核心诊断；修复或更换核心后需重启应用。"
+msgstr "{count} core files failed. Check core diagnostics, then restart the app after fixing or replacing them."
+
+msgid "所选目录中未识别到游戏引擎，请选择原生游戏目录。"
+msgstr "No game engine was recognized in the selected folder. Choose a native game folder."
+
