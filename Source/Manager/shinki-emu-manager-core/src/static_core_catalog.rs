@@ -14,8 +14,10 @@ pub struct CoreCatalogEntry {
     /// installed, loaded or verified with a real game. Publication restrictions
     /// do not change runtime support.
     pub supported: bool,
-    /// Declared static Manager integration for the current target. Reading an
-    /// entry never invokes its registration function.
+    /// Inventory-declared static Manager integration for the current target.
+    /// Actual compiled entrypoints come from the host's `STATIC_CORES` table,
+    /// including optional integrations such as desktop `static-cmvs`.
+    /// Reading either catalog metadata or function-table IDs invokes no core.
     pub embedded: bool,
 }
 
