@@ -215,7 +215,7 @@ fn cancellation_stops_before_any_io_and_after_an_established_match() {
     fs::write(&path, [0; 8]).unwrap();
     let mut source = Source { file: File::open(path).unwrap(), length: 8, read_bytes: 0 };
     let token = NativeCancellation::new(2);
-    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0 };
+    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     scan.matched("cmvs", "cmvs.ps2a").unwrap();
     token.cancel();
     assert!(matches!(scan.read_at(&mut source, 4, &mut [0; 4]), Err(DetectionError::Cancelled)));
@@ -243,7 +243,7 @@ fn actual_short_read_is_an_io_error_not_a_format_miss() {
     let path = root.path().join("resource");
     fs::write(&path, []).unwrap();
     let token = NativeCancellation::new(1);
-    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0 };
+    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     let mut source = Source { file: File::open(path).unwrap(), length: 4, read_bytes: 0 };
     assert!(matches!(scan.read_at(&mut source, 0, &mut [0; 4]), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
 }

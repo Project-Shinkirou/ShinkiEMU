@@ -83,9 +83,15 @@ impl Scan<'_> {
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if head.starts_with(b"pack_scn") || name.eq_ignore_ascii_case("scene.pck") || name.eq_ignore_ascii_case("scene.chs") {
+            if !self.siglus.allows(path) { return Err(Rejected::NoMatch); }
             return self.siglus(source, head);
         }
         if extension(path, "hcb") || extension(path, "bch") { return self.hcb(source, head); }
+        if extension(path, "rpyc") && head.len() >= 2 && head[0] & 15 == 8
+            && head[0] >> 4 <= 7 && u16::from_be_bytes([head[0], head[1]]) % 31 == 0 {
+            return self.legacy_rpyc(source);
+        }
+        if source.length >= 0x804 { return self.softpal_pac(source); }
         Ok(())
     }
     fn cpz(&mut self, source: &mut Source, head: &[u8]) -> ScanResult<()> {

@@ -12,6 +12,7 @@ doctest = false
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
 shinki-emu-musica-format = { path = "../../Families/shinki-emu-musica-format" }
 shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
+flate2.workspace = true
 libloading.workspace = true
 parking_lot = "0.13.0"
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }
@@ -26,5 +27,4 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 blowfish.workspace = true
-flate2.workspace = true
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }

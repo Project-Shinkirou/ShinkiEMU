@@ -12,14 +12,20 @@ use thiserror::Error;
 
 mod formats;
 mod musica;
+mod roots;
+mod softpal;
+mod krkr;
+mod renpy;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod entry_tests;
 #[cfg(test)]
 mod musica_tests;
 
 // Change when the recognition/traversal rules change, independently of core pins.
 // Future cache consumers must also invalidate on directory-content changes.
-pub const CACHE_VERSION: u32 = 1;
+pub const CACHE_VERSION: u32 = 2;
 const MAX_ENTRIES: u32 = 4096;
 const MAX_FILES: u32 = 1024;
 const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
@@ -42,15 +48,15 @@ pub enum DetectionError {
 }
 type DetectionResult<T> = Result<T, DetectionError>;
 
-/// Inspect root files and Data, Data/pack, StartData, game and USRDIR layouts
-/// (case-insensitive). Other directories, links and special files are not read.
+/// Inspect default resource layouts plus the active Siglus append and confined
+/// Musica configuration/alias paths. Links and special files are not read.
 /// Empty means no established family in this scope. Errors never return partial
 /// candidates and must not be treated/cached as no-match. Results are sorted by
 /// family, with at most one format per family. Runtime compatibility is separate.
 /// Cancellation is cooperative between filesystem calls; blocked OS I/O cannot
 /// be interrupted. Internal fixed limits bound enumeration, reads and allocation.
 pub fn detect_game_directory(root: &Path, cancellation: &NativeCancellation) -> DetectionResult<Vec<EngineDetection>> {
-    let mut scan = Scan { cancellation, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0 };
+    let mut scan = Scan { cancellation, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     scan.checkpoint()?;
     let meta = fs::symlink_metadata(root)?;
     if !meta.is_dir() || meta.file_type().is_symlink() {
@@ -68,6 +74,7 @@ struct Scan<'a> {
     entries: u32,
     files: u32,
     read_bytes: u64,
+    siglus: roots::SiglusRoot,
 }
 impl Scan<'_> {
     fn checkpoint(&self) -> DetectionResult<()> {
@@ -103,13 +110,19 @@ impl Scan<'_> {
         }
         files.sort();
         children.sort();
+        if root_directory { self.siglus = self.select_root(root, &files)?; }
         for path in &files {
             self.checkpoint()?;
             if self.files == MAX_FILES { return Err(DetectionError::ReadLimit); }
             self.files += 1;
             self.inspect(root, &path)?;
         }
-        if root_directory { self.musica(root, &files)?; }
+        if root_directory {
+            let configuration = self.configuration(root)?;
+            self.musica(root, &files, configuration.as_ref())?;
+            self.loose_krkr(root, &files)?;
+            self.scan_append(root)?;
+        }
         for path in children { self.directory(root, &path, false)?; }
         Ok(())
     }

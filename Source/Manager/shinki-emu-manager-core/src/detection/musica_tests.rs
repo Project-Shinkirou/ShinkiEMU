@@ -82,3 +82,60 @@ fn profile_wrong_keys_non_scripts_and_truncated_indexes_do_not_match() {
     fs::write(path, bytes).unwrap();
     assert!(detect(root.path()).unwrap().is_empty());
 }
+
+#[test]
+fn renamed_and_nested_archives_are_identified_by_decryption_not_basename() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), 2, false, b".end\r\n");
+    fs::rename(root.path().join("scr.paz"), root.path().join("unrelated-extension.bin")).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "musica");
+    fs::create_dir_all(root.path().join("localized/bundles")).unwrap();
+    fs::rename(root.path().join("unrelated-extension.bin"), root.path().join("localized/bundles/archive.custom")).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "musica");
+}
+
+#[test]
+fn multipart_header_index_and_script_can_cross_volume_boundaries() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), 2, false, b".message 1   Public\r\n.end\r\n");
+    let base = root.path().join("scr.paz");
+    let bytes = fs::read(&base).unwrap();
+    for cut in [2, 20, 40, bytes.len() - 4] {
+        fs::write(&base, &bytes[..cut]).unwrap();
+        fs::write(root.path().join("scr.pazA"), &bytes[cut..]).unwrap();
+        assert_eq!(detect(root.path()).unwrap()[0].family_id, "musica", "split at {cut}");
+    }
+    fs::rename(root.path().join("scr.pazA"), root.path().join("scr.pazC")).unwrap();
+    assert!(detect(root.path()).unwrap().is_empty());
+}
+
+#[test]
+fn receipt_configuration_resolves_private_profile_archive_alias_and_loose_script() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path(), 1, false, b"ordinary non-script bytes\r\n");
+    fs::create_dir_all(root.path().join("private")).unwrap();
+    fs::create_dir_all(root.path().join("archives")).unwrap();
+    fs::create_dir_all(root.path().join("translated")).unwrap();
+    fs::rename(root.path().join("key.toml"), root.path().join("private/keys.toml")).unwrap();
+    fs::rename(root.path().join("scr.paz"), root.path().join("archives/translated.bundle")).unwrap();
+    fs::write(root.path().join("translated/entry.sc"), b".end\r\n").unwrap();
+    let receipt = serde_json::json!({
+        "schema": "shinki.emu.file_patch.v1",
+        "profile": {"configuration": {
+            "profile_file": "PRIVATE/keys.toml",
+            "scr_archive": "ARCHIVES/translated.bundle",
+            "script_directory": "TRANSLATED"
+        }}
+    });
+    fs::write(root.path().join("shinki-patch-result.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "musica");
+    fs::create_dir(root.path().join(".shinki")).unwrap();
+    fs::rename(root.path().join("shinki-patch-result.json"), root.path().join(".shinki/patch-result.json")).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "musica");
+    let bad = serde_json::json!({
+        "schema": "shinki.emu.file_patch.v1",
+        "profile": {"configuration": {"profile_file": "../keys.toml", "scr_archive": "../archive.paz"}}
+    });
+    fs::write(root.path().join(".shinki/patch-result.json"), serde_json::to_vec(&bad).unwrap()).unwrap();
+    assert!(detect(root.path()).unwrap().is_empty());
+}

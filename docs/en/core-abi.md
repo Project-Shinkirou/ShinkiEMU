@@ -16,21 +16,22 @@ Only C-layout values cross the boundary: versioned headers, bounded borrowed spa
 `shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` returns `Result<Vec<EngineDetection>, DetectionError>`. A detection contains only `family_id` and `format`; it is independent of installed plugins and native `FamilyProbeCandidate` reports. One result per family is returned in family-ID order. Multiple families require caller selection; an empty vector means unrecognized. Recognition does not establish implementation compatibility or successful execution.
 
 The detector reads files in the root, `Data`, `Data/pack`, `StartData`, `game` and `USRDIR`, matching directory names case-insensitively. It skips links and special files, limits enumeration to 4,096 entries/1,024 files, and limits reads to 16 MiB total/4 MiB per file. Cancellation is checked between reads and parser stages; blocked filesystem calls cannot be interrupted. I/O, cancellation and read-limit failures return errors, never partial candidates or cacheable no-match results. Malformed/truncated format candidates are rejected while other files remain eligible. `detection::CACHE_VERSION` changes with recognition rules; caches must also track directory-content changes.
+Select.ini's first valid tab-separated append entry is also resolved, without following links or escaping the selected root. Valid Musica keys enable bounded archive-alias discovery, including nested aliases; patch receipts supply confined profile/archive/loose-script paths. Consecutive PAZ `A`–`Z` volumes are read as one logical stream. These paths share the same fixed limits. Coverage is format-specific, not a claim that every input accepted by an engine can be uniquely identified without execution.
 
 The registered families from `build/cores.toml` use these checks:
 
 | Family ID | Resource checks | Coverage limits |
 | --- | --- | --- |
 | `fvp` | HCB/BCH system-descriptor pointer, entry point, title boundary and syscall records | Magic-less; filename suffix routes structural parsing, never establishes a match |
-| `siglus` | Scene PCK/CHS header, table ranges and scene payload ranges; optional `pack_scn` signature | Custom Select.ini append roots outside the listed layouts need explicit root resolution; keys remain launch validation |
+| `siglus` | Scene PCK/CHS headers/ranges, optional `pack_scn`, and the first valid Select.ini append (UTF-8/CP932) | Unsafe or missing active appends do not fall through to later entries; keys remain launch validation |
 | `artemis` | PF2/6/8 complete bounded index with a `system.ini` entry and resource ranges | No project-less PF admission |
-| `musica` | Valid keys.v2 profile, actual `scr.paz` header, decrypted PAZ index and a decoded SC script containing a known command | PAZ0/1/2; requires correct private keys, default script archive layout and bounded complete script; no profile/extension-only match |
-| `softpal` | Sv20 script header and entry point | Packed PAC-only layouts remain unknown; no executable/appid whitelist |
-| `krkr` | XP3 signature, index header and index range | Loose TJS, embedded-EXE XP3 and custom archive schemes remain unknown |
+| `musica` | Valid keys.v2, decrypted PAZ0/1/2 index and SC structure; archive aliases, configured loose scripts, contiguous volumes | Correct keys and bounded complete resources are required; outside-root private profiles cannot be inferred from a directory-only request |
+| `softpal` | Sv20 header/entry point, directly or as actual Script.src in a bounded PAC index | No executable/appid whitelist; non-PAC packed wrappers remain unidentified |
+| `krkr` | XP3 index structure, or a literal Scripts.execStorage bootstrap whose actual target contains KiriKiri builtin calls outside comments/strings | Dynamic/computed loose TJS, ambiguous scripts, embedded-EXE XP3 and custom archives remain unidentified |
 | `ethornell` | BURIKO ARC20 index, or PackFile index containing `ipl._bp`; resource ranges | Does not decompress bootstrap scripts or establish VM compatibility |
 | `cmvs` | CPZ3/5/6/7 fixed headers and index ranges, or PS2A script segments | CPZ1/2 remain unknown; encrypted indexes/checksums/profile compatibility remain launch checks |
 | `mages` | MPK v2 complete bounded index and resource ranges | MPK alone identifies the family, not Impacto's selected runtime profile |
-| `renpy` | RPA2/3 header/index location and zlib header, or RPC2 slot ranges | RPA1, source-only and legacy zlib-RPYC layouts remain unknown; no Python/pickle execution |
+| `renpy` | RPA2/3 header/index, RPC2 slots, or bounded legacy zlib-RPYC with a complete pickle opcode stream declaring a serialized renpy.ast object | Pickle is inspected as bytes, never imported/constructed/executed. Generic zlib/pickle, RPA1 and source-only layouts remain unidentified |
 
 The rules were derived from the pinned adapters and their upstream parsers, not game-name examples. Musica's PAZ transforms/index parser and SC parser live in the pure `shinki-emu-musica-format` crate and are shared with playback; that crate has no VM, ABI, GPU or audio dependency. Manager recognition rules have one owner here. Adapter probes remain selected-core resource/configuration checks, not a native scan fallback. This API change does not itself replace the existing UI/owner scan integration.
 
