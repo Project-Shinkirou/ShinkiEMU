@@ -478,6 +478,7 @@ impl ShinkiEmuManagerController {
             .recommended_preset(game_id)?
             .map(|preset| preset.summary.clone());
         let selected_plugin = self.library.game_settings(game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
+        let configuration_error = self.game_configuration_error(game_id, selected_plugin.as_deref()).to_owned();
         Ok(GameSettingsViewModel {
             game_id: game_id.into(),
             title: game.display_title().into(),
@@ -490,7 +491,8 @@ impl ShinkiEmuManagerController {
                     label: self.emulator_label(&choice.plugin_id),
                 })
                 .collect(),
-            configuration_state: if self.configuration_errors.contains_key(game_id) { "failed" } else { self.configuration_state(selected_plugin.as_deref()) }.into(),
+            configuration_state: if configuration_error.is_empty() { self.configuration_state(selected_plugin.as_deref()) } else { "failed" }.into(),
+            configuration_error,
             emulator_id: selected_plugin.unwrap_or_default(),
             render: self.game_render_view(game_id)?,
             fields: self.game_config_fields(game_id)?,
@@ -507,6 +509,8 @@ impl ShinkiEmuManagerController {
     fn cores_model(&mut self) -> Result<CoresViewModel, String> {
         let mut cores = self.cores_view()?;
         cores.default_configuration_state = self.defaults_plugin.as_deref().map(|id| self.configuration_state(Some(id))).unwrap_or("unprepared").into();
+        cores.default_configuration_error = self.defaults_plugin.as_deref()
+            .and_then(|plugin| self.native_failures.get(plugin)).cloned().unwrap_or_default();
         if let Some(plugin) = self.defaults_plugin.clone() {
             cores.default_plugin.clone_from(&plugin);
             cores.default_fields = self.emulator_default_fields(&plugin)?;
@@ -587,10 +591,10 @@ impl ShinkiEmuManagerController {
             return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
         }
         if !Path::new(&game.location).is_dir() { return tr!("游戏目录当前不可用").into(); }
-        if let Some(error) = self.configuration_errors.get(&game.game_id) { return error.clone(); }
         if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
             if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重新准备资料库").into(); }
-            if let Some(error) = self.native_failures.get(&plugin) { return error.clone(); }
+            let error = self.game_configuration_error(&game.game_id, Some(&plugin));
+            if !error.is_empty() { return error.into(); }
         }
         if self.launch_candidate_for_game(game).is_some() { return String::new(); }
         if game.family_id.is_some() && self.probe_choices.get(&game.game_id).is_none_or(|choices| choices.iter().all(|choice| !self.plugin_available(&choice.plugin_id))) {

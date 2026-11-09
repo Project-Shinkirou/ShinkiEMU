@@ -15,7 +15,7 @@ use std::{
 
 use shinki_emu_manager_ui_slint::{
     App, ChoiceViewModel, ConfigFieldViewModel, GameCardViewModel, GameSettingsViewModel, Library,
-    ManagerViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel, RecipeViewModel,
+    ManagerViewModel, NoticeViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel, RecipeViewModel,
     RenderViewModel, SelectedGameViewModel, Session, SlintManagerAdapter, Store,
     StoreDepotViewModel, StoreGameViewModel, StoreLoadState, StoreLoginState, i18n,
 };
@@ -621,6 +621,15 @@ fn states() -> Vec<(&'static str, Setup)> {
                 label: "KiriKiri Z 1.2.0".into(),
             }];
             m.game_settings.configuration_state = "failed".into();
+            m.game_settings.configuration_error = "KiriKiri Z 初始化失败\n缺少 plugin/xp3filter.dll。修复这个文件后，重试只会初始化所选核心。".into();
+            m.notices.items = vec![NoticeViewModel {
+                id: "unrelated".into(),
+                severity: "warning".into(),
+                title: "元数据同步推迟".into(),
+                detail: "这条通知与当前配置失败无关。".into(),
+                code: String::new(),
+                core: String::new(),
+            }];
             a.apply(&m);
             page(a, "game-settings");
         }),
@@ -642,7 +651,7 @@ fn states() -> Vec<(&'static str, Setup)> {
                 emulator: String::new(),
                 emulator_id: String::new(),
                 launchable: false,
-                problem: "缺少可用的模拟器核心".into(),
+                problem: "已识别引擎，缺少兼容核心".into(),
                 developer: LONG_DEV_EN.into(),
                 description: "合成的缺核心详情，用于检查启动按钮和安装入口。".into(),
                 ..Default::default()
@@ -936,6 +945,7 @@ fn every_page_renders_stable_frames() {
                 let rgba = draw();
                 let animated = id.ends_with("scanning")
                     || id.ends_with("loading-scan")
+                    || id.ends_with("/loading")
                     || id.ends_with("running");
                 if !animated {
                     let again = draw();

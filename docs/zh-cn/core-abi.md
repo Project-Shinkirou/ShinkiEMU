@@ -37,6 +37,8 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 用户显式准备高级配置、诊断或启动时，owner 才异步激活选定 plugin；诊断不打开游戏。启动使用选定核心的新鲜 probe，并保留 open 前的再次校验。已驻留核心及暂存更新仍遵守重启语义，不自动换用其他实现。未知 plugin 和裸库保留可见诊断，不靠自动 query 补全信息。
 
+高级配置失败原因关联当前游戏与所选 plugin，默认配置失败关联当前默认 plugin，不读取全局通知。关闭通知或查看另一部游戏不会丢失原条目的原因；重试、成功或更换实现时，再清除或切换对应原因。
+
 现有 schema 7 的 game ID、路径、family 和可空 `GameSettings.emulator_id` 原样保留。每个游戏的 family/format 识别结果、待验证的回执字符串使用既有 `app_state` 保存，不伪造 plugin ID，不重复建库。缓存格式 2 保存 Detector 结果，以 `detection::CACHE_VERSION` 和有界的资源前后指纹失效，不再依赖核心清单。旧缓存作未命中；取消、I/O 和读取上限错误不会变成 NoMatch 或负缓存。
 
 扫描失败但 owner 仍可用时，可在同一会话中重试识别，已有记录保留，重试不初始化核心。owner 或清单启动失败仍需重启。
