@@ -223,6 +223,8 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
     let other_id = path_id(&fs::canonicalize(other).unwrap());
     let other_settings = app.library.game_settings(&other_id).unwrap();
     app.select_case(&source_id).unwrap();
+    app.select_emulator_defaults("rfvp").unwrap();
+    settle(&mut app, |app| !app.startup_busy());
     let script = root.path().join("convert.luau");
     recipe(&script, "", "{launch_mode=\"title\"}");
     let output = root.path().join("independent");
@@ -250,6 +252,9 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
     assert!(pending.is_some());
     assert!(app.apply_pending_profile(&output_id, "siglus_rs").is_err());
     assert_eq!(app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap(), pending);
+    assert_eq!(app.model().unwrap().cores.default_configuration_state, "ready");
+    assert_eq!(app.select_case(&other_id).unwrap().game_settings.configuration_state, "ready");
+    app.select_case(&output_id).unwrap();
     app.prepare_game_configuration(&output_id).unwrap();
     settle(&mut app, |app| !app.startup_busy());
     assert_eq!(app.model().unwrap().game_settings.configuration_state, "ready");
