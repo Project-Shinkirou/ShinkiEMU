@@ -828,7 +828,7 @@ fn execute_control(
 }
 
 fn validate_chain_target(target: &str) -> Result<(), MusicaRuntimeError> {
-    crate::script::chain_target_parts(target)
+    shinki_emu_musica_format::chain_target_parts(target)
         .map(|_| ())
         .ok_or(MusicaRuntimeError::ChainTarget)
 }

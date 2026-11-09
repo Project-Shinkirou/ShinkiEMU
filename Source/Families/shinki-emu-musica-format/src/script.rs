@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod encoding;
 mod parser;
+mod display;
+pub use display::{musica_display_hash, musica_display_cstr_hash};
 pub use encoding::ScriptEncoding;
 #[cfg(test)]
 use parser::tokenize_operands;
@@ -431,7 +433,7 @@ fn safe_symbol(value: &str) -> bool {
 }
 
 /// Musica script transfer syntax, shared by parser, VM and native session.
-pub(crate) fn chain_target_parts(target: &str) -> Option<(&str, Option<&str>)> {
+pub fn chain_target_parts(target: &str) -> Option<(&str, Option<&str>)> {
     let (file, label) = target
         .split_once('#')
         .map_or((target, None), |(file, label)| (file, Some(label)));
@@ -453,11 +455,10 @@ pub(crate) fn chain_target_parts(target: &str) -> Option<(&str, Option<&str>)> {
 }
 
 #[cfg(test)]
-#[path = "script/tests.rs"]
 mod tests;
 
 impl ScCommand {
-    pub(crate) fn tokens(&self) -> Result<Vec<String>, ScParseError> {
+    pub fn tokens(&self) -> Result<Vec<String>, ScParseError> {
         tokenize_operands_with_encoding(
             &self.raw_operands,
             self.span.offset as usize,

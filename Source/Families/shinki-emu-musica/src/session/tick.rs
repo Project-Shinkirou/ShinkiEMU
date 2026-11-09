@@ -183,7 +183,7 @@ impl MusicaSession {
             }
             Some(MusicaVmEvent::Chain { target }) => {
                 let (file, label) =
-                    crate::script::chain_target_parts(&target).ok_or_else(|| {
+                    shinki_emu_musica_format::chain_target_parts(&target).ok_or_else(|| {
                         error(
                             "SHINKI_EMU_MUSICA_RUNTIME_CHAIN",
                             "invalid chained script location",

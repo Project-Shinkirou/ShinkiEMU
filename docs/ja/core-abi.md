@@ -11,6 +11,30 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 境界を越えるのは C レイアウトの値だけです。具体的には、バージョン付きヘッダー、長さ上限のある借用バイト列、不透明ハンドル、ステータスコード、関数ポインターです。Rust のコンテナや例外の巻き戻しは ABI を越えません。動的ライブラリと不変の descriptor ストレージは常駐したままです。query はバージョンと関数テーブルの出力ポインターを受け取り、未対応のバージョンでは出力を null にします。query は I/O を行わず、worker を起動せず、logger もインストールしません。
 
+## ディレクトリ識別
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` は `Result<Vec<EngineDetection>, DetectionError>` を返します。結果は `family_id` と `format` のみで、インストール済みプラグインや native `FamilyProbeCandidate` に依存しません。同じ family は一件にまとめ、family ID 順に返します。複数 family の選択は呼び出し側が行い、空の配列は未識別です。family の識別、実装の互換性、実行成功は別々に扱います。
+
+対象はルートと `Data`、`Data/pack`、`StartData`、`game`、`USRDIR` です。ディレクトリ名の大文字小文字は区別しません。リンクと特殊ファイルを除外し、列挙は 4,096 項目、読み込みは 1,024 ファイル、物理読み込みは合計 16 MiB、開いたファイルハンドルごとに 4 MiB までに制限します。再オープンした解析も合計上限を共有します。読み込みと解析の間でキャンセルを確認しますが、ブロック中の OS 呼び出しは中断できません。I/O、キャンセル、上限超過はエラーを返し、部分候補や未一致キャッシュに変換しません。破損・切り詰められた候補は除外して他のファイルを調べます。ルール変更時には `detection::CACHE_VERSION` を更新し、キャッシュはディレクトリ内容の変更も追跡する必要があります。
+Select.ini の最初の有効な TAB 区切り append も解決し、範囲外のパスとリンクを拒否します。検証済み Musica 鍵で別名アーカイブと入れ子の配置を有界に探索し、パッチ受領書の profile/archive/loose-script パスを安全に解決します。PAZ の連続した `A`–`Z` ボリュームは同じ論理ストリームとして読みます。上記の上限は共通です。これは形式ごとの対応であり、エンジンが受け入れるすべての入力を実行なしに一意に識別できるという意味ではありません。
+
+`build/cores.toml` の各 family を次の形式で確認します。
+
+| Family ID | 確認内容 | 対象範囲 |
+| --- | --- | --- |
+| `fvp` | HCB/BCH システム記述子、エントリーポイント、タイトル境界、syscall レコード | magic はなく、拡張子は構造解析の入口にのみ使用 |
+| `siglus` | Scene PCK/CHS 構造、任意の `pack_scn`、UTF-8/CP932 Select.ini の最初の有効 append | 活動ディレクトリが不明・危険な場合に後続項目へ切り替えない。鍵は起動時に検証 |
+| `artemis` | PF2/6/8 の有界な完全索引、`system.ini`、リソース範囲 | プロジェクト項目のない PF は採用しない |
+| `musica` | keys.v2、復号した PAZ0/1/2 索引と SC、別名アーカイブ、設定された loose script、連続ボリューム | 正しい鍵と上限内の完全リソースが必要。ディレクトリ外の秘密 profile は推測しない |
+| `softpal` | 直接 Sv20 または PAC 索引内の Sv20 と入口。data.pac/csv.pac 内を含む archive.dat 初期 profile のパスも解決 | native bootstrap と同じ profile 0 を使用し、後続 profile に切り替えない。EXE/appid リスト、範囲外パス、非 PAC 形式は使用しない |
+| `krkr` | XP3 索引、または Scripts.execStorage の字面参照と実ファイル内の KiriKiri builtin 呼び出し。コメント・文字列を除外 | 動的 loose TJS、曖昧なソース、EXE 内 XP3、独自方式は未識別 |
+| `ethornell` | BURIKO ARC20 索引、または `ipl._bp` を含む PackFile 索引とリソース範囲 | ブートスクリプトの展開や VM 互換性は検証しない |
+| `cmvs` | CPZ3/5/6/7 の固定ヘッダーと索引範囲、または PS2A セグメント | CPZ1/2 は未識別。暗号化索引、checksum、profile は起動時に検証 |
+| `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
+| `renpy` | RPA2/3、RPC2、または旧 zlib-RPYC の完全な pickle opcode 列が示す renpy.ast オブジェクト | バイトだけを調べ、pickle の import・構築・実行はしない。汎用 zlib/pickle、RPA1、ソースのみは未識別 |
+
+ルールは pin された adapter と上流の解析実装から確認しています。作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` に移し、識別と再生で共有します。VM、ABI、GPU、音声への依存はありません。Manager 識別はこのモジュールで管理し、adapter probe は選択したコアのリソース・設定検証に限ります。native probe へのフォールバックはありません。この変更自体には UI/owner の接続は含みません。
+
 ## ライフサイクル
 
 1. **query** は不変の `CoreApi` テーブルを取得し、バージョン、サイズ、必須の関数ポインターを確認します。

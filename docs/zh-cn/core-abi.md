@@ -11,6 +11,30 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 边界只传 C 布局值，包括版本头、有界借用字节、不透明句柄、状态码和函数指针；Rust 容器及异常展开不跨 ABI。动态库及不可变 descriptor 存储保持驻留。query 接收版本和函数表输出指针；不支持的版本将输出置空。query 不执行 I/O、不启动 worker，也不安装 logger。
 
+## 目录识别
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` 返回 `Result<Vec<EngineDetection>, DetectionError>`。匹配只含 `family_id` 和 `format`，不依赖已安装插件，也不使用 native `FamilyProbeCandidate` 报告。每个家族最多一项，按 family ID 排序；多个家族交调用方选择，空数组表示未识别。家族识别、实现兼容性和实际运行成功分开判断。
+
+识别范围是根目录及 `Data`、`Data/pack`、`StartData`、`game`、`USRDIR`，目录名不区分大小写。跳过链接和特殊文件，最多枚举 4,096 个条目、读取 1,024 个文件，总物理读取上限 16 MiB，每个打开的文件句柄累计读取额度 4 MiB；重新打开的解析阶段仍共用总额度。读取和解析阶段之间检查取消；阻塞中的文件系统调用不能被强行中断。真实 I/O 失败、取消和读取超限返回错误，不返回部分候选，也不能写成未匹配缓存。坏格式和截断候选不命中，但继续检查其他文件。规则变更更新 `detection::CACHE_VERSION`，缓存还须跟踪目录内容变化。
+还会解析 Select.ini 首条合法 TAB 分隔记录的活动 append，拒绝越界和链接路径。验证过的 Musica 密钥可用于有界发现归档别名及嵌套别名；补丁回执提供受限的 profile/archive/loose-script 路径。PAZ 的连续 `A`–`Z` 分卷按同一逻辑流读取，沿用上述预算。各项是具体格式覆盖，不代表能在不执行程序的条件下唯一识别引擎接受的所有输入。
+
+`build/cores.toml` 中各家族的识别依据如下：
+
+| Family ID | 检查内容 | 覆盖边界 |
+| --- | --- | --- |
+| `fvp` | HCB/BCH 系统描述偏移、入口、标题边界和 syscall 记录 | 无固定 magic；后缀只决定是否尝试结构解析，不能单独命中 |
+| `siglus` | Scene PCK/CHS 结构、可选 `pack_scn`，以及 UTF-8/CP932 Select.ini 的首条合法 append | 活动目录缺失或不安全时不回退到后续条目；密钥由启动检查 |
+| `artemis` | PF2/6/8 有界完整索引、`system.ini` 条目及资源范围 | 没有项目入口的 PF 归档不入库 |
+| `musica` | keys.v2、解密 PAZ0/1/2 索引和 SC；支持归档别名、配置的散装脚本、连续分卷 | 需要正确密钥和预算内完整资源；目录输入无法推断保存在目录外的私有 profile |
+| `softpal` | 直接 Sv20 或 PAC 有界索引中的 Sv20/入口；解析 archive.dat 初始 profile 路径，包括 data.pac/csv.pac 内的清单 | 遵循 native bootstrap 的 profile 0，不替换后续 profile，不用 EXE/appid 白名单；越界路径和非 PAC 封装保持未知 |
+| `krkr` | XP3 索引，或 Scripts.execStorage 字面启动引用及实际目标中的 KiriKiri builtin 调用，排除注释/字符串 | 动态计算 loose TJS、歧义源码、EXE 内 XP3 和自定义归档保持未知 |
+| `ethornell` | BURIKO ARC20 索引，或含 `ipl._bp` 的 PackFile 索引，以及资源范围 | 不解压引导脚本，不保证 VM 兼容 |
+| `cmvs` | CPZ3/5/6/7 固定头和索引范围，或 PS2A 段范围 | CPZ1/2 保持未知；加密索引、校验和、profile 兼容性留给启动检查 |
+| `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
+| `renpy` | RPA2/3、RPC2，或旧 zlib-RPYC 中完整 pickle opcode 流声明的序列化 renpy.ast 对象 | 只检查字节，不导入、构造或执行 pickle；通用 zlib/pickle、RPA1、纯源码保持未知 |
+
+规则来自实际 pin 的 adapter 和上游格式解析器，不使用作品名示例。Musica 的 PAZ 变换、索引解析和 SC 解析移入纯 `shinki-emu-musica-format`，识别与运行共用，不依赖 VM、ABI、GPU 或音频。Manager 识别规则由本模块统一维护；adapter probe 只做选定核心的资源/配置校验，不作为扫描回退。本接口提交不包含 UI/owner 扫描接入。
+
 ## 生命周期
 
 1. **query** 取得不可变 `CoreApi` 表，检查版本、大小和必需函数指针。
