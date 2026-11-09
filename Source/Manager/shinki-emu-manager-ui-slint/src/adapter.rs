@@ -527,6 +527,7 @@ impl SlintManagerAdapter {
         );
         cores.set_default_plugin(view.default_plugin.as_str().into());
         cores.set_default_configuration_state(view.default_configuration_state.as_str().into());
+        cores.set_committed_plugin(if view.default_configuration_state == "unprepared" { String::new() } else { view.default_plugin.clone() }.as_str().into());
         cores.set_default_configuration_error(view.default_configuration_error.as_str().into());
         self.default_render_options
             .update(&view.default_render.options);

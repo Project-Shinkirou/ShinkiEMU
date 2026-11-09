@@ -572,6 +572,7 @@ export global Cores {
     // unprepared | loading | ready | failed | missing-core | selection-required
     in-out property <string> default-configuration-state: "unprepared";
     in-out property <string> default-configuration-error;
+    in-out property <string> committed-plugin;
     in-out property <RenderState> default-render;
     callback install-local();
     callback diagnose(string);
