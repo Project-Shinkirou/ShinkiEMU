@@ -132,6 +132,7 @@ fn missing_saved_plugin_never_rebinds_to_a_new_catalog_choice() {
     let model = app.model().unwrap();
     assert_eq!(model.selection.game.emulator_id, "removed.user.plugin");
     assert!(!model.selection.game.launchable);
+    assert_eq!(app.launch(&id).unwrap_err(), "SHINKI_EMU_CORE_MISSING");
     app.set_game_emulator(&id, "rfvp").unwrap();
     assert_eq!(app.library.game_settings(&id).unwrap().unwrap().emulator_id.as_deref(), Some("rfvp"));
 }
