@@ -301,9 +301,12 @@ mod native_consumer {
         let loading = app.prepare_game_configuration(&first_id).unwrap();
         assert_eq!(loading.game_settings.configuration_state, "loading");
         assert!(loading.game_settings.configuration_error.is_empty());
+        assert!(app.select_case(&second_id).unwrap().game_settings.configuration_error.is_empty());
         settle(&mut app);
-        let error = app.model().unwrap().game_settings.configuration_error;
+        assert!(app.model().unwrap().game_settings.configuration_error.is_empty(), "late failure belongs to the requested game, not the currently viewed game");
+        let error = app.select_case(&first_id).unwrap().game_settings.configuration_error;
         assert!(error.contains("unknown field"));
+        assert!(app.game_configuration_error(&first_id, Some("cmvs-rs")).is_empty(), "the cached error must also match the requested plugin");
         let calls = selected_calls.values();
         assert_eq!(&calls[..4], &[1, 1, 1, 0]);
         app.plugin_errors.insert("unrelated".into(), "SHINKI_EMU_CORE_PACKAGE_MANIFEST: unrelated notice".into());
