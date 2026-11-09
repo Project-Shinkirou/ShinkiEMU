@@ -22,7 +22,8 @@ impl Scan<'_> {
     pub(super) fn relative_path(&mut self, root: &Path, name: &str) -> DetectionResult<Option<PathBuf>> {
         if name.is_empty() || name.len() > 4096 || name.contains(['\\', ':', '\0']) { return Ok(None); }
         let mut result = PathBuf::new();
-        for part in Path::new(name).components() {
+        let mut components = Path::new(name).components().peekable();
+        while let Some(part) = components.next() {
             let Component::Normal(wanted) = part else { return Ok(None); };
             let mut found = None;
             self.checkpoint()?;
@@ -32,7 +33,8 @@ impl Scan<'_> {
                 self.entries += 1;
                 let entry = entry?;
                 if entry.file_name().eq_ignore_ascii_case(wanted) {
-                    if entry.file_type()?.is_symlink() { return Ok(None); }
+                    let ty = entry.file_type()?;
+                    if ty.is_symlink() || (components.peek().is_some() && !ty.is_dir()) { return Ok(None); }
                     if found.is_some() { return Ok(None); }
                     found = Some(entry.file_name());
                 }

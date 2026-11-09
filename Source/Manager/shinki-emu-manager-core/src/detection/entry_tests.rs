@@ -117,3 +117,32 @@ fn legacy_rpyc_decompression_is_bounded() {
     fs::write(root.path().join("large.rpyc"), zlib(&vec![0; MAX_FILE_READ_BYTES as usize + 1])).unwrap();
     assert!(matches!(detect(root.path()), Err(DetectionError::ReadLimit)));
 }
+
+fn pac_resource(name: &[u8], payload: &[u8]) -> Vec<u8> {
+    let start = 0x804 + 40;
+    let mut bytes = vec![0; start + payload.len()];
+    word(&mut bytes, 12 + name[0].to_ascii_uppercase() as usize * 8 + 4, 1);
+    bytes[0x804..0x804 + name.len()].copy_from_slice(name);
+    word(&mut bytes, 0x804 + 32, payload.len() as u32);
+    word(&mut bytes, 0x804 + 36, start as u32);
+    bytes[start..].copy_from_slice(payload);
+    bytes
+}
+
+#[test]
+fn softpal_follows_initial_archive_dat_profile_without_using_later_profiles() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("data")).unwrap();
+    fs::create_dir_all(root.path().join("content/packs")).unwrap();
+    let mut script = vec![0; 13];
+    script[..4].copy_from_slice(b"Sv20");
+    word(&mut script, 8, 12);
+    fs::write(root.path().join("content/packs/scripts.pac"), pac_resource(b"SCRIPT.SRC", &script)).unwrap();
+    fs::write(root.path().join("data/archive.dat"), b" content\\packs\\scripts | missing , ignored\\later\0").unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "softpal");
+    fs::write(root.path().join("data/archive.dat"), b"missing,content\\packs\\scripts\0").unwrap();
+    assert!(detect(root.path()).unwrap().is_empty());
+    fs::remove_file(root.path().join("data/archive.dat")).unwrap();
+    fs::write(root.path().join("data.pac"), pac_resource(b"ARCHIVE.DAT", b"content\\packs\\scripts\0")).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "softpal");
+}

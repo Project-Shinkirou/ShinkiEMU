@@ -48,8 +48,8 @@ pub enum DetectionError {
 }
 type DetectionResult<T> = Result<T, DetectionError>;
 
-/// Inspect default resource layouts plus the active Siglus append and confined
-/// Musica configuration/alias paths. Links and special files are not read.
+/// Inspect default layouts plus confined engine-declared resource paths.
+/// Links and special files are not read.
 /// Empty means no established family in this scope. Errors never return partial
 /// candidates and must not be treated/cached as no-match. Results are sorted by
 /// family, with at most one format per family. Runtime compatibility is separate.
@@ -121,6 +121,7 @@ impl Scan<'_> {
             let configuration = self.configuration(root)?;
             self.musica(root, &files, configuration.as_ref())?;
             self.loose_krkr(root, &files)?;
+            self.softpal_manifest(root)?;
             self.scan_append(root)?;
         }
         for path in children { self.directory(root, &path, false)?; }
