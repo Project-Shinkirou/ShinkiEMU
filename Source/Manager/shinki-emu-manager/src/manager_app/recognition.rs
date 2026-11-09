@@ -24,6 +24,11 @@ pub(super) struct Candidate {
     pub(super) family_id: String,
 }
 
+pub(super) struct GameConfigurationError {
+    pub(super) plugin_id: String,
+    pub(super) message: String,
+}
+
 pub(super) fn directories(data_dir: &Path) -> Result<Vec<PathBuf>, String> {
     #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     { core_directories(&data_dir.join("cores")) }
@@ -113,6 +118,15 @@ impl ShinkiEmuManagerController {
         "unprepared"
     }
 
+    pub(super) fn game_configuration_error(&self, game_id: &str, plugin_id: Option<&str>) -> &str {
+        let Some(plugin_id) = plugin_id else { return ""; };
+        self.configuration_errors.get(game_id)
+            .filter(|error| error.plugin_id == plugin_id)
+            .map(|error| error.message.as_str())
+            .or_else(|| self.native_failures.get(plugin_id).map(String::as_str))
+            .unwrap_or("")
+    }
+
     pub(super) fn request_activation(&mut self, action: NativeAction) -> Result<(), String> {
         self.ensure_owner_idle()?;
         if self.native_action.is_some() || self.startup_busy() { return Err("SHINKI_EMU_PREPARE_BUSY".into()); }
@@ -173,11 +187,13 @@ impl ShinkiEmuManagerController {
                 let completion = match action {
                     NativeAction::Launch { game_id, .. } => self.launch(&game_id).map(|_| ()),
                     NativeAction::ConfigureGame { game_id, .. } => self.apply_pending_profile(&game_id, &plugin_id),
-                    NativeAction::Defaults(_) => { self.defaults_plugin = Some(plugin_id.clone()); Ok(()) }
+                    NativeAction::Defaults(_) => Ok(()),
                     NativeAction::Diagnose(_) => Ok(()),
                 };
                 if let Err(error) = completion {
-                    if let Some(game_id) = game_id { self.configuration_errors.insert(game_id, error.clone()); }
+                    if let Some(game_id) = game_id {
+                        self.configuration_errors.insert(game_id, GameConfigurationError { plugin_id, message: error.clone() });
+                    }
                     self.diagnostic = error;
                     self.diagnostic_severity = "error";
                 }

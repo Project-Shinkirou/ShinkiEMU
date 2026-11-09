@@ -273,6 +273,129 @@ mod native_consumer {
             println!("consumer scan/library/core-list {} => native calls {:?}", library.display(), counters.values());
         }
     }
+
+    #[test]
+    fn scoped_configuration_error_follows_game_plugin_and_survives_unrelated_notices() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("manager");
+        let selected = install(&data, "SHINKI_TEST_NATIVE_FIXTURE", "rfvp", "selected");
+        let failure = install(&data, "SHINKI_TEST_NATIVE_FAILURE", "ethornell-rs", "failure");
+        let first = root.path().join("first");
+        let second = root.path().join("second");
+        write_game(&first);
+        write_game(&second);
+        fs::write(first.join("other-family.bin"), ps2a()).unwrap();
+        let receipt = first.join("shinki-patch-result.json");
+        fs::write(&receipt, serde_json::to_vec(&serde_json::json!({
+            "schema": "shinki.emu.file_patch.v1",
+            "profile": { "plugin_id": "rfvp", "configuration": { "unsupported_field": "value" } }
+        })).unwrap()).unwrap();
+        let mut app = open(&data);
+        let first_id = import(&mut app, &first);
+        let second_id = import(&mut app, &second);
+        app.select_case(&first_id).unwrap();
+        let selected_calls = Counters::open(&selected);
+        let failure_calls = Counters::open(&failure);
+        assert_eq!(selected_calls.values(), [0; 6]);
+        assert_eq!(failure_calls.values(), [0; 6]);
+        let loading = app.prepare_game_configuration(&first_id).unwrap();
+        assert_eq!(loading.game_settings.configuration_state, "loading");
+        assert!(loading.game_settings.configuration_error.is_empty());
+        settle(&mut app);
+        let error = app.model().unwrap().game_settings.configuration_error;
+        assert!(error.contains("unknown field"));
+        let calls = selected_calls.values();
+        assert_eq!(&calls[..4], &[1, 1, 1, 0]);
+        app.plugin_errors.insert("unrelated".into(), "SHINKI_EMU_CORE_PACKAGE_MANIFEST: unrelated notice".into());
+        let unrelated = app.model().unwrap();
+        assert_eq!(unrelated.notices.items[0].core, "unrelated");
+        assert_eq!(unrelated.game_settings.configuration_error, error);
+        app.diagnostic.clear();
+        assert_eq!(app.model().unwrap().game_settings.configuration_error, error);
+        assert!(app.select_case(&second_id).unwrap().game_settings.configuration_error.is_empty());
+        assert_eq!(app.select_case(&first_id).unwrap().game_settings.configuration_error, error);
+        assert_eq!(app.set_game_emulator(&first_id, "rfvp").unwrap().game_settings.configuration_error, error);
+        let changed = app.set_game_emulator(&first_id, "cmvs-rs").unwrap();
+        assert!(changed.game_settings.configuration_error.is_empty());
+        assert_eq!(changed.game_settings.configuration_state, "missing-core");
+        app.set_game_emulator(&first_id, "rfvp").unwrap();
+        assert!(app.model().unwrap().game_settings.configuration_error.is_empty());
+        assert_eq!(selected_calls.values(), calls);
+        assert_eq!(failure_calls.values(), [0; 6]);
+        app.prepare_game_configuration(&first_id).unwrap();
+        settle(&mut app);
+        assert_eq!(app.model().unwrap().game_settings.configuration_error, error);
+        fs::write(&receipt, serde_json::to_vec(&serde_json::json!({
+            "schema": "shinki.emu.file_patch.v1",
+            "profile": { "plugin_id": "rfvp", "configuration": { "launch_mode": "title" } }
+        })).unwrap()).unwrap();
+        import(&mut app, &first);
+        let retry = app.prepare_game_configuration(&first_id).unwrap();
+        assert_eq!(retry.game_settings.configuration_state, "loading");
+        assert!(retry.game_settings.configuration_error.is_empty());
+        settle(&mut app);
+        let success = app.model().unwrap();
+        assert_eq!(success.game_settings.configuration_state, "ready");
+        assert!(success.game_settings.configuration_error.is_empty());
+        assert_eq!(selected_calls.values(), calls);
+        assert_eq!(failure_calls.values(), [0; 6]);
+        println!("scoped game error: unrelated/dismiss/game-switch/same-plugin retained; plugin-switch/retry/success cleared; native={calls:?}, unrelated={:?}", failure_calls.values());
+    }
+
+    #[test]
+    fn scoped_configuration_error_for_defaults_uses_only_current_plugin() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("manager");
+        let selected = install(&data, "SHINKI_TEST_NATIVE_FIXTURE", "rfvp", "selected");
+        let failure = install(&data, "SHINKI_TEST_NATIVE_FAILURE", "ethornell-rs", "failure");
+        let mut app = open(&data);
+        app.prepare_library().unwrap();
+        settle(&mut app);
+        let selected_calls = Counters::open(&selected);
+        let failure_calls = Counters::open(&failure);
+        let loading = app.select_emulator_defaults("ethornell-rs").unwrap();
+        assert_eq!(loading.cores.default_configuration_state, "loading");
+        assert!(loading.cores.default_configuration_error.is_empty());
+        settle(&mut app);
+        let failed = app.model().unwrap();
+        let error = failed.cores.default_configuration_error;
+        assert_eq!(failed.cores.default_plugin, "ethornell-rs");
+        assert_eq!(failed.cores.default_configuration_state, "failed");
+        assert!(!error.is_empty());
+        let calls = failure_calls.values();
+        assert_eq!(&calls[..4], &[1, 1, 0, 0]);
+        app.plugin_errors.insert("unrelated".into(), "SHINKI_EMU_CORE_PACKAGE_MANIFEST: unrelated notice".into());
+        app.diagnostic.clear();
+        assert_eq!(app.model().unwrap().cores.default_configuration_error, error);
+        assert_eq!(selected_calls.values(), [0; 6]);
+        assert_eq!(failure_calls.values(), calls);
+        let cleared = app.select_emulator_defaults("").unwrap();
+        assert!(cleared.cores.default_plugin.is_empty());
+        assert!(cleared.cores.default_configuration_error.is_empty());
+        app.select_emulator_defaults("rfvp").unwrap();
+        app.select_emulator_defaults("").unwrap();
+        settle(&mut app);
+        let cancelled_selection = app.model().unwrap();
+        assert!(cancelled_selection.cores.default_plugin.is_empty(), "late success must not restore a cleared selection");
+        assert!(cancelled_selection.cores.default_configuration_error.is_empty());
+        let selected_once = selected_calls.values();
+        assert_eq!(&selected_once[..4], &[1, 1, 1, 0]);
+        app.select_emulator_defaults("rfvp").unwrap();
+        settle(&mut app);
+        let success = app.model().unwrap();
+        assert_eq!(success.cores.default_plugin, "rfvp");
+        assert_eq!(success.cores.default_configuration_state, "ready");
+        assert!(success.cores.default_configuration_error.is_empty());
+        assert_eq!(selected_calls.values(), selected_once);
+        let retry = app.select_emulator_defaults("ethornell-rs").unwrap();
+        assert_eq!(retry.cores.default_configuration_state, "loading");
+        assert!(retry.cores.default_configuration_error.is_empty());
+        settle(&mut app);
+        assert!(!app.model().unwrap().cores.default_configuration_error.is_empty());
+        assert_eq!(&failure_calls.values()[..4], &[2, 2, 0, 0]);
+        assert_eq!(selected_calls.values(), selected_once);
+        println!("scoped defaults error: notice-dismiss preserved; clear/pending-selection/success/retry associated correctly; selected={selected_once:?}, explicit failing retries={:?}", failure_calls.values());
+    }
 }
 
 #[cfg(all(windows, feature = "static-cmvs"))]

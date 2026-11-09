@@ -110,7 +110,7 @@ struct ShinkiEmuManagerController {
     startup_state: background::StartupState,
     native_action: Option<recognition::NativeAction>,
     native_failures: BTreeMap<String, String>,
-    configuration_errors: BTreeMap<String, String>,
+    configuration_errors: BTreeMap<String, recognition::GameConfigurationError>,
     probe_choices: BTreeMap<String, Vec<Candidate>>,
     selected_case_id: Option<String>,
     search_query: String,

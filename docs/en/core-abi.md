@@ -37,6 +37,8 @@ The rules were derived from pinned adapters and upstream parsers, not game-name 
 
 The deferred owner activates one selected plugin for explicit advanced configuration, diagnosis, or launch. Activation completion is asynchronous; diagnosis does not open a game. Launch obtains a fresh selected probe and retains the existing open-time recheck. Resident packages and pending updates still require restart; there is no automatic alternate-core fallback. Unknown plugins/bare libraries remain visible without discovery queries.
 
+Advanced-configuration failures belong to the current game/plugin or selected defaults plugin, independently of global notifications. Dismissing a notice or viewing another game keeps the original error associated with its selection; retry, success, or choosing another implementation clears or changes that selection's reason.
+
 Existing schema-7 game IDs, locations, family IDs and nullable `GameSettings.emulator_id` remain intact. Per-game family/format recognition and deferred receipt strings use the existing `app_state` store; no fake plugin ID or duplicate library record is introduced. Cache format 2 stores detector results, keyed by `detection::CACHE_VERSION` and bounded before/after resource stamps, independently of installed cores. Old caches miss; cancellation, I/O and read-limit errors never become no-match results or negative entries.
 
 When a scan fails but its owner remains available, the user can retry recognition in the same application session. Existing records are kept; retry does not initialize cores. A failed owner or inventory startup still requires restart.

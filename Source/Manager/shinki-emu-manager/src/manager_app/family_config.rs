@@ -53,8 +53,12 @@ impl ShinkiEmuManagerController {
     ) -> Result<ManagerViewModel, String> {
         self.ensure_no_session()?;
         if self.native_action.is_some() { return Err("SHINKI_EMU_PREPARE_BUSY".into()); }
+        let previous = self.library.game_settings(game_id).map_err(|error| error.to_string())?
+            .and_then(|settings| settings.emulator_id);
         self.install_probe_choice(game_id, plugin_id)?;
-        self.configuration_errors.remove(game_id);
+        if previous.as_deref() != Some(plugin_id) {
+            self.configuration_errors.remove(game_id);
+        }
         self.model()
     }
 
