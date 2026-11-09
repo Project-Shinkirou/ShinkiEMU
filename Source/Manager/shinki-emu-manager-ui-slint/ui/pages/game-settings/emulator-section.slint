@@ -1,4 +1,4 @@
-import { MaterialPalette, MaterialText, MaterialTypography, FilledCard, TonalButton, TextButton, Icon } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, FilledCard, TonalButton, TextButton, Icon, CircularProgressIndicator } from "@material";
 import { App, GameSettings } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { Theme } from "../../theme.slint";
@@ -114,7 +114,7 @@ export component EmulatorSection {
             SectionTitle {
                 text: GameSettings.configuration-state == "failed" ? @tr("配置加载失败") : @tr("高级配置尚未加载");
                 description: GameSettings.configuration-state == "failed"
-                    ? @tr("这次只初始化所选核心。失败原因见上方通知，修复后可以重试。")
+                    ? (GameSettings.configuration-error != "" ? GameSettings.configuration-error : @tr("这次只初始化所选核心。修复后可以重试。"))
                     : @tr("打开这一页不会加载核心。需要查看或修改参数时，再加载所选模拟器的配置。");
             }
             HorizontalLayout {
@@ -132,10 +132,10 @@ export component EmulatorSection {
             HorizontalLayout {
                 spacing: Theme.space-md;
                 alignment: start;
-                Icon {
+                CircularProgressIndicator {
                     width: 20px;
-                    source: Icons.schedule;
-                    colorize: MaterialPalette.primary;
+                    height: 20px;
+                    indeterminate: true;
                 }
                 MaterialText {
                     text: @tr("正在加载所选模拟器的配置…");
