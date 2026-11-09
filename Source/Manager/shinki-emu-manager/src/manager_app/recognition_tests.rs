@@ -160,6 +160,7 @@ fn patch_receipt_configuration_is_deferred_until_explicit_native_validation() {
 #[cfg(windows)]
 mod native_consumer {
     use super::*;
+    use shinki_emu_manager_core::model::{ConfigEntry, ConfigValue};
     use std::{ffi::c_void, os::windows::ffi::OsStrExt};
     #[link(name = "kernel32")]
     unsafe extern "system" {

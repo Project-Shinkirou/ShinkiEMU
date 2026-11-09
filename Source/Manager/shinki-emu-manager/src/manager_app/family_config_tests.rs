@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 fn configuration_provider(
     configure: impl FnOnce(&mut crate::test_native::Fixture),
