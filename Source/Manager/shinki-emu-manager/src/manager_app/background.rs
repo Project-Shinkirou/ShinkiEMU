@@ -1,7 +1,6 @@
 use super::*;
 use owner::PrepareProgress;
 use probe_worker::{ScanKind, ScanReport, ScanRequest};
-use std::sync::{atomic::AtomicBool, Arc};
 use shinki_emu_manager_ui_slint::tr;
 
 pub(super) enum StartupState {
@@ -20,14 +19,14 @@ pub(super) enum PendingScan {
 
 impl ShinkiEmuManagerController {
     pub(super) fn startup_busy(&self) -> bool {
-        matches!(
+        self.native_action.is_some() || matches!(
             self.startup_state,
             StartupState::Loading | StartupState::Scanning(_)
         )
     }
 
     pub(super) fn cores_ready(&self) -> bool {
-        self.registry.is_ready() && self.registry.descriptors().next().is_some()
+        self.registry.is_ready()
     }
 
     pub(super) fn cores_started(&self) -> bool {
@@ -36,13 +35,8 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn startup_status(&self) -> String {
         match &self.startup_state {
-            StartupState::Waiting => tr!("点击“准备”加载模拟器核心并扫描资料库。").into(),
-            StartupState::Loading => match self.prepare_progress {
-                Some(PrepareProgress::Cores { loaded, total }) => {
-                    tr!("正在加载模拟器核心（{loaded}/{total}）…", loaded = loaded, total = total)
-                }
-                _ => tr!("正在加载模拟器核心…").into(),
-            },
+            StartupState::Waiting => tr!("点击“准备”识别游戏并扫描资料库。").into(),
+            StartupState::Loading => tr!("正在读取核心安装清单…").into(),
             StartupState::Scanning(kind) => {
                 let import = *kind == ScanKind::Import;
                 match (self.prepare_progress, import) {
@@ -66,9 +60,6 @@ impl ShinkiEmuManagerController {
             StartupState::Failed(error) => {
                 tr!("核心加载或后台运行失败：{error}。请修复后重启应用。", error = error)
             }
-            StartupState::Ready if self.registry.descriptors().next().is_none() => {
-                tr!("未加载模拟器核心，请检查核心安装和加载错误后重启应用。").into()
-            }
             StartupState::Ready if !self.plugin_errors.is_empty() => tr!(
                 "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。",
                 count = self.plugin_errors.len()
@@ -78,14 +69,7 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn prepare_view(&self) -> (&'static str, &'static str, Option<f32>, bool) {
-        let progress = match (&self.startup_state, self.prepare_progress) {
-            (StartupState::Loading, Some(PrepareProgress::Cores { loaded, total }))
-                if total > 0 =>
-            {
-                Some(loaded as f32 / total as f32)
-            }
-            _ => None,
-        };
+        let progress = None;
         match self.startup_state {
             StartupState::Waiting => ("unprepared", tr!("准备"), None, false),
             StartupState::Loading => ("loading-cores", tr!("准备"), progress, false),
@@ -117,7 +101,7 @@ impl ShinkiEmuManagerController {
             return Err("SHINKI_EMU_PREPARE_NOT_CANCELLABLE".into());
         }
         if let Some(cancel) = &self.scan_cancel {
-            cancel.store(true, std::sync::atomic::Ordering::Release);
+            cancel.cancel();
         }
         self.model()
     }
@@ -134,7 +118,7 @@ impl ShinkiEmuManagerController {
         Ok(roots.into_iter().collect())
     }
 
-    fn refresh_cores(&mut self) -> Result<(), String> {
+    pub(super) fn refresh_cores(&mut self) -> Result<(), String> {
         if self.cores_started() {
             return Err("SHINKI_EMU_OWNER_ALREADY_STARTED".into());
         }
@@ -171,7 +155,7 @@ impl ShinkiEmuManagerController {
             .into_iter()
             .map(|game| PathBuf::from(game.location))
             .collect();
-        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel = shinki_emu_manager_core::NativeCancellation::new(0);
         self.registry.scan(ScanRequest {
             kind,
             paths,
@@ -198,6 +182,12 @@ impl ShinkiEmuManagerController {
                         self.startup_state = StartupState::Ready;
                         self.prepare_progress = None;
                         loaded = true;
+                    }
+                }
+                owner::BackgroundEvent::Activated { plugin_id, result } => {
+                    if let Err(error) = self.activated(plugin_id, result) {
+                        self.diagnostic = error;
+                        self.diagnostic_severity = "error";
                     }
                 }
                 owner::BackgroundEvent::Ready(Err(error)) => self.background_failed(error),
@@ -250,6 +240,9 @@ impl ShinkiEmuManagerController {
                 }
             }
         }
+        if loaded && let Some(action) = &self.native_action {
+            self.registry.activate(action.plugin_id())?;
+        }
         if loaded
             && let Some(pending) = self.prepare_scan_pending.take().filter(|_| self.cores_ready()) {
                 let scan = match pending {
@@ -269,6 +262,9 @@ impl ShinkiEmuManagerController {
     fn background_failed(&mut self, error: String) {
         self.diagnostic.clone_from(&error);
         self.diagnostic_severity = "error";
+        if let Some(action) = self.native_action.take() {
+            self.native_failures.insert(action.plugin_id().into(), error.clone());
+        }
         self.prepare_scan_pending = None;
         self.scan_cancel = None;
         self.prepare_progress = None;
@@ -353,19 +349,17 @@ impl ShinkiEmuManagerController {
             if profile.is_some() && ids.len() > 1 {
                 return Err("SHINKI_EMU_LIBRARY_INVALID_LOCATION: patch output has ambiguous library aliases".into());
             }
-            if result.candidates.is_empty() {
+            if result.detections.is_empty() {
                 if profile.is_some() {
                     return Err("SHINKI_EMU_EMULATOR_SELECTION_INVALID: patch output has no supported emulator".into());
                 }
                 for id in ids {
-                    self.clear_probe_state(&id)?;
+                    self.set_recognition(&id, Vec::new())?;
                 }
                 continue;
             }
-            let selected = profile
-                .as_ref()
-                .map(|profile| self.select_import_profile(&result.candidates, profile))
-                .transpose()?;
+            let choices = recognition::choices(&result.detections);
+            let selected = profile.as_ref().map(|profile| self.select_import_profile(&choices, profile)).transpose()?;
             if ids.is_empty() {
                 let location = result.path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?;
                 let game = GameRecord {
@@ -383,11 +377,12 @@ impl ShinkiEmuManagerController {
                 ids.push(game.game_id);
                 added += 1;
             }
-            let mut choices = result.candidates;
+            let mut choices = choices;
             for id in ids {
                 if automatic.is_some_and(|expected| expected.source_game_id == id && !expected.in_place) {
                     return Err("SHINKI_EMU_PATCH_INTEGRITY: output import would modify source game".into());
                 }
+                self.set_recognition(&id, result.detections.clone())?;
                 if let Some((profile, selected)) = profile.as_ref().zip(selected.as_ref()) {
                     self.apply_import_profile(&id, std::mem::take(&mut choices), *selected, profile)?;
                     if let Some(expected) = automatic && !expected.in_place {

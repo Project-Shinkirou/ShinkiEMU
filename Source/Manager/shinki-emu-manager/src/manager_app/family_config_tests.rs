@@ -10,27 +10,8 @@ fn configuration_provider(
     crate::test_native::install(0, fixture)
 }
 
-fn configuration_candidate() -> FamilyProbeCandidate {
-    FamilyProbeCandidate {
-        report: shinki_emu_manager_core::FamilyProbeReport {
-            plugin_id: PLUGIN.into(),
-            family_id: "config-test-family".into(),
-            game_id: "fixture-game".into(),
-            format: "config.test".into(),
-            confidence_permyriad: 10_000,
-        },
-        descriptor: FamilyPluginDescriptor {
-            family_id: "config-test-family".into(),
-            plugin_id: PLUGIN.into(),
-            abi_fingerprint: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
-            version: "1.0.0".into(),
-            capabilities: vec![shinki_emu_manager_core::FamilyCapability::CpuFrame],
-            supported_formats: vec!["config.test".into()],
-            display_name: PLUGIN.into(),
-            family_name: "config-test-family".into(),
-            render: None,
-        },
-    }
+fn configuration_candidate() -> Candidate {
+    Candidate { plugin_id: PLUGIN.into(), family_id: "config-test-family".into() }
 }
 
 fn configuration_controller(root: &std::path::Path) -> ShinkiEmuManagerController {
@@ -246,14 +227,17 @@ fn configuration_changes_are_rejected_while_a_game_runs() {
 
 #[test]
 fn custom_render_outside_the_emulator_range_is_rejected_without_storing() {
-    use shinki_emu_manager_core::{RenderPreference, RenderSupport};
+    use shinki_emu_manager_core::RenderPreference;
     let root = tempfile::tempdir().unwrap();
-    let mut controller = configuration_controller(root.path());
-    controller.candidates.get_mut("game").unwrap().descriptor.render = Some(RenderSupport {
-        min: (320, 180),
-        max: (3840, 2160),
-        default: None,
-        preserve_aspect: false,
+    let mut controller = configured_controller(root.path(), |fixture| {
+        fixture.capabilities |= shinki_emu_abi::CAP_RENDER_EXTENT;
+        fixture.render = shinki_emu_abi::RenderExtentSupport {
+            min: shinki_emu_abi::Extent { width: 320, height: 180 },
+            max: shinki_emu_abi::Extent { width: 3840, height: 2160 },
+            default: shinki_emu_abi::Extent::default(),
+            flags: 0,
+            reserved: 0,
+        };
     });
     controller
         .set_render_preference("game", Some(RenderPreference::Preset { height: 1440 }))

@@ -33,7 +33,11 @@ The registered families from `build/cores.toml` use these checks:
 | `mages` | MPK v2 complete bounded index and resource ranges | MPK alone identifies the family, not Impacto's selected runtime profile |
 | `renpy` | RPA2/3 header/index, RPC2 slots, or bounded legacy zlib-RPYC with a complete pickle opcode stream declaring a serialized renpy.ast object | Pickle is inspected as bytes, never imported/constructed/executed. Generic zlib/pickle, RPA1 and source-only layouts remain unidentified |
 
-The rules were derived from the pinned adapters and their upstream parsers, not game-name examples. Musica's PAZ transforms/index parser and SC parser live in the pure `shinki-emu-musica-format` crate and are shared with playback; that crate has no VM, ABI, GPU or audio dependency. Manager recognition rules have one owner here. Adapter probes remain selected-core resource/configuration checks, not a native scan fallback. This API change does not itself replace the existing UI/owner scan integration.
+The rules were derived from pinned adapters and upstream parsers, not game-name examples. Musica's PAZ transforms/index parser and SC parser live in the pure `shinki-emu-musica-format` crate shared with playback; it has no VM, ABI, GPU or audio dependency. Manager scans and library/core lists now use the detector, generated `static_core_catalog`, and validated `core.json` identities. They never register or query native providers. The static function table is an entry index only, including optional Windows `static-cmvs`.
+
+The deferred owner activates one selected plugin for explicit advanced configuration, diagnosis, or launch. Activation completion is asynchronous; diagnosis does not open a game. Launch obtains a fresh selected probe and retains the existing open-time recheck. Resident packages and pending updates still require restart; there is no automatic alternate-core fallback. Unknown plugins/bare libraries remain visible without discovery queries.
+
+Existing schema-7 game IDs, locations, family IDs and nullable `GameSettings.emulator_id` remain intact. Per-game family/format recognition and deferred receipt strings use the existing `app_state` store; no fake plugin ID or duplicate library record is introduced. Cache format 2 stores detector results, keyed by `detection::CACHE_VERSION` and bounded before/after resource stamps, independently of installed cores. Old caches miss; cancellation, I/O and read-limit errors never become no-match results or negative entries.
 
 ## Lifecycle
 
@@ -69,9 +73,10 @@ version 3, its C layout and fingerprint are unchanged:
 
 A Luau recipe can return `required_capabilities = 192` beside `plugin_id` and
 `configuration` in its output profile. The receipt retains this requirement.
-Manager checks the selected, actually loaded core's `describe` result before
-adding an imported game or binding its profile, and again before opening a session.
-Automatic import also rejects a receipt whose requirements changed after conversion.
+Manager preserves a recognized game and its receipt strings during native-free import.
+Typed configuration and required capabilities are checked against only the selected
+native descriptor on explicit advanced configuration or launch, before opening.
+Automatic import still rejects a receipt changed after conversion.
 Missing capabilities fail closed with a core-update diagnostic; unknown requirements
 reject the profile rather than being ignored. Version strings and filenames
 are not feature evidence. Legacy profiles omit the

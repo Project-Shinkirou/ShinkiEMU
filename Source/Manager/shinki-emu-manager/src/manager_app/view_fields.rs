@@ -3,22 +3,15 @@ use shinki_emu_manager_ui_slint::ChoiceViewModel;
 
 impl ShinkiEmuManagerController {
     pub(super) fn engine_label(&self, family_id: &str) -> String {
-        self.registry
-            .descriptors()
-            .chain(
-                self.probe_choices
-                    .values()
-                    .flatten()
-                    .map(|choice| &choice.descriptor),
-            )
-            .find(|descriptor| descriptor.family_id == family_id)
-            .map_or_else(|| family_id.to_owned(), |descriptor| descriptor.family_name.clone())
+        family_id.to_owned()
     }
 
-    pub(super) fn emulator_label(&self, descriptor: &FamilyPluginDescriptor) -> String {
-        let (version, identity) = self.core_release(descriptor);
+    pub(super) fn emulator_label(&self, plugin_id: &str) -> String {
+        let name = shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
+            .map_or(plugin_id, |entry| entry.display_name);
+        let (version, identity) = self.core_release(plugin_id);
         let version = identity.map_or_else(|| version.to_owned(), shinki_emu_metadata::CoreIdentity::display_version);
-        format!("{} · {}", descriptor.display_name, version)
+        if version.is_empty() { name.to_owned() } else { format!("{name} · {version}") }
     }
 
     pub(super) fn appearance_view(&self) -> AppearanceViewModel {
@@ -39,8 +32,8 @@ impl ShinkiEmuManagerController {
             Some(choices) if choices.len() > 1 => choices
                 .iter()
                 .map(|choice| ChoiceViewModel {
-                    id: choice.report.plugin_id.clone(),
-                    label: self.emulator_label(&choice.descriptor),
+                    id: choice.plugin_id.clone(),
+                    label: self.emulator_label(&choice.plugin_id),
                 })
                 .collect(),
             _ => Vec::new(),

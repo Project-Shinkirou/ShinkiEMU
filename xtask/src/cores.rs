@@ -9,6 +9,7 @@ use std::{
 #[derive(Clone, Debug, Deserialize)]
 pub struct Core {
     pub id: String,
+    pub family_id: String,
     pub display_name: String,
     pub family_name: String,
     pub license: String,
@@ -219,6 +220,14 @@ impl Inventory {
                 bail!("duplicate core id or release slug: {}", c.id);
             }
             crate::package::portable(&c.id)?;
+            if c.family_id.is_empty()
+                || c.family_id.len() > 64
+                || !c.family_id.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || !c.family_id.as_bytes()[0].is_ascii_lowercase()
+                || c.display_name.trim().is_empty()
+            {
+                bail!("invalid family_id or display_name for {}", c.id);
+            }
             crate::package::portable(&c.manifest.to_string_lossy().replace('\\', "/"))?;
             if c.manifest.starts_with("ThirdParty") != c.source.is_some() {
                 bail!(
@@ -431,6 +440,28 @@ impl Inventory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn family_ids_are_required_and_canonical_but_may_have_multiple_implementations() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inventory = Inventory::load(root).unwrap();
+        for invalid in ["", "Siglus", "../cmvs", " softpal", "1family", "引擎"] {
+            let mut changed = inventory.clone();
+            changed.cores[0].family_id = invalid.into();
+            assert!(changed.validate().is_err(), "{invalid}");
+        }
+        let mut changed = inventory.clone();
+        changed.cores[0].display_name = " \n".into();
+        assert!(changed.validate().is_err());
+        let mut changed = inventory;
+        changed.cores[1].family_id = changed.cores[0].family_id.clone();
+        changed.validate().unwrap();
+        let source = std::fs::read_to_string(root.join("build/cores.toml")).unwrap();
+        let mut parsed: toml::Value = toml::from_str(&source).unwrap();
+        parsed["cores"][0].as_table_mut().unwrap().remove("family_id");
+        let core: Result<Core, _> = parsed["cores"][0].clone().try_into();
+        assert!(core.is_err());
+    }
 
     #[test]
     fn static_manager_pins_features_and_paths_cannot_drift() {

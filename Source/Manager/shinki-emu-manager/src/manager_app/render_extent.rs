@@ -194,7 +194,7 @@ impl ShinkiEmuManagerController {
         self.ensure_no_session()?;
         if let Some(pref) = &pref {
             match self.candidates.get(game_id) {
-                Some(candidate) => validate_for(candidate.descriptor.render.as_ref(), pref)?,
+                Some(candidate) => validate_for(self.registry.descriptor(&candidate.plugin_id).ok_or("SHINKI_EMU_CORE_CONFIGURATION_REQUIRED")?.render.as_ref(), pref)?,
                 None => pref.validate()?,
             }
         }
@@ -236,7 +236,8 @@ impl ShinkiEmuManagerController {
         let support = self
             .candidates
             .get(game_id)
-            .and_then(|candidate| candidate.descriptor.render.as_ref());
+            .and_then(|candidate| self.registry.descriptor(&candidate.plugin_id))
+            .and_then(|descriptor| descriptor.render.as_ref());
         Ok(render_view(
             support,
             settings.render.as_ref(),

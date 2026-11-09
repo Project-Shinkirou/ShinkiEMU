@@ -14,28 +14,24 @@ use std::thread::JoinHandle;
 const COMMAND_CAPACITY: usize = 8;
 
 #[cfg(test)]
-type RegistryJob = Box<dyn FnOnce(&mut FamilyProviderRegistry) -> Result<Metadata, String> + Send>;
+type RegistryJob = Box<dyn FnOnce(&mut FamilyProviderRegistry) -> (String, Result<CoreMetadata, String>) + Send>;
 #[derive(Clone)]
 pub(super) struct CoreMetadata {
     pub(super) descriptor: FamilyPluginDescriptor,
     pub(super) configuration: Vec<ConfigField>,
     pub(super) menu: Vec<SessionMenuEntry>,
-    pub(super) stem: String,
-    pub(super) bundled: bool,
-    pub(super) release_version: String,
-    pub(super) release_identity: Option<shinki_emu_metadata::CoreIdentity>,
 }
 
 pub(super) type Metadata = BTreeMap<String, CoreMetadata>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum PrepareProgress {
-    Cores { loaded: usize, total: usize },
     Scan { directories: usize, games: usize },
 }
 
 pub(super) enum BackgroundEvent {
-    Ready(Result<(Metadata, BTreeMap<String, String>), String>),
+    Ready(Result<(BTreeMap<String, recognition::InstalledCore>, BTreeMap<String, String>), String>),
+    Activated { plugin_id: String, result: Result<CoreMetadata, String> },
     Progress(PrepareProgress),
     Scanned(
         super::probe_worker::ScanKind,
@@ -48,6 +44,7 @@ pub(super) enum Command {
     #[cfg(test)]
     Registry(RegistryJob),
     Scan(super::probe_worker::ScanRequest),
+    Activate(String),
     Open(Box<OpenSession>),
     Events {
         epoch: u64,
@@ -67,7 +64,7 @@ pub(super) enum Command {
 pub(super) struct OpenSession {
     pub(super) epoch: u64,
     pub(super) game: GameRecord,
-    pub(super) candidate: FamilyProbeCandidate,
+    pub(super) candidate: Candidate,
     pub(super) configuration: Vec<ConfigEntry>,
     pub(super) window: WindowState,
     pub(super) render_extent: Option<(u32, u32)>,
@@ -133,17 +130,20 @@ pub(super) struct FamilyOwner {
     exit_reported: bool,
     metadata: Metadata,
     modal: Mutex<Option<ModalBridge>>,
+    installed: BTreeMap<String, recognition::InstalledCore>,
     window_service: Mutex<Option<shinki_emu_manager::window_service::WindowBridge>>,
     text: Mutex<Option<TextReplacementBridge>>,
     cancellation: Mutex<Option<shinki_emu_manager_core::NativeCancellation>>,
 }
 
 impl FamilyOwner {
-    /// Construction is DB/settings-only; explicit core refresh starts the fixed native thread.
-    pub(super) fn new(data_dir: PathBuf, mailbox: FrameMailbox) -> Self {
+    /// Read package manifests; native code remains on the deferred owner thread.
+    pub(super) fn new(data_dir: PathBuf, mailbox: FrameMailbox) -> Result<Self, String> {
         let (commands, receiver) = bounded(COMMAND_CAPACITY);
         let (results, background) = unbounded();
-        Self {
+        fs::create_dir_all(data_dir.join("cores")).map_err(|error| error.to_string())?;
+        let installed = recognition::installed(&recognition::directories(&data_dir)?)?;
+        Ok(Self {
             commands,
             updates: Arc::new(Mutex::new(Update::default())),
             worker: None,
@@ -154,11 +154,12 @@ impl FamilyOwner {
             ready: false,
             exit_reported: false,
             metadata: BTreeMap::new(),
+            installed,
             modal: Mutex::new(None),
             window_service: Mutex::new(None),
             text: Mutex::new(None),
             cancellation: Mutex::new(None),
-        }
+        })
     }
 
     pub(super) fn start(&mut self) -> Result<(), String> {
@@ -214,9 +215,12 @@ impl FamilyOwner {
         if let Ok(event) = self.background.try_recv() {
             if let BackgroundEvent::Ready(result) = &event {
                 self.ready = result.is_ok();
-                if let Ok((metadata, _)) = result {
-                    self.metadata.clone_from(metadata);
+                if let Ok((installed, _)) = result {
+                    self.installed.clone_from(installed);
                 }
+            }
+            if let BackgroundEvent::Activated { plugin_id, result: Ok(metadata) } = &event {
+                self.metadata.insert(plugin_id.clone(), metadata.clone());
             }
             if matches!(&event, BackgroundEvent::Exited(_)) {
                 self.ready = false;
@@ -263,6 +267,14 @@ impl FamilyOwner {
     pub(super) fn core_metadata(&self) -> impl Iterator<Item = &CoreMetadata> {
         self.metadata.values()
     }
+    pub(super) fn installed(&self) -> &BTreeMap<String, recognition::InstalledCore> {
+        &self.installed
+    }
+
+    pub(super) fn activate(&self, plugin_id: &str) -> Result<(), String> {
+        self.ensure_idle()?;
+        self.send(Command::Activate(plugin_id.into()))
+    }
 
     pub(super) fn configuration(&self, id: &str) -> Result<Vec<ConfigField>, String> {
         self.metadata
@@ -277,10 +289,11 @@ impl FamilyOwner {
         factory: impl FnOnce() -> shinki_emu_manager_core::LoadedFamilyPlugin + Send + 'static,
     ) -> Result<(), String> {
         self.send(Command::Registry(Box::new(move |registry| {
-            registry
-                .register_provider(factory())
-                .map_err(|error| error.to_string())?;
-            collect_metadata(registry, None)
+            let provider = factory();
+            let plugin_id = provider.manager_descriptor().plugin_id.clone();
+            let result = registry.register_provider(provider).map_err(|error| error.to_string())
+                .and_then(|()| collect_metadata(registry, &plugin_id));
+            (plugin_id, result)
         })))
     }
 
@@ -473,44 +486,14 @@ impl Drop for FamilyOwner {
 
 pub(super) fn collect_metadata(
     registry: &FamilyProviderRegistry,
-    bundled_dir: Option<&Path>,
-) -> Result<Metadata, String> {
-    registry
-        .descriptors()
-        .map(|descriptor| {
-            let schema = registry
-                .configuration(&descriptor.plugin_id)
-                .map_err(|error| error.to_string())?;
-            let menu = registry.session_menu(&descriptor.plugin_id).to_vec();
-            let location = registry.location(&descriptor.plugin_id);
-            let stem = location
-                .map(shinki_emu_manager_core::library_stem)
-                .unwrap_or_default();
-            let bundled = match (location, bundled_dir) {
-                (Some(path), Some(dir)) => path.starts_with(dir),
-                _ => false,
-            };
-            let manifest = location.and_then(Path::parent).and_then(crate::core_package::read_manifest)
-                .filter(|manifest| manifest.plugin_id == descriptor.plugin_id);
-            let release_identity = manifest.as_ref().and_then(|manifest| manifest.identity.clone())
-                .or_else(|| location.is_none().then(|| super::cores::embedded_identity(&descriptor.plugin_id).cloned()).flatten());
-            let release_version = manifest.map(|manifest| manifest.version)
-                .or_else(|| release_identity.as_ref().map(shinki_emu_metadata::CoreIdentity::version))
-                .unwrap_or_else(|| descriptor.version.clone());
-            Ok((
-                descriptor.plugin_id.clone(),
-                CoreMetadata {
-                    descriptor: descriptor.clone(),
-                    configuration: schema,
-                    menu,
-                    stem,
-                    bundled,
-                    release_version,
-                    release_identity,
-                },
-            ))
-        })
-        .collect()
+    plugin_id: &str,
+) -> Result<CoreMetadata, String> {
+    let descriptor = registry.descriptor(plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
+    Ok(CoreMetadata {
+        descriptor: descriptor.clone(),
+        configuration: registry.configuration(plugin_id).map_err(|error| error.to_string())?,
+        menu: registry.session_menu(plugin_id).to_vec(),
+    })
 }
 
 pub(super) type BackgroundSender = Sender<BackgroundEvent>;

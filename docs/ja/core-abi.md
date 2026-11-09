@@ -33,7 +33,11 @@ Select.ini の最初の有効な TAB 区切り append も解決し、範囲外�
 | `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
 | `renpy` | RPA2/3、RPC2、または旧 zlib-RPYC の完全な pickle opcode 列が示す renpy.ast オブジェクト | バイトだけを調べ、pickle の import・構築・実行はしない。汎用 zlib/pickle、RPA1、ソースのみは未識別 |
 
-ルールは pin された adapter と上流の解析実装から確認しています。作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` に移し、識別と再生で共有します。VM、ABI、GPU、音声への依存はありません。Manager 識別はこのモジュールで管理し、adapter probe は選択したコアのリソース・設定検証に限ります。native probe へのフォールバックはありません。この変更自体には UI/owner の接続は含みません。
+ルールは pin された adapter と上流の解析実装から確認し、作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` で識別と再生が共有し、VM、ABI、GPU、音声に依存しません。Manager のスキャン・ライブラリ・コア一覧は Detector、生成された `static_core_catalog`、検証済み `core.json` を使い、ネイティブ provider を登録・query しません。静的関数表は選択した入口の索引だけで、Windows の任意機能 `static-cmvs` も同じ扱いです。
+
+高度な設定、診断、起動を明示的に要求した場合だけ、owner が選択した plugin を非同期に有効化します。診断ではゲームを開きません。起動は選択コアだけを新しく probe し、open 前の再検証も維持します。常駐コアの更新には従来どおり再起動が必要で、別実装への自動フォールバックはありません。未知の plugin や単独ライブラリは自動 query せず、診断対象として表示します。
+
+schema 7 の game ID、保存先、family、任意の `GameSettings.emulator_id` は保持します。family/format と未検証の receipt 設定文字列は既存の `app_state` に保存し、偽の plugin ID や重複ゲームを作りません。キャッシュ形式 2 は Detector の結果を保存し、`detection::CACHE_VERSION` と有界な前後のリソース指紋で失効します。古いキャッシュは miss になり、キャンセル・I/O・読み取り上限エラーを NoMatch や負のキャッシュに変換しません。
 
 ## ライフサイクル
 
@@ -61,7 +65,7 @@ Select.ini の最初の有効な TAB 区切り append も解決し、範囲外�
 - `CAP_NATIVE_EMBEDDED_TEXT`（256）：ネイティブ SC の表示オペランドが Unicode scalar リテラルを扱い、実行時翻訳表なしで埋め込み訳文を表示します。Musica レシピは 256、RFVP の GBK/統一フォント用レシピは 192 を要求し、同じ descriptor/receipt 検証を使います。
 - `CAP_NATIVE_NAME_RESOURCES`（512）：ネイティブ SC の姓名定数と元の表示・履歴規則を使い、リソースがない場合だけ EXE を読み取り専用で参照します。Yorino は 256|512=768 を要求し、EXE は変更しません。
 
-Luau レシピは出力 profile の `plugin_id`、`configuration` と並べて `required_capabilities = 192` を指定できます。receipt にも要件を保持します。Manager はインポートするゲームの追加や設定の保存前とセッションの開始前に、実際にロードした選択コアの `describe` を確認します。自動インポートでは、変換完了後に要件が変更された receipt も拒否します。機能が不足すれば操作を拒否してコアの更新を案内し、未知の要件があれば profile 自体を拒否します。バージョン文字列やファイル名から機能を推測しません。旧 profile で省略されたフィールドは 0 とし、新 receipt でも 0 は書き出さないため、従来のレシピは影響を受けません。
+Luau レシピは profile の `plugin_id`、`configuration` と並べて `required_capabilities = 192` を指定でき、receipt が要件を保持します。インポートは識別済みゲームと設定文字列だけを保存します。高度な設定の明示的な準備や起動時に、選択した実際の descriptor で型・機能を検証し、成功後にゲームを開きます。自動インポートは変換後に変更された receipt を拒否します。機能不足はコア更新として案内し、未知の要件は profile を無効とします。バージョン名やファイル名から機能を推測しません。旧 profile の省略値は 0 で、新しい receipt も 0 を省略します。
 
 ## テキスト置換のレベル
 
