@@ -494,8 +494,11 @@ export global GameSettings {
     in-out property <[GamepadBinding]> bindings;
     in-out property <string> capture-button;
     in-out property <string> capture-hint;
+    // unprepared | loading | ready | failed | missing-core | selection-required
+    in-out property <string> configuration-state: "unprepared";
 
     callback close();
+    callback prepare-configuration();
     callback set-emulator(string);
     callback set-render(string, int, int);
     callback field-changed(string, string);
@@ -565,8 +568,11 @@ export global Cores {
     in-out property <CoreBatch> batch;
     in-out property <[ConfigField]> default-fields;
     in-out property <string> default-plugin;
+    // unprepared | loading | ready | failed | missing-core | selection-required
+    in-out property <string> default-configuration-state: "unprepared";
     in-out property <RenderState> default-render;
     callback install-local();
+    callback diagnose(string);
     callback install-online(string);
     callback update-all();
     callback retry-failed();

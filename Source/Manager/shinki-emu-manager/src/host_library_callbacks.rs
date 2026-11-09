@@ -130,6 +130,12 @@ fn install_game_settings<C: ManagerController>(
     let w = wiring.clone();
     settings.on_close(move || w.run(|c| c.cancel_key_capture()));
     let w = wiring.clone();
+    settings.on_prepare_configuration(move || {
+        if let Some(game) = game_id(&w.window) {
+            w.run(|c| c.prepare_game_configuration(game.as_str()));
+        }
+    });
+    let w = wiring.clone();
     settings.on_set_emulator(move |plugin_id| {
         if let Some(game) = game_id(&w.window) {
             w.run(|c| c.set_game_emulator(game.as_str(), plugin_id.as_str()));

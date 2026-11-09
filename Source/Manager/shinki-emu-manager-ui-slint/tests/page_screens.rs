@@ -583,10 +583,73 @@ fn states() -> Vec<(&'static str, Setup)> {
                     ),
                     field("skip_unread", "允许跳过未读文本", "bool", "false", &[]),
                 ],
+                configuration_state: "ready".into(),
                 ..Default::default()
             };
             a.apply(&m);
             page(a, "game-settings");
+        }),
+        ("game-settings/unprepared", |a, _| {
+            let mut m = base();
+            m.game_settings.game_id = "g03".into();
+            m.game_settings.title = "Clockwork Garden".into();
+            m.game_settings.emulator_id = "siglus".into();
+            m.game_settings.emulator_choices = vec![ChoiceViewModel {
+                id: "siglus".into(),
+                label: "siglus-rs 0.2.0".into(),
+            }];
+            m.game_settings.configuration_state = "unprepared".into();
+            a.apply(&m);
+            page(a, "game-settings");
+        }),
+        ("game-settings/loading", |a, _| {
+            let mut m = base();
+            m.game_settings.game_id = "g03".into();
+            m.game_settings.title = "Clockwork Garden".into();
+            m.game_settings.emulator_id = "siglus".into();
+            m.game_settings.configuration_state = "loading".into();
+            a.apply(&m);
+            page(a, "game-settings");
+        }),
+        ("game-settings/failed", |a, _| {
+            let mut m = base();
+            m.game_settings.game_id = "g14".into();
+            m.game_settings.title = LONG_EN.into();
+            m.game_settings.emulator_id = "krkrz".into();
+            m.game_settings.emulator_choices = vec![ChoiceViewModel {
+                id: "krkrz".into(),
+                label: "KiriKiri Z 1.2.0".into(),
+            }];
+            m.game_settings.configuration_state = "failed".into();
+            a.apply(&m);
+            page(a, "game-settings");
+        }),
+        ("game-settings/missing-core", |a, _| {
+            let mut m = base();
+            m.game_settings.game_id = "g03".into();
+            m.game_settings.title = LONG_JA.into();
+            m.game_settings.configuration_state = "missing-core".into();
+            a.apply(&m);
+            page(a, "game-settings");
+        }),
+        ("library/missing-core", |a, d| {
+            let mut m = library_model(d);
+            m.library.selected_id = "g03".into();
+            m.selection.game = SelectedGameViewModel {
+                id: "g03".into(),
+                title: "Clockwork Garden".into(),
+                engine: "SiglusEngine".into(),
+                emulator: String::new(),
+                emulator_id: String::new(),
+                launchable: false,
+                problem: "缺少可用的模拟器核心".into(),
+                developer: LONG_DEV_EN.into(),
+                description: "合成的缺核心详情，用于检查启动按钮和安装入口。".into(),
+                ..Default::default()
+            };
+            a.apply(&m);
+            page(a, "library");
+            a.window().global::<Library>().set_detail_open(true);
         }),
         // 补丁：列表、选补丁、执行中、失败
         ("patch/select-game", |a, d| {
