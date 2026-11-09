@@ -496,6 +496,7 @@ export global GameSettings {
     in-out property <string> capture-hint;
     // unprepared | loading | ready | failed | missing-core | selection-required
     in-out property <string> configuration-state: "unprepared";
+    in-out property <string> configuration-error;
 
     callback close();
     callback prepare-configuration();
@@ -570,6 +571,7 @@ export global Cores {
     in-out property <string> default-plugin;
     // unprepared | loading | ready | failed | missing-core | selection-required
     in-out property <string> default-configuration-state: "unprepared";
+    in-out property <string> default-configuration-error;
     in-out property <RenderState> default-render;
     callback install-local();
     callback diagnose(string);

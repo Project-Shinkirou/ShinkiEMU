@@ -1,4 +1,4 @@
-import { MaterialPalette, MaterialText, MaterialTypography, TextButton, FilledButton, OutlineButton, TonalButton, HorizontalDivider, Icon, SmallAppBar, LinearProgressIndicator } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, TextButton, FilledButton, OutlineButton, TonalButton, HorizontalDivider, Icon, SmallAppBar, LinearProgressIndicator, CircularProgressIndicator } from "@material";
 import { App, Cores, CoreInfo, Network } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { ConfigFieldList } from "../components/config-field.slint";
@@ -318,7 +318,8 @@ component DefaultsEditor {
                         overflow: clip;
                     }
                     MaterialText {
-                        text: Cores.default-configuration-state == "failed" ? @tr("失败原因见上方通知。可以重试，只会初始化这个核心。")
+                        text: Cores.default-configuration-state == "failed"
+                            ? (Cores.default-configuration-error != "" ? Cores.default-configuration-error : @tr("这次只初始化所选核心。修复后可以重试。"))
                             : Cores.default-configuration-state == "missing-core" ? @tr("这个核心当前不可用，不能读取它的默认配置。")
                             : @tr("加载后才能查看和修改这个模拟器的默认参数。");
                         style: MaterialTypography.body-small;
@@ -340,10 +341,10 @@ component DefaultsEditor {
                 if Cores.default-configuration-state == "loading" : HorizontalLayout {
                     spacing: 12px;
                     alignment: start;
-                    Icon {
+                    CircularProgressIndicator {
                         width: 20px;
-                        source: Icons.schedule;
-                        colorize: MaterialPalette.primary;
+                        height: 20px;
+                        indeterminate: true;
                     }
                     MaterialText {
                         text: @tr("正在加载所选核心的默认配置…");
@@ -415,7 +416,10 @@ component CoreGroup inherits SettingGroup {
             CoreRow {
                 core: core;
                 editing: true;
-                edit-defaults => { Cores.select-defaults(""); }
+                edit-defaults => {
+                    Cores.default-plugin = "";
+                    Cores.default-configuration-state = "unprepared";
+                }
             }
             if core.state == "loaded" : DefaultsEditor { }
         }
