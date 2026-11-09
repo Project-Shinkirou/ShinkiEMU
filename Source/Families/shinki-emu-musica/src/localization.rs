@@ -1,22 +1,8 @@
-use crate::{CoreError, ScCommand};
+use crate::CoreError;
 use roukaku_core::Hash256;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-/// Original DLL's 131-rolling identity. Embedded NUL bytes in table records are skipped.
-pub fn musica_display_hash(bytes: &[u8]) -> u32 {
-    bytes
-        .iter()
-        .filter(|byte| **byte != 0)
-        .fold(0u32, |hash, byte| {
-            hash.wrapping_mul(131).wrapping_add(u32::from(*byte))
-        })
-        & 0x7fff_ffff
-}
-/// The display endpoint receives a C string, so runtime input ends at its first NUL.
-pub fn musica_display_cstr_hash(bytes: &[u8]) -> u32 {
-    musica_display_hash(bytes.split(|byte| *byte == 0).next().unwrap_or_default())
-}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
@@ -100,42 +86,11 @@ fn invalid() -> CoreError {
     )
 }
 
-impl ScCommand {
-    /// Identity comes from the original operand byte tokens BEFORE any encoding decode.
-    pub(crate) fn message_display_hashes(&self) -> Option<(u32, Option<u32>)> {
-        if self.opcode != "message" {
-            return None;
-        }
-        let mut tokens = self.raw_operands.split(|byte| matches!(byte, b' ' | b'\t'));
-        tokens.next()?;
-        tokens.next()?;
-        let speaker = tokens.next()?;
-        let speaker = (!speaker.is_empty()).then(|| musica_display_cstr_hash(speaker));
-        let first = tokens.next()?;
-        let mut hash = 0u32;
-        let mut ended = false;
-        for (index, token) in std::iter::once(first).chain(tokens).enumerate() {
-            if ended {
-                break;
-            }
-            if index != 0 {
-                hash = hash.wrapping_mul(131).wrapping_add(u32::from(b' '));
-            }
-            for byte in token {
-                if *byte == 0 {
-                    ended = true;
-                    break;
-                }
-                hash = hash.wrapping_mul(131).wrapping_add(u32::from(*byte));
-            }
-        }
-        Some((hash & 0x7fff_ffff, speaker))
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{musica_display_cstr_hash, musica_display_hash};
     fn record(hash: u32, text: &str, sha: &str) -> serde_json::Value {
         serde_json::json!({"source_hash":hash,"source_sha256":sha.repeat(64),"text":text})
     }

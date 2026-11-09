@@ -6,6 +6,7 @@
 //! the former Family service interfaces.
 
 mod appearance;
+pub mod detection;
 pub mod extensions;
 mod family;
 mod family_loader;

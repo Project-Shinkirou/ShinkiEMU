@@ -46,7 +46,7 @@ impl ScriptEncoding {
         selected
     }
 
-    pub(crate) fn decode(self, bytes: &[u8]) -> Option<Cow<'_, str>> {
+    pub fn decode(self, bytes: &[u8]) -> Option<Cow<'_, str>> {
         match self {
             Self::ShiftJis => SHIFT_JIS,
             Self::Gbk => GBK,
@@ -55,7 +55,7 @@ impl ScriptEncoding {
     }
 
     /// Strict inverse of `decode`; `None` when `text` has no representation.
-    pub(crate) fn encode(self, text: &str) -> Option<Cow<'_, [u8]>> {
+    pub fn encode(self, text: &str) -> Option<Cow<'_, [u8]>> {
         let (bytes, _, unmappable) = match self {
             Self::ShiftJis => SHIFT_JIS,
             Self::Gbk => GBK,
@@ -64,7 +64,7 @@ impl ScriptEncoding {
         (!unmappable).then_some(bytes)
     }
 
-    pub(crate) fn language(self) -> char {
+    pub fn language(self) -> char {
         match self {
             Self::ShiftJis => 'j',
             Self::Gbk => 'e',

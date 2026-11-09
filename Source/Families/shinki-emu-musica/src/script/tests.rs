@@ -110,24 +110,6 @@ fn absent_goto_is_native_script_local_fallthrough_not_a_filtered_command() {
 }
 
 #[test]
-fn tokenizer_matches_the_observed_engine_space_tab_contract() {
-    let tokens = tokenize_operands(b"one, two\t\"three four\" 'five'", 0).unwrap();
-    assert_eq!(tokens, vec!["one,", "two", "\"three", "four\"", "'five'"]);
-}
-
-#[test]
-fn tokenizer_preserves_empty_positional_operands() {
-    assert_eq!(
-        tokenize_operands(b"100   body", 0).unwrap(),
-        vec!["100", "", "", "body"]
-    );
-    assert_eq!(
-        tokenize_operands(b"100\t\tspeaker\tbody", 0).unwrap(),
-        vec!["100", "", "speaker", "body"]
-    );
-    assert_eq!(tokenize_operands(b"", 0).unwrap(), Vec::<String>::new());
-}
-#[test]
 fn chain_locations_reject_empty_or_escaping_segments() {
     use super::*;
     for target in [
