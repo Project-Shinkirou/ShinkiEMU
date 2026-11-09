@@ -1,455 +1,230 @@
-use super::super::probe_worker::{ScanKind, ScanReport, ScanRequest};
 use super::*;
-use crate::test_native::{self, Fixture};
-use std::sync::{Arc, atomic::AtomicBool};
-
-fn run_scan(
-    registry: &FamilyProviderRegistry,
-    cache: &mut ProbeCache,
-    kind: ScanKind,
-    paths: Vec<PathBuf>,
-    games: Vec<GameRecord>,
-) -> ScanReport {
-    super::super::probe_worker::scan(
-        registry,
-        cache,
-        ScanRequest {
-            kind,
-            paths,
-            games,
-            excluded: BTreeSet::new(),
-            cancel: Arc::new(AtomicBool::new(false)),
-        },
-        &AtomicBool::new(false),
-        &mut |_| {},
-    )
-    .unwrap()
-}
-
-fn registry() -> FamilyProviderRegistry {
-    let mut registry = FamilyProviderRegistry::new();
-    let mut fixture = Fixture::new("cache-test", "fixture", "fixture");
-    fixture.marker = Some("boot");
-    registry
-        .register_provider(test_native::install(0, fixture))
-        .unwrap();
-    registry
-}
+use super::super::{probe_worker::{ScanKind, ScanReport, ScanRequest}, recognition_tests::{hcb, write_game}};
+use shinki_emu_manager_core::NativeCancellation;
+use std::sync::atomic::AtomicBool;
 
 fn game(path: &Path) -> GameRecord {
-    GameRecord {
-        game_id: "registered".into(),
-        title: "Saved title".into(),
-        user_title: Some("Alias".into()),
-        location: path.to_str().unwrap().into(),
-        family_id: Some("fixture".into()),
-        content_fingerprint: None,
-        added_at_unix_ms: 1,
+    GameRecord { game_id: "registered".into(), title: "Saved title".into(), user_title: Some("Alias".into()),
+        location: path.to_str().unwrap().into(), family_id: Some("fvp".into()), content_fingerprint: None, added_at_unix_ms: 1 }
+}
+fn run_scan(cache: &mut ProbeCache, kind: ScanKind, paths: Vec<PathBuf>, games: Vec<GameRecord>) -> ScanReport {
+    super::super::probe_worker::scan(cache, ScanRequest { kind, paths, games, excluded: BTreeSet::new(), cancel: NativeCancellation::new(0) },
+        &AtomicBool::new(false), &mut |_| {}).unwrap()
+}
+fn refresh(cache: &mut ProbeCache, path: &Path) -> ScanReport { run_scan(cache, ScanKind::Full, Vec::new(), vec![game(path)]) }
+
+#[test]
+fn registered_hints_follow_resource_changes_but_not_native_inventory() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    let first = refresh(&mut cache, &path);
+    assert_eq!(first.cache_hits, 0);
+    assert_eq!(first.games[0].detections[0].family_id, "fvp");
+    let mut cache = ProbeCache::load(root.path());
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
+    fs::write(root.path().join("new-core.dll"), b"inventory is not a recognition input").unwrap();
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
+    fs::write(path.join("boot.hcb"), b"truncated").unwrap();
+    let changed = refresh(&mut cache, &path);
+    assert_eq!(changed.cache_hits, 0);
+    assert!(changed.games[0].detections.is_empty());
+    fs::write(path.join("boot.hcb"), hcb()).unwrap();
+    assert_eq!(refresh(&mut cache, &path).games[0].detections.len(), 1);
+    fs::remove_file(path.join("boot.hcb")).unwrap();
+    assert!(refresh(&mut cache, &path).games[0].detections.is_empty());
+}
+
+#[test]
+fn cache_upgrade_and_detector_rule_changes_are_misses() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    refresh(&mut cache, &path);
+    let file = root.path().join("probe-cache.json");
+    let original: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    for (key, value) in [("version", 1u32), ("detector_version", detection::CACHE_VERSION + 1)] {
+        let mut changed = original.clone();
+        changed[key] = value.into();
+        fs::write(&file, serde_json::to_vec(&changed).unwrap()).unwrap();
+        let mut cache = ProbeCache::load(root.path());
+        assert!(cache.get(&path).is_none());
+        assert_eq!(refresh(&mut cache, &path).games[0].detections.len(), 1);
     }
 }
 
-fn refresh(registry: &FamilyProviderRegistry, cache: &mut ProbeCache, path: &Path) -> ScanReport {
-    run_scan(
-        registry,
-        cache,
-        ScanKind::Full,
-        Vec::new(),
-        vec![game(path)],
-    )
-}
-
 #[test]
-fn manual_full_scan_reuses_registered_hints_until_boot_or_core_inventory_changes() {
+fn malformed_cache_deep_layouts_and_missing_roots_never_drop_library_records() {
     let root = tempfile::tempdir().unwrap();
-    let cores = root.path().join("cores");
-    let path = root.path().join("game");
-    fs::create_dir(&cores).unwrap();
-    fs::create_dir(&path).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let mut fixture = Fixture::new("cache-test", "fixture", "fixture");
-    fixture.marker = Some("boot");
-    fixture.calls = calls.clone();
-    let mut registry = FamilyProviderRegistry::new();
-    registry
-        .register_provider(test_native::install(0, fixture))
-        .unwrap();
-    let inventory = Inventory::read(std::slice::from_ref(&cores), &registry).unwrap();
-    let mut cache = ProbeCache::load(root.path(), Some(inventory.clone()));
-    let first = refresh(&registry, &mut cache, &path);
-    assert_eq!(first.cache_hits, 0);
-    assert_eq!(first.games[0].candidates.len(), 1);
-    assert!(first.cache_error.is_none());
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        1
-    );
-    let mut loaded = ProbeCache::load(root.path(), Some(inventory));
-    let hit = refresh(&registry, &mut loaded, &path);
-    assert_eq!(hit.cache_hits, 1);
-    assert_eq!(hit.games[0].candidates, first.games[0].candidates);
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        1
-    );
-    fs::write(path.join("boot"), b"changed boot contents").unwrap();
-    assert_eq!(refresh(&registry, &mut loaded, &path).cache_hits, 0);
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        2
-    );
-    fs::write(cores.join("new-core.dll"), b"new inventory member").unwrap();
-    let changed = Inventory::read(&[cores], &registry).unwrap();
-    let mut loaded = ProbeCache::load(root.path(), Some(changed));
-    assert_eq!(refresh(&registry, &mut loaded, &path).cache_hits, 0);
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        3
-    );
-    fs::remove_file(path.join("boot")).unwrap();
-    let removed = refresh(&registry, &mut loaded, &path);
-    assert!(removed.games[0].candidates.is_empty());
-    assert!(loaded.get(&path, &registry).is_none());
-}
-
-#[test]
-fn malformed_cache_and_unknown_deep_layouts_are_misses_and_missing_roots_are_pruned() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("game");
-    fs::create_dir(&path).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let registry = registry();
-    let inventory = Inventory::read(&[], &registry).unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
     fs::write(root.path().join("probe-cache.json"), b"{broken").unwrap();
-    let mut cache = ProbeCache::load(root.path(), Some(inventory));
-    assert_eq!(refresh(&registry, &mut cache, &path).cache_hits, 0);
-    fs::create_dir_all(path.join("unknown").join("nested")).unwrap();
-    assert_eq!(refresh(&registry, &mut cache, &path).cache_hits, 0);
-    assert!(cache.get(&path, &registry).is_none());
+    let mut cache = ProbeCache::load(root.path());
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 0);
+    fs::create_dir_all(path.join("unknown/nested")).unwrap();
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 0);
+    assert!(cache.get(&path).is_none());
     fs::remove_dir_all(path.join("unknown")).unwrap();
-    refresh(&registry, &mut cache, &path);
-    assert!(cache.get(&path, &registry).is_some());
+    refresh(&mut cache, &path);
     fs::remove_dir_all(&path).unwrap();
-    let missing = refresh(&registry, &mut cache, &path);
-    assert_eq!(missing.missing, 1);
+    let report = refresh(&mut cache, &path);
+    assert_eq!(report.missing, 1);
+    assert_eq!(report.games[0].game_ids, ["registered"]);
     assert!(cache.entries.is_empty());
 }
 
 #[test]
-fn manual_full_scan_discovers_unregistered_children_with_fresh_probes() {
+fn unregistered_discoveries_and_explicit_imports_always_read_freshly() {
     let root = tempfile::tempdir().unwrap();
-    let child = root.path().join("unregistered-game");
-    fs::create_dir(&child).unwrap();
-    fs::write(child.join("boot"), b"boot").unwrap();
-    let calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let mut fixture = Fixture::new("cache-test", "fixture", "fixture");
-    fixture.marker = Some("boot");
-    fixture.calls = calls.clone();
-    let mut registry = FamilyProviderRegistry::new();
-    registry
-        .register_provider(test_native::install(0, fixture))
-        .unwrap();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
-    // A hint from an earlier import cannot identify an unregistered discovery.
-    cache.probe(&child, &registry, false).unwrap();
-    let before = calls
-        .lock()
-        .iter()
-        .filter(|call| call.name == "probe")
-        .count();
-    let report = run_scan(
-        &registry,
-        &mut cache,
-        ScanKind::Full,
-        vec![root.path().into()],
-        Vec::new(),
-    );
-    assert_eq!(report.cache_hits, 0);
-    assert_eq!(report.games.len(), 1);
-    assert_eq!(report.games[0].path, fs::canonicalize(&child).unwrap());
-    assert!(report.games[0].game_ids.is_empty());
-    assert_eq!(report.games[0].candidates.len(), 1);
-    assert!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count()
-            > before
-    );
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    refresh(&mut cache, &path);
+    let discovered = run_scan(&mut cache, ScanKind::Full, vec![root.path().into()], Vec::new());
+    assert_eq!(discovered.cache_hits, 0);
+    assert_eq!(discovered.games.len(), 1);
+    assert!(discovered.games[0].game_ids.is_empty());
+    let imported = run_scan(&mut cache, ScanKind::Import, vec![path.clone()], vec![game(&path)]);
+    assert_eq!(imported.cache_hits, 0);
+    assert_eq!(imported.games[0].game_ids, ["registered"]);
 }
 
 #[test]
-fn explicit_import_always_probes_registered_paths_freshly() {
+fn owned_saves_do_not_invalidate_recognition_but_assets_do() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("game");
-    fs::create_dir(&path).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let mut fixture = Fixture::new("cache-test", "fixture", "fixture");
-    fixture.marker = Some("boot");
-    fixture.calls = calls.clone();
-    let mut registry = FamilyProviderRegistry::new();
-    registry
-        .register_provider(test_native::install(0, fixture))
-        .unwrap();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
-    refresh(&registry, &mut cache, &path);
-    let before = calls
-        .lock()
-        .iter()
-        .filter(|call| call.name == "probe")
-        .count();
-    let report = run_scan(
-        &registry,
-        &mut cache,
-        ScanKind::Import,
-        vec![path.clone()],
-        vec![game(&path)],
-    );
-    assert_eq!(report.cache_hits, 0);
-    assert_eq!(report.games[0].game_ids, ["registered"]);
-    assert_eq!(report.games[0].candidates.len(), 1);
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        before + 1
-    );
-}
-
-#[test]
-fn cached_selection_is_freshly_rejected_before_open_without_probing_alternatives() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("game");
-    fs::create_dir(&path).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let mut first = Fixture::new("chosen", "fixture", "fixture");
-    first.marker = Some("boot");
-    first.calls = calls.clone();
-    let other_calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let mut other = Fixture::new("alternative", "fixture", "fixture");
-    other.calls = other_calls.clone();
-    let mut registry = FamilyProviderRegistry::new();
-    registry
-        .register_provider(test_native::install(0, first))
-        .unwrap();
-    registry
-        .register_provider(test_native::install(1, other))
-        .unwrap();
-    let request = ProbeRequest {
-        game_path: path.to_str().unwrap().into(),
-    };
-    let inventory = Inventory::read(&[], &registry).unwrap();
-    let mut cache = ProbeCache::load(root.path(), Some(inventory.clone()));
-    cache.probe(&path, &registry, false).unwrap();
-    cache.save().unwrap();
-    let cache = ProbeCache::load(root.path(), Some(inventory));
-    let hint = cache
-        .get(&path, &registry)
-        .unwrap()
-        .into_iter()
-        .find(|candidate| candidate.report.plugin_id == "chosen")
-        .unwrap();
-    let chosen_before = calls
-        .lock()
-        .iter()
-        .filter(|call| call.name == "probe")
-        .count();
-    let other_before = other_calls
-        .lock()
-        .iter()
-        .filter(|call| call.name == "probe")
-        .count();
-    fs::remove_file(path.join("boot")).unwrap();
-    let epoch = shinki_emu_manager_core::model::allocate_session_epoch().unwrap();
-    let cancellation = shinki_emu_manager_core::NativeCancellation::new(epoch);
-    let result = registry.open_selected(
-        &hint,
-        NativeOpenRequest {
-            game_path: request.game_path,
-            session_epoch: epoch,
-            configuration: Vec::new(),
-            initial_window: WindowState {
-                width: 1,
-                height: 1,
-                scale_factor: 1.0,
-                focused: true,
-                visible: true,
-                suspended: false,
-            },
-            host: shinki_emu_manager_core::no_host_services(&cancellation),
-            text_async: None,
-            cancellation,
-            render_extent: None,
-        },
-    );
-    assert!(
-        result
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH")
-    );
-    assert_eq!(
-        calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        chosen_before + 1
-    );
-    assert_eq!(
-        other_calls
-            .lock()
-            .iter()
-            .filter(|call| call.name == "probe")
-            .count(),
-        other_before
-    );
-    assert!(!calls.lock().iter().any(|call| call.name == "open"));
-}
-
-#[test]
-fn rejected_duplicate_provider_cannot_be_revived_by_a_persistent_hint() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("game");
-    fs::create_dir(&path).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let mut registry = registry();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
-    refresh(&registry, &mut cache, &path);
-    assert!(cache.get(&path, &registry).is_some());
-    let duplicate = Fixture::new("cache-test", "fixture", "fixture");
-    assert!(
-        registry
-            .register_provider(test_native::install(1, duplicate))
-            .is_err()
-    );
-    assert!(registry.descriptor("cache-test").is_none());
-    assert!(cache.get(&path, &registry).is_none());
-    assert!(
-        registry
-            .probe_selected(
-                &ProbeRequest {
-                    game_path: path.to_str().unwrap().into()
-                },
-                "cache-test"
-            )
-            .is_err()
-    );
-}
-
-#[test]
-fn owned_musica_saves_do_not_invalidate_game_identification() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("game");
-    let saves = path.join(".shinki").join("musica/saves");
+    let path = root.path().join("title");
+    write_game(&path);
+    let saves = path.join(".shinki/musica/saves");
     fs::create_dir_all(&saves).unwrap();
-    fs::write(path.join("boot"), b"boot").unwrap();
-    let registry = registry();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
-    assert_eq!(refresh(&registry, &mut cache, &path).cache_hits, 0);
-    fs::write(saves.join("slot-01"), b"new save data").unwrap();
-    assert_eq!(refresh(&registry, &mut cache, &path).cache_hits, 1);
-    fs::write(path.join("boot"), b"changed game assets").unwrap();
-    assert_eq!(refresh(&registry, &mut cache, &path).cache_hits, 0);
+    let mut cache = ProbeCache::load(root.path());
+    refresh(&mut cache, &path);
+    fs::write(saves.join("slot-01"), b"new save").unwrap();
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
+    fs::write(path.join("boot.hcb"), b"changed asset").unwrap();
+    assert_eq!(refresh(&mut cache, &path).cache_hits, 0);
 }
 
 #[test]
-fn already_registered_nested_games_are_independently_refreshed() {
+fn registered_nested_games_are_independently_refreshed() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("parent-game");
-    let child = path.join("child-game");
-    fs::create_dir_all(&child).unwrap();
-    fs::write(path.join("boot"), b"parent").unwrap();
-    fs::write(child.join("boot"), b"child").unwrap();
-    let registry = registry();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
+    let parent = root.path().join("parent");
+    let child = parent.join("child");
+    write_game(&parent);
+    write_game(&child);
     let mut nested = game(&child);
     nested.game_id = "nested".into();
-    let report = run_scan(
-        &registry,
-        &mut cache,
-        ScanKind::Full,
-        Vec::new(),
-        vec![game(&path), nested],
-    );
+    let mut cache = ProbeCache::load(root.path());
+    let report = run_scan(&mut cache, ScanKind::Full, Vec::new(), vec![game(&parent), nested]);
     assert_eq!(report.games.len(), 2);
-    for (index, expected) in ["registered", "nested"].iter().enumerate() {
-        assert_eq!(report.games[index].game_ids, [*expected]);
-        assert_eq!(report.games[index].candidates.len(), 1);
-    }
+    for result in report.games { assert_eq!(result.detections.len(), 1); }
 }
 
 #[test]
-fn scan_reports_progress_and_skips_excluded_and_cancelled_paths() {
+fn scan_progress_exclusions_and_cancellation_do_not_publish_partial_results() {
     let root = tempfile::tempdir().unwrap();
-    for index in 0..70 {
-        fs::create_dir(root.path().join(format!("empty-{index:02}"))).unwrap();
-    }
+    for index in 0..70 { fs::create_dir(root.path().join(format!("empty-{index:02}"))).unwrap(); }
     let hidden = root.path().join("hidden");
-    fs::create_dir(&hidden).unwrap();
-    fs::write(hidden.join("boot"), b"boot").unwrap();
-    let registry = registry();
-    let mut cache = ProbeCache::load(root.path(), Inventory::read(&[], &registry));
+    write_game(&hidden);
+    let mut cache = ProbeCache::load(root.path());
     let mut progress = Vec::new();
-    let report = super::super::probe_worker::scan(
-        &registry,
-        &mut cache,
-        ScanRequest {
-            kind: ScanKind::Full,
-            paths: vec![root.path().into()],
-            games: Vec::new(),
-            excluded: BTreeSet::from([hidden.clone()]),
-            cancel: Arc::new(AtomicBool::new(false)),
-        },
-        &AtomicBool::new(false),
-        &mut |event| progress.push(event),
-    )
-    .unwrap();
+    let report = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
+        excluded: BTreeSet::from([hidden]), cancel: NativeCancellation::new(0) }, &AtomicBool::new(false), &mut |event| progress.push(event)).unwrap();
     assert!(report.games.is_empty());
-    assert_eq!(
-        progress,
-        [super::super::owner::PrepareProgress::Scan {
-            directories: 64,
-            games: 0
-        }]
-    );
-    let cancelled = super::super::probe_worker::scan(
-        &registry,
-        &mut cache,
-        ScanRequest {
-            kind: ScanKind::Full,
-            paths: vec![root.path().into()],
-            games: Vec::new(),
-            excluded: BTreeSet::new(),
-            cancel: Arc::new(AtomicBool::new(true)),
-        },
-        &AtomicBool::new(false),
-        &mut |_| {},
-    );
-    assert_eq!(
-        cancelled.err().as_deref(),
-        Some("SHINKI_EMU_SCAN_CANCELLED")
-    );
+    assert!(!progress.is_empty());
+    let cancel = NativeCancellation::new(0);
+    let worker_cancel = cancel.clone();
+    let result = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
+        excluded: BTreeSet::new(), cancel: worker_cancel }, &AtomicBool::new(false), &mut |_| cancel.cancel());
+    assert_eq!(result.err().as_deref(), Some("SHINKI_EMU_SCAN_CANCELLED"));
+}
+
+#[test]
+fn cancellation_read_limits_and_io_errors_are_not_negative_cache_entries() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    let cancel = NativeCancellation::new(0);
+    cancel.cancel();
+    assert!(cache.detect(&path, false, &cancel).unwrap_err().contains("CANCELLED"));
+    assert!(cache.get(&path).is_none());
+    for index in 0..1030 { fs::write(path.join(format!("resource-{index}")), b"x").unwrap(); }
+    assert!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap_err().contains("limit"));
+    assert!(cache.get(&path).is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn real_sharing_violation_is_an_error_not_no_match_or_a_cache_hit() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    refresh(&mut cache, &path);
+    let locked = fs::OpenOptions::new().read(true).share_mode(0).open(path.join("boot.hcb")).unwrap();
+    assert!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap_err().contains("cannot read"));
+    assert!(cache.get(&path).is_none());
+    drop(locked);
+    assert_eq!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap().0.len(), 1);
+}
+
+#[test]
+fn cached_recognition_is_freshly_rejected_before_open_without_probing_alternatives() {
+    use crate::test_native::{self, Fixture};
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    cache.detect(&path, false, &NativeCancellation::new(0)).unwrap();
+    cache.save().unwrap();
+    let selected_calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let other_calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let mut selected = Fixture::new("rfvp", "fvp", "fixture.native");
+    selected.marker = Some("native-marker");
+    selected.calls = selected_calls.clone();
+    let mut other = Fixture::new("alternative", "fvp", "fixture.native");
+    other.calls = other_calls.clone();
+    let mut registry = FamilyProviderRegistry::new();
+    registry.register_provider(test_native::install(0, selected)).unwrap();
+    registry.register_provider(test_native::install(1, other)).unwrap();
+    let request = ProbeRequest { game_path: path.to_str().unwrap().into() };
+    let FamilyProbeSelection::Selected(candidate) = registry.probe_selected(&request, "rfvp").unwrap() else { panic!("selected fixture") };
+    selected_calls.lock().clear();
+    other_calls.lock().clear();
+    fs::remove_file(path.join("native-marker")).unwrap();
+    // The family remains recognizable; a static recognition result is not an
+    // implementation-specific open credential.
+    assert_eq!(cache.detect(&path, true, &NativeCancellation::new(0)).unwrap().0[0].family_id, "fvp");
+    let epoch = shinki_emu_manager_core::model::allocate_session_epoch().unwrap();
+    let cancel = NativeCancellation::new(epoch);
+    let error = registry.open_selected(&candidate, NativeOpenRequest {
+        game_path: request.game_path, configuration: Vec::new(), session_epoch: epoch,
+        initial_window: WindowState { width: 1, height: 1, scale_factor: 1.0, focused: true, visible: true, suspended: false },
+        host: shinki_emu_manager_core::no_host_services(&cancel), cancellation: cancel, text_async: None, render_extent: None,
+    }).err().unwrap();
+    assert!(error.to_string().contains("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH"));
+    assert_eq!(selected_calls.lock().iter().filter(|call| call.name == "probe").count(), 1);
+    assert!(!selected_calls.lock().iter().any(|call| call.name == "open"));
+    assert!(other_calls.lock().is_empty());
+}
+
+#[test]
+fn rejected_duplicate_provider_cannot_be_revived_by_persistent_family_recognition() {
+    use crate::test_native::{self, Fixture};
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut cache = ProbeCache::load(root.path());
+    cache.detect(&path, false, &NativeCancellation::new(0)).unwrap();
+    cache.save().unwrap();
+    let mut registry = FamilyProviderRegistry::new();
+    registry.register_provider(test_native::install(0, Fixture::new("rfvp", "fvp", "fixture.native"))).unwrap();
+    assert!(registry.register_provider(test_native::install(1, Fixture::new("rfvp", "fvp", "fixture.native"))).is_err());
+    assert!(registry.descriptor("rfvp").is_none());
+    let cache = ProbeCache::load(root.path());
+    assert_eq!(cache.get(&path).unwrap()[0].family_id, "fvp");
+    assert!(registry.probe_selected(&ProbeRequest { game_path: path.to_str().unwrap().into() }, "rfvp").is_err());
 }

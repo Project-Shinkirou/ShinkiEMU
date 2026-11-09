@@ -16,7 +16,7 @@ impl ShinkiEmuManagerController {
         self.game(game_id)?;
         self.candidates
             .get(game_id)
-            .map(|candidate| candidate.descriptor.plugin_id.clone())
+            .map(|candidate| candidate.plugin_id.clone())
             .ok_or_else(|| "SHINKI_EMU_EMULATOR_SELECTION_REQUIRED".into())
     }
 
@@ -52,7 +52,9 @@ impl ShinkiEmuManagerController {
         plugin_id: &str,
     ) -> Result<ManagerViewModel, String> {
         self.ensure_no_session()?;
+        if self.native_action.is_some() { return Err("SHINKI_EMU_PREPARE_BUSY".into()); }
         self.install_probe_choice(game_id, plugin_id)?;
+        self.configuration_errors.remove(game_id);
         self.model()
     }
 
@@ -112,7 +114,7 @@ impl ShinkiEmuManagerController {
         if plugin_id.is_empty() {
             self.defaults_plugin = None;
         } else {
-            self.registry.configuration(plugin_id)?;
+            self.request_activation(recognition::NativeAction::Defaults(plugin_id.into()))?;
             self.defaults_plugin = Some(plugin_id.into());
         }
         self.model()
@@ -189,7 +191,7 @@ impl ShinkiEmuManagerController {
         let Some(plugin) = self
             .candidates
             .get(game_id)
-            .map(|candidate| candidate.descriptor.plugin_id.clone())
+            .map(|candidate| candidate.plugin_id.clone())
         else {
             return Ok(Vec::new());
         };

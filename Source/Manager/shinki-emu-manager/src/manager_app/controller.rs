@@ -458,6 +458,14 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::select_emulator_defaults(self, plugin_id)
     }
 
+    fn prepare_game_configuration(&mut self, game_id: &str) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::prepare_game_configuration(self, game_id)
+    }
+
+    fn diagnose_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::diagnose_core(self, plugin_id)
+    }
+
     fn config_path_pick(
         &self,
         game_id: &str,

@@ -2,13 +2,13 @@ use super::*;
 use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
-    /// Persist the directory as a library root, then import it (loading cores first if needed).
+    /// Persist a root and recognize its directories without native activation.
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
         self.ensure_owner_idle()?;
         if self.startup_busy() {
             return Err("SHINKI_EMU_PREPARE_BUSY".into());
         }
-        if let background::StartupState::Failed(_) = self.startup_state {
+        if matches!(self.startup_state, background::StartupState::Failed(_)) && !self.registry.is_ready() {
             return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into());
         }
         if self.patch_job.is_some() {
@@ -178,13 +178,13 @@ impl ShinkiEmuManagerController {
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
         translation::migrate_provider_book(&mut library)?;
-        // The owner loads lazily after “Prepare”; settle last session's staged
-        // operations before the first model, even if the user never prepares.
+        // Settle last session's staged packages before reading manifests. Native
+        // initialization remains deferred until an explicit selected action.
         let cores = data_dir.join("cores");
         fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
         let pending_failures = core_package::apply_pending(&cores);
 
-        let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone());
+        let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone())?;
 
         let input_mapping = library
             .load_input_mapping()
@@ -246,6 +246,9 @@ impl ShinkiEmuManagerController {
             registry,
             candidates: BTreeMap::new(),
             startup_state: background::StartupState::Waiting,
+            native_action: None,
+            native_failures: BTreeMap::new(),
+            configuration_errors: BTreeMap::new(),
             probe_choices: BTreeMap::new(),
             selected_case_id: None,
             search_query: String::new(),
@@ -327,6 +330,7 @@ impl ShinkiEmuManagerController {
             key_capture: None,
         };
         controller.selected_case_id = controller.first_visible_game()?;
+        controller.restore_recognition()?;
         Ok(controller)
     }
 
@@ -347,7 +351,7 @@ impl ShinkiEmuManagerController {
     pub(super) fn set_probe_candidates(
         &mut self,
         game_id: &str,
-        choices: Vec<FamilyProbeCandidate>,
+        choices: Vec<Candidate>,
     ) -> Result<(), String> {
         self.clear_probe_state(game_id)?;
         let saved = self
@@ -355,21 +359,23 @@ impl ShinkiEmuManagerController {
             .game_settings(game_id)
             .map_err(|error| error.to_string())?
             .and_then(|settings| settings.emulator_id);
-        let selected = match saved {
-            Some(id) => choices.iter().find(|choice| choice.report.plugin_id == id),
-            None if choices.len() == 1 => choices.first(),
+        let ambiguous_family = self.library.app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{game_id}"))
+            .map_err(|error| error.to_string())?.is_some_and(|detections| detections.len() > 1);
+        let selected = match saved.as_deref() {
+            Some(id) => choices.iter().find(|choice| choice.plugin_id == id),
+            None if choices.len() == 1 && !ambiguous_family => choices.first(),
             None => None,
         }
-        .map(|choice| choice.report.plugin_id.clone());
-        if selected.is_none()
+        .map(|choice| choice.plugin_id.clone());
+        if saved.is_none() && selected.is_none() && !ambiguous_family
             && let Some(first) = choices.first().filter(|first| {
                 choices
                     .iter()
-                    .all(|choice| choice.report.family_id == first.report.family_id)
+                    .all(|choice| choice.family_id == first.family_id)
             })
         {
             self.library
-                .set_game_family(game_id, Some(&first.report.family_id))
+                .set_game_family(game_id, Some(&first.family_id))
                 .map_err(|error| error.to_string())?;
         }
         self.probe_choices.insert(game_id.to_owned(), choices);
@@ -390,15 +396,15 @@ impl ShinkiEmuManagerController {
             .and_then(|choices| {
                 choices
                     .iter()
-                    .find(|choice| choice.report.plugin_id == plugin_id)
+                    .find(|choice| choice.plugin_id == plugin_id)
             })
             .cloned()
             .ok_or_else(|| "SHINKI_EMU_EMULATOR_SELECTION_INVALID".to_owned())?;
         self.library
             .select_game_emulator(
                 game_id,
-                &candidate.report.family_id,
-                &candidate.report.plugin_id,
+                &candidate.family_id,
+                &candidate.plugin_id,
             )
             .map_err(|error| error.to_string())?;
         self.candidates.insert(game_id.to_owned(), candidate);
@@ -408,7 +414,7 @@ impl ShinkiEmuManagerController {
     pub(super) fn probe_selection_for_game(
         &self,
         game_id: &str,
-    ) -> Option<&[FamilyProbeCandidate]> {
+    ) -> Option<&[Candidate]> {
         self.probe_choices.get(game_id).map(Vec::as_slice)
     }
 

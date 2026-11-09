@@ -238,6 +238,12 @@ component CoreRow {
                     accessible-expanded: root.editing;
                     clicked => { root.edit-defaults(); }
                 }
+                if root.core.state == "installed" || root.failed : TextButton {
+                    text: @tr("诊断");
+                    icon: Icons.error;
+                    enabled: root.core.state != "loading";
+                    clicked => { Cores.diagnose(root.core.id); }
+                }
                 if root.core.state == "loaded" || root.failed : TextButton {
                     text: @tr("查看日志");
                     clicked => { Cores.view-logs(root.core.id); }
@@ -253,8 +259,20 @@ component CoreRow {
 }
 
 component DefaultsEditor {
+    property <bool> activating: round(loading-counter.preferred-height / 1px) > 0;
     min-height: l.min-height;
     preferred-height: l.preferred-height;
+
+    loading-counter := VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        for core in Cores.items : Rectangle {
+            height: core.id == Cores.default-plugin && core.state == "loading" ? 1px : 0px;
+        }
+    }
 
     l := VerticalLayout {
         padding-left: 16px;
@@ -278,7 +296,9 @@ component DefaultsEditor {
                         color: MaterialPalette.primary;
                     }
                     MaterialText {
-                        text: @tr("没有单独设置的游戏使用这里的值；修改立即保存。");
+                        text: Cores.default-configuration-state == "ready"
+                            ? @tr("没有单独设置的游戏使用这里的值；修改立即保存。")
+                            : @tr("打开默认设置不会自动加载核心。确认后再初始化所选核心。");
                         style: MaterialTypography.body-small;
                         color: MaterialPalette.on-surface-variant;
                         wrap: word-wrap;
@@ -286,7 +306,56 @@ component DefaultsEditor {
                     }
                 }
 
-                RenderPicker {
+                if Cores.default-configuration-state == "unprepared" || Cores.default-configuration-state == "failed" || Cores.default-configuration-state == "missing-core" : VerticalLayout {
+                    spacing: 8px;
+                    MaterialText {
+                        text: Cores.default-configuration-state == "failed" ? @tr("默认配置加载失败")
+                            : Cores.default-configuration-state == "missing-core" ? @tr("缺少可用核心")
+                            : @tr("默认配置尚未加载");
+                        style: MaterialTypography.body-medium;
+                        color: Cores.default-configuration-state == "failed" || Cores.default-configuration-state == "missing-core" ? MaterialPalette.error : MaterialPalette.on-surface;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    MaterialText {
+                        text: Cores.default-configuration-state == "failed" ? @tr("失败原因见上方通知。可以重试，只会初始化这个核心。")
+                            : Cores.default-configuration-state == "missing-core" ? @tr("这个核心当前不可用，不能读取它的默认配置。")
+                            : @tr("加载后才能查看和修改这个模拟器的默认参数。");
+                        style: MaterialTypography.body-small;
+                        color: MaterialPalette.on-surface-variant;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    if Cores.default-configuration-state != "missing-core" : HorizontalLayout {
+                        alignment: start;
+                        TonalButton {
+                            text: Cores.default-configuration-state == "failed" ? @tr("重试") : @tr("加载默认配置");
+                            icon: Cores.default-configuration-state == "failed" ? Icons.refresh : Icons.tune;
+                            enabled: !root.activating;
+                            clicked => { Cores.select-defaults(Cores.default-plugin); }
+                        }
+                    }
+                }
+
+                if Cores.default-configuration-state == "loading" : HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    Icon {
+                        width: 20px;
+                        source: Icons.schedule;
+                        colorize: MaterialPalette.primary;
+                    }
+                    MaterialText {
+                        text: @tr("正在加载所选核心的默认配置…");
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                }
+
+                if Cores.default-configuration-state == "ready" : RenderPicker {
                     supported: Cores.default-render.supported;
                     options: Cores.default-render.options;
                     mode: Cores.default-render.mode;
@@ -299,13 +368,15 @@ component DefaultsEditor {
                     set-render(mode, w, h) => { Cores.set-default-render(mode, w, h); }
                 }
 
-                if Cores.default-fields.length == 0 : MaterialText {
+                if Cores.default-configuration-state == "ready" && Cores.default-fields.length == 0 : MaterialText {
                     text: @tr("这个模拟器没有其他可调参数。");
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
                 }
 
-                if Cores.default-fields.length > 0 : ConfigFieldList {
+                if Cores.default-configuration-state == "ready" && Cores.default-fields.length > 0 : ConfigFieldList {
                     fields: Cores.default-fields;
                     changed(key, value) => { Cores.default-field-changed(key, value); }
                     reset(key) => { Cores.reset-default-field(key); }
@@ -340,23 +411,29 @@ component CoreGroup inherits SettingGroup {
     flush: true;
 
     for core in Cores.items : VerticalLayout {
-        if (root.group == "installed" && (core.state == "loaded" || core.state == "installed"))
-            || (root.group == "available" && core.state == "available")
-            || (root.group == "failed" && core.state == "failed")
-            || (root.group == "pending" && CoreText.is-pending(core.state)) : VerticalLayout {
+        if root.group == "installed" && Cores.default-plugin == core.id && (core.state == "loaded" || core.state == "installed") : VerticalLayout {
             CoreRow {
                 core: core;
-                editing: Cores.default-plugin == core.id;
+                editing: true;
+                edit-defaults => { Cores.select-defaults(""); }
+            }
+            if core.state == "loaded" : DefaultsEditor { }
+        }
+    }
+
+    for core in Cores.items : VerticalLayout {
+        if ((root.group == "installed" && (core.state == "loaded" || core.state == "installed") && Cores.default-plugin != core.id)
+            || (root.group == "available" && core.state == "available")
+            || (root.group == "failed" && core.state == "failed")
+            || (root.group == "pending" && CoreText.is-pending(core.state))) : VerticalLayout {
+            CoreRow {
+                core: core;
+                editing: false;
                 edit-defaults => {
-                    if Cores.default-plugin == core.id {
-                        Cores.default-plugin = "";
-                        Cores.select-defaults("");
-                    } else {
-                        Cores.select-defaults(core.id);
-                    }
+                    Cores.default-plugin = core.id;
+                    Cores.default-configuration-state = "unprepared";
                 }
             }
-            if Cores.default-plugin == core.id && core.state == "loaded" : DefaultsEditor { }
         }
     }
 }

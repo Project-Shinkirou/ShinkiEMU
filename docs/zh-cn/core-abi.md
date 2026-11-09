@@ -33,7 +33,13 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 | `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
 | `renpy` | RPA2/3、RPC2，或旧 zlib-RPYC 中完整 pickle opcode 流声明的序列化 renpy.ast 对象 | 只检查字节，不导入、构造或执行 pickle；通用 zlib/pickle、RPA1、纯源码保持未知 |
 
-规则来自实际 pin 的 adapter 和上游格式解析器，不使用作品名示例。Musica 的 PAZ 变换、索引解析和 SC 解析移入纯 `shinki-emu-musica-format`，识别与运行共用，不依赖 VM、ABI、GPU 或音频。Manager 识别规则由本模块统一维护；adapter probe 只做选定核心的资源/配置校验，不作为扫描回退。本接口提交不包含 UI/owner 扫描接入。
+规则来自实际 pin 的 adapter 和上游格式解析器，不使用作品名示例。Musica 的 PAZ 变换、索引解析和 SC 解析位于纯 `shinki-emu-musica-format`，识别与运行共用，不依赖 VM、ABI、GPU 或音频。Manager 扫描、游戏库和核心列表已接入 Detector、生成的 `static_core_catalog` 与已校验的 `core.json`，不注册或查询原生核心。静态函数表只用于索引选定入口，也覆盖 Windows 可选 `static-cmvs`。
+
+用户显式准备高级配置、诊断或启动时，owner 才异步激活选定 plugin；诊断不打开游戏。启动使用选定核心的新鲜 probe，并保留 open 前的再次校验。已驻留核心及暂存更新仍遵守重启语义，不自动换用其他实现。未知 plugin 和裸库保留可见诊断，不靠自动 query 补全信息。
+
+现有 schema 7 的 game ID、路径、family 和可空 `GameSettings.emulator_id` 原样保留。每个游戏的 family/format 识别结果、待验证的回执字符串使用既有 `app_state` 保存，不伪造 plugin ID，不重复建库。缓存格式 2 保存 Detector 结果，以 `detection::CACHE_VERSION` 和有界的资源前后指纹失效，不再依赖核心清单。旧缓存作未命中；取消、I/O 和读取上限错误不会变成 NoMatch 或负缓存。
+
+扫描失败但 owner 仍可用时，可在同一会话中重试识别，已有记录保留，重试不初始化核心。owner 或清单启动失败仍需重启。
 
 ## 生命周期
 
@@ -61,7 +67,7 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 - `CAP_NATIVE_EMBEDDED_TEXT`（256）：原生 SC 显示操作数支持 Unicode scalar 字面转义，离线嵌入译文，不加载运行时翻译表。Musica 配方要求 256，RFVP 原生 GBK/统一字体配方仍要求 192，复用同一 descriptor/receipt 检查。
 - `CAP_NATIVE_NAME_RESOURCES`（512）：从原生 SC 读取姓名常量，复现实时/历史姓名规则，资源缺失时只读回退 EXE。Yorino 要求 256|512=768，不修改 EXE。
 
-Luau recipe 在输出 profile 的 `plugin_id`、`configuration` 旁声明 `required_capabilities = 192`，receipt 保留此要求。Manager 在新增导入游戏或绑定配置前，以及启动会话前，分别检查实际加载的所选核心的 `describe` 结果。自动导入还会拒绝转换完成后要求被改动的 receipt。缺少能力时拒绝操作并提示更新核心；未知要求会使 profile 无效，不会被忽略。不以版本字符串或文件名判定功能。旧 profile 省略该字段，默认要求为零；新 receipt 中的零值也省略，保持旧协议兼容。
+Luau recipe 在输出 profile 的 `plugin_id`、`configuration` 旁声明 `required_capabilities = 192`，receipt 保留此要求。无原生调用的导入保存已识别游戏及回执字符串；显式准备高级配置或启动时，才用选定核心的真实 descriptor 验证类型与能力，校验通过后再打开游戏。自动导入仍拒绝转换完成后被改动的 receipt。缺少能力时明确提示更新；未知要求使 profile 无效，不会被忽略。不以版本字符串或文件名判定功能。旧 profile 省略该字段时要求为零，新 receipt 也省略零值。
 
 ## 文本替换等级
 

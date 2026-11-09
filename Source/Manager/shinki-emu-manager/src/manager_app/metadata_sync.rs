@@ -84,7 +84,7 @@ impl ShinkiEmuManagerController {
     fn game_emulator(&self, game_id: &str) -> Option<&str> {
         self.candidates
             .get(game_id)
-            .map(|candidate| candidate.report.plugin_id.as_str())
+            .map(|candidate| candidate.plugin_id.as_str())
     }
 
     pub(super) fn compatibility_match(
@@ -135,10 +135,10 @@ impl ShinkiEmuManagerController {
         let release_id = self.matched_release(game_id, vn_id).unwrap_or_default();
         let candidate = self.candidates.get(game_id);
         let emulator = candidate
-            .map(|candidate| candidate.report.plugin_id.as_str())
+            .map(|candidate| candidate.plugin_id.as_str())
             .unwrap_or_default();
         let version = candidate
-            .map(|candidate| self.core_release(&candidate.descriptor).0)
+            .map(|candidate| self.core_release(&candidate.plugin_id).0)
             .unwrap_or_default();
         let encode = |value: &str| -> String {
             url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
@@ -166,7 +166,7 @@ impl ShinkiEmuManagerController {
         let emulator_label = self
             .candidates
             .get(game_id)
-            .map(|candidate| self.emulator_label(&candidate.descriptor))
+            .map(|candidate| self.emulator_label(&candidate.plugin_id))
             .unwrap_or_default();
         let report_url = self.report_url(game_id, identities);
         let mut view = CompatViewModel {

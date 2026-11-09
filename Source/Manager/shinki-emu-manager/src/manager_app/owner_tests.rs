@@ -19,7 +19,7 @@ struct Harness {
     calls: Arc<Mutex<Vec<Call>>>,
     entered: std::sync::mpsc::Receiver<()>,
     wake: Receiver<()>,
-    candidate: FamilyProbeCandidate,
+    candidate: Candidate,
     _root: tempfile::TempDir,
 }
 impl Harness {
@@ -32,7 +32,7 @@ impl Harness {
     fn with(configure: impl FnOnce(&mut Fixture) + Send + 'static) -> Self {
         let mailbox = FrameMailbox::new();
         let root = tempfile::tempdir().unwrap();
-        let mut owner = FamilyOwner::new(root.path().to_owned(), mailbox.clone());
+        let mut owner = FamilyOwner::new(root.path().to_owned(), mailbox.clone()).unwrap();
         owner.start().unwrap();
         loop {
             match background(&mut owner) {
@@ -40,10 +40,10 @@ impl Harness {
                     result.unwrap();
                     break;
                 }
-                BackgroundEvent::Progress(PrepareProgress::Cores { .. }) => {}
                 BackgroundEvent::Progress(PrepareProgress::Scan { .. })
                 | BackgroundEvent::Scanned(_, _) => panic!("core loading must not scan games"),
                 BackgroundEvent::Exited(error) => panic!("owner exited during startup: {error}"),
+                BackgroundEvent::Activated { .. } => panic!("preparation must not activate native cores"),
             }
         }
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -60,7 +60,7 @@ impl Harness {
             .unwrap();
         loop {
             match background(&mut owner) {
-                BackgroundEvent::Ready(result) => {
+                BackgroundEvent::Activated { result, .. } => {
                     result.unwrap();
                     break;
                 }
@@ -70,24 +70,7 @@ impl Harness {
                 _ => {}
             }
         }
-        owner
-            .scan(super::super::probe_worker::ScanRequest {
-                kind: super::super::probe_worker::ScanKind::Import,
-                paths: vec![PathBuf::from(".")],
-                games: Vec::new(),
-                excluded: BTreeSet::new(),
-                cancel: Arc::new(AtomicBool::new(false)),
-            })
-            .unwrap();
-        let candidate = loop {
-            match background(&mut owner) {
-                BackgroundEvent::Scanned(_, result) => {
-                    break result.unwrap().games.remove(0).candidates.remove(0);
-                }
-                BackgroundEvent::Exited(error) => panic!("owner exited during scan: {error}"),
-                _ => {}
-            }
-        };
+        let candidate = Candidate { plugin_id: "owner-test".into(), family_id: "owner-test".into() };
         let (_, wake) = bounded(1);
         Self {
             owner,
@@ -417,4 +400,19 @@ fn a_finished_core_whose_close_fails_reports_the_cleanup_error() {
     assert!(update.finished);
     assert_eq!(call_names(&harness).last(), Some(&"close"));
     harness.owner.shutdown().unwrap();
+}
+
+#[test]
+fn failed_selected_fresh_probe_cancels_open_services_without_opening_a_session() {
+    let mut harness = Harness::with(|fixture| {
+        fixture.marker = Some("missing-owner-fresh-probe-resource");
+    });
+    let request = harness.request();
+    let epoch = request.epoch;
+    let cancellation = request.cancellation.clone();
+    harness.owner.open(request).unwrap();
+    let update = harness.closed(epoch);
+    assert!(update.error.unwrap().contains("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH"));
+    assert!(cancellation.is_cancelled());
+    assert!(!harness.calls.lock().iter().any(|call| call.name == "open"));
 }

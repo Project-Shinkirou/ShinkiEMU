@@ -3,6 +3,7 @@ schema = "shinki.emu.build_cores.v1"
 
 [[cores]]
 id = "rfvp"
+family_id = "fvp"
 display_name = "RFVP"
 family_name = "FVP"
 license = "MPL-2.0"
@@ -44,6 +45,7 @@ reason = "Statically embedded in the iOS Manager; standalone dynamic-core instal
 
 [[cores]]
 id = "siglus_rs"
+family_id = "siglus"
 display_name = "siglus-rs"
 family_name = "SiglusEngine"
 license = "MPL-2.0"
@@ -80,6 +82,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "art3m1s-core"
+family_id = "artemis"
 display_name = "Art3m1s"
 family_name = "Artemis"
 license = "MPL-2.0"
@@ -116,6 +119,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "shinki.emu.musica"
+family_id = "musica"
 display_name = "Shinki Musica"
 family_name = "Musica"
 license = "MIT OR Apache-2.0"
@@ -151,6 +155,7 @@ reason = "Statically embedded in the OHOS Manager; standalone dynamic-core insta
 
 [[cores]]
 id = "sena-rs"
+family_id = "softpal"
 display_name = "Sena"
 family_name = "SoftPAL"
 license = "MPL-2.0"
@@ -193,6 +198,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "kirikiroid2-web"
+family_id = "krkr"
 display_name = "KiriKiri2"
 family_name = "KiriKiri"
 license = "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2"
@@ -234,6 +240,7 @@ target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 [[cores]]
 id = "ethornell-rs"
+family_id = "ethornell"
 display_name = "ethornell-rs"
 family_name = "Ethornell / BGI"
 license = "MPL-2.0"
@@ -276,6 +283,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "shinki.emu.cmvs"
+family_id = "cmvs"
 display_name = "Shinki CMVS"
 family_name = "CMVS"
 license = "MIT OR Apache-2.0"
@@ -311,6 +319,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "ReMinori"
+family_id = "musica"
 display_name = "ReMinori"
 family_name = "Musica"
 license = "AGPL-3.0-only"
@@ -353,6 +362,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "impacto"
+family_id = "mages"
 display_name = "impacto"
 family_name = "MAGES."
 license = "ISC"
@@ -395,6 +405,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "renpy"
+family_id = "renpy"
 display_name = "Ren’Py"
 family_name = "Ren’Py"
 license = "MIT AND LGPL-2.1-or-later"
@@ -437,6 +448,7 @@ reason = "OHOS host integration is OhosHost's scope; no OHOS Ren'Py runtime buil
 
 [[cores]]
 id = "cmvs-rs"
+family_id = "cmvs"
 display_name = "cmvs-rs"
 family_name = "CMVS / CVNS"
 license = "MIT OR Apache-2.0"
@@ -477,6 +489,7 @@ reason = "cmvs-audio selects CPAL native output without an OHAudio backend; no O
 
 [[cores]]
 id = "krkr2"
+family_id = "krkr"
 display_name = "KrKr2"
 family_name = "KiriKiri"
 license = "LicenseRef-KiriKiri2"

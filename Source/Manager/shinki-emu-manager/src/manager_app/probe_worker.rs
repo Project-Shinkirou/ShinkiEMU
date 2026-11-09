@@ -1,10 +1,19 @@
 use super::*;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 
 const SCAN_PROGRESS_INTERVAL: usize = 64;
+
+fn canonical_directory(path: &Path) -> Result<Option<PathBuf>, String> {
+    let canonical = match fs::canonicalize(path) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}")),
+    };
+    match fs::metadata(&canonical) {
+        Ok(metadata) => Ok(metadata.is_dir().then_some(canonical)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}")),
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ScanKind {
@@ -17,13 +26,13 @@ pub(super) struct ScanRequest {
     pub(super) paths: Vec<PathBuf>,
     pub(super) games: Vec<GameRecord>,
     pub(super) excluded: BTreeSet<PathBuf>,
-    pub(super) cancel: Arc<AtomicBool>,
+    pub(super) cancel: shinki_emu_manager_core::NativeCancellation,
 }
 
 pub(super) struct GameProbe {
     pub(super) path: PathBuf,
     pub(super) game_ids: Vec<String>,
-    pub(super) candidates: Vec<FamilyProbeCandidate>,
+    pub(super) detections: Vec<shinki_emu_manager_core::detection::EngineDetection>,
     pub(super) patch_profile: Option<Result<shinki_emu_patch::OutputProfile, String>>,
 }
 
@@ -36,16 +45,15 @@ pub(super) struct ScanReport {
 }
 
 pub(super) fn scan(
-    registry: &FamilyProviderRegistry,
     cache: &mut probe_cache::ProbeCache,
     request: ScanRequest,
-    shutdown: &AtomicBool,
+    shutdown: &std::sync::atomic::AtomicBool,
     progress: &mut dyn FnMut(super::owner::PrepareProgress),
 ) -> Result<ScanReport, String> {
     let cancelled = || {
-        if request.cancel.load(Ordering::Acquire) {
+        if request.cancel.is_cancelled() {
             Some("SHINKI_EMU_SCAN_CANCELLED")
-        } else if shutdown.load(Ordering::Acquire) {
+        } else if shutdown.load(std::sync::atomic::Ordering::Acquire) {
             Some("SHINKI_EMU_OWNER_CANCELLED")
         } else {
             None
@@ -62,18 +70,18 @@ pub(super) fn scan(
         if let Some(error) = cancelled() {
             return Err(error.into());
         }
-        match fs::canonicalize(&game.location) {
-            Ok(path) if excluded.contains(&path) => continue,
-            Ok(path) if path.is_dir() && !shinki_emu_patch::is_staging_path(&path) => {
+        match canonical_directory(Path::new(&game.location))? {
+            Some(path) if excluded.contains(&path) => continue,
+            Some(path) if !shinki_emu_patch::is_staging_path(&path) => {
                 known.entry(path).or_default().push(game.game_id.clone())
             }
-            Ok(path) if shinki_emu_patch::is_staging_path(&path) => continue,
-            _ => {
+            Some(_) => continue,
+            None => {
                 report.missing += 1;
                 report.games.push(GameProbe {
                     path: PathBuf::from(&game.location),
                     game_ids: vec![game.game_id.clone()],
-                    candidates: Vec::new(),
+                    detections: Vec::new(),
                     patch_profile: None,
                 });
             }
@@ -85,8 +93,8 @@ pub(super) fn scan(
         cache.retain_registered(&request.games);
     }
     for root in request.paths {
-        let path = match fs::canonicalize(root) {
-            Ok(path) if shinki_emu_patch::is_staging_path(&path) => {
+        let path = match canonical_directory(&root)? {
+            Some(path) if shinki_emu_patch::is_staging_path(&path) => {
                 if request.kind == ScanKind::Full {
                     continue;
                 }
@@ -94,7 +102,7 @@ pub(super) fn scan(
                     "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging cannot be imported".into(),
                 );
             }
-            Ok(path) if path.is_dir() => path,
+            Some(path) => path,
             _ if request.kind == ScanKind::Full => {
                 report.missing += 1;
                 continue;
@@ -128,9 +136,9 @@ pub(super) fn scan(
                 return Err("SHINKI_EMU_GAME_DIRECTORY_BOUNDS".into());
             }
             let allow_hint = request.kind == ScanKind::Full && known.contains_key(&path);
-            let (candidates, hit) = cache.probe(&path, registry, allow_hint)?;
+            let (detections, hit) = cache.detect(&path, allow_hint, &request.cancel)?;
             report.cache_hits += usize::from(hit);
-            let matched = !candidates.is_empty();
+            let matched = !detections.is_empty();
             let patch_profile = if request.kind == ScanKind::Import {
                 match shinki_emu_patch::read_output_profile(&path, shutdown) {
                     Ok(Some(profile)) => Some(Ok(profile)),
@@ -145,7 +153,7 @@ pub(super) fn scan(
                 report.games.push(GameProbe {
                     path: path.clone(),
                     game_ids: known.get(&path).cloned().unwrap_or_default(),
-                    candidates,
+                    detections,
                     patch_profile,
                 });
             }

@@ -369,6 +369,10 @@ pub trait ManagerController: 'static {
     ) -> Result<ManagerViewModel, String>;
     /// Choose the emulator whose defaults the cores page edits; empty clears it.
     fn select_emulator_defaults(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    /// Explicitly initialize only this game's selected implementation for advanced settings.
+    fn prepare_game_configuration(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;
+    /// Explicitly initialize/describe one implementation without opening a game.
+    fn diagnose_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
     /// How to pick a value for a path field: folder or file, title, file types.
     fn config_path_pick(&self, game_id: &str, field_id: &str) -> Result<ConfigPathPick, String>;
     /// Store the path picked for a path field.
