@@ -476,6 +476,7 @@ impl SlintManagerAdapter {
         settings.set_recommended_available(view.recommended_available);
         settings.set_recommended_summary(view.recommended_summary.as_str().into());
         settings.set_input_override(view.input_override);
+        settings.set_configuration_state(view.configuration_state.as_str().into());
         self.game_bindings.update(&view.bindings);
     }
 
@@ -524,6 +525,7 @@ impl SlintManagerAdapter {
             &view.default_fields,
         );
         cores.set_default_plugin(view.default_plugin.as_str().into());
+        cores.set_default_configuration_state(view.default_configuration_state.as_str().into());
         self.default_render_options
             .update(&view.default_render.options);
         cores.set_default_render(render_state(

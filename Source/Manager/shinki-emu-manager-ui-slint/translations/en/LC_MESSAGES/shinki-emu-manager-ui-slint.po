@@ -2662,3 +2662,66 @@ msgstr "Skip"
 msgid "游戏文件夹"
 msgstr "Game folders"
 
+msgid "缺少可用核心"
+msgstr "No usable core"
+
+msgid "这部作品已经识别到引擎，但当前没有可运行它的核心。到“核心”页安装对应核心后，再回来加载配置。"
+msgstr "The engine was recognized, but no installed core can run this title. Install the matching core on the Cores page, then load its configuration."
+
+msgid "前往核心"
+msgstr "Open Cores"
+
+msgid "先选择模拟器"
+msgstr "Choose an emulator first"
+
+msgid "有多个模拟器可以运行这部作品。选定一个后，再加载它的配置。"
+msgstr "More than one emulator can run this title. Choose one, then load its configuration."
+
+msgid "配置加载失败"
+msgstr "Configuration failed to load"
+
+msgid "高级配置尚未加载"
+msgstr "Advanced configuration is not loaded"
+
+msgid "这次只初始化所选核心。失败原因见上方通知，修复后可以重试。"
+msgstr "Only the selected core is initialized. The notice above has the reason; retry after fixing it."
+
+msgid "打开这一页不会加载核心。需要查看或修改参数时，再加载所选模拟器的配置。"
+msgstr "Opening this page does not load a core. Load the selected emulator's configuration when you want to view or change it."
+
+msgid "加载配置"
+msgstr "Load configuration"
+
+msgid "正在加载所选模拟器的配置…"
+msgstr "Loading the selected emulator's configuration…"
+
+msgid "诊断"
+msgstr "Diagnose"
+
+msgid "打开默认设置不会自动加载核心。确认后再初始化所选核心。"
+msgstr "Opening defaults does not load a core. The selected core is initialized only after you confirm."
+
+msgid "默认配置加载失败"
+msgstr "Default configuration failed to load"
+
+msgid "默认配置尚未加载"
+msgstr "Default configuration is not loaded"
+
+msgid "失败原因见上方通知。可以重试，只会初始化这个核心。"
+msgstr "The notice above has the reason. Retry initializes only this core."
+
+msgid "这个核心当前不可用，不能读取它的默认配置。"
+msgstr "This core is unavailable, so its default configuration cannot be read."
+
+msgid "加载后才能查看和修改这个模拟器的默认参数。"
+msgstr "Load it before viewing or changing this emulator's default parameters."
+
+msgid "加载默认配置"
+msgstr "Load default configuration"
+
+msgid "正在加载所选核心的默认配置…"
+msgstr "Loading the selected core's default configuration…"
+
+msgid "安装核心"
+msgstr "Install core"
+

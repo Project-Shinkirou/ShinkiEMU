@@ -427,6 +427,9 @@ pub struct GameSettingsViewModel {
     pub recommended_summary: String,
     pub input_override: bool,
     pub bindings: Vec<GamepadBindingViewModel>,
+    /// `unprepared | loading | ready | failed | missing-core | selection-required`.
+    /// Empty fields with `ready` means the emulator really has no parameters.
+    pub configuration_state: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -440,6 +443,9 @@ pub struct CoresViewModel {
     pub batch: CoreBatchViewModel,
     pub default_fields: Vec<ConfigFieldViewModel>,
     pub default_plugin: String,
+    /// `unprepared | loading | ready | failed | missing-core | selection-required`.
+    /// Empty until the user opens one core's defaults.
+    pub default_configuration_state: String,
     pub default_render: RenderViewModel,
 }
 
