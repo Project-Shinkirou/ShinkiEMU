@@ -1,8 +1,6 @@
 use super::*;
 use crate::metadata_cache::tests::{compatibility_json, files, index, patch_catalog_json};
-use shinki_emu_manager_core::{
-    ExternalIdentityRecord, FamilyProbeReport, INDEPENDENT_FAMILY_ABI_FINGERPRINT,
-};
+use shinki_emu_manager_core::ExternalIdentityRecord;
 use shinki_emu_manager_ui_slint::tr;
 
 const MUSICA: &str = "shinki.emu.musica";
@@ -33,27 +31,8 @@ fn catalog_with(root: &Path, entries: &[String], presets: &str) -> MetadataCatal
     MetadataCatalog::load(&directory, MetadataSource::Bundled).unwrap()
 }
 
-fn candidate(plugin_id: &str) -> FamilyProbeCandidate {
-    FamilyProbeCandidate {
-        report: FamilyProbeReport {
-            plugin_id: plugin_id.into(),
-            family_id: "family".into(),
-            game_id: "game".into(),
-            format: "format".into(),
-            confidence_permyriad: 10_000,
-        },
-        descriptor: FamilyPluginDescriptor {
-            family_id: "family".into(),
-            plugin_id: plugin_id.into(),
-            abi_fingerprint: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
-            version: "0.2.0".into(),
-            capabilities: vec![shinki_emu_manager_core::FamilyCapability::CpuFrame],
-            supported_formats: vec!["format".into()],
-            display_name: plugin_id.into(),
-            family_name: "family".into(),
-            render: None,
-        },
-    }
+fn candidate(plugin_id: &str) -> Candidate {
+    Candidate { plugin_id: plugin_id.into(), family_id: "family".into() }
 }
 
 fn linked_game(app: &mut ShinkiEmuManagerController, game_id: &str, emulator: Option<&str>) {
@@ -151,6 +130,7 @@ fn several_releases_without_a_pin_are_undecided() {
 #[test]
 fn report_url_carries_release_emulator_and_versions() {
     let root = tempfile::tempdir().unwrap();
+    super::recognition_tests::manifest(root.path(), SENA, "sena", b"manifest-only version fixture");
     let mut app = controller(root.path());
     app.metadata_catalog = Some(catalog_with(
         root.path(),

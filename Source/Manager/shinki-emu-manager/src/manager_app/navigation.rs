@@ -5,11 +5,11 @@ impl ShinkiEmuManagerController {
     pub(super) fn launch_candidate_for_game(
         &self,
         game: &GameRecord,
-    ) -> Option<&FamilyProbeCandidate> {
+    ) -> Option<&Candidate> {
+        if !self.cores_ready() { return None; }
         let candidate = self.candidates.get(&game.game_id)?;
-        if game.family_id.as_deref() != Some(candidate.report.family_id.as_str())
-            || candidate.descriptor.family_id != candidate.report.family_id
-            || self.registry.descriptor(&candidate.report.plugin_id) != Some(&candidate.descriptor)
+        if game.family_id.as_deref() != Some(candidate.family_id.as_str())
+            || !self.plugin_available(&candidate.plugin_id)
         {
             return None;
         }
@@ -68,25 +68,28 @@ impl ShinkiEmuManagerController {
             );
         }
         let session_mapping = self.game_input_mapping(case_id)?;
-        if self.probe_choices.contains_key(case_id) && !self.candidates.contains_key(case_id) {
-            return Err("SHINKI_EMU_FAMILY_PROVIDER_SELECTION_REQUIRED".to_owned());
+        let candidate = self.candidates.get(case_id).cloned()
+            .ok_or("SHINKI_EMU_FAMILY_PROVIDER_SELECTION_REQUIRED")?;
+        if !self.plugin_available(&candidate.plugin_id) { return Err("SHINKI_EMU_CORE_MISSING".into()); }
+        if game.family_id.as_deref() != Some(candidate.family_id.as_str()) {
+            return Err("SHINKI_EMU_FAMILY_BINDING_MISMATCH".into());
         }
-        let candidate = self
-            .launch_candidate_for_game(&game)
-            .cloned()
-            .ok_or_else(|| "SHINKI_EMU_FAMILY_PROBE_REQUIRED".to_owned())?;
+        let Some(descriptor) = self.registry.descriptor(&candidate.plugin_id).cloned() else {
+            self.request_activation(recognition::NativeAction::Launch { game_id: case_id.into(), plugin_id: candidate.plugin_id })?;
+            return self.model();
+        };
+        self.apply_pending_profile(case_id, &candidate.plugin_id)?;
         if let Some(profile) = shinki_emu_patch::read_output_profile(
             Path::new(&game.location),
             &std::sync::atomic::AtomicBool::new(false),
         )
         .map_err(|error| error.to_string())?
         {
-            file_patch::require_profile_capabilities(&profile, &candidate.descriptor)?;
+            file_patch::require_profile_capabilities(&profile, &descriptor)?;
         }
         let epoch = shinki_emu_manager_core::model::allocate_session_epoch()
             .map_err(|error| error.to_string())?;
-        let text = if candidate
-            .descriptor
+        let text = if descriptor
             .has_capability(shinki_emu_manager_core::FamilyCapability::TextReplacement)
         {
             let profile = self.launch_translation_profile()?;
@@ -118,17 +121,17 @@ impl ShinkiEmuManagerController {
             .ok_or("SHINKI_EMU_HOST_WAKE_REQUIRED")?;
         let schema = self
             .registry
-            .configuration(&candidate.descriptor.plugin_id)
+            .configuration(&candidate.plugin_id)
             .map_err(|error| error.to_string())?;
         let configuration = self
             .library
-            .family_configuration(&candidate.descriptor.plugin_id, case_id, &schema)
+            .family_configuration(&candidate.plugin_id, case_id, &schema)
             .map_err(|error| error.to_string())?;
         let retired_path_reported = self.report_retired_configuration(&configuration.retired);
         #[cfg_attr(not(target_os = "android"), allow(unused_mut))]
         let mut configuration = configuration.values;
         #[cfg(target_os = "android")]
-        if candidate.descriptor.plugin_id == "impacto" {
+        if candidate.plugin_id == "impacto" {
             use shinki_emu_manager_core::model::ConfigValue;
             let resources = crate::platform::bundled_resource_dir()
                 .ok_or("SHINKI_EMU_DATA_DIRECTORY_UNAVAILABLE")?
@@ -149,9 +152,9 @@ impl ShinkiEmuManagerController {
             .map_err(|error| error.to_string())?
             .unwrap_or_default();
         let preference =
-            self.effective_render_preference(&candidate.descriptor.plugin_id, &settings)?;
+            self.effective_render_preference(&candidate.plugin_id, &settings)?;
         let render_extent = render_extent::resolve_render_extent(
-            candidate.descriptor.render.as_ref(),
+            descriptor.render.as_ref(),
             &preference,
             (window.width, window.height),
             settings

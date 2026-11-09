@@ -101,17 +101,13 @@ impl ShinkiEmuManagerController {
     }
     pub(super) fn core_release<'a>(
         &'a self,
-        descriptor: &'a FamilyPluginDescriptor,
+        plugin_id: &str,
     ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>) {
-        self.registry
-            .core_metadata()
-            .find(|meta| meta.descriptor.plugin_id == descriptor.plugin_id)
-            .map_or((descriptor.version.as_str(), None), |meta| {
-                (
-                    meta.release_version.as_str(),
-                    meta.release_identity.as_ref(),
-                )
-            })
+        if let Some(core) = self.registry.installed().get(plugin_id) {
+            return (&core.manifest.version, core.manifest.identity.as_ref());
+        }
+        let identity = embedded_identity(plugin_id);
+        ("", identity)
     }
 
     /// Loaded, installed-but-unloaded, failed, pending and online-available
@@ -122,103 +118,60 @@ impl ShinkiEmuManagerController {
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
         let mut listed_stems = BTreeSet::new();
-        for meta in self.registry.core_metadata() {
-            listed_stems.insert(meta.stem.clone());
-            listed_plugins.insert(meta.descriptor.plugin_id.clone());
-            let state = match pending.get(&meta.stem) {
+        let mut ids: BTreeSet<String> = self.registry.installed().keys().cloned().collect();
+        ids.extend(shinki_emu_manager::static_cores::STATIC_CORES.iter().map(|(id, _)| (*id).to_owned()));
+        for id in ids {
+            let installed = self.registry.installed().get(&id);
+            let catalog = shinki_emu_manager_core::static_core_catalog::lookup(&id);
+            let native = self.registry.descriptor(&id);
+            let stem = installed.map(|core| shinki_emu_manager_core::library_stem(&core.library)).unwrap_or_default();
+            let bundled = recognition::is_static(&id) || installed.is_some_and(|core| core.bundled);
+            let state = match pending.get(&stem) {
                 Some(PendingKind::Remove) => "pending-removal",
                 Some(PendingKind::Install) => "pending-update",
-                None => "loaded",
+                None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id) => "loading",
+                None if self.native_failures.contains_key(&id) => "failed",
+                None if native.is_some() => "loaded",
+                None => "installed",
             };
-            let installed_version = meta.release_version.as_str();
-            let installed_identity = meta.release_identity.as_ref();
-            let update_version = self
-                .online_core(&meta.descriptor.plugin_id)
-                .filter(|entry| {
-                    state == "loaded" && entry.is_update_for(installed_version, installed_identity)
-                })
-                .map(CoreCatalogEntry::display_version)
-                .unwrap_or_default();
-            items.push((
-                CoreViewModel {
-                    id: meta.descriptor.plugin_id.clone(),
-                    name: meta.descriptor.display_name.clone(),
-                    engine: meta.descriptor.family_name.clone(),
-                    version: installed_identity.map_or_else(
-                        || installed_version.to_owned(),
-                        shinki_emu_metadata::CoreIdentity::display_version,
-                    ),
-                    capabilities: meta
-                        .descriptor
-                        .capabilities
-                        .iter()
-                        .copied()
-                        .map(capability_label)
-                        .map(str::to_owned)
-                        .collect(),
-                    state: state.into(),
-                    source: if meta.bundled { "bundled" } else { "user" }.into(),
-                    message: String::new(),
-                    removable: !meta.bundled,
-                    update_version,
-                    download: self.download_view(&meta.descriptor.plugin_id),
-                },
-                meta.stem.clone(),
-            ));
+            let (version, identity) = self.core_release(&id);
+            let update_version = self.online_core(&id).filter(|entry| {
+                matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
+            }).map(CoreCatalogEntry::display_version).unwrap_or_default();
+            listed_plugins.insert(id.clone());
+            listed_stems.insert(stem.clone());
+            items.push((CoreViewModel {
+                id: id.clone(),
+                name: catalog.map(|entry| entry.display_name.to_owned()).or_else(|| native.map(|descriptor| descriptor.display_name.clone())).unwrap_or_else(|| id.clone()),
+                engine: catalog.map(|entry| entry.family_id.to_owned()).or_else(|| native.map(|descriptor| descriptor.family_id.clone())).unwrap_or_default(),
+                version: identity.map_or_else(|| version.to_owned(), shinki_emu_metadata::CoreIdentity::display_version),
+                capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
+                state: state.into(),
+                source: if bundled { "bundled" } else { "user" }.into(),
+                message: self.native_failures.get(&id).cloned().unwrap_or_else(|| {
+                    if catalog.is_none() && native.is_none() { "Unknown plugin metadata; use explicit diagnosis or install an updated manifest.".into() } else { String::new() }
+                }),
+                removable: !bundled,
+                update_version,
+                download: self.download_view(&id),
+            }, stem));
         }
-        // Before Prepare there is no registry metadata. Installed manifests
-        // still belong in the inventory, with no claim that their DLL loaded.
-        if !self.registry.is_ready() {
-            let entries = fs::read_dir(&cores)
-                .map_err(|error| format!("SHINKI_EMU_CORE_PENDING_APPLY: {}", error.kind()))?;
-            for entry in entries {
-                let entry = entry
-                    .map_err(|error| format!("SHINKI_EMU_CORE_PENDING_APPLY: {}", error.kind()))?;
-                let Ok(stem) = entry.file_name().into_string() else {
-                    continue;
-                };
-                if listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem) {
-                    continue;
-                }
-                let Some(manifest) = core_package::read_manifest(&entry.path()) else {
-                    continue;
-                };
-                let state = match pending.get(&stem) {
-                    Some(PendingKind::Remove) => "pending-removal",
-                    Some(PendingKind::Install) => "pending-update",
-                    None => "installed",
-                };
-                let online = self.online_core(&manifest.plugin_id);
-                let update_version = online
-                    .filter(|entry| {
-                        state == "installed"
-                            && entry.is_update_for(&manifest.version, manifest.identity.as_ref())
-                    })
-                    .map(CoreCatalogEntry::display_version)
-                    .unwrap_or_default();
+        for directory in recognition::directories(&self.data_dir)? {
+            for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
+                let entry = entry.map_err(|error| error.to_string())?;
+                let Some(stem) = entry.file_name().to_str().map(str::to_owned) else { continue; };
+                if stem.starts_with('.') || listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem)
+                    || !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
+                let manifest = core_package::read_manifest(&entry.path());
+                let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone()).unwrap_or_else(|| stem.clone());
                 listed_stems.insert(stem.clone());
-                listed_plugins.insert(manifest.plugin_id.clone());
-                items.push((
-                    CoreViewModel {
-                        id: manifest.plugin_id.clone(),
-                        name: online.map_or_else(
-                            || manifest.plugin_id.clone(),
-                            |entry| entry.display_name.clone(),
-                        ),
-                        engine: online.map(|entry| entry.family_name.clone()).unwrap_or_default(),
-                        version: manifest.identity.as_ref().map_or_else(
-                            || manifest.version.clone(),
-                            shinki_emu_metadata::CoreIdentity::display_version,
-                        ),
-                        state: state.into(),
-                        source: "user".into(),
-                        removable: true,
-                        update_version,
-                        download: self.download_view(&manifest.plugin_id),
-                        ..CoreViewModel::default()
-                    },
-                    stem,
-                ));
+                listed_plugins.insert(id.clone());
+                items.push((CoreViewModel {
+                    id, name: stem.clone(), state: "failed".into(), source: "user".into(),
+                    message: "SHINKI_EMU_CORE_PACKAGE_MANIFEST: missing or invalid package, library, or duplicate plugin identity; install an identified core package".into(),
+                    removable: directory == self.cores_dir(),
+                    ..CoreViewModel::default()
+                }, stem));
             }
         }
         items.sort_by(|left, right| left.0.name.cmp(&right.0.name));
@@ -702,7 +655,7 @@ impl ShinkiEmuManagerController {
             let plugin_id = self
                 .candidates
                 .get(&active.game_id)
-                .map(|candidate| candidate.descriptor.plugin_id.clone())
+                .map(|candidate| candidate.plugin_id.clone())
                 .ok_or_else(|| "SHINKI_EMU_ENGINE_ACTION_UNAVAILABLE".to_owned())?;
             (active.epoch, plugin_id)
         };
@@ -822,10 +775,10 @@ mod tests {
         catalog.cores.entries = vec![entry("0.2.0"), entry("0.3.0")];
         app.metadata_catalog = Some(catalog);
         let view = app.cores_view().unwrap();
-        assert_eq!(view.items.len(), 1);
-        assert_eq!(view.items[0].state, "available");
-        assert_eq!(view.items[0].source, "online");
-        assert_eq!(view.items[0].version, "0.3.0");
+        let online = view.items.iter().find(|item| item.id == "shinki.emu.musica").unwrap();
+        assert_eq!(online.state, "available");
+        assert_eq!(online.source, "online");
+        assert_eq!(online.version, "0.3.0");
         assert_eq!(view.updates_available, 0);
         assert_eq!(
             app.install_online_core("shinki.emu.musica").unwrap_err(),
@@ -942,7 +895,7 @@ mod tests {
         };
         let mut app = open();
         app.install_core(&library).unwrap();
-        // A bare library uses its stem until an exported descriptor is loaded.
+        // A bare library's generated manifest retains its unknown identity.
         assert_eq!(item(&app, stem).state, "pending-install");
         drop(app);
 
@@ -969,7 +922,6 @@ mod tests {
         assert_eq!(installed.version, "0.2.0");
         assert!(!app.cores_started());
         assert!(core_package::pending_entries(&cores).unwrap().is_empty());
-        assert_eq!(app.cores_view().unwrap().items.len(), 1);
 
         app.uninstall_core(id).unwrap();
         assert_eq!(item(&app, id).state, "pending-removal");
@@ -977,7 +929,7 @@ mod tests {
         let app = open();
         assert!(!cores.join(stem).exists());
         assert!(core_package::pending_entries(&cores).unwrap().is_empty());
-        assert!(app.cores_view().unwrap().items.is_empty());
+        assert!(!app.cores_view().unwrap().items.iter().any(|item| item.id == id));
     }
 
     #[test]

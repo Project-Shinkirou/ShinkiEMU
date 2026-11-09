@@ -32,7 +32,7 @@ impl ActiveFamilySession {
             Vec<shinki_emu_manager_core::model::ConfigEntry>,
             u64,
         ),
-        candidate: &FamilyProbeCandidate,
+        candidate: &shinki_emu_manager_core::FamilyProbeCandidate,
         registry: &mut FamilyProviderRegistry,
         mailbox: FrameMailbox,
         initial_window: WindowState,
