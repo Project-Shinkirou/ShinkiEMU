@@ -2,13 +2,13 @@ use super::*;
 use shinki_emu_manager_ui_slint::tr;
 
 impl ShinkiEmuManagerController {
-    /// Persist the directory as a library root, then import it (loading cores first if needed).
+    /// Persist a root and recognize its directories without native activation.
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
         self.ensure_owner_idle()?;
         if self.startup_busy() {
             return Err("SHINKI_EMU_PREPARE_BUSY".into());
         }
-        if let background::StartupState::Failed(_) = self.startup_state {
+        if matches!(self.startup_state, background::StartupState::Failed(_)) && !self.registry.is_ready() {
             return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into());
         }
         if self.patch_job.is_some() {

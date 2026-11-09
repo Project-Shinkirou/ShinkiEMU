@@ -39,6 +39,8 @@ The deferred owner activates one selected plugin for explicit advanced configura
 
 Existing schema-7 game IDs, locations, family IDs and nullable `GameSettings.emulator_id` remain intact. Per-game family/format recognition and deferred receipt strings use the existing `app_state` store; no fake plugin ID or duplicate library record is introduced. Cache format 2 stores detector results, keyed by `detection::CACHE_VERSION` and bounded before/after resource stamps, independently of installed cores. Old caches miss; cancellation, I/O and read-limit errors never become no-match results or negative entries.
 
+When a scan fails but its owner remains available, the user can retry recognition in the same application session. Existing records are kept; retry does not initialize cores. A failed owner or inventory startup still requires restart.
+
 ## Lifecycle
 
 1. **query** obtains the immutable `CoreApi` table; validate the version, size and required function pointers.

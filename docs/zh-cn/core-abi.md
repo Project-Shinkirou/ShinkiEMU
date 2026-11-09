@@ -39,6 +39,8 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 现有 schema 7 的 game ID、路径、family 和可空 `GameSettings.emulator_id` 原样保留。每个游戏的 family/format 识别结果、待验证的回执字符串使用既有 `app_state` 保存，不伪造 plugin ID，不重复建库。缓存格式 2 保存 Detector 结果，以 `detection::CACHE_VERSION` 和有界的资源前后指纹失效，不再依赖核心清单。旧缓存作未命中；取消、I/O 和读取上限错误不会变成 NoMatch 或负缓存。
 
+扫描失败但 owner 仍可用时，可在同一会话中重试识别，已有记录保留，重试不初始化核心。owner 或清单启动失败仍需重启。
+
 ## 生命周期
 
 1. **query** 取得不可变 `CoreApi` 表，检查版本、大小和必需函数指针。

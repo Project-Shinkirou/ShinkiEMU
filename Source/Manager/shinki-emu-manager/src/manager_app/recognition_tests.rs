@@ -293,3 +293,28 @@ fn optional_static_cmvs_is_available_without_a_dll_and_only_activated_explicitly
     assert_eq!(app.registry.descriptors().count(), 1);
     assert!(app.registry.descriptor("shinki.emu.cmvs").is_some());
 }
+
+#[cfg(windows)]
+#[test]
+fn transient_scan_io_failure_can_be_retried_in_the_same_owner_without_mutating_the_library() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("title");
+    write_game(&path);
+    let mut app = open(&root.path().join("manager"));
+    let id = import(&mut app, &path);
+    let saved = app.game(&id).unwrap();
+    let locked = fs::OpenOptions::new().read(true).share_mode(0).open(path.join("boot.hcb")).unwrap();
+    app.add_game_directory(&path).unwrap();
+    settle(&mut app);
+    assert!(matches!(app.startup_state, background::StartupState::Failed(_)));
+    assert_eq!(app.game(&id).unwrap(), saved);
+    assert!(app.registry.is_ready());
+    drop(locked);
+    app.add_game_directory(&path).unwrap();
+    settle(&mut app);
+    assert!(matches!(app.startup_state, background::StartupState::Ready));
+    assert_eq!(app.game(&id).unwrap(), saved);
+    assert_eq!(app.library.list_games().unwrap().len(), 1);
+    assert_eq!(app.registry.descriptors().count(), 0);
+}

@@ -39,6 +39,8 @@ Select.ini の最初の有効な TAB 区切り append も解決し、範囲外�
 
 schema 7 の game ID、保存先、family、任意の `GameSettings.emulator_id` は保持します。family/format と未検証の receipt 設定文字列は既存の `app_state` に保存し、偽の plugin ID や重複ゲームを作りません。キャッシュ形式 2 は Detector の結果を保存し、`detection::CACHE_VERSION` と有界な前後のリソース指紋で失効します。古いキャッシュは miss になり、キャンセル・I/O・読み取り上限エラーを NoMatch や負のキャッシュに変換しません。
 
+スキャンが失敗しても owner が利用可能なら、同じアプリのセッションで識別を再試行できます。既存の登録は保持し、コアを初期化しません。owner や一覧準備自体の失敗には再起動が必要です。
+
 ## ライフサイクル
 
 1. **query** は不変の `CoreApi` テーブルを取得し、バージョン、サイズ、必須の関数ポインターを確認します。

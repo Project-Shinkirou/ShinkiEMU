@@ -79,7 +79,7 @@ impl ShinkiEmuManagerController {
         }
     }
 
-    /// Load cores on first use, then scan every configured root.
+    /// Read installed identities on first use, then recognize configured roots.
     pub(super) fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
         self.ensure_owner_idle()?;
         match self.startup_state {
@@ -88,6 +88,7 @@ impl ShinkiEmuManagerController {
                 self.prepare_scan_pending = Some(PendingScan::Full);
             }
             StartupState::Ready => self.begin_scan(ScanKind::Full, self.scan_roots()?)?,
+            StartupState::Failed(_) if self.registry.is_ready() => self.begin_scan(ScanKind::Full, self.scan_roots()?)?,
             StartupState::Loading | StartupState::Scanning(_) => {
                 return Err("SHINKI_EMU_PREPARE_BUSY".into());
             }
