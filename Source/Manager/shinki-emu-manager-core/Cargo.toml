@@ -25,6 +25,10 @@ thiserror.workspace = true
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
+[build-dependencies]
+toml = "1.1.8"
+
 [dev-dependencies]
 blowfish.workspace = true
+toml = "1.1.8"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
