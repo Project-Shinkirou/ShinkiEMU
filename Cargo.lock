@@ -11176,6 +11176,7 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "directories",
+ "dunce",
  "flate2",
  "fontique",
  "futures-util",

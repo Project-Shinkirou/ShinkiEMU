@@ -395,7 +395,8 @@ impl ShinkiEmuManagerController {
         if !unchanged {
             self.patch_release_mismatch = false;
             self.patch_state = PatchStateViewModel {
-                patch_directory: game.location,
+                patch_directory: dunce::simplified(Path::new(&game.location))
+                    .to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned(),
                 ..Default::default()
             };
             self.patch_game_id = Some(game.game_id);
@@ -478,7 +479,7 @@ impl ShinkiEmuManagerController {
         kind: &str,
         path: &Path,
     ) -> Result<ManagerViewModel, String> {
-        let path = path
+        let path = dunce::simplified(path)
             .to_str()
             .ok_or("SHINKI_EMU_PATCH_PATH: directory path must be Unicode")?
             .to_owned();
