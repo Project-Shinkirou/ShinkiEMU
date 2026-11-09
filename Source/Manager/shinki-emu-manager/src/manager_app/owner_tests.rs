@@ -401,3 +401,18 @@ fn a_finished_core_whose_close_fails_reports_the_cleanup_error() {
     assert_eq!(call_names(&harness).last(), Some(&"close"));
     harness.owner.shutdown().unwrap();
 }
+
+#[test]
+fn failed_selected_fresh_probe_cancels_open_services_without_opening_a_session() {
+    let mut harness = Harness::with(|fixture| {
+        fixture.marker = Some("missing-owner-fresh-probe-resource");
+    });
+    let request = harness.request();
+    let epoch = request.epoch;
+    let cancellation = request.cancellation.clone();
+    harness.owner.open(request).unwrap();
+    let update = harness.closed(epoch);
+    assert!(update.error.unwrap().contains("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH"));
+    assert!(cancellation.is_cancelled());
+    assert!(!harness.calls.lock().iter().any(|call| call.name == "open"));
+}

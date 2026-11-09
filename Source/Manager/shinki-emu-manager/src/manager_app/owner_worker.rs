@@ -129,9 +129,17 @@ pub(super) fn run(
                         _ => Err("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH".to_owned()),
                     }
                 })();
-                let Some(candidate) = candidate.map_err(|error| closed(epoch, Some(error), &shared)).ok() else {
-                    notify(&wake);
-                    continue;
+                let candidate = match candidate {
+                    Ok(candidate) => candidate,
+                    Err(error) => {
+                        if let Some(text) = &request.text { let _ = text.close(); }
+                        if let Some(window) = &request.window_service { window.close(); }
+                        if let Some(modal) = &request.modal { modal.cancel_pending(); }
+                        request.cancellation.cancel();
+                        closed(epoch, Some(error), &shared);
+                        notify(&wake);
+                        continue;
+                    }
                 };
                 match ActiveFamilySession::open(
                     (&request.game, request.configuration, epoch),
