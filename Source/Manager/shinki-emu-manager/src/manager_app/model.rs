@@ -528,7 +528,8 @@ impl ShinkiEmuManagerController {
                 core: file.clone(),
             });
         }
-        if self.registry.is_ready() && self.registry.descriptors().next().is_none() {
+        if self.registry.is_ready() && shinki_emu_manager::static_cores::STATIC_CORES.is_empty()
+            && !self.registry.installed().keys().any(|id| self.plugin_available(id)) {
             notices.push(NoticeViewModel {
                 id: "no-cores".into(),
                 severity: "warning".into(),

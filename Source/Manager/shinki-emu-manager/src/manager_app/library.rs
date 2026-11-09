@@ -178,8 +178,8 @@ impl ShinkiEmuManagerController {
             .settle_abandoned_sessions(unix_time_ms()?)
             .map_err(|error| error.to_string())?;
         translation::migrate_provider_book(&mut library)?;
-        // The owner loads lazily after “Prepare”; settle last session's staged
-        // operations before the first model, even if the user never prepares.
+        // Settle last session's staged packages before reading manifests. Native
+        // initialization remains deferred until an explicit selected action.
         let cores = data_dir.join("cores");
         fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
         let pending_failures = core_package::apply_pending(&cores);

@@ -11,7 +11,7 @@ pub(super) enum StartupState {
     Failed(String),
 }
 
-/// Scan started automatically once core loading finishes.
+/// Scan started automatically once installed package identities are available.
 pub(super) enum PendingScan {
     Full,
     Import(PathBuf),
@@ -58,10 +58,10 @@ impl ShinkiEmuManagerController {
                 tr!("游戏扫描失败：{error}", error = error)
             }
             StartupState::Failed(error) => {
-                tr!("核心加载或后台运行失败：{error}。请修复后重启应用。", error = error)
+                tr!("核心清单或后台运行失败：{error}。请修复后重启应用。", error = error)
             }
             StartupState::Ready if !self.plugin_errors.is_empty() => tr!(
-                "有 {count} 个核心加载失败，请查看核心诊断；修复或更换核心后需重启应用。",
+                "有 {count} 个核心文件处理失败，请查看核心诊断；修复或更换核心后需重启应用。",
                 count = self.plugin_errors.len()
             ),
             StartupState::Ready => tr!("资料库已准备好。更换核心文件后需重启应用。").into(),
@@ -400,7 +400,7 @@ impl ShinkiEmuManagerController {
                 self.selected_case_id = Some(id.clone());
             }
             if imported.is_empty() {
-                self.diagnostic = tr!("所选目录中未发现当前核心支持的游戏。请选择原生游戏目录，或检查运行包包含的核心。").into();
+                self.diagnostic = tr!("所选目录中未识别到游戏引擎，请选择原生游戏目录。").into();
                 self.diagnostic_severity = "warning";
             }
         }
