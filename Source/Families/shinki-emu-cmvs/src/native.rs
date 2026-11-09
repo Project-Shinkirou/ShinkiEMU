@@ -92,7 +92,10 @@ unsafe extern "C" fn initialize(
     boundary(error, || {
         let diagnostics =
             unsafe { diagnostics.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
-        if !diagnostics.header.accepts::<abi::Diagnostics>() || diagnostics.emit.is_none() {
+        if !diagnostics.header.accepts::<abi::Diagnostics>()
+            || diagnostics.emit.is_none()
+            || diagnostics.flush.is_none()
+        {
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
         // Static embedding shares the Manager's installed tracing subscriber.

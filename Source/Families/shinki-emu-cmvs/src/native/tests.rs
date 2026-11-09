@@ -136,6 +136,31 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     assert_eq!(leases.load(Ordering::Acquire), 0);
 }
 
+fn reject_invalid_diagnostics(diagnostics: abi::Diagnostics) {
+    let mut error = abi::Error::default();
+    assert_eq!(
+        unsafe { initialize(std::ptr::null(), &mut error) },
+        abi::INVALID_ARGUMENT
+    );
+    for invalid in [
+        abi::Diagnostics { emit: None, ..diagnostics },
+        abi::Diagnostics { flush: None, ..diagnostics },
+        abi::Diagnostics {
+            header: abi::Header { size: 0, ..diagnostics.header },
+            ..diagnostics
+        },
+        abi::Diagnostics {
+            header: abi::Header { version: 0, ..diagnostics.header },
+            ..diagnostics
+        },
+    ] {
+        assert_eq!(
+            unsafe { initialize(&invalid, &mut error) },
+            abi::INVALID_ARGUMENT
+        );
+    }
+}
+
 #[cfg(not(feature = "dynamic-plugin-export"))]
 #[test]
 fn static_initialize_preserves_the_installed_host_subscriber() {
@@ -154,6 +179,7 @@ fn static_initialize_preserves_the_installed_host_subscriber() {
         emit: Some(emit),
         flush: Some(flush),
     };
+    reject_invalid_diagnostics(diagnostics);
     let mut error = abi::Error::default();
     assert_eq!(unsafe { initialize(&diagnostics, &mut error) }, abi::OK);
     let mut descriptor = std::mem::MaybeUninit::uninit();
@@ -163,6 +189,8 @@ fn static_initialize_preserves_the_installed_host_subscriber() {
         dispatch.downcast_ref::<tracing::subscriber::NoSubscriber>().is_some()
     }));
     assert_eq!(CALLBACKS.load(Ordering::Relaxed), 0);
+    reject_invalid_diagnostics(diagnostics);
+    assert_eq!(unsafe { describe(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
 }
 
 #[cfg(feature = "dynamic-plugin-export")]
@@ -179,6 +207,7 @@ fn dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement() {
         emit: Some(emit),
         flush: Some(flush),
     };
+    reject_invalid_diagnostics(diagnostics);
     let mut api = std::ptr::null();
     assert_eq!(unsafe { shinki_emu_query(abi::ABI_VERSION, &mut api) }, abi::OK);
     let api = unsafe { &*api };
@@ -195,4 +224,7 @@ fn dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement() {
         unsafe { api.initialize.unwrap()(&conflicting, &mut error) },
         abi::INVALID_STATE
     );
+    reject_invalid_diagnostics(diagnostics);
+    let mut descriptor = std::mem::MaybeUninit::uninit();
+    assert_eq!(unsafe { api.describe.unwrap()(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
 }
