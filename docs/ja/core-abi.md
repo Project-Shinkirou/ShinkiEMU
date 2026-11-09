@@ -11,6 +11,29 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 境界を越えるのは C レイアウトの値だけです。具体的には、バージョン付きヘッダー、長さ上限のある借用バイト列、不透明ハンドル、ステータスコード、関数ポインターです。Rust のコンテナや例外の巻き戻しは ABI を越えません。動的ライブラリと不変の descriptor ストレージは常駐したままです。query はバージョンと関数テーブルの出力ポインターを受け取り、未対応のバージョンでは出力を null にします。query は I/O を行わず、worker を起動せず、logger もインストールしません。
 
+## ディレクトリ識別
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` は `Result<Vec<EngineDetection>, DetectionError>` を返します。結果は `family_id` と `format` のみで、インストール済みプラグインや native `FamilyProbeCandidate` に依存しません。同じ family は一件にまとめ、family ID 順に返します。複数 family の選択は呼び出し側が行い、空の配列は未識別です。family の識別、実装の互換性、実行成功は別々に扱います。
+
+対象はルートと `Data`、`Data/pack`、`StartData`、`game`、`USRDIR` です。ディレクトリ名の大文字小文字は区別しません。リンクと特殊ファイルを除外し、列挙は 4,096 項目、読み込みは 1,024 ファイル、合計 16 MiB、単一ファイル 4 MiB までに制限します。読み込みと解析の間でキャンセルを確認しますが、ブロック中の OS 呼び出しは中断できません。I/O、キャンセル、上限超過はエラーを返し、部分候補や未一致キャッシュに変換しません。破損・切り詰められた候補は除外して他のファイルを調べます。ルール変更時には `detection::CACHE_VERSION` を更新し、キャッシュはディレクトリ内容の変更も追跡する必要があります。
+
+`build/cores.toml` の各 family を次の形式で確認します。
+
+| Family ID | 確認内容 | 対象範囲 |
+| --- | --- | --- |
+| `fvp` | HCB/BCH システム記述子、エントリーポイント、タイトル境界、syscall レコード | magic はなく、拡張子は構造解析の入口にのみ使用 |
+| `siglus` | Scene PCK/CHS ヘッダー、索引とシーンの範囲、任意の `pack_scn` 署名 | 対象外の Select.ini append ディレクトリには明示的な解決が必要。鍵は起動時に検証 |
+| `artemis` | PF2/6/8 の有界な完全索引、`system.ini`、リソース範囲 | プロジェクト項目のない PF は採用しない |
+| `musica` | keys.v2、実際の `scr.paz`、復号した PAZ 索引、既知コマンドを含む SC | PAZ0/1/2。正しい秘密鍵、標準のスクリプト配置、有界な完全スクリプトが必要。設定だけでは一致しない |
+| `softpal` | Sv20 ヘッダーとスクリプト入口 | PAC のみの配置は未識別。EXE/appid リストは使用しない |
+| `krkr` | XP3 署名、索引ヘッダーと範囲 | loose TJS、EXE 内 XP3、独自方式は未識別 |
+| `ethornell` | BURIKO ARC20 索引、または `ipl._bp` を含む PackFile 索引とリソース範囲 | ブートスクリプトの展開や VM 互換性は検証しない |
+| `cmvs` | CPZ3/5/6/7 の固定ヘッダーと索引範囲、または PS2A セグメント | CPZ1/2 は未識別。暗号化索引、checksum、profile は起動時に検証 |
+| `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
+| `renpy` | RPA2/3 ヘッダー、索引位置と zlib ヘッダー、または RPC2 slot 範囲 | RPA1、ソースのみ、旧 zlib-RPYC は未識別。Python/pickle を実行しない |
+
+ルールは pin された adapter と上流の解析実装から確認しています。作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` に移し、識別と再生で共有します。VM、ABI、GPU、音声への依存はありません。Manager 識別はこのモジュールで管理し、adapter probe は選択したコアのリソース・設定検証に限ります。native probe へのフォールバックはありません。この変更自体には UI/owner の接続は含みません。
+
 ## ライフサイクル
 
 1. **query** は不変の `CoreApi` テーブルを取得し、バージョン、サイズ、必須の関数ポインターを確認します。

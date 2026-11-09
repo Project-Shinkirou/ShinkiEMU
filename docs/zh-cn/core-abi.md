@@ -11,6 +11,29 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 边界只传 C 布局值，包括版本头、有界借用字节、不透明句柄、状态码和函数指针；Rust 容器及异常展开不跨 ABI。动态库及不可变 descriptor 存储保持驻留。query 接收版本和函数表输出指针；不支持的版本将输出置空。query 不执行 I/O、不启动 worker，也不安装 logger。
 
+## 目录识别
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` 返回 `Result<Vec<EngineDetection>, DetectionError>`。匹配只含 `family_id` 和 `format`，不依赖已安装插件，也不使用 native `FamilyProbeCandidate` 报告。每个家族最多一项，按 family ID 排序；多个家族交调用方选择，空数组表示未识别。家族识别、实现兼容性和实际运行成功分开判断。
+
+识别范围是根目录及 `Data`、`Data/pack`、`StartData`、`game`、`USRDIR`，目录名不区分大小写。跳过链接和特殊文件，最多枚举 4,096 个条目、读取 1,024 个文件，总读取上限 16 MiB，单文件 4 MiB。读取和解析阶段之间检查取消；阻塞中的文件系统调用不能被强行中断。真实 I/O 失败、取消和读取超限返回错误，不返回部分候选，也不能写成未匹配缓存。坏格式和截断候选不命中，但继续检查其他文件。规则变更更新 `detection::CACHE_VERSION`，缓存还须跟踪目录内容变化。
+
+`build/cores.toml` 中各家族的识别依据如下：
+
+| Family ID | 检查内容 | 覆盖边界 |
+| --- | --- | --- |
+| `fvp` | HCB/BCH 系统描述偏移、入口、标题边界和 syscall 记录 | 无固定 magic；后缀只决定是否尝试结构解析，不能单独命中 |
+| `siglus` | Scene PCK/CHS 头、索引表和场景数据范围，可选 `pack_scn` 签名 | 上述布局外的 Select.ini 自定义 append 目录需显式解析资源根；密钥由启动检查 |
+| `artemis` | PF2/6/8 有界完整索引、`system.ini` 条目及资源范围 | 没有项目入口的 PF 归档不入库 |
+| `musica` | keys.v2 配置、实际 `scr.paz` 头、解密后的 PAZ 索引及含已知命令的 SC 脚本 | PAZ0/1/2；需要正确私有密钥、默认脚本归档布局和有界完整脚本；配置或后缀不能单独命中 |
+| `softpal` | Sv20 头和脚本入口 | 只有打包 PAC 时保持未知，不用 EXE/appid 白名单 |
+| `krkr` | XP3 签名、索引头和索引范围 | loose TJS、嵌入 EXE 的 XP3、自定义归档方案保持未知 |
+| `ethornell` | BURIKO ARC20 索引，或含 `ipl._bp` 的 PackFile 索引，以及资源范围 | 不解压引导脚本，不保证 VM 兼容 |
+| `cmvs` | CPZ3/5/6/7 固定头和索引范围，或 PS2A 段范围 | CPZ1/2 保持未知；加密索引、校验和、profile 兼容性留给启动检查 |
+| `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
+| `renpy` | RPA2/3 头、索引位置及 zlib 头，或 RPC2 slot 范围 | RPA1、纯源码、旧 zlib-RPYC 保持未知；不执行 Python/pickle |
+
+规则来自实际 pin 的 adapter 和上游格式解析器，不使用作品名示例。Musica 的 PAZ 变换、索引解析和 SC 解析移入纯 `shinki-emu-musica-format`，识别与运行共用，不依赖 VM、ABI、GPU 或音频。Manager 识别规则由本模块统一维护；adapter probe 只做选定核心的资源/配置校验，不作为扫描回退。本接口提交不包含 UI/owner 扫描接入。
+
 ## 生命周期
 
 1. **query** 取得不可变 `CoreApi` 表，检查版本、大小和必需函数指针。

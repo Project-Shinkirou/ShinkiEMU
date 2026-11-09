@@ -11,6 +11,29 @@ The native protocol is `shinki.emu.native.c.v3`, with numeric ABI version **3**.
 
 Only C-layout values cross the boundary: versioned headers, bounded borrowed spans, opaque handles, status codes and function pointers. No Rust-owned containers or unwinding cross the ABI. Libraries and immutable descriptor storage remain resident. Query accepts a version and an output table pointer; unsupported versions leave the output null. Query does no I/O, starts no workers and installs no logger.
 
+## Directory recognition
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` returns `Result<Vec<EngineDetection>, DetectionError>`. A detection contains only `family_id` and `format`; it is independent of installed plugins and native `FamilyProbeCandidate` reports. One result per family is returned in family-ID order. Multiple families require caller selection; an empty vector means unrecognized. Recognition does not establish implementation compatibility or successful execution.
+
+The detector reads files in the root, `Data`, `Data/pack`, `StartData`, `game` and `USRDIR`, matching directory names case-insensitively. It skips links and special files, limits enumeration to 4,096 entries/1,024 files, and limits reads to 16 MiB total/4 MiB per file. Cancellation is checked between reads and parser stages; blocked filesystem calls cannot be interrupted. I/O, cancellation and read-limit failures return errors, never partial candidates or cacheable no-match results. Malformed/truncated format candidates are rejected while other files remain eligible. `detection::CACHE_VERSION` changes with recognition rules; caches must also track directory-content changes.
+
+The registered families from `build/cores.toml` use these checks:
+
+| Family ID | Resource checks | Coverage limits |
+| --- | --- | --- |
+| `fvp` | HCB/BCH system-descriptor pointer, entry point, title boundary and syscall records | Magic-less; filename suffix routes structural parsing, never establishes a match |
+| `siglus` | Scene PCK/CHS header, table ranges and scene payload ranges; optional `pack_scn` signature | Custom Select.ini append roots outside the listed layouts need explicit root resolution; keys remain launch validation |
+| `artemis` | PF2/6/8 complete bounded index with a `system.ini` entry and resource ranges | No project-less PF admission |
+| `musica` | Valid keys.v2 profile, actual `scr.paz` header, decrypted PAZ index and a decoded SC script containing a known command | PAZ0/1/2; requires correct private keys, default script archive layout and bounded complete script; no profile/extension-only match |
+| `softpal` | Sv20 script header and entry point | Packed PAC-only layouts remain unknown; no executable/appid whitelist |
+| `krkr` | XP3 signature, index header and index range | Loose TJS, embedded-EXE XP3 and custom archive schemes remain unknown |
+| `ethornell` | BURIKO ARC20 index, or PackFile index containing `ipl._bp`; resource ranges | Does not decompress bootstrap scripts or establish VM compatibility |
+| `cmvs` | CPZ3/5/6/7 fixed headers and index ranges, or PS2A script segments | CPZ1/2 remain unknown; encrypted indexes/checksums/profile compatibility remain launch checks |
+| `mages` | MPK v2 complete bounded index and resource ranges | MPK alone identifies the family, not Impacto's selected runtime profile |
+| `renpy` | RPA2/3 header/index location and zlib header, or RPC2 slot ranges | RPA1, source-only and legacy zlib-RPYC layouts remain unknown; no Python/pickle execution |
+
+The rules were derived from the pinned adapters and their upstream parsers, not game-name examples. Musica's PAZ transforms/index parser and SC parser live in the pure `shinki-emu-musica-format` crate and are shared with playback; that crate has no VM, ABI, GPU or audio dependency. Manager recognition rules have one owner here. Adapter probes remain selected-core resource/configuration checks, not a native scan fallback. This API change does not itself replace the existing UI/owner scan integration.
+
 ## Lifecycle
 
 1. **query** obtains the immutable `CoreApi` table; validate the version, size and required function pointers.
