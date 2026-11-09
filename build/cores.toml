@@ -60,8 +60,8 @@ static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
-branch = "fix/main-ci-android"
-rev = "a0aa629fb5ce467e91c83e2be0fffb3320404527"
+branch = "shinki-headless-null-audio"
+rev = "0e1aa89db3f8e33ac9d0a0b2d43bef51660120dd"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }

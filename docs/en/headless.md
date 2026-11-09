@@ -44,6 +44,12 @@ Native size, position, mode, visibility and minimize requests operate on a coher
 
 The host waits up to `--startup-timeout-ms` (default 30000, after native open) for a completed CPU frame. Rendering and game scripts remain enabled. No Slint window, display surface or event loop is created for core runs. Cores own their own graphics/audio devices; a GPU or audio device required by a core remains required. The runner does not silently disable audio, movies or script work.
 
+For headless logic/frame acceptance with a supporting desktop Siglus core, pass `--audio-device nullaudiodevice`. The runner selects the existing paced `NullAudioDevice` only in its isolated child, requires the core's `headless_audio_device` enum capability, and fails if unsupported. Kira still decodes and mixes PCM through a bounded queue; pause/resume and shutdown remain active. `run.json` records the selection. This does not verify audible output. Without the option, normal Manager and native-audio runs retain their real device path; no device failure triggers a null fallback.
+
+```powershell
+shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null
+```
+
 ### Clock and frame meaning
 
 C ABI v3 gives the core ownership of its game clock and producer thread. It does not expose deterministic single-step/emulated time. The runner samples completed frames on the existing protocol's 16,666,667 ns host timeline, starting after the first completed frame. `--frames N` means N host presentation samples, **not** an instruction to execute exactly N native VM ticks. `acquired_frames` counts distinct completed leases actually acquired. A static title frame can validly appear at several sample points. Exact cross-run matching depends on the core/game's native timing and deterministic state; PNG tolerance is available when needed.
