@@ -486,11 +486,11 @@ impl ShinkiEmuManagerController {
         };
         // A loaded implementation has a schema, but this game's imported receipt
         // still needs explicit validation before its settings can be edited.
-        if configuration_state == "ready"
+        let pending_profile = configuration_state == "ready"
             && self.library.app_state::<BTreeMap<String, String>>(
                 &format!("pending-patch-configuration:{game_id}"),
-            ).map_err(|error| error.to_string())?.is_some()
-        {
+            ).map_err(|error| error.to_string())?.is_some();
+        if pending_profile {
             configuration_state = "unprepared";
         }
         Ok(GameSettingsViewModel {
@@ -509,7 +509,7 @@ impl ShinkiEmuManagerController {
             configuration_error,
             emulator_id: selected_plugin.unwrap_or_default(),
             render: self.game_render_view(game_id)?,
-            fields: if configuration_state == "ready" { self.game_config_fields(game_id)? } else { Vec::new() },
+            fields: if pending_profile { Vec::new() } else { self.game_config_fields(game_id)? },
             recommended_available: recommended.is_some(),
             recommended_summary: recommended.unwrap_or_default(),
             input_override: override_mapping.is_some(),

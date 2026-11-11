@@ -171,6 +171,12 @@ fn deferred_enum_profile_reaches_native_open_and_is_consumed_only_once() {
     assert_eq!(calls.lock().iter().find(|call| call.name == "open").unwrap().key, "launch_mode=title");
     assert!(app.library.app_state::<BTreeMap<String, String>>("pending-patch-configuration:game").unwrap().is_none());
     app.leave_game().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.active.is_some() {
+        app.poll_platform().unwrap();
+        assert!(Instant::now() < deadline, "native session did not close");
+        std::thread::yield_now();
+    }
     app.set_game_config("game", "launch_mode", "direct").unwrap();
     app.prepare_game_configuration("game").unwrap();
     super::super::recognition_tests::settle(&mut app);
