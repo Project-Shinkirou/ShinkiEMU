@@ -80,7 +80,14 @@ jobs:
           "source_commit=$sourceCommit" >> $env:GITHUB_OUTPUT
           "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; scope=$env:RELEASE_SCOPE; prepare_only=$env:PREPARE_ONLY" >> $env:GITHUB_STEP_SUMMARY
           $localManager = $false
-          $rows = @((cargo xtask matrix --json --ci --scope $env:RELEASE_SCOPE | ConvertFrom-Json).include)
+          $matrixArguments = @('xtask', 'matrix', '--json', '--ci')
+          if ($env:RELEASE_SCOPE -eq 'all') {
+            # Older source_commit overrides still use their original xtask CLI.
+            $localManager = @((cargo xtask matrix) | Where-Object { $_ -match '^manager\taarch64-unknown-linux-ohos\tsupported\t' }).Count -gt 0
+          } else {
+            $matrixArguments += @('--scope', $env:RELEASE_SCOPE)
+          }
+          $rows = @((cargo @matrixArguments | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
           $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
           $version = $env:INPUT_VERSION.Trim()
@@ -108,11 +115,12 @@ jobs:
             $own = @($rows | Where-Object { $_.component -ceq $component })
             if ($own.Count -eq 0) { throw "Unknown component '$component', or it has no supported target" }
             if ($own[0].publish_blocked) { throw "$component is publish_blocked: $($own[0].publish_blocked)" }
-            $arguments = @('xtask', 'release', '--component', $component, '--dry-run', '--scope', $env:RELEASE_SCOPE)
+            $arguments = @('xtask', 'release', '--component', $component, '--dry-run')
+            if ($env:RELEASE_SCOPE -ne 'all') { $arguments += @('--scope', $env:RELEASE_SCOPE) }
             if (-not $own[0].external) { $arguments += @('--version', $version) }
             $identity = cargo @arguments | ConvertFrom-Json
             if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match verified component identity' }
-            $localManager = $localManager -or $identity.local_manager
+            if ($env:RELEASE_SCOPE -ne 'all') { $localManager = $localManager -or $identity.local_manager }
             $versions[$component] = $identity.version
             $components += @{component=$component; version=$identity.version}
           }
@@ -231,7 +239,11 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
-        run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION --scope $env:RELEASE_SCOPE
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $releaseArguments = @('xtask', 'release', '--component', $env:COMPONENT, '--target', $env:TARGET, '--version', $env:SHINKI_EMU_CI_VERSION)
+          if ($env:RELEASE_SCOPE -ne 'all') { $releaseArguments += @('--scope', $env:RELEASE_SCOPE) }
+          cargo @releaseArguments
       - uses: actions/upload-artifact@v7
         with:
           # Component ids and triples never contain '@', so publish can select one component.
@@ -321,7 +333,7 @@ jobs:
             records=(.work/release/*/"$target"/release.json)
             test "${#records[@]}" -eq 1
             jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" \
-              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and .release_scope == $scope' \
+              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and (.release_scope // "all") == $scope' \
               "${records[0]}" >/dev/null
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
       - name: Local Manager artifact handoff

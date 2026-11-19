@@ -99,6 +99,7 @@ jobs:
     env:
       # CI packages are test builds; release.yml packages the released version.
       SHINKI_EMU_CI_VERSION: 0.0.0-ci.${{ github.run_number }}
+      RELEASE_SCOPE: ${{ inputs.release_scope || 'all' }}
       ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
     defaults:
       run:
@@ -191,7 +192,7 @@ jobs:
         if: matrix.component == 'kirikiroid2-web'
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo xtask release --component kirikiroid2-web --target $env:TARGET
+        run: cargo xtask release --component kirikiroid2-web --target $env:TARGET --scope $env:RELEASE_SCOPE
       - uses: actions/setup-python@v6
         if: matrix.component == 'kirikiroid2-web'
         with:
@@ -223,7 +224,7 @@ jobs:
         if: matrix.component == 'manager' && contains(matrix.target, 'android')
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo xtask release --component manager --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION
+        run: cargo xtask release --component manager --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION --scope $env:RELEASE_SCOPE
       - uses: actions/upload-artifact@v7
         if: matrix.component == 'manager' && contains(matrix.target, 'android')
         with:
