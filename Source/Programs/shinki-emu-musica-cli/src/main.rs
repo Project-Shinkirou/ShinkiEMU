@@ -41,6 +41,8 @@ enum Command {
         #[arg(long)]
         game_dir: PathBuf,
     },
+    /// Convert GARbro keys. Imported roles default to required=true; set
+    /// archive_keys.<role>.required=false in key.toml for optional archives.
     ImportGarbroScheme {
         #[arg(long)]
         formats: PathBuf,
@@ -53,6 +55,8 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Convert native keys. Roles default to required=true; explicit
+    /// archive_keys.<role>.required=false is preserved for optional archives.
     ImportKeyProfile {
         #[arg(long)]
         file: PathBuf,
@@ -66,6 +70,7 @@ enum Command {
         output: PathBuf,
     },
     /// Convert a strict legacy profile.v1 JSON file into a new keys.v2 key.toml.
+    /// Roles default to required=true; explicit required=false is preserved.
     ImportJsonProfile {
         #[arg(long)]
         file: PathBuf,

@@ -89,6 +89,15 @@ mod tests {
             0,
         )
         .unwrap();
+        vm.set_frontend(crate::runtime::title::test_frontend());
+        vm.config
+            .character_voices
+            .push(crate::voice_preferences::VoiceCharacter {
+                prefix: "unknown".into(),
+                label: "Unknown".into(),
+                enabled: true,
+            });
+        let initial_config = vm.config().clone();
         assert!(vm.open_config().is_err());
         vm.begin_title_launch().unwrap();
         let slot = MusicaVm::checked_test_state(vm.state()).unwrap();
@@ -100,7 +109,7 @@ mod tests {
         vm.apply_config_control(MusicaConfigControl::ToggleCharacterVoice(0))
             .unwrap();
         assert_eq!(vm.config().message_speed_auto_play, 50);
-        assert!(vm.voice_preferences().character_voice_enabled[0]);
+        assert!(vm.voice_preferences().characters[0].enabled);
         let before = vm.config_for_presentation().unwrap().clone();
         assert!(
             vm.apply_config_control(MusicaConfigControl::BgmVolume(101))
@@ -113,7 +122,7 @@ mod tests {
         assert_eq!(vm.config_for_presentation().unwrap(), &before);
         vm.apply_config_control(MusicaConfigControl::Cancel)
             .unwrap();
-        assert_eq!(vm.config(), &MusicaConfigState::default());
+        assert_eq!(vm.config(), &initial_config);
         vm.open_config().unwrap();
         vm.apply_config_control(MusicaConfigControl::MessageSpeedAutoPlay(25))
             .unwrap();
@@ -121,7 +130,7 @@ mod tests {
             .unwrap();
         vm.apply_config_control(MusicaConfigControl::Apply).unwrap();
         assert_eq!(vm.config().message_speed_auto_play, 25);
-        assert!(!vm.voice_preferences().character_voice_enabled[0]);
+        assert!(!vm.voice_preferences().characters[0].enabled);
         vm.open_config().unwrap();
         assert!(vm.install_test_state(&slot, 0).is_err());
         assert!(vm.config_for_presentation().is_ok());

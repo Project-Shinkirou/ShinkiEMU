@@ -60,10 +60,18 @@ fn number(node: Option<&KeyValue>) -> Option<u64> {
     })
 }
 fn parse_app(data: &[u8]) -> Result<KeyValue, Error> {
-    let text = std::str::from_utf8(data)
-        .map_err(|_| Error::Metadata)?
-        .trim_end_matches('\0');
-    KeyValue::from_text(text).map_err(|_| Error::Metadata)
+    let candidates = std::iter::once(data).chain(data.get(4..));
+    for candidate in candidates {
+        if let Ok(text) = std::str::from_utf8(candidate)
+            && let Ok(kv) = KeyValue::from_text(text.trim_end_matches('\0'))
+        {
+            return Ok(kv);
+        }
+        if let Ok(kv) = KeyValue::from_binary(candidate) {
+            return Ok(kv);
+        }
+    }
+    Err(Error::Metadata)
 }
 
 pub(crate) fn parse_game(app_id: u32, kv: &KeyValue) -> Game {
@@ -380,6 +388,15 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const PREFIXED_APPINFO: &[u8] =
+        b"\x01\x00\x00\x00\"appinfo\" { \"common\" { \"name\" \"fixture\" } }\0";
+
+    #[test]
+    fn parse_app_accepts_protocol_version_prefix() {
+        let kv = parse_app(PREFIXED_APPINFO).expect("prefixed appinfo fixture");
+        assert_eq!(text(kv.get("common").and_then(|v| v.get("name"))), "fixture");
+    }
+
     #[test]
     fn catalog_preserves_shared_language_depots_and_nonpublic_branches() {
         let kv = KeyValue::from_text(r#""appinfo" { "common" { "name" "VN" "oslist" "windows,linux" "supported_languages" { "japanese" { "supported" "true" } } } "depots" { "11" { "name" "Windows" "config" { "oslist" "windows" } "manifests" { "public" { "gid" "123" "size" "45" } } } "12" { "depotfromapp" "99" "config" { "language" "japanese" } } "branches" { "beta" { "pwdrequired" "1" } } } }"#).unwrap();

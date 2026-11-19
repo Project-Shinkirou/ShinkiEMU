@@ -84,6 +84,9 @@ pub struct Arguments {
     pub configuration: Option<PathBuf>,
     #[arg(long, default_value_t = 30000)]
     pub startup_timeout_ms: u64,
+    /// Explicit test endpoint; requires core support and never falls back to native audio.
+    #[arg(long, value_parser = ["nullaudiodevice"])]
+    pub audio_device: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +95,7 @@ pub struct RunReport {
     pub core: String,
     pub abi: &'static str,
     pub clock: &'static str,
+    pub audio_device: String,
     pub presented_samples: u64,
     pub acquired_frames: u64,
     pub consumed_input_messages: usize,
@@ -109,7 +113,7 @@ pub fn run_cli(arguments: Arguments, queries: &[(&str, abi::Query)]) -> ExitCode
         return ExitCode::from(error.exit_code());
     }
     if std::env::var_os("SHINKI_HEADLESS_ISOLATED_CHILD").is_none() {
-        return match isolated_process() {
+        return match isolated_process(arguments.audio_device.as_deref()) {
             Ok(status) => {
                 let code = status
                     .code()
@@ -173,13 +177,17 @@ pub fn run_cli(arguments: Arguments, queries: &[(&str, abi::Query)]) -> ExitCode
     }
 }
 
-fn isolated_process() -> Result<std::process::ExitStatus> {
+fn isolated_process(audio_device: Option<&str>) -> Result<std::process::ExitStatus> {
     let root = tempfile::Builder::new()
         .prefix("shinki-headless-process-")
         .tempdir()?;
     let mut command = std::process::Command::new(std::env::current_exe()?);
     command.args(std::env::args_os().skip(1));
     command.env("SHINKI_HEADLESS_ISOLATED_CHILD", "1");
+    command.env_remove("SHINKI_HEADLESS_AUDIO_DEVICE");
+    if let Some(device) = audio_device {
+        command.env("SHINKI_HEADLESS_AUDIO_DEVICE", device);
+    }
     // Native producers often hold large VM boot temporaries too. Set their
     // default stack before std caches RUST_MIN_STACK in the isolated process.
     let native_stack = std::env::var("RUST_MIN_STACK")
@@ -260,6 +268,14 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
         LoadedFamilyPlugin::load(library)
     }
     .map_err(|error| Error::Run(error.to_string()))?;
+    if let Some(device) = &arguments.audio_device {
+        if !plugin.configuration().iter().any(|field| {
+            field.id == "headless_audio_device" && matches!(&field.kind,
+                ConfigKind::Enum { choices } if choices.contains(device))
+        }) {
+            return Err(Error::Run("core does not support the requested headless audio device".into()));
+        }
+    }
     let game_path = game
         .to_str()
         .ok_or_else(|| Error::Run("game path must be UTF-8".into()))?
@@ -280,6 +296,13 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
         })
         .transpose()?
         .unwrap_or_default();
+    if let Some(device) = &arguments.audio_device {
+        configuration.retain(|entry| entry.id != "headless_audio_device");
+        configuration.push(ConfigEntry {
+            id: "headless_audio_device".into(),
+            value: ConfigValue::Enum(device.clone()),
+        });
+    }
     if plugin
         .configuration()
         .iter()
@@ -421,6 +444,7 @@ fn execute(
         core: args.core.clone(),
         abi: "shinki.emu.native.c.v3",
         clock: "60hz_host_observation_native_owned_game_time",
+        audio_device: args.audio_device.clone().unwrap_or_else(|| "native".into()),
         presented_samples: ticks,
         acquired_frames: 0,
         consumed_input_messages: 0,

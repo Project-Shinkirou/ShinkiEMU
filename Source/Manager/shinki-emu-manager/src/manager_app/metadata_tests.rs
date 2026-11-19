@@ -27,17 +27,13 @@ fn damaged_core_keeps_manager_available_and_error_visible() {
     let mut app = controller(root.path());
     app.prepare_library().unwrap();
     super::probe_state_tests::settle_background(&mut app);
-    assert!(app.plugin_errors.contains_key("shinki_emu_broken"));
-    assert!(!app.plugin_errors.contains_key("avcodec-62"));
-    assert!(app.registry.descriptor("shinki.emu.missing").is_none());
-    assert!(
-        app.model()
-            .unwrap()
-            .notices
-            .items
-            .iter()
-            .any(|notice| notice.code.contains("SHINKI_EMU_FAMILY_LOAD"))
-    );
+    assert!(app.plugin_errors.is_empty(), "ordinary preparation must not attempt native loading");
+    assert_eq!(app.registry.descriptors().count(), 0);
+    let model = app.model().unwrap();
+    let item = model.cores.items.iter().find(|item| item.id == "shinki_emu_broken").unwrap();
+    assert_eq!(item.state, "failed");
+    assert!(item.message.contains("MANIFEST"));
+    assert!(!model.cores.items.iter().any(|item| item.id == "avcodec-62"));
 }
 
 fn add_game(controller: &mut ShinkiEmuManagerController, id: &str) {
@@ -112,7 +108,6 @@ fn metadata_search_rejects_invalid_input_and_overlapping_requests() {
         "existing".into(),
         PendingMetadata {
             game_id: Some("first".into()),
-            core: None,
         },
     );
     assert_eq!(

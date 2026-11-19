@@ -1,9 +1,5 @@
-//! `sysparams.txt`: the original configuration table (tab-separated, CRLF,
-//! sorted by key). Musica maps its configuration onto the keys both
-//! executables read (perseus.exe sub_47FCC0 / sub_480430, eden_en.exe
-//! sub_4B5C90 / sub_4B5570); every other key stays verbatim. Settings the
-//! title's original has no key for go to `<game>/.shinki/musica/musica-settings.txt`
-//! in the same layout.
+//! Native tab-separated settings, preserving every unmapped property.
+//! Frontend settings without a configured native key stay in musica-settings.txt.
 
 use super::*;
 use crate::{MusicaConfigState, MusicaPlayMode};
@@ -12,25 +8,6 @@ pub(super) const SYSPARAMS: &str = "sysparams.txt";
 pub(super) const MUSICA_SETTINGS: &str = "musica-settings.txt";
 const QUICK_SAVE: &[u8] = b"quickSaveFileNumber";
 const AUTO_SAVE: &[u8] = b"autoSaveFileNumber";
-
-/// perseus.exe voice table `off_518AC0`, in Musica's character order; the
-/// original `etc` key is Musica's `mot` voice group. eden_en.exe has eight
-/// unrelated voices (`off_595B50`), so its Musica toggles live in
-/// `musica-settings.txt`.
-fn original_voice_keys(title: MinoriTitle) -> Option<[&'static [u8]; 5]> {
-    match title {
-        MinoriTitle::Perseus => Some([b"ren", b"sui", b"aya", b"tou", b"etc"]),
-        MinoriTitle::EdenEnglish => None,
-    }
-}
-
-const MUSICA_VOICE_KEYS: [&[u8]; 5] = [
-    b"voice_ren",
-    b"voice_sui",
-    b"voice_aya",
-    b"voice_tou",
-    b"voice_mot",
-];
 
 fn read_table(path: &Path) -> SessionResult<Option<Properties>> {
     read_optional(path)?
@@ -79,7 +56,7 @@ fn put_flag(table: &mut Properties, key: &[u8], value: bool) {
 /// Overlays the stored keys onto `config`; absent or out-of-range values keep
 /// the incoming setting, as the original keeps its default.
 fn read_config(
-    title: MinoriTitle,
+    identity: &SaveIdentity,
     sysparams: &Properties,
     musica: &Properties,
     config: &mut MusicaConfigState,
@@ -105,7 +82,6 @@ fn read_config(
         };
     }
     // 0 windowed, 1 exclusive fullscreen, 2 borderless, 3 maximized
-    // (eden_en.exe sub_4FDDD0).
     if let Some(mode) = number(sysparams, b"screenMode") {
         config.fullscreen = mode == 1 || mode == 2;
     }
@@ -125,19 +101,23 @@ fn read_config(
             *field = value;
         }
     }
-    let (table, keys) = match original_voice_keys(title) {
-        Some(keys) => (sysparams, keys),
-        None => (musica, MUSICA_VOICE_KEYS),
-    };
-    for (field, key) in config.character_voice_enabled.iter_mut().zip(keys) {
+    for (index, character) in config.character_voices.iter_mut().enumerate() {
+        let local_key = format!("voice_{}", character.prefix);
+        let (table, key) = identity
+            .voice_keys
+            .as_ref()
+            .and_then(|keys| keys.get(index))
+            .map_or((musica, local_key.as_bytes()), |key| {
+                (sysparams, key.as_bytes())
+            });
         if let Some(value) = flag(table, key) {
-            *field = value;
+            character.enabled = value;
         }
     }
 }
 
 fn write_config(
-    title: MinoriTitle,
+    identity: &SaveIdentity,
     sysparams: &mut Properties,
     musica: &mut Properties,
     config: &MusicaConfigState,
@@ -183,12 +163,20 @@ fn write_config(
     put_flag(sysparams, b"muteBGM", config.bgm_muted);
     put_flag(sysparams, b"muteVoice", config.voice_muted);
     put_flag(sysparams, b"muteSE", config.se_muted);
-    let (table, keys) = match original_voice_keys(title) {
-        Some(keys) => (sysparams, keys),
-        None => (musica, MUSICA_VOICE_KEYS),
-    };
-    for (enabled, key) in config.character_voice_enabled.iter().zip(keys) {
-        put_flag(table, key, *enabled);
+    for (index, character) in config.character_voices.iter().enumerate() {
+        if let Some(key) = identity
+            .voice_keys
+            .as_ref()
+            .and_then(|keys| keys.get(index))
+        {
+            put_flag(sysparams, key.as_bytes(), character.enabled);
+        } else {
+            put_flag(
+                musica,
+                format!("voice_{}", character.prefix).as_bytes(),
+                character.enabled,
+            );
+        }
     }
 }
 
@@ -219,11 +207,7 @@ impl NativeFiles {
         self.settings
             .as_ref()
             .and_then(|table| number(table, b"autoSaveCycle"))
-            .unwrap_or_else(|| match self.dir.as_ref().map(|dir| dir.title) {
-                Some(MinoriTitle::EdenEnglish) => 200,
-                Some(MinoriTitle::Perseus) => 400,
-                None => 0,
-            })
+            .unwrap_or(self.dir.identity.auto_save_cycle.min(i64::MAX as u64) as i64)
             .max(0) as u64
     }
     pub(crate) fn auto_save_backlog_limit(&self) -> usize {
@@ -236,11 +220,8 @@ impl NativeFiles {
     /// The stored configuration over `fallback`; `fallback` itself while no
     /// `sysparams.txt` exists.
     pub(crate) fn configuration(&self, mut fallback: MusicaConfigState) -> MusicaConfigState {
-        let Some(dir) = &self.dir else {
-            return self.legacy_config.clone().unwrap_or(fallback);
-        };
         if let Some(sysparams) = &self.settings {
-            read_config(dir.title, sysparams, &self.musica, &mut fallback);
+            read_config(&self.dir.identity, sysparams, &self.musica, &mut fallback);
         }
         fallback
     }
@@ -248,13 +229,10 @@ impl NativeFiles {
     /// Rewrites the mapped keys; unmapped keys and an unchanged file stay as
     /// they are.
     pub(crate) fn store_configuration(&mut self, config: &MusicaConfigState) -> SessionResult<()> {
-        let Some(dir) = &self.dir else {
-            self.warn_unpersisted();
-            return Ok(());
-        };
+        let dir = &self.dir;
         let mut sysparams = self.settings.clone().unwrap_or_default();
         let mut musica = self.musica.clone();
-        write_config(dir.title, &mut sysparams, &mut musica, config);
+        write_config(&dir.identity, &mut sysparams, &mut musica, config);
         dir.write_settings(&sysparams, &musica)?;
         self.settings = Some(sysparams);
         self.musica = musica;
@@ -271,10 +249,7 @@ impl NativeFiles {
     }
 
     fn store_cursor(&mut self, key: &[u8], next: u32) -> SessionResult<()> {
-        let Some(dir) = &self.dir else {
-            self.warn_unpersisted();
-            return Ok(());
-        };
+        let dir = &self.dir;
         let mut sysparams = self.settings.clone().unwrap_or_default();
         put(&mut sysparams, key, next);
         write_table(&dir.root.join(SYSPARAMS), &sysparams)?;
@@ -284,9 +259,6 @@ impl NativeFiles {
 
     /// `quickSaveFileNumber` verbatim; zero when absent or outside `0..=9`.
     pub(crate) fn quick_cursor(&self) -> u32 {
-        if self.dir.is_none() {
-            return self.legacy_quick_cursor.unwrap_or(0);
-        }
         self.cursor(QUICK_SAVE)
     }
 
@@ -312,29 +284,24 @@ impl NativeFiles {
         game_root: &Path,
         game: Hash256,
     ) -> SessionResult<()> {
-        if self.dir.is_some() && self.settings.is_some() {
+        if self.settings.is_some() {
             return Ok(());
         }
         let saves = game_root.join(".shinki/musica/saves");
         let config = legacy::configuration(&saves, game)?;
         let cursor = legacy::quick_cursor(&saves, game)?;
-        let Some(dir) = &self.dir else {
-            self.legacy_config = config;
-            self.legacy_quick_cursor = cursor;
-            return Ok(());
-        };
         if config.is_none() && cursor.is_none() {
             return Ok(());
         }
         let mut sysparams = Properties::new();
         let mut musica = self.musica.clone();
         if let Some(config) = &config {
-            write_config(dir.title, &mut sysparams, &mut musica, config);
+            write_config(&self.dir.identity, &mut sysparams, &mut musica, config);
         }
         if let Some(cursor) = cursor {
             put(&mut sysparams, QUICK_SAVE, cursor);
         }
-        dir.write_settings(&sysparams, &musica)?;
+        self.dir.write_settings(&sysparams, &musica)?;
         self.settings = Some(sysparams);
         self.musica = musica;
         if config.is_some() {
@@ -344,5 +311,77 @@ impl NativeFiles {
             legacy::mark_imported(&saves, legacy::QUICK_CURSOR)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod frontend_tests {
+    use super::*;
+    #[test]
+    fn declared_voice_order_encodes_identical_legacy_native_bytes() {
+        for extended in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let identity = crate::native_directory::tests::identity_fixture(root.path(), extended);
+            let mut config = MusicaConfigState::default();
+            let mut old_sysparams = Properties::new();
+            let mut old_musica = Properties::new();
+            write_config(&identity, &mut old_sysparams, &mut old_musica, &config);
+            let values = [true, false, true, true, false];
+            let prefixes = ["ren", "sui", "aya", "tou", "mot"];
+            // Oracle: the pre-migration five-position native mapping.
+            let keys = if extended {
+                ["ren", "sui", "aya", "tou", "etc"]
+            } else {
+                [
+                    "voice_ren",
+                    "voice_sui",
+                    "voice_aya",
+                    "voice_tou",
+                    "voice_mot",
+                ]
+            };
+            let table = if extended {
+                &mut old_sysparams
+            } else {
+                &mut old_musica
+            };
+            for (key, enabled) in keys.into_iter().zip(values) {
+                put_flag(table, key.as_bytes(), enabled);
+            }
+            config.character_voices = prefixes
+                .into_iter()
+                .zip(values)
+                .map(
+                    |(prefix, enabled)| crate::voice_preferences::VoiceCharacter {
+                        prefix: prefix.into(),
+                        label: prefix.into(),
+                        enabled,
+                    },
+                )
+                .collect();
+            let mut sysparams = Properties::new();
+            let mut musica = Properties::new();
+            write_config(&identity, &mut sysparams, &mut musica, &config);
+            assert_eq!(
+                minori_data::encode_settings(&sysparams).unwrap(),
+                minori_data::encode_settings(&old_sysparams).unwrap()
+            );
+            assert_eq!(
+                minori_data::encode_settings(&musica).unwrap(),
+                minori_data::encode_settings(&old_musica).unwrap()
+            );
+            for character in &mut config.character_voices {
+                character.enabled = !character.enabled;
+            }
+            read_config(&identity, &sysparams, &musica, &mut config);
+            assert_eq!(
+                config
+                    .character_voices
+                    .iter()
+                    .map(|character| character.enabled)
+                    .collect::<Vec<_>>(),
+                values
+            );
+        }
     }
 }

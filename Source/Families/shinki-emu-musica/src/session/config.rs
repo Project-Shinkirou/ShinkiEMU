@@ -50,19 +50,26 @@ impl MusicaSession {
             RuntimeEvent::PointerMove { x, y } => {
                 self.pointer = Some((*x, *y));
                 if self.config_pointer_down {
-                    crate::configuration::config_control_at(*x as i32, *y as i32).filter(
-                        |control| {
-                            matches!(
-                                control,
-                                MusicaConfigControl::MessageSpeedUnread(_)
-                                    | MusicaConfigControl::MessageSpeedRead(_)
-                                    | MusicaConfigControl::MessageSpeedAutoPlay(_)
-                                    | MusicaConfigControl::BgmVolume(_)
-                                    | MusicaConfigControl::VoiceVolume(_)
-                                    | MusicaConfigControl::SeVolume(_)
-                            )
-                        },
+                    crate::configuration::config_control_at(
+                        *x as i32,
+                        *y as i32,
+                        self.vm
+                            .config_for_presentation()
+                            .map_err(vm_error)?
+                            .character_voices
+                            .len(),
                     )
+                    .filter(|control| {
+                        matches!(
+                            control,
+                            MusicaConfigControl::MessageSpeedUnread(_)
+                                | MusicaConfigControl::MessageSpeedRead(_)
+                                | MusicaConfigControl::MessageSpeedAutoPlay(_)
+                                | MusicaConfigControl::BgmVolume(_)
+                                | MusicaConfigControl::VoiceVolume(_)
+                                | MusicaConfigControl::SeVolume(_)
+                        )
+                    })
                 } else {
                     None
                 }
@@ -74,7 +81,11 @@ impl MusicaSession {
                 self.config_pointer_down = *state == KeyState::Pressed;
                 if self.config_pointer_down {
                     self.pointer.and_then(|(x, y)| {
-                        crate::configuration::config_control_at(x as i32, y as i32)
+                        crate::configuration::config_control_at(
+                            x as i32,
+                            y as i32,
+                            self.vm.config().character_voices.len(),
+                        )
                     })
                 } else {
                     None

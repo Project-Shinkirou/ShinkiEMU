@@ -212,16 +212,37 @@ pub trait ManagerController: 'static {
     fn model(&mut self) -> Result<ManagerViewModel, String>;
     fn select_case(&mut self, case_id: &str) -> Result<ManagerViewModel, String>;
     fn search(&mut self, query: &str) -> Result<ManagerViewModel, String>;
-    fn save_translation_profile(
+    /// Create (empty `provider_id`) or update a translation provider card; an
+    /// empty `secret` keeps the card's stored key.
+    fn save_translation_provider(
         &mut self,
+        provider_id: &str,
+        name: &str,
+        preset: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
     ) -> Result<ManagerViewModel, String>;
-    /// Test the form values; an empty secret falls back to the stored one.
+    /// Fetch the model list of the form's endpoint; an empty secret uses the
+    /// key stored for `provider_id`.
     fn test_translation_connection(
         &mut self,
+        provider_id: &str,
         form: &shinki_emu_manager_ui_slint::TranslationFormViewModel,
         secret: &str,
+    ) -> Result<ManagerViewModel, String>;
+    /// Translate game sessions through card `provider_id`.
+    fn activate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String>;
+    fn duplicate_translation_provider(
+        &mut self,
+        provider_id: &str,
+    ) -> Result<ManagerViewModel, String>;
+    /// Delete a card that is not enabled, with its key.
+    fn delete_translation_provider(
+        &mut self,
+        provider_id: &str,
     ) -> Result<ManagerViewModel, String>;
     fn set_translation_enabled(&mut self, enabled: bool) -> Result<ManagerViewModel, String>;
     /// One persisted switch for VNDB, Bangumi, metadata sync, core downloads and translation.
@@ -303,6 +324,15 @@ pub trait ManagerController: 'static {
     fn install_core(&mut self, source: &std::path::Path) -> Result<ManagerViewModel, String>;
     /// Download the newest catalog release of a core; needs network permission.
     fn install_online_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    /// Download every installed core with a newer release, a bounded number at a time.
+    fn update_all_cores(&mut self) -> Result<ManagerViewModel, String>;
+    /// Run the failed cores of the finished 全部更新 run again.
+    fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String>;
+    /// Stop a queued or transferring download; nothing is staged.
+    fn cancel_core_download(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    fn cancel_core_batch(&mut self) -> Result<ManagerViewModel, String>;
+    /// Hide the summary of a finished 全部更新 run.
+    fn dismiss_core_batch(&mut self) -> Result<ManagerViewModel, String>;
     /// `core_id` is a `Cores.items` id (plugin id, or directory stem for failed cores).
     fn uninstall_core(&mut self, core_id: &str) -> Result<ManagerViewModel, String>;
     fn log_text(&self, core: &str) -> Result<(String, usize), String>;
@@ -339,6 +369,10 @@ pub trait ManagerController: 'static {
     ) -> Result<ManagerViewModel, String>;
     /// Choose the emulator whose defaults the cores page edits; empty clears it.
     fn select_emulator_defaults(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
+    /// Explicitly initialize only this game's selected implementation for advanced settings.
+    fn prepare_game_configuration(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;
+    /// Explicitly initialize/describe one implementation without opening a game.
+    fn diagnose_core(&mut self, plugin_id: &str) -> Result<ManagerViewModel, String>;
     /// How to pick a value for a path field: folder or file, title, file types.
     fn config_path_pick(&self, game_id: &str, field_id: &str) -> Result<ConfigPathPick, String>;
     /// Store the path picked for a path field.
@@ -669,9 +703,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         });
     }
     let modal_ui = modals::install(&adapter, &controller);
-    // Per-frame host work, run before and after Slint renders. Desktop and
-    // Android drive it from the WGPU rendering notifier; OHOS from the
-    // software platform's frame hooks.
+    // Model/modal updates must run outside Slint's rendering borrow. WGPU
+    // notifiers schedule this work on the event loop; OHOS calls it before
+    // entering its software render pass.
     let service_frame = {
         let controller = controller.clone();
         let weak_adapter = std::rc::Rc::downgrade(&adapter);
@@ -679,7 +713,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let weak_window = adapter.window().as_weak();
         let pending = async_events_pending.clone();
         let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
-        move || {
+        std::rc::Rc::new(move || {
             let Some(window) = weak_window.upgrade() else {
                 return;
             };
@@ -748,7 +782,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                     }
                 }
             }
-        }
+        })
     };
     let finish_frame = {
         let controller = controller.clone();
@@ -795,6 +829,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let renderer_callback = renderer.clone();
         #[cfg(not(target_os = "android"))]
         let initial_window_pending = Cell::new(true);
+        let service_timer = slint::Timer::default();
         adapter
             .window()
             .window()
@@ -850,7 +885,14 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                             Ok(())
                         }
                         slint::RenderingState::BeforeRendering => {
-                            service_frame();
+                            if !service_timer.running() {
+                                let service = service_frame.clone();
+                                service_timer.start(
+                                    slint::TimerMode::SingleShot,
+                                    std::time::Duration::ZERO,
+                                    move || service(),
+                                );
+                            }
                             let mut renderer = renderer_callback.borrow_mut();
                             renderer.render(context)?;
                             if let Some(update) = renderer.take_stage_texture_update()? {

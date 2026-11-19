@@ -23,6 +23,7 @@ pub struct Fixture {
     pub format: &'static str,
     pub confidence: u32,
     pub capabilities: u64,
+    pub render: abi::RenderExtentSupport,
     pub marker: Option<&'static str>,
     pub config: bool,
     pub calls: Arc<Mutex<Vec<Call>>>,
@@ -56,6 +57,7 @@ impl Fixture {
             format,
             confidence: 9000,
             capabilities: abi::CAP_CPU_SURFACE,
+            render: abi::RenderExtentSupport::default(),
             marker: None,
             config: false,
             calls: Arc::new(Mutex::new(Vec::new())),
@@ -94,8 +96,13 @@ pub fn install(slot: usize, value: Fixture) -> LoadedFamilyPlugin {
 }
 pub fn try_install(
     slot: usize,
-    mut value: Fixture,
+    value: Fixture,
 ) -> Result<LoadedFamilyPlugin, shinki_emu_manager_core::FamilyLoadError> {
+    unsafe { LoadedFamilyPlugin::from_query(prepare_query(slot, value)) }
+}
+
+/// Install an available native entry without querying or initializing it.
+pub fn prepare_query(slot: usize, mut value: Fixture) -> abi::Query {
     value.formats = vec![abi::Bytes::new(value.format.as_bytes())].into_boxed_slice();
     if value.config {
         value.choices =
@@ -132,14 +139,12 @@ pub fn try_install(
         .into_boxed_slice();
     }
     FIXTURES.with(|slots| slots.borrow_mut()[slot] = Some(Box::new(value)));
-    unsafe {
-        LoadedFamilyPlugin::from_query(match slot {
-            0 => query::<0>,
-            1 => query::<1>,
-            2 => query::<2>,
-            3 => query::<3>,
-            _ => panic!("fixture slot"),
-        })
+    match slot {
+        0 => query::<0>,
+        1 => query::<1>,
+        2 => query::<2>,
+        3 => query::<3>,
+        _ => panic!("fixture slot"),
     }
 }
 unsafe extern "C" fn initialize<const N: usize>(
@@ -183,7 +188,7 @@ unsafe extern "C" fn describe<const N: usize>(
                 configuration_count: v.fields.len(),
                 display_name: abi::Bytes::new(v.plugin.as_bytes()),
                 family_name: abi::Bytes::new(v.family.as_bytes()),
-                render: abi::RenderExtentSupport::default(),
+                render: v.render,
             });
         }
     });
@@ -268,7 +273,18 @@ unsafe extern "C" fn open<const N: usize>(
 ) -> abi::Status {
     let raw = unsafe { &*raw };
     fixture::<N, _>(|v| {
-        record(&v.calls, "open", String::new());
+        let entries = match unsafe { abi::borrowed_array(raw.configuration, raw.configuration_count, abi::MAX_CONFIG_FIELDS) } {
+            Ok(entries) => entries,
+            Err(status) => return status,
+        };
+        let mut enums = Vec::new();
+        for entry in entries.iter().filter(|entry| entry.value.kind == abi::VALUE_ENUM) {
+            let (Ok(id), Ok(value)) = (unsafe { entry.id.text(abi::MAX_CONFIG_TEXT) }, unsafe { entry.value.text.text(abi::MAX_CONFIG_TEXT) }) else {
+                return abi::INVALID_ARGUMENT;
+            };
+            enums.push(format!("{id}={value}"));
+        }
+        record(&v.calls, "open", enums.join(","));
         if let Some(entered) = &v.entered {
             let _ = entered.send(());
         }

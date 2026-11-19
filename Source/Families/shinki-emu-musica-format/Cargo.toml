@@ -1,0 +1,21 @@
+[package]
+name = "shinki-emu-musica-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+shinki-emu-musica-keys = { path = "../shinki-emu-musica-keys" }
+blowfish.workspace = true
+crc32fast = "1.5.3"
+encoding_rs.workspace = true
+flate2.workspace = true
+rc4.workspace = true
+schemars.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -78,8 +78,15 @@ component PasswordForm {
             label: @tr("密码");
             enabled: root.enabled;
             input-type: InputType.password;
-            supporting-text: @tr("密码只用于本次登录；登录凭据保存在系统凭据库中。");
             accepted => { root.submit(); }
+        }
+        // TextField elides its supporting text to one line; this note must stay readable in full.
+        MaterialText {
+            text: @tr("密码只用于本次登录；登录凭据保存在系统凭据库中。");
+            style: MaterialTypography.body-small;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+            overflow: clip;
         }
         HorizontalLayout {
             alignment: end;

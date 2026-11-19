@@ -3,7 +3,7 @@ use crate::{MusicaMessageControl, parse_musica_message_markup};
 pub(super) fn execute_message(
     command: &ScCommand,
     state: &mut MusicaRuntimeState,
-    preferences: &crate::voice_preferences::VoicePreferences,
+    preferences: &crate::voice_preferences::VoicePreferences<'_>,
     auto_delay_units: u8,
 ) -> Result<Option<MusicaVmEvent>, MusicaRuntimeError> {
     let tokens = command.tokens().map_err(|_| MusicaRuntimeError::Operand)?;

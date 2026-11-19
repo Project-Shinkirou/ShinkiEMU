@@ -3,6 +3,7 @@ schema = "shinki.emu.build_cores.v1"
 
 [[cores]]
 id = "rfvp"
+family_id = "fvp"
 display_name = "RFVP"
 family_name = "FVP"
 license = "MPL-2.0"
@@ -19,7 +20,7 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/rfvp"
 branch = "shinki"
-rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246"
+rev = "37f4d1fe10855aca034185a5afaa2123a36465ae"
 upstream = "https://github.com/xmoezzz/rfvp"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/rfvp", ref_kind = "tag", ref_name = "0.7.0", commit = "99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1" }
@@ -44,6 +45,7 @@ reason = "Statically embedded in the iOS Manager; standalone dynamic-core instal
 
 [[cores]]
 id = "siglus_rs"
+family_id = "siglus"
 display_name = "siglus-rs"
 family_name = "SiglusEngine"
 license = "MPL-2.0"
@@ -60,8 +62,8 @@ static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
-branch = "fix/main-ci-android"
-rev = "a0aa629fb5ce467e91c83e2be0fffb3320404527"
+branch = "shinki-headless-null-audio"
+rev = "0e1aa89db3f8e33ac9d0a0b2d43bef51660120dd"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }
@@ -80,6 +82,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "art3m1s-core"
+family_id = "artemis"
 display_name = "Art3m1s"
 family_name = "Artemis"
 license = "MPL-2.0"
@@ -116,6 +119,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "shinki.emu.musica"
+family_id = "musica"
 display_name = "Shinki Musica"
 family_name = "Musica"
 license = "MIT OR Apache-2.0"
@@ -151,6 +155,7 @@ reason = "Statically embedded in the OHOS Manager; standalone dynamic-core insta
 
 [[cores]]
 id = "sena-rs"
+family_id = "softpal"
 display_name = "Sena"
 family_name = "SoftPAL"
 license = "MPL-2.0"
@@ -193,6 +198,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "kirikiroid2-web"
+family_id = "krkr"
 display_name = "KiriKiri2"
 family_name = "KiriKiri"
 license = "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2"
@@ -234,6 +240,7 @@ target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 [[cores]]
 id = "ethornell-rs"
+family_id = "ethornell"
 display_name = "ethornell-rs"
 family_name = "Ethornell / BGI"
 license = "MPL-2.0"
@@ -256,11 +263,11 @@ target = "x86_64-linux-android"
 reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
-branch = "shinki"
-rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346"
+branch = "shinki-upstream-3ee43dab"
+rev = "ace042bcda4ac3765a9f9198b5ffda1792b5f717"
 upstream = "https://github.com/xmoezzz/ethornell-rs"
 release_sequence = 1
-upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "b5de417e4cff681bd2afb929e22e903d64602456" }
+upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "3ee43dab43854e2f9c614dd1d26213e17911d877" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -276,18 +283,19 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "shinki.emu.cmvs"
+family_id = "cmvs"
 display_name = "Shinki CMVS"
 family_name = "CMVS"
 license = "MIT OR Apache-2.0"
 manifest = "Source/Families/shinki-emu-cmvs/Cargo.toml"
 package = "shinki-emu-cmvs"
-features = ["video-ffmpeg"]
+features = ["dynamic-plugin-export", "video-ffmpeg"]
 dependencies = ["ffmpeg"]
 artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = ["video-ffmpeg"]
 publish_blocked = ""
 [[cores.blocked]]
@@ -298,19 +306,20 @@ target = "x86_64-linux-android"
 reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Waiting on Manager static embedding and AppleNative remote mac verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Waiting on Manager static embedding and AppleNative remote mac verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Waiting on Manager static embedding and AppleNative remote mac verification."
+reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 
 [[cores]]
 id = "ReMinori"
+family_id = "musica"
 display_name = "ReMinori"
 family_name = "Musica"
 license = "AGPL-3.0-only"
@@ -353,6 +362,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "impacto"
+family_id = "mages"
 display_name = "impacto"
 family_name = "MAGES."
 license = "ISC"
@@ -370,9 +380,9 @@ publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/impacto"
 branch = "shinki-android-ports"
-rev = "910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157"
+rev = "f49c94451784a370f623f466da89876e9b4c19db"
 upstream = "https://github.com/CommitteeOfZero/impacto"
-release_sequence = 2
+release_sequence = 4
 upstream_identity = { repo = "https://github.com/CommitteeOfZero/impacto", ref_kind = "tag", ref_name = "0.10.8.930", commit = "3706ddd89d4ad4aed0e32e127355c4251f22e574" }
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -395,6 +405,7 @@ reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK
 
 [[cores]]
 id = "renpy"
+family_id = "renpy"
 display_name = "Ren’Py"
 family_name = "Ren’Py"
 license = "MIT AND LGPL-2.1-or-later"
@@ -435,3 +446,98 @@ reason = "AppleNative iOS simulator static Ren'Py runtime build has not run."
 target = "aarch64-unknown-linux-ohos"
 reason = "OHOS host integration is OhosHost's scope; no OHOS Ren'Py runtime build has run."
 
+[[cores]]
+id = "cmvs-rs"
+family_id = "cmvs"
+display_name = "cmvs-rs"
+family_name = "CMVS / CVNS"
+license = "MIT OR Apache-2.0"
+manifest = "ThirdParty/cmvs-rs/crates/shinki-emu-cmvs-rs/Cargo.toml"
+package = "shinki-emu-cmvs-rs"
+features = ["dynamic-plugin-export"]
+dependencies = []
+artifact_kind = "rust-cdylib"
+resources = []
+licenses = ["ThirdParty/cmvs-rs/LICENSE-MIT", "ThirdParty/cmvs-rs/LICENSE-APACHE", "ThirdParty/cmvs-rs/THIRD_PARTY_NOTICES.txt", "ThirdParty/cmvs-rs/MODIFICATIONS.md"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+publish_blocked = "Local CMVS samples do not match upstream-registered releases; real-game headless frame acceptance is blocked."
+[cores.source]
+repo = "https://github.com/Project-Shinkirou/cmvs-rs"
+branch = "shinki"
+rev = "b8de741dca3737d03351a5a45531616dff7ea39a"
+upstream = "https://github.com/Shizuku-in/cmvs-rs"
+release_sequence = 1
+upstream_identity = { repo = "https://github.com/Shizuku-in/cmvs-rs", ref_kind = "branch", ref_name = "main", commit = "b9fed68ba05f80444338331bb3999f14c8f4f976" }
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "cmvs-audio selects CPAL native output without an OHAudio backend; no OHOS host lifecycle/static Manager integration is implemented."
+
+[[cores]]
+id = "krkr2"
+family_id = "krkr"
+display_name = "KrKr2"
+family_name = "KiriKiri"
+license = "LicenseRef-KiriKiri2"
+manifest = "ThirdParty/krkr2/shinki/Cargo.toml"
+package = "shinki-emu-krkr2"
+features = []
+dependencies = ["native-vcpkg", "bison"]
+artifact_kind = "native-static"
+resources = []
+licenses = ["ThirdParty/krkr2/LICENSE", "ThirdParty/krkr2/MODIFICATIONS.md"]
+supported_targets = []
+static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_features = ["static"]
+publish_blocked = ""
+[cores.source]
+repo = "https://github.com/Project-Shinkirou/krkr2"
+branch = "shinki"
+rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82"
+upstream = "https://github.com/2468785842/krkr2"
+release_sequence = 1
+upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
+[[cores.blocked]]
+target = "x86_64-pc-windows-msvc"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."

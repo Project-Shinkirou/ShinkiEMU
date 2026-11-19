@@ -24,6 +24,7 @@ pollster.workspace = true
 roukaku-core = { workspace = true }
 roukaku-byte-source = { workspace = true }
 shinki-emu-musica-keys = { path = "../shinki-emu-musica-keys" }
+shinki-emu-musica-format = { path = "../shinki-emu-musica-format" }
 roukaku-text = { workspace = true }
 roukaku-media-core = { workspace = true }
 blowfish.workspace = true

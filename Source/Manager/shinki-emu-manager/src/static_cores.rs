@@ -1,6 +1,6 @@
 //! The single inventory of Manager-embedded query entrypoints, shared by UI and headless hosts.
 pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
-    #[cfg(any(target_os = "android", feature = "static-cmvs"))]
+    #[cfg(any(target_os = "android", target_os = "ios", feature = "static-cmvs"))]
     ("shinki.emu.cmvs", shinki_emu_cmvs::cmvs_query),
     #[cfg(any(target_os = "android", target_os = "ios"))]
     ("rfvp", shinki_emu_rfvp::shinki_emu_query),
@@ -16,6 +16,8 @@ pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     ("renpy", shinki_emu_renpy::query),
     #[cfg(target_os = "android")]
     ("kirikiroid2-web", shinki_emu_kirikiroid2_web::query),
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    ("krkr2", shinki_emu_krkr2::query),
     #[cfg(target_os = "ios")]
     ("sena-rs", shinki_emu_sena_rs::shinki_emu_query),
     #[cfg(target_os = "ios")]

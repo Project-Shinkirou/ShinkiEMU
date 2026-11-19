@@ -172,6 +172,8 @@ export component FiltersPage {
                 text: @tr("当前预设没有可调参数。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
             }
 
             if Filters.fields.length > 0 : ConfigFieldList {

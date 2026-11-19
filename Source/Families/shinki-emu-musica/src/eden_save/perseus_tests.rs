@@ -1,7 +1,7 @@
 //! Synthetic Perseus slots; no real Perseus slot exists. Layout follows the
 //! original writer: `sub_470C50` header, `sub_45D2D0` body, `sub_46B930` map
 //! dump and `sub_43C980` -> `sub_43B040` + `sub_461C80` backlog records.
-use super::perseus::{decode_slot, encode_slot, slot_file_name};
+use super::perseus::{decode_slot, encode_slot};
 use super::*;
 use crate::minori_data::FilePrefix;
 
@@ -162,13 +162,6 @@ fn header_prefix_mismatch_is_rejected_like_the_original() {
     let mut eden = bytes.clone();
     eden.splice(4..16, *b"eden_en 1.00");
     assert!(decode_slot(&eden, STRICT, EdenSaveEncoding::ShiftJis).is_err());
-}
-#[test]
-fn slot_file_names_stop_at_the_original_bound() {
-    assert_eq!(slot_file_name(7).unwrap(), "perseus_0007.sav");
-    assert_eq!(slot_file_name(9999).unwrap(), "perseus_9999.sav");
-    let error = slot_file_name(10_000).err().unwrap();
-    assert_eq!(error.code(), "SHINKI_EMU_EDEN_SAVE_BOUND");
 }
 #[test]
 fn script_variables_are_written_in_map_byte_order() {

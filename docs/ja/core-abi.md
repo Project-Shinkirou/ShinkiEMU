@@ -11,6 +11,38 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 境界を越えるのは C レイアウトの値だけです。具体的には、バージョン付きヘッダー、長さ上限のある借用バイト列、不透明ハンドル、ステータスコード、関数ポインターです。Rust のコンテナや例外の巻き戻しは ABI を越えません。動的ライブラリと不変の descriptor ストレージは常駐したままです。query はバージョンと関数テーブルの出力ポインターを受け取り、未対応のバージョンでは出力を null にします。query は I/O を行わず、worker を起動せず、logger もインストールしません。
 
+## ディレクトリ識別
+
+`shinki_emu_manager_core::detection::detect_game_directory(&Path, &NativeCancellation)` は `Result<Vec<EngineDetection>, DetectionError>` を返します。結果は `family_id` と `format` のみで、インストール済みプラグインや native `FamilyProbeCandidate` に依存しません。同じ family は一件にまとめ、family ID 順に返します。複数 family の選択は呼び出し側が行い、空の配列は未識別です。family の識別、実装の互換性、実行成功は別々に扱います。
+
+対象はルートと `Data`、`Data/pack`、`StartData`、`game`、`USRDIR` です。ディレクトリ名の大文字小文字は区別しません。リンクと特殊ファイルを除外し、列挙は 4,096 項目、読み込みは 1,024 ファイル、物理読み込みは合計 16 MiB、開いたファイルハンドルごとに 4 MiB までに制限します。再オープンした解析も合計上限を共有します。読み込みと解析の間でキャンセルを確認しますが、ブロック中の OS 呼び出しは中断できません。I/O、キャンセル、上限超過はエラーを返し、部分候補や未一致キャッシュに変換しません。破損・切り詰められた候補は除外して他のファイルを調べます。ルール変更時には `detection::CACHE_VERSION` を更新し、キャッシュはディレクトリ内容の変更も追跡する必要があります。
+Select.ini の最初の有効な TAB 区切り append も解決し、範囲外のパスとリンクを拒否します。検証済み Musica 鍵で別名アーカイブと入れ子の配置を有界に探索し、パッチ受領書の profile/archive/loose-script パスを安全に解決します。PAZ の連続した `A`–`Z` ボリュームは同じ論理ストリームとして読みます。上記の上限は共通です。これは形式ごとの対応であり、エンジンが受け入れるすべての入力を実行なしに一意に識別できるという意味ではありません。
+
+`build/cores.toml` の各 family を次の形式で確認します。
+
+| Family ID | 確認内容 | 対象範囲 |
+| --- | --- | --- |
+| `fvp` | HCB/BCH システム記述子、エントリーポイント、タイトル境界、syscall レコード | magic はなく、拡張子は構造解析の入口にのみ使用 |
+| `siglus` | Scene PCK/CHS 構造、任意の `pack_scn`、UTF-8/CP932 Select.ini の最初の有効 append | 活動ディレクトリが不明・危険な場合に後続項目へ切り替えない。鍵は起動時に検証 |
+| `artemis` | PF2/6/8 の有界な完全索引、`system.ini`、リソース範囲 | プロジェクト項目のない PF は採用しない |
+| `musica` | keys.v2、復号した PAZ0/1/2 索引と SC、別名アーカイブ、設定された loose script、連続ボリューム | 正しい鍵と上限内の完全リソースが必要。ディレクトリ外の秘密 profile は推測しない |
+| `softpal` | 直接 Sv20 または PAC 索引内の Sv20 と入口。data.pac/csv.pac 内を含む archive.dat 初期 profile のパスも解決 | native bootstrap と同じ profile 0 を使用し、後続 profile に切り替えない。EXE/appid リスト、範囲外パス、非 PAC 形式は使用しない |
+| `krkr` | XP3 索引、または Scripts.execStorage の字面参照と実ファイル内の KiriKiri builtin 呼び出し。コメント・文字列を除外 | 動的 loose TJS、曖昧なソース、EXE 内 XP3、独自方式は未識別 |
+| `ethornell` | BURIKO ARC20 索引、または `ipl._bp` を含む PackFile 索引とリソース範囲 | ブートスクリプトの展開や VM 互換性は検証しない |
+| `cmvs` | CPZ3/5/6/7 の固定ヘッダーと索引範囲、または PS2A セグメント | CPZ1/2 は未識別。暗号化索引、checksum、profile は起動時に検証 |
+| `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
+| `renpy` | RPA2/3、RPC2、または旧 zlib-RPYC の完全な pickle opcode 列が示す renpy.ast オブジェクト | バイトだけを調べ、pickle の import・構築・実行はしない。汎用 zlib/pickle、RPA1、ソースのみは未識別 |
+
+ルールは pin された adapter と上流の解析実装から確認し、作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` で識別と再生が共有し、VM、ABI、GPU、音声に依存しません。Manager のスキャン・ライブラリ・コア一覧は Detector、生成された `static_core_catalog`、検証済み `core.json` を使い、ネイティブ provider を登録・query しません。静的関数表は選択した入口の索引だけで、Windows の任意機能 `static-cmvs` も同じ扱いです。
+
+高度な設定、診断、起動を明示的に要求した場合だけ、owner が選択した plugin を非同期に有効化します。診断ではゲームを開きません。起動は選択コアだけを新しく probe し、open 前の再検証も維持します。常駐コアの更新には従来どおり再起動が必要で、別実装への自動フォールバックはありません。未知の plugin や単独ライブラリは自動 query せず、診断対象として表示します。
+
+高度な設定の失敗理由は現在のゲームと選択 plugin、既定設定の失敗は現在の既定 plugin に関連付けます。グローバル通知を閉じたり別のゲームを表示しても元の理由を保持し、再試行・成功・実装の変更時に対象の理由を消去または切り替えます。
+
+schema 7 の game ID、保存先、family、任意の `GameSettings.emulator_id` は保持します。family/format と未検証の receipt 設定文字列は既存の `app_state` に保存し、偽の plugin ID や重複ゲームを作りません。キャッシュ形式 2 は Detector の結果を保存し、`detection::CACHE_VERSION` と有界な前後のリソース指紋で失効します。古いキャッシュは miss になり、キャンセル・I/O・読み取り上限エラーを NoMatch や負のキャッシュに変換しません。
+
+スキャンが失敗しても owner が利用可能なら、同じアプリのセッションで識別を再試行できます。既存の登録は保持し、コアを初期化しません。owner や一覧準備自体の失敗には再起動が必要です。
+
 ## ライフサイクル
 
 1. **query** は不変の `CoreApi` テーブルを取得し、バージョン、サイズ、必須の関数ポインターを確認します。
@@ -37,7 +69,7 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 - `CAP_NATIVE_EMBEDDED_TEXT`（256）：ネイティブ SC の表示オペランドが Unicode scalar リテラルを扱い、実行時翻訳表なしで埋め込み訳文を表示します。Musica レシピは 256、RFVP の GBK/統一フォント用レシピは 192 を要求し、同じ descriptor/receipt 検証を使います。
 - `CAP_NATIVE_NAME_RESOURCES`（512）：ネイティブ SC の姓名定数と元の表示・履歴規則を使い、リソースがない場合だけ EXE を読み取り専用で参照します。Yorino は 256|512=768 を要求し、EXE は変更しません。
 
-Luau レシピは出力 profile の `plugin_id`、`configuration` と並べて `required_capabilities = 192` を指定できます。receipt にも要件を保持します。Manager はインポートするゲームの追加や設定の保存前とセッションの開始前に、実際にロードした選択コアの `describe` を確認します。自動インポートでは、変換完了後に要件が変更された receipt も拒否します。機能が不足すれば操作を拒否してコアの更新を案内し、未知の要件があれば profile 自体を拒否します。バージョン文字列やファイル名から機能を推測しません。旧 profile で省略されたフィールドは 0 とし、新 receipt でも 0 は書き出さないため、従来のレシピは影響を受けません。
+Luau レシピは profile の `plugin_id`、`configuration` と並べて `required_capabilities = 192` を指定でき、receipt が要件を保持します。インポートは識別済みゲームと設定文字列だけを保存します。高度な設定の明示的な準備や起動時に、選択した実際の descriptor で型・機能を検証し、成功後にゲームを開きます。自動インポートは変換後に変更された receipt を拒否します。機能不足はコア更新として案内し、未知の要件は profile を無効とします。バージョン名やファイル名から機能を推測しません。旧 profile の省略値は 0 で、新しい receipt も 0 を省略します。
 
 ## テキスト置換のレベル
 

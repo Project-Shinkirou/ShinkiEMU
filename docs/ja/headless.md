@@ -34,6 +34,12 @@ owner と Rust ネイティブワーカーの既定スタック予算は 8 MiB �
 
 `--configuration` は既存の Manager `ConfigEntry` 配列です。例: `[{"id":"profile_path","value":{"String":"key.toml"}}]`。フィールド ID はコアの宣言に従います。`--startup-timeout-ms` の既定値は 30000 で、ネイティブ open の完了後から最初の完成 CPU フレームを待ちます。描画、スクリプト、動画を無効化して成功扱いにはしません。コアが必要とする GPU や音声デバイスは引き続き必要です。
 
+対応するデスクトップ Siglus コアのヘッドレス動作・描画確認には、`--audio-device nullaudiodevice` を明示します。既存のサンプルクロック駆動 `NullAudioDevice` を隔離子プロセスだけで選び、コアに `headless_audio_device` 列挙設定がなければ失敗します。Kira のデコードとミキサー、有界 PCM キュー、一時停止・再開・終了処理を維持し、選択を `run.json` に記録します。実際の音声出力を確認したことにはなりません。オプションを省略した通常の Manager は実デバイスを使い、デバイスエラーから null へ自動で切り替えません。
+
+```powershell
+shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null
+```
+
 ## 時間、リプレイ、比較
 
 C ABI v3 ではコアがゲーム時刻を管理し、決定論的な単一ステップ API はありません。`--frames` は最初の完成フレーム後に行う 60 Hz のホスト表示サンプル数で、ネイティブ VM のフレーム数ではありません。`--duration-ms` は最小の実行時間で、両者の長い方を使います。`acquired_frames` は実際に取得した異なる完成フレーム数です。静止画は複数のサンプルで同じ場合があります。

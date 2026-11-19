@@ -19,7 +19,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::OnceLock,
+    sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -50,7 +50,7 @@ struct AndroidContext {
     vm: JavaVM,
 }
 
-static CONTEXT: OnceLock<AndroidContext> = OnceLock::new();
+static CONTEXT: RwLock<Option<Arc<AndroidContext>>> = RwLock::new(None);
 
 /// A picker waiting for `nativeOnPickResult`. `extensions` is `None` for
 /// folder pickers and file pickers without filters.
@@ -84,6 +84,17 @@ pub fn initialize(app: AndroidApp) -> Result<(), String> {
     let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) };
     let activity = app.activity_as_ptr();
     vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+        let status = env
+            .call_method(
+                unsafe { JObject::from_raw(env, activity.cast()) },
+                jni_str!("awaitNativeHosts"),
+                jni_sig!("()I"),
+                &[],
+            )?
+            .i()?;
+        if status != 0 {
+            return Err(jni::errors::Error::NullPtr("Android core host initialization failed"));
+        }
         // SAFETY: `activity` is the global reference android-activity keeps
         // alive for the lifetime of the process.
         let activity = unsafe { JObject::from_raw(env, activity.cast()) };
@@ -92,28 +103,48 @@ pub fn initialize(app: AndroidApp) -> Result<(), String> {
         })
     })
     .map_err(|error| format!("SHINKI_EMU_ANDROID_TLS_VERIFIER: {error}"))?;
-    CONTEXT
-        .set(AndroidContext { app, vm })
-        .map_err(|_| "SHINKI_EMU_ANDROID_CONTEXT_DUPLICATE".to_owned())?;
+    *CONTEXT.write().expect("Android context lock") = Some(Arc::new(AndroidContext { app, vm }));
     configure_temporary_directory()?;
-    let context = context()?;
-    let status = context
-        .vm
-        .attach_current_thread(|_env| -> jni::errors::Result<_> {
-            // SAFETY: AndroidApp owns both handles; the JNI attachment is scoped
-            // to this initializer. The core retains only the application Context.
-            Ok(unsafe {
-                shinki_emu_kirikiroid2_web::initialize_android(
-                    context.app.vm_as_ptr().cast(),
-                    context.app.activity_as_ptr().cast(),
-                )
-            })
-        })
-        .map_err(|error| format!("KRKR_ANDROID_HOST_JNI: {error}"))?;
-    if status != shinki_emu_abi::OK {
-        return Err(format!("KRKR_ANDROID_HOST_INITIALIZATION ({status})"));
-    }
     extract_bundled_assets()
+}
+
+/// Called on the Java UI thread after NativeActivity.onCreate, before onStart.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeInitializeHosts(
+    mut env: EnvUnowned<'_>,
+    activity: JObject<'_>,
+) -> jni::sys::jint {
+    let outcome = env
+        .with_env(|env| -> jni::errors::Result<_> {
+            let vm = env.get_java_vm()?;
+            // SAFETY: both handles belong to this live Java UI-thread callback.
+            let first = unsafe {
+                shinki_emu_kirikiroid2_web::initialize_android(
+                    vm.get_raw().cast(),
+                    activity.as_raw().cast(),
+                )
+            };
+            if first != shinki_emu_abi::OK {
+                clear_jni_exception(env);
+                return Ok(Err(format!("KRKR_ANDROID_HOST_INITIALIZATION ({first})")));
+            }
+            let second = unsafe {
+                shinki_emu_krkr2::initialize_android(
+                    vm.get_raw().cast(),
+                    activity.as_raw().cast(),
+                )
+            };
+            if second != shinki_emu_abi::OK {
+                clear_jni_exception(env);
+                return Ok(Err(format!("KRKR2_ANDROID_HOST_INITIALIZATION ({second})")));
+            }
+            Ok(Ok(()))
+        })
+        .into_outcome();
+    match outcome {
+        jni::Outcome::Ok(Ok(())) => 0,
+        jni::Outcome::Ok(Err(_)) | jni::Outcome::Err(_) | jni::Outcome::Panic(_) => -1,
+    }
 }
 
 fn configure_temporary_directory() -> Result<(), String> {
@@ -148,15 +179,17 @@ fn configure_temporary_directory() -> Result<(), String> {
     }
 }
 
-fn context() -> Result<&'static AndroidContext, String> {
+fn context() -> Result<Arc<AndroidContext>, String> {
     CONTEXT
-        .get()
+        .read()
+        .expect("Android context lock")
+        .clone()
         .ok_or_else(|| "SHINKI_EMU_ANDROID_CONTEXT_MISSING".to_owned())
 }
 
-/// The activity handle stored by [`initialize`].
-pub fn app() -> Result<&'static AndroidApp, String> {
-    context().map(|context| &context.app)
+/// The activity handle stored by [`initialize`], valid for this lifecycle.
+pub fn app() -> Result<AndroidApp, String> {
+    context().map(|context| context.app.clone())
 }
 
 /// Hide or show the mouse pointer over the activity window
@@ -193,6 +226,10 @@ pub fn on_poll_event(event: &PollEvent<'_>) {
         return;
     };
     let event = match event {
+        MainEvent::Destroy => {
+            CONTEXT.write().expect("Android context lock").take();
+            return;
+        }
         MainEvent::GainedFocus => LifecycleEvent::Focused(true),
         MainEvent::LostFocus => LifecycleEvent::Focused(false),
         MainEvent::Resume { .. } => LifecycleEvent::Resumed(true),

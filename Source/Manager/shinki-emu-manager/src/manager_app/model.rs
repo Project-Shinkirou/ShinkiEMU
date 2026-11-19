@@ -203,7 +203,6 @@ impl ShinkiEmuManagerController {
             .into_iter()
             .map(|root| root.path)
             .collect();
-        let profile = self.profile()?;
         Ok(ManagerViewModel {
             app: AppViewModel {
                 version: shinki_emu_manager::version().into(),
@@ -235,11 +234,12 @@ impl ShinkiEmuManagerController {
                 snackbar: self.snackbar.view(),
             },
             settings: SettingsViewModel {
-                translation: translation::profile_form(profile.as_ref()),
+                translation_providers: self.translation_provider_views()?,
                 translation_enabled: self.translation_enabled,
-                secret_saved: profile.is_some(),
                 models: self.translation_models.clone(),
                 translation_status: self.translation_status.clone(),
+                translation_test_for: self.translation_test_for.clone(),
+                translation_saved: self.translation_saved,
                 sensitive_covers: self.sensitive_covers,
                 bangumi_token_saved: self
                     .metadata_tokens
@@ -273,15 +273,19 @@ impl ShinkiEmuManagerController {
     }
 
     fn engine_and_emulator(&self, game: &GameRecord) -> String {
-        let engine = game
-            .family_id
-            .as_deref()
-            .map(|id| self.engine_label(id))
-            .unwrap_or_else(|| tr!("未识别引擎").to_owned());
+        let engine = self.recognized_engine_label(game);
         match self.launch_candidate_for_game(game) {
-            Some(candidate) => format!("{engine} · {}", candidate.descriptor.display_name),
+            Some(candidate) => format!("{engine} · {}", self.emulator_label(&candidate.plugin_id)),
             None => engine,
         }
+    }
+
+    fn recognized_engine_label(&self, game: &GameRecord) -> String {
+        if let Some(family) = &game.family_id { return self.engine_label(family); }
+        self.library.app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{}", game.game_id))
+            .ok().flatten().filter(|detections| !detections.is_empty())
+            .map(|detections| detections.iter().map(|item| self.engine_label(&item.family_id)).collect::<Vec<_>>().join(" / "))
+            .unwrap_or_else(|| tr!("未识别引擎").into())
     }
 
     /// `(vID, label)` for every installed copy whose VNDB work is linked by
@@ -343,25 +347,15 @@ impl ShinkiEmuManagerController {
             })
             .collect();
         let candidate = self.launch_candidate_for_game(game);
+        let selected_plugin = self.library.game_settings(&game.game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
         let joined = |values: &[String]| values.join(", ");
         Ok(SelectionViewModel {
             game: SelectedGameViewModel {
                 id: game.game_id.clone(),
                 title: game.display_title().into(),
-                engine: game
-                    .family_id
-                    .as_deref()
-                    .map(|id| self.engine_label(id))
-                    .or_else(|| metadata.and_then(|record| record.engine.clone()))
-                    .unwrap_or_default(),
-                emulator: candidate
-                    .map(|candidate| self.emulator_label(&candidate.descriptor))
-                    .unwrap_or_default(),
-                emulator_id: self
-                    .candidates
-                    .get(&game.game_id)
-                    .map(|candidate| candidate.report.plugin_id.clone())
-                    .unwrap_or_default(),
+                engine: self.recognized_engine_label(game),
+                emulator: selected_plugin.as_deref().map(|id| self.emulator_label(id)).unwrap_or_default(),
+                emulator_id: selected_plugin.unwrap_or_default(),
                 launchable: !self.patch_busy()
                     && !self.startup_busy()
                     && !shinki_emu_patch::is_staging_path(Path::new(&game.location))
@@ -483,6 +477,22 @@ impl ShinkiEmuManagerController {
         let recommended = self
             .recommended_preset(game_id)?
             .map(|preset| preset.summary.clone());
+        let selected_plugin = self.library.game_settings(game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
+        let configuration_error = self.game_configuration_error(game_id, selected_plugin.as_deref()).to_owned();
+        let mut configuration_state = if configuration_error.is_empty() {
+            self.configuration_state(selected_plugin.as_deref())
+        } else {
+            "failed"
+        };
+        // A loaded implementation has a schema, but this game's imported receipt
+        // still needs explicit validation before its settings can be edited.
+        let pending_profile = configuration_state == "ready"
+            && self.library.app_state::<BTreeMap<String, String>>(
+                &format!("pending-patch-configuration:{game_id}"),
+            ).map_err(|error| error.to_string())?.is_some();
+        if pending_profile {
+            configuration_state = "unprepared";
+        }
         Ok(GameSettingsViewModel {
             game_id: game_id.into(),
             title: game.display_title().into(),
@@ -491,17 +501,15 @@ impl ShinkiEmuManagerController {
                 .unwrap_or_default()
                 .iter()
                 .map(|choice| ChoiceViewModel {
-                    id: choice.report.plugin_id.clone(),
-                    label: self.emulator_label(&choice.descriptor),
+                    id: choice.plugin_id.clone(),
+                    label: self.emulator_label(&choice.plugin_id),
                 })
                 .collect(),
-            emulator_id: self
-                .candidates
-                .get(game_id)
-                .map(|candidate| candidate.report.plugin_id.clone())
-                .unwrap_or_default(),
+            configuration_state: configuration_state.into(),
+            configuration_error,
+            emulator_id: selected_plugin.unwrap_or_default(),
             render: self.game_render_view(game_id)?,
-            fields: self.game_config_fields(game_id)?,
+            fields: if pending_profile { Vec::new() } else { self.game_config_fields(game_id)? },
             recommended_available: recommended.is_some(),
             recommended_summary: recommended.unwrap_or_default(),
             input_override: override_mapping.is_some(),
@@ -514,9 +522,10 @@ impl ShinkiEmuManagerController {
 
     fn cores_model(&mut self) -> Result<CoresViewModel, String> {
         let mut cores = self.cores_view()?;
-        if let Some(plugin) = self.defaults_plugin.clone()
-            && self.registry.descriptor(&plugin).is_some()
-        {
+        cores.default_configuration_state = self.defaults_plugin.as_deref().map(|id| self.configuration_state(Some(id))).unwrap_or("unprepared").into();
+        cores.default_configuration_error = self.defaults_plugin.as_deref()
+            .and_then(|plugin| self.native_failures.get(plugin)).cloned().unwrap_or_default();
+        if let Some(plugin) = self.defaults_plugin.clone() {
             cores.default_plugin.clone_from(&plugin);
             cores.default_fields = self.emulator_default_fields(&plugin)?;
             cores.default_render = self.emulator_render_view(&plugin)?;
@@ -537,7 +546,8 @@ impl ShinkiEmuManagerController {
                 core: file.clone(),
             });
         }
-        if self.registry.is_ready() && self.registry.descriptors().next().is_none() {
+        if self.registry.is_ready() && shinki_emu_manager::static_cores::STATIC_CORES.is_empty()
+            && !self.registry.installed().keys().any(|id| self.plugin_available(id)) {
             notices.push(NoticeViewModel {
                 id: "no-cores".into(),
                 severity: "warning".into(),
@@ -594,8 +604,15 @@ impl ShinkiEmuManagerController {
         if self.patch_busy() {
             return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
         }
-        if self.launch_candidate_for_game(game).is_some() {
-            return String::new();
+        if !Path::new(&game.location).is_dir() { return tr!("游戏目录当前不可用").into(); }
+        if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
+            if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重新准备资料库").into(); }
+            let error = self.game_configuration_error(&game.game_id, Some(&plugin));
+            if !error.is_empty() { return error.into(); }
+        }
+        if self.launch_candidate_for_game(game).is_some() { return String::new(); }
+        if game.family_id.is_some() && self.probe_choices.get(&game.game_id).is_none_or(|choices| choices.iter().all(|choice| !self.plugin_available(&choice.plugin_id))) {
+            return tr!("已识别引擎，缺少兼容核心").into();
         }
         match self.startup_state {
             background::StartupState::Waiting => tr!("需要先准备资料库").into(),
@@ -621,7 +638,7 @@ impl ShinkiEmuManagerController {
         let Some(plugin_id) = self
             .candidates
             .get(&active.game_id)
-            .map(|candidate| candidate.descriptor.plugin_id.as_str())
+            .map(|candidate| candidate.plugin_id.as_str())
         else {
             return Vec::new();
         };

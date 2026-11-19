@@ -270,13 +270,13 @@ impl ShinkiEmuManagerController {
             return Ok(Vec::new());
         };
         let emulators: Vec<&str> = match self.candidates.get(game_id) {
-            Some(candidate) => vec![candidate.report.plugin_id.as_str()],
+            Some(candidate) => vec![candidate.plugin_id.as_str()],
             None => self
                 .probe_choices
                 .get(game_id)
                 .into_iter()
                 .flatten()
-                .map(|choice| choice.report.plugin_id.as_str())
+                .map(|choice| choice.plugin_id.as_str())
                 .collect(),
         };
         let recommended = self
@@ -312,13 +312,13 @@ impl ShinkiEmuManagerController {
 
     fn patch_emulators(&self, game_id: &str) -> Vec<&str> {
         match self.candidates.get(game_id) {
-            Some(chosen) => vec![chosen.report.plugin_id.as_str()],
+            Some(chosen) => vec![chosen.plugin_id.as_str()],
             None => self
                 .probe_choices
                 .get(game_id)
                 .into_iter()
                 .flatten()
-                .map(|choice| choice.report.plugin_id.as_str())
+                .map(|choice| choice.plugin_id.as_str())
                 .collect(),
         }
     }
@@ -395,7 +395,8 @@ impl ShinkiEmuManagerController {
         if !unchanged {
             self.patch_release_mismatch = false;
             self.patch_state = PatchStateViewModel {
-                patch_directory: game.location,
+                patch_directory: dunce::simplified(Path::new(&game.location))
+                    .to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned(),
                 ..Default::default()
             };
             self.patch_game_id = Some(game.game_id);
@@ -478,7 +479,7 @@ impl ShinkiEmuManagerController {
         kind: &str,
         path: &Path,
     ) -> Result<ManagerViewModel, String> {
-        let path = path
+        let path = dunce::simplified(path)
             .to_str()
             .ok_or("SHINKI_EMU_PATCH_PATH: directory path must be Unicode")?
             .to_owned();
@@ -836,55 +837,43 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn select_import_profile(
         &self,
-        choices: &[FamilyProbeCandidate],
+        choices: &[Candidate],
         profile: &OutputProfile,
     ) -> Result<usize, String> {
-        let index = choices.iter().position(|candidate| candidate.report.plugin_id == profile.plugin_id)
+        let index = choices.iter().position(|candidate| candidate.plugin_id == profile.plugin_id)
             .ok_or("SHINKI_EMU_EMULATOR_SELECTION_INVALID: patch output is not recognized by its requested emulator")?;
-        let selected = &choices[index];
-        if selected.descriptor.family_id != selected.report.family_id
-            || self.registry.descriptor(&profile.plugin_id) != Some(&selected.descriptor)
-        {
-            return Err(
-                "SHINKI_EMU_EMULATOR_SELECTION_INVALID: patch output descriptor mismatch".into(),
-            );
-        }
-        require_profile_capabilities(profile, &selected.descriptor)?;
         Ok(index)
     }
 
     pub(super) fn apply_import_profile(
         &mut self,
         game_id: &str,
-        choices: Vec<FamilyProbeCandidate>,
+        choices: Vec<Candidate>,
         selected: usize,
         profile: &OutputProfile,
     ) -> Result<(), String> {
         let selected = choices[selected].clone();
-        let schema = self
-            .registry
-            .configuration(&profile.plugin_id)
+        self.library.defer_patch_configuration(game_id, &selected.family_id, &profile.plugin_id, &profile.configuration)
             .map_err(|error| error.to_string())?;
-        let values = family_config::parse_config_entries(
-            &schema,
-            profile
-                .configuration
-                .iter()
-                .map(|(id, value)| (id.as_str(), value.as_str())),
-        )?;
-        self.library
-            .apply_patch_profile(
-                game_id,
-                &selected.report.family_id,
-                &profile.plugin_id,
-                &schema,
-                &values,
-            )
-            .map_err(|error| error.to_string())?;
-        // No candidate cache mutation precedes the complete SQLite transaction.
         self.probe_choices.insert(game_id.to_owned(), choices);
         self.candidates.insert(game_id.to_owned(), selected);
         Ok(())
+    }
+
+    pub(super) fn apply_pending_profile(&mut self, game_id: &str, plugin_id: &str) -> Result<(), String> {
+        let Some(configuration) = self.library.app_state::<BTreeMap<String, String>>(&format!("pending-patch-configuration:{game_id}"))
+            .map_err(|error| error.to_string())? else { return Ok(()); };
+        let profile = shinki_emu_patch::read_output_profile(Path::new(&self.game(game_id)?.location), &std::sync::atomic::AtomicBool::new(false))
+            .map_err(|error| error.to_string())?.ok_or("SHINKI_EMU_PATCH_INTEGRITY: receipt missing")?;
+        if profile.plugin_id != plugin_id || profile.configuration != configuration {
+            return Err("SHINKI_EMU_PATCH_INTEGRITY: output receipt changed before configuration".into());
+        }
+        let descriptor = self.registry.descriptor(plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
+        require_profile_capabilities(&profile, descriptor)?;
+        let family = descriptor.family_id.clone();
+        let schema = self.registry.configuration(plugin_id)?;
+        let values = family_config::parse_config_entries(&schema, configuration.iter().map(|(id, value)| (id.as_str(), value.as_str())))?;
+        self.library.apply_patch_profile(game_id, &family, plugin_id, &schema, &values).map_err(|error| error.to_string())
     }
 
     /// A patch output is another installed copy of the source's work: it

@@ -34,6 +34,12 @@ owner 线程与 Rust 原生工作线程的默认栈预算为 8 MiB；核心调�
 
 `--configuration` 使用 Manager 原有 JSON 数组，例如 `[{"id":"profile_path","value":{"String":"key.toml"}}]`，字段 ID 以核心声明为准。`--startup-timeout-ms` 默认为 30000，从原生 open 返回后开始等待首个完整 CPU 帧。不会关闭渲染、脚本或视频来通过验收；核心自身需要的 GPU 和音频设备仍需可用。
 
+桌面 Siglus 核心支持时，无窗口逻辑/出帧验收显式传入 `--audio-device nullaudiodevice`。运行器只在隔离子进程中选择已有的按时钟消费 PCM 的 `NullAudioDevice`；核心必须声明 `headless_audio_device` 枚举能力，不支持就报错。Kira 仍执行解码和混音，使用有界队列，保留暂停、恢复和关闭；`run.json` 记录设备选择。此结果不证明真实声音输出通过。不传参数的普通 Manager 和原生音频运行继续使用真实设备，设备失败不会自动切换到 null。
+
+```powershell
+shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null
+```
+
 ## 时间、回放与基线
 
 C ABI v3 由核心持有游戏时钟，没有确定性单步接口。`--frames` 指首帧之后 60 Hz 的宿主呈现采样数，不代表精确推进相同数量的原生 VM 帧。`--duration-ms` 指最短时间线长度；两者取较大值。报告中的 `acquired_frames` 是实际取得的不同完整帧数量，静态标题画面可以在多个采样点重复。精确重放取决于核心本身的时序与状态。

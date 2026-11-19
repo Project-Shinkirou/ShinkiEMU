@@ -157,6 +157,28 @@ impl Library {
         let transaction = self.connection.transaction()?;
         crate::library::write_game_emulator(&transaction, game_id, engine_id, &settings)?;
         write_configuration(&transaction, emulator_id, game_id, &configuration)?;
+        transaction.execute("DELETE FROM app_state WHERE key=?1", [format!("pending-patch-configuration:{game_id}")])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Preserve receipt settings without requiring native schema discovery during
+    /// import. Typed validation happens when this implementation is explicitly used.
+    pub fn defer_patch_configuration(
+        &mut self,
+        game_id: &str,
+        engine_id: &str,
+        emulator_id: &str,
+        configuration: &std::collections::BTreeMap<String, String>,
+    ) -> Result<(), LibraryError> {
+        let settings = self.prepare_game_emulator(game_id, engine_id, emulator_id)?;
+        let raw = serde_json::to_string(configuration).map_err(|_| LibraryError::Serialization)?;
+        let transaction = self.connection.transaction()?;
+        crate::library::write_game_emulator(&transaction, game_id, engine_id, &settings)?;
+        transaction.execute(
+            "INSERT INTO app_state(key,value_json) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+            params![format!("pending-patch-configuration:{game_id}"), raw],
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -698,5 +720,55 @@ mod tests {
                 .values,
             [encoding("cp932")]
         );
+    }
+
+    #[test]
+    fn deferred_receipt_survives_reopen_and_typed_validation_consumes_it_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("library.sqlite");
+        let mut library = Library::open(&path).unwrap();
+        let schema = patch_fixture(&mut library);
+        let source = library.game("source").unwrap();
+        let pending = std::collections::BTreeMap::from([("script_encoding".to_owned(), "gbk".to_owned())]);
+        library.defer_patch_configuration("output", "fvp", "rfvp", &pending).unwrap();
+        drop(library);
+        let mut library = Library::open(&path).unwrap();
+        let key = "pending-patch-configuration:output";
+        assert_eq!(library.game("source").unwrap(), source);
+        assert_eq!(library.game_settings("output").unwrap().unwrap().emulator_id.as_deref(), Some("rfvp"));
+        assert_eq!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap(), Some(pending.clone()));
+        let invalid = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("invalid".into()) }];
+        assert!(library.apply_patch_profile("output", "fvp", "rfvp", &schema, &invalid).is_err());
+        assert_eq!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap(), Some(pending));
+        let before = library.family_overrides("rfvp", "output").unwrap();
+        library.connection.execute_batch(
+            "CREATE TEMP TRIGGER reject_pending_consume BEFORE DELETE ON app_state
+             BEGIN SELECT RAISE(ABORT,'injected consumption failure'); END;"
+        ).unwrap();
+        let values = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("gbk".into()) }];
+        assert!(library.apply_patch_profile("output", "fvp", "rfvp", &schema, &values).is_err());
+        assert_eq!(library.family_overrides("rfvp", "output").unwrap(), before);
+        assert!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap().is_some());
+        library.connection.execute_batch("DROP TRIGGER reject_pending_consume").unwrap();
+        let values = [ConfigEntry { id: "script_encoding".into(), value: ConfigValue::Enum("gbk".into()) }];
+        library.apply_patch_profile("output", "fvp", "rfvp", &schema, &values).unwrap();
+        assert!(library.app_state::<std::collections::BTreeMap<String, String>>(key).unwrap().is_none());
+        assert_eq!(library.family_overrides("rfvp", "output").unwrap(), values);
+        drop(library);
+        let library = Library::open(&path).unwrap();
+        assert_eq!(library.family_overrides("rfvp", "output").unwrap(), values);
+    }
+
+    #[test]
+    fn deferred_receipt_last_write_failure_does_not_change_game_binding() {
+        let mut library = Library::in_memory().unwrap();
+        patch_fixture(&mut library);
+        let record = library.game("output").unwrap();
+        let settings = library.game_settings("output").unwrap();
+        library.connection.execute_batch("CREATE TEMP TRIGGER fail_deferred BEFORE INSERT ON app_state BEGIN SELECT RAISE(ABORT,'injected write failure'); END;").unwrap();
+        assert!(library.defer_patch_configuration("output", "fvp", "rfvp", &std::collections::BTreeMap::new()).is_err());
+        assert_eq!(library.game("output").unwrap(), record);
+        assert_eq!(library.game_settings("output").unwrap(), settings);
+        assert!(library.app_state::<std::collections::BTreeMap<String, String>>("pending-patch-configuration:output").unwrap().is_none());
     }
 }

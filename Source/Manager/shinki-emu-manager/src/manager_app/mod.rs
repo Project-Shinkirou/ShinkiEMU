@@ -17,7 +17,7 @@ use shinki_emu_manager_core::model::{
     FamilyEvent, FamilyStatus, KeyCode, KeyModifiers, KeyState, ProbeRequest, WindowState,
 };
 use shinki_emu_manager_core::{
-    FamilyPluginDescriptor, FamilyProbeCandidate, FamilyProbeSelection, FamilyProviderRegistry,
+    FamilyPluginDescriptor, FamilyProbeSelection, FamilyProviderRegistry,
     GameRecord, GameRelease, GamepadDeadzone, GamepadInput, Library, NativeOpenRequest,
     NativeSession, PlaySessionEndReason, default_vn_preset, input_key_code as key_code,
 };
@@ -63,7 +63,11 @@ mod probe_cache;
 #[cfg(test)]
 mod probe_state_tests;
 mod probe_worker;
+mod recognition;
+use recognition::Candidate;
 mod render_extent;
+#[cfg(test)]
+mod recognition_tests;
 mod runtime;
 mod session;
 #[cfg(test)]
@@ -96,16 +100,18 @@ impl MetadataStatus {
 
 struct PendingMetadata {
     game_id: Option<String>,
-    core: Option<String>,
 }
 
 struct ShinkiEmuManagerController {
     library: Library,
     notice_reading: shinki_emu_manager::resale_notice::Reading,
     registry: owner::FamilyOwner,
-    candidates: BTreeMap<String, FamilyProbeCandidate>,
+    candidates: BTreeMap<String, Candidate>,
     startup_state: background::StartupState,
-    probe_choices: BTreeMap<String, Vec<FamilyProbeCandidate>>,
+    native_action: Option<recognition::NativeAction>,
+    native_failures: BTreeMap<String, String>,
+    configuration_errors: BTreeMap<String, recognition::GameConfigurationError>,
+    probe_choices: BTreeMap<String, Vec<Candidate>>,
     selected_case_id: Option<String>,
     search_query: String,
     diagnostic: String,
@@ -155,7 +161,15 @@ struct ShinkiEmuManagerController {
     translation_enabled: bool,
     translation_models: Vec<String>,
     translation_status: String,
+    /// Card id (empty for an unsaved card) the model list and status belong to.
+    translation_test_for: String,
+    /// Bumped by every successful card save.
+    translation_saved: u32,
     connection_test: Option<connection_test::ConnectionTest>,
+    core_downloads: crate::core_download::CoreDownloads,
+    /// Last download error of each core, by plugin id, until it is retried.
+    core_failures: BTreeMap<String, String>,
+    core_batch: Option<cores::CoreBatch>,
     held_controls: BTreeSet<String>,
     key_modifiers: KeyModifiers,
     pointer_position: (f32, f32),
@@ -171,7 +185,7 @@ struct ShinkiEmuManagerController {
     snackbar: snackbar::Snackbar,
     prepare_scan_pending: Option<background::PendingScan>,
     prepare_progress: Option<owner::PrepareProgress>,
-    scan_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    scan_cancel: Option<shinki_emu_manager_core::NativeCancellation>,
     last_excluded: Option<String>,
     key_capture: Option<input::KeyCapture>,
     store: store::StoreRuntime,
@@ -180,6 +194,7 @@ struct ShinkiEmuManagerController {
 
 impl Drop for ShinkiEmuManagerController {
     fn drop(&mut self) {
+        if let Some(cancel) = &self.scan_cancel { cancel.cancel(); }
         if let Some(mut job) = self.patch_job.take() {
             job.cancel();
             if let Err(error) = job.join() {

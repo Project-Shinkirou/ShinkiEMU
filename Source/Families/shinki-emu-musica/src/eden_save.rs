@@ -77,12 +77,6 @@ impl EdenEdition {
             Self::Perseus => b"perseus 1.00",
         }
     }
-    pub fn for_title(title: crate::minori_data::MinoriTitle) -> Self {
-        match title {
-            crate::minori_data::MinoriTitle::EdenEnglish => Self::English,
-            crate::minori_data::MinoriTitle::Perseus => Self::Perseus,
-        }
-    }
 }
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
@@ -153,11 +147,29 @@ pub struct EdenSave {
     pub backlog: Vec<Vec<EdenSaveField>>,
 }
 impl EdenSave {
+    /// Decode a container whose identity comes from source data or a preset.
+    pub(crate) fn decode_with_signature(
+        bytes: &[u8],
+        edition: EdenEdition,
+        encoding: EdenSaveEncoding,
+        signature: &[u8],
+    ) -> Result<Self, CoreError> {
+        Self::decode_container(bytes, edition, encoding, signature)
+    }
+
     /// Parse the exact edition signature and a single bounded zlib stream.
     pub fn decode(
         bytes: &[u8],
         edition: EdenEdition,
         encoding: EdenSaveEncoding,
+    ) -> Result<Self, CoreError> {
+        Self::decode_container(bytes, edition, encoding, edition.signature())
+    }
+    fn decode_container(
+        bytes: &[u8],
+        edition: EdenEdition,
+        encoding: EdenSaveEncoding,
+        signature: &[u8],
     ) -> Result<Self, CoreError> {
         if bytes.len() > MAX_CONTAINER || bytes.len() < 4 {
             return Err(invalid("BOUND", "save container exceeds the byte limit"));
@@ -170,7 +182,7 @@ impl EdenSave {
         };
         let suffix = bytes
             .strip_prefix(&edition.magic(prefix))
-            .and_then(|b| b.strip_prefix(edition.signature()))
+            .and_then(|b| b.strip_prefix(signature))
             .and_then(|b| b.strip_prefix(&[0]))
             .ok_or_else(|| invalid("SIGNATURE", "save edition signature does not match"))?;
         let end = suffix
@@ -216,6 +228,12 @@ impl EdenSave {
     }
     /// Container serialization only. Callers must validate VM representability separately.
     pub fn encode(&self) -> Result<Vec<u8>, CoreError> {
+        self.encode_with_signature(self.edition.signature())
+    }
+    pub(crate) fn encode_with_signature(&self, signature: &[u8]) -> Result<Vec<u8>, CoreError> {
+        if signature.is_empty() || signature.len() > 128 || signature.contains(&0) {
+            return Err(invalid("SIGNATURE", "save container signature is invalid"));
+        }
         let comment = self.encoding.encode(&self.comment)?;
         if comment.len() > 4096 || comment.contains(&0) {
             return Err(invalid("HEADER", "save comment is invalid"));
@@ -227,7 +245,7 @@ impl EdenSave {
         }
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.edition.magic(self.prefix));
-        bytes.extend_from_slice(self.edition.signature());
+        bytes.extend_from_slice(signature);
         bytes.push(0);
         bytes.extend_from_slice(&comment);
         bytes.push(0);

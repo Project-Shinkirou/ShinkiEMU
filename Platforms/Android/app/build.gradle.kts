@@ -39,7 +39,7 @@ android {
 
     defaultConfig {
         applicationId = "org.shinkirou.shinkiemu"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 37
         versionCode = providers.environmentVariable("SHINKI_EMU_ANDROID_VERSION_CODE")
             .orElse("1")
@@ -93,6 +93,8 @@ android {
         res.directories.add(generatedRoot.dir("res").asFile.absolutePath)
         java.srcDir(generatedRoot.dir("assets/cores/kirikiroid2-web/Resources/android-host/java"))
         aidl.srcDir(generatedRoot.dir("assets/cores/kirikiroid2-web/Resources/android-host/java"))
+        java.srcDir(generatedRoot.dir("assets/cores/krkr2/Resources/android-host/java"))
+        aidl.srcDir(generatedRoot.dir("assets/cores/krkr2/Resources/android-host/java"))
     }
 
     androidResources {

@@ -6,9 +6,7 @@ use std::{
 };
 
 use flate2::read::ZlibDecoder;
-use shinki_emu_musica_keys::{
-    MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
-};
+use shinki_emu_musica_keys::{MUSICA_KEY_SCHEMA, MusicaArchiveKey, MusicaKeyFile};
 
 use super::garbro_nrbf::{NrbfGraph, NrbfValue};
 const MAX_GRAPH_NODES: usize = 1_000_000;
@@ -65,6 +63,7 @@ pub fn import(
                 (
                     role,
                     MusicaArchiveKey {
+                        required: true,
                         index_key_hex: super::encode_hex(&value.index_key),
                         data_key_hex: super::encode_hex(&value.data_key),
                         type_passwords: value.type_keys,
@@ -310,11 +309,11 @@ fn extract_roles(
     let arc_keys = object_member(graph, record, &["ArcKeys", "arc_keys"])
         .ok_or("SHINKI_EMU_GARBRO_ARC_KEYS")?;
     let arc_entries = dictionary_entries(graph, arc_keys)?;
-    if arc_entries.len() > REQUIRED_ARCHIVE_ROLES.len()
+    if arc_entries.is_empty()
         || arc_entries.iter().any(|(role, _)| {
-            !REQUIRED_ARCHIVE_ROLES
-                .iter()
-                .any(|expected| role.eq_ignore_ascii_case(expected))
+            role.is_empty()
+                || role.len() > 64
+                || !role.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
         })
     {
         return Err("SHINKI_EMU_GARBRO_ROLE_SET".into());
@@ -334,12 +333,8 @@ fn extract_roles(
         })
         .collect::<Result<BTreeMap<_, _>, _>>()?;
     let mut roles = BTreeMap::new();
-    for role in REQUIRED_ARCHIVE_ROLES {
-        let value = arc_entries
-            .iter()
-            .find(|(key, _)| key.eq_ignore_ascii_case(role))
-            .map(|(_, value)| *value)
-            .ok_or("SHINKI_EMU_GARBRO_ROLE_MISSING")?;
+    for (role, value) in arc_entries {
+        let role = role.to_ascii_lowercase();
         let value = graph
             .dereference(value)
             .map_err(|_| "SHINKI_EMU_GARBRO_REFERENCE")?;
@@ -364,8 +359,11 @@ fn extract_roles(
         {
             return Err("SHINKI_EMU_GARBRO_KEY_SIZE".into());
         }
+        if roles.contains_key(&role) {
+            return Err("SHINKI_EMU_GARBRO_ROLE_SET".into());
+        }
         roles.insert(
-            role.into(),
+            role,
             ImportedRole {
                 index_key,
                 data_key,

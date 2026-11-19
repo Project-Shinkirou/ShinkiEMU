@@ -1,36 +1,18 @@
 use super::*;
+use std::sync::Arc;
 
 fn configuration_provider(
     configure: impl FnOnce(&mut crate::test_native::Fixture),
 ) -> shinki_emu_manager_core::LoadedFamilyPlugin {
     let mut fixture =
-        crate::test_native::Fixture::new(PLUGIN, "config-test-family", "config.test");
+        crate::test_native::Fixture::new(PLUGIN, "musica", "config.test");
     fixture.config = true;
     configure(&mut fixture);
     crate::test_native::install(0, fixture)
 }
 
-fn configuration_candidate() -> FamilyProbeCandidate {
-    FamilyProbeCandidate {
-        report: shinki_emu_manager_core::FamilyProbeReport {
-            plugin_id: PLUGIN.into(),
-            family_id: "config-test-family".into(),
-            game_id: "fixture-game".into(),
-            format: "config.test".into(),
-            confidence_permyriad: 10_000,
-        },
-        descriptor: FamilyPluginDescriptor {
-            family_id: "config-test-family".into(),
-            plugin_id: PLUGIN.into(),
-            abi_fingerprint: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
-            version: "1.0.0".into(),
-            capabilities: vec![shinki_emu_manager_core::FamilyCapability::CpuFrame],
-            supported_formats: vec!["config.test".into()],
-            display_name: PLUGIN.into(),
-            family_name: "config-test-family".into(),
-            render: None,
-        },
-    }
+fn configuration_candidate() -> Candidate {
+    Candidate { plugin_id: PLUGIN.into(), family_id: "musica".into() }
 }
 
 fn configuration_controller(root: &std::path::Path) -> ShinkiEmuManagerController {
@@ -43,6 +25,7 @@ pub(in crate::manager_app) fn configured_controller(
     root: &std::path::Path,
     configure: impl FnOnce(&mut crate::test_native::Fixture) + Send + 'static,
 ) -> ShinkiEmuManagerController {
+    super::super::recognition_tests::manifest(root, PLUGIN, "configuration", b"explicitly registered ABI configuration fixture");
     let mut controller = ShinkiEmuManagerController::open_library(
         root.to_path_buf(),
         crate::stage_renderer::FrameMailbox::new(),
@@ -77,7 +60,7 @@ pub(in crate::manager_app) fn configured_controller(
             title: "Configuration test".into(),
             user_title: None,
             location: location.to_str().unwrap().into(),
-            family_id: Some("config-test-family".into()),
+            family_id: Some("musica".into()),
             content_fingerprint: None,
             added_at_unix_ms: 1,
         })
@@ -156,6 +139,48 @@ fn overrides(controller: &ShinkiEmuManagerController, game_id: &str) -> Vec<Conf
 
 fn field<'a>(fields: &'a [ConfigFieldViewModel], key: &str) -> &'a ConfigFieldViewModel {
     fields.iter().find(|field| field.key == key).unwrap()
+}
+
+#[test]
+fn deferred_enum_profile_reaches_native_open_and_is_consumed_only_once() {
+    let root = tempfile::tempdir().unwrap();
+    let calls = Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let native_calls = calls.clone();
+    let mut app = configured_controller(root.path(), move |fixture| fixture.calls = native_calls);
+    let game = app.game("game").unwrap();
+    fs::write(Path::new(&game.location).join("shinki-patch-result.json"), serde_json::to_vec(&serde_json::json!({
+        "schema": "shinki.emu.file_patch.v1",
+        "profile": { "plugin_id": PLUGIN, "configuration": { "launch_mode": "title" } }
+    })).unwrap()).unwrap();
+    let profile = shinki_emu_patch::OutputProfile {
+        plugin_id: PLUGIN.into(),
+        configuration: BTreeMap::from([("launch_mode".into(), "title".into())]),
+        required_capabilities: 0,
+    };
+    app.apply_import_profile("game", vec![configuration_candidate()], 0, &profile).unwrap();
+    assert_eq!(app.model().unwrap().game_settings.configuration_state, "unprepared");
+    app.set_host_wake(Arc::new(|| {}));
+    app.window_state = Some(WindowState { width: 1, height: 1, scale_factor: 1.0, focused: true, visible: true, suspended: false });
+    app.launch("game").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app.active.as_ref().is_some_and(|active| active.opened) {
+        app.poll_platform().unwrap();
+        assert!(Instant::now() < deadline, "native open did not complete: {}", app.diagnostic);
+        std::thread::yield_now();
+    }
+    assert_eq!(calls.lock().iter().find(|call| call.name == "open").unwrap().key, "launch_mode=title");
+    assert!(app.library.app_state::<BTreeMap<String, String>>("pending-patch-configuration:game").unwrap().is_none());
+    app.leave_game().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.active.is_some() {
+        app.poll_platform().unwrap();
+        assert!(Instant::now() < deadline, "native session did not close");
+        std::thread::yield_now();
+    }
+    app.set_game_config("game", "launch_mode", "direct").unwrap();
+    app.prepare_game_configuration("game").unwrap();
+    super::super::recognition_tests::settle(&mut app);
+    assert_eq!(overrides(&app, "game")[0].value, ConfigValue::Enum("direct".into()));
 }
 
 #[test]
@@ -246,14 +271,17 @@ fn configuration_changes_are_rejected_while_a_game_runs() {
 
 #[test]
 fn custom_render_outside_the_emulator_range_is_rejected_without_storing() {
-    use shinki_emu_manager_core::{RenderPreference, RenderSupport};
+    use shinki_emu_manager_core::RenderPreference;
     let root = tempfile::tempdir().unwrap();
-    let mut controller = configuration_controller(root.path());
-    controller.candidates.get_mut("game").unwrap().descriptor.render = Some(RenderSupport {
-        min: (320, 180),
-        max: (3840, 2160),
-        default: None,
-        preserve_aspect: false,
+    let mut controller = configured_controller(root.path(), |fixture| {
+        fixture.capabilities |= shinki_emu_abi::CAP_RENDER_EXTENT;
+        fixture.render = shinki_emu_abi::RenderExtentSupport {
+            min: shinki_emu_abi::Extent { width: 320, height: 180 },
+            max: shinki_emu_abi::Extent { width: 3840, height: 2160 },
+            default: shinki_emu_abi::Extent::default(),
+            flags: 0,
+            reserved: 0,
+        };
     });
     controller
         .set_render_preference("game", Some(RenderPreference::Preset { height: 1440 }))

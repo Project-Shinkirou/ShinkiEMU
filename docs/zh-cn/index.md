@@ -25,5 +25,6 @@ ShinkiEMU 由游戏库管理器 Manager 和原生核心组成，用来运行旧�
 ## 各核心资料
 
 [RFVP](cores/rfvp.md) · [Siglus](cores/siglus-rs.md) · [Artemis](cores/art3m1s-core.md) · [Musica](cores/shinki-emu-musica.md) · [Sena](cores/sena-rs.md) · [KiriKiri](cores/kirikiroid2-web.md) · [Ethornell](cores/ethornell-rs.md) · [CMVS](cores/shinki-emu-cmvs.md) · [ReMinori](cores/reminori.md) · [impacto](cores/impacto.md) · [Ren’Py](cores/renpy.md)。
+外部 CMVS/CVNS 核心：[cmvs-rs](cores/cmvs-rs.md)，与自研 Shinki CMVS 并存。
 
 当前构建和发布信息见[核心目录](https://project-shinkirou.github.io/zh-cn/shinkiemu/cores/)，游戏运行结论见[兼容性报告](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)。编译成功或探测命中不代表游戏可玩；没有对应报告时显示“尚无报告”。

@@ -30,34 +30,36 @@ impl MusicaSession {
         Ok(())
     }
     fn activate_title(&mut self) -> SessionResult<()> {
-        match (
-            self.vm.title_variant(),
-            self.vm.state().system_ui.focus_index,
-        ) {
-            (_, 0) => self.start_menu_script(self.entry_uri.clone()),
-            (_, 1) => {
+        use crate::runtime::title::TitleAction;
+        let action = self
+            .vm
+            .title()
+            .map_err(vm_error)?
+            .buttons
+            .get(self.vm.state().system_ui.focus_index as usize)
+            .ok_or_else(|| error("SHINKI_EMU_MUSICA_TITLE_FOCUS", "invalid title focus"))?
+            .action;
+        match action {
+            TitleAction::NewGame => self.start_menu_script(self.entry_uri.clone()),
+            TitleAction::Load => {
                 self.vm.open_title_load().map_err(vm_error)?;
                 self.load_from_title = true;
                 self.clear_input();
                 self.refresh_save_cards()
             }
-            (_, 2) => {
+            TitleAction::Config => {
                 self.vm.open_config().map_err(vm_error)?;
                 self.clear_input();
                 Ok(())
             }
-            (2, 3) => self
+            TitleAction::Memories => self
                 .vm
                 .set_gallery_page(MusicaSystemPage::Memories, 0)
                 .map_err(vm_error),
-            (_, 3) | (2, 4) => {
+            TitleAction::Exit => {
                 self.finished = true;
                 Ok(())
             }
-            _ => Err(error(
-                "SHINKI_EMU_MUSICA_TITLE_FOCUS",
-                "invalid title focus",
-            )),
         }
     }
     pub(super) fn title_event(&mut self, event: &RuntimeEvent) -> SessionResult<bool> {
@@ -70,7 +72,7 @@ impl MusicaSession {
                 state: KeyState::Pressed,
                 ..
             } => {
-                let count = crate::runtime::title::rows(self.vm.title_variant()).len() as u32;
+                let count = self.vm.title().map_err(vm_error)?.buttons.len() as u32;
                 let offset = if matches!(
                     event,
                     RuntimeEvent::Key {
@@ -93,7 +95,8 @@ impl MusicaSession {
             } => self.activate_title()?,
             RuntimeEvent::PointerMove { x, y } => {
                 self.pointer = Some((*x, *y));
-                self.title_focus = crate::runtime::title::focus_at(self.vm.title_variant(), *x, *y);
+                self.title_focus =
+                    crate::runtime::title::focus_at(self.vm.title().map_err(vm_error)?, *x, *y);
                 if let Some(focus) = self.title_focus {
                     self.vm.set_title_focus(focus).map_err(vm_error)?;
                 }
@@ -104,7 +107,7 @@ impl MusicaSession {
             } => {
                 if let Some((x, y)) = self.pointer
                     && let Some(focus) =
-                        crate::runtime::title::focus_at(self.vm.title_variant(), x, y)
+                        crate::runtime::title::focus_at(self.vm.title().map_err(vm_error)?, x, y)
                 {
                     self.vm.set_title_focus(focus).map_err(vm_error)?;
                     self.activate_title()?;

@@ -8,6 +8,7 @@ use shinki_emu_sdk::runtime::SessionError;
 use std::io::Read;
 
 pub(super) const PROGRESS: &str = "global-progress.json";
+pub(super) const UNMAPPED_PROGRESS: &str = "global-progress-unmapped.json";
 const PROGRESS_SCHEMA: &str = "shinki.musica.global_progress.v1";
 const PROGRESS_LIMIT: u64 = 1024;
 pub(super) const CONFIGURATION: &str = "configuration.json";
@@ -138,13 +139,17 @@ pub(super) fn quick_cursor(saves: &Path, game: Hash256) -> SessionResult<Option<
     Ok(Some(value.next))
 }
 
-/// The `.setglobal` clear flags (`= 1`) that the stored unlock hashes name.
-pub(super) fn unlocked_globals(unlocks: &[Hash256]) -> SessionResult<BTreeMap<String, i64>> {
-    Ok(crate::runtime::progress::unlocked_flags(unlocks)
-        .map_err(|_| invalid_progress())?
-        .into_iter()
-        .map(|flag| (flag.to_owned(), 1))
-        .collect())
+/// Resolve legacy hashes against this release's actual declarations.
+pub(super) fn unlocked_globals(
+    unlocks: &[Hash256],
+    candidates: &[String],
+) -> SessionResult<(BTreeMap<String, i64>, Vec<Hash256>)> {
+    let (flags, unresolved) = crate::runtime::progress::unlocked_flags(unlocks, candidates)
+        .map_err(|_| invalid_progress())?;
+    Ok((
+        flags.into_iter().map(|flag| (flag.to_owned(), 1)).collect(),
+        unresolved,
+    ))
 }
 
 /// Renames `name` to `name.imported` without replacing an existing file.

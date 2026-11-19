@@ -14,11 +14,6 @@ use crate::archive::{
     PazDecryptRequest, PazDecryptTransport, validate_archive_directory_uri, validate_archive_uri,
     validate_decrypt_output, validate_decrypt_request,
 };
-use blowfish::Blowfish;
-use blowfish::cipher::{BlockCipherDecrypt, KeyInit};
-use encoding_rs::SHIFT_JIS;
-use flate2::read::ZlibDecoder;
-use rc4::{Rc4, StreamCipher};
 use roukaku_byte_source::OwnedByteBuffer;
 use roukaku_core::Hash256;
 use serde::{Deserialize, Serialize};
@@ -27,15 +22,24 @@ use sha2::{Digest, Sha256};
 use crate::archive::{CacheIdentity, PlaintextCache, PlaintextCacheError};
 
 use crate::{MUSICA_DECRYPT_DESCRIPTOR_SCHEMA, MUSICA_DECRYPT_PROVIDER_ID, MUSICA_READER_ID};
-use shinki_emu_musica_keys::REQUIRED_ARCHIVE_ROLES;
+use crate::{ArchiveEntryDescriptor, PazRoleScheme};
+use shinki_emu_musica_format::paz::{self as format, password_for_entry, xor_byte};
+#[cfg(test)]
+use blowfish::Blowfish;
+#[cfg(any(test, feature = "ffmpeg-vcpkg"))]
+use encoding_rs::SHIFT_JIS;
+#[cfg(any(test, feature = "ffmpeg-vcpkg"))]
+use rc4::{Rc4, StreamCipher, KeyInit};
+#[cfg(any(test, feature = "ffmpeg-vcpkg"))]
+use flate2::read::ZlibDecoder;
+#[cfg(test)]
+const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
 type PazError = crate::CoreError;
 
 #[cfg(any(feature = "ffmpeg-vcpkg", test))]
 mod movie_stream;
 
-pub const MAX_INDEX_BYTES: u64 = 256 * 1024 * 1024;
-pub const MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct PazArchiveConfig {
@@ -46,28 +50,6 @@ pub struct PazArchiveConfig {
     pub index_size_xor: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArchiveEntryDescriptor {
-    pub archive_role: String,
-    pub entry_id: String,
-    pub name: String,
-    pub offset: u64,
-    pub unpacked_size: u64,
-    pub stored_size: u64,
-    pub aligned_size: u64,
-    pub packed: bool,
-    pub video_key: Option<Vec<u8>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PazRoleScheme {
-    pub index_key: Vec<u8>,
-    pub rc4_skip_crc: bool,
-    pub data_key: Vec<u8>,
-    pub type_passwords: BTreeMap<String, String>,
-    pub archive_xor: Option<u32>,
-    pub video_key: Option<[u8; 256]>,
-}
 
 /// The only production decrypt provider for Musica PAZ archives.
 /// Key material remains process-local and is never serializable.
@@ -81,25 +63,20 @@ impl MusicaPazDecryptProvider {
         private_profile_hash: Hash256,
         roles: BTreeMap<String, PazRoleScheme>,
     ) -> Result<Self, PazError> {
-        if roles
-            .keys()
-            .any(|role| !REQUIRED_ARCHIVE_ROLES.contains(&role.as_str()))
+        if roles.is_empty()
+            || roles
+                .keys()
+                .any(|role| !shinki_emu_musica_keys::valid_archive_role(role))
         {
             return Err(error(
                 "SHINKI_EMU_MUSICA_DECODER_CONFIG",
-                "decoder id or archive role is invalid",
+                "decoder must declare safe archive roles",
             ));
         }
-        for role in REQUIRED_ARCHIVE_ROLES {
-            let scheme = roles.get(role).ok_or_else(|| {
-                error(
-                    "SHINKI_EMU_MUSICA_DECODER_ROLE",
-                    "decoder is missing a required archive role",
-                )
-            })?;
-            validate_blowfish_key(&scheme.index_key)?;
+        for (role, scheme) in &roles {
+            format::validate_blowfish_key(&scheme.index_key).map_err(format_error)?;
             if role != "mov" {
-                validate_blowfish_key(&scheme.data_key)?;
+                format::validate_blowfish_key(&scheme.data_key).map_err(format_error)?;
             } else if scheme.data_key.len() > 56 {
                 return Err(error(
                     "SHINKI_EMU_MUSICA_BLOWFISH_KEY",
@@ -195,7 +172,7 @@ impl MusicaPazDecryptProvider {
         };
         let output = match descriptor {
             MusicaDecryptDescriptor::Index { role, .. } => {
-                blowfish_decrypt(self.scheme(&role)?.index_key.as_slice(), request.bytes)?
+                format::blowfish_decrypt(self.scheme(&role)?.index_key.as_slice(), request.bytes).map_err(format_error)?
             }
             MusicaDecryptDescriptor::Entry { version, entry, .. } => {
                 self.decrypt_entry_chunk(version, &entry, absolute_offset, request.bytes)?
@@ -220,112 +197,8 @@ impl MusicaPazDecryptProvider {
         absolute_offset: u64,
         encrypted: &[u8],
     ) -> Result<Vec<u8>, PazError> {
-        let scheme = self.scheme(&entry.archive_role)?;
-        let mut bytes = encrypted.to_vec();
-        if entry.archive_role == "mov" {
-            let video_key = entry.video_key.as_ref().ok_or_else(|| {
-                error(
-                    "SHINKI_EMU_MUSICA_VIDEO_KEY",
-                    "video entry is missing its index key",
-                )
-            })?;
-            if version == 0 {
-                let mut table = [0u8; 256];
-                for (index, value) in video_key.iter().enumerate() {
-                    table[*value as usize] = index as u8;
-                }
-                for byte in &mut bytes {
-                    *byte = table[*byte as usize];
-                }
-                return Ok(bytes);
-            }
-            let material = format!(
-                "{} {:08X} {}",
-                entry.name.to_lowercase(),
-                entry.unpacked_size,
-                password_for_entry(entry, scheme).unwrap_or_default()
-            );
-            let (entry_key, _, malformed) = SHIFT_JIS.encode(&material);
-            if malformed || entry_key.is_empty() {
-                return Err(error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "video RC4 key cannot be encoded as CP932",
-                ));
-            }
-            let key = (0..256)
-                .map(|index| video_key[index] ^ entry_key[index % entry_key.len()])
-                .collect::<Vec<_>>();
-            let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "video RC4 key length is invalid",
-                )
-            })?;
-            let block_len = usize::try_from(entry.aligned_size.min(0x10000)).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_VIDEO_SIZE",
-                    "movie transform size exceeds the platform bound",
-                )
-            })?;
-            if block_len == 0 {
-                return Ok(bytes);
-            }
-            let mut block = vec![0; block_len];
-            cipher.apply_keystream(&mut block);
-            for (index, byte) in bytes.iter_mut().enumerate() {
-                *byte ^= block[(absolute_offset as usize + index) % block.len()];
-            }
-            return Ok(bytes);
-        }
-        bytes = blowfish_decrypt(&scheme.data_key, &bytes)?;
-        if version > 0 && password_for_entry(entry, scheme).is_some() {
-            let password = password_for_entry(entry, scheme).unwrap_or_default();
-            let material = format!(
-                "{} {:08X} {}",
-                entry.name.to_lowercase(),
-                entry.unpacked_size,
-                password
-            );
-            let (key, _, malformed) = SHIFT_JIS.encode(&material);
-            if malformed || key.is_empty() {
-                return Err(error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "entry RC4 key cannot be encoded as CP932",
-                ));
-            }
-            let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "entry RC4 key length is invalid",
-                )
-            })?;
-            let version_skip = if version >= 2 && scheme.rc4_skip_crc {
-                ((crc32fast::hash(&key) >> 12) & 0xff) as u64
-            } else {
-                0
-            };
-            let skip = version_skip.checked_add(absolute_offset).ok_or_else(|| {
-                error("SHINKI_EMU_MUSICA_RC4_SKIP", "entry RC4 offset overflowed")
-            })?;
-            if skip > 0 {
-                let mut remaining = skip;
-                let mut discarded = vec![0; PAZ_DECRYPT_CHUNK_BYTES];
-                while remaining > 0 {
-                    let length =
-                        usize::try_from(remaining.min(discarded.len() as u64)).map_err(|_| {
-                            error(
-                                "SHINKI_EMU_MUSICA_RC4_SKIP",
-                                "entry RC4 offset exceeds the platform bound",
-                            )
-                        })?;
-                    cipher.apply_keystream(&mut discarded[..length]);
-                    discarded[..length].fill(0);
-                    remaining -= length as u64;
-                }
-            }
-            cipher.apply_keystream(&mut bytes);
-        }
-        Ok(bytes)
+        format::decrypt_entry_chunk(self.scheme(&entry.archive_role)?, version, entry, absolute_offset, encrypted)
+            .map_err(format_error)
     }
 }
 
@@ -685,42 +558,7 @@ impl MusicaMountedVfs {
             },
             &encrypted,
         )?;
-        decoded.truncate(entry.descriptor.stored_size as usize);
-        if entry.descriptor.packed {
-            let mut unpacked = Vec::with_capacity(entry.descriptor.unpacked_size as usize);
-            ZlibDecoder::new(decoded.as_slice())
-                .read_to_end(&mut unpacked)
-                .map_err(|_| error("SHINKI_EMU_MUSICA_ZLIB", "entry zlib stream is invalid"))?;
-            decoded = unpacked;
-        }
-        let expected_size = entry.descriptor.unpacked_size as usize;
-        if decoded.len() > expected_size
-            && decoded.len() - expected_size <= 16
-            && decoded[expected_size..].iter().all(|byte| *byte == 0)
-        {
-            tracing::debug!(
-                event = "shinki_emu_musica_entry_zero_padding_removed",
-                archive_role = %entry.descriptor.archive_role,
-                entry_id = %entry.descriptor.entry_id,
-                padding_size = decoded.len() - expected_size
-            );
-            decoded.truncate(expected_size);
-        }
-        if decoded.len() != expected_size {
-            tracing::error!(
-                event = "shinki_emu_musica_entry_size_mismatch",
-                archive_role = %entry.descriptor.archive_role,
-                entry_id = %entry.descriptor.entry_id,
-                packed = entry.descriptor.packed,
-                stored_size = entry.descriptor.stored_size,
-                unpacked_size = entry.descriptor.unpacked_size,
-                decoded_size = decoded.len()
-            );
-            return Err(error(
-                "SHINKI_EMU_MUSICA_ENTRY_SIZE",
-                "decoded entry size does not match its index descriptor",
-            ));
-        }
+        decoded = format::finish_entry(&entry.descriptor, decoded).map_err(format_error)?;
         if let Some(cache) = &self.cache {
             cache.put(&identity, &decoded).map_err(cache_error)?;
         }
@@ -882,7 +720,7 @@ impl DecodedRange {
 fn validate_role_set(configs: &[PazArchiveConfig]) -> Result<(), PazError> {
     let mut roles = BTreeSet::new();
     for config in configs {
-        if !REQUIRED_ARCHIVE_ROLES.contains(&config.role.as_str())
+        if !shinki_emu_musica_keys::valid_archive_role(&config.role)
             || !roles.insert(config.role.as_str())
         {
             return Err(error(
@@ -891,13 +729,10 @@ fn validate_role_set(configs: &[PazArchiveConfig]) -> Result<(), PazError> {
             ));
         }
     }
-    if REQUIRED_ARCHIVE_ROLES
-        .iter()
-        .any(|role| !roles.contains(role))
-    {
+    if configs.is_empty() {
         return Err(error(
             "SHINKI_EMU_MUSICA_ARCHIVE_MISSING",
-            "all required PAZ roles must be supplied",
+            "at least one declared PAZ role must be supplied",
         ));
     }
     Ok(())
@@ -908,34 +743,11 @@ fn parse_archive_index(
     expected_index_xor: u32,
     decrypt_provider: &MusicaPazDecryptProvider,
 ) -> Result<Vec<ArchiveEntryDescriptor>, PazError> {
-    let (index_offset, encrypted_size) = if source.version == 0 {
-        let bytes = read_source_range(source, 0, 4)?;
-        let mut size = [0u8; 4];
-        size.copy_from_slice(&bytes);
-        (4u64, u32::from_le_bytes(size) as u64)
-    } else {
-        let raw = read_source_range(source, 0x20, 4)?;
-        let raw_size = u32::from_le_bytes(raw.try_into().unwrap());
-        source.xor_key = (raw_size >> 24) as u8;
-        let derived = u32::from_le_bytes([source.xor_key; 4]);
-        if expected_index_xor != 0 && expected_index_xor != derived {
-            return Err(error(
-                "SHINKI_EMU_MUSICA_INDEX_XOR",
-                "configured index XOR does not match the archive header",
-            ));
-        }
-        (0x24u64, (raw_size ^ derived) as u64)
-    };
-    if encrypted_size == 0
-        || encrypted_size > MAX_INDEX_BYTES
-        || !encrypted_size.is_multiple_of(8)
-        || index_offset + encrypted_size > source.length
-    {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_INDEX_SIZE",
-            "PAZ index size is empty, unaligned, or out of bounds",
-        ));
-    }
+    let header = read_source_range(source, 0, if source.version == 0 { 4 } else { 36 })?;
+    let layout = format::index_layout(&header, source.version, expected_index_xor, source.length)
+        .map_err(format_error)?;
+    let (index_offset, encrypted_size) = (layout.offset, layout.size);
+    source.xor_key = layout.xor;
     let mut encrypted = read_source_range(source, index_offset, encrypted_size)?;
     source.revision = archive_revision(&source.parts, source.version, source.xor_key, &encrypted);
     xor_byte(&mut encrypted, source.xor_key);
@@ -948,72 +760,7 @@ fn parse_archive_index(
         },
         &encrypted,
     )?;
-    let mut cursor = Cursor::new(decoded.as_slice());
-    let count = read_u32(&mut cursor)? as usize;
-    if count > 1_000_000 {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_ENTRY_COUNT",
-            "PAZ entry count exceeds the configured limit",
-        ));
-    }
-    let video_key = if source.role == "mov" {
-        let mut key = vec![0u8; 256];
-        cursor
-            .read_exact(&mut key)
-            .map_err(|_| error("SHINKI_EMU_MUSICA_VIDEO_KEY", "PAZ video key is truncated"))?;
-        Some(key)
-    } else {
-        None
-    };
-    let mut entries = Vec::with_capacity(count);
-    for index in 0..count {
-        let name = read_c_string(&mut cursor)?;
-        let offset = read_u64(&mut cursor)?;
-        let unpacked_size = read_u32(&mut cursor)? as u64;
-        let stored_size = read_u32(&mut cursor)? as u64;
-        let aligned_size = read_u32(&mut cursor)? as u64;
-        let packed = read_i32(&mut cursor)? != 0;
-        if unpacked_size > MAX_ENTRY_BYTES
-            || stored_size > aligned_size
-            || (source.role != "mov" && !aligned_size.is_multiple_of(8))
-            || offset
-                .checked_add(aligned_size)
-                .is_none_or(|end| end > source.length)
-        {
-            tracing::error!(
-                event = "shinki_emu_musica_entry_bounds_invalid",
-                archive_role = %source.role,
-                entry_index = index,
-                offset,
-                unpacked_size,
-                stored_size,
-                aligned_size,
-                archive_size = source.length
-            );
-            return Err(error(
-                "SHINKI_EMU_MUSICA_ENTRY_BOUNDS",
-                "PAZ entry descriptor is oversized, unaligned, or out of bounds",
-            ));
-        }
-        entries.push(ArchiveEntryDescriptor {
-            archive_role: source.role.clone(),
-            entry_id: format!("{}:{index}", source.role),
-            name,
-            offset,
-            unpacked_size,
-            stored_size,
-            aligned_size,
-            packed,
-            video_key: video_key.clone(),
-        });
-    }
-    if cursor.position() as usize > decoded.len() {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_INDEX_SHORT",
-            "PAZ index is truncated",
-        ));
-    }
-    Ok(entries)
+    format::parse_index(&decoded, &source.role, source.length, || false).map_err(format_error)
 }
 
 fn normalize_entry_name(name: &str) -> Result<String, PazError> {
@@ -1032,53 +779,6 @@ fn normalize_entry_name(name: &str) -> Result<String, PazError> {
     Ok(normalized)
 }
 
-fn read_c_string(cursor: &mut Cursor<&[u8]>) -> Result<String, PazError> {
-    let start = cursor.position() as usize;
-    let bytes = cursor.get_ref();
-    let end = bytes[start..]
-        .iter()
-        .position(|byte| *byte == 0)
-        .map(|relative| start + relative)
-        .ok_or_else(|| {
-            error(
-                "SHINKI_EMU_MUSICA_INDEX_STRING",
-                "PAZ entry name is not terminated",
-            )
-        })?;
-    if end - start > 4096 {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_INDEX_STRING",
-            "PAZ entry name exceeds the configured limit",
-        ));
-    }
-    let (text, _, malformed) = SHIFT_JIS.decode(&bytes[start..end]);
-    if malformed {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_INDEX_ENCODING",
-            "PAZ entry name is not valid CP932",
-        ));
-    }
-    cursor.set_position((end + 1) as u64);
-    Ok(text.into_owned())
-}
-
-fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32, PazError> {
-    let mut bytes = [0; 4];
-    cursor
-        .read_exact(&mut bytes)
-        .map_err(|_| error("SHINKI_EMU_MUSICA_INDEX_SHORT", "PAZ index is truncated"))?;
-    Ok(u32::from_le_bytes(bytes))
-}
-fn read_i32(cursor: &mut Cursor<&[u8]>) -> Result<i32, PazError> {
-    Ok(read_u32(cursor)? as i32)
-}
-fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64, PazError> {
-    let mut bytes = [0; 8];
-    cursor
-        .read_exact(&mut bytes)
-        .map_err(|_| error("SHINKI_EMU_MUSICA_INDEX_SHORT", "PAZ index is truncated"))?;
-    Ok(u64::from_le_bytes(bytes))
-}
 
 fn read_exact_range(
     path: &Path,
@@ -1336,26 +1036,6 @@ fn entry_method(entry: &ArchiveEntryDescriptor) -> &'static str {
     }
 }
 
-fn password_for_entry<'a>(
-    entry: &ArchiveEntryDescriptor,
-    scheme: &'a PazRoleScheme,
-) -> Option<&'a str> {
-    if entry.packed {
-        return None;
-    }
-    let lower = entry.name.to_ascii_lowercase();
-    if lower.ends_with(".png") {
-        scheme.type_passwords.get("png").map(String::as_str)
-    } else if lower.ends_with(".ogg") || matches!(entry.archive_role.as_str(), "se" | "voice") {
-        scheme.type_passwords.get("ogg").map(String::as_str)
-    } else if lower.ends_with(".sc") {
-        scheme.type_passwords.get("sc").map(String::as_str)
-    } else if lower.ends_with(".avi") || lower.ends_with(".mpg") || lower.ends_with(".mpeg") {
-        scheme.type_passwords.get("avi").map(String::as_str)
-    } else {
-        None
-    }
-}
 
 fn decrypt_bytes(
     provider: &MusicaPazDecryptProvider,
@@ -1441,6 +1121,10 @@ fn error(code: &'static str, message: impl Into<String>) -> PazError {
     PazError::invalid(code, message)
 }
 
+fn format_error(cause: format::FormatError) -> PazError {
+    error(cause.code, cause.message)
+}
+
 fn cache_error(error_value: PlaintextCacheError) -> PazError {
     match error_value {
         PlaintextCacheError::EntryLimit => error(
@@ -1461,44 +1145,6 @@ fn cache_error(error_value: PlaintextCacheError) -> PazError {
     }
 }
 
-fn validate_blowfish_key(key: &[u8]) -> Result<(), PazError> {
-    if !(4..=56).contains(&key.len()) {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_BLOWFISH_KEY",
-            "Blowfish key length must be between 4 and 56 bytes",
-        ));
-    }
-    Ok(())
-}
-
-fn blowfish_decrypt(key: &[u8], encrypted: &[u8]) -> Result<Vec<u8>, PazError> {
-    validate_blowfish_key(key)?;
-    if !encrypted.len().is_multiple_of(8) {
-        return Err(error(
-            "SHINKI_EMU_MUSICA_BLOWFISH_ALIGNMENT",
-            "Blowfish input is not block aligned",
-        ));
-    }
-    let cipher: Blowfish = Blowfish::new_from_slice(key)
-        .map_err(|_| error("SHINKI_EMU_MUSICA_BLOWFISH_KEY", "Blowfish key is invalid"))?;
-    let mut bytes = encrypted.to_vec();
-    for chunk in bytes.as_chunks_mut::<8>().0.iter_mut() {
-        chunk[..4].reverse();
-        chunk[4..].reverse();
-        cipher.decrypt_block((&mut *chunk).into());
-        chunk[..4].reverse();
-        chunk[4..].reverse();
-    }
-    Ok(bytes)
-}
-
-fn xor_byte(bytes: &mut [u8], key: u8) {
-    if key != 0 {
-        for byte in bytes {
-            *byte ^= key;
-        }
-    }
-}
 
 #[cfg(test)]
 #[path = "paz/tests.rs"]

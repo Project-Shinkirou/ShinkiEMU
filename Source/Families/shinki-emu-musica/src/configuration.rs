@@ -1,6 +1,7 @@
 mod input;
 use crate::{MusicaPlayMode, MusicaRuntimeError};
 pub(crate) use input::config_control_at;
+pub(crate) use input::voice_control_rect;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -25,8 +26,7 @@ pub struct MusicaConfigState {
     pub bgm_muted: bool,
     pub voice_muted: bool,
     pub se_muted: bool,
-    /// Original order: ren, sui, aya, tou, etc.
-    pub character_voice_enabled: [bool; 5],
+    pub character_voices: Vec<crate::voice_preferences::VoiceCharacter>,
 }
 
 impl MusicaConfigState {
@@ -63,7 +63,7 @@ impl Default for MusicaConfigState {
             bgm_muted: false,
             voice_muted: false,
             se_muted: false,
-            character_voice_enabled: [true; 5],
+            character_voices: Vec::new(),
         }
     }
 }
@@ -120,6 +120,7 @@ fn validate_config_state(config: &MusicaConfigState) -> Result<(), MusicaRuntime
         || config.bgm_volume > 100
         || config.voice_volume > 100
         || config.se_volume > 100
+        || config.character_voices.len() > 64
     {
         return Err(MusicaRuntimeError::State);
     }
@@ -127,10 +128,10 @@ fn validate_config_state(config: &MusicaConfigState) -> Result<(), MusicaRuntime
 }
 
 impl MusicaConfigState {
-    pub(crate) fn voice_preferences(&self) -> crate::voice_preferences::VoicePreferences {
+    pub(crate) fn voice_preferences(&self) -> crate::voice_preferences::VoicePreferences<'_> {
         crate::voice_preferences::VoicePreferences {
             backlog_voice_playback: self.backlog_voice_playback,
-            character_voice_enabled: self.character_voice_enabled,
+            characters: std::borrow::Cow::Borrowed(&self.character_voices),
         }
     }
     pub fn edit(
@@ -230,10 +231,10 @@ impl MusicaConfigState {
             MusicaConfigControl::TestAudio(bus) => MusicaConfigChange::TestAudio(bus),
             MusicaConfigControl::ToggleCharacterVoice(index) => {
                 let enabled = draft
-                    .character_voice_enabled
+                    .character_voices
                     .get_mut(index)
                     .ok_or(MusicaRuntimeError::State)?;
-                *enabled = !*enabled;
+                enabled.enabled = !enabled.enabled;
                 MusicaConfigChange::Present
             }
             MusicaConfigControl::Apply | MusicaConfigControl::Cancel => {

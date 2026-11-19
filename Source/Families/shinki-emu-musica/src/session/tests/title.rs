@@ -72,6 +72,11 @@ fn game_with_title_case(root: &std::path::Path, lowercase_title: bool) {
             .map(|(n, b)| (n.as_str(), b.as_slice()))
             .collect::<Vec<_>>(),
     );
+    std::fs::write(
+        root.join("frontend-fixture.json"),
+        menu_data(lowercase_title).to_string(),
+    )
+    .unwrap();
 }
 pub(super) fn png(w: u32, h: u32, color: [u8; 4]) -> Vec<u8> {
     let mut out = std::io::Cursor::new(Vec::new());
@@ -87,7 +92,34 @@ pub(super) fn title_request(root: &std::path::Path) -> OpenRequest {
         .find(|entry| entry.id == "launch_mode")
         .unwrap()
         .value = ConfigValue::Enum("title".into());
+    req.configuration.push(ConfigEntry {
+        id: "frontend".into(),
+        value: ConfigValue::String(
+            std::fs::read_to_string(root.join("frontend-fixture.json"))
+                .unwrap_or_else(|_| menu_data(false).to_string()),
+        ),
+    });
     req
+}
+
+pub(super) fn menu_data(lowercase: bool) -> serde_json::Value {
+    use serde_json::json;
+    let titles = (0..3).map(|variant| {
+        let stem = if lowercase { format!("topmenu{variant}") } else { format!("topMenu{variant}") };
+        let hover = if lowercase { format!("{stem}over") } else { format!("{stem}Over") };
+        let actions = if variant == 2 { vec!["new_game", "load", "config", "memories", "exit"] } else { vec!["new_game", "load", "config", "exit"] };
+        let buttons = actions.iter().enumerate().map(|(index, action)| {
+            let top = if *action == "exit" { 216 } else { 24 + index * 48 };
+            json!({"action": action, "rect": [1024, top, 256, 48]})
+        }).collect::<Vec<_>>();
+        let requires = match variant {
+            1 => json!({"AYAME_CLEAR":1,"SUI_CLEAR":1,"REN_CLEAR":1}),
+            2 => json!({"TOHKA_CLEAR":1}),
+            _ => json!({}),
+        };
+        json!({"background":format!("musica:/sys/{stem}.png"),"hover":format!("musica:/sys/{hover}.png"),"requires":requires,"buttons":buttons})
+    }).collect::<Vec<_>>();
+    json!({"titles":titles})
 }
 
 fn omit_texture_overrides(root: &std::path::Path) {
@@ -174,10 +206,11 @@ fn native_gpu_title_without_texture_overrides_starts_loads_returns_and_exits() {
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
     assert!(!session.finished);
-    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 2);
     session
         .advance(0, &[key(KeyCode::ArrowDown), key(KeyCode::Enter)])
         .unwrap();
+    let frontend_identity = session.vm.frontend_identity();
     session
         .advance(
             0,
@@ -190,8 +223,9 @@ fn native_gpu_title_without_texture_overrides_starts_loads_returns_and_exits() {
         .unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::None);
     assert_eq!(session.vm.state().launch_mode, MusicaLaunchMode::Title);
-    assert_eq!(session.vm.state().gallery_unlocks.len(), 1);
+    assert_eq!(session.vm.state().gallery_unlocks.len(), 2);
     assert_eq!(session.message.as_ref().unwrap().0, "First");
+    assert_eq!(session.vm.frontend_identity(), frontend_identity);
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
     let previous_reads = session.vm.state().read_message_identities.clone();
@@ -290,4 +324,127 @@ fn native_gpu_title_config_returns_and_missing_art_fails_explicitly() {
         .open(request(missing.path(), Sink::default()))
         .unwrap();
     opened.session.close().unwrap();
+}
+
+#[test]
+fn native_gpu_unknown_release_uses_frontend_data_and_opens_without_optional_archives() {
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    fixture::game(root.path(), b".end\r\n");
+    fixture::assets(
+        root.path(),
+        "scr",
+        &[
+            (
+                "opening.sc",
+                b".message 1 visitor-001.ogg Guest Welcome\r\n.end\r\n",
+            ),
+            ("memory.sc", b".message 1   Memory\r\n.end\r\n"),
+            ("memory-index.sc", b".chain memory.sc\r\n.end\r\n"),
+            (
+                "movie-wrapper.sc",
+                b".movie 1 finale.avi 640 360 t\r\n.end\r\n",
+            ),
+        ],
+    );
+    fixture::assets(
+        root.path(),
+        "sys",
+        &[
+            ("welcome.png", &png(640, 360, [30, 60, 90, 255])),
+            ("highlight.png", &png(640, 360, [100, 150, 200, 255])),
+        ],
+    );
+    fixture::asset(root.path(), "voice", "visitor-001.ogg", &fixture::wave());
+    let mut profile =
+        shinki_emu_musica_keys::load_musica_key_file(&root.path().join(MUSICA_KEY_FILE)).unwrap();
+    for role in ["bg", "bgm", "st", "se", "mov"] {
+        profile.archive_keys.get_mut(role).unwrap().required = false;
+        std::fs::remove_file(root.path().join(format!("{role}.paz"))).unwrap();
+    }
+    std::fs::write(
+        root.path().join(MUSICA_KEY_FILE),
+        toml::to_string(&profile).unwrap(),
+    )
+    .unwrap();
+    assert!(crate::provider::probe_musica(root.path()));
+    let data = serde_json::json!({
+        "titles":[{"background":"musica:/sys/welcome.png","hover":"musica:/sys/highlight.png","buttons":[
+            {"rect":[10,20,120,40],"action":"new_game"},
+            {"rect":[10,80,120,40],"action":"memories"},
+            {"rect":[10,140,120,40],"action":"exit"}
+        ]}],
+        "replay_index":"musica:/scr/memory-index.sc"
+    });
+    let mut req = request(root.path(), Sink::default());
+    req.configuration[0].value = ConfigValue::Enum("title".into());
+    req.configuration.extend([
+        ConfigEntry {
+            id: "entry_script".into(),
+            value: ConfigValue::String("opening.sc".into()),
+        },
+        ConfigEntry {
+            id: "logical_width".into(),
+            value: ConfigValue::Integer(640),
+        },
+        ConfigEntry {
+            id: "logical_height".into(),
+            value: ConfigValue::Integer(360),
+        },
+        ConfigEntry {
+            id: "frontend".into(),
+            value: ConfigValue::String(data.to_string()),
+        },
+    ]);
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(req).unwrap();
+    assert_eq!(session.vm.config().character_voices[0].prefix, "visitor");
+    assert_eq!(
+        session
+            .vm
+            .gallery_entries(&MusicaSystemPage::GalleryReplay)
+            .next()
+            .unwrap()
+            .resource,
+        "musica:/scr/memory.sc"
+    );
+    assert!(
+        session
+            .vm
+            .gallery_entries(&MusicaSystemPage::GalleryMovie)
+            .next()
+            .is_none()
+    );
+    assert_eq!(&session.scene.pixels[..4], &[30, 60, 90, 255]);
+    session
+        .advance(
+            0,
+            &[
+                RuntimeEvent::PointerMove { x: 20.0, y: 90.0 },
+                RuntimeEvent::PointerButton {
+                    button: PointerButton::Primary,
+                    state: KeyState::Pressed,
+                },
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        session.vm.state().system_ui.page,
+        MusicaSystemPage::Memories
+    );
+    assert_eq!(session.vm.gallery_pages().count(), 2); // replay, return
+    session.advance(0, &[key(KeyCode::Enter)]).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "Memory");
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.message.as_ref().unwrap().0, "Welcome");
+    Box::new(session).close().unwrap();
+    std::fs::remove_file(root.path().join("scr.paz")).unwrap();
+    assert!(!crate::provider::probe_musica(root.path()));
+    let failure = crate::mount_musica(root.path(), std::path::Path::new(MUSICA_KEY_FILE))
+        .err()
+        .unwrap();
+    assert_eq!(failure.code(), "SHINKI_EMU_MUSICA_ARCHIVE_MISSING");
+    assert!(failure.message().contains("scr"));
 }

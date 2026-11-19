@@ -40,10 +40,12 @@ fn controller_with_capabilities(
     let source = root.join("source");
     fs::create_dir(&source).unwrap();
     fs::write(source.join("match"), b"public marker").unwrap();
+    fs::write(source.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
     fs::write(source.join("payload.bin"), b"original public payload").unwrap();
     fs::create_dir(source.join("save")).unwrap();
     fs::write(source.join("save/slot.bin"), b"original public save").unwrap();
     let source = fs::canonicalize(source).unwrap();
+    super::recognition_tests::manifest(&root.join("manager"), "rfvp", "fixture", b"explicitly registered fixture");
     let mut app = ShinkiEmuManagerController::open_library(
         root.join("manager"),
         FrameMailbox::new(),
@@ -55,7 +57,7 @@ fn controller_with_capabilities(
     settle(&mut app, |app| !app.startup_busy());
     app.registry
         .register_provider(move || {
-            let mut fixture = Fixture::new("patch-fixture", "fixture", "fixture");
+            let mut fixture = Fixture::new("rfvp", "fvp", "fixture.native");
             fixture.marker = Some("match");
             fixture.config = true;
             fixture.capabilities = capabilities;
@@ -63,7 +65,7 @@ fn controller_with_capabilities(
         })
         .unwrap();
     settle(&mut app, |app| {
-        app.registry.descriptor("patch-fixture").is_some()
+        app.registry.descriptor("rfvp").is_some()
     });
     app.add_game_directory(&source).unwrap();
     settle(&mut app, |app| !app.startup_busy());
@@ -74,16 +76,16 @@ fn controller_with_capabilities(
         .set_game_settings(
             &id,
             &shinki_emu_manager_core::GameSettings {
-                emulator_id: Some("patch-fixture".into()),
+                emulator_id: Some("rfvp".into()),
                 input_mapping: Some(input),
                 ..Default::default()
             },
         )
         .unwrap();
-    let schema = app.registry.configuration("patch-fixture").unwrap();
+    let schema = app.registry.configuration("rfvp").unwrap();
     app.library
         .save_family_configuration(
-            "patch-fixture",
+            "rfvp",
             &id,
             &schema,
             &[shinki_emu_manager_core::model::ConfigEntry {
@@ -101,6 +103,19 @@ fn controller_with_capabilities(
     (app, source, id)
 }
 
+#[cfg(windows)]
+#[test]
+fn patch_directory_uses_normal_windows_path_without_changing_game_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, source, id) = controller(root.path());
+    assert_eq!(app.patch_state.patch_directory, dunce::simplified(&source).to_str().unwrap());
+    assert_eq!(app.game(&id).unwrap().location, source.to_str().unwrap());
+    app.set_patch_directory("patch", Path::new(r"\\?\C:\RewritePlus")).unwrap();
+    assert_eq!(app.patch_state.patch_directory, r"C:\RewritePlus");
+    app.set_patch_directory("patch", Path::new(r"C:\RewritePlus")).unwrap();
+    assert_eq!(app.patch_state.patch_directory, r"C:\RewritePlus");
+}
+
 fn recipe(path: &Path, body: &str, configuration: &str) {
     fs::write(
         path,
@@ -108,8 +123,9 @@ fn recipe(path: &Path, body: &str, configuration: &str) {
             r#"return {{id="manager-public",version=1,title="公开 Manager 夹具",apply=function(ctx)
         {body}
         ctx.copy("source","match","match")
+        ctx.copy("source","boot.hcb","boot.hcb")
         ctx.copy("source","payload.bin","payload.bin")
-        return {{plugin_id="patch-fixture",configuration={configuration}}}
+        return {{plugin_id="rfvp",configuration={configuration}}}
     end}}"#
         ),
     )
@@ -201,11 +217,14 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
     let other = root.path().join("other");
     fs::create_dir(&other).unwrap();
     fs::write(other.join("match"), b"other marker").unwrap();
+    fs::write(other.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
     app.add_game_directory(&other).unwrap();
     settle(&mut app, |app| !app.startup_busy());
     let other_id = path_id(&fs::canonicalize(other).unwrap());
     let other_settings = app.library.game_settings(&other_id).unwrap();
     app.select_case(&source_id).unwrap();
+    app.select_emulator_defaults("rfvp").unwrap();
+    settle(&mut app, |app| !app.startup_busy());
     let script = root.path().join("convert.luau");
     recipe(&script, "", "{launch_mode=\"title\"}");
     let output = root.path().join("independent");
@@ -225,10 +244,25 @@ fn completion_uses_output_identity_after_selection_changes_without_copying_sourc
         app.library.game_settings(&other_id).unwrap(),
         other_settings
     );
-    let schema = app.registry.configuration("patch-fixture").unwrap();
+    let unprepared = app.select_case(&output_id).unwrap().game_settings;
+    assert_eq!(unprepared.configuration_state, "unprepared");
+    assert!(unprepared.fields.is_empty());
+    let pending_key = format!("pending-patch-configuration:{output_id}");
+    let pending = app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap();
+    assert!(pending.is_some());
+    assert!(app.apply_pending_profile(&output_id, "siglus_rs").is_err());
+    assert_eq!(app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap(), pending);
+    assert_eq!(app.model().unwrap().cores.default_configuration_state, "ready");
+    assert_eq!(app.select_case(&other_id).unwrap().game_settings.configuration_state, "ready");
+    app.select_case(&output_id).unwrap();
+    app.prepare_game_configuration(&output_id).unwrap();
+    settle(&mut app, |app| !app.startup_busy());
+    assert_eq!(app.model().unwrap().game_settings.configuration_state, "ready");
+    assert!(app.library.app_state::<BTreeMap<String, String>>(&pending_key).unwrap().is_none());
+    let schema = app.registry.configuration("rfvp").unwrap();
     let values = app
         .library
-        .family_configuration("patch-fixture", &output_id, &schema)
+        .family_configuration("rfvp", &output_id, &schema)
         .unwrap()
         .values;
     assert_eq!(
@@ -440,7 +474,7 @@ fn running_patch_blocks_launch_scan_and_second_job_but_cancel_joins_and_allows_r
 }
 
 #[test]
-fn unsupported_profile_keeps_completed_output_and_does_not_bind_candidate_or_modify_source() {
+fn unsupported_profile_is_preserved_then_rejected_by_explicit_configuration_without_modifying_source() {
     let root = tempfile::tempdir().unwrap();
     let (mut app, _, source_id) = controller(root.path());
     let before = app.library.game_settings(&source_id).unwrap();
@@ -456,10 +490,13 @@ fn unsupported_profile_keeps_completed_output_and_does_not_bind_candidate_or_mod
     );
     assert!(output.join("shinki-patch-result.json").is_file());
     let output_id = path_id(&fs::canonicalize(output).unwrap());
-    assert!(app.patch_state.error.contains("unknown field"));
-    assert!(!app.candidates.contains_key(&output_id));
-    assert!(!app.probe_choices.contains_key(&output_id));
-    assert!(app.library.game_settings(&output_id).unwrap().is_none());
+    assert!(app.patch_state.error.is_empty());
+    assert!(app.candidates.contains_key(&output_id));
+    assert!(app.library.game(&output_id).unwrap().is_some());
+    app.prepare_game_configuration(&output_id).unwrap();
+    settle(&mut app, |app| !app.startup_busy());
+    assert!(app.diagnostic.contains("unknown field"));
+    assert!(app.library.app_state::<BTreeMap<String, String>>(&format!("pending-patch-configuration:{output_id}")).unwrap().is_some());
     assert_eq!(app.library.game_settings(&source_id).unwrap(), before);
     assert_eq!(app.selected_case_id.as_deref(), Some(source_id.as_str()));
 }
@@ -472,20 +509,23 @@ fn explicit_receipt_import_reads_only_data_and_private_staging_is_never_discover
     let output = root.path().join("manual-output");
     fs::create_dir(&output).unwrap();
     fs::write(output.join("match"), b"public manual fixture").unwrap();
+    fs::write(output.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
     fs::write(
         output.join("must-not-run.luau"),
         b"this is deliberately not Lua",
     )
     .unwrap();
-    let receipt = r#"{"schema":"shinki.emu.file_patch.v1","scripts":[{"path":"must-not-run.luau","sha256":"not-executed"}],"profile":{"plugin_id":"patch-fixture","configuration":{"launch_mode":"title"}}}"#;
+    let receipt = r#"{"schema":"shinki.emu.file_patch.v1","scripts":[{"path":"must-not-run.luau","sha256":"not-executed"}],"profile":{"plugin_id":"rfvp","configuration":{"launch_mode":"title"}}}"#;
     fs::write(output.join("shinki-patch-result.json"), receipt).unwrap();
     app.add_game_directory(&output).unwrap();
     settle(&mut app, |app| !app.startup_busy());
     let output_id = path_id(&fs::canonicalize(output).unwrap());
-    let schema = app.registry.configuration("patch-fixture").unwrap();
+    app.prepare_game_configuration(&output_id).unwrap();
+    settle(&mut app, |app| !app.startup_busy());
+    let schema = app.registry.configuration("rfvp").unwrap();
     assert_eq!(
         app.library
-            .family_configuration("patch-fixture", &output_id, &schema)
+            .family_configuration("rfvp", &output_id, &schema)
             .unwrap()
             .values[0]
             .value,
@@ -508,7 +548,7 @@ fn explicit_receipt_import_reads_only_data_and_private_staging_is_never_discover
 }
 
 #[test]
-fn native_profile_import_requires_every_loaded_core_capability_before_binding() {
+fn native_profile_import_defers_capability_validation_until_explicit_selected_configuration() {
     let required = shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY
         | shinki_emu_abi::CAP_CONFIGURED_FONT_PRIORITY
         | shinki_emu_abi::CAP_NATIVE_EMBEDDED_TEXT
@@ -530,12 +570,13 @@ fn native_profile_import_requires_every_loaded_core_capability_before_binding() 
         let output = root.path().join("native-output");
         fs::create_dir(&output).unwrap();
         fs::write(output.join("match"), b"public native fixture").unwrap();
+        fs::write(output.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
         fs::write(
             output.join("shinki-patch-result.json"),
             serde_json::to_vec(&serde_json::json!({
                 "schema": "shinki.emu.file_patch.v1",
                 "profile": {
-                    "plugin_id": "patch-fixture",
+                    "plugin_id": "rfvp",
                     "required_capabilities": required,
                     "configuration": {"launch_mode": "title"}
                 }
@@ -544,29 +585,27 @@ fn native_profile_import_requires_every_loaded_core_capability_before_binding() 
         )
         .unwrap();
         app.add_game_directory(&output).unwrap();
-        if available == required {
-            settle(&mut app, |app| !app.startup_busy());
-        } else {
-            assert!(rejected_import(&mut app).contains("SHINKI_EMU_CORE_UPDATE_REQUIRED"));
-        }
+        settle(&mut app, |app| !app.startup_busy());
         let output_id = path_id(&fs::canonicalize(&output).unwrap());
+        assert!(app.candidates.contains_key(&output_id));
+        assert!(app.library.game(&output_id).unwrap().is_some());
+        app.prepare_game_configuration(&output_id).unwrap();
+        settle(&mut app, |app| !app.startup_busy());
         if available == required {
             assert!(app.candidates.contains_key(&output_id));
-            let schema = app.registry.configuration("patch-fixture").unwrap();
+            let schema = app.registry.configuration("rfvp").unwrap();
             assert_eq!(
                 app.library
-                    .family_configuration("patch-fixture", &output_id, &schema)
+                    .family_configuration("rfvp", &output_id, &schema)
                     .unwrap()
                     .values[0]
                     .value,
                 shinki_emu_manager_core::model::ConfigValue::Enum("title".into())
             );
         } else {
-            assert!(!app.candidates.contains_key(&output_id));
-            assert!(!app.probe_choices.contains_key(&output_id));
-            assert!(app.library.game_settings(&output_id).unwrap().is_none());
-            assert!(app.library.game(&output_id).unwrap().is_none());
-            assert_eq!(app.library.list_games().unwrap().len(), 1);
+            assert!(app.candidates.contains_key(&output_id));
+            assert!(app.library.game_settings(&output_id).unwrap().is_some());
+            assert_eq!(app.library.list_games().unwrap().len(), 2);
             assert!(app.diagnostic.contains("SHINKI_EMU_CORE_UPDATE_REQUIRED"));
         }
         assert_eq!(app.library.game_settings(&source_id).unwrap(), before);
@@ -585,7 +624,8 @@ fn automatic_import_rejects_removed_receipt_requirements_before_library_mutation
     let script = root.path().join("native.luau");
     fs::write(&script, r#"return {id="native",version=1,title="Native",apply=function(ctx)
         ctx.copy("source","match","match")
-        return {plugin_id="patch-fixture",required_capabilities=192,configuration={launch_mode="title"}}
+        ctx.copy("source","boot.hcb","boot.hcb")
+        return {plugin_id="rfvp",required_capabilities=192,configuration={launch_mode="title"}}
     end}"#).unwrap();
     release_manifest(&script);
     let output = root.path().join("native-output");
@@ -636,12 +676,13 @@ fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
     let output = root.path().join("native-output");
     fs::create_dir(&output).unwrap();
     fs::write(output.join("match"), b"public native fixture").unwrap();
+    fs::write(output.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
     fs::write(
         output.join("shinki-patch-result.json"),
         serde_json::to_vec(&serde_json::json!({
             "schema": "shinki.emu.file_patch.v1",
             "profile": {
-                "plugin_id": "patch-fixture",
+                "plugin_id": "rfvp",
                 "required_capabilities": required,
                 "configuration": {"launch_mode": "title"}
             }
@@ -666,14 +707,14 @@ fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
     reopened
         .registry
         .register_provider(|| {
-            let mut fixture = Fixture::new("patch-fixture", "fixture", "fixture");
+            let mut fixture = Fixture::new("rfvp", "fvp", "fixture.native");
             fixture.marker = Some("match");
             fixture.config = true;
             test_native::install(0, fixture)
         })
         .unwrap();
     settle(&mut reopened, |app| {
-        app.registry.descriptor("patch-fixture").is_some()
+        app.registry.descriptor("rfvp").is_some()
     });
     reopened.prepare_library().unwrap();
     settle(&mut reopened, |app| !app.startup_busy());
@@ -699,11 +740,12 @@ fn malformed_receipt_requirements_block_import_and_retained_receipt_launch() {
         let output = root.path().join("native-output");
         fs::create_dir(&output).unwrap();
         fs::write(output.join("match"), b"public native fixture").unwrap();
+        fs::write(output.join("boot.hcb"), super::recognition_tests::hcb()).unwrap();
         let receipt = output.join("shinki-patch-result.json");
         let mut document = serde_json::json!({
             "schema": "shinki.emu.file_patch.v1",
             "profile": {
-                "plugin_id": "patch-fixture",
+                "plugin_id": "rfvp",
                 "required_capabilities": required,
                 "configuration": {"launch_mode": "title"}
             }

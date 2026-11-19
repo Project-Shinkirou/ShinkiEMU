@@ -1,0 +1,52 @@
+{
+  "id": "siglus-rewrite-plus-cn",
+  "title": {
+    "zh-CN": "Rewrite+ 中文资源合并",
+    "en": "Rewrite+ Chinese resource merge"
+  },
+  "version": "0.1.0",
+  "emulators": [
+    "siglus_rs"
+  ],
+  "source_url": "https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/Metadata/patches/siglus-rewrite-plus-cn.luau",
+  "license": "MIT OR Apache-2.0",
+  "authorization_url": null,
+  "summary": {
+    "zh-CN": "合并用户已授权使用的本地完整汉化补丁 V2 资源，选择核心原生 chs 剧本、配置、G01 图像和 mov_chs 影片。仅合并资源，机器码行为保持不变，五处原汉化启动器的 RVA 修改未实现。需用户提供游戏及中文资源，不包含游戏素材、翻译正文或字体。",
+    "en": "Merges user-authorized local Complete Chinese Patch V2 resources using the core's native chs scripts, configuration, G01 images and mov_chs movies. Resource merge only: machine-code behavior is unchanged and the original Chinese launcher's five RVA patches are not implemented. Requires local game and Chinese resources; includes no game assets, translated text or fonts."
+  },
+  "issue_url": null,
+  "recipe": {
+    "script": "siglus-rewrite-plus-cn.luau"
+  },
+  "downloads": [],
+  "releases": [
+    {
+      "release_id": "r52539",
+      "vn_id": "v751",
+      "title": {
+        "zh-CN": "Rewrite+ 简体中文版",
+        "en": "Rewrite+ Simplified Chinese Edition"
+      },
+      "edition": "Unofficial 2017 A·T·Field Simplified Chinese patch (完整汉化补丁 V2); installed Chinese edition, not a clean Japanese release",
+      "game_version": null,
+      "fingerprints": [
+        {
+          "path": "SiglusEngine.exe",
+          "size": 6003200,
+          "sha256": "739153681fbb0bc1d98f8a41f4e4ee94b35b01c4f61f47b99ba9bbd97ccc5570"
+        },
+        {
+          "path": "Gameexe.chs",
+          "size": 32012,
+          "sha256": "4ca0b84e8ef1a855de9375eb045a5074887e3c8118ee326058a0106ebcd81073"
+        },
+        {
+          "path": "Scene.chs",
+          "size": 22256752,
+          "sha256": "ef787ae9ff5fa73236d479bd1d3842364d2361923ef2b271dc39291ab0a6b100"
+        }
+      ]
+    }
+  ]
+}

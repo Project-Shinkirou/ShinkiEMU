@@ -239,10 +239,16 @@ export component DetailPanel {
                                 enabled: Selection.game.launchable;
                                 clicked => { Library.launch(Selection.game.id); }
                             }
-                            TonalButton {
+                            // A phone sheet has no room for three labelled actions; 游戏设置 keeps its icon and tooltip.
+                            if !root.sheet : TonalButton {
                                 horizontal-stretch: 0;
                                 icon: Icons.tune;
                                 text: @tr("游戏设置");
+                                clicked => { GameNav.open-settings(Selection.game.id, "emulator"); }
+                            }
+                            if root.sheet : IconButton {
+                                icon: Icons.tune;
+                                tooltip: @tr("游戏设置");
                                 clicked => { GameNav.open-settings(Selection.game.id, "emulator"); }
                             }
                             more := IconButton {
@@ -256,24 +262,36 @@ export component DetailPanel {
                             }
                         }
 
-                        if !Selection.game.launchable : HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                alignment: start;
-                                padding-top: 1px;
-                                Icon {
-                                    width: 18px;
-                                    source: Icons.warning;
-                                    colorize: MaterialPalette.error;
+                        if !Selection.game.launchable : VerticalLayout {
+                            spacing: 4px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    alignment: start;
+                                    padding-top: 1px;
+                                    Icon {
+                                        width: 18px;
+                                        source: Icons.warning;
+                                        colorize: MaterialPalette.error;
+                                    }
+                                }
+                                MaterialText {
+                                    horizontal-stretch: 1;
+                                    text: Selection.game.problem != "" ? Selection.game.problem : @tr("暂时无法启动");
+                                    style: MaterialTypography.body-medium;
+                                    color: MaterialPalette.error;
+                                    wrap: word-wrap;
+                                    overflow: clip;
                                 }
                             }
-                            MaterialText {
-                                horizontal-stretch: 1;
-                                text: Selection.game.problem != "" ? Selection.game.problem : @tr("暂时无法启动");
-                                style: MaterialTypography.body-medium;
-                                color: MaterialPalette.error;
-                                wrap: word-wrap;
-                                overflow: clip;
+                            if Selection.emulator-choices.length == 0 && Selection.game.engine != "" : HorizontalLayout {
+                                alignment: start;
+                                padding-left: 26px;
+                                TextButton {
+                                    text: @tr("安装核心");
+                                    icon: Icons.memory;
+                                    clicked => { App.page = "cores"; }
+                                }
                             }
                         }
                     }

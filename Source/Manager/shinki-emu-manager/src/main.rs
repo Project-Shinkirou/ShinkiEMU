@@ -1,4 +1,5 @@
 mod core_package;
+mod core_download;
 mod manager_app;
 mod metadata_cache;
 mod metadata_runtime;

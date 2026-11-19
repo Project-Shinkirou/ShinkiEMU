@@ -1,10 +1,11 @@
 use crate::{
-    CoreError, MusicaMountedVfs, MusicaPazDecryptProvider, PazArchiveConfig, PazRoleScheme,
+    CoreError, MusicaMountedVfs, MusicaPazDecryptProvider, PazArchiveConfig,
 };
 use shinki_emu_musica_keys::{
-    KeyFileError, MAX_KEY_BYTES, MAX_TEXTURE_OVERRIDE_BYTES, MusicaKeyFile, REQUIRED_ARCHIVE_ROLES,
-    key_file_error, parse_key_file,
+    KeyFileError, MAX_KEY_BYTES, MAX_TEXTURE_OVERRIDE_BYTES, MusicaKeyFile, key_file_error,
+    parse_key_file,
 };
+use shinki_emu_musica_format::into_schemes;
 use std::{
     collections::BTreeMap,
     fs,
@@ -50,10 +51,11 @@ pub fn mount_musica_with_resources(
             .map_err(configured_key_error)?;
     let key = parse_key_file(&bytes).map_err(core_error)?;
     let texture_overrides = resolve_texture_overrides(&key, &root)?;
-    let configs = REQUIRED_ARCHIVE_ROLES
+    let configs = key
+        .archive_keys
         .iter()
-        .map(|role| {
-            let alias = match *role {
+        .filter_map(|(role, archive_key)| {
+            let alias = match role.as_str() {
                 "scr" => resources.scr_archive.as_str(),
                 "sys" => resources.sys_archive.as_str(),
                 _ => "",
@@ -61,15 +63,37 @@ pub fn mount_musica_with_resources(
             let path = if alias.is_empty() {
                 root.join(format!("{role}.paz"))
             } else {
-                crate::resources::resource_file(&root, alias)?
+                match crate::resources::resource_file(&root, alias) {
+                    Ok(path) => path,
+                    Err(error) => return Some(Err(error)),
+                }
             };
-            Ok(PazArchiveConfig {
-                role: (*role).into(),
+            match path.try_exists() {
+                Ok(false) if !archive_key.required => return None,
+                Ok(false) => {
+                    return Some(Err(CoreError::invalid(
+                        "SHINKI_EMU_MUSICA_ARCHIVE_MISSING",
+                        format!(
+                            "required archive role {role} is missing: {}",
+                            path.display()
+                        ),
+                    )));
+                }
+                Err(_) => {
+                    return Some(Err(CoreError::invalid(
+                        "SHINKI_EMU_MUSICA_ARCHIVE_PATH",
+                        format!("archive role {role} is inaccessible"),
+                    )));
+                }
+                Ok(true) => {}
+            }
+            Some(Ok(PazArchiveConfig {
+                role: role.clone(),
                 path,
                 game_root: root.clone(),
                 version: key.paz_version,
                 index_size_xor: key.index_size_xor,
-            })
+            }))
         })
         .collect::<Result<Vec<_>, CoreError>>()?;
     let decrypt = MusicaPazDecryptProvider::new(hash, into_schemes(&key))?;
@@ -110,51 +134,6 @@ pub(crate) fn resolve_texture_overrides(
         .collect()
 }
 
-// Only called after validation; decode each private key once for decryption.
-fn into_schemes(key_file: &MusicaKeyFile) -> BTreeMap<String, PazRoleScheme> {
-    key_file
-        .archive_keys
-        .iter()
-        .map(|(role, key)| {
-            let video_key = key.video_key_hex.as_ref().map(|hex| {
-                std::array::from_fn(|index| {
-                    decode_hex_byte(&hex.as_bytes()[index * 2..index * 2 + 2])
-                })
-            });
-            (
-                role.clone(),
-                PazRoleScheme {
-                    index_key: decode_hex(&key.index_key_hex),
-                    data_key: decode_hex(&key.data_key_hex),
-                    rc4_skip_crc: key_file.rc4_skip_crc,
-                    type_passwords: key.type_passwords.clone(),
-                    archive_xor: key.archive_xor,
-                    video_key,
-                },
-            )
-        })
-        .collect()
-}
-
-fn decode_hex(hex: &str) -> Vec<u8> {
-    hex.as_bytes()
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| decode_hex_byte(pair))
-        .collect()
-}
-
-fn decode_hex_byte(pair: &[u8]) -> u8 {
-    let nibble = |byte: u8| {
-        if byte.is_ascii_digit() {
-            byte - b'0'
-        } else {
-            byte.to_ascii_lowercase() - b'a' + 10
-        }
-    };
-    nibble(pair[0]) << 4 | nibble(pair[1])
-}
 
 fn invalid(code: &'static str, message: &'static str) -> CoreError {
     CoreError::invalid(code, message)

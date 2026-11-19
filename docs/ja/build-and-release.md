@@ -138,6 +138,16 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 
 各ビルドは `cargo ndk-env` のツールチェーン環境を取り込み、Cargo を `--locked` で直接実行します。`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Shinki Musica、CMVS、Artemis、Impacto、Ren’Py、KiriKiri）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
 
+Manager のビルドスクリプトは Clang の `--print-libgcc-file-name` で対象 NDK の compiler-rt アーカイブを取得してリンクし、`--no-undefined` で未解決シンボルを含む cdylib を拒否します。組み込みネイティブライブラリが呼ぶ `__clear_cache` などは Rust の compiler_builtins だけでは解決できないため、Android の `System.loadLibrary` まで失敗を持ち越さず、リンク時に解決します。
+`ANDROID_NDK_HOME` を設定して `python Tools/test-android-compiler-runtime.py` を実行すると、実際の AArch64 キャッシュフラッシュ呼び出しで検証します。compiler-rt を省くリンクは失敗し、アーカイブを明示したリンクは成功する必要があります。
+Android のネイティブコア依存準備には `build/vcpkg/mobile-ports` も使います。fmt 11.2.0 の固定レシピに `<cstdlib>` の直接インクルードを追加し、NDK r30 の libc++ で `malloc`/`free` を解決します。ライブラリのバージョン変更やコンパイル検査の無効化は行いません。
+Android の最小 API は既存の組み込みネイティブ triplet と同じ 28 です。Manager のリンカー、システムライブラリ検索、APK minSdk も統一し、iconv、glob、posix_spawn などの API 28 インポートを API 26 のスタブへリンクしないようにします。
+
+AndroidのUIスレッドは `MainActivity.onCreate` の `super.onCreate` 後、`onStart` 前に両ネイティブコアのホストを初期化します。native appスレッドだけがActivityインスタンスの完了結果を待ってからTLSとリソースを初期化します。例外・エラーは起動失敗として伝わり、破棄時は未完了の待機を解除します。UIのonStart待機とnativeからUIへの初期化待機によるデッドロックを防ぎ、Activity再作成時にはnativeコンテキストを置き換え、Destroyで解放します。
+ロック解除済みの実機で `python Tools/test-android-startup.py --adb <adb> --serial <実機> --out <新規ディレクトリ>` を実行し、コールドスタートとバックグラウンド復帰のライフサイクル完了を回帰検証します。Managerだけを停止し、データを保持して起動結果と画面を記録し、元のonStartタイムアウトを失敗とします。画面の確認と実ゲーム入力は別途必要です。
+WGPU描画通知では有効なグラフィックスコンテキスト内のGPU描画とテクスチャ公開を維持します。worker完了モデル・通知・modal更新は再利用するSlintの遅延ゼロのsingle-shot timerで描画後に処理し、実行待ちtimerがあれば重複要求をまとめます。描画中のitem tree破棄によるSkiaキャッシュの再借用を防ぎ、window/adapterは弱参照、timerは描画notifierと共に解放します。準備画面で実機回帰コマンドに `--prepare-tap X Y` を付けると実際のボタンを操作して結果を記録します。完了画面は別途確認してください。
+CMVSは単独コアビルドだけで `dynamic-plugin-export` を有効にし、`shinki_emu_query` の公開とモジュールの診断callback bridgeを設定します。静的Managerでは無効のまま `cmvs_query` を使い、診断headerとemit/flushの両callbackを検証後、hostの既存tracing subscriberを利用し、プロセス全体のsubscriberを再登録しません。不正な診断引数はABIエラーを返し、完了済みの初期化を無効にしません。
+
 CMVS は同じ静的レジストリの `cmvs_query` と `video-ffmpeg` を使います。SDK デコーダーは Musica の API 28 静的 FFmpeg vcpkg triplet と xtask の依存準備を共有します。Manager の `embedded-cores.json`、対応ソース、ライセンスに CMVS を含めます。APK 検証は `assets/licenses/shinki.emu.cmvs/` 内のライセンスをマニフェストの入力とバイト単位で比較します。Android 実機・エミュレーターでの実行はユーザーの指定により未検証です。
 
 Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。Release はユニバーサルな release 署名 APK を 1 つだけアップロードし、対応する sources ZIP も公開します。
@@ -295,6 +305,8 @@ Android の正式配布用証明書 SHA256 は引き続き `c415bd462d26574758ed
 `release_sequence` は外部コアごとの厳密に増加する正整数（最大 9007199254740991）です。upstream、adapter pin の変更や意図した再ビルドで増加させます。タグ版とブランチ版は同じ連番で最新を選び、ブランチ名やハッシュは大小比較しません。型付き識別子は旧 beta エントリより優先し、残りは SemVer 順です。異なる版で同じ連番を使うことは、別プラットフォームでも拒否します。パッケージ、埋め込みコア一覧、ソース参照とカタログは同じ来歴を保持し、元のライセンス・著作権表示と対応ソースの要件も維持します。
 
 [Impacto 連番3のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-impacto-tag-0-10-8-930-96de7434c8b1a57df7ff24dcee829282194873fe596677056fa168485cb1555e) は、製品コミット `5b197c1c656186d3a535bb3486311623516166e5`、upstream `0.10.8.930`、adapter `34b89c29123d025d96f73ac9a746fb388e572065` から Windows、Linux、両 macOS アーキテクチャのパッケージを公開しています。4対象の対応ソース・ネイティブ入力・ライセンス・パッケージ監査と、認証なしでの全8バイナリ/ソース添付ファイルの実ダウンロード・ハッシュ照合が完了しました。この単独版は Manager6 内蔵の `910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157`/連番2を置き換えず、公開済み連番1の資産も変更しません。カタログは公開完了の順番ではなく連番3を選びます。
+
+開発ブランチの Impacto pin には、[Windows で KiriKiri と同時にロードできない問題（#37）](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)の [fmt v11 互換性修正](https://github.com/Project-Shinkirou/impacto/pull/2)が含まれます。vcpkg manifest は fmt を 11.2.0 に固定し、KiriKiri、spdlog、OpenAL の v11 ABI に合わせます。Windows はファイル名でロード済みの `fmt.dll` を再利用するため、DLL ディレクトリの検索フラグでは異なる ABI を分離できません。次の Impacto 公開は連番4を使い、公開済みの連番1–3は変更しません。
 
 [Ren’Py 連番1のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-renpy-tag-8-5-3-26051504-5f537560e1a1b852070dec65946d6c027e9f4f7482bddd8349ed47960c383133) は、製品コミット `05326439dcfafb81df79f3dabe0997fb696ad3f3`、upstream `8.5.3.26051504`、adapter `a52d9d9c006223c2b5a276c05e1b97ffeecbe66f` から4デスクトップ対象を公開しています。全対応ソースパッケージで、107バイトのシンボリックリンク先を含む固定再ビルド用レシピ389/389項目の実物確認が完了しました。公開された全8バイナリ/ソース添付ファイルを認証なしで実際に取得し、受け入れ済み記録とハッシュを照合しました。元のネイティブライセンス本文も固定 fork と原入力に対してバイト単位で確認済みです。
 

@@ -142,14 +142,11 @@ unsafe extern "C" fn probe(
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
         let root = std::path::Path::new(unsafe { path.text(32768) }.map_err(invalid)?);
-        if !shinki_emu_musica_keys::REQUIRED_ARCHIVE_ROLES
-            .iter()
-            .all(|role| root.join(format!("{role}.paz")).is_file())
-        {
+        if !crate::provider::probe_musica(root) {
             return Err(Failure::new(
                 abi::NO_MATCH,
                 "SHINKI_EMU_MUSICA_NO_MATCH",
-                "required Musica archives are absent",
+                "no readable Musica PAZ/SC structure with the selected private profile",
             ));
         }
         let name = root

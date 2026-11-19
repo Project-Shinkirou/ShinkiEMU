@@ -1,5 +1,6 @@
 use super::*;
 use std::fs;
+const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
 fn key_file() -> MusicaKeyFile {
     MusicaKeyFile {
@@ -7,12 +8,13 @@ fn key_file() -> MusicaKeyFile {
         paz_version: 2,
         index_size_xor: 123,
         rc4_skip_crc: false,
-        archive_keys: REQUIRED_ARCHIVE_ROLES
+        archive_keys: FIXTURE_ARCHIVE_ROLES
             .into_iter()
             .map(|role| {
                 (
                     role.into(),
                     MusicaArchiveKey {
+                        required: true,
                         index_key_hex: "01aB23CD".into(),
                         data_key_hex: if role == "mov" {
                             String::new()
@@ -246,7 +248,7 @@ fn canonical_toml_rejects_invalid_hex_roles_and_private_bounds() {
     rejected(text(&key).as_bytes(), "SHINKI_EMU_MUSICA_PRIVATE_TYPE_KEY");
     let mut key = key_file();
     key.archive_keys.remove("bg");
-    rejected(text(&key).as_bytes(), "SHINKI_EMU_MUSICA_PRIVATE_ROLES");
+    assert!(parse_key_file(text(&key).as_bytes()).is_ok());
     let mut key = key_file();
     key.archive_keys.insert(
         "private-secret-sentinel".into(),

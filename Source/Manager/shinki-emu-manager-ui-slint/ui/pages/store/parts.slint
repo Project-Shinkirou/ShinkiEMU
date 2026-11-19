@@ -192,6 +192,7 @@ export component StoreGameRow {
         padding-bottom: 8px;
         spacing: 12px;
 
+        // Badges sit under the title: beside it, two badges left a phone row ~60px for the name.
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -202,18 +203,22 @@ export component StoreGameRow {
                 color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface;
                 overflow: elide;
             }
-            if root.detail-line != "" : MaterialText {
-                text: root.detail-line;
-                style: MaterialTypography.body-medium;
-                color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: 8px;
+                if root.detail-line != "" : MaterialText {
+                    horizontal-stretch: 1;
+                    text: root.detail-line;
+                    style: MaterialTypography.body-medium;
+                    color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    GameBadges { game: root.game; }
+                }
             }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            GameBadges { game: root.game; }
         }
     }
 

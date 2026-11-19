@@ -15,8 +15,6 @@ pub const MAX_TEXTURE_OVERRIDES: usize = 256;
 pub const MAX_TEXTURE_OVERRIDE_URI_BYTES: usize = 512;
 pub const MAX_TEXTURE_OVERRIDE_PATH_BYTES: usize = 512;
 pub const MAX_TEXTURE_OVERRIDE_BYTES: u64 = 64 * 1024 * 1024;
-pub const REQUIRED_ARCHIVE_ROLES: [&str; 8] =
-    ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
 const TEXTURE_SOURCE_PREFIX: &str = "musica:/";
 
@@ -83,10 +81,25 @@ pub struct MusicaKeyFile {
 pub struct MusicaArchiveKey {
     pub index_key_hex: String,
     pub data_key_hex: String,
+    /// Missing optional archives are skipped; declared required archives fail open.
+    #[serde(default = "required_archive")]
+    pub required: bool,
     #[serde(default)]
     pub type_passwords: BTreeMap<String, String>,
     pub archive_xor: Option<u32>,
     pub video_key_hex: Option<String>,
+}
+
+fn required_archive() -> bool {
+    true
+}
+
+pub fn valid_archive_role(role: &str) -> bool {
+    !role.is_empty()
+        && role.len() <= 64
+        && role
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 /// Reads and validates a bounded UTF-8 key.toml without opening a game or device.
@@ -162,14 +175,15 @@ impl MusicaKeyFile {
                 "key.toml must explicitly select supported PAZ version 0, 1, or 2",
             ));
         }
-        if self.archive_keys.len() != REQUIRED_ARCHIVE_ROLES.len()
-            || REQUIRED_ARCHIVE_ROLES
-                .iter()
-                .any(|role| !self.archive_keys.contains_key(*role))
+        if self.archive_keys.is_empty()
+            || self
+                .archive_keys
+                .keys()
+                .any(|role| !valid_archive_role(role))
         {
             return Err(invalid(
                 "SHINKI_EMU_MUSICA_PRIVATE_ROLES",
-                "Musica keys must contain exactly the required archive roles",
+                "Musica keys must declare a nonempty set of safe archive roles",
             ));
         }
         for (role, key) in &self.archive_keys {

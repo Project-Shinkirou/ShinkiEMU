@@ -1,4 +1,4 @@
-import { MaterialPalette, MaterialText, MaterialTypography, TextButton, FilledButton, OutlineButton, TonalButton, HorizontalDivider, Icon, SmallAppBar } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, TextButton, FilledButton, OutlineButton, TonalButton, HorizontalDivider, Icon, SmallAppBar, LinearProgressIndicator, CircularProgressIndicator } from "@material";
 import { App, Cores, CoreInfo, Network } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { ConfigFieldList } from "../components/config-field.slint";
@@ -8,6 +8,7 @@ import { PageScroll, SettingGroup, StatusChip } from "./settings/common.slint";
 export global CoreText {
     public pure function state-label(core: CoreInfo) -> string {
         return core.state == "loaded" ? (core.update-version != "" ? @tr("可更新") : @tr("已加载"))
+            : core.state == "installed" ? (core.update-version != "" ? @tr("可更新") : @tr("已安装，尚未加载"))
             : core.state == "failed" ? @tr("加载失败")
             : core.state == "pending-install" ? @tr("重启后安装")
             : core.state == "pending-update" ? @tr("重启后更新")
@@ -23,6 +24,20 @@ export global CoreText {
     public pure function is-pending(state: string) -> bool {
         return state == "pending-install" || state == "pending-update" || state == "pending-removal";
     }
+
+    public pure function is-downloading(core: CoreInfo) -> bool {
+        return core.download-phase == "queued" || core.download-phase == "downloading"
+            || core.download-phase == "verifying" || core.download-phase == "installing";
+    }
+
+    public pure function download-label(core: CoreInfo) -> string {
+        return core.download-phase == "queued" ? @tr("排队中")
+            : core.download-phase == "downloading" ? @tr("正在下载")
+            : core.download-phase == "verifying" ? @tr("正在校验")
+            : core.download-phase == "installing" ? @tr("正在安装")
+            : core.download-phase == "failed" ? @tr("下载失败")
+            : "";
+    }
 }
 
 component CoreRow {
@@ -31,7 +46,10 @@ component CoreRow {
     callback edit-defaults();
 
     property <bool> failed: root.core.state == "failed";
-    property <bool> update: root.core.state == "loaded" && root.core.update-version != "";
+    property <bool> update: (root.core.state == "loaded" || root.core.state == "installed") && root.core.update-version != "";
+    property <bool> downloading: CoreText.is-downloading(root.core);
+    property <bool> download-failed: root.core.download-phase == "failed";
+    property <bool> determinate: root.core.download-phase == "downloading" && root.core.download-progress >= 0;
 
     min-height: l.min-height;
     preferred-height: l.preferred-height;
@@ -68,15 +86,33 @@ component CoreRow {
                     color: MaterialPalette.on-surface;
                     overflow: elide;
                 }
-                MaterialText {
-                    text: (root.core.engine != "" ? root.core.engine + " · " : "")
-                        + (root.core.version != "" ? root.core.version : @tr("版本未知"))
-                        + (root.update ? " → " + root.core.update-version : "")
-                        + (root.core.source != "" ? " · " + CoreText.source-label(root.core.source) : "");
-                    style: MaterialTypography.body-medium;
-                    color: MaterialPalette.on-surface-variant;
-                    wrap: word-wrap;
-                    overflow: clip;
+                // Each part stays whole; a part that no longer fits moves to the next line.
+                FlexboxLayout {
+                    spacing: 6px;
+                    if root.core.engine != "" : MaterialText {
+                        min-width: self.preferred-width;
+                        text: root.core.engine + " ·";
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    MaterialText {
+                        min-width: self.preferred-width;
+                        text: root.core.version != "" ? root.core.version : @tr("版本未知");
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    if root.update : MaterialText {
+                        min-width: self.preferred-width;
+                        text: "→ " + root.core.update-version;
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
+                    if root.core.source != "" : MaterialText {
+                        min-width: self.preferred-width;
+                        text: "· " + CoreText.source-label(root.core.source);
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                    }
                 }
             }
 
@@ -85,13 +121,15 @@ component CoreRow {
                 horizontal-stretch: 0;
                 padding-top: 2px;
                 StatusChip {
-                    text: CoreText.state-label(root.core);
-                    background: root.failed ? MaterialPalette.error-container
+                    text: root.downloading || root.download-failed ? CoreText.download-label(root.core) : CoreText.state-label(root.core);
+                    background: root.failed || root.download-failed ? MaterialPalette.error-container
+                        : root.downloading ? MaterialPalette.secondary-container
                         : root.update ? MaterialPalette.tertiary-container
                         : CoreText.is-pending(root.core.state) ? MaterialPalette.secondary-container
                         : root.core.state == "available" ? MaterialPalette.surface-container-highest
                         : MaterialPalette.primary-container;
-                    foreground: root.failed ? MaterialPalette.on-error-container
+                    foreground: root.failed || root.download-failed ? MaterialPalette.on-error-container
+                        : root.downloading ? MaterialPalette.on-secondary-container
                         : root.update ? MaterialPalette.on-tertiary-container
                         : CoreText.is-pending(root.core.state) ? MaterialPalette.on-secondary-container
                         : root.core.state == "available" ? MaterialPalette.on-surface-variant
@@ -107,6 +145,52 @@ component CoreRow {
                 text: root.core.message;
                 style: MaterialTypography.body-small;
                 color: root.failed ? MaterialPalette.error : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+
+        if root.downloading : VerticalLayout {
+            padding-left: 36px;
+            padding-right: 8px;
+            padding-top: 4px;
+            spacing: 6px;
+            HorizontalLayout {
+                spacing: 8px;
+                MaterialText {
+                    horizontal-stretch: 1;
+                    text: root.core.download-phase == "downloading"
+                        ? (root.core.download-bytes != "" ? root.core.download-bytes : @tr("正在连接…"))
+                            + (root.core.download-speed != "" ? " · " + root.core.download-speed : "")
+                        : root.core.download-phase == "queued" ? @tr("等待其他核心下载完成")
+                        : root.core.download-phase == "verifying" ? @tr("正在核对文件大小和 SHA-256")
+                        : @tr("正在写入待安装区，重启后生效");
+                    style: MaterialTypography.body-small;
+                    color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+                if root.determinate : MaterialText {
+                    horizontal-stretch: 0;
+                    text: round(root.core.download-progress * 100) + "%";
+                    style: MaterialTypography.label-medium;
+                    color: MaterialPalette.on-surface;
+                }
+            }
+            LinearProgressIndicator {
+                indeterminate: !root.determinate;
+                progress: root.determinate ? root.core.download-progress : 0;
+                accessible-label: CoreText.download-label(root.core);
+            }
+        }
+
+        if root.download-failed : HorizontalLayout {
+            padding-left: 36px;
+            padding-right: 8px;
+            MaterialText {
+                text: @tr("下载失败：{}", root.core.download-error);
+                style: MaterialTypography.body-small;
+                color: MaterialPalette.error;
                 wrap: word-wrap;
                 overflow: clip;
             }
@@ -130,18 +214,22 @@ component CoreRow {
             FlexboxLayout {
                 horizontal-stretch: 1;
                 spacing: 0px;
-
-                if root.update : TextButton {
-                    text: @tr("更新到 {}", root.core.update-version);
-                    icon: Icons.download;
+                if root.update && !root.downloading : TextButton {
+                    text: root.download-failed ? @tr("重试") : @tr("更新到 {}", root.core.update-version);
+                    icon: root.download-failed ? Icons.refresh : Icons.download;
                     enabled: Network.allowed;
                     clicked => { Cores.install-online(root.core.id); }
                 }
-                if root.core.state == "available" : TextButton {
-                    text: @tr("安装");
-                    icon: Icons.download;
+                if root.core.state == "available" && !root.downloading : TextButton {
+                    text: root.download-failed ? @tr("重试") : @tr("安装");
+                    icon: root.download-failed ? Icons.refresh : Icons.download;
                     enabled: Network.allowed;
                     clicked => { Cores.install-online(root.core.id); }
+                }
+                if root.downloading && root.core.download-phase != "installing" : TextButton {
+                    text: @tr("取消");
+                    icon: Icons.close;
+                    clicked => { Cores.cancel-download(root.core.id); }
                 }
                 if root.core.state == "loaded" : TextButton {
                     text: root.editing ? @tr("收起默认设置") : @tr("默认设置");
@@ -150,11 +238,17 @@ component CoreRow {
                     accessible-expanded: root.editing;
                     clicked => { root.edit-defaults(); }
                 }
+                if root.core.state == "installed" || root.failed : TextButton {
+                    text: @tr("诊断");
+                    icon: Icons.error;
+                    enabled: root.core.state != "loading";
+                    clicked => { Cores.diagnose(root.core.id); }
+                }
                 if root.core.state == "loaded" || root.failed : TextButton {
                     text: @tr("查看日志");
                     clicked => { Cores.view-logs(root.core.id); }
                 }
-                if root.core.removable && (root.core.state == "loaded" || root.failed) : TextButton {
+                if root.core.removable && (root.core.state == "loaded" || root.core.state == "installed" || root.failed) : TextButton {
                     text: @tr("卸载");
                     icon: Icons.delete;
                     clicked => { Cores.uninstall(root.core.id); }
@@ -165,8 +259,20 @@ component CoreRow {
 }
 
 component DefaultsEditor {
+    property <bool> activating: round(loading-counter.preferred-height / 1px) > 0;
     min-height: l.min-height;
     preferred-height: l.preferred-height;
+
+    loading-counter := VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        for core in Cores.items : Rectangle {
+            height: core.id == Cores.default-plugin && core.state == "loading" ? 1px : 0px;
+        }
+    }
 
     l := VerticalLayout {
         padding-left: 16px;
@@ -190,7 +296,9 @@ component DefaultsEditor {
                         color: MaterialPalette.primary;
                     }
                     MaterialText {
-                        text: @tr("没有单独设置的游戏使用这里的值；修改立即保存。");
+                        text: Cores.default-configuration-state == "ready"
+                            ? @tr("没有单独设置的游戏使用这里的值；修改立即保存。")
+                            : @tr("打开默认设置不会自动加载核心。确认后再初始化所选核心。");
                         style: MaterialTypography.body-small;
                         color: MaterialPalette.on-surface-variant;
                         wrap: word-wrap;
@@ -198,7 +306,57 @@ component DefaultsEditor {
                     }
                 }
 
-                RenderPicker {
+                if Cores.default-configuration-state == "unprepared" || Cores.default-configuration-state == "failed" || Cores.default-configuration-state == "missing-core" : VerticalLayout {
+                    spacing: 8px;
+                    MaterialText {
+                        text: Cores.default-configuration-state == "failed" ? @tr("默认配置加载失败")
+                            : Cores.default-configuration-state == "missing-core" ? @tr("缺少可用核心")
+                            : @tr("默认配置尚未加载");
+                        style: MaterialTypography.body-medium;
+                        color: Cores.default-configuration-state == "failed" || Cores.default-configuration-state == "missing-core" ? MaterialPalette.error : MaterialPalette.on-surface;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    MaterialText {
+                        text: Cores.default-configuration-state == "failed" && Cores.default-plugin == Cores.committed-plugin
+                            ? (Cores.default-configuration-error != "" ? Cores.default-configuration-error : @tr("这次只初始化所选核心。修复后可以重试。"))
+                            : Cores.default-configuration-state == "missing-core" && Cores.default-plugin == Cores.committed-plugin ? @tr("这个核心当前不可用，不能读取它的默认配置。")
+                            : @tr("加载后才能查看和修改这个模拟器的默认参数。");
+                        style: MaterialTypography.body-small;
+                        color: MaterialPalette.on-surface-variant;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    if Cores.default-configuration-state != "missing-core" : HorizontalLayout {
+                        alignment: start;
+                        TonalButton {
+                            text: Cores.default-configuration-state == "failed" ? @tr("重试") : @tr("加载默认配置");
+                            icon: Cores.default-configuration-state == "failed" ? Icons.refresh : Icons.tune;
+                            enabled: !root.activating;
+                            clicked => { Cores.select-defaults(Cores.default-plugin); }
+                        }
+                    }
+                }
+
+                if Cores.default-configuration-state == "loading" : HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    CircularProgressIndicator {
+                        width: 20px;
+                        height: 20px;
+                        indeterminate: true;
+                    }
+                    MaterialText {
+                        text: @tr("正在加载所选核心的默认配置…");
+                        style: MaterialTypography.body-medium;
+                        color: MaterialPalette.on-surface-variant;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                }
+
+                if Cores.default-configuration-state == "ready" : RenderPicker {
                     supported: Cores.default-render.supported;
                     options: Cores.default-render.options;
                     mode: Cores.default-render.mode;
@@ -211,13 +369,15 @@ component DefaultsEditor {
                     set-render(mode, w, h) => { Cores.set-default-render(mode, w, h); }
                 }
 
-                if Cores.default-fields.length == 0 : MaterialText {
+                if Cores.default-configuration-state == "ready" && Cores.default-fields.length == 0 : MaterialText {
                     text: @tr("这个模拟器没有其他可调参数。");
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface-variant;
+                    wrap: word-wrap;
+                    overflow: clip;
                 }
 
-                if Cores.default-fields.length > 0 : ConfigFieldList {
+                if Cores.default-configuration-state == "ready" && Cores.default-fields.length > 0 : ConfigFieldList {
                     fields: Cores.default-fields;
                     changed(key, value) => { Cores.default-field-changed(key, value); }
                     reset(key) => { Cores.reset-default-field(key); }
@@ -239,7 +399,7 @@ component GroupCounter {
 
     l := VerticalLayout {
         for core in Cores.items : Rectangle {
-            height: (root.group == "installed" && core.state == "loaded")
+            height: (root.group == "installed" && (core.state == "loaded" || core.state == "installed"))
                 || (root.group == "available" && core.state == "available")
                 || (root.group == "failed" && core.state == "failed")
                 || (root.group == "pending" && CoreText.is-pending(core.state)) ? 1px : 0px;
@@ -252,23 +412,137 @@ component CoreGroup inherits SettingGroup {
     flush: true;
 
     for core in Cores.items : VerticalLayout {
-        if (root.group == "installed" && core.state == "loaded")
-            || (root.group == "available" && core.state == "available")
-            || (root.group == "failed" && core.state == "failed")
-            || (root.group == "pending" && CoreText.is-pending(core.state)) : VerticalLayout {
+        if root.group == "installed" && Cores.default-plugin == core.id && (core.state == "loaded" || core.state == "installed") : VerticalLayout {
             CoreRow {
                 core: core;
-                editing: Cores.default-plugin == core.id;
+                editing: true;
                 edit-defaults => {
-                    if Cores.default-plugin == core.id {
-                        Cores.default-plugin = "";
-                        Cores.select-defaults("");
-                    } else {
-                        Cores.select-defaults(core.id);
-                    }
+                    Cores.default-plugin = "";
+                    Cores.default-configuration-state = "unprepared";
                 }
             }
-            if Cores.default-plugin == core.id && core.state == "loaded" : DefaultsEditor { }
+            if core.state == "loaded" : DefaultsEditor { }
+        }
+    }
+
+    for core in Cores.items : VerticalLayout {
+        if ((root.group == "installed" && (core.state == "loaded" || core.state == "installed") && Cores.default-plugin != core.id)
+            || (root.group == "available" && core.state == "available")
+            || (root.group == "failed" && core.state == "failed")
+            || (root.group == "pending" && CoreText.is-pending(core.state))) : VerticalLayout {
+            CoreRow {
+                core: core;
+                editing: false;
+                edit-defaults => {
+                    Cores.default-plugin = core.id;
+                    Cores.default-configuration-state = "unprepared";
+                }
+            }
+        }
+    }
+}
+
+component HeaderActions {
+    property <bool> can-update-all: Cores.update-all-count > 0 && Cores.batch.state != "running";
+
+    min-width: f.min-width;
+    preferred-width: f.preferred-width;
+    min-height: f.min-height;
+    preferred-height: f.preferred-height;
+
+    f := FlexboxLayout {
+        spacing: 8px;
+        if root.can-update-all : FilledButton {
+            text: @tr("全部更新（{}）", Cores.update-all-count);
+            icon: Icons.download;
+            enabled: Network.allowed;
+            clicked => { Cores.update-all(); }
+        }
+        OutlineButton {
+            text: @tr("从本地安装…");
+            icon: Icons.upload-file;
+            clicked => { Cores.install-local(); }
+        }
+    }
+}
+
+// Progress of a 全部更新 run, then its outcome until dismissed.
+component BatchCard {
+    property <bool> running: Cores.batch.state == "running";
+    property <int> done: Cores.batch.succeeded + Cores.batch.failed + Cores.batch.cancelled;
+    property <bool> had-failures: Cores.batch.failed > 0;
+
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    accessible-role: groupbox;
+
+    Rectangle {
+        border-radius: 16px;
+        background: root.had-failures && !root.running ? MaterialPalette.error-container : MaterialPalette.secondary-container;
+    }
+
+    l := VerticalLayout {
+        padding: 16px;
+        padding-bottom: 8px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                Icon {
+                    width: 24px;
+                    height: 24px;
+                    source: root.running ? Icons.download : root.had-failures ? Icons.warning : Icons.check;
+                    colorize: root.had-failures && !root.running ? MaterialPalette.on-error-container : MaterialPalette.on-secondary-container;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                MaterialText {
+                    text: root.running ? @tr("正在更新核心") : root.had-failures ? @tr("部分核心更新失败") : @tr("核心更新完成");
+                    style: MaterialTypography.title-small;
+                    color: root.had-failures && !root.running ? MaterialPalette.on-error-container : MaterialPalette.on-secondary-container;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+                MaterialText {
+                    text: root.running
+                        ? @tr("已完成 {0}/{1}", root.done, Cores.batch.total)
+                        : @tr("成功 {0} 个，失败 {1} 个", Cores.batch.succeeded, Cores.batch.failed)
+                            + (Cores.batch.cancelled > 0 ? @tr("，取消 {} 个", Cores.batch.cancelled) : "");
+                    style: MaterialTypography.body-medium;
+                    color: root.had-failures && !root.running ? MaterialPalette.on-error-container : MaterialPalette.on-secondary-container;
+                    wrap: word-wrap;
+                    overflow: clip;
+                }
+            }
+        }
+
+        if root.running : LinearProgressIndicator {
+            progress: Cores.batch.progress;
+            accessible-label: @tr("正在更新核心");
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 4px;
+            if root.running : TextButton {
+                text: @tr("全部取消");
+                clicked => { Cores.cancel-all(); }
+            }
+            if !root.running && root.had-failures : TonalButton {
+                text: @tr("重试失败项（{}）", Cores.batch.failed);
+                icon: Icons.refresh;
+                enabled: Network.allowed;
+                clicked => { Cores.retry-failed(); }
+            }
+            if !root.running : TextButton {
+                text: @tr("关闭");
+                clicked => { Cores.dismiss-batch(); }
+            }
         }
     }
 }
@@ -277,6 +551,8 @@ component CoreGroup inherits SettingGroup {
 export component CoresPage {
     in property <bool> compact;
     property <length> bar-height: 64px;
+    // Narrow pages put the header buttons under the description.
+    property <bool> narrow: root.width < 640px;
 
     installed := GroupCounter { group: "installed"; }
     available := GroupCounter { group: "available"; }
@@ -307,31 +583,43 @@ export component CoresPage {
             border-radius: 16px;
             background: MaterialPalette.tertiary-container;
 
-            HorizontalLayout {
+            // Narrow pages put 立即重启 under the message.
+            VerticalLayout {
                 padding: 16px;
-                spacing: 16px;
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Icon {
-                        width: 24px;
-                        height: 24px;
-                        source: Icons.restart-alt;
-                        colorize: MaterialPalette.on-tertiary-container;
+                padding-bottom: root.narrow ? 12px : 16px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 16px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Icon {
+                            width: 24px;
+                            height: 24px;
+                            source: Icons.restart-alt;
+                            colorize: MaterialPalette.on-tertiary-container;
+                        }
+                    }
+                    MaterialText {
+                        horizontal-stretch: 1;
+                        text: @tr("核心有变更，重启 ShinkiEMU 后生效。");
+                        style: MaterialTypography.body-large;
+                        color: MaterialPalette.on-tertiary-container;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                    if !root.narrow : VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        FilledButton {
+                            text: @tr("立即重启");
+                            clicked => { Cores.restart(); }
+                        }
                     }
                 }
-                MaterialText {
-                    horizontal-stretch: 1;
-                    text: @tr("核心有变更，重启 ShinkiEMU 后生效。");
-                    style: MaterialTypography.body-large;
-                    color: MaterialPalette.on-tertiary-container;
-                    vertical-alignment: center;
-                    wrap: word-wrap;
-                    overflow: clip;
-                }
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
+                if root.narrow : HorizontalLayout {
+                    alignment: end;
                     FilledButton {
                         text: @tr("立即重启");
                         clicked => { Cores.restart(); }
@@ -340,7 +628,9 @@ export component CoresPage {
             }
         }
 
-        HorizontalLayout {
+        if Cores.batch.state != "" : BatchCard { }
+
+        if !root.narrow : HorizontalLayout {
             spacing: 12px;
             MaterialText {
                 horizontal-stretch: 1;
@@ -354,12 +644,20 @@ export component CoresPage {
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
-                OutlineButton {
-                    text: @tr("从本地安装…");
-                    icon: Icons.upload-file;
-                    clicked => { Cores.install-local(); }
-                }
+                HeaderActions { }
             }
+        }
+
+        if root.narrow : VerticalLayout {
+            spacing: 8px;
+            MaterialText {
+                text: Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            HeaderActions { }
         }
 
         if Cores.items.length == 0 : SettingGroup {

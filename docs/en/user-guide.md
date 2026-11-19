@@ -33,7 +33,9 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 ## Add games and install cores
 
-In Settings, add the directories containing your legally obtained game installations, then scan the library. Select the detected game and check the selected core and game-specific configuration before starting. An engine probe identifies a format; encrypted resources can still require a private profile. Keep all keys local.
+Add legally obtained game directories in Settings, then prepare or refresh the library. Recognition reads bounded resource formats without loading native cores. A recognized engine family can enter the library before a compatible core is installed; it shows a missing-core problem and cannot start. Install the core and restart when prompted, then refresh the same entry. Multiple families or implementations require a choice; an existing selected implementation is preserved even when its package is missing.
+
+The library and core list use the static catalog and validated package manifests. Native capabilities and settings remain unverified until you explicitly prepare advanced configuration, diagnose one core, or start the selected game. These actions run on the owner thread and touch only the selected implementation. Recognition is not a runtime guarantee; encrypted resources can still need a private profile. Keep keys local.
 
 Settings removed by a core update are removed from saved configuration automatically.
 
@@ -49,7 +51,7 @@ Open **Add game → Store downloads** after allowing network access in Settings.
 
 **QR login** requests a fresh Steam challenge without an account name or password. The code appears once Steam responds; approve it in the mobile app to finish signing in. Cancel stops the pending request without completing login.
 
-Search your owned games, select a game, choose depots and a branch, then select a writable library folder. Windows depots are selected by default even on mobile; choose language depots separately. A downloaded game is added to Manager and probed for compatible cores. Download availability does not imply that a core supports the game's engine.
+Search your owned games, select a game, choose depots and a branch, then select a writable library folder. Windows depots are selected by default even on mobile; choose language depots separately. A downloaded game is scanned with the same native-free recognizer. Only a recognized directory enters the game library; downloading it does not establish runtime compatibility.
 
 **Check updates** compares installed depot manifests with Steam. Download again to apply a delta update; **Verify and repair** checks and repairs installed files. Cancellation preserves the interrupted-install marker and waits for outstanding writes; retrying resumes verified local chunks. Keep each game's `.DepotDownloader` directory: it records installed manifests and the metadata needed for delta reuse.
 
@@ -82,7 +84,11 @@ The patch page defaults to **New directory**, which keeps the source game unchan
 
 In **New directory** mode on Windows, macOS and Linux, **Choose output** opens a folder picker. Choose the parent location, or create a folder there using the system's folder controls. Manager displays the full proposed output path below that location: `localized-output`, or `localized-output-1`, `localized-output-2`, etc. if a name is already occupied. Check this path before starting. Selection never creates the conversion directory; only a successful conversion publishes it. Cancelling the picker leaves the previous selection unchanged. Existing files and directories are never overwritten, including anything created at the proposed path after selection. Output cannot overlap the game or patch input. **In-place overwrite** does not use the output selection. On iOS the selected parent receives a new `localized-output` child; Android uses a new app-private export directory.
 
-New Musica patches require Musica core beta.5 or later; Yorino requires capability bits 256 and 512. RFVP native-script patches require isolated script saves and configured-font priority. Manager checks the actual loaded core before importing or launching converted outputs. If it requests a core update, update before retrying; a version label alone is insufficient. Older Managers continue reading the retained v1 patch catalog and legacy scripts.
+Windows mapped input folders, including read-only Sandbox shares, use their native handle-derived file IDs for overlap checks. Filesystems without the extended `FileIdInfo` query use `GetFileInformationByHandle` identities; errors other than unsupported-query still stop conversion. The patch wizard displays ordinary Windows paths when the verbatim prefix is unnecessary; stored game identities and handle-based containment checks remain unchanged.
+
+New Musica patches require Musica core beta.5 or later; Yorino requires capability bits 256 and 512. RFVP native-script patches require isolated script saves and configured-font priority. Import preserves receipt settings without loading cores. Explicit advanced configuration and launch validate those settings and capabilities against the selected native descriptor. A failure leaves the library entry and receipt intact and explains the required correction or core update; a version label alone is insufficient. Older Managers continue reading the retained v1 patch catalog and legacy scripts.
+
+A converted game's advanced configuration remains unprepared while its receipt is pending, even if the core is already loaded for another entry. **Load configuration** validates and saves that game's receipt against the selected core. Success consumes the pending settings once; failure preserves both the previous settings and the receipt for retry.
 
 ## Data and saves
 

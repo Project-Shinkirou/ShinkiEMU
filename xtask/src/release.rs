@@ -782,6 +782,9 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
             android.len(),
             android.len(),
         ));
+        notes.push_str(
+            "\nAndroid requires Android 9 (API 28) or later; Android 8.0/8.1 are no longer supported.\n\nAndroid 最低要求 Android 9（API 28），不再支持 Android 8.0/8.1。\n\nAndroid 9（API 28）以降が必要です。Android 8.0/8.1 はサポート対象外です。\n",
+        );
         if !android.contains(&"kirikiroid2-web") {
             notes.push_str(
                 "\nKiriKiri is not included in this Android Manager; static embedding remains in development for a later Manager release. A standalone Android core ZIP does not establish Manager support.\n\n本版 Android Manager 不包含 KiriKiri；其静态接入仍在开发，将随后续 Manager 版本交付。独立 Android 核心 ZIP 不代表 Manager 可用。\n\n本版 Android Manager に KiriKiri は含まれません。静的組み込みは後続の Manager リリースに向けて開発中です。単独の Android コア ZIP は Manager での利用を保証しません。\n",

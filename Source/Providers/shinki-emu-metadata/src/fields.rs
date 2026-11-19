@@ -7,6 +7,7 @@ pub const KNOWN_CORE_IDS: &[&str] = &[
     "shinki.emu.musica",
     "sena-rs",
     "kirikiroid2-web",
+    "krkr2",
     "ethornell-rs",
     "shinki.emu.cmvs",
     "ReMinori",

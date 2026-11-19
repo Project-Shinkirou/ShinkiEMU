@@ -5,7 +5,7 @@ import { Icons } from "./icons.slint";
 import {
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
-    PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
+    PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
     StoreGame, StoreDepot, StoreTransfer, Store,
 } from "./globals.slint";
@@ -19,6 +19,7 @@ import { PatchPage } from "./pages/patch.slint";
 import { CoresPage } from "./pages/cores.slint";
 import { FiltersPage } from "./pages/filters.slint";
 import { SettingsPage } from "./pages/settings.slint";
+import { TranslationOverlays } from "./pages/settings/translation.slint";
 import { OnboardingPage } from "./pages/onboarding.slint";
 import { GameView } from "./pages/game-view.slint";
 import { AddGamePage } from "./pages/add-game.slint";
@@ -28,7 +29,7 @@ export {
     MaterialWindowAdapter,
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
-    PatchGame, Patch, RenderState, TranslationForm, Excluded, Settings, GameSettings, CoreInfo, Logs,
+    PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
     Cores, Notice, Notices, Dialogs, Filters, EngineAction, Session, Onboarding, ResaleNoticeState,
     StoreGame, StoreDepot, StoreTransfer, Store,
 }
@@ -59,6 +60,13 @@ export component ManagerWindow inherits MaterialWindow {
     property <length> bar-height: 64px;
     property <length> bottom-nav-height: 80px;
     property <length> nav-bottom: root.show-bottom-nav ? root.bottom-nav-height : 0px;
+    // The new-version banner sits above the page content, which moves down by
+    // `banner-inset` while it shows so no control is covered.
+    property <bool> banner-shown: SelfUpdate.banner-visible && !Session.active && !root.onboarding;
+    property <length> banner-margin: root.compact ? 8px : 12px;
+    property <length> banner-inset: root.banner-shown ? banner.preferred-height + root.banner-margin : 0px;
+    property <length> content-x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
+    property <length> content-width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
     // Set by the navigation widgets so a page switch they caused keeps focus on
     // the activated item instead of moving it to the root key scope.
     property <bool> nav-driven;
@@ -184,6 +192,20 @@ export component ManagerWindow inherits MaterialWindow {
                 Logs.open = false;
                 return accept;
             }
+            // The provider editor and its confirmations handle Back themselves
+            // while focused; this catches Back when focus is elsewhere.
+            if ProviderEditor.confirm-delete.id != "" {
+                ProviderEditor.confirm-delete = { };
+                return accept;
+            }
+            if ProviderEditor.open {
+                if ProviderEditor.confirm-discard {
+                    ProviderEditor.confirm-discard = false;
+                } else {
+                    ProviderEditor.request-close();
+                }
+                return accept;
+            }
             if Dialogs.fatal-active {
                 return accept;
             }
@@ -241,17 +263,17 @@ export component ManagerWindow inherits MaterialWindow {
         if root.show-library-bar : SmallAppBar {
             // SmallAppBar pads only 4px; match the 16px page headers.
             x: root.usable-x + 12px;
-            y: root.usable-y;
+            y: root.usable-y + root.banner-inset;
             width: root.usable-width - 12px;
             height: root.bar-height;
             title: @tr("游戏库");
         }
 
         pages := Rectangle {
-            x: root.usable-x + (root.show-rail ? root.rail-width : 0px);
-            y: root.usable-y + (root.show-library-bar ? root.bar-height : 0px);
-            width: root.usable-width - (root.show-rail ? root.rail-width : 0px);
-            height: root.usable-height - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
+            x: root.content-x;
+            y: root.usable-y + root.banner-inset + (root.show-library-bar ? root.bar-height : 0px);
+            width: root.content-width;
+            height: root.usable-height - root.banner-inset - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
             clip: true;
 
             if App.page == "library" : LibraryPage {
@@ -347,12 +369,21 @@ export component ManagerWindow inherits MaterialWindow {
             height: root.usable-height;
         }
 
-        // New Manager version: a floating card that leaves the page usable.
-        if SelfUpdate.banner-visible && !Session.active && !root.onboarding : UpdateBanner {
-            x: root.compact ? root.usable-x + 8px : root.usable-x + root.usable-width - self.width - 16px;
-            y: root.usable-y + (root.compact ? 8px : 16px);
-            width: root.compact ? root.usable-width - 16px : min(420px, root.usable-width - root.rail-width - 32px);
+        banner := UpdateBanner {
+            visible: root.banner-shown;
+            x: root.content-x + root.banner-margin;
+            y: root.usable-y + root.banner-margin;
+            width: root.content-width - 2 * root.banner-margin;
             height: self.preferred-height;
+        }
+
+        // Translation provider editor: modal over the whole window so no
+        // navigation can drop an unsaved draft.
+        if !Session.active && (ProviderEditor.open || ProviderEditor.confirm-delete.id != "") : TranslationOverlays {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
         }
 
         SnackbarHost {

@@ -171,27 +171,66 @@ impl MusicaTextRenderer {
         self.frame(&mut regions)
     }
 
-    pub(crate) fn gallery_movies(&mut self, focus: u32) -> Result<Vec<SceneCommand>, String> {
-        if focus >= 4 {
-            return Err("SHINKI_EMU_MUSICA_GALLERY_FOCUS".into());
-        }
-        let text = crate::runtime::gallery::MOVIE_LABELS
+    pub(crate) fn voice_controls(
+        &mut self,
+        characters: &[crate::voice_preferences::VoiceCharacter],
+    ) -> Result<Vec<SceneCommand>, String> {
+        let mut regions = characters
             .iter()
             .enumerate()
-            .map(|(i, label)| format!("{} {label}", if i == focus as usize { ">" } else { " " }))
-            .collect::<Vec<_>>()
-            .join("\n");
+            .map(|(index, character)| {
+                let [x, y, width, height] =
+                    crate::configuration::voice_control_rect(characters.len(), index);
+                layout_request(
+                    &format!("musica.voice.{index}"),
+                    &format!(
+                        "{} {}",
+                        if character.enabled { "+" } else { "-" },
+                        character.label
+                    ),
+                    Region {
+                        x,
+                        y,
+                        width: width as u32,
+                        height: height as u32,
+                        font_size: (width as f32 / 5.0).min(14.0),
+                        line_height: 20.0,
+                        max_lines: 1,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        self.frame(&mut regions)
+    }
+
+    pub(crate) fn gallery_list<'a>(
+        &mut self,
+        labels: impl Iterator<Item = &'a str>,
+        focus: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<SceneCommand>, String> {
+        use std::fmt::Write;
+        let mut text = String::new();
+        for (index, label) in labels.enumerate().skip(focus as usize / 12 * 12).take(12) {
+            writeln!(
+                text,
+                "{} {label}",
+                if index == focus as usize { ">" } else { " " }
+            )
+            .expect("String write");
+        }
         let mut layout = layout_request(
-            "musica.gallery.movie",
+            "musica.gallery",
             &text,
             Region {
-                x: 160,
-                y: 112,
-                width: 520,
-                height: 280,
-                font_size: 32.0,
-                line_height: 52.0,
-                max_lines: 4,
+                x: (width / 20) as i32,
+                y: (height / 10) as i32,
+                width: width * 9 / 10,
+                height: height * 8 / 10,
+                font_size: (height as f32 / 30.0).max(1.0),
+                line_height: height as f32 * 0.8 / 12.0,
+                max_lines: 12,
             },
         );
         layout.outline = Some(TextOutline {

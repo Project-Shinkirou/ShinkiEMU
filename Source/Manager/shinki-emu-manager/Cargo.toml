@@ -50,8 +50,11 @@ cap-std = "=4.0.3"
 cap-fs-ext = "=4.0.3"
 tokio.workspace = true
 directories.workspace = true
+dunce.workspace = true
 pollster.workspace = true
 reqwest.workspace = true
+bytes = "1.12.1"
+futures-util.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 parking_lot = "0.13.0"
 serde_json.workspace = true
@@ -109,26 +112,29 @@ objc2.workspace = true
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2", "CFCGTypes"] }
 objc2-foundation = { workspace = true, features = ["NSDictionary", "NSString", "NSURL"] }
 objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIApplication", "block2"] }
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246", default-features = false }
-shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "a0aa629fb5ce467e91c83e2be0fffb3320404527", default-features = false }
+shinki-emu-cmvs = { path = "../../Families/shinki-emu-cmvs", default-features = false, features = ["video-ffmpeg"] }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "37f4d1fe10855aca034185a5afaa2123a36465ae", default-features = false }
+shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "0e1aa89db3f8e33ac9d0a0b2d43bef51660120dd", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
-shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "f8362be7d2f4d634c25a98a317dfe56ffae56346", default-features = false }
+shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "ace042bcda4ac3765a9f9198b5ffda1792b5f717", default-features = false }
 shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00", default-features = false }
+shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82", default-features = false, features = ["static"] }
 # The static iOS graph links ReMinori's naga 26 and Ruffle's naga 27; both share
 # codespan-reporting 0.12, and naga 27 enables its termcolor feature. naga 26
 # selects its diagnostic buffer type from its own `termcolor` feature, so it must
 # be enabled too or the unified codespan API rejects naga 26's String buffer.
 naga-26 = { package = "naga", version = "26.0.0", default-features = false, features = ["termcolor"] }
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "cc0cc5c9648d481693cfa353c11e1d61311f6246", default-features = false }
-shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "a0aa629fb5ce467e91c83e2be0fffb3320404527", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "37f4d1fe10855aca034185a5afaa2123a36465ae", default-features = false }
+shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "0e1aa89db3f8e33ac9d0a0b2d43bef51660120dd", default-features = false }
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 shinki-emu-cmvs = { path = "../../Families/shinki-emu-cmvs", default-features = false, features = ["video-ffmpeg"] }
 shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c", default-features = false, features = ["static-core"] }
-shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157", default-features = false, features = ["static"] }
+shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "f49c94451784a370f623f466da89876e9b4c19db", default-features = false, features = ["static"] }
 shinki-emu-renpy = { git = "https://github.com/Project-Shinkirou/renpy", rev = "0e1b1812035dfdd3d8a91f8ce419b935152f8c78", default-features = false, features = ["static"] }
 shinki-emu-kirikiroid2-web = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "d72046c28e6ada623acdb1d72f7075edd488797d", default-features = false, features = ["static"] }
+shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82", default-features = false, features = ["static"] }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.

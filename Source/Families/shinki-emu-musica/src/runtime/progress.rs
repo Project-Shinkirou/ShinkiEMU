@@ -1,17 +1,12 @@
 use super::*;
-const FLAGS: [&str; 4] = ["TOHKA_CLEAR", "AYAME_CLEAR", "SUI_CLEAR", "REN_CLEAR"];
 pub(crate) fn validate(unlocks: &[Hash256]) -> Result<(), MusicaRuntimeError> {
-    let known = FLAGS.map(|flag| Hash256::from_sha256(flag.as_bytes()));
-    if unlocks.len() > known.len()
-        || unlocks.windows(2).any(|p| p[0] >= p[1])
-        || unlocks.iter().any(|id| !known.contains(id))
-    {
+    if unlocks.len() > 4096 || unlocks.windows(2).any(|pair| pair[0] >= pair[1]) {
         return Err(MusicaRuntimeError::State);
     }
     Ok(())
 }
 pub(super) fn record(state: &mut MusicaRuntimeState, key: &str, value: i64) {
-    if value != 1 || !FLAGS.contains(&key) {
+    if value != 1 {
         return;
     }
     let id = Hash256::from_sha256(key.as_bytes());
@@ -19,57 +14,112 @@ pub(super) fn record(state: &mut MusicaRuntimeState, key: &str, value: i64) {
         state.gallery_unlocks.insert(index, id);
     }
 }
-/// The clear flags a legacy `global-progress.json` unlock list names.
-pub(crate) fn unlocked_flags(unlocks: &[Hash256]) -> Result<Vec<&'static str>, MusicaRuntimeError> {
+/// A hash cannot recover its source variable name. Resolve only against actual
+/// script/configuration declarations and return every unresolved record intact.
+pub(crate) fn unlocked_flags<'a>(
+    unlocks: &[Hash256],
+    candidates: &'a [String],
+) -> Result<(Vec<&'a str>, Vec<Hash256>), MusicaRuntimeError> {
     validate(unlocks)?;
-    Ok(FLAGS
-        .into_iter()
-        .filter(|flag| unlocks.contains(&Hash256::from_sha256(flag.as_bytes())))
-        .collect())
-}
-impl MusicaVm {
-    /// Installs the title-wide `system.dat` globals and records the gallery
-    /// unlocks they imply; unlocks already recorded are kept.
-    pub(crate) fn replace_global_variables(&mut self, globals: BTreeMap<String, i64>) {
-        self.state.global_variables = globals;
-        for flag in FLAGS {
-            if self.state.global_variables.get(flag) == Some(&1) {
-                record(&mut self.state, flag, 1);
-            }
+    let mut names = BTreeMap::new();
+    for name in candidates {
+        names
+            .entry(Hash256::from_sha256(name.as_bytes()))
+            .or_insert(name.as_str());
+    }
+    let mut resolved = Vec::new();
+    let mut unresolved = Vec::new();
+    for hash in unlocks {
+        match names.get(hash) {
+            Some(name) => resolved.push(*name),
+            None => unresolved.push(*hash),
         }
     }
+    Ok((resolved, unresolved))
 }
-
+impl MusicaVm {
+    pub(crate) fn progress_flag_names(&self) -> Vec<String> {
+        // Priority 1: declarations in the original entry script.
+        let mut names = self
+            .script
+            .lines
+            .iter()
+            .filter_map(|line| match &line.kind {
+                ScLineKind::Command { command } if command.opcode == "setglobal" => {
+                    match command.operands.first() {
+                        Some(ScOperand::Symbol { value }) => Some(value.clone()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        // Priority 2: frontend requirements recovered/configured for this release.
+        for title in &self.frontend.titles {
+            names.extend(title.requires.keys().cloned());
+        }
+        for entry in self
+            .frontend
+            .replays
+            .iter()
+            .chain(&self.frontend.movies)
+            .chain(&self.frontend.cg)
+            .chain(&self.frontend.bgm)
+        {
+            names.extend(entry.requires.keys().cloned());
+        }
+        names
+    }
+    pub(crate) fn replace_global_variables(&mut self, globals: BTreeMap<String, i64>) {
+        for (key, value) in &globals {
+            record(&mut self.state, key, *value);
+        }
+        self.state.global_variables = globals;
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn gallery_progress_records_only_verified_clear_values_and_rejects_corrupt_state() {
-        let source = b".setglobal REN_CLEAR = 0\r\n.setglobal OTHER_CLEAR = 1\r\n.setglobal AYAME_CLEAR = 1\r\n.setglobal AYAME_CLEAR = 1\r\n.end\r\n";
-        let mut vm = MusicaVm::new(
-            "musica:/scr/test.sc".into(),
-            Hash256::from_sha256(source),
-            crate::parse_sc(source, &crate::ScOpcodeCatalog::observed_musica()).unwrap(),
-            0,
-        )
-        .unwrap();
-        vm.step(1).unwrap();
-        let id = Hash256::from_sha256(b"AYAME_CLEAR");
-        assert_eq!(vm.state().gallery_unlocks, vec![id]);
-        let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
-        let mut corrupt = vm.state().clone();
-        corrupt.gallery_unlocks.push(id);
-        assert!(MusicaVm::checked_test_state(&corrupt).is_err());
-        assert!(vm.install_test_state(&corrupt, 1).is_err());
-        assert_eq!(vm.state(), &saved);
-        assert!(unlocked_flags(&[Hash256::from_sha256(b"UNKNOWN")]).is_err());
-        assert_eq!(
-            unlocked_flags(&[Hash256::from_sha256(b"TOHKA_CLEAR")]).unwrap(),
-            ["TOHKA_CLEAR"]
-        );
-        vm.replace_global_variables(BTreeMap::from([("TOHKA_CLEAR".into(), 1)]));
-        assert_eq!(vm.state().global_variables["TOHKA_CLEAR"], 1);
-        assert!(!vm.state().global_variables.contains_key("AYAME_CLEAR"));
-        assert_eq!(vm.state().gallery_unlocks.len(), 2);
+    fn progress_uses_assignment_values_independently_of_variable_names() {
+        for names in [["locked", "bonus", "route"], ["x", "y", "z"]] {
+            let source = format!(
+                ".setglobal {} = 0\r\n.setglobal {} = 1\r\n.setglobal {} = 1\r\n.setglobal {} = 1\r\n.end\r\n",
+                names[0], names[1], names[2], names[2]
+            );
+            let mut vm = MusicaVm::new(
+                "musica:/scr/test.sc".into(),
+                Hash256::from_sha256(source.as_bytes()),
+                crate::parse_sc(
+                    source.as_bytes(),
+                    &crate::ScOpcodeCatalog::observed_musica(),
+                )
+                .unwrap(),
+                0,
+            )
+            .unwrap();
+            vm.step(1).unwrap();
+            assert_eq!(vm.state().gallery_unlocks.len(), 2);
+            assert_eq!(vm.state().global_variables[names[0]], 0);
+            for name in &names[1..] {
+                assert!(
+                    vm.state()
+                        .gallery_unlocks
+                        .contains(&Hash256::from_sha256(name.as_bytes()))
+                );
+            }
+            let saved = MusicaVm::checked_test_state(vm.state()).unwrap();
+            let mut corrupt = vm.state().clone();
+            corrupt.gallery_unlocks.push(corrupt.gallery_unlocks[0]);
+            assert!(vm.install_test_state(&corrupt, 1).is_err());
+            assert_eq!(vm.state(), &saved);
+            let declared = vm.progress_flag_names();
+            let (mapped, pending) = unlocked_flags(&vm.state().gallery_unlocks, &declared).unwrap();
+            assert_eq!(mapped.len(), 2);
+            assert!(pending.is_empty());
+            vm.replace_global_variables(BTreeMap::from([("another_flag".into(), 1)]));
+            assert_eq!(vm.state().gallery_unlocks.len(), 3);
+            assert!(!vm.state().global_variables.contains_key(names[1]));
+        }
     }
 }
