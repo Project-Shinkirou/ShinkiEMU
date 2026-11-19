@@ -72,4 +72,23 @@ checkout fetches full history so the comparison ref is available. An optional
 `gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
 Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the base branch, limited to the Windows and Linux x86_64 targets.
 
+For a Windows/Android-only release, dispatch `ci.yml` with
+`release_scope=windows-android` and no `since`, `components` or `targets`.
+Use `--scope windows-android` for the local `release` plan, preparation and
+publication, or set `release_scope=windows-android` on `release.yml`. The same
+scope must be present in each prepared receipt. Publication requires all
+supported build rows of the selected component in that scope, including
+Windows binary and source ZIPs and any standalone Android core rows. The
+single Android Manager package uses clean release builds from both ABIs and
+includes separate corresponding-source ZIPs for both. Only an APK with the
+existing production signer, matching versionName, newer versionCode and
+Android API 28 minimum may publish. Its debug-signed equivalent is for QA.
+
+Before publishing scoped packages, set `SHINKI_EMU_RELEASE_CI_RUN_ID` (or
+`release.yml` input `ci_run_id`) to the successful same-scope exact-head
+`ci.yml` run. Download `release.yml` `prepare_only` artifacts and audit them
+before publishing from the original clean commit. `--scope` omitted and tag
+pushes keep all platforms and the OHOS local Manager handoff. Scope does not
+change which platforms the product supports.
+
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.

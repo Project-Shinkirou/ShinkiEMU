@@ -1256,6 +1256,11 @@ fn package_android(
             if built.profile != "release" || built.source_commit != result.source_commit {
                 bail!("both Android ABIs require release builds from the same source commit");
             }
+            if !result.source_dirty && built.source_dirty {
+                bail!(
+                    "a clean universal Android package requires clean build receipts for both ABIs"
+                );
+            }
             built.require_product_version(version)?;
             let inputs = crate::temporary::directory()?;
             android_inputs(inv, &built, inputs.path())?;

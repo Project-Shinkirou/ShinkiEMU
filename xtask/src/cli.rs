@@ -79,6 +79,9 @@ pub enum Command {
         /// Filter to components affected by changes since this Git ref.
         #[arg(long, requires = "json")]
         since: Option<String>,
+        /// Release platform scope; omitted means all inventory platforms.
+        #[arg(long, requires = "json", conflicts_with = "since")]
+        scope: Option<crate::release::Scope>,
     },
     Build(Build),
     Check {
@@ -111,6 +114,9 @@ pub enum Command {
         target: Option<String>,
         #[arg(long, default_value = "")]
         version: String,
+        /// Apply the same platform scope to preparation, receipts and publication.
+        #[arg(long, conflicts_with = "verify_handoff")]
+        scope: Option<crate::release::Scope>,
         #[arg(long)]
         publish: bool,
         /// Verify the staged OHOS HAP and corresponding source without DevEco.

@@ -19,6 +19,11 @@ on:
         description: 'Optional comma-separated target triples within the affected matrix'
         type: string
         default: ''
+      release_scope:
+        description: 'Exact-head release CI scope; windows-android requires an unfiltered scope run'
+        type: choice
+        options: [all, windows-android]
+        default: all
 permissions:
   contents: read
 concurrency:
@@ -29,6 +34,7 @@ env:
   CARGO_INCREMENTAL: '0'
 jobs:
   matrix:
+    name: ${{ inputs.release_scope == 'windows-android' && 'release-scope (windows-android)' || 'matrix' }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -45,8 +51,16 @@ jobs:
           SINCE: ${{ inputs.since }}
           COMPONENTS: ${{ inputs.components }}
           TARGETS: ${{ inputs.targets }}
+          RELEASE_SCOPE: ${{ inputs.release_scope || 'all' }}
         run: |
           args=(--json --ci)
+          if [[ "$RELEASE_SCOPE" != all ]]; then
+            if [[ -n "$SINCE$COMPONENTS$TARGETS" ]]; then
+              echo 'Release scope CI cannot be combined with since/components/targets' >&2
+              exit 1
+            fi
+            args+=(--scope "$RELEASE_SCOPE")
+          fi
           if [[ -n "$SINCE" ]]; then args+=(--since "$SINCE"); fi
           matrix=$(cargo xtask matrix "${args[@]}")
           if [[ -n "$COMPONENTS" ]]; then

@@ -1173,7 +1173,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     }
     let build_command = if target.contains("android") {
         format!(
-            "cargo ndk -t {} -P 26 build",
+            "cargo ndk -t {} -P 28 build",
             if target.starts_with("aarch64") {
                 "arm64-v8a"
             } else {

@@ -1,5 +1,5 @@
 use crate::{
-    cores::{Inventory, slug},
+    cores::{Inventory, Target, slug},
     dependencies, package,
 };
 use anyhow::{Context, Result, bail};
@@ -10,6 +10,93 @@ use std::{
     path::{Path, PathBuf},
 };
 const API: &str = "https://api.github.com/repos/Project-Shinkirou/ShinkiEMU";
+const ANDROID_PRIMARY: &str = "aarch64-linux-android";
+const ANDROID_SECONDARY: &str = "x86_64-linux-android";
+const ANDROID_RELEASE_CERT: &str =
+    "c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc";
+const LAST_PUBLIC_ANDROID_VERSION_CODE: u32 = 86;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
+pub enum Scope {
+    #[default]
+    All,
+    WindowsAndroid,
+}
+
+impl Scope {
+    fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::WindowsAndroid => "windows-android",
+        }
+    }
+
+    pub fn includes(self, platform: &str) -> bool {
+        self == Self::All || matches!(platform, "windows" | "android")
+    }
+
+    fn local_manager(self, inv: &Inventory, component: &str) -> bool {
+        component == "manager"
+            && inv.targets.iter().any(|target| {
+                self.includes(&target.platform)
+                    && target.manager_local_build
+                    && target.manager_supported
+            })
+    }
+}
+
+fn release_targets<'a>(
+    inv: &'a Inventory,
+    component: &str,
+    scope: Scope,
+) -> Result<Vec<&'a Target>> {
+    let mut targets = Vec::new();
+    for target in &inv.targets {
+        if scope.includes(&target.platform)
+            && inv.blocked(component, &target.triple)?.is_none()
+            && (component != "manager" || target.triple != ANDROID_SECONDARY)
+        {
+            targets.push(target);
+        }
+    }
+    if targets.is_empty() {
+        bail!(
+            "{component} has no release targets in scope {}",
+            scope.name()
+        );
+    }
+    Ok(targets)
+}
+
+fn require_scoped_ci_jobs(inv: &Inventory, jobs: &[Value]) -> Result<()> {
+    let scope = Scope::WindowsAndroid;
+    let passed = |name: &str| {
+        jobs.iter()
+            .any(|job| job["name"] == name && job["conclusion"] == "success")
+    };
+    if !passed("release-scope (windows-android)") {
+        bail!("CI run has no successful windows-android release scope receipt");
+    }
+    for row in inv.job_matrix(true, None)?.include {
+        if scope.includes(&row.platform) {
+            let prefix = format!("component ({}, {},", row.target, row.component);
+            if !jobs.iter().any(|job| {
+                job["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with(&prefix))
+                    && job["conclusion"] == "success"
+            }) {
+                bail!(
+                    "CI run has no successful {} build for {}",
+                    row.component,
+                    row.target
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 struct GitHub {
     client: reqwest::blocking::Client,
     token: String,
@@ -49,9 +136,8 @@ impl GitHub {
             .error_for_status()?
             .json()?)
     }
-    /// A local-only Manager release must be tied to a successful exact-head
-    /// GitHub CI run; a passed build at another revision is not release proof.
-    fn require_manager_ci(&self, commit: &str, targets: &[&str]) -> Result<String> {
+    /// Only a successful exact-head run with the applicable release matrix is proof.
+    fn require_ci(&self, inv: &Inventory, commit: &str, scope: Scope) -> Result<String> {
         let id = env::var("SHINKI_EMU_RELEASE_CI_RUN_ID")
             .context("set SHINKI_EMU_RELEASE_CI_RUN_ID to the successful exact-head ci.yml run")?;
         let number = id.parse::<u64>()?;
@@ -78,15 +164,25 @@ impl GitHub {
                 break;
             }
         }
-        for target in targets {
-            if !jobs.iter().any(|job| {
-                job["name"].as_str().is_some_and(|name| {
-                    name.starts_with("component (")
-                        && name.contains("manager")
-                        && name.contains(target)
-                }) && job["conclusion"] == "success"
-            }) {
-                bail!("CI run {id} has no successful Manager build for {target}");
+        if scope == Scope::WindowsAndroid {
+            require_scoped_ci_jobs(inv, &jobs).with_context(|| format!("CI run {id}"))?;
+        } else {
+            for target in release_targets(inv, "manager", scope)?
+                .into_iter()
+                .filter(|target| target.runner != "local-only")
+            {
+                if !jobs.iter().any(|job| {
+                    job["name"].as_str().is_some_and(|name| {
+                        name.starts_with("component (")
+                            && name.contains("manager")
+                            && name.contains(&target.triple)
+                    }) && job["conclusion"] == "success"
+                }) {
+                    bail!(
+                        "CI run {id} has no successful Manager build for {}",
+                        target.triple
+                    );
+                }
             }
         }
         if !jobs
@@ -354,7 +450,8 @@ pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Resu
     Ok(supplied.to_owned())
 }
 
-pub fn dry_run(inv: &Inventory, component: &str, version: &str) -> Result<()> {
+pub fn dry_run(inv: &Inventory, component: &str, version: &str, scope: Scope) -> Result<()> {
+    let targets = release_targets(inv, component, scope)?;
     if component != "manager" {
         crate::sources::verify_provenance(inv, inv.core(component)?)?;
     }
@@ -364,6 +461,8 @@ pub fn dry_run(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         serde_json::to_string(&json!({
             "component":component, "version":id.version, "release_tag":id.tag,
             "source_commit":id.commit, "core_source":id.core_source, "identity":id.identity,
+            "release_scope":scope.name(), "local_manager":scope.local_manager(inv, component),
+            "targets":targets.iter().map(|target| target.triple.as_str()).collect::<Vec<_>>(),
         }))?
     );
     Ok(())
@@ -419,20 +518,25 @@ fn require_same_release(
     record: &Value,
     id: &Identity,
     component: &str,
-    version: &str,
+    target: &str,
     path: &Path,
+    scope: Scope,
 ) -> Result<()> {
     if record["schema"] != "shinki.emu.release.v1"
+        || record["target"] != target
+        || !(record["release_scope"] == scope.name()
+            || (scope == Scope::All && record.get("release_scope").is_none()))
         || record["component"] != component
-        || record["version"] != version
-        || (component == "manager" && record["product_version"] != version)
+        || record["version"] != id.version
+        || (component == "manager" && record["product_version"] != id.version)
         || record["source_commit"] != id.commit.as_str()
         || record["core_source"] != id.core_source
         || record.get("identity").unwrap_or(&Value::Null) != &serde_json::to_value(&id.identity)?
     {
         bail!(
-            "{} was prepared from another component, version, product commit or core pin; remove it and prepare again",
-            path.display()
+            "{} does not match the release component, version, source, target or scope {}; prepare it again",
+            path.display(),
+            scope.name()
         );
     }
     Ok(())
@@ -440,8 +544,22 @@ fn require_same_release(
 
 /// Package one target's binary and corresponding source, and write the record
 /// `publish` aggregates. Blocked and publish-blocked targets produce nothing.
-pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) -> Result<()> {
+pub fn prepare(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    version: &str,
+    scope: Scope,
+) -> Result<()> {
     let spec = inv.target(target)?;
+    if !scope.includes(&spec.platform)
+        || (scope == Scope::WindowsAndroid && component == "manager" && target == ANDROID_SECONDARY)
+    {
+        bail!(
+            "{component}/{target} is not a release row in scope {}",
+            scope.name()
+        );
+    }
     let id = identity(inv, component, version)?;
     let version = id.version.as_str();
     if let Some(reason) = inv.blocked(component, target)? {
@@ -473,7 +591,7 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     let record_path = root.join("release.json");
     if record_path.exists() {
         let record: Value = serde_json::from_slice(&fs::read(&record_path)?)?;
-        require_same_release(&record, &id, component, version, &record_path)?;
+        require_same_release(&record, &id, component, target, &record_path, scope)?;
         println!("{}", record_path.display());
         return Ok(());
     }
@@ -527,12 +645,14 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
     package::atomic_directory(&root, |work| {
         let staged = work.join("package");
         let package_dir = package::package(inv, target, component, version, &staged)?;
+        let mut android_targets = Value::Null;
         let publish_blocked = if component == "manager" && target.contains("android") {
             let android: Value =
                 serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
+            android_targets = android["targets"].clone();
             if android["signing"] != "release" {
                 "This bundle contains a debug-signed CI test APK; it is not a Release installer."
-            } else if target == "x86_64-linux-android" {
+            } else if target == ANDROID_SECONDARY {
                 "The universal Android APK is published once from the aarch64 build row."
             } else {
                 ""
@@ -555,8 +675,20 @@ pub fn prepare(inv: &Inventory, target: &str, component: &str, version: &str) ->
         }
         fs::remove_dir_all(&staged)?;
         crate::sources::bundle(inv, component, target, &work.join(&sources))?;
+        let mut android_x86_64_sources = Value::Null;
+        if scope == Scope::WindowsAndroid && component == "manager" && target == ANDROID_PRIMARY {
+            let name = format!("shinki-emu-manager-{version}-android-x86_64-sources.zip");
+            let path = work.join(&name);
+            crate::sources::bundle(inv, component, ANDROID_SECONDARY, &path)?;
+            android_x86_64_sources = json!({"name":name,"sha256":package::sha256(&path)?});
+            if publish_blocked.is_empty() {
+                verify_android_release(&archive, version)?;
+            }
+        }
         let record = json!({"schema":"shinki.emu.release.v1","component":component,"version":version,"target":target,"platform":platform,
             "source_commit":id.commit,"core_source":id.core_source,
+            "release_scope":scope.name(),
+            "android_targets":android_targets,"android_x86_64_sources":android_x86_64_sources,
             "identity":id.identity,
             "product_version":receipt.product_version,
             "archive":{"name":filename,"sha256":package::sha256(&archive)?,"size":fs::metadata(&archive)?.len()},
@@ -582,7 +714,7 @@ pub fn verify_ohos_handoff(inv: &Inventory, component: &str, version: &str) -> R
     let directory = id.root.join(target);
     let record_path = directory.join("release.json");
     let record: Value = serde_json::from_slice(&fs::read(&record_path)?)?;
-    require_same_release(&record, &id, component, version, &record_path)?;
+    require_same_release(&record, &id, component, target, &record_path, Scope::All)?;
     for key in ["archive", "sources"] {
         let name = record[key]["name"].as_str().context("handoff asset name")?;
         package::portable(name)?;
@@ -648,33 +780,116 @@ pub fn verify_ohos_handoff(inv: &Inventory, component: &str, version: &str) -> R
     Ok(())
 }
 
-/// Publish every prepared target of `component` as one GitHub Release, then
-/// propose the core catalog entries.
-pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
-    let id = identity(inv, component, version)?;
-    let version = id.version.as_str();
-    let label = id.identity.as_ref().map_or_else(
-        || version.to_owned(),
-        shinki_emu_metadata::CoreIdentity::display_version,
-    );
-    if component != "manager" {
-        crate::sources::verify_provenance(inv, inv.core(component)?)?;
+fn android_tool(name: &str) -> Result<std::process::Command> {
+    let sdk = env::var_os("ANDROID_HOME")
+        .or_else(|| env::var_os("ANDROID_SDK_ROOT"))
+        .context("set ANDROID_HOME to verify the production APK")?;
+    let tools = PathBuf::from(sdk).join("build-tools/37.0.0");
+    if cfg!(windows) && name == "apksigner" {
+        let mut command = std::process::Command::new("cmd");
+        command.arg("/c").arg(tools.join("apksigner.bat"));
+        Ok(command)
+    } else {
+        let name = if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_owned()
+        };
+        Ok(std::process::Command::new(tools.join(name)))
     }
-    let tag = id.tag.as_str();
-    if env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("push")
-        && env::var("GITHUB_REF_TYPE").ok().as_deref() == Some("tag")
-        && env::var("GITHUB_REF_NAME").ok().as_deref() != Some(tag)
+}
+
+fn badging_attribute<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    line.split_whitespace().find_map(|field| {
+        let (name, value) = field.split_once('=')?;
+        (name == key).then_some(value.trim_matches('\''))
+    })
+}
+
+fn require_android_upgrade(signing: &str, badging: &str, version: &str) -> Result<()> {
+    let mut digests = signing
+        .lines()
+        .filter(|line| line.starts_with("Signer #"))
+        .filter_map(|line| line.split_once(" certificate SHA-256 digest: "))
+        .map(|(_, digest)| digest.trim());
+    if digests.next() != Some(ANDROID_RELEASE_CERT) || digests.next().is_some() {
+        bail!("Android APK must use the existing org.shinkirou.shinkiemu production certificate");
+    }
+    let package = badging
+        .lines()
+        .find(|line| line.starts_with("package: "))
+        .context("Android APK package metadata missing")?;
+    let code: u32 = badging_attribute(package, "versionCode")
+        .context("Android APK versionCode missing")?
+        .parse()?;
+    if badging_attribute(package, "name") != Some("org.shinkirou.shinkiemu")
+        || badging_attribute(package, "versionName") != Some(version)
+        || code <= LAST_PUBLIC_ANDROID_VERSION_CODE
+        || !badging.lines().any(|line| line.trim() == "sdkVersion:'28'")
     {
-        bail!("tag does not match component/version");
+        bail!(
+            "Android APK must use org.shinkirou.shinkiemu, versionName {version}, versionCode above {LAST_PUBLIC_ANDROID_VERSION_CODE}, and minSdk 28"
+        );
     }
-    let local_manager = component == "manager"
-        && inv
-            .targets
-            .iter()
-            .any(|t| t.manager_local_build && t.manager_supported);
+    Ok(())
+}
+
+fn verify_android_release(apk: &Path, version: &str) -> Result<()> {
+    let signing = dependencies::capture(
+        android_tool("apksigner")?
+            .args(["verify", "--print-certs"])
+            .arg(apk),
+    )?;
+    let badging = dependencies::capture(android_tool("aapt2")?.args(["dump", "badging"]).arg(apk))?;
+    require_android_upgrade(
+        std::str::from_utf8(&signing)?,
+        std::str::from_utf8(&badging)?,
+        version,
+    )
+}
+
+const EXTRA_ANDROID_SOURCES: &str = "android_x86_64_sources";
+
+fn asset_name<'a>(record: &'a Value, key: &str) -> Result<&'a str> {
+    let name = record[key]["name"].as_str().context("release asset name")?;
+    package::portable(name)?;
+    if name.contains('/') {
+        bail!("{name}: release asset name must be a filename");
+    }
+    Ok(name)
+}
+
+fn verify_asset(directory: &Path, record: &Value, key: &str) -> Result<()> {
+    let name = asset_name(record, key)?;
+    let expected = record[key]["sha256"]
+        .as_str()
+        .context("release asset SHA256")?;
+    if package::sha256(&directory.join(name))? != expected {
+        bail!("{name}: release asset hash differs from prepared record");
+    }
+    Ok(())
+}
+
+struct PreparedRelease {
+    records: Vec<(PathBuf, Value)>,
+    blocked: Vec<String>,
+}
+
+fn collect_records(
+    inv: &Inventory,
+    id: &Identity,
+    component: &str,
+    scope: Scope,
+) -> Result<PreparedRelease> {
+    let local_manager = scope.local_manager(inv, component);
+    let strict = scope == Scope::WindowsAndroid;
     let mut records = Vec::new();
     let mut blocked = Vec::new();
     for t in &inv.targets {
+        let secondary = component == "manager" && t.triple == ANDROID_SECONDARY;
+        if !scope.includes(&t.platform) || (strict && secondary) {
+            continue;
+        }
         if let Some(reason) = inv.blocked(component, &t.triple)? {
             blocked.push(format!("- {}: {reason} (artifact=null)", t.triple));
             continue;
@@ -682,10 +897,11 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         let directory = id.root.join(&t.triple);
         let path = directory.join("release.json");
         if !path.is_file() {
-            if local_manager && !(component == "manager" && t.triple == "x86_64-linux-android") {
+            if strict || (local_manager && !secondary) {
                 bail!(
-                    "Manager release requires a prepared exact-head artifact for {}",
-                    t.triple
+                    "{component} release requires a prepared exact-head artifact for {} in scope {}",
+                    t.triple,
+                    scope.name()
                 );
             }
             blocked.push(format!(
@@ -695,28 +911,65 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
             continue;
         }
         let record: Value = serde_json::from_slice(&fs::read(&path)?)?;
-        require_same_release(&record, &id, component, version, &path)?;
+        require_same_release(&record, id, component, &t.triple, &path, scope)?;
         for key in ["archive", "sources"] {
-            let name = record[key]["name"].as_str().context("release asset name")?;
-            let expected = record[key]["sha256"]
-                .as_str()
-                .context("release asset SHA256")?;
-            let actual = package::sha256(&directory.join(name))?;
-            if actual != expected {
-                bail!("{name}: release asset hash differs from prepared record");
-            }
+            verify_asset(&directory, &record, key)?;
         }
         if let Some(reason) = record["publish_blocked"].as_str().filter(|s| !s.is_empty()) {
+            if strict {
+                bail!("{component}/{} cannot be published: {reason}", t.triple);
+            }
             blocked.push(format!(
                 "- {}: publish_blocked: {reason} (artifact=null)",
                 t.triple
             ));
             continue;
         }
+        if strict && component == "manager" && t.triple == ANDROID_PRIMARY {
+            if record["android_targets"] != json!([ANDROID_PRIMARY, ANDROID_SECONDARY]) {
+                bail!("the universal Android APK requires receipts for both Android ABI builds");
+            }
+            verify_asset(&directory, &record, EXTRA_ANDROID_SOURCES)
+                .context("the universal Android APK requires x86_64 corresponding source")?;
+            verify_android_release(
+                &directory.join(asset_name(&record, "archive")?),
+                &id.version,
+            )?;
+        }
         records.push((directory, record));
     }
     if records.is_empty() {
         bail!("zero publishable artifacts; no Release created");
+    }
+    Ok(PreparedRelease { records, blocked })
+}
+
+/// Publish every prepared target of `component` as one GitHub Release, then
+/// propose the core catalog entries.
+pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) -> Result<()> {
+    let id = identity(inv, component, version)?;
+    let version = id.version.as_str();
+    let label = id.identity.as_ref().map_or_else(
+        || version.to_owned(),
+        shinki_emu_metadata::CoreIdentity::display_version,
+    );
+    let local_manager = scope.local_manager(inv, component);
+    if component != "manager" {
+        let core = inv.core(component)?;
+        if !core.publish_blocked.is_empty() {
+            bail!("{component} is publish_blocked: {}", core.publish_blocked);
+        }
+    }
+    let tag = id.tag.as_str();
+    if env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("push")
+        && env::var("GITHUB_REF_TYPE").ok().as_deref() == Some("tag")
+        && env::var("GITHUB_REF_NAME").ok().as_deref() != Some(tag)
+    {
+        bail!("tag does not match component/version");
+    }
+    let PreparedRelease { records, blocked } = collect_records(inv, &id, component, scope)?;
+    if component != "manager" {
+        crate::sources::verify_provenance(inv, inv.core(component)?)?;
     }
     let artifacts = records
         .iter()
@@ -732,18 +985,13 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
     let gh = GitHub::new()?;
-    let ci = if local_manager {
-        let targets = inv
-            .targets
-            .iter()
-            .filter(|t| {
-                t.manager_supported
-                    && t.runner != "local-only"
-                    && t.triple != "x86_64-linux-android"
-            })
-            .map(|t| t.triple.as_str())
-            .collect::<Vec<_>>();
-        let url = gh.require_manager_ci(&id.commit, &targets)?;
+    let ci = if scope == Scope::WindowsAndroid {
+        let url = gh.require_ci(inv, &id.commit, scope)?;
+        format!(
+            "\nRelease scope: Windows and Android.\nExact-head Windows/Android GitHub CI: {url}.\n"
+        )
+    } else if local_manager {
+        let url = gh.require_ci(inv, &id.commit, scope)?;
         verify_ohos_handoff(inv, component, version)?;
         let handoff = gh.require_ohos_handoff_ci(&id.commit)?;
         format!("\nExact-head GitHub CI: {url}.\nOHOS artifact handoff gate: {handoff}.\n")
@@ -796,7 +1044,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     }
     if id.identity.is_some() {
         notes.push_str(
-            "\nCompatibility: these upstream-identity packages require ShinkiEMU Manager 0.1.0-beta.6 or a later compatible Manager. Manager 0.1.0-beta.5 and earlier reject this package format. Until a compatible Manager release is available, use the existing legacy packages. The legacy core v1 and compatibility v4 catalogs remain available. Device/game/account launch checks were waived, not verified.\n\n兼容性：这些上游身份核心包需要 ShinkiEMU Manager 0.1.0-beta.6 或后续兼容版本。beta.5 及更早版本会拒绝此格式；兼容的 Manager 尚未发布时，请继续使用旧核心包。旧版核心 v1 与兼容性 v4 目录继续提供。设备、游戏和账号启动检查已豁免，未作验证。\n\n互換性：この upstream 識別子付きコアパッケージには ShinkiEMU Manager 0.1.0-beta.6 以降の対応版が必要です。beta.5 以前ではこの形式をインストールできません。対応 Manager が公開されるまでは既存の旧パッケージを使用してください。旧 core v1 と compatibility v4 のカタログは維持します。端末・ゲーム・アカウントの起動確認は免除されており、検証済みではありません。\n",
+            "\nCompatibility: these upstream-identity packages require ShinkiEMU Manager 0.1.0-beta.6 or later. Earlier Managers use the legacy packages and catalogs.\n\n兼容性：这些上游身份核心包需要 ShinkiEMU Manager 0.1.0-beta.6 或以上版本。旧版 Manager 继续使用旧核心包和目录。\n\n互換性：この upstream 識別子付きコアパッケージには ShinkiEMU Manager 0.1.0-beta.6 以降が必要です。それ以前の Manager では従来のパッケージとカタログを使用してください。\n",
         );
     }
     let existing = release_target(
@@ -806,7 +1054,22 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     )?;
     // A new draft records the run's commit; publishing it creates the tag there.
     let release = match existing {
-        Some(draft) => draft,
+        Some(draft) => {
+            if scope == Scope::WindowsAndroid {
+                let assets = draft["assets"].as_array().context("draft assets")?;
+                for asset in assets {
+                    let name = asset["name"].as_str().context("draft asset name")?;
+                    if !records.iter().any(|(_, record)| {
+                        ["archive", "sources", EXTRA_ANDROID_SOURCES]
+                            .iter()
+                            .any(|key| record[*key]["name"] == name)
+                    }) {
+                        bail!("draft {tag} already has an asset outside scope: {name}");
+                    }
+                }
+            }
+            draft
+        }
         None => gh.post(
             "releases",
             &json!({"tag_name":tag,"target_commitish":id.commit,"name":format!("{component} {label}"),"body":notes,"draft":true,"prerelease":id.identity.as_ref().map_or_else(|| semver::Version::parse(version).map(|v| !v.pre.is_empty()).unwrap_or(false), |i| i.upstream.ref_kind == shinki_emu_metadata::UpstreamRefKind::Branch)}),
@@ -815,14 +1078,13 @@ pub fn publish(inv: &Inventory, component: &str, version: &str) -> Result<()> {
     let release_id = release["id"].as_u64().context("release id")?;
     let mut assets = Vec::new();
     for (directory, record) in &records {
-        gh.upload(
-            &release,
-            &directory.join(
-                record["sources"]["name"]
-                    .as_str()
-                    .context("source archive")?,
-            ),
-        )?;
+        gh.upload(&release, &directory.join(asset_name(record, "sources")?))?;
+        if !record[EXTRA_ANDROID_SOURCES].is_null() {
+            gh.upload(
+                &release,
+                &directory.join(asset_name(record, EXTRA_ANDROID_SOURCES)?),
+            )?;
+        }
         let asset = gh.upload(
             &release,
             &directory.join(record["archive"]["name"].as_str().context("core archive")?),
@@ -953,14 +1215,14 @@ mod tests {
         let record = json!({
             "schema":"shinki.emu.release.v1","component":"rfvp","version":id.version,
             "source_commit":id.commit,"core_source":id.core_source,"identity":id.identity,
+            "target":"x86_64-pc-windows-msvc",
         });
-        require_same_release(&record, &id, "rfvp", &id.version, Path::new("release.json")).unwrap();
+        let target = "x86_64-pc-windows-msvc";
+        let path = Path::new("release.json");
+        require_same_release(&record, &id, "rfvp", target, path, Scope::All).unwrap();
         let mut other = record.clone();
         other["identity"]["adapter"]["commit"] = "f".repeat(40).into();
-        assert!(
-            require_same_release(&other, &id, "rfvp", &id.version, Path::new("release.json"))
-                .is_err()
-        );
+        assert!(require_same_release(&other, &id, "rfvp", target, path, Scope::All).is_err());
         let mut changed = inv.clone();
         let source = changed
             .cores
@@ -985,12 +1247,126 @@ mod tests {
         let mut record = json!({
             "schema":"shinki.emu.release.v1", "component":"manager", "version":id.version,
             "source_commit":id.commit, "core_source":null, "identity":null,
+            "target":"x86_64-pc-windows-msvc",
         });
         let path = Path::new("release.json");
-        assert!(require_same_release(&record, &id, "manager", &id.version, path).is_err());
+        let target = "x86_64-pc-windows-msvc";
+        assert!(require_same_release(&record, &id, "manager", target, path, Scope::All).is_err());
         record["product_version"] = "0.1.0-beta.6".into();
-        assert!(require_same_release(&record, &id, "manager", &id.version, path).is_err());
+        assert!(require_same_release(&record, &id, "manager", target, path, Scope::All).is_err());
         record["product_version"] = "0.1.0-beta.8".into();
-        require_same_release(&record, &id, "manager", &id.version, path).unwrap();
+        require_same_release(&record, &id, "manager", target, path, Scope::All).unwrap();
+    }
+
+    #[test]
+    fn scoped_release_keeps_standalone_android_rows_and_all_keeps_local_manager() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root).unwrap();
+        let targets = |component, scope| {
+            release_targets(&inv, component, scope)
+                .unwrap()
+                .into_iter()
+                .map(|target| target.triple.as_str())
+                .collect::<Vec<_>>()
+        };
+        let scope = Scope::WindowsAndroid;
+        assert_eq!(
+            targets("manager", scope),
+            ["x86_64-pc-windows-msvc", ANDROID_PRIMARY]
+        );
+        assert_eq!(
+            targets("siglus_rs", scope),
+            ["x86_64-pc-windows-msvc", ANDROID_PRIMARY, ANDROID_SECONDARY]
+        );
+        assert!(!scope.local_manager(&inv, "manager"));
+        assert!(Scope::default().local_manager(&inv, "manager"));
+        assert!(targets("manager", Scope::default()).contains(&"aarch64-unknown-linux-ohos"));
+    }
+
+    #[test]
+    fn scoped_ci_rejects_runs_without_scope_or_every_job() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root).unwrap();
+        let mut jobs = inv
+            .job_matrix(true, None)
+            .unwrap()
+            .include
+            .into_iter()
+            .filter(|row| Scope::WindowsAndroid.includes(&row.platform))
+            .map(|row| {
+                json!({
+                    "name":format!("component ({}, {}, {}, {})", row.target, row.component,
+                        row.external, row.runner),
+                    "conclusion":"success"
+                })
+            })
+            .collect::<Vec<_>>();
+        assert!(require_scoped_ci_jobs(&inv, &jobs).is_err());
+        jobs.push(json!({"name":"release-scope (windows-android)","conclusion":"success"}));
+        require_scoped_ci_jobs(&inv, &jobs).unwrap();
+        jobs[0]["conclusion"] = "skipped".into();
+        assert!(require_scoped_ci_jobs(&inv, &jobs).is_err());
+    }
+
+    #[test]
+    fn scoped_publish_requires_both_android_sources_and_disallows_legacy_receipts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root).unwrap();
+        let mut id = identity(&inv, "manager", "0.1.0-beta.9").unwrap();
+        let temp = crate::temporary::directory().unwrap();
+        id.root = temp.path().into();
+        let scope = Scope::WindowsAndroid;
+        let error = |scope| {
+            let err = collect_records(&inv, &id, "manager", scope).err().unwrap();
+            format!("{err:#}")
+        };
+        let write_record = |target: &str, scope: Option<Scope>| {
+            let dir = id.root.join(target);
+            fs::create_dir(&dir).unwrap();
+            for name in ["binary.zip", "sources.zip"] {
+                fs::write(dir.join(name), name).unwrap();
+            }
+            let mut record = json!({
+                "schema":"shinki.emu.release.v1", "component":"manager", "target":target,
+                "version":id.version, "product_version":id.version, "source_commit":id.commit,
+                "core_source":null, "identity":null,
+                "archive":{"name":"binary.zip", "sha256":package::sha256(&dir.join("binary.zip")).unwrap()},
+                "sources":{"name":"sources.zip", "sha256":package::sha256(&dir.join("sources.zip")).unwrap()},
+                "android_targets":[ANDROID_PRIMARY, ANDROID_SECONDARY], "publish_blocked":""
+            });
+            if let Some(scope) = scope {
+                record["release_scope"] = scope.name().into();
+            }
+            let path = dir.join("release.json");
+            fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+            path
+        };
+        let windows = "x86_64-pc-windows-msvc";
+        assert!(error(scope).contains(windows));
+        let legacy = write_record(windows, None);
+        assert!(error(scope).contains("does not match"));
+        assert!(error(Scope::default()).contains("x86_64-unknown-linux-gnu"));
+        fs::remove_dir_all(legacy.parent().unwrap()).unwrap();
+        write_record(windows, Some(scope));
+        assert!(error(scope).contains(ANDROID_PRIMARY));
+        write_record(ANDROID_PRIMARY, Some(scope));
+        assert!(error(scope).contains("requires x86_64 corresponding source"));
+    }
+
+    #[test]
+    fn android_production_apk_must_upgrade_the_public_version() {
+        let version = "0.1.0-beta.9";
+        let signing = format!("Signer #1 certificate SHA-256 digest: {ANDROID_RELEASE_CERT}");
+        let badging = format!(
+            "package: name='org.shinkirou.shinkiemu' versionCode='87' versionName='{version}'\nsdkVersion:'28'\n"
+        );
+        require_android_upgrade(&signing, &badging, version).unwrap();
+        assert!(require_android_upgrade(&signing, &badging.replace("87", "86"), version).is_err());
+        assert!(
+            require_android_upgrade(&signing, &badging.replace("'28'", "'27'"), version).is_err()
+        );
+        assert!(require_android_upgrade(&signing, &badging, "0.1.0-beta.8").is_err());
+        let wrong_signer = format!("Signer #1 certificate SHA-256 digest: {}", "f".repeat(64));
+        assert!(require_android_upgrade(&wrong_signer, &badging, version).is_err());
     }
 }

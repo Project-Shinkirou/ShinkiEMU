@@ -25,10 +25,20 @@ on:
         description: 'Optional exact lowercase 40-hex product SHA for prepare-only; omit to use the workflow commit'
         type: string
         required: false
+      release_scope:
+        description: 'Platforms covered by this release; tag pushes always use all'
+        type: choice
+        options: [all, windows-android]
+        default: all
+      ci_run_id:
+        description: 'Exact-head ci.yml run ID from the same release scope (required for scoped publication)'
+        type: string
+        required: false
 permissions:
   contents: read
 env:
   CARGO_INCREMENTAL: '0'
+  RELEASE_SCOPE: ${{ inputs.release_scope || 'all' }}
 jobs:
   select:
     runs-on: ubuntu-24.04
@@ -53,16 +63,24 @@ jobs:
           INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
           EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
           PREPARE_ONLY: ${{ inputs.prepare_only }}
+          VERIFY_LOCAL_MANAGER: ${{ inputs.verify_local_manager }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:EXPECTED_SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$') { throw 'source_commit must be an exact lowercase 40-hex product SHA' }
           if ($env:INPUT_SOURCE_COMMIT -and $env:PREPARE_ONLY -ne 'true') { throw 'An explicit source_commit requires prepare_only=true' }
+          if ($env:RELEASE_SCOPE -ne 'all') {
+            if ($env:VERIFY_LOCAL_MANAGER -eq 'true') { throw 'OHOS handoff requires release_scope=all' }
+            if ($env:PREPARE_ONLY -ne 'true' -and $env:CI_RUN_ID -notmatch '^[0-9]+$') {
+              throw 'Scoped publication needs an exact-head ci_run_id; use prepare_only to build without publishing'
+            }
+          }
           $sourceCommit = (git rev-parse HEAD).Trim()
           if ($sourceCommit -cne $env:EXPECTED_SOURCE_COMMIT) { throw 'Checked-out product SHA differs from the selected source_commit' }
           "source_commit=$sourceCommit" >> $env:GITHUB_OUTPUT
-          "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; prepare_only=$env:PREPARE_ONLY" >> $env:GITHUB_STEP_SUMMARY
-          $localManager = @((cargo xtask matrix) | Where-Object { $_ -match '^manager\taarch64-unknown-linux-ohos\tsupported\t' }).Count -gt 0
-          $rows = @((cargo xtask matrix --json --ci | ConvertFrom-Json).include)
+          "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; scope=$env:RELEASE_SCOPE; prepare_only=$env:PREPARE_ONLY" >> $env:GITHUB_STEP_SUMMARY
+          $localManager = $false
+          $rows = @((cargo xtask matrix --json --ci --scope $env:RELEASE_SCOPE | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
           $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
           $version = $env:INPUT_VERSION.Trim()
@@ -90,10 +108,11 @@ jobs:
             $own = @($rows | Where-Object { $_.component -ceq $component })
             if ($own.Count -eq 0) { throw "Unknown component '$component', or it has no supported target" }
             if ($own[0].publish_blocked) { throw "$component is publish_blocked: $($own[0].publish_blocked)" }
-            $arguments = @('xtask', 'release', '--component', $component, '--dry-run')
+            $arguments = @('xtask', 'release', '--component', $component, '--dry-run', '--scope', $env:RELEASE_SCOPE)
             if (-not $own[0].external) { $arguments += @('--version', $version) }
             $identity = cargo @arguments | ConvertFrom-Json
             if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match verified component identity' }
+            $localManager = $localManager -or $identity.local_manager
             $versions[$component] = $identity.version
             $components += @{component=$component; version=$identity.version}
           }
@@ -212,7 +231,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
-        run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION
+        run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:SHINKI_EMU_CI_VERSION --scope $env:RELEASE_SCOPE
       - uses: actions/upload-artifact@v7
         with:
           # Component ids and triples never contain '@', so publish can select one component.
@@ -267,9 +286,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: read
     env:
       COMPONENT: ${{ matrix.component }}
       VERSION: ${{ matrix.version }}
+      SHINKI_EMU_RELEASE_CI_RUN_ID: ${{ inputs.ci_run_id }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -299,8 +320,8 @@ jobs:
           while IFS= read -r target; do
             records=(.work/release/*/"$target"/release.json)
             test "${#records[@]}" -eq 1
-            jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" \
-              '.source_commit == $commit and .component == $component and .version == $version and .target == $target' \
+            jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" \
+              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and .release_scope == $scope' \
               "${records[0]}" >/dev/null
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
       - name: Local Manager artifact handoff
@@ -312,13 +333,21 @@ jobs:
         env:
           SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
         run: |
-          echo "Prepared every $COMPONENT platform from actual product/source SHA $SOURCE_COMMIT (workflow dispatch SHA $GITHUB_SHA). No tag or public release was created. Download this run's release-files artifacts and audit their actual binary/source/native/license bytes before publishing from the clean product commit." >> "$GITHUB_STEP_SUMMARY"
+          echo "Prepared every $COMPONENT platform in scope $RELEASE_SCOPE from actual product/source SHA $SOURCE_COMMIT (workflow dispatch SHA $GITHUB_SHA). No tag or public release was created. Download this run's release-files artifacts and audit their actual binary/source/native/license bytes before publishing from the clean product commit." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v6
+        if: inputs.prepare_only != true && matrix.component == 'manager' && env.RELEASE_SCOPE == 'windows-android'
+        with:
+          distribution: temurin
+          java-version: '27'
+      - name: Install Android tools for production APK verification
+        if: inputs.prepare_only != true && matrix.component == 'manager' && env.RELEASE_SCOPE == 'windows-android'
+        run: sdkmanager --sdk_root="$ANDROID_HOME" 'build-tools;37.0.0'
       - name: Publish every prepared platform as one Release
         id: publish
         if: inputs.prepare_only != true && (matrix.component != 'manager' || needs.select.outputs.local_manager != 'true')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --publish
+        run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --scope "$RELEASE_SCOPE" --publish
       - name: Summary
         if: always() && steps.publish.outcome != 'skipped'
         env:

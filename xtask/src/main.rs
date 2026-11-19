@@ -32,15 +32,21 @@ fn run() -> Result<()> {
     let inv = cores::Inventory::load(root)?;
     match cli.command {
         cli::Command::AppleImage { target } => apple::image(root, &target)?,
-        cli::Command::Matrix { json, ci, since } => {
+        cli::Command::Matrix {
+            json,
+            ci,
+            since,
+            scope,
+        } => {
             if json {
                 let affected = since
                     .map(|reference| affected::since(&inv, &reference))
                     .transpose()?;
-                println!(
-                    "{}",
-                    serde_json::to_string(&inv.job_matrix(ci, affected.as_ref())?)?
-                );
+                let mut matrix = inv.job_matrix(ci, affected.as_ref())?;
+                matrix
+                    .include
+                    .retain(|row| scope.unwrap_or_default().includes(&row.platform));
+                println!("{}", serde_json::to_string(&matrix)?);
             } else {
                 for r in inv.rows()? {
                     println!(
@@ -125,18 +131,20 @@ fn run() -> Result<()> {
             component,
             target,
             version,
+            scope,
             publish: _,
             verify_handoff,
             dry_run,
         } => {
+            let scope = scope.unwrap_or_default();
             if dry_run {
-                release::dry_run(&inv, &component, &version)?;
+                release::dry_run(&inv, &component, &version, scope)?;
             } else if verify_handoff {
                 release::verify_ohos_handoff(&inv, &component, &version)?;
             } else if let Some(target) = target {
-                release::prepare(&inv, &target, &component, &version)?;
+                release::prepare(&inv, &target, &component, &version, scope)?;
             } else {
-                release::publish(&inv, &component, &version)?;
+                release::publish(&inv, &component, &version, scope)?;
             }
         }
         cli::Command::Metadata { cmd } => metadata::run(cmd)?,
