@@ -1,8 +1,8 @@
-//! Private, same-parent directory transactions. No private bytes precede the
-//! staging directory's owner-only ACL; publication never replaces a target.
-//! Windows requires owner ACLs and native file IDs. Linux/Android require procfs
-//! for handle paths and kernel/filesystem RENAME_NOREPLACE support; macOS uses
-//! F_GETPATH and RENAME_EXCL. Unsupported native operations fail without fallback.
+//! Same-parent directory transactions; publication never replaces a target.
+//! Use trusted directories: Windows inherits the filesystem's permissions and
+//! uses native file IDs. Linux/Android require procfs for handle paths and
+//! kernel/filesystem RENAME_NOREPLACE support; macOS uses F_GETPATH and
+//! RENAME_EXCL. Unsupported native operations fail without fallback.
 use crate::{PatchError, PatchErrorKind, PatchMode, PatchRequest, error::check_cancelled};
 use cap_fs_ext::DirExt;
 use cap_std::{ambient_authority, fs::Dir};
@@ -51,21 +51,21 @@ impl Transaction {
                 .symlink_metadata(crate::GAME_STATE_DIR)
                 .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
             let state = if state_missing {
-                create_private_directory(&source, Path::new(crate::GAME_STATE_DIR))?
+                create_transaction_directory(&source, Path::new(crate::GAME_STATE_DIR))?
             } else {
                 source
                     .open_dir_nofollow(crate::GAME_STATE_DIR)
-                    .map_err(|e| path_error("cannot open private game state", e))?
+                    .map_err(|e| path_error("cannot open game state", e))?
             };
             let staging_missing = state
                 .symlink_metadata(crate::STAGING_DIR)
                 .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
             let parent = if staging_missing {
-                create_private_directory(&state, Path::new(crate::STAGING_DIR))?
+                create_transaction_directory(&state, Path::new(crate::STAGING_DIR))?
             } else {
                 state
                     .open_dir_nofollow(crate::STAGING_DIR)
-                    .map_err(|e| path_error("cannot open private staging parent", e))?
+                    .map_err(|e| path_error("cannot open staging parent", e))?
             };
             let pins = ancestors(&source)?;
             #[cfg(test)]
@@ -119,7 +119,7 @@ impl Transaction {
         if crate::is_staging_path(&final_dir_path(&parent)?.join(name)) {
             return Err(PatchError::new(
                 PatchErrorKind::InvalidRequest,
-                "output uses the reserved private staging namespace",
+                "output uses the reserved staging namespace",
             ));
         }
         ensure_missing(&parent, Path::new(name))?;
@@ -207,11 +207,6 @@ impl Transaction {
                 .expect("unpublished transaction")
                 .try_clone()?
                 .into_std_file(),
-        )?;
-        #[cfg(windows)]
-        set_staging_hidden(
-            self.staging.as_ref().expect("unpublished transaction"),
-            false,
         )?;
         check_cancelled(cancelled)?;
         let staging = self.staging.take().expect("unpublished transaction");
@@ -348,7 +343,7 @@ pub(crate) fn create_staging(parent: &Dir) -> io::Result<(OsString, Dir)> {
             crate::STAGING_PREFIX,
             std::process::id()
         ));
-        match create_private_directory(parent, Path::new(&name)) {
+        match create_transaction_directory(parent, Path::new(&name)) {
             Ok(dir) => return Ok((name, dir)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
@@ -553,66 +548,16 @@ fn wide(path: &Path) -> io::Result<Vec<u16>> {
 }
 
 #[cfg(windows)]
-pub(crate) fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
-    use windows::{
-        Win32::{
-            Foundation::{HLOCAL, LocalFree},
-            Security::{
-                Authorization::{
-                    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-                },
-                PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
-            },
-            Storage::FileSystem::CreateDirectoryW,
-        },
-        core::PCWSTR,
-    };
+pub(crate) fn create_transaction_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
+    use windows::{Win32::Storage::FileSystem::CreateDirectoryW, core::PCWSTR};
+
     let path = wide(&final_dir_path(parent)?.join(name))?;
-    // OW is Owner Rights. OI+CI make the owner-only ACE inherited by every
-    // descendant. P prevents permissive ACLs from the output parent leaking in.
-    let sddl: Vec<u16> = "D:P(A;OICI;FA;;;OW)"
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
-    let mut descriptor = PSECURITY_DESCRIPTOR::default();
-    unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            PCWSTR(sddl.as_ptr()),
-            SDDL_REVISION_1,
-            &mut descriptor,
-            None,
-        )
-    }
-    .map_err(win_error)?;
-    let attributes = SECURITY_ATTRIBUTES {
-        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: descriptor.0,
-        bInheritHandle: false.into(),
-    };
-    let created =
-        unsafe { CreateDirectoryW(PCWSTR(path.as_ptr()), Some(&attributes)) }.map_err(win_error);
-    unsafe {
-        LocalFree(Some(HLOCAL(descriptor.0)));
-    }
-    created?;
-    let directory = match open_windows_staging(parent, name) {
-        Ok(directory) => directory,
-        Err(error) => {
-            // No handle identity: do not delete a possibly substituted name.
-            eprintln!("SHINKI_EMU_PATCH_CLEANUP_FAILED (staging open failed)");
-            return Err(error);
-        }
-    };
-    if let Err(error) = set_staging_hidden(&directory, true) {
-        if let Err(cleanup_error) = cleanup(directory) {
-            eprintln!(
-                "SHINKI_EMU_PATCH_CLEANUP_FAILED (os_code={:?})",
-                cleanup_error.raw_os_error()
-            );
-        }
-        return Err(error);
-    }
-    Ok(directory)
+    // Let the filesystem inherit the parent's permissions for the new directory.
+    unsafe { CreateDirectoryW(PCWSTR(path.as_ptr()), None) }.map_err(win_error)?;
+    open_windows_staging(parent, name).inspect_err(|_| {
+        // No handle identity: do not delete a possibly substituted name.
+        eprintln!("SHINKI_EMU_PATCH_CLEANUP_FAILED (staging open failed)");
+    })
 }
 
 #[cfg(windows)]
@@ -621,8 +566,7 @@ pub(crate) fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir>
     use windows::{
         Win32::Storage::FileSystem::{
             CreateFileW, DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-            FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES,
-            OPEN_EXISTING,
+            FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
         },
         core::PCWSTR,
     };
@@ -630,7 +574,7 @@ pub(crate) fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir>
     let handle = unsafe {
         CreateFileW(
             PCWSTR(path.as_ptr()),
-            (DELETE | FILE_GENERIC_READ | FILE_WRITE_ATTRIBUTES).0,
+            (DELETE | FILE_GENERIC_READ).0,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             OPEN_EXISTING,
@@ -647,34 +591,8 @@ pub(crate) fn open_windows_staging(parent: &Dir, name: &Path) -> io::Result<Dir>
     Ok(Dir::from_std_file(file))
 }
 
-#[cfg(windows)]
-fn set_staging_hidden(directory: &Dir, hidden: bool) -> io::Result<()> {
-    use std::os::windows::io::AsRawHandle;
-    use windows::Win32::{
-        Foundation::HANDLE,
-        Storage::FileSystem::{
-            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_BASIC_INFO, FileBasicInfo,
-            SetFileInformationByHandle,
-        },
-    };
-    let info = FILE_BASIC_INFO {
-        FileAttributes: FILE_ATTRIBUTE_DIRECTORY.0
-            | if hidden { FILE_ATTRIBUTE_HIDDEN.0 } else { 0 },
-        ..Default::default()
-    };
-    unsafe {
-        SetFileInformationByHandle(
-            HANDLE(directory.as_raw_handle()),
-            FileBasicInfo,
-            (&info as *const FILE_BASIC_INFO).cast(),
-            std::mem::size_of::<FILE_BASIC_INFO>() as u32,
-        )
-    }
-    .map_err(win_error)
-}
-
 #[cfg(unix)]
-pub(crate) fn create_private_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
+pub(crate) fn create_transaction_directory(parent: &Dir, name: &Path) -> io::Result<Dir> {
     use cap_std::fs::{DirBuilder, DirBuilderExt};
     let mut builder = DirBuilder::new();
     builder.mode(0o700);
@@ -787,8 +705,6 @@ fn rename_noreplace_after(
 // recursively deletes an ambient path. Delete descendants through capabilities,
 // and mark the original staging object for deletion through its DELETE handle.
 pub(crate) fn cleanup(directory: Dir) -> io::Result<()> {
-    #[cfg(windows)]
-    set_staging_hidden(&directory, true)?;
     clear_directory(&directory)?;
     #[cfg(windows)]
     {
@@ -1020,41 +936,21 @@ mod tests {
         fixture.assert_no_staging();
     }
 
+    #[cfg(unix)]
     #[test]
+    fn unix_staging_is_owner_only_before_writing() {
+        use std::os::unix::fs::PermissionsExt;
 
-    fn staging_is_private_before_writing_and_descendants_inherit_on_windows() {
         let fixture = Fixture::new();
         let transaction = Transaction::new(&fixture.request).unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                std::fs::metadata(transaction.staging_path())
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o700
-            );
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            let staging = transaction.open_staging().unwrap();
-            assert_owner_acl(&staging.try_clone().unwrap().into_std_file(), true);
-            assert_ne!(
-                std::fs::metadata(transaction.staging_path())
-                    .unwrap()
-                    .file_attributes()
-                    & 2,
-                0
-            );
-            staging.create_dir("child").unwrap();
-            let child = staging.open_dir("child").unwrap();
-            assert_owner_acl(&child.into_std_file(), false);
-            let file = staging.create("private.bin").unwrap();
-            assert_owner_acl(&file.into_std(), false);
-        }
+        assert_eq!(
+            std::fs::metadata(transaction.staging_path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
         drop(transaction);
         fixture.assert_no_staging();
     }
@@ -1169,62 +1065,5 @@ mod tests {
         drop(transaction);
         fixture.assert_inputs();
         fixture.assert_no_staging();
-    }
-
-    #[cfg(windows)]
-    fn assert_owner_acl(file: &File, protected: bool) {
-        use std::os::windows::io::AsRawHandle;
-        use windows::Win32::{
-            Foundation::{HANDLE, HLOCAL, LocalFree},
-            Security::{
-                ACCESS_ALLOWED_ACE, ACL,
-                Authorization::{GetSecurityInfo, SE_FILE_OBJECT},
-                CreateWellKnownSid, DACL_SECURITY_INFORMATION, EqualSid, GetAce,
-                GetSecurityDescriptorControl, PSECURITY_DESCRIPTOR, PSID, SE_DACL_PROTECTED,
-                WinCreatorOwnerRightsSid,
-            },
-        };
-        unsafe {
-            let mut descriptor = PSECURITY_DESCRIPTOR::default();
-            let mut acl: *mut ACL = std::ptr::null_mut();
-            GetSecurityInfo(
-                HANDLE(file.as_raw_handle()),
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                None,
-                None,
-                Some(&mut acl),
-                None,
-                Some(&mut descriptor),
-            )
-            .ok()
-            .unwrap();
-            let mut control = 0;
-            let mut revision = 0;
-            GetSecurityDescriptorControl(descriptor, &mut control, &mut revision).unwrap();
-            assert_eq!(control & SE_DACL_PROTECTED.0 != 0, protected);
-            assert!(!acl.is_null());
-            assert_eq!((*acl).AceCount, 1);
-            let mut ace = std::ptr::null_mut();
-            GetAce(acl, 0, &mut ace).unwrap();
-            let ace = &*(ace as *const ACCESS_ALLOWED_ACE);
-            assert_eq!(ace.Header.AceType, 0);
-            assert_eq!(ace.Mask, 0x001f01ff);
-            if protected {
-                assert_eq!(ace.Header.AceFlags & 3, 3);
-            } else {
-                assert_ne!(ace.Header.AceFlags & 0x10, 0);
-            }
-            let mut sid_buffer = [0u32; 17];
-            let mut sid_length = std::mem::size_of_val(&sid_buffer) as u32;
-            let sid = PSID(sid_buffer.as_mut_ptr().cast());
-            CreateWellKnownSid(WinCreatorOwnerRightsSid, None, Some(sid), &mut sid_length).unwrap();
-            EqualSid(
-                PSID(std::ptr::addr_of!(ace.SidStart).cast_mut().cast()),
-                sid,
-            )
-            .unwrap();
-            LocalFree(Some(HLOCAL(descriptor.0)));
-        }
     }
 }

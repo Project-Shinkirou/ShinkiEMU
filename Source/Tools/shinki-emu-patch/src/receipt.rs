@@ -185,7 +185,7 @@ pub fn read_output_profile(
             Err(error) => {
                 return Err(PatchError::with_source(
                     PatchErrorKind::Path,
-                    "cannot open private game state",
+                    "cannot open game state",
                     error,
                 ));
             }

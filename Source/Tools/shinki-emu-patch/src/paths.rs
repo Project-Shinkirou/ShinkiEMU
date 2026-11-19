@@ -80,8 +80,9 @@ pub(crate) struct DirectoryEntry {
     pub size: u64,
 }
 
-/// The writable constructor accepts only an exclusively owned private staging
-/// directory. This is not isolation against another process running as its owner.
+/// The writable constructor accepts only a directory allocated for the current
+/// transaction. Callers must use a trusted parent; staging does not isolate
+/// writers that already have access through the filesystem.
 /// No operation creates links, removes directories, or renames directories.
 pub(crate) struct AuthorizedRoot {
     dir: Dir,

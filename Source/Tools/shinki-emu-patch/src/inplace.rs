@@ -48,7 +48,7 @@ fn state(game: &Dir) -> Result<Option<Dir>, PatchError> {
     match game.open_dir_nofollow(GAME_STATE_DIR) {
         Ok(dir) => Ok(Some(dir)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(failure("cannot open private game state", error)),
+        Err(error) => Err(failure("cannot open game state", error)),
     }
 }
 
@@ -176,12 +176,12 @@ fn prepare_backup(game: &Dir) -> Result<(Dir, Dir, bool), PatchError> {
         .symlink_metadata(BACKUP_DIR)
         .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
     if created {
-        transaction::create_private_directory(&state, Path::new(BACKUP_DIR))?;
+        transaction::create_transaction_directory(&state, Path::new(BACKUP_DIR))?;
     }
     let parent = state.open_dir_nofollow(BACKUP_DIR)?;
     for _ in 0..128 {
         let name = backup_name();
-        match transaction::create_private_directory(&parent, Path::new(&name)) {
+        match transaction::create_transaction_directory(&parent, Path::new(&name)) {
             Ok(directory) => return Ok((parent, directory, created)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(failure("cannot create backup directory", error)),
@@ -474,7 +474,7 @@ fn newest_backup(parent: &Dir) -> Result<Option<(String, Manifest)>, PatchError>
             {
                 return Err(PatchError::new(
                     PatchErrorKind::Integrity,
-                    "backup targets private game state",
+                    "backup targets reserved game state",
                 ));
             }
             for digest in [&record.original_sha256, &record.new_sha256] {
@@ -579,7 +579,7 @@ pub fn restore_latest(
         .symlink_metadata(STAGING_DIR)
         .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
     let staging_parent = if created_staging {
-        transaction::create_private_directory(&state, Path::new(STAGING_DIR))?
+        transaction::create_transaction_directory(&state, Path::new(STAGING_DIR))?
     } else {
         state.open_dir_nofollow(STAGING_DIR)?
     };

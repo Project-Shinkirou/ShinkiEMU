@@ -1,4 +1,4 @@
-//! Offline native-reader bridge. All native reads use the private staging tree,
+//! Offline native-reader bridge. All native reads use the transaction's staging tree,
 //! never an ambient game path supplied by a recipe. Writes retain capability checks.
 use crate::{
     PatchError, PatchErrorKind, PatchProgress, buffer, error::check_cancelled,

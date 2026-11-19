@@ -113,6 +113,8 @@ Luau 原生 `error(message)` 也会中止并回滚，归为 `SCRIPT`；Manager �
 - **新目录**（默认，`PatchMode::NewDirectory { output }`）：输出一个新的独立游戏目录，目标必须不存在，不复制存档。CLI：`shinki-emu-manager patch apply --script <file> --source <游戏目录> [--patch <补丁输入目录>] --output <新目录>`。
 - **原位覆盖**（`PatchMode::InPlace`）：Manager 补丁页的原位模式，或 CLI `patch apply ... --in-place`（与 `--output` 互斥）。写入前把会被覆盖的原文件备份到 `<game>/.shinki/backup/backup-<UTC 纳秒 hex>-<pid hex>-<计数 hex>/`，目录里的 `manifest.json`（schema `shinki.emu.patch_backup.v1`）记录 `recipe_id` 和被替换的文件；目录名不按补丁 id 分层。回执写到 `<game>/.shinki/patch-result.json`。还原：Manager 里的还原按钮，或 `shinki-emu-manager patch restore --game <游戏目录>`，还原最近一次原位补丁。还原前会核对被补丁写入的文件 hash，用户在补丁后改过的文件不会被覆盖。
 
+Windows 的输出、暂存和备份目录继承父目录权限。请选择可信目录；暂存不会隔离原本就有权写入该目录的其他进程。
+
 `shinki-emu-manager patch list [--scripts <metadata 目录>]` 每行输出一条目录记录（JSON），不执行配方。CLI 失败退出码为 1，取消为 130。
 
 ## 5. 写一个新配方
