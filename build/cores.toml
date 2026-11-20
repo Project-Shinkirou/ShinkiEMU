@@ -55,15 +55,15 @@ features = ["dynamic"]
 dependencies = []
 artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE"]
+licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE", "ThirdParty/siglus_rs/crates/siglus_scene_vm/assets/font-fallback/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/siglus_rs"
-branch = "shinki-headless-null-audio"
-rev = "0e1aa89db3f8e33ac9d0a0b2d43bef51660120dd"
+branch = "shinki-cjk-glyph-fallback"
+rev = "bc3e812578776931273642d5ae67eef0e8b56084"
 upstream = "https://github.com/xmoezzz/siglus_rs"
 release_sequence = 3
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }
