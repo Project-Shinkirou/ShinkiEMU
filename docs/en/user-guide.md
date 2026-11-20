@@ -76,6 +76,12 @@ Settings controls network permission and manual synchronization. A rejected or d
 
 Release selection keeps the full release title, platform list and known release date separate from the stable VNDB rID. Each installed copy has its own pin; refreshing releases keeps that pin even if the provider omits it. Release details are cached for the current session. After restart, an existing pin still appears with its saved title (or just its rID for older records); platforms and date remain unknown until fetched.
 
+## Picture filters
+
+Open **Filters** in the Manager or **Screen filter** from the in-game menu. Use **Add filter** to append a stage, then select it to edit its parameters or use the arrow and bin buttons to move or remove it. Filters run in the displayed order. **Replace chain** applies a single preset in place of the entire chain; **Original** clears it.
+
+**Add filter → Load HLSL effect…** imports a Magpie format-4 effect as a new stage. HLSL effects require DXC. On platforms without GPU filter support, or when DXC is missing for an HLSL-based stage, the catalog shows why the option is unavailable.
+
 ## Patches
 
 Choose a reviewed Luau patch from **Online patches**, or use **Load local patch…** for a `.luau` script or ZIP. Local scripts without catalog binding are marked unreviewed. Catalog patches match a concrete release and verify file fingerprints before writing. Scripts run only when explicitly selected; permitted script downloads use HTTPS and verify declared size and SHA256 before caching under `<game>/.shinki/patch/`. Online entries allow only their declared downloads.

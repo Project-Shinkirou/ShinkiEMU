@@ -416,46 +416,48 @@ fn gamepad_changes_persist_and_game_overrides_copy_the_global_mapping() {
 }
 
 #[test]
-fn filter_changes_roll_back_when_the_renderer_rejects_them() {
+fn filter_changes_keep_the_last_accepted_chain_after_activation_failure() {
+    use shinki_emu_manager::{FilterApplyState, FilterChainEdit};
+    use shinki_emu_manager_core::{FilterSettings, FilterStage};
+
     let root = tempfile::tempdir().unwrap();
     let mut controller = configuration_controller(root.path());
-    let mut applied = Vec::new();
-    controller
-        .set_filter_preset("sharpen", &mut |settings| {
-            applied.push(settings.clone());
-            Ok(())
-        })
-        .unwrap();
+    let mut applied = |_: &FilterSettings| Ok(FilterApplyState::Applied);
+    let mut defer = |_: &FilterSettings| Ok(FilterApplyState::Deferred);
+    controller.set_filter_preset("sharpen", &mut applied).unwrap();
+    controller.set_filter_parameter("filter.strength", "0.6", &mut applied).unwrap();
     let saved = controller.library.filter_settings().unwrap().unwrap();
-    assert_eq!(saved, controller.filter_settings);
-    let mut calls = 0;
-    let error = controller
-        .set_filter_parameter("filter.strength", "0.8", &mut |settings| {
-            calls += 1;
-            if settings.configuration.strength == 0.8 {
-                Err("SHINKI_EMU_FILTER_COMPILE: rejected".into())
-            } else {
-                Ok(())
-            }
-        })
-        .unwrap_err();
-    assert_eq!(error, "SHINKI_EMU_FILTER_COMPILE: rejected");
-    assert_eq!(calls, 2);
+
+    assert!(controller.set_filter_parameter("filter.strength", "0.8", &mut |_| {
+        Err("SHINKI_EMU_FILTER_COMPILE: rejected".into())
+    }).is_err());
     assert_eq!(controller.filter_settings, saved);
     assert_eq!(controller.library.filter_settings().unwrap().unwrap(), saved);
-    assert!(controller
-        .set_filter_parameter("filter.scale", "9", &mut |_| Ok(()))
-        .is_err());
-    controller
-        .set_filter_preset("anime4k", &mut |_| Ok(()))
-        .unwrap();
-    assert_eq!(controller.filter_settings.configuration.scale, 2.0);
-    controller.reset_filter_parameters(&mut |_| Ok(())).unwrap();
-    assert_eq!(
-        controller.library.filter_settings().unwrap().unwrap().configuration.strength,
-        shinki_emu_manager_core::FilterConfiguration::default().strength
-    );
-    assert_eq!(applied.len(), 1);
+
+    controller.edit_filter_chain(FilterChainEdit::Add("scale2x"), &mut defer).unwrap();
+    controller.edit_filter_chain(FilterChainEdit::Move { from: 1, to: 0 }, &mut defer).unwrap();
+    assert_eq!(controller.filter_settings.stages, [
+        FilterStage::Scale2x, FilterStage::Sharpen { strength: 0.6 },
+    ]);
+    assert_eq!(controller.filter_selected_stage, 0);
+    assert!(controller.finish_filter_activation(false).unwrap().is_some());
+    assert_eq!(controller.filter_settings, saved);
+    assert_eq!(controller.library.filter_settings().unwrap().unwrap(), saved);
+
+    controller.edit_filter_chain(FilterChainEdit::Add("scale"), &mut applied).unwrap();
+    controller.set_filter_parameter("filter.scale", "1.5", &mut applied).unwrap();
+    assert!(controller.set_filter_parameter("filter.scale", "9", &mut applied).is_err());
+    controller.edit_filter_chain(FilterChainEdit::Select(0), &mut applied).unwrap();
+    controller.reset_filter_parameters(&mut applied).unwrap();
+    assert_eq!(controller.filter_settings.stages, [
+        FilterStage::Sharpen { strength: 0.35 }, FilterStage::Scale { scale: 1.5 },
+    ]);
+    controller.edit_filter_chain(FilterChainEdit::Remove(0), &mut applied).unwrap();
+    assert_eq!(controller.filter_selected_stage, 0);
+    controller.set_filter_preset("anime4k", &mut applied).unwrap();
+    assert_eq!(controller.library.filter_settings().unwrap().unwrap().stages, [
+        FilterStage::LegacyAnime4k,
+    ]);
 }
 
 fn install_preset(controller: &mut ShinkiEmuManagerController, configuration: &str) {

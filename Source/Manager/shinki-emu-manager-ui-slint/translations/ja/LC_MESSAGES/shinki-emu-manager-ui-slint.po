@@ -2747,3 +2747,56 @@ msgstr "{count} 個のコアファイルを処理できませんでした。コ�
 msgid "所选目录中未识别到游戏引擎，请选择原生游戏目录。"
 msgstr "選択したフォルダーではゲームエンジンを認識できませんでした。ネイティブのゲームフォルダーを選択してください。"
 
+msgid "滤镜链"
+msgstr "フィルターチェーン"
+
+msgid "滤镜按列表顺序处理游戏画面。"
+msgstr "リストの順にゲーム画面へフィルターを適用します。"
+
+msgid "滤镜链为空，显示原画。"
+msgstr "フィルターなし。元の映像を表示します。"
+
+msgid "此滤镜没有可调参数。"
+msgstr "このフィルターに調整できる項目はありません。"
+
+msgid "添加滤镜"
+msgstr "フィルターを追加"
+
+msgid "替换滤镜链"
+msgstr "チェーンを置換"
+
+msgid "选择预设会替换整个滤镜链。"
+msgstr "プリセットを選ぶと、チェーン全体が置き換わります。"
+
+msgid "上移滤镜"
+msgstr "フィルターを上へ移動"
+
+msgid "下移滤镜"
+msgstr "フィルターを下へ移動"
+
+msgid "移除滤镜"
+msgstr "フィルターを削除"
+
+msgid "加载 HLSL 效果…"
+msgstr "HLSL エフェクトを読み込む…"
+
+msgid "外部 HLSL 效果"
+msgstr "外部 HLSL エフェクト"
+
+msgid "原版 Anime4K 修复"
+msgstr "オリジナル版 Anime4K 復元"
+
+msgid "原版 Anime4K 修复 + 2× 放大"
+msgstr "オリジナル版 Anime4K 復元＋2 倍拡大"
+
+msgid "Magpie Anime4K 2×（旧版）"
+msgstr "Magpie Anime4K 2 倍（旧版）"
+
+msgid "找不到 DXC，无法编译 HLSL 滤镜。"
+msgstr "DXC が見つからないため、HLSL フィルターをコンパイルできません。"
+
+msgid "当前平台不支持 GPU 滤镜。"
+msgstr "このプラットフォームでは GPU フィルターを利用できません。"
+
+msgid "此滤镜已停用。"
+msgstr "このフィルターは無効です。"

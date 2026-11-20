@@ -1,5 +1,5 @@
 use roukaku_media_core::Viewport2D;
-use shinki_emu_manager_core::InputMapping;
+use shinki_emu_manager_core::{FilterSettings, InputMapping};
 use std::{
     cell::Cell,
     sync::{
@@ -87,12 +87,11 @@ pub struct StageImageUpdate {
 }
 
 pub trait ShinkiUnderlayRenderer: 'static {
-    fn configure_filter(
-        &mut self,
-        _config: &crate::effects::FilterConfiguration,
-        _source: Option<&str>,
-    ) -> Result<(), String> {
+    fn configure_filter(&mut self, _settings: &FilterSettings) -> Result<FilterApplyState, String> {
         Err("SHINKI_EMU_FILTER_RENDERER_NOT_CONFIGURED".into())
+    }
+    fn take_filter_event(&mut self) -> Option<FilterEvent> {
+        None
     }
     fn setup(&mut self, context: WgpuFrameContext<'_>) -> Result<(), String>;
     fn take_stage_texture_update(&mut self) -> Result<Option<StageTextureUpdate>, String> {
@@ -270,12 +269,19 @@ pub trait ManagerController: 'static {
     fn cancel_file_patch(&mut self) -> Result<ManagerViewModel, String>;
     /// Select the game imported from the finished conversion.
     fn open_patch_output(&mut self) -> Result<ManagerViewModel, String>;
-    fn filter_settings(&self) -> shinki_emu_manager_core::FilterSettings;
-    /// Filter changes are applied through `apply` (the renderer), then saved;
-    /// on failure the previous settings are re-applied and stay persisted.
+    fn filter_settings(&self) -> FilterSettings;
+    /// Roll back a persisted request if its first GPU dispatch rejects it.
+    fn finish_filter_activation(&mut self, accepted: bool) -> Result<Option<ManagerViewModel>, String>;
+    /// Filter changes are prepared on the renderer before persisting. The
+    /// renderer keeps the previous active chain until the new one dispatches.
     fn set_filter_preset(
         &mut self,
         id: &str,
+        apply: FilterApply<'_>,
+    ) -> Result<ManagerViewModel, String>;
+    fn edit_filter_chain(
+        &mut self,
+        edit: FilterChainEdit<'_>,
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String>;
     fn set_filter_parameter(
@@ -471,8 +477,27 @@ pub fn close_requested<C: ManagerController>(controller: &mut C) -> CloseDecisio
     }
 }
 
-pub type FilterApply<'a> =
-    &'a mut dyn FnMut(&shinki_emu_manager_core::FilterSettings) -> Result<(), String>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterApplyState {
+    Applied,
+    Deferred,
+}
+
+pub enum FilterEvent {
+    Activated,
+    Rejected(String),
+    RenderFailed(String),
+}
+
+
+/// Zero-based indices in the user-visible chain, before backend expansion.
+pub enum FilterChainEdit<'a> {
+    Select(i32),
+    Add(&'a str),
+    Remove(i32),
+    Move { from: i32, to: i32 },
+}
+pub type FilterApply<'a> = &'a mut dyn FnMut(&FilterSettings) -> Result<FilterApplyState, String>;
 
 fn fire_host_callback(slot: &HostCallbackSlot) {
     let Some(mut callback) = slot.borrow_mut().take() else {
@@ -828,6 +853,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     {
         let event_controller = controller.clone();
         let event_window = adapter.window().as_weak();
+        let event_adapter = std::rc::Rc::downgrade(&adapter);
         let renderer_callback = renderer.clone();
         #[cfg(not(target_os = "android"))]
         let initial_window_pending = Cell::new(true);
@@ -872,10 +898,14 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                                     window.global::<App>().set_system_dark(dark);
                                 }
                             }
-                            filters::configure(
-                                &mut *renderer_callback.borrow_mut(),
-                                &event_controller.borrow().filter_settings(),
-                            )?;
+                            if let Err(error) = renderer_callback
+                                .borrow_mut()
+                                .configure_filter(&event_controller.borrow().filter_settings())
+                            {
+                                if let Some(window) = event_window.upgrade() {
+                                    report_error(&window, &error);
+                                }
+                            }
                             if let Some(update) =
                                 renderer_callback.borrow_mut().take_stage_texture_update()?
                             {
@@ -902,6 +932,11 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                                     "Manager window disappeared during texture update".to_string()
                                 })?;
                                 apply_stage_texture_update(&window, update)?;
+                            }
+                            let event = renderer.take_filter_event();
+                            drop(renderer);
+                            if let Some(event) = event {
+                                filters::finish_activation(&event_controller, &event_adapter, event);
                             }
                             Ok(())
                         }
@@ -1006,7 +1041,7 @@ fn select_wgpu_backend() -> Result<(), HostError> {
             ..wgpu::Limits::default()
         };
     }
-    settings.device_required_features |= crate::effects::FilterEngine::required_features();
+    settings.device_required_features |= crate::effects::FilterEngine::format4_features();
     let selector = slint::BackendSelector::new();
     // Android has only the android-activity backend, installed by `android_main`;
     // selecting there requests the wgpu-30 Skia surface the stage underlay draws into.

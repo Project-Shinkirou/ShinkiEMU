@@ -1,93 +1,100 @@
 use super::*;
-use shinki_emu_manager::effects::format4::EffectSource;
-use shinki_emu_manager_core::{FilterConfiguration, FilterPreset, FilterSettings};
-use shinki_emu_manager_ui_slint::tr;
+use shinki_emu_manager::{FilterApply, FilterApplyState, FilterChainEdit, effects::format4::EffectSource};
+use shinki_emu_manager_core::{
+    FILTER_DEFAULT_STRENGTH, FILTER_SOURCE_BYTE_LIMIT, FilterSettings, FilterStage,
+};
+use shinki_emu_manager_ui_slint::{FilterStageViewModel, FiltersViewModel, tr};
 
-const MAX_FILTER_SOURCE_BYTES: usize = 1_048_576;
+const UNKNOWN_FIELD: &str = "SHINKI_EMU_FILTER_CONFIG_FIELD_UNKNOWN";
+const INVALID_STAGE: &str = "SHINKI_EMU_FILTER_STAGE_INDEX";
 
-use shinki_emu_manager::FilterApply;
+const BUILTIN_IDS: [&str; 7] = [
+    "scale",
+    "sharpen",
+    "lanczos3",
+    "scale2x",
+    "anime4k_original_restore",
+    "anime4k_original_x2",
+    "anime4k",
+];
 
 impl ShinkiEmuManagerController {
-    pub(super) fn filter_fields(&self) -> Result<Vec<ConfigFieldViewModel>, String> {
-        let config = &self.filter_settings.configuration;
-        let field = |key: &str, label: &str, value: f32, range: (f32, f32, f32)| {
-            ConfigFieldViewModel {
-                key: key.into(),
-                label: label.into(),
-                kind: "float".into(),
-                value: value.to_string(),
-                display_value: value.to_string(),
-                min: range.0.into(),
-                max: range.1.into(),
-                step: range.2.into(),
-                ..ConfigFieldViewModel::default()
-            }
+    pub(super) fn filter_view(&self) -> Result<FiltersViewModel, String> {
+        let stages: Vec<_> = self
+            .filter_settings
+            .stages
+            .iter()
+            .map(|stage| stage_view(stage_id(stage), Some(stage)))
+            .collect();
+        let selected = self.filter_selected_stage;
+        let fields = if stages.get(selected).is_some_and(|stage| stage.available) {
+            filter_fields(&self.filter_settings.stages[selected])?
+        } else {
+            Vec::new()
         };
-        let mut fields = vec![field("filter.scale", tr!("缩放倍率"), config.scale, (1.0, 4.0, 0.25))];
-        fields[0].description = tr!("Anime4K 固定为 2 倍").into();
-        fields.push(field(
-            "filter.strength",
-            tr!("锐化强度"),
-            config.strength,
-            (0.0, 1.0, 0.05),
-        ));
-        if let Some(source) = &self.filter_settings.source {
-            let effect = EffectSource::parse(source).map_err(|e| e.to_string())?;
-            for parameter in effect.parameters {
-                let value = config
-                    .parameters
-                    .get(&parameter.name)
-                    .copied()
-                    .unwrap_or(parameter.default);
-                fields.push(field(
-                    &format!("parameter.{}", parameter.name),
-                    &parameter.label,
-                    value,
-                    (parameter.min, parameter.max, parameter.step),
-                ));
-            }
-        }
-        Ok(fields)
+        Ok(FiltersViewModel {
+            preset: self.filter_preset_id().into(),
+            fields,
+            selected_stage: if stages.is_empty() { -1 } else { selected as i32 },
+            stages,
+            choices: BUILTIN_IDS.iter().map(|&id| stage_view(id, None)).collect(),
+            source_unavailable_reason: unsupported_reason("external").into(),
+        })
     }
 
-    pub(super) fn filter_preset_id(&self) -> &'static str {
-        if self.filter_settings.source.is_some() {
-            return "external";
-        }
-        match self.filter_settings.configuration.preset {
-            FilterPreset::None => "none",
-            FilterPreset::Scale => "scale",
-            FilterPreset::Sharpen => "sharpen",
-            FilterPreset::Anime4kRestoreUpscale => "anime4k",
+    fn filter_preset_id(&self) -> &'static str {
+        match self.filter_settings.stages.as_slice() {
+            [] => "none",
+            [stage] => stage_id(stage),
+            _ => "chain",
         }
     }
 
-    /// Apply a candidate to the renderer, persist it, and restore the previous
-    /// renderer state if either step fails.
+    /// Prepare a candidate before saving it. Keep the last accepted settings
+    /// until the renderer confirms the pending chain's first dispatch.
     fn update_filter(
         &mut self,
-        change: impl FnOnce(&mut FilterSettings) -> Result<(), String>,
+        change: impl FnOnce(&mut FilterSettings, &mut usize) -> Result<(), String>,
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String> {
         let mut candidate = self.filter_settings.clone();
-        change(&mut candidate)?;
-        if candidate.configuration.preset == FilterPreset::Anime4kRestoreUpscale {
-            candidate.configuration.scale = 2.0;
+        let mut selected = self.filter_selected_stage;
+        change(&mut candidate, &mut selected)?;
+        if candidate != self.filter_settings {
+            candidate.validate()?;
+            let state = apply(&candidate)?;
+            if let Err(error) = self.library.save_filter_settings(&candidate) {
+                return Err(match apply(&self.filter_settings) {
+                    Ok(_) => error.to_string(),
+                    Err(rollback) => format!("{error}; {rollback}"),
+                });
+            }
+            let previous = std::mem::replace(&mut self.filter_settings, candidate);
+            match state {
+                FilterApplyState::Applied => self.filter_rollback = None,
+                FilterApplyState::Deferred => {
+                    self.filter_rollback.get_or_insert((previous, self.filter_selected_stage));
+                }
+            }
         }
-        validate_filter(&candidate)?;
-        let result = apply(&candidate).and_then(|()| {
-            self.library
-                .save_filter_settings(&candidate)
-                .map_err(|error| error.to_string())
-        });
-        if let Err(error) = result {
-            return Err(match apply(&self.filter_settings) {
-                Ok(()) => error,
-                Err(rollback) => format!("{error}; {rollback}"),
-            });
-        }
-        self.filter_settings = candidate;
+        self.filter_selected_stage = selected;
         self.model()
+    }
+
+    pub(super) fn finish_filter_activation(
+        &mut self,
+        accepted: bool,
+    ) -> Result<Option<ManagerViewModel>, String> {
+        let Some((previous, selected)) = self.filter_rollback.take() else {
+            return Ok(None);
+        };
+        if accepted {
+            return Ok(None);
+        }
+        self.filter_settings = previous;
+        self.filter_selected_stage = selected;
+        self.library.save_filter_settings(&self.filter_settings).map_err(|error| error.to_string())?;
+        self.model().map(Some)
     }
 
     pub(super) fn set_filter_preset(
@@ -95,21 +102,63 @@ impl ShinkiEmuManagerController {
         id: &str,
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String> {
-        let preset = match id {
-            "none" => FilterPreset::None,
-            "scale" => FilterPreset::Scale,
-            "sharpen" => FilterPreset::Sharpen,
-            "anime4k" => FilterPreset::Anime4kRestoreUpscale,
-            _ => return Err("SHINKI_EMU_FILTER_PRESET_UNSUPPORTED".into()),
-        };
+        if self.filter_preset_id() == id && !matches!(id, "chain" | "external") {
+            return self.model();
+        }
+        let stage = if id == "none" { None } else { Some(builtin_stage(id)?) };
         self.update_filter(
-            |settings| {
-                if settings.configuration.preset == FilterPreset::Anime4kRestoreUpscale {
-                    settings.configuration.scale = FilterConfiguration::default().scale;
+            |settings, selected| {
+                settings.stages.clear();
+                settings.stages.extend(stage);
+                *selected = 0;
+                Ok(())
+            },
+            apply,
+        )
+    }
+
+    pub(super) fn edit_filter_chain(
+        &mut self,
+        edit: FilterChainEdit<'_>,
+        apply: FilterApply<'_>,
+    ) -> Result<ManagerViewModel, String> {
+        self.update_filter(
+            |settings, selected| {
+                let checked = |index| {
+                    usize::try_from(index).ok().filter(|&i| i < settings.stages.len()).ok_or(INVALID_STAGE)
+                };
+                match edit {
+                    FilterChainEdit::Select(index) => *selected = checked(index)?,
+                    FilterChainEdit::Add(preset) => {
+                        *selected = settings.stages.len();
+                        settings.stages.push(builtin_stage(preset)?);
+                    }
+                    FilterChainEdit::Remove(index) => {
+                        let index = checked(index)?;
+                        settings.stages.remove(index);
+                        if index < *selected {
+                            *selected -= 1;
+                        } else {
+                            *selected = (*selected).min(settings.stages.len().saturating_sub(1));
+                        }
+                    }
+                    FilterChainEdit::Move { from, to } => {
+                        let (from, to) = (checked(from)?, checked(to)?);
+                        if from != to {
+                            let stage = settings.stages.remove(from);
+                            settings.stages.insert(to, stage);
+                            *selected = if *selected == from {
+                                to
+                            } else if from < *selected && *selected <= to {
+                                *selected - 1
+                            } else if to <= *selected && *selected < from {
+                                *selected + 1
+                            } else {
+                                *selected
+                            };
+                        }
+                    }
                 }
-                settings.configuration.preset = preset;
-                settings.configuration.parameters.clear();
-                settings.source = None;
                 Ok(())
             },
             apply,
@@ -122,21 +171,27 @@ impl ShinkiEmuManagerController {
         value: &str,
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String> {
-        let value: f32 = value
-            .trim()
-            .parse()
-            .map_err(|_| "SHINKI_EMU_FILTER_PARAMETER")?;
+        let value: f32 = value.trim().parse().map_err(|_| "SHINKI_EMU_FILTER_PARAMETER")?;
         self.update_filter(
-            |settings| {
-                match key {
-                    "filter.scale" => settings.configuration.scale = value,
-                    "filter.strength" => settings.configuration.strength = value,
-                    _ => {
-                        let name = key
-                            .strip_prefix("parameter.")
-                            .ok_or("SHINKI_EMU_FILTER_CONFIG_FIELD_UNKNOWN")?;
-                        settings.configuration.parameters.insert(name.into(), value);
+            |settings, selected| {
+                match (key, settings.stages.get_mut(*selected).ok_or(INVALID_STAGE)?) {
+                    ("filter.scale", FilterStage::Scale { scale } | FilterStage::Lanczos3 { scale }) => {
+                        *scale = value;
                     }
+                    ("filter.strength", FilterStage::Sharpen { strength } | FilterStage::Format4 { strength, .. }) => {
+                        *strength = value;
+                    }
+                    (key, FilterStage::Format4 { parameters, source, .. }) => {
+                        let name = key.strip_prefix("parameter.").ok_or(UNKNOWN_FIELD)?;
+                        let effect = EffectSource::parse(source).map_err(|error| error.to_string())?;
+                        let parameter = effect.parameters.iter().find(|parameter| parameter.name == name)
+                            .ok_or(UNKNOWN_FIELD)?;
+                        if !(parameter.min..=parameter.max).contains(&value) {
+                            return Err("SHINKI_EMU_FILTER_PARAMETER_RANGE".into());
+                        }
+                        parameters.insert(name.into(), value);
+                    }
+                    _ => return Err(UNKNOWN_FIELD.into()),
                 }
                 Ok(())
             },
@@ -149,11 +204,15 @@ impl ShinkiEmuManagerController {
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String> {
         self.update_filter(
-            |settings| {
-                let defaults = FilterConfiguration::default();
-                settings.configuration.scale = defaults.scale;
-                settings.configuration.strength = defaults.strength;
-                settings.configuration.parameters.clear();
+            |settings, selected| {
+                if let Some(stage) = settings.stages.get_mut(*selected) {
+                    if let FilterStage::Format4 { strength, parameters, .. } = stage {
+                        *strength = FILTER_DEFAULT_STRENGTH;
+                        parameters.clear();
+                    } else {
+                        *stage = builtin_stage(stage_id(stage))?;
+                    }
+                }
                 Ok(())
             },
             apply,
@@ -168,17 +227,22 @@ impl ShinkiEmuManagerController {
         use std::io::Read;
         let file = fs::File::open(path).map_err(|_| "SHINKI_EMU_FILTER_SOURCE_OPEN")?;
         let mut bytes = Vec::new();
-        file.take(MAX_FILTER_SOURCE_BYTES as u64 + 1)
+        file.take(FILTER_SOURCE_BYTE_LIMIT as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| "SHINKI_EMU_FILTER_SOURCE_READ")?;
-        if bytes.len() > MAX_FILTER_SOURCE_BYTES {
+        if bytes.len() > FILTER_SOURCE_BYTE_LIMIT {
             return Err("SHINKI_EMU_FILTER_SOURCE_SIZE".into());
         }
         let source = String::from_utf8(bytes).map_err(|_| "SHINKI_EMU_FILTER_SOURCE_UTF8")?;
         self.update_filter(
-            |settings| {
-                settings.configuration.parameters.clear();
-                settings.source = Some(source);
+            |settings, selected| {
+                *selected = settings.stages.len();
+                settings.stages.push(FilterStage::Format4 {
+                    source,
+                    strength: FILTER_DEFAULT_STRENGTH,
+                    parameters: BTreeMap::new(),
+                    disabled: false,
+                });
                 Ok(())
             },
             apply,
@@ -186,21 +250,119 @@ impl ShinkiEmuManagerController {
     }
 }
 
-fn validate_filter(settings: &FilterSettings) -> Result<(), String> {
-    settings.validate()?;
-    let Some(source) = &settings.source else {
-        return Ok(());
+fn filter_fields(stage: &FilterStage) -> Result<Vec<ConfigFieldViewModel>, String> {
+    let field = |key: &str, label: &str, value: f32, range: (f32, f32, f32)| {
+        ConfigFieldViewModel {
+            key: key.into(),
+            label: label.into(),
+            kind: "float".into(),
+            value: value.to_string(),
+            display_value: value.to_string(),
+            min: range.0.into(),
+            max: range.1.into(),
+            step: range.2.into(),
+            ..ConfigFieldViewModel::default()
+        }
     };
-    let effect = EffectSource::parse(source).map_err(|e| e.to_string())?;
-    for (name, value) in &settings.configuration.parameters {
-        let parameter = effect
-            .parameters
-            .iter()
-            .find(|parameter| parameter.name == *name)
-            .ok_or("SHINKI_EMU_FILTER_PARAMETER_UNKNOWN")?;
-        if *value < parameter.min || *value > parameter.max {
-            return Err("SHINKI_EMU_FILTER_PARAMETER_RANGE".into());
+    let strength_field = |strength| {
+        field("filter.strength", tr!("锐化强度"), strength, (0.0, 1.0, 0.05))
+    };
+    Ok(match stage {
+        FilterStage::Scale { scale } | FilterStage::Lanczos3 { scale } => {
+            vec![field("filter.scale", tr!("缩放倍率"), *scale, (1.0, 4.0, 0.25))]
+        }
+        FilterStage::Sharpen { strength } => vec![strength_field(*strength)],
+        FilterStage::Format4 { source, strength, parameters, .. } => {
+            let effect = EffectSource::parse(source).map_err(|error| error.to_string())?;
+            let mut fields = Vec::with_capacity(1 + effect.parameters.len());
+            fields.push(strength_field(*strength));
+            for parameter in effect.parameters {
+                let value = parameters.get(&parameter.name).copied().unwrap_or(parameter.default);
+                fields.push(field(
+                    &format!("parameter.{}", parameter.name),
+                    &parameter.label,
+                    value,
+                    (parameter.min, parameter.max, parameter.step),
+                ));
+            }
+            fields
+        }
+        _ => Vec::new(),
+    })
+}
+
+fn unsupported_reason(id: &str) -> &'static str {
+    if cfg!(target_env = "ohos") {
+        return tr!("当前平台不支持 GPU 滤镜。");
+    }
+    if matches!(id, "scale" | "sharpen" | "anime4k" | "external") {
+        // The compiler path is fixed for this process. A present library is
+        // only a prerequisite; shader validation and activation still run.
+        static DXC_PRESENT: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| crate::stage_renderer::configured_dxc_path().is_file());
+        if !*DXC_PRESENT {
+            return tr!("找不到 DXC，无法编译 HLSL 滤镜。");
         }
     }
-    Ok(())
+    ""
+}
+
+fn stage_view(id: &str, stage: Option<&FilterStage>) -> FilterStageViewModel {
+    let mut reason = unsupported_reason(id);
+    let label = match (id, stage) {
+        ("scale", _) => tr!("平滑放大"),
+        ("sharpen", _) => tr!("锐化"),
+        ("lanczos3", _) => "Lanczos3",
+        ("scale2x", _) => "Scale2x",
+        ("anime4k_original_restore", _) => tr!("原版 Anime4K 修复"),
+        ("anime4k_original_x2", _) => tr!("原版 Anime4K 修复 + 2× 放大"),
+        ("anime4k", _) => tr!("Magpie Anime4K 2×（旧版）"),
+        ("external", Some(FilterStage::Format4 { source, disabled, .. })) => {
+            if *disabled {
+                reason = tr!("此滤镜已停用。");
+            }
+            // Only the optional display name is needed here; the renderer
+            // validates the format, and field extraction parses the selected stage.
+            source
+                .lines()
+                .map(str::trim)
+                .find_map(|line| line.strip_prefix("//!SORT_NAME "))
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| tr!("外部 HLSL 效果"))
+        }
+        _ => unreachable!("unknown stage id {id}"),
+    };
+    FilterStageViewModel {
+        id: id.into(),
+        label: label.into(),
+        available: reason.is_empty(),
+        unavailable_reason: reason.into(),
+    }
+}
+
+fn builtin_stage(id: &str) -> Result<FilterStage, String> {
+    Ok(match id {
+        "scale" => FilterStage::Scale { scale: 1.0 },
+        "sharpen" => FilterStage::Sharpen { strength: FILTER_DEFAULT_STRENGTH },
+        "anime4k" => FilterStage::LegacyAnime4k,
+        "lanczos3" => FilterStage::Lanczos3 { scale: 2.0 },
+        "scale2x" => FilterStage::Scale2x,
+        "anime4k_original_restore" => FilterStage::Anime4kOriginalRestore,
+        "anime4k_original_x2" => FilterStage::Anime4kOriginalX2,
+        _ => return Err("SHINKI_EMU_FILTER_PRESET_UNSUPPORTED".into()),
+    })
+}
+
+fn stage_id(stage: &FilterStage) -> &'static str {
+    match stage {
+        FilterStage::Scale { .. } => "scale",
+        FilterStage::Sharpen { .. } => "sharpen",
+        FilterStage::LegacyAnime4k => "anime4k",
+        FilterStage::Lanczos3 { .. } => "lanczos3",
+        FilterStage::Scale2x => "scale2x",
+        FilterStage::Anime4kOriginalRestore => "anime4k_original_restore",
+        FilterStage::Anime4kOriginalX2 => "anime4k_original_x2",
+        FilterStage::Format4 { .. } => "external",
+    }
 }

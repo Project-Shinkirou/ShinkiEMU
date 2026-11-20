@@ -136,6 +136,8 @@ struct ShinkiEmuManagerController {
     metadata_sync: metadata_sync::SyncState,
     pinned_releases: BTreeMap<String, GameRelease>,
     filter_settings: shinki_emu_manager_core::FilterSettings,
+    filter_selected_stage: usize,
+    filter_rollback: Option<(shinki_emu_manager_core::FilterSettings, usize)>,
     input_mapping: shinki_emu_manager_core::InputMapping,
     appearance: shinki_emu_manager_core::AppearanceSettings,
     session_mapping: Option<shinki_emu_manager_core::InputMapping>,

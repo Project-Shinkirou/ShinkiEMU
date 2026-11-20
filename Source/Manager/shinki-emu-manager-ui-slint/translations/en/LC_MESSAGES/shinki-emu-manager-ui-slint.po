@@ -2752,3 +2752,56 @@ msgstr "{count} core files failed. Check core diagnostics, then restart the app 
 msgid "所选目录中未识别到游戏引擎，请选择原生游戏目录。"
 msgstr "No game engine was recognized in the selected folder. Choose a native game folder."
 
+msgid "滤镜链"
+msgstr "Filter chain"
+
+msgid "滤镜按列表顺序处理游戏画面。"
+msgstr "Filters process the game image in the order shown."
+
+msgid "滤镜链为空，显示原画。"
+msgstr "No filters. Showing the original image."
+
+msgid "此滤镜没有可调参数。"
+msgstr "This filter has no adjustable parameters."
+
+msgid "添加滤镜"
+msgstr "Add filter"
+
+msgid "替换滤镜链"
+msgstr "Replace chain"
+
+msgid "选择预设会替换整个滤镜链。"
+msgstr "Choosing a preset replaces the entire chain."
+
+msgid "上移滤镜"
+msgstr "Move filter up"
+
+msgid "下移滤镜"
+msgstr "Move filter down"
+
+msgid "移除滤镜"
+msgstr "Remove filter"
+
+msgid "加载 HLSL 效果…"
+msgstr "Load HLSL effect…"
+
+msgid "外部 HLSL 效果"
+msgstr "External HLSL effect"
+
+msgid "原版 Anime4K 修复"
+msgstr "Original Anime4K Restore"
+
+msgid "原版 Anime4K 修复 + 2× 放大"
+msgstr "Original Anime4K Restore + 2× Upscale"
+
+msgid "Magpie Anime4K 2×（旧版）"
+msgstr "Magpie Anime4K 2× (legacy)"
+
+msgid "找不到 DXC，无法编译 HLSL 滤镜。"
+msgstr "DXC is missing and HLSL filters cannot be compiled."
+
+msgid "当前平台不支持 GPU 滤镜。"
+msgstr "GPU filters are unavailable on this platform."
+
+msgid "此滤镜已停用。"
+msgstr "This filter is disabled."

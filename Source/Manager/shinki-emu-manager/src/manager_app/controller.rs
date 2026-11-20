@@ -297,12 +297,22 @@ impl ManagerController for ShinkiEmuManagerController {
     fn filter_settings(&self) -> shinki_emu_manager_core::FilterSettings {
         self.filter_settings.clone()
     }
+    fn finish_filter_activation(&mut self, accepted: bool) -> Result<Option<ManagerViewModel>, String> {
+        ShinkiEmuManagerController::finish_filter_activation(self, accepted)
+    }
     fn set_filter_preset(
         &mut self,
         id: &str,
         apply: shinki_emu_manager::FilterApply<'_>,
     ) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::set_filter_preset(self, id, apply)
+    }
+    fn edit_filter_chain(
+        &mut self,
+        edit: shinki_emu_manager::FilterChainEdit<'_>,
+        apply: shinki_emu_manager::FilterApply<'_>,
+    ) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::edit_filter_chain(self, edit, apply)
     }
     fn set_filter_parameter(
         &mut self,

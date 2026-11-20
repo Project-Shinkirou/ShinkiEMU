@@ -1,0 +1,4 @@
+*.glsl text eol=lf
+*.wgsl text eol=lf
+LICENSE text eol=lf
+parity.txt text eol=lf

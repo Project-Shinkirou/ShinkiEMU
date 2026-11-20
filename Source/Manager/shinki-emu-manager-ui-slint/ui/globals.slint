@@ -641,9 +641,24 @@ export global Dialogs {
     callback retry();
 }
 
+export struct FilterStageItem {
+    id: string,
+    label: string,
+    available: bool,
+    unavailable-reason: string,
+}
+
 export global Filters {
     in-out property <string> preset: "none";
     in-out property <[ConfigField]> fields;
+    in-out property <[FilterStageItem]> stages;
+    in-out property <int> selected-stage: -1;
+    in-out property <[FilterStageItem]> choices;
+    in-out property <string> source-unavailable-reason;
+    callback select-stage(int);
+    callback add-stage(string);
+    callback remove-stage(int);
+    callback move-stage(int, int);
     callback set-preset(string);
     callback field-changed(string, string);
     callback reset-parameters();

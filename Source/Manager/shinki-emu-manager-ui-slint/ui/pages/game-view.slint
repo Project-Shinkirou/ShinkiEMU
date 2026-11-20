@@ -1,14 +1,13 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, Icon, IconButton, TextButton, OutlineButton,
+    MaterialPalette, MaterialText, MaterialTypography, Icon, IconButton, OutlineButton,
     CircularProgressIndicator, HorizontalDivider, ScrollView,
 } from "@material";
-import { Session, Selection, Dialogs, Filters, Notices } from "../globals.slint";
+import { Session, Selection, Dialogs, Notices } from "../globals.slint";
 import { Icons } from "../icons.slint";
-import { ConfigFieldList } from "../components/config-field.slint";
+import { FilterChainScroll } from "../components/filter-chain.slint";
 import { Theme } from "../theme.slint";
 
-// One row of the quick menu or of the filter preset list. Focus is driven by
-// the owner through `wanted`, so arrow keys can move between repeated rows.
+// The owner drives focus through `wanted`, so arrow keys can move between rows.
 component MenuRow {
     in property <image> icon;
     in property <string> label;
@@ -17,9 +16,6 @@ component MenuRow {
     in property <bool> wanted;
     in property <bool> checkable;
     in property <bool> selected;
-    // Main menu rows keep Tab inside the menu; preset rows let Tab continue
-    // to the parameter controls below them.
-    in property <bool> trap-tab: true;
     // Short windows (phones in portrait) use 48px rows so every entry fits.
     in property <bool> dense;
     callback activated();
@@ -124,11 +120,11 @@ component MenuRow {
                 root.step(1);
                 return accept;
             }
-            if root.trap-tab && event.text == Key.Backtab {
+            if event.text == Key.Backtab {
                 root.step(-1);
                 return accept;
             }
-            if root.trap-tab && event.text == Key.Tab {
+            if event.text == Key.Tab {
                 root.step(event.modifiers.shift ? -1 : 1);
                 return accept;
             }
@@ -202,7 +198,6 @@ export component GameView inherits Rectangle {
     property <int> leave-index: root.action-count + 3;
     property <int> menu-count: root.action-count + 4;
     property <int> menu-focus: 0;
-    property <int> filter-focus: 0;
     property <length> menu-w: min(360px, root.width);
     property <bool> dense-menu: root.height < 720px;
 
@@ -229,13 +224,6 @@ export component GameView inherits Rectangle {
         idle-timer.restart();
     }
 
-    pure function preset-index() -> int {
-        return Filters.preset == "scale" ? 1
-            : Filters.preset == "sharpen" ? 2
-            : Filters.preset == "anime4k" ? 3
-            : Filters.preset == "external" ? 4 : 0;
-    }
-
     function open-menu() {
         Session.menu-page = "main";
         Session.menu-open = true;
@@ -247,7 +235,6 @@ export component GameView inherits Rectangle {
     }
 
     function show-filters() {
-        root.filter-focus = root.preset-index();
         Session.menu-page = "filters";
     }
 
@@ -261,14 +248,8 @@ export component GameView inherits Rectangle {
         root.menu-focus = next < 0 ? root.menu-count - 1 : next >= root.menu-count ? 0 : next;
     }
 
-    function move-filter-focus(delta: int) {
-        let next = root.filter-focus + delta;
-        root.filter-focus = next < 0 ? 4 : next > 4 ? 0 : next;
-    }
-
     init => {
         root.push-pointer();
-        root.filter-focus = root.preset-index();
         if !Session.menu-open && !root.opening {
             game-focus.focus();
         }
@@ -282,13 +263,11 @@ export component GameView inherits Rectangle {
             game-focus.focus();
         }
     }
-    // The host may open or close the menu too; focus always starts on
-    // 继续游戏 (or the active preset) and returns to the game on close.
+    // The main menu focuses Continue; closing the menu returns focus to the game.
     property <bool> menu-open: Session.menu-open;
     changed menu-open => {
         if root.menu-open {
             root.menu-focus = 0;
-            root.filter-focus = root.preset-index();
         } else if !root.opening {
             game-focus.focus();
         }
@@ -746,150 +725,10 @@ export component GameView inherits Rectangle {
                     }
                 }
 
-                filter-scroll := ScrollView {
-
-                    function reveal(top: length, size: length) {
-                        if top < -self.content-y {
-                            self.content-y = -top;
-                        } else if top + size > -self.content-y + self.visible-height {
-                            self.content-y = self.visible-height - top - size;
-                        }
-                    }
+                filter-scroll := FilterChainScroll {
+                    in-game: true;
                     vertical-stretch: 1;
-
-                    VerticalLayout {
-                        width: filter-scroll.visible-width;
-                        spacing: 0px;
-                        alignment: start;
-
-                        HorizontalLayout {
-                            padding-left: 28px;
-                            padding-right: 28px;
-                            MaterialText {
-                                text: @tr("预设");
-                                style: MaterialTypography.title-small;
-                                color: MaterialPalette.primary;
-                                height: 32px;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        MenuRow {
-                            dense: root.dense-menu;
-                            icon: Icons.image;
-                            label: @tr("原画");
-                            supporting: @tr("不做处理");
-                            checkable: true;
-                            selected: Filters.preset == "none";
-                            trap-tab: false;
-                            wanted: root.filter-focus == 0;
-                            activated => { Filters.set-preset("none"); }
-                            step(delta) => { root.move-filter-focus(delta); }
-                            focused(top, size) => {
-                                root.filter-focus = 0;
-                                filter-scroll.reveal(top, size);
-                            }
-                        }
-                        MenuRow {
-                            dense: root.dense-menu;
-                            icon: Icons.fullscreen;
-                            label: @tr("平滑放大");
-                            supporting: @tr("按倍率放大画面");
-                            checkable: true;
-                            selected: Filters.preset == "scale";
-                            trap-tab: false;
-                            wanted: root.filter-focus == 1;
-                            activated => { Filters.set-preset("scale"); }
-                            step(delta) => { root.move-filter-focus(delta); }
-                            focused(top, size) => {
-                                root.filter-focus = 1;
-                                filter-scroll.reveal(top, size);
-                            }
-                        }
-                        MenuRow {
-                            dense: root.dense-menu;
-                            icon: Icons.tune;
-                            label: @tr("锐化");
-                            supporting: @tr("增强线条边缘");
-                            checkable: true;
-                            selected: Filters.preset == "sharpen";
-                            trap-tab: false;
-                            wanted: root.filter-focus == 2;
-                            activated => { Filters.set-preset("sharpen"); }
-                            step(delta) => { root.move-filter-focus(delta); }
-                            focused(top, size) => {
-                                root.filter-focus = 2;
-                                filter-scroll.reveal(top, size);
-                            }
-                        }
-                        MenuRow {
-                            dense: root.dense-menu;
-                            icon: Icons.filter-vintage;
-                            label: "Anime4K 2×";
-                            supporting: @tr("修复线条并放大 2 倍");
-                            checkable: true;
-                            selected: Filters.preset == "anime4k";
-                            trap-tab: false;
-                            wanted: root.filter-focus == 3;
-                            activated => { Filters.set-preset("anime4k"); }
-                            step(delta) => { root.move-filter-focus(delta); }
-                            focused(top, size) => {
-                                root.filter-focus = 3;
-                                filter-scroll.reveal(top, size);
-                            }
-                        }
-                        MenuRow {
-                            dense: root.dense-menu;
-                            icon: Icons.upload-file;
-                            label: @tr("外部效果…");
-                            supporting: @tr("从文件加载 HLSL 效果");
-                            checkable: true;
-                            selected: Filters.preset == "external";
-                            trap-tab: false;
-                            wanted: root.filter-focus == 4;
-                            activated => { Filters.load-source(); }
-                            step(delta) => { root.move-filter-focus(delta); }
-                            focused(top, size) => {
-                                root.filter-focus = 4;
-                                filter-scroll.reveal(top, size);
-                            }
-                        }
-
-                        MenuDivider { }
-
-                        VerticalLayout {
-                            padding-left: 28px;
-                            padding-right: 28px;
-                            spacing: 8px;
-
-                            MaterialText {
-                                text: @tr("效果参数");
-                                style: MaterialTypography.title-small;
-                                color: MaterialPalette.primary;
-                            }
-                            if Filters.fields.length == 0 : MaterialText {
-                                text: @tr("当前预设没有可调参数");
-                                style: MaterialTypography.body-medium;
-                                color: MaterialPalette.on-surface-variant;
-                                wrap: word-wrap;
-                                overflow: clip;
-                            }
-                            ConfigFieldList {
-                                fields: Filters.fields;
-                                show-groups: false;
-                                changed(key, value) => { Filters.field-changed(key, value); }
-                            }
-                            HorizontalLayout {
-                                alignment: start;
-                                TextButton {
-                                    text: @tr("恢复默认参数");
-                                    icon: Icons.restart-alt;
-                                    enabled: Filters.fields.length > 0;
-                                    clicked => { Filters.reset-parameters(); }
-                                }
-                            }
-                        }
-                    }
+                    init => { self.focus(); }
                 }
             }
         }

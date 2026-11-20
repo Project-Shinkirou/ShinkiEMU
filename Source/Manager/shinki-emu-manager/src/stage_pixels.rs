@@ -20,6 +20,10 @@ fn flags(info: FrameInfo) -> u32 {
         )) << 2)
 }
 
+pub(super) fn requires_conversion(info: FrameInfo) -> bool {
+    flags(info) != 0 || input_format(info.format) != wgpu::TextureFormat::Rgba8Unorm
+}
+
 #[derive(Default)]
 pub(super) struct PixelPresentation {
     resources: Option<Resources>,
@@ -36,17 +40,15 @@ struct Resources {
 }
 
 impl PixelPresentation {
-    pub(super) fn apply(
+    pub(super) fn encode(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         input: &wgpu::Texture,
         info: FrameInfo,
     ) -> wgpu::Texture {
         let flags = flags(info);
-        if flags == 0 && input.format() == wgpu::TextureFormat::Rgba8Unorm {
-            return input.clone();
-        }
         let resources = self.resources.get_or_insert_with(|| Resources::new(device));
         if resources.flags != Some(flags) {
             queue.write_buffer(&resources.uniform, 0, &flags.to_le_bytes());
@@ -91,7 +93,6 @@ impl PixelPresentation {
             resources.input = Some(input.clone());
         }
         let (texture, view) = resources.output.as_ref().expect("pixel output prepared");
-        let mut encoder = device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shinki-emu-native-pixel-pass"),
@@ -114,7 +115,6 @@ impl PixelPresentation {
             );
             pass.draw(0..3, 0..1);
         }
-        queue.submit([encoder.finish()]);
         texture.clone()
     }
 }

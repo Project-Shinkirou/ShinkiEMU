@@ -1,0 +1,307 @@
+import {
+    MaterialPalette, MaterialText, MaterialTypography, Icon, IconButton,
+    ScrollView, TextButton,
+} from "@material";
+import { Filters } from "../globals.slint";
+import { Icons } from "../icons.slint";
+import { SettingGroup } from "../pages/settings/common.slint";
+import { ConfigFieldList } from "./config-field.slint";
+
+component FilterEntry inherits Rectangle {
+    in property <string> label;
+    in property <string> reason;
+    in property <image> icon;
+    in property <string> number;
+    in property <bool> outlined;
+    in property <bool> enabled: true;
+    in property <bool> checkable;
+    in property <bool> selected;
+    callback activated();
+    callback focused(length, length);
+
+    min-height: max(48px, row.min-height);
+    preferred-height: max(48px, row.preferred-height);
+    border-radius: 10px;
+    background: root.selected ? MaterialPalette.secondary-container
+        : touch.pressed ? MaterialPalette.surface-container-highest
+        : root.enabled && touch.has-hover ? MaterialPalette.surface-container-high : transparent;
+    border-width: keys.has-focus ? 2px : root.outlined ? 1px : 0px;
+    border-color: keys.has-focus ? MaterialPalette.primary : MaterialPalette.outline;
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: root.number == "" ? root.label : root.number + " " + root.label;
+    accessible-description: root.reason;
+    accessible-enabled: root.enabled;
+    accessible-checkable: root.checkable || root.outlined;
+    accessible-checked: root.selected;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+
+    row := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 8px;
+        alignment: stretch;
+
+        if root.number != "" : MaterialText {
+            width: 24px;
+            text: root.number;
+            style: MaterialTypography.label-large;
+            color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.primary;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+        if root.icon.width > 0 : VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            Icon {
+                width: 20px;
+                height: 20px;
+                source: root.icon;
+                colorize: root.enabled ? MaterialPalette.primary : MaterialPalette.on-surface-variant;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            MaterialText {
+                text: root.label;
+                style: MaterialTypography.body-medium;
+                color: root.selected ? MaterialPalette.on-secondary-container
+                    : root.enabled ? MaterialPalette.on-surface : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+            if root.reason != "" : MaterialText {
+                text: root.reason;
+                style: MaterialTypography.body-small;
+                color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+        }
+        if root.checkable : VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            Icon {
+                width: 18px;
+                height: 18px;
+                source: Icons.check;
+                colorize: MaterialPalette.on-secondary-container;
+                opacity: root.selected ? 1 : 0;
+            }
+        }
+    }
+
+    keys := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.activated();
+                return accept;
+            }
+            reject
+        }
+        focus-gained(reason) => { root.focused(root.absolute-position.y, root.height); }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            root.activated();
+        }
+    }
+}
+
+component FilterHint inherits MaterialText {
+    style: MaterialTypography.body-medium;
+    color: MaterialPalette.on-surface-variant;
+    wrap: word-wrap;
+    overflow: clip;
+}
+
+export component FilterChainScroll inherits ScrollView {
+    in property <bool> in-game;
+    property <length> pad: root.in-game || root.width < 600px ? 16px : 24px;
+    property <string> expanded;
+    property <bool> has-selection: Filters.selected-stage >= 0 && Filters.selected-stage < Filters.stages.length;
+    horizontal-scrollbar-policy: always-off;
+    content-width: self.visible-width;
+    content-height: max(self.visible-height, content.preferred-height);
+    forward-focus: add-toggle;
+    property <length> extent: root.content-height;
+    changed extent => {
+        root.content-y = max(root.visible-height - root.content-height, root.content-y);
+    }
+
+    function reveal(top: length, size: length) {
+        let relative = top - root.absolute-position.y;
+        if relative < 0px {
+            root.content-y = min(0px, root.content-y - relative);
+        } else if relative + size > root.visible-height {
+            root.content-y = max(root.visible-height - root.content-height,
+                root.content-y + root.visible-height - relative - size);
+        }
+    }
+
+    function close-options() {
+        let target = root.expanded;
+        root.expanded = "";
+        if target == "add" { add-toggle.focus(); }
+        if target == "replace" { replace-toggle.focus(); }
+    }
+
+    content := VerticalLayout {
+        x: root.pad;
+        y: 0px;
+        width: min(760px, root.visible-width - 2 * root.pad);
+        height: self.preferred-height;
+        padding-top: root.pad;
+        padding-bottom: 24px;
+        spacing: 16px;
+        alignment: start;
+
+        SettingGroup {
+            title: @tr("滤镜链");
+            description: root.in-game ? "" : @tr("滤镜按列表顺序处理游戏画面。");
+            flush: true;
+
+            if root.has-selection : HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                alignment: start;
+                IconButton {
+                    width: 48px;
+                    height: 48px;
+                    icon: Icons.expand-less;
+                    tooltip: @tr("上移滤镜");
+                    enabled: Filters.selected-stage > 0;
+                    clicked => { Filters.move-stage(Filters.selected-stage, Filters.selected-stage - 1); }
+                }
+                IconButton {
+                    width: 48px;
+                    height: 48px;
+                    icon: Icons.expand-more;
+                    tooltip: @tr("下移滤镜");
+                    enabled: Filters.selected-stage + 1 < Filters.stages.length;
+                    clicked => { Filters.move-stage(Filters.selected-stage, Filters.selected-stage + 1); }
+                }
+                IconButton {
+                    width: 48px;
+                    height: 48px;
+                    icon: Icons.delete;
+                    tooltip: @tr("移除滤镜");
+                    clicked => { Filters.remove-stage(Filters.selected-stage); }
+                }
+            }
+            if Filters.stages.length == 0 : HorizontalLayout {
+                padding: 12px;
+                FilterHint { text: @tr("滤镜链为空，显示原画。"); }
+            }
+            for stage[index] in Filters.stages : FilterEntry {
+                number: (index + 1);
+                label: stage.label;
+                reason: stage.unavailable-reason;
+                checkable: true;
+                selected: Filters.selected-stage == index;
+                activated => { Filters.select-stage(index); }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            add-toggle := FilterEntry {
+                horizontal-stretch: 1;
+                outlined: true;
+                label: @tr("添加滤镜");
+                icon: root.expanded == "add" ? Icons.expand-less : Icons.add;
+                selected: root.expanded == "add";
+                activated => { root.expanded = root.expanded == "add" ? "" : "add"; }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+            replace-toggle := FilterEntry {
+                horizontal-stretch: 1;
+                outlined: true;
+                label: @tr("替换滤镜链");
+                icon: root.expanded == "replace" ? Icons.expand-less : Icons.filter-vintage;
+                selected: root.expanded == "replace";
+                activated => { root.expanded = root.expanded == "replace" ? "" : "replace"; }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+        }
+
+        if root.expanded == "add" : SettingGroup {
+            flush: true;
+            FilterEntry {
+                label: @tr("加载 HLSL 效果…");
+                icon: Icons.upload-file;
+                reason: Filters.source-unavailable-reason;
+                enabled: self.reason == "";
+                activated => { root.close-options(); Filters.load-source(); }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+            for choice in Filters.choices : FilterEntry {
+                label: choice.label;
+                icon: Icons.add;
+                enabled: choice.available;
+                reason: choice.unavailable-reason;
+                activated => { root.close-options(); Filters.add-stage(choice.id); }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+        }
+
+        if root.expanded == "replace" : SettingGroup {
+            description: @tr("选择预设会替换整个滤镜链。");
+            flush: true;
+            FilterEntry {
+                label: @tr("原画");
+                icon: Icons.image;
+                checkable: true;
+                selected: Filters.preset == "none";
+                activated => { root.close-options(); Filters.set-preset("none"); }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+            for choice in Filters.choices : FilterEntry {
+                label: choice.label;
+                icon: Icons.filter-vintage;
+                enabled: choice.available;
+                reason: choice.unavailable-reason;
+                checkable: true;
+                selected: Filters.preset == choice.id;
+                activated => { root.close-options(); Filters.set-preset(choice.id); }
+                focused(top, size) => { root.reveal(top, size); }
+            }
+        }
+        if root.has-selection && Filters.stages[Filters.selected-stage].available : SettingGroup {
+            title: @tr("参数");
+            flush: true;
+
+            VerticalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 4px;
+                if Filters.fields.length == 0 : FilterHint {
+                    text: @tr("此滤镜没有可调参数。");
+                }
+                if Filters.fields.length > 0 : ConfigFieldList {
+                    fields: Filters.fields;
+                    show-groups: false;
+                    changed(key, value) => { Filters.field-changed(key, value); }
+                }
+                if Filters.fields.length > 0 : HorizontalLayout {
+                    alignment: start;
+                    TextButton {
+                        text: @tr("恢复默认参数");
+                        icon: Icons.restart-alt;
+                        clicked => { Filters.reset-parameters(); }
+                    }
+                }
+            }
+        }
+
+    }
+}

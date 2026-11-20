@@ -2,7 +2,7 @@ use super::*;
 use shinki_emu_manager_ui_slint::tr;
 use shinki_emu_manager_ui_slint::{
     AppViewModel, BangumiViewModel, ChoiceViewModel, CoresViewModel, EngineActionViewModel,
-    ExcludedViewModel, FiltersViewModel, GameCardViewModel, GameSettingsViewModel,
+    ExcludedViewModel, GameCardViewModel, GameSettingsViewModel,
     LibraryViewModel, MatchViewModel, NoticeViewModel, NoticesViewModel, OnboardingViewModel,
     PatchGameViewModel, PatchViewModel, PlaySessionViewModel, ReleaseViewModel,
     SelectedGameViewModel, SelectionViewModel, SessionViewModel, SettingsViewModel, describe_error,
@@ -261,10 +261,7 @@ impl ShinkiEmuManagerController {
                     })
                     .collect(),
             },
-            filters: FiltersViewModel {
-                preset: self.filter_preset_id().into(),
-                fields: self.filter_fields()?,
-            },
+            filters: self.filter_view()?,
             session: self.session_view()?,
             onboarding: OnboardingViewModel { roots },
             resale_notice: self.notice_reading.view(),

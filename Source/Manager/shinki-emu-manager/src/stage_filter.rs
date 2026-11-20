@@ -1,43 +1,38 @@
-use shinki_emu_manager::effects::PreparedFilter;
+use std::path::Path;
 
-/// A deferred request is attempted once. Failure blocks presentation until an
-/// explicit configuration replaces it, and reports its original error once.
-#[derive(Default)]
-pub(super) enum FilterActivation {
-    #[default]
-    Ready,
-    Pending(PreparedFilter),
-    Failed(Option<String>),
+use shinki_emu_manager::effects::{FilterEngine, FilterError, FilterTargets, PreparedFilter};
+
+pub(super) enum PendingFilter {
+    Prepared(PreparedFilter),
+    Ready(ActiveFilter),
 }
 
-impl FilterActivation {
-    pub(super) fn defer(&mut self, prepared: PreparedFilter) {
-        *self = Self::Pending(prepared);
+pub(super) struct ActiveFilter {
+    pub(super) engine: FilterEngine,
+    pub(super) targets: FilterTargets,
+}
+
+impl ActiveFilter {
+    pub(super) fn build(
+        device: &wgpu::Device,
+        dxc_path: &Path,
+        prepared: PreparedFilter,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, FilterError> {
+        let (engine, targets) = FilterEngine::build(device, dxc_path, prepared, width, height)?;
+        Ok(Self { engine, targets })
     }
 
-    pub(super) fn take_pending(&mut self) -> Option<PreparedFilter> {
-        if !matches!(self, Self::Pending(_)) {
-            return None;
+    pub(super) fn resize(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> Result<(), FilterError> {
+        if !self.targets.matches_input(width, height) {
+            self.targets = self.engine.resize_targets(device, width, height)?;
         }
-        // Keep presentation blocked while the request is being activated.
-        match std::mem::replace(self, Self::Failed(None)) {
-            Self::Pending(prepared) => Some(prepared),
-            _ => unreachable!(),
-        }
-    }
-
-    pub(super) fn complete(&mut self, result: Result<(), String>) {
-        *self = match result {
-            Ok(()) => Self::Ready,
-            Err(error) => Self::Failed(Some(error)),
-        };
-    }
-
-    pub(super) fn ready_for_frame(&mut self) -> Result<bool, String> {
-        match self {
-            Self::Ready => Ok(true),
-            Self::Pending(_) => Ok(false),
-            Self::Failed(error) => error.take().map_or(Ok(false), Err),
-        }
+        Ok(())
     }
 }
