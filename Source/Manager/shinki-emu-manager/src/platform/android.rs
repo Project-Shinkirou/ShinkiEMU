@@ -7,8 +7,8 @@
 //! - Pickers use the Storage Access Framework. Kotlin copies the picked file or
 //!   tree into `<data>/imports/<unix_ms>-<id>/` and reports the copied path,
 //!   so the rest of the Manager works with plain filesystem paths.
-//! - New directories (patch output) are named under `<data>/exports/` without
-//!   a dialog: app-private storage has no user-visible save location.
+//! - New directories (patch output) are proposed under the app-private
+//!   `<data>/exports/` parent, which is created on demand without a dialog.
 //! - Temporary media files use the app cache directory on every supported API.
 //! - Lifecycle events come from the Slint android-activity poll listener.
 
@@ -278,9 +278,8 @@ pub(super) fn pick_new_directory(_title: &str, default_name: &str, done: PickDon
         if !paths::is_valid_name(default_name) {
             return Err("SHINKI_EMU_ANDROID_PICK_NAME".to_owned());
         }
-        Ok(data
-            .join("exports")
-            .join(format!("{default_name}-{}", unix_ms())))
+        super::android_storage::propose_export(&data, default_name, unix_ms())
+            .map_err(|error| format!("SHINKI_EMU_ANDROID_PICK_DESTINATION: {error}"))
     });
     done(result);
 }

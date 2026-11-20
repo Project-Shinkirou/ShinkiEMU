@@ -150,6 +150,19 @@ impl ShinkiEmuManagerController {
                 }
             }
         }
+        #[cfg(target_os = "android")]
+        if candidate.plugin_id == "siglus_rs" {
+            use shinki_emu_manager_core::model::ConfigValue;
+            if let Some(entry) = configuration.iter_mut().find(|entry| entry.id == "save_root")
+                && let ConfigValue::String(value) = &mut entry.value
+            {
+                crate::platform::android_storage::fill_siglus_save_root(
+                    &self.data_dir,
+                    Path::new(&game.location),
+                    value,
+                )?;
+            }
+        }
         let window = self.window_state.ok_or("SHINKI_EMU_WINDOW_STATE_REQUIRED")?;
         let settings = self
             .library

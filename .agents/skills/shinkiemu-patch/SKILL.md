@@ -115,6 +115,8 @@ Luau 原生 `error(message)` 也会中止并回滚，归为 `SCRIPT`；Manager �
 
 Windows 的输出、暂存和备份目录继承父目录权限。请选择可信目录；暂存不会隔离原本就有权写入该目录的其他进程。
 
+Android 选择输出时只初始化应用私有的 `files/exports` 父目录，转换成功后才由补丁事务发布最终子目录。
+
 `shinki-emu-manager patch list [--scripts <metadata 目录>]` 每行输出一条目录记录（JSON），不执行配方。CLI 失败退出码为 1，取消为 130。
 
 ## 5. 写一个新配方

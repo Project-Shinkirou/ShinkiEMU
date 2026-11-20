@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
+#[cfg(any(target_os = "android", test))]
+pub(crate) mod android_storage;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
 #[cfg(target_env = "ohos")]
