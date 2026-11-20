@@ -330,6 +330,10 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::game_input(self, control, pressed, value)
     }
 
+    fn flush_game_input(&mut self) -> Result<(), String> {
+        self.flush_owner_events()
+    }
+
     fn release_inputs(&mut self) -> Result<(), String> {
         ShinkiEmuManagerController::release_inputs(self)
     }

@@ -295,6 +295,8 @@ pub trait ManagerController: 'static {
         apply: FilterApply<'_>,
     ) -> Result<ManagerViewModel, String>;
     fn game_input(&mut self, control: &str, pressed: bool, value: f32) -> Result<(), String>;
+    /// Send pending gameplay input to the active native owner without polling it.
+    fn flush_game_input(&mut self) -> Result<(), String>;
     /// Clear physical keys and modifiers when focus leaves the game surface
     /// so a later focus cannot inherit a stuck input state.
     fn release_inputs(&mut self) -> Result<(), String>;
