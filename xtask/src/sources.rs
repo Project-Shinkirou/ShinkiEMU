@@ -680,8 +680,12 @@ fn native_sources(
 ) -> Result<String> {
     let selected = dependencies::needs(inv, target, component)?;
     let mut installations = Vec::new();
-    if selected.subtitle {
-        installations.push(("subtitle", dependencies::subtitle_install(inv, target)?));
+    let shared_subtitle = dependencies::shares_android_subtitle(target, component);
+    if selected.subtitle && !shared_subtitle {
+        installations.push((
+            "subtitle",
+            dependencies::subtitle_install(inv, target, component)?,
+        ));
     }
     if selected.ffmpeg {
         installations.push(("ffmpeg", dependencies::ffmpeg_install(inv, target)?));
@@ -706,12 +710,23 @@ fn native_sources(
                 serde_json::from_slice(&fs::read(&spdx).with_context(|| {
                     format!("installed port {port} missing source provenance")
                 })?)?;
-            port_recipe(
-                &record,
-                &registry,
-                &root.join("native/ports").join(group).join(&port),
-            )
-            .with_context(|| format!("native source port {port}"))?;
+            let recipe_dir = root.join("native/ports").join(group).join(&port);
+            let bundled = port_recipe(&record, &registry, &recipe_dir)
+                .with_context(|| format!("native source port {port}"))?;
+            if !bundled
+                && port == "libass"
+                && dependencies::uses_shared_subtitle_port(target, group)
+            {
+                // This overlay comes from the locked product registry, not
+                // from Impacto's fork and not from its older baseline.
+                let recipe = dependencies::capture(git_committed_bytes(&registry).args([
+                    "archive",
+                    "--format=tar",
+                    "HEAD:ports/libass",
+                ]))?;
+                fs::create_dir_all(&recipe_dir)?;
+                tar::Archive::new(recipe.as_slice()).unpack(&recipe_dir)?;
+            }
             for resource in record["packages"].as_array().context("SPDX packages")? {
                 if !resource["SPDXID"]
                     .as_str()
@@ -800,7 +815,7 @@ fn native_sources(
         &root.join(".work/vcpkg-downloads"),
         required,
     )?;
-    if selected.subtitle {
+    if selected.subtitle && !shared_subtitle {
         // The pinned engine supplies custom mixed-linkage triplets.
         let engine = metadata["packages"]
             .as_array()
@@ -1107,8 +1122,32 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              $env:VCPKG_BINARY_SOURCES = 'clear'\n",
         );
         instructions.push_str(&native_commands);
-        if selected.subtitle {
-            let install = dependencies::subtitle_install(inv, target)?;
+        if dependencies::shares_android_subtitle(target, component) {
+            let paths = dependencies::target_pkg_config_paths(inv, target, component, selected)?
+                .into_iter()
+                .map(|path| {
+                    Ok(format!(
+                        "$PWD/{}",
+                        path.strip_prefix(&inv.root)?
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let ffmpeg = dependencies::ffmpeg_install(inv, target)?;
+            let relative = ffmpeg
+                .strip_prefix(&inv.root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            instructions.push_str(&format!(
+                "unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR\n\
+                 export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_ALL_STATIC=1\n\
+                 export PKG_CONFIG_LIBDIR=\"{}\"\n\
+                 export SHINKI_EMU_FFMPEG_INSTALLED=\"$PWD/{relative}\"\n",
+                paths.join(":")
+            ));
+        } else if selected.subtitle {
+            let install = dependencies::subtitle_install(inv, target, component)?;
             let prefix = install
                 .parent()
                 .and_then(Path::parent)

@@ -528,7 +528,8 @@ fn apple_subtitle_installs_isolate_architectures_and_platforms() {
         .iter()
         .filter(|t| crate::apple::supported(&t.triple))
     {
-        let install = crate::dependencies::subtitle_install(&inventory, &target.triple).unwrap();
+        let install =
+            crate::dependencies::subtitle_install(&inventory, &target.triple, "rfvp").unwrap();
         assert!(installs.insert(install));
         let needs = crate::dependencies::needs(&inventory, &target.triple, "rfvp").unwrap();
         assert!(needs.subtitle);

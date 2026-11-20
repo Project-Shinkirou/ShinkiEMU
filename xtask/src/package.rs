@@ -592,13 +592,15 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
     {
         dirs.push(runtime);
     }
-    if selected.subtitle {
+    let separate_subtitle = selected.subtitle
+        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    if separate_subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, "subtitle")
         } else if crate::apple::supported(&result.target) {
-            dependencies::subtitle_install(inv, &result.target)?.join("lib")
+            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("lib")
         } else {
-            dependencies::subtitle_install(inv, &result.target)?.join("bin")
+            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("bin")
         });
     }
     if selected.dxc {
@@ -668,8 +670,10 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
                     .to_owned(),
             );
         }
-        if selected.subtitle {
-            dirs.push(dependencies::subtitle_install(inv, &result.target)?.join("lib"));
+        if separate_subtitle {
+            dirs.push(
+                dependencies::subtitle_install(inv, &result.target, &result.component)?.join("lib"),
+            );
         }
         let ndk_lib = ndk
             .join("toolchains/llvm/prebuilt")
@@ -719,10 +723,13 @@ pub(crate) fn licenses(
             entries.push((ndk.join(notice), format!("licenses/android-ndk/{notice}")));
         }
     }
-    if selected.subtitle
+    let separate_subtitle = selected.subtitle
+        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    if separate_subtitle
         && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
     {
-        let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
+        let share =
+            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("share");
         for entry in fs::read_dir(share)? {
             let entry = entry?;
             let copyright = entry.path().join("copyright");
@@ -736,8 +743,9 @@ pub(crate) fn licenses(
                 ));
             }
         }
-    } else if selected.subtitle {
-        let share = dependencies::subtitle_install(inv, &result.target)?.join("share");
+    } else if separate_subtitle {
+        let share =
+            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("share");
         for port in [
             "libass", "freetype", "fribidi", "harfbuzz", "brotli", "bzip2", "libpng", "zlib",
         ] {

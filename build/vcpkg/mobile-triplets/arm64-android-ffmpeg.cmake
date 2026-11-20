@@ -6,3 +6,8 @@ set(VCPKG_CMAKE_SYSTEM_NAME Android)
 set(VCPKG_CMAKE_SYSTEM_VERSION 28)
 set(VCPKG_MAKE_BUILD_TRIPLET "--host=aarch64-linux-android")
 set(VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=arm64-v8a)
+
+# Meson validates the libass install prefix with target path semantics.
+if(CMAKE_HOST_WIN32 AND PORT STREQUAL "libass" AND DEFINED CURRENT_PACKAGES_DIR)
+    set(VCPKG_MESON_CONFIGURE_OPTIONS --prefix "//?/${CURRENT_PACKAGES_DIR}")
+endif()
