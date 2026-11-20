@@ -1465,14 +1465,16 @@ pub(crate) fn target_pkg_config_paths(
     selected: NativeNeeds,
 ) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
+    // The Manager's FFmpeg includes filters that Impacto's private build omits.
+    // Resolve the whole FFmpeg family from the full installation before probing libass.
+    if selected.ffmpeg {
+        paths.push(ffmpeg_install(inv, target)?.join("lib/pkgconfig"));
+    }
     let shared_subtitle = shares_android_subtitle(target, component);
     if shared_subtitle {
         let install = subtitle_install(inv, target, component)?;
         paths.push(install.join("lib/pkgconfig"));
         paths.push(install.join("share/pkgconfig"));
-    }
-    if selected.ffmpeg {
-        paths.push(ffmpeg_install(inv, target)?.join("lib/pkgconfig"));
     }
     if selected.subtitle && !shared_subtitle {
         paths.push(subtitle_install(inv, target, component)?.join("lib/pkgconfig"));
@@ -2518,18 +2520,26 @@ mod native_tests {
             )
             .unwrap();
             let pc_dir = shared.join("lib/pkgconfig");
-            assert_eq!(paths.first(), Some(&pc_dir));
+            let ffmpeg_pc_dir = ffmpeg_install(&inv, target).unwrap().join("lib/pkgconfig");
+            for dir in [&ffmpeg_pc_dir, &pc_dir] {
+                fs::create_dir_all(dir).unwrap();
+                fs::write(dir.join("libavutil.pc"), "").unwrap();
+            }
+            fs::write(ffmpeg_pc_dir.join("libavfilter.pc"), "").unwrap();
+            let provider = |module: &str| paths.iter().find(|path| path.join(module).is_file());
+            assert_eq!(provider("libavutil.pc"), Some(&ffmpeg_pc_dir));
+            assert_eq!(provider("libavfilter.pc"), Some(&ffmpeg_pc_dir));
             assert_eq!(paths.iter().filter(|path| **path == pc_dir).count(), 1);
             assert!(!paths.contains(&separate.join("lib/pkgconfig")));
             assert!(uses_shared_subtitle_port(target, "impacto"));
 
-            fs::create_dir_all(&pc_dir).unwrap();
             fs::write(shared.join("lib/libass.a"), b"archive fixture").unwrap();
             let pc = pc_dir.join("libass.pc");
             fs::write(&pc, "Version: 0.17.4\n").unwrap();
             assert!(validate_shared_android_subtitle(&inv, &shared).is_err());
             fs::write(&pc, "Version: 0.17.5\n").unwrap();
             validate_shared_android_subtitle(&inv, &shared).unwrap();
+            assert_eq!(provider("libass.pc"), Some(&pc_dir));
         }
         assert!(!uses_shared_subtitle_port(
             "x86_64-pc-windows-msvc",
