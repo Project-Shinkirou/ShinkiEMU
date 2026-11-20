@@ -300,6 +300,7 @@ Texture2D OUTPUT;
 //!FILTER POINT
 SamplerState sam;
 //!PASS 1
+//!DESC Paint test fixture
 //!IN INPUT
 //!OUT OUTPUT
 //!BLOCK_SIZE 8
