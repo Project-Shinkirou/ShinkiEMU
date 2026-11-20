@@ -172,11 +172,11 @@ static_features = []
 publish_blocked = ""
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/sena-rs"
-branch = "shinki"
+branch = "shinki-save-policy"
 rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574"
 upstream = "https://github.com/xmoezzz/sena-rs"
 release_sequence = 1
-upstream_identity = { repo = "https://github.com/xmoezzz/sena-rs", ref_kind = "tag", ref_name = "pre-release", commit = "7f633dbb89408297827d6c1857eb8e97dc363dff" }
+upstream_identity = { repo = "https://github.com/xmoezzz/sena-rs", ref_kind = "branch", ref_name = "main", commit = "7f633dbb89408297827d6c1857eb8e97dc363dff" }
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "sena-rs adapter build script supports no Android target yet"
@@ -342,7 +342,7 @@ target = "x86_64-linux-android"
 reason = "ReMinori embedded adapter build script supports no Android target yet"
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ReMinori"
-branch = "shinki"
+branch = "shinki-save-policy"
 rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
 upstream = "https://github.com/luoyily/ReMinori"
 release_sequence = 1
