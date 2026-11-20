@@ -1646,6 +1646,13 @@ fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> R
 fn vcpkg_install_command(inv: &Inventory, executable: &Path) -> Result<Command> {
     let mut command = Command::new(executable);
     command.arg("install");
+    if cfg!(windows) {
+        // vcpkg hashes CMake and PowerShell versions into Windows-host package ABIs.
+        // Resolve the versions from the pinned registry's tool metadata, not newer PATH tools.
+        command
+            .arg("--x-abi-tools-use-exact-versions")
+            .env_remove("VCPKG_FORCE_SYSTEM_BINARIES");
+    }
     command.env("VCPKG_ROOT", inv.root.join(".work/vcpkg"));
     shinki_emu_build::configure_native_environment(&inv.root.join(".work"), &mut command)?;
     Ok(command)
