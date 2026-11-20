@@ -1,15 +1,14 @@
-use super::super::super::{
+use super::{
     format4::{EffectSource, Pass, SamplerFilter, TextureDimension},
     generator::uniform_size,
 };
-use super::super::{FilterConfiguration, FilterError};
 
 pub(super) fn create_layout(
     device: &wgpu::Device,
     pass: &Pass,
     rgba8: bool,
     effect: &EffectSource,
-) -> Result<wgpu::BindGroupLayout, String> {
+) -> wgpu::BindGroupLayout {
     let mut entries = vec![wgpu::BindGroupLayoutEntry {
         binding: 0,
         visibility: wgpu::ShaderStages::COMPUTE,
@@ -63,59 +62,10 @@ pub(super) fn create_layout(
             count: None,
         });
     }
-    Ok(
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("shinki.emu.effect.layout"),
-            entries: &entries,
-        }),
-    )
-}
-
-pub(super) fn texture_dimensions(
-    effect: &EffectSource,
-    name: &str,
-    input_width: u32,
-    input_height: u32,
-    final_dimensions: Option<(u32, u32)>,
-) -> Result<(u32, u32), FilterError> {
-    let Some(texture) = effect.textures.iter().find(|texture| texture.name == name) else {
-        return Ok(final_dimensions.unwrap_or((input_width, input_height)));
-    };
-    if texture.width.is_none() && texture.height.is_none() {
-        return Ok(final_dimensions.unwrap_or((input_width, input_height)));
-    }
-    let dimension = |value: Option<TextureDimension>, input: u32| -> Result<u32, FilterError> {
-        match value.unwrap_or(TextureDimension::Input) {
-            TextureDimension::Input => Ok(input),
-            TextureDimension::InputTimes(factor) => input
-                .checked_mul(factor)
-                .filter(|value| *value > 0)
-                .ok_or(FilterError::TextureDimensions),
-        }
-    };
-    Ok((
-        dimension(texture.width, input_width)?,
-        dimension(texture.height, input_height)?,
-    ))
-}
-
-pub(super) fn validate_parameter_values(
-    effect: &EffectSource,
-    config: &FilterConfiguration,
-) -> Result<(), String> {
-    for (name, value) in &config.parameters {
-        let Some(parameter) = effect
-            .parameters
-            .iter()
-            .find(|parameter| parameter.name == *name)
-        else {
-            return Err(format!("SHINKI_EMU_EFFECT_PARAMETER_UNKNOWN_{name}"));
-        };
-        if !value.is_finite() || !(parameter.min..=parameter.max).contains(value) {
-            return Err(format!("SHINKI_EMU_EFFECT_PARAMETER_OUT_OF_RANGE_{name}"));
-        }
-    }
-    Ok(())
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("shinki.emu.effect.layout"),
+        entries: &entries,
+    })
 }
 
 pub(super) fn validate_texture_metadata(

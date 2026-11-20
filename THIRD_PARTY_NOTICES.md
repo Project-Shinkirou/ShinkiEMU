@@ -167,6 +167,12 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 - 内置 Restore CNN S 与 Upscale CNN x2 S 从该版本的 GLSL shader 独立移植，随 shader 保留完整 MIT 许可证。Magpie format 4 的兼容解析与内建函数独立实现，不包含 Magpie GPL 实现代码。
 - 已按固定版本的 [Restore](https://github.com/bloc97/Anime4K/blob/7684e9586f8dcc738af08a1cdceb024cc184f426/glsl/Restore/Anime4K_Restore_CNN_S.glsl) / [Upscale](https://github.com/bloc97/Anime4K/blob/7684e9586f8dcc738af08a1cdceb024cc184f426/glsl/Upscale/Anime4K_Upscale_CNN_x2_S.glsl) 修正移植中的 8×8 调度覆盖、正负激活、Restore 最后一层输入和放大残差采样坐标；权重不变，完整游戏帧保持不透明 alpha。硬件像素回归与独立 CPU 参考比较链式和单独两种效果，覆盖非整组尺寸与图像边缘。
 
+## Original Anime4K v4.0.1
+
+- Upstream release: <https://github.com/bloc97/Anime4K/releases/tag/v4.0.1>, commit `4029bf701ecaa15f163cdc49cffe5501c1acf410`.
+- Copyright © 2019–2021 bloc97. License: [MIT](Assets/Effects/Anime4KOriginal/LICENSE).
+- Original GLSL, checksums, reproducible WGSL conversion and reference instructions: [Assets/Effects/Anime4KOriginal](Assets/Effects/Anime4KOriginal/README.md). This backend is separate from the legacy format-4 effects above.
+
 ## DirectX Shader Compiler
 
 - Upstream: <https://github.com/microsoft/DirectXShaderCompiler>

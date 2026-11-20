@@ -1,27 +1,42 @@
 use super::*;
-use shinki_emu_manager_core::FilterSettings;
 use shinki_emu_manager_ui_slint::tr;
 
-pub(super) fn configure(
-    renderer: &mut dyn ShinkiUnderlayRenderer,
-    settings: &FilterSettings,
-) -> Result<(), String> {
-    settings.validate()?;
-    let saved = &settings.configuration;
-    let config = crate::effects::FilterConfiguration {
-        preset: match saved.preset {
-            shinki_emu_manager_core::FilterPreset::None => crate::effects::FilterPreset::None,
-            shinki_emu_manager_core::FilterPreset::Scale => crate::effects::FilterPreset::Scale,
-            shinki_emu_manager_core::FilterPreset::Sharpen => crate::effects::FilterPreset::Sharpen,
-            shinki_emu_manager_core::FilterPreset::Anime4kRestoreUpscale => {
-                crate::effects::FilterPreset::Anime4kRestoreUpscale
-            }
-        },
-        scale: saved.scale,
-        strength: saved.strength,
-        parameters: saved.parameters.clone(),
+#[cfg(not(target_env = "ohos"))]
+pub(super) fn finish_activation<C: ManagerController>(
+    controller: &std::rc::Rc<std::cell::RefCell<C>>,
+    adapter: &std::rc::Weak<SlintManagerAdapter>,
+    event: FilterEvent,
+) {
+    let (accepted, error) = match event {
+        FilterEvent::Activated => (Some(true), None),
+        FilterEvent::Rejected(error) => (Some(false), Some(error)),
+        FilterEvent::RenderFailed(error) => (None, Some(error)),
     };
-    renderer.configure_filter(&config, settings.source.as_deref())
+    let rollback_error = accepted.and_then(|accepted| {
+        match controller.borrow_mut().finish_filter_activation(accepted) {
+            Ok(model) => {
+                if let Some(model) = model {
+                    apply_model(adapter, &model);
+                }
+                None
+            }
+            Err(error) => Some(error),
+        }
+    });
+    if let Some(adapter) = adapter.upgrade() {
+        if let Some(error) = error {
+            let error = match rollback_error {
+                Some(rollback) => format!("{error}; {rollback}"),
+                None => error,
+            };
+            report_error(adapter.window(), &error);
+        }
+        if accepted == Some(false) {
+            // The rejected encoder was discarded; give the previous chain a
+            // chance to present even if the core publishes no further frame.
+            adapter.window().window().request_redraw();
+        }
+    }
 }
 
 type FilterChange<'a, C> = dyn Fn(&mut C, FilterApply<'_>) -> Result<ManagerViewModel, String> + 'a;
@@ -34,11 +49,9 @@ fn wire<C: ManagerController, R: ShinkiUnderlayRenderer>(
     let wiring = wiring.clone();
     let renderer = renderer.clone();
     move |field, change| {
-        let action = |c: &mut C| {
-            change(c, &mut |settings| {
-                configure(&mut *renderer.borrow_mut(), settings)
-            })
-        };
+        let action = |c: &mut C| change(c, &mut |settings| {
+            renderer.borrow_mut().configure_filter(settings)
+        });
         match field {
             Some(key) => wiring.run_field(FieldScope::Filter, key, action),
             None => wiring.run(action),

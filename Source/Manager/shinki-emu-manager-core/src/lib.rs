@@ -46,7 +46,9 @@ pub use family_registry::{
     FamilyDirectoryLoadError, FamilyDirectoryLoadReport, FamilyDiscovery, FamilyProviderRegistry,
     discover_core_directories, discover_family_libraries, is_family_library_path, library_stem,
 };
-pub use filter_settings::{FilterConfiguration, FilterPreset, FilterSettings};
+pub use filter_settings::{
+    FILTER_DEFAULT_STRENGTH, FILTER_SOURCE_BYTE_LIMIT, FilterSettings, FilterStage,
+};
 pub use input_mapping::{
     GamepadDeadzone, GamepadInput, InputMapping, default_vn_preset, input_key_code, input_key_name,
 };

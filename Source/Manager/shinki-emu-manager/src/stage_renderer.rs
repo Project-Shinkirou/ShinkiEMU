@@ -7,10 +7,13 @@ use std::{
 #[cfg(target_env = "ohos")]
 use shinki_emu_manager::StageImageUpdate;
 use shinki_emu_manager::{
-    ShinkiUnderlayRenderer, StageTextureUpdate, WgpuFrameContext,
-    effects::{FilterConfiguration, FilterEngine, FilterPreset, PreparedFilter},
+    FilterApplyState, FilterEvent, ShinkiUnderlayRenderer, StageTextureUpdate, WgpuFrameContext,
+    effects::{FilterError, PreparedFilter, gpu_checked},
 };
-use shinki_emu_manager_core::model::{FrameIdentity, FrameLease};
+use shinki_emu_manager_core::{
+    FilterSettings,
+    model::{FrameIdentity, FrameLease},
+};
 use roukaku_media_core::Viewport2D;
 use wgpu::{Extent3d, TextureUsages};
 
@@ -26,6 +29,7 @@ mod pixels;
 #[cfg(target_env = "ohos")]
 #[path = "stage_software.rs"]
 mod software;
+use filter::{ActiveFilter, PendingFilter};
 pub(crate) use frame::FrameMailbox;
 
 pub(crate) struct ManagerStageRenderer {
@@ -33,24 +37,26 @@ pub(crate) struct ManagerStageRenderer {
     device: Option<wgpu::Device>,
     input_texture: Option<wgpu::Texture>,
     output_texture: Option<wgpu::Texture>,
-    filtered_texture: Option<wgpu::Texture>,
     presented_input: Option<wgpu::Texture>,
     pixel_presentation: pixels::PixelPresentation,
     input_width: u32,
     input_height: u32,
     logical_width: u32,
     logical_height: u32,
-    output_width: u32,
-    output_height: u32,
     uploaded_identity: Option<FrameIdentity>,
     texture_dirty: bool,
     dxc_path: PathBuf,
-    filter_engine: FilterEngine,
-    filter_configuration: FilterConfiguration,
-    filter_dirty: bool,
-    filter_activation: filter::FilterActivation,
+    active_filter: Option<ActiveFilter>,
+    pending_filter: Option<PendingFilter>,
+    failed_filter_size: Option<(u32, u32)>,
+    filter_event: Option<FilterEvent>,
     #[cfg(target_env = "ohos")]
     software: software::SoftwarePresentation,
+}
+
+enum DrawError {
+    Host(String),
+    Filter(FilterError),
 }
 
 impl ManagerStageRenderer {
@@ -67,202 +73,135 @@ impl ManagerStageRenderer {
             device: None,
             input_texture: None,
             output_texture: None,
-            filtered_texture: None,
             presented_input: None,
             pixel_presentation: pixels::PixelPresentation::default(),
             input_width: DEFAULT_STAGE_WIDTH,
             input_height: DEFAULT_STAGE_HEIGHT,
             logical_width: DEFAULT_STAGE_WIDTH,
             logical_height: DEFAULT_STAGE_HEIGHT,
-            output_width: DEFAULT_STAGE_WIDTH,
-            output_height: DEFAULT_STAGE_HEIGHT,
             uploaded_identity: None,
             texture_dirty: false,
-            filter_engine: FilterEngine::new(dxc_path.clone()),
             dxc_path,
-            filter_configuration: FilterConfiguration::default(),
-            filter_dirty: false,
-            filter_activation: filter::FilterActivation::default(),
+            active_filter: None,
+            pending_filter: None,
+            failed_filter_size: None,
+            filter_event: None,
             #[cfg(target_env = "ohos")]
             software: software::SoftwarePresentation::default(),
         }
     }
 
-    fn configure_filter_inner(
-        &mut self,
-        config: &FilterConfiguration,
-        source: Option<&str>,
-    ) -> Result<(), String> {
-        let prepared = PreparedFilter::new(config, source).map_err(|error| error.to_string())?;
-        if self.uploaded_identity.is_none() {
-            self.filter_activation.defer(prepared);
+    fn configure_filter_inner(&mut self, settings: &FilterSettings) -> Result<FilterApplyState, String> {
+        let prepared = PreparedFilter::new(settings).map_err(|error| error.to_string())?;
+        let pending = if let (Some(device), Some(_)) = (&self.device, self.uploaded_identity) {
+            PendingFilter::Ready(
+                ActiveFilter::build(device, &self.dxc_path, prepared, self.input_width, self.input_height)
+                    .map_err(|error| error.to_string())?,
+            )
+        } else {
+            PendingFilter::Prepared(prepared)
+        };
+        self.pending_filter = Some(pending);
+        Ok(FilterApplyState::Deferred)
+    }
+
+    fn render_frame(&mut self, context: WgpuFrameContext<'_>, frame: &FrameLease) -> Result<(), String> {
+        let size = (frame.info.width, frame.info.height);
+        validate_dimensions(context.device, size.0, size.1)?;
+        if let Some(pending) = self.pending_filter.take() {
+            let candidate = match pending {
+                PendingFilter::Prepared(prepared) => {
+                    ActiveFilter::build(context.device, &self.dxc_path, prepared, size.0, size.1)
+                }
+                PendingFilter::Ready(filter) => Ok(filter),
+            };
+            match candidate {
+                Ok(mut candidate) => match self.draw_frame(&context, frame, Some(&mut candidate)) {
+                    Ok(()) => {
+                        self.active_filter = (!candidate.targets.is_bypass()).then_some(candidate);
+                        self.failed_filter_size = None;
+                        self.filter_event = Some(FilterEvent::Activated);
+                    }
+                    Err(DrawError::Filter(error)) => {
+                        self.filter_event = Some(FilterEvent::Rejected(error.to_string()));
+                    }
+                    Err(DrawError::Host(error)) => return Err(error),
+                },
+                Err(error) => self.filter_event = Some(FilterEvent::Rejected(error.to_string())),
+            }
             return Ok(());
         }
-        self.activate_filter(prepared, self.input_width, self.input_height)?;
-        self.filter_activation.complete(Ok(()));
+        if Some(frame.identity) == self.uploaded_identity || self.failed_filter_size == Some(size) {
+            return Ok(());
+        }
+        match self.draw_frame(&context, frame, None) {
+            Ok(()) => self.failed_filter_size = None,
+            Err(DrawError::Filter(error)) => {
+                self.failed_filter_size = Some(size);
+                self.filter_event = Some(FilterEvent::RenderFailed(error.to_string()));
+            }
+            Err(DrawError::Host(error)) => return Err(error),
+        }
         Ok(())
     }
 
-    fn activate_filter(
+    fn draw_frame(
         &mut self,
-        prepared: PreparedFilter,
-        input_width: u32,
-        input_height: u32,
-    ) -> Result<(), String> {
-        let device = self
-            .device
-            .as_ref()
-            .ok_or_else(|| "SHINKI_EMU_HOST_RENDERER_NOT_SETUP".to_owned())?;
-        let (output_width, output_height) = prepared
-            .output_dimensions(input_width, input_height)
-            .map_err(|error| error.to_string())?;
-        validate_dimensions(device, output_width, output_height)?;
-        let config = prepared.configuration().clone();
-        let mut candidate = FilterEngine::new(self.dxc_path.clone());
-        candidate
-            .reload_prepared(device, prepared)
-            .map_err(|error| error.to_string())?;
-        let replacement = if config.preset == FilterPreset::None
-            || self.input_texture.is_none()
-            || self.input_width != input_width
-            || self.input_height != input_height
-        {
-            None
-        } else if self.filtered_texture.as_ref().is_some_and(|texture| {
-            texture.width() == output_width && texture.height() == output_height
-        }) {
-            self.filtered_texture.clone()
-        } else {
-            Some(create_stage_texture(
-                device,
-                output_width,
-                output_height,
-                "output",
-                wgpu::TextureFormat::Rgba8Unorm,
-            )?)
-        };
-
-        self.filter_engine = candidate;
-        self.filter_configuration = config;
-        self.filtered_texture = replacement;
-        self.output_width = output_width;
-        self.output_height = output_height;
-        self.filter_dirty = true;
-        Ok(())
-    }
-
-    fn recreate_textures(
-        &mut self,
-        device: &wgpu::Device,
-        input_width: u32,
-        input_height: u32,
-        output_width: u32,
-        output_height: u32,
-        input_format: wgpu::TextureFormat,
-    ) -> Result<(), String> {
-        validate_dimensions(device, input_width, input_height)?;
-        validate_dimensions(device, output_width, output_height)?;
-        let input = create_stage_texture(device, input_width, input_height, "input", input_format)?;
-        let filtered = if self.filter_configuration.preset == FilterPreset::None {
-            None
-        } else if self.filtered_texture.as_ref().is_some_and(|texture| {
-            texture.width() == output_width && texture.height() == output_height
-        }) {
-            self.filtered_texture.clone()
-        } else {
-            Some(create_stage_texture(
-                device,
-                output_width,
-                output_height,
-                "output",
-                wgpu::TextureFormat::Rgba8Unorm,
-            )?)
-        };
-        self.output_texture = filtered.as_ref().cloned().or_else(|| Some(input.clone()));
-        self.filtered_texture = filtered;
-        self.input_texture = Some(input);
-        self.input_width = input_width;
-        self.input_height = input_height;
-        self.output_width = output_width;
-        self.output_height = output_height;
-        self.uploaded_identity = None;
-        self.presented_input = None;
-        self.texture_dirty = true;
-        Ok(())
-    }
-
-    fn render_frame(
-        &mut self,
-        context: WgpuFrameContext<'_>,
+        context: &WgpuFrameContext<'_>,
         frame: &FrameLease,
-    ) -> Result<(), String> {
+        candidate: Option<&mut ActiveFilter>,
+    ) -> Result<(), DrawError> {
         let info = frame.info;
-        let pending = self.filter_activation.take_pending();
-        if pending.is_none() && !self.filter_activation.ready_for_frame()? {
-            return Ok(());
-        }
-        validate_dimensions(context.device, info.width, info.height)?;
-        if let Some(prepared) = pending {
-            self.activate_filter(prepared, info.width, info.height)?;
-            self.filter_activation.complete(Ok(()));
-        }
-        if Some(frame.identity) == self.uploaded_identity && !self.filter_dirty {
-            return Ok(());
-        }
-        let (output_width, output_height) = self
-            .filter_engine
-            .active_output_dimensions(info.width, info.height)
-            .map_err(|error| error.to_string())?;
-        let input_format = pixels::input_format(info.format);
-        let input_needs_replacement = self.input_width != info.width
-            || self.input_height != info.height
-            || self
-                .input_texture
-                .as_ref()
-                .is_none_or(|texture| texture.format() != input_format);
-        if input_needs_replacement {
-            self.recreate_textures(
-                context.device,
-                info.width,
-                info.height,
-                output_width,
-                output_height,
-                input_format,
-            )?;
-        } else if self.filter_configuration.preset != FilterPreset::None
-            && self.filtered_texture.as_ref().is_none_or(|texture| {
-                texture.width() != output_width || texture.height() != output_height
-            })
-        {
-            self.filtered_texture = Some(create_stage_texture(
-                context.device,
-                output_width,
-                output_height,
-                "output",
-                wgpu::TextureFormat::Rgba8Unorm,
-            )?);
-            self.output_width = output_width;
-            self.output_height = output_height;
-        }
-        if self.logical_width != info.logical_width || self.logical_height != info.logical_height {
-            self.logical_width = info.logical_width;
-            self.logical_height = info.logical_height;
-            self.texture_dirty = true;
-        }
-        let input = self
-            .input_texture
-            .as_ref()
-            .ok_or_else(|| "SHINKI_EMU_HOST_RENDERER_NOT_SETUP".to_owned())?;
-        if Some(frame.identity) != self.uploaded_identity {
-            let pixels = frame
-                .pixels()
-                .ok_or_else(|| "SHINKI_EMU_HOST_FRAME_PIXELS".to_owned())?;
-            let required = info
-                .required_bytes()
-                .ok_or_else(|| "SHINKI_EMU_HOST_FRAME_SIZE".to_owned())?;
+        let active = candidate.or(self.active_filter.as_mut());
+        let active = if let Some(active) = active {
+            active.resize(context.device, info.width, info.height).map_err(DrawError::Filter)?;
+            (!active.targets.is_bypass()).then_some(active)
+        } else {
+            None
+        };
+        let format = pixels::input_format(info.format);
+        let replacement = if self.input_texture.as_ref().is_none_or(|texture| {
+            texture.width() != info.width || texture.height() != info.height || texture.format() != format
+        }) {
+            Some(create_input_texture(context.device, info.width, info.height, format).map_err(DrawError::Host)?)
+        } else {
+            None
+        };
+        let input = replacement.as_ref().or(self.input_texture.as_ref()).unwrap();
+        let upload = replacement.is_some() || Some(frame.identity) != self.uploaded_identity;
+        let convert = upload && pixels::requires_conversion(info);
+        let baseline = if upload {
+            input
+        } else {
+            self.presented_input.as_ref().ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_BASELINE".into()))?
+        };
+        let (baseline, output, command) = if convert || active.is_some() {
+            gpu_checked(context.device, || {
+                let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("shinki.emu.stage.frame"),
+                });
+                let baseline = if convert {
+                    self.pixel_presentation.encode(context.device, context.queue, &mut encoder, input, info)
+                } else {
+                    baseline.clone()
+                };
+                let output = if let Some(active) = active {
+                    active.engine.encode(context.device, &mut encoder, &baseline, &active.targets)?.clone()
+                } else {
+                    baseline.clone()
+                };
+                Ok((baseline, output, Some(encoder.finish())))
+            }).map_err(DrawError::Filter)?
+        } else {
+            (baseline.clone(), baseline.clone(), None)
+        };
+        if upload {
+            let data = frame.pixels().ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_PIXELS".into()))?;
+            let data = info.required_bytes().and_then(|length| data.get(..length))
+                .ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_SIZE".into()))?;
             context.queue.write_texture(
                 input.as_image_copy(),
-                &pixels[..required],
+                data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(info.stride),
@@ -274,33 +213,27 @@ impl ManagerStageRenderer {
                     depth_or_array_layers: 1,
                 },
             );
-            self.presented_input =
-                Some(
-                    self.pixel_presentation
-                        .apply(context.device, context.queue, input, info),
-                );
         }
-        let presented_input = self
-            .presented_input
-            .as_ref()
-            .ok_or_else(|| "SHINKI_EMU_HOST_FRAME_BASELINE".to_owned())?;
-        let output = self
-            .filter_engine
-            .apply(
-                context.device,
-                context.queue,
-                presented_input,
-                self.filtered_texture.as_ref(),
-                &self.filter_configuration,
-            )
-            .map_err(|error| error.to_string())?;
-        if self.output_texture.as_ref() != Some(&output) {
+        if let Some(command) = command {
+            context.queue.submit([command]);
+        }
+        self.mailbox.presented(frame.identity, info).map_err(DrawError::Host)?;
+        if let Some(input) = replacement {
+            self.input_texture = Some(input);
+        }
+        self.presented_input = Some(baseline);
+        self.uploaded_identity = Some(frame.identity);
+        if self.output_texture.as_ref() != Some(&output)
+            || (self.logical_width, self.logical_height) != (info.logical_width, info.logical_height)
+            || (self.input_width, self.input_height) != (info.width, info.height)
+        {
             self.output_texture = Some(output);
+            self.logical_width = info.logical_width;
+            self.logical_height = info.logical_height;
+            self.input_width = info.width;
+            self.input_height = info.height;
             self.texture_dirty = true;
         }
-        self.uploaded_identity = Some(frame.identity);
-        self.mailbox.presented(frame.identity, frame.info)?;
-        self.filter_dirty = false;
         Ok(())
     }
 }
@@ -324,20 +257,25 @@ fn dxc_path_for_executable(executable: &Path) -> PathBuf {
 }
 
 impl ShinkiUnderlayRenderer for ManagerStageRenderer {
-    fn configure_filter(
-        &mut self,
-        config: &FilterConfiguration,
-        source: Option<&str>,
-    ) -> Result<(), String> {
-        // The software-presented OHOS stage has no WGPU device for filters.
+    fn configure_filter(&mut self, settings: &FilterSettings) -> Result<FilterApplyState, String> {
         #[cfg(target_env = "ohos")]
-        if config.preset != FilterPreset::None {
-            return Err(
-                "SHINKI_EMU_OHOS_FILTERS_UNAVAILABLE: final-frame filters need WGPU compute, which the OHOS software presenter lacks"
-                    .into(),
-            );
+        {
+            if settings.stages.iter().any(|stage| !matches!(
+                stage, shinki_emu_manager_core::FilterStage::Format4 { disabled: true, .. }
+            )) {
+                return Err(
+                    "SHINKI_EMU_OHOS_FILTERS_UNAVAILABLE: final-frame filters require a GPU renderer"
+                        .into(),
+                );
+            }
+            Ok(FilterApplyState::Applied)
         }
-        self.configure_filter_inner(config, source)
+        #[cfg(not(target_env = "ohos"))]
+        self.configure_filter_inner(settings)
+    }
+
+    fn take_filter_event(&mut self) -> Option<FilterEvent> {
+        self.filter_event.take()
     }
 
     fn setup(&mut self, context: WgpuFrameContext<'_>) -> Result<(), String> {
@@ -355,7 +293,6 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
             driver = %adapter.driver,
         );
         self.device = Some(context.device.clone());
-        self.filter_dirty = false;
         Ok(())
     }
 
@@ -412,17 +349,11 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
                 self.presented_input = None;
                 self.pixel_presentation = pixels::PixelPresentation::default();
                 self.uploaded_identity = None;
-                self.filter_dirty = false;
+                self.failed_filter_size = None;
             }
             return Ok(());
         };
-        let first_frame = self.uploaded_identity.is_none();
-        let result = self.render_frame(context, &frame);
-        if first_frame && result.is_err() {
-            self.filter_activation.complete(result);
-            return self.filter_activation.ready_for_frame().map(|_| ());
-        }
-        result
+        self.render_frame(context, &frame)
     }
 
     #[cfg(target_env = "ohos")]
@@ -433,22 +364,19 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
     fn teardown(&mut self) -> Result<(), String> {
         self.input_texture = None;
         self.output_texture = None;
-        self.filtered_texture = None;
         self.presented_input = None;
         self.pixel_presentation = pixels::PixelPresentation::default();
         self.device = None;
         self.input_width = DEFAULT_STAGE_WIDTH;
         self.input_height = DEFAULT_STAGE_HEIGHT;
-        self.output_width = DEFAULT_STAGE_WIDTH;
-        self.output_height = DEFAULT_STAGE_HEIGHT;
         self.logical_width = DEFAULT_STAGE_WIDTH;
         self.logical_height = DEFAULT_STAGE_HEIGHT;
         self.uploaded_identity = None;
         self.texture_dirty = false;
-        self.filter_engine = FilterEngine::new(self.dxc_path.clone());
-        self.filter_configuration = FilterConfiguration::default();
-        self.filter_dirty = false;
-        self.filter_activation = filter::FilterActivation::default();
+        self.active_filter = None;
+        self.pending_filter = None;
+        self.failed_filter_size = None;
+        self.filter_event = None;
         #[cfg(target_env = "ohos")]
         {
             self.software = software::SoftwarePresentation::default();
@@ -497,21 +425,16 @@ pub(crate) fn content_viewport_for_output(
     })
 }
 
-fn create_stage_texture(
+fn create_input_texture(
     device: &wgpu::Device,
     width: u32,
     height: u32,
-    role: &str,
     format: wgpu::TextureFormat,
 ) -> Result<wgpu::Texture, String> {
     validate_dimensions(device, width, height)?;
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(if role == "input" {
-            "shinki-emu-manager-stage-input"
-        } else {
-            "shinki-emu-manager-stage-output"
-        }),
+        label: Some("shinki-emu-manager-stage-input"),
         size: Extent3d {
             width,
             height,
@@ -524,12 +447,7 @@ fn create_stage_texture(
         usage: TextureUsages::TEXTURE_BINDING
             | TextureUsages::COPY_DST
             | TextureUsages::COPY_SRC
-            | TextureUsages::RENDER_ATTACHMENT
-            | if role == "input" {
-                TextureUsages::empty()
-            } else {
-                TextureUsages::STORAGE_BINDING
-            },
+            | TextureUsages::RENDER_ATTACHMENT,
         view_formats: &[],
     });
     if let Some(error) = pollster::block_on(error_scope.pop()) {

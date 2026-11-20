@@ -19,9 +19,10 @@ pub const fn version() -> &'static str {
 #[cfg(target_env = "ohos")]
 pub use host::StageImageUpdate;
 pub use host::{
-    CloseDecision, ConfigPathPick, FilterApply, HostError, HostExit, HostWake, KeyCaptureState,
-    ManagerController, ShinkiUnderlayRenderer, SnackbarOutcome, StageTextureUpdate,
-    WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
+    CloseDecision, ConfigPathPick, FilterApply, FilterApplyState, FilterChainEdit, FilterEvent,
+    HostError, HostExit, HostWake, KeyCaptureState, ManagerController, ShinkiUnderlayRenderer,
+    SnackbarOutcome,
+    StageTextureUpdate, WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
 };
 
 // Android (NativeActivity) and OHOS (NAPI) load the Manager as a cdylib; the

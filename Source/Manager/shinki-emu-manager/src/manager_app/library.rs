@@ -276,6 +276,8 @@ impl ShinkiEmuManagerController {
             },
             pinned_releases,
             filter_settings,
+            filter_selected_stage: 0,
+            filter_rollback: None,
             input_mapping,
             appearance,
             session_mapping: None,

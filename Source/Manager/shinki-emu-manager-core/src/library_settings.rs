@@ -230,12 +230,7 @@ mod tests {
             ..Default::default()
         };
         let filter = crate::FilterSettings {
-            configuration: crate::FilterConfiguration {
-                preset: crate::FilterPreset::Scale,
-                scale: 2.0,
-                ..Default::default()
-            },
-            source: None,
+            stages: vec![crate::FilterStage::Scale { scale: 2.0 }],
         };
         {
             let mut library = Library::open(&path).unwrap();
@@ -245,7 +240,7 @@ mod tests {
                 .save_input_mapping(&crate::default_vn_preset())
                 .unwrap();
             let mut invalid = filter.clone();
-            invalid.configuration.scale = f32::NAN;
+            invalid.stages[0] = crate::FilterStage::Scale { scale: f32::NAN };
             assert!(library.save_filter_settings(&invalid).is_err());
             let invalid = crate::AppearanceSettings {
                 cover_size: "huge".into(),
