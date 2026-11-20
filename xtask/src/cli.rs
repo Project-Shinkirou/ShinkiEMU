@@ -105,6 +105,10 @@ pub enum Command {
         version: String,
         #[arg(long)]
         out: PathBuf,
+        /// Local Android QA only: reuse one clean release Manager build and its generated inputs.
+        /// Requires a new output directory and no release signing configuration.
+        #[arg(long, requires = "manager", conflicts_with = "core")]
+        qa_single_abi: bool,
     },
     /// Prepare one target's release files, or publish every prepared target.
     Release {
