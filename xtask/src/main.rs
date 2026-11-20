@@ -121,11 +121,14 @@ fn run() -> Result<()> {
             selection,
             version,
             out,
+            qa_single_abi,
         } => {
-            println!(
-                "{}",
-                package::package(&inv, &target, selection.component(), &version, &out)?.display()
-            );
+            let path = if qa_single_abi {
+                package::package_android_qa(&inv, &target, &version, &out)?
+            } else {
+                package::package(&inv, &target, selection.component(), &version, &out)?
+            };
+            println!("{}", path.display());
         }
         cli::Command::Release {
             component,

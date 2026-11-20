@@ -843,6 +843,20 @@ pub(crate) fn metadata_entries(inv: &Inventory, stage: &Path) -> Result<Vec<(Pat
     }
     Ok(entries)
 }
+fn load_package_receipt(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    out: &Path,
+) -> Result<BuildResult> {
+    let result = build::load_receipt(inv, target, component)?;
+    reject_overlap(&result.library, out)?;
+    if result.profile != "release" {
+        bail!("packaging requires a release build receipt");
+    }
+    Ok(result)
+}
+
 pub fn package(
     inv: &Inventory,
     target: &str,
@@ -853,15 +867,11 @@ pub fn package(
     inv.require_buildable(component, target)?;
     let resolved = crate::release::resolve_version(inv, component, version)?;
     let version = resolved.as_str();
-    let mut result = build::load_receipt(inv, target, component)?;
-    reject_overlap(&result.library, out)?;
-    if result.profile != "release" {
-        bail!("packaging requires a release build receipt");
-    }
+    let mut result = load_package_receipt(inv, target, component, out)?;
     if component == "manager" {
         result.require_product_version(version)?;
         if target.contains("android") {
-            return package_android(inv, &result, version, out);
+            return package_android(inv, &result, version, out, &ANDROID_TARGETS);
         }
         if target.ends_with("ohos") {
             return crate::ohos::package(inv, &result, version, out);
@@ -1107,6 +1117,15 @@ const ANDROID_TARGETS: [(&str, &str); 2] = [
     ("aarch64-linux-android", "arm64-v8a"),
     ("x86_64-linux-android", "x86_64"),
 ];
+const ANDROID_BUNDLE_MANIFEST: &str = "assets/bundled.manifest";
+// Keep this denial in sync with the production identity in release.rs.
+const ANDROID_PRODUCTION_CERT: &str =
+    "c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc";
+
+fn android_library_abi(relative: &str) -> Option<&str> {
+    let (abi, name) = relative.split_once('/')?;
+    (!name.contains('/')).then_some(abi)
+}
 
 /// Collect only the runtime closure of this ABI, not libraries from the host PATH.
 pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path) -> Result<()> {
@@ -1147,13 +1166,22 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
     copy_entries(&entries, stage)?;
     bundled.sort();
     fs::write(
-        stage.join("assets/bundled.manifest"),
+        stage.join(ANDROID_BUNDLE_MANIFEST),
         bundled.join("\n") + "\n",
     )?;
     Ok(())
 }
 
-fn prepare_android_debug_key() -> Result<()> {
+fn android_keytool() -> Result<std::process::Command> {
+    let java = PathBuf::from(std::env::var_os("JAVA_HOME").context("set JAVA_HOME to JDK 27")?);
+    Ok(std::process::Command::new(java.join("bin").join(if cfg!(windows) {
+        "keytool.exe"
+    } else {
+        "keytool"
+    })))
+}
+
+fn prepare_android_debug_key() -> Result<PathBuf> {
     let home = std::env::var_os("GRADLE_USER_HOME")
         .map(PathBuf::from)
         .or_else(|| {
@@ -1164,18 +1192,13 @@ fn prepare_android_debug_key() -> Result<()> {
     fs::create_dir_all(&home)?;
     let key = home.join("shinkiemu-debug.keystore");
     if key.exists() {
-        return plain(&key);
+        plain(&key)?;
+        return Ok(key);
     }
     let temp = tempfile::tempdir_in(&home)?;
     let generated = temp.path().join("debug.keystore");
-    let java = PathBuf::from(std::env::var_os("JAVA_HOME").context("set JAVA_HOME to JDK 27")?);
-    let keytool = java.join("bin").join(if cfg!(windows) {
-        "keytool.exe"
-    } else {
-        "keytool"
-    });
     dependencies::run(
-        std::process::Command::new(keytool)
+        android_keytool()?
             .args(["-genkeypair", "-noprompt", "-storetype", "JKS", "-keystore"])
             .arg(&generated)
             .args([
@@ -1196,11 +1219,55 @@ fn prepare_android_debug_key() -> Result<()> {
             ]),
     )?;
     // Publish the complete test key without overwriting a concurrent creator's key.
-    match fs::hard_link(&generated, &key) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => plain(&key),
-        Err(error) => Err(error.into()),
+    if let Err(error) = fs::hard_link(&generated, &key)
+        && error.kind() != io::ErrorKind::AlreadyExists
+    {
+        return Err(error.into());
     }
+    plain(&key)?;
+    Ok(key)
+}
+
+fn android_debug_certificate(key: &Path) -> Result<String> {
+    let der = dependencies::capture(
+        android_keytool()?
+            .args(["-exportcert", "-keystore"])
+            .arg(key)
+            .args(["-storepass", "android", "-alias", "androiddebugkey"]),
+    )?;
+    let digest = hex::encode(Sha256::digest(der));
+    if digest == ANDROID_PRODUCTION_CERT {
+        bail!("the Android debug keystore contains the production certificate");
+    }
+    Ok(digest)
+}
+
+fn verify_android_qa_certificate(signing: &str, expected: &str) -> Result<()> {
+    let mut digests = signing
+        .lines()
+        .filter(|line| line.starts_with("Signer #"))
+        .filter_map(|line| line.split_once(" certificate SHA-256 digest: "))
+        .map(|(_, digest)| digest.trim());
+    match (digests.next(), digests.next()) {
+        (Some(actual), None) if actual == expected && actual != ANDROID_PRODUCTION_CERT => Ok(()),
+        _ => bail!("Android QA APK must be signed only by the local debug keystore"),
+    }
+}
+
+pub(crate) fn package_android_qa(
+    inv: &Inventory,
+    target: &str,
+    version: &str,
+    out: &Path,
+) -> Result<PathBuf> {
+    let abi = ANDROID_TARGETS
+        .iter()
+        .find(|(triple, _)| *triple == target)
+        .context("--qa-single-abi requires an Android Manager target")?;
+    let version = crate::release::resolve_version(inv, "manager", version)?;
+    let result = load_package_receipt(inv, target, "manager", out)?;
+    result.require_product_version(&version)?;
+    package_android(inv, &result, &version, out, std::slice::from_ref(abi))
 }
 
 fn package_android(
@@ -1208,15 +1275,49 @@ fn package_android(
     result: &BuildResult,
     version: &str,
     out: &Path,
+    targets: &[(&str, &str)],
 ) -> Result<PathBuf> {
     use base64::Engine as _;
-    let key = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE").filter(|s| !s.is_empty());
-    let encoded = std::env::var("SHINKI_EMU_ANDROID_KEYSTORE_BASE64")
-        .ok()
-        .filter(|s| !s.is_empty());
-    if key.is_some() && encoded.is_some() {
-        bail!("provide one Android keystore input, not both path and base64");
+    let qa = targets.len() == 1;
+    if result.source_dirty {
+        bail!("Android packaging requires clean build receipts");
     }
+    let secondary = if let Some((target, _)) =
+        targets.iter().find(|(target, _)| *target != result.target)
+    {
+        let built = build::load_receipt(inv, target, "manager")?;
+        if built.profile != "release" || built.source_commit != result.source_commit {
+            bail!("both Android ABIs require release builds from the same source commit");
+        }
+        if built.source_dirty {
+            bail!("a clean universal Android package requires clean build receipts for both ABIs");
+        }
+        reject_overlap(&built.library, out)?;
+        built.require_product_version(version)?;
+        Some(built)
+    } else {
+        None
+    };
+    let abi = targets[0].1;
+    let generated = if qa {
+        let inputs = result.target_dir.join("android-inputs");
+        reject_overlap(&inputs, out)
+            .with_context(|| format!("checking Android build inputs at {}", inputs.display()))?;
+        let manager = inputs
+            .join("jniLibs")
+            .join(abi)
+            .join("libshinki_emu_manager.so");
+        if sha256(&manager)? != sha256(&result.library)? {
+            bail!("generated Android Manager does not match its build receipt");
+        }
+        plain(&inputs.join(ANDROID_BUNDLE_MANIFEST))?;
+        Some(inputs)
+    } else {
+        None
+    };
+
+    let key = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE").filter(|s| !s.is_empty());
+    let encoded = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE_BASE64").filter(|s| !s.is_empty());
     let passwords = [
         "SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD",
         "SHINKI_EMU_ANDROID_KEY_ALIAS",
@@ -1227,19 +1328,27 @@ fn package_android(
         .filter(|key| std::env::var_os(key).is_some_and(|s| !s.is_empty()))
         .count();
     let signed = key.is_some() || encoded.is_some();
+    if qa && (signed || present != 0) {
+        bail!("--qa-single-abi requires the debug key; unset all Android release signing inputs");
+    }
+    if key.is_some() && encoded.is_some() {
+        bail!("provide one Android keystore input, not both path and base64");
+    }
     if (signed && present != 3) || (!signed && present != 0) {
         bail!(
             "Android release signing requires the keystore and all three password/alias variables; partial signing configuration is an error"
         );
     }
-    if !signed {
-        prepare_android_debug_key()?;
-    }
     let private_key = if let Some(encoded) = encoded {
         let key = crate::temporary::file()?;
         fs::write(
             key.path(),
-            base64::engine::general_purpose::STANDARD.decode(encoded.trim())?,
+            base64::engine::general_purpose::STANDARD.decode(
+                encoded
+                    .to_str()
+                    .context("Android keystore base64 is not UTF-8")?
+                    .trim(),
+            )?,
         )?;
         Some(key)
     } else {
@@ -1255,33 +1364,39 @@ fn package_android(
         // Each ABI resolves its own Rust closure (target-specific crates differ), so
         // the asset listing is the union; every file present in both must still match.
         let mut bundled = std::collections::BTreeSet::new();
-        for (target, _) in ANDROID_TARGETS {
-            let built = if target == result.target {
-                result.clone()
+        for (target, abi) in targets {
+            let built = if *target == result.target {
+                result
             } else {
-                build::load_receipt(inv, target, "manager")?
+                secondary
+                    .as_ref()
+                    .context("missing secondary Android receipt")?
             };
-            if built.profile != "release" || built.source_commit != result.source_commit {
-                bail!("both Android ABIs require release builds from the same source commit");
-            }
-            if !result.source_dirty && built.source_dirty {
-                bail!(
-                    "a clean universal Android package requires clean build receipts for both ABIs"
-                );
-            }
-            built.require_product_version(version)?;
-            let inputs = crate::temporary::directory()?;
-            android_inputs(inv, &built, inputs.path())?;
+            let scratch;
+            let inputs = if let Some(inputs) = &generated {
+                inputs.as_path()
+            } else {
+                scratch = crate::temporary::directory()?;
+                android_inputs(inv, built, scratch.path())?;
+                scratch.path()
+            };
+            bundled.extend(
+                fs::read_to_string(inputs.join(ANDROID_BUNDLE_MANIFEST))?
+                    .lines()
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned),
+            );
             // Shared metadata/license bytes must be identical for both ABIs.
-            for (source, name) in tree(inputs.path())? {
-                if name == "assets/bundled.manifest" {
-                    bundled.extend(
-                        fs::read_to_string(&source)?
-                            .lines()
-                            .filter(|line| !line.is_empty())
-                            .map(str::to_owned),
-                    );
+            for (source, name) in tree(inputs)? {
+                if name == ANDROID_BUNDLE_MANIFEST {
                     continue;
+                }
+                if let Some(asset) = name.strip_prefix("assets/") {
+                    if qa && !bundled.contains(asset) {
+                        bail!("Android build asset missing from its manifest: {asset}");
+                    }
+                } else if name.strip_prefix("jniLibs/").and_then(android_library_abi) != Some(*abi) {
+                    bail!("unexpected input for Android ABI {abi}: {name}");
                 }
                 let destination = stage.join(&name);
                 if destination.exists() {
@@ -1292,12 +1407,37 @@ fn package_android(
                     copy_entries(&[(source, name)], stage)?;
                 }
             }
-            write_provenance(&built, &stage.join(format!("build-{target}.json")))?;
+            write_provenance(built, &stage.join(format!("build-{target}.json")))?;
+        }
+        for required in [
+            "THIRD_PARTY_NOTICES.md",
+            "licenses/android-ndk/NOTICE",
+            "licenses/android-ndk/NOTICE.toolchain",
+            "licenses/slint-material/LICENSE.md",
+            "licenses/material-symbols/LICENSE",
+            "metadata/index.json",
+        ] {
+            if !bundled.contains(required) {
+                bail!("Android build asset manifest missing {required}");
+            }
         }
         let mut manifest = bundled.into_iter().collect::<Vec<_>>().join("\n");
         manifest.push('\n');
-        fs::write(stage.join("assets/bundled.manifest"), manifest)?;
+        fs::write(stage.join(ANDROID_BUNDLE_MANIFEST), manifest)?;
         crate::icon::Icon::new()?.android(stage)?;
+        let qa_cert = if signed {
+            None
+        } else {
+            let key = prepare_android_debug_key()?;
+            qa.then(|| android_debug_certificate(&key)).transpose()?
+        };
+        let universal_filter;
+        let abi_filter = if qa {
+            abi
+        } else {
+            universal_filter = format!("{},{}", abi, targets[1].1);
+            &universal_filter
+        };
         let gradle = inv.root.join("Platforms/Android").join(if cfg!(windows) {
             "gradlew.bat"
         } else {
@@ -1323,7 +1463,7 @@ fn package_android(
                 "SHINKI_EMU_ANDROID_GENERATED_ROOT",
                 dunce::canonicalize(stage)?,
             )
-            .env("SHINKI_EMU_ANDROID_ABI", "arm64-v8a,x86_64");
+            .env("SHINKI_EMU_ANDROID_ABI", abi_filter);
         if std::env::var_os("SHINKI_EMU_GRADLE_OFFLINE").is_some_and(|value| value == "1") {
             cmd.arg("--offline");
         }
@@ -1336,53 +1476,66 @@ fn package_android(
             .root
             .join("Platforms/Android/app/build/outputs/apk")
             .join(if signed { "release" } else { "debug" });
-        let mut apks = 0;
-        for (source, name) in tree(&outputs)? {
-            if name.ends_with(".apk") {
-                apks += 1;
-                fs::copy(
-                    &source,
-                    stage.join(format!(
-                        "ShinkiEMU-{version}-android-universal-{}-signed.apk",
-                        if signed { "release" } else { "debug" }
-                    )),
-                )?;
-            }
-        }
-        if apks != 1 {
+        let mut apks = tree(&outputs)?
+            .into_iter()
+            .filter(|(_, name)| name.ends_with(".apk"));
+        let (source, _) = apks.next().context("Gradle did not produce a signed APK")?;
+        if apks.next().is_some() {
             bail!("Gradle must produce exactly one signed APK");
         }
-        let apk = tree(stage)?
-            .into_iter()
-            .find(|(_, name)| name.ends_with(".apk"))
-            .context("signed APK missing")?
-            .0;
-        verify_android_apk(&apk, stage)?;
+        let (variant, record, schema) = if qa {
+            (
+                "qa-debug",
+                "android-qa.json",
+                "shinki.emu.android_qa_package.v1",
+            )
+        } else {
+            (
+                if signed { "release" } else { "debug" },
+                "android.json",
+                "shinki.emu.android_package.v1",
+            )
+        };
+        let platform = if qa { abi } else { "universal" };
+        let apk_name = format!("ShinkiEMU-{version}-android-{platform}-{variant}-signed.apk");
+        let apk = stage.join(&apk_name);
+        fs::copy(source, &apk)?;
+        verify_android_apk(&apk, stage, targets, qa_cert.as_deref(), version)?;
         fs::write(
-            stage.join("android.json"),
+            stage.join(record),
             serde_json::to_vec_pretty(&serde_json::json!({
-                "schema": "shinki.emu.android_package.v1",
+                "schema": schema,
                 "target": result.target,
-                "targets": ANDROID_TARGETS.map(|(target, _)| target),
-                "abis": ["arm64-v8a", "x86_64"],
+                "targets": targets.iter().map(|&(target, _)| target).collect::<serde_json::Value>(),
+                "abis": targets.iter().map(|&(_, abi)| abi).collect::<serde_json::Value>(),
                 "signing": if signed { "release" } else { "debug-test" },
-                "apk": apk.file_name().unwrap().to_string_lossy(),
+                "apk": apk_name,
                 "sha256": sha256(&apk)?,
                 "size": fs::metadata(&apk)?.len()
             }))?,
         )?;
-        write_provenance(result, &stage.join("build.json"))?;
+        fs::copy(
+            stage.join(format!("build-{}.json", result.target)),
+            stage.join("build.json"),
+        )?;
         Ok(())
     })?;
     Ok(out.to_owned())
 }
 
-fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
+fn verify_android_apk(
+    apk: &Path,
+    staged: &Path,
+    targets: &[(&str, &str)],
+    qa_cert: Option<&str>,
+    version: &str,
+) -> Result<()> {
     let sdk = std::env::var_os("ANDROID_HOME")
         .or_else(|| std::env::var_os("ANDROID_SDK_ROOT"))
         .map(PathBuf::from)
         .context("set ANDROID_HOME")?;
-    let signer = sdk.join("build-tools/37.0.0").join(if cfg!(windows) {
+    let tools = sdk.join("build-tools/37.0.0");
+    let signer = tools.join(if cfg!(windows) {
         "apksigner.bat"
     } else {
         "apksigner"
@@ -1394,12 +1547,38 @@ fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
     } else {
         std::process::Command::new("sh")
     };
-    dependencies::run(
-        command
-            .arg(signer)
-            .args(["verify", "--verbose", "--print-certs"])
-            .arg(apk),
-    )?;
+    command
+        .arg(signer)
+        .args(["verify", "--verbose", "--print-certs"])
+        .arg(apk);
+    if let Some(cert) = qa_cert {
+        let signing = dependencies::capture(&mut command)?;
+        let signing = std::str::from_utf8(&signing)?;
+        verify_android_qa_certificate(signing, cert)?;
+        print!("{signing}");
+        let aapt2 = tools.join(if cfg!(windows) { "aapt2.exe" } else { "aapt2" });
+        let badging = dependencies::capture(
+            std::process::Command::new(aapt2)
+                .args(["dump", "badging"])
+                .arg(apk),
+        )?;
+        let package = std::str::from_utf8(&badging)?
+            .lines()
+            .find(|line| line.starts_with("package: "))
+            .context("Android QA APK package metadata missing")?;
+        let version_field = format!("versionName='{version}'");
+        if !package
+            .split_ascii_whitespace()
+            .any(|field| field == "name='org.shinkirou.shinkiemu'")
+            || !package
+                .split_ascii_whitespace()
+                .any(|field| field == version_field)
+        {
+            bail!("Android QA APK must use org.shinkirou.shinkiemu and versionName {version}");
+        }
+    } else {
+        dependencies::run(&mut command)?;
+    }
     let extracted = crate::temporary::directory()?;
     let mut archive = zip::ZipArchive::new(fs::File::open(apk)?)?;
     let mut metadata = false;
@@ -1407,8 +1586,13 @@ fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
         let mut entry = archive.by_index(i)?;
         let name = entry.name()?.into_owned();
         metadata |= name == "assets/metadata/index.json";
-        if name.starts_with("lib/") && name.ends_with(".so") {
+        if let Some(relative) = name.strip_prefix("lib/").filter(|path| path.ends_with(".so")) {
             portable(&name)?;
+            if !android_library_abi(relative)
+                .is_some_and(|abi| targets.iter().any(|(_, expected)| *expected == abi))
+            {
+                bail!("APK contains a native library outside the requested ABI set: {name}");
+            }
             let destination = extracted.path().join(&name);
             fs::create_dir_all(destination.parent().unwrap())?;
             let mut output = fs::OpenOptions::new()
@@ -1418,11 +1602,10 @@ fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
             io::copy(&mut entry, &mut output)?;
         }
     }
-    let manifest_path = "assets/bundled.manifest";
-    let expected_manifest = fs::read_to_string(staged.join(manifest_path))?;
+    let expected_manifest = fs::read_to_string(staged.join(ANDROID_BUNDLE_MANIFEST))?;
     let mut packaged_manifest = String::new();
     archive
-        .by_name(manifest_path)?
+        .by_name(ANDROID_BUNDLE_MANIFEST)?
         .read_to_string(&mut packaged_manifest)?;
     if packaged_manifest != expected_manifest || packaged_manifest.len() > 1024 * 1024 {
         bail!(
@@ -1451,7 +1634,7 @@ fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
             bail!("APK bundled resource differs from its staged input: {relative}");
         }
     }
-    for (target, abi) in ANDROID_TARGETS {
+    for (target, abi) in targets {
         let dir = extracted.path().join("lib").join(abi);
         let manager = dir.join("libshinki_emu_manager.so");
         binary::inspect(&manager, target, false)?;
@@ -1471,4 +1654,156 @@ fn verify_android_apk(apk: &Path, staged: &Path) -> Result<()> {
         bail!("APK metadata snapshot missing");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod android_tests {
+    use super::*;
+    use crate::cores::Target;
+
+    #[test]
+    fn single_abi_qa_requires_only_the_requested_clean_release_receipt() {
+        let temp = crate::temporary::directory().unwrap();
+        let root = temp.path();
+        let inv = Inventory {
+            root: root.to_owned(),
+            cores: Vec::new(),
+            targets: ANDROID_TARGETS
+                .iter()
+                .map(|(target, abi)| Target {
+                    triple: (*target).into(),
+                    platform: "android".into(),
+                    architecture: (*abi).into(),
+                    runner: String::new(),
+                    variant: String::new(),
+                    tools: Vec::new(),
+                    manager_supported: true,
+                    manager_blocked: String::new(),
+                    manager_local_build: false,
+                    blocked: String::new(),
+                })
+                .collect(),
+        };
+        let (arm, arm_abi) = ANDROID_TARGETS[0];
+        let (x64, _) = ANDROID_TARGETS[1];
+        let out = root.join("package");
+        let library = root.join("libshinki_emu_manager.so");
+        // Receipt validation stops before JNI staging or ELF inspection in this fixture.
+        fs::write(&library, b"receipt path fixture").unwrap();
+        let mut result = BuildResult {
+            component: "manager".into(),
+            target: arm.into(),
+            profile: "release".into(),
+            product_version: Some("1.2.3".into()),
+            library,
+            core_build: None,
+            embedded_core_builds: Vec::new(),
+            source_commit: "a".repeat(40),
+            source_dirty: false,
+            toolchain: String::new(),
+            features: Vec::new(),
+            target_dir: root.join("native"),
+        };
+        let receipt = root.join(".work/build").join(arm).join("manager.json");
+        fs::create_dir_all(receipt.parent().unwrap()).unwrap();
+        let save = |result: &BuildResult| {
+            fs::write(&receipt, serde_json::to_vec(result).unwrap()).unwrap();
+        };
+        let qa_error = |version| {
+            format!(
+                "{:#}",
+                package_android_qa(&inv, arm, version, &out).unwrap_err()
+            )
+        };
+        assert!(qa_error("1.2.3").contains(&format!("missing {}", receipt.display())));
+        save(&result);
+        assert!(qa_error("1.2.3").contains("checking Android build inputs"));
+        let generated_manager = result
+            .target_dir
+            .join("android-inputs/jniLibs")
+            .join(arm_abi)
+            .join("libshinki_emu_manager.so");
+        fs::create_dir_all(generated_manager.parent().unwrap()).unwrap();
+        fs::write(generated_manager, b"from another build").unwrap();
+        assert!(qa_error("1.2.3").contains("does not match its build receipt"));
+        let universal = package(&inv, arm, "manager", "1.2.3", &out).unwrap_err();
+        let x64_receipt = root.join(".work/build").join(x64).join("manager.json");
+        assert!(format!("{universal:#}").contains(&format!("missing {}", x64_receipt.display())));
+        fs::create_dir_all(x64_receipt.parent().unwrap()).unwrap();
+        let write_x64 = |other: &BuildResult| {
+            fs::write(&x64_receipt, serde_json::to_vec(other).unwrap()).unwrap();
+        };
+        let mut other = result.clone();
+        other.target = x64.into();
+        other.source_commit = "b".repeat(40);
+        write_x64(&other);
+        let universal_error = || {
+            package(&inv, arm, "manager", "1.2.3", &out)
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(universal_error().contains("release builds from the same source commit"));
+        other.source_commit.clone_from(&result.source_commit);
+        other.source_dirty = true;
+        write_x64(&other);
+        assert!(universal_error().contains("requires clean build receipts for both ABIs"));
+        assert!(qa_error("1.2.4").contains("compiled as 1.2.3"));
+        result.source_dirty = true;
+        save(&result);
+        assert!(qa_error("1.2.3").contains("requires clean build receipts"));
+        result.source_dirty = false;
+        result.profile = "debug".into();
+        save(&result);
+        assert!(qa_error("1.2.3").contains("requires a release build receipt"));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn single_abi_qa_flag_cannot_select_cores_ci_or_release() {
+        use crate::cli::Cli;
+        use clap::Parser;
+
+        let arm = ANDROID_TARGETS[0].0;
+        let package_args = ["xtask", "package", "--target", arm, "--out", "qa"];
+        assert!(
+            Cli::try_parse_from(package_args.into_iter().chain(["--manager", "--qa-single-abi"]))
+                .is_ok()
+        );
+        let core = Cli::try_parse_from(
+            package_args.into_iter().chain(["--core", "musica", "--qa-single-abi"]),
+        );
+        assert!(core.is_err(), "QA accepted a core package selection");
+        let ci = [
+            "xtask",
+            "ci",
+            "--target",
+            arm,
+            "--component",
+            "manager",
+            "--report",
+            "ci.json",
+        ];
+        let release = ["xtask", "release", "--component", "manager", "--target", arm];
+        for args in [ci.as_slice(), release.as_slice()] {
+            assert!(Cli::try_parse_from(args.iter().copied().chain(["--qa-single-abi"])).is_err());
+        }
+    }
+
+    #[test]
+    fn qa_apk_requires_the_local_debug_signer_only() {
+        let debug_cert = "a".repeat(64);
+        let debug = format!("Signer #1 certificate SHA-256 digest: {debug_cert}");
+        let production = format!("Signer #1 certificate SHA-256 digest: {ANDROID_PRODUCTION_CERT}");
+        assert!(verify_android_qa_certificate(&debug, &debug_cert).is_ok());
+        assert!(verify_android_qa_certificate("", &debug_cert).is_err());
+        assert!(verify_android_qa_certificate(&production, &debug_cert).is_err());
+        assert!(verify_android_qa_certificate(&production, ANDROID_PRODUCTION_CERT).is_err());
+        assert!(
+            verify_android_qa_certificate(
+                &format!("{debug}\nSigner #2 certificate SHA-256 digest: {ANDROID_PRODUCTION_CERT}"),
+                &debug_cert,
+            )
+            .is_err()
+        );
+    }
 }
