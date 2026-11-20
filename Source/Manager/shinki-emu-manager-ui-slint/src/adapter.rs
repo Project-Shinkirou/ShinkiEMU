@@ -10,7 +10,8 @@ use crate::{
     App, Appearance, AppearanceViewModel, BangumiProgress, BangumiViewModel, Choice,
     ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreBatch, CoreInfo,
     CoreViewModel, Cores, EngineAction, EngineActionViewModel, Excluded, ExcludedViewModel,
-    Filters, GameCard, GameCardViewModel, GameSettings, GamepadBinding, GamepadBindingViewModel,
+    FilterStageItem, FilterStageViewModel, Filters, GameCard, GameCardViewModel, GameSettings,
+    GamepadBinding, GamepadBindingViewModel,
     Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel, Network, Notices,
     Onboarding, Patch, PatchCheck, PatchCheckViewModel, PatchDownload, PatchDownloadViewModel,
     PatchGame, PatchGameViewModel, PatchState, PatchStateViewModel, PatchVerify, PlaySession,
@@ -49,6 +50,8 @@ pub struct SlintManagerAdapter {
     roots: ListModel<String, SharedString>,
     excluded: ListModel<ExcludedViewModel, Excluded>,
     filter_fields: Rc<VecModel<ConfigField>>,
+    filter_stages: ListModel<FilterStageViewModel, FilterStageItem>,
+    filter_choices: ListModel<FilterStageViewModel, FilterStageItem>,
     actions: ListModel<EngineActionViewModel, EngineAction>,
     onboarding_roots: ListModel<String, SharedString>,
     store_games: ListModel<StoreGameViewModel, StoreGame>,
@@ -96,6 +99,8 @@ impl SlintManagerAdapter {
             roots: ListModel::strings(),
             excluded: ListModel::new(excluded),
             filter_fields: Rc::new(VecModel::default()),
+            filter_stages: ListModel::new(filter_stage),
+            filter_choices: ListModel::new(filter_stage),
             actions: ListModel::new(engine_action),
             onboarding_roots: ListModel::strings(),
             store_games: ListModel::new(store_game),
@@ -162,9 +167,10 @@ impl SlintManagerAdapter {
         settings.set_roots(self.roots.model());
         settings.set_excluded(self.excluded.model());
 
-        window
-            .global::<Filters>()
-            .set_fields(ModelRc::from(self.filter_fields.clone()));
+        let filters = window.global::<Filters>();
+        filters.set_fields(ModelRc::from(self.filter_fields.clone()));
+        filters.set_stages(self.filter_stages.model());
+        filters.set_choices(self.filter_choices.model());
         window.global::<Session>().set_actions(self.actions.model());
         window
             .global::<Onboarding>()
@@ -570,13 +576,17 @@ impl SlintManagerAdapter {
     }
 
     fn apply_filters(&self, model: &ManagerViewModel) {
-        self.window
-            .global::<Filters>()
-            .set_preset(model.filters.preset.as_str().into());
+        let filters = self.window.global::<Filters>();
+        let view = &model.filters;
+        filters.set_preset(view.preset.as_str().into());
+        self.filter_stages.update(&view.stages);
+        self.filter_choices.update(&view.choices);
+        filters.set_selected_stage(view.selected_stage);
+        filters.set_source_unavailable_reason(view.source_unavailable_reason.as_str().into());
         crate::config_model::update(
             &self.filter_fields,
             &self.cached_filter_fields,
-            &model.filters.fields,
+            &view.fields,
         );
     }
 
@@ -832,6 +842,15 @@ fn strings(values: &[String]) -> ModelRc<SharedString> {
             .map(|value| SharedString::from(value.as_str()))
             .collect::<Vec<_>>(),
     ))
+}
+
+fn filter_stage(value: &FilterStageViewModel) -> FilterStageItem {
+    FilterStageItem {
+        id: value.id.as_str().into(),
+        label: value.label.as_str().into(),
+        available: value.available,
+        unavailable_reason: value.unavailable_reason.as_str().into(),
+    }
 }
 
 fn choice(value: &ChoiceViewModel) -> Choice {

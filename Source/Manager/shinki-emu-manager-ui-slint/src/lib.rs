@@ -591,10 +591,23 @@ impl Default for SettingsViewModel {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterStageViewModel {
+    pub id: String,
+    pub label: String,
+    pub available: bool,
+    pub unavailable_reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FiltersViewModel {
     pub preset: String,
     pub fields: Vec<ConfigFieldViewModel>,
+    pub stages: Vec<FilterStageViewModel>,
+    /// Zero-based index in `stages`, or -1 for an empty chain.
+    pub selected_stage: i32,
+    pub choices: Vec<FilterStageViewModel>,
+    pub source_unavailable_reason: String,
 }
 
 impl Default for FiltersViewModel {
@@ -602,6 +615,10 @@ impl Default for FiltersViewModel {
         Self {
             preset: "none".into(),
             fields: Vec::new(),
+            stages: Vec::new(),
+            selected_stage: -1,
+            choices: Vec::new(),
+            source_unavailable_reason: String::new(),
         }
     }
 }

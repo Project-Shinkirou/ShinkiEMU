@@ -61,10 +61,7 @@ enum DrawError {
 
 impl ManagerStageRenderer {
     pub(crate) fn new(mailbox: FrameMailbox) -> Self {
-        let dxc_path = env::var_os("SHINKI_EMU_DXC_PATH")
-            .map(PathBuf::from)
-            .unwrap_or_else(default_dxc_path);
-        Self::with_dxc_path(mailbox, dxc_path)
+        Self::with_dxc_path(mailbox, configured_dxc_path())
     }
 
     fn with_dxc_path(mailbox: FrameMailbox, dxc_path: PathBuf) -> Self {
@@ -236,6 +233,12 @@ impl ManagerStageRenderer {
         }
         Ok(())
     }
+}
+
+pub(crate) fn configured_dxc_path() -> PathBuf {
+    env::var_os("SHINKI_EMU_DXC_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_dxc_path)
 }
 
 fn default_dxc_path() -> PathBuf {

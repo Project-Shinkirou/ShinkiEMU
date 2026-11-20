@@ -3,57 +3,46 @@ use shinki_emu_manager::{FilterApply, FilterApplyState, FilterChainEdit, effects
 use shinki_emu_manager_core::{
     FILTER_DEFAULT_STRENGTH, FILTER_SOURCE_BYTE_LIMIT, FilterSettings, FilterStage,
 };
-use shinki_emu_manager_ui_slint::tr;
+use shinki_emu_manager_ui_slint::{FilterStageViewModel, FiltersViewModel, tr};
 
 const UNKNOWN_FIELD: &str = "SHINKI_EMU_FILTER_CONFIG_FIELD_UNKNOWN";
 const INVALID_STAGE: &str = "SHINKI_EMU_FILTER_STAGE_INDEX";
 
+const BUILTIN_IDS: [&str; 7] = [
+    "scale",
+    "sharpen",
+    "lanczos3",
+    "scale2x",
+    "anime4k_original_restore",
+    "anime4k_original_x2",
+    "anime4k",
+];
+
 impl ShinkiEmuManagerController {
-    pub(super) fn filter_fields(&self) -> Result<Vec<ConfigFieldViewModel>, String> {
-        let Some(stage) = self.filter_settings.stages.get(self.filter_selected_stage) else {
-            return Ok(Vec::new());
+    pub(super) fn filter_view(&self) -> Result<FiltersViewModel, String> {
+        let stages: Vec<_> = self
+            .filter_settings
+            .stages
+            .iter()
+            .map(|stage| stage_view(stage_id(stage), Some(stage)))
+            .collect();
+        let selected = self.filter_selected_stage;
+        let fields = if stages.get(selected).is_some_and(|stage| stage.available) {
+            filter_fields(&self.filter_settings.stages[selected])?
+        } else {
+            Vec::new()
         };
-        let field = |key: &str, label: &str, value: f32, range: (f32, f32, f32)| {
-            ConfigFieldViewModel {
-                key: key.into(),
-                label: label.into(),
-                kind: "float".into(),
-                value: value.to_string(),
-                display_value: value.to_string(),
-                min: range.0.into(),
-                max: range.1.into(),
-                step: range.2.into(),
-                ..ConfigFieldViewModel::default()
-            }
-        };
-        let strength_field = |strength| {
-            field("filter.strength", tr!("锐化强度"), strength, (0.0, 1.0, 0.05))
-        };
-        Ok(match stage {
-            FilterStage::Scale { scale } | FilterStage::Lanczos3 { scale } => {
-                vec![field("filter.scale", tr!("缩放倍率"), *scale, (1.0, 4.0, 0.25))]
-            }
-            FilterStage::Sharpen { strength } => vec![strength_field(*strength)],
-            FilterStage::Format4 { source, strength, parameters, .. } => {
-                let effect = EffectSource::parse(source).map_err(|error| error.to_string())?;
-                let mut fields = Vec::with_capacity(1 + effect.parameters.len());
-                fields.push(strength_field(*strength));
-                for parameter in effect.parameters {
-                    let value = parameters.get(&parameter.name).copied().unwrap_or(parameter.default);
-                    fields.push(field(
-                        &format!("parameter.{}", parameter.name),
-                        &parameter.label,
-                        value,
-                        (parameter.min, parameter.max, parameter.step),
-                    ));
-                }
-                fields
-            }
-            _ => Vec::new(),
+        Ok(FiltersViewModel {
+            preset: self.filter_preset_id().into(),
+            fields,
+            selected_stage: if stages.is_empty() { -1 } else { selected as i32 },
+            stages,
+            choices: BUILTIN_IDS.iter().map(|&id| stage_view(id, None)).collect(),
+            source_unavailable_reason: unsupported_reason("external").into(),
         })
     }
 
-    pub(super) fn filter_preset_id(&self) -> &'static str {
+    fn filter_preset_id(&self) -> &'static str {
         match self.filter_settings.stages.as_slice() {
             [] => "none",
             [stage] => stage_id(stage),
@@ -258,6 +247,97 @@ impl ShinkiEmuManagerController {
             },
             apply,
         )
+    }
+}
+
+fn filter_fields(stage: &FilterStage) -> Result<Vec<ConfigFieldViewModel>, String> {
+    let field = |key: &str, label: &str, value: f32, range: (f32, f32, f32)| {
+        ConfigFieldViewModel {
+            key: key.into(),
+            label: label.into(),
+            kind: "float".into(),
+            value: value.to_string(),
+            display_value: value.to_string(),
+            min: range.0.into(),
+            max: range.1.into(),
+            step: range.2.into(),
+            ..ConfigFieldViewModel::default()
+        }
+    };
+    let strength_field = |strength| {
+        field("filter.strength", tr!("锐化强度"), strength, (0.0, 1.0, 0.05))
+    };
+    Ok(match stage {
+        FilterStage::Scale { scale } | FilterStage::Lanczos3 { scale } => {
+            vec![field("filter.scale", tr!("缩放倍率"), *scale, (1.0, 4.0, 0.25))]
+        }
+        FilterStage::Sharpen { strength } => vec![strength_field(*strength)],
+        FilterStage::Format4 { source, strength, parameters, .. } => {
+            let effect = EffectSource::parse(source).map_err(|error| error.to_string())?;
+            let mut fields = Vec::with_capacity(1 + effect.parameters.len());
+            fields.push(strength_field(*strength));
+            for parameter in effect.parameters {
+                let value = parameters.get(&parameter.name).copied().unwrap_or(parameter.default);
+                fields.push(field(
+                    &format!("parameter.{}", parameter.name),
+                    &parameter.label,
+                    value,
+                    (parameter.min, parameter.max, parameter.step),
+                ));
+            }
+            fields
+        }
+        _ => Vec::new(),
+    })
+}
+
+fn unsupported_reason(id: &str) -> &'static str {
+    if cfg!(target_env = "ohos") {
+        return tr!("当前平台不支持 GPU 滤镜。");
+    }
+    if matches!(id, "scale" | "sharpen" | "anime4k" | "external") {
+        // The compiler path is fixed for this process. A present library is
+        // only a prerequisite; shader validation and activation still run.
+        static DXC_PRESENT: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| crate::stage_renderer::configured_dxc_path().is_file());
+        if !*DXC_PRESENT {
+            return tr!("找不到 DXC，无法编译 HLSL 滤镜。");
+        }
+    }
+    ""
+}
+
+fn stage_view(id: &str, stage: Option<&FilterStage>) -> FilterStageViewModel {
+    let mut reason = unsupported_reason(id);
+    let label = match (id, stage) {
+        ("scale", _) => tr!("平滑放大"),
+        ("sharpen", _) => tr!("锐化"),
+        ("lanczos3", _) => "Lanczos3",
+        ("scale2x", _) => "Scale2x",
+        ("anime4k_original_restore", _) => tr!("原版 Anime4K 修复"),
+        ("anime4k_original_x2", _) => tr!("原版 Anime4K 修复 + 2× 放大"),
+        ("anime4k", _) => tr!("Magpie Anime4K 2×（旧版）"),
+        ("external", Some(FilterStage::Format4 { source, disabled, .. })) => {
+            if *disabled {
+                reason = tr!("此滤镜已停用。");
+            }
+            // Only the optional display name is needed here; the renderer
+            // validates the format, and field extraction parses the selected stage.
+            source
+                .lines()
+                .map(str::trim)
+                .find_map(|line| line.strip_prefix("//!SORT_NAME "))
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| tr!("外部 HLSL 效果"))
+        }
+        _ => unreachable!("unknown stage id {id}"),
+    };
+    FilterStageViewModel {
+        id: id.into(),
+        label: label.into(),
+        available: reason.is_empty(),
+        unavailable_reason: reason.into(),
     }
 }
 

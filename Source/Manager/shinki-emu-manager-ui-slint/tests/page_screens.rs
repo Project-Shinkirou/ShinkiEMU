@@ -705,21 +705,6 @@ fn states() -> Vec<(&'static str, Setup)> {
             page(a, "patch");
             a.window().global::<Patch>().set_step(4);
         }),
-        // 滤镜
-        ("filters/none", |a, _| {
-            a.apply(&base());
-            page(a, "filters");
-        }),
-        ("filters/sharpen-params", |a, _| {
-            let mut m = base();
-            m.filters.preset = "sharpen".into();
-            m.filters.fields = vec![
-                field("strength", "锐化强度", "float", "0.6", &[]),
-                field("radius", "半径", "integer", "2", &[]),
-            ];
-            a.apply(&m);
-            page(a, "filters");
-        }),
         // 设置：除 translation / updates 外的每个分类
         ("settings/appearance", |a, _| {
             a.apply(&base());
