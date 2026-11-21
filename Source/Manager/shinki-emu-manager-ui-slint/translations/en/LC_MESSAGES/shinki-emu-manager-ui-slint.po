@@ -2632,14 +2632,8 @@ msgstr "GPU filters are unavailable on this platform."
 msgid "此滤镜已停用。"
 msgstr "This filter is disabled."
 
-msgid "管理游戏库"
-msgstr "Manage library"
-
 msgid "添加文件夹"
 msgstr "Add folder"
-
-msgid "管理文件夹"
-msgstr "Manage folders"
 
 msgid "正在打开游戏库"
 msgstr "Opening library"
@@ -2656,9 +2650,6 @@ msgstr "Check folder permissions and try again."
 msgid "取消扫描"
 msgstr "Cancel scan"
 
-msgid "搜索与筛选"
-msgstr "Search and filters"
-
 msgid "搜索游戏标题"
 msgstr "Search game titles"
 
@@ -2670,9 +2661,6 @@ msgstr "Filter options"
 
 msgid "游戏库为空"
 msgstr "Your library is empty"
-
-msgid "返回游戏库管理"
-msgstr "Back to library management"
 
 msgid "添加文件夹后，会自动扫描其中的游戏。"
 msgstr "Added folders are scanned automatically."
@@ -2809,5 +2797,32 @@ msgstr "Install the selected core, then restart ShinkiEMU."
 msgid "补丁输出信息无效，请检查补丁或移除该目录。"
 msgstr "The patch output is invalid. Check the patch or remove this folder."
 
-msgid "游戏库菜单"
-msgstr "Library menu"
+msgid "下拉刷新"
+msgstr "Pull to refresh"
+
+msgid "松开刷新"
+msgstr "Release to refresh"
+
+msgid "此游戏文件夹由系统文件提供程序管理，当前核心无法直接读取。"
+msgstr "This folder is managed by a system file provider. The selected core cannot read it directly."
+
+msgid "共享存储"
+msgstr "Shared storage"
+
+msgid "此权限允许 ShinkiEMU 访问共享存储中的所有文件，让兼容核心直接读取游戏目录。"
+msgstr "This gives ShinkiEMU access to all files in shared storage so compatible cores can open game folders directly."
+
+msgid "允许访问共享存储"
+msgstr "Allow shared storage access"
+
+msgid "已允许访问共享存储"
+msgstr "Shared storage access granted"
+
+msgid "无法打开系统权限设置"
+msgstr "Couldn't open system permission settings"
+
+msgid "可在系统设置中为 ShinkiEMU 开启所有文件访问权限。"
+msgstr "You can grant ShinkiEMU all files access in system settings."
+
+msgid "此游戏文件夹无法通过本机路径读写，不能应用文件补丁。"
+msgstr "File patches need direct read and write access to the game folder."

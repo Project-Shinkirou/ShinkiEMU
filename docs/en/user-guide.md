@@ -29,9 +29,13 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 ## Add games and install cores
 
-Open the **⋯** menu in the library header and choose **Manage library → Add folder**. Manager finds games automatically, even offline and before you install a core. The management page shows scan progress and offers a refresh when available. If a folder cannot be read, check its permissions or choose another. On Android, grant access in the system folder picker when prompted.
+Choose **Add folder** in the library header and select the original game folder. Manager scans it in place, even offline and before you install a core. Scan progress appears above the list. On Android, grant access when the system folder picker asks. If a folder cannot be read, check its permissions or choose another.
 
-Choose **Search and filters** from the same menu, or press **Ctrl+F**. The list updates as you type. Select a result to open its details. Open **Filter options** to set compatibility, sort order, or layout, or to clear the search and filters together.
+On a touch screen, pull down from the top of the library list and release to scan again. This also syncs metadata when networking is allowed. To manage folders or refresh with the keyboard, use **Settings → Library folders**.
+
+On Android 11 or later, if a compatible core needs direct file access, use **Settings → Library folders → Allow shared storage access**. Android asks whether to grant ShinkiEMU access to all files in shared storage. Folder scanning still uses the access you granted in the folder picker.
+
+Choose **Search** in the header, or press **Ctrl+F**. The list updates as you type. Select a result to open its details. Open **Filter options** to set compatibility, sort order, or layout, or to clear the search and filters together.
 
 Install a compatible core if a game cannot start because its core is missing. Restart when prompted. If several engines or cores match, choose the one you want to use; Manager keeps your selection even if the core is temporarily missing.
 
@@ -43,7 +47,7 @@ Allow networking in Settings before synchronizing metadata or downloading cores.
 
 ## Store downloads
 
-Open **Manage library → Store downloads** after allowing network access in Settings. When several providers are compiled in, select a store first. The login options come from that provider: Steam offers QR, account/password with Steam Guard, and desktop client import; DLsite and DMM/FANZA sign in on their own pages inside Manager. Cookies and refresh tokens are stored only in the platform secret store, never in installation records or logs. Logging out removes that provider’s stored login.
+Choose **Download** in the library header after allowing network access in Settings. When several providers are compiled in, select a store first. The login options come from that provider: Steam offers QR, account/password with Steam Guard, and desktop client import; DLsite and DMM/FANZA sign in on their own pages inside Manager. Cookies and refresh tokens are stored only in the platform secret store, never in installation records or logs. Logging out removes that provider’s stored login.
 
 **Web sign-in (DLsite, DMM/FANZA):** choose **Open sign-in page**. Manager shows the store’s official sign-in page in the system web view — WebView2 on Windows, WKWebView on macOS and iOS, a WebKitGTK window on Linux, and Android’s WebView over the app. Sign in there, including any CAPTCHA or two-step verification. Once the store reaches its signed-in page with the account session, Manager reads that store’s cookies (HttpOnly ones included) directly from the web view, closes it and finishes the login; there is nothing to copy or paste. The web view starts with an empty private cookie store and keeps nothing after it closes; only the provider’s login is saved, in the platform secret store. **Cancel**, closing the window, Android’s back gesture or leaving the Store page abandons the sign-in. Windows needs the Microsoft Edge WebView2 Runtime (included with Windows 11) and Linux needs WebKitGTK 4.1 (`libwebkit2gtk-4.1`).
 

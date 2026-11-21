@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use i_slint_core::input::TouchPhase;
 use shinki_emu_manager_ui_slint::{
     App, ChoiceViewModel, ConfigFieldViewModel, GameCardViewModel, GameSettingsViewModel, Library,
     ManagerViewModel, NoticeViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel, RecipeViewModel,
@@ -23,7 +24,7 @@ use shinki_emu_manager_ui_slint::{
 use slint::{
     ComponentHandle, Model,
     platform::{
-        EventLoopProxy, Platform, PointerEventButton, WindowAdapter, WindowEvent,
+        EventLoopProxy, InternalEvent, Platform, PointerEventButton, WindowAdapter, WindowEvent,
         software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     },
     private_unstable_api::re_exports::{AccessibleStringProperty, ItemRc, Key, WindowInner},
@@ -493,7 +494,7 @@ fn states() -> Vec<(&'static str, Setup)> {
             a.apply(&m);
             page(a, "library");
         }),
-        ("library-management/scanning", |a, d| {
+        ("library/scanning", |a, d| {
             let mut m = library_model(d);
             m.library.prepare_state = "scanning".into();
             m.library.prepare_detail = "E:/Archive/Galgame/Autumn Bells".into();
@@ -501,15 +502,15 @@ fn states() -> Vec<(&'static str, Setup)> {
             m.library.can_cancel_prepare = true;
             m.library.can_refresh = false;
             a.apply(&m);
-            page(a, "library-management");
+            page(a, "library");
         }),
-        ("library-management/scan-failed", |a, _| {
+        ("library/scan-failed", |a, _| {
             let mut m = base();
             m.library.prepare_state = "failed".into();
             m.library.prepare_detail = shinki_emu_manager_ui_slint::tr!("请检查文件夹权限，或选择其他文件夹。").into();
             m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("重试").into();
             a.apply(&m);
-            page(a, "library-management");
+            page(a, "library");
         }),
         ("library/detail", |a, d| {
             let mut m = library_model(d);
@@ -715,11 +716,7 @@ fn states() -> Vec<(&'static str, Setup)> {
             a.apply(&base());
             settings(a, "about");
         }),
-        // 管理游戏库、商店：登录、列表、详情、加载失败
-        ("library-management/ready", |a, _| {
-            a.apply(&base());
-            page(a, "library-management");
-        }),
+        // 商店：登录、列表、详情、加载失败
         ("store/login", |a, _| {
             a.apply(&store_model(StoreLoginState::SignedOut));
             page(a, "store");
@@ -912,8 +909,11 @@ fn every_page_renders_stable_frames() {
                         .expect("write png");
                 }
             };
-            if only.is_empty() || only.iter().any(|p| "library-menu/interaction".starts_with(p)) {
+            if only.is_empty() || only.iter().any(|p| "library-toolbar/interaction".starts_with(p)) {
                 exercise_library(&adapter, &software, &data, (width, height), save);
+            }
+            if only.is_empty() || only.iter().any(|p| "settings/storage-access".starts_with(p)) {
+                exercise_storage_access(&adapter, &software, (width, height), save);
             }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
@@ -1018,6 +1018,20 @@ fn ctrl_f(software: &MinimalSoftwareWindow) {
     software.dispatch_event(WindowEvent::KeyReleased { text: control });
 }
 
+fn touch(software: &MinimalSoftwareWindow, position: LogicalPosition, phase: TouchPhase) {
+    software.dispatch_event(WindowEvent::internal(InternalEvent::Touch {
+        id: 0,
+        position: (position.x, position.y).into(),
+        phase,
+    }));
+}
+
+fn swipe(software: &MinimalSoftwareWindow, x: f32, y: f32, dx: f32, dy: f32) {
+    touch(software, LogicalPosition::new(x, y), TouchPhase::Started);
+    touch(software, LogicalPosition::new(x + dx, y + dy), TouchPhase::Moved);
+    touch(software, LogicalPosition::new(x + dx, y + dy), TouchPhase::Ended);
+}
+
 fn exercise_library(
     a: &Rc<SlintManagerAdapter>,
     software: &MinimalSoftwareWindow,
@@ -1027,13 +1041,13 @@ fn exercise_library(
 ) {
     let frame = || render(software, width, height);
     let window = a.window();
+    window.global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>().set_touch(width < 600);
     let app = window.global::<App>();
     let library = window.global::<Library>();
     let onboarding = window.global::<Onboarding>();
     let network = window.global::<shinki_emu_manager_ui_slint::Network>();
-    let menu = tr!("游戏库菜单");
-    let search_and_filters = tr!("搜索与筛选");
-    let manage = tr!("管理游戏库");
+    let search_button = tr!("搜索");
+    let download = tr!("下载");
     let add = tr!("添加文件夹");
     let search = tr!("搜索游戏标题");
     let filters = tr!("筛选选项");
@@ -1041,25 +1055,16 @@ fn exercise_library(
     let refresh = tr!("刷新资料库");
     let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
     let game_visible = |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
-    let open_menu = || {
-        let trigger = click_label(software, menu);
-        let image = frame();
-        assert_eq!(app.get_page(), "library", "the trigger opens a menu, not a page");
-        for label in [search_and_filters, manage] {
-            let row = labeled_item(software, |text| text == label).expect("visible menu row");
-            let geometry = row.geometry();
-            let top_left = row.map_to_native_window(geometry.origin);
-            let right = top_left.x + geometry.size.width;
-            let bottom = top_left.y + geometry.size.height;
-            assert!(top_left.x >= 0.0 && right <= width as f32);
-            assert!(top_left.y > trigger.y && bottom < height as f32);
-            assert!((right - trigger.x).abs() < 48.0, "menu is aligned to the overflow button");
+    let check_toolbar = || {
+        let mut last = 0.0;
+        for label in [search_button, add, download] {
+            let item = labeled_item(software, |text| text == label).expect("direct toolbar action");
+            let bounds = item.geometry();
+            let start = item.map_to_native_window(bounds.origin);
+            assert!(start.x >= last && start.y < 64.0);
+            last = start.x + bounds.size.width;
         }
-        image
-    };
-    let choose_menu = |label| {
-        open_menu();
-        click_label(software, label);
+        assert!(last <= width as f32, "all three actions fit in the header");
     };
 
     reset(a);
@@ -1086,30 +1091,9 @@ fn exercise_library(
     click_label(software, tr!("完成"));
     assert_eq!(app.get_page(), "library");
     let empty = frame();
-    assert!(!visible(add) && !visible(search) && !visible(manage) && !visible(refresh));
-    save("library-menu/empty", empty.clone());
-    save("library-menu/menu-empty", open_menu());
-    click_at(software, LogicalPosition::new(width as f32 / 2.0, height as f32 * 0.65));
-    frame();
-    assert!(!visible(search_and_filters) && !visible(manage), "an outside click closes the popup");
-    assert_eq!(app.get_page(), "library");
-    open_menu();
-    click_label(software, menu);
-    frame();
-    assert!(!visible(manage), "pressing the trigger again closes the popup");
-    open_menu();
-    press(software, Key::Escape);
-    assert_eq!(app.get_page(), "library");
-    assert!(!visible(manage), "Escape closes the popup without navigating");
-    open_menu();
-    press(software, Key::Back);
-    assert_eq!(app.get_page(), "library");
-    assert!(!visible(manage), "system Back closes the popup without navigating");
-    choose_menu(manage);
-    assert_eq!(app.get_page(), "library-management");
-    let folders = frame();
-    assert!(visible(add) && !visible(search) && !visible(refresh));
-    save("library-menu/management", folders);
+    check_toolbar();
+    assert!(!visible(search) && !visible(refresh));
+    save("library-toolbar/empty", empty.clone());
 
     // The host owns the native picker and worker. Draw the next host models after
     // pressing the real picker button, including a failed permission request.
@@ -1133,11 +1117,15 @@ fn exercise_library(
         }
     });
     click_label(software, add);
-    save("library-menu/picker-denied", frame());
+    assert_eq!(app.get_page(), "library", "add opens the picker callback without navigating");
+    assert_eq!(attempts.get(), 1);
+    save("library-toolbar/picker-denied", frame());
     assert!(visible(tr!("关闭")), "picker failure shows a dismissible notice");
     click_label(software, tr!("关闭"));
     click_label(software, add);
-    frame();
+    assert_eq!(attempts.get(), 2);
+    assert_eq!(app.get_page(), "library");
+    save("library-toolbar/scanning", frame());
     assert!(visible(tr!("取消扫描")));
     assert!(!visible(refresh), "a running scan cannot be refreshed");
 
@@ -1187,24 +1175,33 @@ fn exercise_library(
         m.library.selected_id = id.to_string();
         a.apply(&m);
     });
+    let store_state = state.clone();
+    let weak = Rc::downgrade(a);
+    window.global::<Store>().on_open(move || {
+        let Some(a) = weak.upgrade() else { return };
+        let mut m = store_state.borrow_mut();
+        m.store = store_model(StoreLoginState::SignedOut).store;
+        a.apply(&m);
+    });
     library.set_cover_loading(true);
     frame();
-    assert!(visible(refresh));
-    if width < 600 {
-        click_label(software, tr!("商店下载"));
-        assert_eq!(app.get_page(), "store");
-        save("library-menu/store-route", frame());
-        press(software, Key::Back);
-        assert_eq!(app.get_page(), "library-management");
-        frame();
-    }
+    check_toolbar();
+    save("library-toolbar/populated", frame());
+    click_label(software, download);
+    assert_eq!(app.get_page(), "store");
+    assert_eq!(window.global::<Store>().get_provider_name(), "Steam");
+    save("library-toolbar/store-route", frame());
     click_label(software, tr!("返回游戏库"));
-    save("library-menu/populated", frame());
-    save("library-menu/menu-populated", open_menu());
-    click_label(software, search_and_filters);
+    assert_eq!(app.get_page(), "library");
+    frame();
+    click_label(software, download);
+    press(software, Key::Back);
+    assert_eq!(app.get_page(), "library");
+    frame();
+    click_label(software, search_button);
     assert_eq!(app.get_page(), "library-search");
     assert!(!visible(add) && !visible(refresh));
-    save("library-menu/search", frame());
+    save("library-toolbar/search", frame());
     for ch in "Harbor".chars() { press(software, ch.to_string()); }
     assert_eq!(state.borrow().library.query, "Harbor");
     assert_eq!(library.get_games().row_count(), 2);
@@ -1216,7 +1213,7 @@ fn exercise_library(
         results = frame();
     }
     assert!(library.get_games().row_data(0).unwrap().cover.size().width > 0, "live search loads covers");
-    save("library-menu/search-live-results", results);
+    save("library-toolbar/search-live-results", results);
     assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
     assert!(!game_visible("Snowfield Letters"));
     assert!(!visible(clear), "filter controls start collapsed");
@@ -1229,12 +1226,12 @@ fn exercise_library(
         .expect("compatibility filter chip is visible");
     let center = chip.map_to_native_window(chip.geometry().center());
     click_at(software, LogicalPosition::new(center.x, center.y));
-    save("library-menu/search-with-filters", frame());
+    save("library-toolbar/search-with-filters", frame());
     assert_eq!(state.borrow().library.compat_filter, "perfect");
     assert_eq!(library.get_games().row_count(), 1);
     assert!(!game_visible("Harbor Letters"));
     click_label(software, filters);
-    save("library-menu/search-filtered-result", frame());
+    save("library-toolbar/search-filtered-result", frame());
 
     let result = labeled_item(software, |text| text.starts_with("Harbor Lights"))
         .expect("live result card is visible in search");
@@ -1243,7 +1240,7 @@ fn exercise_library(
     click_at(software, LogicalPosition::new(center.x, center.y));
     assert!(library.get_detail_open(), "clicking the live result opens its normal detail");
     assert_eq!(state.borrow().library.selected_id, "g01");
-    save("library-menu/search-result-detail", frame());
+    save("library-toolbar/search-result-detail", frame());
     assert!(visible(tr!("开始游戏")));
     let back_key = if width < 600 { Key::Back } else { Key::Escape };
     press(software, back_key);
@@ -1253,7 +1250,7 @@ fn exercise_library(
     press(software, "x");
     assert!(state.borrow().library.query.contains('x'), "closing details refocuses search");
     assert_eq!(library.get_games().row_count(), 0);
-    save("library-menu/search-no-match", frame());
+    save("library-toolbar/search-no-match", frame());
     press(software, Key::Backspace);
     assert_eq!(state.borrow().library.query, "Harbor");
     frame();
@@ -1264,8 +1261,9 @@ fn exercise_library(
     assert_eq!(library.get_games().row_count(), 1);
     assert!(game_visible("Harbor Lights"));
     assert!(!game_visible("Harbor Letters"));
-    assert!(!visible(search) && !visible(add) && !visible(refresh));
-    save("library-menu/filtered-results", filtered);
+    check_toolbar();
+    assert!(!visible(search) && !visible(refresh));
+    save("library-toolbar/filtered-results", filtered);
 
     ctrl_f(software);
     assert_eq!(app.get_page(), "library-search");
@@ -1285,27 +1283,120 @@ fn exercise_library(
     assert_eq!(library.get_games().row_count(), game_count);
     assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
 
-    if width < 600 {
-        choose_menu(manage);
+    let refresh_count = Rc::new(Cell::new(0));
+    let count = refresh_count.clone();
+    let refreshing = state.clone();
+    let weak = Rc::downgrade(a);
+    library.on_prepare(move || {
+        let Some(a) = weak.upgrade() else { return };
+        count.set(count.get() + 1);
+        let mut m = refreshing.borrow_mut();
+        m.library.prepare_state = "scanning".into();
+        m.library.prepare_detail = tr!("正在扫描游戏目录").into();
+        m.library.prepare_progress = Some(0.35);
+        m.library.can_cancel_prepare = true;
+        m.library.can_refresh = false;
+        a.apply(&m);
+    });
+    let origin = labeled_item(software, |text| text.starts_with("Harbor Lights"))
+        .expect("first card in the list");
+    let start = origin.map_to_native_window(origin.geometry().center());
+    swipe(software, start.x, start.y, 0.0, 20.0);
+    swipe(software, start.x, start.y, 85.0, 12.0);
+    swipe(software, start.x, start.y, 95.0, 74.0);
+    assert_eq!(refresh_count.get(), 0, "short, horizontal and diagonal drags do not refresh");
+    if library.get_detail_open() {
+        press(software, Key::Back);
         frame();
-        let weak = Rc::downgrade(a);
-        let refreshing = state.clone();
-        library.on_prepare(move || {
-            let Some(a) = weak.upgrade() else { return };
-            let mut m = refreshing.borrow_mut();
-            m.library.prepare_state = "scanning".into();
-            m.library.can_cancel_prepare = true;
-            m.library.can_refresh = false;
-            a.apply(&m);
-        });
-        click_label(software, refresh);
-        frame();
-        assert!(visible(tr!("取消扫描")));
-        assert!(!visible(refresh));
-        click_label(software, tr!("管理文件夹"));
-        assert_eq!(app.get_page(), "settings");
-        assert_eq!(app.get_settings_category(), "library-roots");
-        frame();
-        assert!(visible(tr!("添加目录")));
     }
+
+    let position = LogicalPosition::new(start.x, start.y);
+    touch(software, position, TouchPhase::Started);
+    touch(software, position, TouchPhase::Ended);
+    assert!(library.get_detail_open(), "ordinary tap opens the first card while refresh is available");
+    press(software, back_key);
+    frame();
+    software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -140.0 });
+    frame();
+    let offset_card = labeled_item(software, |text| text.starts_with("Harbor Lights"))
+        .expect("first card still present after scrolling");
+    let offset = offset_card.map_to_native_window(offset_card.geometry().center()).y;
+    assert!(offset < start.y, "wheel scroll placed the viewport below the top");
+    let mid = LogicalPosition::new(start.x, start.y);
+    let top = LogicalPosition::new(start.x, start.y + 200.0);
+    touch(software, mid, TouchPhase::Started);
+    touch(software, top, TouchPhase::Moved);
+    save("library-toolbar/pull-from-mid-list", frame());
+    touch(software, top, TouchPhase::Ended);
+    frame();
+    assert_eq!(refresh_count.get(), 0, "reaching the top is not a refresh if the swipe began below it");
+    let pos = LogicalPosition::new(start.x, start.y);
+    let end = LogicalPosition::new(start.x, start.y + 92.0);
+    touch(software, pos, TouchPhase::Started);
+    touch(software, end, TouchPhase::Moved);
+    assert_eq!(refresh_count.get(), 0);
+    save("library-toolbar/pull-armed", frame());
+    touch(software, end, TouchPhase::Ended);
+    assert_eq!(refresh_count.get(), 1);
+    assert!(!library.get_detail_open(), "a refresh pull does not open the first card");
+    save("library-toolbar/pull-refreshing", frame());
+    swipe(software, start.x, start.y + 50.0, 0.0, 95.0);
+    assert_eq!(refresh_count.get(), 1, "busy refresh rejects another pull");
+
+    let empty_library = base();
+    a.apply(&empty_library);
+    frame();
+    swipe(software, width as f32 * 0.5, 140.0, 0.0, 100.0);
+    assert_eq!(refresh_count.get(), 2, "a configured empty library can be refreshed");
+
+    a.apply(&base());
+    settings(a, "library-roots");
+    save("library-toolbar/folder-settings", frame());
+    assert!(visible(tr!("添加目录")));
+    click_label(software, refresh);
+    assert_eq!(refresh_count.get(), 3, "the Settings refresh still works");
+    frame();
+    assert!(visible(tr!("取消扫描")));
+    assert!(!visible(refresh));
+    window.global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>().set_touch(false);
+}
+
+fn exercise_storage_access(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    use shinki_emu_manager_ui_slint::Settings;
+
+    let material = a.window().global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>();
+    material.set_touch(width < 600);
+    let app = a.window().global::<Settings>();
+    let allow = tr!("允许访问共享存储");
+    let granted = tr!("已允许访问共享存储");
+    let visible = |label| labeled_item(software, |text| text == label).is_some();
+    let frame = || render(software, width, height);
+    reset(a);
+    a.apply(&base());
+    settings(a, "library-roots");
+    frame();
+    assert!(!visible(allow) && !visible(granted), "desktop has no Android prompt");
+    app.set_android_storage_access_available(true);
+    frame();
+    assert!(visible(allow) && !visible(granted));
+
+    let opens = Rc::new(Cell::new(0));
+    let count = opens.clone();
+    app.on_open_android_storage_access(move || count.set(count.get() + 1));
+    click_label(software, allow);
+    assert_eq!(opens.get(), 1);
+    save("settings/storage-access-not-granted", frame());
+    assert!(visible(allow) && !visible(granted), "opening settings does not grant anything");
+
+    app.set_android_storage_access_granted(true);
+    save("settings/storage-access-granted", frame());
+    assert!(!visible(allow) && visible(granted), "only host-reported permission appears as granted");
+    app.set_android_storage_access_granted(false);
+    app.set_android_storage_access_available(false);
+    material.set_touch(false);
 }

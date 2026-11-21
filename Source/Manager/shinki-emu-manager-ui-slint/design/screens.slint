@@ -275,10 +275,9 @@ global Mock {
 
 // ---- Library ----
 
-export component LibraryManagementScanning inherits ManagerWindow {
+export component LibraryScanning inherits ManagerWindow {
     init => {
         Mock.library(false);
-        App.page = "library-management";
         Library.can-refresh = false;
         Library.prepare-state = "scanning";
         Library.prepare-progress = 0.62;
@@ -595,14 +594,7 @@ export component SnackbarUndo inherits ManagerWindow {
     }
 }
 
-// ---- Library management / Store downloads ----
-
-export component LibraryManagement inherits ManagerWindow {
-    init => {
-        Mock.library(false);
-        App.page = "library-management";
-    }
-}
+// ---- Store downloads ----
 
 export component StoreSignedOut inherits ManagerWindow {
     init => { StoreMock.signed-out(false); }

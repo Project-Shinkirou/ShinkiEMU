@@ -1,7 +1,8 @@
 import { MaterialPalette, MaterialText, MaterialTypography, IconButton, TextButton, OutlineButton, HorizontalDivider, Icon } from "@material";
-import { Settings } from "../../globals.slint";
+import { Library, Settings } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { PageScroll, SettingGroup } from "./common.slint";
+import { LibraryScanStatus } from "../../components/library-scan.slint";
 
 // One row of a path list: folder icon, path, trailing remove button.
 export component PathRow {
@@ -89,6 +90,29 @@ export component RootsSection inherits PageScroll {
                 text: @tr("添加目录");
                 icon: Icons.add;
                 clicked => { Settings.add-root(); }
+            }
+        }
+    }
+
+    if Library.can-refresh || Library.prepare-state == "loading-cores"
+        || Library.prepare-state == "scanning" || Library.prepare-state == "failed" : SettingGroup {
+        LibraryScanStatus { show-refresh: true; }
+    }
+
+    if Settings.android-storage-access-available : SettingGroup {
+        title: @tr("共享存储");
+        description: @tr("此权限允许 ShinkiEMU 访问共享存储中的所有文件，让兼容核心直接读取游戏目录。");
+
+        if Settings.android-storage-access-granted : EmptyLine {
+            text: @tr("已允许访问共享存储");
+            accessible-role: AccessibleRole.text;
+            accessible-label: self.text;
+        }
+        if !Settings.android-storage-access-granted : HorizontalLayout {
+            alignment: start;
+            OutlineButton {
+                text: @tr("允许访问共享存储");
+                clicked => { Settings.open-android-storage-access(); }
             }
         }
     }

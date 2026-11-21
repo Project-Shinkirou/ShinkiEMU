@@ -454,6 +454,11 @@ export global Settings {
     callback remove-root(string);
     callback restore-game(string);
 
+    // Android host owns native availability and the current system grant.
+    in property <bool> android-storage-access-available;
+    in property <bool> android-storage-access-granted;
+    callback open-android-storage-access();
+
     public function begin-capture(button: string) {
         self.capture-button = button;
         self.capture-hint = "";

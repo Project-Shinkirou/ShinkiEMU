@@ -38,3 +38,5 @@ rspolib = "=0.1.2"
 tempfile.workspace = true
 # tests/self_update_screens.rs renders the real ManagerWindow without a display.
 slint = { workspace = true, features = ["renderer-software"] }
+# Dispatch real touch events through the pinned Slint runtime in interaction tests.
+i-slint-core = { version = "=1.18.1", default-features = false }
