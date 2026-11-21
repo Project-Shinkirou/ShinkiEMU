@@ -2,10 +2,10 @@ package org.shinkirou.shinkiemu
 
 import android.app.Dialog
 import android.app.NativeActivity
-import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.view.PointerIcon
 import android.webkit.CookieManager
 import android.webkit.WebStorage
@@ -84,7 +84,7 @@ class MainActivity : NativeActivity() {
 
     /**
      * Completes `pickDocument`: `path` is the copied file or directory, `error`
-     * a failure message; both null when the user cancelled.
+     * a diagnostic code and detail; both null when the user cancelled.
      */
     private external fun nativeOnPickResult(requestId: Long, path: String?, error: String?)
 
@@ -94,6 +94,10 @@ class MainActivity : NativeActivity() {
      */
     fun pickDocument(requestId: Long, kind: Int, destDir: String) {
         runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                failPick(requestId, "SHINKI_EMU_ANDROID_PICK_REQUEST: activity is closing")
+                return@runOnUiThread
+            }
             val intent = when (kind) {
                 PICK_TREE -> Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 PICK_FILE -> Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -101,7 +105,7 @@ class MainActivity : NativeActivity() {
                     type = "*/*"
                 }
                 else -> {
-                    nativeOnPickResult(requestId, null, "unknown picker kind $kind")
+                    failPick(requestId, "SHINKI_EMU_ANDROID_PICK_REQUEST: unknown picker kind $kind")
                     return@runOnUiThread
                 }
             }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -109,10 +113,13 @@ class MainActivity : NativeActivity() {
             nextRequestCode = if (requestCode == 0xFFFF) FIRST_REQUEST_CODE else requestCode + 1
             pendingPicks[requestCode] = PendingPick(requestId, kind, File(destDir))
             try {
+                // Launch implicitly in this activity's user context. Package visibility can
+                // hide the system picker from a PackageManager lookup even when it can launch.
                 startActivityForResult(intent, requestCode)
-            } catch (error: ActivityNotFoundException) {
-                pendingPicks.remove(requestCode)
-                nativeOnPickResult(requestId, null, "no document picker: ${error.message}")
+            } catch (failure: RuntimeException) {
+                if (pendingPicks.remove(requestCode) != null) {
+                    failPick(requestId, pickerFailure(failure, "SHINKI_EMU_ANDROID_PICK_REQUEST"))
+                }
             }
         }
     }
@@ -120,28 +127,39 @@ class MainActivity : NativeActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         val pick = pendingPicks.remove(requestCode) ?: return
-        val uri: Uri? = data?.data
-        if (resultCode != RESULT_OK || uri == null) {
-            nativeOnPickResult(pick.requestId, null, null)
-            return
+        handleDocumentPickerResult(resultCode, { data?.data }) { uri, error ->
+            when {
+                error != null -> failPick(pick.requestId, error)
+                uri != null -> copyPickedDocument(pick, uri)
+                else -> nativeOnPickResult(pick.requestId, null, null)
+            }
         }
+    }
+
+    private fun copyPickedDocument(pick: PendingPick, uri: Uri) {
         // Copies can be large; keep the UI thread free. The result is posted
         // back to the Slint event loop by the native side.
-        Thread({
-            val result = runCatching {
-                when (pick.kind) {
-                    PICK_TREE -> ShinkiPlatformBridge.copyTree(this, uri, pick.destDir)
-                    else -> ShinkiPlatformBridge.copyDocument(this, uri, pick.destDir)
+        try {
+            Thread({
+                val copied = try {
+                    when (pick.kind) {
+                        PICK_TREE -> ShinkiPlatformBridge.copyTree(this, uri, pick.destDir)
+                        else -> ShinkiPlatformBridge.copyDocument(this, uri, pick.destDir)
+                    }
+                } catch (failure: Exception) {
+                    failPick(pick.requestId, pickerFailure(failure, "SHINKI_EMU_ANDROID_PICK_COPY"))
+                    return@Thread
                 }
-            }
-            result.fold(
-                onSuccess = { nativeOnPickResult(pick.requestId, it.absolutePath, null) },
-                onFailure = {
-                    pick.destDir.deleteRecursively()
-                    nativeOnPickResult(pick.requestId, null, it.toString())
-                },
-            )
-        }, "shinki-pick-copy").start()
+                nativeOnPickResult(pick.requestId, copied.absolutePath, null)
+            }, "shinki-pick-copy").start()
+        } catch (failure: RuntimeException) {
+            failPick(pick.requestId, pickerFailure(failure, "SHINKI_EMU_ANDROID_PICK_COPY"))
+        }
+    }
+
+    private fun failPick(requestId: Long, error: String) {
+        Log.w("ShinkiEMU", "${error.substringBefore(':')} (request $requestId)")
+        nativeOnPickResult(requestId, null, error)
     }
 
     /** Relaunch the activity in a fresh process. */

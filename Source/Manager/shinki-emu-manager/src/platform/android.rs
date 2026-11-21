@@ -400,7 +400,7 @@ fn finish_pick(id: u64, path: Option<String>, error: Option<String>) {
         return;
     };
     let result = match (path, error) {
-        (_, Some(error)) => Err(format!("SHINKI_EMU_ANDROID_PICK_COPY: {error}")),
+        (_, Some(error)) => Err(error),
         (Some(path), None) => {
             let path = PathBuf::from(path);
             match &pick.extensions {
@@ -675,8 +675,8 @@ fn call_bridge_secret(
 }
 
 /// Kotlin `MainActivity.nativeOnPickResult(requestId: Long, path: String?, error: String?)`.
-/// Called from a Java thread once the SAF copy finished, failed (`error`) or
-/// the user cancelled (both null).
+/// Called once after launch or import fails (typed `error`), after a copy
+/// succeeds (`path`), or when the user cancels (both null).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeOnPickResult(
     mut env: EnvUnowned<'_>,

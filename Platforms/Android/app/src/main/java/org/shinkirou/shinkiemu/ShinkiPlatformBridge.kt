@@ -1,6 +1,7 @@
 package org.shinkirou.shinkiemu
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.database.Cursor
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -8,6 +9,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.io.File
+import java.io.IOException
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.ArrayDeque
@@ -83,11 +85,11 @@ object ShinkiPlatformBridge {
      * directory. `destDir` must not exist yet.
      */
     @JvmStatic
-    fun copyTree(activity: Activity, treeUri: Uri, destDir: File): File {
+    fun copyTree(activity: Activity, treeUri: Uri, destDir: File): File = withNewImportDirectory(destDir) {
         require(treeUri.scheme == "content")
         val rootId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
-        val target = File(createDestination(destDir), displayName(activity, rootUri))
+        val target = File(destDir, displayName(activity, rootUri))
         check(target.mkdir()) { "cannot create $target" }
         val pending = ArrayDeque<Pair<String, File>>()
         val visitedDirectories = HashSet<String>()
@@ -116,7 +118,7 @@ object ShinkiPlatformBridge {
                 }
             }
         }
-        return target
+        target
     }
 
     /**
@@ -124,11 +126,11 @@ object ShinkiPlatformBridge {
      * and return that file. `destDir` must not exist yet.
      */
     @JvmStatic
-    fun copyDocument(activity: Activity, documentUri: Uri, destDir: File): File {
+    fun copyDocument(activity: Activity, documentUri: Uri, destDir: File): File = withNewImportDirectory(destDir) {
         require(documentUri.scheme == "content")
-        val target = File(createDestination(destDir), displayName(activity, documentUri))
+        val target = File(destDir, displayName(activity, documentUri))
         copyStream(activity, documentUri, target)
-        return target
+        target
     }
 
     /** A single path component: no separators, NUL, `.` or `..`. */
@@ -139,12 +141,6 @@ object ShinkiPlatformBridge {
         require(!value.contains('/') && !value.contains('\\') && !value.contains('\u0000')) {
             "invalid document name $value"
         }
-    }
-
-    private fun createDestination(destDir: File): File {
-        check(!destDir.exists()) { "destination $destDir already exists" }
-        check(destDir.mkdirs()) { "cannot create $destDir" }
-        return destDir
     }
 
     private fun displayName(activity: Activity, uri: Uri): String {
@@ -201,4 +197,60 @@ object ShinkiPlatformBridge {
     private val DISPLAY_NAME = DocumentsContract.Document.COLUMN_DISPLAY_NAME
     private val MIME_TYPE = DocumentsContract.Document.COLUMN_MIME_TYPE
     private val PROJECTION = arrayOf(DOCUMENT_ID, DISPLAY_NAME, MIME_TYPE)
+}
+
+internal fun pickerFailure(failure: Exception, defaultCode: String): String {
+    val code = when (failure) {
+        is ActivityNotFoundException -> "SHINKI_EMU_ANDROID_PICK_UNAVAILABLE"
+        is SecurityException -> "SHINKI_EMU_ANDROID_PICK_PERMISSION"
+        else -> defaultCode
+    }
+    return "$code: $failure"
+}
+
+internal inline fun <T> handleDocumentPickerResult(
+    resultCode: Int,
+    readSelection: () -> T?,
+    complete: (T?, String?) -> Unit,
+) {
+    val invalidResult = "SHINKI_EMU_ANDROID_PICK_RESULT"
+    when (resultCode) {
+        Activity.RESULT_CANCELED -> complete(null, null)
+        Activity.RESULT_OK -> {
+            val selection = try {
+                readSelection()
+            } catch (failure: RuntimeException) {
+                complete(null, pickerFailure(failure, invalidResult))
+                return
+            }
+            if (selection == null) {
+                complete(null, "$invalidResult: document picker returned no URI")
+            } else {
+                complete(selection, null)
+            }
+        }
+        else -> complete(null, "$invalidResult: document picker returned result code $resultCode")
+    }
+}
+
+internal inline fun <T> withNewImportDirectory(destDir: File, copy: () -> T): T {
+    val parent = checkNotNull(destDir.parentFile)
+    check(parent.isDirectory || parent.mkdirs() || parent.isDirectory) { "cannot create $parent" }
+    // mkdir, unlike mkdirs, claims just this directory or leaves it untouched.
+    if (!destDir.mkdir()) {
+        check(!destDir.exists()) { "destination $destDir already exists" }
+        error("cannot create $destDir")
+    }
+    try {
+        return copy()
+    } catch (failure: Exception) {
+        try {
+            if (!destDir.deleteRecursively()) {
+                failure.addSuppressed(IOException("cannot remove incomplete import directory"))
+            }
+        } catch (cleanup: SecurityException) {
+            failure.addSuppressed(cleanup)
+        }
+        throw failure
+    }
 }
