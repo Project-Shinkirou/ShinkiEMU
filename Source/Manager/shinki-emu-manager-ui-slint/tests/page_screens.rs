@@ -968,6 +968,13 @@ fn every_page_renders_stable_frames() {
 // Use accessible names to locate real controls, then send pointer input through the window.
 // The pinned Slint API gives their bounds without test-only geometry properties in the UI.
 fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool) -> Option<ItemRc> {
+    matching_label(software, |label, _| matches(label))
+}
+
+fn matching_label(
+    software: &MinimalSoftwareWindow,
+    matches: impl Fn(&str, &ItemRc) -> bool,
+) -> Option<ItemRc> {
     let window = WindowInner::from_pub(software.window());
     let mut stack = vec![window.window_item_rc()?];
     stack.extend(window.active_popups().iter().map(|popup| ItemRc::new_root(popup.component.clone())));
@@ -975,7 +982,7 @@ fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool
         stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
         if item.is_visible()
             && item.accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|label| matches(label.as_str()))
+                .is_some_and(|label| matches(label.as_str(), &item))
         {
             return Some(item);
         }
@@ -1029,6 +1036,7 @@ fn exercise_library(
     let manage = tr!("管理游戏库");
     let add = tr!("添加文件夹");
     let search = tr!("搜索游戏标题");
+    let filters = tr!("筛选选项");
     let clear = tr!("清除搜索和筛选");
     let refresh = tr!("刷新资料库");
     let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
@@ -1162,6 +1170,24 @@ fn exercise_library(
     let update = project.clone();
     library.on_search(move |query| update(Some(query), None));
     library.on_set_compat_filter(move |filter| project(None, Some(filter)));
+    let selected = state.clone();
+    let weak = Rc::downgrade(a);
+    library.on_select(move |id| {
+        let Some(a) = weak.upgrade() else { return };
+        let mut m = selected.borrow_mut();
+        let game = m.library.games.iter().find(|g| g.id == id.as_str()).expect("selected result");
+        m.selection.game = SelectedGameViewModel {
+            id: game.id.clone(),
+            title: game.title.clone(),
+            engine: "KiriKiri Z".into(),
+            emulator: "KiriKiri 2".into(),
+            launchable: game.ready,
+            ..Default::default()
+        };
+        m.library.selected_id = id.to_string();
+        a.apply(&m);
+    });
+    library.set_cover_loading(true);
     frame();
     assert!(visible(refresh));
     if width < 600 {
@@ -1182,12 +1208,56 @@ fn exercise_library(
     for ch in "Harbor".chars() { press(software, ch.to_string()); }
     assert_eq!(state.borrow().library.query, "Harbor");
     assert_eq!(library.get_games().row_count(), 2);
+    let mut results = frame();
+    for _ in 0..10 {
+        if library.get_games().row_data(0).unwrap().cover.size().width > 0 {
+            break;
+        }
+        results = frame();
+    }
+    assert!(library.get_games().row_data(0).unwrap().cover.size().width > 0, "live search loads covers");
+    save("library-menu/search-live-results", results);
+    assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
+    assert!(!game_visible("Snowfield Letters"));
+    assert!(!visible(clear), "filter controls start collapsed");
+    click_label(software, filters);
     frame();
-    click_label(software, tr!("完美"));
-    frame();
-    assert_eq!(state.borrow().library.compat_filter, "perfect");
+    // The result card also displays "Perfect"; click the checkable filter chip, not its badge.
+    let chip = matching_label(software, |label, item| label == tr!("完美")
+        && item.accessible_string_property(AccessibleStringProperty::Checkable)
+            .is_some_and(|value| value == "true"))
+        .expect("compatibility filter chip is visible");
+    let center = chip.map_to_native_window(chip.geometry().center());
+    click_at(software, LogicalPosition::new(center.x, center.y));
     save("library-menu/search-with-filters", frame());
-    press(software, if width < 600 { Key::Back } else { Key::Escape });
+    assert_eq!(state.borrow().library.compat_filter, "perfect");
+    assert_eq!(library.get_games().row_count(), 1);
+    assert!(!game_visible("Harbor Letters"));
+    click_label(software, filters);
+    save("library-menu/search-filtered-result", frame());
+
+    let result = labeled_item(software, |text| text.starts_with("Harbor Lights"))
+        .expect("live result card is visible in search");
+    let center = result.map_to_native_window(result.geometry().center());
+    assert!(center.y > 56.0 && center.y < height as f32 - 80.0);
+    click_at(software, LogicalPosition::new(center.x, center.y));
+    assert!(library.get_detail_open(), "clicking the live result opens its normal detail");
+    assert_eq!(state.borrow().library.selected_id, "g01");
+    save("library-menu/search-result-detail", frame());
+    assert!(visible(tr!("开始游戏")));
+    let back_key = if width < 600 { Key::Back } else { Key::Escape };
+    press(software, back_key);
+    assert_eq!(app.get_page(), "library-search");
+    assert!(!library.get_detail_open());
+    frame();
+    press(software, "x");
+    assert!(state.borrow().library.query.contains('x'), "closing details refocuses search");
+    assert_eq!(library.get_games().row_count(), 0);
+    save("library-menu/search-no-match", frame());
+    press(software, Key::Backspace);
+    assert_eq!(state.borrow().library.query, "Harbor");
+    frame();
+    press(software, back_key);
     assert_eq!(app.get_page(), "library");
     let filtered = frame();
     assert_ne!(empty, filtered);
@@ -1202,6 +1272,8 @@ fn exercise_library(
     frame();
     press(software, "x");
     assert!(state.borrow().library.query.contains('x'), "Ctrl+F focuses the search field");
+    frame();
+    click_label(software, filters);
     frame();
     click_label(software, clear);
     assert!(state.borrow().library.query.is_empty());

@@ -1,9 +1,7 @@
-import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, TextField, OutlineButton, TextButton, FilterChip } from "@material";
+import { MaterialText, MaterialTypography, TextButton, FilterChip } from "@material";
 import { App, Library } from "../globals.slint";
-import { Icons } from "../icons.slint";
 import { ChoiceSelect } from "../components/select.slint";
 import { Segments } from "../components/segments.slint";
-import { PageScroll, SettingGroup } from "./settings/common.slint";
 
 // Material chips toggle themselves. Keep the current selection checked on repeat clicks.
 component CompatChip {
@@ -27,98 +25,65 @@ component CompatChip {
     }
 }
 
-export component LibrarySearchPage {
+export component LibrarySearchFilters {
     in property <bool> compact;
-    property <length> bar-height: 64px;
 
-    init => { search.focus(); }
+    min-height: controls.min-height;
+    preferred-height: controls.preferred-height;
 
-    Rectangle { background: MaterialPalette.surface; }
+    controls := VerticalLayout {
+        spacing: 8px;
 
-    SmallAppBar {
-        x: 0px;
-        y: 0px;
-        width: root.width;
-        height: root.bar-height;
-        title: @tr("搜索与筛选");
-        leading-button: { icon: Icons.arrow-back, tooltip: @tr("返回游戏库"), enabled: true };
-        leading-button-clicked => { App.page = "library"; }
-    }
-
-    PageScroll {
-        x: 0px;
-        y: root.bar-height;
-        width: root.width;
-        height: root.height - root.bar-height;
-
-        SettingGroup {
+        MaterialText {
+            text: @tr("兼容性");
+            style: MaterialTypography.label-large;
+        }
+        FlexboxLayout {
+            spacing: 8px;
+            alignment: start;
+            CompatChip { id: "all"; text: @tr("全部"); }
+            CompatChip { id: "perfect"; text: @tr("完美"); }
+            CompatChip { id: "completable"; text: @tr("可通关"); }
+            CompatChip { id: "flawed"; text: @tr("有瑕疵"); }
+            CompatChip { id: "boot_only"; text: @tr("仅能启动"); }
+            CompatChip { id: "unplayable"; text: @tr("无法运行"); }
+            CompatChip { id: "unknown"; text: @tr("未评级"); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            ChoiceSelect {
+                horizontal-stretch: 1;
+                label: @tr("排序");
+                value: Library.sort;
+                choices: [
+                    { id: "title", label: @tr("标题") },
+                    { id: "recent", label: @tr("最近游玩") },
+                    { id: "play_time", label: @tr("游玩时长") },
+                ];
+                selected(id) => { Library.set-sort(id); }
+            }
             VerticalLayout {
-                spacing: 8px;
-                search := TextField {
-                    label: @tr("搜索游戏标题");
-                    accessible-label: @tr("搜索游戏标题");
-                    text <=> Library.query;
-                    edited(text) => { Library.search(text); }
-                }
-                MaterialText {
-                    text: @tr("兼容性");
-                    style: MaterialTypography.label-large;
-                }
-                FlexboxLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    CompatChip { id: "all"; text: @tr("全部"); }
-                    CompatChip { id: "perfect"; text: @tr("完美"); }
-                    CompatChip { id: "completable"; text: @tr("可通关"); }
-                    CompatChip { id: "flawed"; text: @tr("有瑕疵"); }
-                    CompatChip { id: "boot_only"; text: @tr("仅能启动"); }
-                    CompatChip { id: "unplayable"; text: @tr("无法运行"); }
-                    CompatChip { id: "unknown"; text: @tr("未评级"); }
-                }
-                HorizontalLayout {
-                    spacing: 8px;
-                    ChoiceSelect {
-                        horizontal-stretch: 1;
-                        label: @tr("排序");
-                        value: Library.sort;
-                        choices: [
-                            { id: "title", label: @tr("标题") },
-                            { id: "recent", label: @tr("最近游玩") },
-                            { id: "play_time", label: @tr("游玩时长") },
-                        ];
-                        selected(id) => { Library.set-sort(id); }
-                    }
-                    VerticalLayout {
-                        horizontal-stretch: 0;
-                        alignment: center;
-                        Segments {
-                            width: root.compact ? 144px : 208px;
-                            label: @tr("视图");
-                            items: [@tr("网格"), @tr("列表")];
-                            index: App.appearance.view-mode == "list" ? 1 : 0;
-                            selected(index) => {
-                                App.appearance.view-mode = index == 1 ? "list" : "grid";
-                                App.appearance-changed(App.appearance);
-                            }
-                        }
+                horizontal-stretch: 0;
+                alignment: center;
+                Segments {
+                    width: root.compact ? 144px : 208px;
+                    label: @tr("视图");
+                    items: [@tr("网格"), @tr("列表")];
+                    index: App.appearance.view-mode == "list" ? 1 : 0;
+                    selected(index) => {
+                        App.appearance.view-mode = index == 1 ? "list" : "grid";
+                        App.appearance-changed(App.appearance);
                     }
                 }
-                if Library.query != "" || Library.compat-filter != "all" : HorizontalLayout {
-                    alignment: start;
-                    TextButton {
-                        text: @tr("清除搜索和筛选");
-                        clicked => {
-                            if Library.query != "" { Library.search(""); }
-                            if Library.compat-filter != "all" { Library.set-compat-filter("all"); }
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    alignment: start;
-                    OutlineButton {
-                        text: @tr("查看游戏（{n}）" | "查看游戏（{n}）" % Library.games.length);
-                        clicked => { App.page = "library"; }
-                    }
+            }
+        }
+        if Library.query != "" || Library.compat-filter != "all" : HorizontalLayout {
+            alignment: start;
+            TextButton {
+                text: @tr("清除搜索和筛选");
+                clicked => {
+                    if Library.query != "" { Library.search(""); }
+                    if Library.compat-filter != "all" { Library.set-compat-filter("all"); }
                 }
             }
         }

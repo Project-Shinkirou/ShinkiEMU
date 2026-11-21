@@ -144,10 +144,10 @@ impl Demand {
     }
 }
 
-/// A row with a lazily decoded cover, shown on one page.
+/// A row with a lazily decoded cover.
 pub(crate) trait CoverRow: Clone + 'static {
-    /// Covers decode only while this page is open.
-    const PAGE: &'static str;
+    /// Covers decode only on these pages.
+    const PAGES: &'static [&'static str];
     fn id(&self) -> &str;
     fn cover(&self) -> (slint::Image, slint::Color);
     fn set_cover(&mut self, image: slint::Image, tint: slint::Color);
@@ -160,7 +160,7 @@ pub(crate) trait CoverRow: Clone + 'static {
 }
 
 impl CoverRow for GameCard {
-    const PAGE: &'static str = "library";
+    const PAGES: &'static [&'static str] = &["library", "library-search"];
     fn id(&self) -> &str {
         self.id.as_str()
     }
@@ -187,7 +187,7 @@ impl CoverRow for GameCard {
 }
 
 impl CoverRow for PatchGame {
-    const PAGE: &'static str = "patch";
+    const PAGES: &'static [&'static str] = &["patch"];
     fn id(&self) -> &str {
         self.id.as_str()
     }
@@ -292,7 +292,7 @@ impl<T: CoverRow> CoverModel<T> {
 
     fn active(window: &ManagerWindow) -> bool {
         window.global::<Library>().get_cover_loading()
-            && window.global::<App>().get_page() == T::PAGE
+            && T::PAGES.contains(&window.global::<App>().get_page().as_str())
             && !window.global::<Session>().get_active()
     }
 

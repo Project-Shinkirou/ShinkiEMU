@@ -2665,10 +2665,8 @@ msgstr "Search game titles"
 msgid "清除搜索和筛选"
 msgstr "Clear search and filters"
 
-msgid "查看游戏（{n}）"
-msgid_plural "查看游戏（{n}）"
-msgstr[0] "View games ({n})"
-msgstr[1] "View games ({n})"
+msgid "筛选选项"
+msgstr "Filter options"
 
 msgid "游戏库为空"
 msgstr "Your library is empty"
