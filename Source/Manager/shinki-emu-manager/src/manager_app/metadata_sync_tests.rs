@@ -1,3 +1,4 @@
+use super::super::{probe_state_tests::settle_background, recognition_tests::write_game};
 use super::*;
 use crate::metadata_cache::tests::{compatibility_json, files, index, patch_catalog_json};
 use shinki_emu_manager_core::ExternalIdentityRecord;
@@ -237,6 +238,134 @@ fn metadata_sync_requires_network_permission() {
     );
     assert!(app.pending_metadata.is_empty());
     assert_eq!(app.network_view(0).sync_status, "未同步");
+}
+
+#[test]
+fn library_refresh_scans_locally_and_only_submits_catalog_sync_with_permission() {
+    for allowed in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = controller(&root.path().join("manager"));
+        app.metadata_catalog = None;
+        let (runtime, commands, completions) = MetadataRuntime::scripted();
+        app.metadata = runtime;
+        app.set_host_wake(std::sync::Arc::new(|| {}));
+        // Set the same state as a saved permission without triggering opt-in work.
+        app.network_allowed = allowed;
+        settle_background(&mut app);
+
+        let folder = root.path().join("games");
+        fs::create_dir(&folder).unwrap();
+        app.add_game_directory(&folder).unwrap();
+        settle_background(&mut app);
+        assert!(app.library.list_games().unwrap().is_empty());
+        assert!(commands.try_recv().is_err(), "startup and folder add must not sync");
+
+        let game = folder.join("new-game");
+        write_game(&game);
+        let refreshing = app.refresh_library().unwrap();
+        assert_eq!(refreshing.library.prepare_state, "scanning");
+        assert_eq!(refreshing.network.allowed, allowed);
+        assert_eq!(refreshing.network.syncing, allowed);
+        settle_background(&mut app);
+        let games = app.library.list_games().unwrap();
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].family_id.as_deref(), Some("fvp"));
+
+        if allowed {
+            let command = commands.try_recv().unwrap();
+            assert!(command.case_identity.is_empty());
+            assert!(command.access_token.is_none());
+            assert!(matches!(
+                command.kind,
+                MetadataCommandKind::Sync { base_url, .. } if base_url == DEFAULT_METADATA_BASE_URL
+            ));
+            let files = files(compatibility_json(""), "");
+            completions
+                .send(crate::metadata_runtime::MetadataCompletion {
+                    request_id: command.request_id,
+                    case_identity: command.case_identity,
+                    provider: command.provider,
+                    result: Ok(MetadataPayload::Synced(Box::new(SyncOutcome::Updated {
+                        index: index(1, &files),
+                        etag: Some("\"refresh\"".into()),
+                        files,
+                    }))),
+                })
+                .unwrap();
+            let synchronized = app.poll_platform().unwrap().unwrap();
+            assert!(!synchronized.network.syncing);
+            assert_eq!(synchronized.library.games.len(), 1);
+            let record = app
+                .library
+                .app_state::<SyncRecord>(METADATA_SYNC_KEY)
+                .unwrap()
+                .unwrap();
+            assert_eq!(record.etag.as_deref(), Some("\"refresh\""));
+        }
+        assert!(commands.try_recv().is_err(), "unexpected metadata request");
+    }
+}
+
+#[test]
+fn library_refresh_reuses_in_flight_sync_and_keeps_remote_failure_separate() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = controller(&root.path().join("manager"));
+    let (runtime, commands, completions) = MetadataRuntime::scripted();
+    app.metadata = runtime;
+    app.set_host_wake(std::sync::Arc::new(|| {}));
+    settle_background(&mut app);
+    let folder = root.path().join("games");
+    fs::create_dir(&folder).unwrap();
+    app.add_game_directory(&folder).unwrap();
+    settle_background(&mut app);
+
+    app.network_allowed = true;
+    app.sync_metadata().unwrap();
+    let command = commands.try_recv().unwrap();
+    let game = folder.join("new-game");
+    write_game(&game);
+    let refreshing = app.refresh_library().unwrap();
+    assert!(refreshing.network.syncing);
+    assert_eq!(app.refresh_library().unwrap_err(), "SHINKI_EMU_PREPARE_BUSY");
+    assert_eq!(
+        app.metadata_sync.request.as_deref(),
+        Some(command.request_id.as_str())
+    );
+    assert!(commands.try_recv().is_err());
+
+    let error =
+        shinki_emu_metadata::MetadataError::Network("error sending request".into()).to_string();
+    completions
+        .send(crate::metadata_runtime::MetadataCompletion {
+            request_id: command.request_id,
+            case_identity: command.case_identity,
+            provider: command.provider,
+            result: Err(error.clone()),
+        })
+        .unwrap();
+    settle_background(&mut app);
+    let ready = app.model().unwrap();
+    assert_eq!(ready.library.games.len(), 1);
+    assert!(ready.library.prepare_detail.is_empty());
+    assert!(!ready.network.syncing);
+    assert!(ready.network.sync_status.contains(&error));
+    assert!(!ready.notices.items.iter().any(|notice| notice.code == "SHINKI_EMU_METADATA_NETWORK"));
+    assert!(commands.try_recv().is_err(), "no duplicate or automatic retry");
+
+    drop(commands);
+    let second_game = folder.join("second-game");
+    write_game(&second_game);
+    let refreshing = app.refresh_library().unwrap();
+    assert_eq!(refreshing.library.prepare_state, "scanning");
+    assert!(!refreshing.network.syncing);
+    assert!(
+        refreshing
+            .network
+            .sync_status
+            .contains("SHINKI_EMU_METADATA_WORKER_DISCONNECTED")
+    );
+    settle_background(&mut app);
+    assert_eq!(app.library.list_games().unwrap().len(), 2);
 }
 
 #[test]
