@@ -1,7 +1,7 @@
 use super::*;
 use super::formats::Rejected;
 
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     pub(super) fn legacy_rpyc(&mut self, source: &mut Source) -> Result<(), Rejected> {
         let compressed = self.bytes(source, 0, source.length.try_into().map_err(|_| Rejected::NoMatch)?)?;
         let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());

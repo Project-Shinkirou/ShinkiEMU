@@ -143,6 +143,61 @@ fn recognizes_format_structures_without_executables_or_plugins() {
         assert_eq!(found[0].family_id, family);
     }
 }
+
+#[test]
+fn reads_shared_game_children_through_a_seekable_read_only_tree() {
+    struct SelectedFolder(PathBuf);
+    impl DetectionTree for SelectedFolder {
+        fn entries(
+            &self,
+            path: &Path,
+            limit: usize,
+            visit: &mut dyn FnMut(OsString, EntryKind) -> DetectionResult<()>,
+        ) -> DetectionResult<()> {
+            LocalTree.entries(&self.0.join(path), limit, visit)
+        }
+
+        fn kind(&self, path: &Path) -> io::Result<EntryKind> {
+            LocalTree.kind(&self.0.join(path))
+        }
+
+        fn open(&self, path: &Path) -> io::Result<Option<(File, u64)>> {
+            // A document provider can transfer a read-only file handle even
+            // when the client has no native path to the selected folder.
+            LocalTree.open(&self.0.join(path))
+        }
+    }
+
+    let source = tempfile::tempdir().unwrap();
+    let collection = source.path().join("Games");
+    for index in 0..8 {
+        fs::create_dir_all(collection.join(index.to_string())).unwrap();
+    }
+    let hcb_file = collection.join("1/boot.hcb");
+    let ps2a_file = collection.join("3/data.bin");
+    fs::write(&hcb_file, hcb()).unwrap();
+    fs::write(&ps2a_file, ps2a()).unwrap();
+    let cancellation = NativeCancellation::new(1);
+    let scan = || {
+        let mut found = Vec::new();
+        let tree = SelectedFolder(collection.clone());
+        assert!(detect_game_tree(&tree, &cancellation).unwrap().is_empty());
+        tree.entries(Path::new(""), MAX_ENTRIES as usize, &mut |name, kind| {
+            assert!(kind == EntryKind::Directory);
+            let child = SelectedFolder(collection.join(name));
+            let from_provider = detect_game_tree(&child, &cancellation)?;
+            assert_eq!(from_provider, detect_game_directory(&child.0, &cancellation)?);
+            found.extend(from_provider.into_iter().map(|engine| engine.family_id));
+            Ok(())
+        }).unwrap();
+        found.sort();
+        found
+    };
+    assert_eq!(scan(), ["cmvs", "fvp"]);
+    assert_eq!(scan(), ["cmvs", "fvp"]);
+    assert_eq!(fs::read(&hcb_file).unwrap(), hcb());
+    assert_eq!(fs::read(&ps2a_file).unwrap(), ps2a());
+}
 #[test]
 fn recognizes_cpz_versions_and_older_pfs_layouts_once_per_family() {
     let root = tempfile::tempdir().unwrap();
@@ -215,7 +270,7 @@ fn cancellation_stops_before_any_io_and_after_an_established_match() {
     fs::write(&path, [0; 8]).unwrap();
     let mut source = Source { file: File::open(path).unwrap(), length: 8, read_bytes: 0 };
     let token = NativeCancellation::new(2);
-    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
+    let mut scan = Scan { tree: &LocalTree, cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     scan.matched("cmvs", "cmvs.ps2a").unwrap();
     token.cancel();
     assert!(matches!(scan.read_at(&mut source, 4, &mut [0; 4]), Err(DetectionError::Cancelled)));
@@ -243,7 +298,7 @@ fn actual_short_read_is_an_io_error_not_a_format_miss() {
     let path = root.path().join("resource");
     fs::write(&path, []).unwrap();
     let token = NativeCancellation::new(1);
-    let mut scan = Scan { cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
+    let mut scan = Scan { tree: &LocalTree, cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     let mut source = Source { file: File::open(path).unwrap(), length: 4, read_bytes: 0 };
     assert!(matches!(scan.read_at(&mut source, 0, &mut [0; 4]), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
 }

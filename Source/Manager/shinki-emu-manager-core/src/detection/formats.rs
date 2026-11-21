@@ -14,7 +14,7 @@ fn range(offset: u64, size: u64, length: u64) -> ScanResult<()> { require(offset
 fn nul_name(bytes: &[u8]) -> bool { bytes.iter().position(|b| *b == 0).is_some_and(|end| end > 0 && bytes[..end].iter().all(|b| *b >= 32)) }
 fn extension(path: &Path, value: &str) -> bool { path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(value)) }
 
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     pub(super) fn formats(&mut self, path: &Path, source: &mut Source, head: &[u8]) -> ScanResult<()> {
         self.checkpoint()?;
         if head.starts_with(b"CPZ") {

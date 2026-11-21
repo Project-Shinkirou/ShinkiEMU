@@ -49,7 +49,7 @@ fn validate_root(path: &str) -> Result<(), LibraryError> {
     if path.is_empty()
         || path.len() > MAX_LOCATION_BYTES
         || path.contains('\0')
-        || !parsed.is_absolute()
+        || !(parsed.is_absolute() || android_tree_root(path))
         || parsed
             .components()
             .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
@@ -57,6 +57,20 @@ fn validate_root(path: &str) -> Result<(), LibraryError> {
         return Err(LibraryError::InvalidLocation);
     }
     Ok(())
+}
+
+fn android_tree_root(path: &str) -> bool {
+    if !cfg!(any(target_os = "android", test)) {
+        return false;
+    }
+    let Some((authority, tree)) = path.strip_prefix("content://").and_then(|uri| uri.split_once("/tree/")) else {
+        return false;
+    };
+    !authority.is_empty()
+        && authority.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        && !tree.is_empty()
+        && !tree.contains(['/', '?', '#'])
+        && !matches!(tree, "." | "..")
 }
 
 fn validate_release_id(release_id: &str) -> Result<(), LibraryError> {
@@ -282,6 +296,24 @@ mod tests {
         assert!(library.add_library_root(&long).is_err());
         assert!(library.remove_library_root(&root).unwrap());
         assert!(!library.remove_library_root(&root).unwrap());
+        assert!(library.library_roots().unwrap().is_empty());
+    }
+
+    #[test]
+    fn repeated_android_tree_selection_keeps_one_reference_across_reopen() {
+        let data = tempfile::tempdir().unwrap();
+        let database = data.path().join("library.db");
+        let root = "content://com.android.externalstorage.documents/tree/primary%3AGames";
+        {
+            let mut library = Library::open(&database).unwrap();
+            assert!(library.add_library_root(root).unwrap());
+            assert!(!library.add_library_root(root).unwrap());
+            assert!(library.add_library_root("content://cloud.docs/tree/token/document/child").is_err());
+        }
+        let mut library = Library::open(&database).unwrap();
+        assert_eq!(library.library_roots().unwrap()[0].path, root);
+        assert!(!library.add_library_root(root).unwrap());
+        assert!(library.remove_library_root(root).unwrap());
         assert!(library.library_roots().unwrap().is_empty());
     }
 

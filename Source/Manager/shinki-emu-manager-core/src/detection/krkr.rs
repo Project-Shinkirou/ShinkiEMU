@@ -63,7 +63,7 @@ fn text(bytes: &[u8]) -> Option<String> {
     std::str::from_utf8(bytes).ok().map(str::to_owned)
         .or_else(|| ScriptEncoding::ShiftJis.decode(bytes).map(|s| s.into_owned()))
 }
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     pub(super) fn loose_krkr(&mut self, root: &Path, files: &[PathBuf]) -> DetectionResult<()> {
         let Some(path) = files.iter().find(|p| p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("startup.tjs"))) else { return Ok(()); };
         let bytes = self.resource_bytes(root, path)?;

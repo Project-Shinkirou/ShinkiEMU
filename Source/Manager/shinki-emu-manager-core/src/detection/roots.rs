@@ -17,7 +17,7 @@ impl SiglusRoot {
     }
 }
 
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     /// Resolve Windows-style case-insensitive resource components without links.
     pub(super) fn relative_path(&mut self, root: &Path, name: &str) -> DetectionResult<Option<PathBuf>> {
         if name.is_empty() || name.len() > 4096 || name.contains(['\\', ':', '\0']) { return Ok(None); }
@@ -26,33 +26,28 @@ impl Scan<'_> {
         while let Some(part) = components.next() {
             let Component::Normal(wanted) = part else { return Ok(None); };
             let mut found = None;
-            self.checkpoint()?;
-            for entry in fs::read_dir(root.join(&result))? {
-                self.checkpoint()?;
-                if self.entries == MAX_ENTRIES { return Err(DetectionError::ReadLimit); }
-                self.entries += 1;
-                let entry = entry?;
-                if entry.file_name().eq_ignore_ascii_case(wanted) {
-                    let ty = entry.file_type()?;
-                    if ty.is_symlink() || (components.peek().is_some() && !ty.is_dir()) { return Ok(None); }
-                    if found.is_some() { return Ok(None); }
-                    found = Some(entry.file_name());
+            let mut ambiguous = false;
+            self.entries(&root.join(&result), |name, kind| {
+                if name.eq_ignore_ascii_case(wanted) {
+                    if found.is_some() || kind == EntryKind::Other || (components.peek().is_some() && kind != EntryKind::Directory) {
+                        ambiguous = true;
+                    }
+                    found = Some(name);
                 }
-            }
-            let Some(found) = found else { return Ok(None); };
+                Ok(())
+            })?;
+            let Some(found) = found.filter(|_| !ambiguous) else { return Ok(None); };
             result.push(found);
         }
         Ok(Some(result))
     }
     pub(super) fn resource_bytes(&mut self, root: &Path, path: &Path) -> DetectionResult<Vec<u8>> {
         self.checkpoint()?;
-        let metadata = fs::symlink_metadata(root.join(path))?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() { return Ok(Vec::new()); }
-        if metadata.len() > MAX_FILE_READ_BYTES { return Err(DetectionError::ReadLimit); }
-        self.checkpoint()?;
-        let file = File::open(root.join(path))?;
-        let mut source = Source { file, length: metadata.len(), read_bytes: 128 };
-        self.bytes(&mut source, 0, metadata.len() as usize)
+        let full = root.join(path);
+        let Some(mut source) = self.open(&full, 128)? else { return Ok(Vec::new()); };
+        if source.length > MAX_FILE_READ_BYTES { return Err(DetectionError::ReadLimit); }
+        let length = source.length as usize;
+        self.bytes(&mut source, 0, length)
     }
     pub(super) fn configuration(&mut self, root: &Path) -> DetectionResult<Option<Configuration>> {
         #[derive(Deserialize)]
@@ -89,7 +84,7 @@ impl Scan<'_> {
             let name = directory.replace('\\', "/");
             if name.is_empty() { return Ok(SiglusRoot::Default); }
             let Some(path) = self.relative_path(root, &name)? else { return Ok(SiglusRoot::Unavailable); };
-            if fs::symlink_metadata(root.join(&path))?.is_dir() { return Ok(SiglusRoot::Append(path)); }
+            if self.tree.kind(&root.join(&path))? == EntryKind::Directory { return Ok(SiglusRoot::Append(path)); }
             return Ok(SiglusRoot::Unavailable);
         }
         Ok(SiglusRoot::Default)

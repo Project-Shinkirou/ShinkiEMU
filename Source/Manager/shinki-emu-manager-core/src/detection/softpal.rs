@@ -1,7 +1,7 @@
 use super::*;
 use super::formats::Rejected;
 
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     fn pac_entry(&mut self, source: &mut Source, wanted: &[u8]) -> Result<Option<(u64, u64)>, Rejected> {
         // pal-asset/pac.rs: 255 buckets at 0x0c, 40-byte records at 0x804.
         // An index alone is not a family match; callers validate actual resources.
@@ -51,10 +51,8 @@ impl Scan<'_> {
         ] {
             let Some(path) = self.relative_path(root, name)? else { continue; };
             let bytes = if packed {
-                self.checkpoint()?;
-                let metadata = fs::symlink_metadata(root.join(&path))?;
-                if !metadata.is_file() { continue; }
-                let mut source = Source { file: File::open(root.join(&path))?, length: metadata.len(), read_bytes: 128 };
+                let full = root.join(&path);
+                let Some(mut source) = self.open(&full, 128)? else { continue; };
                 let (offset, size) = match self.pac_entry(&mut source, b"archive.dat") {
                     Ok(Some(entry)) => entry,
                     Ok(None) | Err(Rejected::NoMatch) => continue,
