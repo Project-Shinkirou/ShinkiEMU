@@ -62,6 +62,14 @@ impl ShinkiEmuManagerController {
             return Err("SHINKI_EMU_FAMILY_INITIALIZING".into());
         }
         let game = self.game(case_id)?;
+        #[cfg(target_os = "android")]
+        let game = if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
+            let path = self.native_game_directory(&game)?;
+            let location = path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned();
+            GameRecord { location, ..game }
+        } else {
+            game
+        };
         if shinki_emu_patch::is_staging_path(Path::new(&game.location)) {
             return Err(
                 "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging is not a published game".into(),

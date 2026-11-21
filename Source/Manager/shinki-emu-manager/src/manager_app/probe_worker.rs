@@ -38,6 +38,25 @@ pub(super) struct GameProbe {
     pub(super) game_ids: Vec<String>,
     pub(super) detections: Vec<shinki_emu_manager_core::detection::EngineDetection>,
     pub(super) patch_profile: Option<Result<shinki_emu_patch::OutputProfile, String>>,
+    #[cfg(target_os = "android")]
+    pub(super) saf: Option<SafProbe>,
+}
+
+impl GameProbe {
+    pub(super) fn matches_output(&self, output: &Path) -> bool {
+        if self.path == output { return true; }
+        #[cfg(target_os = "android")]
+        if self.saf.as_ref().and_then(|saf| saf.local_path.as_deref()) == Some(output) {
+            return true;
+        }
+        false
+    }
+}
+
+#[cfg(target_os = "android")]
+pub(super) struct SafProbe {
+    pub(super) title: String,
+    pub(super) local_path: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -46,6 +65,8 @@ pub(super) struct ScanReport {
     pub(super) missing: usize,
     pub(super) cache_hits: usize,
     pub(super) cache_error: Option<String>,
+    #[cfg(target_os = "android")]
+    pub(super) saf_error: Option<String>,
 }
 
 pub(super) fn scan(
@@ -69,10 +90,16 @@ pub(super) fn scan(
         .map(|path| fs::canonicalize(path).unwrap_or_else(|_| path.clone()))
         .collect();
     let mut report = ScanReport::default();
+    #[cfg(target_os = "android")]
+    scan_saf(&request, &mut report, shutdown, &cancelled, progress)?;
     let mut known = BTreeMap::<PathBuf, Vec<String>>::new();
     for game in &request.games {
         if let Some(error) = cancelled() {
             return Err(error.into());
+        }
+        #[cfg(target_os = "android")]
+        if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
+            continue;
         }
         match canonical_directory(Path::new(&game.location))? {
             Some(path) if excluded.contains(&path) => continue,
@@ -87,6 +114,8 @@ pub(super) fn scan(
                     game_ids: vec![game.game_id.clone()],
                     detections: Vec::new(),
                     patch_profile: None,
+                    #[cfg(target_os = "android")]
+                    saf: None,
                 });
             }
         }
@@ -97,6 +126,10 @@ pub(super) fn scan(
         cache.retain_registered(&request.games);
     }
     for root in request.paths {
+        #[cfg(target_os = "android")]
+        if root.to_str().is_some_and(shinki_emu_manager::platform::android_tree::is_library_uri) {
+            continue;
+        }
         let path = match canonical_directory(&root)? {
             Some(path) if shinki_emu_patch::is_staging_path(&path) => {
                 if request.kind == ScanKind::Full {
@@ -161,6 +194,8 @@ pub(super) fn scan(
                     game_ids: known.get(&path).cloned().unwrap_or_default(),
                     detections,
                     patch_profile,
+                    #[cfg(target_os = "android")]
+                    saf: None,
                 });
             }
             if matched || has_receipt {
@@ -199,4 +234,124 @@ pub(super) fn scan(
 
 fn directory_entry_error(error: std::io::Error) -> String {
     format!("SHINKI_EMU_GAME_DIRECTORY_ENUMERATION: {error}")
+}
+
+#[cfg(target_os = "android")]
+fn scan_saf(
+    request: &ScanRequest,
+    report: &mut ScanReport,
+    shutdown: &std::sync::atomic::AtomicBool,
+    cancelled: &dyn Fn() -> Option<&'static str>,
+    progress: &mut dyn FnMut(super::owner::PrepareProgress),
+) -> Result<(), String> {
+    use shinki_emu_manager::platform::android_tree as saf;
+    use shinki_emu_manager_core::detection::{self, DetectionError};
+
+    fn key(uri: &str) -> (String, String) {
+        (saf::authority(uri).to_owned(), saf::document_identity(uri).to_owned())
+    }
+    fn report_failure(report: &mut ScanReport, error: DetectionError) -> Result<(), String> {
+        let error = match error {
+            DetectionError::Cancelled => return Err("SHINKI_EMU_SCAN_CANCELLED".into()),
+            DetectionError::ReadLimit => "SHINKI_EMU_GAME_DIRECTORY_BOUNDS".to_owned(),
+            DetectionError::Io(error) => format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}"),
+        };
+        tracing::warn!(event = "shinki.emu.android.library_tree_scan_failed", diagnostic_code = %error);
+        report.saf_error.get_or_insert(error);
+        Ok(())
+    }
+
+    let known: BTreeMap<_, _> = request.games.iter().filter(|game| saf::is_library_uri(&game.location))
+        .map(|game| (key(&game.location), game)).collect();
+    let excluded: BTreeSet<_> = request.excluded.iter().filter_map(|path| path.to_str())
+        .filter(|uri| saf::is_library_uri(uri)).map(key).collect();
+    let roots = request.paths.iter().filter_map(|path| path.to_str()).filter(|uri| saf::is_library_uri(uri));
+    let saved = known.values().map(|game| (game.location.as_str(), true))
+        .filter(|_| request.kind == ScanKind::Full);
+    let mut visited = BTreeSet::new();
+    let mut attempted = 0;
+    for (uri, saved_only) in roots.map(|uri| (uri, false)).chain(saved) {
+        if let Some(error) = cancelled() { return Err(error.into()); }
+        if saved_only && visited.contains(&key(uri)) { continue; }
+        let root = match saf::document(uri) {
+            Ok(root) if root.directory => root,
+            Ok(_) => {
+                report_failure(report, std::io::Error::new(std::io::ErrorKind::InvalidInput, "selected document is not a folder").into())?;
+                continue;
+            }
+            Err(error) => {
+                report_failure(report, error)?;
+                continue;
+            }
+        };
+        let mut pending = vec![(root, 0)];
+        while let Some((dir, depth)) = pending.pop() {
+            if let Some(error) = cancelled() { return Err(error.into()); }
+            if shinki_emu_patch::is_staging_path(Path::new(&dir.name)) { continue; }
+            let identity = key(&dir.uri);
+            if excluded.contains(&identity) || visited.contains(&identity) { continue; }
+            if attempted == MAX_SCAN_DIRECTORIES {
+                report_failure(report, DetectionError::ReadLimit)?;
+                return Ok(());
+            }
+            attempted += 1;
+            if attempted % SCAN_PROGRESS_INTERVAL == 0 {
+                progress(super::owner::PrepareProgress::Scan { directories: attempted, games: report.games.len() });
+            }
+            // The app must be able to open game resources, not just list a trusted volume.
+            let local = saf::local_path(&dir.uri).ok().flatten().and_then(|path| {
+                let detected = detection::detect_game_directory(&path, &request.cancel).ok()?;
+                (!detected.is_empty()).then_some((detected, path))
+            });
+            let (detected, local_path) = if let Some((detected, path)) = local {
+                (Some(detected), Some(path))
+            } else {
+                match detection::detect_game_tree(&saf::SafTree::new(&dir), &request.cancel) {
+                    Ok(detected) => (Some(detected), None),
+                    Err(error) => {
+                        report_failure(report, error)?;
+                        // A failed candidate need not hide independently readable child games.
+                        (None, None)
+                    }
+                }
+            };
+            if let Some(error) = cancelled() { return Err(error.into()); }
+            let game_known = known.get(&identity).copied();
+            let matched = detected.as_ref().is_some_and(|detected| !detected.is_empty());
+            if detected.is_some() {
+                visited.insert(identity);
+            }
+            if !matched && !saved_only && depth < MAX_SCAN_DEPTH {
+                match saf::children(&dir.uri, MAX_SCAN_DIRECTORIES - attempted - pending.len()) {
+                    Ok(mut children) => {
+                        children.retain(|child| child.directory);
+                        children.sort_unstable_by(|left, right| left.name.cmp(&right.name));
+                        pending.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
+                    }
+                    Err(error) => report_failure(report, error)?,
+                }
+            }
+            if matched || (detected.is_some() && game_known.is_some()) {
+                let detections = detected.unwrap_or_default();
+                let game_ids = game_known.map(|game| vec![game.game_id.clone()]).unwrap_or_default();
+                let patch_profile = if request.kind == ScanKind::Import || game_known.is_none() {
+                    match local_path.as_deref() {
+                        Some(path) => shinki_emu_patch::read_output_profile(path, shutdown)
+                            .transpose().map(|profile| profile.map_err(|error| error.to_string())),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                report.games.push(GameProbe {
+                    path: PathBuf::from(dir.uri),
+                    game_ids,
+                    detections,
+                    patch_profile,
+                    saf: Some(SafProbe { title: dir.name, local_path }),
+                });
+            }
+        }
+    }
+    Ok(())
 }

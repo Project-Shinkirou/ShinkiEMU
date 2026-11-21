@@ -135,6 +135,18 @@ impl ManagerController for ShinkiEmuManagerController {
     fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::add_game_directory(self, path)
     }
+
+    #[cfg(target_os = "android")]
+    fn android_storage_access_changed(&mut self) -> Result<ManagerViewModel, String> {
+        self.saf_paths.clear();
+        // This is a local rescan, not the user-initiated metadata refresh action.
+        self.pending_full_scan.get_or_insert(background::FullScan::Initial);
+        if matches!(self.startup_state, background::StartupState::Failed(_)) {
+            self.startup_state = background::StartupState::Ready;
+        }
+        self.pump_library_scan();
+        self.model()
+    }
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::remove_library_root(self, path)
     }

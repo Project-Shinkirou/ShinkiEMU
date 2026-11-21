@@ -395,8 +395,15 @@ impl ShinkiEmuManagerController {
                     .map_err(|_| "SHINKI_EMU_PATCH_PATH: completed output is no longer available")?;
                 // Never apply an automatic result to a nested/other game, nor
                 // let unrelated missing library paths mutate the source cache.
-                report.games.retain(|game| game.path == output);
+                report.games.retain(|game| {
+                    game.matches_output(&output)
+                        && (!expected.in_place || game.game_ids.contains(&expected.source_game_id))
+                });
                 if report.games.len() != 1 {
+                    #[cfg(target_os = "android")]
+                    if let Some(error) = report.saf_error.take() {
+                        return Err(error);
+                    }
                     return Err(
                         "SHINKI_EMU_FAMILY_PROBE_REQUIRED: completed output root was not recognized"
                             .into(),
@@ -432,6 +439,10 @@ impl ShinkiEmuManagerController {
         if let Some(error) = report.cache_error {
             tracing::warn!(event = "shinki.emu.manager.probe_cache_failed", diagnostic_code = %error);
         }
+        #[cfg(target_os = "android")]
+        if kind == ScanKind::Full {
+            self.saf_paths.clear();
+        }
         let mut imported = BTreeSet::new();
         let mut added = 0;
         for result in report.games {
@@ -458,6 +469,10 @@ impl ShinkiEmuManagerController {
                     return Err("SHINKI_EMU_EMULATOR_SELECTION_INVALID: patch output has no supported emulator".into());
                 }
                 for id in ids {
+                    #[cfg(target_os = "android")]
+                    if result.saf.is_some() {
+                        self.saf_paths.remove(&id);
+                    }
                     self.set_recognition(&id, Vec::new())?;
                 }
                 continue;
@@ -466,9 +481,19 @@ impl ShinkiEmuManagerController {
             let selected = profile.as_ref().map(|profile| self.select_import_profile(&choices, profile)).transpose()?;
             if ids.is_empty() {
                 let location = result.path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?;
+                #[cfg(target_os = "android")]
+                let saf = result.saf.as_ref().map(|saf| {
+                    use shinki_emu_manager::platform::android_tree::{authority, document_identity};
+                    let identity = format!("{}/{}", authority(location), document_identity(location));
+                    (format!("game-{}", sha256_id(&identity)), saf.title.clone())
+                });
+                #[cfg(target_os = "android")]
+                let (game_id, title) = saf.unwrap_or_else(|| (path_id(&result.path), title_for_path(&result.path)));
+                #[cfg(not(target_os = "android"))]
+                let (game_id, title) = (path_id(&result.path), title_for_path(&result.path));
                 let game = GameRecord {
-                    game_id: path_id(&result.path),
-                    title: title_for_path(&result.path),
+                    game_id,
+                    title,
                     user_title: None,
                     location: location.into(),
                     family_id: None,
@@ -485,6 +510,20 @@ impl ShinkiEmuManagerController {
             for id in ids {
                 if automatic.is_some_and(|expected| expected.source_game_id == id && !expected.in_place) {
                     return Err("SHINKI_EMU_PATCH_INTEGRITY: output import would modify source game".into());
+                }
+                #[cfg(target_os = "android")]
+                if let Some(saf) = &result.saf {
+                    // Keep the game ID/settings but remember a currently usable grant.
+                    let mut game = self.game(&id)?;
+                    if let Some(uri) = result.path.to_str().filter(|uri| *uri != game.location) {
+                        game.location = uri.into();
+                        self.library.add_game(&game).map_err(|error| error.to_string())?;
+                    }
+                    if let Some(path) = &saf.local_path {
+                        self.saf_paths.insert(id.clone(), path.clone());
+                    } else {
+                        self.saf_paths.remove(&id);
+                    }
                 }
                 self.set_recognition(&id, result.detections.clone())?;
                 if let Some((profile, selected)) = profile.as_ref().zip(selected.as_ref()) {
@@ -512,6 +551,11 @@ impl ShinkiEmuManagerController {
                 "有 {count} 个游戏目录当前不可用。资料库信息已保留，恢复目录后点击“刷新资料库”。",
                 count = report.missing
             );
+            self.diagnostic_severity = "warning";
+        }
+        #[cfg(target_os = "android")]
+        if let Some(error) = report.saf_error {
+            self.diagnostic = error;
             self.diagnostic_severity = "warning";
         }
         if self.selected_case_id.is_none() && automatic.is_none() {

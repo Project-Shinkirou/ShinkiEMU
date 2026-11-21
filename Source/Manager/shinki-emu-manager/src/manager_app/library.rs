@@ -1,9 +1,19 @@
 use super::*;
 use shinki_emu_manager_ui_slint::tr;
 
+#[cfg(target_os = "android")]
+pub(super) fn saf_only_problem() -> &'static str {
+    tr!("此游戏文件夹由系统文件提供程序管理，当前核心无法直接读取。")
+}
+
 impl ShinkiEmuManagerController {
     /// Persist a root and recognize its directories without native activation.
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
+        #[cfg(target_os = "android")]
+        if path.to_str().is_some_and(shinki_emu_manager::platform::android_tree::is_library_uri) {
+            self.register_library_root(path.to_owned())?;
+            return self.model();
+        }
         let root = probe_worker::canonical_directory(path)?
             .ok_or("SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
         self.register_library_root(root)?;
@@ -48,7 +58,27 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn game_location(&self, game_id: &str) -> Result<PathBuf, String> {
-        Ok(PathBuf::from(self.game(game_id)?.location))
+        let game = self.game(game_id)?;
+        self.native_game_directory(&game).map(Path::to_owned)
+    }
+
+    pub(super) fn mapped_game_directory<'a>(&'a self, game: &'a GameRecord) -> Option<&'a Path> {
+        #[cfg(target_os = "android")]
+        if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
+            return self.saf_paths.get(&game.game_id).map(PathBuf::as_path);
+        }
+        Some(Path::new(&game.location))
+    }
+
+    pub(super) fn native_game_directory<'a>(&'a self, game: &'a GameRecord) -> Result<&'a Path, String> {
+        #[cfg(target_os = "android")]
+        if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
+            use shinki_emu_manager::platform::android_tree::local_path;
+            return self.mapped_game_directory(game)
+                .filter(|path| local_path(&game.location).ok().flatten().as_deref() == Some(*path))
+                .ok_or_else(|| format!("SHINKI_EMU_ANDROID_TREE_NATIVE_PATH: {}", saf_only_problem()));
+        }
+        Ok(Path::new(&game.location))
     }
 
     pub(super) fn remove_from_library(
@@ -280,6 +310,8 @@ impl ShinkiEmuManagerController {
             library_scan: None,
             prepare_progress: None,
             scan_cancel: None,
+            #[cfg(target_os = "android")]
+            saf_paths: BTreeMap::new(),
             last_excluded: None,
             key_capture: None,
         };

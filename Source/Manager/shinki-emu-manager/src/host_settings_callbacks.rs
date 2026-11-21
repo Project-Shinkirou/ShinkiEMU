@@ -95,6 +95,28 @@ fn install_settings<C: ManagerController>(
     window: &shinki_emu_manager_ui_slint::ManagerWindow,
 ) {
     let settings = window.global::<Settings>();
+    #[cfg(target_os = "android")]
+    {
+        match platform::android::storage_access() {
+            Ok((available, granted)) => {
+                settings.set_android_storage_access_available(available);
+                settings.set_android_storage_access_granted(granted);
+            }
+            Err(error) => tracing::warn!(event = "shinki.emu.android.storage_access_unavailable", error = %error),
+        }
+        let w = wiring.clone();
+        settings.on_open_android_storage_access(move || {
+            let weak = w.window.clone();
+            let on_error = std::rc::Rc::new(move |error: String| {
+                if let Some(window) = weak.upgrade() {
+                    report_error(&window, &error);
+                }
+            });
+            if let Err(error) = platform::android::open_storage_access(on_error) {
+                w.show(Err(error));
+            }
+        });
+    }
     let w = wiring.clone();
     settings.on_save_translation_provider(move |id, name, preset, form, secret| {
         w.run(|c| {
@@ -146,7 +168,7 @@ fn install_settings<C: ManagerController>(
     let w = wiring.clone();
     settings.on_add_root(move || {
         let w = w.clone();
-        platform::pick_folder(
+        platform::pick_library_folder(
             tr!("添加库目录"),
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );
@@ -240,7 +262,7 @@ fn install_onboarding<C: ManagerController>(
     let w = wiring.clone();
     onboarding.on_add_root(move || {
         let w = w.clone();
-        platform::pick_folder(
+        platform::pick_library_folder(
             tr!("添加库目录"),
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );

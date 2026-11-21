@@ -8,7 +8,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
 
-// Compile alongside ShinkiPlatformBridge.kt against the SDK android.jar and
+// Compile alongside ShinkiPlatformBridge.kt and ShinkiLibraryTree.kt against the SDK android.jar,
 // run PickerHostTestKt on the host JVM. No Android process or test runner.
 fun main() {
     checkResult(Activity.RESULT_CANCELED, {
@@ -28,6 +28,17 @@ fun main() {
         check(error.contains("provider denied access"))
     }
     println("SAF result callback: success, cancel, missing URI, unexpected result, and permission denial")
+
+    val provider = "com.android.externalstorage.documents"
+    val parse = ShinkiLibraryTree::localDocumentPath
+    check(parse(provider, true, "primary:Games/Play") == ("primary" to listOf("Games", "Play")))
+    check(parse(provider, true, "ABCD-1234:Games") == ("ABCD-1234" to listOf("Games")))
+    check(parse("cloud.provider", true, "primary:Games") == null)
+    check(parse(provider, false, "primary:Games") == null)
+    for (invalid in listOf("primary:/Games", "primary:../Games", "primary:Games//Play", "primary:Games/.")) {
+        check(parse(provider, true, invalid) == null)
+    }
+    println("SAF volume mapping: primary and removable volumes; rejects non-system providers and escaping paths")
 
     val root = Files.createTempDirectory("shinki-saf-host-").toFile()
     try {

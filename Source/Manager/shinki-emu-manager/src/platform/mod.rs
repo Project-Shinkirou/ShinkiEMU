@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
+#[cfg(target_os = "android")]
+pub mod android_tree;
 #[cfg(any(target_os = "android", test))]
 pub(crate) mod android_storage;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
@@ -39,6 +41,17 @@ pub type PickDone = Box<dyn FnOnce(Result<PathBuf, String>)>;
 /// Pick an existing directory.
 pub fn pick_folder(title: &str, done: PickDone) {
     imp::pick_folder(title, done);
+}
+
+/// Select a library reference. On Android this retains a SAF tree grant.
+pub(crate) fn pick_library_folder(title: &str, done: PickDone) {
+    #[cfg(target_os = "android")]
+    {
+        let _ = title;
+        android::pick_library_folder(done);
+    }
+    #[cfg(not(target_os = "android"))]
+    pick_folder(title, done);
 }
 
 /// Pick an existing file whose extension matches one of `filters`.

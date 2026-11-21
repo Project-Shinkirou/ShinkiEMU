@@ -266,6 +266,22 @@ pub(super) fn install<C: ManagerController>(
                 return;
             };
             let window = adapter.window();
+            #[cfg(target_os = "android")]
+            if event == LifecycleEvent::Resumed(true)
+                && let Ok((available, granted)) = crate::platform::android::storage_access()
+            {
+                let settings = window.global::<shinki_emu_manager_ui_slint::Settings>();
+                let changed = settings.get_android_storage_access_available()
+                    && settings.get_android_storage_access_granted() != granted;
+                settings.set_android_storage_access_available(available);
+                settings.set_android_storage_access_granted(granted);
+                if changed {
+                    match controller.borrow_mut().android_storage_access_changed() {
+                        Ok(model) => adapter.apply(&model),
+                        Err(error) => report_error(window, &error),
+                    }
+                }
+            }
             if event == LifecycleEvent::ConfigChanged
                 && let Ok(dark) = system_theme(window.window())
             {
