@@ -242,11 +242,18 @@ fn install_onboarding<C: ManagerController>(
         let w = w.clone();
         platform::pick_folder(
             tr!("添加库目录"),
-            Box::new(move |picked| w.run(|c| c.add_library_root(&picked?))),
+            Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );
     });
     let w = wiring.clone();
     onboarding.on_remove_root(move |path| w.run(|c| c.remove_library_root(path.as_str())));
     let w = wiring.clone();
-    onboarding.on_finish(move || w.run(|c| c.finish_onboarding()));
+    onboarding.on_finish(move || {
+        let result = w.controller.borrow_mut().finish_onboarding();
+        let finished = result.is_ok();
+        w.show(result);
+        if finished && let Some(window) = w.window.upgrade() {
+            window.global::<App>().set_page("library".into());
+        }
+    });
 }

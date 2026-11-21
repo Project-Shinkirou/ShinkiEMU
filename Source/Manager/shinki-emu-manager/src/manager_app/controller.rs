@@ -24,12 +24,12 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::store_web_signed_in(self, cookies)
     }
 
-    fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::prepare_library(self)
+    fn refresh_library(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::refresh_library(self)
     }
 
-    fn cancel_prepare(&mut self) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::cancel_prepare(self)
+    fn cancel_library_scan(&mut self) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::cancel_library_scan(self)
     }
 
     fn remove_from_library(&mut self, game_id: &str) -> Result<ManagerViewModel, String> {
@@ -135,9 +135,6 @@ impl ManagerController for ShinkiEmuManagerController {
     fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::add_game_directory(self, path)
     }
-    fn add_library_root(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::add_library_root(self, path)
-    }
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::remove_library_root(self, path)
     }
@@ -149,26 +146,6 @@ impl ManagerController for ShinkiEmuManagerController {
     }
     fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::finish_onboarding(self)
-    }
-    fn notice_presented(&mut self, now: Instant, visible: bool) -> Result<(), String> {
-        self.notice_reading.presented(now, visible);
-        self.persist_notice_acknowledgement()
-    }
-    fn acknowledge_notice(&mut self, checked: bool) -> Result<ManagerViewModel, String> {
-        self.notice_reading.set_checked(checked);
-        if !checked {
-            self.library
-                .set_app_state(
-                    shinki_emu_manager::resale_notice::ACK_KEY,
-                    &Option::<shinki_emu_manager::resale_notice::Acknowledgement>::None,
-                )
-                .map_err(|error| error.to_string())?;
-        }
-        self.persist_notice_acknowledgement()?;
-        self.model()
-    }
-    fn notice_state(&self) -> shinki_emu_manager_ui_slint::ResaleNoticeViewModel {
-        self.notice_reading.view()
     }
     fn game_location(&self, game_id: &str) -> Result<PathBuf, String> {
         ShinkiEmuManagerController::game_location(self, game_id)

@@ -4,23 +4,13 @@ use shinki_emu_manager_ui_slint::tr;
 impl ShinkiEmuManagerController {
     /// Persist a root and recognize its directories without native activation.
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
-        self.ensure_owner_idle()?;
-        if self.startup_busy() {
-            return Err("SHINKI_EMU_PREPARE_BUSY".into());
-        }
-        if matches!(self.startup_state, background::StartupState::Failed(_)) && !self.registry.is_ready() {
-            return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into());
-        }
-        if self.patch_job.is_some() {
-            return Err(format!(
-                "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
-                tr!("文件补丁转换期间不能扫描游戏")
-            ));
-        }
-        let root = fs::canonicalize(path)
-            .ok()
-            .filter(|root| root.is_dir())
+        let root = probe_worker::canonical_directory(path)?
             .ok_or("SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
+        self.register_library_root(root)?;
+        self.model()
+    }
+
+    pub(super) fn register_library_root(&mut self, root: PathBuf) -> Result<(), String> {
         if shinki_emu_patch::is_staging_path(&root) {
             return Err(
                 "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging cannot be imported".into(),
@@ -29,26 +19,8 @@ impl ShinkiEmuManagerController {
         self.library
             .add_library_root(root.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?)
             .map_err(|error| error.to_string())?;
-        if self.cores_started() {
-            self.begin_scan(probe_worker::ScanKind::Import, vec![root])?;
-            self.model()
-        } else {
-            let model = self.prepare_library()?;
-            self.prepare_scan_pending = Some(background::PendingScan::Import(root));
-            Ok(model)
-        }
-    }
-
-    /// Persist a library root without loading cores or scanning.
-    pub(super) fn add_library_root(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
-        let root = fs::canonicalize(path)
-            .ok()
-            .filter(|root| root.is_dir())
-            .ok_or("SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
-        self.library
-            .add_library_root(root.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?)
-            .map_err(|error| error.to_string())?;
-        self.model()
+        self.queue_library_root(root);
+        Ok(())
     }
 
     /// Stop scanning a root; its games stay in the library.
@@ -56,36 +28,23 @@ impl ShinkiEmuManagerController {
         self.library
             .remove_library_root(path)
             .map_err(|error| error.to_string())?;
+        self.forget_queued_root(Path::new(path));
         self.model()
     }
 
     pub(super) fn onboarding_completed(&self) -> Result<bool, String> {
-        Ok(self.notice_reading.view().acknowledged
-            && self
-                .library
-                .app_state::<bool>(ONBOARDING_COMPLETED_KEY)
-                .map_err(|error| error.to_string())?
-                .unwrap_or(false))
+        Ok(self
+            .library
+            .app_state::<bool>(ONBOARDING_COMPLETED_KEY)
+            .map_err(|error| error.to_string())?
+            .unwrap_or(false))
     }
 
     pub(super) fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String> {
-        if !self.notice_reading.view().acknowledged {
-            return Err("SHINKI_EMU_NOTICE_ACKNOWLEDGEMENT_REQUIRED".into());
-        }
         self.library
             .set_app_state(ONBOARDING_COMPLETED_KEY, &true)
             .map_err(|error| error.to_string())?;
         self.model()
-    }
-
-    pub(super) fn persist_notice_acknowledgement(&mut self) -> Result<(), String> {
-        if let Some(record) = self.notice_reading.pending_record(unix_time_ms()?) {
-            self.library
-                .set_app_state(shinki_emu_manager::resale_notice::ACK_KEY, &record)
-                .map_err(|error| error.to_string())?;
-            self.notice_reading.recorded();
-        }
-        Ok(())
     }
 
     pub(super) fn game_location(&self, game_id: &str) -> Result<PathBuf, String> {
@@ -230,19 +189,10 @@ impl ShinkiEmuManagerController {
             .app_state::<bool>(SENSITIVE_COVERS_KEY)
             .map_err(|error| error.to_string())?
             .unwrap_or(false);
-        let notice_record = library
-            .app_state::<Option<shinki_emu_manager::resale_notice::Acknowledgement>>(
-                shinki_emu_manager::resale_notice::ACK_KEY,
-            )
-            .map_err(|error| error.to_string())?
-            .flatten();
         let self_update = self_update::State::load(&library)?;
         let mut controller = Self {
             library,
             self_update,
-            notice_reading: shinki_emu_manager::resale_notice::Reading::restored(
-                notice_record.as_ref(),
-            ),
             registry,
             candidates: BTreeMap::new(),
             startup_state: background::StartupState::Waiting,
@@ -325,7 +275,9 @@ impl ShinkiEmuManagerController {
             patch_query: String::new(),
             patch_sequence: 0,
             snackbar: snackbar::Snackbar::default(),
-            prepare_scan_pending: None,
+            pending_full_scan: Some(background::FullScan::Initial),
+            pending_scan_roots: BTreeSet::new(),
+            library_scan: None,
             prepare_progress: None,
             scan_cancel: None,
             last_excluded: None,

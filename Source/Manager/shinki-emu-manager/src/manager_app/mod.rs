@@ -104,7 +104,6 @@ struct PendingMetadata {
 
 struct ShinkiEmuManagerController {
     library: Library,
-    notice_reading: shinki_emu_manager::resale_notice::Reading,
     registry: owner::FamilyOwner,
     candidates: BTreeMap<String, Candidate>,
     startup_state: background::StartupState,
@@ -185,7 +184,9 @@ struct ShinkiEmuManagerController {
     patch_query: String,
     patch_sequence: u64,
     snackbar: snackbar::Snackbar,
-    prepare_scan_pending: Option<background::PendingScan>,
+    pending_full_scan: Option<background::FullScan>,
+    pending_scan_roots: BTreeSet<PathBuf>,
+    library_scan: Option<background::LibraryScan>,
     prepare_progress: Option<owner::PrepareProgress>,
     scan_cancel: Option<shinki_emu_manager_core::NativeCancellation>,
     last_excluded: Option<String>,

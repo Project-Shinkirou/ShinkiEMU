@@ -1,6 +1,7 @@
 use super::*;
 use crate::test_native::{self, Fixture};
 use super::recognition_tests::{hcb, write_game};
+use std::sync::Arc;
 
 fn provider(plugin_id: &'static str, confidence: u16) -> shinki_emu_manager_core::LoadedFamilyPlugin {
     provider_with_marker(plugin_id, confidence, "native-marker")
@@ -13,7 +14,7 @@ fn provider_with_marker(plugin_id: &'static str, confidence: u16, marker: &'stat
 }
 fn controller(root: &Path) -> ShinkiEmuManagerController {
     let mut app = ShinkiEmuManagerController::open_library(root.into(), FrameMailbox::new(), Vec::new()).unwrap();
-    app.prepare_library().unwrap();
+    app.set_host_wake(Arc::new(|| {}));
     settle_background(&mut app);
     app
 }
@@ -50,7 +51,7 @@ fn record(id: &str, location: &Path) -> GameRecord {
 }
 
 #[test]
-fn preparing_preserves_legacy_identity_settings_and_metadata_without_native_loading() {
+fn automatic_startup_preserves_legacy_identity_settings_and_metadata_without_native_loading() {
     let root = tempfile::tempdir().unwrap();
     let data = root.path().join("manager");
     let path = game(&root.path().join("library"));
@@ -64,7 +65,7 @@ fn preparing_preserves_legacy_identity_settings_and_metadata_without_native_load
     assert_eq!(app.game("legacy").unwrap(), saved);
     assert_eq!(app.model().unwrap().selection.game.emulator_id, "rfvp");
     assert_eq!(app.registry.descriptors().count(), 0);
-    app.prepare_library().unwrap();
+    app.set_host_wake(Arc::new(|| {}));
     settle_background(&mut app);
     assert_eq!(app.game("legacy").unwrap(), saved);
     assert_eq!(app.library.list_games().unwrap().len(), 1);
@@ -117,7 +118,7 @@ fn scanning_existing_aliases_keeps_both_records_without_location_conflict() {
     let alias = root.path().join(".").join("title");
     let mut app = controller(&root.path().join("manager"));
     for (id, path) in [("original", &alias), ("canonical", &path)] { app.library.add_game(&record(id, path)).unwrap(); }
-    app.prepare_library().unwrap();
+    app.refresh_library().unwrap();
     settle_background(&mut app);
     assert_eq!(app.library.list_games().unwrap().len(), 2);
     assert_eq!(app.game("original").unwrap().location, alias.to_str().unwrap());
@@ -125,7 +126,7 @@ fn scanning_existing_aliases_keeps_both_records_without_location_conflict() {
     assert!(app.candidates.contains_key("original"));
     assert!(app.candidates.contains_key("canonical"));
     fs::remove_file(path.join("boot.hcb")).unwrap();
-    app.prepare_library().unwrap();
+    app.refresh_library().unwrap();
     settle_background(&mut app);
     assert!(app.candidates.is_empty());
     assert_eq!(app.library.list_games().unwrap().len(), 2);
@@ -149,7 +150,7 @@ fn unavailable_paths_and_no_match_preserve_records_but_disable_launch() {
     scan_once(&mut app, &path);
     assert_eq!(app.candidates[&id].plugin_id, "rfvp");
     fs::remove_dir_all(&path).unwrap();
-    app.prepare_library().unwrap();
+    app.refresh_library().unwrap();
     settle_background(&mut app);
     assert_eq!(app.game(&id).unwrap(), saved);
     assert!(app.candidates.is_empty());
@@ -159,9 +160,11 @@ fn unavailable_paths_and_no_match_preserve_records_but_disable_launch() {
 }
 
 #[test]
-fn import_is_queued_and_published_only_after_owner_completes_it() {
+fn roots_added_during_a_scan_are_coalesced_and_imported_after_it() {
     let root = tempfile::tempdir().unwrap();
     let path = game(root.path());
+    let later = game(&root.path().join("later"));
+    let removed = game(&root.path().join("removed"));
     let mut app = controller(&root.path().join("manager"));
     let (release, gate) = std::sync::mpsc::channel();
     let (entered, receiver) = std::sync::mpsc::channel();
@@ -173,9 +176,82 @@ fn import_is_queued_and_published_only_after_owner_completes_it() {
     receiver.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(app.add_game_directory(&path).unwrap().library.games.is_empty());
     assert!(app.startup_busy());
+    let pending = app.add_game_directory(&later).unwrap();
+    assert_eq!(pending.settings.roots.len(), 2);
+    assert!(pending.library.games.is_empty());
+    app.add_game_directory(&later).unwrap();
+    app.add_game_directory(&removed).unwrap();
+    app.remove_library_root(removed.to_str().unwrap()).unwrap();
+    app.search("nonexistent title").unwrap();
     release.send(()).unwrap();
     settle_background(&mut app);
-    assert_eq!(app.library.list_games().unwrap().len(), 1);
+    assert_eq!(visible_games(&app).into_iter().collect::<BTreeSet<_>>(), BTreeSet::from([
+        path_id(&path),
+        path_id(&later),
+    ]));
+    let filtered = app.model().unwrap();
+    assert_eq!(filtered.library.query, "nonexistent title");
+    assert!(filtered.library.games.is_empty());
+    assert_eq!(app.search("").unwrap().library.games.len(), 2);
+    assert!(!app.startup_busy());
+}
+
+#[test]
+fn a_failed_queued_import_preserves_games_and_requires_an_explicit_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let first = game(&root.path().join("first"));
+    let pending = game(&root.path().join("pending"));
+    let moved = pending.with_file_name("moved");
+    let mut app = super::recognition_tests::open(&root.path().join("manager"));
+    app.library.add_game(&record("existing", &first)).unwrap();
+    app.set_host_wake(Arc::new(|| {}));
+    app.add_game_directory(&pending).unwrap();
+    fs::rename(&pending, &moved).unwrap();
+    settle_background(&mut app);
+
+    let failed = app.model().unwrap();
+    assert!(matches!(&app.startup_state, background::StartupState::Failed(error)
+        if error.starts_with("SHINKI_EMU_GAME_DIRECTORY_INVALID")));
+    assert!(failed.library.can_refresh);
+    assert!(!failed.library.prepare_detail.is_empty());
+    assert_eq!(visible_games(&app), ["existing"]);
+    assert_eq!(failed.settings.roots, [pending.to_str().unwrap()]);
+    fs::rename(&moved, &pending).unwrap();
+    app.poll_platform().unwrap();
+    assert_eq!(visible_games(&app), ["existing"]);
+    assert!(!app.startup_busy());
+
+    app.refresh_library().unwrap();
+    settle_background(&mut app);
+    assert!(visible_games(&app).contains(&path_id(&pending)));
+    assert!(matches!(app.startup_state, background::StartupState::Ready));
+}
+
+#[test]
+fn a_metadata_failure_does_not_delay_or_restart_local_import() {
+    let root = tempfile::tempdir().unwrap();
+    let first = game(&root.path().join("first"));
+    let later = game(&root.path().join("later"));
+    let mut app = controller(&root.path().join("manager"));
+    import(&mut app, &first);
+    let (metadata, commands, completions) = MetadataRuntime::scripted();
+    app.metadata = metadata;
+    app.network_allowed = true;
+    app.search_metadata("vndb", "title").unwrap();
+    let request = commands.recv_timeout(Duration::from_secs(5)).unwrap();
+    app.add_game_directory(&later).unwrap();
+    completions.send(metadata_runtime::MetadataCompletion {
+        request_id: request.request_id,
+        case_identity: request.case_identity,
+        provider: request.provider,
+        result: Err("SHINKI_EMU_METADATA_NETWORK".into()),
+    }).unwrap();
+    settle_background(&mut app);
+    assert!(visible_games(&app).contains(&path_id(&later)));
+    assert!(matches!(app.startup_state, background::StartupState::Ready));
+    assert!(app.model().unwrap().library.prepare_detail.is_empty());
+    assert!(matches!(app.metadata_status.get(&path_id(&first)), Some(MetadataStatus::Error(_))));
+    assert!(matches!(commands.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
 }
 
 #[test]
@@ -184,17 +260,25 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let mut app = ShinkiEmuManagerController::open_library(root.path().into(), FrameMailbox::new(), Vec::new()).unwrap();
     fs::remove_dir(root.path().join("cores")).unwrap();
     fs::write(root.path().join("cores"), b"not a directory").unwrap();
-    assert!(app.prepare_library().is_err(), "invalid inventory also fails the immediate model read");
-    assert!(app.cancel_prepare().is_err());
+    app.set_host_wake(Arc::new(|| {}));
+    assert!(app.cancel_library_scan().is_err());
     let deadline = Instant::now() + Duration::from_secs(5);
     while app.startup_busy() {
-        let _ = app.poll_platform(); // The deliberately invalid directory also prevents model rendering.
+        app.poll_background();
         assert!(Instant::now() < deadline, "failed inventory owner did not settle");
         std::thread::yield_now();
     }
     assert!(!app.cores_ready());
-    assert!(app.prepare_library().is_err());
-    assert!(app.add_game_directory(root.path()).is_err());
+    assert!(app.startup_status().contains("SHINKI_EMU_CORES_DIRECTORY_CREATE"));
+    assert!(!app.can_refresh_library());
+    assert!(app.refresh_library().is_err());
+    // A valid selection remains persisted for the next successful startup.
+    fs::remove_file(root.path().join("cores")).unwrap();
+    fs::create_dir(root.path().join("cores")).unwrap();
+    let game = game(&root.path().join("library"));
+    let model = app.add_game_directory(&game).unwrap();
+    assert_eq!(model.settings.roots, [game.to_str().unwrap()]);
+    assert!(model.library.games.is_empty());
     app.registry.shutdown().unwrap();
     app.registry.shutdown().unwrap();
 }
@@ -211,7 +295,7 @@ fn failed_idle_owner_wakes_the_host_and_preserves_its_join_error() {
         .register_provider(|| panic!("intentional owner failure"))
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !matches!(app.startup_state, background::StartupState::Failed(_)) {
+    while !matches!(app.startup_state, background::StartupState::OwnerFailed(_)) {
         receiver
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .unwrap();
@@ -252,7 +336,7 @@ fn visible_games(app: &ShinkiEmuManagerController) -> Vec<String> {
 }
 
 fn prepared(app: &mut ShinkiEmuManagerController) -> ManagerViewModel {
-    app.prepare_library().unwrap();
+    app.refresh_library().unwrap();
     settle_background(app);
     app.model().unwrap()
 }
@@ -335,7 +419,7 @@ fn added_directory_is_persisted_as_a_library_root() {
 }
 
 #[test]
-fn prepare_reads_inventory_then_scans_every_root_without_native_loading() {
+fn host_startup_reads_inventory_and_scans_saved_roots_without_native_loading() {
     let root = tempfile::tempdir().unwrap();
     let (library_root, g1, g2) = root_with_games(root.path());
     let mut app = ShinkiEmuManagerController::open_library(
@@ -351,29 +435,26 @@ fn prepare_reads_inventory_then_scans_every_root_without_native_loading() {
     app.set_host_wake(std::sync::Arc::new(move || {
         let _ = sender.send(());
     }));
-    while wakes.try_recv().is_ok() {}
-    let pending = app.prepare_library().unwrap();
-    assert_eq!(pending.library.prepare_state, "loading-cores");
+    let pending = app.model().unwrap();
+    assert!(!pending.library.can_refresh);
     assert!(matches!(
         app.startup_state,
         background::StartupState::Loading
     ));
-    for _ in 0..1 {
-        wakes.recv_timeout(Duration::from_secs(5)).unwrap();
-    }
+    wakes.recv_timeout(Duration::from_secs(5)).unwrap();
     app.poll_platform().unwrap();
     assert!(matches!(
         app.startup_state,
         background::StartupState::Scanning(probe_worker::ScanKind::Full)
     ));
     let scanning = app.model().unwrap();
-    assert_eq!(scanning.library.prepare_state, "scanning");
+    assert!(!scanning.library.can_refresh);
     assert!(scanning.library.can_cancel_prepare);
     settle_background(&mut app);
     assert!(matches!(app.startup_state, background::StartupState::Ready));
     let ready = app.model().unwrap();
-    assert_eq!(ready.library.prepare_state, "ready");
-    assert_eq!(ready.library.prepare_label, "刷新资料库");
+    assert!(ready.library.can_refresh);
+    assert_eq!(app.registry.descriptors().count(), 0);
     assert_eq!(ready.notices.snackbar.text, "发现 2 部新作品");
     let mut ids = visible_games(&app);
     ids.sort();
@@ -411,12 +492,13 @@ fn cancelling_a_scan_restores_ready_without_touching_the_library() {
         })
         .unwrap();
     receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-    app.prepare_library().unwrap();
+    let refreshing = app.refresh_library().unwrap();
+    assert_eq!(refreshing.library.games.len(), before.len());
     assert!(matches!(
         app.startup_state,
         background::StartupState::Scanning(probe_worker::ScanKind::Full)
     ));
-    app.cancel_prepare().unwrap();
+    app.cancel_library_scan().unwrap();
     release.0.take().unwrap().send(()).unwrap();
     settle_background(&mut app);
     assert!(matches!(app.startup_state, background::StartupState::Ready));
@@ -426,7 +508,7 @@ fn cancelling_a_scan_restores_ready_without_touching_the_library() {
     assert_eq!(model.notices.snackbar.action, "");
     assert!(app.diagnostic.is_empty());
     assert_eq!(
-        app.cancel_prepare().unwrap_err(),
+        app.cancel_library_scan().unwrap_err(),
         "SHINKI_EMU_PREPARE_NOT_CANCELLABLE"
     );
 }
@@ -519,143 +601,50 @@ fn key_capture_binds_named_keys_and_waits_on_unmappable_ones() {
 }
 
 #[test]
-fn onboarding_roots_persist_without_loading_cores() {
+fn roots_chosen_during_initial_loading_survive_finishing_onboarding() {
     let root = tempfile::tempdir().unwrap();
-    let path = game(root.path());
-    let open = || {
-        ShinkiEmuManagerController::open_library(
-            root.path().into(),
-            FrameMailbox::new(),
-            Vec::new(),
-        )
-        .unwrap()
-    };
-    let mut app = open();
+    let path = game(&root.path().join("first"));
+    let later = game(&root.path().join("later"));
+    let data = root.path().join("manager");
+    let mut app = super::recognition_tests::open(&data);
     assert!(!app.onboarding_completed().unwrap());
-    let model = app.add_library_root(&path).unwrap();
+    app.set_host_wake(Arc::new(|| {}));
+    let model = app.add_game_directory(&path).unwrap();
     assert_eq!(model.onboarding.roots, [path.to_str().unwrap()]);
     assert_eq!(model.settings.roots, model.onboarding.roots);
-    assert!(!app.cores_started());
-    assert!(app.library.list_games().unwrap().is_empty());
-    let start = Instant::now();
-    app.acknowledge_notice(true).unwrap();
-    for step in 0..=80 {
-        app.notice_presented(start + Duration::from_millis(step * 100), true)
-            .unwrap();
-    }
-    app.finish_onboarding().unwrap();
+    assert!(model.library.games.is_empty());
+    app.add_game_directory(&later).unwrap();
+    let finished = app.finish_onboarding().unwrap();
+    assert_eq!(finished.settings.roots.len(), 2);
+    settle_background(&mut app);
+    assert!(visible_games(&app).contains(&path_id(&path)));
+    assert!(visible_games(&app).contains(&path_id(&later)));
+    assert!(app.pending_metadata.is_empty());
     drop(app);
-    let mut app = open();
+
+    let mut app = super::recognition_tests::open(&data);
     assert!(app.onboarding_completed().unwrap());
     let model = app.remove_library_root(path.to_str().unwrap()).unwrap();
-    assert!(model.onboarding.roots.is_empty());
+    assert_eq!(model.onboarding.roots, [later.to_str().unwrap()]);
+    assert_eq!(model.library.games.len(), 2);
 }
 
 #[test]
-fn onboarding_requires_checked_notice_and_eight_seconds_of_visible_frames() {
+fn existing_onboarding_completion_does_not_read_old_notice_state() {
     let root = tempfile::tempdir().unwrap();
-    let mut app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
-    assert_eq!(
-        app.finish_onboarding().unwrap_err(),
-        "SHINKI_EMU_NOTICE_ACKNOWLEDGEMENT_REQUIRED"
-    );
-    let start = Instant::now();
-    app.acknowledge_notice(true).unwrap();
-    for step in 0..80 {
-        app.notice_presented(start + Duration::from_millis(step * 100), true)
-            .unwrap();
-    }
-    assert!(app.finish_onboarding().is_err());
-    app.notice_presented(start + Duration::from_secs(8), true)
-        .unwrap();
-    assert!(app.finish_onboarding().is_ok());
-    let record = app
-        .library
-        .app_state::<shinki_emu_manager::resale_notice::Acknowledgement>(
-            shinki_emu_manager::resale_notice::ACK_KEY,
-        )
-        .unwrap()
-        .unwrap();
-    assert!(record.is_current());
-    assert_eq!(record.visible_millis, 8000);
+    let mut app = super::recognition_tests::open(root.path());
+    app.library.set_app_state(ONBOARDING_COMPLETED_KEY, &true).unwrap();
+    // An old or unreadable acknowledgement is no longer consulted or rewritten.
+    let old = "obsolete acknowledgement";
+    app.library.set_app_state("onboarding.resale_notice", &old).unwrap();
     drop(app);
-    let app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
+
+    let app = super::recognition_tests::open(root.path());
     assert!(app.onboarding_completed().unwrap());
-}
-
-#[test]
-fn changed_notice_digest_requires_reading_and_acknowledgement_again() {
-    let root = tempfile::tempdir().unwrap();
-    let mut app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
-    app.library
-        .set_app_state(ONBOARDING_COMPLETED_KEY, &true)
-        .unwrap();
-    app.library
-        .set_app_state(
-            shinki_emu_manager::resale_notice::ACK_KEY,
-            &shinki_emu_manager::resale_notice::Acknowledgement {
-                digest: "previous notice".into(),
-                visible_millis: 8000,
-                acknowledged_unix_millis: 1,
-            },
-        )
-        .unwrap();
-    drop(app);
-    let mut app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
-    assert!(!app.onboarding_completed().unwrap());
-    assert_eq!(app.model().unwrap().resale_notice.remaining_seconds, 8);
-    assert!(app.finish_onboarding().is_err());
-    app.acknowledge_notice(true).unwrap();
-    assert!(app.finish_onboarding().is_err());
-}
-
-#[test]
-fn dwell_without_checkbox_cannot_finish_and_unchecking_revokes_ack() {
-    let root = tempfile::tempdir().unwrap();
-    let mut app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
-    let start = Instant::now();
-    for step in 0..=80 {
-        app.notice_presented(start + Duration::from_millis(step * 100), true)
-            .unwrap();
-    }
-    assert!(app.finish_onboarding().is_err());
-    app.acknowledge_notice(true).unwrap();
-    assert!(app.finish_onboarding().is_ok());
-    app.acknowledge_notice(false).unwrap();
-    assert!(app.finish_onboarding().is_err());
-    drop(app);
-    let app = ShinkiEmuManagerController::open_library(
-        root.path().into(),
-        FrameMailbox::new(),
-        Vec::new(),
-    )
-    .unwrap();
-    assert!(!app.onboarding_completed().unwrap());
+    assert_eq!(
+        app.library.app_state::<String>("onboarding.resale_notice").unwrap().as_deref(),
+        Some(old),
+    );
 }
 
 #[test]

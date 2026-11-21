@@ -136,9 +136,10 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn poll_platform(&mut self) -> Result<Option<ManagerViewModel>, String> {
-        let background_changed = self.poll_background()?;
+        let background_changed = self.poll_background();
         let patch_changed = self.poll_file_patch()?;
         let owner_changed = self.poll_owner()?;
+        let scan_started = self.pump_library_scan();
         let connection_changed = self.poll_connection_test();
         let metadata_changed = self.poll_metadata()?;
         let store_changed = self.poll_store()?;
@@ -148,6 +149,7 @@ impl ShinkiEmuManagerController {
             || patch_changed
             || owner_changed
             || metadata_changed
+            || scan_started
             || connection_changed
             || store_changed
             || self_update_changed
@@ -164,6 +166,12 @@ impl ShinkiEmuManagerController {
         self.store.set_wake(wake.clone());
         self.host_wake = Some(wake.clone());
         self.metadata.set_wake(wake);
+        if !self.cores_started()
+            && self.refresh_cores().is_err()
+            && let Some(wake) = &self.host_wake
+        {
+            wake();
+        }
         self.start_self_update_once();
     }
 
@@ -176,7 +184,9 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn advance_runtime(&mut self) -> Result<Option<ManagerViewModel>, String> {
         self.flush_owner_events()?;
-        if self.poll_owner()? {
+        let owner_changed = self.poll_owner()?;
+        let scan_started = self.pump_library_scan();
+        if owner_changed || scan_started {
             Ok(Some(self.model()?))
         } else {
             Ok(None)

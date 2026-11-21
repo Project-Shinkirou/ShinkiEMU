@@ -32,7 +32,7 @@ pub(in crate::manager_app) fn configured_controller(
         Vec::new(),
     )
     .unwrap();
-    controller.prepare_library().unwrap();
+    controller.set_host_wake(Arc::new(|| {}));
     crate::manager_app::probe_state_tests::settle_background(&mut controller);
     controller
         .registry
@@ -627,7 +627,7 @@ fn configuration_follows_leaving(leave: Leave) {
         "SHINKI_EMU_SESSION_CLOSING"
     );
     assert_eq!(
-        controller.prepare_library().unwrap_err(),
+        controller.refresh_library().unwrap_err(),
         "SHINKI_EMU_SESSION_CLOSING"
     );
     pump_until(&mut controller, &woken, |controller| controller.active.is_none());

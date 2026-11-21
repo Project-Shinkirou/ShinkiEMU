@@ -25,7 +25,7 @@ fn damaged_core_keeps_manager_available_and_error_visible() {
     .unwrap();
 
     let mut app = controller(root.path());
-    app.prepare_library().unwrap();
+    app.set_host_wake(std::sync::Arc::new(|| {}));
     super::probe_state_tests::settle_background(&mut app);
     assert!(app.plugin_errors.is_empty(), "ordinary preparation must not attempt native loading");
     assert_eq!(app.registry.descriptors().count(), 0);

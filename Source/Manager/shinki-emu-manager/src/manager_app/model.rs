@@ -194,8 +194,7 @@ impl ShinkiEmuManagerController {
                 .then_with(|| left.id.cmp(&right.id))
         });
         patch.games = patch_games;
-        let (prepare_state, prepare_label, prepare_progress, can_cancel_prepare) =
-            self.prepare_view();
+        let (prepare_state, prepare_label, can_cancel_prepare) = self.prepare_view();
         let roots: Vec<String> = self
             .library
             .library_roots()
@@ -221,7 +220,8 @@ impl ShinkiEmuManagerController {
                 prepare_state: prepare_state.into(),
                 prepare_label: prepare_label.into(),
                 prepare_detail: self.startup_status(),
-                prepare_progress,
+                prepare_progress: None,
+                can_refresh: self.can_refresh_library(),
                 can_cancel_prepare,
                 selected_id: self.selected_case_id.clone().unwrap_or_default(),
             },
@@ -264,7 +264,6 @@ impl ShinkiEmuManagerController {
             filters: self.filter_view()?,
             session: self.session_view()?,
             onboarding: OnboardingViewModel { roots },
-            resale_notice: self.notice_reading.view(),
             store: self.store.view(),
         })
     }
@@ -603,7 +602,7 @@ impl ShinkiEmuManagerController {
         }
         if !Path::new(&game.location).is_dir() { return tr!("游戏目录当前不可用").into(); }
         if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
-            if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重新准备资料库").into(); }
+            if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重启应用").into(); }
             let error = self.game_configuration_error(&game.game_id, Some(&plugin));
             if !error.is_empty() { return error.into(); }
         }
@@ -612,11 +611,12 @@ impl ShinkiEmuManagerController {
             return tr!("已识别引擎，缺少兼容核心").into();
         }
         match self.startup_state {
-            background::StartupState::Waiting => tr!("需要先准备资料库").into(),
-            background::StartupState::Loading | background::StartupState::Scanning(_) => {
-                tr!("正在准备资料库").into()
+            background::StartupState::Waiting | background::StartupState::Loading => {
+                tr!("正在读取核心清单…").into()
             }
-            background::StartupState::Failed(_) => tr!("准备失败，请查看核心诊断").into(),
+            background::StartupState::Scanning(_) => tr!("正在扫描资料库…").into(),
+            background::StartupState::OwnerFailed(_) => tr!("核心清单不可用，请重启应用").into(),
+            background::StartupState::Failed(_) => self.startup_status(),
             background::StartupState::Ready if self.probe_choices.contains_key(&game.game_id) => {
                 tr!("需要选择模拟器").into()
             }

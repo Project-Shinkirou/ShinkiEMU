@@ -1,6 +1,5 @@
-//! Automatic VNDB linking: after a scan or when network access is granted,
-//! unlinked games are searched by title one at a time and linked only when
-//! exactly one result has the same normalized title.
+//! When network access is granted, unlinked games are searched by title one at
+//! a time and linked only when exactly one result has the same normalized title.
 
 use super::*;
 use shinki_emu_manager_ui_slint::{describe_error, tr};

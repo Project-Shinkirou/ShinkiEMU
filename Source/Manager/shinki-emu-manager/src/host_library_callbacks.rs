@@ -35,9 +35,9 @@ fn install_library<C: ManagerController>(
 ) {
     let library = window.global::<Library>();
     let w = wiring.clone();
-    library.on_prepare(move || w.run(|c| c.prepare_library()));
+    library.on_prepare(move || w.run(|c| c.refresh_library()));
     let w = wiring.clone();
-    library.on_cancel_prepare(move || w.run(|c| c.cancel_prepare()));
+    library.on_cancel_prepare(move || w.run(|c| c.cancel_library_scan()));
     let w = wiring.clone();
     library.on_add_directory(move || {
         let w = w.clone();
