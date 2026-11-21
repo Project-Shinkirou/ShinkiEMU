@@ -1,35 +1,10 @@
-import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, TextField, FilledButton, OutlineButton, TextButton, FilterChip } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, SmallAppBar, FilledButton, OutlineButton, TextButton } from "@material";
 import { App, Library, Store, Settings } from "../globals.slint";
 import { Icons } from "../icons.slint";
-import { ChoiceSelect } from "../components/select.slint";
-import { Segments } from "../components/segments.slint";
 import { PageScroll, SettingGroup } from "./settings/common.slint";
 import { PrepareProgress } from "./library.slint";
 
-// Material chips toggle themselves. Keep the current selection checked on repeat clicks.
-component CompatChip {
-    in property <string> id;
-    in property <string> text;
-    property <bool> current: Library.compat-filter == root.id;
-    property <bool> checked: chip.checked;
-
-    changed checked => {
-        if root.checked && !root.current {
-            Library.set-compat-filter(root.id);
-        } else if !root.checked && root.current {
-            chip.checked = true;
-        }
-    }
-    changed current => { chip.checked = root.current; }
-
-    chip := FilterChip {
-        text: root.text;
-        checked: root.current;
-    }
-}
-
 export component LibraryManagementPage {
-    in property <bool> compact;
     property <bool> scanning: Library.prepare-state == "scanning";
     property <bool> opening: Library.prepare-state == "loading-cores";
     property <bool> failed: Library.prepare-state == "failed";
@@ -40,14 +15,6 @@ export component LibraryManagementPage {
     keys := FocusScope {
         width: root.width;
         height: root.height;
-        key-pressed(event) => {
-            if event.modifiers.control && (event.text == "f" || event.text == "F") {
-                search.focus();
-                search.select-all();
-                return accept;
-            }
-            reject
-        }
 
         Rectangle { background: MaterialPalette.surface; }
 
@@ -62,6 +29,7 @@ export component LibraryManagementPage {
         }
 
         PageScroll {
+            x: 0px;
             y: root.bar-height;
             width: root.width;
             height: root.height - root.bar-height;
@@ -134,79 +102,6 @@ export component LibraryManagementPage {
                                 App.page = "store";
                                 Store.open();
                             }
-                        }
-                    }
-                }
-            }
-
-            SettingGroup {
-                title: @tr("搜索与筛选");
-                VerticalLayout {
-                    spacing: 8px;
-                    search := TextField {
-                        label: @tr("搜索游戏标题");
-                        accessible-label: @tr("搜索游戏标题");
-                        text <=> Library.query;
-                        edited(text) => { Library.search(text); }
-                    }
-                    MaterialText {
-                        text: @tr("兼容性");
-                        style: MaterialTypography.label-large;
-                    }
-                    FlexboxLayout {
-                        spacing: 8px;
-                        alignment: start;
-                        CompatChip { id: "all"; text: @tr("全部"); }
-                        CompatChip { id: "perfect"; text: @tr("完美"); }
-                        CompatChip { id: "completable"; text: @tr("可通关"); }
-                        CompatChip { id: "flawed"; text: @tr("有瑕疵"); }
-                        CompatChip { id: "boot_only"; text: @tr("仅能启动"); }
-                        CompatChip { id: "unplayable"; text: @tr("无法运行"); }
-                        CompatChip { id: "unknown"; text: @tr("未评级"); }
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        ChoiceSelect {
-                            horizontal-stretch: 1;
-                            label: @tr("排序");
-                            value: Library.sort;
-                            choices: [
-                                { id: "title", label: @tr("标题") },
-                                { id: "recent", label: @tr("最近游玩") },
-                                { id: "play_time", label: @tr("游玩时长") },
-                            ];
-                            selected(id) => { Library.set-sort(id); }
-                        }
-                        VerticalLayout {
-                            horizontal-stretch: 0;
-                            alignment: center;
-                            Segments {
-                                width: root.compact ? 144px : 208px;
-                                label: @tr("视图");
-                                items: [@tr("网格"), @tr("列表")];
-                                index: App.appearance.view-mode == "list" ? 1 : 0;
-                                selected(index) => {
-                                    App.appearance.view-mode = index == 1 ? "list" : "grid";
-                                    App.appearance-changed(App.appearance);
-                                }
-                            }
-                        }
-                    }
-                    if Library.query != "" || Library.compat-filter != "all" : HorizontalLayout {
-                        alignment: start;
-                        TextButton {
-                            text: @tr("清除搜索和筛选");
-                            clicked => {
-                                if Library.query != "" { Library.search(""); }
-                                if Library.compat-filter != "all" { Library.set-compat-filter("all"); }
-                            }
-                        }
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        OutlineButton {
-                            text: @tr("查看游戏（{n}）" | "查看游戏（{n}）" % Library.games.length);
-                            clicked => { App.page = "library"; }
                         }
                     }
                 }

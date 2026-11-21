@@ -2665,10 +2665,8 @@ msgstr "Search game titles"
 msgid "清除搜索和筛选"
 msgstr "Clear search and filters"
 
-msgid "查看游戏（{n}）"
-msgid_plural "查看游戏（{n}）"
-msgstr[0] "View games ({n})"
-msgstr[1] "View games ({n})"
+msgid "筛选选项"
+msgstr "Filter options"
 
 msgid "游戏库为空"
 msgstr "Your library is empty"
@@ -2810,3 +2808,6 @@ msgstr "Install the selected core, then restart ShinkiEMU."
 
 msgid "补丁输出信息无效，请检查补丁或移除该目录。"
 msgstr "The patch output is invalid. Check the patch or remove this folder."
+
+msgid "游戏库菜单"
+msgstr "Library menu"

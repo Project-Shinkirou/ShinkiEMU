@@ -158,7 +158,8 @@ export component ManagerWindow inherits MaterialWindow {
         bottom-nav.current-index = root.page-index;
         // The control that changed the page usually belonged to the old page
         // and is gone, which would leave nothing focused for Android Back.
-        if !root.nav-driven && App.page != "library" && App.page != "library-management" && App.page != "onboarding" {
+        if !root.nav-driven && App.page != "library" && App.page != "library-search"
+            && App.page != "library-management" && App.page != "onboarding" {
             keys.focus();
         }
         root.nav-driven = false;
@@ -183,8 +184,12 @@ export component ManagerWindow inherits MaterialWindow {
         focus-on-tab-navigation: false;
 
         key-pressed(event) => {
-            if event.text == Key.Escape && App.page == "library-management"
+            if event.text == Key.Escape && (App.page == "library-search" || App.page == "library-management")
                 && !Logs.open && !Dialogs.modal-active && !Dialogs.fatal-active && !Session.active {
+                if Library.detail-open && App.page == "library-search" {
+                    Library.detail-open = false;
+                    return accept;
+                }
                 App.page = "library";
                 return accept;
             }
@@ -220,7 +225,7 @@ export component ManagerWindow inherits MaterialWindow {
                 Session.menu-open = !Session.menu-open;
                 return accept;
             }
-            if App.page == "library" && Library.detail-open {
+            if (App.page == "library" || App.page == "library-search") && Library.detail-open {
                 Library.detail-open = false;
                 return accept;
             }
@@ -270,12 +275,13 @@ export component ManagerWindow inherits MaterialWindow {
             height: root.usable-height - root.banner-inset - root.nav-bottom;
             clip: true;
 
-            if App.page == "library" : LibraryPage {
+            if App.page == "library" || App.page == "library-search" || App.page == "library-management" || App.page == "store" : LibraryPage {
                 x: 0px;
                 y: 0px;
                 width: pages.width;
                 height: pages.height;
                 compact: root.compact;
+                shown: App.page == "library" || App.page == "library-search";
             }
             if App.page == "game-settings" : GameSettingsPage {
                 x: 0px;
@@ -323,7 +329,6 @@ export component ManagerWindow inherits MaterialWindow {
                 y: 0px;
                 width: pages.width;
                 height: pages.height;
-                compact: root.compact;
             }
             if App.page == "store" : StorePage {
                 x: 0px;

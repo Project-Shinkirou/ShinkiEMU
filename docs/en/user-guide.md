@@ -29,7 +29,9 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 ## Add games and install cores
 
-Open **Manage library → Add folder** and select your game folder. Manager finds games automatically, even offline and before you install a core. From **Manage library**, check scan progress, search and filter, then select **View games** to return to the results. If you change the files, rescan when the option is available. If a folder cannot be read, check its permissions or choose another. On Android, grant access in the system folder picker when prompted.
+Open the **⋯** menu in the library header and choose **Manage library → Add folder**. Manager finds games automatically, even offline and before you install a core. The management page shows scan progress and offers a refresh when available. If a folder cannot be read, check its permissions or choose another. On Android, grant access in the system folder picker when prompted.
+
+Choose **Search and filters** from the same menu, or press **Ctrl+F**. The list updates as you type. Select a result to open its details. Open **Filter options** to set compatibility, sort order, or layout, or to clear the search and filters together.
 
 Install a compatible core if a game cannot start because its core is missing. Restart when prompted. If several engines or cores match, choose the one you want to use; Manager keeps your selection even if the core is temporarily missing.
 

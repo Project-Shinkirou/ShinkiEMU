@@ -1,0 +1,91 @@
+import { MaterialText, MaterialTypography, TextButton, FilterChip } from "@material";
+import { App, Library } from "../globals.slint";
+import { ChoiceSelect } from "../components/select.slint";
+import { Segments } from "../components/segments.slint";
+
+// Material chips toggle themselves. Keep the current selection checked on repeat clicks.
+component CompatChip {
+    in property <string> id;
+    in property <string> text;
+    property <bool> current: Library.compat-filter == root.id;
+    property <bool> checked: chip.checked;
+
+    changed checked => {
+        if root.checked && !root.current {
+            Library.set-compat-filter(root.id);
+        } else if !root.checked && root.current {
+            chip.checked = true;
+        }
+    }
+    changed current => { chip.checked = root.current; }
+
+    chip := FilterChip {
+        text: root.text;
+        checked: root.current;
+    }
+}
+
+export component LibrarySearchFilters {
+    in property <bool> compact;
+
+    min-height: controls.min-height;
+    preferred-height: controls.preferred-height;
+
+    controls := VerticalLayout {
+        spacing: 8px;
+
+        MaterialText {
+            text: @tr("兼容性");
+            style: MaterialTypography.label-large;
+        }
+        FlexboxLayout {
+            spacing: 8px;
+            alignment: start;
+            CompatChip { id: "all"; text: @tr("全部"); }
+            CompatChip { id: "perfect"; text: @tr("完美"); }
+            CompatChip { id: "completable"; text: @tr("可通关"); }
+            CompatChip { id: "flawed"; text: @tr("有瑕疵"); }
+            CompatChip { id: "boot_only"; text: @tr("仅能启动"); }
+            CompatChip { id: "unplayable"; text: @tr("无法运行"); }
+            CompatChip { id: "unknown"; text: @tr("未评级"); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            ChoiceSelect {
+                horizontal-stretch: 1;
+                label: @tr("排序");
+                value: Library.sort;
+                choices: [
+                    { id: "title", label: @tr("标题") },
+                    { id: "recent", label: @tr("最近游玩") },
+                    { id: "play_time", label: @tr("游玩时长") },
+                ];
+                selected(id) => { Library.set-sort(id); }
+            }
+            VerticalLayout {
+                horizontal-stretch: 0;
+                alignment: center;
+                Segments {
+                    width: root.compact ? 144px : 208px;
+                    label: @tr("视图");
+                    items: [@tr("网格"), @tr("列表")];
+                    index: App.appearance.view-mode == "list" ? 1 : 0;
+                    selected(index) => {
+                        App.appearance.view-mode = index == 1 ? "list" : "grid";
+                        App.appearance-changed(App.appearance);
+                    }
+                }
+            }
+        }
+        if Library.query != "" || Library.compat-filter != "all" : HorizontalLayout {
+            alignment: start;
+            TextButton {
+                text: @tr("清除搜索和筛选");
+                clicked => {
+                    if Library.query != "" { Library.search(""); }
+                    if Library.compat-filter != "all" { Library.set-compat-filter("all"); }
+                }
+            }
+        }
+    }
+}

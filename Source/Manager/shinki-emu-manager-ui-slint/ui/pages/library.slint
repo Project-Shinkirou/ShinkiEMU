@@ -1,5 +1,5 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, ScrollView, OutlineButton, LinearProgressIndicator,
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, PopupMenu, LinearProgressIndicator, TextField,
 } from "@material";
 import { App, Library } from "../globals.slint";
 import { Icons } from "../icons.slint";
@@ -7,6 +7,7 @@ import { Theme } from "../theme.slint";
 import { Scrim } from "../components/dialogs.slint";
 import { CoverCard, GameListRow, GameMenu } from "../components/cover-card.slint";
 import { DetailPanel } from "./detail.slint";
+import { LibrarySearchFilters } from "./library-search.slint";
 
 // Linear progress that also animates while the total is unknown (Material's indicator stays static).
 export component PrepareProgress {
@@ -91,20 +92,27 @@ component EmptyState {
             overflow: clip;
         }
 
-        HorizontalLayout {
-            alignment: center;
-            spacing: 8px;
-            @children
-        }
     }
 }
 
 export component LibraryPage {
     in property <bool> compact;
+    in property <bool> shown;
+    visible: root.shown;
+
+    property <bool> searching: App.page == "library-search";
+    property <bool> filters-open;
+    property <string> search-query: Library.query;
+    property <string> compat-filter: Library.compat-filter;
+    property <string> sort-order: Library.sort;
+
+    changed search-query => { root.reset-search-scroll(); }
+    changed compat-filter => { root.reset-search-scroll(); }
+    changed sort-order => { root.reset-search-scroll(); }
 
     property <length> pad: root.compact ? 16px : 24px;
     property <string> panel-mode: root.width >= 1100px ? "docked" : root.width >= 600px ? "overlay" : "sheet";
-    property <bool> detail-shown: Library.detail-open && Library.selected-id != "";
+    property <bool> detail-shown: root.shown && Library.detail-open && Library.selected-id != "";
     property <length> docked-width: 400px;
     property <length> content-w: root.detail-shown && root.panel-mode == "docked" ? root.width - root.docked-width : root.width;
     property <bool> narrow: root.content-w < 720px;
@@ -128,6 +136,30 @@ export component LibraryPage {
     animate content-w {
         duration: Theme.motion-medium;
         easing: Theme.motion-easing;
+    }
+
+    function open-search() {
+        Library.detail-open = false;
+        if root.searching {
+            search.focus();
+            search.select-all();
+        } else {
+            App.page = "library-search";
+        }
+    }
+
+    function close-detail() {
+        Library.detail-open = false;
+        if root.searching { search.focus(); }
+        else { keys.focus(); }
+    }
+
+    function reset-search-scroll() {
+        if root.searching {
+            root.focus-index = -1;
+            grid.content-y = 0px;
+            list.content-y = 0px;
+        }
     }
 
     function open-detail(id: string) {
@@ -163,19 +195,43 @@ export component LibraryPage {
         }
     }
 
-    init => { keys.focus(); }
+    init => {
+        if root.shown {
+            if root.searching { search.focus(); }
+            else { keys.focus(); }
+        }
+    }
+    changed shown => {
+        if root.shown && !root.searching && (root.focus-index < 0 || root.focus-index >= Library.games.length) {
+            keys.focus();
+        }
+    }
+    changed searching => {
+        if root.searching {
+            search.focus();
+        } else {
+            root.filters-open = false;
+            if root.shown { keys.focus(); }
+        }
+    }
 
     keys := FocusScope {
         width: 100%;
         height: 100%;
         key-pressed(event) => {
             if event.modifiers.control && (event.text == "f" || event.text == "F") {
-                App.page = "library-management";
+                root.open-search();
                 return accept;
             }
-            if (event.text == Key.Escape || event.text == Key.Back) && root.detail-shown {
-                Library.detail-open = false;
-                return accept;
+            if event.text == Key.Escape || event.text == Key.Back {
+                if root.detail-shown {
+                    root.close-detail();
+                    return accept;
+                }
+                if root.searching {
+                    App.page = "library";
+                    return accept;
+                }
             }
             reject
         }
@@ -196,19 +252,63 @@ export component LibraryPage {
 
                 HorizontalLayout {
                     spacing: 8px;
-                    MaterialText {
+                    if root.searching : IconButton {
+                        icon: Icons.arrow-back;
+                        tooltip: @tr("返回游戏库");
+                        clicked => { App.page = "library"; }
+                    }
+                    Rectangle {
                         min-width: 0px;
                         horizontal-stretch: 1;
-                        text: @tr("游戏库");
-                        style: root.compact ? MaterialTypography.title-large : MaterialTypography.headline-small;
-                        color: MaterialPalette.on-surface;
-                        vertical-alignment: center;
-                        overflow: elide;
+                        min-height: root.searching ? 56px : 40px;
+                        MaterialText {
+                            width: parent.width;
+                            height: parent.height;
+                            visible: !root.searching;
+                            text: @tr("游戏库");
+                            style: root.compact ? MaterialTypography.title-large : MaterialTypography.headline-small;
+                            color: MaterialPalette.on-surface;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        search := TextField {
+                            width: parent.width;
+                            height: parent.height;
+                            visible: root.searching;
+                            enabled: root.searching;
+                            label: @tr("搜索游戏标题");
+                            accessible-label: @tr("搜索游戏标题");
+                            text <=> Library.query;
+                            edited(text) => { Library.search(text); }
+                        }
                     }
-                    if Library.games.length > 0 : OutlineButton {
-                        text: @tr("管理游戏库");
-                        clicked => { App.page = "library-management"; }
+                    if root.searching && Library.query != "" : IconButton {
+                        icon: Icons.close;
+                        tooltip: @tr("清除搜索");
+                        clicked => {
+                            Library.search("");
+                            search.focus();
+                        }
                     }
+                    library-actions := IconButton {
+                        icon: root.searching ? Icons.tune : Icons.more-vert;
+                        tooltip: root.searching ? @tr("筛选选项") : @tr("游戏库菜单");
+                        accessible-expandable: true;
+                        accessible-expanded: root.searching ? root.filters-open : library-menu.is-open;
+                        clicked => {
+                            if root.searching {
+                                root.filters-open = !root.filters-open;
+                            } else if library-menu.is-open {
+                                library-menu.close();
+                            } else {
+                                library-menu.show();
+                            }
+                        }
+                    }
+                }
+
+                if root.searching && root.filters-open : LibrarySearchFilters {
+                    compact: root.compact;
                 }
 
                 // Results.
@@ -235,8 +335,8 @@ export component LibraryPage {
                                 height: root.card-width * 4 / 3 + 52px;
                                 game: game;
                                 selected: game.id == Library.selected-id;
-                                focus-wanted: index == root.focus-index;
-                                cover-needed: Library.cover-loading && root.grid-mode
+                                focus-wanted: root.shown && root.grid-mode && index == root.focus-index;
+                                cover-needed: root.shown && Library.cover-loading && root.grid-mode
                                     && self.y + self.height >= -grid.content-y - self.height
                                     && self.y <= -grid.content-y + grid.visible-height + self.height;
                                 cover-demand(id, needed) => { Library.cover-demand(index, id, needed, "grid"); }
@@ -332,8 +432,8 @@ export component LibraryPage {
                                 compat-width: root.compat-col;
                                 time-width: root.time-col;
                                 last-width: root.last-col;
-                                focus-wanted: index == root.focus-index;
-                                cover-needed: Library.cover-loading && !root.grid-mode
+                                focus-wanted: root.shown && !root.grid-mode && index == root.focus-index;
+                                cover-needed: root.shown && Library.cover-loading && !root.grid-mode
                                     && self.y + self.height >= -list.content-y - self.height
                                     && self.y <= -list.content-y + list.visible-height + self.height;
                                 cover-demand(id, needed) => { Library.cover-demand(index, id, needed, "list"); }
@@ -375,10 +475,6 @@ export component LibraryPage {
 
                         EmptyState {
                             title: Library.query != "" || Library.compat-filter != "all" ? @tr("没有符合筛选条件的作品") : @tr("游戏库为空");
-                            OutlineButton {
-                                text: @tr("管理游戏库");
-                                clicked => { App.page = "library-management"; }
-                            }
                         }
                     }
                 }
@@ -392,7 +488,7 @@ export component LibraryPage {
         y: 0px;
         width: root.width;
         height: root.height;
-        dismiss => { Library.detail-open = false; }
+        dismiss => { root.close-detail(); }
     }
 
     if root.detail-shown : DetailPanel {
@@ -401,9 +497,23 @@ export component LibraryPage {
         width: root.panel-mode == "docked" ? root.docked-width : root.panel-mode == "overlay" ? min(440px, root.width - 56px) : root.width;
         height: root.height - self.y;
         mode: root.panel-mode;
-        close => {
-            Library.detail-open = false;
-            keys.focus();
+        close => { root.close-detail(); }
+    }
+
+    library-menu := PopupMenu {
+        width: min(224px, root.width - 16px);
+        x: max(8px, library-actions.absolute-position.x - root.absolute-position.x + library-actions.width - self.width);
+        y: clamp(library-actions.absolute-position.y - root.absolute-position.y + library-actions.height + 4px,
+            0px, max(0px, root.height - self.height));
+        keyboard-navigation: true;
+        items: [
+            { icon: Icons.search, text: @tr("搜索与筛选"), enabled: true },
+            { icon: Icons.folder-open, text: @tr("管理游戏库"), enabled: true },
+        ];
+        activated(index) => {
+            self.close();
+            if index == 0 { root.open-search(); }
+            else { App.page = "library-management"; }
         }
     }
 
