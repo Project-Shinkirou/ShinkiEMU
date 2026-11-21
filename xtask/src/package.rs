@@ -4,7 +4,7 @@ use crate::{
     cores::Inventory,
     dependencies,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::BuildAsset;
@@ -1243,15 +1243,46 @@ fn android_debug_certificate(key: &Path) -> Result<String> {
 }
 
 fn verify_android_qa_certificate(signing: &str, expected: &str) -> Result<()> {
-    let mut digests = signing
+    let mut count = signing
         .lines()
-        .filter(|line| line.starts_with("Signer #"))
+        .filter_map(|line| line.strip_prefix("Number of signers: "));
+    ensure!(
+        count.next() == Some("1") && count.next().is_none(),
+        "Android QA APK must report exactly one signer"
+    );
+    ensure!(
+        expected != ANDROID_PRODUCTION_CERT,
+        "Android QA APK must not use the production certificate"
+    );
+    let mut seen = 0;
+    for (label, digest) in signing
+        .lines()
         .filter_map(|line| line.split_once(" certificate SHA-256 digest: "))
-        .map(|(_, digest)| digest.trim());
-    match (digests.next(), digests.next()) {
-        (Some(actual), None) if actual == expected && actual != ANDROID_PRODUCTION_CERT => Ok(()),
-        _ => bail!("Android QA APK must be signed only by the local debug keystore"),
+    {
+        // SDK 37 reports one certificate per signature scheme. A single
+        // signer can appear under several schemes, but all must match.
+        let scheme = match label {
+            "Signer #1" => 1 << 0,
+            "V1 Signer:" => 1 << 1,
+            "V2 Signer:" => 1 << 2,
+            "V3 Signer:" => 1 << 3,
+            "V3.1 Signer:" => 1 << 4,
+            "V3.2 Signer:" => 1 << 5,
+            "V4 Signer:" => 1 << 6,
+            _ => bail!("unexpected Android QA APK certificate label: {label}"),
+        };
+        ensure!(
+            seen & scheme == 0,
+            "repeated Android QA APK certificate label: {label}"
+        );
+        ensure!(
+            digest.trim() == expected,
+            "Android QA APK signer does not match the local debug keystore"
+        );
+        seen |= scheme;
     }
+    ensure!(seen != 0, "Android QA APK signer certificate is missing");
+    Ok(())
 }
 
 pub(crate) fn package_android_qa(
@@ -1792,18 +1823,34 @@ mod android_tests {
     #[test]
     fn qa_apk_requires_the_local_debug_signer_only() {
         let debug_cert = "a".repeat(64);
-        let debug = format!("Signer #1 certificate SHA-256 digest: {debug_cert}");
-        let production = format!("Signer #1 certificate SHA-256 digest: {ANDROID_PRODUCTION_CERT}");
-        assert!(verify_android_qa_certificate(&debug, &debug_cert).is_ok());
-        assert!(verify_android_qa_certificate("", &debug_cert).is_err());
-        assert!(verify_android_qa_certificate(&production, &debug_cert).is_err());
-        assert!(verify_android_qa_certificate(&production, ANDROID_PRODUCTION_CERT).is_err());
+        let legacy = format!("Signer #1 certificate SHA-256 digest: {debug_cert}");
+        let modern = format!("V2 Signer: certificate SHA-256 digest: {debug_cert}");
+        let v3 = format!("V3 Signer: certificate SHA-256 digest: {debug_cert}");
+        let production =
+            format!("V3 Signer: certificate SHA-256 digest: {ANDROID_PRODUCTION_CERT}");
+        let count = "Number of signers: 1";
+        for signing in [
+            format!("{count}\n{legacy}"),
+            format!("{count}\n{modern}"),
+            format!("{count}\n{modern}\n{v3}"),
+        ] {
+            assert!(verify_android_qa_certificate(&signing, &debug_cert).is_ok());
+        }
+        for signing in [
+            String::new(),
+            modern.clone(),
+            format!("{count}\n{production}"),
+            format!("{count}\n{modern}\n{production}"),
+            format!("{count}\n{modern}\n{modern}"),
+            format!("{count}\n{count}\n{modern}"),
+            format!("Number of signers: 2\n{modern}"),
+            format!("{count}\n{legacy}\nSigner #2 certificate SHA-256 digest: {debug_cert}"),
+        ] {
+            assert!(verify_android_qa_certificate(&signing, &debug_cert).is_err(), "{signing}");
+        }
         assert!(
-            verify_android_qa_certificate(
-                &format!("{debug}\nSigner #2 certificate SHA-256 digest: {ANDROID_PRODUCTION_CERT}"),
-                &debug_cert,
-            )
-            .is_err()
+            verify_android_qa_certificate(&format!("{count}\n{production}"), ANDROID_PRODUCTION_CERT)
+                .is_err()
         );
     }
 }
