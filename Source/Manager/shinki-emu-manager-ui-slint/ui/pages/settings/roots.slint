@@ -1,7 +1,8 @@
 import { MaterialPalette, MaterialText, MaterialTypography, IconButton, TextButton, OutlineButton, HorizontalDivider, Icon } from "@material";
-import { Settings } from "../../globals.slint";
+import { Library, Settings } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { PageScroll, SettingGroup } from "./common.slint";
+import { LibraryScanStatus } from "../../components/library-scan.slint";
 
 // One row of a path list: folder icon, path, trailing remove button.
 export component PathRow {
@@ -91,6 +92,11 @@ export component RootsSection inherits PageScroll {
                 clicked => { Settings.add-root(); }
             }
         }
+    }
+
+    if Library.can-refresh || Library.prepare-state == "loading-cores"
+        || Library.prepare-state == "scanning" || Library.prepare-state == "failed" : SettingGroup {
+        LibraryScanStatus { show-refresh: true; }
     }
 
     SettingGroup {

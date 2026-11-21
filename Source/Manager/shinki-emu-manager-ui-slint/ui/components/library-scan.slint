@@ -1,0 +1,88 @@
+import { MaterialPalette, MaterialText, MaterialTypography, LinearProgressIndicator, OutlineButton, TextButton } from "@material";
+import { Library } from "../globals.slint";
+import { Icons } from "../icons.slint";
+import { Theme } from "../theme.slint";
+
+// Linear progress that also animates while the total is unknown (Material's indicator stays static).
+export component PrepareProgress {
+    in property <float> progress;
+
+    property <bool> indeterminate: root.progress < 0;
+    property <float> phase: Theme.motion-short == 0ms ? 0.35 : mod(animation-tick() / 1ms, 1600) / 1600;
+
+    height: 4px;
+    accessible-role: progress-indicator;
+    accessible-value: root.indeterminate ? "" : round(root.progress * 100) + "%";
+
+    if !root.indeterminate : LinearProgressIndicator {
+        width: root.width;
+        height: root.height;
+        progress: clamp(root.progress, 0, 1);
+    }
+
+    if root.indeterminate : Rectangle {
+        width: root.width;
+        height: root.height;
+        clip: true;
+        border-radius: 2px;
+        background: MaterialPalette.primary-container;
+
+        Rectangle {
+            x: (root.phase * 1.4 - 0.4) * root.width;
+            y: 0px;
+            width: root.width * 0.4;
+            height: root.height;
+            border-radius: 2px;
+            background: MaterialPalette.primary;
+        }
+    }
+}
+
+export component LibraryScanStatus {
+    in property <bool> show-refresh;
+    property <bool> opening: Library.prepare-state == "loading-cores";
+    property <bool> scanning: Library.prepare-state == "scanning";
+    property <bool> failed: Library.prepare-state == "failed";
+    property <bool> busy: root.opening || root.scanning;
+
+    min-height: body.min-height;
+    preferred-height: body.preferred-height;
+    max-height: body.preferred-height;
+    vertical-stretch: 0;
+
+    body := VerticalLayout {
+        spacing: 4px;
+        if root.busy || root.failed : MaterialText {
+            text: root.failed ? (Library.can-refresh ? @tr("无法扫描游戏目录") : @tr("无法打开游戏库"))
+                : Library.prepare-detail != "" ? Library.prepare-detail
+                : root.scanning ? @tr("正在扫描游戏目录") : @tr("正在打开游戏库");
+            style: MaterialTypography.label-large;
+            color: root.failed ? MaterialPalette.error : MaterialPalette.on-surface;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        if root.failed : MaterialText {
+            text: Library.prepare-detail != "" ? Library.prepare-detail
+                : Library.can-refresh ? @tr("请检查文件夹权限，再试一次。") : @tr("请重启 ShinkiEMU 后再试。");
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+        if root.busy : PrepareProgress {
+            progress: Library.prepare-progress;
+        }
+        if (root.scanning && Library.can-cancel-prepare) || (root.show-refresh && !root.busy && Library.can-refresh) : HorizontalLayout {
+            alignment: start;
+            if root.scanning && Library.can-cancel-prepare : TextButton {
+                text: @tr("取消扫描");
+                clicked => { Library.cancel-prepare(); }
+            }
+            if root.show-refresh && !root.busy && Library.can-refresh : OutlineButton {
+                text: Library.prepare-label;
+                icon: Icons.refresh;
+                clicked => { Library.prepare(); }
+            }
+        }
+    }
+}

@@ -1,48 +1,14 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, PopupMenu, LinearProgressIndicator, TextField,
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, OutlineButton, TextField,
 } from "@material";
-import { App, Library } from "../globals.slint";
+import { App, Library, Store } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme } from "../theme.slint";
 import { Scrim } from "../components/dialogs.slint";
 import { CoverCard, GameListRow, GameMenu } from "../components/cover-card.slint";
+import { LibraryScanStatus } from "../components/library-scan.slint";
 import { DetailPanel } from "./detail.slint";
 import { LibrarySearchFilters } from "./library-search.slint";
-
-// Linear progress that also animates while the total is unknown (Material's indicator stays static).
-export component PrepareProgress {
-    in property <float> progress;
-
-    property <bool> indeterminate: root.progress < 0;
-    property <float> phase: Theme.motion-short == 0ms ? 0.35 : mod(animation-tick() / 1ms, 1600) / 1600;
-
-    height: 4px;
-    accessible-role: progress-indicator;
-    accessible-value: root.indeterminate ? "" : round(root.progress * 100) + "%";
-
-    if !root.indeterminate : LinearProgressIndicator {
-        width: root.width;
-        height: root.height;
-        progress: clamp(root.progress, 0, 1);
-    }
-
-    if root.indeterminate : Rectangle {
-        width: root.width;
-        height: root.height;
-        clip: true;
-        border-radius: 2px;
-        background: MaterialPalette.primary-container;
-
-        Rectangle {
-            x: (root.phase * 1.4 - 0.4) * root.width;
-            y: 0px;
-            width: root.width * 0.4;
-            height: root.height;
-            border-radius: 2px;
-            background: MaterialPalette.primary;
-        }
-    }
-}
 
 component EmptyState {
     in property <string> title;
@@ -259,12 +225,13 @@ export component LibraryPage {
                     }
                     Rectangle {
                         min-width: 0px;
-                        horizontal-stretch: 1;
+                        max-width: root.compact && !root.searching ? 0px : root.content-w;
+                        horizontal-stretch: root.compact && !root.searching ? 0 : 1;
                         min-height: root.searching ? 56px : 40px;
                         MaterialText {
                             width: parent.width;
                             height: parent.height;
-                            visible: !root.searching;
+                            visible: !root.searching && !root.compact;
                             text: @tr("游戏库");
                             style: root.compact ? MaterialTypography.title-large : MaterialTypography.headline-small;
                             color: MaterialPalette.on-surface;
@@ -290,19 +257,39 @@ export component LibraryPage {
                             search.focus();
                         }
                     }
-                    library-actions := IconButton {
-                        icon: root.searching ? Icons.tune : Icons.more-vert;
-                        tooltip: root.searching ? @tr("筛选选项") : @tr("游戏库菜单");
+                    if root.searching : IconButton {
+                        icon: Icons.tune;
+                        tooltip: @tr("筛选选项");
                         accessible-expandable: true;
-                        accessible-expanded: root.searching ? root.filters-open : library-menu.is-open;
+                        accessible-expanded: root.filters-open;
+                        clicked => { root.filters-open = !root.filters-open; }
+                    }
+                    if !root.searching : OutlineButton {
+                        horizontal-stretch: root.compact ? 1 : 0;
+                        min-height: 48px;
+                        horizontal-padding: root.compact ? 12px : 24px;
+                        text: @tr("搜索");
+                        icon: root.compact ? @image-url("") : Icons.search;
+                        clicked => { root.open-search(); }
+                    }
+                    if !root.searching : OutlineButton {
+                        horizontal-stretch: root.compact ? 1 : 0;
+                        min-height: 48px;
+                        horizontal-padding: root.compact ? 12px : 24px;
+                        text: @tr("添加文件夹");
+                        icon: root.compact ? @image-url("") : Icons.folder-open;
+                        clicked => { Library.add-directory(); }
+                    }
+                    if !root.searching : OutlineButton {
+                        horizontal-stretch: root.compact ? 1 : 0;
+                        min-height: 48px;
+                        horizontal-padding: root.compact ? 12px : 24px;
+                        text: @tr("下载");
+                        icon: root.compact ? @image-url("") : Icons.download;
                         clicked => {
-                            if root.searching {
-                                root.filters-open = !root.filters-open;
-                            } else if library-menu.is-open {
-                                library-menu.close();
-                            } else {
-                                library-menu.show();
-                            }
+                            Library.detail-open = false;
+                            App.page = "store";
+                            Store.open();
                         }
                     }
                 }
@@ -311,9 +298,23 @@ export component LibraryPage {
                     compact: root.compact;
                 }
 
-                // Results.
-                Rectangle {
+                if Library.prepare-state == "loading-cores" || Library.prepare-state == "scanning"
+                    || Library.prepare-state == "failed" : LibraryScanStatus { }
+
+                // A parent gesture recognizer passes taps, wheel events and other
+                // directions to the stock scrolling and card controls underneath.
+                pull := SwipeGestureHandler {
                     vertical-stretch: 1;
+                    enabled: root.shown && !root.searching && !root.detail-shown && Library.can-refresh
+                        && (Library.games.length == 0 || (root.grid-mode ? grid.content-y : list.content-y) >= 0px);
+                    handle-swipe-down: true;
+                    property <length> dy: self.current-position.y - self.pressed-position.y;
+                    property <length> dx: abs(self.current-position.x - self.pressed-position.x);
+                    property <bool> armed: self.dy >= 64px && self.dy > self.dx * 1.25;
+                    changed enabled => { if !self.enabled { self.cancel(); } }
+                    swiped => {
+                        if self.enabled && self.armed { Library.prepare(); }
+                    }
 
                     grid := ScrollView {
                         x: 0px;
@@ -477,6 +478,20 @@ export component LibraryPage {
                             title: Library.query != "" || Library.compat-filter != "all" ? @tr("没有符合筛选条件的作品") : @tr("游戏库为空");
                         }
                     }
+
+                    if pull.swiping : Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width;
+                        height: 32px;
+                        background: MaterialPalette.surface-container-high;
+                        MaterialText {
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            style: MaterialTypography.label-large;
+                            text: pull.armed ? @tr("松开刷新") : @tr("下拉刷新");
+                        }
+                    }
                 }
             }
         }
@@ -498,23 +513,6 @@ export component LibraryPage {
         height: root.height - self.y;
         mode: root.panel-mode;
         close => { root.close-detail(); }
-    }
-
-    library-menu := PopupMenu {
-        width: min(224px, root.width - 16px);
-        x: max(8px, library-actions.absolute-position.x - root.absolute-position.x + library-actions.width - self.width);
-        y: clamp(library-actions.absolute-position.y - root.absolute-position.y + library-actions.height + 4px,
-            0px, max(0px, root.height - self.height));
-        keyboard-navigation: true;
-        items: [
-            { icon: Icons.search, text: @tr("搜索与筛选"), enabled: true },
-            { icon: Icons.folder-open, text: @tr("管理游戏库"), enabled: true },
-        ];
-        activated(index) => {
-            self.close();
-            if index == 0 { root.open-search(); }
-            else { App.page = "library-management"; }
-        }
     }
 
     menu := GameMenu {
