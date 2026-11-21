@@ -150,7 +150,7 @@ Android 最低 API 为 28，与既有嵌入原生依赖的 triplet 一致。Mana
 
 Android UI线程在 `MainActivity.onCreate` 中、`super.onCreate` 返回后且 `onStart` 之前初始化两个原生核心宿主。只有native app线程等待此Activity实例的完成结果，随后才初始化TLS和资源；初始化异常或错误状态会使启动失败，销毁会解除尚未完成的等待。这样不会出现UI线程等待native处理onStart、native线程却在等UI执行初始化的互等。Activity重建时替换native上下文，Destroy时释放。
 在已解锁的真机上运行 `python Tools/test-android-startup.py --adb <adb> --serial <设备> --out <新目录>`，回归冷启动和后台恢复的生命周期完成情况。它只停止已安装的Manager、保留数据、保存启动结果与截图，并拒绝原onStart超时。截图仍须实际查看，游戏输入另行验收，不能将此门禁当作可玩UI通过。
-WGPU绘制回调仍在有效图形上下文中执行GPU舞台绘制和纹理发布；worker完成模型、通知和modal更新交给一个可复用的Slint零延时单次timer，在绘制回调退出后执行。已有待执行timer时合并重复调度，避免绘制过程中销毁item tree时重入借用Skia缓存；service仅弱持有window/adapter，timer随绘制notifier释放。在可见准备页面给真机回归命令添加 `--prepare-tap X Y`，即可点击实际按钮并记录结果，成功完成仍须查看截图确认。
+WGPU绘制回调仍在有效图形上下文中执行GPU舞台绘制和纹理发布；worker完成模型、通知和modal更新交给一个可复用的Slint零延时单次timer，在绘制回调退出后执行。已有待执行timer时合并重复调度，避免绘制过程中销毁item tree时重入借用Skia缓存；service仅弱持有window/adapter，timer随绘制notifier释放。另在真机界面确认扫描会自行开始，并检查预期游戏是否出现在库中。命令成功或 PID 未变都不能证明扫描成功。
 CMVS仅在独立核心构建启用 `dynamic-plugin-export`，导出 `shinki_emu_query` 并安装该模块的诊断回调bridge。静态Manager不启用此feature，通过 `cmvs_query` 注册，验证诊断header及emit/flush回调后沿用host已有tracing subscriber，不再次安装进程全局subscriber。无效诊断参数返回ABI错误，不破坏已完成的初始化。
 
 CMVS 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`，SDK 解码器复用 Musica 的 API 28 静态 FFmpeg vcpkg triplet 和 xtask 依赖通路。Manager 包的 `embedded-cores.json`、对应源码和许可证包含 CMVS。APK 验证会逐字节比对 `assets/licenses/shinki.emu.cmvs/` 中的许可证与清单输入。Android 实际运行按用户要求未验证。
