@@ -6,6 +6,9 @@ import { Theme } from "../theme.slint";
 component NoticeCard {
     in property <Notice> notice;
     property <bool> error: root.notice.severity == "error";
+    property <bool> folder-error: root.notice.code.starts-with("SHINKI_EMU_ANDROID_PICK_")
+        || root.notice.code.starts-with("SHINKI_EMU_GAME_DIRECTORY_")
+        || root.notice.code == "SHINKI_EMU_GAME_PATH_UTF8";
 
     min-height: body.min-height;
     preferred-height: body.preferred-height;
@@ -52,15 +55,15 @@ component NoticeCard {
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
-                max-height: 60px;
+                max-height: root.folder-error ? 100px : 60px;
                 overflow: clip;
             }
-            if root.notice.code != "" : MaterialText {
+            if root.notice.code != "" && !root.folder-error : MaterialText {
                 text: @tr("错误代码 {}", root.notice.code);
                 style: MaterialTypography.label-small;
                 color: MaterialPalette.on-surface-variant;
             }
-            HorizontalLayout {
+            if !root.folder-error : HorizontalLayout {
                 alignment: start;
                 TextButton {
                     text: @tr("查看日志");

@@ -1,15 +1,13 @@
-import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, TonalButton, OutlineButton, TextButton, LinearProgressIndicator, HorizontalDivider, Icon, ScrollView } from "@material";
-import { App, Library, Network, Onboarding, ResaleNoticeState } from "../globals.slint";
+import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, OutlineButton, TextButton, HorizontalDivider, Icon, ScrollView } from "@material";
+import { App, Network, Onboarding } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { SettingGroup, SwitchRow } from "./settings/common.slint";
 import { PathRow, EmptyLine } from "./settings/roots.slint";
 import { ThemeChooser, CoverSizeChooser } from "./settings/appearance.slint";
-import { DisclaimerText } from "../components/disclaimer.slint";
-import { ResaleNoticeSlot, ResaleNoticeAck } from "../components/resale-notice.slint";
 
 component StepDots {
     in property <int> step;
-    in property <int> count: 5;
+    in property <int> count: 3;
 
     height: 12px;
     accessible-role: progress-indicator;
@@ -71,30 +69,6 @@ component StepHeader {
     }
 }
 
-component DisclaimerStep {
-    in property <bool> wide: true;
-
-    min-height: l.min-height;
-    preferred-height: l.preferred-height;
-
-    l := VerticalLayout {
-        spacing: 24px;
-        StepHeader {
-            icon: Icons.info;
-            title: @tr("开始之前");
-            description: @tr("请先阅读以下说明。以后可以在 设置→关于 再次查看。");
-        }
-        VerticalLayout {
-            spacing: 8px;
-            ResaleNoticeSlot { wide: root.wide; }
-            ResaleNoticeAck { }
-        }
-        SettingGroup {
-            DisclaimerText { }
-        }
-    }
-}
-
 component RootsStep {
     min-height: l.min-height;
     preferred-height: l.preferred-height;
@@ -104,7 +78,7 @@ component RootsStep {
         StepHeader {
             icon: Icons.folder-open;
             title: @tr("添加库目录");
-            description: @tr("选择存放游戏的文件夹，ShinkiEMU 会在其中识别作品。以后也可以在 设置→库目录 修改，这一步可以跳过。");
+            description: @tr("选一个存放游戏的文件夹，ShinkiEMU 会自动识别游戏。也可以稍后添加。");
         }
         SettingGroup {
             flush: true;
@@ -175,78 +149,8 @@ component AppearanceStep {
     }
 }
 
-component PrepareStep {
-    property <bool> busy: Library.prepare-state == "loading-cores" || Library.prepare-state == "scanning";
-    property <bool> done: Library.prepare-state == "ready";
-    property <bool> failed: Library.prepare-state == "failed";
-
-    min-height: l.min-height;
-    preferred-height: l.preferred-height;
-
-    l := VerticalLayout {
-        spacing: 24px;
-        StepHeader {
-            icon: Icons.library-books;
-            title: @tr("准备资料库");
-            description: @tr("加载模拟器核心并扫描库目录。作品较多时可能需要一些时间，可以先完成引导，在游戏库中查看进度。");
-        }
-        SettingGroup {
-            if !root.busy : HorizontalLayout {
-                alignment: start;
-                FilledButton {
-                    text: root.done ? @tr("重新扫描") : root.failed ? @tr("重试") : @tr("开始准备");
-                    icon: root.done ? Icons.refresh : Icons.play-arrow;
-                    clicked => { Library.prepare(); }
-                }
-            }
-            if root.busy : VerticalLayout {
-                spacing: 12px;
-                LinearProgressIndicator {
-                    indeterminate: Library.prepare-progress < 0;
-                    progress: max(Library.prepare-progress, 0);
-                }
-                HorizontalLayout {
-                    spacing: 8px;
-                    MaterialText {
-                        horizontal-stretch: 1;
-                        text: Library.prepare-detail != "" ? Library.prepare-detail : Library.prepare-state == "loading-cores" ? @tr("正在加载核心…") : @tr("正在扫描…");
-                        style: MaterialTypography.body-medium;
-                        color: MaterialPalette.on-surface-variant;
-                        vertical-alignment: center;
-                        wrap: word-wrap;
-                        overflow: clip;
-                    }
-                    if Library.can-cancel-prepare : TextButton {
-                        text: @tr("取消");
-                        clicked => { Library.cancel-prepare(); }
-                    }
-                }
-            }
-            if !root.busy && (root.done || root.failed) : HorizontalLayout {
-                spacing: 8px;
-                Icon {
-                    width: 20px;
-                    height: 20px;
-                    source: root.failed ? Icons.error : Icons.check;
-                    colorize: root.failed ? MaterialPalette.error : MaterialPalette.primary;
-                }
-                MaterialText {
-                    horizontal-stretch: 1;
-                    text: root.failed ? (Library.prepare-detail != "" ? Library.prepare-detail : @tr("准备失败，请查看核心诊断"))
-                        : Library.prepare-detail != "" ? Library.prepare-detail : @tr("资料库已准备好，共 {n} 部作品" | "资料库已准备好，共 {n} 部作品" % Library.games.length);
-                    style: MaterialTypography.body-medium;
-                    color: root.failed ? MaterialPalette.error : MaterialPalette.on-surface;
-                    vertical-alignment: center;
-                    wrap: word-wrap;
-                    overflow: clip;
-                }
-            }
-        }
-    }
-}
-
 export component OnboardingPage {
-    property <int> step: clamp(Onboarding.step, 0, 4);
+    property <int> step: clamp(Onboarding.step, 0, 2);
     property <bool> phone: root.width < 600px;
     property <length> pad: root.phone ? 16px : 32px;
     // Landscape phones: a slimmer footer and tighter vertical rhythm keep the step content above half the height.
@@ -254,41 +158,21 @@ export component OnboardingPage {
     property <length> footer-height: root.short ? 56px : 80px;
 
     function go(next: int) {
-        Onboarding.step = clamp(next, 0, 4);
+        Onboarding.step = clamp(next, 0, 2);
     }
 
     function finish() {
         Onboarding.finish();
-        App.page = "library";
     }
-
-    // The host keeps onboarding on step 0 and rejects finishing until the
-    // notice is acknowledged; leaving early from here would desync the page.
-    property <bool> can-leave: root.step != 0 || ResaleNoticeState.acknowledged;
-
-    // Scroll viewport used by Rust to validate that the complete image is visible.
-    property <{x: length, y: length, width: length, height: length}> viewport: {
-        x: sv.absolute-position.x,
-        y: sv.absolute-position.y,
-        width: sv.visible-width,
-        height: sv.visible-height,
-    };
-
-    function report-viewport() {
-        ResaleNoticeState.report-onboarding-clip(root.viewport.x, root.viewport.y, root.viewport.width, root.viewport.height);
-    }
-
-    init => { root.report-viewport(); }
-    changed viewport => { root.report-viewport(); }
 
     forward-focus: keys;
+
+    init => { keys.focus(); }
 
     keys := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape || event.text == Key.Back {
-                if root.can-leave {
-                    root.finish();
-                }
+                root.finish();
                 return accept;
             }
             reject
@@ -334,11 +218,9 @@ export component OnboardingPage {
                     }
                 }
 
-                if root.step == 0 : DisclaimerStep { wide: !root.phone; }
-                if root.step == 1 : RootsStep { }
-                if root.step == 2 : NetworkStep { }
-                if root.step == 3 : AppearanceStep { }
-                if root.step == 4 : PrepareStep { }
+                if root.step == 0 : RootsStep { }
+                if root.step == 1 : NetworkStep { }
+                if root.step == 2 : AppearanceStep { }
             }
         }
     }
@@ -366,7 +248,6 @@ export component OnboardingPage {
                     horizontal-stretch: 0;
                     TextButton {
                         text: root.phone ? @tr("跳过") : @tr("跳过引导");
-                        enabled: root.can-leave;
                         clicked => { root.finish(); }
                     }
                 }
@@ -386,13 +267,10 @@ export component OnboardingPage {
                     alignment: center;
                     horizontal-stretch: 0;
                     FilledButton {
-                        text: root.step == 4 ? @tr("完成")
-                            : root.step == 0 && !ResaleNoticeState.acknowledged && ResaleNoticeState.remaining-seconds > 0 ? @tr("下一步（{} 秒）", ResaleNoticeState.remaining-seconds)
-                            : @tr("下一步");
-                        icon: root.step == 4 && !root.phone ? Icons.check : @image-url("");
-                        enabled: root.step != 0 || ResaleNoticeState.acknowledged;
+                        text: root.step == 2 ? @tr("完成") : @tr("下一步");
+                        icon: root.step == 2 && !root.phone ? Icons.check : @image-url("");
                         clicked => {
-                            if root.step == 4 {
+                            if root.step == 2 {
                                 root.finish();
                             } else {
                                 root.go(root.step + 1);

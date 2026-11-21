@@ -21,23 +21,18 @@ export component NetworkSection inherits PageScroll {
         title: @tr("ShinkiEMU 元数据");
         description: @tr("兼容性记录、推荐配置、补丁目录和在线核心列表来自元数据仓库。");
 
+        RowText {
+            label: Network.syncing ? @tr("正在同步…") : Network.sync-status != "" ? Network.sync-status : @tr("未同步");
+            description: Network.allowed ? "" : @tr("需要先允许联网");
+            enabled: Network.allowed;
+        }
         HorizontalLayout {
-            spacing: 16px;
-            RowText {
-                horizontal-stretch: 1;
-                label: Network.syncing ? @tr("正在同步…") : Network.sync-status != "" ? Network.sync-status : @tr("未同步");
-                description: Network.allowed ? "" : @tr("需要先允许联网");
-                enabled: Network.allowed;
-            }
-            VerticalLayout {
-                horizontal-stretch: 0;
-                alignment: center;
-                TonalButton {
-                    text: @tr("立即同步");
-                    icon: Icons.refresh;
-                    enabled: Network.allowed && !Network.syncing;
-                    clicked => { Network.sync-now(); }
-                }
+            alignment: start;
+            TonalButton {
+                text: @tr("立即同步");
+                icon: Icons.refresh;
+                enabled: Network.allowed && !Network.syncing;
+                clicked => { Network.sync-now(); }
             }
         }
 

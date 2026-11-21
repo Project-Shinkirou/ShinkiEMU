@@ -16,7 +16,7 @@ use crate::{
     Onboarding, Patch, PatchCheck, PatchCheckViewModel, PatchDownload, PatchDownloadViewModel,
     PatchGame, PatchGameViewModel, PatchState, PatchStateViewModel, PatchVerify, PlaySession,
     PlaySessionViewModel, Recipe, RecipeViewModel, Release, ReleaseViewModel, RenderState,
-    RenderViewModel, ResaleNoticeState, SelectedGame, Selection, SelfUpdate, SelfUpdateAction,
+    RenderViewModel, SelectedGame, Selection, SelfUpdate, SelfUpdateAction,
     Session, Settings, Store, StoreAction, StoreDepot, StoreDepotViewModel, StoreGame,
     StoreGameViewModel, StoreLoadState, StoreLoginState, StoreTransfer, StoreTransferState,
     StoreTransferViewModel, TranslationForm, TranslationFormViewModel, TranslationProvider,
@@ -339,16 +339,7 @@ impl SlintManagerAdapter {
         self.apply_filters(model);
         self.apply_session(model);
         self.onboarding_roots.update(&model.onboarding.roots);
-        self.apply_resale_notice(model);
         self.apply_store(model);
-    }
-
-    fn apply_resale_notice(&self, model: &ManagerViewModel) {
-        let notice = self.window.global::<ResaleNoticeState>();
-        let view = &model.resale_notice;
-        notice.set_checked(view.checked);
-        notice.set_remaining_seconds(view.remaining_seconds);
-        notice.set_acknowledged(view.acknowledged);
     }
 
     fn apply_app(&self, model: &ManagerViewModel) {
@@ -398,6 +389,7 @@ impl SlintManagerAdapter {
         library.set_prepare_detail(view.prepare_detail.as_str().into());
         library.set_prepare_progress(view.prepare_progress.unwrap_or(-1.0));
         library.set_can_cancel_prepare(view.can_cancel_prepare);
+        library.set_can_refresh(view.can_refresh);
         library.set_selected_id(view.selected_id.as_str().into());
 
         if *self.cached_games.borrow() != view.games {

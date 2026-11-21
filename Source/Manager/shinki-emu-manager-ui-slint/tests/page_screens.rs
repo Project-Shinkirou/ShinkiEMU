@@ -9,6 +9,7 @@
 
 use std::{
     path::{Path, PathBuf},
+    cell::{Cell, RefCell},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -17,14 +18,16 @@ use shinki_emu_manager_ui_slint::{
     App, ChoiceViewModel, ConfigFieldViewModel, GameCardViewModel, GameSettingsViewModel, Library,
     ManagerViewModel, NoticeViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel, RecipeViewModel,
     RenderViewModel, SelectedGameViewModel, Session, SlintManagerAdapter, Store,
-    StoreDepotViewModel, StoreGameViewModel, StoreLoadState, StoreLoginState, i18n,
+    StoreDepotViewModel, StoreGameViewModel, StoreLoadState, StoreLoginState, i18n, report_error, tr,
 };
 use slint::{
-    ComponentHandle,
+    ComponentHandle, Model,
     platform::{
-        EventLoopProxy, Platform, WindowAdapter, WindowEvent,
+        EventLoopProxy, Platform, PointerEventButton, WindowAdapter, WindowEvent,
         software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     },
+    private_unstable_api::re_exports::{AccessibleStringProperty, ItemRc, Key, WindowInner},
+    LogicalPosition, SharedString,
 };
 
 type Job = Box<dyn FnOnce() + Send>;
@@ -327,8 +330,9 @@ fn base() -> ManagerViewModel {
     m.app.version = "0.1.0-beta.7".into();
     m.app.appearance.theme_mode = "dark".into();
     m.app.appearance.reduce_motion = true;
-    m.resale_notice.acknowledged = true;
     m.library.prepare_state = "ready".into();
+    m.library.can_refresh = true;
+    m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("刷新资料库").into();
     m.network.allowed = true;
     m.settings.roots = vec!["D:/Games/Visual Novels".into(), "E:/Archive/Galgame".into()];
     m
@@ -337,7 +341,6 @@ fn base() -> ManagerViewModel {
 fn library_model(d: &Data) -> ManagerViewModel {
     let mut m = base();
     m.library.games = games(d);
-    m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("刷新资料库").into();
     m
 }
 
@@ -439,14 +442,7 @@ type Setup = fn(&SlintManagerAdapter, &Data);
 fn states() -> Vec<(&'static str, Setup)> {
     vec![
         // 首次引导：每一步
-        ("onboarding/step0-notice", |a, _| {
-            let mut m = base();
-            m.resale_notice.acknowledged = false;
-            a.apply(&m);
-            page(a, "onboarding");
-            a.window().global::<Onboarding>().set_step(0);
-        }),
-        ("onboarding/step1-roots", |a, _| {
+        ("onboarding/step0-roots", |a, _| {
             let mut m = base();
             m.onboarding.roots = vec![
                 "D:/Games/Visual Novels".into(),
@@ -454,35 +450,21 @@ fn states() -> Vec<(&'static str, Setup)> {
             ];
             a.apply(&m);
             page(a, "onboarding");
+            a.window().global::<Onboarding>().set_step(0);
+        }),
+        ("onboarding/step1-network", |a, _| {
+            let mut m = base();
+            m.network.allowed = false;
+            a.apply(&m);
+            page(a, "onboarding");
             a.window().global::<Onboarding>().set_step(1);
         }),
-        ("onboarding/step2-network", |a, _| {
+        ("onboarding/step2-appearance", |a, _| {
             a.apply(&base());
             page(a, "onboarding");
             a.window().global::<Onboarding>().set_step(2);
         }),
-        ("onboarding/step3-appearance", |a, _| {
-            a.apply(&base());
-            page(a, "onboarding");
-            a.window().global::<Onboarding>().set_step(3);
-        }),
-        ("onboarding/step4-scanning", |a, _| {
-            let mut m = base();
-            m.library.prepare_state = "scanning".into();
-            m.library.prepare_detail = "D:/Games/Visual Novels/Harbor Lights".into();
-            m.library.prepare_progress = Some(0.42);
-            m.library.can_cancel_prepare = true;
-            a.apply(&m);
-            page(a, "onboarding");
-            a.window().global::<Onboarding>().set_step(4);
-        }),
         // 游戏库
-        ("library/empty-unprepared", |a, _| {
-            let mut m = base();
-            m.library.prepare_state = "unprepared".into();
-            a.apply(&m);
-            page(a, "library");
-        }),
         ("library/empty-no-roots", |a, _| {
             let mut m = base();
             m.settings.roots.clear();
@@ -511,22 +493,23 @@ fn states() -> Vec<(&'static str, Setup)> {
             a.apply(&m);
             page(a, "library");
         }),
-        ("library/loading-scan", |a, d| {
+        ("library-management/scanning", |a, d| {
             let mut m = library_model(d);
             m.library.prepare_state = "scanning".into();
             m.library.prepare_detail = "E:/Archive/Galgame/Autumn Bells".into();
             m.library.prepare_progress = Some(0.6);
             m.library.can_cancel_prepare = true;
+            m.library.can_refresh = false;
             a.apply(&m);
-            page(a, "library");
+            page(a, "library-management");
         }),
-        ("library/error-prepare-failed", |a, _| {
+        ("library-management/scan-failed", |a, _| {
             let mut m = base();
             m.library.prepare_state = "failed".into();
-            m.library.prepare_detail = "核心 krkr2 加载失败：缺少 plugin/xp3filter.dll".into();
-            m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("准备").into();
+            m.library.prepare_detail = shinki_emu_manager_ui_slint::tr!("请检查文件夹权限，或选择其他文件夹。").into();
+            m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("重试").into();
             a.apply(&m);
-            page(a, "library");
+            page(a, "library-management");
         }),
         ("library/detail", |a, d| {
             let mut m = library_model(d);
@@ -718,6 +701,12 @@ fn states() -> Vec<(&'static str, Setup)> {
             a.apply(&base());
             settings(a, "network");
         }),
+        ("settings/network-sync-failed", |a, _| {
+            let mut m = base();
+            m.network.sync_status = tr!("同步失败：{error}", error = tr!("请检查网络连接后重试。"));
+            a.apply(&m);
+            settings(a, "network");
+        }),
         ("settings/input", |a, _| {
             a.apply(&base());
             settings(a, "input");
@@ -726,10 +715,10 @@ fn states() -> Vec<(&'static str, Setup)> {
             a.apply(&base());
             settings(a, "about");
         }),
-        // 添加游戏、商店：登录、列表、详情、加载失败
-        ("add-game/main", |a, _| {
+        // 管理游戏库、商店：登录、列表、详情、加载失败
+        ("library-management/ready", |a, _| {
             a.apply(&base());
-            page(a, "add-game");
+            page(a, "library-management");
         }),
         ("store/login", |a, _| {
             a.apply(&store_model(StoreLoginState::SignedOut));
@@ -871,7 +860,7 @@ fn every_page_renders_stable_frames() {
         start: Instant::now(),
     }))
     .expect("software platform");
-    let adapter = SlintManagerAdapter::new().expect("manager window");
+    let adapter = Rc::new(SlintManagerAdapter::new().expect("manager window"));
     adapter
         .window()
         .global::<Library>()
@@ -894,7 +883,12 @@ fn every_page_renders_stable_frames() {
     };
 
     let output = std::env::var_os("SHINKI_UI_SCREENSHOT_DIR").map(PathBuf::from);
-    let (languages, sizes): (&[&str], &[(u32, u32)]) = if output.is_some() {
+    // A comma-separated language override draws only the narrow layout.
+    let narrow = std::env::var("SHINKI_UI_NARROW_LOCALES").ok();
+    let narrow_languages = narrow.as_deref().map(|value| value.split(',').collect::<Vec<_>>());
+    let (languages, sizes): (&[&str], &[(u32, u32)]) = if let Some(langs) = &narrow_languages {
+        (langs, &[(360, 780)])
+    } else if output.is_some() {
         (&["zh-CN", "en", "ja"], &[(1280, 800), (360, 780)])
     } else {
         (&["ja"], &[(360, 780)])
@@ -907,6 +901,20 @@ fn every_page_renders_stable_frames() {
     for &language in languages {
         i18n::apply(language);
         for &(width, height) in sizes {
+            let save = |id: &str, rgba| {
+                if let Some(dir) = &output {
+                    let (group, state) = id.split_once('/').expect("page/state id");
+                    let dir = dir.join(group);
+                    std::fs::create_dir_all(&dir).expect("screenshot dir");
+                    image::RgbaImage::from_raw(width, height, rgba)
+                        .expect("frame size")
+                        .save(dir.join(format!("{state}-{language}-{width}x{height}.png")))
+                        .expect("write png");
+                }
+            };
+            if only.is_empty() || only.iter().any(|p| "library-management/interaction".starts_with(p)) {
+                exercise_library(&adapter, &software, &data, (width, height), save);
+            }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
                     continue;
@@ -949,18 +957,224 @@ fn every_page_renders_stable_frames() {
                         "{id} {language} {width}x{height}: same model drew a different frame"
                     );
                 }
-                if let Some(dir) = &output {
-                    let (group, state) = id.split_once('/').expect("page/state id");
-                    let dir = dir.join(group);
-                    std::fs::create_dir_all(&dir).expect("screenshot dir");
-                    image::RgbaImage::from_raw(width, height, rgba)
-                        .expect("frame size")
-                        .save(dir.join(format!("{state}-{language}-{width}x{height}.png")))
-                        .expect("write png");
-                }
+                save(id, rgba);
             }
         }
     }
     reset(&adapter);
     adapter.window().hide().expect("hide");
+}
+
+// Use accessible names to locate real controls, then send pointer input through the window.
+// The pinned Slint API gives their bounds without test-only geometry properties in the UI.
+fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool) -> Option<ItemRc> {
+    let mut stack = vec![WindowInner::from_pub(software.window()).window_item_rc()?];
+    while let Some(item) = stack.pop() {
+        stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
+        if item.is_visible()
+            && item.accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|label| matches(label.as_str()))
+        {
+            return Some(item);
+        }
+    }
+    None
+}
+
+fn click_label(software: &MinimalSoftwareWindow, label: &str) -> LogicalPosition {
+    let item = labeled_item(software, |text| text == label)
+        .unwrap_or_else(|| panic!("visible control not found: {label}"));
+    let center = item.map_to_window(item.geometry().center());
+    let position = LogicalPosition::new(center.x, center.y);
+    software.dispatch_event(WindowEvent::PointerMoved { position });
+    software.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
+    software.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
+    software.dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(0.0, 0.0) });
+    position
+}
+
+fn press(software: &MinimalSoftwareWindow, key: impl Into<SharedString>) {
+    let text = key.into();
+    software.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+    software.dispatch_event(WindowEvent::KeyReleased { text });
+}
+
+fn exercise_library(
+    a: &Rc<SlintManagerAdapter>,
+    software: &MinimalSoftwareWindow,
+    data: &Data,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    let frame = || render(software, width, height);
+    let window = a.window();
+    let app = window.global::<App>();
+    let library = window.global::<Library>();
+    let onboarding = window.global::<Onboarding>();
+    let network = window.global::<shinki_emu_manager_ui_slint::Network>();
+    let manage = tr!("管理游戏库");
+    let add = tr!("添加文件夹");
+    let search = tr!("搜索游戏标题");
+    let clear = tr!("清除搜索和筛选");
+    let refresh = tr!("刷新资料库");
+    let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
+    let game_visible = |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
+
+    reset(a);
+    let mut model = base_empty();
+    model.network.allowed = false;
+    model.library.can_refresh = false;
+    a.apply(&model);
+    page(a, "onboarding");
+    onboarding.set_step(0);
+    frame();
+    click_label(software, tr!("下一步"));
+    assert_eq!(onboarding.get_step(), 1, "next works immediately on the first step");
+    assert!(!network.get_allowed(), "advance does not grant network access");
+    frame();
+    click_label(software, tr!("下一步"));
+    assert_eq!(onboarding.get_step(), 2);
+    frame();
+    let weak = window.as_weak();
+    onboarding.on_finish(move || {
+        if let Some(window) = weak.upgrade() {
+            window.global::<App>().set_page("library".into());
+        }
+    });
+    click_label(software, tr!("完成"));
+    assert_eq!(app.get_page(), "library");
+    let empty = frame();
+    assert!(!visible(add) && !visible(search) && !visible(refresh));
+    click_label(software, manage);
+    assert_eq!(app.get_page(), "library-management");
+    frame();
+    assert!(visible(add) && visible(search) && !visible(refresh));
+
+    // The host owns the native picker and worker. Draw the next host models after
+    // pressing the real picker button, including a failed permission request.
+    let attempts = Rc::new(Cell::new(0));
+    let weak = Rc::downgrade(a);
+    let picked = attempts.clone();
+    library.on_add_directory(move || {
+        let Some(a) = weak.upgrade() else { return };
+        picked.set(picked.get() + 1);
+        if picked.get() == 1 {
+            report_error(a.window(), "SHINKI_EMU_ANDROID_PICK_PERMISSION");
+        } else {
+            let mut model = base_empty();
+            model.network.allowed = false;
+            model.settings.roots = vec!["D:/Games/Visual Novels".into()];
+            model.library.prepare_state = "scanning".into();
+            model.library.prepare_progress = Some(0.4);
+            model.library.can_cancel_prepare = true;
+            model.library.can_refresh = false;
+            a.apply(&model);
+        }
+    });
+    click_label(software, add);
+    save("library-management/picker-denied", frame());
+    assert!(visible(tr!("关闭")), "picker failure shows a dismissible notice");
+    click_label(software, tr!("关闭"));
+    click_label(software, add);
+    frame();
+    assert!(visible(tr!("取消扫描")));
+    assert!(!visible(refresh), "a running scan cannot be refreshed");
+
+    let mut model = library_model(data);
+    model.network.allowed = false;
+    model.library.games[1].title = "Harbor Letters".into();
+    a.apply(&model);
+    let all_games = model.library.games.clone();
+    let game_count = all_games.len();
+    let state = Rc::new(RefCell::new(model));
+    let project = {
+        let state = state.clone();
+        let weak = Rc::downgrade(a);
+        let all_games = Rc::new(all_games);
+        move |query: Option<SharedString>, filter: Option<SharedString>| {
+            let Some(a) = weak.upgrade() else { return };
+            let mut m = state.borrow_mut();
+            if let Some(query) = query { m.library.query = query.to_string(); }
+            if let Some(filter) = filter { m.library.compat_filter = filter.to_string(); }
+            let query = m.library.query.to_ascii_lowercase();
+            let filter = m.library.compat_filter.as_str();
+            m.library.games = all_games.iter()
+                .filter(|game| game.title.to_ascii_lowercase().contains(&query)
+                    && (filter == "all" || game.compat == filter))
+                .cloned()
+                .collect();
+            a.apply(&m);
+        }
+    };
+    let update = project.clone();
+    library.on_search(move |query| update(Some(query), None));
+    library.on_set_compat_filter(move |filter| project(None, Some(filter)));
+    frame();
+    assert!(visible(refresh));
+    if width < 600 {
+        click_label(software, tr!("商店下载"));
+        assert_eq!(app.get_page(), "store");
+        save("library-management/store-route", frame());
+        press(software, Key::Back);
+        assert_eq!(app.get_page(), "library-management");
+        frame();
+    }
+    click_label(software, search);
+    for ch in "Harbor".chars() { press(software, ch.to_string()); }
+    assert_eq!(state.borrow().library.query, "Harbor");
+    assert_eq!(library.get_games().row_count(), 2);
+    frame();
+    click_label(software, tr!("完美"));
+    frame();
+    assert_eq!(state.borrow().library.compat_filter, "perfect");
+    press(software, if width < 600 { Key::Back } else { Key::Escape });
+    assert_eq!(app.get_page(), "library");
+    let filtered = frame();
+    assert_ne!(empty, filtered);
+    assert_eq!(library.get_games().row_count(), 1);
+    assert!(game_visible("Harbor Lights"));
+    assert!(!game_visible("Harbor Letters"));
+    assert!(!visible(search) && !visible(add) && !visible(refresh));
+    save("library/filtered-through-management", filtered);
+
+    click_label(software, manage);
+    frame();
+    if width < 600 {
+        let position = LogicalPosition::new(width as f32 / 2.0, height as f32 * 0.7);
+        software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -420.0 });
+        frame();
+    }
+    click_label(software, clear);
+    assert!(state.borrow().library.query.is_empty());
+    assert_eq!(state.borrow().library.compat_filter, "all");
+    let back = click_label(software, tr!("返回游戏库"));
+    assert!(back.y < 64.0, "the app bar stays above the scrollable controls");
+    assert_eq!(app.get_page(), "library");
+    frame();
+    assert_eq!(library.get_games().row_count(), game_count);
+    assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
+
+    if width < 600 {
+        click_label(software, manage);
+        frame();
+        let weak = Rc::downgrade(a);
+        let refreshing = state.clone();
+        library.on_prepare(move || {
+            let Some(a) = weak.upgrade() else { return };
+            let mut m = refreshing.borrow_mut();
+            m.library.prepare_state = "scanning".into();
+            m.library.can_cancel_prepare = true;
+            m.library.can_refresh = false;
+            a.apply(&m);
+        });
+        click_label(software, refresh);
+        frame();
+        assert!(visible(tr!("取消扫描")));
+        assert!(!visible(refresh));
+        click_label(software, tr!("管理文件夹"));
+        assert_eq!(app.get_page(), "settings");
+        assert_eq!(app.get_settings_category(), "library-roots");
+        frame();
+        assert!(visible(tr!("添加目录")));
+    }
 }

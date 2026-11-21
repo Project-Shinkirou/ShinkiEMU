@@ -196,8 +196,8 @@ export component StorePage {
         width: root.width;
         height: root.bar-height;
         title: Store.provider-name != "" ? @tr("{} 下载", Store.provider-name) : @tr("商店下载");
-        leading-button: { icon: Icons.arrow-back, tooltip: @tr("返回添加游戏"), enabled: true };
-        leading-button-clicked => { App.page = "add-game"; }
+        leading-button: { icon: Icons.arrow-back, tooltip: @tr("返回游戏库管理"), enabled: true };
+        leading-button-clicked => { App.page = "library-management"; }
         trailing-buttons: root.signed-in ? [{ icon: Icons.refresh, tooltip: @tr("刷新游戏库"), enabled: Store.library-state != "loading" }] : [];
         trailing-button-clicked(index) => { Store.refresh-library(); }
     }

@@ -1,12 +1,12 @@
 import { Palette } from "std-widgets.slint";
-import { MaterialWindow, MaterialWindowAdapter, MaterialPalette, NavigationRail, NavigationBar, NavigationItem, SmallAppBar } from "@material";
+import { MaterialWindow, MaterialWindowAdapter, MaterialPalette, NavigationRail, NavigationBar, NavigationItem } from "@material";
 import { Theme } from "./theme.slint";
 import { Icons } from "./icons.slint";
 import {
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
-    Cores, Notice, Notices, Dialogs, Filters, FilterStageItem, EngineAction, Session, Onboarding, ResaleNoticeState,
+    Cores, Notice, Notices, Dialogs, Filters, FilterStageItem, EngineAction, Session, Onboarding,
     StoreGame, StoreDepot, StoreTransfer, Store,
 } from "./globals.slint";
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
@@ -22,7 +22,7 @@ import { SettingsPage } from "./pages/settings.slint";
 import { TranslationOverlays } from "./pages/settings/translation.slint";
 import { OnboardingPage } from "./pages/onboarding.slint";
 import { GameView } from "./pages/game-view.slint";
-import { AddGamePage } from "./pages/add-game.slint";
+import { LibraryManagementPage } from "./pages/library-management.slint";
 import { StorePage } from "./pages/store.slint";
 
 export {
@@ -30,7 +30,7 @@ export {
     Appearance, Choice, App, Network, SelfUpdate, GameCard, Library, SelectedGame, CompatInfo, PlaySession,
     MatchReview, BangumiProgress, Selection, ConfigField, GamepadBinding, Recipe, PatchState,
     PatchGame, Patch, RenderState, TranslationForm, TranslationProvider, ProviderEditor, Excluded, Settings, GameSettings, CoreInfo, CoreBatch, Logs,
-    Cores, Notice, Notices, Dialogs, Filters, FilterStageItem, EngineAction, Session, Onboarding, ResaleNoticeState,
+    Cores, Notice, Notices, Dialogs, Filters, FilterStageItem, EngineAction, Session, Onboarding,
     StoreGame, StoreDepot, StoreTransfer, Store,
 }
 
@@ -55,9 +55,7 @@ export component ManagerWindow inherits MaterialWindow {
     // A Store game opened on a phone is a full-screen sheet above the bottom bar.
     property <bool> store-sheet: root.compact && App.page == "store" && Store.detail-open && Store.selected.title-id != "";
     property <bool> show-bottom-nav: root.compact && !root.onboarding && !Session.active && !root.store-sheet;
-    property <bool> show-library-bar: root.compact && App.page == "library";
     property <length> rail-width: 80px;
-    property <length> bar-height: 64px;
     property <length> bottom-nav-height: 80px;
     property <length> nav-bottom: root.show-bottom-nav ? root.bottom-nav-height : 0px;
     // The new-version banner sits above the page content, which moves down by
@@ -160,7 +158,7 @@ export component ManagerWindow inherits MaterialWindow {
         bottom-nav.current-index = root.page-index;
         // The control that changed the page usually belonged to the old page
         // and is gone, which would leave nothing focused for Android Back.
-        if !root.nav-driven && App.page != "library" {
+        if !root.nav-driven && App.page != "library" && App.page != "library-management" && App.page != "onboarding" {
             keys.focus();
         }
         root.nav-driven = false;
@@ -185,6 +183,11 @@ export component ManagerWindow inherits MaterialWindow {
         focus-on-tab-navigation: false;
 
         key-pressed(event) => {
+            if event.text == Key.Escape && App.page == "library-management"
+                && !Logs.open && !Dialogs.modal-active && !Dialogs.fatal-active && !Session.active {
+                App.page = "library";
+                return accept;
+            }
             if event.text != Key.Back {
                 return reject;
             }
@@ -221,13 +224,13 @@ export component ManagerWindow inherits MaterialWindow {
                 Library.detail-open = false;
                 return accept;
             }
-            // 添加游戏 sub-pages step back one level at a time.
+            // Store and its detail page step back one level at a time.
             if App.page == "store" && Store.detail-open && Store.selected.title-id != "" {
                 Store.detail-open = false;
                 return accept;
             }
             if App.page == "store" {
-                App.page = "add-game";
+                App.page = "library-management";
                 return accept;
             }
             if App.page != "library" && !root.onboarding {
@@ -260,20 +263,11 @@ export component ManagerWindow inherits MaterialWindow {
             index-changed(index) => { root.navigate(index); }
         }
 
-        if root.show-library-bar : SmallAppBar {
-            // SmallAppBar pads only 4px; match the 16px page headers.
-            x: root.usable-x + 12px;
-            y: root.usable-y + root.banner-inset;
-            width: root.usable-width - 12px;
-            height: root.bar-height;
-            title: @tr("游戏库");
-        }
-
         pages := Rectangle {
             x: root.content-x;
-            y: root.usable-y + root.banner-inset + (root.show-library-bar ? root.bar-height : 0px);
+            y: root.usable-y + root.banner-inset;
             width: root.content-width;
-            height: root.usable-height - root.banner-inset - (root.show-library-bar ? root.bar-height : 0px) - root.nav-bottom;
+            height: root.usable-height - root.banner-inset - root.nav-bottom;
             clip: true;
 
             if App.page == "library" : LibraryPage {
@@ -324,7 +318,7 @@ export component ManagerWindow inherits MaterialWindow {
                 width: pages.width;
                 height: pages.height;
             }
-            if App.page == "add-game" : AddGamePage {
+            if App.page == "library-management" : LibraryManagementPage {
                 x: 0px;
                 y: 0px;
                 width: pages.width;

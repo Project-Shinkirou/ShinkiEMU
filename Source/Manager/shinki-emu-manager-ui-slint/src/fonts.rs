@@ -13,8 +13,7 @@ use slint::fontique_011::{
 
 use crate::i18n::Locale;
 
-/// Also rasterizes the resale notice, so the face is embedded once.
-pub static NOTO_SANS_SC: &[u8] = include_bytes!("../../../../Assets/Fonts/NotoSansSC-Variable.ttf");
+static NOTO_SANS_SC: &[u8] = include_bytes!("../../../../Assets/Fonts/NotoSansSC-Variable.ttf");
 static NOTO_SANS_JP: &[u8] = include_bytes!("../../../../Assets/Fonts/NotoSansJP-Variable.ttf");
 
 struct Families {

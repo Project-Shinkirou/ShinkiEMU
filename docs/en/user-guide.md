@@ -11,17 +11,13 @@ Download a Manager asset matching your platform and architecture from [ShinkiEMU
 
 Only select assets actually attached to a release. Build availability is listed in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/). Android debug-signed CI APKs are test builds, not release installers. iOS device and simulator outputs are distinct; a library is not an installable IPA.
 
-On first launch, read the bilingual anti-resale notice and tick “我已阅读 / I have read this”. Continue becomes available after the notice has been visible for eight seconds. The acknowledgement is stored locally with the notice's SHA-256 digest; a revised notice requires acknowledgement again. ShinkiEMU is free, open-source software: use the official website and GitHub Releases, and request a refund and report the seller if you paid for the software. The notice is also available in Settings → About.
-
-The bilingual image is rasterized in Rust and displayed in the onboarding and About image slots. Reading time advances only while the complete image fits at its readable size inside the visible scroll viewport; hidden, undersized, clipped or minimized views pause it. Resize a narrow window vertically or scroll the notice fully into view before reading. Removing the UI image does not bypass the Rust completion gate: onboarding stays locked.
-
-The image follows the current light/dark theme and its surface/text colors, including custom theme colors. Changing the theme refreshes the raster without resetting accumulated reading time.
+On first launch, you can add a game folder and choose your network and appearance settings, or skip setup. Networking is off by default. ShinkiEMU is free and open source; download it from the official site or GitHub Releases. See **Settings → About** for licensing information.
 
 ## Language
 
 Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.
 
-Game titles, descriptions and patch notes come from metadata. Manager shows the entry for the current language, falls back to English when a Japanese entry is missing, and falls back to Simplified Chinese when English is missing too. The anti-resale notice is always bilingual (Chinese and English).
+Game titles, descriptions and patch notes come from metadata. Manager shows the entry for the current language, falls back to English when a Japanese entry is missing, and falls back to Simplified Chinese when English is missing too.
 
 Metadata request failures belong to the selected installation. Starting a retry clears its previous failure state while the request is pending; changing the interface language does not change whether a request failed.
 
@@ -33,7 +29,9 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 ## Add games and install cores
 
-Add legally obtained game directories in Settings, then prepare or refresh the library. Recognition reads bounded resource formats without loading native cores. A recognized engine family can enter the library before a compatible core is installed; it shows a missing-core problem and cannot start. Install the core and restart when prompted, then refresh the same entry. Multiple families or implementations require a choice; an existing selected implementation is preserved even when its package is missing.
+Open **Manage library → Add folder** and select your game folder. Manager finds games automatically, even offline and before you install a core. From **Manage library**, check scan progress, search and filter, then select **View games** to return to the results. If you change the files, rescan when the option is available. If a folder cannot be read, check its permissions or choose another. On Android, grant access in the system folder picker when prompted.
+
+Install a compatible core if a game cannot start because its core is missing. Restart when prompted. If several engines or cores match, choose the one you want to use; Manager keeps your selection even if the core is temporarily missing.
 
 The library and core list use the static catalog and validated package manifests. Native capabilities and settings remain unverified until you explicitly prepare advanced configuration, diagnose one core, or start the selected game. These actions run on the owner thread and touch only the selected implementation. Recognition is not a runtime guarantee; encrypted resources can still need a private profile. Keep keys local.
 
@@ -43,7 +41,7 @@ Allow networking in Settings before synchronizing metadata or downloading cores.
 
 ## Store downloads
 
-Open **Add game → Store downloads** after allowing network access in Settings. When several providers are compiled in, select a store first. The login options come from that provider: Steam offers QR, account/password with Steam Guard, and desktop client import; DLsite and DMM/FANZA sign in on their own pages inside Manager. Cookies and refresh tokens are stored only in the platform secret store, never in installation records or logs. Logging out removes that provider’s stored login.
+Open **Manage library → Store downloads** after allowing network access in Settings. When several providers are compiled in, select a store first. The login options come from that provider: Steam offers QR, account/password with Steam Guard, and desktop client import; DLsite and DMM/FANZA sign in on their own pages inside Manager. Cookies and refresh tokens are stored only in the platform secret store, never in installation records or logs. Logging out removes that provider’s stored login.
 
 **Web sign-in (DLsite, DMM/FANZA):** choose **Open sign-in page**. Manager shows the store’s official sign-in page in the system web view — WebView2 on Windows, WKWebView on macOS and iOS, a WebKitGTK window on Linux, and Android’s WebView over the app. Sign in there, including any CAPTCHA or two-step verification. Once the store reaches its signed-in page with the account session, Manager reads that store’s cookies (HttpOnly ones included) directly from the web view, closes it and finishes the login; there is nothing to copy or paste. The web view starts with an empty private cookie store and keeps nothing after it closes; only the provider’s login is saved, in the platform secret store. **Cancel**, closing the window, Android’s back gesture or leaving the Store page abandons the sign-in. Windows needs the Microsoft Edge WebView2 Runtime (included with Windows 11) and Linux needs WebKitGTK 4.1 (`libwebkit2gtk-4.1`).
 

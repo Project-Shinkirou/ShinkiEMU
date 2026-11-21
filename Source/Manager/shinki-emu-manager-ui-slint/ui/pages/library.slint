@@ -1,14 +1,11 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, ScrollView, TextField, FilterChip,
-    FilledButton, TonalButton, OutlineButton, TextButton, FilledCard, LinearProgressIndicator, Icon,
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, OutlineButton, LinearProgressIndicator,
 } from "@material";
-import { App, Library, Settings, Choice } from "../globals.slint";
+import { App, Library } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme } from "../theme.slint";
-import { ChoiceSelect } from "../components/select.slint";
-import { Segments } from "../components/segments.slint";
 import { Scrim } from "../components/dialogs.slint";
-import { CoverCard, GameListRow, SortHeader, GameMenu, GameNav } from "../components/cover-card.slint";
+import { CoverCard, GameListRow, GameMenu } from "../components/cover-card.slint";
 import { DetailPanel } from "./detail.slint";
 
 // Linear progress that also animates while the total is unknown (Material's indicator stays static).
@@ -46,33 +43,8 @@ export component PrepareProgress {
     }
 }
 
-// Single-select wrapper around Material's self-toggling FilterChip.
-component CompatChip {
-    in property <string> id;
-    in property <string> text;
-    in property <string> current;
-    callback chosen(id: string);
-
-    property <bool> is-checked: chip.checked;
-
-    changed is-checked => {
-        if root.is-checked && root.current != root.id {
-            root.chosen(root.id);
-        } else if !root.is-checked && root.current == root.id {
-            chip.checked = true;
-        }
-    }
-    changed current => { chip.checked = root.current == root.id; }
-
-    chip := FilterChip {
-        text: root.text;
-        checked: root.current == root.id;
-    }
-}
-
 component EmptyState {
     in property <string> title;
-    in property <string> body;
 
     VerticalLayout {
         alignment: center;
@@ -119,15 +91,6 @@ component EmptyState {
             overflow: clip;
         }
 
-        if root.body != "" : MaterialText {
-            text: root.body;
-            style: MaterialTypography.body-medium;
-            color: MaterialPalette.on-surface-variant;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-            overflow: clip;
-        }
-
         HorizontalLayout {
             alignment: center;
             spacing: 8px;
@@ -152,9 +115,6 @@ export component LibraryPage {
     property <length> card-width: root.compact ? max(112px, min(Theme.cover-width, (root.avail - 8px - root.gap) / 2)) : Theme.cover-width;
     property <int> cols: max(1, floor((root.avail - 8px + root.gap) / (root.card-width + root.gap)));
     property <int> focus-index: -1;
-    property <string> local-filter: Library.compat-filter;
-    property <bool> preparing: Library.prepare-state == "loading-cores" || Library.prepare-state == "scanning";
-    property <bool> banner-shown: root.preparing || Library.prepare-state == "failed";
     property <bool> list-columns: !root.narrow && !root.compact;
     // Optional list columns drop in priority order so the title keeps >= 200px:
     // row chrome (padding 20 + cover 36 + play button + 2 gaps) is 80px + play, each column adds width + 12px.
@@ -168,22 +128,6 @@ export component LibraryPage {
     animate content-w {
         duration: Theme.motion-medium;
         easing: Theme.motion-easing;
-    }
-
-    function set-view(mode: string) {
-        App.appearance.view-mode = mode;
-        App.appearance-changed(App.appearance);
-    }
-
-    function choose-filter(id: string) {
-        root.local-filter = id;
-        Library.compat-filter = id;
-        Library.set-compat-filter(id);
-    }
-
-    function choose-sort(id: string) {
-        Library.sort = id;
-        Library.set-sort(id);
     }
 
     function open-detail(id: string) {
@@ -219,30 +163,14 @@ export component LibraryPage {
         }
     }
 
-    function clear-search() {
-        debounce.running = false;
-        Library.query = "";
-        Library.search("");
-    }
-
     init => { keys.focus(); }
-
-    debounce := Timer {
-        interval: 300ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            Library.search(Library.query);
-        }
-    }
 
     keys := FocusScope {
         width: 100%;
         height: 100%;
         key-pressed(event) => {
             if event.modifiers.control && (event.text == "f" || event.text == "F") {
-                search.focus();
-                search.select-all();
+                App.page = "library-management";
                 return accept;
             }
             if (event.text == Key.Escape || event.text == Key.Back) && root.detail-shown {
@@ -266,226 +194,20 @@ export component LibraryPage {
                 padding-top: root.compact ? 8px : root.pad;
                 spacing: Theme.space-md;
 
-                // Title, count and library actions.
                 HorizontalLayout {
                     spacing: 8px;
-                    alignment: stretch;
-
-                    if !root.compact : MaterialText {
-                        horizontal-stretch: 0;
-                        text: @tr("游戏库");
-                        style: MaterialTypography.headline-small;
-                        color: MaterialPalette.on-surface;
-                        vertical-alignment: center;
-                    }
-                    // Elides first on phones so both actions stay inside the page.
                     MaterialText {
-                        horizontal-stretch: 1;
                         min-width: 0px;
-                        text: @tr("{n} 部作品" | "{n} 部作品" % Library.games.length);
-                        style: MaterialTypography.body-medium;
-                        color: MaterialPalette.on-surface-variant;
+                        horizontal-stretch: 1;
+                        text: @tr("游戏库");
+                        style: root.compact ? MaterialTypography.title-large : MaterialTypography.headline-small;
+                        color: MaterialPalette.on-surface;
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    if Library.prepare-state == "unprepared" || Library.prepare-state == "failed" : FilledButton {
-                        horizontal-stretch: 0;
-                        icon: root.narrow ? @image-url("") : Icons.refresh;
-                        text: Library.prepare-label;
-                        clicked => { Library.prepare(); }
-                    }
-                    if Library.prepare-state != "unprepared" && Library.prepare-state != "failed" : TonalButton {
-                        horizontal-stretch: 0;
-                        icon: root.narrow ? @image-url("") : Icons.refresh;
-                        text: Library.prepare-label;
-                        enabled: !root.preparing;
-                        clicked => { Library.prepare(); }
-                    }
-                    OutlineButton {
-                        horizontal-stretch: 0;
-                        icon: root.narrow ? @image-url("") : Icons.add;
-                        text: @tr("添加游戏");
-                        clicked => { App.page = "add-game"; }
-                    }
-                }
-
-                // Search, sort and view mode.
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    search := TextField {
-                        horizontal-stretch: 1;
-                        min-width: 160px;
-                        label: @tr("搜索标题、别名或开发商");
-                        leading-icon: Icons.search;
-                        trailing-icon: Library.query != "" ? Icons.close : @image-url("");
-                        text <=> Library.query;
-                        edited(text) => { debounce.restart(); }
-                        accepted(text) => {
-                            debounce.running = false;
-                            Library.search(Library.query);
-                        }
-                        trailing-icon-clicked => { root.clear-search(); }
-                    }
-                    if !root.narrow : ChoiceSelect {
-                        width: 168px;
-                        label: @tr("排序");
-                        value: Library.sort;
-                        choices: [
-                            { id: "title", label: @tr("标题") },
-                            { id: "recent", label: @tr("最近游玩") },
-                            { id: "play_time", label: @tr("游玩时长") },
-                        ];
-                        selected(id) => { root.choose-sort(id); }
-                    }
-                    if !root.narrow : VerticalLayout {
-                        horizontal-stretch: 0;
-                        alignment: center;
-                        Segments {
-                            width: 208px;
-                            label: @tr("视图");
-                            items: [@tr("网格"), @tr("列表")];
-                            index: root.grid-mode ? 0 : 1;
-                            selected(index) => { root.set-view(index == 1 ? "list" : "grid"); }
-                        }
-                    }
-                }
-
-                if root.narrow : HorizontalLayout {
-                    spacing: 8px;
-                    ChoiceSelect {
-                        horizontal-stretch: 1;
-                        label: @tr("排序");
-                        value: Library.sort;
-                        choices: [
-                            { id: "title", label: @tr("标题") },
-                            { id: "recent", label: @tr("最近游玩") },
-                            { id: "play_time", label: @tr("游玩时长") },
-                        ];
-                        selected(id) => { root.choose-sort(id); }
-                    }
-                    // Two 64px+ segments without the check mark leave the sort field room for its value.
-                    VerticalLayout {
-                        horizontal-stretch: 0;
-                        alignment: center;
-                        Segments {
-                            width: 144px;
-                            label: @tr("视图");
-                            items: [@tr("网格"), @tr("列表")];
-                            index: root.grid-mode ? 0 : 1;
-                            selected(index) => { root.set-view(index == 1 ? "list" : "grid"); }
-                        }
-                    }
-                }
-
-                // Compatibility filter chips (single select). They wrap so every filter stays visible.
-                FlexboxLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    CompatChip { id: "all"; text: @tr("全部"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "perfect"; text: @tr("完美"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "completable"; text: @tr("可通关"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "flawed"; text: @tr("有瑕疵"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "boot_only"; text: @tr("仅能启动"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "unplayable"; text: @tr("无法运行"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                    CompatChip { id: "unknown"; text: @tr("未评级"); current: root.local-filter; chosen(id) => { root.choose-filter(id); } }
-                }
-
-                // Prepare banner.
-                if root.banner-shown : Rectangle {
-                    height: banner.preferred-height;
-
-                    FilledCard {
-                        width: 100%;
-                        height: 100%;
-                    }
-
-                    banner := VerticalLayout {
-                        padding: 16px;
-                        spacing: 12px;
-
-                        HorizontalLayout {
-                            spacing: 12px;
-
-                            if Library.prepare-state == "failed" : VerticalLayout {
-                                alignment: center;
-                                Icon {
-                                    width: 24px;
-                                    source: Icons.error;
-                                    colorize: MaterialPalette.error;
-                                }
-                            }
-
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                alignment: center;
-                                spacing: 4px;
-
-                                MaterialText {
-                                    text: Library.prepare-state == "failed" ? @tr("准备失败")
-                                        : Library.prepare-state == "loading-cores" ? @tr("正在加载模拟器核心")
-                                        : @tr("正在扫描游戏目录");
-                                    style: MaterialTypography.title-small;
-                                    color: Library.prepare-state == "failed" ? MaterialPalette.error : MaterialPalette.on-surface;
-                                }
-                                if Library.prepare-detail != "" : MaterialText {
-                                    text: Library.prepare-detail;
-                                    style: MaterialTypography.body-medium;
-                                    color: MaterialPalette.on-surface-variant;
-                                    wrap: word-wrap;
-                                    overflow: clip;
-                                }
-                            }
-
-                            if root.preparing && !root.narrow : VerticalLayout {
-                                alignment: center;
-                                TextButton {
-                                    text: @tr("取消");
-                                    enabled: Library.can-cancel-prepare;
-                                    clicked => { Library.cancel-prepare(); }
-                                }
-                            }
-                        }
-
-                        if root.preparing : PrepareProgress {
-                            progress: Library.prepare-progress;
-                        }
-
-                        if root.preparing && root.narrow : HorizontalLayout {
-                            alignment: end;
-                            TextButton {
-                                text: @tr("取消");
-                                enabled: Library.can-cancel-prepare;
-                                clicked => { Library.cancel-prepare(); }
-                            }
-                        }
-
-                        // Narrow cards stack the actions so neither button runs past the card edge.
-                        if Library.prepare-state == "failed" && !root.narrow : HorizontalLayout {
-                            alignment: end;
-                            spacing: 8px;
-                            TextButton {
-                                text: @tr("查看核心");
-                                clicked => { App.page = "cores"; }
-                            }
-                            TonalButton {
-                                icon: Icons.restart-alt;
-                                text: @tr("重启 ShinkiEMU");
-                                clicked => { App.restart(); }
-                            }
-                        }
-                        if Library.prepare-state == "failed" && root.narrow : VerticalLayout {
-                            spacing: 4px;
-                            TonalButton {
-                                icon: Icons.restart-alt;
-                                text: @tr("重启 ShinkiEMU");
-                                clicked => { App.restart(); }
-                            }
-                            TextButton {
-                                text: @tr("查看核心");
-                                clicked => { App.page = "cores"; }
-                            }
-                        }
+                    if Library.games.length > 0 : OutlineButton {
+                        text: @tr("管理游戏库");
+                        clicked => { App.page = "library-management"; }
                     }
                 }
 
@@ -547,11 +269,13 @@ export component LibraryPage {
                         spacing: 12px;
 
                         Rectangle { width: 36px; }
-                        SortHeader {
+                        MaterialText {
                             horizontal-stretch: 1;
-                            label: @tr("标题");
-                            active: Library.sort == "title";
-                            clicked => { root.choose-sort("title"); }
+                            text: @tr("标题");
+                            style: MaterialTypography.label-large;
+                            color: MaterialPalette.on-surface-variant;
+                            vertical-alignment: center;
+                            overflow: elide;
                         }
                         if root.engine-col > 0px : MaterialText {
                             width: root.engine-col;
@@ -569,17 +293,21 @@ export component LibraryPage {
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        if root.time-col > 0px : SortHeader {
+                        if root.time-col > 0px : MaterialText {
                             width: root.time-col;
-                            label: @tr("游玩时长");
-                            active: Library.sort == "play_time";
-                            clicked => { root.choose-sort("play_time"); }
+                            text: @tr("游玩时长");
+                            style: MaterialTypography.label-large;
+                            color: MaterialPalette.on-surface-variant;
+                            vertical-alignment: center;
+                            overflow: elide;
                         }
-                        if root.last-col > 0px : SortHeader {
+                        if root.last-col > 0px : MaterialText {
                             width: root.last-col;
-                            label: @tr("上次游玩");
-                            active: Library.sort == "recent";
-                            clicked => { root.choose-sort("recent"); }
+                            text: @tr("上次游玩");
+                            style: MaterialTypography.label-large;
+                            color: MaterialPalette.on-surface-variant;
+                            vertical-alignment: center;
+                            overflow: elide;
                         }
                         Rectangle { width: root.play-col; }
                     }
@@ -645,46 +373,11 @@ export component LibraryPage {
                         padding-bottom: 48px;
                         alignment: center;
 
-                        if Library.prepare-state == "unprepared" : EmptyState {
-                            title: @tr("先准备资料库");
-                            body: @tr("ShinkiEMU 会加载模拟器核心，再扫描你的游戏目录。");
-                            FilledButton {
-                                text: Library.prepare-label;
-                                clicked => { Library.prepare(); }
-                            }
-                        }
-                        if Library.prepare-state != "unprepared" && Library.query != "" : EmptyState {
-                            title: @tr("没有找到“{}”", Library.query);
-                            body: @tr("换个关键词试试。");
+                        EmptyState {
+                            title: Library.query != "" || Library.compat-filter != "all" ? @tr("没有符合筛选条件的作品") : @tr("游戏库为空");
                             OutlineButton {
-                                text: @tr("清除搜索");
-                                clicked => { root.clear-search(); }
-                            }
-                        }
-                        if Library.prepare-state != "unprepared" && Library.query == "" && Settings.roots.length == 0 && !root.preparing : EmptyState {
-                            title: @tr("添加第一个游戏目录");
-                            body: @tr("选择存放游戏的文件夹，ShinkiEMU 会识别其中的作品。");
-                            FilledButton {
-                                icon: Icons.add;
-                                text: @tr("添加游戏");
-                                clicked => { App.page = "add-game"; }
-                            }
-                        }
-                        if Library.prepare-state != "unprepared" && Library.query == "" && Settings.roots.length > 0 && root.local-filter != "all" && !root.preparing : EmptyState {
-                            title: @tr("没有符合筛选条件的作品");
-                            body: "";
-                            OutlineButton {
-                                text: @tr("显示全部");
-                                clicked => { root.choose-filter("all"); }
-                            }
-                        }
-                        if Library.prepare-state == "ready" && Library.query == "" && Settings.roots.length > 0 && root.local-filter == "all" : EmptyState {
-                            title: @tr("这些目录里还没有识别到作品");
-                            body: @tr("可以添加其他目录，或在 设置→库目录 中管理已有目录。");
-                            OutlineButton {
-                                icon: Icons.add;
-                                text: @tr("添加游戏");
-                                clicked => { App.page = "add-game"; }
+                                text: @tr("管理游戏库");
+                                clicked => { App.page = "library-management"; }
                             }
                         }
                     }

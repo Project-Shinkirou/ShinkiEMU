@@ -63,7 +63,7 @@ export component RootsSection inherits PageScroll {
     SettingGroup {
         // Own msgid: "游戏目录" is also an inline noun ("补丁输入目录：游戏目录") translated in lower case.
         title: @tr("游戏文件夹");
-        description: @tr("准备资料库时会扫描这些目录及其子目录。");
+        description: @tr("添加文件夹后，会自动扫描其中的游戏。");
         flush: true;
 
         if Settings.roots.length == 0 : HorizontalLayout {
