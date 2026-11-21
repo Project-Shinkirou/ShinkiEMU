@@ -263,9 +263,14 @@ impl ShinkiEmuManagerController {
 
     /// Queue a metadata synchronization. Requires network permission.
     pub(super) fn sync_metadata(&mut self) -> Result<ManagerViewModel, String> {
+        self.submit_metadata_sync()?;
+        self.model()
+    }
+
+    pub(super) fn submit_metadata_sync(&mut self) -> Result<(), String> {
         self.require_network()?;
         if self.metadata_sync.request.is_some() {
-            return self.model();
+            return Ok(());
         }
         let cached = self
             .metadata_catalog
@@ -292,7 +297,7 @@ impl ShinkiEmuManagerController {
             },
         }) {
             self.record_sync_error(error);
-            return self.model();
+            return Ok(());
         }
         self.pending_metadata.insert(
             request_id.clone(),
@@ -300,7 +305,7 @@ impl ShinkiEmuManagerController {
         );
         self.metadata_sync.request = Some(request_id);
         self.metadata_sync.error = None;
-        self.model()
+        Ok(())
     }
 
     pub(super) fn record_sync_error(&mut self, error: String) {

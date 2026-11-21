@@ -119,6 +119,11 @@ impl ShinkiEmuManagerController {
         }
         self.startup_state = StartupState::Ready;
         self.pump_library_scan();
+        if self.network_allowed
+            && let Err(error) = self.submit_metadata_sync()
+        {
+            self.record_sync_error(error);
+        }
         self.model()
     }
 
