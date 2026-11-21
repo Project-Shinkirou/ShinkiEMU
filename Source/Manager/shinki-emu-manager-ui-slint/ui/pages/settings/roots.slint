@@ -99,6 +99,24 @@ export component RootsSection inherits PageScroll {
         LibraryScanStatus { show-refresh: true; }
     }
 
+    if Settings.android-storage-access-available : SettingGroup {
+        title: @tr("共享存储");
+        description: @tr("此权限允许 ShinkiEMU 访问共享存储中的所有文件，让兼容核心直接读取游戏目录。");
+
+        if Settings.android-storage-access-granted : EmptyLine {
+            text: @tr("已允许访问共享存储");
+            accessible-role: AccessibleRole.text;
+            accessible-label: self.text;
+        }
+        if !Settings.android-storage-access-granted : HorizontalLayout {
+            alignment: start;
+            OutlineButton {
+                text: @tr("允许访问共享存储");
+                clicked => { Settings.open-android-storage-access(); }
+            }
+        }
+    }
+
     SettingGroup {
         title: @tr("已移除的作品");
         description: @tr("从资料库移除的作品不会在扫描时重新加入，恢复后会重新出现。");

@@ -912,6 +912,9 @@ fn every_page_renders_stable_frames() {
             if only.is_empty() || only.iter().any(|p| "library-toolbar/interaction".starts_with(p)) {
                 exercise_library(&adapter, &software, &data, (width, height), save);
             }
+            if only.is_empty() || only.iter().any(|p| "settings/storage-access".starts_with(p)) {
+                exercise_storage_access(&adapter, &software, (width, height), save);
+            }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
                     continue;
@@ -1351,4 +1354,41 @@ fn exercise_library(
     assert!(visible(tr!("取消扫描")));
     assert!(!visible(refresh));
     window.global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>().set_touch(false);
+}
+
+fn exercise_storage_access(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    use shinki_emu_manager_ui_slint::Settings;
+
+    let app = a.window().global::<Settings>();
+    let allow = tr!("允许访问共享存储");
+    let granted = tr!("已允许访问共享存储");
+    let visible = |label| labeled_item(software, |text| text == label).is_some();
+    let frame = || render(software, width, height);
+    reset(a);
+    a.apply(&base());
+    settings(a, "library-roots");
+    frame();
+    assert!(!visible(allow) && !visible(granted), "desktop has no Android prompt");
+    app.set_android_storage_access_available(true);
+    save("settings/storage-access-available", frame());
+    assert!(visible(allow) && !visible(granted));
+
+    let opens = Rc::new(Cell::new(0));
+    let count = opens.clone();
+    app.on_open_android_storage_access(move || count.set(count.get() + 1));
+    click_label(software, allow);
+    assert_eq!(opens.get(), 1);
+    frame();
+    assert!(visible(allow) && !visible(granted), "opening settings does not grant anything");
+
+    app.set_android_storage_access_granted(true);
+    save("settings/storage-access-granted", frame());
+    assert!(!visible(allow) && visible(granted), "only host-reported permission appears as granted");
+    app.set_android_storage_access_granted(false);
+    app.set_android_storage_access_available(false);
 }
