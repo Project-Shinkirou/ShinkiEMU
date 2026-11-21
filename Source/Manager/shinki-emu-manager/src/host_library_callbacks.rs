@@ -41,7 +41,7 @@ fn install_library<C: ManagerController>(
     let w = wiring.clone();
     library.on_add_directory(move || {
         let w = w.clone();
-        platform::pick_folder(
+        platform::pick_library_folder(
             tr!("选择游戏目录"),
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );

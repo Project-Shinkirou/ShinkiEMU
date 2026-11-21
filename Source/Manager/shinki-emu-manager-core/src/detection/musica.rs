@@ -5,15 +5,17 @@ use shinki_emu_musica_keys::{MAX_KEY_BYTES, parse_key_file};
 
 struct Archive { parts: Vec<Source>, length: u64 }
 
-impl Scan<'_> {
+impl<T: DetectionTree> Scan<'_, T> {
     pub(super) fn musica(&mut self, root: &Path, files: &[PathBuf], configuration: Option<&Configuration>) -> DetectionResult<()> {
         self.checkpoint()?;
         let configured = |name: &str| configuration.and_then(|c| c.get(name)).and_then(|v| v.as_str()).filter(|s| !s.is_empty());
         let key_name = configured("profile_file").unwrap_or("key.toml");
         let Some(key_path) = self.relative_path(root, key_name)? else { return Ok(()); };
-        let metadata = fs::symlink_metadata(root.join(&key_path))?;
-        if metadata.len() > MAX_KEY_BYTES { return Ok(()); }
-        let key_bytes = self.resource_bytes(root, &key_path)?;
+        let full = root.join(&key_path);
+        let Some(mut source) = self.open(&full, 128)? else { return Ok(()); };
+        if source.length > MAX_KEY_BYTES { return Ok(()); }
+        let length = source.length as usize;
+        let key_bytes = self.bytes(&mut source, 0, length)?;
         self.checkpoint()?;
         let Ok(key) = parse_key_file(&key_bytes) else { return Ok(()); };
         let Some(archive_key) = key.archive_keys.get("scr") else { return Ok(()); };
@@ -97,19 +99,15 @@ impl Scan<'_> {
         let mut pending = vec![PathBuf::new()];
         let mut files = Vec::new();
         while let Some(directory) = pending.pop() {
-            self.checkpoint()?;
-            for entry in fs::read_dir(root.join(&directory))? {
-                self.checkpoint()?;
-                if self.entries == MAX_ENTRIES { return Err(DetectionError::ReadLimit); }
-                self.entries += 1;
-                let entry = entry?;
-                let ty = entry.file_type()?;
-                if ty.is_dir() { pending.push(directory.join(entry.file_name())); }
-                else if ty.is_file() && !directory.as_os_str().is_empty() {
-                    if self.files + files.len() as u32 == MAX_FILES { return Err(DetectionError::ReadLimit); }
-                    files.push(directory.join(entry.file_name()));
+            let file_limit = MAX_FILES - self.files;
+            self.entries(&root.join(&directory), |name, kind| {
+                if kind == EntryKind::Directory { pending.push(directory.join(name)); }
+                else if kind == EntryKind::File && !directory.as_os_str().is_empty() {
+                    if files.len() == file_limit as usize { return Err(DetectionError::ReadLimit); }
+                    files.push(directory.join(name));
                 }
-            }
+                Ok(())
+            })?;
         }
         files.sort();
         Ok(files)
@@ -117,13 +115,10 @@ impl Scan<'_> {
     fn musica_files(&mut self, root: &Path, directory: &Path) -> DetectionResult<Vec<PathBuf>> {
         self.checkpoint()?;
         let mut files = Vec::new();
-        for entry in fs::read_dir(root.join(directory))? {
-            self.checkpoint()?;
-            if self.entries == MAX_ENTRIES { return Err(DetectionError::ReadLimit); }
-            self.entries += 1;
-            let entry = entry?;
-            if entry.file_type()?.is_file() { files.push(directory.join(entry.file_name())); }
-        }
+        self.entries(&root.join(directory), |name, kind| {
+            if kind == EntryKind::File { files.push(directory.join(name)); }
+            Ok(())
+        })?;
         files.sort();
         Ok(files)
     }
@@ -145,12 +140,11 @@ impl Scan<'_> {
         let mut parts = Vec::new();
         let mut length = 0u64;
         for (index, path) in paths.iter().enumerate() {
-            self.checkpoint()?;
-            let metadata = fs::symlink_metadata(root.join(path))?;
-            if !metadata.is_file() || metadata.file_type().is_symlink() || (index > 0 && metadata.len() == 0) { return Ok(None); }
-            length = length.checked_add(metadata.len()).ok_or(DetectionError::ReadLimit)?;
-            self.checkpoint()?;
-            parts.push(Source { file: File::open(root.join(path))?, length: metadata.len(), read_bytes: 128 });
+            let full = root.join(path);
+            let Some(part) = self.open(&full, 128)? else { return Ok(None); };
+            if index > 0 && part.length == 0 { return Ok(None); }
+            length = length.checked_add(part.length).ok_or(DetectionError::ReadLimit)?;
+            parts.push(part);
         }
         Ok(Some(Archive { parts, length }))
     }

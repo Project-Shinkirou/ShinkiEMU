@@ -189,6 +189,8 @@ struct ShinkiEmuManagerController {
     library_scan: Option<background::LibraryScan>,
     prepare_progress: Option<owner::PrepareProgress>,
     scan_cancel: Option<shinki_emu_manager_core::NativeCancellation>,
+    #[cfg(target_os = "android")]
+    saf_paths: BTreeMap<String, PathBuf>,
     last_excluded: Option<String>,
     key_capture: Option<input::KeyCapture>,
     store: store::StoreRuntime,

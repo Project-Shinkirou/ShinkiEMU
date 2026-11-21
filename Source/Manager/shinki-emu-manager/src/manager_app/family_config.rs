@@ -184,7 +184,7 @@ impl ShinkiEmuManagerController {
             shinki_emu_musica_keys::load_musica_key_file(path).map_err(|e| e.to_string())?;
         }
         let game = self.game(game_id)?;
-        let raw = config_path_value(path, Path::new(&game.location), field.flags.game_relative)?;
+        let raw = config_path_value(path, self.native_game_directory(&game)?, field.flags.game_relative)?;
         self.store_config(plugin, game_id, &field.id, &raw)
     }
 

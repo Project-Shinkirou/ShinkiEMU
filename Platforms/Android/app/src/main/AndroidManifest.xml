@@ -3,6 +3,11 @@
     <uses-feature android:name="android.hardware.vulkan.level" android:required="false" android:version="1" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <queries>
+        <provider android:authorities="com.android.externalstorage.documents" />
+    </queries>
 
     <application
         android:allowBackup="false"

@@ -242,6 +242,10 @@ pub trait ManagerController: 'static {
     fn save_bangumi_token(&mut self, token: &str) -> Result<ManagerViewModel, String>;
     fn clear_bangumi_token(&mut self) -> Result<ManagerViewModel, String>;
     fn add_game_directory(&mut self, path: &std::path::Path) -> Result<ManagerViewModel, String>;
+    #[cfg(target_os = "android")]
+    fn android_storage_access_changed(&mut self) -> Result<ManagerViewModel, String> {
+        self.model()
+    }
     fn search_patch_games(&mut self, query: &str) -> Result<ManagerViewModel, String>;
     /// Source game of the patch page; another game starts the flow over.
     fn select_patch_game(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;

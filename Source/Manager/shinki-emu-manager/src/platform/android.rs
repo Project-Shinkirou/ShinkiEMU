@@ -4,9 +4,9 @@
 //!
 //! - Data lives in the app-private files directory; resources listed in the
 //!   APK asset `bundled.manifest` are extracted to `<data>/bundled/` at start.
-//! - Pickers use the Storage Access Framework. Kotlin copies the picked file or
-//!   tree into `<data>/imports/<unix_ms>-<id>/` and reports the copied path,
-//!   so the rest of the Manager works with plain filesystem paths.
+//! - Library picks retain a SAF tree URI and a persistable read grant;
+//!   recognition reads the original files. Standalone file and patch-input
+//!   picks stage into app-private storage when their consumers need a path.
 //! - New directories (patch output) are proposed under the app-private
 //!   `<data>/exports/` parent, which is created on demand without a dialog.
 //! - Temporary media files use the app cache directory on every supported API.
@@ -44,6 +44,7 @@ const MAX_SECRET_BYTES: usize = 16 * 1024;
 /// `MainActivity.pickDocument` kinds.
 const PICK_TREE: i32 = 0;
 const PICK_FILE: i32 = 1;
+const PICK_LIBRARY_TREE: i32 = 2;
 
 struct AndroidContext {
     app: AndroidApp,
@@ -57,8 +58,8 @@ static CONTEXT: RwLock<Option<Arc<AndroidContext>>> = RwLock::new(None);
 struct PendingPick {
     done: PickDone,
     extensions: Option<Vec<String>>,
+    kind: i32,
 }
-
 thread_local! {
     // Slint event-loop thread only: pickers start there and results are
     // delivered there through `slint::invoke_from_event_loop`.
@@ -66,6 +67,7 @@ thread_local! {
     static NEXT_PICK_ID: Cell<u64> = const { Cell::new(1) };
     static LIFECYCLE_HANDLER: RefCell<Option<Rc<dyn Fn(LifecycleEvent)>>> = RefCell::new(None);
     static LIFECYCLE_STATE: Cell<(bool, bool)> = const { Cell::new((false, false)) };
+    static STORAGE_SETTINGS_ERROR: RefCell<Option<Rc<dyn Fn(String)>>> = RefCell::new(None);
 }
 
 /// Activity lifecycle changes seen by the Slint poll listener.
@@ -256,6 +258,45 @@ pub(super) fn pick_folder(_title: &str, done: PickDone) {
     start_pick(PICK_TREE, None, done);
 }
 
+pub(super) fn pick_library_folder(done: PickDone) {
+    if !PENDING_PICKS.with(|picks| picks.borrow().values().any(|pick| pick.kind == PICK_LIBRARY_TREE)) {
+        start_pick(PICK_LIBRARY_TREE, None, done);
+    }
+}
+
+pub(crate) fn storage_access() -> Result<(bool, bool), String> {
+    call_activity("storageAccess", |env, activity| {
+        env.call_method(activity, jni_str!("storageAccess"), jni_sig!("()I"), &[])?.i()
+    }).map(|status| (status != 0, status == 2))
+}
+
+pub(crate) fn open_storage_access(on_error: Rc<dyn Fn(String)>) -> Result<(), String> {
+    STORAGE_SETTINGS_ERROR.with(|handler| handler.replace(Some(on_error)));
+    call_activity("openStorageAccess", |env, activity| {
+        env.call_method(activity, jni_str!("openStorageAccess"), jni_sig!("()V"), &[]).map(drop)
+    }).map_err(|error| format!("SHINKI_EMU_ANDROID_STORAGE_SETTINGS: {error}"))
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeOnStorageAccessSettingsError(
+    mut env: EnvUnowned<'_>,
+    _activity: JObject<'_>,
+    error: JString<'_>,
+) {
+    let result = env.with_env(|env| error.try_to_string(env)).into_outcome();
+    let message = match result {
+        jni::Outcome::Ok(error) => error,
+        _ => "SHINKI_EMU_ANDROID_STORAGE_SETTINGS: could not open the system settings page".into(),
+    };
+    if let Err(error) = slint::invoke_from_event_loop(move || {
+        if let Some(handler) = STORAGE_SETTINGS_ERROR.with(|handler| handler.borrow_mut().take()) {
+            handler(message);
+        }
+    }) {
+        tracing::warn!(event = "shinki.emu.android.storage_settings_error_dropped", error = %error);
+    }
+}
+
 pub(super) fn pick_file(_title: &str, filters: &[FileFilter<'_>], done: PickDone) {
     // SAF offers MIME types, not extensions; the picker shows everything and
     // the copied file is checked against the filters.
@@ -355,17 +396,22 @@ fn start_pick(kind: i32, extensions: Option<Vec<String>>, done: PickDone) {
         next.set(id + 1);
         id
     });
-    let destination = match default_data_dir() {
-        Ok(data) => data.join("imports").join(format!("{}-{id}", unix_ms())),
-        Err(error) => return done(Err(error)),
-    };
-    let Some(destination) = destination.to_str().map(str::to_owned) else {
-        return done(Err("SHINKI_EMU_ANDROID_PICK_DESTINATION".to_owned()));
+    let destination = if kind == PICK_LIBRARY_TREE {
+        String::new()
+    } else {
+        let path = match default_data_dir() {
+            Ok(data) => data.join("imports").join(format!("{}-{id}", unix_ms())),
+            Err(error) => return done(Err(error)),
+        };
+        let Some(path) = path.to_str() else {
+            return done(Err("SHINKI_EMU_ANDROID_PICK_DESTINATION".to_owned()));
+        };
+        path.to_owned()
     };
     PENDING_PICKS.with(|pending| {
         pending
             .borrow_mut()
-            .insert(id, PendingPick { done, extensions })
+            .insert(id, PendingPick { done, extensions, kind })
     });
     let started = call_activity("pickDocument", |env, activity| {
         let destination = env.new_string(&destination)?;
@@ -497,7 +543,7 @@ fn unix_ms() -> u128 {
 
 /// Run `call` with the activity object on an attached thread; clears a
 /// pending Java exception so later JNI calls stay valid.
-fn call_activity<T>(
+pub(super) fn call_activity<T>(
     method: &str,
     call: impl FnOnce(&mut Env<'_>, &JObject<'_>) -> jni::errors::Result<T>,
 ) -> Result<T, String> {
@@ -675,8 +721,8 @@ fn call_bridge_secret(
 }
 
 /// Kotlin `MainActivity.nativeOnPickResult(requestId: Long, path: String?, error: String?)`.
-/// Called once after launch or import fails (typed `error`), after a copy
-/// succeeds (`path`), or when the user cancels (both null).
+/// Called once with a copied path, a granted library URI, or a typed failure.
+/// Both strings are null on cancellation.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeOnPickResult(
     mut env: EnvUnowned<'_>,
@@ -709,7 +755,6 @@ pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeOnPickRes
         );
     }
 }
-
 fn optional_string(env: &Env<'_>, value: &JString<'_>) -> jni::errors::Result<Option<String>> {
     if value.as_raw().is_null() {
         Ok(None)

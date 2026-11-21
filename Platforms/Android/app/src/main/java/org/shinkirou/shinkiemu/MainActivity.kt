@@ -32,6 +32,7 @@ class MainActivity : NativeActivity() {
         /** `pickDocument` kinds; must match `PICK_TREE` / `PICK_FILE` in Rust. */
         private const val PICK_TREE = 0
         private const val PICK_FILE = 1
+        private const val PICK_LIBRARY_TREE = 2
         private const val FIRST_REQUEST_CODE = 0xA500
     }
 
@@ -76,21 +77,48 @@ class MainActivity : NativeActivity() {
         Krkr2Host.destroy(this)
     }
 
-    private class PendingPick(val requestId: Long, val kind: Int, val destDir: File)
+    private class PendingPick(val requestId: Long, val kind: Int, val destDir: File?)
 
     // UI thread only.
     private val pendingPicks = HashMap<Int, PendingPick>()
     private var nextRequestCode = FIRST_REQUEST_CODE
 
     /**
-     * Completes `pickDocument`: `path` is the copied file or directory, `error`
+     * Completes `pickDocument`: `path` is a copied path or a library tree URI;
      * a diagnostic code and detail; both null when the user cancelled.
      */
     private external fun nativeOnPickResult(requestId: Long, path: String?, error: String?)
 
+    fun libraryTreeDocument(uri: String): String = ShinkiLibraryTree.document(this, uri)
+    fun libraryTreeChildren(uri: String, limit: Int): String = ShinkiLibraryTree.children(this, uri, limit)
+    fun openLibraryTreeFile(uri: String): Int = ShinkiLibraryTree.openFile(this, uri)
+    fun localLibraryTreePath(uri: String): String? = ShinkiLibraryTree.localPath(this, uri)
+
+    fun storageAccess(): Int {
+        if (android.os.Build.VERSION.SDK_INT < 30) return 0
+        return if (android.os.Environment.isExternalStorageManager()) 2 else 1
+    }
+
+    fun openStorageAccess() {
+        runOnUiThread {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                try {
+                    startActivity(Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.fromParts("package", packageName, null),
+                    ))
+                } catch (failure: RuntimeException) {
+                    nativeOnStorageAccessSettingsError("SHINKI_EMU_ANDROID_STORAGE_SETTINGS: $failure")
+                }
+            }
+        }
+    }
+
+    private external fun nativeOnStorageAccessSettingsError(error: String)
+
     /**
-     * Open the Storage Access Framework picker and copy the picked document
-     * (kind 1) or tree (kind 0) below `destDir`, which must not exist yet.
+     * Pick a file or tree. Library roots (kind 2) retain only a read grant.
+     * Other pickers copy into their own fresh `destDir`.
      */
     fun pickDocument(requestId: Long, kind: Int, destDir: String) {
         runOnUiThread {
@@ -99,7 +127,7 @@ class MainActivity : NativeActivity() {
                 return@runOnUiThread
             }
             val intent = when (kind) {
-                PICK_TREE -> Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                PICK_TREE, PICK_LIBRARY_TREE -> Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 PICK_FILE -> Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "*/*"
@@ -109,9 +137,12 @@ class MainActivity : NativeActivity() {
                     return@runOnUiThread
                 }
             }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (kind == PICK_LIBRARY_TREE) {
+                intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
             val requestCode = nextRequestCode
             nextRequestCode = if (requestCode == 0xFFFF) FIRST_REQUEST_CODE else requestCode + 1
-            pendingPicks[requestCode] = PendingPick(requestId, kind, File(destDir))
+            pendingPicks[requestCode] = PendingPick(requestId, kind, if (kind == PICK_LIBRARY_TREE) null else File(destDir))
             try {
                 // Launch implicitly in this activity's user context. Package visibility can
                 // hide the system picker from a PackageManager lookup even when it can launch.
@@ -130,6 +161,14 @@ class MainActivity : NativeActivity() {
         handleDocumentPickerResult(resultCode, { data?.data }) { uri, error ->
             when {
                 error != null -> failPick(pick.requestId, error)
+                uri != null && pick.kind == PICK_LIBRARY_TREE -> {
+                    try {
+                        val tree = ShinkiLibraryTree.remember(this, uri)
+                        nativeOnPickResult(pick.requestId, tree.toString(), null)
+                    } catch (failure: RuntimeException) {
+                        failPick(pick.requestId, pickerFailure(failure, "SHINKI_EMU_ANDROID_PICK_RESULT"))
+                    }
+                }
                 uri != null -> copyPickedDocument(pick, uri)
                 else -> nativeOnPickResult(pick.requestId, null, null)
             }
@@ -142,9 +181,11 @@ class MainActivity : NativeActivity() {
         try {
             Thread({
                 val copied = try {
+                    val dest = checkNotNull(pick.destDir)
                     when (pick.kind) {
-                        PICK_TREE -> ShinkiPlatformBridge.copyTree(this, uri, pick.destDir)
-                        else -> ShinkiPlatformBridge.copyDocument(this, uri, pick.destDir)
+                        PICK_TREE -> ShinkiPlatformBridge.copyTree(this, uri, dest)
+                        PICK_FILE -> ShinkiPlatformBridge.copyDocument(this, uri, dest)
+                        else -> error("library folders must not be copied")
                     }
                 } catch (failure: Exception) {
                     failPick(pick.requestId, pickerFailure(failure, "SHINKI_EMU_ANDROID_PICK_COPY"))

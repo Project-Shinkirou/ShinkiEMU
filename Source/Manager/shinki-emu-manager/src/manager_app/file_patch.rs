@@ -223,16 +223,12 @@ impl ShinkiEmuManagerController {
     pub(super) fn patch_state_view(&self) -> PatchStateViewModel {
         let mut view = self.patch_state.clone();
         view.running = self.patch_job.is_some();
+        let selected_game = self.patch_game_id.as_deref().and_then(|id| self.game(id).ok());
+        let source = selected_game.as_ref().and_then(|game| self.mapped_game_directory(game));
         // A restore owns exclusive Windows backup handles; do not inspect its
         // changing namespace while the worker is active.
         view.has_backup = self.patch_job.is_none()
-            && self
-                .patch_game_id
-                .as_deref()
-                .and_then(|id| self.game(id).ok())
-                .is_some_and(|game| {
-                    shinki_emu_patch::has_backup(Path::new(&game.location)).unwrap_or(false)
-                });
+            && source.is_some_and(|path| shinki_emu_patch::has_backup(path).unwrap_or(false));
         if view.running || !view.error.is_empty() {
             view.step = 4;
         }
@@ -241,7 +237,7 @@ impl ShinkiEmuManagerController {
             && self.active.is_none()
             && !self.startup_busy()
             && self.cores_ready()
-            && self.patch_game_id.is_some();
+            && source.is_some();
         if view.phase.is_empty() && !view.can_start {
             view.phase = if self.session_running() {
                 tr!("结束游戏后才能应用文件补丁").into()
@@ -251,6 +247,8 @@ impl ShinkiEmuManagerController {
                 tr!("正在加载核心…").into()
             } else if self.startup_busy() || !self.cores_ready() {
                 self.startup_status()
+            } else if selected_game.is_some() && source.is_none() {
+                tr!("此游戏文件夹无法通过本机路径读写，不能应用文件补丁。").into()
             } else {
                 tr!("请先选择游戏").into()
             };
@@ -386,6 +384,7 @@ impl ShinkiEmuManagerController {
             return Err(patch_busy_error());
         }
         let game = self.game(game_id)?;
+        let path = self.patch_game_path(&game)?;
         if self.patch_release_mismatch && self.patch_game_id.as_deref() == Some(game_id) {
             return self.model();
         }
@@ -395,7 +394,7 @@ impl ShinkiEmuManagerController {
         if !unchanged {
             self.patch_release_mismatch = false;
             self.patch_state = PatchStateViewModel {
-                patch_directory: dunce::simplified(Path::new(&game.location))
+                patch_directory: dunce::simplified(path)
                     .to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned(),
                 ..Default::default()
             };
@@ -405,10 +404,18 @@ impl ShinkiEmuManagerController {
     }
 
     fn patch_game(&self) -> Result<GameRecord, String> {
-        self.patch_game_id
-            .as_deref()
-            .ok_or_else(|| "SHINKI_EMU_PATCH_GAME_REQUIRED".to_owned())
-            .and_then(|id| self.game(id))
+        let id = self.patch_game_id.as_deref().ok_or("SHINKI_EMU_PATCH_GAME_REQUIRED")?;
+        let game = self.game(id)?;
+        let path = self.patch_game_path(&game)?;
+        let location = path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned();
+        Ok(GameRecord { location, ..game })
+    }
+
+    fn patch_game_path<'a>(&'a self, game: &'a GameRecord) -> Result<&'a Path, String> {
+        self.native_game_directory(game).map_err(|_| format!(
+            "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
+            tr!("此游戏文件夹无法通过本机路径读写，不能应用文件补丁。")
+        ))
     }
 
     /// Choose a catalog recipe that applies to the selected game.
@@ -546,13 +553,12 @@ impl ShinkiEmuManagerController {
     pub(super) fn open_patch_output(&mut self) -> Result<ManagerViewModel, String> {
         let output = fs::canonicalize(&self.patch_state.output)
             .map_err(|_| "SHINKI_EMU_PATCH_PATH: completed output is no longer available")?;
-        let location = output.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?;
         let game = self
             .library
             .list_games()
             .map_err(|error| error.to_string())?
             .into_iter()
-            .find(|game| game.location == location)
+            .find(|game| self.mapped_game_directory(game) == Some(output.as_path()))
             .ok_or("SHINKI_EMU_GAME_NOT_FOUND")?;
         self.select_case(&game.game_id)
     }
@@ -769,6 +775,12 @@ impl ShinkiEmuManagerController {
                     return Ok(true);
                 }
                 self.patch_state.phase = tr!("文件转换完成，正在导入独立目录…").into();
+                let scan_root = if job.in_place {
+                    // Keep the original library identity (including a SAF URI).
+                    PathBuf::from(self.game(&job.source_game_id)?.location)
+                } else {
+                    result.output.clone()
+                };
                 self.patch_import = Some(PendingImport {
                     output: result.output.clone(),
                     source_game_id: std::mem::take(&mut job.source_game_id),
@@ -776,7 +788,7 @@ impl ShinkiEmuManagerController {
                     in_place: job.in_place,
                 });
                 if let Err(error) =
-                    self.begin_scan(probe_worker::ScanKind::Import, vec![result.output])
+                    self.begin_scan(probe_worker::ScanKind::Import, vec![scan_root])
                 {
                     self.patch_import.take();
                     self.patch_import_failed(error);
@@ -863,7 +875,8 @@ impl ShinkiEmuManagerController {
     pub(super) fn apply_pending_profile(&mut self, game_id: &str, plugin_id: &str) -> Result<(), String> {
         let Some(configuration) = self.library.app_state::<BTreeMap<String, String>>(&format!("pending-patch-configuration:{game_id}"))
             .map_err(|error| error.to_string())? else { return Ok(()); };
-        let profile = shinki_emu_patch::read_output_profile(Path::new(&self.game(game_id)?.location), &std::sync::atomic::AtomicBool::new(false))
+        let game = self.game(game_id)?;
+        let profile = shinki_emu_patch::read_output_profile(self.native_game_directory(&game)?, &std::sync::atomic::AtomicBool::new(false))
             .map_err(|error| error.to_string())?.ok_or("SHINKI_EMU_PATCH_INTEGRITY: receipt missing")?;
         if profile.plugin_id != plugin_id || profile.configuration != configuration {
             return Err("SHINKI_EMU_PATCH_INTEGRITY: output receipt changed before configuration".into());

@@ -306,6 +306,8 @@ impl ShinkiEmuManagerController {
             for game in copies {
                 let label = match self.pinned_releases.get(&game.game_id) {
                     Some(release) if !release.title.is_empty() => release.title.clone(),
+                    #[cfg(target_os = "android")]
+                    _ if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) => game.title.clone(),
                     _ => Path::new(&game.location).file_name().map_or_else(
                         || game.location.clone(),
                         |name| name.to_string_lossy().into_owned(),
@@ -344,6 +346,7 @@ impl ShinkiEmuManagerController {
             .collect();
         let candidate = self.launch_candidate_for_game(game);
         let selected_plugin = self.library.game_settings(&game.game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
+        let native_eligible = self.mapped_game_directory(game).is_some();
         let joined = |values: &[String]| values.join(", ");
         Ok(SelectionViewModel {
             game: SelectedGameViewModel {
@@ -354,6 +357,7 @@ impl ShinkiEmuManagerController {
                 emulator_id: selected_plugin.unwrap_or_default(),
                 launchable: !self.patch_busy()
                     && !self.startup_busy()
+                    && native_eligible
                     && !shinki_emu_patch::is_staging_path(Path::new(&game.location))
                     && candidate.is_some(),
                 problem: self.game_problem(game),
@@ -600,7 +604,13 @@ impl ShinkiEmuManagerController {
         if self.patch_busy() {
             return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
         }
-        if !Path::new(&game.location).is_dir() { return tr!("游戏目录当前不可用").into(); }
+        let Some(path) = self.mapped_game_directory(game) else {
+            #[cfg(target_os = "android")]
+            return library::saf_only_problem().into();
+            #[cfg(not(target_os = "android"))]
+            return tr!("游戏目录当前不可用").into();
+        };
+        if !path.is_dir() { return tr!("游戏目录当前不可用").into(); }
         if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
             if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重启应用").into(); }
             let error = self.game_configuration_error(&game.game_id, Some(&plugin));
