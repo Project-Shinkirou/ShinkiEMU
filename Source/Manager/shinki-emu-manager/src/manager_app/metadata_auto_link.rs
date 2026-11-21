@@ -3,7 +3,7 @@
 //! exactly one result has the same normalized title.
 
 use super::*;
-use shinki_emu_manager_ui_slint::tr;
+use shinki_emu_manager_ui_slint::{describe_error, tr};
 
 /// Game ids whose automatic search has run. Pruned to library games on every
 /// write, so the set stays bounded by the library and removed games drop out.
@@ -117,7 +117,7 @@ impl ShinkiEmuManagerController {
                     return Ok(());
                 }
                 Err(error) => {
-                    self.stop_auto_link(error);
+                    self.stop_auto_link(game_id, error);
                     return Ok(());
                 }
             }
@@ -134,9 +134,7 @@ impl ShinkiEmuManagerController {
         let AutoLinkRequest { game_id, stage, .. } = request;
         match (stage, result) {
             (_, Err(error)) => {
-                self.metadata_status
-                    .insert(game_id, MetadataStatus::Error(tr!("请求失败，请检查错误信息后重试").into()));
-                self.stop_auto_link(error);
+                self.stop_auto_link(game_id, error);
                 return Ok(());
             }
             (AutoLinkStage::Search { query }, Ok(MetadataPayload::Search(records))) => {
@@ -169,7 +167,7 @@ impl ShinkiEmuManagerController {
                                 stage: AutoLinkStage::Fetch,
                             });
                         }
-                        Err(error) => self.stop_auto_link(error),
+                        Err(error) => self.stop_auto_link(game_id, error),
                     }
                     return Ok(());
                 }
@@ -195,17 +193,22 @@ impl ShinkiEmuManagerController {
         self.pump_auto_link()
     }
 
-    /// End the batch after a failed request: one diagnostic, no attempt
-    /// marks, and the remaining games are retried at the next trigger.
-    fn stop_auto_link(&mut self, error: String) {
+    /// End the batch after a failed request. Keep its error with the affected
+    /// game and let the remaining games retry at the next trigger.
+    fn stop_auto_link(&mut self, game_id: String, error: String) {
         tracing::warn!(
             event = "shinki.emu.metadata.auto_link_stopped",
             remaining = self.auto_link_queue.len(),
             diagnostic_code = %error
         );
         self.auto_link_queue.clear();
-        self.diagnostic = error;
-        self.diagnostic_severity = "error";
+        let reason = describe_error(&error);
+        let message = if reason.detail.is_empty() {
+            reason.title
+        } else {
+            reason.detail
+        };
+        self.metadata_status.insert(game_id, MetadataStatus::Error(message));
     }
 
     pub(super) fn mark_auto_link_attempted(&mut self, game_id: &str) -> Result<(), String> {

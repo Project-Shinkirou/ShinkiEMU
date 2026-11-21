@@ -107,6 +107,14 @@ impl ShinkiEmuManagerController {
             let game_id = pending.game_id;
             if self.metadata_sync.request.as_deref() == Some(completion.request_id.as_str()) {
                 self.metadata_sync.request = None;
+                let result = completion.result.and_then(|payload| match payload {
+                    MetadataPayload::Synced(outcome) => self.apply_sync_outcome(*outcome),
+                    _ => Err("SHINKI_EMU_METADATA_RESPONSE_UNEXPECTED".into()),
+                });
+                if let Err(error) = result {
+                    self.record_sync_error(error);
+                }
+                continue;
             }
             if let Some(request) = self
                 .auto_link
@@ -179,12 +187,8 @@ impl ShinkiEmuManagerController {
                 self.releases.insert(game_id.into(), releases);
             }
             MetadataPayload::BangumiPlaySynced => self.diagnostic.clear(),
-            MetadataPayload::Synced(outcome) => {
-                if let Err(error) = self.apply_sync_outcome(*outcome) {
-                    tracing::warn!(event = "shinki.emu.metadata.sync_rejected", diagnostic_code = %error);
-                    self.diagnostic = error;
-                    self.diagnostic_severity = "error";
-                }
+            MetadataPayload::Synced(_) => {
+                return Err("SHINKI_EMU_METADATA_RESPONSE_UNEXPECTED".into());
             }
         }
         Ok(())

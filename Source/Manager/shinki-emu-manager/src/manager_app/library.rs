@@ -272,7 +272,7 @@ impl ShinkiEmuManagerController {
             metadata_catalog,
             metadata_sync: metadata_sync::SyncState {
                 record: metadata_sync_record,
-                request: None,
+                ..Default::default()
             },
             pinned_releases,
             filter_settings,

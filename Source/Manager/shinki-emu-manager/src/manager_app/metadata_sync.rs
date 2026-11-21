@@ -29,6 +29,7 @@ pub(super) struct SyncRecord {
 pub(super) struct SyncState {
     pub(super) record: SyncRecord,
     pub(super) request: Option<String>,
+    pub(super) error: Option<String>,
 }
 
 /// The release a game is matched by: the pinned rID, otherwise the only rID
@@ -278,7 +279,7 @@ impl ShinkiEmuManagerController {
             self.metadata_sync.record.etag.clone()
         };
         let request_id = self.next_metadata_id("sync")?;
-        self.metadata.submit(MetadataCommand {
+        if let Err(error) = self.metadata.submit(MetadataCommand {
             request_id: request_id.clone(),
             case_identity: String::new(),
             provider: MetadataProviderId::Vndb,
@@ -289,13 +290,22 @@ impl ShinkiEmuManagerController {
                 etag,
                 cached,
             },
-        })?;
+        }) {
+            self.record_sync_error(error);
+            return self.model();
+        }
         self.pending_metadata.insert(
             request_id.clone(),
             PendingMetadata { game_id: None },
         );
         self.metadata_sync.request = Some(request_id);
+        self.metadata_sync.error = None;
         self.model()
+    }
+
+    pub(super) fn record_sync_error(&mut self, error: String) {
+        tracing::warn!(event = "shinki.emu.metadata.sync_failed", diagnostic_code = %error);
+        self.metadata_sync.error = Some(error);
     }
 
     pub(super) fn apply_sync_outcome(&mut self, outcome: SyncOutcome) -> Result<(), String> {
@@ -338,6 +348,8 @@ impl ShinkiEmuManagerController {
     pub(super) fn network_view(&self, now_ms: i64) -> NetworkViewModel {
         let sync_status = if self.metadata_sync.request.is_some() {
             tr!("正在同步…").into()
+        } else if let Some(error) = &self.metadata_sync.error {
+            tr!("同步失败：{error}", error = error)
         } else {
             match (&self.metadata_catalog, self.metadata_sync.record.synced_at_unix_ms) {
                 (None, _) => tr!("未同步").into(),

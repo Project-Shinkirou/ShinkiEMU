@@ -240,6 +240,74 @@ fn metadata_sync_requires_network_permission() {
 }
 
 #[test]
+fn catalog_network_failure_stays_in_settings_and_local_import_continues() {
+    use crate::metadata_runtime::MetadataCompletion;
+
+    let error =
+        shinki_emu_metadata::MetadataError::Network("error sending request".into()).to_string();
+    for cached in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = controller(&root.path().join("manager"));
+        app.metadata_catalog = None;
+        if cached {
+            let files = files(compatibility_json(""), "");
+            app.apply_sync_outcome(SyncOutcome::Updated {
+                index: index(1, &files),
+                etag: Some("\"old\"".into()),
+                files,
+            })
+            .unwrap();
+        }
+        let record = app.metadata_sync.record.clone();
+        let (runtime, commands, completions) = MetadataRuntime::scripted();
+        app.metadata = runtime;
+
+        // Onboarding's network opt-in starts a remote catalog sync.
+        assert!(app.set_network_allowed(true).unwrap().network.syncing);
+        let command = commands.try_recv().unwrap();
+        completions
+            .send(MetadataCompletion {
+                request_id: command.request_id,
+                case_identity: command.case_identity,
+                provider: command.provider,
+                result: Err(error.clone()),
+            })
+            .unwrap();
+        let failed = app.poll_platform().unwrap().unwrap();
+        assert!(failed.network.allowed);
+        assert!(!failed.network.syncing);
+        assert!(failed.network.sync_status.contains(&error));
+
+        let game = root.path().join("local-game");
+        super::recognition_tests::write_game(&game);
+        let id = super::recognition_tests::import(&mut app, &game);
+        assert_eq!(app.game(&id).unwrap().family_id.as_deref(), Some("fvp"));
+        let imported = app.model().unwrap();
+        assert!(imported.network.sync_status.contains(&error));
+        for model in [&failed, &imported] {
+            assert!(
+                !model
+                    .notices
+                    .items
+                    .iter()
+                    .any(|notice| notice.code == "SHINKI_EMU_METADATA_NETWORK")
+            );
+        }
+        assert_eq!(app.metadata_sync.record, record);
+        assert_eq!(
+            app.metadata_catalog
+                .as_ref()
+                .map(|catalog| catalog.index.generated_at_unix_ms),
+            cached.then_some(1),
+        );
+
+        let retry = app.sync_metadata().unwrap();
+        assert!(retry.network.syncing);
+        assert!(!retry.network.sync_status.contains(&error));
+    }
+}
+
+#[test]
 fn rejected_update_keeps_the_previous_catalog_and_sync_record() {
     let root = tempfile::tempdir().unwrap();
     let mut app = controller(root.path());

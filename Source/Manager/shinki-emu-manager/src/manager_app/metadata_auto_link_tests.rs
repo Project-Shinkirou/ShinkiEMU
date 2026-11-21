@@ -1,5 +1,6 @@
 use super::*;
 use metadata_runtime::MetadataCompletion;
+use shinki_emu_manager_ui_slint::describe_error;
 use std::sync::mpsc;
 
 struct Harness {
@@ -329,9 +330,15 @@ fn request_error_stops_the_batch_without_marking() {
     assert!(h.submitted().is_none());
     assert!(h.app.auto_link_queue.is_empty());
     assert!(h.app.auto_link_attempted.is_empty());
-    assert_eq!(h.app.diagnostic, "SHINKI_EMU_METADATA_RATE_LIMITED");
+    let model = h.app.model().unwrap();
+    assert!(!model.notices.items.iter().any(|notice| notice.code == "SHINKI_EMU_METADATA_RATE_LIMITED"));
     h.app.selected_case_id = Some("a".into());
-    assert!(h.app.model().unwrap().selection.metadata_error);
+    let selection = h.app.model().unwrap().selection;
+    assert!(selection.metadata_error);
+    assert_eq!(
+        selection.metadata_status,
+        describe_error("SHINKI_EMU_METADATA_RATE_LIMITED").detail
+    );
     h.app.selected_case_id = Some("b".into());
     assert!(!h.app.model().unwrap().selection.metadata_error);
     h.app.selected_case_id = Some("a".into());
