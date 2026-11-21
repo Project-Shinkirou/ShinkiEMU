@@ -612,6 +612,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     let runtime_pointer = pointer.clone();
     let runtime_gamepad = gamepad.clone();
     let runtime_pad_session = std::rc::Rc::new(Cell::new(false));
+    let service_pad_session = runtime_pad_session.clone();
     *runtime_schedule.borrow_mut() = Some(Box::new(move || {
         let timer = schedule_timer.clone();
         let slot = runtime_schedule_slot.clone();
@@ -636,20 +637,16 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
             if let Some(window) = weak.upgrade() {
                 let result = controller.borrow_mut().advance_runtime();
                 match result {
-                    Ok(Some(model)) => apply_model(&adapter, &model),
-                    Ok(None) => {}
+                    Ok(model) => {
+                        let running = controller.borrow().is_game_active();
+                        apply_session_progress(&window, &adapter, model, running);
+                    }
                     Err(error) => {
                         terminate_game(&controller, &adapter, &window, error);
                     }
                 }
                 let session = window.global::<Session>();
                 let running = controller.borrow().is_game_active();
-                if session.get_active() && !running {
-                    // The core ended the game itself: leave exactly like 「返回游戏库」.
-                    if let Err(error) = clear_game_view(&window) {
-                        report_error(&window, &error);
-                    }
-                }
                 session.set_active(running);
                 if !running {
                     release_session_mapping(&controller, &gamepad, &pad_session, &window);
@@ -730,6 +727,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let gamepad = gamepad.clone();
         let weak_window = adapter.window().as_weak();
         let pending = async_events_pending.clone();
+        let pad_session = service_pad_session;
         let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
         std::rc::Rc::new(move || {
             let Some(window) = weak_window.upgrade() else {
@@ -748,8 +746,13 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
             }
             let poll_result = controller.borrow_mut().poll_platform();
             match poll_result {
-                Ok(Some(model)) => apply_model(&weak_adapter, &model),
-                Ok(None) => {}
+                Ok(model) => {
+                    let running = controller.borrow().is_game_active();
+                    apply_session_progress(&window, &weak_adapter, model, running);
+                    if !running {
+                        release_session_mapping(&controller, &gamepad, &pad_session, &window);
+                    }
+                }
                 Err(error) => terminate_game(&controller, &weak_adapter, &window, error),
             }
             let polled = gamepad.borrow_mut().poll();
@@ -1093,6 +1096,25 @@ fn record_fatal(slot: &std::cell::RefCell<Option<String>>, error: String) {
 fn apply_model(adapter: &std::rc::Weak<SlintManagerAdapter>, model: &ManagerViewModel) {
     if let Some(adapter) = adapter.upgrade() {
         adapter.apply(model);
+    }
+}
+
+/// Either poll can consume the owner's finished update. Tear down the game
+/// view before applying its inactive model so "opening" cannot cover the library.
+fn apply_session_progress(
+    window: &shinki_emu_manager_ui_slint::ManagerWindow,
+    adapter: &std::rc::Weak<SlintManagerAdapter>,
+    model: Option<ManagerViewModel>,
+    running: bool,
+) {
+    if !running
+        && window.global::<Session>().get_active()
+        && let Err(error) = clear_game_view(window)
+    {
+        report_error(window, &error);
+    }
+    if let Some(model) = model {
+        apply_model(adapter, &model);
     }
 }
 

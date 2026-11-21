@@ -65,7 +65,7 @@ fn assert_finished_record(controller: &mut ShinkiEmuManagerController) {
 }
 
 #[test]
-fn a_game_the_core_ends_is_recorded_as_finished_and_returns_to_the_library() {
+fn session_finish_background_poll_records_the_ended_session() {
     let root = tempfile::tempdir().unwrap();
     let finish = Arc::new(AtomicBool::new(false));
     let trigger = finish.clone();
@@ -86,9 +86,19 @@ fn a_game_the_core_ends_is_recorded_as_finished_and_returns_to_the_library() {
     assert!(!controller.held_controls.is_empty());
     std::thread::sleep(Duration::from_millis(20));
     finish.store(true, Ordering::Release);
-    pump_until(&mut controller, &woken, |controller| {
-        controller.active.is_none()
-    });
+    // Consume completion exclusively through the render-service poll, without
+    // relying on advance_runtime or a later timer to publish the final model.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let finished = loop {
+        assert!(Instant::now() < deadline, "background poll did not observe completion");
+        let _ = woken.recv_timeout(Duration::from_millis(8));
+        let model = controller.poll_platform().unwrap();
+        if controller.active.is_none() {
+            break model.expect("finish publishes a model");
+        }
+    };
+    assert_eq!(finished.notices.snackbar.text, "游戏已结束");
+    assert!(finished.session.launch_game_id.is_empty());
     assert_finished_record(&mut controller);
     assert!(history(&controller)[0].duration_ms >= 20);
     assert_returned_to_library(&mut controller);
