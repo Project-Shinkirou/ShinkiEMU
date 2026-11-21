@@ -147,7 +147,8 @@ impl ProbeCache {
         cancellation: &NativeCancellation,
     ) -> Result<(Vec<EngineDetection>, bool), String> {
         if cancellation.is_cancelled() { return Err("SHINKI_EMU_SCAN_CANCELLED".into()); }
-        let canonical = fs::canonicalize(path).map_err(|error| format!("SHINKI_EMU_GAME_DIRECTORY_INVALID: {error}"))?;
+        let canonical = fs::canonicalize(path)
+            .map_err(|error| format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}"))?;
         let path = canonical.as_path();
         if reuse && let Some(detections) = self.get(path) {
             if cancellation.is_cancelled() { return Err("SHINKI_EMU_SCAN_CANCELLED".into()); }
@@ -157,7 +158,8 @@ impl ProbeCache {
         let before = game_stamp(path);
         let detections = detection::detect_game_directory(path, cancellation).map_err(|error| match error {
             detection::DetectionError::Cancelled => "SHINKI_EMU_SCAN_CANCELLED".into(),
-            other => format!("SHINKI_EMU_GAME_DETECTION: {other}"),
+            detection::DetectionError::Io(error) => format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}"),
+            detection::DetectionError::ReadLimit => "SHINKI_EMU_GAME_DIRECTORY_BOUNDS".into(),
         })?;
         if cancellation.is_cancelled() { return Err("SHINKI_EMU_SCAN_CANCELLED".into()); }
         if detections.len() <= MAX_CANDIDATES

@@ -2,10 +2,14 @@ use super::*;
 
 const SCAN_PROGRESS_INTERVAL: usize = 64;
 
-fn canonical_directory(path: &Path) -> Result<Option<PathBuf>, String> {
+pub(super) fn canonical_directory(path: &Path) -> Result<Option<PathBuf>, String> {
     let canonical = match fs::canonicalize(path) {
         Ok(path) => path,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error)
+            if matches!(error.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) =>
+        {
+            return Ok(None);
+        }
         Err(error) => return Err(format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}")),
     };
     match fs::metadata(&canonical) {
@@ -139,7 +143,9 @@ pub(super) fn scan(
             let (detections, hit) = cache.detect(&path, allow_hint, &request.cancel)?;
             report.cache_hits += usize::from(hit);
             let matched = !detections.is_empty();
-            let patch_profile = if request.kind == ScanKind::Import {
+            // An import interrupted after saving its root is discovered on the
+            // next startup. Validate the receipt before registering a game.
+            let patch_profile = if request.kind == ScanKind::Import || (matched && !known.contains_key(&path)) {
                 match shinki_emu_patch::read_output_profile(&path, shutdown) {
                     Ok(Some(profile)) => Some(Ok(profile)),
                     Ok(None) => None,
@@ -162,12 +168,12 @@ pub(super) fn scan(
             } else if depth < MAX_SCAN_DEPTH {
                 let mut children = Vec::new();
                 for entry in
-                    fs::read_dir(&path).map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION")?
+                    fs::read_dir(&path).map_err(directory_entry_error)?
                 {
-                    let entry = entry.map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION")?;
+                    let entry = entry.map_err(directory_entry_error)?;
                     let kind = entry
                         .file_type()
-                        .map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION")?;
+                        .map_err(directory_entry_error)?;
                     let child = entry.path();
                     if kind.is_dir()
                         && !kind.is_symlink()
@@ -189,4 +195,8 @@ pub(super) fn scan(
     }
     report.cache_error = cache.save().err();
     Ok(report)
+}
+
+fn directory_entry_error(error: std::io::Error) -> String {
+    format!("SHINKI_EMU_GAME_DIRECTORY_ENUMERATION: {error}")
 }

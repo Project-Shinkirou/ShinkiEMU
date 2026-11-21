@@ -168,8 +168,8 @@ pub fn run(args: Arguments) -> Result<crate::capture::Capture> {
     }
     .into();
     model.app.appearance.reduce_motion = true;
-    model.resale_notice.acknowledged = true;
     model.library.prepare_state = "ready".into();
+    model.library.can_refresh = true;
     model.settings.roots = data.roots;
     for (index, game) in data.games.into_iter().enumerate() {
         let id = format!("demo-{index}");

@@ -32,8 +32,6 @@ mod modals;
 // Desktop drives the native window through winit; Android's NativeActivity
 // surface has no winit window, so these modules gate their winit code and
 // provide Android implementations of the same functions.
-#[path = "host_notice.rs"]
-mod notice;
 #[path = "host_pointer.rs"]
 mod pointer;
 #[path = "host_settings_callbacks.rs"]
@@ -170,11 +168,10 @@ pub trait ManagerController: 'static {
         event: shinki_emu_manager_core::model::FamilyEvent,
     ) -> Result<(), String>;
     fn is_game_active(&self) -> bool;
-    /// Load cores on first use (never at startup), then scan every library root.
-    /// `SHINKI_EMU_PREPARE_BUSY` while loading/scanning, `SHINKI_EMU_PREPARE_RESTART_REQUIRED` after failure.
-    fn prepare_library(&mut self) -> Result<ManagerViewModel, String>;
+    /// Refresh a ready library or retry a recoverable scan failure.
+    fn refresh_library(&mut self) -> Result<ManagerViewModel, String>;
     /// Cancel a running scan; core loading cannot be cancelled.
-    fn cancel_prepare(&mut self) -> Result<ManagerViewModel, String>;
+    fn cancel_library_scan(&mut self) -> Result<ManagerViewModel, String>;
     /// Hide a game from the library and later scans; the snackbar offers undo.
     fn remove_from_library(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;
     fn restore_game(&mut self, game_id: &str) -> Result<ManagerViewModel, String>;
@@ -196,16 +193,11 @@ pub trait ManagerController: 'static {
     ) -> Result<ManagerViewModel, String>;
     /// Whether the persisted network permission is granted.
     fn network_allowed(&self) -> bool;
-    /// Persist a library root without loading cores or scanning.
-    fn add_library_root(&mut self, path: &std::path::Path) -> Result<ManagerViewModel, String>;
     fn remove_library_root(&mut self, path: &str) -> Result<ManagerViewModel, String>;
     fn onboarding_completed(&self) -> Result<bool, String>;
     /// Persisted `AppearanceSettings::language`.
     fn language(&self) -> String;
     fn finish_onboarding(&mut self) -> Result<ManagerViewModel, String>;
-    fn notice_presented(&mut self, now: Instant, visible: bool) -> Result<(), String>;
-    fn acknowledge_notice(&mut self, checked: bool) -> Result<ManagerViewModel, String>;
-    fn notice_state(&self) -> shinki_emu_manager_ui_slint::ResaleNoticeViewModel;
     fn game_location(&self, game_id: &str) -> Result<std::path::PathBuf, String>;
     fn data_dir(&self) -> &std::path::Path;
     fn model(&mut self) -> Result<ManagerViewModel, String>;
@@ -708,7 +700,6 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     game_callbacks::install(&wiring, &renderer, &runtime_schedule);
     settings_callbacks::install(&wiring, &restart);
     library_callbacks::install(&wiring);
-    let notice_host = notice::install(&adapter, &controller).map_err(HostError::Renderer)?;
     store_callbacks::install(&wiring);
     {
         let close_controller = controller.clone();
@@ -815,12 +806,8 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let controller = controller.clone();
         let weak_adapter = std::rc::Rc::downgrade(&adapter);
         let weak_window = adapter.window().as_weak();
-        let frame_notice = notice_host.clone();
         let first_ui_frame_pending = Cell::new(true);
         move || -> Result<(), String> {
-            if let Some(window) = weak_window.upgrade() {
-                frame_notice.presented(&window, &controller)?;
-            }
             if first_ui_frame_pending.replace(false) {
                 crate::startup::mark("first_ui_frame_rendered");
                 let weak = weak_window.clone();
@@ -1001,7 +988,6 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
     crate::startup::mark("window_show_returned");
     let run_result = adapter.window().run();
     runtime_timer.stop();
-    notice_host.stop();
     runtime_schedule.borrow_mut().take();
     let shutdown_result = controller.borrow_mut().leave_game();
     // A notifier can be torn down only when the window is dropped. Drain the

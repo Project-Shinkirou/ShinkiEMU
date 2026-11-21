@@ -9,12 +9,18 @@ pub(super) enum StartupState {
     Scanning(ScanKind),
     Ready,
     Failed(String),
+    OwnerFailed(String),
 }
 
-/// Scan started automatically once installed package identities are available.
-pub(super) enum PendingScan {
-    Full,
-    Import(PathBuf),
+#[derive(Clone, Copy)]
+pub(super) enum FullScan {
+    Initial,
+    Refresh,
+}
+
+pub(super) enum LibraryScan {
+    Full(FullScan),
+    Roots(BTreeSet<PathBuf>),
 }
 
 impl ShinkiEmuManagerController {
@@ -35,8 +41,7 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn startup_status(&self) -> String {
         match &self.startup_state {
-            StartupState::Waiting => tr!("点击“准备”识别游戏并扫描资料库。").into(),
-            StartupState::Loading => tr!("正在读取核心安装清单…").into(),
+            StartupState::Waiting | StartupState::Loading => tr!("正在读取核心安装清单…").into(),
             StartupState::Scanning(kind) => {
                 let import = *kind == ScanKind::Import;
                 match (self.prepare_progress, import) {
@@ -54,50 +59,70 @@ impl ShinkiEmuManagerController {
                     (_, false) => tr!("正在扫描资料库…").into(),
                 }
             }
-            StartupState::Failed(error) if self.registry.is_ready() => {
-                tr!("游戏扫描失败：{error}", error = error)
-            }
             StartupState::Failed(error) => {
-                tr!("核心清单或后台运行失败：{error}。请修复后重启应用。", error = error)
+                let (code, detail) = error.split_once(": ").unwrap_or((error.as_str(), error.as_str()));
+                match code {
+                    "SHINKI_EMU_GAME_DIRECTORY_INVALID" => tr!("目录已不可用，请检查或移除该目录。").into(),
+                    "SHINKI_EMU_GAME_DIRECTORY_IO" | "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION" => {
+                        tr!("无法读取游戏目录：{error}", error = detail)
+                    }
+                    "SHINKI_EMU_GAME_DIRECTORY_BOUNDS" => tr!("目录范围过大，请移除该目录并添加较小的目录。").into(),
+                    code if code.starts_with("SHINKI_EMU_PATCH_") => {
+                        tr!("补丁输出信息无效，请检查补丁或移除该目录。").into()
+                    }
+                    _ => tr!("游戏扫描失败：{error}", error = detail),
+                }
             }
-            StartupState::Ready if !self.plugin_errors.is_empty() => tr!(
-                "有 {count} 个核心文件处理失败，请查看核心诊断；修复或更换核心后需重启应用。",
-                count = self.plugin_errors.len()
+            StartupState::OwnerFailed(error) => {
+                tr!("核心清单或后台运行失败：{error}。请重启应用。", error = error)
+            }
+            StartupState::Ready => String::new(),
+        }
+    }
+
+    pub(super) fn prepare_view(&self) -> (&'static str, &'static str, bool) {
+        match self.startup_state {
+            StartupState::Waiting | StartupState::Loading => ("loading-cores", "", false),
+            StartupState::Scanning(_) => (
+                "scanning",
+                "",
+                self.scan_cancel.as_ref().is_some_and(|cancel| !cancel.is_cancelled()),
             ),
-            StartupState::Ready => tr!("资料库已准备好。更换核心文件后需重启应用。").into(),
+            StartupState::Ready => ("ready", tr!("刷新资料库"), false),
+            StartupState::Failed(_) => ("failed", tr!("重试"), false),
+            StartupState::OwnerFailed(_) => ("failed", "", false),
         }
     }
 
-    pub(super) fn prepare_view(&self) -> (&'static str, &'static str, Option<f32>, bool) {
-        let progress = None;
-        match self.startup_state {
-            StartupState::Waiting => ("unprepared", tr!("准备"), None, false),
-            StartupState::Loading => ("loading-cores", tr!("准备"), progress, false),
-            StartupState::Scanning(_) => ("scanning", tr!("刷新资料库"), None, true),
-            StartupState::Ready => ("ready", tr!("刷新资料库"), None, false),
-            StartupState::Failed(_) => ("failed", tr!("准备"), None, false),
-        }
+    pub(super) fn can_refresh_library(&self) -> bool {
+        self.cores_ready() && !self.startup_busy() && self.active.is_none() && !self.patch_busy()
     }
 
-    /// Read installed identities on first use, then recognize configured roots.
-    pub(super) fn prepare_library(&mut self) -> Result<ManagerViewModel, String> {
+    pub(super) fn refresh_library(&mut self) -> Result<ManagerViewModel, String> {
         self.ensure_owner_idle()?;
-        match self.startup_state {
-            StartupState::Waiting => {
-                self.refresh_cores()?;
-                self.prepare_scan_pending = Some(PendingScan::Full);
-            }
-            StartupState::Ready => self.begin_scan(ScanKind::Full, self.scan_roots()?)?,
-            StartupState::Failed(_) if self.registry.is_ready() => self.begin_scan(ScanKind::Full, self.scan_roots()?)?,
-            StartupState::Loading | StartupState::Scanning(_) => {
-                return Err("SHINKI_EMU_PREPARE_BUSY".into());
-            }
-            StartupState::Failed(_) => return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into()),
+        if self.patch_busy() {
+            return Err(format!(
+                "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
+                tr!("文件补丁转换期间不能扫描游戏")
+            ));
         }
+        if self.startup_busy() || matches!(self.startup_state, StartupState::Waiting) {
+            return Err("SHINKI_EMU_PREPARE_BUSY".into());
+        }
+        if !self.cores_ready() {
+            return Err("SHINKI_EMU_PREPARE_RESTART_REQUIRED".into());
+        }
+        if !matches!(self.startup_state, StartupState::Failed(_))
+            || (self.pending_full_scan.is_none() && self.pending_scan_roots.is_empty())
+        {
+            self.pending_full_scan = Some(FullScan::Refresh);
+        }
+        self.startup_state = StartupState::Ready;
+        self.pump_library_scan();
         self.model()
     }
 
-    pub(super) fn cancel_prepare(&mut self) -> Result<ManagerViewModel, String> {
+    pub(super) fn cancel_library_scan(&mut self) -> Result<ManagerViewModel, String> {
         if !matches!(self.startup_state, StartupState::Scanning(_)) {
             return Err("SHINKI_EMU_PREPARE_NOT_CANCELLABLE".into());
         }
@@ -132,7 +157,71 @@ impl ShinkiEmuManagerController {
         Ok(())
     }
 
+    pub(super) fn queue_library_root(&mut self, root: PathBuf) {
+        if !matches!(&self.library_scan, Some(LibraryScan::Roots(roots)) if roots.contains(&root)) {
+            self.pending_scan_roots.insert(root);
+        }
+        self.pump_library_scan();
+    }
+
+    pub(super) fn forget_queued_root(&mut self, root: &Path) {
+        self.pending_scan_roots.remove(root);
+        if let Some(LibraryScan::Roots(roots)) = &mut self.library_scan
+            && roots.remove(root)
+        {
+            self.pending_scan_roots.append(roots);
+            if let Some(cancel) = &self.scan_cancel {
+                cancel.cancel();
+            }
+        }
+    }
+
+    /// Dispatch only while the owner can scan. Completions and newly added roots
+    /// call this again; a failure keeps the request queued for an explicit retry.
+    pub(super) fn pump_library_scan(&mut self) -> bool {
+        if !matches!(self.startup_state, StartupState::Ready) || !self.can_refresh_library() {
+            return false;
+        }
+        if let Some(full) = self.pending_full_scan.take() {
+            let result = self.scan_roots().and_then(|mut paths| {
+                // A newly chosen root needs import (including patch receipts),
+                // not the startup pass over roots already in the library.
+                paths.retain(|path| !self.pending_scan_roots.contains(path));
+                self.begin_scan(ScanKind::Full, paths)
+            });
+            match result {
+                Ok(()) if matches!(self.startup_state, StartupState::Scanning(_)) => {
+                    self.library_scan = Some(LibraryScan::Full(full));
+                    return true;
+                }
+                Ok(()) if matches!(full, FullScan::Refresh) && self.pending_scan_roots.is_empty() => {
+                    self.show_snackbar(tr!("资料库已是最新"), None);
+                    return true;
+                }
+                Ok(()) => {}
+                Err(error) => {
+                    self.pending_full_scan = Some(full);
+                    self.scan_failed(error);
+                    return true;
+                }
+            }
+        }
+        if self.pending_scan_roots.is_empty() {
+            return false;
+        }
+        let roots = std::mem::take(&mut self.pending_scan_roots);
+        match self.begin_scan(ScanKind::Import, roots.iter().cloned().collect()) {
+            Ok(()) => self.library_scan = Some(LibraryScan::Roots(roots)),
+            Err(error) => {
+                self.pending_scan_roots = roots;
+                self.scan_failed(error);
+            }
+        }
+        true
+    }
+
     pub(super) fn begin_scan(&mut self, kind: ScanKind, paths: Vec<PathBuf>) -> Result<(), String> {
+        self.ensure_owner_idle()?;
         if self.patch_job.is_some() {
             return Err(format!(
                 "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
@@ -149,6 +238,9 @@ impl ShinkiEmuManagerController {
             .library
             .list_games()
             .map_err(|error| error.to_string())?;
+        if kind == ScanKind::Full && paths.is_empty() && games.is_empty() {
+            return Ok(());
+        }
         let excluded = self
             .library
             .excluded_games()
@@ -167,11 +259,10 @@ impl ShinkiEmuManagerController {
         self.scan_cancel = Some(cancel);
         self.prepare_progress = None;
         self.startup_state = StartupState::Scanning(kind);
-        self.diagnostic.clear();
         Ok(())
     }
 
-    pub(super) fn poll_background(&mut self) -> Result<bool, String> {
+    pub(super) fn poll_background(&mut self) -> bool {
         let mut changed = false;
         let mut loaded = false;
         while let Some(event) = self.registry.take_background() {
@@ -196,68 +287,83 @@ impl ShinkiEmuManagerController {
                     self.prepare_progress = Some(progress);
                 }
                 owner::BackgroundEvent::Scanned(kind, result) => {
-                    self.scan_cancel = None;
+                    let cancelled = self.scan_cancel.take().is_some_and(|cancel| cancel.is_cancelled());
+                    let scan = self.library_scan.take();
                     self.prepare_progress = None;
                     match result {
+                        _ if cancelled => self.scan_cancelled(scan.as_ref()),
+                        Err(error) if error == "SHINKI_EMU_SCAN_CANCELLED" => {
+                            self.scan_cancelled(scan.as_ref());
+                        }
+                        Err(error) => {
+                            self.requeue_library_scan(scan);
+                            self.scan_failed(error);
+                        }
                         Ok(report) => {
                             self.startup_state = StartupState::Ready;
                             match self.apply_scan_report(kind, report) {
                                 Ok(added) => {
-                                    if kind == ScanKind::Full {
-                                        self.show_snackbar(
-                                            if added > 0 {
-                                                tr!("发现 {added} 部新作品", added = added)
-                                            } else {
-                                                tr!("资料库已是最新").into()
-                                            },
-                                            None,
-                                        );
-                                    }
-                                    if let Err(error) = self.enqueue_auto_link() {
-                                        self.diagnostic = error;
-                                        self.diagnostic_severity = "error";
+                                    let refresh = matches!(scan, Some(LibraryScan::Full(FullScan::Refresh)));
+                                    if added > 0 {
+                                        self.show_snackbar(tr!("发现 {added} 部新作品", added = added), None);
+                                    } else if refresh {
+                                        self.show_snackbar(tr!("资料库已是最新"), None);
                                     }
                                 }
                                 Err(error) => {
-                                    self.background_failed(error.clone());
-                                    return Err(error);
+                                    self.requeue_library_scan(scan);
+                                    self.scan_failed(error);
                                 }
                             }
                         }
-                        Err(error) if error == "SHINKI_EMU_SCAN_CANCELLED" => {
-                            self.startup_state = StartupState::Ready;
-                            if self.patch_import.take().is_some() {
-                                self.patch_import_failed(error);
-                            }
-                            self.show_snackbar(tr!("已取消扫描"), None);
-                        }
-                        Err(error) => self.background_failed(error),
                     }
                 }
                 owner::BackgroundEvent::Exited(error) => {
-                    if !matches!(self.startup_state, StartupState::Failed(_)) {
+                    if !matches!(self.startup_state, StartupState::OwnerFailed(_)) {
                         self.background_failed(error);
                     }
                 }
             }
         }
-        if loaded && let Some(action) = &self.native_action {
-            self.registry.activate(action.plugin_id())?;
-        }
         if loaded
-            && let Some(pending) = self.prepare_scan_pending.take().filter(|_| self.cores_ready()) {
-                let scan = match pending {
-                    PendingScan::Full => self
-                        .scan_roots()
-                        .and_then(|roots| self.begin_scan(ScanKind::Full, roots)),
-                    PendingScan::Import(path) => self.begin_scan(ScanKind::Import, vec![path]),
-                };
-                if let Err(error) = scan {
-                    self.diagnostic = error;
-                    self.diagnostic_severity = "error";
-                }
-            }
-        Ok(changed)
+            && let Some(action) = &self.native_action
+            && let Err(error) = self.registry.activate(action.plugin_id())
+        {
+            let plugin_id = action.plugin_id().to_owned();
+            self.native_action = None;
+            self.native_failures.insert(plugin_id, error.clone());
+            self.diagnostic = error;
+            self.diagnostic_severity = "error";
+        }
+        changed
+    }
+
+    fn scan_cancelled(&mut self, scan: Option<&LibraryScan>) {
+        self.startup_state = StartupState::Ready;
+        if self.patch_import.take().is_some() {
+            self.patch_import_failed("SHINKI_EMU_SCAN_CANCELLED".into());
+        }
+        if !matches!(scan, Some(LibraryScan::Roots(roots)) if roots.is_empty()) {
+            self.show_snackbar(tr!("已取消扫描"), None);
+        }
+    }
+
+    fn requeue_library_scan(&mut self, scan: Option<LibraryScan>) {
+        match scan {
+            Some(LibraryScan::Full(full)) => self.pending_full_scan = Some(full),
+            Some(LibraryScan::Roots(mut roots)) => self.pending_scan_roots.append(&mut roots),
+            None => {}
+        }
+    }
+
+    fn scan_failed(&mut self, error: String) {
+        tracing::warn!(event = "shinki.emu.manager.library_scan_failed", diagnostic_code = %error);
+        if self.patch_import.take().is_some() {
+            self.patch_import_failed(error);
+            self.startup_state = StartupState::Ready;
+        } else {
+            self.startup_state = StartupState::Failed(error);
+        }
     }
 
     fn background_failed(&mut self, error: String) {
@@ -266,13 +372,14 @@ impl ShinkiEmuManagerController {
         if let Some(action) = self.native_action.take() {
             self.native_failures.insert(action.plugin_id().into(), error.clone());
         }
-        self.prepare_scan_pending = None;
+        let scan = self.library_scan.take();
+        self.requeue_library_scan(scan);
         self.scan_cancel = None;
         self.prepare_progress = None;
         if self.patch_import.take().is_some() {
             self.patch_import_failed(error.clone());
         }
-        self.startup_state = StartupState::Failed(error);
+        self.startup_state = StartupState::OwnerFailed(error);
     }
 
     /// Returns how many games the scan added to the library.
@@ -329,11 +436,7 @@ impl ShinkiEmuManagerController {
         let mut added = 0;
         for result in report.games {
             let mut ids = result.game_ids;
-            let profile = if kind == ScanKind::Import {
-                result.patch_profile.transpose()?
-            } else {
-                None
-            };
+            let profile = result.patch_profile.transpose()?;
             if let Some(expected) = automatic {
                 let profile = profile
                     .as_ref()

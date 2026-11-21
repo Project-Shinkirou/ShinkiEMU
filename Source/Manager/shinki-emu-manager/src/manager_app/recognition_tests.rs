@@ -55,6 +55,9 @@ pub(super) fn settle(app: &mut ShinkiEmuManagerController) {
 }
 
 pub(super) fn import(app: &mut ShinkiEmuManagerController, path: &Path) -> String {
+    if app.host_wake.is_none() {
+        app.set_host_wake(std::sync::Arc::new(|| {}));
+    }
     app.add_game_directory(path).unwrap();
     settle(app);
     app.library.list_games().unwrap().into_iter().find(|game| Path::new(&game.location) == fs::canonicalize(path).unwrap()).unwrap().game_id
@@ -395,7 +398,7 @@ mod native_consumer {
         let selected = install(&data, "SHINKI_TEST_NATIVE_FIXTURE", "rfvp", "selected");
         let failure = install(&data, "SHINKI_TEST_NATIVE_FAILURE", "ethornell-rs", "failure");
         let mut app = open(&data);
-        app.prepare_library().unwrap();
+        app.set_host_wake(std::sync::Arc::new(|| {}));
         settle(&mut app);
         let selected_calls = Counters::open(&selected);
         let failure_calls = Counters::open(&failure);
@@ -481,7 +484,7 @@ fn transient_scan_io_failure_can_be_retried_in_the_same_owner_without_mutating_t
     assert_eq!(app.game(&id).unwrap(), saved);
     assert!(app.registry.is_ready());
     drop(locked);
-    app.add_game_directory(&path).unwrap();
+    app.refresh_library().unwrap();
     settle(&mut app);
     assert!(matches!(app.startup_state, background::StartupState::Ready));
     assert_eq!(app.game(&id).unwrap(), saved);

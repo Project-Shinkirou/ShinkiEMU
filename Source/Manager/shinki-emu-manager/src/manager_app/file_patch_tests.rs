@@ -17,15 +17,13 @@ fn settle(
 }
 
 fn rejected_import(app: &mut ShinkiEmuManagerController) -> String {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if let Err(error) = app.poll_platform() {
-            assert!(!app.startup_busy());
-            return error;
-        }
-        assert!(app.startup_busy(), "invalid import unexpectedly succeeded");
-        assert!(Instant::now() < deadline, "import rejection did not finish");
-        std::thread::yield_now();
+    settle(app, |app| !app.startup_busy());
+    let model = app.model().unwrap();
+    assert!(model.library.can_refresh);
+    assert!(!model.library.prepare_detail.is_empty());
+    match &app.startup_state {
+        background::StartupState::Failed(error) => error.clone(),
+        _ => panic!("invalid import unexpectedly succeeded"),
     }
 }
 
@@ -53,7 +51,6 @@ fn controller_with_capabilities(
     )
     .unwrap();
     app.set_host_wake(Arc::new(|| {}));
-    app.prepare_library().unwrap();
     settle(&mut app, |app| !app.startup_busy());
     app.registry
         .register_provider(move || {
@@ -444,12 +441,18 @@ fn running_patch_blocks_launch_scan_and_second_job_but_cancel_joins_and_allows_r
         app.start_file_patch(&script, Path::new(""), &output)
             .is_err()
     );
-    assert!(app.prepare_library().is_err());
-    assert!(app.add_game_directory(&source).is_err());
+    assert!(app.refresh_library().is_err());
+    let queued = root.path().join("queued-during-patch");
+    super::recognition_tests::write_game(&queued);
+    let queued = fs::canonicalize(queued).unwrap();
+    let model = app.add_game_directory(&queued).unwrap();
+    assert!(model.settings.roots.iter().any(|root| Path::new(root) == queued));
+    assert!(app.library.game(&path_id(&queued)).unwrap().is_none());
     assert!(app.launch(&source_id).is_err());
     assert!(app.active.is_none());
     app.cancel_file_patch().unwrap();
-    settle(&mut app, |app| app.patch_job.is_none());
+    settle(&mut app, |app| app.patch_job.is_none() && !app.startup_busy());
+    assert!(app.library.game(&path_id(&queued)).unwrap().is_some());
     assert!(!output.exists());
     assert!(parent.is_dir());
     assert_eq!(fs::read_dir(&parent).unwrap().count(), 0);
@@ -702,7 +705,6 @@ fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
     )
     .unwrap();
     reopened.set_host_wake(Arc::new(|| {}));
-    reopened.prepare_library().unwrap();
     settle(&mut reopened, |app| !app.startup_busy());
     reopened
         .registry
@@ -716,7 +718,7 @@ fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
     settle(&mut reopened, |app| {
         app.registry.descriptor("rfvp").is_some()
     });
-    reopened.prepare_library().unwrap();
+    reopened.refresh_library().unwrap();
     settle(&mut reopened, |app| !app.startup_busy());
     assert!(
         reopened
@@ -758,6 +760,13 @@ fn malformed_receipt_requirements_block_import_and_retained_receipt_launch() {
         assert_eq!(app.library.list_games().unwrap().len(), 1);
         assert!(!app.candidates.contains_key(&id));
         drop(app);
+
+        let mut reopened = super::recognition_tests::open(&root.path().join("manager"));
+        reopened.set_host_wake(Arc::new(|| {}));
+        assert!(rejected_import(&mut reopened).contains("SHINKI_EMU_PATCH_INVALID_REQUEST"));
+        assert!(reopened.library.game(&id).unwrap().is_none());
+        drop(reopened);
+
         let launch_host = root.path().join("launch-host");
         fs::create_dir(&launch_host).unwrap();
         let (mut app, _, _) = controller(&launch_host);

@@ -209,7 +209,6 @@ pub(super) struct StoreRuntime {
     cancel: Arc<Mutex<provider::CancelToken>>,
     completed: mpsc::Receiver<CompletedInstallation>,
     pending: Option<Worker>,
-    imports: VecDeque<PathBuf>,
     /// Embedded-webview sign-in rules by provider id.
     web_logins: Vec<(&'static str, &'static provider::WebLogin)>,
 }
@@ -284,7 +283,6 @@ impl StoreRuntime {
             cancel,
             completed: completion_receiver,
             pending: Some(worker),
-            imports: VecDeque::new(),
             web_logins,
         }
     }
@@ -1078,16 +1076,7 @@ impl ShinkiEmuManagerController {
                     .map_err(|e| e.to_string())?;
             }
             self.selected_case_id = Some(id);
-            self.store.imports.push_back(path);
-            changed = true;
-        }
-        if self.active.is_none()
-            && !self.startup_busy()
-            && self.patch_job.is_none()
-            && let Some(path) = self.store.imports.front().cloned()
-        {
-            self.add_game_directory(&path)?;
-            self.store.imports.pop_front();
+            self.register_library_root(path)?;
             changed = true;
         }
         Ok(changed)
@@ -1227,6 +1216,7 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
+        app.set_host_wake(Arc::new(|| {}));
         app.store
             .pending
             .as_ref()
@@ -1243,7 +1233,7 @@ mod tests {
         let game = app.library.game(&id).unwrap().unwrap();
         assert_eq!(game.title, "Downloaded Store game");
         assert!(game.family_id.is_none());
-        assert!(app.store.imports.is_empty());
+        assert_eq!(app.library.library_roots().unwrap()[0].path, game.location);
     }
 
     #[test]

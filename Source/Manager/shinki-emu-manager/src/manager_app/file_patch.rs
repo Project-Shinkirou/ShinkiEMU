@@ -247,10 +247,10 @@ impl ShinkiEmuManagerController {
                 tr!("结束游戏后才能应用文件补丁").into()
             } else if self.active.is_some() {
                 tr!("游戏正在关闭，请稍候").into()
-            } else if self.startup_busy() {
-                tr!("请等待资料库准备完成").into()
-            } else if !self.cores_ready() {
-                tr!("请先准备资料库").into()
+            } else if self.native_action.is_some() {
+                tr!("正在加载核心…").into()
+            } else if self.startup_busy() || !self.cores_ready() {
+                self.startup_status()
             } else {
                 tr!("请先选择游戏").into()
             };
