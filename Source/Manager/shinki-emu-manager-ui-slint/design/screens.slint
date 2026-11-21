@@ -7,11 +7,11 @@
 
 import {
     ManagerWindow, App, Network, Library, Selection, GameSettings, Patch, Settings, Cores, Notices,
-    Dialogs, Filters, Session, Onboarding, ResaleNoticeState, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
+    Dialogs, Filters, Session, Onboarding, GameCard, CoreInfo, ConfigField, EngineAction, PatchGame,
     Store, StoreGame, StoreDepot,
 } from "../ui/main.slint";
 
-// Store sub-page of 添加游戏. Names and sizes are illustrative text only.
+// Store sub-page of library management. Names and sizes are illustrative text only.
 global StoreMock {
     out property <[StoreGame]> games: [
         { title-id: "1135690", name: "Summer Pockets", size: "6.2 GB", platforms: "Windows", languages: "日语", installed: true, update-available: true },
@@ -144,6 +144,7 @@ global Mock {
         Library.prepare-state = "ready";
         Library.prepare-label = "刷新资料库";
         Library.prepare-progress = -1;
+        Library.can-refresh = true;
     }
 
     public function selection() {
@@ -274,17 +275,11 @@ global Mock {
 
 // ---- Library ----
 
-export component LibraryUnprepared inherits ManagerWindow {
-    init => {
-        Mock.base(false);
-        Library.prepare-state = "unprepared";
-        Library.prepare-label = "准备";
-    }
-}
-
-export component LibraryPreparing inherits ManagerWindow {
+export component LibraryManagementScanning inherits ManagerWindow {
     init => {
         Mock.library(false);
+        App.page = "library-management";
+        Library.can-refresh = false;
         Library.prepare-state = "scanning";
         Library.prepare-progress = 0.62;
         Library.prepare-detail = "已扫描 128 个目录，发现 10 部作品";
@@ -308,8 +303,6 @@ export component LibraryEmpty inherits ManagerWindow {
     init => {
         Mock.base(false);
         Settings.roots = [];
-        Library.prepare-state = "ready";
-        Library.prepare-label = "刷新资料库";
     }
 }
 
@@ -521,7 +514,7 @@ export component SettingsPhone inherits ManagerWindow {
     init => { Mock.settings(true, "translation"); }
 }
 
-// Phone library: the app bar carries every other sidebar page.
+// The phone library shows the games above the bottom navigation.
 export component LibraryPhone inherits ManagerWindow {
     init => {
         Mock.library(false);
@@ -531,7 +524,7 @@ export component LibraryPhone inherits ManagerWindow {
 
 // ---- Onboarding ----
 
-export component OnboardingDisclaimer inherits ManagerWindow {
+export component OnboardingEmptyRoots inherits ManagerWindow {
     init => {
         Mock.base(false);
         App.page = "onboarding";
@@ -539,33 +532,11 @@ export component OnboardingDisclaimer inherits ManagerWindow {
     }
 }
 
-export component OnboardingDisclaimerPhone inherits ManagerWindow {
+export component OnboardingEmptyRootsPhone inherits ManagerWindow {
     init => {
         Mock.base(true);
         App.page = "onboarding";
         Onboarding.step = 0;
-    }
-}
-
-// Reading dwell still running: checkbox unchecked, Next disabled with a countdown.
-export component OnboardingNoticeReading inherits ManagerWindow {
-    init => {
-        Mock.base(false);
-        App.page = "onboarding";
-        Onboarding.step = 0;
-        ResaleNoticeState.remaining-seconds = 6;
-    }
-}
-
-// Acknowledged: checkbox checked, Next enabled.
-export component OnboardingNoticeAcknowledged inherits ManagerWindow {
-    init => {
-        Mock.base(true);
-        App.page = "onboarding";
-        Onboarding.step = 0;
-        ResaleNoticeState.remaining-seconds = 0;
-        ResaleNoticeState.checked = true;
-        ResaleNoticeState.acknowledged = true;
     }
 }
 
@@ -573,20 +544,17 @@ export component OnboardingRoots inherits ManagerWindow {
     init => {
         Mock.base(false);
         App.page = "onboarding";
-        Onboarding.step = 1;
+        Onboarding.step = 0;
         Onboarding.roots = ["D:\\Games\\VN"];
     }
 }
 
-export component OnboardingPrepare inherits ManagerWindow {
+export component OnboardingNetwork inherits ManagerWindow {
     init => {
         Mock.base(true);
         App.page = "onboarding";
-        Onboarding.step = 4;
-        Library.prepare-state = "scanning";
-        Library.prepare-progress = -1;
-        Library.prepare-detail = "已扫描 1,280 个目录，发现 12 部作品";
-        Library.can-cancel-prepare = true;
+        Onboarding.step = 1;
+        Network.allowed = false;
     }
 }
 
@@ -627,12 +595,12 @@ export component SnackbarUndo inherits ManagerWindow {
     }
 }
 
-// ---- 添加游戏 / Store 下载 ----
+// ---- Library management / Store downloads ----
 
-export component AddGame inherits ManagerWindow {
+export component LibraryManagement inherits ManagerWindow {
     init => {
         Mock.library(false);
-        App.page = "add-game";
+        App.page = "library-management";
     }
 }
 

@@ -26,44 +26,7 @@ pub struct ManagerViewModel {
     pub filters: FiltersViewModel,
     pub session: SessionViewModel,
     pub onboarding: OnboardingViewModel,
-    pub resale_notice: ResaleNoticeViewModel,
     pub store: StoreViewModel,
-}
-
-/// State of the Rust-rendered bilingual anti-resale notice.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResaleNoticeViewModel {
-    pub checked: bool,
-    pub remaining_seconds: i32,
-    pub acknowledged: bool,
-}
-
-impl Default for ResaleNoticeViewModel {
-    fn default() -> Self {
-        Self {
-            checked: false,
-            remaining_seconds: 8,
-            acknowledged: false,
-        }
-    }
-}
-
-/// Logical image coordinates and the surrounding scroll viewport.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct NoticeSlotRect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-    pub clip: Option<NoticeClipRect>,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct NoticeClipRect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -159,6 +122,7 @@ pub struct LibraryViewModel {
     /// `None` means indeterminate progress.
     pub prepare_progress: Option<f32>,
     pub can_cancel_prepare: bool,
+    pub can_refresh: bool,
     pub selected_id: String,
 }
 
@@ -169,11 +133,12 @@ impl Default for LibraryViewModel {
             query: String::new(),
             sort: "title".into(),
             compat_filter: "all".into(),
-            prepare_state: "unprepared".into(),
-            prepare_label: tr!("准备").into(),
+            prepare_state: "idle".into(),
+            prepare_label: String::new(),
             prepare_detail: String::new(),
             prepare_progress: None,
             can_cancel_prepare: false,
+            can_refresh: false,
             selected_id: String::new(),
         }
     }

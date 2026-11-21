@@ -306,7 +306,6 @@ fn base(model: &mut ManagerViewModel, language: &str) {
     model.app.appearance.language = language.into();
     model.app.appearance.theme_mode = "dark".into();
     model.app.appearance.reduce_motion = true;
-    model.resale_notice.acknowledged = true;
     model.library.prepare_state = "ready".into();
     model.network.allowed = true;
 }
