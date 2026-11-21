@@ -392,10 +392,13 @@ impl ShinkiEmuManagerController {
             && self.patch_state.step == 0
             && self.patch_state.error.is_empty();
         if !unchanged {
+            let patch_directory = dunce::simplified(path)
+                .to_str()
+                .ok_or("SHINKI_EMU_GAME_PATH_UTF8")?
+                .to_owned();
             self.patch_release_mismatch = false;
             self.patch_state = PatchStateViewModel {
-                patch_directory: dunce::simplified(path)
-                    .to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned(),
+                patch_directory,
                 ..Default::default()
             };
             self.patch_game_id = Some(game.game_id);
