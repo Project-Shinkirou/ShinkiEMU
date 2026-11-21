@@ -1,5 +1,5 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, ScrollView, OutlineButton, LinearProgressIndicator,
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, PopupMenu, LinearProgressIndicator,
 } from "@material";
 import { App, Library } from "../globals.slint";
 import { Icons } from "../icons.slint";
@@ -91,20 +91,17 @@ component EmptyState {
             overflow: clip;
         }
 
-        HorizontalLayout {
-            alignment: center;
-            spacing: 8px;
-            @children
-        }
     }
 }
 
 export component LibraryPage {
     in property <bool> compact;
+    in property <bool> shown;
+    visible: root.shown;
 
     property <length> pad: root.compact ? 16px : 24px;
     property <string> panel-mode: root.width >= 1100px ? "docked" : root.width >= 600px ? "overlay" : "sheet";
-    property <bool> detail-shown: Library.detail-open && Library.selected-id != "";
+    property <bool> detail-shown: root.shown && Library.detail-open && Library.selected-id != "";
     property <length> docked-width: 400px;
     property <length> content-w: root.detail-shown && root.panel-mode == "docked" ? root.width - root.docked-width : root.width;
     property <bool> narrow: root.content-w < 720px;
@@ -163,14 +160,19 @@ export component LibraryPage {
         }
     }
 
-    init => { keys.focus(); }
+    init => { if root.shown { keys.focus(); } }
+    changed shown => {
+        if root.shown && (root.focus-index < 0 || root.focus-index >= Library.games.length) {
+            keys.focus();
+        }
+    }
 
     keys := FocusScope {
         width: 100%;
         height: 100%;
         key-pressed(event) => {
             if event.modifiers.control && (event.text == "f" || event.text == "F") {
-                App.page = "library-management";
+                App.page = "library-search";
                 return accept;
             }
             if (event.text == Key.Escape || event.text == Key.Back) && root.detail-shown {
@@ -205,9 +207,18 @@ export component LibraryPage {
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    if Library.games.length > 0 : OutlineButton {
-                        text: @tr("管理游戏库");
-                        clicked => { App.page = "library-management"; }
+                    library-actions := IconButton {
+                        icon: Icons.more-vert;
+                        tooltip: @tr("游戏库菜单");
+                        accessible-expandable: true;
+                        accessible-expanded: library-menu.is-open;
+                        clicked => {
+                            if library-menu.is-open {
+                                library-menu.close();
+                            } else {
+                                library-menu.show();
+                            }
+                        }
                     }
                 }
 
@@ -235,8 +246,8 @@ export component LibraryPage {
                                 height: root.card-width * 4 / 3 + 52px;
                                 game: game;
                                 selected: game.id == Library.selected-id;
-                                focus-wanted: index == root.focus-index;
-                                cover-needed: Library.cover-loading && root.grid-mode
+                                focus-wanted: root.shown && index == root.focus-index;
+                                cover-needed: root.shown && Library.cover-loading && root.grid-mode
                                     && self.y + self.height >= -grid.content-y - self.height
                                     && self.y <= -grid.content-y + grid.visible-height + self.height;
                                 cover-demand(id, needed) => { Library.cover-demand(index, id, needed, "grid"); }
@@ -332,8 +343,8 @@ export component LibraryPage {
                                 compat-width: root.compat-col;
                                 time-width: root.time-col;
                                 last-width: root.last-col;
-                                focus-wanted: index == root.focus-index;
-                                cover-needed: Library.cover-loading && !root.grid-mode
+                                focus-wanted: root.shown && index == root.focus-index;
+                                cover-needed: root.shown && Library.cover-loading && !root.grid-mode
                                     && self.y + self.height >= -list.content-y - self.height
                                     && self.y <= -list.content-y + list.visible-height + self.height;
                                 cover-demand(id, needed) => { Library.cover-demand(index, id, needed, "list"); }
@@ -375,10 +386,6 @@ export component LibraryPage {
 
                         EmptyState {
                             title: Library.query != "" || Library.compat-filter != "all" ? @tr("没有符合筛选条件的作品") : @tr("游戏库为空");
-                            OutlineButton {
-                                text: @tr("管理游戏库");
-                                clicked => { App.page = "library-management"; }
-                            }
                         }
                     }
                 }
@@ -404,6 +411,22 @@ export component LibraryPage {
         close => {
             Library.detail-open = false;
             keys.focus();
+        }
+    }
+
+    library-menu := PopupMenu {
+        width: min(224px, root.width - 16px);
+        x: max(8px, library-actions.absolute-position.x - root.absolute-position.x + library-actions.width - self.width);
+        y: clamp(library-actions.absolute-position.y - root.absolute-position.y + library-actions.height + 4px,
+            0px, max(0px, root.height - self.height));
+        keyboard-navigation: true;
+        items: [
+            { icon: Icons.search, text: @tr("搜索与筛选"), enabled: true },
+            { icon: Icons.folder-open, text: @tr("管理游戏库"), enabled: true },
+        ];
+        activated(index) => {
+            self.close();
+            App.page = index == 0 ? "library-search" : "library-management";
         }
     }
 

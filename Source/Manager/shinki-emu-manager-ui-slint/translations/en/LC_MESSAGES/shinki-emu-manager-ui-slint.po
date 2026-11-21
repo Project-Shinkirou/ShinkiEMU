@@ -2810,3 +2810,6 @@ msgstr "Install the selected core, then restart ShinkiEMU."
 
 msgid "补丁输出信息无效，请检查补丁或移除该目录。"
 msgstr "The patch output is invalid. Check the patch or remove this folder."
+
+msgid "游戏库菜单"
+msgstr "Library menu"

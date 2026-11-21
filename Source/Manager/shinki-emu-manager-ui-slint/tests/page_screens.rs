@@ -912,7 +912,7 @@ fn every_page_renders_stable_frames() {
                         .expect("write png");
                 }
             };
-            if only.is_empty() || only.iter().any(|p| "library-management/interaction".starts_with(p)) {
+            if only.is_empty() || only.iter().any(|p| "library-menu/interaction".starts_with(p)) {
                 exercise_library(&adapter, &software, &data, (width, height), save);
             }
             for (id, setup) in states() {
@@ -968,7 +968,9 @@ fn every_page_renders_stable_frames() {
 // Use accessible names to locate real controls, then send pointer input through the window.
 // The pinned Slint API gives their bounds without test-only geometry properties in the UI.
 fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool) -> Option<ItemRc> {
-    let mut stack = vec![WindowInner::from_pub(software.window()).window_item_rc()?];
+    let window = WindowInner::from_pub(software.window());
+    let mut stack = vec![window.window_item_rc()?];
+    stack.extend(window.active_popups().iter().map(|popup| ItemRc::new_root(popup.component.clone())));
     while let Some(item) = stack.pop() {
         stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
         if item.is_visible()
@@ -984,8 +986,11 @@ fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool
 fn click_label(software: &MinimalSoftwareWindow, label: &str) -> LogicalPosition {
     let item = labeled_item(software, |text| text == label)
         .unwrap_or_else(|| panic!("visible control not found: {label}"));
-    let center = item.map_to_window(item.geometry().center());
-    let position = LogicalPosition::new(center.x, center.y);
+    let center = item.map_to_native_window(item.geometry().center());
+    click_at(software, LogicalPosition::new(center.x, center.y))
+}
+
+fn click_at(software: &MinimalSoftwareWindow, position: LogicalPosition) -> LogicalPosition {
     software.dispatch_event(WindowEvent::PointerMoved { position });
     software.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
     software.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
@@ -997,6 +1002,13 @@ fn press(software: &MinimalSoftwareWindow, key: impl Into<SharedString>) {
     let text = key.into();
     software.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
     software.dispatch_event(WindowEvent::KeyReleased { text });
+}
+
+fn ctrl_f(software: &MinimalSoftwareWindow) {
+    let control: SharedString = Key::Control.into();
+    software.dispatch_event(WindowEvent::KeyPressed { text: control.clone() });
+    press(software, "f");
+    software.dispatch_event(WindowEvent::KeyReleased { text: control });
 }
 
 fn exercise_library(
@@ -1012,6 +1024,8 @@ fn exercise_library(
     let library = window.global::<Library>();
     let onboarding = window.global::<Onboarding>();
     let network = window.global::<shinki_emu_manager_ui_slint::Network>();
+    let menu = tr!("游戏库菜单");
+    let search_and_filters = tr!("搜索与筛选");
     let manage = tr!("管理游戏库");
     let add = tr!("添加文件夹");
     let search = tr!("搜索游戏标题");
@@ -1019,6 +1033,26 @@ fn exercise_library(
     let refresh = tr!("刷新资料库");
     let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
     let game_visible = |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
+    let open_menu = || {
+        let trigger = click_label(software, menu);
+        let image = frame();
+        assert_eq!(app.get_page(), "library", "the trigger opens a menu, not a page");
+        for label in [search_and_filters, manage] {
+            let row = labeled_item(software, |text| text == label).expect("visible menu row");
+            let geometry = row.geometry();
+            let top_left = row.map_to_native_window(geometry.origin);
+            let right = top_left.x + geometry.size.width;
+            let bottom = top_left.y + geometry.size.height;
+            assert!(top_left.x >= 0.0 && right <= width as f32);
+            assert!(top_left.y > trigger.y && bottom < height as f32);
+            assert!((right - trigger.x).abs() < 48.0, "menu is aligned to the overflow button");
+        }
+        image
+    };
+    let choose_menu = |label| {
+        open_menu();
+        click_label(software, label);
+    };
 
     reset(a);
     let mut model = base_empty();
@@ -1044,11 +1078,30 @@ fn exercise_library(
     click_label(software, tr!("完成"));
     assert_eq!(app.get_page(), "library");
     let empty = frame();
-    assert!(!visible(add) && !visible(search) && !visible(refresh));
-    click_label(software, manage);
-    assert_eq!(app.get_page(), "library-management");
+    assert!(!visible(add) && !visible(search) && !visible(manage) && !visible(refresh));
+    save("library-menu/empty", empty.clone());
+    save("library-menu/menu-empty", open_menu());
+    click_at(software, LogicalPosition::new(width as f32 / 2.0, height as f32 * 0.65));
     frame();
-    assert!(visible(add) && visible(search) && !visible(refresh));
+    assert!(!visible(search_and_filters) && !visible(manage), "an outside click closes the popup");
+    assert_eq!(app.get_page(), "library");
+    open_menu();
+    click_label(software, menu);
+    frame();
+    assert!(!visible(manage), "pressing the trigger again closes the popup");
+    open_menu();
+    press(software, Key::Escape);
+    assert_eq!(app.get_page(), "library");
+    assert!(!visible(manage), "Escape closes the popup without navigating");
+    open_menu();
+    press(software, Key::Back);
+    assert_eq!(app.get_page(), "library");
+    assert!(!visible(manage), "system Back closes the popup without navigating");
+    choose_menu(manage);
+    assert_eq!(app.get_page(), "library-management");
+    let folders = frame();
+    assert!(visible(add) && !visible(search) && !visible(refresh));
+    save("library-menu/management", folders);
 
     // The host owns the native picker and worker. Draw the next host models after
     // pressing the real picker button, including a failed permission request.
@@ -1072,7 +1125,7 @@ fn exercise_library(
         }
     });
     click_label(software, add);
-    save("library-management/picker-denied", frame());
+    save("library-menu/picker-denied", frame());
     assert!(visible(tr!("关闭")), "picker failure shows a dismissible notice");
     click_label(software, tr!("关闭"));
     click_label(software, add);
@@ -1114,12 +1167,18 @@ fn exercise_library(
     if width < 600 {
         click_label(software, tr!("商店下载"));
         assert_eq!(app.get_page(), "store");
-        save("library-management/store-route", frame());
+        save("library-menu/store-route", frame());
         press(software, Key::Back);
         assert_eq!(app.get_page(), "library-management");
         frame();
     }
-    click_label(software, search);
+    click_label(software, tr!("返回游戏库"));
+    save("library-menu/populated", frame());
+    save("library-menu/menu-populated", open_menu());
+    click_label(software, search_and_filters);
+    assert_eq!(app.get_page(), "library-search");
+    assert!(!visible(add) && !visible(refresh));
+    save("library-menu/search", frame());
     for ch in "Harbor".chars() { press(software, ch.to_string()); }
     assert_eq!(state.borrow().library.query, "Harbor");
     assert_eq!(library.get_games().row_count(), 2);
@@ -1127,6 +1186,7 @@ fn exercise_library(
     click_label(software, tr!("完美"));
     frame();
     assert_eq!(state.borrow().library.compat_filter, "perfect");
+    save("library-menu/search-with-filters", frame());
     press(software, if width < 600 { Key::Back } else { Key::Escape });
     assert_eq!(app.get_page(), "library");
     let filtered = frame();
@@ -1135,15 +1195,14 @@ fn exercise_library(
     assert!(game_visible("Harbor Lights"));
     assert!(!game_visible("Harbor Letters"));
     assert!(!visible(search) && !visible(add) && !visible(refresh));
-    save("library/filtered-through-management", filtered);
+    save("library-menu/filtered-results", filtered);
 
-    click_label(software, manage);
+    ctrl_f(software);
+    assert_eq!(app.get_page(), "library-search");
     frame();
-    if width < 600 {
-        let position = LogicalPosition::new(width as f32 / 2.0, height as f32 * 0.7);
-        software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -420.0 });
-        frame();
-    }
+    press(software, "x");
+    assert!(state.borrow().library.query.contains('x'), "Ctrl+F focuses the search field");
+    frame();
     click_label(software, clear);
     assert!(state.borrow().library.query.is_empty());
     assert_eq!(state.borrow().library.compat_filter, "all");
@@ -1155,7 +1214,7 @@ fn exercise_library(
     assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
 
     if width < 600 {
-        click_label(software, manage);
+        choose_menu(manage);
         frame();
         let weak = Rc::downgrade(a);
         let refreshing = state.clone();

@@ -25,6 +25,10 @@ component MenuItemTemplate {
     property <color> color_variant: MaterialPalette.on_surface_variant;
 
     min_height: max(MaterialStyleMetrics.size_56, layout.min_height);
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
 
     background_layer := Rectangle {
         state_area := StateLayerArea {
@@ -116,20 +120,53 @@ export component MenuInner {
 
 export component PopupMenu inherits PopupWindow {
     in property <[MenuItem]> items;
+    in property <bool> keyboard-navigation;
 
     callback activated(index: int);
 
     width: MaterialStyleMetrics.size_200;
     close_policy: close_on_click_outside;
 
-    VerticalLayout {
-        padding: inner.elevation * 1px;
+    init => { if root.keyboard-navigation { keys.focus(); } }
 
-        inner := MenuInner {
-            items: root.items;
+    keys := FocusScope {
+        width: root.width;
+        height: root.height;
+        focus-on-tab-navigation: root.keyboard-navigation;
+        key-pressed(event) => {
+            if !root.keyboard-navigation {
+                return reject;
+            }
+            if event.text == Key.Escape || event.text == Key.Back {
+                root.close();
+                return accept;
+            }
+            if root.items.length == 0 {
+                return reject;
+            }
+            if event.text == Key.UpArrow || event.text == Key.DownArrow || event.text == Key.Tab || event.text == Key.Backtab {
+                let direction = event.text == Key.UpArrow || event.text == Key.Backtab || event.modifiers.shift ? -1 : 1;
+                inner.current_index = inner.current_index < 0
+                    ? (direction < 0 ? root.items.length - 1 : 0)
+                    : mod(inner.current_index + direction + root.items.length, root.items.length);
+                return accept;
+            }
+            if event.text == Key.Return || event.text == " " {
+                let index = max(0, inner.current_index);
+                if root.items[index].enabled {
+                    root.activated(index);
+                }
+                return accept;
+            }
+            reject
+        }
 
-            activated(index) => {
-                root.activated(index);
+        VerticalLayout {
+            padding: inner.elevation * 1px;
+
+            inner := MenuInner {
+                items: root.items;
+                activated(index) => { root.activated(index); }
             }
         }
     }
