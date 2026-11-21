@@ -1322,7 +1322,12 @@ fn exercise_library(
         .expect("first card still present after scrolling");
     let offset = offset_card.map_to_native_window(offset_card.geometry().center()).y;
     assert!(offset < start.y, "wheel scroll placed the viewport below the top");
-    swipe(software, start.x, start.y, 0.0, 200.0);
+    let mid = LogicalPosition::new(start.x, start.y);
+    let top = LogicalPosition::new(start.x, start.y + 200.0);
+    touch(software, mid, TouchPhase::Started);
+    touch(software, top, TouchPhase::Moved);
+    save("library-toolbar/pull-from-mid-list", frame());
+    touch(software, top, TouchPhase::Ended);
     frame();
     assert_eq!(refresh_count.get(), 0, "reaching the top is not a refresh if the swipe began below it");
     let pos = LogicalPosition::new(start.x, start.y);
@@ -1364,6 +1369,8 @@ fn exercise_storage_access(
 ) {
     use shinki_emu_manager_ui_slint::Settings;
 
+    let material = a.window().global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>();
+    material.set_touch(width < 600);
     let app = a.window().global::<Settings>();
     let allow = tr!("允许访问共享存储");
     let granted = tr!("已允许访问共享存储");
@@ -1375,7 +1382,7 @@ fn exercise_storage_access(
     frame();
     assert!(!visible(allow) && !visible(granted), "desktop has no Android prompt");
     app.set_android_storage_access_available(true);
-    save("settings/storage-access-available", frame());
+    frame();
     assert!(visible(allow) && !visible(granted));
 
     let opens = Rc::new(Cell::new(0));
@@ -1383,7 +1390,7 @@ fn exercise_storage_access(
     app.on_open_android_storage_access(move || count.set(count.get() + 1));
     click_label(software, allow);
     assert_eq!(opens.get(), 1);
-    frame();
+    save("settings/storage-access-not-granted", frame());
     assert!(visible(allow) && !visible(granted), "opening settings does not grant anything");
 
     app.set_android_storage_access_granted(true);
@@ -1391,4 +1398,5 @@ fn exercise_storage_access(
     assert!(!visible(allow) && visible(granted), "only host-reported permission appears as granted");
     app.set_android_storage_access_granted(false);
     app.set_android_storage_access_available(false);
+    material.set_touch(false);
 }
