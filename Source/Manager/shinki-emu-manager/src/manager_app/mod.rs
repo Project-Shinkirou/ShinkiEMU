@@ -185,7 +185,7 @@ struct ShinkiEmuManagerController {
     patch_sequence: u64,
     snackbar: snackbar::Snackbar,
     pending_full_scan: Option<background::FullScan>,
-    pending_scan_roots: BTreeSet<PathBuf>,
+    pending_scan_roots: BTreeMap<PathBuf, bool>,
     library_scan: Option<background::LibraryScan>,
     prepare_progress: Option<owner::PrepareProgress>,
     scan_cancel: Option<shinki_emu_manager_core::NativeCancellation>,

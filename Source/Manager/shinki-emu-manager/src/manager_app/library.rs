@@ -11,16 +11,16 @@ impl ShinkiEmuManagerController {
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {
         #[cfg(target_os = "android")]
         if path.to_str().is_some_and(shinki_emu_manager::platform::android_tree::is_library_uri) {
-            self.register_library_root(path.to_owned())?;
+            self.register_library_root(path.to_owned(), true)?;
             return self.model();
         }
         let root = probe_worker::canonical_directory(path)?
             .ok_or("SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
-        self.register_library_root(root)?;
+        self.register_library_root(root, true)?;
         self.model()
     }
 
-    pub(super) fn register_library_root(&mut self, root: PathBuf) -> Result<(), String> {
+    pub(super) fn register_library_root(&mut self, root: PathBuf, interactive: bool) -> Result<(), String> {
         if shinki_emu_patch::is_staging_path(&root) {
             return Err(
                 "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging cannot be imported".into(),
@@ -29,7 +29,7 @@ impl ShinkiEmuManagerController {
         self.library
             .add_library_root(root.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?)
             .map_err(|error| error.to_string())?;
-        self.queue_library_root(root);
+        self.queue_library_root(root, interactive);
         Ok(())
     }
 
@@ -306,7 +306,7 @@ impl ShinkiEmuManagerController {
             patch_sequence: 0,
             snackbar: snackbar::Snackbar::default(),
             pending_full_scan: Some(background::FullScan::Initial),
-            pending_scan_roots: BTreeSet::new(),
+            pending_scan_roots: BTreeMap::new(),
             library_scan: None,
             prepare_progress: None,
             scan_cancel: None,

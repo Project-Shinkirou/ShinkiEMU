@@ -18,6 +18,7 @@ import org.json.JSONObject
 internal object ShinkiLibraryTree {
     private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
     private const val MAX_URI_LENGTH = 4096
+    private const val MAX_ROWS = 4096
     private const val ID = DocumentsContract.Document.COLUMN_DOCUMENT_ID
     private const val NAME = DocumentsContract.Document.COLUMN_DISPLAY_NAME
     private const val MIME = DocumentsContract.Document.COLUMN_MIME_TYPE
@@ -42,17 +43,17 @@ internal object ShinkiLibraryTree {
         }
     }
 
-    fun children(context: Context, raw: String, limit: Int): String = rows {
-        require(limit in 0..4096)
+    fun children(context: Context, raw: String, limit: Int, directoriesOnly: Boolean): String = rows {
+        require(limit in 0..MAX_ROWS)
         val uri = requireGrant(context, raw)
         val id = DocumentsContract.getDocumentId(uri)
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, id)
         context.contentResolver.query(children, PROJECTION, null, null, null).use { cursor ->
             checkNotNull(cursor) { "document provider returned no cursor" }
-            while (cursor.moveToNext()) {
-                if (length() == limit) throw TreeBounds()
+            val mime = cursor.getColumnIndexOrThrow(MIME)
+            if (!visitTreeRows(limit, MAX_ROWS, cursor::moveToNext, { cursor.getString(mime) }, directoriesOnly) {
                 put(readRow(cursor, uri))
-            }
+            }) throw TreeBounds()
         }
     }
 
@@ -151,4 +152,24 @@ internal object ShinkiLibraryTree {
         }
         JSONObject().put("kind", kind).put("error", failure.toString()).toString()
     }
+}
+
+/** Bounds both visited rows and the results returned to the Rust caller. */
+internal inline fun visitTreeRows(
+    limit: Int,
+    maxRows: Int,
+    next: () -> Boolean,
+    mime: () -> String?,
+    directoriesOnly: Boolean,
+    visit: () -> Unit,
+): Boolean {
+    var visited = 0
+    var selected = 0
+    while (next()) {
+        if (visited++ == maxRows) return false
+        if (directoriesOnly && mime() != DocumentsContract.Document.MIME_TYPE_DIR) continue
+        if (selected++ == limit) return false
+        visit()
+    }
+    return true
 }

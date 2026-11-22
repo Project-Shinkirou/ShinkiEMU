@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_manager_core::detection::DetectionError;
 
 const SCAN_PROGRESS_INTERVAL: usize = 64;
 
@@ -65,8 +66,25 @@ pub(super) struct ScanReport {
     pub(super) missing: usize,
     pub(super) cache_hits: usize,
     pub(super) cache_error: Option<String>,
+    pub(super) skipped_candidates: usize,
+    pub(super) traversal_limited: bool,
     #[cfg(target_os = "android")]
     pub(super) saf_error: Option<String>,
+}
+
+impl ScanReport {
+    pub(super) fn has_io_error(&self) -> bool {
+        #[cfg(target_os = "android")]
+        if self.saf_error.is_some() {
+            return true;
+        }
+        self.missing != 0
+    }
+
+    fn record_traversal_limit(&mut self, scope: &str) {
+        tracing::info!(event = "shinki.emu.manager.library_scan_traversal_limited", scope);
+        self.traversal_limited = true;
+    }
 }
 
 pub(super) fn scan(
@@ -159,26 +177,40 @@ pub(super) fn scan(
             if excluded.contains(&path)
                 || (!known.contains_key(&path)
                     && recognized.iter().any(|game| path.starts_with(game)))
-                || !visited.insert(path.clone())
+                || visited.contains(&path)
             {
                 continue;
             }
+            if visited.len() == MAX_SCAN_DIRECTORIES {
+                report.record_traversal_limit("local_tree");
+                break;
+            }
+            visited.insert(path.clone());
             if visited.len() % SCAN_PROGRESS_INTERVAL == 0 {
                 progress(super::owner::PrepareProgress::Scan {
                     directories: visited.len(),
                     games: recognized.len(),
                 });
             }
-            if visited.len() > MAX_SCAN_DIRECTORIES {
-                return Err("SHINKI_EMU_GAME_DIRECTORY_BOUNDS".into());
-            }
             let allow_hint = request.kind == ScanKind::Full && known.contains_key(&path);
-            let (detections, hit) = cache.detect(&path, allow_hint, &request.cancel)?;
-            report.cache_hits += usize::from(hit);
+            let detected = match cache.detect(&path, allow_hint, &request.cancel) {
+                Ok((detections, hit)) => {
+                    report.cache_hits += usize::from(hit);
+                    Some(detections)
+                }
+                Err(DetectionError::ReadLimit) => {
+                    report.skipped_candidates += 1;
+                    None
+                }
+                Err(DetectionError::Cancelled) => return Err("SHINKI_EMU_SCAN_CANCELLED".into()),
+                Err(DetectionError::Io(error)) => return Err(format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}")),
+            };
+            let examined = detected.is_some();
+            let detections = detected.unwrap_or_default();
             let matched = !detections.is_empty();
             // An import interrupted after saving its root is discovered on the
             // next startup. Validate the receipt before registering a game.
-            let patch_profile = if request.kind == ScanKind::Import || (matched && !known.contains_key(&path)) {
+            let patch_profile = if examined && (request.kind == ScanKind::Import || (matched && !known.contains_key(&path))) {
                 match shinki_emu_patch::read_output_profile(&path, shutdown) {
                     Ok(Some(profile)) => Some(Ok(profile)),
                     Ok(None) => None,
@@ -188,7 +220,7 @@ pub(super) fn scan(
                 None
             };
             let has_receipt = patch_profile.is_some();
-            if matched || known.contains_key(&path) || has_receipt {
+            if matched || (examined && known.contains_key(&path)) || has_receipt {
                 report.games.push(GameProbe {
                     path: path.clone(),
                     game_ids: known.get(&path).cloned().unwrap_or_default(),
@@ -200,7 +232,7 @@ pub(super) fn scan(
             }
             if matched || has_receipt {
                 recognized.push(path);
-            } else if depth < MAX_SCAN_DEPTH {
+            } else {
                 let mut children = Vec::new();
                 for entry in
                     fs::read_dir(&path).map_err(directory_entry_error)?
@@ -214,10 +246,15 @@ pub(super) fn scan(
                         && !kind.is_symlink()
                         && !shinki_emu_patch::is_staging_path(&child)
                     {
-                        children.push(child);
-                        if children.len() + queue.len() + visited.len() > MAX_SCAN_DIRECTORIES {
-                            return Err("SHINKI_EMU_GAME_DIRECTORY_BOUNDS".into());
+                        if depth == MAX_SCAN_DEPTH {
+                            report.record_traversal_limit("local_depth");
+                            break;
                         }
+                        if children.len() + queue.len() + visited.len() == MAX_SCAN_DIRECTORIES {
+                            report.record_traversal_limit("local_children");
+                            break;
+                        }
+                        children.push(child);
                     }
                 }
                 children.sort();
@@ -245,19 +282,22 @@ fn scan_saf(
     progress: &mut dyn FnMut(super::owner::PrepareProgress),
 ) -> Result<(), String> {
     use shinki_emu_manager::platform::android_tree as saf;
-    use shinki_emu_manager_core::detection::{self, DetectionError};
+    use shinki_emu_manager_core::detection;
 
     fn key(uri: &str) -> (String, String) {
         (saf::authority(uri).to_owned(), saf::document_identity(uri).to_owned())
     }
-    fn report_failure(report: &mut ScanReport, error: DetectionError) -> Result<(), String> {
-        let error = match error {
+    fn report_failure(report: &mut ScanReport, error: DetectionError, scope: &str) -> Result<(), String> {
+        match error {
             DetectionError::Cancelled => return Err("SHINKI_EMU_SCAN_CANCELLED".into()),
-            DetectionError::ReadLimit => "SHINKI_EMU_GAME_DIRECTORY_BOUNDS".to_owned(),
-            DetectionError::Io(error) => format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}"),
-        };
-        tracing::warn!(event = "shinki.emu.android.library_tree_scan_failed", diagnostic_code = %error);
-        report.saf_error.get_or_insert(error);
+            DetectionError::ReadLimit if scope == "candidate" => report.skipped_candidates += 1,
+            DetectionError::ReadLimit => report.record_traversal_limit(scope),
+            DetectionError::Io(error) => {
+                let error = format!("SHINKI_EMU_GAME_DIRECTORY_IO: {error}");
+                tracing::warn!(event = "shinki.emu.android.library_tree_scan_failed", diagnostic_code = %error);
+                report.saf_error.get_or_insert(error);
+            }
+        }
         Ok(())
     }
 
@@ -276,11 +316,11 @@ fn scan_saf(
         let root = match saf::document(uri) {
             Ok(root) if root.directory => root,
             Ok(_) => {
-                report_failure(report, std::io::Error::new(std::io::ErrorKind::InvalidInput, "selected document is not a folder").into())?;
+                report_failure(report, std::io::Error::new(std::io::ErrorKind::InvalidInput, "selected document is not a folder").into(), "saf_root")?;
                 continue;
             }
             Err(error) => {
-                report_failure(report, error)?;
+                report_failure(report, error, "saf_root")?;
                 continue;
             }
         };
@@ -291,7 +331,7 @@ fn scan_saf(
             let identity = key(&dir.uri);
             if excluded.contains(&identity) || visited.contains(&identity) { continue; }
             if attempted == MAX_SCAN_DIRECTORIES {
-                report_failure(report, DetectionError::ReadLimit)?;
+                report.record_traversal_limit("saf_tree");
                 return Ok(());
             }
             attempted += 1;
@@ -309,7 +349,7 @@ fn scan_saf(
                 match detection::detect_game_tree(&saf::SafTree::new(&dir), &request.cancel) {
                     Ok(detected) => (Some(detected), None),
                     Err(error) => {
-                        report_failure(report, error)?;
+                        report_failure(report, error, "candidate")?;
                         // A failed candidate need not hide independently readable child games.
                         (None, None)
                     }
@@ -321,14 +361,15 @@ fn scan_saf(
             if detected.is_some() {
                 visited.insert(identity);
             }
-            if !matched && !saved_only && depth < MAX_SCAN_DEPTH {
-                match saf::children(&dir.uri, MAX_SCAN_DIRECTORIES - attempted - pending.len()) {
+            if !matched && !saved_only {
+                let limit = if depth == MAX_SCAN_DEPTH { 0 } else { MAX_SCAN_DIRECTORIES - attempted - pending.len() };
+                match saf::child_directories(&dir.uri, limit) {
                     Ok(mut children) => {
-                        children.retain(|child| child.directory);
                         children.sort_unstable_by(|left, right| left.name.cmp(&right.name));
                         pending.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
                     }
-                    Err(error) => report_failure(report, error)?,
+                    Err(DetectionError::ReadLimit) if depth == MAX_SCAN_DEPTH => report.record_traversal_limit("saf_depth"),
+                    Err(error) => report_failure(report, error, "saf_children")?,
                 }
             }
             if matched || (detected.is_some() && game_known.is_some()) {

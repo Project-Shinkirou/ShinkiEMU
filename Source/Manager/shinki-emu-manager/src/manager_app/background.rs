@@ -20,7 +20,7 @@ pub(super) enum FullScan {
 
 pub(super) enum LibraryScan {
     Full(FullScan),
-    Roots(BTreeSet<PathBuf>),
+    Roots(BTreeMap<PathBuf, bool>),
 }
 
 impl ShinkiEmuManagerController {
@@ -43,7 +43,7 @@ impl ShinkiEmuManagerController {
         match &self.startup_state {
             StartupState::Waiting | StartupState::Loading => tr!("正在读取核心安装清单…").into(),
             StartupState::Scanning(kind) => {
-                let import = *kind == ScanKind::Import;
+                let import = *kind == ScanKind::Import && self.interactive_import();
                 match (self.prepare_progress, import) {
                     (Some(PrepareProgress::Scan { directories, games }), true) => tr!(
                         "正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…",
@@ -66,7 +66,7 @@ impl ShinkiEmuManagerController {
                     "SHINKI_EMU_GAME_DIRECTORY_IO" | "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION" => {
                         tr!("无法读取游戏目录：{error}", error = detail)
                     }
-                    "SHINKI_EMU_GAME_DIRECTORY_BOUNDS" => tr!("目录范围过大，请移除该目录并添加较小的目录。").into(),
+                    "SHINKI_EMU_GAME_DIRECTORY_BOUNDS" => tr!("扫描未完成").into(),
                     code if code.starts_with("SHINKI_EMU_PATCH_") => {
                         tr!("补丁输出信息无效，请检查补丁或移除该目录。").into()
                     }
@@ -80,11 +80,15 @@ impl ShinkiEmuManagerController {
         }
     }
 
+    fn interactive_import(&self) -> bool {
+        matches!(&self.library_scan, Some(LibraryScan::Roots(roots)) if roots.values().any(|interactive| *interactive))
+    }
+
     pub(super) fn prepare_view(&self) -> (&'static str, &'static str, bool) {
         match self.startup_state {
             StartupState::Waiting | StartupState::Loading => ("loading-cores", "", false),
             StartupState::Scanning(_) => (
-                "scanning",
+                if self.interactive_import() { "importing" } else { "scanning" },
                 "",
                 self.scan_cancel.as_ref().is_some_and(|cancel| !cancel.is_cancelled()),
             ),
@@ -162,9 +166,12 @@ impl ShinkiEmuManagerController {
         Ok(())
     }
 
-    pub(super) fn queue_library_root(&mut self, root: PathBuf) {
-        if !matches!(&self.library_scan, Some(LibraryScan::Roots(roots)) if roots.contains(&root)) {
-            self.pending_scan_roots.insert(root);
+    pub(super) fn queue_library_root(&mut self, root: PathBuf, interactive: bool) {
+        if !matches!(&self.library_scan, Some(LibraryScan::Roots(roots)) if roots.contains_key(&root)) {
+            self.pending_scan_roots
+                .entry(root)
+                .and_modify(|pending| *pending |= interactive)
+                .or_insert(interactive);
         }
         self.pump_library_scan();
     }
@@ -172,7 +179,7 @@ impl ShinkiEmuManagerController {
     pub(super) fn forget_queued_root(&mut self, root: &Path) {
         self.pending_scan_roots.remove(root);
         if let Some(LibraryScan::Roots(roots)) = &mut self.library_scan
-            && roots.remove(root)
+            && roots.remove(root).is_some()
         {
             self.pending_scan_roots.append(roots);
             if let Some(cancel) = &self.scan_cancel {
@@ -191,7 +198,7 @@ impl ShinkiEmuManagerController {
             let result = self.scan_roots().and_then(|mut paths| {
                 // A newly chosen root needs import (including patch receipts),
                 // not the startup pass over roots already in the library.
-                paths.retain(|path| !self.pending_scan_roots.contains(path));
+                paths.retain(|path| !self.pending_scan_roots.contains_key(path));
                 self.begin_scan(ScanKind::Full, paths)
             });
             match result {
@@ -215,10 +222,10 @@ impl ShinkiEmuManagerController {
             return false;
         }
         let roots = std::mem::take(&mut self.pending_scan_roots);
-        match self.begin_scan(ScanKind::Import, roots.iter().cloned().collect()) {
+        match self.begin_scan(ScanKind::Import, roots.keys().cloned().collect()) {
             Ok(()) => self.library_scan = Some(LibraryScan::Roots(roots)),
             Err(error) => {
-                self.pending_scan_roots = roots;
+                self.requeue_library_scan(Some(LibraryScan::Roots(roots)));
                 self.scan_failed(error);
             }
         }
@@ -306,12 +313,19 @@ impl ShinkiEmuManagerController {
                         }
                         Ok(report) => {
                             self.startup_state = StartupState::Ready;
+                            let traversal_limited = report.traversal_limited;
+                            let skipped_candidates = report.skipped_candidates;
+                            let io_error = report.has_io_error();
                             match self.apply_scan_report(kind, report) {
                                 Ok(added) => {
                                     let refresh = matches!(scan, Some(LibraryScan::Full(FullScan::Refresh)));
-                                    if added > 0 {
+                                    if scan.is_some() && traversal_limited && added > 0 {
+                                        self.show_snackbar(tr!("已识别 {added} 部新作品；部分目录未扫描", added = added), None);
+                                    } else if added > 0 {
                                         self.show_snackbar(tr!("发现 {added} 部新作品", added = added), None);
-                                    } else if refresh {
+                                    } else if scan.is_some() && !io_error && (traversal_limited || skipped_candidates > 0) {
+                                        self.show_snackbar(tr!("部分目录未扫描"), None);
+                                    } else if refresh && !io_error {
                                         self.show_snackbar(tr!("资料库已是最新"), None);
                                     }
                                 }
@@ -356,7 +370,11 @@ impl ShinkiEmuManagerController {
     fn requeue_library_scan(&mut self, scan: Option<LibraryScan>) {
         match scan {
             Some(LibraryScan::Full(full)) => self.pending_full_scan = Some(full),
-            Some(LibraryScan::Roots(mut roots)) => self.pending_scan_roots.append(&mut roots),
+            Some(LibraryScan::Roots(roots)) => {
+                for root in roots.into_keys() {
+                    self.pending_scan_roots.entry(root).or_insert(false);
+                }
+            }
             None => {}
         }
     }
@@ -439,8 +457,11 @@ impl ShinkiEmuManagerController {
             event = "shinki.emu.manager.probe_refresh",
             games = report.games.len(),
             missing = report.missing,
+            skipped_candidates = report.skipped_candidates,
+            traversal_limited = report.traversal_limited,
             cache_hits = report.cache_hits
         );
+        let incomplete = report.traversal_limited || report.skipped_candidates != 0 || report.has_io_error();
         if let Some(error) = report.cache_error {
             tracing::warn!(event = "shinki.emu.manager.probe_cache_failed", diagnostic_code = %error);
         }
@@ -546,7 +567,7 @@ impl ShinkiEmuManagerController {
             if let Some(id) = imported.first() {
                 self.selected_case_id = Some(id.clone());
             }
-            if imported.is_empty() {
+            if imported.is_empty() && !incomplete {
                 self.diagnostic = tr!("所选目录中未识别到游戏引擎，请选择原生游戏目录。").into();
                 self.diagnostic_severity = "warning";
             }

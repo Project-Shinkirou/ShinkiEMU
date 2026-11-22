@@ -1076,7 +1076,7 @@ impl ShinkiEmuManagerController {
                     .map_err(|e| e.to_string())?;
             }
             self.selected_case_id = Some(id);
-            self.register_library_root(path)?;
+            self.register_library_root(path, false)?;
             changed = true;
         }
         Ok(changed)
