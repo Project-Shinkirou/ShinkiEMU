@@ -147,7 +147,7 @@ function M.apply(ctx, edition)
         alpha_policy="preserve_rgba_including_zero_alpha_native_base_background_opaque_composition",
         inputs=audit, backgrounds=normalized,
     })))
-    local configuration = {profile_file="key.toml", script_encoding="gbk", launch_mode="title",
+    local configuration = {profile_file="key.toml", script_encoding="gbk", launch_mode="direct",
         scr_archive="cnscr.paz", sys_archive="cnsys.paz",
         script_directory="scripts"}
     if #fonts > 0 then configuration.font_path = fonts[1] end
