@@ -204,22 +204,30 @@ fn removal_marker_deletes_the_core_directory() {
 }
 
 #[test]
-fn legacy_top_level_library_is_migrated_into_its_directory() {
+fn legacy_top_level_library_is_not_admitted_on_android() {
     let root = tempfile::tempdir().unwrap();
     let cores = root.path().join("cores");
     fs::create_dir_all(&cores).unwrap();
-    fs::write(cores.join("shinki_emu_x.dll"), b"legacy").unwrap();
-    fs::write(cores.join("avcodec-62.dll"), b"dependency").unwrap();
+    let library = format!("shinki_emu_x.{}", std::env::consts::DLL_EXTENSION);
+    let bare = cores.join(&library);
+    fs::write(&bare, b"legacy").unwrap();
+    let dependency = cores.join(format!("avcodec-62.{}", std::env::consts::DLL_EXTENSION));
+    fs::write(&dependency, b"dependency").unwrap();
     assert!(apply_pending(&cores).is_empty());
-    assert!(!cores.join("shinki_emu_x.dll").exists());
-    assert_eq!(
-        fs::read(cores.join("shinki_emu_x").join("shinki_emu_x.dll")).unwrap(),
-        b"legacy"
-    );
-    let manifest = read_manifest(&cores.join("shinki_emu_x")).unwrap();
-    assert_eq!(manifest.library, "shinki_emu_x.dll");
-    assert_eq!(manifest.files[0].sha256, sha256_hex(b"legacy"));
-    assert!(cores.join("avcodec-62.dll").exists());
+    if cfg!(target_os = "android") {
+        assert_eq!(fs::read(bare).unwrap(), b"legacy");
+        assert!(!cores.join("shinki_emu_x").exists());
+    } else {
+        assert!(!bare.exists());
+        assert_eq!(
+            fs::read(cores.join("shinki_emu_x").join(&library)).unwrap(),
+            b"legacy"
+        );
+        let manifest = read_manifest(&cores.join("shinki_emu_x")).unwrap();
+        assert_eq!(manifest.library, library);
+        assert_eq!(manifest.files[0].sha256, sha256_hex(b"legacy"));
+    }
+    assert_eq!(fs::read(dependency).unwrap(), b"dependency");
 }
 
 #[cfg(windows)]

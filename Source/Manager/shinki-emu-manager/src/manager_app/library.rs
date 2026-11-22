@@ -169,9 +169,9 @@ impl ShinkiEmuManagerController {
         translation::migrate_provider_book(&mut library)?;
         // Settle last session's staged packages before reading manifests. Native
         // initialization remains deferred until an explicit selected action.
-        let cores = data_dir.join("cores");
+        let cores = core_directory(&data_dir)?;
         fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
-        let pending_failures = core_package::apply_pending(&cores);
+        let pending_failures = apply_startup_core_packages(&cores);
 
         let registry = owner::FamilyOwner::new(data_dir.clone(), mailbox.clone())?;
 

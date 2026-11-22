@@ -11,6 +11,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", input.display());
     }
     println!("cargo:rerun-if-changed=build_support/catalog.rs");
+    println!("cargo:rerun-if-changed=../../../build/android_dynamic.rs");
     let generated = catalog::generate(
         &fs::read_to_string(cores).expect("core inventory"),
         &fs::read_to_string(targets).expect("target inventory"),
