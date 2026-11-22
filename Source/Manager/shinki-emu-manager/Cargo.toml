@@ -71,11 +71,22 @@ hassle-rs = "=0.12.0"
 wgpu = { version = "30.0.1", features = ["static-dxc"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Time"] }
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_SystemServices",
+    "Win32_System_Time",
+    "Win32_System_WindowsProgramming",
+] }
 
 [target.'cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))'.dependencies]
 gilrs = { workspace = true, features = ["wgi"] }
 rfd.workspace = true
+
+[target.'cfg(any(all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))'.dependencies]
+libc.workspace = true
 
 [target.'cfg(not(any(target_os = "android", target_env = "ohos")))'.dependencies]
 slint = { workspace = true, features = ["backend-winit", "renderer-femtovg-wgpu", "unstable-winit-030", "raw-window-handle-06"] }

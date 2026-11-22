@@ -136,6 +136,12 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::add_game_directory(self, path)
     }
 
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    fn add_optical_game_directory(&mut self, volume: OpticalVolume) -> Result<ManagerViewModel, String> {
+        self.scan_optical_volume(volume)?;
+        self.model()
+    }
+
     #[cfg(target_os = "android")]
     fn android_storage_access_changed(&mut self) -> Result<ManagerViewModel, String> {
         self.saf_paths.clear();

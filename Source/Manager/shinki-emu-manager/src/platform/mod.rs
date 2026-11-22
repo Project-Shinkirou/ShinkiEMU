@@ -14,6 +14,18 @@ pub mod android_tree;
 pub(crate) mod android_storage;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
+#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+mod optical;
+#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+pub use optical::{OPTICAL_MEDIA_UNAVAILABLE, OpticalVolume, optical_volumes};
+
+/// A native picker of mounted optical data volumes is available on these desktops.
+pub const OPTICAL_VOLUMES_SUPPORTED: bool = cfg!(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", not(target_env = "ohos"))
+));
+
 #[cfg(target_env = "ohos")]
 pub mod ohos;
 #[cfg(target_os = "android")]

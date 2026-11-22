@@ -70,6 +70,15 @@ impl ShinkiEmuManagerController {
         } else {
             game
         };
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical = self.validate_optical_launch(&game)?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let game = if let Some(binding) = &optical {
+            let location = binding.path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.to_owned();
+            GameRecord { location, ..game }
+        } else {
+            game
+        };
         if shinki_emu_patch::is_staging_path(Path::new(&game.location)) {
             return Err(
                 "SHINKI_EMU_PATCH_INVALID_REQUEST: private staging is not a published game".into(),
@@ -193,6 +202,8 @@ impl ShinkiEmuManagerController {
         self.registry.open(owner::OpenSession {
             epoch,
             game,
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            optical: optical.map(|binding| binding.volume),
             candidate,
             configuration,
             window,

@@ -33,6 +33,8 @@ pub(super) struct ScanRequest {
     pub(super) games: Vec<GameRecord>,
     pub(super) excluded: BTreeSet<PathBuf>,
     pub(super) cancel: shinki_emu_manager_core::NativeCancellation,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) optical: Option<OpticalVolume>,
 }
 
 pub(super) struct GameProbe {
@@ -59,6 +61,8 @@ impl GameProbe {
 pub(super) struct UnrecognizedRoot {
     pub(super) requested: PathBuf,
     pub(super) path: PathBuf,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) optical: Option<OpticalVolume>,
     #[cfg(target_os = "android")]
     pub(super) saf: Option<SafProbe>,
 }
@@ -113,6 +117,13 @@ pub(super) fn scan(
             None
         }
     };
+    if let Some(error) = cancelled() {
+        return Err(error.into());
+    }
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    if let Some(volume) = &request.optical {
+        volume.validate()?;
+    }
     let excluded: BTreeSet<PathBuf> = request
         .excluded
         .iter()
@@ -179,6 +190,8 @@ pub(super) fn scan(
         if request.offer_unrecognized && !known.contains_key(&path) && !excluded.contains(&path) {
             selected = Some(UnrecognizedRoot {
                 requested: root, path: path.clone(),
+                #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                optical: request.optical.clone(),
                 #[cfg(target_os = "android")]
                 saf: None,
             });
@@ -213,7 +226,17 @@ pub(super) fn scan(
                 });
             }
             let allow_hint = request.kind == ScanKind::Full && known.contains_key(&path);
-            let detected = match cache.detect(&path, allow_hint, &request.cancel) {
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            let detection = if request.optical.is_some() {
+                // The ordinary probe cache is path-keyed; a drive path can
+                // identify entirely different game data after an eject.
+                cache.rules().detect_game_directory(&path, &request.cancel).map(|detections| (detections, false))
+            } else {
+                cache.detect(&path, allow_hint, &request.cancel)
+            };
+            #[cfg(not(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos")))))]
+            let detection = cache.detect(&path, allow_hint, &request.cancel);
+            let detected = match detection {
                 Ok((detections, hit)) => {
                     report.cache_hits += usize::from(hit);
                     Some(detections)
@@ -290,6 +313,11 @@ pub(super) fn scan(
     }
     if let Some(error) = cancelled() {
         return Err(error.into());
+    }
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    if let Some(volume) = &request.optical {
+        volume.validate()?;
+        return Ok(report);
     }
     report.cache_error = cache.save().err();
     Ok(report)
