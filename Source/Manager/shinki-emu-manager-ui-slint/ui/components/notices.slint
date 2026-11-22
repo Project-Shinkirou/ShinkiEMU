@@ -119,11 +119,14 @@ export component SnackbarHost {
     property <string> action;
 
     changed serial => {
+        root.action = Notices.snackbar-action;
         if Notices.snackbar-text != "" {
             root.text = Notices.snackbar-text;
-            root.action = Notices.snackbar-action;
             root.shown = true;
             timer.restart();
+        } else {
+            root.shown = false;
+            timer.running = false;
         }
     }
 
@@ -179,6 +182,7 @@ export component SnackbarHost {
                 horizontal-stretch: 0;
                 text: root.action;
                 inverse: true;
+                enabled: root.shown;
                 clicked => {
                     root.shown = false;
                     timer.running = false;

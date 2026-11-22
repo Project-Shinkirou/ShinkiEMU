@@ -7,6 +7,7 @@ use shinki_emu_manager_ui_slint::tr;
 pub(super) enum SnackbarAction {
     Undo,
     Restart,
+    AddUnrecognized(probe_worker::UnrecognizedRoot),
 }
 
 impl SnackbarAction {
@@ -14,6 +15,7 @@ impl SnackbarAction {
         match self {
             Self::Undo => tr!("撤销"),
             Self::Restart => tr!("立即重启"),
+            Self::AddUnrecognized(_) => tr!("作为游戏添加"),
         }
     }
 }
@@ -51,12 +53,24 @@ impl ShinkiEmuManagerController {
         self.snackbar.action = action;
     }
 
+    pub(super) fn clear_unrecognized_offer(&mut self, requested: Option<&Path>) {
+        if let Some(SnackbarAction::AddUnrecognized(root)) = &self.snackbar.action
+            && requested.is_none_or(|path| path == root.requested)
+        {
+            self.show_snackbar("", None);
+        }
+    }
+
     pub(super) fn snackbar_action(&mut self) -> Result<SnackbarOutcome, String> {
         match self.snackbar.action.take() {
             Some(SnackbarAction::Undo) => self
                 .undo_remove()
                 .map(|model| SnackbarOutcome::Model(Box::new(model))),
             Some(SnackbarAction::Restart) => Ok(SnackbarOutcome::Restart),
+            Some(SnackbarAction::AddUnrecognized(root)) => {
+                self.show_snackbar("", None);
+                self.admit_unrecognized_root(root).map(|model| SnackbarOutcome::Model(Box::new(model)))
+            }
             None => Err("SHINKI_EMU_SNACKBAR_ACTION_UNAVAILABLE".into()),
         }
     }

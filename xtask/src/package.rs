@@ -300,6 +300,8 @@ pub struct CorePackage {
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<shinki_emu_metadata::CoreIdentity>,
+    #[serde(default, skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty")]
+    pub recognition: shinki_emu_metadata::CoreRecognition,
     pub abi: String,
     pub files: Vec<FileRecord>,
 }
@@ -368,6 +370,7 @@ pub fn stage_core(
     result: &BuildResult,
     version: &str,
     identity: Option<&shinki_emu_metadata::CoreIdentity>,
+    recognition: &shinki_emu_metadata::CoreRecognition,
     out: &Path,
     search: &[PathBuf],
 ) -> Result<PathBuf> {
@@ -534,6 +537,7 @@ pub fn stage_core(
             library: library.into(),
             version: version.into(),
             identity: identity.cloned(),
+            recognition: recognition.clone(),
             abi: shinki_emu_build::ABI.into(),
             files,
         };
@@ -1010,6 +1014,7 @@ pub fn package(
             &result,
             version,
             identity.as_ref(),
+            &c.recognition,
             out,
             &search_dirs(inv, &result)?,
         )

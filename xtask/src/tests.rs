@@ -325,6 +325,7 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
         &r,
         "1.0.0",
         None,
+        &Default::default(),
         &t.path().join("out"),
         &[f._dir.path().to_owned()],
     )
@@ -384,6 +385,7 @@ fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
             &r,
             "1.0.0",
             None,
+            &Default::default(),
             &t.path().join("no-license"),
             &[f._dir.path().to_owned()]
         )
@@ -395,6 +397,7 @@ fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
         &r,
         "1.0.0",
         None,
+        &Default::default(),
         &t.path().join("out"),
         &[f._dir.path().to_owned()],
     )
@@ -621,6 +624,7 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
         &result,
         "1.0.0",
         None,
+        &Default::default(),
         &output,
         std::slice::from_ref(&native),
     )
@@ -635,7 +639,7 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
     );
     fs::write(resources.join(extension), b"invalid native extension").unwrap();
     let rejected = temp.path().join("rejected");
-    assert!(stage_core(&result, "1.0.0", None, &rejected, &[native]).is_err());
+    assert!(stage_core(&result, "1.0.0", None, &Default::default(), &rejected, &[native]).is_err());
     assert!(!rejected.exists());
 }
 
@@ -663,6 +667,7 @@ fn output_nested_in_resource_inputs_is_rejected_without_modifying_sources() {
             &result,
             "1.0.0",
             None,
+            &Default::default(),
             &output,
             &[fixture._dir.path().to_owned()]
         )
@@ -687,10 +692,17 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
         .join(".work/release")
         .join(format!("core-rfvp-{}", identity.version()))
         .join("x86_64-pc-windows-msvc/package");
+    let mut recipe: toml::Value = toml::from_str(include_str!("../../build/cores.toml")).unwrap();
+    let declaration: toml::Value = toml::from_str(
+        r#"recognition = [{ path = "Data/Test.id", offset = 2, magic = "beef" }]"#,
+    ).unwrap();
+    recipe["cores"][0].as_table_mut().unwrap().insert("recognition".into(), declaration["recognition"].clone());
+    let recipe: crate::cores::Core = recipe["cores"][0].clone().try_into().unwrap();
     let staged = stage_core(
         &receipt,
         &identity.version(),
         Some(&identity),
+        &recipe.recognition,
         &output,
         &[fixture._dir.path().to_owned()],
     )
@@ -717,6 +729,9 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
     extract_zip(&archive, &extracted).unwrap();
     let extracted_manifest = verify_core(&extracted).unwrap();
     assert_eq!(extracted_manifest.identity.as_ref(), Some(&identity));
+    assert_eq!(extracted_manifest.recognition.rules()[0].path(), "data/test.id");
+    assert_eq!(extracted_manifest.recognition.rules()[0].offset(), 2);
+    assert_eq!(extracted_manifest.recognition.rules()[0].magic_bytes(), [0xbe, 0xef]);
     assert_eq!(
         sha256(&extracted.join(&extracted_manifest.library)).unwrap(),
         sha256(&receipt.library).unwrap()
@@ -728,6 +743,7 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
             &receipt,
             &changed.version(),
             Some(&changed),
+            &recipe.recognition,
             &temp.path().join("wrong-pin"),
             &[]
         )
@@ -738,6 +754,7 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
             &receipt,
             "0.1.0-beta.5",
             Some(&identity),
+            &recipe.recognition,
             &temp.path().join("false-version"),
             &[]
         )

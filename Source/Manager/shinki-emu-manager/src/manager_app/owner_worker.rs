@@ -29,22 +29,19 @@ pub(super) fn run(
         // App startup settled the previous session's operations. Also apply
         // packages staged in this session before the first lazy core load.
         let pending_failures = core_package::apply_pending(&cores);
-        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
-        let directories = core_directories(&cores)?;
-        #[cfg(any(target_os = "android", target_env = "ohos"))]
-        let directories = Vec::new();
+        let directories = recognition::directories(&data_dir)?;
         let mut errors = BTreeMap::new();
         let installed = recognition::installed(&directories)?;
         for (file, error) in pending_failures {
             errors.insert(file, error);
         }
-        Ok((directories, installed, errors))
+        Ok((installed, errors))
     })();
-    let directories = match initialized {
-        Ok((directories, installed, errors)) => {
-            let _ = results.send(BackgroundEvent::Ready(Ok((installed, errors))));
+    let installed = match initialized {
+        Ok((installed, errors)) => {
+            let _ = results.send(BackgroundEvent::Ready(Ok((installed.clone(), errors))));
             notify(&wake);
-            directories
+            installed
         }
         Err(error) => {
             let _ = results.send(BackgroundEvent::Ready(Err(error)));
@@ -52,7 +49,7 @@ pub(super) fn run(
             return registry.shutdown().map_err(|error| error.to_string());
         }
     };
-    let mut cache = probe_cache::ProbeCache::load(&data_dir);
+    let mut cache = probe_cache::ProbeCache::load(&data_dir, recognition::scan_rules(&installed));
     let mut active: Option<ActiveFamilySession> = None;
     let mut pending = Vec::new();
     loop {
@@ -108,7 +105,7 @@ pub(super) fn run(
                 let result = if active.is_some() {
                     Err("SHINKI_EMU_FAMILY_SESSION_ALREADY_ACTIVE".into())
                 } else {
-                    activate(&mut registry, &directories, &plugin_id)
+                    activate(&mut registry, &installed, &plugin_id)
                         .and_then(|()| collect_metadata(&registry, &plugin_id))
                 };
                 let _ = results.send(BackgroundEvent::Activated { plugin_id, result });
@@ -118,7 +115,7 @@ pub(super) fn run(
                 pending.clear();
                 let epoch = request.epoch;
                 let candidate = (|| {
-                    activate(&mut registry, &directories, &request.candidate.plugin_id)?;
+                    activate(&mut registry, &installed, &request.candidate.plugin_id)?;
                     let path = fs::canonicalize(&request.game.location).map_err(|error| error.to_string())?;
                     let selection = registry.probe_selected(
                         &ProbeRequest { game_path: path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.into() },
@@ -292,14 +289,14 @@ use shinki_emu_manager::static_cores::STATIC_CORES;
 
 fn activate(
     registry: &mut FamilyProviderRegistry,
-    directories: &[PathBuf],
+    installed: &BTreeMap<String, recognition::InstalledCore>,
     plugin_id: &str,
 ) -> Result<(), String> {
+    // Synthetic providers can only enter through the test-only Registry command.
+    #[cfg(test)]
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
-    let catalog = shinki_emu_manager_core::static_core_catalog::lookup(plugin_id);
-    if catalog.is_some_and(|entry| !entry.supported) && !recognition::is_static(plugin_id) {
-        return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
-    }
+    let catalog = recognition::runnable_core(installed, plugin_id)?;
+    if registry.descriptor(plugin_id).is_some() { return Ok(()); }
     #[cfg(target_os = "android")]
     {
         let root = crate::platform::bundled_resource_dir()
@@ -324,12 +321,11 @@ fn activate(
     let provider = if let Some((_, query)) = STATIC_CORES.iter().find(|(id, _)| *id == plugin_id) {
         unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::from_query(*query) }.map_err(|error| error.to_string())?
     } else {
-        let installed = recognition::installed(directories)?;
-        let core = installed.get(plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
+        let core = &installed[plugin_id];
         shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library).map_err(|error| error.to_string())?
     };
     let descriptor = provider.manager_descriptor();
-    if descriptor.plugin_id != plugin_id || catalog.is_some_and(|entry| entry.family_id != descriptor.family_id) {
+    if descriptor.plugin_id != plugin_id || catalog.family_id != descriptor.family_id {
         return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
     }
     registry.register_provider(provider).map_err(|error| error.to_string())?;

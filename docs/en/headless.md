@@ -17,9 +17,9 @@ cargo test -p shinki-emu-headless
 cargo clippy -p shinki-emu-headless --all-targets -- -D warnings
 ```
 
-`--no-default-features` builds the core runner without the Manager UI. `--features static-cmvs` embeds CMVS under `shinki.emu.cmvs`; `--features static-siglus` embeds the same pinned Siglus core used by Manager under `siglus_rs`. Manager shares the runner through `shinki-emu-manager headless ...` and `shinki-emu-manager headless-ui ...`; its embedded core IDs come from the same `static_cores::STATIC_CORES` inventory used by the graphical owner. The library's `run_cli(arguments, STATIC_CORES)` entry accepts any host's linked inventory.
+The standalone runner loads cores by path. Build it with `--no-default-features` to omit the Manager UI. Manager reuses the runner through `shinki-emu-manager headless ...` and `shinki-emu-manager headless-ui ...`. Its embedded core IDs come from the same `static_cores::STATIC_CORES` inventory used by the graphical owner. Other hosts can pass their own linked inventory to the library's `run_cli` entry point.
 
-Build Manager with `cargo build -p shinki-emu-manager --features static-cmvs` to register `shinki.emu.cmvs` in both its GUI owner and `shinki-emu-manager headless --core shinki.emu.cmvs ...`. Enabling the standalone runner's feature alone does not register CMVS in Manager. Desktop builds without this optional feature keep their dynamic-core discovery.
+Build Manager with `cargo build -p shinki-emu-manager --features static-cmvs` to register `shinki.emu.cmvs` in both its GUI owner and `shinki-emu-manager headless --core shinki.emu.cmvs ...`. Desktop Manager builds without this feature retain their dynamic core discovery.
 
 ## Core acceptance and captures
 
@@ -30,7 +30,7 @@ shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --fra
 shinki-emu-headless compare --actual artifacts/comparison/frame-000180.png --baseline artifacts/capture/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001
 ```
 
-`--core` accepts a native library, unpacked core directory, published ZIP or a linked static core ID. ZIP dependencies remain beside the extracted library, as in Manager. Only normal ABI query/descriptor/probe/open checks run; there is no release-provenance audit.
+For standalone `run`, `--core` accepts a native library, unpacked core directory, or core ZIP. ZIP dependencies remain beside the extracted library, as in Manager. The runner performs the normal ABI query, descriptor, probe, and open checks; release provenance is outside this run.
 
 The source game is copied into a unique temporary directory **before the core receives its path**. Writes to relative game saves/configuration therefore affect the disposable copy. Original saves are never passed to the core as writable paths. Copying a large game takes disk space and time; symbolic links and special files are rejected. This is isolation of ordinary core storage, not an operating-system sandbox for untrusted executable cores. Configuration files that deliberately point outside the game must be adjusted to a temporary location.
 

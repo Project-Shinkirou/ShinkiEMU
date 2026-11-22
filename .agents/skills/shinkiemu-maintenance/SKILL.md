@@ -206,13 +206,13 @@ shinki-emu-headless compare --actual a.png --baseline b.png [--max-channel-delta
 shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en|ja --theme dark|light --output <dir>   # Manager: headless-ui
 ```
 
-构建：`cargo build -p shinki-emu-headless`。`--features static-cmvs` 会把 CMVS 以 `shinki.emu.cmvs` 静态链进去，`--features static-siglus` 以 `siglus_rs` 链入（与 Manager 同 pin）；`--no-default-features` 只构建核心 runner，不含 Manager UI。
+构建独立运行器：`cargo build -p shinki-emu-headless`。加 `--no-default-features` 可省去 Manager 界面。独立运行器只通过路径加载核心，Manager 自己传入已编入的静态核心表。
 
 `run` 的主要参数：
 
 | 参数 | 作用 |
 |---|---|
-| `--core` | core ZIP / 核心目录 / 库路径，或宿主已链接的 plugin_id |
+| `--core` | 独立运行器传核心 ZIP、解压目录或库路径；Manager 运行内置核心时传 `plugin_id` |
 | `--game-dir` | 源游戏目录。核心拿到路径之前，整个目录先复制到唯一的临时目录，存档和相对路径配置都写在副本里。symlink 和特殊文件会被拒绝；大游戏会占磁盘和时间 |
 | `--frames`（默认 60）、`--duration-ms` | 时间线长度，取两者和脚本结束点中的最大值 |
 | `--capture-frame`、`--capture-ms` | 截图时间点，逗号分隔；采样号从 1 开始，毫秒向上取整到下一个采样。最后一个采样总会截图 |
@@ -261,7 +261,7 @@ shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en
 
 **限制。** 复制游戏只是隔离普通存储，不是给不可信核心用的系统沙箱。核心运行在隔离子进程中，AppData/HOME/XDG 目录和 TEMP 环境临时化；核心声明的字符串 `save_root` 路径被强制指向临时目录。`RUST_MIN_STACK` 默认至少 8 MiB，保留显式更大值。配置里故意指向游戏外的路径，要改到临时位置。用 `E:/Games` 下的游戏时原目录同样只读。核心自己需要的 GPU 或音频设备照样需要；runner 不会关掉音频、影片或脚本。Musica、CMVS 这类硬件 GPU 合成的核心，软件 adapter 的结果不算通过。
 
-**平台状态。** Windows x64 已用两个真实核心验收：静态 Siglus（`siglus_rs`）跑 Rewrite_PLUS，动态 RFVP ZIP 跑樱花萌放，各 360 个采样、8 条回放、1280×720 截图和 hash，独立重跑后容差基线比较通过。Linux x64 默认构建（含 UI）只做过 `cargo check`。macOS、Android、iOS、OHOS 没有运行过，不能写成已验证。
+**平台状态。** 历史 Windows x64 验收用静态 Siglus 跑过 Rewrite_PLUS，也用动态 RFVP ZIP 跑过樱花萌放。两者各采样 360 次、回放 8 条输入，取得 1280×720 截图和 hash，独立重跑后通过容差比较。独立运行器现用动态包路径；静态结果只作为历史记录。Linux x64 默认构建（含 UI）只做过 `cargo check`。这组验收没有在 macOS、Android、iOS 或 OHOS 上运行。
 
 **调试。** 先用 runner 复现问题，再看核心的 `tracing` 事件（`shinki.emu.<family>.*`）。核心 `SESSION_FAILED` 时，错误码和消息会写进 stderr 和 `failure.json`。Musica 另有只读诊断 CLI `shinki-emu-musica-cli data list|read|validate`（见 `Source/Programs/shinki-emu-musica-cli/README.md`），它不运行 VM。
 
