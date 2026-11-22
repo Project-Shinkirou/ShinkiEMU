@@ -20,7 +20,10 @@ pub enum WindowCommand {
     Position { x: i32, y: i32 },
     Visibility(bool),
     Minimized(bool),
+    #[cfg(not(target_os = "android"))]
     Icon(FamilyWindowIcon),
+    #[cfg(target_os = "android")]
+    Icon,
     Pointer(FamilyPointerRequest),
 }
 #[derive(Debug, Clone)]
@@ -280,13 +283,18 @@ unsafe fn execute(
         abi::WINDOW_MINIMIZED if raw.flags <= 1 => WindowCommand::Minimized(raw.flags != 0),
         abi::WINDOW_ICON => {
             let bytes = unsafe { raw.pixels.as_slice(256 * 256 * 4) }.map_err(|_| invalid())?;
-            let icon = FamilyWindowIcon {
-                width: raw.width,
-                height: raw.height,
-                rgba: bytes.to_vec(),
-            };
-            icon.validate().map_err(|_| invalid())?;
-            WindowCommand::Icon(icon)
+            FamilyWindowIcon::validate_rgba8(raw.width, raw.height, bytes.len())
+                .map_err(|_| invalid())?;
+            #[cfg(target_os = "android")]
+            { WindowCommand::Icon }
+            #[cfg(not(target_os = "android"))]
+            {
+                WindowCommand::Icon(FamilyWindowIcon {
+                    width: raw.width,
+                    height: raw.height,
+                    rgba: bytes.to_vec(),
+                })
+            }
         }
         abi::WINDOW_POINTER
             if raw.flags & !63 == 0

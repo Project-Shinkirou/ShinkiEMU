@@ -29,6 +29,46 @@ fn manifest(plugin_id: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
     .unwrap()
 }
 
+#[test]
+fn in_repo_source_commit_comes_only_from_a_bound_release_receipt() {
+    let root = tempfile::tempdir().unwrap();
+    let plugin = "shinki.emu.cmvs";
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    let mut receipt = serde_json::json!({
+        "schema": "shinki.emu.build_identity.v1",
+        "component": plugin,
+        "target": env!("SHINKI_EMU_BUILD_TARGET"),
+        "profile": "release",
+        "product_version": "0.2.0",
+        "source_commit": commit,
+        "source_dirty": false,
+        "sha256": "additional existing receipt fields are ignored"
+    });
+    let path = root.path().join("build.json");
+    let encode = |receipt: &serde_json::Value| {
+        let bytes = serde_json::to_vec(receipt).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        serde_json::from_slice::<CoreManifest>(&manifest(plugin, &[("build.json", &bytes)])).unwrap()
+    };
+    let valid = encode(&receipt);
+    assert_eq!(product_source_commit(root.path(), &valid).as_deref(), Some(commit));
+
+    for (key, invalid) in [
+        ("component", serde_json::json!("shinki.emu.musica")),
+        ("target", serde_json::json!("foreign-target")),
+        ("profile", serde_json::json!("debug")),
+        ("product_version", serde_json::json!("0.1.0")),
+        ("source_commit", serde_json::json!("ABCDEF")),
+        ("source_dirty", serde_json::json!(true)),
+    ] {
+        let original = std::mem::replace(&mut receipt[key], invalid);
+        assert!(product_source_commit(root.path(), &encode(&receipt)).is_none(), "{key}");
+        receipt[key] = original;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
+    assert!(product_source_commit(root.path(), &valid).is_none(), "receipt bytes changed");
+}
+
 fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
     let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
     for (name, bytes) in entries {

@@ -9,8 +9,11 @@ impl ShinkiEmuManagerController {
     pub(super) fn emulator_label(&self, plugin_id: &str) -> String {
         let name = shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
             .map_or(plugin_id, |entry| entry.display_name);
-        let (version, identity) = self.core_release(plugin_id);
-        let version = identity.map_or_else(|| version.to_owned(), shinki_emu_metadata::CoreIdentity::display_version);
+        let (version, identity, source_commit) = self.core_release(plugin_id);
+        let version = identity.map_or_else(
+            || cores::product_version_label(version, source_commit),
+            shinki_emu_metadata::CoreIdentity::display_version,
+        );
         if version.is_empty() { name.to_owned() } else { format!("{name} · {version}") }
     }
 

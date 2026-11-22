@@ -203,6 +203,11 @@ pub(super) fn execute(
     use slint::ComponentHandle;
     let native = window.window();
     match command {
+        // Android owns the Activity icon and surface size. Valid hints are
+        // accepted without mutating either; return the actual state below.
+        #[cfg(target_os = "android")]
+        WindowCommand::Icon | WindowCommand::Size { .. } => {}
+        #[cfg(target_env = "ohos")]
         WindowCommand::Icon(icon) => set_icon(native, Some(icon.clone()))?,
         WindowCommand::Pointer(request) => {
             super::pointer::HostPointer::apply(pointer, window, request.clone())?
@@ -219,9 +224,9 @@ pub(super) fn execute(
             };
             set_game_fullscreen(window, fullscreen)?;
         }
-        WindowCommand::Size { .. }
-        | WindowCommand::Position { .. }
-        | WindowCommand::Visibility(_) => {
+        #[cfg(target_env = "ohos")]
+        WindowCommand::Size { .. } => return Err("SHINKI_EMU_WINDOW_COMMAND_UNSUPPORTED".into()),
+        WindowCommand::Position { .. } | WindowCommand::Visibility(_) => {
             return Err("SHINKI_EMU_WINDOW_COMMAND_UNSUPPORTED".into());
         }
         WindowCommand::Minimized(value) => native.set_minimized(*value),
@@ -242,4 +247,134 @@ pub(super) fn execute(
         minimized: u32::from(native.is_minimized()),
         ..WindowOutcome::default()
     })
+}
+
+#[cfg(all(test, target_os = "android"))]
+mod android_tests {
+    use super::*;
+    use crate::{
+        HostWake, modal_service::ModalBridge,
+        window_service::{WindowBridge, WindowOutcome},
+    };
+    use shinki_emu_abi as abi;
+    use shinki_emu_manager_ui_slint::SlintManagerAdapter;
+    use slint::{
+        ComponentHandle, PhysicalSize, PlatformError,
+        platform::{
+            Platform, WindowAdapter,
+            software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
+        },
+    };
+    use std::{rc::Rc, sync::{Arc, mpsc}, time::Duration};
+
+    struct SoftwarePlatform(Rc<MinimalSoftwareWindow>);
+
+    impl Platform for SoftwarePlatform {
+        fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    fn raw(kind: u32) -> abi::WindowRequest {
+        let mut request: abi::WindowRequest = unsafe { std::mem::zeroed() };
+        request.kind = kind;
+        request.session_epoch = 1;
+        request.context_epoch = 1;
+        request.request_id = 1;
+        request
+    }
+
+    fn call(bridge: &WindowBridge, request: &abi::WindowRequest) -> (abi::Status, WindowOutcome) {
+        let sink = bridge.sink();
+        let mut result: abi::WindowResult = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            sink.request.unwrap()(sink.context, request, &mut result, &mut abi::Error::default())
+        };
+        (status, WindowOutcome {
+            valid_fields: result.valid_fields,
+            width: result.width,
+            height: result.height,
+            fullscreen: result.fullscreen,
+            minimized: result.minimized,
+            ..WindowOutcome::default()
+        })
+    }
+
+    #[test]
+    fn decorations_and_size_are_advisory_without_weakening_window_service() {
+        let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        slint::platform::set_platform(Box::new(SoftwarePlatform(software.clone()))).unwrap();
+        let adapter = Rc::new(SlintManagerAdapter::new().unwrap());
+        let pointer = super::super::pointer::HostPointer::install(&adapter);
+        let window = adapter.window();
+        let actual = PhysicalSize::new(900, 600);
+        software.set_size(actual);
+
+        let (sender, wakes) = mpsc::channel();
+        let wake: HostWake = Arc::new(move || { let _ = sender.send(()); });
+        let bridge = WindowBridge::new(1, ModalBridge::new(1, wake.clone()).unwrap(), wake);
+        let dispatch = |kind, expected_error: Option<&str>| {
+            let worker_bridge = bridge.clone();
+            let worker = std::thread::spawn(move || {
+                let mut request = raw(kind);
+                if kind == abi::WINDOW_ICON {
+                    request.width = 1;
+                    request.height = 1;
+                    request.pixels = abi::Bytes::new(&[255, 0, 0, 255]);
+                } else {
+                    request.width = 320;
+                    request.height = 240;
+                }
+                call(&worker_bridge, &request)
+            });
+            wakes.recv_timeout(Duration::from_secs(5)).unwrap();
+            let presentation = bridge.take().unwrap();
+            let response = execute(window, &pointer, &presentation.command);
+            assert_eq!(response.as_ref().err().map(String::as_str), expected_error);
+            bridge.respond(&presentation, response).unwrap();
+            worker.join().unwrap()
+        };
+
+        let (status, before) = dispatch(abi::WINDOW_QUERY_STATE, None);
+        assert_eq!(status, abi::OK);
+        for kind in [abi::WINDOW_ICON, abi::WINDOW_SIZE] {
+            let (status, after) = dispatch(kind, None);
+            assert_eq!(status, abi::OK);
+            assert_eq!(window.window().size(), actual);
+            assert_eq!((after.width, after.height), (actual.width, actual.height));
+            assert_eq!(after.valid_fields, abi::WINDOW_RESULT_SIZE | abi::WINDOW_RESULT_MODE | abi::WINDOW_RESULT_MINIMIZED);
+            assert_eq!(after.fullscreen, before.fullscreen);
+            assert_eq!(after.minimized, before.minimized);
+        }
+        for kind in [abi::WINDOW_POSITION, abi::WINDOW_VISIBILITY] {
+            let (status, outcome) = dispatch(kind, Some("SHINKI_EMU_WINDOW_COMMAND_UNSUPPORTED"));
+            assert_eq!(status, abi::CORE_ERROR);
+            assert_eq!(outcome.valid_fields, 0);
+        }
+
+        let mut invalid_icon = raw(abi::WINDOW_ICON);
+        invalid_icon.width = 1;
+        invalid_icon.height = 1;
+        invalid_icon.pixels = abi::Bytes::new(&[255, 0, 0]);
+        assert_eq!(call(&bridge, &invalid_icon).0, abi::INVALID_ARGUMENT);
+        assert_eq!(call(&bridge, &raw(abi::WINDOW_SIZE)).0, abi::UNSUPPORTED);
+        assert_eq!(call(&bridge, &raw(u32::MAX)).0, abi::UNSUPPORTED);
+        assert!(wakes.try_recv().is_err());
+
+        let worker_bridge = bridge.clone();
+        let worker = std::thread::spawn(move || {
+            let mut request = raw(abi::WINDOW_SIZE);
+            request.width = 320;
+            request.height = 240;
+            call(&worker_bridge, &request).0
+        });
+        wakes.recv_timeout(Duration::from_secs(5)).unwrap();
+        let presentation = bridge.take().unwrap();
+        let sink = bridge.sink();
+        unsafe { sink.invalidate.unwrap()(sink.context, 1, 2) };
+        assert_eq!(worker.join().unwrap(), abi::CANCELLED);
+        assert!(bridge.respond(&presentation, Ok(before)).is_err());
+        assert_eq!(window.window().size(), actual);
+        bridge.close();
+    }
 }

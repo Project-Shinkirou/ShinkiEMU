@@ -73,6 +73,17 @@ pub(super) fn embedded_identity(
     IDENTITIES.get(plugin_id)
 }
 
+pub(super) fn embedded_product_release(plugin_id: &str) -> Option<(&'static str, &'static str)> {
+    if !recognition::is_static(plugin_id)
+        || !shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
+            .is_some_and(|entry| entry.first_party)
+    {
+        return None;
+    }
+    let commit = env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT");
+    (!commit.is_empty()).then_some((shinki_emu_manager::version(), commit))
+}
+
 fn capability_label(capability: FamilyCapability) -> &'static str {
     match capability {
         FamilyCapability::CpuFrame => tr!("软件渲染"),
@@ -98,6 +109,13 @@ fn core_card_version(version: &str, identity: Option<&CoreIdentity>) -> String {
     )
 }
 
+pub(super) fn product_version_label(version: &str, source_commit: Option<&str>) -> String {
+    match source_commit.and_then(|commit| commit.get(..8)) {
+        Some(short) => format!("{version} ({short})"),
+        None => version.to_owned(),
+    }
+}
+
 impl ShinkiEmuManagerController {
     fn cores_dir(&self) -> Result<PathBuf, String> {
         core_directory(&self.data_dir)
@@ -120,12 +138,14 @@ impl ShinkiEmuManagerController {
     pub(super) fn core_release<'a>(
         &'a self,
         plugin_id: &str,
-    ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>) {
+    ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>, Option<&'a str>) {
         if let Some(core) = self.registry.installed().get(plugin_id) {
-            return (&core.manifest.version, core.manifest.identity.as_ref());
+            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref());
         }
-        let identity = embedded_identity(plugin_id);
-        ("", identity)
+        if let Some((version, source_commit)) = embedded_product_release(plugin_id) {
+            return (version, None, Some(source_commit));
+        }
+        ("", embedded_identity(plugin_id), None)
     }
 
     /// Loaded, installed-but-unloaded, failed, pending and online-available
@@ -174,7 +194,7 @@ impl ShinkiEmuManagerController {
                 None if native.is_some() => "loaded",
                 None => "installed",
             };
-            let (version, identity) = self.core_release(&id);
+            let (version, identity, source_commit) = self.core_release(&id);
             let update_version = self.online_core(&id).filter(|entry| {
                 matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
             }).map(|entry| core_card_version(&entry.version, entry.identity.as_ref())).unwrap_or_default();
@@ -184,7 +204,11 @@ impl ShinkiEmuManagerController {
                 id: id.clone(),
                 name: catalog.map(|entry| entry.display_name.to_owned()).or_else(|| native.map(|descriptor| descriptor.display_name.clone())).unwrap_or_else(|| id.clone()),
                 engine: catalog.map(|entry| entry.family_id.to_owned()).or_else(|| native.map(|descriptor| descriptor.family_id.clone())).unwrap_or_default(),
-                version: core_card_version(version, identity),
+                version: if identity.is_some() {
+                    core_card_version(version, identity)
+                } else {
+                    product_version_label(version, source_commit)
+                },
                 capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
                 state: state.into(),
                 source: if bundled { "bundled" } else { "user" }.into(),
@@ -247,8 +271,8 @@ impl ShinkiEmuManagerController {
             {
                 continue;
             }
-            let manifest =
-                core_package::read_manifest(&cores.join(core_package::PENDING).join(stem));
+            let directory = cores.join(core_package::PENDING).join(stem);
+            let manifest = core_package::read_manifest(&directory);
             let plugin_id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone());
             let online = plugin_id.as_deref().and_then(|id| self.online_core(id));
             let name = online.map_or_else(|| stem.clone(), |entry| entry.display_name.clone());
@@ -262,7 +286,13 @@ impl ShinkiEmuManagerController {
                     name,
                     engine,
                     version: manifest
-                        .map(|manifest| core_card_version(&manifest.version, manifest.identity.as_ref()))
+                        .map(|manifest| match manifest.identity.as_ref() {
+                            Some(identity) => core_card_version(&manifest.version, Some(identity)),
+                            None => {
+                                let source = core_package::product_source_commit(&directory, &manifest);
+                                product_version_label(&manifest.version, source.as_deref())
+                            }
+                        })
                         .unwrap_or_default(),
                     state: "pending-install".into(),
                     source: "user".into(),
@@ -334,7 +364,10 @@ impl ShinkiEmuManagerController {
             .filter(|entry| entry.platform == platform
                 && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
                 && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
-        core_package::stage_local_release(source, entries, &pending)?;
+        let stem = core_package::stage_local_release(source, entries, &pending)?;
+        if cfg!(target_os = "android") {
+            self.plugin_errors.remove(&stem);
+        }
         self.model()
     }
 
@@ -548,6 +581,9 @@ impl ShinkiEmuManagerController {
             match done.result {
                 Ok(stem) => {
                     self.core_failures.remove(&done.plugin_id);
+                    if cfg!(target_os = "android") {
+                        self.plugin_errors.remove(&stem);
+                    }
                     tracing::info!(
                         event = "shinki.emu.manager.core_staged",
                         core = %stem,

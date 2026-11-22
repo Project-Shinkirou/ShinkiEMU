@@ -9,6 +9,8 @@ pub struct CoreCatalogEntry {
     pub plugin_id: &'static str,
     pub family_id: &'static str,
     pub display_name: &'static str,
+    /// In-repo cores share the product release identity, not an adapter sequence.
+    pub first_party: bool,
     /// Inventory-declared availability for the current target, through either
     /// a standalone core or static Manager integration. This does not mean
     /// installed, loaded or verified with a real game. Publication restrictions
