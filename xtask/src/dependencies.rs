@@ -918,6 +918,25 @@ pub fn ndk_root(inv: &Inventory) -> Result<PathBuf> {
     Ok(root)
 }
 
+pub(crate) fn private_android_tool(inv: &Inventory, name: &str) -> PathBuf {
+    inv.root
+        .join(".work/tools/bin")
+        .join(format!("{name}{}", env::consts::EXE_SUFFIX))
+}
+
+pub(crate) fn cargo_plugin(path: &Path) -> Command {
+    let mut command = Command::new(path);
+    command.env("CARGO", env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    command
+}
+
+fn cargo_ndk_matches(path: &Path, required: &str) -> bool {
+    capture(cargo_plugin(path).args(["ndk", "--version"]))
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .is_some_and(|version| version.trim().strip_prefix("cargo-ndk ") == Some(required))
+}
+
 fn validate_ndk_revision(root: &Path, required: &str) -> Result<()> {
     let props = fs::read_to_string(root.join("source.properties"))
         .context("NDK source.properties missing")?;
@@ -1097,22 +1116,15 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             Ok(p) => println!("NDK: {}", p.display()),
             Err(e) => missing.push(e.to_string()),
         };
-        let ndk = inv.root.join(".work/tools/bin").join(if cfg!(windows) {
-            "cargo-ndk.exe"
-        } else {
-            "cargo-ndk"
-        });
-        let tool = if ndk.is_file() {
+        let ndk = private_android_tool(inv, "cargo-ndk");
+        let tool = if ndk.is_file() || core.is_some() {
             Some(ndk)
         } else {
             executable("cargo-ndk")
         };
-        let ndk_version = tool.and_then(|path| capture(Command::new(path).arg("--version")).ok());
-        if ndk_version
-            .as_ref()
-            .is_none_or(|bytes| !String::from_utf8_lossy(bytes).contains("4.1.2"))
-        {
-            missing.push("cargo-ndk 4.1.2 (cargo xtask deps)".into());
+        let required = lock(inv)?.cargo_ndk_version;
+        if !tool.is_some_and(|path| cargo_ndk_matches(&path, &required)) {
+            missing.push(format!("cargo-ndk {required} (cargo xtask deps)"));
         }
         match Command::new("java").arg("-version").output() {
             Ok(output) => {
@@ -1867,7 +1879,13 @@ pub fn apply_environment(
             .env("ANDROID_NDK_ROOT", ndk)
             .env("PKG_CONFIG_ALLOW_CROSS", "1")
             .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
-        cmd.env("PKG_CONFIG", cross_pkg_config(inv, target)?);
+        // A Rust-only core such as Siglus does not prepare a vcpkg tree or its
+        // Windows pkgconf executable. Preserve cross-only lookup for consumers.
+        if selected.ffmpeg || selected.subtitle || selected.native_vcpkg || selected.renpy {
+            cmd.env("PKG_CONFIG", cross_pkg_config(inv, target)?);
+        } else {
+            cmd.env_remove("PKG_CONFIG");
+        }
         if let Some(jar) = env::var_os("ANDROID_JAR") {
             cmd.env("ANDROID_JAR", jar);
         } else if let Some(sdk) =
@@ -1982,11 +2000,7 @@ pub fn apply_environment(
             .join("toolchains/llvm/prebuilt")
             .join(host)
             .join("sysroot");
-        let clang_target = if target.starts_with("aarch64") {
-            "aarch64-linux-android28"
-        } else {
-            "x86_64-linux-android28"
-        };
+        let clang_target = format!("{target}{}", crate::binary::ANDROID_API);
         let clang_args = format!(
             "--target={clang_target} --sysroot=\"{}\"",
             sysroot.display()
@@ -2232,19 +2246,10 @@ pub fn prepare(
         }
     }
     if target_spec.platform == "android" {
-        let tool = inv.root.join(".work/tools/bin").join(if cfg!(windows) {
-            "cargo-ndk.exe"
-        } else {
-            "cargo-ndk"
-        });
-        let current = if tool.exists() {
-            Some(capture(Command::new(&tool).arg("--version"))?)
-        } else {
-            None
-        };
-        if current.as_ref().is_none_or(|version| {
-            !String::from_utf8_lossy(version).contains(&pins.cargo_ndk_version)
-        }) {
+        let tool = private_android_tool(inv, "cargo-ndk");
+        if !cargo_ndk_matches(&tool, &pins.cargo_ndk_version)
+            || !private_android_tool(inv, "cargo-ndk-env").is_file()
+        {
             run(Command::new("cargo")
                 .current_dir(&inv.root)
                 .args([

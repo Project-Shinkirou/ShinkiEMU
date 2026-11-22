@@ -384,6 +384,7 @@ pub fn stage_core(
         .context("missing core-build manifest")?;
     m.validate()?;
     binary::inspect(&result.library, &result.target, true)?;
+    let android = result.target.ends_with("-linux-android");
     if m.licenses.is_empty() {
         bail!("core package requires license files");
     }
@@ -394,6 +395,9 @@ pub fn stage_core(
         .context("core filename")?;
     if !(library.starts_with("shinki_emu_") || library.starts_with("libshinki_emu_")) {
         bail!("core library needs the shinki_emu_ prefix");
+    }
+    if android && !library.ends_with(".so") {
+        bail!("Android core library needs the .so extension");
     }
     let stem = Path::new(library)
         .file_stem()
@@ -416,9 +420,19 @@ pub fn stage_core(
             || name.ends_with(".pyd")
             || name.contains(".so.")
     };
+    if android
+        && entries.iter().any(|(_, relative)| {
+            Path::new(relative)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| binary::system(name, &result.target))
+        })
+    {
+        bail!("Android core package includes a device system library");
+    }
     let mut roots: Vec<PathBuf> = entries
         .iter()
-        .filter(|(path, _)| is_runtime(path))
+        .filter(|(path, relative)| is_runtime(if android { Path::new(relative) } else { path }))
         .map(|(path, _)| path.clone())
         .collect();
     let mut runtimes = std::collections::BTreeMap::<String, (PathBuf, String)>::new();
@@ -439,8 +453,10 @@ pub fn stage_core(
         {
             bail!("runtime dependency collides with core layout");
         }
-        if let Some((existing, _)) = runtimes.get(&key) {
-            if existing != &path && sha256(existing)? != sha256(&path)? {
+        if let Some((existing, existing_name)) = runtimes.get(&key) {
+            if (android && existing_name != &name)
+                || (existing != &path && sha256(existing)? != sha256(&path)?)
+            {
                 bail!("conflicting runtime dependency {name}");
             }
         } else {
@@ -482,6 +498,9 @@ pub fn stage_core(
                     .to_str()
                     .context("runtime filename is not UTF-8")?
                     .to_owned();
+                if android && binary::system(&name, &result.target) {
+                    bail!("Android native install includes device system library {name}");
+                }
                 let source = binary::runtime_source(&path, directory, &result.target)?;
                 add_runtime(source.clone(), name)?;
                 roots.push(source);
@@ -496,8 +515,13 @@ pub fn stage_core(
     );
     search.sort();
     search.dedup();
+    let closure = if android {
+        binary::android_core_closure
+    } else {
+        binary::closure
+    };
     for root in roots {
-        for (source, name) in binary::closure(&root, &search, &result.target)? {
+        for (source, name) in closure(&root, &search, &result.target)? {
             add_runtime(source, name)?;
         }
     }
@@ -511,6 +535,17 @@ pub fn stage_core(
         fs::create_dir(&dir)?;
         copy_entries(&entries, &dir)?;
         let staged_library = dir.join(library);
+        if android {
+            for (_, relative) in &entries {
+                if relative.contains('/') && is_runtime(Path::new(relative)) {
+                    // A nested resource DSO cannot resolve a dependency we
+                    // flattened to the core root; validate its actual layout.
+                    let staged = dir.join(relative);
+                    let sibling = staged.parent().context("resource DSO parent")?;
+                    binary::android_core_closure(&staged, &[sibling.into()], &result.target)?;
+                }
+            }
+        }
         if crate::apple::supported(&result.target) {
             for (_, relative) in &entries {
                 if is_runtime(Path::new(relative)) {
@@ -630,7 +665,9 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
         });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
-    if let Some(redist) = std::env::var_os("VCToolsRedistDir") {
+    if result.target.contains("windows")
+        && let Some(redist) = std::env::var_os("VCToolsRedistDir")
+    {
         let root = PathBuf::from(redist).join("x64");
         if root.is_dir() {
             for d in fs::read_dir(root)? {
@@ -662,10 +699,15 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
                 .join(if cfg!(windows) { "clang.exe" } else { "clang" });
             let runtime = dependencies::capture(
                 std::process::Command::new(clang)
-                    .arg(format!("--target={}", result.target))
+                    .arg(format!("--target={}{}", result.target, binary::ANDROID_API))
                     .arg("--print-file-name=libomp.so"),
             )?;
             let runtime = PathBuf::from(String::from_utf8(runtime)?.trim());
+            let runtime = dunce::canonicalize(&runtime)
+                .context("NDK Clang did not resolve its OpenMP runtime")?;
+            if !runtime.starts_with(dunce::canonicalize(&ndk)?) {
+                bail!("OpenMP runtime is outside the selected NDK");
+            }
             dirs.push(
                 runtime
                     .parent()
@@ -684,10 +726,14 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
             .join(host)
             .join("sysroot/usr/lib")
             .join(&result.target);
-        dirs.push(ndk_lib.clone());
-        // Embedded native dependencies and Manager share API 28; platform
-        // libraries such as libcamera2ndk.so live in the target/API directory.
-        dirs.push(ndk_lib.join("28"));
+        // Public system libraries are resolved by the device, not copied from
+        // NDK API stub directories. libc++_shared is a redistributable real DSO.
+        if result.component != "manager" {
+            plain(&ndk_lib.join("libc++_shared.so"))?;
+        } else {
+            dirs.push(ndk_lib.join(binary::ANDROID_API.to_string()));
+        }
+        dirs.push(ndk_lib);
     }
     Ok(dirs)
 }

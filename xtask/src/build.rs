@@ -11,6 +11,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+pub(crate) const ANDROID_CORE_LINK_ARG: &str =
+    "-Wl,--no-undefined,-z,max-page-size=16384,--enable-new-dtags,-rpath,$ORIGIN";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildResult {
     pub component: String,
@@ -331,10 +334,15 @@ pub fn execute(
     if let Some(abi) = android_abi {
         // cargo-ndk consumes build-script JSON. Import its toolchain environment
         // and invoke Cargo directly so every embedded manifest stays observable.
-        let mut environment = Command::new("cargo");
+        let api = crate::binary::ANDROID_API.to_string();
+        let mut environment = if core.is_some() {
+            dependencies::cargo_plugin(&dependencies::private_android_tool(inv, "cargo-ndk-env"))
+        } else {
+            Command::new("cargo")
+        };
         environment
             .current_dir(&inv.root)
-            .args(["ndk-env", "--target", target, "-P", "28", "--json"]);
+            .args(["ndk-env", "--target", target, "-P", &api, "--json"]);
         dependencies::apply_environment(inv, target, component, &mut environment)?;
         let environment: std::collections::BTreeMap<String, String> =
             serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
@@ -344,10 +352,40 @@ pub fn execute(
         // ndk-env omits the two private variables its linker wrapper requires.
         cmd.envs(&environment)
             .env("_CARGO_NDK_LINK_CLANG", clang)
-            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}28"))
-            .env("ANDROID_PLATFORM", "28")
+            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
+            .env("ANDROID_PLATFORM", &api)
             .env("ANDROID_ABI", abi)
             .env("CARGO_NDK_ANDROID_PLATFORM", abi);
+        if core.is_some() {
+            // Keep the linker beside the private tool that generated the
+            // environment; Cargo's external plugin lookup can prefer CARGO_HOME.
+            let key = target.replace('-', "_").to_ascii_uppercase();
+            cmd.env(
+                format!("CARGO_TARGET_{key}_LINKER"),
+                dependencies::private_android_tool(inv, "cargo-ndk"),
+            )
+            .env_remove(format!("CARGO_TARGET_{key}_RUNNER"));
+        }
+        if core.is_some_and(|core| core.artifact_kind == "rust-cdylib") {
+            let mut flags = environment
+                .get("CARGO_ENCODED_RUSTFLAGS")
+                .cloned()
+                .or_else(|| std::env::var("CARGO_ENCODED_RUSTFLAGS").ok())
+                .unwrap_or_else(|| {
+                    std::env::var("RUSTFLAGS")
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join("\x1f")
+                });
+            if !flags.is_empty() {
+                flags.push('\x1f');
+            }
+            // Bionic finds package-local dependencies beside the selected core.
+            flags.push_str("-C\x1flink-arg=");
+            flags.push_str(ANDROID_CORE_LINK_ARG);
+            cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
+        }
     }
     if let Some(version) = product_version {
         cmd.env("SHINKI_EMU_PRODUCT_VERSION", version);

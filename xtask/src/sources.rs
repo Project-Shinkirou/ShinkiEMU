@@ -679,6 +679,7 @@ fn native_sources(
     metadata: &Value,
 ) -> Result<String> {
     let selected = dependencies::needs(inv, target, component)?;
+    let android_core = target.ends_with("-linux-android") && component != "manager";
     let mut installations = Vec::new();
     let shared_subtitle = dependencies::shares_android_subtitle(target, component);
     if selected.subtitle && !shared_subtitle {
@@ -781,8 +782,9 @@ fn native_sources(
                 .to_string_lossy()
                 .replace('\\', "/"),
         };
+        let invoke = if android_core { "\"$vcpkg\"" } else { "& $vcpkg" };
         commands.push_str(&format!(
-            "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
+            "{invoke} install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
         if !matches!(*group, "subtitle" | "ffmpeg")
             && inv.root.join(&manifest).join("vcpkg/ports").is_dir()
@@ -805,8 +807,9 @@ fn native_sources(
                 .strip_prefix(&inv.root)?
                 .to_string_lossy()
                 .replace('\\', "/");
+            let copy = if android_core { "cp" } else { "Copy-Item" };
             commands.push_str(&format!(
-                "Copy-Item \"$PWD/.work/vcpkg/.vcpkg-root\" \"$PWD/{prefix}/.vcpkg-root\"\n"
+                "{copy} \"$PWD/.work/vcpkg/.vcpkg-root\" \"$PWD/{prefix}/.vcpkg-root\"\n"
             ));
         }
     }
@@ -1099,15 +1102,21 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         format!(" --features {}", features.join(","))
     };
+    let android_core = target.ends_with("-linux-android") && component != "manager";
+    let shell = if android_core { "sh" } else { "powershell" };
     let mut instructions = format!(
         "# Rebuild {component} for {target}\n\nProduct commit: {product_commit}. Exact core revision: see source-references.json.\n\
          Unpack source.tar into a new directory and run these commands there in a developer PowerShell (Windows) or the equivalent shell on the target OS.\n\
          Prerequisites: the Rust toolchain in rust-toolchain.toml, the {target} standard library, the system C/C++ compiler/SDK, CMake, Ninja and Git. Build tools and OS SDKs are system prerequisites.\n\
          Cargo.lock pins every Rust dependency to an exact registry checksum or Git commit; Cargo downloads them. \
          rust-sources/ holds the exact sources of each linked crate whose license requires source distribution (every linked crate when a GPL-family license applies). \
-         To build with a modified copy, add a `[patch]` entry pointing at its directory.\n\n```powershell\n\
-         $env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
+         To build with a modified copy, add a `[patch]` entry pointing at its directory.\n\n```{shell}\n"
     );
+    instructions.push_str(if android_core {
+        "set -eu\nexport CARGO_TARGET_DIR=\"$PWD/target\"\n"
+    } else {
+        "$env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
+    });
     let selected = dependencies::needs(inv, target, component)?;
     if target.contains("android") {
         instructions.push_str(
@@ -1116,7 +1125,38 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              export ANDROID_NDK_HOME\n",
         );
     }
-    if !native_commands.is_empty() {
+    if android_core && !native_commands.is_empty() {
+        instructions.push_str(
+            "export VCPKG_DOWNLOADS=\"$PWD/.work/vcpkg-downloads\"\n\
+             export VCPKG_BINARY_SOURCES=clear\n",
+        );
+        instructions.push_str(&native_commands);
+        let paths = dependencies::target_pkg_config_paths(inv, target, component, selected)?
+            .into_iter()
+            .map(|path| {
+                Ok(format!(
+                    "$PWD/{}",
+                    path.strip_prefix(&inv.root)?.to_string_lossy().replace('\\', "/")
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        instructions.push_str(&format!(
+            "unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR FFMPEG_DIR\n\
+             export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_ALL_STATIC=1\n\
+             export PKG_CONFIG_LIBDIR=\"{}\"\n",
+            paths.join(":")
+        ));
+        if selected.ffmpeg {
+            let ffmpeg = dependencies::ffmpeg_install(inv, target)?;
+            let relative = ffmpeg
+                .strip_prefix(&inv.root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            instructions.push_str(&format!(
+                "export SHINKI_EMU_FFMPEG_INSTALLED=\"$PWD/{relative}\"\n"
+            ));
+        }
+    } else if !native_commands.is_empty() {
         instructions.push_str(
             "$env:VCPKG_DOWNLOADS = \"$PWD/.work/vcpkg-downloads\"\n\
              $env:VCPKG_BINARY_SOURCES = 'clear'\n",
@@ -1210,7 +1250,26 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             instructions.push_str("$env:BISON_EXECUTABLE = \"$(command -v bison)\"\n");
         }
     }
-    let build_command = if target.contains("android") {
+    let build_command = if android_core {
+        let api = crate::binary::ANDROID_API;
+        let pins: toml::Value =
+            toml::from_str(&fs::read_to_string(inv.root.join("build/dependencies.toml"))?)?;
+        let ndk_tool = pins["cargo_ndk_version"]
+            .as_str()
+            .context("cargo-ndk version")?;
+        instructions.push_str(&format!(
+            "cargo install --locked cargo-ndk --version '={ndk_tool}' --root \"$PWD/.work/tools\"\n\
+             export CARGO_NDK_PATH=\"$PWD/.work/tools/bin/cargo-ndk\"\n"
+        ));
+        let link = if inv.core(component)?.artifact_kind == "rust-cdylib" {
+            format!(" RUSTFLAGS='-C link-arg={}'", crate::build::ANDROID_CORE_LINK_ARG)
+        } else {
+            String::new()
+        };
+        format!(
+            "env CARGO=cargo{link} \"BINDGEN_EXTRA_CLANG_ARGS_{target}=--target={target}{api} --sysroot=\\\"$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot\\\"\" \"$CARGO_NDK_PATH\" ndk -t {target} -P {api} build"
+        )
+    } else if target.contains("android") {
         format!(
             "cargo ndk -t {} -P 28 build",
             if target.starts_with("aarch64") {

@@ -39,6 +39,62 @@ ZIP persistence keeps the validated parent directory's canonical absolute path, 
 Embedded core license inputs use the same checked asset traversal as native resources, preserving inventoried notice directories as well as individual license files.
 Android packaging preserves underscore-prefixed runtime directories and verifies every APK bundled-manifest file against the staged bytes. Public Android system libraries, including GLES1 and camera2ndk, are resolved by the OS; NDK import stubs are not APK runtime inputs. Source-runtime preparation disables Python bytecode writes to keep the verified host interpreter unchanged across ABI preparation.
 
+### Standalone Android core packages
+
+Build and package each ABI separately with the pinned NDK (`aarch64-linux-android`
+for `arm64-v8a`, `x86_64-linux-android` for `x86_64`). A desktop-hosted build
+cross-links the actual Android ABI; an x86_64 device gate uses the x86_64
+package, not translated arm64.
+
+```sh
+target=x86_64-linux-android # repeat with aarch64-linux-android
+cargo xtask deps --target "$target" --core siglus_rs
+cargo xtask build --target "$target" --core siglus_rs --release
+cargo xtask package --target "$target" --core siglus_rs --out ".work/qa/$target/siglus"
+```
+
+`core.json` retains the ABI v3, official identity/recognition, and hashed
+library, resources, dependency and license files. The standalone entrypoint
+must be a little-endian ELF64 DSO for the requested machine with a visible
+`shinki_emu_query` function, the Android API 28 identification note, and 16 KiB
+compatible `PT_LOAD` segments. Private imports require `DT_RUNPATH=$ORIGIN`
+and a sibling runtime closure. Package only the selected target's prepared
+inputs, including the pinned NDK's `libc++_shared.so` when required; public
+device libraries are not packaged. Static FFmpeg comes from the pinned
+target vcpkg triplet with its notices, recipes and relinking sources.
+
+Android `supported_targets` currently has standalone rows for `siglus_rs`
+(`dynamic`, Rust cdylib; native Kira/CPAL) and `art3m1s-core` (default dynamic
+export, Rust cdylib; Vulkan, Luau, Kira/CPAL and static FFmpeg). Neither row
+by itself qualifies a core as a replacement for its static APK registration.
+Promote Siglus first, then Artemis: boot the website APK normally, install
+the matching official ZIP through staging, restart, and verify launch with
+native audio, first frame, pause/resume and existing saves on both ABIs.
+The process-local Android context extension is negotiated only on launch.
+Legacy API-26 packages do not establish this parity.
+
+Keep the APK's other embedded registrations until their replacement passes
+the same gate:
+
+| Core | Android standalone work |
+| --- | --- |
+| `shinki.emu.cmvs` | `rust-cdylib`, `dynamic-plugin-export` + `video-ffmpeg`; prove the private FFmpeg and GPU/real audio path. |
+| `shinki.emu.musica` | `rust-cdylib`, `dynamic-plugin-export` + `ffmpeg-vcpkg`; retain FFmpeg, libass, FriBidi, fonts and their licenses. |
+| `rfvp` | `rust-cdylib`, `dynamic-plugin-export`; retain Android native movie/audio and target libass/FriBidi. GStreamer is a desktop Linux input. |
+| `impacto` | `native-shared` for standalone, `static` in the APK; preserve its pinned vcpkg inputs, libass/FFmpeg, profiles and resource root. |
+| `renpy` | `native-shared` for standalone, `static` in the APK; preserve the target CPython/SDL/FFmpeg runtime, resources and LGPL relinking material. |
+| `kirikiroid2-web` | `native-shared` for standalone, `static` in the APK; account for native vcpkg/Bison, Java/AIDL, JNI initialization, resources and the FMOD distribution terms. |
+| `krkr2` | `native-static` only today; needs a shared adapter and a supported Android Java/native host and resource lifecycle. |
+
+Sena and Ethornell have no Android adapter target. The separate `cmvs-rs`
+remains Android-blocked and publish-blocked pending a supported upstream game
+sample. ReMinori remains Android-blocked; its AGPL obligations and separate
+engine and save identity are unchanged. The APK's existing `MainActivity`
+bootstraps `shinki_emu_manager` and supplies the bundled native host classes;
+an APK build must retain those inputs while it still embeds KiriKiri cores.
+
+### Other native inputs
+
 Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The built-in Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. Static Manager dependencies and exact Git pins must match `static_manager_targets` in the inventory; dynamic export features stay disabled. iOS packages include all five Rust cores' licenses and an `embedded-cores.json` source inventory.
 
 Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7, Cython 3.2.4, Cython source-license files and SDL 2.0.20 headers. Windows uses the pinned NuGet development tree and cp312 wheel. Linux builds the pinned CPython source with the host C compiler and loads Cython's pinned Python sources from its standard library. Both interpreters are task-owned under `.work/native-downloads/python`; no system interpreter or developer cache is used. Linux preserves archive executable modes and verifies the SDK's `librenpython.so`, which contains CPython as well as Ren'Py and SDL. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE` automatically on either host.
