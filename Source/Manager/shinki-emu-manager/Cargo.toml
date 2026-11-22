@@ -26,6 +26,7 @@ static-cmvs = ["dep:shinki-emu-cmvs"]
 no-core-download = []
 # Private iOS package proof; other mobile targets retain their own load mode.
 ios-framework-cores = []
+ohos-bundled-musica = []
 
 [dependencies]
 shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
@@ -117,7 +118,7 @@ slint = { workspace = true, features = ["renderer-software"] }
 # fontique reaches fontconfig only through dlopen; OHOS ships no fontconfig and
 # the Manager registers its bundled CJK faces itself.
 fontique = { version = "=0.11.1", features = ["fontconfig-dlopen"] }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime"] }
+libc.workspace = true
 shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]

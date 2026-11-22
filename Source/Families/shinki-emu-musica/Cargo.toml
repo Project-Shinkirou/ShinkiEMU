@@ -59,7 +59,7 @@ windows-sys = { workspace = true, features = ["Win32_System_Registry"] }
 postcard.workspace = true
 parking_lot = "0.13.0"
 
-# OHOS has no SDK device-audio backend: the host installs an SDK audio output.
+# OHOS uses the SDK's OHAudio backend instead of its CPAL backend.
 [target.'cfg(not(target_env = "ohos"))'.dependencies]
 shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "device-audio", "runtime"] }
 

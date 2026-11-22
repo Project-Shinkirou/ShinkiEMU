@@ -335,8 +335,22 @@ fn activate(
                     )
                 }
             }
-            #[cfg(not(target_os = "android"))]
-            shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
+            #[cfg(all(not(target_os = "android"), not(target_env = "ohos")))]
+            {
+                shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
+            }
+            #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+            {
+                if !core.bundled {
+                    return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+                }
+                Ok(crate::platform::ohos::bundled::load(plugin_id)?)
+            }
+            #[cfg(all(target_env = "ohos", not(feature = "ohos-bundled-musica")))]
+            {
+                let _ = core;
+                return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+            }
         }
     }.map_err(|error| error.to_string())?;
     let descriptor = provider.manager_descriptor();

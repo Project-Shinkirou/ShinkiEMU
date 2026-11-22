@@ -14,7 +14,7 @@ use kira::{
         static_sound::{StaticSoundData, StaticSoundHandle},
     },
 };
-use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec, open_host_audio_output};
+use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
 #[cfg(feature = "video-ffmpeg")]
 use std::sync::Mutex;
 use std::{
@@ -57,14 +57,13 @@ pub(crate) struct Audio {
 
 impl Audio {
     pub(crate) fn open(null_audio: bool) -> Result<Self> {
-        let sink = if null_audio {
-            None
-        } else {
-            open_host_audio_output()
-                .transpose()
-                .map_err(audio_error)?
-                .map(Arc::new)
-        };
+        #[cfg(target_env = "ohos")]
+        let sink = (!null_audio).then(|| {
+            let output: AudioSinkBox = Box::new(shinki_emu_sdk::runtime::OhosAudioOutput::default());
+            Arc::new(output)
+        });
+        #[cfg(not(target_env = "ohos"))]
+        let sink = None;
         let stop = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
         #[cfg(feature = "video-ffmpeg")]

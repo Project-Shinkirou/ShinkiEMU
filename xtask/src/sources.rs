@@ -446,7 +446,12 @@ fn gnu_copyleft(id: spdx::LicenseId) -> bool {
 /// binary: every linked crate when a GNU copyleft license applies to any of
 /// them, otherwise only copyleft crates (MPL file-level copyleft) and crates
 /// without a license expression. Path crates are in the product/fork snapshot.
-fn rust_sources(metadata: &Value, package: &str, root: &Path) -> Result<()> {
+fn rust_sources(
+    metadata: &Value,
+    package: &str,
+    root: &Path,
+    copied: &mut std::collections::BTreeSet<String>,
+) -> Result<()> {
     let closure = crate::rust_licenses::closure(metadata, package)?;
     let mut whole = false;
     for p in &closure {
@@ -472,6 +477,9 @@ fn rust_sources(metadata: &Value, package: &str, root: &Path) -> Result<()> {
             crate::rust_licenses::source_tag(Some(source))
         );
         package::portable(&name)?;
+        if !copied.insert(name.clone()) {
+            continue;
+        }
         let crate_root = Path::new(
             p["manifest_path"]
                 .as_str()
@@ -1045,6 +1053,30 @@ pub(crate) fn bundle(
     product_version: Option<&str>,
     out: &Path,
 ) -> Result<()> {
+    bundle_configured(inv, component, target, product_commit, product_version, out, None)
+}
+
+pub(crate) fn bundle_ohos_candidate(
+    inv: &Inventory,
+    manager: &crate::build::BuildResult,
+    core: &crate::build::BuildResult,
+    out: &Path,
+) -> Result<()> {
+    bundle_configured(
+        inv, "manager", &manager.target, &manager.source_commit, manager.product_version.as_deref(),
+        out, Some((manager, core)),
+    )
+}
+
+fn bundle_configured(
+    inv: &Inventory,
+    component: &str,
+    target: &str,
+    product_commit: &str,
+    product_version: Option<&str>,
+    out: &Path,
+    ohos_candidate: Option<(&crate::build::BuildResult, &crate::build::BuildResult)>,
+) -> Result<()> {
     let temporary = inv.root.join(".work/tmp");
     fs::create_dir_all(&temporary)?;
     let temp = tempfile::tempdir_in(&temporary)?;
@@ -1140,8 +1172,26 @@ pub(crate) fn bundle(
             references["android_subtitle_provider"] = serde_json::to_value(source)?;
         }
     }
-    rust_sources(&metadata, &package, &root)?;
+    let mut copied = std::collections::BTreeSet::new();
+    rust_sources(&metadata, &package, &root, &mut copied)?;
     let native_commands = native_sources(inv, component, target, &root, &metadata)?;
+    if let Some((manager, core)) = ohos_candidate {
+        if product_commit != manager.source_commit || product_commit != core.source_commit {
+            bail!("corresponding source revision does not match the OHOS candidate");
+        }
+        let core_input = inv.core(&core.component)?;
+        let core_meta = crate::rust_licenses::metadata(inv, target, &core.component)?;
+        // Add only core-only packages to the same source tree.
+        rust_sources(&core_meta, &core_input.package, &root, &mut copied)?;
+        references["manager_features"] = serde_json::to_value(&manager.features)?;
+        references["bundled_core"] = serde_json::json!({
+            "id": core.component,
+            "target": core.target,
+            "commit": core.source_commit,
+            "features": core.features,
+            "abi": shinki_emu_build::ABI,
+        });
+    }
     fs::write(
         root.join("source-references.json"),
         serde_json::to_vec_pretty(&references)?,
@@ -1358,6 +1408,14 @@ pub(crate) fn bundle(
         "--bin shinki-emu-manager"
     };
     if target.ends_with("ohos") && component == "manager" {
+        if let Some((manager, _)) = ohos_candidate {
+            let version = manager.product_version.as_deref().context("OHOS compiled version")?;
+            instructions.push_str(&format!(
+                "$env:SHINKI_EMU_MANAGER_FEATURES = '{}'\n\
+                 $env:SHINKI_EMU_PRODUCT_VERSION = '{version}'\n",
+                manager.features.join(",")
+            ));
+        }
         instructions.push_str(&format!(
             "cargo xtask build --target {target} --manager --release\n```\n"
         ));

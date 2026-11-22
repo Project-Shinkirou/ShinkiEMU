@@ -315,7 +315,7 @@ impl Output {
                 let _ = stop;
                 Err(error(
                     "SHINKI_EMU_MUSICA_AUDIO_OUTPUT",
-                    "this platform has no SDK device audio; the host must install an audio output",
+                    "OHOS requires an OHAudio sink",
                 ))
             }
         }

@@ -648,6 +648,9 @@ pub fn prepare(
         if crate::apple::ios_frameworks::enabled(target, &receipt.features) {
             bail!("the iOS Framework Manager is for private QA; rebuild without ios-framework-cores for release");
         }
+        if crate::ohos::manager_mode(target, &receipt.features)? {
+            bail!("the bundled Musica OHOS HAP is for local device acceptance only");
+        }
     }
     let expected_source = id.core_source["rev"].as_str().unwrap_or(&id.commit);
     receipt.require_product_source(expected_source)?;

@@ -1,9 +1,11 @@
 {
   "apiType": "stageMode",
   "buildOption": {
-    // libs/arm64-v8a holds the prebuilt Rust Manager staged by xtask.
+    // libs/arm64-v8a holds prebuilt Rust libraries staged by xtask.
     "nativeLib": {
-      "debugSymbol": { "strip": true, "exclude": [] }
+      // The bundled candidate is already release-built; its core.json hashes
+      // the exact native bytes before hvigor and the signed HAP rechecks them.
+      "debugSymbol": { "strip": true, "exclude": ["**/libshinki_emu_core_musica.so"] }
     }
   },
   "targets": [{ "name": "default" }]

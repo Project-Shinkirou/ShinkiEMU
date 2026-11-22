@@ -308,7 +308,7 @@ pub struct CorePackage {
     pub abi: String,
     pub files: Vec<FileRecord>,
 }
-fn asset_entries(asset: &BuildAsset) -> Result<Vec<(PathBuf, String)>> {
+pub(crate) fn asset_entries(asset: &BuildAsset) -> Result<Vec<(PathBuf, String)>> {
     portable(&asset.dest)?;
     plain(&asset.source)?;
     if asset.source.is_dir() {

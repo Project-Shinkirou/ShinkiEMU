@@ -11255,7 +11255,6 @@ dependencies = [
  "shinki-emu-patch",
  "shinki-emu-renpy",
  "shinki-emu-rfvp",
- "shinki-emu-sdk",
  "shinki-emu-sena-rs",
  "shinki-emu-siglus_rs",
  "shinki-emu-steam",
@@ -11505,6 +11504,7 @@ dependencies = [
 name = "shinki-emu-sdk"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "cpal 0.18.2",
  "ffmpeg-next",
  "image 0.25.10",

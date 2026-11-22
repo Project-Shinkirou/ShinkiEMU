@@ -227,7 +227,7 @@ pub fn execute(
     action: &str,
     release: bool,
 ) -> Result<Option<BuildResult>> {
-    execute_configured(inv, target, component, action, release, false)
+    execute_configured(inv, target, component, action, release, None)
 }
 
 pub(crate) fn execute_ios_framework(
@@ -235,8 +235,19 @@ pub(crate) fn execute_ios_framework(
     target: &str,
     component: &str,
 ) -> Result<BuildResult> {
-    execute_configured(inv, target, component, "build", true, true)?
+    execute_configured(inv, target, component, "build", true, Some(BundledInput::IosFramework))?
         .context("iOS Framework build did not return an artifact")
+}
+
+pub(crate) fn execute_ohos_hap(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
+    execute_configured(inv, target, component, "build", true, Some(BundledInput::OhosHap))?
+        .context("OHOS HAP core build did not return an artifact")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BundledInput {
+    IosFramework,
+    OhosHap,
 }
 
 fn execute_configured(
@@ -245,8 +256,10 @@ fn execute_configured(
     component: &str,
     action: &str,
     release: bool,
-    ios_framework_input: bool,
+    bundled_input: Option<BundledInput>,
 ) -> Result<Option<BuildResult>> {
+    let ios_framework_input = bundled_input == Some(BundledInput::IosFramework);
+    let ohos_hap_input = bundled_input == Some(BundledInput::OhosHap);
     if ios_framework_input {
         if !crate::apple::ios_frameworks::target_supported(target)
             || !inv.core(component)?.ios_framework
@@ -254,6 +267,11 @@ fn execute_configured(
             bail!("no bundled iOS Framework recipe for {component}/{target}");
         }
         // The Manager's doctor already validated the target's static closures.
+    } else if ohos_hap_input {
+        if !crate::ohos::is_core_input(component, target) {
+            bail!("no bundled OHOS HAP recipe for {component}/{target}");
+        }
+        // The Manager's doctor already validated the same native inputs.
     } else {
         inv.require_buildable(component, target)?;
         dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
@@ -307,7 +325,7 @@ fn execute_configured(
                 .arg(&manifest),
         )?)?
     };
-    let embedded_packages = if component == "manager" {
+    let mut embedded_packages = if component == "manager" {
         embedded_core_packages(inv, target, &metadata)?
     } else {
         BTreeMap::new()
@@ -339,10 +357,18 @@ fn execute_configured(
             bail!("use --release when building the iOS Framework Manager");
         }
     }
+    let ohos_hap_manager = component == "manager" && crate::ohos::manager_mode(target, &features)?;
+    if ohos_hap_manager {
+        if action == "build" && !release {
+            bail!("use --release when building the bundled Musica OHOS Manager");
+        }
+        embedded_packages.retain(|_, id| !crate::ohos::is_core_input(id, target));
+    }
     let target_dir = if ios_framework_input || ios_framework_manager {
-        // Private inputs and the opted-in Manager can share target dependencies,
-        // but must never replace the default static Manager artifact.
+        // Share Framework dependencies without replacing the default static artifact.
         target_directory(inv, target, "manager-ios-framework")?
+    } else if ohos_hap_manager || ohos_hap_input {
+        target_directory(inv, target, &format!("{component}-ohos-hap"))?
     } else {
         target_directory(inv, target, component)?
     };
@@ -704,12 +730,15 @@ fn execute_configured(
         features,
         target_dir,
     };
-    if ios_framework_input {
-        // An app-bundled Framework is not a standalone core build receipt.
+    // Neither signed-bundle input is a standalone core build receipt.
+    if bundled_input.is_some() {
         return Ok(Some(result));
     }
     if ios_framework_manager {
         crate::apple::ios_frameworks::build_inputs(inv, &result)?;
+    }
+    if ohos_hap_manager {
+        crate::ohos::build_inputs(inv, &result)?;
     }
     if component == "manager" && target.contains("android") {
         let generated = result.target_dir.join("android-inputs");

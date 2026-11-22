@@ -12,7 +12,7 @@ pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
     #[cfg(any(
         target_os = "android",
         all(target_os = "ios", not(feature = "ios-framework-cores")),
-        target_env = "ohos"
+        all(target_env = "ohos", not(feature = "ohos-bundled-musica")),
     ))]
     ("shinki.emu.musica", shinki_emu_musica::musica_query),
     #[cfg(target_os = "android")]

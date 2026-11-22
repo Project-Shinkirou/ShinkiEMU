@@ -1,6 +1,5 @@
-// OHAudio renderer behind the SDK AudioSink used by statically embedded
-// families. Writers block on a bounded interleaved f32 queue; the renderer
-// callback drains it and pads underruns with silence.
+// OHAudio renderer behind the SDK AudioSink. Writers block on a bounded
+// interleaved f32 queue; the renderer drains it and pads underruns with silence.
 #include <ohaudio/native_audiorenderer.h>
 #include <ohaudio/native_audiostreambuilder.h>
 #include <pthread.h>
