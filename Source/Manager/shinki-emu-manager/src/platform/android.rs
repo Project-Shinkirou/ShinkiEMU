@@ -648,6 +648,32 @@ pub(super) fn open_url(url: &str) -> Result<(), String> {
     })
 }
 
+pub(crate) fn share_diagnostic_log(data_dir: &Path, title: &str) -> Result<bool, String> {
+    let Some(summary) = super::android_diagnostics::summary(data_dir)
+        .map_err(|error| format!("SHINKI_EMU_ANDROID_SHARE_DIAGNOSTICS: {error}"))?
+    else {
+        return Ok(false);
+    };
+    call_activity("ShinkiDiagnosticProvider.share", |env, activity| {
+        let provider = LoaderContext::FromObject(activity).find_class(
+            env,
+            jni_str!("org/shinkirou/shinkiemu/ShinkiDiagnosticProvider"),
+            false,
+        )?;
+        let bytes = env.byte_array_from_slice(&summary)?;
+        let title = env.new_string(title)?;
+        env.call_static_method(
+            &provider,
+            jni_str!("share"),
+            jni_sig!("(Landroid/app/Activity;[BLjava/lang/String;)V"),
+            &[JValue::Object(activity), JValue::Object(&bytes), JValue::Object(&title)],
+        )
+        .map(drop)
+    })
+    .map_err(|error| format!("SHINKI_EMU_ANDROID_SHARE_DIAGNOSTICS: {error}"))?;
+    Ok(true)
+}
+
 /// The page the sign-in WebView shows, or `None` once the user closed it.
 pub(crate) fn web_login_page() -> Result<Option<String>, String> {
     call_activity("webLoginPage", |env, activity| {

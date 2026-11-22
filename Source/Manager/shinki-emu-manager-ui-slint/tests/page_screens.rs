@@ -59,6 +59,7 @@ fn run_jobs() {
 struct SoftwarePlatform {
     window: Rc<MinimalSoftwareWindow>,
     start: Instant,
+    opened_urls: Rc<RefCell<Vec<String>>>,
 }
 
 impl Platform for SoftwarePlatform {
@@ -70,6 +71,10 @@ impl Platform for SoftwarePlatform {
     }
     fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
         Some(Box::new(Proxy))
+    }
+    fn open_url(&self, url: &str) -> Result<(), slint::PlatformError> {
+        self.opened_urls.borrow_mut().push(url.to_owned());
+        Ok(())
     }
 }
 
@@ -139,6 +144,7 @@ fn card(
         cover_uri: cover.into(),
         ready,
         problem: problem.into(),
+        provider_access: String::new(),
         play_time: play_time.into(),
         last_played: last_played.into(),
         compat: compat.into(),
@@ -422,6 +428,7 @@ fn selection(d: &Data, m: &mut ManagerViewModel) {
         emulator_id: "krkr2".into(),
         launchable: true,
         problem: String::new(),
+        provider_access: String::new(),
         play_time: "1 h".into(),
         last_played: "2026-11-03 21:40".into(),
         developer: LONG_DEV_JA.into(),
@@ -852,9 +859,11 @@ fn reset(a: &SlintManagerAdapter) {
 #[test]
 fn every_page_renders_stable_frames() {
     let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let opened_urls = Rc::new(RefCell::new(Vec::new()));
     slint::platform::set_platform(Box::new(SoftwarePlatform {
         window: software.clone(),
         start: Instant::now(),
+        opened_urls: opened_urls.clone(),
     }))
     .expect("software platform");
     let adapter = Rc::new(SlintManagerAdapter::new().expect("manager window"));
@@ -967,6 +976,9 @@ fn every_page_renders_stable_frames() {
                     );
                 }
                 save(id, rgba);
+            }
+            if only.is_empty() || only.iter().any(|p| "settings/about-credits".starts_with(p)) {
+                exercise_about_credits(&adapter, &software, (width, height), &opened_urls, save);
             }
         }
     }
@@ -1667,4 +1679,145 @@ fn exercise_core_cards(
     assert_eq!(clicked.borrow().len(), 2, "offline install remains disabled");
     material.set_touch(false);
     reset(a);
+}
+
+fn exercise_about_credits(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    opened_urls: &RefCell<Vec<String>>,
+    save: impl Fn(&str, Vec<u8>),
+) {
+    const INVENTORY: &str = include_str!("../../../../build/cores.toml");
+    const ABOUT: &str = include_str!("../ui/pages/settings/about.slint");
+    const NOTICE: &str = include_str!("../../../../THIRD_PARTY_NOTICES.md");
+    for line in INVENTORY.lines().filter(|line| line.starts_with("upstream_identity = ")) {
+        let repo = line.split("repo = \"").nth(1).unwrap().split('"').next().unwrap();
+        assert!(ABOUT.contains(&format!("url: \"{repo}\"")), "missing About credit for {repo}");
+    }
+
+    reset(a);
+    a.apply(&base());
+    settings(a, "about");
+    let app = a.window().global::<App>();
+    let frame = || render(software, width, height);
+    let picked_path = Rc::new(RefCell::new(SharedString::default()));
+    let record = picked_path.clone();
+    app.on_open_path(move |key| *record.borrow_mut() = key);
+    let shared = Rc::new(Cell::new(0));
+    let count = shared.clone();
+    app.on_share_diagnostic_log(move || count.set(count.get() + 1));
+    let weak = a.window().as_weak();
+    app.on_load_about_licenses(move || {
+        weak.upgrade().unwrap().global::<App>().set_about_license_files(slint::ModelRc::new(
+            slint::VecModel::from(vec!["THIRD_PARTY_NOTICES.md".into()]),
+        ));
+    });
+    let weak = a.window().as_weak();
+    app.on_read_about_license(move |index| {
+        assert_eq!(index, 0);
+        weak.upgrade().unwrap().global::<App>().set_about_license_text(NOTICE.into());
+    });
+    let acknowledgment = tr!("致谢");
+    let licenses = tr!("第三方许可");
+    let back = tr!("返回");
+    let site = |project: &str| tr!("{}：项目主页").replace("{}", project);
+    let license = |project: &str| tr!("{}：许可证").replace("{}", project);
+    opened_urls.borrow_mut().clear();
+    frame();
+    let share = tr!("分享诊断日志");
+    let data_folder = tr!("打开数据目录");
+    let log_folder = tr!("打开日志目录");
+    assert!(labeled_item(software, |label| label == data_folder).is_some());
+    assert!(labeled_item(software, |label| label == log_folder).is_some());
+    assert!(labeled_item(software, |label| label == share).is_none());
+    click_label(software, licenses);
+    assert_eq!(*picked_path.borrow(), "third-party-notices");
+    assert_eq!(app.get_settings_category(), "about");
+    click_label(software, acknowledgment);
+    save("settings/about-credits-start", frame());
+    assert_eq!(app.get_settings_category(), "about-credits");
+    assert!(opened_urls.borrow().is_empty(), "About and Acknowledgments are in-app pages");
+    click_label(software, "Project Shinkirou");
+    click_label(software, licenses);
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    frame();
+    click_label(software, tr!("第三方声明"));
+    save("settings/about-credits-notice", frame());
+    assert_eq!(app.get_settings_category(), "about-license-text");
+    assert!(labeled_item(software, |label| label == tr!("许可证正文")).is_some());
+    press(software, Key::Back);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    click_label(software, back);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-credits");
+
+    let bottom = height as f32 - if width < 600 { 80.0 } else { 0.0 };
+    let reveal = |label: &str| {
+        for _ in 0..14 {
+            if let Some(item) = labeled_item(software, |text| text == label) {
+                let rect = item.geometry();
+                let center = item.map_to_native_window(rect.center());
+                if center.y - rect.size.height / 2.0 >= 64.0
+                    && center.y + rect.size.height / 2.0 < bottom {
+                    return;
+                }
+            }
+            let position = LogicalPosition::new(if width < 600 { 180.0 } else { 540.0 }, 470.0);
+            software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -200.0 });
+            frame();
+        }
+        panic!("credits action is not reachable: {label}");
+    };
+    reveal(&site("Art3m1s Core"));
+    click_label(software, &site("Art3m1s Core"));
+    click_label(software, &license("Art3m1s Core"));
+    for label in ["cmvs-rs: MIT", "cmvs-rs: Apache-2.0"] {
+        reveal(label);
+        let item = labeled_item(software, |text| text == label).unwrap();
+        let rect = item.geometry();
+        let center = item.map_to_native_window(rect.center());
+        assert!(
+            center.x - rect.size.width / 2.0 >= 0.0
+                && center.x + rect.size.width / 2.0 <= width as f32,
+            "{label} extends beyond the viewport at {width}px",
+        );
+        click_label(software, label);
+    }
+    reveal(&site("RFVP"));
+    save("settings/about-credits-middle", frame());
+    click_label(software, &site("RFVP"));
+    reveal(&site("SoftPAL RS (Sena)"));
+    save("settings/about-credits-end", frame());
+    click_label(software, &site("SoftPAL RS (Sena)"));
+    assert_eq!(
+        opened_urls.borrow().as_slice(),
+        [
+            "https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors",
+            "https://github.com/Alphaly2K/art3m1s-core",
+            "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE",
+            "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT",
+            "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE",
+            "https://github.com/xmoezzz/rfvp",
+            "https://github.com/xmoezzz/sena-rs",
+        ]
+    );
+    press(software, Key::Escape);
+    frame();
+    assert_eq!(app.get_page(), "settings");
+    assert_eq!(app.get_settings_category(), "about");
+
+    app.set_android_about(true);
+    save("settings/about-credits-android-about", frame());
+    assert!(labeled_item(software, |label| label == data_folder || label == log_folder).is_none());
+    click_label(software, share);
+    assert_eq!(shared.get(), 1, "Share row invokes the platform callback once");
+    assert_eq!(*picked_path.borrow(), "third-party-notices");
+    click_label(software, licenses);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    click_label(software, back);
+    assert_eq!(app.get_settings_category(), "about");
+    app.set_android_about(false);
 }

@@ -116,6 +116,7 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("无法打开系统权限设置"),
             tr!("可在系统设置中为 ShinkiEMU 开启所有文件访问权限。"),
         ),
+        "SHINKI_EMU_ANDROID_SHARE_DIAGNOSTICS" => (tr!("无法分享诊断日志"), tr!("重新打开应用后再试。")),
         "SHINKI_EMU_UNDO_UNAVAILABLE" => (
             tr!("没有可撤销的移除"),
             tr!("作品可以在 设置→库目录 中恢复。"),

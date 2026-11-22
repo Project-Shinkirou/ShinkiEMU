@@ -155,6 +155,9 @@ pub struct GameCardViewModel {
     pub cover_uri: String,
     pub ready: bool,
     pub problem: String,
+    /// Set only when `problem` is the Android provider-only cause: `"unmappable"` when
+    /// the provider never maps to a path (all-files access cannot help), else `"provider"`.
+    pub provider_access: String,
     pub play_time: String,
     pub last_played: String,
     pub compat: String,
@@ -197,6 +200,7 @@ pub struct SelectedGameViewModel {
     pub emulator_id: String,
     pub launchable: bool,
     pub problem: String,
+    pub provider_access: String,
     pub play_time: String,
     pub last_played: String,
     pub developer: String,

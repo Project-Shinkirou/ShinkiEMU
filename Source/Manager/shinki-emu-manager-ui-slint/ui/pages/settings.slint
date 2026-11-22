@@ -6,7 +6,7 @@ import { RootsSection } from "./settings/roots.slint";
 import { NetworkSection } from "./settings/network.slint";
 import { TranslationSection } from "./settings/translation.slint";
 import { InputSection } from "./settings/input.slint";
-import { AboutSection } from "./settings/about.slint";
+import { AboutSection, AboutNav, CreditsSection, LicenseIndex, LicenseReader } from "./settings/about.slint";
 import { UpdatesSection } from "./settings/updates.slint";
 
 // Single-pane navigation state. Leaving the settings page resets
@@ -210,6 +210,18 @@ component SectionHost {
         height: root.height;
         show-title: root.show-title;
     }
+    if root.category == "about-credits" : CreditsSection {
+        width: root.width;
+        height: root.height;
+    }
+    if root.category == "about-licenses" : LicenseIndex {
+        width: root.width;
+        height: root.height;
+    }
+    if root.category == "about-license-text" : LicenseReader {
+        width: root.width;
+        height: root.height;
+    }
 }
 
 export component SettingsPage {
@@ -224,7 +236,7 @@ export component SettingsPage {
         { id: "updates", label: @tr("更新"), icon: Icons.refresh },
         { id: "about", label: @tr("关于"), icon: Icons.info },
     ];
-    property <bool> two-pane: root.width >= 760px;
+    property <bool> two-pane: root.width >= 760px && !AboutNav.is-subpage(App.settings-category);
     property <bool> single-content: !root.two-pane && SettingsNav.show-content;
     property <length> list-width: 280px;
     property <length> bar-height: 64px;
@@ -237,11 +249,15 @@ export component SettingsPage {
             : id == "input" ? @tr("输入与手柄")
             : id == "updates" ? @tr("更新")
             : id == "about" ? @tr("关于")
+            : id == "about-credits" ? @tr("致谢")
+            : id == "about-licenses" || id == "about-license-text" ? @tr("第三方许可")
             : @tr("设置");
     }
 
     function back() {
-        if root.single-content {
+        if AboutNav.is-subpage(App.settings-category) {
+            AboutNav.back();
+        } else if root.single-content {
             SettingsNav.show-content = false;
         } else {
             App.page = "library";

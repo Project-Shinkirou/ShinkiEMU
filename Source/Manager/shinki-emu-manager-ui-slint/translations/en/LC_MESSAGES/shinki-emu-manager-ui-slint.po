@@ -2824,6 +2824,9 @@ msgstr "Allow shared storage access"
 msgid "已允许访问共享存储"
 msgstr "Shared storage access granted"
 
+msgid "共享存储权限不适用于这个文件提供程序。"
+msgstr "Shared storage access doesn't apply to this file provider."
+
 msgid "无法打开系统权限设置"
 msgstr "Couldn't open system permission settings"
 
@@ -2862,3 +2865,60 @@ msgstr "Reinsert the original disc, or use “Open game disc” again to choose 
 
 msgid "无法读取光驱"
 msgstr "Couldn't read the disc drive"
+
+msgid "致谢"
+msgstr "Acknowledgments"
+
+msgid "上游核心、第三方组件和贡献者"
+msgstr "Upstream cores, third-party components, and contributors"
+
+msgid "{} 及项目贡献者"
+msgstr "{} and project contributors"
+
+msgid "ShinkiEMU 适配与测试"
+msgstr "ShinkiEMU integration and testing"
+
+msgid "第三方组件"
+msgstr "Third-party components"
+
+msgid "贡献者"
+msgstr "Contributors"
+
+msgid "上游核心"
+msgstr "Upstream cores"
+
+msgid "项目主页"
+msgstr "Project site"
+
+msgid "{}：项目主页"
+msgstr "{}: Project site"
+
+msgid "许可证"
+msgstr "License"
+
+msgid "{}：许可证"
+msgstr "{}: License"
+
+msgid "第三方声明"
+msgstr "Third-party notices"
+
+msgid "许可证正文"
+msgstr "License text"
+
+msgid "无法读取随包许可证。"
+msgstr "Couldn’t read the bundled licenses."
+
+msgid "分享诊断日志"
+msgstr "Share diagnostic logs"
+
+msgid "最近的诊断摘要"
+msgstr "Recent diagnostic summary"
+
+msgid "暂无可分享的诊断日志"
+msgstr "No diagnostic logs to share yet"
+
+msgid "无法分享诊断日志"
+msgstr "Couldn’t share diagnostic logs"
+
+msgid "重新打开应用后再试。"
+msgstr "Reopen the app and try again."

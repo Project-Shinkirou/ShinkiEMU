@@ -13,6 +13,10 @@ Only select assets actually attached to a release. Build availability is listed 
 
 On first launch, you can add a game folder and choose your network and appearance settings, or skip setup. Networking is off by default. ShinkiEMU is free and open source; download it from the official site or GitHub Releases. See **Settings → About** for licensing information.
 
+**Settings → About → Acknowledgments** groups upstream cores, third-party components, and contributors. Each upstream core has separate project and license links. On Android, **About → Third-party licenses** opens the bundled notices and licenses in the app. Desktop still opens the notices file in the system.
+
+On Android, **About → Share diagnostic logs** opens the system share sheet with a summary of recent diagnostic events. It does not share the original log or upload anything. Desktop still offers **Open data folder** and **Open log folder**.
+
 ## Language
 
 Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.
@@ -37,7 +41,7 @@ On Android 11 or later, the folder step in first-time setup also offers **Allow 
 
 On a touch screen, pull down from the top of the library list and release to scan again. This also syncs metadata when networking is allowed. To manage folders or refresh with the keyboard, use **Settings → Library folders**.
 
-On Android 11 or later, if a compatible core needs direct file access, use **Settings → Library folders → Allow shared storage access**. Android asks whether to grant ShinkiEMU access to all files in shared storage. Folder scanning still uses the access you granted in the folder picker.
+On Android 11 or later, if a compatible core needs direct file access, use **Settings → Library folders → Allow shared storage access**. Android asks whether to grant ShinkiEMU access to all files in shared storage. Folder scanning still uses the access you granted in the folder picker. A crossed-out folder icon on a game card means the core cannot read that folder directly; select the game to see the cause in its details.
 
 Choose **Search** in the header, or press **Ctrl+F**. The list updates as you type. Select a result to open its details. Open **Filter options** to set compatibility, sort order, or layout, or to clear the search and filters together.
 

@@ -16,6 +16,11 @@
         android:label="ShinkiEMU"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/ShinkiEmuTheme">
+        <provider
+            android:name=".ShinkiDiagnosticProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
