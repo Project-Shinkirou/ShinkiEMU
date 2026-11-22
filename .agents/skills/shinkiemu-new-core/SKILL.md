@@ -262,7 +262,7 @@ cargo xtask package --target <triple> --core shinki.emu.<family> --version 0.1.0
 cargo xtask test    --core shinki.emu.<family>
 ```
 
-`<triple>` 依次取 `x86_64-pc-windows-msvc` 和 `aarch64-linux-android`。Windows 产物是 DLL 核心包；Android 产物是含 AArch64 ELF 和 NDK notice 的核心包，不是 APK。当前的 Android Manager 只运行 §7 静态嵌入的核心，没有安装下载核心包的路径。缺 `shinki_emu_query` 导出、缺许可、架构不对或原生依赖不闭合时打包失败。要在桌面 Manager 里试跑，用 `cargo xtask build --target x86_64-pc-windows-msvc --manager --release` 构建 Manager 后安装核心包。
+`<triple>` 依次取 `x86_64-pc-windows-msvc` 和 `aarch64-linux-android`。Windows 产物是 DLL 核心包；Android 产物是含 AArch64 ELF 和 NDK notice 的核心包，不是 APK。Android 默认保留 §7 的静态注册，尚未设置正式发布用的 `android_dynamic` 兼容下限；单独构建成功不会让 Manager 接受该包。缺 `shinki_emu_query` 导出、缺许可、架构不对或原生依赖不闭合时打包失败。要在桌面 Manager 里试跑，用 `cargo xtask build --target x86_64-pc-windows-msvc --manager --release` 构建 Manager 后安装核心包。
 
 示例核心在临时 checkout 里按开头的说明追加注册后，同一组命令把 `shinki.emu.<family>` 换成 `shinki.example.tilefix`、版本用 `0.1.0-local`。不追加注册也能跑它的宿主测试 `cargo test --locked -p shinki-emu-tilefix`。
 

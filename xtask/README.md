@@ -73,6 +73,14 @@ native audio, first frame, pause/resume and existing saves on both ABIs.
 The process-local Android context extension is negotiated only on launch.
 Legacy API-26 packages do not establish this parity.
 
+An Android core is installable only when its inventory has an `android_dynamic`
+policy with a verified compatibility floor. Standalone build rows alone do not
+admit packages. The default inventory has no production floor; keep the existing
+static registrations until each official replacement passes both ABI gates.
+`no-core-download` disables only online core install/update, not local official
+ZIP verification. For a registered self-owned core, `build.json` binds the
+package to its product version and full source commit.
+
 Keep the APK's other embedded registrations until their replacement passes
 the same gate:
 
@@ -81,7 +89,7 @@ the same gate:
 | `shinki.emu.cmvs` | `rust-cdylib`, `dynamic-plugin-export` + `video-ffmpeg`; prove the private FFmpeg and GPU/real audio path. |
 | `shinki.emu.musica` | `rust-cdylib`, `dynamic-plugin-export` + `ffmpeg-vcpkg`; retain FFmpeg, libass, FriBidi, fonts and their licenses. |
 | `rfvp` | `rust-cdylib`, `dynamic-plugin-export`; retain Android native movie/audio and target libass/FriBidi. GStreamer is a desktop Linux input. |
-| `impacto` | `native-shared` for standalone, `static` in the APK; preserve its pinned vcpkg inputs, libass/FFmpeg, profiles and resource root. |
+| `impacto` | Android standalone work is deferred. Keep the existing static registration and its shared libass 0.17.5 provider. |
 | `renpy` | `native-shared` for standalone, `static` in the APK; preserve the target CPython/SDL/FFmpeg runtime, resources and LGPL relinking material. |
 | `kirikiroid2-web` | `native-shared` for standalone, `static` in the APK; account for native vcpkg/Bison, Java/AIDL, JNI initialization, resources and the FMOD distribution terms. |
 | `krkr2` | `native-static` only today; needs a shared adapter and a supported Android Java/native host and resource lifecycle. |
@@ -101,6 +109,12 @@ from their own static receipts.
 ### Other native inputs
 
 Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. iOS packages include an `embedded-cores.json` source inventory and the embedded cores' licenses. Static dependencies and exact pins must match `static_manager_targets`. For the private Framework mode on the existing Manager build/package routes, see [the Apple packaging guide](../docs/en/build-and-release.md#private-ios-bundled-framework-proof).
+
+The OHOS default Manager keeps Musica static. The separate [private signed HAP
+route](../docs/en/build-and-release.md#bundled-musica-device-acceptance) opts in
+with `ohos-bundled-musica`. Both private modes use the same
+`SHINKI_EMU_MANAGER_FEATURES` input; neither enables downloads on its platform
+or qualifies the resulting artifact for release.
 
 Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7, Cython 3.2.4, Cython source-license files and SDL 2.0.20 headers. Windows uses the pinned NuGet development tree and cp312 wheel. Linux builds the pinned CPython source with the host C compiler and loads Cython's pinned Python sources from its standard library. Both interpreters are task-owned under `.work/native-downloads/python`; no system interpreter or developer cache is used. Linux preserves archive executable modes and verifies the SDK's `librenpython.so`, which contains CPython as well as Ren'Py and SDL. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE` automatically on either host.
 
@@ -159,3 +173,7 @@ pushes keep all platforms and the OHOS local Manager handoff. Scope does not
 change which platforms the product supports.
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
+
+The tools jobs also verify the generated C ABI header with cbindgen 0.29.2 and
+locked Cargo metadata. After changing the Rust ABI, use the
+[header regeneration commands](../docs/en/core-abi.md#protocol-and-entry-point).

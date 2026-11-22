@@ -182,7 +182,7 @@ cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
 cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <新目录>
 ```
 
-自研核心必须传 `--version`；外部核心不传，版本由来源 pin 推导。产物是一个核心包目录，含 AArch64 ELF 库、依赖闭包、许可和 NDK notice，不是 APK。在当前的 Manager 里，Android 核心只有经 `static_manager_targets`、Manager `Cargo.toml` 和 `STATIC_CORES` 静态嵌入并随上文的 Manager APK 构建后才能运行；当前 Android Manager 没有安装下载核心包的路径。
+自研核心必须传 `--version`；外部核心不传，版本由来源 pin 推导。产物是核心包目录，含 AArch64 ELF 库、依赖库、许可和 NDK notice，不是 APK。Android 默认保留静态注册，尚未设置正式发布用的 `android_dynamic` 兼容下限。可以单独构建不等于可以安装：每个官方替代包都要通过双 ABI 的运行验收，再配置该核心的兼容策略。
 
 ### Apple Manager：原生 macOS 与 Linux 交叉构建
 

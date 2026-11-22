@@ -177,7 +177,7 @@ cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
 cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <新しいディレクトリ>
 ```
 
-自作コアでは `--version` が必須です。外部コアはソースの pin からバージョンが決まるため指定しません。出力はコアパッケージのディレクトリで、AArch64 の ELF ライブラリ、依存関係の閉包、ライセンス、NDK の notice を含みます。APK ではありません。現在の Manager では、Android のコアは `static_manager_targets`、Manager の `Cargo.toml`、`STATIC_CORES` で静的に組み込み、上の手順で Manager APK に含めた場合にだけ動きます。現在の Android Manager には、ダウンロードしたコアパッケージをインストールする経路はありません。
+自作コアでは `--version` が必須です。外部コアのバージョンはソースの pin から決まるため指定しません。出力は AArch64 ELF ライブラリ、依存ライブラリ、ライセンス、NDK の notice を含むコアパッケージのディレクトリで、APK ではありません。既定の Android 構成は静的登録を維持し、配布用の `android_dynamic` 最低バージョンは未設定です。単体ビルドが可能でも、インストールには公式パッケージごとの互換条件と両 ABI での動作確認が必要です。
 
 ### Apple Manager：ネイティブ macOS と Linux からのクロスビルド
 

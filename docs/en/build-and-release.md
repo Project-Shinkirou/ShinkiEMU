@@ -277,7 +277,7 @@ cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
 cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <new-directory>
 ```
 
-Self-owned cores require `--version`; external cores omit it because their version derives from the source pins. The output is a core package directory holding the AArch64 ELF library, its dependency closure, licenses and the NDK notices; it is not an APK. In the current Manager, Android cores run only when statically embedded through `static_manager_targets`, the Manager `Cargo.toml` and `STATIC_CORES` and built into the Manager APK above; the current Android Manager has no install path for a downloaded core package.
+Self-owned cores require `--version`; external cores omit it because their version derives from the source pins. The output is a core package directory holding the AArch64 ELF library, its dependency closure, licenses and the NDK notices; it is not an APK. The default Android inventory keeps the static registrations and has no production `android_dynamic` floor. A standalone build row does not make its package installable: each official replacement needs its own verified policy and runtime acceptance on both ABIs.
 
 ### Apple Manager: native macOS and Linux-hosted cross
 
@@ -406,8 +406,10 @@ cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $ver
 
 Retain the HAP, `ohos.json`, `musica-build.json`, and `ohos-bundled-musica-sources.zip`.
 The packager verifies the DevEco signature, the ARM64 ABI-v3 query export, the
-native-library dependency closure, and the hashes of the packaged Musica library
-and license files. No native member may import the candidate at Manager startup.
+native-library dependency closure, and the hashes of the packaged Musica library,
+license files and `build.json`. The Manager admits only the manifest-bound
+receipt with the same product version and source commit as its own build.
+No native member may import the candidate at Manager startup.
 The Manager uses the OS-installed copy alongside its own library, either in the
 same installed directory or in the same HAP's native members. The extracted
 `core.json` is only for recognition and capability declaration; it cannot name
