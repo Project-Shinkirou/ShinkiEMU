@@ -140,7 +140,7 @@ impl ProbeCache {
         }
     }
 
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
     pub(super) fn rules(&self) -> &DeclaredRules {
         &self.rules
     }

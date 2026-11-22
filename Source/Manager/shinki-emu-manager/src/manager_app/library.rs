@@ -63,6 +63,10 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn mapped_game_directory<'a>(&'a self, game: &'a GameRecord) -> Option<&'a Path> {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if optical::is_optical(&game.location) {
+            return self.available_optical_game(game).map(|binding| binding.path.as_path());
+        }
         #[cfg(target_os = "android")]
         if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
             return self.saf_paths.get(&game.game_id).map(PathBuf::as_path);
@@ -71,6 +75,13 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn native_game_directory<'a>(&'a self, game: &'a GameRecord) -> Result<&'a Path, String> {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if optical::is_optical(&game.location) {
+            let binding = self.available_optical_game(game)
+                .ok_or(OPTICAL_MEDIA_UNAVAILABLE)?;
+            binding.volume.validate()?;
+            return Ok(&binding.path);
+        }
         #[cfg(target_os = "android")]
         if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) {
             use shinki_emu_manager::platform::android_tree::local_path;
@@ -79,6 +90,14 @@ impl ShinkiEmuManagerController {
                 .ok_or_else(|| format!("SHINKI_EMU_ANDROID_TREE_NATIVE_PATH: {}", saf_only_problem()));
         }
         Ok(Path::new(&game.location))
+    }
+
+    pub(super) fn display_game_location<'a>(&'a self, location: &'a str) -> &'a str {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if let Some(binding) = self.optical_games.get(location) {
+            return binding.path.to_str().unwrap_or(location);
+        }
+        location
     }
 
     pub(super) fn remove_from_library(
@@ -220,6 +239,13 @@ impl ShinkiEmuManagerController {
             .map_err(|error| error.to_string())?
             .unwrap_or(false);
         let self_update = self_update::State::load(&library)?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical_games = games.iter().filter(|game| optical::is_optical(&game.location))
+            .filter_map(|game| match library.app_state(&game.location) {
+                Ok(Some(binding)) => Some(Ok((game.location.clone(), binding))),
+                Ok(None) => None,
+                Err(error) => Some(Err(error.to_string())),
+            }).collect::<Result<_, _>>()?;
         let mut controller = Self {
             library,
             self_update,
@@ -310,6 +336,10 @@ impl ShinkiEmuManagerController {
             library_scan: None,
             prepare_progress: None,
             scan_cancel: None,
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            optical_games,
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            opened_optical: BTreeMap::new(),
             #[cfg(target_os = "android")]
             saf_paths: BTreeMap::new(),
             last_excluded: None,

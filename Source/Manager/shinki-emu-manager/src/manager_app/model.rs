@@ -271,7 +271,7 @@ impl ShinkiEmuManagerController {
                     .map(|game| ExcludedViewModel {
                         id: game.game_id,
                         title: game.title,
-                        location: game.location,
+                        location: self.display_game_location(&game.location).into(),
                     })
                     .collect(),
             },
@@ -318,12 +318,13 @@ impl ShinkiEmuManagerController {
         let mut labels = BTreeMap::new();
         for (vn_id, copies) in works.into_iter().filter(|(_, copies)| copies.len() > 1) {
             for game in copies {
+                let location = self.display_game_location(&game.location);
                 let label = match self.pinned_releases.get(&game.game_id) {
                     Some(release) if !release.title.is_empty() => release.title.clone(),
                     #[cfg(target_os = "android")]
                     _ if shinki_emu_manager::platform::android_tree::is_library_uri(&game.location) => game.title.clone(),
-                    _ => Path::new(&game.location).file_name().map_or_else(
-                        || game.location.clone(),
+                    _ => Path::new(location).file_name().map_or_else(
+                        || location.to_owned(),
                         |name| name.to_string_lossy().into_owned(),
                     ),
                 };
@@ -620,13 +621,20 @@ impl ShinkiEmuManagerController {
         if self.patch_busy() {
             return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
         }
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical = optical::is_optical(&game.location);
+        #[cfg(not(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos")))))]
+        let optical = false;
         let Some(path) = self.mapped_game_directory(game) else {
+            if optical {
+                return tr!("请重新打开原来的光盘。").into();
+            }
             #[cfg(target_os = "android")]
             return library::saf_only_problem().into();
             #[cfg(not(target_os = "android"))]
             return tr!("游戏目录当前不可用").into();
         };
-        if !path.is_dir() { return tr!("游戏目录当前不可用").into(); }
+        if !optical && !path.is_dir() { return tr!("游戏目录当前不可用").into(); }
         if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
             if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重启应用").into(); }
             let error = self.game_configuration_error(&game.game_id, Some(&plugin));

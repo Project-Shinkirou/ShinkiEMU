@@ -97,6 +97,8 @@ impl Harness {
                 content_fingerprint: None,
                 added_at_unix_ms: 1,
             },
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            optical: None,
             candidate: self.candidate.clone(),
             configuration: Vec::new(),
             render_extent: None,

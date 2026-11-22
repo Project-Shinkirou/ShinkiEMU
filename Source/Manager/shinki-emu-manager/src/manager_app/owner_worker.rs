@@ -115,13 +115,29 @@ pub(super) fn run(
                 pending.clear();
                 let epoch = request.epoch;
                 let candidate = (|| {
+                    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                    if let Some(volume) = &request.optical {
+                        volume.validate()?;
+                    }
                     activate(&mut registry, &installed, &request.candidate.plugin_id)?;
-                    let path = fs::canonicalize(&request.game.location).map_err(|error| error.to_string())?;
+                    let path = fs::canonicalize(&request.game.location).map_err(|error| {
+                        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                        if let Some(volume) = &request.optical
+                            && let Err(error) = volume.validate()
+                        {
+                            return error;
+                        }
+                        error.to_string()
+                    })?;
                     let selection = registry.probe_selected(
                         &ProbeRequest { game_path: path.to_str().ok_or("SHINKI_EMU_GAME_PATH_UTF8")?.into() },
                         &request.candidate.plugin_id,
-                    ).map_err(|error| error.to_string())?;
-                    match selection {
+                    ).map_err(|error| error.to_string());
+                    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                    if let Some(volume) = &request.optical {
+                        volume.validate()?;
+                    }
+                    match selection? {
                         FamilyProbeSelection::Selected(candidate) if candidate.report.family_id == request.candidate.family_id => Ok(candidate),
                         _ => Err("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH".to_owned()),
                     }

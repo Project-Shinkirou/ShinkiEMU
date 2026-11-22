@@ -55,6 +55,17 @@ pub(super) enum FullScan {
 pub(super) enum LibraryScan {
     Full(FullScan),
     Roots(BTreeMap<PathBuf, bool>),
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    Optical(OpticalVolume),
+}
+
+fn interactive_offer(scan: Option<&LibraryScan>, requested: &Path) -> bool {
+    match scan {
+        Some(LibraryScan::Roots(roots)) => roots.get(requested) == Some(&true),
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        Some(LibraryScan::Optical(volume)) => volume.root == requested,
+        _ => false,
+    }
 }
 
 impl ShinkiEmuManagerController {
@@ -115,6 +126,10 @@ impl ShinkiEmuManagerController {
     }
 
     fn interactive_import(&self) -> bool {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if matches!(&self.library_scan, Some(LibraryScan::Optical(_))) {
+            return true;
+        }
         matches!(&self.library_scan, Some(LibraryScan::Roots(roots)) if roots.values().any(|interactive| *interactive))
     }
 
@@ -231,10 +246,24 @@ impl ShinkiEmuManagerController {
             return Err("SHINKI_EMU_PREPARE_BUSY".into());
         }
         let requested = root.requested.to_str().ok_or(invalid)?;
-        if !self.library.library_roots().map_err(|error| error.to_string())?.iter().any(|row| row.path == requested) {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical = root.optical.as_ref();
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let is_optical = optical.is_some();
+        #[cfg(not(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos")))))]
+        let is_optical = false;
+        if !is_optical && !self.library.library_roots().map_err(|error| error.to_string())?.iter().any(|row| row.path == requested) {
             return Err(invalid.into());
         }
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if let Some(volume) = optical {
+            volume.validate()?;
+        }
         let location = root.path.to_str().ok_or(invalid)?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical_location = optical.map(|volume| optical::game_location(volume, &root.path)).transpose()?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let location = optical_location.as_deref().unwrap_or(location);
         #[cfg(target_os = "android")]
         let is_saf = root.saf.is_some();
         #[cfg(not(target_os = "android"))]
@@ -269,6 +298,12 @@ impl ShinkiEmuManagerController {
             #[cfg(target_os = "android")]
             root.saf.as_ref(),
         )?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let game = if let Some(volume) = optical {
+            self.bind_scanned_optical_game(game, volume, &root.path)?
+        } else {
+            game
+        };
         self.library.add_game(&game).map_err(|error| error.to_string())?;
         #[cfg(target_os = "android")]
         if let Some(path) = root.saf.and_then(|saf| saf.local_path)
@@ -316,7 +351,11 @@ impl ShinkiEmuManagerController {
         }
         let roots = std::mem::take(&mut self.pending_scan_roots);
         let offer_unrecognized = roots.len() == 1 && roots.values().any(|interactive| *interactive);
-        match self.dispatch_scan(ScanKind::Import, roots.keys().cloned().collect(), offer_unrecognized) {
+        match self.dispatch_scan(
+            ScanKind::Import, roots.keys().cloned().collect(), offer_unrecognized,
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            None,
+        ) {
             Ok(()) => self.library_scan = Some(LibraryScan::Roots(roots)),
             Err(error) => {
                 self.requeue_library_scan(Some(LibraryScan::Roots(roots)));
@@ -327,10 +366,25 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn begin_scan(&mut self, kind: ScanKind, paths: Vec<PathBuf>) -> Result<(), String> {
-        self.dispatch_scan(kind, paths, false)
+        self.dispatch_scan(
+            kind, paths, false,
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            None,
+        )
     }
 
-    fn dispatch_scan(&mut self, kind: ScanKind, paths: Vec<PathBuf>, offer_unrecognized: bool) -> Result<(), String> {
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) fn scan_optical_volume(&mut self, volume: OpticalVolume) -> Result<(), String> {
+        self.dispatch_scan(ScanKind::Import, vec![volume.root.clone()], true, Some(volume.clone()))?;
+        self.library_scan = Some(LibraryScan::Optical(volume));
+        Ok(())
+    }
+
+    fn dispatch_scan(
+        &mut self, kind: ScanKind, paths: Vec<PathBuf>, offer_unrecognized: bool,
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: Option<OpticalVolume>,
+    ) -> Result<(), String> {
         self.ensure_owner_idle()?;
         if self.patch_job.is_some() {
             return Err(format!(
@@ -344,10 +398,21 @@ impl ShinkiEmuManagerController {
         if !self.cores_ready() {
             return Err("SHINKI_EMU_CORES_NOT_READY".into());
         }
-        let games = self
+        #[cfg_attr(not(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos")))), allow(unused_mut))]
+        let mut games = self
             .library
             .list_games()
             .map_err(|error| error.to_string())?;
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if let Some(volume) = optical.as_ref() {
+            games.retain_mut(|game| {
+                let Some(path) = self.scan_optical_game_path(&game.location, volume) else { return false; };
+                game.location = path.to_owned();
+                true
+            });
+        } else {
+            games.retain(|game| !optical::is_optical(&game.location));
+        }
         if kind == ScanKind::Full && paths.is_empty() && games.is_empty() {
             return Ok(());
         }
@@ -356,7 +421,18 @@ impl ShinkiEmuManagerController {
             .excluded_games()
             .map_err(|error| error.to_string())?
             .into_iter()
-            .map(|game| PathBuf::from(game.location))
+            .filter_map(|game| {
+                #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                {
+                    if let Some(volume) = optical.as_ref() {
+                        return self.scan_optical_game_path(&game.location, volume).map(PathBuf::from);
+                    }
+                    if optical::is_optical(&game.location) {
+                        return None;
+                    }
+                }
+                Some(PathBuf::from(game.location))
+            })
             .collect();
         let cancel = shinki_emu_manager_core::NativeCancellation::new(0);
         self.clear_unrecognized_offer(None);
@@ -367,6 +443,8 @@ impl ShinkiEmuManagerController {
             games,
             excluded,
             cancel: cancel.clone(),
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            optical,
         })?;
         self.scan_cancel = Some(cancel);
         self.prepare_progress = None;
@@ -411,10 +489,7 @@ impl ShinkiEmuManagerController {
                         Err(error) if error == "SHINKI_EMU_SCAN_CANCELLED" => {
                             self.scan_cancelled(scan.as_ref());
                         }
-                        Err(error) => {
-                            self.requeue_library_scan(scan);
-                            self.scan_failed(error);
-                        }
+                        Err(error) => self.request_scan_failed(scan, error),
                         Ok(report) => {
                             self.startup_state = StartupState::Ready;
                             let traversal_limited = report.traversal_limited;
@@ -433,10 +508,7 @@ impl ShinkiEmuManagerController {
                                         self.show_snackbar(tr!("资料库已是最新"), None);
                                     }
                                 }
-                                Err(error) => {
-                                    self.requeue_library_scan(scan);
-                                    self.scan_failed(error);
-                                }
+                                Err(error) => self.request_scan_failed(scan, error),
                             }
                         }
                     }
@@ -473,6 +545,19 @@ impl ShinkiEmuManagerController {
         }
     }
 
+    fn request_scan_failed(&mut self, scan: Option<LibraryScan>, error: String) {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if let Some(LibraryScan::Optical(volume)) = &scan {
+            self.opened_optical.remove(&volume.root);
+            self.startup_state = StartupState::Ready;
+            self.diagnostic = error;
+            self.diagnostic_severity = "error";
+            return;
+        }
+        self.requeue_library_scan(scan);
+        self.scan_failed(error);
+    }
+
     fn requeue_library_scan(&mut self, scan: Option<LibraryScan>) {
         match scan {
             Some(LibraryScan::Full(full)) => self.pending_full_scan = Some(full),
@@ -481,6 +566,8 @@ impl ShinkiEmuManagerController {
                     self.pending_scan_roots.entry(root).or_insert(false);
                 }
             }
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            Some(LibraryScan::Optical(_)) => {}
             None => {}
         }
     }
@@ -560,6 +647,13 @@ impl ShinkiEmuManagerController {
         automatic: Option<&file_patch::PendingImport>,
         scan: Option<&LibraryScan>,
     ) -> Result<usize, String> {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        let optical = if let Some(LibraryScan::Optical(volume)) = scan {
+            volume.validate()?;
+            Some(volume)
+        } else {
+            None
+        };
         tracing::info!(
             event = "shinki.emu.manager.probe_refresh",
             games = report.games.len(),
@@ -627,6 +721,12 @@ impl ShinkiEmuManagerController {
                     #[cfg(target_os = "android")]
                     result.saf.as_ref(),
                 )?;
+                #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                let game = if let Some(volume) = optical {
+                    self.bind_scanned_optical_game(game, volume, &result.path)?
+                } else {
+                    game
+                };
                 self.library
                     .add_game(&game)
                     .map_err(|error| error.to_string())?;
@@ -661,14 +761,17 @@ impl ShinkiEmuManagerController {
                 imported.insert(id);
             }
         }
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if let Some(volume) = optical {
+            self.opened_optical.insert(volume.root.clone(), volume.clone());
+        }
         if kind == ScanKind::Import && automatic.is_none() {
             if let Some(id) = imported.first() {
                 self.selected_case_id = Some(id.clone());
             }
             if imported.is_empty() && !incomplete {
                 if let Some(root) = report.unrecognized_root
-                    && let Some(LibraryScan::Roots(roots)) = scan
-                    && roots.get(&root.requested) == Some(&true)
+                    && interactive_offer(scan, &root.requested)
                     && self.pending_scan_roots.is_empty()
                 {
                     self.show_snackbar(

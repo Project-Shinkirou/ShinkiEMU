@@ -8,7 +8,10 @@ fn game(path: &Path) -> GameRecord {
         location: path.to_str().unwrap().into(), family_id: Some("fvp".into()), content_fingerprint: None, added_at_unix_ms: 1 }
 }
 fn run_scan(cache: &mut ProbeCache, kind: ScanKind, paths: Vec<PathBuf>, games: Vec<GameRecord>) -> ScanReport {
-    super::super::probe_worker::scan(cache, ScanRequest { kind, offer_unrecognized: false, paths, games, excluded: BTreeSet::new(), cancel: NativeCancellation::new(0) },
+    super::super::probe_worker::scan(cache, ScanRequest { kind, offer_unrecognized: false, paths, games, excluded: BTreeSet::new(), cancel: NativeCancellation::new(0),
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    },
         &AtomicBool::new(false), &mut |_| {}).unwrap()
 }
 fn refresh(cache: &mut ProbeCache, path: &Path) -> ScanReport { run_scan(cache, ScanKind::Full, Vec::new(), vec![game(path)]) }
@@ -130,13 +133,19 @@ fn scan_progress_exclusions_and_cancellation_do_not_publish_partial_results() {
     let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     let mut progress = Vec::new();
     let report = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
-        offer_unrecognized: false, excluded: BTreeSet::from([hidden]), cancel: NativeCancellation::new(0) }, &AtomicBool::new(false), &mut |event| progress.push(event)).unwrap();
+        offer_unrecognized: false, excluded: BTreeSet::from([hidden]), cancel: NativeCancellation::new(0),
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    }, &AtomicBool::new(false), &mut |event| progress.push(event)).unwrap();
     assert!(report.games.is_empty());
     assert!(!progress.is_empty());
     let cancel = NativeCancellation::new(0);
     let worker_cancel = cancel.clone();
     let result = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
-        offer_unrecognized: false, excluded: BTreeSet::new(), cancel: worker_cancel }, &AtomicBool::new(false), &mut |_| cancel.cancel());
+        offer_unrecognized: false, excluded: BTreeSet::new(), cancel: worker_cancel,
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    }, &AtomicBool::new(false), &mut |_| cancel.cancel());
     assert_eq!(result.err().as_deref(), Some("SHINKI_EMU_SCAN_CANCELLED"));
 }
 

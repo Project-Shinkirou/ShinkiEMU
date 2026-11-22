@@ -415,6 +415,10 @@ impl ShinkiEmuManagerController {
     }
 
     fn patch_game_path<'a>(&'a self, game: &'a GameRecord) -> Result<&'a Path, String> {
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if optical::is_optical(&game.location) {
+            return Err("SHINKI_EMU_PATCH_INVALID_REQUEST: mounted optical media is read-only".into());
+        }
         self.native_game_directory(game).map_err(|_| format!(
             "SHINKI_EMU_PATCH_INVALID_REQUEST: {}",
             tr!("此游戏文件夹无法通过本机路径读写，不能应用文件补丁。")
