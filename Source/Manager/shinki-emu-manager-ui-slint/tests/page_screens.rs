@@ -1773,6 +1773,18 @@ fn exercise_about_credits(
     reveal(&site("Art3m1s Core"));
     click_label(software, &site("Art3m1s Core"));
     click_label(software, &license("Art3m1s Core"));
+    for label in ["cmvs-rs: MIT", "cmvs-rs: Apache-2.0"] {
+        reveal(label);
+        let item = labeled_item(software, |text| text == label).unwrap();
+        let rect = item.geometry();
+        let center = item.map_to_native_window(rect.center());
+        assert!(
+            center.x - rect.size.width / 2.0 >= 0.0
+                && center.x + rect.size.width / 2.0 <= width as f32,
+            "{label} extends beyond the viewport at {width}px",
+        );
+        click_label(software, label);
+    }
     reveal(&site("RFVP"));
     save("settings/about-credits-middle", frame());
     click_label(software, &site("RFVP"));
@@ -1785,6 +1797,8 @@ fn exercise_about_credits(
             "https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors",
             "https://github.com/Alphaly2K/art3m1s-core",
             "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE",
+            "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT",
+            "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE",
             "https://github.com/xmoezzz/rfvp",
             "https://github.com/xmoezzz/sena-rs",
         ]

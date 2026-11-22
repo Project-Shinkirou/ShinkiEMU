@@ -239,6 +239,7 @@ export component CreditsSection inherits PageScroll {
 
     // The original repositories match build/cores.toml. License links refer to
     // the reviewed upstream revision, or the distributed license if absent upstream.
+    // A dual-licensed card needs a second action row on compact screens.
     for credit in [
         { project: "Art3m1s Core", authors: "Alphaly2K", url: "https://github.com/Alphaly2K/art3m1s-core", license: "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE", alternate-license: "" },
         { project: "cmvs-rs", authors: "gkouen", url: "https://github.com/Shizuku-in/cmvs-rs", license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT", alternate-license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE" },
@@ -260,6 +261,7 @@ export component CreditsSection inherits PageScroll {
         preferred-height: card.preferred-height;
 
         card := VerticalLayout {
+            property <bool> split-actions: credit.alternate-license != "" && self.width < 390px;
             width: parent.width;
             padding: 12px;
             spacing: 4px;
@@ -276,9 +278,17 @@ export component CreditsSection inherits PageScroll {
                 wrap: word-wrap;
                 overflow: clip;
             }
-            HorizontalLayout {
+            if card.split-actions : HorizontalLayout {
                 alignment: start;
                 TextButton {
+                    text: @tr("项目主页");
+                    accessible-label: @tr("{}：项目主页", credit.project);
+                    clicked => { Platform.open-url(credit.url); }
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                if !card.split-actions : TextButton {
                     text: @tr("项目主页");
                     accessible-label: @tr("{}：项目主页", credit.project);
                     clicked => { Platform.open-url(credit.url); }

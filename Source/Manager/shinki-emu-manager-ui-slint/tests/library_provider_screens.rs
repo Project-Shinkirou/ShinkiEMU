@@ -78,7 +78,9 @@ fn render_once(software: &MinimalSoftwareWindow, width: u32, height: u32) -> Vec
         }
         slint::platform::update_timers_and_animations();
         software.request_redraw();
-        software.draw_if_needed(|renderer| renderer.render(&mut pixels, width as usize));
+        software.draw_if_needed(|renderer| {
+            renderer.render(&mut pixels, width as usize);
+        });
         let idle = JOBS.lock().expect("job queue").is_empty();
         if frame >= 8 && idle && !software.window().has_active_animations() {
             break;
