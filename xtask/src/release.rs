@@ -1366,8 +1366,9 @@ mod tests {
                 "schema":"shinki.emu.release.v1", "component":component, "version":id.version,
                 "source_commit":id.commit, "core_source":null, "identity":null, "target":target,
             });
-            let verify =
-                |record| require_same_release(record, &id, component, target, path, Scope::All);
+            let verify = |record: &Value| {
+                require_same_release(record, &id, component, target, path, Scope::All)
+            };
             assert!(verify(&record).is_err());
             record["product_version"] = "0.1.0-beta.6".into();
             assert!(verify(&record).is_err());
