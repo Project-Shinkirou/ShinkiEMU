@@ -15,6 +15,8 @@ On first launch, you can add a game folder and choose your network and appearanc
 
 **Settings → About → Acknowledgments** groups upstream cores, third-party components, and contributors. Each upstream core has separate project and license links. On Android, **About → Third-party licenses** opens the bundled notices and licenses in the app. Desktop still opens the notices file in the system.
 
+On Android, **About → Share diagnostic logs** opens the system share sheet with a summary of recent diagnostic events. It does not share the original log or upload anything. Desktop still offers **Open data folder** and **Open log folder**.
+
 ## Language
 
 Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.

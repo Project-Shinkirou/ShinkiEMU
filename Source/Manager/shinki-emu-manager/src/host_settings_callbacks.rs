@@ -23,6 +23,29 @@ fn install_app<C: ManagerController>(
     let app = window.global::<App>();
     app.set_android_about(cfg!(target_os = "android"));
     install_about_licenses(window);
+    #[cfg(target_os = "android")]
+    {
+        let w = wiring.clone();
+        app.on_share_diagnostic_log(move || {
+            let Some(window) = w.window.upgrade() else {
+                return;
+            };
+            let result = platform::android::share_diagnostic_log(
+                w.controller.borrow().data_dir(),
+                tr!("分享诊断日志"),
+            );
+            match result {
+                Ok(true) => {}
+                Ok(false) => {
+                    let notices = window.global::<Notices>();
+                    notices.set_snackbar_text(tr!("暂无可分享的诊断日志").into());
+                    notices.set_snackbar_action(Default::default());
+                    notices.set_snackbar_serial(notices.get_snackbar_serial().wrapping_add(1));
+                }
+                Err(error) => report_error(&window, &error),
+            }
+        });
+    }
     let w = wiring.clone();
     app.on_appearance_changed(move |appearance| {
         let settings = shinki_emu_manager_core::AppearanceSettings {

@@ -2874,3 +2874,18 @@ msgstr "License text"
 
 msgid "无法读取随包许可证。"
 msgstr "Couldn’t read the bundled licenses."
+
+msgid "分享诊断日志"
+msgstr "Share diagnostic logs"
+
+msgid "最近的诊断摘要"
+msgstr "Recent diagnostic summary"
+
+msgid "暂无可分享的诊断日志"
+msgstr "No diagnostic logs to share yet"
+
+msgid "无法分享诊断日志"
+msgstr "Couldn’t share diagnostic logs"
+
+msgid "重新打开应用后再试。"
+msgstr "Reopen the app and try again."

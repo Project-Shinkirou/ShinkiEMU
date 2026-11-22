@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "android")]
 pub mod android;
+#[cfg(any(target_os = "android", test))]
+mod android_diagnostics;
 #[cfg(target_os = "android")]
 pub mod android_tree;
 #[cfg(any(target_os = "android", test))]

@@ -138,18 +138,26 @@ export component AboutSection inherits PageScroll {
             }
         }
         HorizontalDivider { }
-        LinkRow {
-            text: @tr("打开数据目录");
-            supporting-text: @tr("资料库、设置、封面缓存和用户安装的核心");
-            icon: Icons.folder-open;
-            clicked => { App.open-path("data"); }
-        }
-        HorizontalDivider { }
-        LinkRow {
-            text: @tr("打开日志目录");
-            supporting-text: @tr("报告问题时请附上日志");
+        if App.android-about : LinkRow {
+            text: @tr("分享诊断日志");
+            supporting-text: @tr("最近的诊断摘要");
             icon: Icons.history;
-            clicked => { App.open-path("logs"); }
+            clicked => { App.share-diagnostic-log(); }
+        }
+        if !App.android-about : VerticalLayout {
+            LinkRow {
+                text: @tr("打开数据目录");
+                supporting-text: @tr("资料库、设置、封面缓存和用户安装的核心");
+                icon: Icons.folder-open;
+                clicked => { App.open-path("data"); }
+            }
+            HorizontalDivider { }
+            LinkRow {
+                text: @tr("打开日志目录");
+                supporting-text: @tr("报告问题时请附上日志");
+                icon: Icons.history;
+                clicked => { App.open-path("logs"); }
+            }
         }
         HorizontalDivider { }
         LinkRow {

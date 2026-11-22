@@ -1702,6 +1702,9 @@ fn exercise_about_credits(
     let picked_path = Rc::new(RefCell::new(SharedString::default()));
     let record = picked_path.clone();
     app.on_open_path(move |key| *record.borrow_mut() = key);
+    let shared = Rc::new(Cell::new(0));
+    let count = shared.clone();
+    app.on_share_diagnostic_log(move || count.set(count.get() + 1));
     let weak = a.window().as_weak();
     app.on_load_about_licenses(move || {
         weak.upgrade().unwrap().global::<App>().set_about_license_files(slint::ModelRc::new(
@@ -1720,6 +1723,12 @@ fn exercise_about_credits(
     let license = |project: &str| tr!("{}：许可证").replace("{}", project);
     opened_urls.borrow_mut().clear();
     frame();
+    let share = tr!("分享诊断日志");
+    let data_folder = tr!("打开数据目录");
+    let log_folder = tr!("打开日志目录");
+    assert!(labeled_item(software, |label| label == data_folder).is_some());
+    assert!(labeled_item(software, |label| label == log_folder).is_some());
+    assert!(labeled_item(software, |label| label == share).is_none());
     click_label(software, licenses);
     assert_eq!(*picked_path.borrow(), "third-party-notices");
     assert_eq!(app.get_settings_category(), "about");
@@ -1785,6 +1794,10 @@ fn exercise_about_credits(
 
     app.set_android_about(true);
     save("settings/about-credits-android-about", frame());
+    assert!(labeled_item(software, |label| label == data_folder || label == log_folder).is_none());
+    click_label(software, share);
+    assert_eq!(shared.get(), 1, "Share row invokes the platform callback once");
+    assert_eq!(*picked_path.borrow(), "third-party-notices");
     click_label(software, licenses);
     frame();
     assert_eq!(app.get_settings_category(), "about-licenses");
