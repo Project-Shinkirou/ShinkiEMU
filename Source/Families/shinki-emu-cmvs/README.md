@@ -29,7 +29,7 @@ cargo build -p shinki-emu-cmvs --locked --lib --features dynamic-plugin-export
 
 核心不依赖 Win32：Windows、Linux、macOS 与 Android 使用同一套文字、MP3 和设置实现。存档仍在原引擎的 `game/save/` 位置和格式。
 
-Android 和 iOS Manager 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`。Android 覆盖 ARM64 与 x86_64；iOS 覆盖真机 `aarch64-apple-ios` 以及模拟器 `aarch64-apple-ios-sim`、`x86_64-apple-ios`。视频解码复用 SDK 的静态 FFmpeg 和已有的 vcpkg triplet、xtask 依赖准备及打包流程；不提供单独安装的动态核心。许可证和对应源码随 Manager 打包。设备上的实际运行按用户要求未验证。
+Android 和 iOS Manager 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`。独立 Android `cdylib` 在显式激活时通过 `AndroidContextV1` 初始化本库内的 CPAL/AAudio JNI 上下文，静态集成保留宿主初始化。两条路径都复用 SDK 的静态 FFmpeg 7.1.2，不改变播放或存档。独立核心和 Manager 分别打包原生依赖许可及对应源码。Android ARM64、x86_64 的独立包需要各自验证设备加载及实际运行。
 
 动态构建由 `build/cores.toml` 的 `features` 启用 `dynamic-plugin-export`，在独立模块中安装diagnostic callback bridge；静态Manager的 `static_features` 不启用它，验证host诊断header、emit与flush后沿用同一进程的host tracing subscriber，不重复安装全局subscriber。无效诊断参数仍返回ABI错误，不破坏已完成的初始化；初始化和后续失败仍走原生ABI错误/host诊断通路。
 

@@ -250,6 +250,8 @@ unsafe extern "C" fn open(
         if services.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
+        #[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+        shinki_emu_sdk::android_audio::require_context()?;
         config::render_extent(request)?;
         let launch = worker::Launch {
             path: unsafe { request.game_path.text(32768) }
@@ -505,9 +507,31 @@ unsafe extern "C" fn extension(
         Ok(name) => name,
         Err(status) => return status,
     };
+    #[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+    if name == abi::ANDROID_CONTEXT_EXTENSION && version == abi::ANDROID_CONTEXT_VERSION {
+        unsafe { output.write((&raw const ANDROID_CONTEXT).cast()) };
+        return abi::OK;
+    }
     if name != abi::MODULE_OWNER_EXTENSION || version != abi::MODULE_OWNER_VERSION {
         return abi::UNSUPPORTED;
     }
     unsafe { output.write((&owner::API as *const abi::ModuleOwnerApi).cast()) };
     abi::OK
+}
+
+#[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+static ANDROID_CONTEXT: abi::AndroidContextV1 = abi::AndroidContextV1 {
+    header: abi::Header::of::<abi::AndroidContextV1>(),
+    initialize: Some(bind_android_context),
+};
+
+#[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+unsafe extern "C" fn bind_android_context(
+    java_vm: *mut c_void,
+    application: *mut c_void,
+    error: *mut abi::Error,
+) -> abi::Status {
+    boundary(error, || unsafe {
+        shinki_emu_sdk::android_audio::bind_context(java_vm, application)
+    })
 }
