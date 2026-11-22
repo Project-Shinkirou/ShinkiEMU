@@ -117,6 +117,7 @@ fn unique_normalized_match_is_fetched_and_linked() {
     h.complete(
         search,
         Ok(MetadataPayload::Search(vec![
+            record("v1", "Sakura no Uta", &[]),
             record("v1", "Sakura no Uta", &["サクラノ詩　-櫻の森の上を舞う-"]),
             record("v2", "Sakura no Toki", &["サクラノ刻"]),
         ])),
@@ -141,10 +142,135 @@ fn unique_normalized_match_is_fetched_and_linked() {
 }
 
 #[test]
+fn sole_non_exact_candidate_is_fetched_and_linked() {
+    let mut h = harness(true);
+    h.add_game("game", "Localized release");
+    h.app.enqueue_auto_link().unwrap();
+    let search = h.submitted().unwrap();
+    h.complete(
+        search,
+        Ok(MetadataPayload::Search(vec![record("v10", "Original title", &[])])),
+    );
+    let fetch = h.submitted().unwrap();
+    assert!(matches!(&fetch.kind, MetadataCommandKind::Fetch(id) if id == "v10"));
+    assert!(h.vndb_remote_id("game").is_none());
+    h.complete(
+        fetch,
+        Ok(MetadataPayload::Fetch {
+            record: Box::new(record("v10", "Original title", &[])),
+            cover: None,
+        }),
+    );
+    assert_eq!(h.vndb_remote_id("game").as_deref(), Some("v10"));
+    assert!(h.app.auto_link_attempted.contains("game"));
+}
+
+#[test]
+fn invalid_rows_and_duplicate_ids_do_not_count_as_other_works() {
+    let mut h = harness(true);
+    h.add_game("game", "Localized release");
+    h.app.enqueue_auto_link().unwrap();
+    let search = h.submitted().unwrap();
+    let mut wrong_provider = record("v13", "Localized release", &[]);
+    wrong_provider.provider = MetadataProviderId::Bangumi;
+    h.complete(
+        search,
+        Ok(MetadataPayload::Search(vec![
+            record("v10", "Original title", &[]),
+            record("v10", "Another translation", &[]),
+            record("r11", "Localized release", &[]),
+            record("v12", " ", &[""]),
+            wrong_provider,
+        ])),
+    );
+    let fetch = h.submitted().unwrap();
+    assert!(matches!(&fetch.kind, MetadataCommandKind::Fetch(id) if id == "v10"));
+    assert_eq!(h.candidates("game"), 1);
+}
+
+#[test]
+fn mismatched_fetch_identity_is_not_linked_or_marked_attempted() {
+    for wrong_provider in [false, true] {
+        let mut h = harness(true);
+        h.add_game("game", "Localized release");
+        h.app.enqueue_auto_link().unwrap();
+        let search = h.submitted().unwrap();
+        h.complete(
+            search,
+            Ok(MetadataPayload::Search(vec![record("v10", "Original title", &[])])),
+        );
+        let fetch = h.submitted().unwrap();
+        let mut result = record(if wrong_provider { "v10" } else { "v11" }, "Original title", &[]);
+        if wrong_provider {
+            result.provider = MetadataProviderId::Bangumi;
+        }
+        h.complete(
+            fetch,
+            Ok(MetadataPayload::Fetch { record: Box::new(result), cover: None }),
+        );
+        assert!(h.vndb_remote_id("game").is_none());
+        assert!(!h.app.auto_link_attempted.contains("game"));
+        assert!(h.app.auto_link.is_none());
+    }
+}
+
+#[test]
+fn a_link_saved_while_fetching_wins_over_the_automatic_candidate() {
+    let mut h = harness(true);
+    h.add_game("game", "Localized release");
+    h.app.enqueue_auto_link().unwrap();
+    let search = h.submitted().unwrap();
+    h.complete(
+        search,
+        Ok(MetadataPayload::Search(vec![record("v10", "Original title", &[])])),
+    );
+    let fetch = h.submitted().unwrap();
+    h.app.link_metadata("game", MetadataProviderId::Vndb, record("v20", "Chosen title", &[]), None).unwrap();
+    h.complete(
+        fetch,
+        Ok(MetadataPayload::Fetch {
+            record: Box::new(record("v10", "Original title", &[])),
+            cover: None,
+        }),
+    );
+    assert_eq!(h.vndb_remote_id("game").as_deref(), Some("v20"));
+}
+
+#[test]
+fn disabling_network_during_search_or_fetch_skips_automatic_association() {
+    for during_fetch in [false, true] {
+        let mut h = harness(true);
+        h.add_game("game", "Localized release");
+        h.app.enqueue_auto_link().unwrap();
+        let search = h.submitted().unwrap();
+        let result = Ok(MetadataPayload::Search(vec![record("v10", "Original title", &[])]));
+        if during_fetch {
+            h.complete(search, result);
+            let fetch = h.submitted().unwrap();
+            h.app.set_network_allowed(false).unwrap();
+            h.complete(
+                fetch,
+                Ok(MetadataPayload::Fetch {
+                    record: Box::new(record("v10", "Original title", &[])),
+                    cover: None,
+                }),
+            );
+        } else {
+            h.app.set_network_allowed(false).unwrap();
+            h.complete(search, result);
+        }
+        assert!(h.submitted().is_none());
+        assert!(h.vndb_remote_id("game").is_none());
+        assert!(!h.app.auto_link_attempted.contains("game"));
+    }
+}
+
+#[test]
 fn ambiguous_or_missing_matches_keep_candidates_and_continue_the_batch() {
     let mut h = harness(true);
     h.add_game("a", "Air");
     h.add_game("b", "Kanon");
+    h.add_game("c", "Clannad");
     h.app.enqueue_auto_link().unwrap();
     let first = h.submitted().unwrap();
     assert_eq!(search_title(&first), "Air");
@@ -159,11 +285,25 @@ fn ambiguous_or_missing_matches_keep_candidates_and_continue_the_batch() {
     assert!(h.vndb_remote_id("a").is_none());
     assert_eq!(h.candidates("a"), 2);
     let second = h.submitted().unwrap();
-    assert_eq!(search_title(&second), "Kanon");
-    h.complete(second, Ok(MetadataPayload::Search(Vec::new())));
+    assert_eq!(search_title(&second), "Clannad");
+    h.complete(
+        second,
+        Ok(MetadataPayload::Search(vec![
+            record("v3", "Clannad retail", &[]),
+            record("v4", "Clannad trial", &[]),
+        ])),
+    );
+    assert!(h.vndb_remote_id("c").is_none());
+    assert_eq!(h.candidates("c"), 2);
+    let third = h.submitted().unwrap();
+    assert_eq!(search_title(&third), "Kanon");
+    h.complete(third, Ok(MetadataPayload::Search(Vec::new())));
+    assert!(h.vndb_remote_id("b").is_none());
+    assert_eq!(h.candidates("b"), 0);
     assert!(h.submitted().is_none());
     assert!(h.app.auto_link_attempted.contains("a"));
     assert!(h.app.auto_link_attempted.contains("b"));
+    assert!(h.app.auto_link_attempted.contains("c"));
 }
 
 #[test]
@@ -193,6 +333,13 @@ fn attempted_games_are_not_searched_again_after_restart() {
     drop(h.app);
     let mut app =
         ShinkiEmuManagerController::open_library(root, FrameMailbox::new(), Vec::new()).unwrap();
+    // This is also the key used before adding single-candidate matching.
+    assert_eq!(
+        app.library
+            .app_state::<BTreeSet<String>>("metadata.auto_link_attempted")
+            .unwrap(),
+        Some(BTreeSet::from(["first".into()]))
+    );
     let (runtime, commands, _completions) = MetadataRuntime::scripted();
     app.metadata = runtime;
     app.network_allowed = true;
@@ -202,7 +349,7 @@ fn attempted_games_are_not_searched_again_after_restart() {
 }
 
 #[test]
-fn unlinked_games_are_not_linked_again() {
+fn manually_unlinked_games_are_not_linked_again_after_restart() {
     let mut h = harness(true);
     h.add_game("first", "Air");
     h.app.selected_case_id = Some("first".into());
@@ -220,6 +367,15 @@ fn unlinked_games_are_not_linked_again() {
     assert!(h.vndb_remote_id("first").is_none());
     h.app.enqueue_auto_link().unwrap();
     assert!(h.submitted().is_none());
+
+    let root = h._root.path().to_owned();
+    drop(h.app);
+    let mut app = ShinkiEmuManagerController::open_library(root, FrameMailbox::new(), Vec::new()).unwrap();
+    let (runtime, commands, _completions) = MetadataRuntime::scripted();
+    app.metadata = runtime;
+    app.network_allowed = true;
+    app.enqueue_auto_link().unwrap();
+    assert!(commands.try_recv().is_err());
 }
 
 #[test]
