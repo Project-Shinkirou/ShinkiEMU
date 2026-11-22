@@ -140,6 +140,18 @@ pub struct Target {
     #[serde(default)]
     pub blocked: String,
 }
+
+impl Target {
+    fn static_manager_cfg(&self) -> Option<&'static str> {
+        match self.platform.as_str() {
+            "android" => Some("cfg(target_os = \"android\")"),
+            "ios" => Some("cfg(target_os = \"ios\")"),
+            "ohos" => Some("cfg(target_env = \"ohos\")"),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct CoreFile {
     schema: String,
@@ -263,7 +275,7 @@ impl Inventory {
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
                 if !(target.manager_supported || target.manager_local_build)
-                    || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
+                    || target.static_manager_cfg().is_none()
                 {
                     bail!("invalid static Manager integration");
                 }
@@ -273,76 +285,157 @@ impl Inventory {
         Ok(())
     }
     fn validate_static_dependencies(&self) -> Result<()> {
-        let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(
-            self.root
-                .join("Source/Manager/shinki-emu-manager/Cargo.toml"),
-        )?)?;
-        for (platform, key) in [
-            ("android", "cfg(target_os = \"android\")"),
-            ("ios", "cfg(target_os = \"ios\")"),
-            ("ohos", "cfg(target_env = \"ohos\")"),
-        ] {
-            let dependencies = manifest["target"][key]["dependencies"]
-                .as_table()
-                .context("Manager target dependencies")?;
-            for core in &self.cores {
-                let embedded = self.targets.iter().any(|target| {
-                    target.platform == platform
-                        && core.static_manager_targets.contains(&target.triple)
-                });
-                let dependency = dependencies.get(&core.package);
-                if !embedded {
-                    if dependency.is_some() {
-                        bail!("Manager {platform} depends on non-static core {}", core.id);
+        let manager_dir = self.root.join("Source/Manager/shinki-emu-manager");
+        let manifest: toml::Table =
+            toml::from_str(&std::fs::read_to_string(manager_dir.join("Cargo.toml"))?)?;
+        self.validate_static_manifest(&manager_dir, &manifest)
+    }
+
+    fn validate_static_manifest(&self, manager_dir: &Path, manifest: &toml::Table) -> Result<()> {
+        let target_tables = manifest.get("target").and_then(toml::Value::as_table);
+        fn dependencies(table: &toml::Value) -> Option<&toml::Table> {
+            table.get("dependencies")?.as_table()
+        }
+
+        // The validator only needs Cargo's literal triples and the three existing
+        // platform selectors. A core in another cfg must not escape that check.
+        for (selector, deps) in target_tables
+            .into_iter()
+            .flatten()
+            .filter_map(|(key, table)| Some((key.as_str(), dependencies(table)?)))
+        {
+            let supported = self.targets.iter().any(|target| {
+                target
+                    .static_manager_cfg()
+                    .is_some_and(|cfg| selector == cfg || selector == target.triple)
+            });
+            for (key, dep) in deps {
+                let package = dep
+                    .get("package")
+                    .and_then(toml::Value::as_str)
+                    .unwrap_or(key);
+                if let Some(core) = self.cores.iter().find(|core| core.package == package) {
+                    if !supported {
+                        bail!(
+                            "Manager declares core {} under unsupported target selector {selector}; use a platform table or exact static target triple",
+                            core.id
+                        );
                     }
-                    continue;
+                    if key != package {
+                        bail!(
+                            "Manager static core {} must use dependency name {package}",
+                            core.id
+                        );
+                    }
                 }
-                let dependency = dependency.with_context(|| {
-                    format!("Manager {platform} is missing static core {}", core.id)
-                })?;
-                let mut expected_features = core.static_features.clone();
-                expected_features.sort();
-                expected_features.dedup();
-                let mut actual_features = dependency
-                    .get("features")
-                    .and_then(toml::Value::as_array)
-                    .map(|features| {
-                        features
-                            .iter()
-                            .filter_map(toml::Value::as_str)
-                            .map(str::to_owned)
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                actual_features.sort();
-                actual_features.dedup();
-                let features_match = actual_features == expected_features;
-                let defaults_ok = dependency
-                    .get("default-features")
-                    .and_then(toml::Value::as_bool)
-                    != Some(true);
-                let source_match = if let Some(source) = &core.source {
-                    dependency.get("git").and_then(toml::Value::as_str) == Some(&source.repo)
-                        && dependency.get("rev").and_then(toml::Value::as_str) == Some(&source.rev)
-                } else if let Some(path) = dependency.get("path").and_then(toml::Value::as_str) {
-                    let manager_dir = self.root.join("Source/Manager/shinki-emu-manager");
-                    let package_dir = self.root.join(
-                        core.manifest
-                            .parent()
-                            .context("in-tree core manifest has no package directory")?,
-                    );
-                    std::fs::canonicalize(manager_dir.join(path)).ok()
-                        == std::fs::canonicalize(package_dir).ok()
-                } else {
-                    false
-                };
-                if !source_match || !features_match || !defaults_ok {
+            }
+        }
+
+        if let Some(deps) = manifest.get("dependencies").and_then(toml::Value::as_table) {
+            for (key, dep) in deps {
+                let package = dep
+                    .get("package")
+                    .and_then(toml::Value::as_str)
+                    .unwrap_or(key);
+                if self.cores.iter().any(|core| core.package == package)
+                    && dep.get("optional").and_then(toml::Value::as_bool) != Some(true)
+                {
+                    bail!("Manager core {package} must use a target table or be optional");
+                }
+            }
+        }
+
+        for target in &self.targets {
+            let Some(cfg) = target.static_manager_cfg() else {
+                continue;
+            };
+            let triple = &target.triple;
+            let deps = |selector| target_tables?.get(selector).and_then(dependencies);
+            let platform = deps(cfg);
+            let exact = deps(triple.as_str());
+            for core in &self.cores {
+                let broad = platform.and_then(|deps| deps.get(&core.package));
+                let specific = exact.and_then(|deps| deps.get(&core.package));
+                if broad.is_some() && specific.is_some() {
+                    // Cargo can combine matching dependencies; the exact table does not override.
                     bail!(
-                        "Manager {platform} static core {} pin/path/features differ from inventory",
+                        "Manager {triple} declares static core {} in both platform and exact target tables",
                         core.id
                     );
                 }
+                match (
+                    core.static_manager_targets.contains(triple),
+                    broad.or(specific),
+                ) {
+                    (false, None) => {}
+                    (false, Some(_)) => {
+                        bail!("Manager {triple} depends on non-static core {}", core.id)
+                    }
+                    (true, None) => bail!("Manager {triple} is missing static core {}", core.id),
+                    (true, Some(dependency)) => {
+                        self.validate_static_dependency(manager_dir, triple, core, dependency)?;
+                    }
+                }
             }
+        }
+        Ok(())
+    }
+
+    fn validate_static_dependency(
+        &self,
+        manager_dir: &Path,
+        triple: &str,
+        core: &Core,
+        dependency: &toml::Value,
+    ) -> Result<()> {
+        let string = |key| dependency.get(key).and_then(toml::Value::as_str);
+        let features_match = match dependency.get("features") {
+            None => core.static_features.is_empty(),
+            Some(value) => value.as_array().is_some_and(|actual| {
+                actual.iter().all(|feature| {
+                    feature
+                        .as_str()
+                        .is_some_and(|name| core.static_features.iter().any(|f| f == name))
+                }) && core
+                    .static_features
+                    .iter()
+                    .all(|feature| actual.iter().any(|v| v.as_str() == Some(feature.as_str())))
+            }),
+        };
+        let source_match = if let Some(source) = &core.source {
+            string("git") == Some(source.repo.as_str())
+                && string("rev") == Some(source.rev.as_str())
+        } else if let Some(path) = string("path") {
+            let package_dir = self.root.join(
+                core.manifest
+                    .parent()
+                    .context("in-tree core manifest has no package directory")?,
+            );
+            std::fs::canonicalize(manager_dir.join(path))
+                .ok()
+                .is_some_and(|actual| {
+                    std::fs::canonicalize(package_dir).is_ok_and(|expected| actual == expected)
+                })
+        } else {
+            false
+        };
+        if !source_match
+            || !features_match
+            || dependency
+                .get("default-features")
+                .and_then(toml::Value::as_bool)
+                != Some(false)
+            || !dependency
+                .get("optional")
+                .is_none_or(|v| v.as_bool() == Some(false))
+            || dependency
+                .get("package")
+                .is_some_and(|_| string("package") != Some(core.package.as_str()))
+        {
+            bail!(
+                "Manager {triple} static core {} must match inventory pin/path/features and disable default features without making the dependency optional",
+                core.id
+            );
         }
         Ok(())
     }
@@ -487,6 +580,103 @@ mod tests {
             .unwrap()
             .manifest = "Source/Families/shinki-emu-cmvs/Cargo.toml".into();
         assert!(changed.validate_static_dependencies().is_err());
+    }
+
+    #[test]
+    fn exact_android_target_only_embeds_the_inventory_abi() {
+        const ARM: &str = "aarch64-linux-android";
+        const X64: &str = "x86_64-linux-android";
+        const ANDROID: &str = "cfg(target_os = \"android\")";
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inventory = Inventory::load(root).unwrap();
+        let core = inventory.cores.iter_mut().find(|c| c.id == "rfvp").unwrap();
+        core.static_manager_targets.retain(|triple| triple != X64);
+        let package = core.package.clone();
+        let manager = root.join("Source/Manager/shinki-emu-manager");
+        let mut manifest: toml::Table =
+            toml::from_str(&std::fs::read_to_string(manager.join("Cargo.toml")).unwrap()).unwrap();
+        let targets = manifest["target"].as_table_mut().unwrap();
+        let dependency = targets.get_mut(ANDROID).unwrap()["dependencies"]
+            .as_table_mut()
+            .unwrap()
+            .remove(&package)
+            .unwrap();
+        targets.insert(
+            ARM.into(),
+            toml::Value::Table(toml::Table::from_iter([(
+                "dependencies".into(),
+                toml::Value::Table(toml::Table::from_iter([(
+                    package.clone(),
+                    dependency.clone(),
+                )])),
+            )])),
+        );
+        let check = |manifest: &toml::Table| inventory.validate_static_manifest(&manager, manifest);
+        check(&manifest).unwrap();
+
+        let mut broad = manifest.clone();
+        let targets = broad["target"].as_table_mut().unwrap();
+        targets.remove(ARM);
+        targets.get_mut(ANDROID).unwrap()["dependencies"]
+            .as_table_mut()
+            .unwrap()
+            .insert(package.clone(), dependency.clone());
+        let err = check(&broad).unwrap_err().to_string();
+        assert!(err.contains(X64) && err.contains("rfvp"));
+
+        let mut overlap = manifest.clone();
+        overlap["target"][ANDROID]["dependencies"]
+            .as_table_mut()
+            .unwrap()
+            .insert(package.clone(), dependency);
+        let err = check(&overlap).unwrap_err().to_string();
+        assert!(err.contains(ARM) && err.contains("rfvp"));
+
+        let mut missing = manifest.clone();
+        missing["target"].as_table_mut().unwrap().remove(ARM);
+        let err = check(&missing).unwrap_err().to_string();
+        assert!(err.contains(ARM) && err.contains("rfvp"));
+
+        for (key, value) in [
+            ("rev", toml::Value::String("0".repeat(40))),
+            ("default-features", toml::Value::Boolean(true)),
+            ("optional", toml::Value::Boolean(true)),
+            (
+                "features",
+                toml::Value::Array(vec![toml::Value::String("wrong".into())]),
+            ),
+        ] {
+            let mut invalid = manifest.clone();
+            invalid["target"][ARM]["dependencies"]
+                .as_table_mut()
+                .unwrap()
+                .get_mut(&package)
+                .unwrap()
+                .as_table_mut()
+                .unwrap()
+                .insert(key.into(), value);
+            assert!(check(&invalid).is_err(), "{key}");
+        }
+    }
+
+    #[test]
+    fn alternate_cfg_cannot_hide_a_known_in_tree_core() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inventory = Inventory::load(root).unwrap();
+        let manager = root.join("Source/Manager/shinki-emu-manager");
+        let mut manifest: toml::Table =
+            toml::from_str(&std::fs::read_to_string(manager.join("Cargo.toml")).unwrap()).unwrap();
+        let alternate: toml::Table = toml::from_str(
+            r#"['cfg(all(target_os = "android", target_arch = "aarch64"))'.dependencies]
+            hidden-musica = { package = "shinki-emu-musica", path = "../../Families/shinki-emu-musica", default-features = false }"#,
+        )
+        .unwrap();
+        manifest["target"].as_table_mut().unwrap().extend(alternate);
+        let err = inventory
+            .validate_static_manifest(&manager, &manifest)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("shinki.emu.musica") && err.contains("target_arch"));
     }
 
     #[test]
