@@ -14,6 +14,9 @@ pub struct CoreCatalogEntry {
     /// installed, loaded or verified with a real game. Publication restrictions
     /// do not change runtime support.
     pub supported: bool,
+    /// A standalone artifact is declared for this exact target, independently
+    /// of whether the Manager also links this core.
+    pub standalone: bool,
     /// Inventory-declared static Manager integration for the current target.
     /// Actual compiled entrypoints come from the host's `STATIC_CORES` table,
     /// including optional integrations such as desktop `static-cmvs`.

@@ -19,14 +19,14 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Arc, RwLock},
+    sync::{Arc, OnceLock, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use jni::{
     Env, EnvUnowned, JavaVM, jni_sig, jni_str,
     objects::{JObject, JString, JValue},
-    refs::LoaderContext,
+    refs::{Global, LoaderContext},
     strings::JNIStr,
 };
 use slint::android::{
@@ -52,6 +52,7 @@ struct AndroidContext {
 }
 
 static CONTEXT: RwLock<Option<Arc<AndroidContext>>> = RwLock::new(None);
+static CORE_APPLICATION: OnceLock<Result<Global<JObject<'static>>, String>> = OnceLock::new();
 
 /// A picker waiting for `nativeOnPickResult`. `extensions` is `None` for
 /// folder pickers and file pickers without filters.
@@ -188,6 +189,30 @@ fn context() -> Result<Arc<AndroidContext>, String> {
         .expect("Android context lock")
         .clone()
         .ok_or_else(|| "SHINKI_EMU_ANDROID_CONTEXT_MISSING".to_owned())
+}
+
+/// A dynamic core can retain these JNI handles until process exit. The
+/// Application context does not pin the Activity across recreation.
+pub(crate) fn core_application_context() -> Result<(*mut c_void, *mut c_void), String> {
+    let vm = context()?.vm.get_raw().cast();
+    let application = CORE_APPLICATION.get_or_init(|| {
+        call_activity("getApplicationContext", |env, activity| {
+            let application = env
+                .call_method(
+                    activity,
+                    jni_str!("getApplicationContext"),
+                    jni_sig!("()Landroid/content/Context;"),
+                    &[],
+                )?
+                .l()?;
+            if application.as_raw().is_null() {
+                return Err(jni::errors::Error::NullPtr("Application context"));
+            }
+            env.new_global_ref(application)
+        })
+        .map_err(|error| format!("SHINKI_EMU_ANDROID_CORE_CONTEXT: {error}"))
+    }).as_ref().map_err(Clone::clone)?;
+    Ok((vm, application.as_raw().cast()))
 }
 
 /// The activity handle stored by [`initialize`], valid for this lifecycle.

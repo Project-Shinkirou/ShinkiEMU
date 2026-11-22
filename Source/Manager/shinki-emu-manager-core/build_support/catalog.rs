@@ -39,7 +39,8 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
             return Err(format!("invalid family_id or display_name for {plugin_id}"));
         }
         let embedded = enabled && contains_target(core, "static_manager_targets", target)?;
-        let supported = enabled && (embedded || contains_target(core, "supported_targets", target)?);
+        let standalone = enabled && contains_target(core, "supported_targets", target)?;
+        let supported = embedded || standalone;
         let embedded_recognition_json = if embedded {
             core.get("recognition").map(serde_json::to_string).transpose()
                 .map_err(|error| format!("recognition for {plugin_id}: {error}"))?
@@ -48,7 +49,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         };
         let recognition = embedded_recognition_json.as_deref().unwrap_or("[]");
         writeln!(output,
-            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, supported: {supported}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
+            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, supported: {supported}, standalone: {standalone}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
         ).expect("String write");
     }
     if ids.is_empty() {

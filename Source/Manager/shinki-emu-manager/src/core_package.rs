@@ -318,6 +318,7 @@ fn stage_open_package(
     Ok((stem, manifest))
 }
 
+#[cfg(not(target_os = "android"))]
 fn write_generated(directory: &Path, name: &str, stem: &str, bytes: &[u8]) -> Result<(), String> {
     fs::write(directory.join(name), bytes).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
     let manifest = CoreManifest {
@@ -431,6 +432,7 @@ fn failure(stem: &str, error: &io::Error) -> (String, String) {
 }
 
 /// Move pre-v2 top-level `cores/shinki_emu_*.dll` files into `cores/<stem>/`.
+#[cfg(not(target_os = "android"))]
 fn migrate_legacy(cores: &Path, failures: &mut Vec<(String, String)>) {
     let Ok(entries) = fs::read_dir(cores) else {
         return;
@@ -480,6 +482,7 @@ fn migrate_legacy(cores: &Path, failures: &mut Vec<(String, String)>) {
 /// copy; a failed move restores the old directory.
 pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
     let mut failures = Vec::new();
+    #[cfg(not(target_os = "android"))]
     migrate_legacy(cores, &mut failures);
     let pending = cores.join(PENDING);
     let entries = match pending_entries(cores) {

@@ -37,18 +37,62 @@ pub(super) struct GameConfigurationError {
 
 pub(super) fn directories(data_dir: &Path) -> Result<Vec<PathBuf>, String> {
     #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
-    { core_directories(&data_dir.join("cores")) }
-    #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
+    { core_directories(&core_directory(data_dir)?) }
+    #[cfg(target_os = "android")]
+    { Ok(vec![core_directory(data_dir)?]) }
+    #[cfg(any(target_os = "ios", target_env = "ohos"))]
     { let _ = data_dir; Ok(Vec::new()) }
 }
 
 pub(super) fn is_static(plugin_id: &str) -> bool {
-    shinki_emu_manager::static_cores::STATIC_CORES.iter().any(|(id, _)| *id == plugin_id)
+    static_query(plugin_id).is_some()
+}
+
+fn static_query(plugin_id: &str) -> Option<shinki_emu_abi::Query> {
+    shinki_emu_manager::static_cores::STATIC_CORES.iter()
+        .find_map(|(id, query)| (*id == plugin_id).then_some(*query))
+}
+
+pub(super) fn supports_installed_packages(plugin_id: &str) -> bool {
+    #[cfg(target_os = "android")]
+    { static_core_catalog::lookup(plugin_id).is_some_and(|core| core.standalone) }
+    #[cfg(any(target_os = "ios", target_env = "ohos"))]
+    { let _ = plugin_id; false }
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+    { supported_core(plugin_id).is_ok() }
+}
+
+pub(super) fn allows_installed_release(
+    plugin_id: &str,
+    identity: Option<&shinki_emu_metadata::CoreIdentity>,
+) -> bool {
+    if !supports_installed_packages(plugin_id) {
+        return false;
+    }
+    #[cfg(target_os = "android")]
+    if let Some(embedded) = cores::embedded_identity(plugin_id) {
+        // Never replace an equivalent or newer APK core. Package staging
+        // still verifies the archived bytes and exact release identity.
+        return identity.is_some_and(|candidate| candidate.release_sequence > embedded.release_sequence);
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = identity;
+    true
+}
+
+fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
+    if core.supported || is_static(core.plugin_id) {
+        return true;
+    }
+    #[cfg(target_os = "ios")]
+    { shinki_emu_manager::platform::is_bundled_core(core.plugin_id) }
+    #[cfg(not(target_os = "ios"))]
+    false
 }
 
 pub(super) fn supported_core(plugin_id: &str) -> Result<&'static static_core_catalog::CoreCatalogEntry, &'static str> {
     let core = static_core_catalog::lookup(plugin_id).ok_or("SHINKI_EMU_CORE_UNKNOWN_PLUGIN")?;
-    if !(core.supported || is_static(plugin_id)) {
+    if !is_supported(core) {
         return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET");
     }
     Ok(core)
@@ -58,15 +102,32 @@ pub(super) fn runnable_core(
     installed: &BTreeMap<String, InstalledCore>, plugin_id: &str,
 ) -> Result<&'static static_core_catalog::CoreCatalogEntry, &'static str> {
     let core = supported_core(plugin_id)?;
-    if !is_static(plugin_id) && !installed.contains_key(plugin_id) {
-        return Err("SHINKI_EMU_CORE_MISSING");
-    }
+    core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
     Ok(core)
+}
+
+pub(super) enum CoreSource<'a> {
+    Static(shinki_emu_abi::Query),
+    Package(&'a InstalledCore),
+}
+
+pub(super) fn core_source<'a>(
+    installed: &'a BTreeMap<String, InstalledCore>,
+    plugin_id: &str,
+) -> Option<CoreSource<'a>> {
+    let package = installed.get(plugin_id);
+    // Desktop keeps static precedence. Android selects a verified install
+    // over the embedded copy; iOS only admits packages bundled with the app.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    if let Some(package) = package {
+        return Some(CoreSource::Package(package));
+    }
+    static_query(plugin_id).map(CoreSource::Static).or_else(|| package.map(CoreSource::Package))
 }
 
 pub(super) fn choices(detections: &[EngineDetection]) -> Vec<Candidate> {
     static_core_catalog::entries().iter()
-        .filter(|entry| (entry.supported || is_static(entry.plugin_id)) && detections.iter().any(|item| {
+        .filter(|entry| is_supported(entry) && detections.iter().any(|item| {
             item.family_id == entry.family_id && item.declared.as_ref()
                 .is_none_or(|declared| declared.plugin_ids.iter().any(|id| id == entry.plugin_id))
         }))
@@ -92,11 +153,10 @@ pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> Declare
     });
     let rules: BTreeMap<_, _> = static_core_catalog::entries().iter().filter_map(|core| {
         let id = core.plugin_id;
-        runnable_core(installed, id).ok()?;
-        let declaration = if is_static(id) {
-            EMBEDDED.get(id)?
-        } else {
-            &installed.get(id)?.manifest.recognition
+        if !is_supported(core) { return None; }
+        let declaration = match core_source(installed, id)? {
+            CoreSource::Static(_) => EMBEDDED.get(id)?,
+            CoreSource::Package(package) => &package.manifest.recognition,
         };
         (!declaration.is_empty()).then_some((id, (core.family_id, declaration)))
     }).collect();
@@ -128,14 +188,21 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
                 continue;
             }
             let Some(manifest) = core_package::read_manifest(&entry.path()) else { continue };
-            if supported_core(&manifest.plugin_id).is_err() || manifest.version == "0.0.0-local" {
+            if !allows_installed_release(&manifest.plugin_id, manifest.identity.as_ref())
+                || manifest.version == "0.0.0-local"
+            {
                 continue;
             }
             let library = entry.path().join(&manifest.library);
             let expected_stem = shinki_emu_manager_core::library_stem(&library);
-            if !stem.eq_ignore_ascii_case(&expected_stem) ||
-                !fs::symlink_metadata(&library).is_ok_and(|metadata| metadata.is_file())
-            {
+            if !stem.eq_ignore_ascii_case(&expected_stem) {
+                continue;
+            }
+            #[cfg(target_os = "android")]
+            let eligible = android_core_library(&library);
+            #[cfg(not(target_os = "android"))]
+            let eligible = fs::symlink_metadata(&library).is_ok_and(|metadata| metadata.is_file());
+            if !eligible {
                 continue;
             }
             if !stems.insert(expected_stem) { continue; }
@@ -145,6 +212,17 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         }
     }
     for id in duplicate { found.remove(&id); }
+    #[cfg(target_os = "ios")]
+    for entry in static_core_catalog::entries() {
+        let id = entry.plugin_id;
+        let Some(library) = shinki_emu_manager::platform::bundled_core_library(id) else { continue };
+        let Some(directory) = shinki_emu_manager::platform::bundled_core_manifest_dir(id) else { continue };
+        let Some(executable_name) = library.file_name().and_then(|name| name.to_str()) else { continue };
+        let Some(manifest) = core_package::read_bundled_manifest(&directory, executable_name) else { continue };
+        if manifest.plugin_id == id && manifest.version != "0.0.0-local" {
+            found.insert(id.to_owned(), InstalledCore { library, manifest, bundled: true });
+        }
+    }
     Ok(found)
 }
 

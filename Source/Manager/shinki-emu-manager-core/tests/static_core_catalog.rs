@@ -36,9 +36,10 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         let family = core["family_id"].as_str().unwrap();
         let name = core["display_name"].as_str().unwrap();
         let embedded = enabled && declared(core, "static_manager_targets", target);
-        let supported = enabled && (embedded || declared(core, "supported_targets", target));
+        let standalone = enabled && declared(core, "supported_targets", target);
+        let supported = embedded || standalone;
         consumer.push_str(&format!(
-            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.embedded), ({family:?}, {name:?}, {supported}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.embedded);\n"
+            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded), ({family:?}, {name:?}, {supported}, {standalone}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded);\n"
         ));
         if id == "rfvp" && core.get("recognition").is_some() {
             consumer.push_str(&format!(

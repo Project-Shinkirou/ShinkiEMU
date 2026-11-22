@@ -118,6 +118,37 @@ pub(crate) unsafe fn text(bytes: abi::Bytes, limit: usize) -> FamilyResult<Strin
         })
 }
 
+#[cfg(target_os = "android")]
+unsafe fn initialize_android_context(
+    api: &abi::CoreApi,
+    vm: *mut std::ffi::c_void,
+    application: *mut std::ffi::c_void,
+) -> Result<(), FamilyLoadError> {
+    let mut extension = std::ptr::null();
+    let status = unsafe {
+        api.extension.unwrap()(
+            abi::Bytes::new(abi::ANDROID_CONTEXT_EXTENSION),
+            abi::ANDROID_CONTEXT_VERSION,
+            &mut extension,
+        )
+    };
+    if status == abi::UNSUPPORTED && extension.is_null() {
+        return Ok(());
+    }
+    let table = extension.cast::<abi::AndroidContextV1>();
+    if status != abi::OK || table.is_null() || !table.is_aligned() {
+        return Err(FamilyLoadError::AbiLayout);
+    }
+    let header = unsafe { *table.cast::<abi::Header>() };
+    if !header.accepts::<abi::AndroidContextV1>() {
+        return Err(FamilyLoadError::AbiLayout);
+    }
+    let initialize = unsafe { (*table).initialize }.ok_or(FamilyLoadError::AbiLayout)?;
+    let mut error = abi::Error::default();
+    let status = unsafe { initialize(vm, application, &mut error) };
+    checked("android_context.initialize", status, error).map_err(FamilyLoadError::ProviderError)
+}
+
 struct NativeModule {
     api: abi::CoreApi,
     resources: Option<crate::native_module_owner::ModuleResources>,
@@ -132,7 +163,31 @@ pub struct LoadedFamilyPlugin {
 }
 impl LoadedFamilyPlugin {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, FamilyLoadError> {
-        let path = path.as_ref();
+        Self::load_with(path.as_ref(), |_| Ok(()))
+    }
+
+    /// Load an installed Android core and supply its private native module
+    /// with the host process's Java context before ABI initialization.
+    ///
+    /// # Safety
+    /// `vm` is the process's JavaVM, and `application` is a JNI global
+    /// reference to its Application context. Both must live until process exit.
+    #[cfg(target_os = "android")]
+    pub unsafe fn load_android(
+        path: &Path,
+        vm: *mut std::ffi::c_void,
+        application: *mut std::ffi::c_void,
+    ) -> Result<Self, FamilyLoadError> {
+        if !path.is_absolute() {
+            return Err(FamilyLoadError::InvalidPath);
+        }
+        Self::load_with(path, |api| unsafe { initialize_android_context(api, vm, application) })
+    }
+
+    fn load_with(
+        path: &Path,
+        setup: impl FnOnce(&abi::CoreApi) -> Result<(), FamilyLoadError>,
+    ) -> Result<Self, FamilyLoadError> {
         if !path.is_file() {
             return Err(FamilyLoadError::InvalidPath);
         }
@@ -158,13 +213,20 @@ impl LoadedFamilyPlugin {
         let library = ManuallyDrop::new(loaded.map_err(|_| FamilyLoadError::Library)?);
         let query = unsafe { library.get::<abi::Query>(abi::QUERY_SYMBOL) }
             .map_err(|_| FamilyLoadError::AbiLayout)?;
-        let mut core = unsafe { Self::from_query(*query) }?;
+        let mut core = unsafe { Self::from_query_with(*query, setup) }?;
         core.location = path.to_owned();
         Ok(core)
     }
     /// # Safety
     /// The query and every function/storage it returns must remain valid until process exit.
     pub unsafe fn from_query(query: abi::Query) -> Result<Self, FamilyLoadError> {
+        unsafe { Self::from_query_with(query, |_| Ok(())) }
+    }
+
+    unsafe fn from_query_with(
+        query: abi::Query,
+        setup: impl FnOnce(&abi::CoreApi) -> Result<(), FamilyLoadError>,
+    ) -> Result<Self, FamilyLoadError> {
         let mut table = std::ptr::null();
         if unsafe { query(abi::ABI_VERSION, &mut table) } != abi::OK
             || table.is_null()
@@ -178,6 +240,7 @@ impl LoadedFamilyPlugin {
         }
         let api = unsafe { *table };
         api.validate().map_err(|_| FamilyLoadError::AbiLayout)?;
+        setup(&api)?;
         let mut error = abi::Error::default();
         checked(
             "initialize",

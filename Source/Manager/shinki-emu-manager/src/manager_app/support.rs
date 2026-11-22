@@ -28,7 +28,128 @@ pub(super) fn platform_data_dir() -> Result<PathBuf, String> {
     shinki_emu_manager::platform::default_data_dir()
 }
 
-#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+pub(super) fn core_directory(data_dir: &Path) -> Result<PathBuf, String> {
+    #[cfg(target_os = "android")]
+    {
+        // SHINKI_EMU_DATA_DIR can relocate the library database, never native code.
+        let _ = data_dir;
+        let root = shinki_emu_manager::platform::default_data_dir()?
+            .canonicalize()
+            .map_err(|error| format!("SHINKI_EMU_CORES_DIRECTORY_CREATE: {error}"))?
+            .join("cores");
+        for directory in [&root, &root.join(core_package::PENDING)] {
+            match fs::symlink_metadata(directory) {
+                Ok(metadata) if metadata.is_dir() => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return Err("SHINKI_EMU_CORE_DIRECTORY: invalid private core directory".into()),
+            }
+        }
+        Ok(root)
+    }
+    #[cfg(not(target_os = "android"))]
+    Ok(data_dir.join("cores"))
+}
+
+#[cfg(target_os = "android")]
+static ANDROID_STARTUP_CORE_PACKAGES: std::sync::OnceLock<Vec<(String, String)>> =
+    std::sync::OnceLock::new();
+
+pub(super) fn apply_startup_core_packages(cores: &Path) -> Vec<(String, String)> {
+    #[cfg(target_os = "android")]
+    {
+        // NativeActivity can recreate the controller in this process while
+        // LoadedFamilyPlugin deliberately keeps the mapped libraries resident.
+        apply_core_packages_once(&ANDROID_STARTUP_CORE_PACKAGES, cores).to_vec()
+    }
+    #[cfg(not(target_os = "android"))]
+    core_package::apply_pending(cores)
+}
+
+#[cfg(target_os = "android")]
+pub(super) fn startup_core_package_failures() -> &'static [(String, String)] {
+    ANDROID_STARTUP_CORE_PACKAGES.get().map_or(&[], Vec::as_slice)
+}
+
+#[cfg(any(target_os = "android", test))]
+fn apply_core_packages_once<'a>(
+    applied: &'a std::sync::OnceLock<Vec<(String, String)>>,
+    cores: &Path,
+) -> &'a [(String, String)] {
+    applied.get_or_init(|| core_package::apply_pending(cores))
+}
+
+/// Filter foreign or truncated installed files before calling libdl. Android's
+/// package builder verifies the full ELF, SONAME and dependency closure.
+#[cfg(any(target_os = "android", test))]
+fn android_shared_object_header(header: &[u8; 64], machine: u16) -> bool {
+    header[..7] == *b"\x7fELF\x02\x01\x01"
+        && u16::from_le_bytes([header[16], header[17]]) == 3 // ET_DYN
+        && u16::from_le_bytes([header[18], header[19]]) == machine
+        && u32::from_le_bytes(header[20..24].try_into().unwrap()) == 1
+}
+
+#[cfg(target_os = "android")]
+pub(super) fn android_core_library(path: &Path) -> bool {
+    use std::io::Read;
+
+    let machine = match std::env::consts::ARCH {
+        "aarch64" => 183, // EM_AARCH64
+        "x86_64" => 62,   // EM_X86_64
+        _ => return false,
+    };
+    let mut header = [0; 64];
+    path.extension().is_some_and(|ext| ext == "so")
+        && fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file())
+        && fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)).is_ok()
+        && android_shared_object_header(&header, machine)
+}
+
+#[cfg(test)]
+mod android_core_tests {
+    use super::{android_shared_object_header, apply_core_packages_once, core_package, fs};
+    use std::sync::OnceLock;
+
+    #[test]
+    fn staged_core_update_waits_for_a_new_process() {
+        let root = tempfile::tempdir().unwrap();
+        let cores = root.path();
+        let stem = "shinki_emu_siglus_rs";
+        let current = cores.join(stem);
+        fs::create_dir(&current).unwrap();
+        fs::write(current.join("version"), b"old").unwrap();
+        let process = OnceLock::new();
+        assert!(apply_core_packages_once(&process, cores).is_empty());
+
+        let staged = cores.join(core_package::PENDING).join(stem);
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("version"), b"new").unwrap();
+        assert!(apply_core_packages_once(&process, cores).is_empty());
+        assert_eq!(fs::read(current.join("version")).unwrap(), b"old");
+        assert!(staged.is_dir());
+
+        assert!(apply_core_packages_once(&OnceLock::new(), cores).is_empty());
+        assert_eq!(fs::read(current.join("version")).unwrap(), b"new");
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn android_package_header_must_match_the_process_abi() {
+        let mut header = [0; 64];
+        header[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
+        header[16..18].copy_from_slice(&3u16.to_le_bytes());
+        header[18..20].copy_from_slice(&183u16.to_le_bytes());
+        header[20..24].copy_from_slice(&1u32.to_le_bytes());
+        assert!(android_shared_object_header(&header, 183));
+        assert!(!android_shared_object_header(&header, 62));
+        header[18..20].copy_from_slice(&62u16.to_le_bytes());
+        assert!(android_shared_object_header(&header, 62));
+        assert!(!android_shared_object_header(&header, 183));
+        header[16..18].copy_from_slice(&2u16.to_le_bytes()); // ET_EXEC
+        assert!(!android_shared_object_header(&header, 62));
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 pub(super) fn core_directories(user_cores: &Path) -> Result<Vec<PathBuf>, String> {
     let bundled = shinki_emu_manager::platform::bundled_resource_dir()
         .ok_or("SHINKI_EMU_EXECUTABLE_LOCATION")?
