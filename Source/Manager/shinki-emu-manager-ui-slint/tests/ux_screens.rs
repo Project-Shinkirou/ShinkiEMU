@@ -139,6 +139,7 @@ fn core_states() -> Vec<(&'static str, ManagerViewModel)> {
     idle.cores.default_plugin = "shinki.emu.gamma".into();
     idle.cores.default_configuration_state = "unprepared".into();
     idle.cores.updates_available = 2;
+    idle.cores.online_downloads = true;
 
     let mut running = idle.clone();
     running.cores.items = vec![

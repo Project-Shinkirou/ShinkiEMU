@@ -570,6 +570,8 @@ export global Cores {
     in-out property <bool> restart-required;
     in-out property <int> updates-available;
     in-out property <int> update-all-count;
+    // Online install, update and 全部更新 exist in this build (off with `no-core-download`, on iOS and OHOS).
+    in-out property <bool> online-downloads;
     in-out property <CoreBatch> batch;
     in-out property <[ConfigField]> default-fields;
     in-out property <string> default-plugin;

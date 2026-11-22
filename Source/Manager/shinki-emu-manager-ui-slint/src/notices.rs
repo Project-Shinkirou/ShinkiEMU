@@ -276,6 +276,10 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("元数据中没有适用于当前平台和接口版本的发布，请先同步元数据。"),
         ),
         "SHINKI_EMU_CORE_DOWNLOAD_PENDING" => (tr!("核心正在下载"), tr!("请等待当前下载完成。")),
+        "SHINKI_EMU_CORE_DOWNLOAD_DISABLED" => (
+            tr!("此版本不提供在线核心下载"),
+            tr!("已安装和随附的核心照常可用。"),
+        ),
         "SHINKI_EMU_CORE_DOWNLOAD_URL" => (
             tr!("核心下载地址无效"),
             tr!("只允许从 GitHub Releases 下载核心。"),

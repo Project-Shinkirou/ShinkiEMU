@@ -406,6 +406,9 @@ pub struct CoresViewModel {
     pub updates_available: i32,
     /// Of those, the ones 全部更新 would start now.
     pub update_all_count: i32,
+    /// Online core install and update exist in this build. When false the
+    /// page lists installed and bundled cores only and offers no download.
+    pub online_downloads: bool,
     pub batch: CoreBatchViewModel,
     pub default_fields: Vec<ConfigFieldViewModel>,
     pub default_plugin: String,

@@ -58,6 +58,8 @@ Manager は現在のターゲットの `static_manager_targets` と正確な Car
 
 Manager と配布対象の自作コアには同じ `SHINKI_EMU_PRODUCT_VERSION` を設定します。未設定なら `SHINKI_EMU_CI_VERSION` を使い、両方を設定する場合は一致させてください。どちらも未設定の開発ビルドでは Manager のクレート版を使います。xtask はリリースビルドを変更のない確定コミットに結び付け、Manager の `OUT_DIR/manager-build-version.json` をコンパイル時の入力と照合します。Android の両 ABI を含め、パッケージとリリースはビルド記録の版と一致させます。
 
+Manager の任意 Cargo feature は `SHINKI_EMU_MANAGER_FEATURES`（カンマ区切り）で指定します。`build`・`check`・`ci` が Manager の場合だけ読み取ります。名前は Manager の `[features]` に宣言されている必要があり、`default` と未宣言の名前は拒否します。既定 feature に追加する形で有効になり、`.work/build/<target>/manager.json` の `features` に記録されます。`no-core-download` はコアページからオンラインのインストール、更新、一括更新をなくし、Manager 側でもコアパッケージのダウンロードを拒否します。インストール済みのコア、同梱コア、ローカルの公式コアパッケージ、ゲームストア、メタデータはそのまま使えます。iOS と OHOS は feature の有無にかかわらずコアをダウンロードしません。
+
 beta.7 の既知の問題：公式 Windows バイナリは内部の版を `0.1.0-beta.6` と報告しますが、配布パッケージのラベルは beta.7 です。既存タグと添付ファイルは変更しません。上記のコンパイル時注入と receipt 検証で後続ビルドを修正し、[Manager beta.8 リリースノート](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)にもこの問題を記載しています。
 
 Manager は、ネットワーククライアントやワーカースレッドを作る前に、プロセス全体の Rustls 暗号プロバイダーを一度だけ初期化します。選ぶのは、reqwest 0.13 とプラットフォームの証明書検証スタックに合わせた AWS-LC です。VNDB が現在使っている reqwest 0.12 は ring も有効にするため、feature による自動選択には頼れません。Steam などの provider は、プロセス全体の既定実装を自分ではインストールしません。

@@ -293,6 +293,16 @@ pub fn execute(
     let package_id = package_metadata["id"]
         .as_str()
         .context("cargo package id")?;
+    let features = if component == "manager" {
+        let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
+        let requested = requested
+            .as_deref()
+            .map(|v| v.to_str().context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES"))
+            .transpose()?;
+        manager_features(requested, package_metadata)?
+    } else {
+        features
+    };
     let version_inputs = product_owned.then(|| {
         [
             std::env::var_os("SHINKI_EMU_PRODUCT_VERSION"),
@@ -688,9 +698,48 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
     dependencies::run(&mut cmd)
 }
 
+/// Additive Manager features from `SHINKI_EMU_MANAGER_FEATURES` (comma list).
+/// Default features stay on; each name must be declared by the Manager package.
+fn manager_features(requested: Option<&str>, package: &serde_json::Value) -> Result<Vec<String>> {
+    let declared = package["features"]
+        .as_object()
+        .context("Manager package features")?;
+    let mut features: Vec<String> = requested
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    features.sort();
+    features.dedup();
+    if let Some(name) = features
+        .iter()
+        .find(|name| *name == "default" || !declared.contains_key(name.as_str()))
+    {
+        bail!("SHINKI_EMU_MANAGER_FEATURES: `{name}` is not an additive Manager feature");
+    }
+    Ok(features)
+}
+
 #[cfg(test)]
 mod version_tests {
     use super::*;
+
+    #[test]
+    fn manager_features_are_declared_additive_and_normalized() {
+        let package = serde_json::json!({
+            "features": {"default": ["store-steam"], "store-steam": [], "no-core-download": []}
+        });
+        assert!(manager_features(None, &package).unwrap().is_empty());
+        assert_eq!(
+            manager_features(Some(" no-core-download,store-steam,no-core-download,"), &package)
+                .unwrap(),
+            ["no-core-download", "store-steam"]
+        );
+        assert!(manager_features(Some("default"), &package).is_err());
+        assert!(manager_features(Some("no-core-downloads"), &package).is_err());
+    }
 
     #[test]
     fn reader_dependencies_are_not_embedded_without_target_registration() {
