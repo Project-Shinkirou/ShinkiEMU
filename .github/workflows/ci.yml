@@ -85,6 +85,12 @@ jobs:
           lfs: true
       - run: rustup show
       - uses: ilammy/msvc-dev-cmd@v1
+      - run: cargo install --locked cbindgen@0.29.2
+      - name: Verify the committed C ABI header
+        shell: bash
+        run: |
+          cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-emu-abi --output "$RUNNER_TEMP/shinki_emu.h" Source/FamilyApi/shinki-emu-abi
+          git diff --no-index --ignore-cr-at-eol --exit-code Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h "$RUNNER_TEMP/shinki_emu.h"
       - run: cargo fmt --check
       - run: cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings
       - run: cargo test --locked -p xtask -p shinki-emu-build

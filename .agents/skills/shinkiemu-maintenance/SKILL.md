@@ -69,7 +69,7 @@ cargo xtask metadata validate
 - 各组件构建到 `.work/target/<target>/<component>`，构建记录在 `.work/build/<target>/<component>.json`。xtask 从 Cargo JSON 读真实产物路径。
 - Windows 长路径会落到 `.work/t/<hash>`，路径仍超长时设 `SHINKI_EMU_TARGET_ROOT`。
 - 不要做 workspace-wide all-features 构建。各 fork 有自己的 lockfile 和依赖图。
-- CI 的 tools job 跑的是 `cargo fmt --check`、`cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings`、`cargo test --locked -p xtask -p shinki-emu-build`、`cargo xtask metadata validate`。本地改 xtask 后跑同一组即可。
+- CI 的 tools job 跑的是 `cargo fmt --check`、`cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings`、`cargo test --locked -p xtask -p shinki-emu-build`、`cargo xtask metadata validate`，以及用 cbindgen 0.29.2 比对 `Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h`。本地改 xtask 后跑同一组即可；改了 `shinki-emu-abi/src` 就按 `docs/en/core-abi.md` 的命令重新生成头文件一起提交。
 
 平台优先级与顺序：Windows x64 → Linux x64 → macOS（arm64、x64）→ Android（Manager 静态嵌入）→ iOS（Manager 静态嵌入）→ OHOS（local-only，DevEco 本机打包）。
 
