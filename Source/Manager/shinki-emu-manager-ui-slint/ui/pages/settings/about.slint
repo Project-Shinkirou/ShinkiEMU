@@ -26,50 +26,44 @@ component LinkRow {
         color: MaterialPalette.on-surface;
         clicked => { root.clicked(); }
 
-        HorizontalLayout {
-            padding-left: 16px;
-            padding-right: 16px;
-            spacing: 16px;
-
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
-                Icon {
-                    width: 24px;
-                    height: 24px;
-                    source: root.icon;
-                    colorize: MaterialPalette.on-surface-variant;
-                }
+        Icon {
+            x: 16px;
+            y: (root.height - self.height) / 2;
+            width: 24px;
+            height: 24px;
+            source: root.icon;
+            colorize: MaterialPalette.on-surface-variant;
+        }
+        // Bind the text column to the row width so Slint measures wrapped
+        // text at its rendered width before the scroll layout sizes the row.
+        labels := VerticalLayout {
+            x: 72px;
+            y: (root.height - self.height) / 2;
+            width: max(0px, root.width - 128px);
+            height: self.preferred-height;
+            spacing: 2px;
+            MaterialText {
+                text: root.text;
+                style: MaterialTypography.body-large;
+                color: MaterialPalette.on-surface;
+                wrap: root.wrap-labels ? word-wrap : no-wrap;
+                overflow: root.wrap-labels ? clip : elide;
             }
-            labels := VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
-                spacing: 2px;
-                MaterialText {
-                    text: root.text;
-                    style: MaterialTypography.body-large;
-                    color: MaterialPalette.on-surface;
-                    wrap: root.wrap-labels ? word-wrap : no-wrap;
-                    overflow: root.wrap-labels ? clip : elide;
-                }
-                MaterialText {
-                    text: root.supporting-text;
-                    style: MaterialTypography.body-medium;
-                    color: MaterialPalette.on-surface-variant;
-                    wrap: root.wrap-labels ? word-wrap : no-wrap;
-                    overflow: root.wrap-labels ? clip : elide;
-                }
+            MaterialText {
+                text: root.supporting-text;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: root.wrap-labels ? word-wrap : no-wrap;
+                overflow: root.wrap-labels ? clip : elide;
             }
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
-                Icon {
-                    width: 24px;
-                    height: 24px;
-                    source: Icons.chevron-right;
-                    colorize: MaterialPalette.on-surface-variant;
-                }
-            }
+        }
+        Icon {
+            x: root.width - 40px;
+            y: (root.height - self.height) / 2;
+            width: 24px;
+            height: 24px;
+            source: Icons.chevron-right;
+            colorize: MaterialPalette.on-surface-variant;
         }
     }
 }
@@ -202,7 +196,6 @@ export component AboutSection inherits PageScroll {
             icon: Icons.build;
             clicked => { Platform.open-url("https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors"); }
         }
-        Rectangle { height: 20px; }
     }
 
     SettingGroup {
