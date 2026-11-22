@@ -129,6 +129,7 @@ impl SlintManagerAdapter {
         window
             .global::<crate::MaterialWindowAdapter>()
             .set_touch(cfg!(any(target_os = "android", target_os = "ios")));
+        window.global::<Session>().set_android_game_window(cfg!(target_os = "android"));
         window
             .global::<Library>()
             .set_games(ModelRc::from(self.games.clone()));

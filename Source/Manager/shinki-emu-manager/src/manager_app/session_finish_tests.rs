@@ -1,11 +1,65 @@
 //! A core that ends the game itself (SESSION_FINISHED) must close the session
 //! as finished and hand the Manager back to the library.
+
 use super::family_config::tests::{configured_controller, launch_fixture, pump_until};
 use super::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+#[test]
+fn android_game_window_cancels_only_the_deferred_launch() {
+    use recognition::NativeAction;
+
+    let root = tempfile::tempdir().unwrap();
+    let mut controller = configured_controller(root.path(), |_| {});
+    controller.set_host_wake(Arc::new(|| {}));
+    controller
+        .set_window_state(WindowState {
+            width: 1280,
+            height: 720,
+            scale_factor: 1.0,
+            focused: true,
+            visible: true,
+            suspended: false,
+        })
+        .unwrap();
+    let plugin_id = controller.candidates["game"].plugin_id.clone();
+    let activation = || NativeAction::Launch {
+        game_id: "game".into(),
+        plugin_id: plugin_id.clone(),
+    };
+    let metadata = owner::CoreMetadata {
+        descriptor: controller.registry.descriptor(&plugin_id).unwrap().clone(),
+        configuration: Vec::new(),
+        menu: Vec::new(),
+    };
+
+    controller.native_action = Some(NativeAction::Diagnose(plugin_id.clone()));
+    controller.cancel_pending_game_launch();
+    assert!(matches!(controller.native_action, Some(NativeAction::Diagnose(_))));
+
+    controller.native_action = Some(activation());
+    assert!(!controller.session_running(), "preparing a core is not play");
+    controller.cancel_pending_game_launch();
+    controller
+        .activated(plugin_id.clone(), Ok(metadata.clone()))
+        .unwrap();
+    assert!(controller.active.is_none(), "late activation reopened a canceled game");
+
+    controller.native_action = Some(activation());
+    controller
+        .activated(plugin_id.clone(), Err("activation failed".into()))
+        .unwrap();
+    assert!(controller.native_action.is_none());
+    assert!(controller.active.is_none());
+    assert_eq!(controller.diagnostic, "activation failed");
+
+    controller.native_action = Some(activation());
+    controller.activated(plugin_id, Ok(metadata)).unwrap();
+    assert!(controller.native_action.is_none());
+    assert!(controller.session_running(), "activated launch must reach the game owner");
+}
 
 fn opened(controller: &ShinkiEmuManagerController) -> bool {
     controller
@@ -65,7 +119,7 @@ fn assert_finished_record(controller: &mut ShinkiEmuManagerController) {
 }
 
 #[test]
-fn a_game_the_core_ends_is_recorded_as_finished_and_returns_to_the_library() {
+fn session_finish_background_poll_records_the_ended_session() {
     let root = tempfile::tempdir().unwrap();
     let finish = Arc::new(AtomicBool::new(false));
     let trigger = finish.clone();
@@ -86,9 +140,19 @@ fn a_game_the_core_ends_is_recorded_as_finished_and_returns_to_the_library() {
     assert!(!controller.held_controls.is_empty());
     std::thread::sleep(Duration::from_millis(20));
     finish.store(true, Ordering::Release);
-    pump_until(&mut controller, &woken, |controller| {
-        controller.active.is_none()
-    });
+    // Consume completion exclusively through the render-service poll, without
+    // relying on advance_runtime or a later timer to publish the final model.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let finished = loop {
+        assert!(Instant::now() < deadline, "background poll did not observe completion");
+        let _ = woken.recv_timeout(Duration::from_millis(8));
+        let model = controller.poll_platform().unwrap();
+        if controller.active.is_none() {
+            break model.expect("finish publishes a model");
+        }
+    };
+    assert_eq!(finished.notices.snackbar.text, "游戏已结束");
+    assert!(finished.session.launch_game_id.is_empty());
     assert_finished_record(&mut controller);
     assert!(history(&controller)[0].duration_ms >= 20);
     assert_returned_to_library(&mut controller);

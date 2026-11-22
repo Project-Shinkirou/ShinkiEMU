@@ -178,6 +178,18 @@ pub(super) fn execute(
         .ok_or_else(|| "SHINKI_EMU_HOST_WINDOW_UNAVAILABLE".to_owned())?
 }
 
+pub(super) fn set_game_fullscreen(
+    window: &shinki_emu_manager_ui_slint::ManagerWindow,
+    fullscreen: bool,
+) -> Result<(), String> {
+    use slint::ComponentHandle;
+    #[cfg(target_os = "android")]
+    crate::platform::android::set_game_window(true, fullscreen)?;
+    window.window().set_fullscreen(fullscreen);
+    window.global::<Session>().set_fullscreen(fullscreen);
+    Ok(())
+}
+
 /// The activity surface is always full-window: only the fullscreen flag and
 /// minimizing are under host control.
 #[cfg(any(target_os = "android", target_env = "ohos"))]
@@ -205,8 +217,7 @@ pub(super) fn execute(
                 abi::FULLSCREEN_EXCLUSIVE => return Err("SHINKI_EMU_WINDOW_DISPLAY_MODE".into()),
                 _ => return Err("SHINKI_EMU_WINDOW_FULLSCREEN".into()),
             };
-            window.global::<Session>().set_fullscreen(fullscreen);
-            native.set_fullscreen(fullscreen);
+            set_game_fullscreen(window, fullscreen)?;
         }
         WindowCommand::Size { .. }
         | WindowCommand::Position { .. }

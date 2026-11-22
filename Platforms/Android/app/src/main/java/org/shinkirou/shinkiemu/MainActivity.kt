@@ -38,6 +38,15 @@ class MainActivity : NativeActivity() {
 
     private external fun nativeInitializeHosts(): Int
     private val nativeHosts = java.util.concurrent.CompletableFuture<Int>()
+    private val gameWindow by lazy { gameWindowPolicy(this) }
+
+    /** JNI: change only this Activity's game-session presentation. */
+    fun setGameWindow(active: Boolean, immersive: Boolean) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            gameWindow.set(active, immersive)
+        }
+    }
 
     /** Called only by the native app thread, never by the UI thread. */
     fun awaitNativeHosts(): Int = nativeHosts.join()
@@ -58,8 +67,14 @@ class MainActivity : NativeActivity() {
 
     override fun onResume() {
         super.onResume()
+        gameWindow.resume()
         KrkrHost.onResume()
         Krkr2Host.onResume()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) gameWindow.resume()
     }
 
     override fun onPause() {
