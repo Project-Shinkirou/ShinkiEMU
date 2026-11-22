@@ -1,11 +1,11 @@
 ---
 name: shinkiemu-integrate-existing-core
-description: Use when porting an existing third-party engine implementation (a Rust crate or a C/C++ project) into ShinkiEMU as an external core, or when changing an existing fork adapter, its probe/open gates, its pin, upstream_identity or release_sequence, its Cargo.lock entries, its save/config behaviour, its static Manager embedding or its license and source bundle. Covers the engine-adapter rules (adapters never narrow upstream; no per-work whitelists or enums; honest coverage when upstream supports one work), the Project-Shinkirou fork and shinki-<topic> adapter branches, the thin adapter crate or vendored C header, worker/frame-lease mapping, vcpkg dependencies and overlay ports, merging per-platform fork lines, ABI query probes and headless acceptance. Not for a new in-repo SDK core; use shinkiemu-new-core.
+description: Use when porting an existing third-party engine implementation (a Rust crate or a C/C++ project) into ShinkiEMU as an external core, or when changing an existing fork adapter, its probe/open gates, its pin, upstream_identity or release_sequence, its Cargo.lock entries, its save/config behaviour, its static Manager embedding or its license and source bundle. Covers the engine-adapter rules (adapters never narrow upstream; no per-work whitelists or enums; honest coverage when upstream supports one work), developing in a personal fork before a maintainer creates or updates the Project-Shinkirou organization fork, verified GitHub upstream pins, adapter branches, the thin adapter crate or vendored C header, worker/frame-lease mapping, vcpkg dependencies and overlay ports, merging per-platform fork lines, license obligations and the GPL/AGPL static-embedding review, the contributor build/package PR gate, ABI query probes and headless acceptance. Not for a new in-repo SDK core; use shinkiemu-new-core.
 ---
 
 # 把第三方引擎移植进 ShinkiEMU
 
-外部核心 = 原样保留的上游引擎 + 一个实现 C ABI v3 的薄 adapter。两者都在组织 fork 里。ShinkiEMU 用精确 commit 固定 fork，不复制 adapter 代码。
+外部核心 = 原样保留的上游引擎 + 一个实现 C ABI v3 的薄 adapter。贡献者先在自己的 GitHub fork 上开发 adapter；维护者审查后把它放进 `Project-Shinkirou` 组织 fork。ShinkiEMU 用精确 commit 固定组织 fork，不复制 adapter 代码。
 
 先确认该走移植路径：上游能跑，许可证允许再分发且我们能履行义务。否则用 `shinkiemu-new-core` 基于 SDK 自研（决策表在那里的 §0）。
 
@@ -54,16 +54,18 @@ description: Use when porting an existing third-party engine implementation (a R
 | ethornell-rs | Rust | `crates/shinki-emu-ethornell-rs`；另有 `pub const QUERY` | `shinki_emu_ethornell_rs::shinki_emu_query`（iOS） |
 | ReMinori | Rust, AGPL | `crates/shinki`（`build.rs`、`MODIFICATIONS.md`） | `shinki_emu_ReMinori::shinki_emu_query`（iOS） |
 | impacto | C++ | `shinki/` Cargo 包装 + `src/shinki/core.cpp`（worker `Run`、`GetFrame`）；`vendor/shinki-emu-abi/include/shinki_emu.h` | `shinki_emu_impacto::shinki_emu_query`（Android，feature `static`） |
-| kirikiroid2-web | C++ | `shinki/`（`build.rs`、`native/NativeSession.cpp`、`NativeOwner.cpp`）；`shinki/native/include/shinki_emu.h` | `shinki_emu_kirikiroid2_web::query`（Android，feature `static`；在 beta7 候选 `candidate/manager-beta7-publishclose63` 上，尚未进 main） |
+| kirikiroid2-web | C++ | `shinki/`（`build.rs`、`native/NativeSession.cpp`、`NativeOwner.cpp`）；`shinki/native/include/shinki_emu.h` | `shinki_emu_kirikiroid2_web::query`（Android，feature `static`） |
+| krkr2 | C++ | `shinki/Cargo.toml`（`native-static`），从 kirikiroid2-web 移植嵌入接缝 | `shinki_emu_krkr2::query`（Android、iOS；没有桌面动态包） |
+| cmvs-rs | Rust | `crates/shinki-emu-cmvs-rs`，`dynamic-plugin-export` 门控导出；与树内 `shinki.emu.cmvs` 并存 | 无（只有桌面动态包；`publish_blocked` 写明了原因） |
 | renpy | C++ + Python | `shinki/core.cpp` + `shinki_renpy_bridge.py`，打包官方 Ren'Py SDK | `shinki_emu_renpy::query`（Android，feature `static`） |
 
 fork 在 `ThirdParty/<dir>/`，由 `cargo xtask deps --core <id>` 检出到 pin。`kirikiri2/` 对应组织仓库 `kirikiroid2-web`。
 
 ## 1. fork 与分支
 
-1. 在组织下 fork 为 `Project-Shinkirou/<上游仓库名>`。plugin_id 保留上游仓库名和大小写（`siglus_rs`、`ReMinori`、`sena-rs`）。保留上游历史、作者和默认分支。
-2. 加 `upstream` remote。adapter 从一个明确的上游 commit 开始，最好是上游 tag。
-3. 分支：`shinki` 是长期集成分支；平台或专题工作放在 `shinki-<topic>`（实际在用的有 `shinki-android-ports`、`shinki-android-isolation`、`shinki-apple-xplat`、`shinki-sakura-native`、`shinki-common63`）。`build/cores.toml` 的 `branch` 写 pin 所在的真实分支。已推送的分支不 rebase、不 force push。
+1. 先在你自己的 GitHub 账号下 fork 上游，保留上游历史、作者和默认分支，加 `upstream` remote。adapter 从一个明确的上游 commit 开始，最好是上游 tag。上游必须托管在 GitHub：`CoreSource::validate` 只接受 `https://github.com/<owner>/<repo>` 形式的 `upstream`。
+2. 组织 fork `Project-Shinkirou/<上游仓库名>` 由维护者创建或更新，只有维护者能写入。plugin_id 保留上游仓库名和大小写（`siglus_rs`、`ReMinori`、`sena-rs`）。维护者把审查过的提交普通 push（不 force）到组织 fork 的某个分支，之后 ShinkiEMU 的 pin 才能指向它。
+3. 分支名用描述用途的名字，`build/cores.toml` 的 `branch` 写 pin 所在的真实分支。当前 pin 用到的有 `shinki`、`shinki-android-ports`、`shinki-android-isolation`、`shinki-save-policy`、`shinki-common63`、`shinki-upstream-3ee43dab`、`fix/sakura-font` 等。已推送的分支不 rebase、不 force push。
 4. 同一 fork 的多条平台线要合到一个共同分支时用真实 merge，保留每条线的祖先，然后在共同 head 上重跑所有目标的门禁。KrkrCommon63 就是这样把 Linux、Mac、Android 三条 kirikiroid2-web 线合到 `shinki-common63` 的。合流常见冲突：平台专用的静态 host/资源路径被误用到其他平台；同一个 helper 在共享头文件和平台文件里各定义一次。冲突按平台条件收窄，不删功能。
 5. 外部核心不是子模块（唯一的子模块是 `ThirdParty/cpal`），用 `build/cores.toml` 固定：
 
@@ -77,7 +79,15 @@ release_sequence = 1
 upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind = "tag", ref_name = "<上游 tag>", commit = "<上游完整 commit>" }
 ```
 
-`CoreSource::validate`（`xtask/src/cores.rs`）要求：`repo` 是组织下的单个仓库；`rev` 是 40 位小写 hex；`upstream` 是原作者的 GitHub 仓库（不能是 Project-Shinkirou），并且等于 `upstream_identity.repo`；manifest 在 `ThirdParty/` 下。上游 commit 有 tag 时 `ref_kind = "tag"`，否则用原上游包含该 commit 的真实分支。身份、序号和 tag 规则见 `shinkiemu-maintenance` §4。写完跑 `cargo xtask release --component <id> --dry-run`，它会真实验证上游 ref 和 adapter 祖先。
+`CoreSource::validate`（`xtask/src/cores.rs`）要求：`repo` 是组织下的单个仓库；`rev` 是 40 位小写 hex；`upstream` 是原作者的 GitHub 仓库（不能是 Project-Shinkirou），并且等于 `upstream_identity.repo`；manifest 在 `ThirdParty/` 下。上游 commit 有 tag 时 `ref_kind = "tag"`，否则用原上游包含该 commit 的真实分支。身份、序号和 tag 规则见 `shinkiemu-maintenance` §4。组织 fork 含有该提交后跑 `cargo xtask release --component <id> --dry-run`：它从组织 fork 和原上游真实 fetch，验证上游 ref 指向声明的 commit、上游 commit 是 adapter pin 的祖先，不需要凭据。
+
+**组织 fork 建好之前的本地验证。** `deps` 不检查 checkout 的 remote，只要求 `ThirdParty/<dir>` 是独立仓库的根、工作区干净、pin 的 commit 在本地对象库里：
+
+1. `git clone https://github.com/<你>/<repo> ThirdParty/<dir>`，checkout 已提交的 adapter commit。
+2. 本地 `build/cores.toml` 的 `repo` 仍写将来的组织 URL，`rev` 写这个 commit。
+3. `cargo xtask deps --target <triple> --core <id>`：对象已在本地，不会 fetch，直接 detached checkout 并初始化 fork 自己的子模块。之后照常 `build`、`package`。还没提交的改动用 `deps --allow-dirty-sources`，前提是 HEAD 已经是 pin；这样的构建记录标为 dirty，`release` 会拒绝。
+
+`release --dry-run` 和 CI 都要从组织 fork 取 commit，所以这一步只能证明本地能构建和打包，ShinkiEMU 的 PR 要等维护者把 commit 放进组织 fork 后再改 pin。
 
 ## 2. adapter 形态
 
@@ -132,11 +142,13 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 
 ## 7. 许可证与源码包
 
+- 动手前确认上游许可允许再分发修改后的源码和二进制，贡献者有权按该许可提交 adapter 代码。许可不清楚或不允许再分发的上游走 `shinkiemu-new-core` 自研。
 - 保留上游 `LICENSE`、署名和 notice。fork 里加修改声明（`MODIFICATIONS.md`），写明上游 URL、base commit、adapter 改了什么和原因、对应源码在哪发布。
 - 每个许可文件同时列进 `build.rs`（`licenses/<plugin_id>/…`）和 `cores.toml` 的 `licenses`，并在 `THIRD_PARTY_NOTICES.md`、`ORIGINS.md` 里登记。
 - 每个 release 附 `shinki-emu-<slug>-<version>-<platform>-sources.zip`，含发布 commit 的产品树、pin 处的完整 fork 快照，以及许可要求源码分发的 crate 的 `rust-sources/`。只有已提交的内容会进去。打包后确认 fork 文件确实在里面。
 - 第三方特殊条款（FMOD、Spine、MS PGothic 等）原文保留并单独说明，不改标成 MIT。
 - 许可或声明义务未满足时设 `publish_blocked = "<原因>"`，这样的核心不会发布。
+- GPL/AGPL 核心默认作为带对应源码 ZIP 的动态核心包分发。静态嵌入 Manager（Android、iOS、OHOS）会把它和 MIT/Apache 的 Manager 链接到同一个二进制，公开发布前需要维护者针对这个核心单独做许可和对应源码评审，评审结论写进 release 说明。ReMinori（AGPL）目前在 iOS 的 `static_manager_targets` 里，评审完成前不公开发布它的静态版本。
 - 商业游戏数据、正文、key、私有配置和存档不能提交。测试用合成 fixture。
 
 ## 8. pin 升级
@@ -154,16 +166,19 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - adapter 专用改动（ABI 胶水、离屏输出、打包）留在 fork，写进修改声明。
 - 上游合入后，fork 下次跟进上游时删掉自己的副本。
 
-## 10. 验收
+## 10. PR 门禁与验收
 
-完成标准与 `shinkiemu-new-core` §11 相同：所有支持目标构建和打包成功；干净进程里的 ABI query 探针通过；同一 commit 上 exact-head CI 全绿；源码包和原许可证随包；用 headless runner 打开一款真实游戏并出帧，导出截图和帧 hash。
+贡献者 PR 的硬门禁与 `shinkiemu-new-core` §11 相同：核心在 Windows x64 和 Android ARM64 中声明支持的每个目标都跑通 `deps`、`build --release`、`package`。`test --core`、ABI 探针、headless 回放是可选检查，结果用一两行写进 PR 描述，截图、日志、hash、回执不进仓库。
 
-ABI 探针要在独立原生进程里加载打包后的库，不要用 Python ctypes：Linux 上 Python 的 hashlib 会先加载系统 libcrypto，和核心自带的 OpenSSL 冲突；Windows 上 ctypes 持有 DLL 会让临时目录删不掉。kirikiroid2-web 的共同候选分支（`candidate/krkr-common63`）用 `Tools/krkr-query-probe.c`：用 pin 的 `shinki_emu.h` 编译，`LoadLibraryExW`/`dlopen` 加载后检查 ABI 3 返回完整表、其他版本返回 `UNSUPPORTED`、空输出指针返回 `INVALID_ARGUMENT`。这份 probe 合入 main 之前，其他核心照同样方式写。
+发布前由维护者补齐：所有支持目标在同一 commit 上 exact-head CI 全绿；干净进程里的 ABI query 探针通过；源码包和原许可证随包；用维护者合法持有的游戏以 headless runner 打开并出帧。
+
+ABI 探针要在独立原生进程里加载打包后的库，不要用 Python ctypes：Linux 上 Python 的 hashlib 会先加载系统 libcrypto，和核心自带的 OpenSSL 冲突；Windows 上 ctypes 持有 DLL 会让临时目录删不掉。用 `Tools/krkr-query-probe.c`（名字带 krkr，但对任何核心通用）：用 pin 的 `shinki_emu.h` 编译，参数是打包后的库路径，`LoadLibraryExW`/`dlopen` 加载后检查 ABI 3 返回完整表、其他版本返回 `UNSUPPORTED`、空输出指针返回 `INVALID_ARGUMENT`。
 
 ## 完成检查
 
-- [ ] fork 保留上游历史，设好 `upstream` remote，base commit 已记录；`branch` 是 pin 所在的真实分支。
-- [ ] `[cores.source]` 含完整 SHA、`upstream_identity`、`release_sequence`；`release --dry-run` 通过。
+- [ ] adapter 从个人 fork 开发，组织 fork 由维护者创建或更新；fork 保留上游历史，设好 `upstream` remote，base commit 已记录；`branch` 是 pin 所在的真实分支。
+- [ ] `[cores.source]` 含组织 fork 的完整 SHA、GitHub 上游的 `upstream_identity`、`release_sequence`；组织 fork 含该提交后 `release --dry-run` 通过。
+- [ ] GPL/AGPL 核心如要静态嵌入，维护者已完成单独的许可和对应源码评审。
 - [ ] 静态嵌入的 Manager 依赖用同一 SHA 和 `static_features`；`STATIC_CORES` 已更新。
 - [ ] adapter 保留上游 VM、渲染、音频和存档，只加 ABI 胶水和最小钩子。
 - [ ] 未修饰 `shinki_emu_query` 只在动态构建导出；静态构建有 Rust 路径 query。

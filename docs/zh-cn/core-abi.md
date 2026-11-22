@@ -93,6 +93,8 @@ Manager 的两条路径共用 provider 的 `AsyncTranslationService`；同步兼
 
 Ready 状态的 `FrameSurface` 包含实际尺寸、stride、像素/颜色/行序元数据、帧身份及一个不可变 CPU 租约。接管前先校验元数据和 epoch。Pending、Unchanged 不携带像素所有权；显示时遵守声明的光栅/逻辑几何和颜色解释。
 
+每次 `frame` 返回都带会话的真实身份，Pending 和 Unchanged 也一样：`identity.session_epoch` 等于传给 `open` 的 `OpenRequest.session_epoch`，`identity.output_epoch` 等于 `open` 返回、`state` 报告的非零 output epoch，`reserved` 为 0。第一帧发布之前，Pending 的 generation 可以是 0，租约保持为空（像素和 owner 为空指针、长度 0、没有 release 回调）。Unchanged 沿用调用方给出的非零 generation。Ready 要求 generation 非零，租约长度正好是 `stride × raster 高度`。宿主用 `FrameSurface::validate_cpu(session_epoch)` 接管每个结果，所以全零身份的 Pending 会以 `STALE_CONTEXT` 失败，output epoch 为 0 则返回 `INVALID_ARGUMENT`。`shinki_emu_sdk::native::lease_cpu` 只创建租约，已有三个租约未归还时返回 `None`；身份由核心自己填写，这时核心返回 Pending。核心测试应对每个返回的 surface 调用 `validate_cpu`。
+
 每个租约只归还一次，而且要等真实上传 API 不再读取像素。owner 和 release 回调在会话关闭后仍有效，也能在其他线程调用；归还不得访问 VM、设备、窗口、session 或宿主服务。持有帧不会延长游戏会话，也不能让核心覆盖仍在借出的像素。ABI 的 `CpuFrame` 包装器即使校验失败，也会归还已接管的租约。
 
 ## SDK 职责

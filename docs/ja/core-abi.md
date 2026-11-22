@@ -93,6 +93,8 @@ Manager の 2 つのパスは provider の `AsyncTranslationService` を共有�
 
 Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセル・色・行順のメタデータ、フレームの識別子、不変の CPU リースが 1 つ含まれます。受け取る前にメタデータと epoch を検証します。Pending と Unchanged はピクセルの所有権を持ちません。表示時は宣言されたラスター/論理ジオメトリと色の解釈に従います。
 
+`frame` の戻り値は、Pending と Unchanged を含めて常にセッションの実際の識別子を持ちます。`identity.session_epoch` は `open` に渡された `OpenRequest.session_epoch`、`identity.output_epoch` は `open` が返し `state` が報告する 0 以外の output epoch で、`reserved` は 0 です。最初のフレームを公開する前の Pending は generation 0 でもかまいませんが、リースは空のままにします（ピクセルと owner は null、長さ 0、release コールバックなし）。Unchanged は呼び出し側が渡した 0 以外の generation を返します。Ready には 0 以外の generation と、ちょうど `stride × ラスターの高さ` バイトのリースが必要です。ホストはすべての結果を `FrameSurface::validate_cpu(session_epoch)` で検証してから受け取るため、識別子がすべて 0 の Pending は `STALE_CONTEXT`、output epoch が 0 なら `INVALID_ARGUMENT` で失敗します。`shinki_emu_sdk::native::lease_cpu` はリースを作るだけで、未返却のリースが 3 つあるときは `None` を返します。識別子はコア自身が設定し、その場合は Pending を返します。コアのテストでは、返したすべての surface を `validate_cpu` で確認してください。
+
 各リースは一度だけ返却し、実際のアップロード API がピクセルを読まなくなってから返却します。owner と release コールバックはセッションの終了後も有効で、別のスレッドからも呼び出せます。返却処理では VM、デバイス、ウィンドウ、session、ホストサービスに触れてはいけません。フレームを保持してもゲームセッションは延長されず、コアが貸し出し中のピクセルを上書きすることもできません。ABI の `CpuFrame` ラッパーは、検証に失敗した場合でも受け取ったリースを返却します。
 
 ## SDK の役割

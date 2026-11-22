@@ -13,7 +13,9 @@ ShinkiEMU 自身がゲームディレクトリ内に書き込むファイルは�
 
 ## 入力と依存関係
 
-リポジトリはサブモジュールを含めて再帰的にクローンし、Rust/Cargo とターゲットプラットフォームのネイティブツールチェーンを用意します。Windows のネイティブビルドには、x64 MSVC 開発者環境、CMake、Ninja、Git が必要です。Android では JDK 27、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。ツールのバージョンとダウンロード入力は `build/dependencies.toml`、コアの manifest、features、ライセンスは `build/cores.toml`、ターゲットと runner の定義は `build/targets.toml` にあります。
+`git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` でクローンします。既存の checkout では `git submodule update --init --recursive` を実行してください。ワークスペースは `ThirdParty/cpal` サブモジュールで `cpal` を patch しているため、これがないと `cargo xtask --help` を含むすべての Cargo コマンドが `patch location ThirdParty\cpal does not contain packages matching cpal` で失敗します。Rust/Cargo とターゲットプラットフォームのネイティブツールチェーンも用意します。Windows のネイティブビルドには、x64 MSVC 開発者環境、CMake、Ninja、Git が必要です。Android では JDK 27、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。ツールのバージョンとダウンロード入力は `build/dependencies.toml`、コアの manifest、features、ライセンスは `build/cores.toml`、ターゲットと runner の定義は `build/targets.toml` にあります。
+
+Windows の `build` と `package` は x64 の Visual Studio 開発者シェル（`vcvars64.bat`、PowerShell では `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。パッケージングは `VCRUNTIME140.dll` などの MSVC ランタイム再頒布ファイルを `%VCToolsRedistDir%\x64` からだけ取得し、System32 は使いません。この変数は開発者シェルの中にしかありません。`doctor` は通常のシェルでも Visual Studio のレジストリから `cl.exe` を見つけるため、`doctor` が通っても `VCToolsRedistDir` が設定されているとは限りません。`missing redistributable dependency VCRUNTIME140.dll; run cargo xtask deps or provide its build tree` が出たら、シェルにこの変数がないことが原因で、`deps` では解決しません。
 
 Ren’Py にはさらに、固定バージョンの公式 SDK が必要です。`RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE` を設定し、CPython 3.12.7 に対応する公式の Cython 3.2.4 コンパイラーを用意してください。これらは上流のビルドと実行に必要な依存関係です。SDK の入力は fork の `shinki/sdk.json` に従います。
 POSIX SDL 2.0.20 のソースは SDL 公式 GitHub Release から取得します。SHA256 は `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06` のままで、アーカイブの内容と SDK ABI は変わりません。Android Ren’Py のソースビルドには LLVM 18/Clang 18、LLD、ccache とネイティブ開発パッケージも必要です。CI と Release は同じ既存の依存関係一覧を使います。Android SDK/NDK だけでは足りません。
@@ -32,6 +34,8 @@ cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
 ```
 
 `doctor` は不足している入力を検査し、問題があれば 0 以外で終了します。依存関係のインストールは行いません。`deps` は明示的なダウンロードと準備の入口で、`--core <plugin_id>` で範囲を絞れます。準備するのはロックされたネイティブ依存関係で、システムパッケージはインストールしません。通常のコマンドが暗黙に deps を実行することはありませんが、Cargo が解決済みの依存関係を取得できる必要はあります。
+
+`cargo xtask` は Cargo のエイリアス `run --locked --package xtask`（`.cargo/config.toml`）で、xtask が呼ぶ Cargo もすべて `--locked` 付きです。そのため、ワークスペースのメンバーや依存関係を追加したら、`cargo xtask` を実行する前に lockfile を一度だけ意図して更新します。`--locked` なしで `cargo metadata --format-version 1 > /dev/null`（PowerShell では `| Out-Null`）を実行し、`git diff -- Cargo.lock` を確認してください。Cargo はロック済みのバージョンをすべて保ち、今回の変更で増えた項目だけを追加します。このために `cargo update` や `cargo update -p` を使ってはいけません。無関係な registry のバージョンが動くことがあります。現在のツリーでは、Cargo 1.99.1 が 2 つの `na_mpeg2_decoder 0.1.0`（siglus_rs と ethornell-rs 由来）の順序を入れ替えることがありますが、バージョンは変わりません。lockfile は手で直さず、Cargo の出力のまま PR で説明してください。
 
 ## ビルド、チェック、テスト
 
@@ -159,11 +163,25 @@ Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_G
 
 実行時の制約：標準の Slint 1.18.1 では、SwiftShader やソフトウェア Vulkan のエミュレーター上で最初のフレームしか描画されず、その後の画面が更新されない問題があります。`-gpu host` または実機を使ってください。単一の Text と単一の Timer だけを持つ別アプリでも、5 回のコールドスタートすべてで更新の停止が再現しました。同じ Manager テスト APK は、ホスト GPU モードでの 5 回のコールドスタートすべてで、中国語のオンボーディングとアイコンを正常に表示しました。ビルドやパッケージングの成功は、ゲームの互換性が検証されたことを意味しません。
 
+### Android ARM64 コアパッケージ
+
+`supported_targets` に `aarch64-linux-android` を含むコアは、単体でもビルドとパッケージングができます。JDK、SDK/NDK、環境変数は上のテスト APK と同じです。`deps` は固定バージョンの cargo-ndk を `.work/tools/bin` に専用でインストールします。
+
+```sh
+rustup target add aarch64-linux-android
+cargo xtask doctor  --target aarch64-linux-android --core <plugin_id>
+cargo xtask deps    --target aarch64-linux-android --core <plugin_id>
+cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
+cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <新しいディレクトリ>
+```
+
+自作コアでは `--version` が必須です。外部コアはソースの pin からバージョンが決まるため指定しません。出力はコアパッケージのディレクトリで、AArch64 の ELF ライブラリ、依存関係の閉包、ライセンス、NDK の notice を含みます。APK ではありません。現在の Manager では、Android のコアは `static_manager_targets`、Manager の `Cargo.toml`、`STATIC_CORES` で静的に組み込み、上の手順で Manager APK に含めた場合にだけ動きます。現在の Android Manager には、ダウンロードしたコアパッケージをインストールする経路はありません。
+
 ### Apple Manager：ネイティブ macOS と Linux からのクロスビルド
 
 ネイティブ CI は引き続き `build/targets.toml` の macOS runner を使い、Cargo/Xcode でビルドします。Linux では、`build` と `check` が cross 0.2.5 と `Cross.toml` で設定されたプライベートイメージを自動的に選びます。Apple のターゲットは、`x86_64-apple-darwin`、`aarch64-apple-darwin`、実機向けの `aarch64-apple-ios`、シミュレーター向けの `aarch64-apple-ios-sim` と `x86_64-apple-ios` です。最低システムバージョンは macOS 13.0、iOS 16.0 です。
 
-`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。ジョブマトリクスにはその行が含まれず、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在は 5 つの Apple ターゲットにこの理由が設定されており、クロスビルドのツールチェーンが検証されるまで CI とリリースから外れます。フィールドを削除すれば元に戻ります。
+`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。ジョブマトリクスにはその行が含まれず、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在この項目を設定しているターゲットはなく、Apple の各行はコンポーネントごとの `supported_targets`/`manager_supported` の宣言に従います。
 
 Xcode は [Mac App Store](https://apps.apple.com/app/xcode/id497799835) または [Apple Developer Downloads](https://developer.apple.com/download/all/) から入手し、Apple のライセンスに従ってください。Mac 上で `xip --expand` を使って公式の Xcode `.xip` を展開し、その Xcode を選択して、同じ Mac 上でライセンスに同意します。Command Line Tools だけでは iOS SDK は提供されません。続いて次を実行します。
 

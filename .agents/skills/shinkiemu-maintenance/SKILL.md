@@ -1,6 +1,6 @@
 ---
 name: shinkiemu-maintenance
-description: Use when maintaining ShinkiEMU itself rather than writing a core - xtask doctor/deps/build/package/release, build/cores.toml and targets.toml edits, external-core version identity (upstream_identity, release_sequence, canonical core tags), fork pin bumps and Cargo.lock discipline, vcpkg baseline/overlay triplets/overlay ports, Android/iOS static Manager embedding, corresponding-source and license bundles, GitHub CI exact-head runs and watchers, release/catalog publication, signing (Android release certificate, Apple ad-hoc, OHOS test PKI), native macOS builds over SSH and Mac disk capacity, and headless runs (shinki-emu-headless run/compare/ui, shinki-emu-manager headless/headless-ui) for frame acceptance, screenshot and hash baselines, input replay scripts and windowless Manager UI screenshots. Not for writing a new core (shinkiemu-new-core), porting a third-party engine (shinkiemu-integrate-existing-core) or Luau game patches (shinkiemu-patch).
+description: Use when maintaining ShinkiEMU itself rather than writing a core - xtask doctor/deps/build/package/release, build/cores.toml and targets.toml edits, external-core version identity (upstream_identity, release_sequence, canonical core tags), fork pin bumps and Cargo.lock discipline, vcpkg baseline/overlay triplets/overlay ports, Android/iOS static Manager embedding, corresponding-source and license bundles, GitHub CI exact-head runs and watchers, the contributor PR gate versus maintainer release acceptance, release/catalog publication, signing (Android release certificate, Apple ad-hoc, OHOS test PKI), native macOS builds and Mac disk capacity, and headless runs (shinki-emu-headless run/compare/ui, shinki-emu-manager headless/headless-ui) for frame acceptance, screenshot and hash baselines, input replay scripts, null audio selection and windowless Manager UI screenshots. Not for writing a new core (shinkiemu-new-core), porting a third-party engine (shinkiemu-integrate-existing-core) or Luau game patches (shinkiemu-patch).
 ---
 
 # ShinkiEMU 项目维护
@@ -33,19 +33,19 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 
 ## 2. 工作区与隔离
 
-多个 agent 并行工作时，每个 slice 用自己的 worktree 和输出目录，避免互相踩 Cargo lock 和 native 缓存：
+多个 agent 或多人并行工作时，每个 slice 用自己的 worktree 和输出目录，避免互相踩 Cargo lock 和 native 缓存。路径按本机磁盘选择，下面是形状，不是固定位置：
 
 ```text
-worktree       D:/Workspace/Shinkirou-wt/<slice>                 （产品）
-fork worktree  D:/Workspace/Shinkirou-wt/forks/<fork>-<slice>
-CARGO_HOME     D:/Workspace/.shinki-cargo-home                    （共享）
-CARGO_TARGET_DIR      E:/shinki-targets/<slice>
-SHINKI_EMU_TARGET_ROOT E:/t/<slice>                               （Windows 短路径根）
-TEMP/TMP       E:/shinki-tmp/<slice>
-证据与发布实物  E:/shinki-release/<owner>/
+worktree               <worktrees>/<slice>                  （产品）
+fork worktree          <worktrees>/forks/<fork>-<slice>
+CARGO_HOME             <cargo-home>                         （可共享）
+CARGO_TARGET_DIR       <targets>/<slice>
+SHINKI_EMU_TARGET_ROOT <短路径根>/<slice>                    （Windows 短路径根）
+TEMP/TMP               <tmp>/<slice>
+证据与发布实物          <release-scratch>/<owner>/             （不进仓库）
 ```
 
-- 新 worktree 从最新公开 `origin/main` 开：`git worktree add -b <branch> D:/Workspace/Shinkirou-wt/<slice> origin/main`。
+- 新 worktree 从最新公开 `origin/main` 开：`git worktree add -b <branch> <worktrees>/<slice> origin/main`，再 `git -C <worktrees>/<slice> submodule update --init --recursive` 取得 `ThirdParty/cpal`。
 - `ThirdParty/*`（除 `README.md`、`cpal/`）被 `.gitignore` 忽略，不是子模块。`cargo xtask deps --core <id>` 会 clone/fetch fork 并 checkout 到 pin；本地有改动时拒绝执行，不会替你 reset。
 - 调试未提交的 adapter 改动时用 `deps --allow-dirty-sources`，前提是 fork HEAD 已经是清单 pin。构建记录会标出 dirty，`release` 拒绝 dirty 记录。
 - 同一时刻 Mac 只有一个 native slot，`main`、tag、catalog 只有一个发布 owner。没被指派时不要 push `main`、打 tag 或开 catalog PR。
@@ -70,6 +70,10 @@ cargo xtask metadata validate
 - Windows 长路径会落到 `.work/t/<hash>`，路径仍超长时设 `SHINKI_EMU_TARGET_ROOT`。
 - 不要做 workspace-wide all-features 构建。各 fork 有自己的 lockfile 和依赖图。
 - CI 的 tools job 跑的是 `cargo fmt --check`、`cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings`、`cargo test --locked -p xtask -p shinki-emu-build`、`cargo xtask metadata validate`，以及用 cbindgen 0.29.2 比对 `Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h`。本地改 xtask 后跑同一组即可；改了 `shinki-emu-abi/src` 就按 `docs/en/core-abi.md` 的命令重新生成头文件一起提交。
+- Windows 的 `build`/`package` 在 x64 VS 开发者环境里跑。打包只从 `%VCToolsRedistDir%\x64` 取 MSVC 运行库；`doctor` 不检查这个变量，报 `missing redistributable dependency VCRUNTIME140.dll` 时换到开发者环境重跑，`deps` 解决不了。
+- `cargo xtask` 是 `run --locked` 别名。新增 workspace 成员或依赖时，先不带 `--locked` 跑一次 `cargo metadata --format-version 1`，确认 `git diff -- Cargo.lock` 只有新增条目（当前 Cargo 可能顺带对调两个 `na_mpeg2_decoder 0.1.0`，版本不变），再跑 xtask。fork pin 升级仍按 §5 只改 rev 行。
+
+**贡献者 PR 门禁与维护者职责。** 外部贡献者的硬门禁只有构建和打包：改动的组件在 Windows x64 和 Android ARM64 中声明支持的目标上跑通 `deps`、`build --release`、`package`，PR CI 再跑 tools 和受影响的 Windows/Linux 行。测试、ABI 探针、headless 和示例运行的结果写在 PR 描述里，截图、日志、hash、回执不进仓库。下面 §11 的发布验收、macOS/iOS/OHOS 构建、Android Manager 双 ABI 打包和组织 fork 写入都由维护者负责。
 
 平台优先级与顺序：Windows x64 → Linux x64 → macOS（arm64、x64）→ Android（Manager 静态嵌入）→ iOS（Manager 静态嵌入）→ OHOS（local-only，DevEco 本机打包）。
 
@@ -177,18 +181,18 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 
 ## 11. 验收范围
 
-常规门禁必须做：真实构建、既有 CI 全绿、平台正常签名和正确证书、源码与原许可证随包、版本身份不串源（产品 commit、核心 pin、序号互相对应）、ABI query 探针、headless 出帧（见 §13）。
+发布验收必须做：真实构建、既有 CI 全绿、平台正常签名和正确证书、源码与原许可证随包、版本身份不串源（产品 commit、核心 pin、序号互相对应）、ABI query 探针、headless 出帧（见 §13）。这些由维护者在发布前完成，不是贡献者 PR 的门禁（PR 门禁见 §3 末尾）。
 
-用户已豁免、默认不做：逐 Git blob 或逐输入的来源追溯、签名逆变换和逐字节复原、全资源 census、为补证明而重建、重复下载大资产。豁免的项目在报告里写 "user-waived / not executed"，不要写成通过。实体设备、模拟器、真实账号上的启动验收也属于豁免，除非任务另有要求。桌面 headless 打开真实游戏并出帧不在豁免范围内，新核心必须做。
+用户已豁免、默认不做：逐 Git blob 或逐输入的来源追溯、签名逆变换和逐字节复原、全资源 census、为补证明而重建、重复下载大资产。豁免的项目在报告里写 "user-waived / not executed"，不要写成通过。实体设备、模拟器、真实账号上的启动验收也属于豁免，除非任务另有要求。新核心发布前，维护者用自己合法持有的游戏在桌面 headless 打开并出帧，这一项不豁免。
 
 ## 12. Mac 原生构建与容量
 
-- 物理 Mac 通过 SSH 别名 `apple-macos` 访问，Windows 侧用 `C:/Users/wzh20/.agents/skills/ssh-skill/scripts/ssh_execute.py --timeout 21600 --no-daemon` 执行长任务。
-- 驱动脚本 `~/shinkirou/run-apple-resume62.sh <product-sha> <core> macos|ios [<single-target>]`。它持有真实锁 `/Users/wzh/shinkirou/locks/mac-build`，每个 target 行开始前检查剩余空间不少于 12 GiB，不会自动删目录。需要 `LIBTOOLIZE=/opt/local/bin/glibtoolize` 和 Bison 3.8.2（系统自带 2.3 太旧）。
-- 结果以 `/Users/wzh/shinkirou/logs/apple-ports-<core>-<sha7>-<os>-<target>/summary.txt` 和对应行日志为准。SSH 包装进程退出码 0 不代表构建成功。
-- 一次只跑一个 native 任务。开始前确认锁不存在、没有 cargo/rustc/xtask/vcpkg/clang/cmake 进程。
-- 空间不足 12 GiB 时停下，把实际阶段和剩余字节报给 Main。不要删 Cargo target、installed 树或下载缓存来腾空间。清理走 managed skill `shinkiemu-expired-build-artifact-cleanup`（Windows）和 `macos-build-artifact-archival`（Mac），每次都要明确授权。
-- Mac 上沿用既有隔离根：`CARGO_TARGET_DIR=/Users/wzh/shinkirou/targets/apple-xplat-xtask`、`SHINKI_EMU_TARGET_ROOT=/Users/wzh/shinkirou/targets/apple-xplat-<target>`、cargo home `/Users/wzh/shinkirou/cargo`、rustup `/Users/wzh/shinkirou/rustup`。
+- Mac 原生构建由维护者在自己的 Mac 上执行。主机别名、SSH 包装脚本、驱动脚本和 Mac 上的路径属于维护者本机配置，不写进仓库；下面只写必须遵守的约束。
+- 一次只跑一个 native 任务，用一个真实的锁文件串行化。开始前确认锁不存在、没有 cargo/rustc/xtask/vcpkg/clang/cmake 进程。
+- 每个 target 行开始前检查剩余空间不少于 12 GiB，不自动删目录。需要 MacPorts 的 `glibtoolize`（设 `LIBTOOLIZE`）和 Bison 3.8.2，系统自带的 Bison 2.3 太旧。
+- 结果以每个 target 行自己的 summary 和日志为准。SSH 包装进程退出码 0 不代表构建成功。
+- 空间不足 12 GiB 时停下，把实际阶段和剩余字节报给发布 owner。不要删 Cargo target、installed 树或下载缓存来腾空间；清理要有明确授权。
+- Mac 上为 xtask 和每个 target 分别使用独立的 `CARGO_TARGET_DIR`、`SHINKI_EMU_TARGET_ROOT`，以及专用的 cargo home 和 rustup 目录，沿用已有的隔离根，不和其他任务共用。
 
 ## 13. Headless 验收与调试
 
@@ -254,12 +258,13 @@ shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en
 
 **常见用法。**
 
-1. **新核心出帧验收**（`shinkiemu-new-core` §11 第 5 项）：`run --core <打包好的 ZIP> --game-dir <真实游戏> --frames 600 --capture-frame 120,600 --output .work/headless/<slug>`。要求 `run.json` 存在、`acquired_frames > 0`，并打开 PNG 确认是游戏画面而不是全黑或纯色。把 `run.json` 和 PNG 路径写进报告。静态嵌入的核心再用 `shinki-emu-manager headless --core <plugin_id>` 跑一次。
+1. **新核心出帧验收**（发布前由维护者完成，见 `shinkiemu-new-core` §11）：`run --core <打包好的核心目录或 ZIP> --game-dir <合法持有的游戏> --frames 600 --capture-frame 120,600 --output <新目录>`。要求 `run.json` 存在、`acquired_frames > 0`，并打开 PNG 确认是游戏画面而不是全黑或纯色。结果写进发布记录，输出不进仓库。静态嵌入的核心再用 `shinki-emu-manager headless --core <plugin_id>` 跑一次。贡献者可以用自造或合成的游戏目录跑同样的命令，结果写进 PR 描述即可。
 2. **回归对比**：把第一次运行的输出目录作为 `--baseline`。GPU 合成可能有细微差异，给小容差，例如 `--max-channel-delta 4 --changed-pixel-ratio 0.001`。单张图用 `compare`。
 3. **流程回放**：在关键步骤后放 `checkpoint`，用 `await` + `frame.sha256` 断言到达已知画面。
 4. **Manager UI 截图**：`ui` / `headless-ui` 用真实 `ManagerWindow` 经软件渲染出图，不创建窗口，不启动数据库、库扫描、账号、商店或网络服务。默认数据是自写的合成文本，不含封面、游戏可执行文件或商业截图；`--demo-data demo.json` 只提供显示字符串，不会被扫描。语言用 `zh-CN`、`en`、`ja`，主题用 `dark`、`light`，宽高为物理像素（360..8192）。设置页分类为 `library-roots`、`appearance`、`network`、`translation`、`input`、`about`。不同主题用不同输出目录。
+5. **空音频**：核心声明了 `headless_audio_device` 枚举字段且含 `nullaudiodevice` 时，可加 `--audio-device nullaudiodevice` 在没有声卡的机器上验收逻辑和出帧。未声明时 runner 以退出码 1 拒绝；它不证明有声音，也不能当成真实设备失败时的回退。
 
-**限制。** 复制游戏只是隔离普通存储，不是给不可信核心用的系统沙箱。核心运行在隔离子进程中，AppData/HOME/XDG 目录和 TEMP 环境临时化；核心声明的字符串 `save_root` 路径被强制指向临时目录。`RUST_MIN_STACK` 默认至少 8 MiB，保留显式更大值。配置里故意指向游戏外的路径，要改到临时位置。用 `E:/Games` 下的游戏时原目录同样只读。核心自己需要的 GPU 或音频设备照样需要；runner 不会关掉音频、影片或脚本。Musica、CMVS 这类硬件 GPU 合成的核心，软件 adapter 的结果不算通过。
+**限制。** 复制游戏只是隔离普通存储，不是给不可信核心用的系统沙箱。核心运行在隔离子进程中，AppData/HOME/XDG 目录和 TEMP 环境临时化；核心声明的字符串 `save_root` 路径被强制指向临时目录。`RUST_MIN_STACK` 默认至少 8 MiB，保留显式更大值。配置里故意指向游戏外的路径，要改到临时位置。源游戏目录始终只读。核心自己需要的 GPU 或音频设备照样需要；runner 不会关掉音频、影片或脚本。Musica、CMVS 这类硬件 GPU 合成的核心，软件 adapter 的结果不算通过。
 
 **平台状态。** 历史 Windows x64 验收用静态 Siglus 跑过 Rewrite_PLUS，也用动态 RFVP ZIP 跑过樱花萌放。两者各采样 360 次、回放 8 条输入，取得 1280×720 截图和 hash，独立重跑后通过容差比较。独立运行器现用动态包路径；静态结果只作为历史记录。Linux x64 默认构建（含 UI）只做过 `cargo check`。这组验收没有在 macOS、Android、iOS 或 OHOS 上运行。
 

@@ -13,7 +13,9 @@ ShinkiEMU 自身在游戏目录内写入的文件一律放在 `<game>/.shinki/` 
 
 ## 输入与依赖
 
-克隆仓库时递归取得子模块，并准备 Rust/Cargo 和目标平台的原生工具链。Windows 原生构建需要 x64 MSVC 开发者环境、CMake、Ninja 和 Git。Android 使用 JDK 27、NDK 30.0.16248370 和 cargo-ndk 4.1.2。工具版本与下载输入在 `build/dependencies.toml`；核心 manifest、features、许可在 `build/cores.toml`；目标与 runner 定义在 `build/targets.toml`。
+用 `git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` 克隆；已有 checkout 执行 `git submodule update --init --recursive`。工作区通过 `ThirdParty/cpal` 子模块 patch `cpal`，缺少它时所有 Cargo 命令（包括 `cargo xtask --help`）都会报 `patch location ThirdParty\cpal does not contain packages matching cpal`。另需 Rust/Cargo 和目标平台的原生工具链。Windows 原生构建需要 x64 MSVC 开发者环境、CMake、Ninja 和 Git。Android 使用 JDK 27、NDK 30.0.16248370 和 cargo-ndk 4.1.2。工具版本与下载输入在 `build/dependencies.toml`；核心 manifest、features、许可在 `build/cores.toml`；目标与 runner 定义在 `build/targets.toml`。
+
+Windows 的 `build`、`package` 在 x64 Visual Studio 开发者环境里执行（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包只从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll` 等 MSVC 运行库，不读 System32，而这个变量只在开发者环境里存在。`doctor` 在普通 shell 里也能通过 Visual Studio 注册表找到 `cl.exe`，所以 `doctor` 通过并不说明 `VCToolsRedistDir` 已设置。打包报 `missing redistributable dependency VCRUNTIME140.dll; run cargo xtask deps or provide its build tree` 时，原因是当前 shell 缺这个变量，`deps` 解决不了。
 
 Ren’Py 另需固定的官方 SDK，设置 `RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE`，并准备与 CPython 3.12.7 匹配的官方 Cython 3.2.4 编译器。这些属于上游编译和运行依赖。SDK 输入以 fork 的 `shinki/sdk.json` 为准。
 POSIX SDL 2.0.20 源码从 SDL 官方 GitHub Release 下载，SHA256 仍为 `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06`，归档内容和 SDK ABI 不变。Android Ren’Py 源码构建还需要 LLVM 18/Clang 18、LLD、ccache 及原生开发包；CI 和 Release 安装同一份既有依赖清单，只有 Android SDK/NDK 不够。
@@ -38,6 +40,8 @@ cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
 ```
 
 `doctor` 检查缺失输入，失败时返回非零，不安装依赖。`deps` 是显式下载和准备入口，可用 `--core <plugin_id>` 缩小范围；它准备锁定的原生依赖，不安装系统包。普通命令不会隐式执行 deps，Cargo 仍需能取得已解析的依赖。
+
+`cargo xtask` 是 Cargo 别名 `run --locked --package xtask`（`.cargo/config.toml`），xtask 调用 Cargo 时也都带 `--locked`。新增 workspace 成员或依赖后，运行任何 `cargo xtask` 命令之前要先有意识地更新一次 lockfile：不带 `--locked` 执行 `cargo metadata --format-version 1 > /dev/null`（PowerShell 用 `| Out-Null`），再看 `git diff -- Cargo.lock`。Cargo 保留所有已锁定的版本，只加入这次改动引入的条目。不要为此运行 `cargo update` 或 `cargo update -p`，两者都可能挪动无关的 registry 版本。在当前代码上，Cargo 1.99.1 还可能对调两个 `na_mpeg2_decoder 0.1.0` 条目（来源分别是 siglus_rs 和 ethornell-rs），版本不变；保留 Cargo 的输出，在 PR 里说明，不要手改 lockfile。
 
 ## 构建、检查与测试
 
@@ -164,11 +168,25 @@ CMVS 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`，SD
 
 运行限制：原版 Slint 1.18.1 在 SwiftShader/软件 Vulkan 模拟器上存在只渲染首帧、后续界面不再更新的问题；请使用 `-gpu host` 或实体设备。独立的单 Text、单 Timer 应用在五次冷启动中均复现了更新停滞；同一 Manager 测试 APK 在主机 GPU 模式下五次冷启动均正常显示中文引导及图标。构建、打包成功不代表游戏兼容性已验证。
 
+### Android ARM64 核心包
+
+`supported_targets` 含 `aarch64-linux-android` 的核心也可以单独构建和打包，JDK、SDK/NDK 和环境变量与上面的测试 APK 相同。`deps` 会把固定版本的 cargo-ndk 私有安装到 `.work/tools/bin`：
+
+```sh
+rustup target add aarch64-linux-android
+cargo xtask doctor  --target aarch64-linux-android --core <plugin_id>
+cargo xtask deps    --target aarch64-linux-android --core <plugin_id>
+cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
+cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <新目录>
+```
+
+自研核心必须传 `--version`；外部核心不传，版本由来源 pin 推导。产物是一个核心包目录，含 AArch64 ELF 库、依赖闭包、许可和 NDK notice，不是 APK。在当前的 Manager 里，Android 核心只有经 `static_manager_targets`、Manager `Cargo.toml` 和 `STATIC_CORES` 静态嵌入并随上文的 Manager APK 构建后才能运行；当前 Android Manager 没有安装下载核心包的路径。
+
 ### Apple Manager：原生 macOS 与 Linux 交叉构建
 
 原生 CI 继续使用 `build/targets.toml` 中的 macOS runner，通过 Cargo/Xcode 构建。在 Linux 上，`build`、`check` 自动选择 cross 0.2.5 和 `Cross.toml` 配置的私有镜像。Apple 目标包括 `x86_64-apple-darwin`、`aarch64-apple-darwin`、设备目标 `aarch64-apple-ios`，以及模拟器目标 `aarch64-apple-ios-sim`、`x86_64-apple-ios`。最低系统版本为 macOS 13.0、iOS 16.0。
 
-`build/targets.toml` 中某个目标的 `blocked` 非空时，该目标上的所有组件都按这个原因阻塞，优先于核心的 `supported_targets` 和 `manager_supported`：任务矩阵不包含这些行，`deps`、`build`、`package` 拒绝执行，发布说明列出该目标及原因，不附产物。五个 Apple 目标目前带有这一字段，在交叉构建工具链验证通过前不进入 CI 和发布；删除该字段即可恢复。
+`build/targets.toml` 中某个目标的 `blocked` 非空时，该目标上的所有组件都按这个原因阻塞，优先于核心的 `supported_targets` 和 `manager_supported`：任务矩阵不包含这些行，`deps`、`build`、`package` 拒绝执行，发布说明列出该目标及原因，不附产物。目前没有目标设置这个字段，Apple 各行按组件自己的 `supported_targets`/`manager_supported` 声明决定。
 
 从 [Mac App Store](https://apps.apple.com/app/xcode/id497799835) 或 [Apple Developer Downloads](https://developer.apple.com/download/all/) 取得 Xcode，遵守 Apple 许可。在 Mac 上用 `xip --expand` 展开官方 Xcode `.xip`，选择这套 Xcode，并在该 Mac 上接受许可。单独的 Command Line Tools 不提供 iOS SDK。随后执行：
 
