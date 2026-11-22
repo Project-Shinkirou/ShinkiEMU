@@ -645,6 +645,9 @@ pub fn prepare(
     let receipt = crate::build::load_receipt(inv, target, component)?;
     if id.identity.is_none() {
         receipt.require_product_version(version)?;
+        if crate::apple::ios_frameworks::enabled(target, &receipt.features) {
+            bail!("the iOS Framework Manager is for private QA; rebuild without ios-framework-cores for release");
+        }
     }
     let expected_source = id.core_source["rev"].as_str().unwrap_or(&id.commit);
     receipt.require_product_source(expected_source)?;

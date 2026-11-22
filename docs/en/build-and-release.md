@@ -337,6 +337,33 @@ RFVP's Apple subtitle dependency is built on native macOS/Xcode using the pinned
 
 Simulator packages contain a `simulator-test.app`; device packaging creates a `device-test.ipa` with `Payload/*.app`, and `ci` reports that IPA path. Packaging checks thin Mach-O architecture, device/simulator platform and system/bundled dependency closure before signing copied files. Linux uses `rcodesign sign` and verifies every Mach-O; native macOS uses `codesign`. Ad-hoc signatures are real but provide no Apple provisioning, notarization or App Store identity. Device installation needs valid Apple signing/provisioning; these are test/integration artifacts, not production installers. Release names include the iOS device/simulator variant to avoid collisions.
 
+#### Private iOS bundled Framework proof
+
+The default iOS Manager keeps all existing static core integrations. Enable `ios-framework-cores` for private validation of the CMVS and Shinki Musica Frameworks. This opt-in removes their static query registrations in the candidate, builds the same cores separately as ABI v3 dylibs and embeds them as signed Frameworks. The remaining iOS cores stay static. `no-core-download` is independent; iOS never installs or loads Core executables from writable data storage. Release preparation refuses the private Framework build.
+
+On native macOS, select exactly one target per build/package:
+
+| Rust target | Xcode SDK | Required Mach-O slice |
+| --- | --- | --- |
+| `aarch64-apple-ios` | `iphoneos` | arm64 / iOS |
+| `aarch64-apple-ios-sim` | `iphonesimulator` | arm64 / iOS Simulator |
+| `x86_64-apple-ios` | `iphonesimulator` | x86_64 / iOS Simulator |
+
+```sh
+export BISON_EXECUTABLE=/opt/local/bin/bison  # on the MacPorts host; requires Bison >= 3.8.2
+export SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores
+export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.6
+target=aarch64-apple-ios-sim
+cargo xtask deps --target "$target"
+cargo xtask build --target "$target" --manager --release
+cargo xtask package --target "$target" --manager \
+  --version "$SHINKI_EMU_PRODUCT_VERSION" --out ".work/ios-framework-qa-$target"
+```
+
+For the device row, provide `SHINKI_EMU_IOS_SIGN_IDENTITY`, `SHINKI_EMU_IOS_PROVISIONING_PROFILE` and `SHINKI_EMU_IOS_ENTITLEMENTS` to `package`. Use a private Apple development identity/profile for the Manager bundle ID `org.shinkirou.shinkiemu` and the intended test device. Simulators are ad-hoc signed. Packaging checks the Mach-O platform, architecture, deployment target, install name, ABI export and system-only dependencies, signs the nested Frameworks before the app, and verifies both signatures. The app seal covers each `cores/<id>/core.json` and its signed Framework executable's digest; runtime enumeration reads this metadata without opening native code.
+
+On the matching simulator, or a provisioned device, verify that opening Manager and scanning games do not load either Framework. Then launch one known game per core, verify ABI v3 selection and a first frame, and close/reopen each core in the same process. Check the device log for dyld errors or duplicate Objective-C classes. Keep all artifacts private; ReMinori's AGPL review still applies to this build because ReMinori remains statically linked.
+
 For SDK-backed acceptance, retain actual artifact paths/sizes, native architecture and dependency inspection, and the existing platform's normal signature-verification output. Native macOS packaging uses Apple's `codesign`. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
 
 Apple Manager `build.json` records the native input before bundle rewriting and signing. The signed executable can therefore have a different byte hash; the release record identifies the distributed package. Keep the normal platform signature verification and correct product/target/version binding, without relabeling the raw receipt as a signed-binary hash.

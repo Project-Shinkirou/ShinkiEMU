@@ -24,6 +24,8 @@ static-cmvs = ["dep:shinki-emu-cmvs"]
 # Installed and bundled cores, local official packages, the game store and
 # metadata are unaffected.
 no-core-download = []
+# Private iOS package proof; other mobile targets retain their own load mode.
+ios-framework-cores = []
 
 [dependencies]
 shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }

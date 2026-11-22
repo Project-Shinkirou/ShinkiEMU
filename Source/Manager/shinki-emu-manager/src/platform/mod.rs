@@ -105,6 +105,21 @@ pub fn bundled_resource_dir() -> Option<PathBuf> {
     imp::bundled_resource_dir()
 }
 
+#[cfg(target_os = "ios")]
+pub(crate) fn is_bundled_core(plugin_id: &str) -> bool {
+    ios::is_bundled_core(plugin_id)
+}
+
+#[cfg(target_os = "ios")]
+pub(crate) fn bundled_core_library(plugin_id: &str) -> Option<PathBuf> {
+    ios::bundled_core_library(plugin_id)
+}
+
+#[cfg(target_os = "ios")]
+pub(crate) fn bundled_core_manifest_dir(plugin_id: &str) -> Option<PathBuf> {
+    ios::bundled_core_manifest_dir(plugin_id)
+}
+
 /// Start a new Manager process once this one exits.
 pub fn restart() -> Result<(), String> {
     imp::restart()

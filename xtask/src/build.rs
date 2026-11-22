@@ -227,8 +227,37 @@ pub fn execute(
     action: &str,
     release: bool,
 ) -> Result<Option<BuildResult>> {
-    inv.require_buildable(component, target)?;
-    dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
+    execute_configured(inv, target, component, action, release, false)
+}
+
+pub(crate) fn execute_ios_framework(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+) -> Result<BuildResult> {
+    execute_configured(inv, target, component, "build", true, true)?
+        .context("iOS Framework build did not return an artifact")
+}
+
+fn execute_configured(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    action: &str,
+    release: bool,
+    ios_framework_input: bool,
+) -> Result<Option<BuildResult>> {
+    if ios_framework_input {
+        if !crate::apple::ios_frameworks::target_supported(target)
+            || !inv.core(component)?.ios_framework
+        {
+            bail!("no bundled iOS Framework recipe for {component}/{target}");
+        }
+        // The Manager's doctor already validated the target's static closures.
+    } else {
+        inv.require_buildable(component, target)?;
+        dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
+    }
     let core = if component == "manager" {
         None
     } else {
@@ -256,7 +285,6 @@ pub fn execute(
         .map(|c| c.package.as_str())
         .unwrap_or("shinki-emu-manager");
     let features = core.map(|c| c.features.clone()).unwrap_or_default();
-    let target_dir = target_directory(inv, target, component)?;
     let metadata: serde_json::Value = if component == "manager"
         && inv.cores.iter().any(|core| {
             core.static_manager_targets
@@ -302,6 +330,21 @@ pub fn execute(
         manager_features(requested, package_metadata)?
     } else {
         features
+    };
+    let ios_framework_manager =
+        component == "manager" && crate::apple::ios_frameworks::enabled(target, &features);
+    if ios_framework_manager {
+        crate::apple::ios_frameworks::require_native_host()?;
+        if action == "build" && !release {
+            bail!("use --release when building the iOS Framework Manager");
+        }
+    }
+    let target_dir = if ios_framework_input || ios_framework_manager {
+        // Private inputs and the opted-in Manager can share target dependencies,
+        // but must never replace the default static Manager artifact.
+        target_directory(inv, target, "manager-ios-framework")?
+    } else {
+        target_directory(inv, target, component)?
     };
     let version_inputs = product_owned.then(|| {
         [
@@ -361,7 +404,8 @@ pub fn execute(
         Command::new("cargo")
     };
     cmd.current_dir(&inv.root);
-    cmd.args([action, "--locked", "--manifest-path"])
+    let cargo_action = if ios_framework_input { "rustc" } else { action };
+    cmd.args([cargo_action, "--locked", "--manifest-path"])
         .arg(&manifest)
         .args([
             "-p",
@@ -453,6 +497,10 @@ pub fn execute(
         if immediately_before.commit != before.commit || immediately_before.dirty != before.dirty {
             bail!("source checkout changed before Cargo started: {}", directory.display());
         }
+    }
+    if ios_framework_input {
+        let install_name = crate::apple::ios_frameworks::install_name(component);
+        cmd.args(["--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
     }
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -625,7 +673,11 @@ pub fn execute(
         }
         libraries.remove(0)
     };
-    crate::binary::inspect(&library, target, core.is_some())?;
+    if ios_framework_input {
+        crate::apple::ios_frameworks::inspect(&library, target, component)?;
+    } else {
+        crate::binary::inspect(&library, target, core.is_some())?;
+    }
     let (source_directory, before) = source_state.context("build source state missing")?;
     let after = sources::state(&source_directory)?;
     let source_commit = before.commit;
@@ -652,6 +704,13 @@ pub fn execute(
         features,
         target_dir,
     };
+    if ios_framework_input {
+        // An app-bundled Framework is not a standalone core build receipt.
+        return Ok(Some(result));
+    }
+    if ios_framework_manager {
+        crate::apple::ios_frameworks::build_inputs(inv, &result)?;
+    }
     if component == "manager" && target.contains("android") {
         let generated = result.target_dir.join("android-inputs");
         if generated.exists() {

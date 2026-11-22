@@ -99,6 +99,30 @@ fn pending_is_empty(cores: &Path) -> bool {
 }
 
 #[test]
+fn signed_framework_sidecar_requires_the_selected_id_and_exact_executable() {
+    let root = tempfile::tempdir().unwrap();
+    let id = "shinki.emu.fixture";
+    let manifest_path = root.path().join(CORE_MANIFEST);
+    let mut sidecar: CoreManifest = serde_json::from_slice(&manifest(id, &[(id, b"digest")])).unwrap();
+    sidecar.library = id.into();
+    let write = |sidecar: &CoreManifest| {
+        fs::write(&manifest_path, serde_json::to_vec(sidecar).unwrap()).unwrap();
+    };
+    write(&sidecar);
+    assert_eq!(read_bundled_manifest(root.path(), id), Some(sidecar.clone()));
+    assert!(read_manifest(root.path()).is_none());
+
+    sidecar.plugin_id = "shinki.emu.foreign".into();
+    write(&sidecar);
+    assert!(read_bundled_manifest(root.path(), id).is_none());
+
+    sidecar.plugin_id = id.into();
+    sidecar.files[0].path = id.to_ascii_uppercase();
+    write(&sidecar);
+    assert!(read_bundled_manifest(root.path(), id).is_none());
+}
+
+#[test]
 fn package_with_parent_directory_entry_is_rejected() {
     let root = tempfile::tempdir().unwrap();
     let cores = root.path().join("cores");

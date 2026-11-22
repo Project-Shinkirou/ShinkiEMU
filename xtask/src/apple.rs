@@ -7,6 +7,8 @@ use std::{
     process::Command,
 };
 
+pub(crate) mod ios_frameworks;
+
 pub fn supported(target: &str) -> bool {
     matches!(
         target,
@@ -246,6 +248,15 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
 fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<String>, bool)> {
     let bytes = fs::read(path)?;
     let file = object::File::parse(bytes.as_slice())?;
+    inspect_file(&file, path, target, executable)
+}
+
+fn inspect_file(
+    file: &object::File<'_>,
+    path: &Path,
+    target: &str,
+    executable: bool,
+) -> Result<(BTreeSet<String>, bool)> {
     let architecture = if target.starts_with("aarch64") {
         object::Architecture::Aarch64
     } else {
@@ -342,6 +353,7 @@ pub fn bundle(
     name: &str,
     id: &str,
     version: &str,
+    ios_signing: Option<&ios_frameworks::Signing>,
 ) -> Result<PathBuf> {
     let parsed = semver::Version::parse(version)?;
     let version = format!("{}.{}.{}", parsed.major, parsed.minor, parsed.patch);
@@ -385,6 +397,11 @@ pub fn bundle(
             })
             .cloned(),
     );
+    if ios_signing.is_some()
+        && (!ios || binaries.len() != 1 || !stage.join("Frameworks").is_dir())
+    {
+        bail!("the iOS Framework app must embed code under Frameworks, not as loose dylibs");
+    }
     let available: BTreeSet<_> = binaries
         .iter()
         .filter_map(|path| path.file_name())
@@ -487,7 +504,9 @@ pub fn bundle(
                 .arg(&main),
         )?;
     }
-    if cfg!(target_os = "macos") {
+    if let Some(signing) = ios_signing {
+        signing.sign_app(&app)?;
+    } else if cfg!(target_os = "macos") {
         checked(
             Command::new("codesign")
                 .args(["--force", "--deep", "--sign", "-"])
@@ -525,7 +544,8 @@ mod tests {
                 "player",
                 "../escape",
                 "org.shinkirou.player",
-                "0.1.0"
+                "0.1.0",
+                None,
             )
             .is_err()
         );
@@ -552,7 +572,8 @@ mod tests {
                 "player",
                 "Player",
                 "org.shinkirou.player",
-                "0.1.0"
+                "0.1.0",
+                None,
             )
             .is_err()
         );

@@ -199,6 +199,9 @@ fn write_embedded_core_identities() {
             .expect("valid core inventory");
     let target = env::var("TARGET").expect("build target");
     let mut identities = serde_json::Map::new();
+    let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios")
+        && env::var_os("CARGO_FEATURE_IOS_FRAMEWORK_CORES").is_some();
+    let mut frameworks = Vec::new();
     for core in inventory["cores"].as_array().expect("cores") {
         let embedded = core
             .get("static_manager_targets")
@@ -206,6 +209,9 @@ fn write_embedded_core_identities() {
             .is_some_and(|targets| targets.iter().any(|value| value.as_str() == Some(&target)));
         if !embedded {
             continue;
+        }
+        if ios_frameworks && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true) {
+            frameworks.push(core["id"].as_str().expect("core id"));
         }
         if let Some(source) = core.get("source") {
             identities.insert(core["id"].as_str().expect("core id").to_owned(), serde_json::json!({
@@ -222,6 +228,13 @@ fn write_embedded_core_identities() {
         serde_json::to_vec(&identities).expect("identity JSON"),
     )
     .expect("embedded identity output");
+    if ios_frameworks {
+        std::fs::write(
+            output.with_file_name("ios-framework-core-ids.rs"),
+            format!("&{frameworks:?}\n"),
+        )
+        .expect("iOS Framework core IDs");
+    }
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {

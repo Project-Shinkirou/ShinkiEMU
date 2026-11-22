@@ -33,6 +33,8 @@ pub struct Core {
     pub static_manager_targets: Vec<String>,
     #[serde(default)]
     pub static_features: Vec<String>,
+    #[serde(default)]
+    pub ios_framework: bool,
     pub blocked: Vec<Blocked>,
     pub publish_blocked: String,
     pub source: Option<CoreSource>,
@@ -281,6 +283,23 @@ impl Inventory {
             }
             if seen != triples {
                 bail!("core {} does not describe every target", c.id);
+            }
+            if c.ios_framework
+                && (c.source.is_some()
+                    || c.artifact_kind != "rust-cdylib"
+                    || !c.resources.is_empty()
+                    || !c.features.iter().any(|feature| feature == "dynamic-plugin-export")
+                    || c.features.len() != c.static_features.len() + 1
+                    || c.static_features.iter().any(|feature| {
+                        feature == "dynamic-plugin-export" || !c.features.contains(feature)
+                    })
+                    || !c.id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
+                    || self.targets.iter().filter(|target| target.platform == "ios").any(|target| {
+                        !c.static_manager_targets.contains(&target.triple)
+                            || c.supported_targets.contains(&target.triple)
+                    }))
+            {
+                bail!("invalid private iOS Framework recipe for {}", c.id);
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
