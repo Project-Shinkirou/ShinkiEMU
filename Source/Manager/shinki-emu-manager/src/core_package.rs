@@ -25,6 +25,7 @@ const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_PACKAGE_ENTRIES: usize = 8192;
 const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_PACKAGE_PATH_BYTES: usize = 512;
+const MAX_BUILD_RECEIPT_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,6 +90,46 @@ impl CoreManifest {
         }
         Ok(library_stem(Path::new(&self.library)))
     }
+}
+
+#[derive(Deserialize)]
+struct BuildReceipt {
+    schema: String,
+    component: String,
+    target: String,
+    profile: String,
+    product_version: String,
+    source_commit: String,
+    source_dirty: bool,
+}
+
+/// The receipt hash is already checked at official staging. Recheck this
+/// small file when admitting or presenting an installed first-party core.
+pub(crate) fn product_source_commit(directory: &Path, manifest: &CoreManifest) -> Option<String> {
+    if manifest.identity.is_some() {
+        return None;
+    }
+    let listed = manifest.files.iter().find(|file| file.path == "build.json")?;
+    let path = directory.join(&listed.path);
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_BUILD_RECEIPT_BYTES {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path).ok()?.take(MAX_BUILD_RECEIPT_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    if bytes.len() as u64 > MAX_BUILD_RECEIPT_BYTES || sha256_hex(&bytes) != listed.sha256 {
+        return None;
+    }
+    let receipt: BuildReceipt = serde_json::from_slice(&bytes).ok()?;
+    (receipt.schema == "shinki.emu.build_identity.v1"
+        && receipt.component == manifest.plugin_id
+        && receipt.target == env!("SHINKI_EMU_BUILD_TARGET")
+        && receipt.profile == "release"
+        && receipt.product_version == manifest.version
+        && !receipt.source_dirty
+        && receipt.source_commit.len() == 40
+        && receipt.source_commit.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')))
+        .then_some(receipt.source_commit)
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
@@ -160,7 +201,7 @@ pub(crate) fn stage_local_release<'a>(
     archive: &Path,
     entries: impl Iterator<Item = &'a shinki_emu_metadata::CoreCatalogEntry>,
     pending: &Path,
-) -> Result<(), String> {
+) -> Result<String, String> {
     use std::io::{Seek, SeekFrom};
     let read_error = io_error("SHINKI_EMU_CORE_PACKAGE_READ");
     let input = fs::File::open(archive).map_err(&read_error)?;
@@ -186,8 +227,12 @@ pub(crate) fn stage_local_release<'a>(
     let release = releases.find(|entry| copied == size && entry.sha256 == digest)
         .ok_or("SHINKI_EMU_CORE_NOT_AVAILABLE")?;
     snapshot.seek(SeekFrom::Start(0)).map_err(&read_error)?;
-    stage_open_package(snapshot, Some((&release.plugin_id, &release.version, release.identity.as_ref())), pending)?;
-    Ok(())
+    let (stem, _) = stage_open_package(
+        snapshot,
+        Some((&release.plugin_id, &release.version, release.identity.as_ref())),
+        pending,
+    )?;
+    Ok(stem)
 }
 
 type ExpectedRelease<'a> = (&'a str, &'a str, Option<&'a shinki_emu_metadata::CoreIdentity>);
@@ -314,6 +359,13 @@ fn stage_open_package(
     }
     fs::write(partial.path().join(CORE_MANIFEST), &manifest_bytes)
         .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
+    #[cfg(target_os = "android")]
+    if shinki_emu_manager_core::static_core_catalog::lookup(&manifest.plugin_id)
+        .is_some_and(|core| core.first_party)
+        && product_source_commit(partial.path(), &manifest).is_none()
+    {
+        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing verified product build receipt".into());
+    }
     publish_pending(pending, &stem, &partial.keep())?;
     Ok((stem, manifest))
 }

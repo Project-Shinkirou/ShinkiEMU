@@ -44,6 +44,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         let embedded = enabled && contains_target(core, "static_manager_targets", target)?;
         let standalone = enabled && contains_target(core, "supported_targets", target)?;
         let supported = embedded || standalone;
+        let first_party = core.get("source").is_none();
         let policy = android_dynamic::parse(core)?;
         let android_dynamic = if standalone && android_dynamic::TARGETS.contains(&target) {
             policy.map(|(minimum, requires_context)| {
@@ -67,7 +68,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         };
         let recognition = embedded_recognition_json.as_deref().unwrap_or("[]");
         writeln!(output,
-            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, supported: {supported}, standalone: {standalone}, android_dynamic: {android_dynamic}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
+            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, standalone: {standalone}, android_dynamic: {android_dynamic}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
         ).expect("String write");
     }
     if ids.is_empty() {

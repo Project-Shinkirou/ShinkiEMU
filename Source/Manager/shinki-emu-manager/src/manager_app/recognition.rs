@@ -76,6 +76,7 @@ pub(super) fn allows_installed_release(
             policy.minimum,
             is_static(plugin_id),
             cores::embedded_identity(plugin_id),
+            cores::embedded_product_release(plugin_id).map(|(version, _)| version),
             version,
             identity,
         )
@@ -92,6 +93,7 @@ fn android_release_eligible(
     floor: static_core_catalog::AndroidMinimumRelease,
     linked: bool,
     embedded: Option<&shinki_emu_metadata::CoreIdentity>,
+    embedded_product_version: Option<&str>,
     version: &str,
     identity: Option<&shinki_emu_metadata::CoreIdentity>,
 ) -> bool {
@@ -102,11 +104,16 @@ fn android_release_eligible(
                 && (!linked || embedded.is_some_and(|old| candidate.release_sequence > old.release_sequence))
         }),
         AndroidMinimumRelease::Semver(minimum) => {
-            // In-repo static cores don't have a comparable released SemVer.
-            !linked && identity.is_none() && version != "0.0.0-local"
+            identity.is_none() && version != "0.0.0-local"
                 && semver::Version::parse(version).is_ok_and(|candidate| {
-                    let minimum = semver::Version::parse(minimum).expect("validated Android release floor");
+                    let minimum = semver::Version::parse(minimum)
+                        .expect("validated Android release floor");
                     !candidate.cmp_precedence(&minimum).is_lt()
+                        && (!linked || embedded_product_version.is_some_and(|embedded| {
+                            semver::Version::parse(embedded).is_ok_and(|embedded| {
+                                candidate.cmp_precedence(&embedded).is_gt()
+                            })
+                        }))
                 })
         }
     }
@@ -140,22 +147,26 @@ mod android_policy_tests {
             let mut candidate = old.clone();
             candidate.release_sequence = minimum;
             let floor = Sequence(minimum);
-            assert!(!android_release_eligible(floor, false, None, &release.version, Some(old)));
-            assert!(!android_release_eligible(floor, false, None, "1.0.0", None));
-            assert!(android_release_eligible(floor, false, None, &candidate.version(), Some(&candidate)));
-            assert!(android_release_eligible(floor, true, Some(old), &candidate.version(), Some(&candidate)));
-            assert!(!android_release_eligible(floor, true, Some(&candidate), &candidate.version(), Some(&candidate)));
-            assert!(!android_release_eligible(floor, true, None, &candidate.version(), Some(&candidate)));
+            assert!(!android_release_eligible(floor, false, None, None, &release.version, Some(old)));
+            assert!(!android_release_eligible(floor, false, None, None, "1.0.0", None));
+            assert!(android_release_eligible(floor, false, None, None, &candidate.version(), Some(&candidate)));
+            assert!(android_release_eligible(floor, true, Some(old), None, &candidate.version(), Some(&candidate)));
+            assert!(!android_release_eligible(floor, true, Some(&candidate), None, &candidate.version(), Some(&candidate)));
+            assert!(!android_release_eligible(floor, true, None, None, &candidate.version(), Some(&candidate)));
         }
     }
 
     #[test]
     fn in_repo_release_needs_no_external_sequence_or_unknown_static_overlay() {
         let floor = Semver("1.2.3");
-        assert!(android_release_eligible(floor, false, None, "1.2.3", None));
-        assert!(android_release_eligible(floor, false, None, "1.3.0", None));
-        assert!(!android_release_eligible(floor, false, None, "1.2.3-rc.1", None));
-        assert!(!android_release_eligible(floor, true, None, "2.0.0", None));
+        assert!(android_release_eligible(floor, false, None, None, "1.2.3", None));
+        assert!(android_release_eligible(floor, false, None, None, "1.3.0", None));
+        assert!(!android_release_eligible(floor, false, None, None, "1.2.3-rc.1", None));
+        assert!(!android_release_eligible(floor, true, None, None, "2.0.0", None));
+        let stamped = Some("1.3.0+authenticated");
+        assert!(!android_release_eligible(floor, true, None, stamped, "1.3.0+different", None));
+        assert!(!android_release_eligible(floor, true, None, stamped, "1.2.4", None));
+        assert!(android_release_eligible(floor, true, None, stamped, "1.3.1", None));
     }
 
     #[test]
@@ -192,7 +203,7 @@ mod android_policy_tests {
         }
         let policy = |dir: &Path| {
             let manifest = core_package::read_manifest(dir).unwrap();
-            android_release_eligible(floor, false, None, &manifest.version, manifest.identity.as_ref())
+            android_release_eligible(floor, false, None, None, &manifest.version, manifest.identity.as_ref())
         };
         let failures = core_package::apply_pending_checked(root.path(), |_, dir| {
             policy(dir).then_some(()).ok_or("legacy release")
@@ -269,6 +280,7 @@ pub(super) struct InstalledCore {
     pub(super) manifest: core_package::CoreManifest,
     pub(super) library: PathBuf,
     pub(super) bundled: bool,
+    pub(super) source_commit: Option<String>,
 }
 
 pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> DeclaredRules {
@@ -305,7 +317,7 @@ fn package_library(
     directory: &Path,
     stem: &str,
     manifest: &core_package::CoreManifest,
-) -> Result<(PathBuf, String), &'static str> {
+) -> Result<(PathBuf, String, Option<String>), &'static str> {
     if !allows_installed_release(&manifest.plugin_id, &manifest.version, manifest.identity.as_ref())
         || manifest.version == "0.0.0-local"
     {
@@ -323,7 +335,17 @@ fn package_library(
     if !eligible {
         return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET");
     }
-    Ok((library, expected_stem))
+    let is_first_party = static_core_catalog::lookup(&manifest.plugin_id)
+        .is_some_and(|core| core.first_party);
+    let source_commit = if is_first_party {
+        core_package::product_source_commit(directory, manifest)
+    } else {
+        None
+    };
+    if cfg!(target_os = "android") && is_first_party && source_commit.is_none() {
+        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing verified product build receipt");
+    }
+    Ok((library, expected_stem, source_commit))
 }
 
 #[cfg(target_os = "android")]
@@ -357,10 +379,10 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             }
             let directory = entry.path();
             let Some(manifest) = core_package::read_manifest(&directory) else { continue };
-            let Ok((library, expected_stem)) = package_library(&directory, stem, &manifest) else { continue };
+            let Ok((library, expected_stem, source_commit)) = package_library(&directory, stem, &manifest) else { continue };
             if !stems.insert(expected_stem) { continue; }
             let id = manifest.plugin_id.clone();
-            let core = InstalledCore { library, manifest, bundled: index > 0 };
+            let core = InstalledCore { library, manifest, source_commit, bundled: index > 0 };
             if found.insert(id.clone(), core).is_some() { duplicate.insert(id); }
         }
     }
@@ -373,7 +395,12 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         let Some(executable_name) = library.file_name().and_then(|name| name.to_str()) else { continue };
         let Some(manifest) = core_package::read_bundled_manifest(&directory, executable_name) else { continue };
         if manifest.plugin_id == id && manifest.version != "0.0.0-local" {
-            found.insert(id.to_owned(), InstalledCore { library, manifest, bundled: true });
+            let source_commit = if entry.first_party {
+                core_package::product_source_commit(&directory, &manifest)
+            } else {
+                None
+            };
+            found.insert(id.to_owned(), InstalledCore { library, manifest, source_commit, bundled: true });
         }
     }
     Ok(found)
