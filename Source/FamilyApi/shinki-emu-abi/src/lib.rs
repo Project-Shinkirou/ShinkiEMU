@@ -7,6 +7,7 @@
 //! them. No call unwinds across this ABI. Input and polling never advance a VM.
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod android_context;
 mod config;
 mod core;
 #[cfg(feature = "diagnostic-bridge")]
@@ -16,6 +17,7 @@ mod module_owner;
 mod services;
 mod session_menu;
 mod surface;
+pub use android_context::*;
 pub use config::*;
 pub use core::*;
 pub use lease::*;
