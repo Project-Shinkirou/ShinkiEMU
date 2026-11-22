@@ -111,6 +111,10 @@ struct ShinkiEmuManagerController {
     native_failures: BTreeMap<String, String>,
     configuration_errors: BTreeMap<String, recognition::GameConfigurationError>,
     probe_choices: BTreeMap<String, Vec<Candidate>>,
+    /// Games without rule detections; their choices are the eligible official cores.
+    manual_games: BTreeSet<String>,
+    /// `(epoch, game, core)` of a manual launch, saved after its first valid frame.
+    manual_launch: Option<(u64, String, String)>,
     selected_case_id: Option<String>,
     search_query: String,
     diagnostic: String,

@@ -8,7 +8,9 @@ impl ShinkiEmuManagerController {
     ) -> Option<&Candidate> {
         if !self.cores_ready() { return None; }
         let candidate = self.candidates.get(&game.game_id)?;
-        if game.family_id.as_deref() != Some(candidate.family_id.as_str())
+        // A manual game binds its family from the chosen core only in memory.
+        if (!self.manual_games.contains(&game.game_id)
+            && game.family_id.as_deref() != Some(candidate.family_id.as_str()))
             || !self.plugin_available(&candidate.plugin_id)
         {
             return None;
@@ -76,14 +78,19 @@ impl ShinkiEmuManagerController {
             );
         }
         let session_mapping = self.game_input_mapping(case_id)?;
-        let saved_plugin = self.library.game_settings(case_id).map_err(|error| error.to_string())?
-            .and_then(|settings| settings.emulator_id);
+        let saved_plugin = self.selected_emulator(case_id)?;
         let candidate = self.candidates.get(case_id).cloned().ok_or_else(|| match saved_plugin {
             Some(id) if !self.plugin_available(&id) => "SHINKI_EMU_CORE_MISSING",
             Some(_) => "SHINKI_EMU_FAMILY_PROBE_REQUIRED",
             None => "SHINKI_EMU_FAMILY_PROVIDER_SELECTION_REQUIRED",
         })?;
         if !self.plugin_available(&candidate.plugin_id) { return Err("SHINKI_EMU_CORE_MISSING".into()); }
+        let manual = self.manual_games.contains(case_id);
+        let game = if manual {
+            GameRecord { family_id: Some(candidate.family_id.clone()), ..game }
+        } else {
+            game
+        };
         if game.family_id.as_deref() != Some(candidate.family_id.as_str()) {
             return Err("SHINKI_EMU_FAMILY_BINDING_MISMATCH".into());
         }
@@ -190,6 +197,7 @@ impl ShinkiEmuManagerController {
         self.mailbox
             .activate(epoch)
             .map_err(|error| error.to_string())?;
+        let plugin_id = candidate.plugin_id.clone();
         self.registry.open(owner::OpenSession {
             epoch,
             game,
@@ -203,6 +211,7 @@ impl ShinkiEmuManagerController {
             window_service: None,
             cancellation: shinki_emu_manager_core::NativeCancellation::new(epoch),
         })?;
+        self.manual_launch = manual.then(|| (epoch, case_id.to_owned(), plugin_id));
         self.selected_case_id = Some(case_id.into());
         self.session_mapping = Some(session_mapping);
         self.pending_events.clear();

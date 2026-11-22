@@ -55,6 +55,7 @@ impl ShinkiEmuManagerController {
     }
 
     fn poll_owner(&mut self) -> Result<bool, String> {
+        self.commit_manual_launch()?;
         let Some(epoch) = self.active.as_ref().map(|active| active.epoch) else {
             return Ok(false);
         };

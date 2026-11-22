@@ -26,10 +26,13 @@ impl ShinkiEmuManagerController {
         }
     }
 
-    /// Emulator picker for the library detail: empty unless there is a real choice.
+    /// Emulator picker for the library detail: empty unless there is a real
+    /// choice. A game without rule detections lists every eligible official
+    /// core, even a single one, because nothing is chosen for it.
     pub(super) fn emulator_choices(&self, game_id: &str) -> Vec<ChoiceViewModel> {
+        let minimum = if self.manual_games.contains(game_id) { 1 } else { 2 };
         match self.probe_selection_for_game(game_id) {
-            Some(choices) if choices.len() > 1 => choices
+            Some(choices) if choices.len() >= minimum => choices
                 .iter()
                 .map(|choice| ChoiceViewModel {
                     id: choice.plugin_id.clone(),

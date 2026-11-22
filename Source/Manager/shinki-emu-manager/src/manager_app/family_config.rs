@@ -53,6 +53,18 @@ impl ShinkiEmuManagerController {
     ) -> Result<ManagerViewModel, String> {
         self.ensure_no_session()?;
         if self.native_action.is_some() { return Err("SHINKI_EMU_PREPARE_BUSY".into()); }
+        if self.manual_games.contains(game_id) {
+            // Saved only after this core's session shows its first frame.
+            let candidate = self.probe_choices.get(game_id)
+                .and_then(|choices| choices.iter().find(|choice| choice.plugin_id == plugin_id))
+                .cloned()
+                .ok_or("SHINKI_EMU_EMULATOR_SELECTION_INVALID")?;
+            if self.candidates.get(game_id) != Some(&candidate) {
+                self.configuration_errors.remove(game_id);
+            }
+            self.candidates.insert(game_id.to_owned(), candidate);
+            return self.model();
+        }
         let previous = self.library.game_settings(game_id).map_err(|error| error.to_string())?
             .and_then(|settings| settings.emulator_id);
         self.install_probe_choice(game_id, plugin_id)?;
