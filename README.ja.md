@@ -36,6 +36,8 @@ ShinkiEMU は 11 のコアで 10 のエンジンファミリーに対応して�
 
 エンジンを認識できても、そのゲームが遊べるとは限りません。ゲーム・プラットフォーム・リリースごとの結果はポータルの[互換性ページ](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)にあり、レポートのないゲームは未報告です。結果を追加するには[ゲーム互換性報告](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)フォームを使ってください。
 
+[ADV32 コア](docs/ja/cores/shinki-emu-adv32.md) は開発中です。
+
 ## 拡張性
 
 - **コアはプラグイン**：コアは Manager とは別にリリース・更新されます。デスクトップ版 Manager はアプリ内のコアカタログからコアをインストール・更新し、Android と iOS の Manager はコアを静的リンクします。

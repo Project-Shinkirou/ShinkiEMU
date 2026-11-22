@@ -5,6 +5,7 @@ members = [
     "Source/Tools/shinki-emu-build",
     "Source/SDK/shinki-emu-sdk",
     "Source/FamilyApi/shinki-emu-abi",
+    "Source/Families/shinki-emu-adv32",
     "Source/Families/shinki-emu-cmvs",
     "Source/Families/shinki-emu-musica",
     "Source/Families/shinki-emu-musica-keys",

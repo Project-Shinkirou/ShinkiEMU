@@ -64,6 +64,10 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
+## CIRCUS 资源格式
+
+ADV32 核心的 CRX 图像、CRM/PCK 归档和 XPCM 音频读取参考了 [GARbro 的 CIRCUS 格式实现](https://github.com/morkt/GARbro/tree/b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0/ArcFormats/Circus)。版权归 morkt（2015–2016），完整 MIT 许可随核心打包，见 [GARbro.txt](docs/licenses/shinki-emu-adv32/GARbro.txt)。原版游戏文件不属于核心源码或发布包。
+
 ## ASS 字幕依赖
 
 `roukaku-subtitle` 使用 <https://github.com/libass/libass> 的 libass 0.17.5（ISC），原生依赖安装在独立 vcpkg 树中，使用 overlay triplet `x64-windows-static-md-dynbidi`（RoukakuEngine 的 `Engine/Source/Runtime/roukaku-subtitle/triplets/`）：libass、FreeType、HarfBuzz、Brotli、bzip2、libpng、zlib 静态链接，只有 FriBidi 构建为 DLL。RFVP 原生源码的 manifest 与独立 lockfile 固定共享实现 `Project-Shinkirou/RoukakuEngine`；Kira 另行固定。打包时显式指定该实际安装的 `share/`，逐字保留以下 `copyright` 文件到 `licenses/subtitle/<port>/copyright`：
@@ -186,3 +190,4 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 - Artemis：固定 [`Project-Shinkirou/art3m1s-core@5243005cf0aaaeac89b1803e57381e9c0b14b95c`](https://github.com/Project-Shinkirou/art3m1s-core/commit/5243005cf0aaaeac89b1803e57381e9c0b14b95c)，分支 `shinki-android-isolation`，适配包为 fork 根 workspace 成员 `crates/shinki-emu-art3m1s-core`。MPL-2.0，所有平台统一使用 Luau，保留 Artemis Lua 兼容层、Vulkan/FFmpeg 与完整来源，见 `ThirdParty/art3m1s-core/LICENSE` 与 `crates/pf8/LICENSE`；差异见 fork 的 `crates/shinki-emu-art3m1s-core/MODIFICATIONS.md`。当前 `extra_archive` 直接消费显式额外 PFS，保留基包及原覆盖顺序。
 - Sena：SoftPAL 引擎的模拟器，上游 <https://github.com/xmoezzz/sena-rs>；固定 [`Project-Shinkirou/sena-rs@22ac45acc6a436516333a85a4ac3b8470e1cc574`](https://github.com/Project-Shinkirou/sena-rs/commit/22ac45acc6a436516333a85a4ac3b8470e1cc574)，分支 `shinki`，适配包 `crates/shinki-emu-sena-rs`。原生配置提供 `text_language=jp/cn/tc`，选择多语言记录字段并保留原日文单字段行为；字体由原生游戏字体路径或显式字体文件提供，光栅尺寸经 C ABI v3 `render_extent` 请求。完整 MPL-2.0 许可位于 `ThirdParty/sena-rs/LICENSE-MPL-2.0`，嵌入字体另见 `docs/licenses/sena-rs/MS-PGothic.txt`。支持范围仍为原生及 Steam Koikake，未扩大到其他 SoftPAL。
 - Ethornell：上游 <https://github.com/xmoezzz/ethornell-rs>，workspace manifest 声明 `MPL-2.0`；fork 根目录补充许可全文 `LICENSE-MPL-2.0`，核心包附该全文与 `MODIFICATIONS.md`。固定来源 [`Project-Shinkirou/ethornell-rs@f8362be7d2f4d634c25a98a317dfe56ffae56346`](https://github.com/Project-Shinkirou/ethornell-rs/commit/f8362be7d2f4d634c25a98a317dfe56ffae56346)，分支 `shinki`，适配包 `crates/shinki-emu-ethornell-rs`。当前原生能力包括仅作用于显示文本的 GBK 解码选择和每 runtime 显式字体，不代表未知补丁 handler、字体注册或资源优先级已经闭合。源码由 `build/cores.toml` 固定并准备到 `ThirdParty/ethornell-rs`。
+

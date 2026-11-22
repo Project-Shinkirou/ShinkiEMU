@@ -36,6 +36,8 @@ ShinkiEMU supports ten engine families through eleven cores. Each core keeps its
 
 Recognizing an engine is not a playability result. Results for specific games, platforms and releases are on the portal's [compatibility page](https://project-shinkirou.github.io/en/shinkiemu/compatibility/); a game without a report is unreported. To add one, use the [game compatibility report](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml) form.
 
+The [ADV32 core](docs/en/cores/shinki-emu-adv32.md) is under development.
+
 ## Extensibility
 
 - **Cores are plugins.** Cores are released and updated independently of the Manager. Desktop Managers install and update them from the in-app core catalog; Android and iOS Managers link their cores statically.
