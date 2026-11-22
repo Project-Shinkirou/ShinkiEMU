@@ -20,9 +20,9 @@ shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --fra
 shinki-emu-headless compare --actual artifacts/compare/frame-000180.png --baseline artifacts/run/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001
 ```
 
-`--core` 接受 ZIP、解压目录、动态库或宿主静态注册的核心 ID。`--no-default-features` 可构建不带 Manager UI 的核心运行器；`--features static-cmvs` 提供静态 `shinki.emu.cmvs`，`--features static-siglus` 提供与 Manager 同 pin 的静态 `siglus_rs`。Manager 对应命令为 `shinki-emu-manager headless ...`，与图形界面共用 `static_cores::STATIC_CORES` 清单。
+独立运行器的 `--core` 指定核心 ZIP、解压目录或动态库的路径。用 `--no-default-features` 构建时不包含 Manager 界面。`shinki-emu-manager headless ...` 运行内置核心时使用核心 ID，与图形界面共用 `static_cores::STATIC_CORES` 清单。
 
-用 `cargo build -p shinki-emu-manager --features static-cmvs` 构建 Manager，才能在其 GUI owner 和 `shinki-emu-manager headless --core shinki.emu.cmvs ...` 中注册 CMVS。单独启用独立运行器的 feature 不会替 Manager 注册核心。桌面版本未启用该可选 feature 时，仍使用原有的动态核心发现。
+用 `cargo build -p shinki-emu-manager --features static-cmvs` 构建 Manager，可在图形界面和 `shinki-emu-manager headless --core shinki.emu.cmvs ...` 中运行内置的 CMVS。未启用该 feature 的桌面 Manager 仍使用原有的动态核心发现。
 
 运行器先把整个游戏复制到独立临时目录，再把副本路径交给核心。游戏目录内的存档与配置写入只影响副本；不把原存档目录作为可写路径传给核心。大游戏需要足够的临时空间。符号链接和特殊文件会被拒绝。核心是本机可执行代码，这不是操作系统沙箱；配置中明确指向游戏目录外的路径应改为临时路径。
 
