@@ -3,7 +3,7 @@ import {
     FilledButton, TonalButton, OutlineButton, TextButton, IconButton, OutlinedCard, HorizontalDivider,
     Icon, CircularProgressIndicator,
 } from "@material";
-import { App, Library, Selection, BangumiProgress, Settings } from "../globals.slint";
+import { App, Cores, Library, Selection, BangumiProgress, Settings } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme, Accent } from "../theme.slint";
 import { ChoiceSelect } from "../components/select.slint";
@@ -301,7 +301,7 @@ export component DetailPanel {
                                 alignment: start;
                                 padding-left: 26px;
                                 TextButton {
-                                    text: @tr("安装核心");
+                                    text: Cores.online-downloads ? @tr("安装核心") : @tr("前往核心");
                                     icon: Icons.memory;
                                     clicked => { App.page = "cores"; }
                                 }

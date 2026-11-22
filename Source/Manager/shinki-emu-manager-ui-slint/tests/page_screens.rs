@@ -341,6 +341,7 @@ fn base() -> ManagerViewModel {
     m.library.can_refresh = true;
     m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("刷新资料库").into();
     m.network.allowed = true;
+    m.cores.online_downloads = true;
     m.settings.roots = vec!["D:/Games/Visual Novels".into(), "E:/Archive/Galgame".into()];
     m
 }
@@ -1677,6 +1678,31 @@ fn exercise_core_cards(
     save("cores/offline-install-disabled", frame());
     click_label(software, tr!("安装"));
     assert_eq!(clicked.borrow().len(), 2, "offline install remains disabled");
+
+    // `no-core-download`: the same installed and bundled cores stay listed with
+    // their defaults, diagnosis and local install; online routes are gone.
+    model.network.allowed = true;
+    model.cores.online_downloads = false;
+    model.cores.updates_available = 1;
+    model.cores.update_all_count = 1;
+    model.cores.items[2].download = CoreDownloadViewModel::default();
+    a.apply(&model);
+    frame();
+    reveal(tr!("默认设置"));
+    save("cores/no-core-download", frame());
+    let update_all = tr!("全部更新（{}）").replace("{}", "1");
+    for hidden in [tr!("安装"), tr!("更新核心"), update_all.as_str(), update_display.as_str(), "Aurora VN Runtime"] {
+        assert!(labeled_item(software, |text| text == hidden).is_none(), "{hidden} is hidden without online downloads");
+    }
+    let local = Rc::new(RefCell::new(0));
+    let picks = local.clone();
+    cores.on_install_local(move || *picks.borrow_mut() += 1);
+    let local_label = tr!("从本地安装…");
+    reveal(local_label);
+    assert!(labeled_item(software, |text| text == tr!("此版本不在线下载核心，已安装和随附的核心照常可用。")).is_some());
+    click_label(software, local_label);
+    assert_eq!(*local.borrow(), 1, "local official packages stay reachable");
+    assert_eq!(clicked.borrow().len(), 2, "no online install was requested");
     material.set_touch(false);
     reset(a);
 }

@@ -24,17 +24,18 @@ pub(super) fn run(
         if cancelled.load(Ordering::Acquire) {
             return Err("SHINKI_EMU_OWNER_CANCELLED".into());
         }
-        let cores = data_dir.join("cores");
-        fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
-        // App startup settled the previous session's operations. Also apply
-        // packages staged in this session before the first lazy core load.
-        let pending_failures = core_package::apply_pending(&cores);
+        // Desktop also accepts stages created before its first lazy load.
+        // Android applies stages only when a new app process starts.
+        #[cfg(not(target_os = "android"))]
+        let errors = {
+            let cores = core_directory(&data_dir)?;
+            fs::create_dir_all(&cores).map_err(|_| "SHINKI_EMU_CORES_DIRECTORY_CREATE")?;
+            core_package::apply_pending(&cores).into_iter().collect()
+        };
+        #[cfg(target_os = "android")]
+        let errors = startup_core_package_failures().iter().cloned().collect();
         let directories = recognition::directories(&data_dir)?;
-        let mut errors = BTreeMap::new();
         let installed = recognition::installed(&directories)?;
-        for (file, error) in pending_failures {
-            errors.insert(file, error);
-        }
         Ok((installed, errors))
     })();
     let installed = match initialized {
@@ -301,8 +302,6 @@ pub(super) fn service_due(
     }
 }
 
-use shinki_emu_manager::static_cores::STATIC_CORES;
-
 fn activate(
     registry: &mut FamilyProviderRegistry,
     installed: &BTreeMap<String, recognition::InstalledCore>,
@@ -311,40 +310,62 @@ fn activate(
     // Synthetic providers can only enter through the test-only Registry command.
     #[cfg(test)]
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
-    let catalog = recognition::runnable_core(installed, plugin_id)?;
+    let catalog = recognition::supported_core(plugin_id)?;
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
-    #[cfg(target_os = "android")]
-    {
-        let root = crate::platform::bundled_resource_dir()
-            .ok_or("SHINKI_EMU_DATA_DIRECTORY_UNAVAILABLE")?;
-        match plugin_id {
-            "renpy" => {
-                let resources = root.join("cores/renpy/Resources");
-                let path = resources.to_str().ok_or("RENPY_RESOURCE_ROOT_ENCODING")?;
-                let mut error = shinki_emu_abi::Error::default();
-                let status = shinki_emu_renpy::set_resource_root(path, &mut error);
-                if status != shinki_emu_abi::OK { return Err(format!("RENPY_RESOURCE_ROOT ({status})")); }
-            }
-            "kirikiroid2-web" | "krkr2" => {
-                let resources = root.join(format!("cores/{plugin_id}/Resources"));
-                let path = resources.to_str().ok_or("KRKR_RESOURCE_ROOT_ENCODING")?;
-                let status = if plugin_id == "krkr2" { shinki_emu_krkr2::set_resource_root(path) } else { shinki_emu_kirikiroid2_web::set_resource_root(path) };
-                if status != shinki_emu_abi::OK { return Err(format!("KRKR_RESOURCE_ROOT ({status})")); }
-            }
-            _ => {}
+    let provider = match recognition::core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")? {
+        recognition::CoreSource::Static(query) => {
+            #[cfg(target_os = "android")]
+            set_static_android_resource_root(plugin_id)?;
+            unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::from_query(query) }
         }
-    }
-    let provider = if let Some((_, query)) = STATIC_CORES.iter().find(|(id, _)| *id == plugin_id) {
-        unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::from_query(*query) }.map_err(|error| error.to_string())?
-    } else {
-        let core = &installed[plugin_id];
-        shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library).map_err(|error| error.to_string())?
-    };
+        recognition::CoreSource::Package(core) => {
+            #[cfg(target_os = "android")]
+            {
+                let policy = catalog.android_dynamic.ok_or("SHINKI_EMU_CORE_UNSUPPORTED_TARGET")?;
+                if !android_core_library(&core.library) {
+                    return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+                }
+                // Package dependencies use Bionic's DT_RUNPATH ($ORIGIN).
+                // Packaged cores locate their own resources beside the library.
+                let (vm, application) = crate::platform::android::core_application_context()?;
+                // SAFETY: the host holds these handles for the process lifetime.
+                unsafe {
+                    shinki_emu_manager_core::LoadedFamilyPlugin::load_android(
+                        &core.library, vm, application, policy.requires_context,
+                    )
+                }
+            }
+            #[cfg(not(target_os = "android"))]
+            shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
+        }
+    }.map_err(|error| error.to_string())?;
     let descriptor = provider.manager_descriptor();
     if descriptor.plugin_id != plugin_id || catalog.family_id != descriptor.family_id {
         return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
     }
     registry.register_provider(provider).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn set_static_android_resource_root(plugin_id: &str) -> Result<(), String> {
+    let (encoding, code) = match plugin_id {
+        "renpy" => ("RENPY_RESOURCE_ROOT_ENCODING", "RENPY_RESOURCE_ROOT"),
+        "kirikiroid2-web" | "krkr2" => ("KRKR_RESOURCE_ROOT_ENCODING", "KRKR_RESOURCE_ROOT"),
+        _ => return Ok(()),
+    };
+    let root = crate::platform::bundled_resource_dir()
+        .ok_or("SHINKI_EMU_DATA_DIRECTORY_UNAVAILABLE")?;
+    let resources = root.join("cores").join(plugin_id).join("Resources");
+    let path = resources.to_str().ok_or(encoding)?;
+    let status = match plugin_id {
+        "renpy" => shinki_emu_renpy::set_resource_root(path, &mut shinki_emu_abi::Error::default()),
+        "krkr2" => shinki_emu_krkr2::set_resource_root(path),
+        _ => shinki_emu_kirikiroid2_web::set_resource_root(path),
+    };
+    if status != shinki_emu_abi::OK {
+        return Err(format!("{code} ({status})"));
+    }
     Ok(())
 }
 

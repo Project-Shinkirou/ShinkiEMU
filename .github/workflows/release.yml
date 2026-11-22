@@ -1,5 +1,5 @@
 name: Component release
-# One component: push its tag. Many components: dispatch this workflow.
+# Manager and external cores can use tags. Dispatch Manager with any self-owned core.
 # Preparation uses the selected exact product commit; prepare-only dispatches
 # keep every build/source gate but never create a tag or public release.
 on:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: SemVer for Manager/self-owned cores only; external core identities come from pinned upstream and adapter sources
+        description: One product SemVer for Manager and all selected self-owned cores; external cores use their own pinned identities
         required: false
       components:
         description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
@@ -100,7 +100,7 @@ jobs:
               $requested = $matched
               $own = @($rows | Where-Object { $_.component -ceq $matched[0] })
               if (-not $own[0].external) {
-                $version = $env:GITHUB_REF_NAME.Substring("core-$(& $slug $matched[0])-v".Length)
+                throw 'New self-owned core releases require a dispatch with the matching Manager batch'
               }
             }
           } elseif ($env:INPUT_COMPONENTS.Trim() -ceq 'all') {
@@ -109,6 +109,12 @@ jobs:
             $requested = @($env:INPUT_COMPONENTS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
           }
           if ($requested.Count -eq 0) { throw 'No components selected' }
+          $ownedRows = @($rows | Where-Object { $_.component -cin $requested -and $_.component -cne 'manager' -and -not $_.external })
+          if ($ownedRows.Count -gt 0 -and 'manager' -cnotin $requested) {
+            throw 'Select Manager with self-owned cores so they share one product version and source commit'
+          }
+          $env:SHINKI_EMU_RELEASE_PRODUCT_VERSION = $version
+          $env:SHINKI_EMU_RELEASE_SOURCE_COMMIT = $sourceCommit
           $versions = @{}
           $components = @()
           foreach ($component in $requested) {
@@ -119,10 +125,12 @@ jobs:
             if ($env:RELEASE_SCOPE -ne 'all') { $arguments += @('--scope', $env:RELEASE_SCOPE) }
             if (-not $own[0].external) { $arguments += @('--version', $version) }
             $identity = cargo @arguments | ConvertFrom-Json
+            if ($identity.source_commit -cne $sourceCommit) { throw "Mixed product revision for $component" }
+            if (-not $own[0].external -and $identity.version -cne $version) { throw "Mixed product version for $component" }
             if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match verified component identity' }
             if ($env:RELEASE_SCOPE -ne 'all') { $localManager = $localManager -or $identity.local_manager }
             $versions[$component] = $identity.version
-            $components += @{component=$component; version=$identity.version}
+            $components += @{component=$component; version=$identity.version; external=$own[0].external; tag=$identity.release_tag}
           }
           $include = @($rows | Where-Object { $_.component -cin $requested } | ForEach-Object {
             $_ | Add-Member -NotePropertyName version -NotePropertyValue $versions[$_.component] -PassThru
@@ -142,6 +150,8 @@ jobs:
     timeout-minutes: 360
     env:
       SHINKI_EMU_CI_VERSION: ${{ matrix.version }}
+      SHINKI_EMU_RELEASE_PRODUCT_VERSION: ${{ needs.select.outputs.version }}
+      SHINKI_EMU_RELEASE_SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
       ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
       SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
       SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
@@ -217,6 +227,10 @@ jobs:
             }
           }
           else { cargo xtask deps --target $env:TARGET --core $env:COMPONENT }
+      - name: Prepare standalone Android host producers
+        if: contains(matrix.target, 'android') && matrix.component == 'manager'
+        shell: bash
+        run: python3 build/ci/prepare-android-host-cores.py
       - name: Preserve failed Renpy host NASM configuration
         if: failure() && matrix.component == 'manager' && contains(matrix.target, 'android')
         uses: actions/upload-artifact@v7
@@ -303,6 +317,8 @@ jobs:
       COMPONENT: ${{ matrix.component }}
       VERSION: ${{ matrix.version }}
       SHINKI_EMU_RELEASE_CI_RUN_ID: ${{ inputs.ci_run_id }}
+      SHINKI_EMU_RELEASE_PRODUCT_VERSION: ${{ needs.select.outputs.version }}
+      SHINKI_EMU_RELEASE_SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -314,27 +330,33 @@ jobs:
           pattern: release-files-${{ matrix.component }}@*
           path: .work/release/
           merge-multiple: true
+      - uses: actions/download-artifact@v8
+        if: matrix.component != 'manager' && !matrix.external
+        with:
+          pattern: release-files-manager@*
+          path: .work/release/
+          merge-multiple: true
       - name: Require every build row of this component
         shell: bash
         env:
           MATRIX: ${{ needs.select.outputs.matrix }}
           SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
+          RELEASE_TAG: ${{ matrix.tag }}
+          EXTERNAL: ${{ matrix.external }}
         run: |
           set -euo pipefail
           # Prepared files sit at .work/release/<tag>/<target>/release.json.
           missing=$(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX" \
-            | while IFS= read -r target; do compgen -G ".work/release/*/$target/release.json" >/dev/null || printf '%s ' "$target"; done)
+            | while IFS= read -r target; do test -f ".work/release/$RELEASE_TAG/$target/release.json" || printf '%s ' "$target"; done)
           if test -n "$missing"; then
             echo "- **$COMPONENT $VERSION skipped**: build rows failed or were cancelled: $missing" >> "$GITHUB_STEP_SUMMARY"
             echo "::error::$COMPONENT not published; build rows failed or were cancelled: $missing"
             exit 1
           fi
           while IFS= read -r target; do
-            records=(.work/release/*/"$target"/release.json)
-            test "${#records[@]}" -eq 1
-            jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" \
-              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and (.release_scope // "all") == $scope' \
-              "${records[0]}" >/dev/null
+            jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" --arg external "$EXTERNAL" \
+              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and (.release_scope // "all") == $scope and ($external == "true" or .product_version == $version)' \
+              ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
       - name: Local Manager artifact handoff
         if: matrix.component == 'manager' && needs.select.outputs.local_manager == 'true'

@@ -36,9 +36,16 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         let family = core["family_id"].as_str().unwrap();
         let name = core["display_name"].as_str().unwrap();
         let embedded = enabled && declared(core, "static_manager_targets", target);
-        let supported = enabled && (embedded || declared(core, "supported_targets", target));
+        let standalone = enabled && declared(core, "supported_targets", target);
+        let supported = embedded || standalone;
         consumer.push_str(&format!(
-            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.embedded), ({family:?}, {name:?}, {supported}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.embedded);\n"
+            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded), ({family:?}, {name:?}, {supported}, {standalone}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded);\n"
+        ));
+        let android = ["aarch64-linux-android", "x86_64-linux-android"].contains(&target);
+        let policy = core.get("android_dynamic").filter(|_| android && standalone);
+        let requires_context = policy.map(|policy| policy["requires_context"].as_bool().unwrap());
+        consumer.push_str(&format!(
+            "assert_eq!(entry.android_dynamic.map(|policy| policy.requires_context), {requires_context:?});\n"
         ));
         if id == "rfvp" && core.get("recognition").is_some() {
             consumer.push_str(&format!(
@@ -72,6 +79,22 @@ fn windows_and_both_android_catalogs_are_consumable_without_installed_plugins() 
     for target in ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-linux-android"] {
         consume_generated(&cores, &targets, target, true);
     }
+}
+
+#[test]
+fn android_policy_does_not_enable_a_foreign_or_blocked_target() {
+    let (mut cores, targets) = inventory();
+    let siglus = cores["cores"].as_array_mut().unwrap().iter_mut()
+        .find(|core| core["id"].as_str() == Some("siglus_rs")).unwrap();
+    siglus["supported_targets"].as_array_mut().unwrap()
+        .retain(|target| target.as_str() != Some("x86_64-linux-android"));
+    siglus.as_table_mut().unwrap().insert(
+        "android_dynamic".into(),
+        toml::from_str::<toml::Value>("minimum_release = 3\nrequires_context = true").unwrap(),
+    );
+    consume_generated(&cores, &targets, "aarch64-linux-android", true);
+    consume_generated(&cores, &targets, "x86_64-linux-android", true);
+    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
 }
 
 #[test]

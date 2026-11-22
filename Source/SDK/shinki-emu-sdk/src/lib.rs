@@ -55,6 +55,9 @@ mod native_audio;
 #[cfg(feature = "device-audio")]
 pub use native_audio::{NativeAudioOutput, NativeAudioProgress, NativeAudioProgressReader};
 
+#[cfg(all(target_os = "android", feature = "device-audio"))]
+pub mod android_audio;
+
 #[cfg(feature = "runtime")]
 pub mod native;
 

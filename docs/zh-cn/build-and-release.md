@@ -66,7 +66,9 @@ Manager 只按当前目标的 `static_manager_targets` 收集嵌入构建清单�
 
 Windows 已验收的图形依赖组合是 wgpu-hal 30.0.1、gpu-allocator 0.28.0，两者共用 windows 0.62.2 类型。其他消费者可以保留旧 windows crate，但不能让 D3D12 边界跨版本；合并分支锁文件时须保留已验收的 allocator 依赖边。
 
-编译指定版本的 Manager 前，先将 `SHINKI_EMU_PRODUCT_VERSION` 设为与 `package`/`release` 相同的 SemVer。未设置时，xtask 使用 CI 已有的 `SHINKI_EMU_CI_VERSION`；两者同时存在必须一致。都未设置的开发构建才使用 Manager package version，不为发行标签修改 `Cargo.toml`。Manager 构建脚本写出 `OUT_DIR/manager-build-version.json`，xtask 核对实际编译身份，并在 build/package/release 记录中保存 `product_version`。缺失、错版或 Android 两个 ABI 版本不同都会拒绝打包；应以目标版本正常重建，不能给旧 receipt 改标签。Apple cross 容器转发同一个产品版本变量。
+Manager 和登记发版的自研核心使用同一个 `SHINKI_EMU_PRODUCT_VERSION`。未设置时使用 `SHINKI_EMU_CI_VERSION`；两者都设置时必须一致。普通开发构建未提供这两个值时，使用 Manager 的 crate 版本。xtask 将发行构建绑定到干净的冻结提交，并核对 Manager 构建脚本写入 `OUT_DIR/manager-build-version.json` 的版本和提交。打包与发版必须匹配构建记录，Android 两个 ABI 也必须一致。旧构建记录不能改标签，应按目标版本重建。
+
+Manager 的可选 Cargo feature 通过 `SHINKI_EMU_MANAGER_FEATURES` 指定，值为逗号分隔的列表，只在 `build`、`check`、`ci` 处理 Manager 时读取。名称必须在 Manager 的 `[features]` 中声明，`default` 和未声明的名称会被拒绝。列表在默认 feature 之上追加，并记入 `.work/build/<target>/manager.json` 的 `features`。`no-core-download` 去掉核心页的在线安装、更新和全部更新，Manager 也会拒绝下载核心包。已安装和随附的核心、本地官方核心包、游戏商店和元数据照常可用。iOS 和 OHOS 无论是否启用该 feature 都不下载核心。
 
 beta.7 已知问题：官方 Windows 二进制内部自报 `0.1.0-beta.6`，而发行包标签为 beta.7。旧 tag 和资产保持不变。上述编译注入与 receipt 校验用于后续构建，[Manager beta.8 发布说明](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)已保留这项已知问题记录。
 
@@ -358,7 +360,7 @@ Android 正式发行证书 SHA256 仍为 `c415bd462d26574758ed455055ff528a3bd603
 
 需要只准备、不公开时，仍运行这份 `release.yml`，传入 `prepare_only=true`，并可用 `source_commit` 指定精确的 40 位产品提交。显式指定源码提交只允许用于仅准备模式。原生构建、打包、平台签名及源码和许可证打包命令保持不变；最终交接要求每份记录对应实际产品提交、组件、版本和目标，并跳过公开发行步骤。workflow dispatch SHA 只标识编排代码，不是产品来源。从已接受产品提交的干净检出用现有 xtask 发布实际产物；CI 成功不代替产物可获取、正常包结构及平台签名要求。
 
-工作流的 `version` 只适用于 Manager/自研核心；第三方组件在展开平台矩阵前分别核验并计算自己的版本。第三方执行上面的发布命令时省略 `--version`，Manager/自研核心仍须传入。
+触发工作流时，Manager 与本批发版的自研核心一同选择，传入同一个 `version`。手动准备和发布自研核心也要设置 `SHINKI_EMU_RELEASE_PRODUCT_VERSION` 和 `SHINKI_EMU_RELEASE_SOURCE_COMMIT`，传入同一产品版本和完整冻结提交，并保留对应的 Manager 构建资产和记录。自研核心可以先于 Manager 公开。内置清单、核心构建记录与对应源码包使用完整产品 SHA；下载仍用每份资产各自的 SHA-256 校验。第三方核心继续独立解析 fork 身份，发布命令省略 `--version`。
 
 元数据命令见 [Metadata](metadata.md)，核心包契约见[核心 ABI](core-abi.md)。
 

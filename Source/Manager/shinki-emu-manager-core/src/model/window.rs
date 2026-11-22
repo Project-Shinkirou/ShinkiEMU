@@ -45,15 +45,16 @@ pub struct FamilyWindowIcon {
 
 impl FamilyWindowIcon {
     pub fn validate(&self) -> FamilyResult<()> {
-        let expected = self
-            .width
-            .checked_mul(self.height)
-            .and_then(|n| n.checked_mul(4));
-        if self.width == 0
-            || self.height == 0
-            || self.width > MAX_WINDOW_ICON_DIMENSION
-            || self.height > MAX_WINDOW_ICON_DIMENSION
-            || expected.map(|n| n as usize) != Some(self.rgba.len())
+        Self::validate_rgba8(self.width, self.height, self.rgba.len())
+    }
+
+    pub fn validate_rgba8(width: u32, height: u32, byte_len: usize) -> FamilyResult<()> {
+        let expected = width.checked_mul(height).and_then(|n| n.checked_mul(4));
+        if width == 0
+            || height == 0
+            || width > MAX_WINDOW_ICON_DIMENSION
+            || height > MAX_WINDOW_ICON_DIMENSION
+            || expected.map(|n| n as usize) != Some(byte_len)
         {
             return Err(FamilyError::invalid(
                 "SHINKI_EMU_FAMILY_WINDOW_ICON",

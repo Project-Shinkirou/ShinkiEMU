@@ -54,6 +54,17 @@ pub(super) fn core_platform() -> String {
     format!("{}-{}", env::consts::OS, env::consts::ARCH)
 }
 
+/// Online core install and update in this build. The Cargo feature
+/// `no-core-download` turns it off; iOS and OHOS never download cores.
+/// Which plugins a download may stage stays with `allows_core_packages`.
+pub(super) const fn online_core_downloads() -> bool {
+    !cfg!(any(feature = "no-core-download", target_os = "ios", target_env = "ohos"))
+}
+
+fn require_online_core_downloads() -> Result<(), String> {
+    if online_core_downloads() { Ok(()) } else { Err("SHINKI_EMU_CORE_DOWNLOAD_DISABLED".into()) }
+}
+
 pub(super) fn embedded_identity(
     plugin_id: &str,
 ) -> Option<&'static shinki_emu_metadata::CoreIdentity> {
@@ -71,6 +82,17 @@ pub(super) fn embedded_identity(
             identities
         });
     IDENTITIES.get(plugin_id)
+}
+
+pub(super) fn embedded_product_release(plugin_id: &str) -> Option<(&'static str, &'static str)> {
+    if !recognition::is_static(plugin_id)
+        || !shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
+            .is_some_and(|entry| entry.first_party)
+    {
+        return None;
+    }
+    let commit = env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT");
+    (!commit.is_empty()).then_some((shinki_emu_manager::version(), commit))
 }
 
 fn capability_label(capability: FamilyCapability) -> &'static str {
@@ -98,14 +120,20 @@ fn core_card_version(version: &str, identity: Option<&CoreIdentity>) -> String {
     )
 }
 
+pub(super) fn product_version_label(version: &str, source_commit: Option<&str>) -> String {
+    match source_commit.and_then(|commit| commit.get(..8)) {
+        Some(short) => format!("{version} ({short})"),
+        None => version.to_owned(),
+    }
+}
+
 impl ShinkiEmuManagerController {
-    fn cores_dir(&self) -> PathBuf {
-        self.data_dir.join("cores")
+    fn cores_dir(&self) -> Result<PathBuf, String> {
+        core_directory(&self.data_dir)
     }
 
     fn allows_core_packages(plugin_id: &str) -> bool {
-        !cfg!(any(target_os = "android", target_os = "ios", target_env = "ohos"))
-            && recognition::supported_core(plugin_id).is_ok()
+        recognition::supports_installed_packages(plugin_id)
     }
 
     /// Highest released version of a core for this platform and ABI.
@@ -116,23 +144,44 @@ impl ShinkiEmuManagerController {
             &core_platform(),
             INDEPENDENT_FAMILY_ABI_FINGERPRINT,
         )
+        .filter(|entry| recognition::allows_installed_release(plugin_id, &entry.version, entry.identity.as_ref()))
+    }
+
+    /// The release online install, update and 全部更新 may fetch for a core;
+    /// none while this build has online core downloads turned off.
+    fn downloadable_core(&self, plugin_id: &str) -> Option<&CoreCatalogEntry> {
+        if !online_core_downloads() { return None; }
+        self.online_core(plugin_id)
     }
     pub(super) fn core_release<'a>(
         &'a self,
         plugin_id: &str,
-    ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>) {
+    ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>, Option<&'a str>) {
         if let Some(core) = self.registry.installed().get(plugin_id) {
-            return (&core.manifest.version, core.manifest.identity.as_ref());
+            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref());
         }
-        let identity = embedded_identity(plugin_id);
-        ("", identity)
+        if let Some((version, source_commit)) = embedded_product_release(plugin_id) {
+            return (version, None, Some(source_commit));
+        }
+        ("", embedded_identity(plugin_id), None)
     }
 
     /// Loaded, installed-but-unloaded, failed, pending and online-available
     /// cores, plus each item's directory stem (empty for online-only entries).
     fn core_items(&self) -> Result<(CoresViewModel, Vec<String>), String> {
-        let cores = self.cores_dir();
+        let cores = self.cores_dir()?;
         let pending = core_package::pending_entries(&cores)?;
+        #[cfg(target_os = "android")]
+        let overlays: BTreeMap<_, _> = pending.iter()
+            .filter(|(_, kind)| **kind == PendingKind::Install)
+            .filter_map(|(stem, _)| {
+                let package = core_package::read_manifest(&cores.join(core_package::PENDING).join(stem))?;
+                (recognition::allows_installed_release(&package.plugin_id, &package.version, package.identity.as_ref())
+                    && recognition::is_static(&package.plugin_id)
+                    && !self.registry.installed().contains_key(&package.plugin_id))
+                    .then_some((package.plugin_id, stem))
+            })
+            .collect();
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
         let mut listed_stems = BTreeSet::new();
@@ -142,9 +191,20 @@ impl ShinkiEmuManagerController {
             let installed = self.registry.installed().get(&id);
             let catalog = shinki_emu_manager_core::static_core_catalog::lookup(&id);
             let native = self.registry.descriptor(&id);
-            let stem = installed.map(|core| shinki_emu_manager_core::library_stem(&core.library)).unwrap_or_default();
-            let bundled = recognition::is_static(&id) || installed.is_some_and(|core| core.bundled);
-            let state = match pending.get(&stem) {
+            let stem = installed
+                .filter(|core| !cfg!(any(target_os = "ios", target_env = "ohos")) || !core.bundled)
+                .map(|core| shinki_emu_manager_core::library_stem(&core.library))
+                .unwrap_or_default();
+            #[cfg(target_os = "android")]
+            let stem = overlays.get(&id).map_or(stem, |stem| String::clone(stem));
+            let bundled = installed.map_or_else(
+                || recognition::is_static(&id),
+                |core| core.bundled || (!cfg!(target_os = "android") && recognition::is_static(&id)),
+            );
+            let pending_kind = pending.get(&stem).filter(|kind| {
+                !cfg!(target_os = "android") || **kind != PendingKind::Install || !self.plugin_errors.contains_key(&stem)
+            });
+            let state = match pending_kind {
                 Some(PendingKind::Remove) => "pending-removal",
                 Some(PendingKind::Install) => "pending-update",
                 None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id) => "loading",
@@ -152,8 +212,8 @@ impl ShinkiEmuManagerController {
                 None if native.is_some() => "loaded",
                 None => "installed",
             };
-            let (version, identity) = self.core_release(&id);
-            let update_version = self.online_core(&id).filter(|entry| {
+            let (version, identity, source_commit) = self.core_release(&id);
+            let update_version = self.downloadable_core(&id).filter(|entry| {
                 matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
             }).map(|entry| core_card_version(&entry.version, entry.identity.as_ref())).unwrap_or_default();
             listed_plugins.insert(id.clone());
@@ -162,12 +222,16 @@ impl ShinkiEmuManagerController {
                 id: id.clone(),
                 name: catalog.map(|entry| entry.display_name.to_owned()).or_else(|| native.map(|descriptor| descriptor.display_name.clone())).unwrap_or_else(|| id.clone()),
                 engine: catalog.map(|entry| entry.family_id.to_owned()).or_else(|| native.map(|descriptor| descriptor.family_id.clone())).unwrap_or_default(),
-                version: core_card_version(version, identity),
+                version: if identity.is_some() {
+                    core_card_version(version, identity)
+                } else {
+                    product_version_label(version, source_commit)
+                },
                 capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
                 state: state.into(),
                 source: if bundled { "bundled" } else { "user" }.into(),
                 message: self.native_failures.get(&id).cloned().unwrap_or_default(),
-                removable: !bundled,
+                removable: !bundled || (cfg!(target_os = "android") && state == "pending-update"),
                 update_version,
                 download: self.download_view(&id),
             }, stem));
@@ -179,13 +243,15 @@ impl ShinkiEmuManagerController {
                 if stem.starts_with('.') || listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem)
                     || !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
                 let manifest = core_package::read_manifest(&entry.path());
-                let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone()).unwrap_or_else(|| stem.clone());
+                let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone())
+                    .filter(|id| !cfg!(target_os = "android") || !listed_plugins.contains(id))
+                    .unwrap_or_else(|| stem.clone());
                 listed_stems.insert(stem.clone());
                 listed_plugins.insert(id.clone());
                 items.push((CoreViewModel {
                     id, name: stem.clone(), state: "failed".into(), source: "user".into(),
                     message: "SHINKI_EMU_CORE_PACKAGE_MANIFEST: missing or invalid package, library, or duplicate plugin identity; install an identified core package".into(),
-                    removable: directory == self.cores_dir(),
+                    removable: directory == cores,
                     ..CoreViewModel::default()
                 }, stem));
             }
@@ -210,18 +276,21 @@ impl ShinkiEmuManagerController {
                     state: "failed".into(),
                     source: "user".into(),
                     message: described.title,
-                    removable: cores.join(stem).is_dir(),
+                    removable: cores.join(stem).is_dir()
+                        || (cfg!(target_os = "android") && pending.get(stem) == Some(&PendingKind::Install)),
                     ..CoreViewModel::default()
                 },
                 stem.clone(),
             ));
         }
         for (stem, kind) in &pending {
-            if *kind != PendingKind::Install || listed_stems.contains(stem) {
+            if *kind != PendingKind::Install || listed_stems.contains(stem)
+                || (cfg!(target_os = "android") && self.plugin_errors.contains_key(stem))
+            {
                 continue;
             }
-            let manifest =
-                core_package::read_manifest(&cores.join(core_package::PENDING).join(stem));
+            let directory = cores.join(core_package::PENDING).join(stem);
+            let manifest = core_package::read_manifest(&directory);
             let plugin_id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone());
             let online = plugin_id.as_deref().and_then(|id| self.online_core(id));
             let name = online.map_or_else(|| stem.clone(), |entry| entry.display_name.clone());
@@ -235,7 +304,13 @@ impl ShinkiEmuManagerController {
                     name,
                     engine,
                     version: manifest
-                        .map(|manifest| core_card_version(&manifest.version, manifest.identity.as_ref()))
+                        .map(|manifest| match manifest.identity.as_ref() {
+                            Some(identity) => core_card_version(&manifest.version, Some(identity)),
+                            None => {
+                                let source = core_package::product_source_commit(&directory, &manifest);
+                                product_version_label(&manifest.version, source.as_deref())
+                            }
+                        })
                         .unwrap_or_default(),
                     state: "pending-install".into(),
                     source: "user".into(),
@@ -253,7 +328,7 @@ impl ShinkiEmuManagerController {
                 .map(|entry| entry.plugin_id.as_str())
                 .filter(|plugin_id| !listed_plugins.contains(*plugin_id))
                 .collect();
-            for entry in available.into_iter().filter_map(|id| self.online_core(id)) {
+            for entry in available.into_iter().filter_map(|id| self.downloadable_core(id)) {
                 items.push((
                     CoreViewModel {
                         id: entry.plugin_id.clone(),
@@ -273,9 +348,14 @@ impl ShinkiEmuManagerController {
         Ok((
             CoresViewModel {
                 items,
-                restart_required: !pending.is_empty() && self.cores_started(),
+                restart_required: if cfg!(target_os = "android") {
+                    pending.keys().any(|stem| !self.plugin_errors.contains_key(stem))
+                } else {
+                    !pending.is_empty() && self.cores_started()
+                },
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
                 update_all_count: i32::try_from(update_all_count).unwrap_or(i32::MAX),
+                online_downloads: online_core_downloads(),
                 batch: self.batch_view(),
                 ..CoresViewModel::default()
             },
@@ -289,7 +369,7 @@ impl ShinkiEmuManagerController {
 
     /// Stage a downloaded official release using the bundled or synced catalog.
     pub(super) fn install_core(&mut self, source: &Path) -> Result<ManagerViewModel, String> {
-        let pending = self.cores_dir().join(core_package::PENDING);
+        let pending = self.cores_dir()?.join(core_package::PENDING);
         let package = source
             .extension()
             .and_then(|extension| extension.to_str())
@@ -302,8 +382,11 @@ impl ShinkiEmuManagerController {
             .flat_map(|catalog| &catalog.cores.entries)
             .filter(|entry| entry.platform == platform
                 && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
-                && Self::allows_core_packages(&entry.plugin_id));
-        core_package::stage_local_release(source, entries, &pending)?;
+                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
+        let stem = core_package::stage_local_release(source, entries, &pending)?;
+        if cfg!(target_os = "android") {
+            self.plugin_errors.remove(&stem);
+        }
         self.model()
     }
 
@@ -362,9 +445,10 @@ impl ShinkiEmuManagerController {
 
     /// Queue the newest release of a core; returns its package size.
     fn start_core_download(&mut self, plugin_id: &str) -> Result<u64, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         let entry = self
-            .online_core(plugin_id)
+            .downloadable_core(plugin_id)
             .cloned()
             .ok_or_else(|| "SHINKI_EMU_CORE_NOT_AVAILABLE".to_owned())?;
         let wake = self
@@ -372,7 +456,7 @@ impl ShinkiEmuManagerController {
             .clone()
             .ok_or("SHINKI_EMU_HOST_WAKE_REQUIRED")?;
         let size = entry.size;
-        let pending = self.cores_dir().join(core_package::PENDING);
+        let pending = self.cores_dir()?.join(core_package::PENDING);
         self.core_downloads.start(entry, pending, wake)?;
         self.core_failures.remove(plugin_id);
         Ok(size)
@@ -409,6 +493,7 @@ impl ShinkiEmuManagerController {
     /// Download every installed core that has a newer release, at most
     /// `core_download::MAX_PARALLEL` at a time.
     pub(super) fn update_all_cores(&mut self) -> Result<ManagerViewModel, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         if self.core_batch.as_ref().is_some_and(|batch| !batch.finished()) {
             return Err("SHINKI_EMU_CORE_DOWNLOAD_PENDING".into());
@@ -419,6 +504,7 @@ impl ShinkiEmuManagerController {
 
     /// Start a new run with the failed members of the last one.
     pub(super) fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         let failed: Vec<String> = self
             .core_batch
@@ -517,6 +603,9 @@ impl ShinkiEmuManagerController {
             match done.result {
                 Ok(stem) => {
                     self.core_failures.remove(&done.plugin_id);
+                    if cfg!(target_os = "android") {
+                        self.plugin_errors.remove(&stem);
+                    }
                     tracing::info!(
                         event = "shinki.emu.manager.core_staged",
                         core = %stem,
@@ -598,11 +687,13 @@ impl ShinkiEmuManagerController {
             .core_stem(core_id)?
             .ok_or("SHINKI_EMU_CORE_UNINSTALL_BUNDLED")?;
         let stem = stem.as_str();
-        let cores = self.cores_dir();
+        let cores = self.cores_dir()?;
         let staged = cores.join(core_package::PENDING).join(stem);
         let installed = cores.join(stem);
-        if staged.is_dir() && !installed.is_dir() {
+        let rejected_stage = cfg!(target_os = "android") && self.plugin_errors.contains_key(stem);
+        if staged.is_dir() && (!installed.is_dir() || rejected_stage) {
             core_package::cancel_pending_install(&cores, stem)?;
+            self.plugin_errors.remove(stem);
         } else if installed.is_dir() {
             core_package::mark_removal(&cores, stem)?;
         } else {
@@ -763,6 +854,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cores_view_lists_online_cores_and_gates_downloads() {
         let root = tempfile::tempdir().unwrap();
         let mut app = ShinkiEmuManagerController::open_library(
@@ -1006,6 +1098,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn download_shows_byte_progress_then_stages_with_one_restart_prompt() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1042,6 +1135,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cancel_leaves_no_package_and_records_no_failure() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1073,6 +1167,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn batch_continues_past_a_failure_summarizes_once_and_retries_the_failed() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1125,6 +1220,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cancelling_a_batch_stops_queued_members() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1150,5 +1246,49 @@ mod tests {
         assert_eq!((batch.state.as_str(), batch.cancelled), ("finished", 3));
         assert_eq!(app.snackbar.view().text, tr!("已取消全部更新"));
         assert_eq!(app.snackbar.view().action, "");
+    }
+
+    /// Default builds list and fetch catalog releases; `no-core-download`
+    /// builds list installed cores only, never call the fetcher and still
+    /// accept local official packages. Run under both feature sets.
+    #[test]
+    fn online_core_downloads_follow_the_build_switch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let fetches = std::sync::Arc::new(AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&fetches);
+        let served = serve(Served { packages: packages.clone(), gates: BTreeMap::new(), failing: Vec::new() });
+        app.core_downloads = CoreDownloads::new(std::sync::Arc::new(move |entry: CoreCatalogEntry| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            served(entry)
+        }));
+        let cores = root.path().join("cores");
+        let (id, stem) = PLUGINS[0];
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.online_downloads, online_core_downloads());
+        if online_core_downloads() {
+            assert!(view.items.iter().any(|item| item.id == id && item.state == "available"));
+            app.install_online_core(id).unwrap();
+            settle(&mut app);
+            assert_eq!(fetches.load(Ordering::SeqCst), 1);
+            assert_eq!(item(&app, id).state, "pending-install");
+            return;
+        }
+        assert!(view.items.iter().all(|item| item.state != "available" && item.update_version.is_empty()));
+        assert_eq!((view.updates_available, view.update_all_count), (0, 0));
+        for result in [app.install_online_core(id), app.update_all_cores(), app.retry_failed_cores()] {
+            assert_eq!(result.unwrap_err(), "SHINKI_EMU_CORE_DOWNLOAD_DISABLED");
+        }
+        assert!(app.core_downloads.is_idle());
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "no fetch while downloads are off");
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+
+        let archive = root.path().join("official.zip");
+        fs::write(&archive, &packages[id]).unwrap();
+        app.install_core(&archive).unwrap();
+        assert_eq!(item(&app, id).state, "pending-install");
+        assert!(cores.join(core_package::PENDING).join(stem).is_dir());
     }
 }

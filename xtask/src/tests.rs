@@ -806,6 +806,69 @@ fn sectionless_elf(needed: &str, rpath: &str) -> Vec<u8> {
     bytes
 }
 
+fn android_elf(needed: &str, runpath: &str, api: u32, alignment: u64) -> Vec<u8> {
+    let mut bytes = sectionless_elf(needed, runpath);
+    // Insert a third program header before relocating the dynamic table and
+    // dynamic strings. The Android identification note has 4-byte alignment.
+    bytes.splice(176..176, [0u8; 56]);
+    let note = bytes.len().next_multiple_of(4);
+    bytes.resize(note + 24, 0);
+    bytes[note..note + 12].copy_from_slice(&[8, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0]);
+    bytes[note + 12..note + 20].copy_from_slice(b"Android\0");
+    bytes[note + 20..note + 24].copy_from_slice(&api.to_le_bytes());
+    bytes[56..58].copy_from_slice(&3u16.to_le_bytes());
+    bytes[176..180].copy_from_slice(&4u32.to_le_bytes()); // PT_NOTE
+    let size = bytes.len() as u64;
+    for (offset, value) in [
+        (96, size),
+        (104, size),
+        (112, alignment),
+        (128, 232), // PT_DYNAMIC offset
+        (136, 232), // PT_DYNAMIC vaddr
+        (144, 232), // PT_DYNAMIC paddr
+        (184, note as u64),
+        (192, note as u64),
+        (200, note as u64),
+        (208, 24),
+        (216, 24),
+        (224, 4),
+        (240, 312), // DT_STRTAB
+    ] {
+        bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn android_core_checks_the_actual_transitive_elf_closure() {
+    let temp = crate::temporary::directory().unwrap();
+    let core = temp.path().join("libCore.so");
+    let runtime = temp.path().join("libNative.so");
+    let target = "x86_64-linux-android";
+    let search = [temp.path().to_owned()];
+    fs::write(&core, android_elf("libNative.so", "$ORIGIN", 28, 16384)).unwrap();
+    fs::write(&runtime, android_elf("libOpenSLES.so", "$ORIGIN", 21, 16384)).unwrap();
+    let closure = || binary::android_core_closure(&core, &search, target);
+    assert_eq!(
+        closure().unwrap(),
+        [(runtime.clone(), "libNative.so".to_owned())]
+    );
+    assert!(binary::android_core_closure(&core, &search, "aarch64-linux-android").is_err());
+
+    for elf in [
+        sectionless_elf("libc.so", "$ORIGIN"),
+        android_elf("libc.so", "$ORIGIN", 29, 16384),
+        android_elf("libunresolved.so", "$ORIGIN", 28, 16384),
+    ] {
+        fs::write(&runtime, elf).unwrap();
+        assert!(closure().is_err());
+    }
+    let mut legacy_rpath = android_elf("libNative.so", "$ORIGIN", 28, 16384);
+    legacy_rpath[280..288].copy_from_slice(&15u64.to_le_bytes()); // DT_RPATH instead of DT_RUNPATH
+    fs::write(&core, legacy_rpath).unwrap();
+    assert!(closure().is_err());
+}
+
 #[test]
 fn linux_soname_links_copy_regular_bytes_and_reject_escape_and_conflicts() {
     #[cfg(unix)]

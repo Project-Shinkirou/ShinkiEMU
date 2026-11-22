@@ -678,6 +678,12 @@ msgstr "Install from file…"
 msgid "没有找到核心。可以从本地安装核心包，或允许联网后在线安装。"
 msgstr "No cores found. Install a core package from a file or enable network access to install online."
 
+msgid "没有找到核心。可以从本地安装官方核心包。"
+msgstr "No cores found. You can install an official core package from a file."
+
+msgid "此版本不在线下载核心，已安装和随附的核心照常可用。"
+msgstr "This build does not download cores online. Installed and bundled cores work as usual."
+
 msgid "待重启（{}）"
 msgstr "Pending restart ({})"
 
@@ -1686,6 +1692,12 @@ msgstr "The metadata has no release for this platform and interface version. Syn
 
 msgid "核心正在下载"
 msgstr "A core is downloading"
+
+msgid "此版本不提供在线核心下载"
+msgstr "This build has no online core downloads"
+
+msgid "已安装和随附的核心照常可用。"
+msgstr "Installed and bundled cores work as usual."
 
 msgid "请等待当前下载完成。"
 msgstr "Wait for the current download to finish."

@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
+#[path = "../../../../build/android_dynamic.rs"]
+mod android_dynamic;
+
 /// Build-time projection of the authoritative inventories. No core manifests or
 /// source checkouts are opened, and publication restrictions do not affect use.
 pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, String> {
@@ -39,7 +42,24 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
             return Err(format!("invalid family_id or display_name for {plugin_id}"));
         }
         let embedded = enabled && contains_target(core, "static_manager_targets", target)?;
-        let supported = enabled && (embedded || contains_target(core, "supported_targets", target)?);
+        let standalone = enabled && contains_target(core, "supported_targets", target)?;
+        let supported = embedded || standalone;
+        let first_party = core.get("source").is_none();
+        let policy = android_dynamic::parse(core)?;
+        let android_dynamic = if standalone && android_dynamic::TARGETS.contains(&target) {
+            policy.map(|(minimum, requires_context)| {
+                let minimum = match minimum {
+                    android_dynamic::MinimumRelease::Sequence(sequence) =>
+                        format!("AndroidMinimumRelease::Sequence({sequence})"),
+                    android_dynamic::MinimumRelease::Semver(version) =>
+                        format!("AndroidMinimumRelease::Semver({version:?})"),
+                };
+                format!("Some(AndroidDynamicPolicy {{ minimum: {minimum}, requires_context: {requires_context} }})")
+            })
+        } else {
+            None
+        };
+        let android_dynamic = android_dynamic.as_deref().unwrap_or("None");
         let embedded_recognition_json = if embedded {
             core.get("recognition").map(serde_json::to_string).transpose()
                 .map_err(|error| format!("recognition for {plugin_id}: {error}"))?
@@ -48,7 +68,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         };
         let recognition = embedded_recognition_json.as_deref().unwrap_or("[]");
         writeln!(output,
-            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, supported: {supported}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
+            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, standalone: {standalone}, android_dynamic: {android_dynamic}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
         ).expect("String write");
     }
     if ids.is_empty() {

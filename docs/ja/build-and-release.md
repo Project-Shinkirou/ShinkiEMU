@@ -60,7 +60,9 @@ Manager は現在のターゲットの `static_manager_targets` と正確な Car
 
 検証済みの Windows グラフィックス構成は wgpu-hal 30.0.1 と gpu-allocator 0.28.0 が同じ windows 0.62.2 の型を使います。別の依存先には古い windows crate を残せますが、D3D12 の境界で型を分裂させてはいけません。ブランチの lockfile を統合するときも、検証済みの allocator の依存先を維持してください。
 
-版を指定して Manager をコンパイルする前に、`SHINKI_EMU_PRODUCT_VERSION` を `package`/`release` と同じ SemVer に設定します。未設定なら CI の既存の `SHINKI_EMU_CI_VERSION` を使い、両方ある場合は一致が必要です。どちらもない開発ビルドだけが Manager の package version を使います。リリース名のために `Cargo.toml` を変更しません。Manager の build script が書く `OUT_DIR/manager-build-version.json` を xtask が照合し、build/package/release 記録の `product_version` に保持します。版が不明・不一致の場合や Android の両 ABI で版が異なる場合は拒否します。古い receipt のラベルを変えず、目的の版で通常の再ビルドを行ってください。Apple cross コンテナも同じ製品版の変数を転送します。
+Manager と配布対象の自作コアには同じ `SHINKI_EMU_PRODUCT_VERSION` を設定します。未設定なら `SHINKI_EMU_CI_VERSION` を使い、両方を設定する場合は一致させてください。どちらも未設定の開発ビルドでは Manager のクレート版を使います。xtask はリリースビルドを変更のない確定コミットに結び付け、Manager の `OUT_DIR/manager-build-version.json` をコンパイル時の入力と照合します。Android の両 ABI を含め、パッケージとリリースはビルド記録の版と一致させます。
+
+Manager の任意 Cargo feature は `SHINKI_EMU_MANAGER_FEATURES`（カンマ区切り）で指定します。`build`・`check`・`ci` が Manager の場合だけ読み取ります。名前は Manager の `[features]` に宣言されている必要があり、`default` と未宣言の名前は拒否します。既定 feature に追加する形で有効になり、`.work/build/<target>/manager.json` の `features` に記録されます。`no-core-download` はコアページからオンラインのインストール、更新、一括更新をなくし、Manager 側でもコアパッケージのダウンロードを拒否します。インストール済みのコア、同梱コア、ローカルの公式コアパッケージ、ゲームストア、メタデータはそのまま使えます。iOS と OHOS は feature の有無にかかわらずコアをダウンロードしません。
 
 beta.7 の既知の問題：公式 Windows バイナリは内部の版を `0.1.0-beta.6` と報告しますが、配布パッケージのラベルは beta.7 です。既存タグと添付ファイルは変更しません。上記のコンパイル時注入と receipt 検証で後続ビルドを修正し、[Manager beta.8 リリースノート](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)にもこの問題を記載しています。
 
@@ -339,6 +341,6 @@ upstream 識別子付きパッケージには Manager `0.1.0-beta.6` 以降が�
 
 公開せず準備する場合も同じ `release.yml` を使い、`prepare_only=true` と、必要に応じて正確な40桁の製品コミット `source_commit` を指定します。明示したソースコミットは準備専用モードでのみ使えます。既存のネイティブビルド、パッケージ、プラットフォーム署名、ソースとライセンスの同梱処理は変えません。最後の引き渡しでは各記録が実際の製品コミット、コンポーネント、版、対象に一致することを要求し、公開をスキップします。workflow dispatch SHA は編成コードの識別子であり、製品の来歴ではありません。受け入れ済み製品のクリーンな checkout から既存の xtask で実物を公開してください。CI 成功だけでは、成果物の取得可否、通常のパッケージ構造、署名要件を代替できません。
 
-dispatch の `version` は Manager/自作コアだけに適用します。外部コンポーネントはプラットフォーム行を展開する前に各自の識別子を検証・計算します。外部コアを上記の公開コマンドで公開するときは `--version` を省略し、Manager/自作コアでは指定します。
+自作コアを公開する場合は、Manager と一緒に選択し、dispatch に共通の `version` を指定します。手動の準備・公開でも `SHINKI_EMU_RELEASE_PRODUCT_VERSION` と `SHINKI_EMU_RELEASE_SOURCE_COMMIT` に同じ版と確定コミットの完全な SHA を設定し、対応する Manager のビルド記録と成果物を揃えてください。コアは Manager より先に公開できます。コアのビルド記録、組み込み一覧、対応ソースには製品コミットの完全な SHA を記録します。ダウンロードしたファイルは従来どおり個別の SHA-256 で検証します。外部コアは独自の識別子を使い、公開コマンドでは `--version` を省略します。
 
 メタデータのコマンドは [Metadata](metadata.md)、コアパッケージの契約は[コア ABI](core-abi.md) を参照してください。

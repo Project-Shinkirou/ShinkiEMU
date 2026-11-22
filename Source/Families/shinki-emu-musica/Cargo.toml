@@ -13,7 +13,7 @@ doctest = false
 [features]
 default = []
 ffmpeg-vcpkg = ["shinki-emu-sdk/video-ffmpeg", "shinki-emu-sdk/subtitle"]
-dynamic-plugin-export = []
+dynamic-plugin-export = ["dep:jni"]
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
@@ -48,6 +48,9 @@ wgpu.workspace = true
 
 time = { workspace = true, features = ["local-offset"] }
 tempfile.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_System_Registry"] }

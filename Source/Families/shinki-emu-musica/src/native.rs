@@ -11,6 +11,8 @@ use std::{
     },
     thread::JoinHandle,
 };
+#[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+mod android_context;
 mod config;
 mod owner;
 pub(crate) mod text;
@@ -261,6 +263,8 @@ unsafe extern "C" fn open(
         if services.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
+        #[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+        android_context::require_initialized()?;
         let launch = worker::Launch {
             path: unsafe { request.game_path.text(32768) }
                 .map_err(invalid)?
@@ -635,6 +639,11 @@ unsafe extern "C" fn extension(
         Ok(name) => name,
         Err(status) => return status,
     };
+    #[cfg(all(target_os = "android", feature = "dynamic-plugin-export"))]
+    if name == abi::ANDROID_CONTEXT_EXTENSION && version == abi::ANDROID_CONTEXT_VERSION {
+        unsafe { output.write((&raw const android_context::API).cast()) };
+        return abi::OK;
+    }
     if name == abi::SESSION_MENU_EXTENSION && version == abi::SESSION_MENU_VERSION {
         unsafe { output.write((&MENU_API as *const abi::SessionMenuApi).cast()) };
         return abi::OK;

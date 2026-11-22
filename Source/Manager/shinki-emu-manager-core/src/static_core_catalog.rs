@@ -9,11 +9,18 @@ pub struct CoreCatalogEntry {
     pub plugin_id: &'static str,
     pub family_id: &'static str,
     pub display_name: &'static str,
+    /// In-repo cores share the product release identity, not an adapter sequence.
+    pub first_party: bool,
     /// Inventory-declared availability for the current target, through either
     /// a standalone core or static Manager integration. This does not mean
     /// installed, loaded or verified with a real game. Publication restrictions
     /// do not change runtime support.
     pub supported: bool,
+    /// A standalone artifact is declared for this exact target, independently
+    /// of whether the Manager also links this core.
+    pub standalone: bool,
+    /// Validated dynamic-release policy for the current Android ABI, if approved.
+    pub android_dynamic: Option<AndroidDynamicPolicy>,
     /// Inventory-declared static Manager integration for the current target.
     /// Actual compiled entrypoints come from the host's `STATIC_CORES` table,
     /// including optional integrations such as desktop `static-cmvs`.
@@ -21,6 +28,18 @@ pub struct CoreCatalogEntry {
     pub embedded: bool,
     /// The recognition field of this target's embedded core recipe, or an empty list.
     pub embedded_recognition_json: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AndroidDynamicPolicy {
+    pub minimum: AndroidMinimumRelease,
+    pub requires_context: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AndroidMinimumRelease {
+    Sequence(u64),
+    Semver(&'static str),
 }
 
 include!(concat!(env!("OUT_DIR"), "/static-core-catalog.rs"));
