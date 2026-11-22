@@ -24,6 +24,8 @@ ShinkiEMU は、ゲームライブラリを管理する Manager とネイティ�
 
 ## 各コアの資料
 
+[ADV32 の開発資料](cores/shinki-emu-adv32.md)
+
 [RFVP](cores/rfvp.md) · [Siglus](cores/siglus-rs.md) · [Artemis](cores/art3m1s-core.md) · [Musica](cores/shinki-emu-musica.md) · [Sena](cores/sena-rs.md) · [KiriKiri](cores/kirikiroid2-web.md) · [Ethornell](cores/ethornell-rs.md) · [CMVS](cores/shinki-emu-cmvs.md) · [ReMinori](cores/reminori.md) · [impacto](cores/impacto.md) · [Ren’Py](cores/renpy.md)。
 外部 CMVS/CVNS コア：[cmvs-rs](cores/cmvs-rs.md)。独自 Shinki CMVS と共存します。
 

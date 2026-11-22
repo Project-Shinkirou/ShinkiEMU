@@ -24,6 +24,8 @@ ShinkiEMU combines a game-library Manager with native cores for legacy visual no
 
 ## Core references
 
+[ADV32 development core](cores/shinki-emu-adv32.md)
+
 [RFVP](cores/rfvp.md) · [Siglus](cores/siglus-rs.md) · [Artemis](cores/art3m1s-core.md) · [Musica](cores/shinki-emu-musica.md) · [Sena](cores/sena-rs.md) · [KiriKiri](cores/kirikiroid2-web.md) · [Ethornell](cores/ethornell-rs.md) · [CMVS](cores/shinki-emu-cmvs.md) · [ReMinori](cores/reminori.md) · [impacto](cores/impacto.md) · [Ren’Py](cores/renpy.md).
 External CMVS/CVNS: [cmvs-rs](cores/cmvs-rs.md), alongside the independent Shinki CMVS core.
 

@@ -1,4 +1,4 @@
-use roukaku_media_core::{MediaError, SceneCommand, TextureFrame};
+use roukaku_media_core::{MediaError, RectI, SceneCommand, TextureFrame};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -34,11 +34,23 @@ pub struct SceneTextureResidency {
 
 impl SceneTextureResidency {
     pub fn prepare(&mut self, commands: &mut Vec<SceneCommand>) -> Result<(), MediaError> {
+        self.prepare_with_sources(commands, &[])
+    }
+
+    /// Associate source rectangles with texture commands by their input index.
+    pub fn prepare_with_sources(
+        &mut self,
+        commands: &mut Vec<SceneCommand>,
+        sources: &[Option<RectI>],
+    ) -> Result<(), MediaError> {
+        if !sources.is_empty() && sources.len() != commands.len() {
+            return Err(MediaError::message("SHINKI_EMU_SDK_TEXTURE_SOURCES"));
+        }
         self.sequence = self
             .sequence
             .checked_add(1)
             .ok_or_else(|| MediaError::message("SHINKI_EMU_SDK_TEXTURE_SEQUENCE"))?;
-        for command in commands.iter_mut() {
+        for (index, command) in commands.iter_mut().enumerate() {
             let SceneCommand::Texture { frame, .. } = command else {
                 continue;
             };
@@ -87,7 +99,7 @@ impl SceneTextureResidency {
             *command = SceneCommand::Sprite {
                 id,
                 texture_id: resource_id,
-                source: None,
+                source: sources.get(index).copied().flatten(),
                 destination,
                 opacity,
                 blend,
@@ -109,5 +121,49 @@ impl SceneTextureResidency {
             std::mem::swap(commands, &mut self.mutations);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roukaku_media_core::BlendMode;
+
+    #[test]
+    fn shared_texture_preserves_each_crop_and_reuses_upload() {
+        let frame = TextureFrame {
+            width: 2,
+            height: 1,
+            rgba8: [255, 0, 0, 255, 0, 255, 0, 255].as_slice().into(),
+        };
+        let commands = || {
+            ["left", "right"]
+                .into_iter()
+                .map(|id| SceneCommand::Texture {
+                    id: id.into(),
+                    frame: frame.clone(),
+                    destination: RectI::new(0, 0, 1, 1),
+                    opacity: 1.0,
+                    blend: BlendMode::Alpha,
+                })
+                .collect::<Vec<_>>()
+        };
+        let sources = [Some(RectI::new(0, 0, 1, 1)), Some(RectI::new(1, 0, 1, 1))];
+        let mut residency = SceneTextureResidency::default();
+        let mut first = commands();
+        residency.prepare_with_sources(&mut first, &sources).unwrap();
+        let [SceneCommand::UploadTexture { resource_id, .. }, SceneCommand::Sprite {
+            source: left, texture_id: left_id, ..
+        }, SceneCommand::Sprite {
+            source: right, texture_id: right_id, ..
+        }] = first.as_slice() else {
+            panic!("expected one upload and two draws");
+        };
+        assert_eq!((*left, *right), (sources[0], sources[1]));
+        assert_eq!((left_id, right_id), (resource_id, resource_id));
+
+        let mut next = commands();
+        residency.prepare_with_sources(&mut next, &sources).unwrap();
+        assert!(matches!(next.as_slice(), [SceneCommand::Sprite { .. }, SceneCommand::Sprite { .. }]));
     }
 }

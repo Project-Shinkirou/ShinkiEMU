@@ -2,6 +2,7 @@ use crate::{Error, Result};
 use shinki_emu_abi as abi;
 use std::{
     fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
@@ -52,21 +53,95 @@ pub(crate) fn copy_game(source: &Path, destination: &Path) -> Result<()> {
     fs::create_dir(destination)?;
     copy_tree(source, destination)
 }
+
+pub(crate) fn relative_game_directory(value: &str) -> std::result::Result<PathBuf, String> {
+    let mut path = PathBuf::new();
+    for component in value.split(['/', '\\']) {
+        if component.is_empty()
+            || matches!(component, "." | "..")
+            || component.ends_with(['.', ' '])
+            || component.contains(':')
+        {
+            return Err("copy-out requires a relative directory inside the game".into());
+        }
+        path.push(component);
+    }
+    Ok(path)
+}
+
+pub(crate) fn export_game_directory(game: &Path, relative: &Path, output: &Path) -> Result<()> {
+    let game = fs::canonicalize(game)?;
+    let mut source = game.clone();
+    for component in relative.components() {
+        let std::path::Component::Normal(component) = component else {
+            return Err(Error::Run(
+                "copy-out requires a game-relative directory".into(),
+            ));
+        };
+        source.push(component);
+        let metadata = fs::symlink_metadata(&source)?;
+        if is_link(&metadata) || !metadata.is_dir() {
+            return Err(Error::Run("copy-out requires a real game directory".into()));
+        }
+    }
+    let destination = output.join("game-copy-out");
+    match fs::symlink_metadata(&destination) {
+        Ok(_) => return Err(Error::Run("game-copy-out already exists".into())),
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let staging = tempfile::tempdir_in(output)?;
+    let copy = staging.path().join("copy");
+    copy_game(&source, &copy)?;
+    fs::rename(copy, destination)?;
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn copy_out_materializes_only_the_selected_directory_without_overwriting() {
+    let root = tempfile::tempdir().unwrap();
+    let game = root.path().join("game");
+    let saves = game.join("profile/saves");
+    let output = root.path().join("output");
+    fs::create_dir_all(&saves).unwrap();
+    fs::create_dir(&output).unwrap();
+    fs::write(game.join("unrelated"), b"original").unwrap();
+    fs::write(saves.join("slot.dat"), b"native save").unwrap();
+    let relative = relative_game_directory("profile/saves").unwrap();
+
+    export_game_directory(&game, &relative, &output).unwrap();
+    let export = output.join("game-copy-out");
+    assert_eq!(fs::read(export.join("slot.dat")).unwrap(), b"native save");
+    assert!(!export.join("unrelated").exists());
+    assert!(relative_game_directory("profile/../saves").is_err());
+    assert!(export_game_directory(&game, &relative, &output).is_err());
+}
+
+fn is_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    metadata.is_symlink()
+}
+
 fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     for entry in fs::read_dir(source)? {
         let entry = entry?;
-        let kind = entry.file_type()?;
+        let metadata = entry.metadata()?;
         let to = destination.join(entry.file_name());
-        if kind.is_symlink() {
-            return Err(Error::Run(format!(
-                "game copy rejects symbolic links: {}",
-                entry.path().display()
-            )));
+        if is_link(&metadata) {
+            return Err(Error::Run("game copy rejects symbolic links".into()));
         }
-        if kind.is_dir() {
+        if metadata.is_dir() {
             fs::create_dir(&to)?;
             copy_tree(&entry.path(), &to)?;
-        } else if kind.is_file() {
+        } else if metadata.is_file() {
             fs::copy(entry.path(), &to)?;
         } else {
             return Err(Error::Run("game copy contains a special file".into()));

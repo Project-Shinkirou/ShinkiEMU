@@ -38,6 +38,8 @@ ShinkiEMU 用 12 个核心支持 10 个引擎家族。每个核心保留引擎�
 
 能识别引擎不代表游戏可玩。具体游戏、平台和发行版本的结论见门户的[兼容性页面](https://project-shinkirou.github.io/zh-cn/shinkiemu/compatibility/)，没有报告的游戏视为未报告。要提交结论，请使用[游戏兼容性报告](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)表单。
 
+[ADV32](docs/zh-cn/cores/shinki-emu-adv32.md) 核心正在开发。
+
 ## 扩展性
 
 - **核心以插件形式提供**：核心与 Manager 各自发布和更新。桌面版 Manager 从应用内的核心目录安装和更新核心；Android 与 iOS 版 Manager 静态链接核心。

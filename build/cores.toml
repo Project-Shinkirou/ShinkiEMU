@@ -282,6 +282,40 @@ target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
 
 [[cores]]
+id = "shinki.emu.adv32"
+family_id = "adv32"
+display_name = "Shinki ADV32"
+family_name = "ADV32"
+license = "MIT OR Apache-2.0"
+manifest = "Source/Families/shinki-emu-adv32/Cargo.toml"
+package = "shinki-emu-adv32"
+features = ["dynamic-plugin-export", "video-ffmpeg"]
+dependencies = ["ffmpeg"]
+artifact_kind = "rust-cdylib"
+resources = []
+licenses = ["LICENSE-MIT", "LICENSE-APACHE", "docs/licenses/shinki-emu-adv32/GARbro.txt", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+publish_blocked = "Development preview: complete VM coverage, native save interoperability, and publication review have not passed."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "The ADV32 development core is desktop-only."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "The ADV32 development core is desktop-only."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "The ADV32 development core is desktop-only."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "The ADV32 development core is desktop-only."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "The ADV32 development core is desktop-only."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "The ADV32 development core is desktop-only."
+
+[[cores]]
 id = "shinki.emu.cmvs"
 family_id = "cmvs"
 display_name = "Shinki CMVS"

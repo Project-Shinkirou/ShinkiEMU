@@ -64,6 +64,10 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
+## CIRCUS 资源格式
+
+ADV32 核心的 CRX 图像、CRM/PCK 归档和 XPCM 音频读取参考了 [GARbro 的 CIRCUS 格式实现](https://github.com/morkt/GARbro/tree/b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0/ArcFormats/Circus)。版权归 morkt（2015–2016），完整 MIT 许可随核心打包，见 [GARbro.txt](docs/licenses/shinki-emu-adv32/GARbro.txt)。原版游戏文件不属于核心源码或发布包。
+
 ## ASS 字幕依赖
 
 `roukaku-subtitle` 使用 <https://github.com/libass/libass> 的 libass 0.17.5（ISC），原生依赖安装在独立 vcpkg 树中，使用 overlay triplet `x64-windows-static-md-dynbidi`（RoukakuEngine 的 `Engine/Source/Runtime/roukaku-subtitle/triplets/`）：libass、FreeType、HarfBuzz、Brotli、bzip2、libpng、zlib 静态链接，只有 FriBidi 构建为 DLL。RFVP 原生源码的 manifest 与独立 lockfile 固定共享实现 `Project-Shinkirou/RoukakuEngine`；Kira 另行固定。打包时显式指定该实际安装的 `share/`，逐字保留以下 `copyright` 文件到 `licenses/subtitle/<port>/copyright`：

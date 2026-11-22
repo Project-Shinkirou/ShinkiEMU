@@ -1,10 +1,10 @@
 use roukaku_core::DiagnosticSeverity;
 use roukaku_media_core::{MediaError, SceneCommand};
 use roukaku_text::{
-    CosmicTextLayoutProvider, TextLayoutRequest, TextLayoutResult, TextRenderLayoutUpdate,
-    TextRenderResourceOwner,
+    CosmicTextLayoutProvider, TextLayoutRequest, TextLayoutResult, TextRenderFrameCommands,
+    TextRenderLayoutUpdate, TextRenderResourceOwner,
 };
-use std::collections::BTreeSet;
+use std::{borrow::Cow, collections::BTreeSet};
 
 #[cfg(test)]
 mod tests;
@@ -78,6 +78,21 @@ impl TextScene {
         regions: &[TextSceneLayout],
         raster_scale: f32,
     ) -> Result<Vec<SceneCommand>, MediaError> {
+        let frame = self.frame_parts(regions, raster_scale)?;
+        let mut commands = frame.lifecycle;
+        for layout in frame.layouts {
+            commands.extend(layout.commands);
+        }
+        Ok(commands)
+    }
+
+    /// Keep text draw batches separate so callers can interleave them with sprites.
+    /// The lifecycle commands precede all draws.
+    pub fn frame_parts(
+        &mut self,
+        regions: &[TextSceneLayout],
+        raster_scale: f32,
+    ) -> Result<TextRenderFrameCommands, MediaError> {
         if !raster_scale.is_finite() || raster_scale <= 0.0 {
             return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_SCALE"));
         }
@@ -86,7 +101,7 @@ impl TextScene {
             .map(|region| scale_layout(region, raster_scale))
             .collect::<Result<Vec<_>, MediaError>>()?;
         let mut visible = BTreeSet::new();
-        let mut layers = Vec::new();
+        let mut layers = Vec::with_capacity(regions.len());
         for (index, region) in regions.iter().enumerate() {
             if region.request.key.trim().is_empty() || !visible.insert(region.request.key.clone()) {
                 return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_LAYOUT_ID"));
@@ -145,11 +160,7 @@ impl TextScene {
             .collect::<Vec<_>>();
         let frame = self.resources.update_frame(&updates, &removals)?;
         self.visible = visible;
-        let mut commands = frame.lifecycle;
-        for layout in frame.layouts {
-            commands.extend(layout.commands);
-        }
-        Ok(commands)
+        Ok(frame)
     }
 
     /// Release all glyphs while the consumer's renderer is still alive.
@@ -159,21 +170,31 @@ impl TextScene {
     }
 }
 
-fn scale_layout(region: &TextSceneLayout, scale: f32) -> Result<TextSceneLayout, MediaError> {
+fn scale_layout(
+    region: &TextSceneLayout,
+    scale: f32,
+) -> Result<Cow<'_, TextSceneLayout>, MediaError> {
     if let Some(outline) = region.outline
         && (!(1..=8).contains(&outline.radius) || outline.rgba[3] == 0)
     {
         return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
     }
-    let mut request = region.request.clone();
-    request.constraint.max_width = scale_f32(request.constraint.max_width, scale)?;
-    request.constraint.max_height = request
-        .constraint
+    let constraint = &region.request.constraint;
+    let max_width = scale_f32(constraint.max_width, scale)?;
+    let max_height = constraint
         .max_height
         .map(|value| scale_f32(value, scale))
         .transpose()?;
-    request.constraint.font_size = scale_f32(request.constraint.font_size, scale)?;
-    request.constraint.line_height = scale_f32(request.constraint.line_height, scale)?;
+    let font_size = scale_f32(constraint.font_size, scale)?;
+    let line_height = scale_f32(constraint.line_height, scale)?;
+    if scale == 1.0 {
+        return Ok(Cow::Borrowed(region));
+    }
+    let mut request = region.request.clone();
+    request.constraint.max_width = max_width;
+    request.constraint.max_height = max_height;
+    request.constraint.font_size = font_size;
+    request.constraint.line_height = line_height;
     let translation = (
         scale_i32(region.translation.0, scale)?,
         scale_i32(region.translation.1, scale)?,
@@ -191,12 +212,12 @@ fn scale_layout(region: &TextSceneLayout, scale: f32) -> Result<TextSceneLayout,
             })
         })
         .transpose()?;
-    Ok(TextSceneLayout {
+    Ok(Cow::Owned(TextSceneLayout {
         request,
         translation,
         rgba: region.rgba,
         outline,
-    })
+    }))
 }
 
 fn scale_f32(value: f32, scale: f32) -> Result<f32, MediaError> {
