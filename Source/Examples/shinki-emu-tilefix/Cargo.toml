@@ -1,0 +1,23 @@
+[package]
+name = "shinki-emu-tilefix"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+dynamic-plugin-export = []
+
+[dependencies]
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime"] }
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
+
+[dev-dependencies]
+tempfile.workspace = true

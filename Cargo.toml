@@ -9,6 +9,7 @@ members = [
     "Source/Families/shinki-emu-musica",
     "Source/Families/shinki-emu-musica-keys",
     "Source/Families/shinki-emu-musica-format",
+    "Source/Examples/shinki-emu-tilefix",
     "Source/Programs/shinki-emu-musica-cli",
     "Source/Programs/shinki-emu-headless",
     "Source/Tools/shinki-emu-patch",

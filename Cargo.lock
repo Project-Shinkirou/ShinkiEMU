@@ -11556,6 +11556,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-tilefix"
+version = "0.1.0"
+dependencies = [
+ "shinki-emu-abi",
+ "shinki-emu-build",
+ "shinki-emu-sdk",
+ "tempfile",
+]
+
+[[package]]
 name = "shinki-emu-translation"
 version = "0.1.0"
 dependencies = [
