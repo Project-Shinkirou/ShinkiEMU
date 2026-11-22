@@ -681,7 +681,7 @@ fn native_sources(
     let selected = dependencies::needs(inv, target, component)?;
     let android_core = target.ends_with("-linux-android") && component != "manager";
     let mut installations = Vec::new();
-    let shared_subtitle = dependencies::shares_android_subtitle(target, component);
+    let shared_subtitle = dependencies::shares_android_subtitle(target, selected);
     if selected.subtitle && !shared_subtitle {
         installations.push((
             "subtitle",
@@ -691,7 +691,7 @@ fn native_sources(
     if selected.ffmpeg {
         installations.push(("ffmpeg", dependencies::ffmpeg_install(inv, target)?));
     }
-    for native in dependencies::native_cores(inv, target, component) {
+    for native in dependencies::native_cores(inv, target, component, selected) {
         installations.push((
             native.id.as_str(),
             dependencies::native_install(inv, target, &native.id)?
@@ -791,6 +791,9 @@ fn native_sources(
         {
             commands.push_str(&format!(" --overlay-ports=\"$PWD/{manifest}/vcpkg/ports\""));
         }
+        if android_core && !matches!(*group, "subtitle" | "ffmpeg") {
+            commands.push_str(" --overlay-ports=\"$PWD/build/vcpkg/mobile-ports\"");
+        }
         commands.push_str(&format!(" --overlay-ports=\"$PWD/native/ports/{group}\""));
         if *group == "subtitle" {
             commands.push_str(" --overlay-triplets=\"$PWD/native/subtitle-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/apple-triplets\" --overlay-triplets=\"$PWD/build/vcpkg/mobile-triplets\"");
@@ -860,7 +863,7 @@ fn native_sources(
         }
     }
     if selected.renpy {
-        renpy_sources(inv, root)?;
+        renpy_sources(inv, root, android_core)?;
     }
     Ok(commands)
 }
@@ -968,7 +971,7 @@ pub(crate) fn prepare_renpy_build(inv: &Inventory) -> Result<()> {
 /// Ren'Py's LGPL relink material: the pinned renpy-build recipes, the source
 /// archives inventoried by the fork (downloaded and hash-checked by `deps`),
 /// and the prepared SDK/Python/SDL trees the adapter build consumes.
-fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
+fn renpy_sources(inv: &Inventory, root: &Path, android_core: bool) -> Result<()> {
     let repo = inv.root.join(".work/renpy-build");
     checkout_root(&repo).context(
         "Ren'Py corresponding source requires .work/renpy-build; run cargo xtask deps --core renpy",
@@ -1015,7 +1018,16 @@ fn renpy_sources(inv: &Inventory, root: &Path) -> Result<()> {
         }
         copy_input(&path, &dest.join("sources.json"))?;
     }
-    for name in ["renpy-sdk", "python", "cython-license", "sdl2"] {
+    let names = if android_core {
+        // The target stage supplies Python and the native libraries. Only
+        // vc_version.py is consumed from the desktop SDK.
+        let relative = ".work/native-downloads/renpy-sdk/renpy/vc_version.py";
+        copy_input(&inv.root.join(relative), &root.join(relative))?;
+        &["python", "cython-license", "sdl2"][..]
+    } else {
+        &["renpy-sdk", "python", "cython-license", "sdl2"][..]
+    };
+    for name in names {
         copy_tree(
             &inv.root.join(".work/native-downloads").join(name),
             &root.join(".work/native-downloads").join(name),
@@ -1087,6 +1099,35 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     // Files outside the Git snapshots, appended under the same root.
     let root = temp.path().join("extra");
     fs::create_dir(&root)?;
+    let selected = dependencies::needs(inv, target, component)?;
+    if dependencies::shares_android_subtitle(target, selected) {
+        let provider = inv.core(dependencies::ANDROID_SUBTITLE_PROVIDER)?;
+        let embedded = component == "manager"
+            && provider.static_manager_targets.iter().any(|t| t == target);
+        if component != provider.id && !embedded {
+            let repo = verify(inv, provider, true)?;
+            let source = provider
+                .source
+                .as_ref()
+                .context("Android subtitle provider pin")?;
+            // Only the vcpkg inputs are used by the consumer, not its engine.
+            let recipes = dependencies::capture(git_committed_bytes(&repo).args([
+                "archive",
+                "--format=tar",
+                &source.rev,
+                "--",
+                "vcpkg.json",
+                "vcpkg-configuration.json",
+                "portfiles",
+                "triplets",
+                "vcpkg/ports",
+            ]))?;
+            let destination = root.join(repo.strip_prefix(&inv.root)?);
+            fs::create_dir_all(&destination)?;
+            tar::Archive::new(recipes.as_slice()).unpack(&destination)?;
+            references["android_subtitle_provider"] = serde_json::to_value(source)?;
+        }
+    }
     rust_sources(&metadata, &package, &root)?;
     let native_commands = native_sources(inv, component, target, &root, &metadata)?;
     fs::write(
@@ -1117,7 +1158,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     } else {
         "$env:CARGO_TARGET_DIR = \"$PWD/target\"\n"
     });
-    let selected = dependencies::needs(inv, target, component)?;
+    let standalone_android_renpy = android_core && selected.renpy;
     if target.contains("android") {
         instructions.push_str(
             "# Rebuild on a Linux host with the Android NDK revision pinned in build/dependencies.toml.\n\
@@ -1162,7 +1203,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              $env:VCPKG_BINARY_SOURCES = 'clear'\n",
         );
         instructions.push_str(&native_commands);
-        if dependencies::shares_android_subtitle(target, component) {
+        if dependencies::shares_android_subtitle(target, selected) {
             let paths = dependencies::target_pkg_config_paths(inv, target, component, selected)?
                 .into_iter()
                 .map(|path| {
@@ -1229,11 +1270,29 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
             ));
         }
     }
-    if selected.impacto_sources || selected.renpy {
+    if (selected.impacto_sources || selected.renpy) && !standalone_android_renpy {
         instructions
             .push_str("$env:SHINKI_EMU_NATIVE_DOWNLOADS = \"$PWD/.work/native-downloads\"\n");
     }
-    if selected.renpy {
+    if standalone_android_renpy {
+        instructions.push_str(&format!(
+            "# Prepare the source checkouts and archives listed below first.\n\
+             : \"${{RENPY_RELINK_BUILD_ROOT:?Set this to the prepared renpy-build checkout}}\"\n\
+             export SHINKI_EMU_NATIVE_DOWNLOADS=\"$PWD/.work/native-downloads\"\n\
+             export RENPY_SDK_ROOT=\"$SHINKI_EMU_NATIVE_DOWNLOADS/renpy-sdk\"\n\
+             export RENPY_PYTHON_DEV=\"$SHINKI_EMU_NATIVE_DOWNLOADS/python\"\n\
+             export RENPY_SDL_INCLUDE=\"$SHINKI_EMU_NATIVE_DOWNLOADS/sdl2/include\"\n\
+             export Python3_EXECUTABLE=\"$RENPY_PYTHON_DEV/build-python\"\n\
+             export RENPY_CYTHON_LICENSE=\"$SHINKI_EMU_NATIVE_DOWNLOADS/cython-license/LICENSE.txt\"\n\
+             export PYTHONDONTWRITEBYTECODE=1\n\
+             export RENPY_STATIC_ROOT=\"$PWD/.work/renpy-relink/{target}\"\n\
+             python3 ThirdParty/renpy/shinki/android_runtime.py --build-root \"$RENPY_RELINK_BUILD_ROOT\" \\\n\
+               --target {target} --output \"$RENPY_STATIC_ROOT\" --host-python \"$Python3_EXECUTABLE\"\n\
+             unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR\n\
+             export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_ALL_STATIC=1\n\
+             export PKG_CONFIG_LIBDIR=\"$RENPY_STATIC_ROOT/lib/pkgconfig\"\n",
+        ));
+    } else if selected.renpy {
         instructions.push_str(&format!(
             "$env:RENPY_SDK_ROOT = \"$PWD/.work/native-downloads/renpy-sdk\"\n\
              $env:RENPY_PYTHON_DEV = \"$PWD/.work/native-downloads/python\"\n\
@@ -1318,9 +1377,14 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
         );
     }
     if selected.renpy && target.ends_with("-linux-android") {
-        instructions.push_str(
+        let consumer = if standalone_android_renpy {
+            "The standalone core"
+        } else {
+            "Manager"
+        };
+        instructions.push_str(&format!(
             "\n## Ren'Py Android runtime rebuild and relink\n\n\
-             Manager statically links the target CPython 3.12.8, SDL2, Ren'Py and codec archives. \
+             {consumer} statically links the target CPython 3.12.8, SDL2, Ren'Py and codec archives. \
              The complete fork, its Android SDL patch and private-symbol builder are under ThirdParty/renpy; \
              native/renpy-build.tar contains the exact official recipes and tracked source archives. \
              native/renpy-sources and native/python-sources contain the additional native inputs and \
@@ -1330,8 +1394,19 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              39895c1e017f0b36ffea2447d97eccd69d76ee1c into its renpy/ subdirectory, then copy \
              the supplied source archives into that build root. Place the NDK r29 Linux archive and \
              Cubism 4-r.6.2 header SDK in tars/ using the URLs and checksums in ThirdParty/renpy/shinki/sdk.json. \
-             Cubism Core is not part of Manager; its proprietary implementation is game-supplied.\n\n\
-             Run ThirdParty/renpy/shinki/android_runtime.py with --build-root <recipe-root>, \
+             Cubism Core is game-supplied and not part of this binary.\n\n"
+        ));
+        if standalone_android_renpy {
+            instructions.push_str(
+                "Set RENPY_RELINK_BUILD_ROOT to that prepared checkout and run the commands above with the supplied \
+                 Ubuntu build Python/Cython. They rebuild the offscreen SDL2 and private-symbol target stage, \
+                 then relink the standalone shared library and stage its matching Resources. \
+                 Modify the LGPL sources or patches before rebuilding and preserve the modified sources. \
+                 Replace the library and matching resources together; no Manager rebuild or APK signing is needed.\n",
+            );
+        } else {
+            instructions.push_str(
+                "Run ThirdParty/renpy/shinki/android_runtime.py with --build-root <recipe-root>, \
              --target aarch64-linux-android or x86_64-linux-android, and a new --output directory. \
              It stages target headers/archives, standard library, private symbols and exact Python artifacts. \
              Modify the LGPL sources or supplied patches before rebuilding; preserve modified sources. \
@@ -1339,7 +1414,8 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
              to relink every static dependency. The complete Manager and Rust dependency source is supplied \
              so no proprietary Manager object is required for relinking. Android packaging/signing tools \
              remain external build tools; use your own signing key for an installable modified APK.\n",
-        );
+            );
+        }
     } else if selected.renpy {
         instructions.push_str(
             "\n## Ren'Py combined-runtime rebuild and relink\n\n\

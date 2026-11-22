@@ -88,8 +88,12 @@ pub(crate) fn native_cores<'a>(
     inv: &'a Inventory,
     target: &'a str,
     component: &'a str,
+    selected: NativeNeeds,
 ) -> impl Iterator<Item = &'a crate::cores::Core> {
     inv.cores.iter().filter(move |core| {
+        if shares_android_subtitle(target, selected) && core.id == ANDROID_SUBTITLE_PROVIDER {
+            return true;
+        }
         core.dependencies
             .iter()
             .any(|dependency| dependency == "native-vcpkg")
@@ -1023,7 +1027,7 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
         if selected.bison {
             paths.push(inv.root.join(".work/bison/win_bison.exe"));
         }
-        for native in native_cores(inv, target, core.unwrap_or("manager")) {
+        for native in native_cores(inv, target, core.unwrap_or("manager"), selected) {
             paths.push(native_install(inv, target, &native.id)?.join("vcpkg/status"));
         }
         for p in paths {
@@ -1147,14 +1151,11 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
             }
             Err(_) => missing.push("JDK 27".into()),
         }
-        if selected.subtitle {
-            let install = subtitle_install(inv, target, core.unwrap_or("manager"))?;
-            if shares_android_subtitle(target, core.unwrap_or("manager")) {
-                if let Err(error) = validate_shared_android_subtitle(inv, &install) {
-                    missing.push(error.to_string());
-                }
-            } else if !install.join("lib/pkgconfig/libass.pc").is_file() {
-                missing.push("Android subtitle vcpkg tree (cargo xtask deps)".into());
+        if shares_android_subtitle(target, selected) {
+            let component = core.unwrap_or("manager");
+            let install = subtitle_install(inv, target, component)?;
+            if let Err(error) = validate_shared_android_subtitle(inv, &install) {
+                missing.push(error.to_string());
             }
         }
     }
@@ -1394,26 +1395,21 @@ pub(crate) fn apple_subtitle_triplet(target: &str) -> Option<&'static str> {
     }
 }
 
-pub(crate) fn shares_android_subtitle(target: &str, component: &str) -> bool {
-    component == "manager" && target.ends_with("-linux-android")
+pub(crate) const ANDROID_SUBTITLE_PROVIDER: &str = "impacto";
+
+pub(crate) fn shares_android_subtitle(target: &str, selected: NativeNeeds) -> bool {
+    selected.subtitle && target.ends_with("-linux-android")
 }
 
 pub fn subtitle_install(inv: &Inventory, target: &str, component: &str) -> Result<PathBuf> {
-    if shares_android_subtitle(target, component) {
-        return Ok(native_install(inv, target, "impacto")?.join(native_triplet(inv, target)?));
+    if target.ends_with("-linux-android") {
+        let triplet = native_triplet(inv, target)?;
+        return Ok(native_install(inv, target, ANDROID_SUBTITLE_PROVIDER)
+            .with_context(|| format!("Android subtitle provider for {component}/{target}"))?
+            .join(triplet));
     }
     let l = lock(inv)?;
-    Ok(if target.contains("android") {
-        inv.root
-            .join(".work/vcpkg-subtitle")
-            .join(target)
-            .join("installed")
-            .join(if target.starts_with("aarch64") {
-                "arm64-android-dynbidi"
-            } else {
-                "x64-android-dynbidi"
-            })
-    } else if target == "aarch64-unknown-linux-ohos" {
+    Ok(if target == "aarch64-unknown-linux-ohos" {
         inv.root
             .join(".work/vcpkg-subtitle")
             .join(target)
@@ -1455,7 +1451,7 @@ fn validate_shared_android_subtitle(inv: &Inventory, install: &Path) -> Result<(
         .find_map(|line| line.strip_prefix("Version:").map(str::trim));
     if actual != Some(expected.as_str()) || !install.join("lib/libass.a").is_file() {
         bail!(
-            "Android Manager needs libass {expected} in {}; run cargo xtask deps for this target",
+            "Android subtitle builds need libass {expected} in {}; run cargo xtask deps for this target",
             install.display()
         );
     }
@@ -1467,7 +1463,7 @@ pub(crate) fn shared_subtitle_port(inv: &Inventory) -> PathBuf {
 }
 
 pub(crate) fn uses_shared_subtitle_port(target: &str, core: &str) -> bool {
-    core == "impacto" && target.ends_with("-linux-android")
+    core == ANDROID_SUBTITLE_PROVIDER && target.ends_with("-linux-android")
 }
 
 pub(crate) fn target_pkg_config_paths(
@@ -1482,7 +1478,7 @@ pub(crate) fn target_pkg_config_paths(
     if selected.ffmpeg {
         paths.push(ffmpeg_install(inv, target)?.join("lib/pkgconfig"));
     }
-    let shared_subtitle = shares_android_subtitle(target, component);
+    let shared_subtitle = shares_android_subtitle(target, selected);
     if shared_subtitle {
         let install = subtitle_install(inv, target, component)?;
         paths.push(install.join("lib/pkgconfig"));
@@ -1491,8 +1487,8 @@ pub(crate) fn target_pkg_config_paths(
     if selected.subtitle && !shared_subtitle {
         paths.push(subtitle_install(inv, target, component)?.join("lib/pkgconfig"));
     }
-    for native in native_cores(inv, target, component) {
-        if shared_subtitle && native.id == "impacto" {
+    for native in native_cores(inv, target, component, selected) {
+        if shared_subtitle && native.id == ANDROID_SUBTITLE_PROVIDER {
             continue; // Already added the complete subtitle provider above.
         }
         let installation =
@@ -1742,7 +1738,7 @@ pub fn apply_environment(
     let selected = needs(inv, target, component)?;
     cmd.env_remove("SHINKI_EMU_FFMPEG_INSTALLED");
     let subtitle = subtitle_install(inv, target, component)?;
-    let shared_subtitle = shares_android_subtitle(target, component);
+    let shared_subtitle = shares_android_subtitle(target, selected);
     if shared_subtitle {
         validate_shared_android_subtitle(inv, &subtitle)?;
     }
@@ -1868,17 +1864,13 @@ pub fn apply_environment(
         }
         cmd.env_remove("PKG_CONFIG_PATH")
             .env_remove("PKG_CONFIG_SYSROOT_DIR");
-        cmd.env(
-            "ROUKAKU_SUBTITLE_VCPKG_ROOT",
-            subtitle
-                .parent()
-                .and_then(Path::parent)
-                .context("Android subtitle root")?,
-        );
+        // Android subtitle builds use target-only pkg-config, not the Windows
+        // vcpkg-rs root hint. Don't inherit a host hint for a different triplet.
+        cmd.env_remove("ROUKAKU_SUBTITLE_VCPKG_ROOT");
         cmd.env("ANDROID_NDK_HOME", &ndk)
             .env("ANDROID_NDK_ROOT", ndk)
             .env("PKG_CONFIG_ALLOW_CROSS", "1")
-            .env("PKG_CONFIG_LIBDIR", subtitle.join("lib/pkgconfig"));
+            .env("PKG_CONFIG_LIBDIR", "");
         // A Rust-only core such as Siglus does not prepare a vcpkg tree or its
         // Windows pkgconf executable. Preserve cross-only lookup for consumers.
         if selected.ffmpeg || selected.subtitle || selected.native_vcpkg || selected.renpy {
@@ -2191,6 +2183,8 @@ pub fn prepare(
         }
     }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
+    let component = core.unwrap_or("manager");
+    let shared_subtitle = shares_android_subtitle(target, selected);
     if crate::apple::supported(target) {
         crate::apple::preflight(target)?;
         if (selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
@@ -2217,6 +2211,13 @@ pub fn prepare(
                 && entry.source.is_some()
         }) {
             crate::sources::prepare(inv, embedded, allow_dirty_sources)?;
+        }
+    }
+    if shared_subtitle && component != ANDROID_SUBTITLE_PROVIDER {
+        let provider = inv.core(ANDROID_SUBTITLE_PROVIDER)?;
+        // An embedded provider was already prepared above.
+        if component != "manager" || !provider.static_manager_targets.iter().any(|t| t == target) {
+            crate::sources::prepare(inv, provider, false)?;
         }
     }
     if crate::apple::supported(target)
@@ -2303,16 +2304,9 @@ pub fn prepare(
         shinki_emu_build::configure_native_environment(&inv.root.join(".work"), &mut bootstrap)?;
         run(&mut bootstrap)?;
     }
-    let shared_subtitle = shares_android_subtitle(target, core.unwrap_or("manager"));
     if selected.subtitle && !shared_subtitle {
         let subtitle = subtitle_source(inv, target, core)?;
-        let triplet = if target_spec.platform == "android" {
-            if target_spec.architecture == "aarch64" {
-                "arm64-android-dynbidi"
-            } else {
-                "x64-android-dynbidi"
-            }
-        } else if target_spec.platform == "linux" {
+        let triplet = if target_spec.platform == "linux" {
             "x64-linux-dynamic"
         } else if target_spec.platform == "ohos" {
             "arm64-ohos"
@@ -2358,9 +2352,6 @@ pub fn prepare(
                 "--clean-packages-after-build",
             ])
             .env("VCPKG_DISABLE_METRICS", "1");
-        if target_spec.platform == "android" {
-            command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
-        }
         if target_spec.platform == "ohos" {
             command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);
         }
@@ -2381,7 +2372,7 @@ pub fn prepare(
     if selected.ffmpeg {
         prepare_ffmpeg(inv, target, &binary)?;
     }
-    for native in native_cores(inv, target, core.unwrap_or("manager")) {
+    for native in native_cores(inv, target, component, selected) {
         let source = inv
             .root
             .join(native.manifest.components().take(2).collect::<PathBuf>());
@@ -2449,7 +2440,7 @@ pub fn prepare(
         }
     }
     if shared_subtitle {
-        validate_shared_android_subtitle(inv, &subtitle_install(inv, target, "manager")?)?;
+        validate_shared_android_subtitle(inv, &subtitle_install(inv, target, component)?)?;
     }
     Ok(())
 }
@@ -2497,7 +2488,7 @@ mod native_tests {
     }
 
     #[test]
-    fn android_manager_routes_libass_to_the_impacto_install_only() {
+    fn android_subtitle_consumers_share_one_target_provider() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inv = Inventory::load(root).unwrap();
         let temp = crate::temporary::directory().unwrap();
@@ -2520,7 +2511,6 @@ mod native_tests {
                     .unwrap()
                     .join(native_triplet(&inv, target).unwrap())
             );
-            let separate = subtitle_install(&inv, target, "rfvp").unwrap();
             let paths = target_pkg_config_paths(
                 &inv,
                 target,
@@ -2542,7 +2532,24 @@ mod native_tests {
             assert_eq!(provider("libavutil.pc"), Some(&ffmpeg_pc_dir));
             assert_eq!(provider("libavfilter.pc"), Some(&ffmpeg_pc_dir));
             assert_eq!(paths.iter().filter(|path| **path == pc_dir).count(), 1);
-            assert!(!paths.contains(&separate.join("lib/pkgconfig")));
+            for component in ["rfvp", "shinki.emu.musica", "shinki.emu.cmvs", "siglus_rs"] {
+                let needs = needs(&inv, target, component).unwrap();
+                let providers: Vec<_> = native_cores(&inv, target, component, needs)
+                    .map(|core| core.id.as_str())
+                    .collect();
+                let paths = target_pkg_config_paths(&inv, target, component, needs).unwrap();
+                if needs.subtitle {
+                    assert_eq!(providers, [ANDROID_SUBTITLE_PROVIDER]);
+                    assert_eq!(paths.iter().filter(|path| **path == pc_dir).count(), 1);
+                    assert!(paths.contains(&shared.join("share/pkgconfig")));
+                    if needs.ffmpeg {
+                        assert_eq!(paths.first(), Some(&ffmpeg_pc_dir));
+                    }
+                } else {
+                    assert!(providers.is_empty());
+                    assert!(!paths.contains(&pc_dir));
+                }
+            }
             assert!(uses_shared_subtitle_port(target, "impacto"));
 
             fs::write(shared.join("lib/libass.a"), b"archive fixture").unwrap();
@@ -2557,10 +2564,9 @@ mod native_tests {
             "x86_64-pc-windows-msvc",
             "impacto"
         ));
-        assert!(!shares_android_subtitle(
-            "x86_64-pc-windows-msvc",
-            "manager"
-        ));
+        let desktop = "x86_64-pc-windows-msvc";
+        let selected = needs(&inv, desktop, "rfvp").unwrap();
+        assert!(native_cores(&inv, desktop, "rfvp", selected).next().is_none());
     }
 
     #[test]

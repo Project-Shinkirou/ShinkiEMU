@@ -631,8 +631,8 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
     {
         dirs.push(runtime);
     }
-    let separate_subtitle = selected.subtitle
-        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    let separate_subtitle =
+        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
     if separate_subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, "subtitle")
@@ -651,7 +651,7 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
         dirs.push(p.parent().context("native library parent")?.to_owned());
         dirs.push(p.parent().context("native library parent")?.join("lib"));
     }
-    for native in dependencies::native_cores(inv, &result.target, &result.component) {
+    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, &native.id)
         } else {
@@ -716,11 +716,6 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
                     .to_owned(),
             );
         }
-        if separate_subtitle {
-            dirs.push(
-                dependencies::subtitle_install(inv, &result.target, &result.component)?.join("lib"),
-            );
-        }
         let ndk_lib = ndk
             .join("toolchains/llvm/prebuilt")
             .join(host)
@@ -773,8 +768,8 @@ pub(crate) fn licenses(
             entries.push((ndk.join(notice), format!("licenses/android-ndk/{notice}")));
         }
     }
-    let separate_subtitle = selected.subtitle
-        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    let separate_subtitle =
+        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
     if separate_subtitle
         && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
     {
@@ -805,7 +800,7 @@ pub(crate) fn licenses(
             ));
         }
     }
-    for native in dependencies::native_cores(inv, &result.target, &result.component) {
+    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
         let native_share = dependencies::native_install(inv, &result.target, &native.id)?
             .join(dependencies::native_triplet(inv, &result.target)?)
             .join("share");
