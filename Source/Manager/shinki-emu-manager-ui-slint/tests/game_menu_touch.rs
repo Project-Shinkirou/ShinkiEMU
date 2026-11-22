@@ -243,6 +243,7 @@ impl Fixture {
     }
 
     /// Idles past the 3 s timer and, with motion on, the fade that follows it.
+    #[track_caller]
     fn hide_button(&self) {
         self.idle(Duration::from_secs(4));
         self.idle(Duration::from_secs(1));
