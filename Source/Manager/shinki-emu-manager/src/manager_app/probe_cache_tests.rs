@@ -148,10 +148,12 @@ fn cancellation_read_limits_and_io_errors_are_not_negative_cache_entries() {
     let mut cache = ProbeCache::load(root.path());
     let cancel = NativeCancellation::new(0);
     cancel.cancel();
-    assert!(cache.detect(&path, false, &cancel).unwrap_err().contains("CANCELLED"));
+    assert!(matches!(cache.detect(&path, false, &cancel),
+        Err(shinki_emu_manager_core::detection::DetectionError::Cancelled)));
     assert!(cache.get(&path).is_none());
     for index in 0..1030 { fs::write(path.join(format!("resource-{index}")), b"x").unwrap(); }
-    assert!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap_err().contains("limit"));
+    assert!(matches!(cache.detect(&path, false, &NativeCancellation::new(0)),
+        Err(shinki_emu_manager_core::detection::DetectionError::ReadLimit)));
     assert!(cache.get(&path).is_none());
 }
 
@@ -165,7 +167,8 @@ fn real_sharing_violation_is_an_error_not_no_match_or_a_cache_hit() {
     let mut cache = ProbeCache::load(root.path());
     refresh(&mut cache, &path);
     let locked = fs::OpenOptions::new().read(true).share_mode(0).open(path.join("boot.hcb")).unwrap();
-    assert!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap_err().contains("cannot read"));
+    assert!(matches!(cache.detect(&path, false, &NativeCancellation::new(0)),
+        Err(shinki_emu_manager_core::detection::DetectionError::Io(_))));
     assert!(cache.get(&path).is_none());
     drop(locked);
     assert_eq!(cache.detect(&path, false, &NativeCancellation::new(0)).unwrap().0.len(), 1);

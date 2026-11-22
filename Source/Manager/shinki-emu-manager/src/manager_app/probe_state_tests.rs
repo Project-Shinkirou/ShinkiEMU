@@ -197,6 +197,90 @@ fn roots_added_during_a_scan_are_coalesced_and_imported_after_it() {
 }
 
 #[test]
+fn one_candidate_at_read_limit_does_not_hide_recognized_siblings() {
+    let temp = tempfile::tempdir().unwrap();
+    let games = temp.path().join("Games");
+    let limited = games.join("01-limited");
+    fs::create_dir_all(&limited).unwrap();
+    for index in 0..1030 {
+        fs::write(limited.join(format!("resource-{index}")), b"x").unwrap();
+    }
+    let first = game(&games.join("02-group"));
+    let second = game(&games.join("03-group"));
+    let mut app = controller(&temp.path().join("manager"));
+    let pending = app.add_game_directory(&games).unwrap();
+    assert_eq!(pending.library.prepare_state, "importing");
+    settle_background(&mut app);
+    let model = app.model().unwrap();
+    assert_eq!(model.library.prepare_state, "ready");
+    assert_eq!(model.notices.snackbar.text, "发现 2 部新作品");
+    assert!(app.diagnostic.is_empty());
+    assert_eq!(
+        visible_games(&app).into_iter().collect::<BTreeSet<_>>(),
+        BTreeSet::from([path_id(&first), path_id(&second)])
+    );
+}
+
+#[test]
+fn refresh_without_results_at_the_depth_bound_is_incomplete() {
+    let temp = tempfile::tempdir().unwrap();
+    let games = temp.path().join("Games");
+    let ancestor = (0..MAX_SCAN_DEPTH).fold(games.clone(), |path, n| path.join(n.to_string()));
+    let hidden = game(&ancestor);
+    let mut app = controller(&temp.path().join("manager"));
+    let added = import(&mut app, &games);
+    assert!(added.library.games.is_empty());
+    assert_eq!(added.notices.snackbar.text, "部分目录未扫描");
+    let refreshing = app.refresh_library().unwrap();
+    assert_eq!(refreshing.library.prepare_state, "scanning");
+    settle_background(&mut app);
+    let refreshed = app.model().unwrap();
+    assert_eq!(refreshed.notices.snackbar.text, "部分目录未扫描");
+    assert!(refreshed.library.games.is_empty());
+    assert!(app.diagnostic.is_empty());
+    assert!(hidden.is_dir());
+}
+
+#[test]
+fn cancel_keeps_interactive_import_visible_until_worker_settles() {
+    let temp = tempfile::tempdir().unwrap();
+    let selected = game(&temp.path().join("selected"));
+    let downloaded = game(&temp.path().join("downloaded"));
+    let mut app = controller(&temp.path().join("manager"));
+    let pending = app.add_game_directory(&selected).unwrap();
+    assert_eq!(pending.library.prepare_state, "importing");
+    assert!(pending.library.can_cancel_prepare);
+    let cancelling = app.cancel_library_scan().unwrap();
+    assert_eq!(cancelling.library.prepare_state, "importing");
+    assert!(!cancelling.library.can_cancel_prepare);
+    settle_background(&mut app);
+    let ready = app.model().unwrap();
+    assert_eq!(ready.library.prepare_state, "ready");
+    assert!(ready.library.games.is_empty());
+
+    app.register_library_root(downloaded, false).unwrap();
+    assert_eq!(app.model().unwrap().library.prepare_state, "scanning");
+    settle_background(&mut app);
+}
+
+#[cfg(windows)]
+#[test]
+fn unreadable_game_file_is_a_visible_io_error_not_a_bounded_scan() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let selected = game(&temp.path().join("selected"));
+    let _lock = fs::OpenOptions::new().read(true).share_mode(0).open(selected.join("boot.hcb")).unwrap();
+    let mut app = controller(&temp.path().join("manager"));
+    let model = import(&mut app, &selected);
+    assert!(matches!(&app.startup_state, background::StartupState::Failed(error)
+        if error.starts_with("SHINKI_EMU_GAME_DIRECTORY_IO: ")));
+    assert_eq!(model.library.prepare_state, "failed");
+    assert!(model.library.prepare_detail.starts_with("无法读取游戏目录："));
+    assert!(model.library.games.is_empty());
+}
+
+#[test]
 fn a_failed_queued_import_preserves_games_and_requires_an_explicit_retry() {
     let root = tempfile::tempdir().unwrap();
     let first = game(&root.path().join("first"));

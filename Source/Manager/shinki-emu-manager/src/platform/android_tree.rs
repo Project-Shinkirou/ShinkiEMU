@@ -50,12 +50,17 @@ enum Query {
     Error { kind: String, error: String },
 }
 
-fn query(uri: &str, limit: Option<usize>) -> Result<Vec<Document>, DetectionError> {
-    let name = if limit.is_some() { "libraryTreeChildren" } else { "libraryTreeDocument" };
+fn query(uri: &str, children: Option<(usize, bool)>) -> Result<Vec<Document>, DetectionError> {
+    let name = if children.is_some() { "libraryTreeChildren" } else { "libraryTreeDocument" };
     let json = call_activity(name, |env, activity| {
         let uri = env.new_string(uri)?;
-        let value = if let Some(limit) = limit {
-            env.call_method(activity, jni_str!("libraryTreeChildren"), jni_sig!("(Ljava/lang/String;I)Ljava/lang/String;"), &[JValue::Object(&uri), JValue::Int(limit as i32)])?
+        let value = if let Some((limit, directories_only)) = children {
+            env.call_method(
+                activity,
+                jni_str!("libraryTreeChildren"),
+                jni_sig!("(Ljava/lang/String;IZ)Ljava/lang/String;"),
+                &[JValue::Object(&uri), JValue::Int(limit as i32), JValue::Bool(directories_only)],
+            )?
         } else {
             env.call_method(activity, jni_str!("libraryTreeDocument"), jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"), &[JValue::Object(&uri)])?
         };
@@ -76,8 +81,8 @@ pub fn document(uri: &str) -> Result<Document, DetectionError> {
     query(uri, None)?.pop().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "document provider returned no folder").into())
 }
 
-pub fn children(uri: &str, limit: usize) -> Result<Vec<Document>, DetectionError> {
-    query(uri, Some(limit))
+pub fn child_directories(uri: &str, limit: usize) -> Result<Vec<Document>, DetectionError> {
+    query(uri, Some((limit, true)))
 }
 
 pub fn local_path(uri: &str) -> Result<Option<PathBuf>, String> {
@@ -137,7 +142,7 @@ impl<'a> SafTree<'a> {
 impl DetectionTree for SafTree<'_> {
     fn entries(&self, path: &Path, limit: usize, visit: &mut dyn FnMut(OsString, EntryKind) -> Result<(), DetectionError>) -> Result<(), DetectionError> {
         if !self.entries.borrow().contains_key(path) {
-            let rows = self.lookup(path, |doc| children(&doc.uri, limit))??;
+            let rows = self.lookup(path, |doc| query(&doc.uri, Some((limit, false))))??;
             let mut names = std::collections::BTreeSet::new();
             if rows.iter().any(|row| !names.insert(&row.name)) {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "document provider returned duplicate names").into());

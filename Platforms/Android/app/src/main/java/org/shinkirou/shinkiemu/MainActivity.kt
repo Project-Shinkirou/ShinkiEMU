@@ -105,7 +105,8 @@ class MainActivity : NativeActivity() {
     private external fun nativeOnPickResult(requestId: Long, path: String?, error: String?)
 
     fun libraryTreeDocument(uri: String): String = ShinkiLibraryTree.document(this, uri)
-    fun libraryTreeChildren(uri: String, limit: Int): String = ShinkiLibraryTree.children(this, uri, limit)
+    fun libraryTreeChildren(uri: String, limit: Int, directoriesOnly: Boolean): String =
+        ShinkiLibraryTree.children(this, uri, limit, directoriesOnly)
     fun openLibraryTreeFile(uri: String): Int = ShinkiLibraryTree.openFile(this, uri)
     fun localLibraryTreePath(uri: String): String? = ShinkiLibraryTree.localPath(this, uri)
 

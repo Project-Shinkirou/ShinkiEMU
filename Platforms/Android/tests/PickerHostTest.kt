@@ -1,6 +1,7 @@
 package org.shinkirou.shinkiemu
 
 import android.app.Activity
+import android.provider.DocumentsContract.Document.MIME_TYPE_DIR
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -39,6 +40,27 @@ fun main() {
         check(parse(provider, true, invalid) == null)
     }
     println("SAF volume mapping: primary and removable volumes; rejects non-system providers and escaping paths")
+
+    val files = List(10) { "application/octet-stream" }
+    val rows = files + MIME_TYPE_DIR + files
+    fun countRows(input: List<String>, limit: Int, maxRows: Int, directoriesOnly: Boolean): Pair<Boolean, Int> {
+        val cursor = input.iterator()
+        var current = ""
+        var selected = 0
+        val complete = visitTreeRows(limit, maxRows, {
+            if (!cursor.hasNext()) false else {
+                current = cursor.next()
+                true
+            }
+        }, { current }, directoriesOnly) { selected++ }
+        return complete to selected
+    }
+    check(countRows(rows, 1, rows.size, directoriesOnly = true) == (true to 1))
+    check(countRows(files, 0, files.size, directoriesOnly = true) == (true to 0))
+    check(countRows(rows, 0, rows.size, directoriesOnly = true) == (false to 0))
+    check(countRows(rows, 1, rows.size - 1, directoriesOnly = true) == (false to 1))
+    check(countRows(rows, 1, rows.size, directoriesOnly = false) == (false to 1))
+    println("SAF traversal: files do not consume directory slots; real directory and provider row limits still apply")
 
     val root = Files.createTempDirectory("shinki-saf-host-").toFile()
     try {
