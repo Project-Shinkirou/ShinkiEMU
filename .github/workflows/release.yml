@@ -227,6 +227,10 @@ jobs:
             }
           }
           else { cargo xtask deps --target $env:TARGET --core $env:COMPONENT }
+      - name: Prepare standalone Android host producers
+        if: contains(matrix.target, 'android') && matrix.component == 'manager'
+        shell: bash
+        run: python3 build/ci/prepare-android-host-cores.py
       - name: Preserve failed Renpy host NASM configuration
         if: failure() && matrix.component == 'manager' && contains(matrix.target, 'android')
         uses: actions/upload-artifact@v7
