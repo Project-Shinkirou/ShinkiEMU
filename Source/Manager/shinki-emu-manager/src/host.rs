@@ -168,6 +168,9 @@ pub trait ManagerController: 'static {
         event: shinki_emu_manager_core::model::FamilyEvent,
     ) -> Result<(), String>;
     fn is_game_active(&self) -> bool;
+    /// Keep the Android launch view alive while its selected core activates.
+    #[cfg(target_os = "android")]
+    fn has_pending_game_launch(&self) -> bool;
     /// Refresh a ready library or retry a recoverable scan failure.
     fn refresh_library(&mut self) -> Result<ManagerViewModel, String>;
     /// Cancel a running scan; core loading cannot be cancelled.
@@ -642,8 +645,8 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                 let result = controller.borrow_mut().advance_runtime();
                 match result {
                     Ok(model) => {
-                        let running = controller.borrow().is_game_active();
-                        apply_session_progress(&window, &adapter, model, running);
+                        let visible = game_window_active(&*controller.borrow());
+                        apply_session_progress(&window, &adapter, model, visible);
                     }
                     Err(error) => {
                         terminate_game(&controller, &adapter, &window, error);
@@ -651,7 +654,7 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                 }
                 let session = window.global::<Session>();
                 let running = controller.borrow().is_game_active();
-                session.set_active(running);
+                session.set_active(game_window_active(&*controller.borrow()));
                 if !running {
                     release_session_mapping(&controller, &gamepad, &pad_session, &window);
                 }
@@ -751,9 +754,9 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
             let poll_result = controller.borrow_mut().poll_platform();
             match poll_result {
                 Ok(model) => {
-                    let running = controller.borrow().is_game_active();
-                    apply_session_progress(&window, &weak_adapter, model, running);
-                    if !running {
+                    let visible = game_window_active(&*controller.borrow());
+                    apply_session_progress(&window, &weak_adapter, model, visible);
+                    if !visible {
                         release_session_mapping(&controller, &gamepad, &pad_session, &window);
                     }
                 }
@@ -1103,6 +1106,14 @@ fn apply_model(adapter: &std::rc::Weak<SlintManagerAdapter>, model: &ManagerView
     }
 }
 
+fn game_window_active(controller: &impl ManagerController) -> bool {
+    #[cfg(target_os = "android")]
+    if controller.has_pending_game_launch() {
+        return true;
+    }
+    controller.is_game_active()
+}
+
 /// Either poll can consume the owner's finished update. Tear down the game
 /// view before applying its inactive model so "opening" cannot cover the library.
 fn apply_session_progress(
@@ -1181,15 +1192,22 @@ fn finish_leave(
 }
 
 fn clear_game_view(window: &shinki_emu_manager_ui_slint::ManagerWindow) -> Result<(), String> {
+    let result = clear_game_surface(window);
+    let dialogs = window.global::<Dialogs>();
+    dialogs.set_fatal_active(false);
+    dialogs.set_fatal_retryable(false);
+    result
+}
+
+fn clear_game_surface(window: &shinki_emu_manager_ui_slint::ManagerWindow) -> Result<(), String> {
     let icon_result = window_commands::set_icon(window.window(), None);
     let session = window.global::<Session>();
     session.set_active(false);
     session.set_fullscreen(false);
     session.set_menu_open(false);
     clear_session_frame(&session);
-    let dialogs = window.global::<Dialogs>();
-    dialogs.set_fatal_active(false);
-    dialogs.set_fatal_retryable(false);
+    #[cfg(target_os = "android")]
+    let icon_result = icon_result.and(platform::android::set_game_window(false, false));
     window.window().set_fullscreen(false);
     icon_result
 }
@@ -1246,6 +1264,14 @@ fn apply_fatal(
 ) {
     let text = describe_error(message);
     let dialogs = window.global::<Dialogs>();
+    #[cfg(target_os = "android")]
+    if !dialogs.get_fatal_active()
+        && window.global::<Session>().get_active()
+        && window.global::<Session>().get_phase().as_str() == "opening"
+        && let Err(error) = platform::android::set_game_window(false, false)
+    {
+        report_error(window, &error);
+    }
     dialogs.set_fatal_title(text.title.into());
     dialogs.set_fatal_detail(text.detail.into());
     dialogs.set_fatal_code(text.code.into());
@@ -1260,13 +1286,7 @@ fn terminate_game<C: ManagerController>(
     error: String,
 ) {
     let cleanup = controller.borrow_mut().leave_game();
-    let icon_cleanup = window_commands::set_icon(window.window(), None);
-    let session = window.global::<Session>();
-    session.set_active(false);
-    session.set_fullscreen(false);
-    session.set_menu_open(false);
-    clear_session_frame(&session);
-    window.window().set_fullscreen(false);
+    let window_cleanup = clear_game_surface(window);
     let message = match cleanup {
         Ok(model) => {
             apply_model(adapter, &model);
@@ -1274,7 +1294,7 @@ fn terminate_game<C: ManagerController>(
         }
         Err(cleanup) => format!("{error}; {cleanup}"),
     };
-    let message = match icon_cleanup {
+    let message = match window_cleanup {
         Ok(()) => message,
         Err(cleanup) => format!("{message}; {cleanup}"),
     };

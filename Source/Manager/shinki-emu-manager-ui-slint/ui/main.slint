@@ -350,6 +350,14 @@ export component ManagerWindow inherits MaterialWindow {
             index-changed(index) => { root.navigate(index); }
         }
 
+        // Android draws behind the bars and cutout. Keep the GameView in the
+        // safe area, with a black backing across the full Activity surface.
+        if Session.active && Session.android-game-window && !(Dialogs.fatal-active && Session.phase == "opening") : Rectangle {
+            width: root.width;
+            height: root.height;
+            background: #000000;
+        }
+
         if Session.active : GameView {
             x: root.usable-x;
             y: root.usable-y;

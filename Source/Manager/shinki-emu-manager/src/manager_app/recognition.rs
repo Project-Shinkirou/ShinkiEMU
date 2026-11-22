@@ -11,6 +11,11 @@ pub(super) enum NativeAction {
 }
 
 impl NativeAction {
+    #[cfg(any(target_os = "android", test))]
+    pub(super) fn is_launch(&self) -> bool {
+        matches!(self, Self::Launch { .. })
+    }
+
     pub(super) fn plugin_id(&self) -> &str {
         match self {
             Self::ConfigureGame { plugin_id, .. } | Self::Launch { plugin_id, .. } => plugin_id,
@@ -170,6 +175,11 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn activated(&mut self, plugin_id: String, result: Result<owner::CoreMetadata, String>) -> Result<(), String> {
+        #[cfg(target_os = "android")]
+        if self.native_action.as_ref().is_some_and(|action| action.plugin_id() != plugin_id) {
+            // A canceled launch's activation can finish after a newer request.
+            return Ok(());
+        }
         let Some(action) = self.native_action.take() else { return Ok(()); };
         if action.plugin_id() != plugin_id { return Err("SHINKI_EMU_CORE_ACTIVATION_MISMATCH".into()); }
         match result {

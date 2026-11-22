@@ -68,6 +68,14 @@ pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
         let dialogs = window.global::<Dialogs>();
         match result {
             Ok(()) => {
+                #[cfg(target_os = "android")]
+                if window.global::<Session>().get_phase().as_str() == "opening" {
+                    let fullscreen = window.global::<Session>().get_fullscreen();
+                    if let Err(error) = window_commands::set_game_fullscreen(&window, fullscreen) {
+                        terminate_game(&w.controller, &w.adapter, &window, error);
+                        return;
+                    }
+                }
                 dialogs.set_fatal_active(false);
                 dialogs.set_fatal_retryable(false);
                 fire_host_callback(&retry_schedule);
@@ -94,6 +102,11 @@ pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
             Ok(model) => {
                 let mapping = w.controller.borrow().input_mapping();
                 if let Err(error) = w.gamepad.borrow_mut().set_mapping(mapping) {
+                    terminate_game(&w.controller, &w.adapter, &window, error);
+                    return;
+                }
+                #[cfg(target_os = "android")]
+                if let Err(error) = window_commands::set_game_fullscreen(&window, true) {
                     terminate_game(&w.controller, &w.adapter, &window, error);
                     return;
                 }
@@ -149,9 +162,10 @@ pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
     window
         .global::<Session>()
         .on_set_fullscreen(move |fullscreen| {
-            if let Some(window) = w.window.upgrade() {
-                window.window().set_fullscreen(fullscreen);
-                window.global::<Session>().set_fullscreen(fullscreen);
+            if let Some(window) = w.window.upgrade()
+                && let Err(error) = window_commands::set_game_fullscreen(&window, fullscreen)
+            {
+                report_error(&window, &error);
             }
         });
     filters::install(wiring, renderer);
@@ -185,7 +199,7 @@ mod tests {
     }
 
     struct TestPlatform {
-        jobs: Jobs,
+        jobs: Option<Jobs>,
         window: Rc<MinimalSoftwareWindow>,
     }
 
@@ -195,7 +209,7 @@ mod tests {
         }
 
         fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
-            Some(Box::new(Proxy(self.jobs.clone())))
+            self.jobs.as_ref().map(|jobs| Box::new(Proxy(jobs.clone())) as Box<dyn EventLoopProxy>)
         }
     }
 
@@ -203,7 +217,7 @@ mod tests {
     fn first_pointer_batch_dispatches_without_a_frame_or_timer() {
         let jobs = Jobs::default();
         slint::platform::set_platform(Box::new(TestPlatform {
-            jobs: jobs.clone(),
+            jobs: Some(jobs.clone()),
             window: MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer),
         }))
         .unwrap();
@@ -261,7 +275,7 @@ mod tests {
         const HEIGHT: usize = 780;
         let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
         slint::platform::set_platform(Box::new(TestPlatform {
-            jobs: Jobs::default(),
+            jobs: None,
             window: software.clone(),
         }))
         .unwrap();
@@ -361,5 +375,53 @@ mod tests {
         assert!(!window.global::<Dialogs>().get_fatal_active());
         assert!(!window.global::<Session>().get_active());
         assert_eq!(window.global::<App>().get_page().as_str(), "library-search");
+    }
+
+    #[test]
+    fn android_game_window_centers_a_wide_frame_without_stretch() {
+        use slint::platform::WindowEvent;
+
+        const WIDTH: usize = 800;
+        const HEIGHT: usize = 360;
+        const GAME: slint::Rgb8Pixel = slint::Rgb8Pixel { r: 242, g: 39, b: 51 };
+        const BLACK: slint::Rgb8Pixel = slint::Rgb8Pixel { r: 0, g: 0, b: 0 };
+        let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        slint::platform::set_platform(Box::new(TestPlatform {
+            jobs: None,
+            window: software.clone(),
+        }))
+        .unwrap();
+        let adapter = SlintManagerAdapter::new().unwrap();
+        let window = adapter.window();
+        software.set_size(slint::PhysicalSize::new(WIDTH as u32, HEIGHT as u32));
+        software.dispatch_event(WindowEvent::Resized {
+            size: slint::LogicalSize::new(WIDTH as f32, HEIGHT as f32),
+        });
+        let session = window.global::<Session>();
+        session.set_android_game_window(true);
+        session.set_active(true);
+        session.set_phase("running".into());
+        let mut stage = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(16, 9);
+        stage.make_mut_slice().fill(GAME);
+        apply_stage_image(
+            window,
+            slint::Image::from_rgb8(stage),
+            (16, 9),
+            (16, 9),
+            Viewport2D { x: 0, y: 0, width: 16, height: 9 },
+        );
+        let mut pixels = vec![slint::Rgb8Pixel::default(); WIDTH * HEIGHT];
+        software.request_redraw();
+        assert!(software.draw_if_needed(|renderer| {
+            renderer.render(&mut pixels, WIDTH);
+        }));
+
+        // 16:9 at height 360 is exactly 640 pixels wide. Keep the whole
+        // source visible, centered with 80 black pixels on each side.
+        for line in pixels.chunks_exact(WIDTH) {
+            assert!(line[..80].iter().all(|pixel| *pixel == BLACK));
+            assert!(line[80..720].iter().all(|pixel| *pixel == GAME));
+            assert!(line[720..].iter().all(|pixel| *pixel == BLACK));
+        }
     }
 }

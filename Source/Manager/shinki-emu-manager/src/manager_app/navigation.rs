@@ -214,9 +214,18 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn leave_game(&mut self) -> Result<ManagerViewModel, String> {
+        #[cfg(target_os = "android")]
+        self.cancel_pending_game_launch();
         self.close_active(PlaySessionEndReason::Leave)?;
         self.pending_events.clear();
         self.model()
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    pub(super) fn cancel_pending_game_launch(&mut self) {
+        if self.native_action.as_ref().is_some_and(recognition::NativeAction::is_launch) {
+            self.native_action = None;
+        }
     }
 
     pub(super) fn set_library_sort(&mut self, mode: &str) -> Result<ManagerViewModel, String> {

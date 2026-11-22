@@ -76,6 +76,7 @@ pub enum LifecycleEvent {
     Focused(bool),
     Resumed(bool),
     ConfigChanged,
+    SurfaceResized,
 }
 
 /// Store the activity context, initialize the platform TLS verifier used by
@@ -209,6 +210,20 @@ pub fn set_pointer_hidden(hidden: bool) -> Result<(), String> {
     .map_err(|error| format!("SHINKI_EMU_ANDROID_POINTER_VISIBILITY: {error}"))
 }
 
+/// Apply the game-only window policy on the Activity UI thread.
+pub(crate) fn set_game_window(active: bool, immersive: bool) -> Result<(), String> {
+    call_activity("setGameWindow", |env, activity| {
+        env.call_method(
+            activity,
+            jni_str!("setGameWindow"),
+            jni_sig!("(ZZ)V"),
+            &[JValue::Bool(active), JValue::Bool(immersive)],
+        )
+        .map(drop)
+    })
+    .map_err(|error| format!("SHINKI_EMU_ANDROID_GAME_WINDOW: {error}"))
+}
+
 /// Register the lifecycle handler, replacing the previous one. Must be called
 /// on the Slint event-loop thread, where events are delivered.
 pub fn set_lifecycle_handler(handler: Box<dyn Fn(LifecycleEvent)>) {
@@ -237,6 +252,9 @@ pub fn on_poll_event(event: &PollEvent<'_>) {
         MainEvent::Resume { .. } => LifecycleEvent::Resumed(true),
         MainEvent::Pause => LifecycleEvent::Resumed(false),
         MainEvent::ConfigChanged { .. } => LifecycleEvent::ConfigChanged,
+        MainEvent::InitWindow { .. }
+        | MainEvent::WindowResized { .. }
+        | MainEvent::ContentRectChanged { .. } => LifecycleEvent::SurfaceResized,
         _ => return,
     };
     LIFECYCLE_STATE.with(|state| {
@@ -244,7 +262,7 @@ pub fn on_poll_event(event: &PollEvent<'_>) {
         match event {
             LifecycleEvent::Focused(focused) => state.set((focused, resumed)),
             LifecycleEvent::Resumed(resumed) => state.set((focused, resumed)),
-            LifecycleEvent::ConfigChanged => {}
+            LifecycleEvent::ConfigChanged | LifecycleEvent::SurfaceResized => {}
         }
     });
     // Clone out of the slot so the handler may replace itself.

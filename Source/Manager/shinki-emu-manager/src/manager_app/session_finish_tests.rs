@@ -1,11 +1,65 @@
 //! A core that ends the game itself (SESSION_FINISHED) must close the session
 //! as finished and hand the Manager back to the library.
+
 use super::family_config::tests::{configured_controller, launch_fixture, pump_until};
 use super::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+#[test]
+fn android_game_window_cancels_only_the_deferred_launch() {
+    use recognition::NativeAction;
+
+    let root = tempfile::tempdir().unwrap();
+    let mut controller = configured_controller(root.path(), |_| {});
+    controller.set_host_wake(Arc::new(|| {}));
+    controller
+        .set_window_state(WindowState {
+            width: 1280,
+            height: 720,
+            scale_factor: 1.0,
+            focused: true,
+            visible: true,
+            suspended: false,
+        })
+        .unwrap();
+    let plugin_id = controller.candidates["game"].plugin_id.clone();
+    let activation = || NativeAction::Launch {
+        game_id: "game".into(),
+        plugin_id: plugin_id.clone(),
+    };
+    let metadata = owner::CoreMetadata {
+        descriptor: controller.registry.descriptor(&plugin_id).unwrap().clone(),
+        configuration: Vec::new(),
+        menu: Vec::new(),
+    };
+
+    controller.native_action = Some(NativeAction::Diagnose(plugin_id.clone()));
+    controller.cancel_pending_game_launch();
+    assert!(matches!(controller.native_action, Some(NativeAction::Diagnose(_))));
+
+    controller.native_action = Some(activation());
+    assert!(!controller.session_running(), "preparing a core is not play");
+    controller.cancel_pending_game_launch();
+    controller
+        .activated(plugin_id.clone(), Ok(metadata.clone()))
+        .unwrap();
+    assert!(controller.active.is_none(), "late activation reopened a canceled game");
+
+    controller.native_action = Some(activation());
+    controller
+        .activated(plugin_id.clone(), Err("activation failed".into()))
+        .unwrap();
+    assert!(controller.native_action.is_none());
+    assert!(controller.active.is_none());
+    assert_eq!(controller.diagnostic, "activation failed");
+
+    controller.native_action = Some(activation());
+    controller.activated(plugin_id, Ok(metadata)).unwrap();
+    assert!(controller.native_action.is_none());
+    assert!(controller.session_running(), "activated launch must reach the game owner");
+}
 
 fn opened(controller: &ShinkiEmuManagerController) -> bool {
     controller

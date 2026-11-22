@@ -212,6 +212,12 @@ impl ManagerController for ShinkiEmuManagerController {
     fn is_game_active(&self) -> bool {
         self.session_running()
     }
+    #[cfg(target_os = "android")]
+    fn has_pending_game_launch(&self) -> bool {
+        self.native_action
+            .as_ref()
+            .is_some_and(recognition::NativeAction::is_launch)
+    }
     fn model(&mut self) -> Result<ManagerViewModel, String> {
         ShinkiEmuManagerController::model(self)
     }
