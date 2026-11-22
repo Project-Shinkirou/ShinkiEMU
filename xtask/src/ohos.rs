@@ -327,7 +327,13 @@ fn stage_inputs(
     entries.extend(package::metadata_entries(inv, temp.path())?);
     entries.extend(package::licenses(inv, result, temp.path())?);
     let declaration = if let Some(musica) = musica {
-        Some(stage_core_manifest(inv, musica, temp.path(), &mut entries)?)
+        Some(stage_core_manifest(
+            inv,
+            musica,
+            libs.join(ABI).join(CORE_LIBRARY),
+            temp.path(),
+            &mut entries,
+        )?)
     } else {
         entries.extend(package::static_core_entries(inv, result, temp.path())?);
         None
@@ -347,6 +353,7 @@ fn stage_inputs(
 fn stage_core_manifest(
     inv: &Inventory,
     musica: &BuildResult,
+    staged_library: PathBuf,
     scratch: &Path,
     entries: &mut Vec<(PathBuf, String)>,
 ) -> Result<Vec<u8>> {
@@ -372,7 +379,7 @@ fn stage_core_manifest(
         files.push(package::FileRecord { path: relative.clone(), sha256: sha256(&source)? });
         entries.push((source, format!("cores/{MUSICA}/{relative}")));
     }
-    files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+    let receipt = scratch.join("build.json");
     let metadata = crate::build::cargo_metadata(inv, TARGET)?;
     let version = metadata["packages"]
         .as_array()
@@ -382,6 +389,16 @@ fn stage_core_manifest(
         .and_then(|package| package["version"].as_str())
         .context("bundled Musica Cargo version")?;
     shinki_emu_metadata::validate_core_version(version, None)?;
+    let mut packaged = musica.clone();
+    packaged.product_version = Some(version.into());
+    packaged.library = staged_library;
+    package::write_provenance(&packaged, &receipt)?;
+    files.push(package::FileRecord {
+        path: "build.json".into(),
+        sha256: sha256(&receipt)?,
+    });
+    entries.push((receipt, format!("cores/{MUSICA}/build.json")));
+    files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     let declaration = serde_json::to_vec_pretty(&package::CorePackage {
         schema: "shinki.emu.core_package.v1".into(),
         plugin_id: MUSICA.into(),
