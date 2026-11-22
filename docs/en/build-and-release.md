@@ -13,7 +13,9 @@ Every file written by ShinkiEMU itself inside a game directory belongs under `<g
 
 ## Inputs and prerequisites
 
-Clone the repository with its recursive submodules. Use Rust/Cargo and the target's native toolchain. Windows native builds require an x64 MSVC developer environment, CMake, Ninja and Git. Android uses JDK 27, NDK 30.0.16248370 and cargo-ndk 4.1.2. Tool versions and downloads are inputs in `build/dependencies.toml`; core manifests/features/licenses are in `build/cores.toml`, and target/runner definitions in `build/targets.toml`.
+Clone with `git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU`, or run `git submodule update --init --recursive` in an existing checkout. The workspace patches `cpal` from the `ThirdParty/cpal` submodule, so without it every Cargo command, `cargo xtask --help` included, fails with `patch location ThirdParty\cpal does not contain packages matching cpal`. Use Rust/Cargo and the target's native toolchain. Windows native builds require an x64 MSVC developer environment, CMake, Ninja and Git. Android uses JDK 27, NDK 30.0.16248370 and cargo-ndk 4.1.2. Tool versions and downloads are inputs in `build/dependencies.toml`; core manifests/features/licenses are in `build/cores.toml`, and target/runner definitions in `build/targets.toml`.
+
+Run Windows `build` and `package` commands from an x64 Visual Studio developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Packaging resolves `VCRUNTIME140.dll` and the other MSVC runtime redistributables only from `%VCToolsRedistDir%\x64`, never from System32, and that variable exists only inside the developer shell. `doctor` locates `cl.exe` through the Visual Studio registry even in an ordinary shell, so a passing `doctor` does not show that `VCToolsRedistDir` is set. The package error `missing redistributable dependency VCRUNTIME140.dll; run cargo xtask deps or provide its build tree` means the shell lacks it; `deps` does not supply it.
 
 KiriKiri's parser generator runs on the build host, including Android cross-builds.
 Windows uses the pinned WinFlexBison prepared by `deps`; other hosts require Bison
@@ -42,6 +44,8 @@ cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
 ```
 
 `doctor` diagnoses missing inputs and exits nonzero; it does not install them. `deps` is the explicit download/preparation entry and can be narrowed with `--core <plugin_id>`. It prepares locked native dependencies rather than installing system packages. Ordinary commands do not prepare downloads implicitly; Cargo still needs its resolved dependencies available.
+
+`cargo xtask` is the Cargo alias `run --locked --package xtask` (`.cargo/config.toml`), and xtask passes `--locked` to every Cargo subprocess. Adding a workspace member or dependency therefore needs one deliberate lockfile update before any `cargo xtask` command: run `cargo metadata --format-version 1 > /dev/null` (PowerShell: `| Out-Null`) without `--locked`, then read `git diff -- Cargo.lock`. Cargo keeps every existing locked version and only adds what the change introduces. Never run `cargo update` or `cargo update -p` for this; both can move unrelated registry versions. On the current tree Cargo 1.99.1 may also swap the two `na_mpeg2_decoder 0.1.0` entries (siglus_rs and ethornell-rs sources) without changing any version; leave that to Cargo and mention it in the PR instead of hand-editing the lockfile.
 
 ## Build, check and test
 
@@ -258,11 +262,25 @@ All Manager packages derive their application icon from `Assets/Branding/shinkie
 
 Known runtime issue: SwiftShader/software-Vulkan emulators render only the first frame with stock Slint 1.18.1; use `-gpu host` or a device. A separate one-Text/one-Timer app reproduced the stalled updates in five cold launches. The same Manager test APK rendered its CJK onboarding and icons in five host-GPU cold launches. Build/package success does not establish game compatibility.
 
+### Android ARM64 core package
+
+A core whose `supported_targets` include `aarch64-linux-android` also builds and packages on its own, with the same JDK, SDK/NDK and environment variables as the test APK above. `deps` installs the pinned cargo-ndk privately under `.work/tools/bin`:
+
+```sh
+rustup target add aarch64-linux-android
+cargo xtask doctor  --target aarch64-linux-android --core <plugin_id>
+cargo xtask deps    --target aarch64-linux-android --core <plugin_id>
+cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
+cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <new-directory>
+```
+
+Self-owned cores require `--version`; external cores omit it because their version derives from the source pins. The output is a core package directory holding the AArch64 ELF library, its dependency closure, licenses and the NDK notices; it is not an APK. In the current Manager, Android cores run only when statically embedded through `static_manager_targets`, the Manager `Cargo.toml` and `STATIC_CORES` and built into the Manager APK above; the current Android Manager has no install path for a downloaded core package.
+
 ### Apple Manager: native macOS and Linux-hosted cross
 
 Native CI keeps the macOS runners from `build/targets.toml` and invokes Cargo/Xcode. On Linux, `build` and `check` select cross 0.2.5 and the private image configured in `Cross.toml`. The Apple triples are `x86_64-apple-darwin`, `aarch64-apple-darwin`, `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` and `x86_64-apple-ios` (simulators). Deployment minima are macOS 13.0 and iOS 16.0.
 
-A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the job matrix omits its rows, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. The five Apple targets currently carry this reason and are excluded from CI and releases until the cross-build toolchain is validated; removing the field restores them.
+A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the job matrix omits its rows, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. No target currently sets this field, so the Apple rows follow each component's own `supported_targets`/`manager_supported` declarations.
 
 Obtain Xcode from the [Mac App Store](https://apps.apple.com/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/all/) under Apple's license. Expand an official Xcode `.xip` on macOS using `xip --expand`, select that Xcode installation and accept its license there. Command Line Tools alone do not provide iOS SDKs. On that Mac:
 
