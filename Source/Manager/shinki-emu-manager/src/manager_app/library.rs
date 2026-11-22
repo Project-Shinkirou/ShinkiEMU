@@ -256,6 +256,8 @@ impl ShinkiEmuManagerController {
             native_failures: BTreeMap::new(),
             configuration_errors: BTreeMap::new(),
             probe_choices: BTreeMap::new(),
+            manual_games: BTreeSet::new(),
+            manual_launch: None,
             selected_case_id: None,
             search_query: String::new(),
             diagnostic: String::new(),
@@ -369,14 +371,18 @@ impl ShinkiEmuManagerController {
         game_id: &str,
         choices: Vec<Candidate>,
     ) -> Result<(), String> {
+        let detections = self.library.app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{game_id}"))
+            .map_err(|error| error.to_string())?;
+        if choices.is_empty() && detections.as_ref().is_some_and(Vec::is_empty) {
+            return self.set_manual_candidates(game_id);
+        }
         self.clear_probe_state(game_id)?;
         let saved = self
             .library
             .game_settings(game_id)
             .map_err(|error| error.to_string())?
             .and_then(|settings| settings.emulator_id);
-        let ambiguous_family = self.library.app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{game_id}"))
-            .map_err(|error| error.to_string())?.is_some_and(|detections| detections.len() > 1);
+        let ambiguous_family = detections.is_some_and(|detections| detections.len() > 1);
         let selected = match saved.as_deref() {
             Some(id) => choices.iter().find(|choice| choice.plugin_id == id),
             None if choices.len() == 1 && !ambiguous_family => choices.first(),
@@ -437,6 +443,118 @@ impl ShinkiEmuManagerController {
     pub(super) fn clear_probe_state(&mut self, game_id: &str) -> Result<(), String> {
         self.candidates.remove(game_id);
         self.probe_choices.remove(game_id);
+        self.manual_games.remove(game_id);
+        Ok(())
+    }
+
+    /// A game without rule detections may run any eligible official core the
+    /// user picks. Nothing is picked for the user, even with one choice, and no
+    /// core is activated or probed before the launch itself.
+    fn set_manual_candidates(&mut self, game_id: &str) -> Result<(), String> {
+        let pending = self.manual_games.contains(game_id)
+            .then(|| self.candidates.get(game_id).map(|candidate| candidate.plugin_id.clone()))
+            .flatten();
+        self.clear_probe_state(game_id)?;
+        self.manual_games.insert(game_id.to_owned());
+        let choices: Vec<Candidate> = shinki_emu_manager_core::static_core_catalog::entries()
+            .iter()
+            .filter(|entry| self.plugin_available(entry.plugin_id))
+            .map(|entry| Candidate { plugin_id: entry.plugin_id.into(), family_id: entry.family_id.into() })
+            .collect();
+        // Without an eligible core the existing unavailable state stays; no picker.
+        if choices.is_empty() {
+            return Ok(());
+        }
+        let selected = match pending {
+            Some(id) => Some(id),
+            None => self.verified_manual_core(game_id)?,
+        };
+        if let Some(candidate) = selected.and_then(|id| choices.iter().find(|choice| choice.plugin_id == id)) {
+            self.candidates.insert(game_id.to_owned(), candidate.clone());
+        }
+        self.probe_choices.insert(game_id.to_owned(), choices);
+        Ok(())
+    }
+
+    /// The saved core of a game without rule detections, if a session with it
+    /// once produced a frame. Detector-era bindings are not carried over.
+    pub(super) fn verified_manual_core(&self, game_id: &str) -> Result<Option<String>, String> {
+        let verified = self.library.app_state::<String>(&manual_core_key(game_id)).map_err(|error| error.to_string())?;
+        let saved = self.library.game_settings(game_id).map_err(|error| error.to_string())?
+            .and_then(|settings| settings.emulator_id);
+        Ok(verified.filter(|id| saved.as_ref() == Some(id)))
+    }
+
+    /// The core shown as selected: for a manual game the pending or verified
+    /// manual choice, otherwise the saved binding.
+    pub(super) fn selected_emulator(&self, game_id: &str) -> Result<Option<String>, String> {
+        if !self.manual_games.contains(game_id) {
+            return Ok(self.library.game_settings(game_id).map_err(|error| error.to_string())?
+                .and_then(|settings| settings.emulator_id));
+        }
+        match self.candidates.get(game_id) {
+            Some(candidate) => Ok(Some(candidate.plugin_id.clone())),
+            None => self.verified_manual_core(game_id),
+        }
+    }
+
+    /// A manual pick that has not yet shown a frame. Its settings are not
+    /// prepared; launching is the only step that loads and validates the core.
+    pub(super) fn manual_pick_pending(&self, game_id: &str) -> Result<bool, String> {
+        let Some(candidate) = self.candidates.get(game_id).filter(|_| self.manual_games.contains(game_id)) else {
+            return Ok(false);
+        };
+        Ok(self.verified_manual_core(game_id)?.as_deref() != Some(candidate.plugin_id.as_str()))
+    }
+
+    /// Core whose settings may be prepared. A manual game only offers its
+    /// verified pick; an older saved binding is never used for it.
+    pub(super) fn configurable_emulator(&self, game_id: &str) -> Result<String, String> {
+        let plugin = if self.manual_games.contains(game_id) {
+            self.verified_manual_core(game_id)?
+                .filter(|id| self.candidates.get(game_id).is_some_and(|candidate| candidate.plugin_id == *id))
+        } else {
+            self.library.game_settings(game_id).map_err(|error| error.to_string())?
+                .and_then(|settings| settings.emulator_id)
+        };
+        plugin.ok_or_else(|| "SHINKI_EMU_EMULATOR_SELECTION_REQUIRED".into())
+    }
+
+    /// Remember a manual core only after the session it opened published a
+    /// valid frame. A failed probe/open or a close before that frame leaves the
+    /// previous saved choice untouched.
+    pub(super) fn commit_manual_launch(&mut self) -> Result<(), String> {
+        let Some(epoch) = self.manual_launch.as_ref().map(|launch| launch.0) else {
+            return Ok(());
+        };
+        if self.active.as_ref().is_none_or(|active| active.epoch != epoch) {
+            self.manual_launch = None;
+            return Ok(());
+        }
+        if self.mailbox.identity()?.is_none_or(|identity| identity.session_epoch != epoch) {
+            return Ok(());
+        }
+        let Some((_, game_id, plugin_id)) = self.manual_launch.take() else {
+            return Ok(());
+        };
+        let mut settings = self.library.game_settings(&game_id).map_err(|error| error.to_string())?
+            .unwrap_or_default();
+        if settings.emulator_id.as_deref() != Some(plugin_id.as_str()) {
+            settings.emulator_id = Some(plugin_id.clone());
+            self.library.set_game_settings(&game_id, &settings).map_err(|error| error.to_string())?;
+        }
+        let key = manual_core_key(&game_id);
+        if self.library.app_state::<String>(&key).map_err(|error| error.to_string())?.as_deref() != Some(plugin_id.as_str()) {
+            self.library.set_app_state(&key, &plugin_id).map_err(|error| error.to_string())?;
+        }
         Ok(())
     }
 }
+
+fn manual_core_key(game_id: &str) -> String {
+    format!("manual-core:{game_id}")
+}
+
+#[cfg(test)]
+#[path = "manual_choice_tests.rs"]
+mod manual_choice_tests;

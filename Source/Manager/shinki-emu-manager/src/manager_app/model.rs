@@ -291,7 +291,10 @@ impl ShinkiEmuManagerController {
     }
 
     fn recognized_engine_label(&self, game: &GameRecord) -> String {
-        if let Some(family) = &game.family_id { return self.engine_label(family); }
+        // A manual game keeps no detector family; an older one is stale.
+        if let Some(family) = game.family_id.as_ref().filter(|_| !self.manual_games.contains(&game.game_id)) {
+            return self.engine_label(family);
+        }
         self.library.app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{}", game.game_id))
             .ok().flatten().filter(|detections| !detections.is_empty())
             .map(|detections| detections.iter().map(|item| self.engine_label(&item.family_id)).collect::<Vec<_>>().join(" / "))
@@ -361,7 +364,7 @@ impl ShinkiEmuManagerController {
             })
             .collect();
         let candidate = self.launch_candidate_for_game(game);
-        let selected_plugin = self.library.game_settings(&game.game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
+        let selected_plugin = self.selected_emulator(&game.game_id)?;
         let native_eligible = self.mapped_game_directory(game).is_some();
         let joined = |values: &[String]| values.join(", ");
         Ok(SelectionViewModel {
@@ -493,7 +496,7 @@ impl ShinkiEmuManagerController {
         let recommended = self
             .recommended_preset(game_id)?
             .map(|preset| preset.summary.clone());
-        let selected_plugin = self.library.game_settings(game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
+        let selected_plugin = self.selected_emulator(game_id)?;
         let configuration_error = self.game_configuration_error(game_id, selected_plugin.as_deref()).to_owned();
         let mut configuration_state = if configuration_error.is_empty() {
             self.configuration_state(selected_plugin.as_deref())
@@ -508,6 +511,10 @@ impl ShinkiEmuManagerController {
             ).map_err(|error| error.to_string())?.is_some();
         if pending_profile {
             configuration_state = "unprepared";
+        }
+        // A manual pick is loaded only by its launch; no panel offers to prepare it.
+        if self.manual_pick_pending(game_id)? {
+            configuration_state = "manual-pending";
         }
         Ok(GameSettingsViewModel {
             game_id: game_id.into(),
@@ -635,13 +642,14 @@ impl ShinkiEmuManagerController {
             return tr!("游戏目录当前不可用").into();
         };
         if !optical && !path.is_dir() { return tr!("游戏目录当前不可用").into(); }
-        if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
+        if let Some(plugin) = self.selected_emulator(&game.game_id).ok().flatten() {
             if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重启应用").into(); }
             let error = self.game_configuration_error(&game.game_id, Some(&plugin));
             if !error.is_empty() { return error.into(); }
         }
         if self.launch_candidate_for_game(game).is_some() { return String::new(); }
-        if game.family_id.is_some() && self.probe_choices.get(&game.game_id).is_none_or(|choices| choices.iter().all(|choice| !self.plugin_available(&choice.plugin_id))) {
+        if game.family_id.is_some() && !self.manual_games.contains(&game.game_id)
+            && self.probe_choices.get(&game.game_id).is_none_or(|choices| choices.iter().all(|choice| !self.plugin_available(&choice.plugin_id))) {
             return tr!("已识别引擎，缺少兼容核心").into();
         }
         match self.startup_state {

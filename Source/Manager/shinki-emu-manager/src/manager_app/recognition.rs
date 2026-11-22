@@ -236,8 +236,7 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn prepare_game_configuration(&mut self, game_id: &str) -> Result<ManagerViewModel, String> {
-        let plugin_id = self.library.game_settings(game_id).map_err(|error| error.to_string())?
-            .and_then(|settings| settings.emulator_id).ok_or("SHINKI_EMU_EMULATOR_SELECTION_REQUIRED")?;
+        let plugin_id = self.configurable_emulator(game_id)?;
         self.game(game_id)?;
         self.request_activation(NativeAction::ConfigureGame { game_id: game_id.into(), plugin_id })?;
         self.model()
