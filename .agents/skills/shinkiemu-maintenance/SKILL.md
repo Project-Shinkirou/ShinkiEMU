@@ -24,7 +24,7 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 | `build/dependencies.toml` | 工具版本和下载输入（SHA256 固定） |
 | `build/vcpkg/` | `ffmpeg/`、`subtitle/` manifest；`apple-triplets/`（arm64/x64-osx、arm64-ios、arm64-ios-simulator、x64-ios）；`mobile-triplets/`（`*-android-ffmpeg`、`arm64-ohos`、`ohos-toolchain.cmake`） |
 | `Source/Manager/shinki-emu-manager/Cargo.toml` | 静态核心依赖，按平台 `cfg` 或精确 target triple 声明 |
-| `Source/Manager/shinki-emu-manager/src/static_cores.rs` | `STATIC_CORES` 表；GUI owner（`manager_app/owner_worker.rs` 用 `register_static` 注册）和 headless runner 共用 |
+| `Source/Manager/shinki-emu-manager/src/static_cores.rs` | Manager GUI 和 Manager 的 `headless` 子命令共用的 `STATIC_CORES` 表；GUI owner 在 `manager_app/owner_worker.rs` 注册入口 |
 | 根 `Cargo.toml` | `[patch."https://github.com/Project-Shinkirou/ShinkiEMU"]` 把 fork 里 git 依赖的 `shinki-emu-abi/build/sdk` 重定向到树内；`[patch.crates-io]` 固定 kira、cpal、ffmpeg-sys-next、mlua-sys |
 
 `Inventory::load`（`xtask/src/cores.rs`）在每条命令开头校验清单：每个 triple 在 supported 或 blocked 中恰好出现一次；`ThirdParty/` 下的 manifest 必须有 `[cores.source]`，树内核心不能有；slug 不能重复；外部 plugin slug 不超过 32 字节；`validate_static_dependencies` 要求 Manager 的 git/rev/path/features 与清单逐项一致，`default-features` 不能为 true。改清单后先跑 `cargo xtask matrix`，它会直接报出违反的规则。
@@ -123,11 +123,11 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 
 ## 7. 静态嵌入（Android / iOS / OHOS）
 
-移动端 Manager 不加载下载的动态库。嵌入一个核心要同时改三处，`validate_static_dependencies` 会比对前两处：
+以下是静态嵌入的要求。嵌入一个核心要同时改三处，`validate_static_dependencies` 会比对前两处：
 
 1. `build/cores.toml`：`static_manager_targets` 列出 triple，`static_features` 列出静态构建用的 feature；动态导出 feature（`dynamic-plugin-export` 等）不能出现在这里。
 2. Manager `Cargo.toml`：全平台用 `cfg` 表，部分 ABI 用精确 triple 表（例如 `[target.aarch64-linux-android.dependencies]`）；两者不能在同一 triple 上重复声明同一个核心。外部核心写 `git` + 与清单相同的 `rev`，树内核心写 `path`；显式设置 `default-features = false`，`features` 与 `static_features` 完全一致。
-3. `src/static_cores.rs` 的 `STATIC_CORES`：加 `#[cfg(...)] ("<plugin_id>", <crate>::<rust-path query>)`。GUI 和 headless runner 都从这里读。
+3. `src/static_cores.rs` 的 `STATIC_CORES`：加 `#[cfg(...)] ("<plugin_id>", <crate>::<rust-path query>)`。独立的 `shinki-emu-headless` 不用这张表，按路径加载核心包。
 
 打包会写 `embedded-cores.json` 和每个嵌入核心的许可文件。Android 常见坑：
 

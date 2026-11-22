@@ -136,7 +136,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 ## 6. 注册与嵌入
 
 - 加 `[[cores]]`：`manifest = "ThirdParty/<dir>/<adapter>/Cargo.toml"`、`[cores.source]`、`licenses = ["ThirdParty/<dir>/LICENSE", ...]`，`build/targets.toml` 里每个 triple 各有一条 supported 或 blocked。字段规则见 `shinkiemu-new-core` §6。
-- 移动端静态嵌入三处一致：`cores.toml` 的 `static_manager_targets`/`static_features`；Manager `Cargo.toml` 里的目标依赖；`Source/Manager/shinki-emu-manager/src/static_cores.rs` 的 `STATIC_CORES`（GUI 和 headless runner 共用）。只支持某个 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`，不要再把同一依赖写进覆盖它的平台 `cfg` 表。外部核心的 `git`、`rev`、`features` 必须和清单一致，显式设置 `default-features = false`。
+- 移动端静态嵌入三处一致：`cores.toml` 的 `static_manager_targets`/`static_features`；Manager `Cargo.toml` 里的目标依赖；`Source/Manager/shinki-emu-manager/src/static_cores.rs` 的 `STATIC_CORES`（Manager GUI 和 Manager 的 `headless` 子命令共用）。只支持某个 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`，不要再把同一依赖写进覆盖它的平台 `cfg` 表。外部核心的 `git`、`rev`、`features` 必须和清单一致，显式设置 `default-features = false`。
 - 静态核心与 Manager 共享依赖图：kira（根 `[patch.crates-io]` 指向 `Project-Shinkirou/kira`）、mlua/mlua-sys、cpal、wgpu 必须统一。两个版本的 `links =` crate 会让解析失败。改 fork 对齐，不要再加 patch。Artemis 在所有平台都用 Luau，Android 嵌入时共用 Manager 的运行时。
 - Android 嵌入 C++ 核心时：Java 方法名不能和 SDK 父类冲突（Krkr 把 `getDeviceId` 改成 `getAndroidDeviceId`），整个 APK 只有一个 `JNI_OnLoad` 和一个 Activity，资源上限遵守 Manager 当前契约。
 
