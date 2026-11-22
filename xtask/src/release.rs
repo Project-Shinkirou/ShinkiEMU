@@ -432,6 +432,50 @@ struct Identity {
     identity: Option<shinki_emu_metadata::CoreIdentity>,
 }
 
+const RELEASE_PRODUCT_VERSION: &str = "SHINKI_EMU_RELEASE_PRODUCT_VERSION";
+const RELEASE_SOURCE_COMMIT: &str = "SHINKI_EMU_RELEASE_SOURCE_COMMIT";
+
+fn batch_input(name: &str) -> Result<Option<String>> {
+    env::var_os(name)
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("{name} is not UTF-8"))
+        })
+        .transpose()
+}
+
+pub(crate) fn check_product_version(version: &str) -> Result<()> {
+    if let Some(expected) = batch_input(RELEASE_PRODUCT_VERSION)?
+        && version != expected
+    {
+        bail!("product version {version} differs from frozen release version {expected}");
+    }
+    Ok(())
+}
+
+pub(crate) fn check_product_source(commit: Option<&str>) -> Result<()> {
+    if let Some(expected) = batch_input(RELEASE_SOURCE_COMMIT)?
+        && (!crate::build::valid_source_commit(&expected) || commit != Some(expected.as_str()))
+    {
+        bail!("expected a clean checkout at frozen product commit {expected}");
+    }
+    Ok(())
+}
+
+fn require_product_batch(id: &Identity, component: &str) -> Result<()> {
+    if component != "manager" && id.identity.is_none() {
+        if batch_input(RELEASE_PRODUCT_VERSION)?.is_none()
+            || batch_input(RELEASE_SOURCE_COMMIT)?.is_none()
+        {
+            bail!("self-owned core releases require the frozen Manager batch inputs {RELEASE_PRODUCT_VERSION} and {RELEASE_SOURCE_COMMIT}");
+        }
+        check_product_version(&id.version)?;
+        check_product_source(Some(&id.commit))?;
+    }
+    Ok(())
+}
+
 pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Result<String> {
     if component != "manager"
         && let Some(source) = &inv.core(component)?.source
@@ -446,7 +490,8 @@ pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Resu
         return Ok(version);
     }
     semver::Version::parse(supplied)
-        .context("Manager/self-owned cores require --version with their own SemVer")?;
+        .context("Manager and self-owned cores require the same explicit product --version (SemVer)")?;
+    check_product_version(supplied)?;
     Ok(supplied.to_owned())
 }
 
@@ -503,6 +548,7 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
     )?)?
     .trim()
     .to_owned();
+    check_product_source(Some(&commit))?;
     Ok(Identity {
         root: inv.root.join(".work/release").join(&tag),
         tag,
@@ -528,7 +574,7 @@ fn require_same_release(
             || (scope == Scope::All && record.get("release_scope").is_none()))
         || record["component"] != component
         || record["version"] != id.version
-        || (component == "manager" && record["product_version"] != id.version)
+        || (id.identity.is_none() && record["product_version"] != id.version)
         || record["source_commit"] != id.commit.as_str()
         || record["core_source"] != id.core_source
         || record.get("identity").unwrap_or(&Value::Null) != &serde_json::to_value(&id.identity)?
@@ -573,6 +619,7 @@ pub fn prepare(
             return Ok(());
         }
     }
+    require_product_batch(&id, component)?;
     if component != "manager" {
         crate::sources::verify_provenance(inv, inv.core(component)?)?;
     }
@@ -596,15 +643,16 @@ pub fn prepare(
         return Ok(());
     }
     let receipt = crate::build::load_receipt(inv, target, component)?;
-    if component == "manager" {
+    if id.identity.is_none() {
         receipt.require_product_version(version)?;
     }
     let expected_source = id.core_source["rev"].as_str().unwrap_or(&id.commit);
-    if receipt.source_dirty || receipt.source_commit != expected_source {
-        bail!(
-            "release requires a clean build receipt at the configured source revision; rebuild after committing/pinning sources"
-        );
-    }
+    receipt.require_product_source(expected_source)?;
+    let product_commit = if id.identity.is_none() {
+        receipt.source_commit.as_str()
+    } else {
+        id.commit.as_str()
+    };
     let platform = if component == "manager" && target.contains("android") {
         "android-universal".to_owned()
     } else if spec.platform == "ios" {
@@ -674,12 +722,26 @@ pub fn prepare(
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
         }
         fs::remove_dir_all(&staged)?;
-        crate::sources::bundle(inv, component, target, &work.join(&sources))?;
+        crate::sources::bundle(
+            inv,
+            component,
+            target,
+            product_commit,
+            receipt.product_version.as_deref(),
+            &work.join(&sources),
+        )?;
         let mut android_x86_64_sources = Value::Null;
         if scope == Scope::WindowsAndroid && component == "manager" && target == ANDROID_PRIMARY {
             let name = format!("shinki-emu-manager-{version}-android-x86_64-sources.zip");
             let path = work.join(&name);
-            crate::sources::bundle(inv, component, ANDROID_SECONDARY, &path)?;
+            crate::sources::bundle(
+                inv,
+                component,
+                ANDROID_SECONDARY,
+                product_commit,
+                receipt.product_version.as_deref(),
+                &path,
+            )?;
             android_x86_64_sources = json!({"name":name,"sha256":package::sha256(&path)?});
             if publish_blocked.is_empty() {
                 verify_android_release(&archive, version)?;
@@ -944,6 +1006,43 @@ fn collect_records(
     Ok(PreparedRelease { records, blocked })
 }
 
+/// Self-owned cores may publish ahead of Manager, but need the matching
+/// verified Manager build from the same frozen product release.
+fn require_manager_batch(
+    inv: &Inventory,
+    id: &Identity,
+    records: &[(PathBuf, Value)],
+    scope: Scope,
+) -> Result<()> {
+    let manager = identity(inv, "manager", &id.version)?;
+    let mut verified = std::collections::BTreeSet::new();
+    for (_, record) in records {
+        let target = record["target"].as_str().context("core release target")?;
+        // The primary row owns the universal Manager APK in either scope.
+        let target = if target == ANDROID_SECONDARY {
+            ANDROID_PRIMARY
+        } else {
+            target
+        };
+        if !verified.insert(target) {
+            continue;
+        }
+        let directory = manager.root.join(target);
+        let path = directory.join("release.json");
+        let record: Value = serde_json::from_slice(&fs::read(&path).with_context(|| {
+            format!("self-owned core publication requires the matching Manager batch receipt {}", path.display())
+        })?)?;
+        require_same_release(&record, &manager, "manager", target, &path, scope)?;
+        if record["publish_blocked"].as_str().is_none_or(|reason| !reason.is_empty()) {
+            bail!("matching Manager batch artifact for {target} is not publishable");
+        }
+        for key in ["archive", "sources"] {
+            verify_asset(&directory, &record, key)?;
+        }
+    }
+    Ok(())
+}
+
 /// Publish every prepared target of `component` as one GitHub Release, then
 /// propose the core catalog entries.
 pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) -> Result<()> {
@@ -967,7 +1066,17 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
     {
         bail!("tag does not match component/version");
     }
+    require_product_batch(&id, component)?;
+    if id.identity.is_none() {
+        let source = crate::sources::state(&inv.root)?;
+        if source.dirty || source.commit != id.commit {
+            bail!("product release requires the clean frozen checkout at {}", id.commit);
+        }
+    }
     let PreparedRelease { records, blocked } = collect_records(inv, &id, component, scope)?;
+    if component != "manager" && id.identity.is_none() {
+        require_manager_batch(inv, &id, &records, scope)?;
+    }
     if component != "manager" {
         crate::sources::verify_provenance(inv, inv.core(component)?)?;
     }
@@ -1240,22 +1349,28 @@ mod tests {
     }
 
     #[test]
-    fn manager_release_rejects_labels_without_the_matching_compiled_version() {
+    fn product_release_rejects_mislabeled_or_mixed_receipts() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let inv = Inventory::load(root).unwrap();
-        let id = identity(&inv, "manager", "0.1.0-beta.8").unwrap();
-        let mut record = json!({
-            "schema":"shinki.emu.release.v1", "component":"manager", "version":id.version,
-            "source_commit":id.commit, "core_source":null, "identity":null,
-            "target":"x86_64-pc-windows-msvc",
-        });
-        let path = Path::new("release.json");
-        let target = "x86_64-pc-windows-msvc";
-        assert!(require_same_release(&record, &id, "manager", target, path, Scope::All).is_err());
-        record["product_version"] = "0.1.0-beta.6".into();
-        assert!(require_same_release(&record, &id, "manager", target, path, Scope::All).is_err());
-        record["product_version"] = "0.1.0-beta.8".into();
-        require_same_release(&record, &id, "manager", target, path, Scope::All).unwrap();
+        for component in ["manager", "shinki.emu.cmvs", "shinki.emu.musica"] {
+            let id = identity(&inv, component, "0.1.0-beta.8").unwrap();
+            let target = "x86_64-pc-windows-msvc";
+            let path = Path::new("release.json");
+            let mut record = json!({
+                "schema":"shinki.emu.release.v1", "component":component, "version":id.version,
+                "source_commit":id.commit, "core_source":null, "identity":null, "target":target,
+            });
+            let verify =
+                |record| require_same_release(record, &id, component, target, path, Scope::All);
+            assert!(verify(&record).is_err());
+            record["product_version"] = "0.1.0-beta.6".into();
+            assert!(verify(&record).is_err());
+            record["product_version"] = "0.1.0-beta.8".into();
+            verify(&record).unwrap();
+            let other = if id.commit.starts_with('a') { "b" } else { "a" };
+            record["source_commit"] = other.repeat(40).into();
+            assert!(verify(&record).is_err());
+        }
     }
 
     #[test]

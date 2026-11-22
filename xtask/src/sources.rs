@@ -1037,19 +1037,31 @@ fn renpy_sources(inv: &Inventory, root: &Path, android_core: bool) -> Result<()>
 }
 
 /// Write `<out>` as a zip holding `source.tar` and `BUILD-FROM-SOURCE.md`.
-pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path) -> Result<()> {
+pub(crate) fn bundle(
+    inv: &Inventory,
+    component: &str,
+    target: &str,
+    product_commit: &str,
+    product_version: Option<&str>,
+    out: &Path,
+) -> Result<()> {
     let temporary = inv.root.join(".work/tmp");
     fs::create_dir_all(&temporary)?;
     let temp = tempfile::tempdir_in(&temporary)?;
-    let product_commit = revision(&inv.root)?;
+    if revision(&inv.root)? != product_commit {
+        bail!("corresponding source checkout no longer matches release {product_commit}");
+    }
     let metadata = crate::rust_licenses::metadata(inv, target, component)?;
     let archive = temp.path().join("source.tar");
     let mut builder = tar::Builder::new(fs::File::create(&archive)?);
-    append_revision(&mut builder, &inv.root, &product_commit, Path::new(""))?;
+    append_revision(&mut builder, &inv.root, product_commit, Path::new(""))?;
     let mut references = serde_json::json!({
         "product": {"repo":"https://github.com/Project-Shinkirou/ShinkiEMU","rev":product_commit},
         "core": null, "target": target
     });
+    if let Some(version) = product_version {
+        references["product"]["version"] = version.into();
+    }
     let (manifest, package, features) = if component == "manager" {
         let mut embedded = Vec::new();
         for core in &inv.cores {
@@ -1999,7 +2011,16 @@ mod tests {
         inv.cores.push(embedded.clone());
         prepare(&inv, &embedded, false).unwrap();
         let output = temp.path().join("source.zip");
-        bundle(&inv, "manager", "x86_64-pc-windows-msvc", &output).unwrap();
+        let product = revision(&inv.root).unwrap();
+        bundle(
+            &inv,
+            "manager",
+            "x86_64-pc-windows-msvc",
+            &product,
+            Some("0.1.0"),
+            &output,
+        )
+        .unwrap();
         let mut zip = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
         let extracted = temp.path().join("fresh");
         tar::Archive::new(zip.by_name("source.tar").unwrap())
@@ -2010,6 +2031,12 @@ mod tests {
             "product source\n"
         );
         assert!(extracted.join("BUILD-FROM-SOURCE.md").is_file());
+        let references: Value = serde_json::from_slice(
+            &fs::read(extracted.join("source-references.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(references["product"]["rev"], product);
+        assert_eq!(references["product"]["version"], "0.1.0");
         assert_eq!(
             fs::read(extracted.join("ThirdParty/fixture/runtime.cpp")).unwrap(),
             fs::read(upstream.join("runtime.cpp")).unwrap()

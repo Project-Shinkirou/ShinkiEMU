@@ -913,8 +913,16 @@ pub fn package(
     let resolved = crate::release::resolve_version(inv, component, version)?;
     let version = resolved.as_str();
     let mut result = load_package_receipt(inv, target, component, out)?;
-    if component == "manager" {
+    if component == "manager" || inv.core(component)?.source.is_none() {
         result.require_product_version(version)?;
+        if component != "manager" {
+            result.require_product_source(&result.source_commit)?;
+        }
+        crate::release::check_product_source(
+            (!result.source_dirty).then_some(result.source_commit.as_str()),
+        )?;
+    }
+    if component == "manager" {
         if target.contains("android") {
             return package_android(inv, &result, version, out, &ANDROID_TARGETS);
         }
@@ -1144,14 +1152,22 @@ pub(crate) fn static_core_entries(
                 }
             }
         }
-        embedded.push(serde_json::json!({
+        let mut entry = serde_json::json!({
             "id": core.id,
             "package": core.package,
             "source": core.source,
             "identity": core.source.as_ref().map(crate::cores::CoreSource::identity),
-            "version": core.source.as_ref().map_or_else(|| package["version"].as_str().context("embedded core version").map(str::to_owned), |source| Ok(source.identity().version()))?,
+            "version": if let Some(source) = &core.source {
+                source.identity().version()
+            } else {
+                result.product_version.as_deref().context("embedded core needs the Manager product version")?.to_owned()
+            },
             "display_version": core.source.as_ref().map(|source| source.identity().display_version()),
-        }));
+        });
+        if core.source.is_none() && !result.source_dirty {
+            entry["source_commit"] = result.source_commit.as_str().into();
+        }
+        embedded.push(entry);
     }
     let manifest = scratch.join("embedded-cores.json");
     fs::write(&manifest, serde_json::to_vec_pretty(&embedded)?)?;
