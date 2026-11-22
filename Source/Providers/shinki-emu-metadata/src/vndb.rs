@@ -1,7 +1,13 @@
+use std::sync::Arc;
+
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::{sync::Mutex, time::Instant};
+use tokio::{
+    sync::{Mutex, MutexGuard},
+    time::Instant,
+};
 use vn::{
+    Vndb,
     http::Endpoint,
     model::{
         Response,
@@ -18,8 +24,9 @@ use crate::{
 const SHINKI_EMU_USER_AGENT: &str =
     "RoukakuEngine/ShinkiEMU (https://github.com/Project-Shinkirou/ShinkiEMU)";
 const WORK_FIELDS: &str = concat!(
-    "title,description,alttitle,aliases,titles{lang,title,latin,official,main},released,platforms,",
-    "developers{name,original},tags.name,image{url,thumbnail,dims,thumbnail_dims,sexual,violence}",
+    "title,description,alttitle,aliases,titles.lang,titles.title,titles.latin,",
+    "titles.official,titles.main,released,platforms,developers.name,developers.original,",
+    "tags.name,image.url,image.thumbnail,image.dims,image.thumbnail_dims,image.sexual,image.violence",
 );
 
 #[derive(Debug, Clone)]
@@ -30,7 +37,9 @@ pub struct VndbProviderConfig {
 }
 
 pub struct VndbProvider {
-    client: reqwest12::Client,
+    work_client: reqwest12::Client,
+    work_url: reqwest12::Url,
+    release_client: Arc<Vndb>,
     next_request: Mutex<Instant>,
     cover_fetcher: CoverFetcher,
     config: VndbProviderConfig,
@@ -47,15 +56,22 @@ impl VndbProvider {
             minimum_request_delay_ms = config.minimum_request_delay.as_millis(),
             "metadata provider created"
         );
-        let client = reqwest12::Client::builder()
+        let work_client = reqwest12::Client::builder()
             .use_rustls_tls()
             .https_only(true)
             .timeout(config.timeout)
             .user_agent(SHINKI_EMU_USER_AGENT)
             .build()
-            .map_err(map_vndb_error)?;
+            .map_err(|error| map_vndb_error(error.into()))?;
+        let release_client = Vndb::builder()
+            .max_concurrent_requests(1)
+            .timeout(config.timeout)
+            .user_agent(SHINKI_EMU_USER_AGENT)
+            .build();
         Ok(Self {
-            client,
+            work_client,
+            work_url: Endpoint::VisualNovel.url(),
+            release_client,
             next_request: Mutex::new(Instant::now()),
             cover_fetcher: CoverFetcher::new(CoverPolicy::default())?,
             config,
@@ -66,52 +82,80 @@ impl VndbProvider {
         self.config.license.permit_vndb()
     }
 
-    async fn query<T: serde::de::DeserializeOwned>(
-        &self,
-        endpoint: Endpoint,
-        body: Value,
-    ) -> Result<Response<T>, MetadataError> {
-        let mut next_request = self.next_request.lock().await;
+    // Both transports share a single admission slot and cooldown. With the
+    // typed release client, success is visible only after body decoding.
+    async fn wait_for_request(&self) -> MutexGuard<'_, Instant> {
+        let next_request = self.next_request.lock().await;
         tokio::time::sleep_until(*next_request).await;
-        let response = self
-            .client
-            .post(endpoint.url())
-            .json(&body)
-            .send()
-            .await
-            .and_then(reqwest12::Response::error_for_status)
-            .map_err(map_vndb_error);
-        *next_request = Instant::now() + self.config.minimum_request_delay;
-        response?.json().await.map_err(map_vndb_error)
+        next_request
     }
 
     async fn query_works(
         &self,
         filter: Value,
-        results: u8,
+        limit: Option<u8>,
     ) -> Result<Vec<MetadataRecord>, MetadataError> {
-        let response: Response<KanaWork> = self
-            .query(
-                Endpoint::VisualNovel,
-                json!({"filters": filter, "fields": WORK_FIELDS, "results": results}),
-            )
-            .await?;
+        let mut body = json!({"filters": filter, "fields": WORK_FIELDS});
+        if let Some(limit) = limit {
+            body["results"] = json!(limit);
+        }
+        let mut next_request = self.wait_for_request().await;
+        let response = self
+            .work_client
+            .post(self.work_url.clone())
+            .json(&body)
+            .send()
+            .await
+            .and_then(reqwest12::Response::error_for_status)
+            .map_err(|error| map_vndb_error(error.into()))?;
+        *next_request = Instant::now() + self.config.minimum_request_delay;
+        drop(next_request);
+        let response: Response<KanaWork> = response
+            .json()
+            .await
+            .map_err(|error| {
+                if error.is_decode() {
+                    MetadataError::SchemaMismatch("vndb-kana")
+                } else {
+                    map_vndb_error(error.into())
+                }
+            })?;
         Ok(response.into_iter().map(convert_record).collect())
     }
 
     /// Query the concrete releases (rIDs) of a VN, newest first, so the local
     /// installation can be pinned to a specific version.
-    async fn query_releases(&self, vn_id: &str) -> Result<Vec<MetadataRelease>, MetadataError> {
-        let response: Response<vn::model::release::Release> = self
-            .query(
-                Endpoint::Release,
-                json!({
-                    "filters": release_filter(vn_id),
-                    "fields": "id,title,alttitle,released,platforms",
-                    "sort": "released", "reverse": true, "results": 100,
-                }),
-            )
-            .await?;
+    async fn query_releases(
+        &self,
+        vn_id: &vn::VisualNovelId,
+    ) -> Result<Vec<MetadataRelease>, MetadataError> {
+        let mut next_request = self.wait_for_request().await;
+        let response = self
+            .release_client
+            .post()
+            .release()
+            .filters(vn::http::JsonQueryFilter::new(release_filter(
+                &vn_id.to_string(),
+            )))
+            .raw_fields([
+                "id".to_owned(),
+                "title".to_owned(),
+                "alttitle".to_owned(),
+                "released".to_owned(),
+                "platforms".to_owned(),
+            ])
+            .sort(vn::model::release::SortReleaseBy::Released)
+            .reverse()
+            .results(100)
+            .send()
+            .await
+            .map_err(map_vndb_error);
+        if response.is_ok() || matches!(&response, Err(MetadataError::SchemaMismatch("vndb-kana")))
+        {
+            *next_request = Instant::now() + self.config.minimum_request_delay;
+        }
+        drop(next_request);
+        let response = response?;
         let mut releases = response
             .results
             .into_iter()
@@ -134,7 +178,7 @@ impl MetadataProvider for VndbProvider {
     ) -> Result<Vec<MetadataRecord>, MetadataError> {
         self.authorize()?;
         query.validate()?;
-        self.query_works(json!(["search", "=", &query.title]), query.limit)
+        self.query_works(json!(["search", "=", &query.title]), Some(query.limit))
             .await
     }
 
@@ -143,7 +187,7 @@ impl MetadataProvider for VndbProvider {
         if !is_vndb_id(remote_id) {
             return Err(MetadataError::InvalidRemoteId(remote_id.to_owned()));
         }
-        let mut records = self.query_works(json!(["id", "=", remote_id]), 10).await?;
+        let mut records = self.query_works(json!(["id", "=", remote_id]), None).await?;
         if records.len() != 1 {
             return Err(MetadataError::NotFound(remote_id.to_owned()));
         }
@@ -167,7 +211,9 @@ impl MetadataProvider for VndbProvider {
         if !is_vndb_id(remote_id) {
             return Err(MetadataError::InvalidRemoteId(remote_id.to_owned()));
         }
-        self.query_releases(remote_id).await
+        let id = vn::VisualNovelId::new(remote_id)
+            .ok_or_else(|| MetadataError::InvalidRemoteId(remote_id.to_owned()))?;
+        self.query_releases(&id).await
     }
 }
 
@@ -382,22 +428,28 @@ pub fn plain_description(text: &str) -> String {
     }
 }
 
-fn vndb_status_error(status: reqwest12::StatusCode) -> Option<MetadataError> {
-    match status.as_u16() {
-        400 => Some(MetadataError::RequestRejected("vndb")),
-        401 => Some(MetadataError::Unauthorized),
-        429 => Some(MetadataError::RateLimited),
-        _ => None,
+fn map_vndb_error(error: vn::error::Error) -> MetadataError {
+    if let vn::error::Error::RequestFailed {
+        status: Some(status),
+        ..
+    } = &error
+    {
+        match status.as_u16() {
+            400 => return MetadataError::RequestRejected("vndb"),
+            401 => return MetadataError::Unauthorized,
+            429 => return MetadataError::RateLimited,
+            _ => {}
+        }
     }
-}
-
-fn map_vndb_error(error: reqwest12::Error) -> MetadataError {
-    if let Some(error) = error.status().and_then(vndb_status_error) {
-        error
-    } else if error.is_decode() {
+    let message = error.to_string();
+    if message.contains("429") {
+        MetadataError::RateLimited
+    } else if message.contains("401") {
+        MetadataError::Unauthorized
+    } else if message.contains("deserialize") || message.contains("decode") {
         MetadataError::SchemaMismatch("vndb-kana")
     } else {
-        MetadataError::Upstream(format!("vndb:{error}"))
+        MetadataError::Upstream(format!("vndb:{message}"))
     }
 }
 
@@ -490,11 +542,187 @@ mod tests {
         assert_eq!(plain_description("[[b]b]"), "");
     }
 
-    #[test]
-    fn rejected_request_maps_to_a_stable_code() {
+    #[tokio::test]
+    async fn work_queries_preserve_kana_wire_contract_and_request_pacing() {
+        use crate::ReleaseUse;
+        use std::time::Duration;
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        use tokio_rustls::{TlsAcceptor, rustls};
+
+        let delay = Duration::from_millis(120);
+        let config = VndbProviderConfig {
+            license: MetadataLicenseManifest {
+                release_use: ReleaseUse::NonCommercial,
+                vndb_commercial_license_id: None,
+            },
+            timeout: Duration::from_secs(3),
+            minimum_request_delay: delay,
+        };
+        let mut provider = VndbProvider::new(config).unwrap();
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key = rustls::pki_types::PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der());
+        let tls = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert.cert.der().clone()], key.into())
+        .unwrap();
+        let acceptor = TlsAcceptor::from(Arc::new(tls));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        provider.work_url.set_host(Some("localhost")).unwrap();
+        provider
+            .work_url
+            .set_port(Some(listener.local_addr().unwrap().port()))
+            .unwrap();
+        provider.work_client = reqwest12::Client::builder()
+            .use_rustls_tls()
+            .https_only(true)
+            .no_proxy()
+            .resolve("localhost", listener.local_addr().unwrap())
+            .timeout(provider.config.timeout)
+            .user_agent(SHINKI_EMU_USER_AGENT)
+            .add_root_certificate(
+                reqwest12::Certificate::from_pem(cert.cert.pem().as_bytes()).unwrap(),
+            )
+            .build()
+            .unwrap();
+
+        let server = tokio::spawn(async move {
+            let response = json!({"more": false, "results": [{
+                "id": "v17", "title": "Provider default", "platforms": ["win"],
+                "titles": [
+                    {"lang": "zh-Hant", "title": "繁體標題", "official": true, "main": false},
+                    {"lang": "zh-Hans", "title": "简体标题", "official": true, "main": false}
+                ],
+                "developers": [{"id": "p1", "name": "Developer", "original": null}],
+                "image": {"url": "https://unused.invalid/img", "thumbnail": "https://unused.invalid/thumb",
+                    "dims": [640, 480], "thumbnail_dims": [320, 240], "sexual": 0, "violence": 0}
+            }]}).to_string();
+            let mut receipt = Vec::new();
+            for (status, payload) in [
+                ("200 OK", response.as_str()),
+                ("400 Bad Request", ""),
+                ("401 Unauthorized", ""),
+                ("429 Too Many Requests", ""),
+                ("200 OK", "{not-json"),
+            ] {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(acceptor.accept(stream).await.unwrap());
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                assert_eq!(line.trim_end(), "POST /kana/vn HTTP/1.1");
+                let mut length = None;
+                let mut has_user_agent = false;
+                loop {
+                    line.clear();
+                    assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                    let (name, value) = line.split_once(':').unwrap();
+                    assert!(!name.eq_ignore_ascii_case("authorization"));
+                    if name.eq_ignore_ascii_case("user-agent") {
+                        assert_eq!(value.trim(), SHINKI_EMU_USER_AGENT);
+                        has_user_agent = true;
+                    }
+                    if name.eq_ignore_ascii_case("content-length") {
+                        length = Some(value.trim().parse().unwrap());
+                    }
+                }
+                assert!(has_user_agent);
+                let mut body = vec![0; length.unwrap()];
+                stream.read_exact(&mut body).await.unwrap();
+                receipt.push((
+                    Instant::now(),
+                    serde_json::from_slice::<Value>(&body).unwrap(),
+                ));
+                let wire_response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                    payload.len()
+                );
+                stream
+                    .get_mut()
+                    .write_all(wire_response.as_bytes())
+                    .await
+                    .unwrap();
+                stream.get_mut().shutdown().await.unwrap();
+            }
+            receipt
+        });
+
+        let mut search = MetadataSearchQuery {
+            title: "License denied".into(),
+            aliases: Vec::new(),
+            developer: None,
+            release_date: None,
+            limit: 7,
+        };
+        provider.config.license.release_use = ReleaseUse::Commercial;
         assert!(matches!(
-            vndb_status_error(reqwest12::StatusCode::BAD_REQUEST),
-            Some(MetadataError::RequestRejected("vndb"))
+            provider.search(&search).await,
+            Err(MetadataError::LicenseBlocked(_))
         ));
+        provider.config.license.release_use = ReleaseUse::NonCommercial;
+        search.title = "Game".into();
+        let results = provider.search(&search).await.unwrap();
+        assert_eq!(results.len(), 1);
+        let work = &results[0];
+        assert_eq!(work.remote_id, "v17");
+        assert_eq!(work.localized_title("zh-CN"), Some("简体标题"));
+        assert_eq!(work.localized_title("zh-Hant"), Some("繁體標題"));
+        assert_eq!(work.developers, ["Developer"]);
+        assert_eq!(work.cover.as_ref().unwrap().width, Some(320));
+        let deadline = *provider.next_request.lock().await;
+        assert!(matches!(
+            provider.fetch_by_id("v17").await,
+            Err(MetadataError::RequestRejected("vndb"))
+        ));
+        assert_eq!(*provider.next_request.lock().await, deadline);
+        assert!(matches!(
+            provider.fetch_by_id("v17").await,
+            Err(MetadataError::Unauthorized)
+        ));
+        assert_eq!(*provider.next_request.lock().await, deadline);
+        assert!(matches!(
+            provider.fetch_by_id("v17").await,
+            Err(MetadataError::RateLimited)
+        ));
+        assert_eq!(*provider.next_request.lock().await, deadline);
+        let malformed = provider.fetch_by_id("v17").await;
+        assert!(
+            matches!(malformed, Err(MetadataError::SchemaMismatch("vndb-kana"))),
+            "unexpected malformed-response result: {malformed:?}"
+        );
+
+        let receipt = tokio::time::timeout(provider.config.timeout, server)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut fields = receipt[0].1["fields"]
+            .as_str()
+            .unwrap()
+            .split(',')
+            .collect::<Vec<_>>();
+        fields.sort_unstable();
+        assert_eq!(fields, [
+            "aliases", "alttitle", "description", "developers.name", "developers.original",
+            "image.dims", "image.sexual", "image.thumbnail", "image.thumbnail_dims", "image.url",
+            "image.violence", "platforms", "released", "tags.name", "title", "titles.lang",
+            "titles.latin", "titles.main", "titles.official", "titles.title",
+        ]);
+        assert_eq!(receipt[0].1["filters"], json!(["search", "=", "Game"]));
+        assert_eq!(receipt[0].1["results"], 7);
+        assert!(receipt[0].1.get("sort").is_none());
+        assert!(receipt[1].0 >= deadline && receipt[1].0 - receipt[0].0 >= delay);
+        for (_, body) in &receipt[1..] {
+            assert_eq!(body["filters"], json!(["id", "=", "v17"]));
+            assert_eq!(body["fields"], receipt[0].1["fields"]);
+            assert!(body.get("sort").is_none());
+            assert!(body.get("results").is_none());
+        }
     }
 }
