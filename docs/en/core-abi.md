@@ -7,7 +7,14 @@ description: C ABI v3 lifecycle, owner threads, CPU leases and core packages.
 
 ## Protocol and entry point
 
-The native protocol is `shinki.emu.native.c.v3`, with numeric ABI version **3**. Dynamic cores export `shinki_emu_query`; static integration registers the same Query function shape. The Rust contract is `Source/FamilyApi/shinki-emu-abi`, and its generated C header is `include/shinki_emu.h`. C++ consumers use this header rather than maintaining another ABI definition.
+The native protocol is `shinki.emu.native.c.v3`, with numeric ABI version **3**. Dynamic cores export `shinki_emu_query`; static integration registers the same Query function shape. The Rust contract is `Source/FamilyApi/shinki-emu-abi`, and its generated C header is `include/shinki_emu.h`. C++ consumers use this header rather than maintaining another ABI definition. After changing the Rust types, regenerate the header with cbindgen 0.29.2 from the repository root and commit it; the CI tools job runs the same two commands and fails when the committed header differs:
+
+```sh
+cargo metadata --locked --format-version 1 > .work/metadata.json
+cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-emu-abi --metadata .work/metadata.json --output Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h Source/FamilyApi/shinki-emu-abi
+```
+
+The `--metadata` input keeps cbindgen's own `cargo metadata` call from rewriting `Cargo.lock`.
 
 Only C-layout values cross the boundary: versioned headers, bounded borrowed spans, opaque handles, status codes and function pointers. No Rust-owned containers or unwinding cross the ABI. Libraries and immutable descriptor storage remain resident. Query accepts a version and an output table pointer; unsupported versions leave the output null. Query does no I/O, starts no workers and installs no logger.
 

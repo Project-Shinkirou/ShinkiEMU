@@ -55,6 +55,30 @@
  */
 #define ShinkiEmuCAP_ASYNC_TEXT 32
 
+/**
+ * Validates an explicit converted-script hash and isolates its saves/read state;
+ * markerless games retain their existing native storage namespace.
+ */
+#define ShinkiEmuCAP_NATIVE_SCRIPT_IDENTITY 64
+
+/**
+ * A configured font is the primary face for script, restored and UI text,
+ * ahead of authored or restored family choices, including ruby.
+ */
+#define ShinkiEmuCAP_CONFIGURED_FONT_PRIORITY 128
+
+/**
+ * Native SC display operands support literal Unicode scalar escapes. Offline
+ * recipes embed translations in scripts instead of runtime translation tables.
+ */
+#define ShinkiEmuCAP_NATIVE_EMBEDDED_TEXT 256
+
+/**
+ * Loads native SC name constants and applies original live/history name rules,
+ * with a read-only original-executable fallback when the resource is absent.
+ */
+#define ShinkiEmuCAP_NATIVE_NAME_RESOURCES 512
+
 #define ShinkiEmuMAX_DISPLAY_NAME_BYTES 64
 
 #define ShinkiEmuMAX_RENDER_EXTENT 16384

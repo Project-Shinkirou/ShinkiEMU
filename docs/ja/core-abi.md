@@ -7,7 +7,14 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 ## プロトコルとエントリーポイント
 
-ネイティブプロトコルは `shinki.emu.native.c.v3` で、ABI の数値バージョンは **3** です。動的コアは `shinki_emu_query` をエクスポートし、静的統合では同じ形の Query 関数を登録します。Rust の契約は `Source/FamilyApi/shinki-emu-abi` にあり、生成される C ヘッダーは `include/shinki_emu.h` です。C++ はこのヘッダーを使い、ABI 定義を別に保守することはしません。
+ネイティブプロトコルは `shinki.emu.native.c.v3` で、ABI の数値バージョンは **3** です。動的コアは `shinki_emu_query` をエクスポートし、静的統合では同じ形の Query 関数を登録します。Rust の契約は `Source/FamilyApi/shinki-emu-abi` にあり、生成される C ヘッダーは `include/shinki_emu.h` です。C++ はこのヘッダーを使い、ABI 定義を別に保守することはしません。Rust の型を変更したら、リポジトリのルートで cbindgen 0.29.2 によりヘッダーを再生成して一緒にコミットします。CI の tools ジョブは同じ 2 つのコマンドを実行し、コミットされたヘッダーが生成結果と異なると失敗します。
+
+```sh
+cargo metadata --locked --format-version 1 > .work/metadata.json
+cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-emu-abi --metadata .work/metadata.json --output Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h Source/FamilyApi/shinki-emu-abi
+```
+
+`--metadata` を渡すのは、cbindgen 自身の `cargo metadata` 呼び出しが `Cargo.lock` を書き換えないようにするためです。
 
 境界を越えるのは C レイアウトの値だけです。具体的には、バージョン付きヘッダー、長さ上限のある借用バイト列、不透明ハンドル、ステータスコード、関数ポインターです。Rust のコンテナや例外の巻き戻しは ABI を越えません。動的ライブラリと不変の descriptor ストレージは常駐したままです。query はバージョンと関数テーブルの出力ポインターを受け取り、未対応のバージョンでは出力を null にします。query は I/O を行わず、worker を起動せず、logger もインストールしません。
 

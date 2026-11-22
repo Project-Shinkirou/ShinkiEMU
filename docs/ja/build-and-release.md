@@ -72,7 +72,7 @@ Manager は、ネットワーククライアントやワーカースレッドを
 リポジトリで固定された Rust 1.99.1 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm yasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
 sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
@@ -145,6 +145,7 @@ Android の最小 API は既存の組み込みネイティブ triplet と同じ 
 
 AndroidのUIスレッドは `MainActivity.onCreate` の `super.onCreate` 後、`onStart` 前に両ネイティブコアのホストを初期化します。native appスレッドだけがActivityインスタンスの完了結果を待ってからTLSとリソースを初期化します。例外・エラーは起動失敗として伝わり、破棄時は未完了の待機を解除します。UIのonStart待機とnativeからUIへの初期化待機によるデッドロックを防ぎ、Activity再作成時にはnativeコンテキストを置き換え、Destroyで解放します。
 ロック解除済みの実機で `python Tools/test-android-startup.py --adb <adb> --serial <実機> --out <新規ディレクトリ>` を実行し、コールドスタートとバックグラウンド復帰のライフサイクル完了を回帰検証します。Managerだけを停止し、データを保持して起動結果と画面を記録し、元のonStartタイムアウトを失敗とします。画面の確認と実ゲーム入力は別途必要です。
+`Platforms/Android/tests` にある Kotlin の振る舞いテスト（ゲームウィンドウの没入/復元ポリシー、SAF の選択結果処理、ボリュームパスの対応付け、ツリー走査の上限、取り込みディレクトリの後始末）は `python Tools/test-android-host-kotlin.py` でホスト JVM 上で実行します。各プログラムはファイル先頭に記した製品ソースと一緒に SDK の `android.jar` に対してコンパイルし、通常の `main` として実行します。Gradle ビルド、実機、エミュレーター、テストランナーは使わず、ダウンロードも行いません。`kotlinc`（`KOTLINC`、`PATH`、または `ANDROID_STUDIO` 経由で Android Studio 同梱の Kotlin プラグイン）、`ANDROID_HOME` または `ANDROID_JAR`、JDK（`JAVA_HOME`）が必要です。`Platforms/Android` の Kotlin を変更したときのローカル確認であり、CI のゲートではありません。
 WGPU描画通知では有効なグラフィックスコンテキスト内のGPU描画とテクスチャ公開を維持します。worker完了モデル・通知・modal更新は再利用するSlintの遅延ゼロのsingle-shot timerで描画後に処理し、実行待ちtimerがあれば重複要求をまとめます。描画中のitem tree破棄によるSkiaキャッシュの再借用を防ぎ、window/adapterは弱参照、timerは描画notifierと共に解放します。実機では、操作せずにスキャンが始まり、対象のゲームがライブラリに表示されることをアプリ画面で別途確認してください。コマンドの成功や PID が変わらないことだけでは、スキャンの結果は確認できません。
 CMVSは単独コアビルドだけで `dynamic-plugin-export` を有効にし、`shinki_emu_query` の公開とモジュールの診断callback bridgeを設定します。静的Managerでは無効のまま `cmvs_query` を使い、診断headerとemit/flushの両callbackを検証後、hostの既存tracing subscriberを利用し、プロセス全体のsubscriberを再登録しません。不正な診断引数はABIエラーを返し、完了済みの初期化を無効にしません。
 
