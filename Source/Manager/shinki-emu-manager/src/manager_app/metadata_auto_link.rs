@@ -1,24 +1,35 @@
 //! When network access is granted, unlinked games are searched by title one at
-//! a time and linked only when exactly one result has the same normalized title.
+//! a time. Link the sole valid candidate or the only exact title match.
 
 use super::*;
 use shinki_emu_manager_ui_slint::{describe_error, tr};
 
-/// Game ids whose automatic search has run. Pruned to library games on every
-/// write, so the set stays bounded by the library and removed games drop out.
+/// Game ids whose automatic search has run or whose link was removed by hand.
+/// Pruned to library games on every write.
 pub(super) const AUTO_LINK_ATTEMPTED_KEY: &str = "metadata.auto_link_attempted";
 pub(super) const AUTO_LINK_PREFIX: &str = "auto";
 const AUTO_LINK_RESULTS: u8 = 10;
 
-pub(super) enum AutoLinkStage {
+enum AutoLinkStage {
     Search { query: String },
-    Fetch,
+    Fetch { remote_id: String },
 }
 
 pub(super) struct AutoLinkRequest {
     pub(super) request_id: String,
     pub(super) game_id: String,
-    pub(super) stage: AutoLinkStage,
+    stage: AutoLinkStage,
+}
+
+fn valid_vndb_candidate(record: &MetadataRecord) -> bool {
+    record.provider == MetadataProviderId::Vndb
+        && record.remote_id.len() <= 256
+        && record.remote_id.strip_prefix('v').is_some_and(|digits| {
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        && std::iter::once(&record.title)
+            .chain(&record.alternate_titles)
+            .any(|title| !title.trim().is_empty())
 }
 
 impl ShinkiEmuManagerController {
@@ -136,25 +147,44 @@ impl ShinkiEmuManagerController {
                 self.stop_auto_link(game_id, error);
                 return Ok(());
             }
-            (AutoLinkStage::Search { query }, Ok(MetadataPayload::Search(records))) => {
-                let matched = unique_exact_match(&query, &records)
-                    .map(|index| records[index].remote_id.clone());
+            (AutoLinkStage::Search { query }, Ok(MetadataPayload::Search(mut records))) => {
+                let returned = records.len();
+                records.retain(valid_vndb_candidate);
+                if returned != 0 && records.is_empty() {
+                    self.stop_auto_link(game_id, "SHINKI_EMU_METADATA_RESPONSE_IDENTITY_MISMATCH".into());
+                    return Ok(());
+                }
+                // Ten results at most. Collapse repeated works in place while
+                // keeping titles that can disambiguate an exact match.
+                let mut index = 1;
+                while index < records.len() {
+                    if let Some(first) = records[..index]
+                        .iter()
+                        .position(|record| record.remote_id == records[index].remote_id)
+                    {
+                        let duplicate = records.remove(index);
+                        let original = &mut records[first];
+                        original.alternate_titles.push(duplicate.title);
+                        original.alternate_titles.extend(duplicate.alternate_titles);
+                    } else {
+                        index += 1;
+                    }
+                }
                 let count = records.len();
+                let matched = match records.as_slice() {
+                    [record] => Some(record.remote_id.clone()),
+                    _ => unique_exact_match(&query, &records)
+                        .map(|index| records[index].remote_id.clone()),
+                };
                 self.match_candidates
                     .retain(|_, (candidate_game, _)| *candidate_game != game_id);
                 self.store_match_candidates(&game_id, MetadataProviderId::Vndb, records);
-                if let Some(remote_id) = matched {
-                    if !self.network_allowed {
-                        self.metadata_status
-                            .insert(game_id, MetadataStatus::Message(tr!("找到 {count} 个作品，请选择关联", count = count)));
-                        self.auto_link_queue.clear();
-                        return Ok(());
-                    }
+                if let Some(remote_id) = matched.filter(|_| self.network_allowed) {
                     let game = self.game(&game_id)?;
                     match self.queue_metadata(
                         &game,
                         MetadataProviderId::Vndb,
-                        MetadataCommandKind::Fetch(remote_id),
+                        MetadataCommandKind::Fetch(remote_id.clone()),
                         AUTO_LINK_PREFIX,
                     ) {
                         Ok(request_id) => {
@@ -163,7 +193,7 @@ impl ShinkiEmuManagerController {
                             self.auto_link = Some(AutoLinkRequest {
                                 request_id,
                                 game_id,
-                                stage: AutoLinkStage::Fetch,
+                                stage: AutoLinkStage::Fetch { remote_id },
                             });
                         }
                         Err(error) => self.stop_auto_link(game_id, error),
@@ -178,11 +208,35 @@ impl ShinkiEmuManagerController {
                         tr!("未能自动关联，找到 {count} 个候选，请手动选择", count = count)
                     }),
                 );
-                self.mark_auto_link_attempted(&game_id)?;
+                if self.network_allowed {
+                    self.mark_auto_link_attempted(&game_id)?;
+                }
             }
-            (AutoLinkStage::Fetch, Ok(MetadataPayload::Fetch { record, cover })) => {
-                let title =
-                    self.link_metadata(&game_id, MetadataProviderId::Vndb, *record, cover)?;
+            (AutoLinkStage::Fetch { remote_id }, Ok(MetadataPayload::Fetch { record, cover })) => {
+                if !self.network_allowed {
+                    self.metadata_status.remove(&game_id);
+                    self.auto_link_queue.clear();
+                    return Ok(());
+                }
+                if !valid_vndb_candidate(&record) || record.remote_id != remote_id {
+                    self.stop_auto_link(game_id, "SHINKI_EMU_METADATA_RESPONSE_IDENTITY_MISMATCH".into());
+                    return Ok(());
+                }
+                let identities = self
+                    .library
+                    .external_identities(&game_id)
+                    .map_err(|error| error.to_string())?;
+                if Self::vndb_id(&identities).is_some() {
+                    self.metadata_status.remove(&game_id);
+                    return self.pump_auto_link();
+                }
+                let title = match self.link_metadata(&game_id, MetadataProviderId::Vndb, *record, cover) {
+                    Ok(title) => title,
+                    Err(error) => {
+                        self.stop_auto_link(game_id, error);
+                        return Ok(());
+                    }
+                };
                 self.metadata_status
                     .insert(game_id.clone(), MetadataStatus::Message(tr!("已自动关联：{title}", title = title)));
                 self.mark_auto_link_attempted(&game_id)?;
