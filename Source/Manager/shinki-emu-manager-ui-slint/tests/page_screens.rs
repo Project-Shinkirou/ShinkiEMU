@@ -59,6 +59,7 @@ fn run_jobs() {
 struct SoftwarePlatform {
     window: Rc<MinimalSoftwareWindow>,
     start: Instant,
+    opened_urls: Rc<RefCell<Vec<String>>>,
 }
 
 impl Platform for SoftwarePlatform {
@@ -70,6 +71,10 @@ impl Platform for SoftwarePlatform {
     }
     fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
         Some(Box::new(Proxy))
+    }
+    fn open_url(&self, url: &str) -> Result<(), slint::PlatformError> {
+        self.opened_urls.borrow_mut().push(url.to_owned());
+        Ok(())
     }
 }
 
@@ -852,9 +857,11 @@ fn reset(a: &SlintManagerAdapter) {
 #[test]
 fn every_page_renders_stable_frames() {
     let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let opened_urls = Rc::new(RefCell::new(Vec::new()));
     slint::platform::set_platform(Box::new(SoftwarePlatform {
         window: software.clone(),
         start: Instant::now(),
+        opened_urls: opened_urls.clone(),
     }))
     .expect("software platform");
     let adapter = Rc::new(SlintManagerAdapter::new().expect("manager window"));
@@ -923,6 +930,9 @@ fn every_page_renders_stable_frames() {
             }
             if only.is_empty() || only.iter().any(|p| "cores/cards".starts_with(p)) {
                 exercise_core_cards(&adapter, &software, (width, height), save);
+            }
+            if only.is_empty() || only.iter().any(|p| "settings/about-credits".starts_with(p)) {
+                exercise_about_credits(&adapter, &software, (width, height), &opened_urls, save);
             }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
@@ -1667,4 +1677,63 @@ fn exercise_core_cards(
     assert_eq!(clicked.borrow().len(), 2, "offline install remains disabled");
     material.set_touch(false);
     reset(a);
+}
+
+fn exercise_about_credits(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    opened_urls: &RefCell<Vec<String>>,
+    save: impl Fn(&str, Vec<u8>),
+) {
+    const INVENTORY: &str = include_str!("../../../../build/cores.toml");
+    const ABOUT: &str = include_str!("../ui/pages/settings/about.slint");
+    for line in INVENTORY.lines().filter(|line| line.starts_with("upstream_identity = ")) {
+        let repo = line.split("repo = \"").nth(1).unwrap().split('"').next().unwrap();
+        assert!(ABOUT.contains(&format!("\"{repo}/graphs/contributors\"")), "missing About credit for {repo}");
+    }
+
+    reset(a);
+    a.apply(&base());
+    settings(a, "about");
+    let frame = || render(software, width, height);
+    frame();
+    opened_urls.borrow_mut().clear();
+    let bottom = height as f32 - if width < 600 { 80.0 } else { 0.0 };
+    let reveal = |label: &str| {
+        for _ in 0..12 {
+            if let Some(item) = labeled_item(software, |text| text == label) {
+                let rect = item.geometry();
+                let top = item.map_to_native_window(rect.origin);
+                if top.y >= 64.0 && top.y + rect.size.height < bottom {
+                    return;
+                }
+            }
+            let position = LogicalPosition::new(if width < 600 { 180.0 } else { 540.0 }, 470.0);
+            software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -200.0 });
+            frame();
+        }
+        panic!("credits row is not reachable: {label}");
+    };
+
+    reveal("Art3m1s Core");
+    save("settings/about-credits-start", frame());
+    assert!(opened_urls.borrow().is_empty(), "opening About must not open external URLs");
+    click_label(software, "Art3m1s Core");
+    reveal("RFVP");
+    save("settings/about-credits-middle", frame());
+    click_label(software, "RFVP");
+    reveal("Project Shinkirou");
+    save("settings/about-credits-end", frame());
+    click_label(software, "SoftPAL RS (Sena)");
+    click_label(software, "Project Shinkirou");
+    assert_eq!(
+        opened_urls.borrow().as_slice(),
+        [
+            "https://github.com/Alphaly2K/art3m1s-core/graphs/contributors",
+            "https://github.com/xmoezzz/rfvp/graphs/contributors",
+            "https://github.com/xmoezzz/sena-rs/graphs/contributors",
+            "https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors",
+        ]
+    );
 }

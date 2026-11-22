@@ -2832,3 +2832,15 @@ msgstr "Allow access to all files"
 
 msgid "更新核心"
 msgstr "Update core"
+
+msgid "致谢"
+msgstr "Acknowledgments"
+
+msgid "感谢上游核心开发者、项目社区，以及为 ShinkiEMU 适配和测试的贡献者。选择项目可在浏览器中查看贡献者。"
+msgstr "Thanks to the upstream core developers and their communities, and to everyone who adapted and tested the cores for ShinkiEMU. Select a project to see its contributors in your browser."
+
+msgid "{} 及项目贡献者"
+msgstr "{} and project contributors"
+
+msgid "ShinkiEMU 适配、维护和测试贡献者"
+msgstr "ShinkiEMU integration, maintenance, and testing contributors"

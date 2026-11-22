@@ -7,11 +7,12 @@ import { PageScroll, SettingGroup } from "./common.slint";
 component LinkRow {
     in property <string> text;
     in property <string> supporting-text;
+    in property <bool> wrap-labels;
     in property <image> icon;
     callback clicked();
 
-    min-height: 64px;
-    preferred-height: 64px;
+    min-height: root.wrap-labels ? max(64px, labels.min-height + 16px) : 64px;
+    preferred-height: root.wrap-labels ? max(64px, labels.preferred-height + 16px) : 64px;
     forward-focus: area;
     accessible-role: button;
     accessible-label: root.text;
@@ -40,7 +41,7 @@ component LinkRow {
                     colorize: MaterialPalette.on-surface-variant;
                 }
             }
-            VerticalLayout {
+            labels := VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
@@ -48,11 +49,15 @@ component LinkRow {
                     text: root.text;
                     style: MaterialTypography.body-large;
                     color: MaterialPalette.on-surface;
+                    wrap: root.wrap-labels ? word-wrap : no-wrap;
+                    overflow: root.wrap-labels ? clip : elide;
                 }
                 MaterialText {
                     text: root.supporting-text;
                     style: MaterialTypography.body-medium;
                     color: MaterialPalette.on-surface-variant;
+                    wrap: root.wrap-labels ? word-wrap : no-wrap;
+                    overflow: root.wrap-labels ? clip : elide;
                 }
             }
             VerticalLayout {
@@ -157,6 +162,45 @@ export component AboutSection inherits PageScroll {
                 Onboarding.step = 0;
                 App.page = "onboarding";
             }
+        }
+    }
+
+    SettingGroup {
+        title: @tr("致谢");
+        description: @tr("感谢上游核心开发者、项目社区，以及为 ShinkiEMU 适配和测试的贡献者。选择项目可在浏览器中查看贡献者。");
+        flush: true;
+
+        // Original repositories are listed in build/cores.toml. Author and
+        // team credits come from upstream licenses and public contributor pages.
+        for credit[index] in [
+            { project: "Art3m1s Core", authors: "Alphaly2K", url: "https://github.com/Alphaly2K/art3m1s-core/graphs/contributors" },
+            { project: "cmvs-rs", authors: "gkouen", url: "https://github.com/Shizuku-in/cmvs-rs/graphs/contributors" },
+            { project: "ethornell-rs", authors: "xmoezzz", url: "https://github.com/xmoezzz/ethornell-rs/graphs/contributors" },
+            { project: "impacto", authors: "Committee of Zero", url: "https://github.com/CommitteeOfZero/impacto/graphs/contributors" },
+            { project: "Kirikiroid2 Web", authors: "fenghengzhi", url: "https://github.com/fenghengzhi/kirikiroid2-web/graphs/contributors" },
+            { project: "KrKr2", authors: "2468785842", url: "https://github.com/2468785842/krkr2/graphs/contributors" },
+            { project: "ReMinori", authors: "luoyily", url: "https://github.com/luoyily/ReMinori/graphs/contributors" },
+            { project: "Ren’Py", authors: "Tom Rothamel", url: "https://github.com/renpy/renpy/graphs/contributors" },
+            { project: "RFVP", authors: "xmoezzz", url: "https://github.com/xmoezzz/rfvp/graphs/contributors" },
+            { project: "Siglus RS", authors: "xmoezzz", url: "https://github.com/xmoezzz/siglus_rs/graphs/contributors" },
+            { project: "SoftPAL RS (Sena)", authors: "404-GCross, Alphaly2K, xmoezzz", url: "https://github.com/xmoezzz/sena-rs/graphs/contributors" },
+        ] : VerticalLayout {
+            if index > 0 : HorizontalDivider { }
+            LinkRow {
+                text: credit.project;
+                supporting-text: @tr("{} 及项目贡献者", credit.authors);
+                wrap-labels: true;
+                icon: Icons.memory;
+                clicked => { Platform.open-url(credit.url); }
+            }
+        }
+        HorizontalDivider { }
+        LinkRow {
+            text: "Project Shinkirou";
+            supporting-text: @tr("ShinkiEMU 适配、维护和测试贡献者");
+            wrap-labels: true;
+            icon: Icons.build;
+            clicked => { Platform.open-url("https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors"); }
         }
     }
 

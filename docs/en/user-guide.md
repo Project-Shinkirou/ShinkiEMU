@@ -13,6 +13,8 @@ Only select assets actually attached to a release. Build availability is listed 
 
 On first launch, you can add a game folder and choose your network and appearance settings, or skip setup. Networking is off by default. ShinkiEMU is free and open source; download it from the official site or GitHub Releases. See **Settings → About** for licensing information.
 
+**Settings → About → Acknowledgments** lists the upstream core projects and links to their contributors.
+
 ## Language
 
 Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.
