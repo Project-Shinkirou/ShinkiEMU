@@ -46,6 +46,13 @@ fn install_library<C: ManagerController>(
             Box::new(move |picked| w.run(|c| c.add_game_directory(&picked?))),
         );
     });
+    library.set_optical_available(platform::OPTICAL_VOLUMES_SUPPORTED);
+    #[cfg(any(
+        windows,
+        target_os = "macos",
+        all(target_os = "linux", not(target_env = "ohos"))
+    ))]
+    optical::install(wiring, &library);
     let w = wiring.clone();
     library.on_search(move |query| w.run(|c| c.search(query.as_str())));
     let w = wiring.clone();
@@ -73,6 +80,138 @@ fn install_library<C: ManagerController>(
     });
     let w = wiring.clone();
     library.on_remove(move |game_id| w.run(|c| c.remove_from_library(game_id.as_str())));
+}
+
+/// 打开光驱: list mounted data discs off the UI thread, import the only one,
+/// or let the user pick one when several are mounted.
+#[cfg(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", not(target_env = "ohos"))
+))]
+mod optical {
+    use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    type Listed = Box<dyn FnOnce(Result<Vec<platform::OpticalVolume>, String>)>;
+
+    /// The discs behind `Library.optical-choices`. `import-optical(index)`
+    /// only indexes this snapshot; closing the dialog or a new listing
+    /// replaces it, so a stale row never imports another disc's root.
+    type Snapshot = Rc<RefCell<Vec<platform::OpticalVolume>>>;
+
+    thread_local! {
+        // Slint event-loop thread only: a listing starts there and its worker
+        // delivers the result there through `slint::invoke_from_event_loop`.
+        static LISTED: RefCell<Option<Listed>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn install<C: ManagerController>(wiring: &Wiring<C>, library: &Library<'_>) {
+        let snapshot = Snapshot::default();
+        let w = wiring.clone();
+        let listed = snapshot.clone();
+        library.on_open_optical(move || {
+            let Some(window) = w.window.upgrade() else {
+                return;
+            };
+            let library = window.global::<Library>();
+            if library.get_optical_listing() {
+                return;
+            }
+            show_choices(&library, &listed, Vec::new());
+            let done_wiring = w.clone();
+            let done_snapshot = listed.clone();
+            LISTED.with(|slot| {
+                *slot.borrow_mut() = Some(Box::new(move |result| {
+                    finish(&done_wiring, &done_snapshot, result);
+                }));
+            });
+            library.set_optical_listing(true);
+            // Reading a volume label can wait for the drive to spin up.
+            let spawned = std::thread::Builder::new()
+                .name("manager-optical-volumes".into())
+                .spawn(|| {
+                    let result = platform::optical_volumes();
+                    if let Err(error) = slint::invoke_from_event_loop(move || {
+                        if let Some(done) = LISTED.with(|slot| slot.borrow_mut().take()) {
+                            done(result);
+                        }
+                    }) {
+                        tracing::warn!(
+                            event = "shinki.emu.manager.optical_listing_dropped",
+                            error = %error
+                        );
+                    }
+                });
+            if let Err(error) = spawned {
+                LISTED.with(|slot| slot.borrow_mut().take());
+                library.set_optical_listing(false);
+                report_error(&window, &format!("SHINKI_EMU_OPTICAL_VOLUMES: {error}"));
+            }
+        });
+        let w = wiring.clone();
+        let picked = snapshot.clone();
+        library.on_import_optical(move |index| {
+            let Some(window) = w.window.upgrade() else {
+                return;
+            };
+            let mut volumes = picked.take();
+            show_choices(&window.global::<Library>(), &picked, Vec::new());
+            let Some(index) = usize::try_from(index)
+                .ok()
+                .filter(|index| *index < volumes.len())
+            else {
+                return;
+            };
+            let volume = volumes.swap_remove(index);
+            w.run(|c| c.add_optical_game_directory(volume));
+        });
+        let w = wiring.clone();
+        library.on_close_optical(move || {
+            if let Some(window) = w.window.upgrade() {
+                show_choices(&window.global::<Library>(), &snapshot, Vec::new());
+            }
+        });
+    }
+
+    fn finish<C: ManagerController>(
+        wiring: &Wiring<C>,
+        snapshot: &Snapshot,
+        result: Result<Vec<platform::OpticalVolume>, String>,
+    ) {
+        let Some(window) = wiring.window.upgrade() else {
+            return;
+        };
+        let library = window.global::<Library>();
+        library.set_optical_listing(false);
+        match result {
+            Err(error) => report_error(&window, &error),
+            Ok(volumes) if volumes.is_empty() => {
+                report_error(&window, "SHINKI_EMU_OPTICAL_NO_MEDIA");
+            }
+            Ok(mut volumes) if volumes.len() == 1 => {
+                let volume = volumes.swap_remove(0);
+                wiring.run(|c| c.add_optical_game_directory(volume));
+            }
+            Ok(volumes) => show_choices(&library, snapshot, volumes),
+        }
+    }
+
+    fn show_choices(
+        library: &Library<'_>,
+        snapshot: &Snapshot,
+        volumes: Vec<platform::OpticalVolume>,
+    ) {
+        let choices: Vec<shinki_emu_manager_ui_slint::Choice> = volumes
+            .iter()
+            .map(|volume| shinki_emu_manager_ui_slint::Choice {
+                id: volume.root.display().to_string().into(),
+                label: volume.label.as_deref().unwrap_or_default().into(),
+            })
+            .collect();
+        library.set_optical_choices(slint::ModelRc::new(slint::VecModel::from(choices)));
+        *snapshot.borrow_mut() = volumes;
+    }
 }
 
 fn install_selection<C: ManagerController>(

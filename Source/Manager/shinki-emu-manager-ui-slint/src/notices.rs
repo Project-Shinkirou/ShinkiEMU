@@ -121,6 +121,14 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("作品可以在 设置→库目录 中恢复。"),
         ),
         "SHINKI_EMU_OPEN_PATH_FAILED" => (tr!("无法打开所在目录"), tr!("系统文件管理器未能启动。")),
+        "SHINKI_EMU_OPTICAL_NO_MEDIA" => (
+            tr!("没有找到光盘"),
+            tr!("请放入游戏数据光盘，等系统识别后再试。"),
+        ),
+        "SHINKI_EMU_OPTICAL_MEDIA_UNAVAILABLE" => (
+            tr!("光盘已更换或取出"),
+            tr!("请放回原光盘，或再次点“打开光驱”选择当前光盘。"),
+        ),
         "SHINKI_EMU_KEY_CAPTURE_INACTIVE" => {
             (tr!("没有正在设置的按键"), tr!("请先点选要绑定的手柄按钮。"))
         }
@@ -351,6 +359,7 @@ fn fallback_title(code: &str) -> &'static str {
         "INPUT" | "GAMEPAD" => tr!("输入设备出错"),
         "LIBRARY" | "GAME" | "CASE" | "SEARCH" | "DATA" | "EXECUTABLE" | "PREPARE" | "SCAN"
         | "OPEN" => tr!("游戏库出错"),
+        "OPTICAL" => tr!("无法读取光驱"),
         "PRESET" => tr!("推荐配置出错"),
         "AUDIO" => tr!("声音输出出错"),
         "MODAL" | "MANAGER" => tr!("管理器出错"),

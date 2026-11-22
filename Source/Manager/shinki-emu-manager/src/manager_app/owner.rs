@@ -64,6 +64,8 @@ pub(super) enum Command {
 pub(super) struct OpenSession {
     pub(super) epoch: u64,
     pub(super) game: GameRecord,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) optical: Option<OpticalVolume>,
     pub(super) candidate: Candidate,
     pub(super) configuration: Vec<ConfigEntry>,
     pub(super) window: WindowState,

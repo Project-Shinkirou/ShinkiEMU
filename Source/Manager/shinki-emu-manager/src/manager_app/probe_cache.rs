@@ -1,7 +1,7 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use shinki_emu_manager_core::{NativeCancellation, detection::{self, EngineDetection}};
+use shinki_emu_manager_core::{NativeCancellation, detection::{self, DeclaredRules, EngineDetection}};
 
 const VERSION: u32 = 2;
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
@@ -87,6 +87,8 @@ struct Entry {
 struct Stored {
     version: u32,
     detector_version: u32,
+    #[serde(default)]
+    rules_key: String,
     entries: BTreeMap<PathBuf, Entry>,
 }
 
@@ -94,16 +96,19 @@ struct Stored {
 struct StoredRef<'a> {
     version: u32,
     detector_version: u32,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    rules_key: &'a str,
     entries: &'a BTreeMap<PathBuf, Entry>,
 }
 
 pub(super) struct ProbeCache {
     path: PathBuf,
+    rules: DeclaredRules,
     entries: BTreeMap<PathBuf, Entry>,
 }
 
 impl ProbeCache {
-    pub(super) fn load(data_dir: &Path) -> Self {
+    pub(super) fn load(data_dir: &Path, rules: DeclaredRules) -> Self {
         let path = data_dir.join("probe-cache.json");
         let stored = (|| {
             let file = fs::File::open(&path).ok()?;
@@ -118,6 +123,7 @@ impl ProbeCache {
             let stored: Stored = serde_json::from_slice(&bytes).ok()?;
             if stored.version != VERSION
                 || stored.detector_version != detection::CACHE_VERSION
+                || stored.rules_key != rules.key()
                 || stored.entries.len() > MAX_ENTRIES
                 || stored.entries.values().any(|entry| {
                     entry.stamp.len() > MAX_FILES || entry.detections.len() > MAX_CANDIDATES
@@ -129,8 +135,14 @@ impl ProbeCache {
         })();
         Self {
             path,
+            rules,
             entries: stored.map(|stored| stored.entries).unwrap_or_default(),
         }
+    }
+
+    #[cfg(any(target_os = "android", windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) fn rules(&self) -> &DeclaredRules {
+        &self.rules
     }
 
     pub(super) fn get(&self, path: &Path) -> Option<Vec<EngineDetection>> {
@@ -155,7 +167,7 @@ impl ProbeCache {
         }
         self.entries.remove(path);
         let before = game_stamp(path);
-        let detections = detection::detect_game_directory(path, cancellation)?;
+        let detections = self.rules.detect_game_directory(path, cancellation)?;
         if cancellation.is_cancelled() { return Err(detection::DetectionError::Cancelled); }
         if detections.len() <= MAX_CANDIDATES
             && let Some(stamp) = before.filter(|before| game_stamp(path).as_ref() == Some(before)) {
@@ -190,6 +202,7 @@ impl ProbeCache {
                 &StoredRef {
                     version: VERSION,
                     detector_version: detection::CACHE_VERSION,
+                    rules_key: self.rules.key(),
                     entries: &self.entries,
                 },
             )

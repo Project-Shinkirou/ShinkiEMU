@@ -245,6 +245,18 @@ pub trait ManagerController: 'static {
     fn save_bangumi_token(&mut self, token: &str) -> Result<ManagerViewModel, String>;
     fn clear_bangumi_token(&mut self) -> Result<ManagerViewModel, String>;
     fn add_game_directory(&mut self, path: &std::path::Path) -> Result<ManagerViewModel, String>;
+    /// Import a mounted disc picked from `platform::optical_volumes()`. The
+    /// controller checks that the same medium is still mounted, then scans its
+    /// root in place like any game directory.
+    #[cfg(any(
+        windows,
+        target_os = "macos",
+        all(target_os = "linux", not(target_env = "ohos"))
+    ))]
+    fn add_optical_game_directory(
+        &mut self,
+        volume: crate::platform::OpticalVolume,
+    ) -> Result<ManagerViewModel, String>;
     #[cfg(target_os = "android")]
     fn android_storage_access_changed(&mut self) -> Result<ManagerViewModel, String> {
         self.model()

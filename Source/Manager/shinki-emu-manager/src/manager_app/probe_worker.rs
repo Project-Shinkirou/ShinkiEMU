@@ -28,10 +28,13 @@ pub(super) enum ScanKind {
 
 pub(super) struct ScanRequest {
     pub(super) kind: ScanKind,
+    pub(super) offer_unrecognized: bool,
     pub(super) paths: Vec<PathBuf>,
     pub(super) games: Vec<GameRecord>,
     pub(super) excluded: BTreeSet<PathBuf>,
     pub(super) cancel: shinki_emu_manager_core::NativeCancellation,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) optical: Option<OpticalVolume>,
 }
 
 pub(super) struct GameProbe {
@@ -54,7 +57,18 @@ impl GameProbe {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UnrecognizedRoot {
+    pub(super) requested: PathBuf,
+    pub(super) path: PathBuf,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    pub(super) optical: Option<OpticalVolume>,
+    #[cfg(target_os = "android")]
+    pub(super) saf: Option<SafProbe>,
+}
+
 #[cfg(target_os = "android")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SafProbe {
     pub(super) title: String,
     pub(super) local_path: Option<PathBuf>,
@@ -63,6 +77,7 @@ pub(super) struct SafProbe {
 #[derive(Default)]
 pub(super) struct ScanReport {
     pub(super) games: Vec<GameProbe>,
+    pub(super) unrecognized_root: Option<UnrecognizedRoot>,
     pub(super) missing: usize,
     pub(super) cache_hits: usize,
     pub(super) cache_error: Option<String>,
@@ -102,6 +117,13 @@ pub(super) fn scan(
             None
         }
     };
+    if let Some(error) = cancelled() {
+        return Err(error.into());
+    }
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    if let Some(volume) = &request.optical {
+        volume.validate()?;
+    }
     let excluded: BTreeSet<PathBuf> = request
         .excluded
         .iter()
@@ -109,7 +131,7 @@ pub(super) fn scan(
         .collect();
     let mut report = ScanReport::default();
     #[cfg(target_os = "android")]
-    scan_saf(&request, &mut report, shutdown, &cancelled, progress)?;
+    scan_saf(cache.rules(), &request, &mut report, shutdown, &cancelled, progress)?;
     let mut known = BTreeMap::<PathBuf, Vec<String>>::new();
     for game in &request.games {
         if let Some(error) = cancelled() {
@@ -139,6 +161,7 @@ pub(super) fn scan(
         }
     }
     let mut roots = BTreeSet::new();
+    let mut selected = None;
     if request.kind == ScanKind::Full {
         roots.extend(known.keys().cloned());
         cache.retain_registered(&request.games);
@@ -164,10 +187,20 @@ pub(super) fn scan(
             }
             _ => return Err("SHINKI_EMU_GAME_DIRECTORY_INVALID".into()),
         };
+        if request.offer_unrecognized && !known.contains_key(&path) && !excluded.contains(&path) {
+            selected = Some(UnrecognizedRoot {
+                requested: root, path: path.clone(),
+                #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+                optical: request.optical.clone(),
+                #[cfg(target_os = "android")]
+                saf: None,
+            });
+        }
         roots.insert(path);
     }
     let mut visited = BTreeSet::new();
     let mut recognized = Vec::<PathBuf>::new();
+    let mut saw_file = false;
     for root in roots {
         let mut queue = vec![(root, 0_usize)];
         while let Some((path, depth)) = queue.pop() {
@@ -193,7 +226,17 @@ pub(super) fn scan(
                 });
             }
             let allow_hint = request.kind == ScanKind::Full && known.contains_key(&path);
-            let detected = match cache.detect(&path, allow_hint, &request.cancel) {
+            #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+            let detection = if request.optical.is_some() {
+                // The ordinary probe cache is path-keyed; a drive path can
+                // identify entirely different game data after an eject.
+                cache.rules().detect_game_directory(&path, &request.cancel).map(|detections| (detections, false))
+            } else {
+                cache.detect(&path, allow_hint, &request.cancel)
+            };
+            #[cfg(not(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos")))))]
+            let detection = cache.detect(&path, allow_hint, &request.cancel);
+            let detected = match detection {
                 Ok((detections, hit)) => {
                     report.cache_hits += usize::from(hit);
                     Some(detections)
@@ -241,6 +284,9 @@ pub(super) fn scan(
                     let kind = entry
                         .file_type()
                         .map_err(directory_entry_error)?;
+                    if selected.is_some() && kind.is_file() {
+                        saw_file = true;
+                    }
                     let child = entry.path();
                     if kind.is_dir()
                         && !kind.is_symlink()
@@ -262,8 +308,16 @@ pub(super) fn scan(
             }
         }
     }
+    if saw_file {
+        report.unrecognized_root = selected.filter(|root| visited.contains(&root.path));
+    }
     if let Some(error) = cancelled() {
         return Err(error.into());
+    }
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    if let Some(volume) = &request.optical {
+        volume.validate()?;
+        return Ok(report);
     }
     report.cache_error = cache.save().err();
     Ok(report)
@@ -275,6 +329,7 @@ fn directory_entry_error(error: std::io::Error) -> String {
 
 #[cfg(target_os = "android")]
 fn scan_saf(
+    rules: &shinki_emu_manager_core::detection::DeclaredRules,
     request: &ScanRequest,
     report: &mut ScanReport,
     shutdown: &std::sync::atomic::AtomicBool,
@@ -282,7 +337,6 @@ fn scan_saf(
     progress: &mut dyn FnMut(super::owner::PrepareProgress),
 ) -> Result<(), String> {
     use shinki_emu_manager::platform::android_tree as saf;
-    use shinki_emu_manager_core::detection;
 
     fn key(uri: &str) -> (String, String) {
         (saf::authority(uri).to_owned(), saf::document_identity(uri).to_owned())
@@ -324,6 +378,8 @@ fn scan_saf(
                 continue;
             }
         };
+        let mut selected = None;
+        let mut saw_file = false;
         let mut pending = vec![(root, 0)];
         while let Some((dir, depth)) = pending.pop() {
             if let Some(error) = cancelled() { return Err(error.into()); }
@@ -340,26 +396,44 @@ fn scan_saf(
             }
             // The app must be able to open game resources, not just list a trusted volume.
             let local = saf::local_path(&dir.uri).ok().flatten().and_then(|path| {
-                let detected = detection::detect_game_directory(&path, &request.cancel).ok()?;
-                (!detected.is_empty()).then_some((detected, path))
+                let (matches, has_files) = rules.inspect_game_directory(&path, &request.cancel).ok()?;
+                Some((matches, has_files, path))
             });
-            let (detected, local_path) = if let Some((detected, path)) = local {
-                (Some(detected), Some(path))
-            } else {
-                match detection::detect_game_tree(&saf::SafTree::new(&dir), &request.cancel) {
-                    Ok(detected) => (Some(detected), None),
+            let (detected, has_files, local_path) = match local {
+                Some((matches, has_files, path)) if !matches.is_empty() => (Some(matches), has_files, Some(path)),
+                unrecognized_local => match rules.inspect_game_tree(&saf::SafTree::new(&dir), &request.cancel) {
+                    Ok((matches, has_files)) => {
+                        // A provider-only match does not prove direct access to those files.
+                        let local_path = unrecognized_local.filter(|_| matches.is_empty()).map(|(_, _, path)| path);
+                        (Some(matches), has_files, local_path)
+                    }
                     Err(error) => {
                         report_failure(report, error, "candidate")?;
                         // A failed candidate need not hide independently readable child games.
-                        (None, None)
+                        (None, false, None)
                     }
-                }
+                },
             };
             if let Some(error) = cancelled() { return Err(error.into()); }
             let game_known = known.get(&identity).copied();
             let matched = detected.as_ref().is_some_and(|detected| !detected.is_empty());
             if detected.is_some() {
                 visited.insert(identity);
+            }
+            if request.offer_unrecognized {
+                saw_file |= has_files;
+                if depth == 0 && detected.is_some() && !matched && game_known.is_none() {
+                    let no_patch = local_path.as_deref().is_none_or(|path| {
+                        matches!(shinki_emu_patch::read_output_profile(path, shutdown), Ok(None))
+                    });
+                    if no_patch {
+                        selected = Some(UnrecognizedRoot {
+                            requested: PathBuf::from(uri),
+                            path: PathBuf::from(&dir.uri),
+                            saf: Some(SafProbe { title: dir.name.clone(), local_path: local_path.clone() }),
+                        });
+                    }
+                }
             }
             if !matched && !saved_only {
                 let limit = if depth == MAX_SCAN_DEPTH { 0 } else { MAX_SCAN_DIRECTORIES - attempted - pending.len() };
@@ -375,7 +449,7 @@ fn scan_saf(
             if matched || (detected.is_some() && game_known.is_some()) {
                 let detections = detected.unwrap_or_default();
                 let game_ids = game_known.map(|game| vec![game.game_id.clone()]).unwrap_or_default();
-                let patch_profile = if request.kind == ScanKind::Import || game_known.is_none() {
+                let patch_profile = if matched && (request.kind == ScanKind::Import || game_known.is_none()) {
                     match local_path.as_deref() {
                         Some(path) => shinki_emu_patch::read_output_profile(path, shutdown)
                             .transpose().map(|profile| profile.map_err(|error| error.to_string())),
@@ -392,6 +466,9 @@ fn scan_saf(
                     saf: Some(SafProbe { title: dir.name, local_path }),
                 });
             }
+        }
+        if saw_file && selected.is_some() {
+            report.unrecognized_root = selected;
         }
     }
     Ok(())

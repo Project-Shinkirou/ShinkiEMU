@@ -19,6 +19,8 @@ pub struct CoreCatalogEntry {
     /// including optional integrations such as desktop `static-cmvs`.
     /// Reading either catalog metadata or function-table IDs invokes no core.
     pub embedded: bool,
+    /// The recognition field of this target's embedded core recipe, or an empty list.
+    pub embedded_recognition_json: &'static str,
 }
 
 include!(concat!(env!("OUT_DIR"), "/static-core-catalog.rs"));

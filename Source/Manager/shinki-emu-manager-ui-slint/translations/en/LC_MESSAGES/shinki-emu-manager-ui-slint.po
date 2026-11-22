@@ -2000,8 +2000,8 @@ msgstr "Source: {url}"
 msgid "核心加载或后台运行失败：{error}。请修复后重启应用。"
 msgstr "Loading cores or a background task failed: {error}. Fix it and restart the app."
 
-msgid "核心包或核心文件"
-msgstr "Core package or core file"
+msgid "核心包"
+msgstr "Core package"
 
 msgid "核心已下载，重启后生效"
 msgstr "Core downloaded. Restart to use it"
@@ -2575,6 +2575,12 @@ msgstr "The game folder is currently unavailable"
 msgid "所选目录中未识别到游戏引擎，请选择原生游戏目录。"
 msgstr "No game engine was recognized in the selected folder. Choose a native game folder."
 
+msgid "未识别到游戏引擎，可添加所选文件夹后手动选择核心。"
+msgstr "No game engine was recognized. Add the selected folder to choose a core manually."
+
+msgid "作为游戏添加"
+msgstr "Add as game"
+
 msgid "滤镜链"
 msgstr "Filter chain"
 
@@ -2832,3 +2838,27 @@ msgstr "Allow access to all files"
 
 msgid "更新核心"
 msgstr "Update core"
+
+msgid "打开光驱"
+msgstr "Open game disc"
+
+msgid "选择光盘"
+msgstr "Choose a disc"
+
+msgid "从光盘直接读取游戏，不会复制到本机。"
+msgstr "Games are read straight from the disc; nothing is copied to this computer."
+
+msgid "没有找到光盘"
+msgstr "No disc found"
+
+msgid "请放入游戏数据光盘，等系统识别后再试。"
+msgstr "Insert a game data disc, wait for the system to recognize it, then try again."
+
+msgid "光盘已更换或取出"
+msgstr "The disc was changed or removed"
+
+msgid "请放回原光盘，或再次点“打开光驱”选择当前光盘。"
+msgstr "Reinsert the original disc, or use “Open game disc” again to choose the current one."
+
+msgid "无法读取光驱"
+msgstr "Couldn't read the disc drive"

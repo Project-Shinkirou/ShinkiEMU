@@ -22,6 +22,7 @@ fn manifest(plugin_id: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
         library: LIBRARY.into(),
         version: "0.2.0".into(),
         identity: None,
+        recognition: Default::default(),
         abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
         files,
     })
@@ -129,6 +130,26 @@ fn package_with_hash_mismatch_or_foreign_plugin_is_rejected() {
 }
 
 #[test]
+fn malformed_recognition_is_rejected_before_pending_or_installed_discovery() {
+    let root = tempfile::tempdir().unwrap();
+    let cores = root.path().join("cores");
+    let archive = root.path().join("core.zip");
+    let mut files = valid_files();
+    let mut invalid: serde_json::Value = serde_json::from_slice(&manifest("rfvp", &files)).unwrap();
+    invalid["recognition"] = serde_json::json!([{"path":"game.bin", "magic":"0405", "offset":4095}]);
+    let encoded = serde_json::to_vec(&invalid).unwrap();
+    files.push((CORE_MANIFEST, &encoded));
+    write_zip(&archive, &files);
+    assert_eq!(
+        stage_package(&archive, Some(("rfvp", "0.2.0", None)), &cores.join(PENDING)).unwrap_err(),
+        "SHINKI_EMU_CORE_PACKAGE_MANIFEST"
+    );
+    assert!(pending_is_empty(&cores));
+    fs::write(root.path().join(CORE_MANIFEST), encoded).unwrap();
+    assert!(read_manifest(root.path()).is_none());
+}
+
+#[test]
 fn valid_package_is_staged_and_apply_pending_replaces_the_core_directory() {
     let root = tempfile::tempdir().unwrap();
     let cores = root.path().join("cores");
@@ -199,24 +220,6 @@ fn legacy_top_level_library_is_migrated_into_its_directory() {
     assert_eq!(manifest.library, "shinki_emu_x.dll");
     assert_eq!(manifest.files[0].sha256, sha256_hex(b"legacy"));
     assert!(cores.join("avcodec-62.dll").exists());
-}
-
-#[test]
-fn single_library_install_generates_a_manifest() {
-    let root = tempfile::tempdir().unwrap();
-    let cores = root.path().join("cores");
-    let library = root.path().join(LIBRARY);
-    fs::write(&library, b"bare").unwrap();
-    let stem = stage_library(&library, &cores.join(PENDING)).unwrap();
-    let staged = cores.join(PENDING).join(&stem);
-    assert_eq!(fs::read(staged.join(LIBRARY)).unwrap(), b"bare");
-    let manifest = read_manifest(&staged).unwrap();
-    assert_eq!(manifest.files.len(), 1);
-    assert_eq!(manifest.files[0].sha256, sha256_hex(b"bare"));
-    assert_eq!(
-        stage_library(&root.path().join("avcodec-62.dll"), &cores.join(PENDING)).unwrap_err(),
-        "SHINKI_EMU_CORE_INSTALL_NAME"
-    );
 }
 
 #[cfg(windows)]

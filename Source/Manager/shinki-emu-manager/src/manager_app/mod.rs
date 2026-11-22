@@ -56,6 +56,10 @@ mod metadata_sync;
 mod metadata_tests;
 mod model;
 mod navigation;
+#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+mod optical;
+#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+use shinki_emu_manager::platform::{OPTICAL_MEDIA_UNAVAILABLE, OpticalVolume};
 mod owner;
 mod owner_worker;
 mod preferences;
@@ -189,6 +193,10 @@ struct ShinkiEmuManagerController {
     library_scan: Option<background::LibraryScan>,
     prepare_progress: Option<owner::PrepareProgress>,
     scan_cancel: Option<shinki_emu_manager_core::NativeCancellation>,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    optical_games: BTreeMap<String, optical::OpticalGame>,
+    #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+    opened_optical: BTreeMap<PathBuf, OpticalVolume>,
     #[cfg(target_os = "android")]
     saf_paths: BTreeMap<String, PathBuf>,
     last_excluded: Option<String>,

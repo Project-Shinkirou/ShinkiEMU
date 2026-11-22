@@ -8,7 +8,10 @@ fn game(path: &Path) -> GameRecord {
         location: path.to_str().unwrap().into(), family_id: Some("fvp".into()), content_fingerprint: None, added_at_unix_ms: 1 }
 }
 fn run_scan(cache: &mut ProbeCache, kind: ScanKind, paths: Vec<PathBuf>, games: Vec<GameRecord>) -> ScanReport {
-    super::super::probe_worker::scan(cache, ScanRequest { kind, paths, games, excluded: BTreeSet::new(), cancel: NativeCancellation::new(0) },
+    super::super::probe_worker::scan(cache, ScanRequest { kind, offer_unrecognized: false, paths, games, excluded: BTreeSet::new(), cancel: NativeCancellation::new(0),
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    },
         &AtomicBool::new(false), &mut |_| {}).unwrap()
 }
 fn refresh(cache: &mut ProbeCache, path: &Path) -> ScanReport { run_scan(cache, ScanKind::Full, Vec::new(), vec![game(path)]) }
@@ -18,11 +21,11 @@ fn registered_hints_follow_resource_changes_but_not_native_inventory() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     let first = refresh(&mut cache, &path);
     assert_eq!(first.cache_hits, 0);
     assert_eq!(first.games[0].detections[0].family_id, "fvp");
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
     fs::write(root.path().join("new-core.dll"), b"inventory is not a recognition input").unwrap();
     assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
@@ -41,7 +44,7 @@ fn cache_upgrade_and_detector_rule_changes_are_misses() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     refresh(&mut cache, &path);
     let file = root.path().join("probe-cache.json");
     let original: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
@@ -49,7 +52,7 @@ fn cache_upgrade_and_detector_rule_changes_are_misses() {
         let mut changed = original.clone();
         changed[key] = value.into();
         fs::write(&file, serde_json::to_vec(&changed).unwrap()).unwrap();
-        let mut cache = ProbeCache::load(root.path());
+        let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
         assert!(cache.get(&path).is_none());
         assert_eq!(refresh(&mut cache, &path).games[0].detections.len(), 1);
     }
@@ -61,7 +64,7 @@ fn malformed_cache_deep_layouts_and_missing_roots_never_drop_library_records() {
     let path = root.path().join("title");
     write_game(&path);
     fs::write(root.path().join("probe-cache.json"), b"{broken").unwrap();
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     assert_eq!(refresh(&mut cache, &path).cache_hits, 0);
     fs::create_dir_all(path.join("unknown/nested")).unwrap();
     assert_eq!(refresh(&mut cache, &path).cache_hits, 0);
@@ -80,7 +83,7 @@ fn unregistered_discoveries_and_explicit_imports_always_read_freshly() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     refresh(&mut cache, &path);
     let discovered = run_scan(&mut cache, ScanKind::Full, vec![root.path().into()], Vec::new());
     assert_eq!(discovered.cache_hits, 0);
@@ -98,7 +101,7 @@ fn owned_saves_do_not_invalidate_recognition_but_assets_do() {
     write_game(&path);
     let saves = path.join(".shinki/musica/saves");
     fs::create_dir_all(&saves).unwrap();
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     refresh(&mut cache, &path);
     fs::write(saves.join("slot-01"), b"new save").unwrap();
     assert_eq!(refresh(&mut cache, &path).cache_hits, 1);
@@ -115,7 +118,7 @@ fn registered_nested_games_are_independently_refreshed() {
     write_game(&child);
     let mut nested = game(&child);
     nested.game_id = "nested".into();
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     let report = run_scan(&mut cache, ScanKind::Full, Vec::new(), vec![game(&parent), nested]);
     assert_eq!(report.games.len(), 2);
     for result in report.games { assert_eq!(result.detections.len(), 1); }
@@ -127,16 +130,22 @@ fn scan_progress_exclusions_and_cancellation_do_not_publish_partial_results() {
     for index in 0..70 { fs::create_dir(root.path().join(format!("empty-{index:02}"))).unwrap(); }
     let hidden = root.path().join("hidden");
     write_game(&hidden);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     let mut progress = Vec::new();
     let report = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
-        excluded: BTreeSet::from([hidden]), cancel: NativeCancellation::new(0) }, &AtomicBool::new(false), &mut |event| progress.push(event)).unwrap();
+        offer_unrecognized: false, excluded: BTreeSet::from([hidden]), cancel: NativeCancellation::new(0),
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    }, &AtomicBool::new(false), &mut |event| progress.push(event)).unwrap();
     assert!(report.games.is_empty());
     assert!(!progress.is_empty());
     let cancel = NativeCancellation::new(0);
     let worker_cancel = cancel.clone();
     let result = super::super::probe_worker::scan(&mut cache, ScanRequest { kind: ScanKind::Full, paths: vec![root.path().into()], games: Vec::new(),
-        excluded: BTreeSet::new(), cancel: worker_cancel }, &AtomicBool::new(false), &mut |_| cancel.cancel());
+        offer_unrecognized: false, excluded: BTreeSet::new(), cancel: worker_cancel,
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        optical: None,
+    }, &AtomicBool::new(false), &mut |_| cancel.cancel());
     assert_eq!(result.err().as_deref(), Some("SHINKI_EMU_SCAN_CANCELLED"));
 }
 
@@ -145,7 +154,7 @@ fn cancellation_read_limits_and_io_errors_are_not_negative_cache_entries() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     let cancel = NativeCancellation::new(0);
     cancel.cancel();
     assert!(matches!(cache.detect(&path, false, &cancel),
@@ -164,7 +173,7 @@ fn real_sharing_violation_is_an_error_not_no_match_or_a_cache_hit() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     refresh(&mut cache, &path);
     let locked = fs::OpenOptions::new().read(true).share_mode(0).open(path.join("boot.hcb")).unwrap();
     assert!(matches!(cache.detect(&path, false, &NativeCancellation::new(0)),
@@ -180,7 +189,7 @@ fn cached_recognition_is_freshly_rejected_before_open_without_probing_alternativ
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     cache.detect(&path, false, &NativeCancellation::new(0)).unwrap();
     cache.save().unwrap();
     let selected_calls = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
@@ -220,14 +229,14 @@ fn rejected_duplicate_provider_cannot_be_revived_by_persistent_family_recognitio
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("title");
     write_game(&path);
-    let mut cache = ProbeCache::load(root.path());
+    let mut cache = ProbeCache::load(root.path(), DeclaredRules::default());
     cache.detect(&path, false, &NativeCancellation::new(0)).unwrap();
     cache.save().unwrap();
     let mut registry = FamilyProviderRegistry::new();
     registry.register_provider(test_native::install(0, Fixture::new("rfvp", "fvp", "fixture.native"))).unwrap();
     assert!(registry.register_provider(test_native::install(1, Fixture::new("rfvp", "fvp", "fixture.native"))).is_err());
     assert!(registry.descriptor("rfvp").is_none());
-    let cache = ProbeCache::load(root.path());
+    let cache = ProbeCache::load(root.path(), DeclaredRules::default());
     assert_eq!(cache.get(&path).unwrap()[0].family_id, "fvp");
     assert!(registry.probe_selected(&ProbeRequest { game_path: path.to_str().unwrap().into() }, "rfvp").is_err());
 }

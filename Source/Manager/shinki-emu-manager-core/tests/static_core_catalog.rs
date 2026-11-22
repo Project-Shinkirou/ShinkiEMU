@@ -40,6 +40,11 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         consumer.push_str(&format!(
             "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.embedded), ({family:?}, {name:?}, {supported}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.embedded);\n"
         ));
+        if id == "rfvp" && core.get("recognition").is_some() {
+            consumer.push_str(&format!(
+                "assert_eq!(entry.embedded_recognition_json.contains(\"Data/Engine.id\"), {embedded});\n"
+            ));
+        }
     }
     consumer.push_str("}\n");
     let source = root.path().join("consumer.rs");
@@ -59,7 +64,11 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
 
 #[test]
 fn windows_and_both_android_catalogs_are_consumable_without_installed_plugins() {
-    let (cores, targets) = inventory();
+    let (mut cores, targets) = inventory();
+    let rule: toml::Value = toml::from_str(
+        r#"recognition = [{ path = "Data/Engine.id", offset = 4, magic = "53484b31" }]"#,
+    ).unwrap();
+    cores["cores"][0].as_table_mut().unwrap().insert("recognition".into(), rule["recognition"].clone());
     for target in ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-linux-android"] {
         consume_generated(&cores, &targets, target, true);
     }

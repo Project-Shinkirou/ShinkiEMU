@@ -95,6 +95,13 @@ impl ShinkiEmuManagerController {
             return Ok(true);
         }
         let active = self.active.take().expect("active view checked above");
+        #[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+        if update.error.as_deref() == Some(OPTICAL_MEDIA_UNAVAILABLE)
+            && let Ok(game) = self.game(&active.game_id)
+            && let Some(binding) = self.optical_games.get(&game.location)
+        {
+            self.opened_optical.remove(&binding.volume.root);
+        }
         self.pending_events.clear();
         self.clear_input_state();
         let clear_error = self.mailbox.clear(active.epoch).err();
