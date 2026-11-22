@@ -342,14 +342,15 @@ impl FamilyOwner {
     }
 
     pub(super) fn close(&self, epoch: u64, events: Vec<FamilyEvent>) -> Result<(), String> {
+        // A native waiter must see cancellation before its service wakes it.
+        if let Some(cancellation) = self.cancellation.lock().as_ref() {
+            cancellation.cancel();
+        }
         if let Some(window) = self.window_service.lock().as_ref() {
             window.close();
         }
         if let Some(text) = self.text.lock().as_ref() {
             text.cancel();
-        }
-        if let Some(cancellation) = self.cancellation.lock().as_ref() {
-            cancellation.cancel();
         }
         let modal = self
             .modal
@@ -450,6 +451,9 @@ impl FamilyOwner {
     }
 
     pub(super) fn shutdown(&mut self) -> Result<(), String> {
+        if let Some(cancellation) = self.cancellation.lock().as_ref() {
+            cancellation.cancel();
+        }
         self.cancelled.store(true, Ordering::Release);
         self.deferred.take();
         if let Some(window) = self.window_service.lock().as_ref() {
@@ -457,9 +461,6 @@ impl FamilyOwner {
         }
         if let Some(text) = self.text.lock().as_ref() {
             text.cancel();
-        }
-        if let Some(cancellation) = self.cancellation.lock().as_ref() {
-            cancellation.cancel();
         }
         let modal = self.modal.lock().as_ref().cloned();
         if let Some(modal) = modal {

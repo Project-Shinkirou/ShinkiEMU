@@ -152,6 +152,109 @@ impl Harness {
     }
 }
 #[test]
+fn android_host_close_publishes_cancellation_before_waking_window_waiters() {
+    for shutdown in [false, true] {
+        let (release, gate) = std::sync::mpsc::channel();
+        let mut harness = Harness::new(Some(gate), false);
+        let mut open = harness.request();
+        let epoch = open.epoch;
+        let token = open.cancellation.clone();
+        let ui_thread = std::thread::current().id();
+        let (observed, observations) = std::sync::mpsc::channel();
+        open.wake = Arc::new(move || {
+            // WindowBridge::close first cancels its ModalBridge, which calls
+            // this wake inline. Sample there, not after racing the owner.
+            if std::thread::current().id() == ui_thread {
+                let _ = observed.send(token.is_cancelled());
+            }
+        });
+        harness.owner.open(open).unwrap();
+        harness.entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        let window = harness.owner.window_service.lock().as_ref().unwrap().clone();
+        let worker_window = window.clone();
+        let worker = std::thread::spawn(move || {
+            let abi = worker_window.sink();
+            let mut request: shinki_emu_abi::WindowRequest = unsafe { std::mem::zeroed() };
+            request.kind = shinki_emu_abi::WINDOW_QUERY_STATE;
+            request.session_epoch = epoch;
+            request.context_epoch = 1;
+            request.request_id = 1;
+            let mut output = unsafe { std::mem::zeroed() };
+            let status = unsafe {
+                abi.request.unwrap()(
+                    abi.context,
+                    &request,
+                    &mut output,
+                    &mut shinki_emu_abi::Error::default(),
+                )
+            };
+            release.send(()).unwrap();
+            status
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while window.take().is_none() {
+            assert!(Instant::now() < deadline, "window request never reached the host");
+            std::thread::yield_now();
+        }
+        if shutdown {
+            harness.owner.shutdown().unwrap();
+        } else {
+            harness.owner.close(epoch, Vec::new()).unwrap();
+            let update = harness.closed(epoch);
+            assert!(!update.opened);
+            assert!(update.error.unwrap().contains("SHINKI_EMU_TEST_OPEN_CANCELLED"));
+        }
+        assert_eq!(worker.join().unwrap(), shinki_emu_abi::CANCELLED);
+        assert!(observations.try_recv().unwrap(), "shutdown={shutdown}");
+    }
+}
+
+#[test]
+fn android_host_first_frame_markers_reach_persisted_diagnostics_once() {
+    let logs = tempfile::tempdir().unwrap();
+    let mut config = roukaku_observability::HostObservabilityConfig::for_cli("info");
+    config.console = false;
+    config.log_dir = Some(logs.path().to_owned());
+    let guard = roukaku_observability::init_host(config).unwrap();
+    let mut harness = Harness::new(None, false);
+
+    for _ in 0..2 {
+        let epoch = harness.open();
+        let frame = harness.frame();
+        harness.mailbox.presented(frame.identity, frame.info).unwrap();
+        harness.mailbox.presented(frame.identity, frame.info).unwrap();
+        harness.owner.close(epoch, Vec::new()).unwrap();
+        assert!(harness.closed(epoch).error.is_none());
+        guard.flush().unwrap();
+
+        let text = std::fs::read_to_string(logs.path().join("roukaku.jsonl")).unwrap();
+        let records: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|record: &serde_json::Value| {
+                record["fields"]["session_epoch"].as_u64() == Some(epoch)
+            })
+            .collect();
+        for name in [
+            "shinki.emu.native.first_cpu_frame",
+            "shinki.emu.host.first_stage_frame_accepted",
+        ] {
+            let matching: Vec<_> = records.iter().filter(|record| record["event"] == name).collect();
+            let [record] = matching.as_slice() else {
+                panic!("expected exactly one {name} for epoch {epoch}, got {}", matching.len());
+            };
+            assert_eq!(record["fields"]["width"].as_u64(), Some(u64::from(frame.info.width)));
+            assert_eq!(record["fields"]["height"].as_u64(), Some(u64::from(frame.info.height)));
+            let fields = record["fields"].as_object().unwrap();
+            assert!(fields.keys().all(|key| matches!(key.as_str(),
+                "plugin_id" | "session_epoch" | "output_epoch" | "generation" |
+                "width" | "height" | "logical_width" | "logical_height"
+            )));
+        }
+    }
+}
+
+#[test]
 fn blocked_open_keeps_ui_free_and_cancellation_prevents_publication() {
     let (release, gate) = std::sync::mpsc::channel();
     let mut harness = Harness::new(Some(gate), false);

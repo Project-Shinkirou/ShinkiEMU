@@ -77,9 +77,26 @@ impl FrameMailbox {
         identity: FrameIdentity,
         info: shinki_emu_manager_core::model::FrameInfo,
     ) -> Result<(), String> {
-        let mut state = self.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
-        if state.session_epoch == Some(identity.session_epoch) {
-            state.displayed = Some((identity, info));
+        let first = {
+            let mut state = self.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
+            if state.session_epoch != Some(identity.session_epoch) {
+                return Ok(());
+            }
+            state.displayed.replace((identity, info)).is_none()
+        };
+        if first {
+            // This is the renderer's acceptance boundary, not a Slint or
+            // display presentation receipt.
+            tracing::info!(
+                event = "shinki.emu.host.first_stage_frame_accepted",
+                session_epoch = identity.session_epoch,
+                output_epoch = identity.output_epoch,
+                generation = identity.generation,
+                width = info.width,
+                height = info.height,
+                logical_width = info.logical_width,
+                logical_height = info.logical_height,
+            );
         }
         Ok(())
     }

@@ -15,6 +15,7 @@ pub(super) struct SessionServices {
 }
 pub(super) struct ActiveFamilySession {
     session_epoch: u64,
+    plugin_id: String,
     session: Option<NativeSession>,
     text: Option<TextReplacementBridge>,
     modal: Option<ModalBridge>,
@@ -97,6 +98,7 @@ impl ActiveFamilySession {
         let mut active = Self {
             surface,
             session_epoch: epoch,
+            plugin_id: candidate.plugin_id.clone(),
             session: Some(session),
             text: services.text,
             modal: services.modal,
@@ -200,7 +202,22 @@ impl ActiveFamilySession {
         let polled = session.acquire_frame(after).map_err(|e| e.to_string())?;
         let ready = matches!(&polled, FramePoll::Ready(_));
         if let FramePoll::Ready(frame) = polled {
+            let identity = frame.identity;
+            let info = frame.info;
             self.mailbox.publish(frame).map_err(|e| e.to_string())?;
+            if after.is_none() {
+                tracing::info!(
+                    event = "shinki.emu.native.first_cpu_frame",
+                    plugin_id = %self.plugin_id,
+                    session_epoch = identity.session_epoch,
+                    output_epoch = identity.output_epoch,
+                    generation = identity.generation,
+                    width = info.width,
+                    height = info.height,
+                    logical_width = info.logical_width,
+                    logical_height = info.logical_height,
+                );
+            }
         }
         self.next_poll = Instant::now() + Duration::from_millis(2);
         Ok(ready || failure_changed)
