@@ -51,6 +51,8 @@ pub struct MetadataRecord {
     pub provider: MetadataProviderId,
     pub remote_id: String,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub localized_titles: Vec<LocalizedTitle>,
     #[serde(default)]
     pub description: Option<String>,
     pub alternate_titles: Vec<String>,
@@ -62,6 +64,43 @@ pub struct MetadataRecord {
     pub engine: Option<String>,
     pub cover: Option<RemoteCover>,
     pub sensitive: bool,
+}
+
+/// A title with an explicit provider language tag, in provider order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct LocalizedTitle {
+    pub language: String,
+    pub title: String,
+    #[serde(default)]
+    pub official: bool,
+    #[serde(default)]
+    pub main: bool,
+}
+
+impl MetadataRecord {
+    /// Select a title for the UI locale without assigning languages to aliases.
+    pub fn localized_title(&self, locale: &str) -> Option<&str> {
+        let mut best = None;
+        for entry in &self.localized_titles {
+            let language = &entry.language;
+            let specificity = if language.eq_ignore_ascii_case(locale) {
+                2
+            } else if locale == "zh-CN" && language.eq_ignore_ascii_case("zh-Hans") {
+                1
+            } else if locale == "zh-CN" && language.eq_ignore_ascii_case("zh") {
+                0
+            } else {
+                continue;
+            };
+            let rank = (specificity, entry.main, entry.official);
+            if !entry.title.trim().is_empty()
+                && best.is_none_or(|(previous, _)| rank > previous)
+            {
+                best = Some((rank, entry.title.as_str()));
+            }
+        }
+        best.map(|(_, title)| title)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

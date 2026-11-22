@@ -1,15 +1,26 @@
-use std::sync::Arc;
-
-use vn::Vndb;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use tokio::{sync::Mutex, time::Instant};
+use vn::{
+    http::Endpoint,
+    model::{
+        Response,
+        visual_novel::{VisualNovelDeveloper, VisualNovelImage, VisualNovelTag},
+    },
+};
 
 use crate::{
-    CoverAsset, CoverFetcher, CoverPolicy, MetadataError, MetadataLicenseManifest,
+    CoverAsset, CoverFetcher, CoverPolicy, LocalizedTitle, MetadataError, MetadataLicenseManifest,
     MetadataProvider, MetadataProviderId, MetadataRecord, MetadataRelease, MetadataSearchQuery,
     RemoteCover,
 };
 
 const SHINKI_EMU_USER_AGENT: &str =
     "RoukakuEngine/ShinkiEMU (https://github.com/Project-Shinkirou/ShinkiEMU)";
+const WORK_FIELDS: &str = concat!(
+    "title,description,alttitle,aliases,titles{lang,title,latin,official,main},released,platforms,",
+    "developers{name,original},tags.name,image{url,thumbnail,dims,thumbnail_dims,sexual,violence}",
+);
 
 #[derive(Debug, Clone)]
 pub struct VndbProviderConfig {
@@ -19,7 +30,8 @@ pub struct VndbProviderConfig {
 }
 
 pub struct VndbProvider {
-    client: Arc<Vndb>,
+    client: reqwest12::Client,
+    next_request: Mutex<Instant>,
     cover_fetcher: CoverFetcher,
     config: VndbProviderConfig,
 }
@@ -35,14 +47,16 @@ impl VndbProvider {
             minimum_request_delay_ms = config.minimum_request_delay.as_millis(),
             "metadata provider created"
         );
-        let client = Vndb::builder()
-            .max_concurrent_requests(1)
-            .delay(config.minimum_request_delay)
+        let client = reqwest12::Client::builder()
+            .use_rustls_tls()
+            .https_only(true)
             .timeout(config.timeout)
             .user_agent(SHINKI_EMU_USER_AGENT)
-            .build();
+            .build()
+            .map_err(map_vndb_error)?;
         Ok(Self {
             client,
+            next_request: Mutex::new(Instant::now()),
             cover_fetcher: CoverFetcher::new(CoverPolicy::default())?,
             config,
         })
@@ -52,69 +66,52 @@ impl VndbProvider {
         self.config.license.permit_vndb()
     }
 
-    async fn query(
+    async fn query<T: serde::de::DeserializeOwned>(
         &self,
-        query: vn::http::request::post::VisualNovelQuery,
-    ) -> Result<Vec<MetadataRecord>, MetadataError> {
-        let response = query
-            .raw_fields(
-                [
-                    "title",
-                    "description",
-                    "alttitle",
-                    "aliases",
-                    "titles.lang",
-                    "titles.title",
-                    "titles.latin",
-                    "titles.official",
-                    "titles.main",
-                    "released",
-                    "platforms",
-                    "developers.name",
-                    "developers.original",
-                    "tags.name",
-                    "image.url",
-                    "image.thumbnail",
-                    "image.dims",
-                    "image.thumbnail_dims",
-                    "image.sexual",
-                    "image.violence",
-                ]
-                .into_iter()
-                .map(str::to_owned),
-            )
+        endpoint: Endpoint,
+        body: Value,
+    ) -> Result<Response<T>, MetadataError> {
+        let mut next_request = self.next_request.lock().await;
+        tokio::time::sleep_until(*next_request).await;
+        let response = self
+            .client
+            .post(endpoint.url())
+            .json(&body)
             .send()
             .await
-            .map_err(map_vndb_error)?;
-        Ok(response.results.into_iter().map(convert_record).collect())
+            .and_then(reqwest12::Response::error_for_status)
+            .map_err(map_vndb_error);
+        *next_request = Instant::now() + self.config.minimum_request_delay;
+        response?.json().await.map_err(map_vndb_error)
+    }
+
+    async fn query_works(
+        &self,
+        filter: Value,
+        results: u8,
+    ) -> Result<Vec<MetadataRecord>, MetadataError> {
+        let response: Response<KanaWork> = self
+            .query(
+                Endpoint::VisualNovel,
+                json!({"filters": filter, "fields": WORK_FIELDS, "results": results}),
+            )
+            .await?;
+        Ok(response.into_iter().map(convert_record).collect())
     }
 
     /// Query the concrete releases (rIDs) of a VN, newest first, so the local
     /// installation can be pinned to a specific version.
-    async fn query_releases(
-        &self,
-        vn_id: &vn::VisualNovelId,
-    ) -> Result<Vec<MetadataRelease>, MetadataError> {
-        let response = self
-            .client
-            .post()
-            .release()
-            .filters(vn::http::JsonQueryFilter::new(release_filter(
-                &vn_id.to_string(),
-            )))
-            .raw_fields([
-                "id".to_owned(),
-                "title".to_owned(),
-                "alttitle".to_owned(),
-                "released".to_owned(),
-                "platforms".to_owned(),
-            ])
-            .sort(vn::model::release::SortReleaseBy::Released)
-            .reverse()
-            .results(100)
-            .send()
-            .await
-            .map_err(map_vndb_error)?;
+    async fn query_releases(&self, vn_id: &str) -> Result<Vec<MetadataRelease>, MetadataError> {
+        let response: Response<vn::model::release::Release> = self
+            .query(
+                Endpoint::Release,
+                json!({
+                    "filters": release_filter(vn_id),
+                    "fields": "id,title,alttitle,released,platforms",
+                    "sort": "released", "reverse": true, "results": 100,
+                }),
+            )
+            .await?;
         let mut releases = response
             .results
             .into_iter()
@@ -137,12 +134,8 @@ impl MetadataProvider for VndbProvider {
     ) -> Result<Vec<MetadataRecord>, MetadataError> {
         self.authorize()?;
         query.validate()?;
-        self.query(
-            self.client
-                .search_visual_novel(&query.title)
-                .results(query.limit),
-        )
-        .await
+        self.query_works(json!(["search", "=", &query.title]), query.limit)
+            .await
     }
 
     async fn fetch_by_id(&self, remote_id: &str) -> Result<MetadataRecord, MetadataError> {
@@ -150,9 +143,7 @@ impl MetadataProvider for VndbProvider {
         if !is_vndb_id(remote_id) {
             return Err(MetadataError::InvalidRemoteId(remote_id.to_owned()));
         }
-        let id = vn::VisualNovelId::new(remote_id)
-            .ok_or_else(|| MetadataError::InvalidRemoteId(remote_id.to_owned()))?;
-        let mut records = self.query(self.client.find_visual_novel(&id)).await?;
+        let mut records = self.query_works(json!(["id", "=", remote_id]), 10).await?;
         if records.len() != 1 {
             return Err(MetadataError::NotFound(remote_id.to_owned()));
         }
@@ -176,9 +167,7 @@ impl MetadataProvider for VndbProvider {
         if !is_vndb_id(remote_id) {
             return Err(MetadataError::InvalidRemoteId(remote_id.to_owned()));
         }
-        let id = vn::VisualNovelId::new(remote_id)
-            .ok_or_else(|| MetadataError::InvalidRemoteId(remote_id.to_owned()))?;
-        self.query_releases(&id).await
+        self.query_releases(remote_id).await
     }
 }
 
@@ -197,15 +186,52 @@ fn convert_release(value: vn::model::release::Release) -> MetadataRelease {
     }
 }
 
-fn convert_record(value: vn::VisualNovel) -> MetadataRecord {
+// vn's VisualNovelTitle normalizes zh-Hans and zh-Hant to the same enum.
+// Decode the queried work fields directly to retain the provider's exact tags.
+#[derive(Deserialize)]
+struct KanaWork {
+    id: vn::VisualNovelId,
+    title: Option<String>,
+    description: Option<String>,
+    alttitle: Option<String>,
+    aliases: Option<Vec<String>>,
+    titles: Option<Vec<KanaTitle>>,
+    released: Option<String>,
+    platforms: Option<Vec<String>>,
+    developers: Option<Vec<VisualNovelDeveloper>>,
+    tags: Option<Vec<VisualNovelTag>>,
+    image: Option<VisualNovelImage>,
+}
+
+#[derive(Deserialize)]
+struct KanaTitle {
+    lang: Option<String>,
+    title: Option<String>,
+    latin: Option<String>,
+    main: Option<bool>,
+    official: Option<bool>,
+}
+
+fn convert_record(value: KanaWork) -> MetadataRecord {
     let mut alternate_titles = value.aliases.unwrap_or_default();
     if let Some(title) = value.alttitle {
         alternate_titles.push(title);
     }
+    let mut localized_titles = Vec::new();
     if let Some(titles) = value.titles {
         for title in titles {
-            if let Some(title) = title.title {
-                alternate_titles.push(title);
+            if let Some(text) = title.title {
+                if let Some(language) = title.lang.filter(|lang| !lang.is_empty())
+                    && !text.trim().is_empty()
+                {
+                    localized_titles.push(LocalizedTitle {
+                        language,
+                        title: text.clone(),
+                        official: title.official.unwrap_or(false),
+                        main: title.main.unwrap_or(false),
+                    });
+                }
+                alternate_titles.push(text);
             }
             if let Some(latin) = title.latin {
                 alternate_titles.push(latin);
@@ -242,17 +268,13 @@ fn convert_record(value: vn::VisualNovel) -> MetadataRecord {
         provider: MetadataProviderId::Vndb,
         remote_id: value.id.to_string(),
         title: value.title.unwrap_or_default(),
+        localized_titles,
         description: value.description.map(|text| plain_description(&text)),
         alternate_titles,
         tags,
         developers,
         release_date: value.released,
-        platforms: value
-            .platforms
-            .unwrap_or_default()
-            .into_iter()
-            .map(|platform| platform.to_string())
-            .collect(),
+        platforms: value.platforms.unwrap_or_default(),
         engine: None,
         cover: cover.filter(|cover| !cover.url.is_empty()),
         sensitive,
@@ -360,34 +382,57 @@ pub fn plain_description(text: &str) -> String {
     }
 }
 
-fn map_vndb_error(error: vn::error::Error) -> MetadataError {
-    if let vn::error::Error::RequestFailed {
-        status: Some(status),
-        ..
-    } = &error
-    {
-        match status.as_u16() {
-            400 => return MetadataError::RequestRejected("vndb"),
-            401 => return MetadataError::Unauthorized,
-            429 => return MetadataError::RateLimited,
-            _ => {}
-        }
+fn vndb_status_error(status: reqwest12::StatusCode) -> Option<MetadataError> {
+    match status.as_u16() {
+        400 => Some(MetadataError::RequestRejected("vndb")),
+        401 => Some(MetadataError::Unauthorized),
+        429 => Some(MetadataError::RateLimited),
+        _ => None,
     }
-    let message = error.to_string();
-    if message.contains("429") {
-        MetadataError::RateLimited
-    } else if message.contains("401") {
-        MetadataError::Unauthorized
-    } else if message.contains("deserialize") || message.contains("decode") {
+}
+
+fn map_vndb_error(error: reqwest12::Error) -> MetadataError {
+    if let Some(error) = error.status().and_then(vndb_status_error) {
+        error
+    } else if error.is_decode() {
         MetadataError::SchemaMismatch("vndb-kana")
     } else {
-        MetadataError::Upstream(format!("vndb:{message}"))
+        MetadataError::Upstream(format!("vndb:{error}"))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn work_response_keeps_exact_title_languages_and_search_aliases() {
+        let response: Response<KanaWork> = serde_json::from_value(json!({
+            "more": false,
+            "results": [{
+                "id": "v17",
+                "title": "Provider default",
+                "alttitle": "原題",
+                "aliases": ["Search alias"],
+                "titles": [
+                    {"lang": "zh-Hant", "title": "繁體標題", "official": true, "main": false},
+                    {"lang": "zh-Hans", "title": "简体标题", "official": false, "main": false},
+                    {"lang": "ja", "title": "原題", "latin": "Gendai", "official": true, "main": true},
+                    {"lang": "en", "title": "English Title", "official": true, "main": false}
+                ]
+            }]
+        }))
+        .unwrap();
+        let record = convert_record(response.into_iter().next().unwrap());
+        assert_eq!(record.title, "Provider default");
+        assert_eq!(record.localized_title("zh-CN"), Some("简体标题"));
+        assert_eq!(record.localized_title("zh-Hant"), Some("繁體標題"));
+        assert_eq!(record.localized_title("ja"), Some("原題"));
+        assert_eq!(record.localized_title("en"), Some("English Title"));
+        assert!(record.localized_titles[2].main && record.localized_titles[2].official);
+        assert!(record.alternate_titles.iter().any(|title| title == "Gendai"));
+        assert!(record.alternate_titles.iter().any(|title| title == "Search alias"));
+    }
 
     #[test]
     fn validates_remote_ids_without_network() {
@@ -447,10 +492,9 @@ mod tests {
 
     #[test]
     fn rejected_request_maps_to_a_stable_code() {
-        let error = map_vndb_error(vn::error::Error::RequestFailed {
-            status: Some(reqwest12::StatusCode::BAD_REQUEST),
-            reason: "Unknown filter 'vns'".into(),
-        });
-        assert!(matches!(error, MetadataError::RequestRejected(_)));
+        assert!(matches!(
+            vndb_status_error(reqwest12::StatusCode::BAD_REQUEST),
+            Some(MetadataError::RequestRejected("vndb"))
+        ));
     }
 }

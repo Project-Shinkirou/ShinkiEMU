@@ -181,6 +181,7 @@ mod tests {
             provider: MetadataProviderId::Vndb,
             remote_id: "v1".into(),
             title: "ＡＩＲ".into(),
+            localized_titles: Vec::new(),
             description: None,
             alternate_titles: vec!["Air Standard Edition".into()],
             tags: Vec::new(),

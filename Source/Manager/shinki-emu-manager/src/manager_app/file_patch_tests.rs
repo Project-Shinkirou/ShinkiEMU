@@ -356,6 +356,7 @@ fn patch_output_inherits_source_work_but_not_its_release() {
             provider: MetadataProviderId::Vndb,
             remote_id: "v17".into(),
             title: "公开作品".into(),
+            localized_titles: Vec::new(),
             description: None,
             alternate_titles: Vec::new(),
             developers: Vec::new(),

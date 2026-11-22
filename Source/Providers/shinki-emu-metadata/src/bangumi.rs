@@ -9,9 +9,9 @@ use bangumi_api::{
 };
 
 use crate::{
-    BangumiPlayStatus, BangumiPlayUpdate, CoverAsset, CoverFetcher, CoverPolicy, MetadataError,
-    MetadataProvider, MetadataProviderId, MetadataRecord, MetadataRelease, MetadataSearchQuery,
-    RemoteCover,
+    BangumiPlayStatus, BangumiPlayUpdate, CoverAsset, CoverFetcher, CoverPolicy, LocalizedTitle,
+    MetadataError, MetadataProvider, MetadataProviderId, MetadataRecord, MetadataRelease,
+    MetadataSearchQuery, RemoteCover,
 };
 
 const BANGUMI_BASE_URL: &str = "https://api.bgm.tv";
@@ -160,8 +160,19 @@ impl MetadataProvider for BangumiProvider {
 fn convert_record(subject: Subject) -> MetadataRecord {
     let mut alternate_titles = Vec::new();
     if !subject.name_cn.is_empty() && subject.name_cn != subject.name {
-        alternate_titles.push(subject.name_cn);
+        alternate_titles.push(subject.name_cn.clone());
     }
+    // Bangumi labels name_cn as Chinese. `name` is the untagged original.
+    let localized_titles = if subject.name_cn.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![LocalizedTitle {
+            language: "zh".into(),
+            title: subject.name_cn,
+            official: false,
+            main: false,
+        }]
+    };
     let developers = subject
         .infobox
         .iter()
@@ -180,6 +191,7 @@ fn convert_record(subject: Subject) -> MetadataRecord {
         provider: MetadataProviderId::Bangumi,
         remote_id: subject.id.to_string(),
         title: subject.name,
+        localized_titles,
         description: (!subject.summary.trim().is_empty()).then_some(subject.summary),
         alternate_titles,
         tags,
@@ -231,6 +243,30 @@ fn map_bangumi_error(error: impl std::fmt::Display) -> MetadataError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subject_name_cn_is_chinese_and_original_stays_untagged() {
+        let mut subject: Subject = serde_json::from_value(serde_json::json!({
+            "id": 17, "type": 4, "name": "原題", "name_cn": "中文作品名",
+            "summary": "", "series": false, "nsfw": false, "locked": false,
+            "platform": "PC", "images": {"large": "", "common": "", "medium": "", "small": "", "grid": ""},
+            "infobox": [], "volumes": 0, "eps": 0, "collection": {},
+            "rating": {"rank": 0, "total": 0, "score": 0, "count": {
+                "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0, "10": 0
+            }},
+            "meta_tags": [], "tags": []
+        }))
+        .unwrap();
+        let record = convert_record(subject.clone());
+        assert_eq!(record.title, "原題");
+        assert_eq!(record.localized_title("zh-CN"), Some("中文作品名"));
+        assert_eq!(record.localized_title("ja"), None);
+        assert_eq!(record.localized_title("en"), None);
+        assert_eq!(record.alternate_titles, ["中文作品名"]);
+
+        subject.name_cn.clear();
+        assert_eq!(convert_record(subject).localized_title("zh-CN"), None);
+    }
 
     #[test]
     fn play_update_validation_rejects_fake_progress_or_invalid_rating() {

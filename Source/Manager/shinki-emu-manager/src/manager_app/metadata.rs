@@ -279,8 +279,12 @@ impl ShinkiEmuManagerController {
         game_id: &str,
         identities: &[shinki_emu_manager_core::ExternalIdentityRecord],
         snapshots: &BTreeMap<(String, String), shinki_emu_manager_core::MetadataSnapshotRecord>,
-    ) -> Result<Option<MetadataRecord>, String> {
-        for provider in [MetadataProviderId::Vndb, MetadataProviderId::Bangumi] {
+    ) -> Result<[Option<MetadataRecord>; 2], String> {
+        let mut records = [None, None];
+        for (slot, provider) in records
+            .iter_mut()
+            .zip([MetadataProviderId::Vndb, MetadataProviderId::Bangumi])
+        {
             let Some(identity) = identities
                 .iter()
                 .find(|entry| entry.provider == provider.as_str())
@@ -288,11 +292,9 @@ impl ShinkiEmuManagerController {
                 continue;
             };
             let snapshot = snapshots.get(&(game_id.to_owned(), provider.as_str().to_owned()));
-            if let Some(record) = Self::decode_metadata_snapshot(identity, snapshot)? {
-                return Ok(Some(record));
-            }
+            *slot = Self::decode_metadata_snapshot(identity, snapshot)?;
         }
-        Ok(None)
+        Ok(records)
     }
 
     fn decode_metadata_snapshot(
