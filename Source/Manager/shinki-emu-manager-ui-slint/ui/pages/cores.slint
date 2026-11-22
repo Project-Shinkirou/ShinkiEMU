@@ -7,14 +7,19 @@ import { PageScroll, SettingGroup, StatusChip } from "./settings/common.slint";
 
 export global CoreText {
     public pure function state-label(core: CoreInfo) -> string {
-        return core.state == "loaded" ? (core.update-version != "" ? @tr("可更新") : @tr("已加载"))
-            : core.state == "installed" ? (core.update-version != "" ? @tr("可更新") : @tr("已安装，尚未加载"))
+        return core.state == "loaded" ? (self.has-update(core) ? @tr("可更新") : @tr("已加载"))
+            : core.state == "installed" ? (self.has-update(core) ? @tr("可更新") : @tr("已安装，尚未加载"))
             : core.state == "failed" ? @tr("加载失败")
             : core.state == "pending-install" ? @tr("重启后安装")
             : core.state == "pending-update" ? @tr("重启后更新")
             : core.state == "pending-removal" ? @tr("重启后移除")
             : core.state == "available" ? @tr("可安装")
             : core.state;
+    }
+
+    // An update badge only where this build can download it.
+    public pure function has-update(core: CoreInfo) -> bool {
+        return Cores.online-downloads && (core.state == "loaded" || core.state == "installed") && core.update-version != "";
     }
 
     public pure function source-label(source: string) -> string {
@@ -59,7 +64,7 @@ component CoreStateBadge inherits StatusChip {
     in property <CoreInfo> core;
     property <bool> failed: root.core.state == "failed" || root.core.download-phase == "failed";
     property <bool> downloading: CoreText.is-downloading(root.core);
-    property <bool> update: (root.core.state == "loaded" || root.core.state == "installed") && root.core.update-version != "";
+    property <bool> update: CoreText.has-update(root.core);
     text: root.downloading || root.core.download-phase == "failed" ? CoreText.download-label(root.core)
         : root.core.state == "loading" ? @tr("正在加载核心") : CoreText.state-label(root.core);
     background: root.failed ? MaterialPalette.error-container
@@ -83,7 +88,7 @@ component CoreRow {
     callback edit-defaults();
 
     property <bool> failed: root.core.state == "failed";
-    property <bool> update: (root.core.state == "loaded" || root.core.state == "installed") && root.core.update-version != "";
+    property <bool> update: CoreText.has-update(root.core);
     property <bool> downloading: CoreText.is-downloading(root.core);
     property <bool> download-failed: root.core.download-phase == "failed";
     property <bool> determinate: root.core.download-phase == "downloading" && root.core.download-progress >= 0;
@@ -236,7 +241,7 @@ component CoreRow {
                     enabled: Network.allowed;
                     clicked => { Cores.install-online(root.core.id); }
                 }
-                if root.core.state == "available" && !root.downloading : TextButton {
+                if Cores.online-downloads && root.core.state == "available" && !root.downloading : TextButton {
                     text: root.download-failed ? @tr("重试") : @tr("安装");
                     icon: root.download-failed ? Icons.refresh : Icons.download;
                     enabled: Network.allowed;
@@ -489,7 +494,7 @@ component CoreGroup {
 }
 
 component HeaderActions {
-    property <bool> can-update-all: Cores.update-all-count > 0 && Cores.batch.state != "running";
+    property <bool> can-update-all: Cores.online-downloads && Cores.update-all-count > 0 && Cores.batch.state != "running";
 
     min-width: f.min-width;
     preferred-width: f.preferred-width;
@@ -599,6 +604,8 @@ export component CoresPage {
     property <length> bar-height: 64px;
     // Narrow pages put the header buttons under the description.
     property <bool> narrow: root.width < 640px;
+    property <string> header-text: !Cores.online-downloads ? @tr("此版本不在线下载核心，已安装和随附的核心照常可用。")
+        : Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
 
     installed := GroupCounter { group: "installed"; }
     available := GroupCounter { group: "available"; }
@@ -674,13 +681,13 @@ export component CoresPage {
             }
         }
 
-        if Cores.batch.state != "" : BatchCard { }
+        if Cores.online-downloads && Cores.batch.state != "" : BatchCard { }
 
         if !root.narrow : HorizontalLayout {
             spacing: 12px;
             MaterialText {
                 horizontal-stretch: 1;
-                text: Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
+                text: root.header-text;
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 vertical-alignment: center;
@@ -697,7 +704,7 @@ export component CoresPage {
         if root.narrow : VerticalLayout {
             spacing: 8px;
             MaterialText {
-                text: Network.allowed ? @tr("在线核心列表来自 ShinkiEMU 元数据，下载后重启生效。") : @tr("允许联网后可以在线安装和更新核心。");
+                text: root.header-text;
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -708,7 +715,7 @@ export component CoresPage {
 
         if Cores.items.length == 0 : SettingGroup {
             MaterialText {
-                text: @tr("没有找到核心。可以从本地安装核心包，或允许联网后在线安装。");
+                text: Cores.online-downloads ? @tr("没有找到核心。可以从本地安装核心包，或允许联网后在线安装。") : @tr("没有找到核心。可以从本地安装官方核心包。");
                 style: MaterialTypography.body-medium;
                 color: MaterialPalette.on-surface-variant;
                 wrap: word-wrap;
@@ -731,7 +738,7 @@ export component CoresPage {
             group: "installed";
             compact: root.narrow;
         }
-        if available.count > 0 : CoreGroup {
+        if Cores.online-downloads && available.count > 0 : CoreGroup {
             title: @tr("可安装（{}）", available.count);
             group: "available";
             compact: root.narrow;

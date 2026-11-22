@@ -205,6 +205,8 @@ pub fn run(args: Arguments) -> Result<crate::capture::Capture> {
             ..Default::default()
         });
     }
+    // Synthetic preview of the online catalog; independent of Manager build features.
+    model.cores.online_downloads = true;
     adapter.apply(&model);
     adapter
         .window()

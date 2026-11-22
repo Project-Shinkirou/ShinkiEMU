@@ -64,6 +64,8 @@ Windows 已验收的图形依赖组合是 wgpu-hal 30.0.1、gpu-allocator 0.28.0
 
 编译指定版本的 Manager 前，先将 `SHINKI_EMU_PRODUCT_VERSION` 设为与 `package`/`release` 相同的 SemVer。未设置时，xtask 使用 CI 已有的 `SHINKI_EMU_CI_VERSION`；两者同时存在必须一致。都未设置的开发构建才使用 Manager package version，不为发行标签修改 `Cargo.toml`。Manager 构建脚本写出 `OUT_DIR/manager-build-version.json`，xtask 核对实际编译身份，并在 build/package/release 记录中保存 `product_version`。缺失、错版或 Android 两个 ABI 版本不同都会拒绝打包；应以目标版本正常重建，不能给旧 receipt 改标签。Apple cross 容器转发同一个产品版本变量。
 
+Manager 的可选 Cargo feature 通过 `SHINKI_EMU_MANAGER_FEATURES` 指定，值为逗号分隔的列表，只在 `build`、`check`、`ci` 处理 Manager 时读取。名称必须在 Manager 的 `[features]` 中声明，`default` 和未声明的名称会被拒绝。列表在默认 feature 之上追加，并记入 `.work/build/<target>/manager.json` 的 `features`。`no-core-download` 去掉核心页的在线安装、更新和全部更新，Manager 也会拒绝下载核心包。已安装和随附的核心、本地官方核心包、游戏商店和元数据照常可用。iOS 和 OHOS 无论是否启用该 feature 都不下载核心。
+
 beta.7 已知问题：官方 Windows 二进制内部自报 `0.1.0-beta.6`，而发行包标签为 beta.7。旧 tag 和资产保持不变。上述编译注入与 receipt 校验用于后续构建，[Manager beta.8 发布说明](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)已保留这项已知问题记录。
 
 Manager 在创建网络客户端和工作线程前，仅初始化一次进程级 Rustls 加密实现，选择与 reqwest 0.13 和平台证书校验栈一致的 AWS-LC。VNDB 当前使用的 reqwest 0.12 还会启用 ring，不能依靠 feature 自动判断默认实现。Steam 等 provider 自身不安装进程级默认实现。

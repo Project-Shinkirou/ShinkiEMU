@@ -54,6 +54,17 @@ pub(super) fn core_platform() -> String {
     format!("{}-{}", env::consts::OS, env::consts::ARCH)
 }
 
+/// Online core install and update in this build. The Cargo feature
+/// `no-core-download` turns it off; iOS and OHOS never download cores.
+/// Which plugins a download may stage stays with `allows_core_packages`.
+pub(super) const fn online_core_downloads() -> bool {
+    !cfg!(any(feature = "no-core-download", target_os = "ios", target_env = "ohos"))
+}
+
+fn require_online_core_downloads() -> Result<(), String> {
+    if online_core_downloads() { Ok(()) } else { Err("SHINKI_EMU_CORE_DOWNLOAD_DISABLED".into()) }
+}
+
 pub(super) fn embedded_identity(
     plugin_id: &str,
 ) -> Option<&'static shinki_emu_metadata::CoreIdentity> {
@@ -117,6 +128,13 @@ impl ShinkiEmuManagerController {
             INDEPENDENT_FAMILY_ABI_FINGERPRINT,
         )
     }
+
+    /// The release online install, update and 全部更新 may fetch for a core;
+    /// none while this build has online core downloads turned off.
+    fn downloadable_core(&self, plugin_id: &str) -> Option<&CoreCatalogEntry> {
+        if !online_core_downloads() { return None; }
+        self.online_core(plugin_id)
+    }
     pub(super) fn core_release<'a>(
         &'a self,
         plugin_id: &str,
@@ -153,7 +171,7 @@ impl ShinkiEmuManagerController {
                 None => "installed",
             };
             let (version, identity) = self.core_release(&id);
-            let update_version = self.online_core(&id).filter(|entry| {
+            let update_version = self.downloadable_core(&id).filter(|entry| {
                 matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
             }).map(|entry| core_card_version(&entry.version, entry.identity.as_ref())).unwrap_or_default();
             listed_plugins.insert(id.clone());
@@ -253,7 +271,7 @@ impl ShinkiEmuManagerController {
                 .map(|entry| entry.plugin_id.as_str())
                 .filter(|plugin_id| !listed_plugins.contains(*plugin_id))
                 .collect();
-            for entry in available.into_iter().filter_map(|id| self.online_core(id)) {
+            for entry in available.into_iter().filter_map(|id| self.downloadable_core(id)) {
                 items.push((
                     CoreViewModel {
                         id: entry.plugin_id.clone(),
@@ -276,6 +294,7 @@ impl ShinkiEmuManagerController {
                 restart_required: !pending.is_empty() && self.cores_started(),
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
                 update_all_count: i32::try_from(update_all_count).unwrap_or(i32::MAX),
+                online_downloads: online_core_downloads(),
                 batch: self.batch_view(),
                 ..CoresViewModel::default()
             },
@@ -362,9 +381,10 @@ impl ShinkiEmuManagerController {
 
     /// Queue the newest release of a core; returns its package size.
     fn start_core_download(&mut self, plugin_id: &str) -> Result<u64, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         let entry = self
-            .online_core(plugin_id)
+            .downloadable_core(plugin_id)
             .cloned()
             .ok_or_else(|| "SHINKI_EMU_CORE_NOT_AVAILABLE".to_owned())?;
         let wake = self
@@ -409,6 +429,7 @@ impl ShinkiEmuManagerController {
     /// Download every installed core that has a newer release, at most
     /// `core_download::MAX_PARALLEL` at a time.
     pub(super) fn update_all_cores(&mut self) -> Result<ManagerViewModel, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         if self.core_batch.as_ref().is_some_and(|batch| !batch.finished()) {
             return Err("SHINKI_EMU_CORE_DOWNLOAD_PENDING".into());
@@ -419,6 +440,7 @@ impl ShinkiEmuManagerController {
 
     /// Start a new run with the failed members of the last one.
     pub(super) fn retry_failed_cores(&mut self) -> Result<ManagerViewModel, String> {
+        require_online_core_downloads()?;
         self.require_network()?;
         let failed: Vec<String> = self
             .core_batch
@@ -763,6 +785,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cores_view_lists_online_cores_and_gates_downloads() {
         let root = tempfile::tempdir().unwrap();
         let mut app = ShinkiEmuManagerController::open_library(
@@ -1006,6 +1029,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn download_shows_byte_progress_then_stages_with_one_restart_prompt() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1042,6 +1066,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cancel_leaves_no_package_and_records_no_failure() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1073,6 +1098,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn batch_continues_past_a_failure_summarizes_once_and_retries_the_failed() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1125,6 +1151,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "no-core-download"))]
     fn cancelling_a_batch_stops_queued_members() {
         let root = tempfile::tempdir().unwrap();
         let (mut app, packages) = online_app(root.path());
@@ -1150,5 +1177,49 @@ mod tests {
         assert_eq!((batch.state.as_str(), batch.cancelled), ("finished", 3));
         assert_eq!(app.snackbar.view().text, tr!("已取消全部更新"));
         assert_eq!(app.snackbar.view().action, "");
+    }
+
+    /// Default builds list and fetch catalog releases; `no-core-download`
+    /// builds list installed cores only, never call the fetcher and still
+    /// accept local official packages. Run under both feature sets.
+    #[test]
+    fn online_core_downloads_follow_the_build_switch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, packages) = online_app(root.path());
+        let fetches = std::sync::Arc::new(AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&fetches);
+        let served = serve(Served { packages: packages.clone(), gates: BTreeMap::new(), failing: Vec::new() });
+        app.core_downloads = CoreDownloads::new(std::sync::Arc::new(move |entry: CoreCatalogEntry| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            served(entry)
+        }));
+        let cores = root.path().join("cores");
+        let (id, stem) = PLUGINS[0];
+        let view = app.cores_view().unwrap();
+        assert_eq!(view.online_downloads, online_core_downloads());
+        if online_core_downloads() {
+            assert!(view.items.iter().any(|item| item.id == id && item.state == "available"));
+            app.install_online_core(id).unwrap();
+            settle(&mut app);
+            assert_eq!(fetches.load(Ordering::SeqCst), 1);
+            assert_eq!(item(&app, id).state, "pending-install");
+            return;
+        }
+        assert!(view.items.iter().all(|item| item.state != "available" && item.update_version.is_empty()));
+        assert_eq!((view.updates_available, view.update_all_count), (0, 0));
+        for result in [app.install_online_core(id), app.update_all_cores(), app.retry_failed_cores()] {
+            assert_eq!(result.unwrap_err(), "SHINKI_EMU_CORE_DOWNLOAD_DISABLED");
+        }
+        assert!(app.core_downloads.is_idle());
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "no fetch while downloads are off");
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+
+        let archive = root.path().join("official.zip");
+        fs::write(&archive, &packages[id]).unwrap();
+        app.install_core(&archive).unwrap();
+        assert_eq!(item(&app, id).state, "pending-install");
+        assert!(cores.join(core_package::PENDING).join(stem).is_dir());
     }
 }

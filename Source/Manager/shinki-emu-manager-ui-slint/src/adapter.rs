@@ -511,6 +511,7 @@ impl SlintManagerAdapter {
         cores.set_restart_required(view.restart_required);
         cores.set_updates_available(view.updates_available);
         cores.set_update_all_count(view.update_all_count);
+        cores.set_online_downloads(view.online_downloads);
         cores.set_batch(CoreBatch {
             state: view.batch.state.as_str().into(),
             total: view.batch.total,

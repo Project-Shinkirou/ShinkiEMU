@@ -153,7 +153,7 @@ export component ManagerWindow inherits MaterialWindow {
     property <[NavigationItem]> nav-items: [
         { icon: Icons.library-books, text: @tr("游戏库") },
         { icon: Icons.build, text: @tr("补丁") },
-        { icon: Icons.memory, text: @tr("核心"), badge: Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
+        { icon: Icons.memory, text: @tr("核心"), badge: Cores.online-downloads && Cores.updates-available > 0 ? "\{Cores.updates-available}" : "" },
         { icon: Icons.filter-vintage, text: @tr("滤镜") },
         { icon: Icons.settings, text: @tr("设置") },
     ];
