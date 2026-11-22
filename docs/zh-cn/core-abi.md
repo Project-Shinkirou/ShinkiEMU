@@ -56,6 +56,8 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 9. **close** 无论返回何种结果都消耗句柄；返回前等待 worker 和回调结束。宿主先阻止新 cancel，再等已有 cancel 返回，最后 close。
 10. **extension** 协商具名、带版本的 C 表。不支持时返回 `UNSUPPORTED` 和空输出。可选 `shinki.module_owner` 为真实跨会话资源提供 owner，由模块 owner 线程创建，在所有会话结束后销毁。
 
+显式激活 Android 动态核心时，宿主可以协商 `shinki.emu.android_context` v1（`AndroidContextV1`，表头沿用 ABI v3）。在 `initialize` 前，宿主传入 Java VM 和进程生命周期内有效的 Application JNI 全局引用。不能传入 Activity 或线程局部的 `JNIEnv*`。同一组参数可重复绑定。发现、安装和内置静态注册均不调用此扩展。
+
 普通 ABI 调用在宿主 owner 线程串行执行。核心自己的原生 owner 负责 VM 推进、渲染/音频调度及资源生命周期。Manager 只提供输入、控制和宿主服务，没有 advance 回调。取消和 epoch 校验会拒绝旧会话或旧输出代次的迟到结果。
 
 共享 Rust 诊断桥对每条原始事件只转发一次。宿主回调向同一个静态链接 tracing subscriber 发出的嵌套事件，不会再次经 ABI 回传。线程局部保护覆盖字段格式化和回调，在返回或异常展开时复位；其他线程和后续事件不受影响。所有使用 `shinki-emu-abi/diagnostic-bridge` 的核心共用这项行为，无需改变日志级别或 worker 栈预算。
