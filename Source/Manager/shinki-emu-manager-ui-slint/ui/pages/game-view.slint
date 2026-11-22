@@ -1,6 +1,6 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, Icon, IconButton, OutlineButton,
-    CircularProgressIndicator, HorizontalDivider, ScrollView,
+    MaterialPalette, MaterialText, MaterialTypography, MaterialStyleMetrics, Icon, IconButton, OutlineButton,
+    CircularProgressIndicator, HorizontalDivider, ScrollView, StateLayerArea,
 } from "@material";
 import { Session, Selection, Dialogs, Notices } from "../globals.slint";
 import { Icons } from "../icons.slint";
@@ -178,18 +178,18 @@ export component GameView inherits Rectangle {
     property <bool> opening: Session.phase == "opening";
     property <bool> input-blocked: root.opening || Session.menu-open || Dialogs.modal-active || Dialogs.fatal-active;
 
-    // Menu trigger: shown only after recent mouse movement.
+    // Menu trigger: mouse movement, or a touch on the game once it lifts,
+    // reveals it; it fades out after 3 s without activity.
     property <bool> pointer-recent: false;
-    property <bool> trigger-shown: !root.opening && !Session.menu-open && (root.pointer-recent || trigger-hover.has-hover);
-
-    // Edge swipe (touch only): withheld press from the right edge.
-    property <length> edge-width: 24px;
-    property <length> swipe-distance: 48px;
-    property <int> swipe-finger: 0;
-    property <bool> swipe-tracking: false;
-    property <bool> swipe-opened: false;
-    property <length> swipe-x;
-    property <length> swipe-y;
+    // Contact the game owns (touch finger id + 1, 0 for the mouse or none).
+    // The trigger stays hidden while a game touch is down, so neither the
+    // finger that revealed it nor a press Slint re-synthesizes for the
+    // remaining finger of a two-finger gesture can land on it. A two-finger
+    // cancel ends without a matching up and leaves this set; the next game
+    // tap overwrites it, and the trigger appears when that tap lifts.
+    property <int> game-touch: 0;
+    property <bool> trigger-shown: !root.opening && !Session.menu-open && root.game-touch == 0
+        && (root.pointer-recent || trigger-button.has-hover);
 
     // Keyboard focus inside the menu.
     property <int> action-count: Session.actions.length;
@@ -313,7 +313,7 @@ export component GameView inherits Rectangle {
 
         game-area := TouchArea {
             moved => {
-                if root.input-blocked || root.swipe-tracking || root.swipe-opened {
+                if root.input-blocked {
                     return;
                 }
                 if root.inside-content(self.mouse-x, self.mouse-y) {
@@ -321,42 +321,18 @@ export component GameView inherits Rectangle {
                 }
             }
             pointer-event(event) => {
-                if event.touch-finger-id == 0 && (event.kind == PointerEventKind.move || event.kind == PointerEventKind.down) {
+                if event.kind == PointerEventKind.move || event.kind == PointerEventKind.down
+                    || (event.kind == PointerEventKind.up && event.touch-finger-id != 0) {
                     root.ping-pointer();
                 }
-                // Touch edge swipe: hold back the press until it is either a
-                // leftward swipe (opens the menu) or a plain tap (replayed).
-                // Runs before the blocked check: the menu opens mid-gesture and
-                // the release still has to clear the state.
-                if (root.swipe-tracking || root.swipe-opened) && event.touch-finger-id == root.swipe-finger {
-                    if event.kind == PointerEventKind.move && root.swipe-tracking && !root.input-blocked && root.swipe-x - self.mouse-x >= root.swipe-distance {
-                        root.swipe-tracking = false;
-                        root.swipe-opened = true;
-                        root.open-menu();
-                    } else if event.kind == PointerEventKind.cancel {
-                        root.swipe-tracking = false;
-                        root.swipe-opened = false;
-                    } else if event.kind == PointerEventKind.up {
-                        if root.swipe-tracking && !root.input-blocked && root.inside-content(root.swipe-x, root.swipe-y) {
-                            root.forward-position(root.swipe-x, root.swipe-y);
-                            Session.input("pointer.primary", true, 1);
-                            Session.input("pointer.primary", false, 1);
-                        }
-                        root.swipe-tracking = false;
-                        root.swipe-opened = false;
-                    }
-                    return;
+                // Tracked before the blocked check: a contact that outlives
+                // the menu or a dialog still has to release the trigger.
+                if event.kind == PointerEventKind.down {
+                    root.game-touch = event.touch-finger-id;
+                } else if event.kind == PointerEventKind.cancel || (event.kind == PointerEventKind.up && event.touch-finger-id == root.game-touch) {
+                    root.game-touch = 0;
                 }
                 if root.input-blocked {
-                    return;
-                }
-                if event.touch-finger-id != 0 && event.kind == PointerEventKind.down && event.button == PointerEventButton.left && self.mouse-x >= root.width - root.edge-width {
-                    root.swipe-finger = event.touch-finger-id;
-                    root.swipe-x = self.mouse-x;
-                    root.swipe-y = self.mouse-y;
-                    root.swipe-tracking = true;
-                    root.swipe-opened = false;
-                    game-focus.focus();
                     return;
                 }
 
@@ -395,12 +371,15 @@ export component GameView inherits Rectangle {
         }
     }
 
-    trigger-hover := TouchArea {
+    // Hidden or fading out, the trigger takes no input and taps reach the game.
+    trigger := Rectangle {
         x: root.width - 16px - self.width;
         y: 16px;
         width: Theme.control-height;
         height: Theme.control-height;
-        visible: root.trigger-shown;
+        visible: root.trigger-shown || self.opacity > 0;
+        opacity: root.trigger-shown ? 1 : 0;
+        animate opacity { duration: Theme.motion-medium; }
 
         Rectangle {
             border-radius: self.height / 2;
@@ -410,14 +389,31 @@ export component GameView inherits Rectangle {
             drop-shadow-color: MaterialPalette.shadow-30;
         }
 
-        IconButton {
-            x: 0px;
-            y: 0px;
+        // Only a shown trigger takes input; while it fades out, taps reach the game.
+        trigger-button := StateLayerArea {
             width: parent.width;
             height: parent.height;
-            icon: Icons.menu;
+            enabled: root.trigger-shown;
+            border-radius: self.height / 2;
+            color: MaterialPalette.on-surface-variant;
+            display-background: false;
             tooltip: @tr("打开游戏菜单");
+            tooltip-offset: self.height / 2 + MaterialStyleMetrics.icon-size-24 / 2 + MaterialStyleMetrics.padding-14;
+            accessible-role: button;
+            accessible-label: @tr("打开游戏菜单");
+            accessible-enabled: root.trigger-shown;
+            accessible-action-default => {
+                if root.trigger-shown {
+                    root.open-menu();
+                }
+            }
             clicked => { root.open-menu(); }
+
+            Icon {
+                width: MaterialStyleMetrics.icon-size-24;
+                source: Icons.menu;
+                colorize: MaterialPalette.on-surface-variant;
+            }
         }
     }
 
