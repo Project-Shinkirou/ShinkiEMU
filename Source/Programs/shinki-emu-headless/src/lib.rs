@@ -60,6 +60,9 @@ pub struct Arguments {
     pub duration_ms: Option<u64>,
     #[arg(long)]
     pub output: PathBuf,
+    /// Export a relative directory from the isolated game after successful close.
+    #[arg(long, value_parser = files::relative_game_directory)]
+    pub copy_out: Option<PathBuf>,
     /// Capture host presentation sample numbers, starting at 1.
     #[arg(long, value_delimiter = ',')]
     pub capture_frame: Vec<u64>,
@@ -350,6 +353,9 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
     let report = result?;
     closed?;
     shutdown?;
+    if let Some(directory) = &arguments.copy_out {
+        files::export_game_directory(&game, directory, &arguments.output)?;
+    }
     std::fs::write(
         arguments.output.join("run.json"),
         serde_json::to_vec_pretty(&report)?,
