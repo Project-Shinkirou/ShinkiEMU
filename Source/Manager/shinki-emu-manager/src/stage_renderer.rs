@@ -35,6 +35,7 @@ pub(crate) use frame::FrameMailbox;
 pub(crate) struct ManagerStageRenderer {
     mailbox: FrameMailbox,
     device: Option<wgpu::Device>,
+    vulkan_stage_sampling: bool,
     input_texture: Option<wgpu::Texture>,
     output_texture: Option<wgpu::Texture>,
     presented_input: Option<wgpu::Texture>,
@@ -68,6 +69,7 @@ impl ManagerStageRenderer {
         Self {
             mailbox,
             device: None,
+            vulkan_stage_sampling: false,
             input_texture: None,
             output_texture: None,
             presented_input: None,
@@ -187,6 +189,9 @@ impl ManagerStageRenderer {
                 } else {
                     baseline.clone()
                 };
+                if self.vulkan_stage_sampling {
+                    prepare_stage_sampling(&mut encoder, &output);
+                }
                 Ok((baseline, output, Some(encoder.finish())))
             }).map_err(DrawError::Filter)?
         } else {
@@ -213,6 +218,15 @@ impl ManagerStageRenderer {
         }
         if let Some(command) = command {
             context.queue.submit([command]);
+        } else if upload && self.vulkan_stage_sampling {
+            // Submit the deferred write_texture and the sampling barrier
+            // together; there was no conversion/filter encoder to reuse.
+            let mut encoder =
+                context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("shinki.emu.stage.sampling"),
+                });
+            prepare_stage_sampling(&mut encoder, &output);
+            context.queue.submit([encoder.finish()]);
         }
         self.mailbox.presented(frame.identity, info).map_err(DrawError::Host)?;
         if let Some(input) = replacement {
@@ -295,6 +309,10 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
             device_id = adapter.device,
             driver = %adapter.driver,
         );
+        // Android uses Skia's native Vulkan sampler; desktop FemtoVG's
+        // texture reads are already tracked by wgpu.
+        self.vulkan_stage_sampling =
+            cfg!(target_os = "android") && adapter.backend == wgpu::Backend::Vulkan;
         self.device = Some(context.device.clone());
         Ok(())
     }
@@ -346,6 +364,9 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
                             ..Default::default()
                         });
                     }
+                    if self.vulkan_stage_sampling {
+                        prepare_stage_sampling(&mut encoder, output);
+                    }
                     context.queue.submit([encoder.finish()]);
                 }
                 self.input_texture = None;
@@ -370,6 +391,7 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         self.presented_input = None;
         self.pixel_presentation = pixels::PixelPresentation::default();
         self.device = None;
+        self.vulkan_stage_sampling = false;
         self.input_width = DEFAULT_STAGE_WIDTH;
         self.input_height = DEFAULT_STAGE_HEIGHT;
         self.logical_width = DEFAULT_STAGE_WIDTH;
@@ -386,6 +408,21 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         }
         Ok(())
     }
+}
+
+// Skia samples imported Vulkan images on the native queue, outside wgpu's
+// usage tracker. Slint transitions on import, not when a cached image's
+// texture is rewritten. Return the same texture in sampled state after every
+// write, ordered with that write in one submission.
+fn prepare_stage_sampling(encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) {
+    encoder.transition_resources(
+        std::iter::empty(),
+        std::iter::once(wgpu::TextureTransition {
+            texture,
+            selector: None,
+            state: wgpu::TextureUses::RESOURCE,
+        }),
+    );
 }
 
 fn validate_dimensions(device: &wgpu::Device, width: u32, height: u32) -> Result<(), String> {

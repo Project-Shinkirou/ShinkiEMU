@@ -151,6 +151,72 @@ fn teardown_discards_pending_filter_without_activating_it() {
 }
 
 #[test]
+#[ignore = "requires a native Vulkan adapter"]
+fn vulkan_stage_handoff_reuses_texture_across_generations() {
+    use shinki_emu_manager_core::FilterStage;
+
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::VULKAN;
+    let instance = wgpu::Instance::new(descriptor);
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+        .expect("native Vulkan adapter");
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&Default::default())).expect("Vulkan device");
+    let context = || WgpuFrameContext {
+        device: &device,
+        queue: &queue,
+    };
+
+    for (alpha, scale) in [
+        (FrameAlpha::Opaque, false),
+        (FrameAlpha::Ignored, false),
+        (FrameAlpha::Ignored, true),
+    ] {
+        let mailbox = FrameMailbox::new();
+        mailbox.activate(7).unwrap();
+        let mut renderer = ManagerStageRenderer::new(mailbox.clone());
+        renderer.setup(context()).unwrap();
+        // Exercise the Android hand-off on a host Vulkan device.
+        renderer.vulkan_stage_sampling = true;
+        if scale {
+            renderer
+                .configure_filter_inner(&FilterSettings {
+                    stages: vec![FilterStage::Scale2x],
+                })
+                .unwrap();
+        }
+        let frame_info = info(2, 2, 8, alpha);
+        let upload = |generation, rgb: [u8; 3]| {
+            let [r, g, b] = rgb;
+            let a = if alpha == FrameAlpha::Ignored { 17 } else { 255 };
+            mailbox
+                .publish(lease([r, g, b, a].repeat(4), frame_info, 7, generation))
+                .unwrap();
+        };
+
+        upload(1, [37, 73, 101]);
+        renderer.render(context()).unwrap();
+        let first = renderer.take_stage_texture_update().unwrap().unwrap();
+        let size = if scale { 4 } else { 2 };
+        assert_eq!((first.raster_width, first.raster_height), (size, size));
+        assert_eq!(
+            read_pixels(context(), &first.texture),
+            vec![[37, 73, 101, 255]; (size * size) as usize]
+        );
+
+        upload(2, [193, 149, 83]);
+        renderer.render(context()).unwrap();
+        assert!(renderer.take_stage_texture_update().unwrap().is_none());
+        assert_eq!(renderer.output_texture.as_ref(), Some(&first.texture));
+        assert_eq!(mailbox.displayed_identity().unwrap().unwrap().generation, 2);
+        assert_eq!(
+            read_pixels(context(), &first.texture),
+            vec![[193, 149, 83, 255]; (size * size) as usize]
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires a native compute adapter and a format-4 DXC installation"]
 fn gpu_filter_chain_preserves_pixels_geometry_and_rollback() {
     use shinki_emu_manager::effects::FilterEngine;
