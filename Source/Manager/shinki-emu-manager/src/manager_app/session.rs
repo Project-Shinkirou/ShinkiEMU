@@ -98,7 +98,7 @@ impl ActiveFamilySession {
         let mut active = Self {
             surface,
             session_epoch: epoch,
-            plugin_id: candidate.plugin_id.clone(),
+            plugin_id: candidate.descriptor.plugin_id.clone(),
             session: Some(session),
             text: services.text,
             modal: services.modal,

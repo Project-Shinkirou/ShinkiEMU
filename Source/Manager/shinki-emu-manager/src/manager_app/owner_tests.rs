@@ -197,7 +197,8 @@ fn android_host_close_publishes_cancellation_before_waking_window_waiters() {
             std::thread::yield_now();
         }
         if shutdown {
-            harness.owner.shutdown().unwrap();
+            let error = harness.owner.shutdown().unwrap_err();
+            assert!(error.contains("SHINKI_EMU_TEST_OPEN_CANCELLED"), "{error}");
         } else {
             harness.owner.close(epoch, Vec::new()).unwrap();
             let update = harness.closed(epoch);
