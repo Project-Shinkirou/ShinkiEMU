@@ -57,7 +57,7 @@ rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", 
 parking_lot = "0.13.0"
 serde_json.workspace = true
 semver.workspace = true
-time.workspace = true
+time = { workspace = true, features = ["local-offset"] }
 zip = { version = "=9.1.0", default-features = false, features = ["deflate"] }
 sha2.workspace = true
 hex.workspace = true
@@ -71,7 +71,7 @@ hassle-rs = "=0.12.0"
 wgpu = { version = "30.0.1", features = ["static-dxc"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Console"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Time"] }
 
 [target.'cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos")), target_os = "macos"))'.dependencies]
 gilrs = { workspace = true, features = ["wgi"] }
