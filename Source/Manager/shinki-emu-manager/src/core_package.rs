@@ -50,6 +50,17 @@ pub(crate) struct CoreFile {
 
 impl CoreManifest {
     fn validate(&self, expected_plugin_id: Option<&str>) -> Result<String, String> {
+        self.validate_with_library(expected_plugin_id, None)
+    }
+
+    fn validate_with_library(
+        &self,
+        expected_plugin_id: Option<&str>,
+        framework_executable: Option<&str>,
+    ) -> Result<String, String> {
+        let is_library = |name: &str| {
+            framework_executable == Some(name) || is_family_library_path(Path::new(name))
+        };
         let invalid = || "SHINKI_EMU_CORE_PACKAGE_MANIFEST".to_owned();
         if self.schema != CORE_PACKAGE_SCHEMA
             || self.abi != INDEPENDENT_FAMILY_ABI_FINGERPRINT
@@ -57,7 +68,10 @@ impl CoreManifest {
             || self.plugin_id.len() > 128
             || shinki_emu_metadata::validate_core_version(&self.version, self.identity.as_ref()).is_err()
             || self.library.contains(['/', '\\'])
-            || !is_family_library_path(Path::new(&self.library))
+            || match framework_executable {
+                Some(name) => self.library != name,
+                None => !is_library(&self.library),
+            }
         {
             return Err(invalid());
         }
@@ -80,9 +94,7 @@ impl CoreManifest {
         let libraries = self
             .files
             .iter()
-            .filter(|file| {
-                !file.path.contains('/') && is_family_library_path(Path::new(&file.path))
-            })
+            .filter(|file| !file.path.contains('/') && is_library(&file.path))
             .count();
         if libraries != 1 || !paths.contains(&self.library.to_ascii_lowercase()) {
             return Err(invalid());
@@ -342,6 +354,25 @@ fn write_generated(directory: &Path, name: &str, stem: &str, bytes: &[u8]) -> Re
 
 /// Read `core.json` from a core directory.
 pub(crate) fn read_manifest(directory: &Path) -> Option<CoreManifest> {
+    let manifest = read_package_manifest(directory)?;
+    manifest.validate(None).ok()?;
+    Some(manifest)
+}
+
+/// Read the signed app resource for an already selected Framework executable.
+#[cfg(any(target_os = "ios", test))]
+pub(crate) fn read_bundled_manifest(directory: &Path, executable_name: &str) -> Option<CoreManifest> {
+    let manifest = read_package_manifest(directory)?;
+    manifest
+        .validate_with_library(Some(executable_name), Some(executable_name))
+        .ok()?;
+    if !manifest.files.iter().any(|file| file.path == executable_name) {
+        return None;
+    }
+    Some(manifest)
+}
+
+fn read_package_manifest(directory: &Path) -> Option<CoreManifest> {
     let path = directory.join(CORE_MANIFEST);
     let metadata = fs::symlink_metadata(&path).ok()?;
     if !metadata.is_file() || metadata.len() > MAX_MANIFEST_BYTES {
@@ -352,9 +383,7 @@ pub(crate) fn read_manifest(directory: &Path) -> Option<CoreManifest> {
     if bytes.len() as u64 > MAX_MANIFEST_BYTES {
         return None;
     }
-    let manifest: CoreManifest = serde_json::from_slice(&bytes).ok()?;
-    manifest.validate(None).ok()?;
-    Some(manifest)
+    serde_json::from_slice(&bytes).ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

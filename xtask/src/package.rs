@@ -880,6 +880,9 @@ pub fn package(
         if target.ends_with("ohos") {
             return crate::ohos::package(inv, &result, version, out);
         }
+        let ios_signing = crate::apple::ios_frameworks::enabled(target, &result.features)
+            .then(|| crate::apple::ios_frameworks::Signing::for_target(target))
+            .transpose()?;
         atomic_directory(out, |stage| {
             let temp = tempfile::tempdir_in(stage)?;
             let name = result
@@ -923,6 +926,9 @@ pub fn package(
                 ),
             )?;
             write_provenance(&result, &stage.join("build.json"))?;
+            if let Some(signing) = &ios_signing {
+                crate::apple::ios_frameworks::stage(inv, &result, stage, signing)?;
+            }
             if target == "x86_64-unknown-linux-gnu" {
                 let icon = crate::icon::Icon::new()?;
                 for (size, dir) in [
@@ -953,6 +959,7 @@ pub fn package(
                     "ShinkiEMU",
                     "org.shinkirou.shinkiemu",
                     version,
+                    ios_signing.as_ref(),
                 )?;
                 if target == "aarch64-apple-ios" {
                     let payload_stage = tempfile::tempdir_in(stage)?;
