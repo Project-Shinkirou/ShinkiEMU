@@ -284,13 +284,12 @@ export component GameView inherits Rectangle {
         }
     }
 
+    // Runs while the trigger is revealed; `restart()` does nothing on a timer
+    // that never started, so `running` follows `pointer-recent`.
     idle-timer := Timer {
         interval: 3s;
-        running: false;
-        triggered => {
-            self.running = false;
-            root.pointer-recent = false;
-        }
+        running: root.pointer-recent;
+        triggered => { root.pointer-recent = false; }
     }
 
     Image {
