@@ -72,6 +72,18 @@ export component GameMenu {
     }
 }
 
+// Provider-only Android folder: an icon replaces the cause repeated on every card;
+// the selected game's detail panel explains it.
+component ProviderAccessIcon inherits Icon {
+    in property <string> cause;
+
+    width: 16px;
+    source: Icons.folder-off;
+    colorize: MaterialPalette.error;
+    accessible-role: AccessibleRole.image;
+    accessible-label: root.cause;
+}
+
 // Compatibility status pill; `on-image` uses a dark backing for legibility over cover art.
 export component CompatPill {
     in property <string> status;
@@ -269,6 +281,7 @@ export component CoverCard {
     property <bool> active: input.hovered || input.has-focus || root.selected;
     property <bool> has-cover: root.game.cover.width > 0;
     property <bool> show-badge: App.appearance.cover-badges && root.game.compat != "" && root.game.compat != "unknown";
+    property <string> line-problem: root.game.provider-access != "" ? "" : root.game.problem;
 
     CoverDemand {
         cover-id: root.game.id;
@@ -362,7 +375,7 @@ export component CoverCard {
         HorizontalLayout {
             spacing: 4px;
 
-            if root.game.problem != "" : VerticalLayout {
+            if root.line-problem != "" : VerticalLayout {
                 alignment: center;
                 Icon {
                     width: 14px;
@@ -371,9 +384,14 @@ export component CoverCard {
                 }
             }
 
+            if root.game.provider-access != "" : VerticalLayout {
+                alignment: center;
+                ProviderAccessIcon { cause: root.game.problem; }
+            }
+
             MaterialText {
                 horizontal-stretch: 1;
-                text: root.game.problem != "" ? root.game.problem : root.game.version != "" ? root.game.version : root.game.subtitle;
+                text: root.line-problem != "" ? root.line-problem : root.game.version != "" ? root.game.version : root.game.subtitle;
                 style: MaterialTypography.body-small;
                 color: MaterialPalette.on-surface-variant;
             }
@@ -424,7 +442,8 @@ export component GameListRow {
 
     property <bool> has-cover: root.game.cover.width > 0;
     property <string> version-or-engine: root.game.version != "" ? root.game.version : root.game.subtitle;
-    property <string> second-line: root.game.problem != "" ? root.game.problem
+    property <string> line-problem: root.game.provider-access != "" ? "" : root.game.problem;
+    property <string> second-line: root.line-problem != "" ? root.line-problem
         : root.compact-row ? root.version-or-engine + (root.game.play-time != "" ? " · " + root.game.play-time : "")
         : root.engine-width == 0px ? root.version-or-engine : root.game.version;
 
@@ -497,10 +516,18 @@ export component GameListRow {
                 style: MaterialTypography.title-small;
                 color: root.selected ? MaterialPalette.on-secondary-container : MaterialPalette.on-surface;
             }
-            if root.second-line != "" : MaterialText {
-                text: root.second-line;
-                style: MaterialTypography.body-small;
-                color: root.game.problem != "" ? MaterialPalette.error : MaterialPalette.on-surface-variant;
+            if root.second-line != "" || root.game.provider-access != "" : HorizontalLayout {
+                spacing: 4px;
+                if root.game.provider-access != "" : VerticalLayout {
+                    alignment: center;
+                    ProviderAccessIcon { cause: root.game.problem; }
+                }
+                MaterialText {
+                    horizontal-stretch: 1;
+                    text: root.second-line;
+                    style: MaterialTypography.body-small;
+                    color: root.line-problem != "" ? MaterialPalette.error : MaterialPalette.on-surface-variant;
+                }
             }
         }
 

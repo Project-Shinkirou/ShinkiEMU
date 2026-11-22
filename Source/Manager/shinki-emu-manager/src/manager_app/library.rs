@@ -6,6 +6,19 @@ pub(super) fn saf_only_problem() -> &'static str {
     tr!("此游戏文件夹由系统文件提供程序管理，当前核心无法直接读取。")
 }
 
+/// `ShinkiLibraryTree.localPath` never maps another authority's documents to a path,
+/// whatever the permission. For the external-storage provider, whether a path exists
+/// is only known once it is readable, so that case stays `"provider"`.
+#[cfg(target_os = "android")]
+pub(super) fn provider_access(location: &str) -> &'static str {
+    use shinki_emu_manager::platform::android_tree::authority;
+    if authority(location) == "com.android.externalstorage.documents" {
+        "provider"
+    } else {
+        "unmappable"
+    }
+}
+
 impl ShinkiEmuManagerController {
     /// Persist a root and recognize its directories without native activation.
     pub(super) fn add_game_directory(&mut self, path: &Path) -> Result<ManagerViewModel, String> {

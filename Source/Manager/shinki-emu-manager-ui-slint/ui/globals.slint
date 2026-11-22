@@ -88,6 +88,9 @@ export struct GameCard {
     tint: color,
     ready: bool,
     problem: string,
+    // Android folder only a documents provider can read: "" (none), "provider" (path
+    // mapping undetermined) or "unmappable" (all-files access cannot map this provider).
+    provider-access: string,
     play-time: string,
     last-played: string,
     compat: string,
@@ -129,6 +132,7 @@ export struct SelectedGame {
     emulator-id: string,
     launchable: bool,
     problem: string,
+    provider-access: string,
     play-time: string,
     last-played: string,
     developer: string,
