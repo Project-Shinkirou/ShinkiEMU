@@ -197,11 +197,12 @@ export component AboutSection inherits PageScroll {
         HorizontalDivider { }
         LinkRow {
             text: "Project Shinkirou";
-            supporting-text: @tr("ShinkiEMU 适配、维护和测试贡献者");
+            supporting-text: @tr("ShinkiEMU 适配与测试");
             wrap-labels: true;
             icon: Icons.build;
             clicked => { Platform.open-url("https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors"); }
         }
+        Rectangle { height: 20px; }
     }
 
     SettingGroup {

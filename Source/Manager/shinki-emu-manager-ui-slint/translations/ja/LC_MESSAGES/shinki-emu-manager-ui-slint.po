@@ -2838,5 +2838,5 @@ msgstr "上流コアの開発者とコミュニティ、ShinkiEMU への移植�
 msgid "{} 及项目贡献者"
 msgstr "{} とプロジェクトの貢献者"
 
-msgid "ShinkiEMU 适配、维护和测试贡献者"
-msgstr "ShinkiEMU の移植・保守・テストの貢献者"
+msgid "ShinkiEMU 适配与测试"
+msgstr "ShinkiEMU の移植・テスト"

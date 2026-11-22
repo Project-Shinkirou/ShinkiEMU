@@ -931,9 +931,6 @@ fn every_page_renders_stable_frames() {
             if only.is_empty() || only.iter().any(|p| "cores/cards".starts_with(p)) {
                 exercise_core_cards(&adapter, &software, (width, height), save);
             }
-            if only.is_empty() || only.iter().any(|p| "settings/about-credits".starts_with(p)) {
-                exercise_about_credits(&adapter, &software, (width, height), &opened_urls, save);
-            }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
                     continue;
@@ -977,6 +974,9 @@ fn every_page_renders_stable_frames() {
                     );
                 }
                 save(id, rgba);
+            }
+            if only.is_empty() || only.iter().any(|p| "settings/about-credits".starts_with(p)) {
+                exercise_about_credits(&adapter, &software, (width, height), &opened_urls, save);
             }
         }
     }

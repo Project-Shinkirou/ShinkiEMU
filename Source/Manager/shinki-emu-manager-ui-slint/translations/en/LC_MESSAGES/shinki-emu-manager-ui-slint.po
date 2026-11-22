@@ -2842,5 +2842,5 @@ msgstr "Thanks to the upstream core developers and their communities, and to eve
 msgid "{} 及项目贡献者"
 msgstr "{} and project contributors"
 
-msgid "ShinkiEMU 适配、维护和测试贡献者"
-msgstr "ShinkiEMU integration, maintenance, and testing contributors"
+msgid "ShinkiEMU 适配与测试"
+msgstr "ShinkiEMU integration and testing"
