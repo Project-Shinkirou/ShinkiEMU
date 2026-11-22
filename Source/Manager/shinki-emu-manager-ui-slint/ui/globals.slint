@@ -43,6 +43,11 @@ export global App {
     callback appearance-changed(Appearance);
     // "data" | "logs" | "third-party-notices"
     callback open-path(string);
+    in property <bool> android-about;
+    in property <[string]> about-license-files;
+    in property <string> about-license-text;
+    callback load-about-licenses();
+    callback read-about-license(int);
     callback restart();
 }
 

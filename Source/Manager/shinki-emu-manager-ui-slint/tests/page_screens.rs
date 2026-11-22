@@ -1688,24 +1688,68 @@ fn exercise_about_credits(
 ) {
     const INVENTORY: &str = include_str!("../../../../build/cores.toml");
     const ABOUT: &str = include_str!("../ui/pages/settings/about.slint");
+    const NOTICE: &str = include_str!("../../../../THIRD_PARTY_NOTICES.md");
     for line in INVENTORY.lines().filter(|line| line.starts_with("upstream_identity = ")) {
         let repo = line.split("repo = \"").nth(1).unwrap().split('"').next().unwrap();
-        assert!(ABOUT.contains(&format!("\"{repo}/graphs/contributors\"")), "missing About credit for {repo}");
+        assert!(ABOUT.contains(&format!("url: \"{repo}\"")), "missing About credit for {repo}");
     }
 
     reset(a);
     a.apply(&base());
     settings(a, "about");
+    let app = a.window().global::<App>();
     let frame = || render(software, width, height);
-    frame();
+    let picked_path = Rc::new(RefCell::new(SharedString::default()));
+    let record = picked_path.clone();
+    app.on_open_path(move |key| *record.borrow_mut() = key);
+    let weak = a.window().as_weak();
+    app.on_load_about_licenses(move || {
+        weak.upgrade().unwrap().global::<App>().set_about_license_files(slint::ModelRc::new(
+            slint::VecModel::from(vec!["THIRD_PARTY_NOTICES.md".into()]),
+        ));
+    });
+    let weak = a.window().as_weak();
+    app.on_read_about_license(move |index| {
+        assert_eq!(index, 0);
+        weak.upgrade().unwrap().global::<App>().set_about_license_text(NOTICE.into());
+    });
+    let acknowledgment = tr!("致谢");
+    let licenses = tr!("第三方许可");
+    let back = tr!("返回");
+    let site = |project: &str| tr!("{}：项目主页").replace("{}", project);
+    let license = |project: &str| tr!("{}：许可证").replace("{}", project);
     opened_urls.borrow_mut().clear();
+    frame();
+    click_label(software, licenses);
+    assert_eq!(*picked_path.borrow(), "third-party-notices");
+    assert_eq!(app.get_settings_category(), "about");
+    click_label(software, acknowledgment);
+    save("settings/about-credits-start", frame());
+    assert_eq!(app.get_settings_category(), "about-credits");
+    assert!(opened_urls.borrow().is_empty(), "About and Acknowledgments are in-app pages");
+    click_label(software, "Project Shinkirou");
+    click_label(software, licenses);
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    frame();
+    click_label(software, tr!("第三方声明"));
+    save("settings/about-credits-notice", frame());
+    assert_eq!(app.get_settings_category(), "about-license-text");
+    assert!(labeled_item(software, |label| label == tr!("许可证正文")).is_some());
+    press(software, Key::Back);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    click_label(software, back);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-credits");
+
     let bottom = height as f32 - if width < 600 { 80.0 } else { 0.0 };
     let reveal = |label: &str| {
-        for _ in 0..12 {
+        for _ in 0..14 {
             if let Some(item) = labeled_item(software, |text| text == label) {
                 let rect = item.geometry();
-                let top = item.map_to_native_window(rect.origin);
-                if top.y >= 64.0 && top.y + rect.size.height < bottom {
+                let center = item.map_to_native_window(rect.center());
+                if center.y - rect.size.height / 2.0 >= 64.0
+                    && center.y + rect.size.height / 2.0 < bottom {
                     return;
                 }
             }
@@ -1713,27 +1757,38 @@ fn exercise_about_credits(
             software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -200.0 });
             frame();
         }
-        panic!("credits row is not reachable: {label}");
+        panic!("credits action is not reachable: {label}");
     };
-
-    reveal("Art3m1s Core");
-    save("settings/about-credits-start", frame());
-    assert!(opened_urls.borrow().is_empty(), "opening About must not open external URLs");
-    click_label(software, "Art3m1s Core");
-    reveal("RFVP");
+    reveal(&site("Art3m1s Core"));
+    click_label(software, &site("Art3m1s Core"));
+    click_label(software, &license("Art3m1s Core"));
+    reveal(&site("RFVP"));
     save("settings/about-credits-middle", frame());
-    click_label(software, "RFVP");
-    reveal("Project Shinkirou");
+    click_label(software, &site("RFVP"));
+    reveal(&site("SoftPAL RS (Sena)"));
     save("settings/about-credits-end", frame());
-    click_label(software, "SoftPAL RS (Sena)");
-    click_label(software, "Project Shinkirou");
+    click_label(software, &site("SoftPAL RS (Sena)"));
     assert_eq!(
         opened_urls.borrow().as_slice(),
         [
-            "https://github.com/Alphaly2K/art3m1s-core/graphs/contributors",
-            "https://github.com/xmoezzz/rfvp/graphs/contributors",
-            "https://github.com/xmoezzz/sena-rs/graphs/contributors",
             "https://github.com/Project-Shinkirou/ShinkiEMU/graphs/contributors",
+            "https://github.com/Alphaly2K/art3m1s-core",
+            "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE",
+            "https://github.com/xmoezzz/rfvp",
+            "https://github.com/xmoezzz/sena-rs",
         ]
     );
+    press(software, Key::Escape);
+    frame();
+    assert_eq!(app.get_page(), "settings");
+    assert_eq!(app.get_settings_category(), "about");
+
+    app.set_android_about(true);
+    save("settings/about-credits-android-about", frame());
+    click_label(software, licenses);
+    frame();
+    assert_eq!(app.get_settings_category(), "about-licenses");
+    click_label(software, back);
+    assert_eq!(app.get_settings_category(), "about");
+    app.set_android_about(false);
 }

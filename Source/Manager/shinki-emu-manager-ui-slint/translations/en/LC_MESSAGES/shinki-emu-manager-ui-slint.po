@@ -2836,11 +2836,41 @@ msgstr "Update core"
 msgid "致谢"
 msgstr "Acknowledgments"
 
-msgid "感谢上游核心开发者、项目社区，以及为 ShinkiEMU 适配和测试的贡献者。选择项目可在浏览器中查看贡献者。"
-msgstr "Thanks to the upstream core developers and their communities, and to everyone who adapted and tested the cores for ShinkiEMU. Select a project to see its contributors in your browser."
+msgid "上游核心、第三方组件和贡献者"
+msgstr "Upstream cores, third-party components, and contributors"
 
 msgid "{} 及项目贡献者"
 msgstr "{} and project contributors"
 
 msgid "ShinkiEMU 适配与测试"
 msgstr "ShinkiEMU integration and testing"
+
+msgid "第三方组件"
+msgstr "Third-party components"
+
+msgid "贡献者"
+msgstr "Contributors"
+
+msgid "上游核心"
+msgstr "Upstream cores"
+
+msgid "项目主页"
+msgstr "Project site"
+
+msgid "{}：项目主页"
+msgstr "{}: Project site"
+
+msgid "许可证"
+msgstr "License"
+
+msgid "{}：许可证"
+msgstr "{}: License"
+
+msgid "第三方声明"
+msgstr "Third-party notices"
+
+msgid "许可证正文"
+msgstr "License text"
+
+msgid "无法读取随包许可证。"
+msgstr "Couldn’t read the bundled licenses."

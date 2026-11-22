@@ -21,6 +21,8 @@ fn install_app<C: ManagerController>(
     restart: &std::rc::Rc<dyn Fn()>,
 ) {
     let app = window.global::<App>();
+    app.set_android_about(cfg!(target_os = "android"));
+    install_about_licenses(window);
     let w = wiring.clone();
     app.on_appearance_changed(move |appearance| {
         let settings = shinki_emu_manager_core::AppearanceSettings {
@@ -72,6 +74,75 @@ fn install_app<C: ManagerController>(
                 Err(error) => w.show(Err(error)),
             }
         });
+}
+
+fn install_about_licenses(window: &shinki_emu_manager_ui_slint::ManagerWindow) {
+    let app = window.global::<App>();
+    let files = std::rc::Rc::new(std::cell::RefCell::new(Vec::<std::path::PathBuf>::new()));
+    let weak = window.as_weak();
+    let selected_files = files.clone();
+    app.on_load_about_licenses(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let mut paths = files.borrow_mut();
+        paths.clear();
+        let mut labels = Vec::new();
+        if let Some(root) = platform::bundled_resource_dir() {
+            collect_about_licenses(&root, &root.join("licenses"), &mut paths);
+            paths.sort_unstable();
+            let notices = root.join("THIRD_PARTY_NOTICES.md");
+            if notices.is_file() {
+                paths.insert(0, notices);
+            }
+            labels.extend(paths.iter().filter_map(|path| {
+                let relative = path.strip_prefix(&root).ok()?;
+                let label = relative.strip_prefix("licenses").unwrap_or(relative);
+                Some(slint::SharedString::from(label.to_string_lossy().as_ref()))
+            }));
+        }
+        window
+            .global::<App>()
+            .set_about_license_files(slint::ModelRc::new(slint::VecModel::from(labels)));
+    });
+
+    let weak = window.as_weak();
+    app.on_read_about_license(move |index| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let files = selected_files.borrow();
+        let text = usize::try_from(index)
+            .ok()
+            .and_then(|index| files.get(index))
+            .and_then(|path| std::fs::read(path).ok())
+            .map(|bytes| slint::SharedString::from(String::from_utf8_lossy(&bytes).as_ref()))
+            .unwrap_or_default();
+        window.global::<App>().set_about_license_text(text);
+    });
+}
+
+fn collect_about_licenses(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) {
+    // Only real files/directories shipped under the license root. Do not
+    // traverse links or accept a path from the UI.
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        if kind.is_dir() {
+            collect_about_licenses(root, &path, files);
+        } else if kind.is_file() && path.starts_with(root) {
+            files.push(path);
+        }
+    }
 }
 
 fn translation_form(

@@ -13,7 +13,7 @@ Only select assets actually attached to a release. Build availability is listed 
 
 On first launch, you can add a game folder and choose your network and appearance settings, or skip setup. Networking is off by default. ShinkiEMU is free and open source; download it from the official site or GitHub Releases. See **Settings → About** for licensing information.
 
-**Settings → About → Acknowledgments** lists the upstream core projects and links to their contributors.
+**Settings → About → Acknowledgments** groups upstream cores, third-party components, and contributors. Each upstream core has separate project and license links. On Android, **About → Third-party licenses** opens the bundled notices and licenses in the app. Desktop still opens the notices file in the system.
 
 ## Language
 

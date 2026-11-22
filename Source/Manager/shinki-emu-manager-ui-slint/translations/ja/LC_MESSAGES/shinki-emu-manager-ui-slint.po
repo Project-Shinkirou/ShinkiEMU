@@ -2832,11 +2832,41 @@ msgstr "コアを更新"
 msgid "致谢"
 msgstr "謝辞"
 
-msgid "感谢上游核心开发者、项目社区，以及为 ShinkiEMU 适配和测试的贡献者。选择项目可在浏览器中查看贡献者。"
-msgstr "上流コアの開発者とコミュニティ、ShinkiEMU への移植やテストに携わった皆さんに感謝します。プロジェクトを選ぶと、ブラウザーで貢献者を確認できます。"
+msgid "上游核心、第三方组件和贡献者"
+msgstr "上流コア、サードパーティー製コンポーネント、貢献者"
 
 msgid "{} 及项目贡献者"
 msgstr "{} とプロジェクトの貢献者"
 
 msgid "ShinkiEMU 适配与测试"
 msgstr "ShinkiEMU の移植・テスト"
+
+msgid "第三方组件"
+msgstr "サードパーティー製コンポーネント"
+
+msgid "贡献者"
+msgstr "貢献者"
+
+msgid "上游核心"
+msgstr "上流コア"
+
+msgid "项目主页"
+msgstr "プロジェクトサイト"
+
+msgid "{}：项目主页"
+msgstr "{}：プロジェクトサイト"
+
+msgid "许可证"
+msgstr "ライセンス"
+
+msgid "{}：许可证"
+msgstr "{}：ライセンス"
+
+msgid "第三方声明"
+msgstr "サードパーティーに関する通知"
+
+msgid "许可证正文"
+msgstr "ライセンス本文"
+
+msgid "无法读取随包许可证。"
+msgstr "同梱のライセンスを読み込めませんでした。"
