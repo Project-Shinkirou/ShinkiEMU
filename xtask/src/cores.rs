@@ -6,6 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "../../build/android_dynamic.rs"]
+#[allow(dead_code, reason = "xtask validates the policy; only Manager uses the projection")]
+mod android_dynamic;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Core {
     pub id: String,
@@ -20,7 +24,11 @@ pub struct Core {
     pub artifact_kind: String,
     pub resources: Vec<String>,
     pub licenses: Vec<String>,
+    #[serde(default)]
+    pub recognition: shinki_emu_metadata::CoreRecognition,
     pub supported_targets: Vec<String>,
+    /// The shared catalog parser validates this policy at inventory load.
+    pub(crate) android_dynamic: Option<toml::Table>,
     #[serde(default)]
     pub static_manager_targets: Vec<String>,
     #[serde(default)]
@@ -180,7 +188,11 @@ pub fn slug(id: &str) -> String {
 }
 impl Inventory {
     pub fn load(root: &Path) -> Result<Self> {
-        let c: CoreFile = toml::from_str(&std::fs::read_to_string(root.join("build/cores.toml"))?)?;
+        let c: toml::Value = toml::from_str(&std::fs::read_to_string(root.join("build/cores.toml"))?)?;
+        for core in c.get("cores").and_then(toml::Value::as_array).context("core inventory")? {
+            android_dynamic::parse(core).map_err(anyhow::Error::msg)?;
+        }
+        let c: CoreFile = c.try_into()?;
         let t: TargetFile =
             toml::from_str(&std::fs::read_to_string(root.join("build/targets.toml"))?)?;
         if c.schema != "shinki.emu.build_cores.v1" || t.schema != "shinki.emu.build_targets.v1" {

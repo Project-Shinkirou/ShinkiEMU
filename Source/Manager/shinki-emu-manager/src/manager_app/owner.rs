@@ -141,7 +141,7 @@ impl FamilyOwner {
     pub(super) fn new(data_dir: PathBuf, mailbox: FrameMailbox) -> Result<Self, String> {
         let (commands, receiver) = bounded(COMMAND_CAPACITY);
         let (results, background) = unbounded();
-        fs::create_dir_all(data_dir.join("cores")).map_err(|error| error.to_string())?;
+        fs::create_dir_all(core_directory(&data_dir)?).map_err(|error| error.to_string())?;
         let installed = recognition::installed(&recognition::directories(&data_dir)?)?;
         Ok(Self {
             commands,

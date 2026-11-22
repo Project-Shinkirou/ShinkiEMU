@@ -197,6 +197,23 @@ fn reads_shared_game_children_through_a_seekable_read_only_tree() {
     assert_eq!(scan(), ["cmvs", "fvp"]);
     assert_eq!(fs::read(&hcb_file).unwrap(), hcb());
     assert_eq!(fs::read(&ps2a_file).unwrap(), ps2a());
+
+    let custom = collection.join("4/Assets");
+    fs::create_dir(&custom).unwrap();
+    let header = custom.join("engine.id");
+    let tree = SelectedFolder(collection.join("4"));
+    let mut rules = DeclaredRules::new("fixture".into());
+    let core = crate::static_core_catalog::lookup("rfvp").unwrap();
+    rules.add(core, "assets/engine.id", 4094, vec![0xde, 0xad]);
+    fs::write(&header, vec![0; 4095]).unwrap();
+    assert!(rules.inspect_game_tree(&tree, &cancellation).unwrap().0.is_empty());
+    let mut bytes = vec![0; 4096];
+    bytes[4094..].copy_from_slice(&[0xde, 0xad]);
+    fs::write(&header, &bytes).unwrap();
+    let (matches, _) = rules.inspect_game_tree(&tree, &cancellation).unwrap();
+    assert_eq!(matches, rules.detect_game_directory(&tree.0, &cancellation).unwrap());
+    assert_eq!(matches[0].declared.as_ref().unwrap().plugin_ids, ["rfvp"]);
+    assert_eq!(fs::read(header).unwrap(), bytes);
 }
 #[test]
 fn recognizes_cpz_versions_and_older_pfs_layouts_once_per_family() {

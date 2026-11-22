@@ -1,4 +1,7 @@
 # Single authoritative core build and release inventory.
+# For a verified Android Manager dynamic release, add `android_dynamic =
+# { minimum_release = <source sequence or product SemVer>, requires_context = true/false }`
+# to its core. This applies only to standalone-supported Android targets.
 schema = "shinki.emu.build_cores.v1"
 
 [[cores]]

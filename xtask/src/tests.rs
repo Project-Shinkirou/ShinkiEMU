@@ -325,6 +325,7 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
         &r,
         "1.0.0",
         None,
+        &Default::default(),
         &t.path().join("out"),
         &[f._dir.path().to_owned()],
     )
@@ -384,6 +385,7 @@ fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
             &r,
             "1.0.0",
             None,
+            &Default::default(),
             &t.path().join("no-license"),
             &[f._dir.path().to_owned()]
         )
@@ -395,6 +397,7 @@ fn unlisted_duplicate_and_missing_licenses_fail_without_output() {
         &r,
         "1.0.0",
         None,
+        &Default::default(),
         &t.path().join("out"),
         &[f._dir.path().to_owned()],
     )
@@ -621,6 +624,7 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
         &result,
         "1.0.0",
         None,
+        &Default::default(),
         &output,
         std::slice::from_ref(&native),
     )
@@ -635,7 +639,7 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
     );
     fs::write(resources.join(extension), b"invalid native extension").unwrap();
     let rejected = temp.path().join("rejected");
-    assert!(stage_core(&result, "1.0.0", None, &rejected, &[native]).is_err());
+    assert!(stage_core(&result, "1.0.0", None, &Default::default(), &rejected, &[native]).is_err());
     assert!(!rejected.exists());
 }
 
@@ -663,6 +667,7 @@ fn output_nested_in_resource_inputs_is_rejected_without_modifying_sources() {
             &result,
             "1.0.0",
             None,
+            &Default::default(),
             &output,
             &[fixture._dir.path().to_owned()]
         )
@@ -687,10 +692,17 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
         .join(".work/release")
         .join(format!("core-rfvp-{}", identity.version()))
         .join("x86_64-pc-windows-msvc/package");
+    let mut recipe: toml::Value = toml::from_str(include_str!("../../build/cores.toml")).unwrap();
+    let declaration: toml::Value = toml::from_str(
+        r#"recognition = [{ path = "Data/Test.id", offset = 2, magic = "beef" }]"#,
+    ).unwrap();
+    recipe["cores"][0].as_table_mut().unwrap().insert("recognition".into(), declaration["recognition"].clone());
+    let recipe: crate::cores::Core = recipe["cores"][0].clone().try_into().unwrap();
     let staged = stage_core(
         &receipt,
         &identity.version(),
         Some(&identity),
+        &recipe.recognition,
         &output,
         &[fixture._dir.path().to_owned()],
     )
@@ -717,6 +729,9 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
     extract_zip(&archive, &extracted).unwrap();
     let extracted_manifest = verify_core(&extracted).unwrap();
     assert_eq!(extracted_manifest.identity.as_ref(), Some(&identity));
+    assert_eq!(extracted_manifest.recognition.rules()[0].path(), "data/test.id");
+    assert_eq!(extracted_manifest.recognition.rules()[0].offset(), 2);
+    assert_eq!(extracted_manifest.recognition.rules()[0].magic_bytes(), [0xbe, 0xef]);
     assert_eq!(
         sha256(&extracted.join(&extracted_manifest.library)).unwrap(),
         sha256(&receipt.library).unwrap()
@@ -728,6 +743,7 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
             &receipt,
             &changed.version(),
             Some(&changed),
+            &recipe.recognition,
             &temp.path().join("wrong-pin"),
             &[]
         )
@@ -738,6 +754,7 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
             &receipt,
             "0.1.0-beta.5",
             Some(&identity),
+            &recipe.recognition,
             &temp.path().join("false-version"),
             &[]
         )
@@ -787,6 +804,69 @@ fn sectionless_elf(needed: &str, rpath: &str) -> Vec<u8> {
     }
     bytes[256..].copy_from_slice(&strings);
     bytes
+}
+
+fn android_elf(needed: &str, runpath: &str, api: u32, alignment: u64) -> Vec<u8> {
+    let mut bytes = sectionless_elf(needed, runpath);
+    // Insert a third program header before relocating the dynamic table and
+    // dynamic strings. The Android identification note has 4-byte alignment.
+    bytes.splice(176..176, [0u8; 56]);
+    let note = bytes.len().next_multiple_of(4);
+    bytes.resize(note + 24, 0);
+    bytes[note..note + 12].copy_from_slice(&[8, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0]);
+    bytes[note + 12..note + 20].copy_from_slice(b"Android\0");
+    bytes[note + 20..note + 24].copy_from_slice(&api.to_le_bytes());
+    bytes[56..58].copy_from_slice(&3u16.to_le_bytes());
+    bytes[176..180].copy_from_slice(&4u32.to_le_bytes()); // PT_NOTE
+    let size = bytes.len() as u64;
+    for (offset, value) in [
+        (96, size),
+        (104, size),
+        (112, alignment),
+        (128, 232), // PT_DYNAMIC offset
+        (136, 232), // PT_DYNAMIC vaddr
+        (144, 232), // PT_DYNAMIC paddr
+        (184, note as u64),
+        (192, note as u64),
+        (200, note as u64),
+        (208, 24),
+        (216, 24),
+        (224, 4),
+        (240, 312), // DT_STRTAB
+    ] {
+        bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn android_core_checks_the_actual_transitive_elf_closure() {
+    let temp = crate::temporary::directory().unwrap();
+    let core = temp.path().join("libCore.so");
+    let runtime = temp.path().join("libNative.so");
+    let target = "x86_64-linux-android";
+    let search = [temp.path().to_owned()];
+    fs::write(&core, android_elf("libNative.so", "$ORIGIN", 28, 16384)).unwrap();
+    fs::write(&runtime, android_elf("libOpenSLES.so", "$ORIGIN", 21, 16384)).unwrap();
+    let closure = || binary::android_core_closure(&core, &search, target);
+    assert_eq!(
+        closure().unwrap(),
+        [(runtime.clone(), "libNative.so".to_owned())]
+    );
+    assert!(binary::android_core_closure(&core, &search, "aarch64-linux-android").is_err());
+
+    for elf in [
+        sectionless_elf("libc.so", "$ORIGIN"),
+        android_elf("libc.so", "$ORIGIN", 29, 16384),
+        android_elf("libunresolved.so", "$ORIGIN", 28, 16384),
+    ] {
+        fs::write(&runtime, elf).unwrap();
+        assert!(closure().is_err());
+    }
+    let mut legacy_rpath = android_elf("libNative.so", "$ORIGIN", 28, 16384);
+    legacy_rpath[280..288].copy_from_slice(&15u64.to_le_bytes()); // DT_RPATH instead of DT_RUNPATH
+    fs::write(&core, legacy_rpath).unwrap();
+    assert!(closure().is_err());
 }
 
 #[test]

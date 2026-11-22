@@ -15,6 +15,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "android_host.rs"]
+mod android_host;
+
 pub fn portable(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("empty package path");
@@ -300,6 +303,8 @@ pub struct CorePackage {
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<shinki_emu_metadata::CoreIdentity>,
+    #[serde(default, skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty")]
+    pub recognition: shinki_emu_metadata::CoreRecognition,
     pub abi: String,
     pub files: Vec<FileRecord>,
 }
@@ -368,6 +373,7 @@ pub fn stage_core(
     result: &BuildResult,
     version: &str,
     identity: Option<&shinki_emu_metadata::CoreIdentity>,
+    recognition: &shinki_emu_metadata::CoreRecognition,
     out: &Path,
     search: &[PathBuf],
 ) -> Result<PathBuf> {
@@ -381,6 +387,7 @@ pub fn stage_core(
         .context("missing core-build manifest")?;
     m.validate()?;
     binary::inspect(&result.library, &result.target, true)?;
+    let android = result.target.ends_with("-linux-android");
     if m.licenses.is_empty() {
         bail!("core package requires license files");
     }
@@ -392,6 +399,9 @@ pub fn stage_core(
     if !(library.starts_with("shinki_emu_") || library.starts_with("libshinki_emu_")) {
         bail!("core library needs the shinki_emu_ prefix");
     }
+    if android && !library.ends_with(".so") {
+        bail!("Android core library needs the .so extension");
+    }
     let stem = Path::new(library)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -400,6 +410,9 @@ pub fn stage_core(
     let mut entries = vec![(result.library.clone(), library.into())];
     for asset in m.resources.iter().chain(&m.licenses) {
         entries.extend(asset_entries(asset)?);
+    }
+    if android && entries.iter().any(|(_, path)| android_host::is_runtime_asset(path)) {
+        bail!("Android core packages cannot contain APK-only host compile inputs");
     }
     let is_runtime = |path: &Path| {
         let name = path
@@ -413,9 +426,19 @@ pub fn stage_core(
             || name.ends_with(".pyd")
             || name.contains(".so.")
     };
+    if android
+        && entries.iter().any(|(_, relative)| {
+            Path::new(relative)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| binary::system(name, &result.target))
+        })
+    {
+        bail!("Android core package includes a device system library");
+    }
     let mut roots: Vec<PathBuf> = entries
         .iter()
-        .filter(|(path, _)| is_runtime(path))
+        .filter(|(path, relative)| is_runtime(if android { Path::new(relative) } else { path }))
         .map(|(path, _)| path.clone())
         .collect();
     let mut runtimes = std::collections::BTreeMap::<String, (PathBuf, String)>::new();
@@ -436,8 +459,10 @@ pub fn stage_core(
         {
             bail!("runtime dependency collides with core layout");
         }
-        if let Some((existing, _)) = runtimes.get(&key) {
-            if existing != &path && sha256(existing)? != sha256(&path)? {
+        if let Some((existing, existing_name)) = runtimes.get(&key) {
+            if (android && existing_name != &name)
+                || (existing != &path && sha256(existing)? != sha256(&path)?)
+            {
                 bail!("conflicting runtime dependency {name}");
             }
         } else {
@@ -479,6 +504,9 @@ pub fn stage_core(
                     .to_str()
                     .context("runtime filename is not UTF-8")?
                     .to_owned();
+                if android && binary::system(&name, &result.target) {
+                    bail!("Android native install includes device system library {name}");
+                }
                 let source = binary::runtime_source(&path, directory, &result.target)?;
                 add_runtime(source.clone(), name)?;
                 roots.push(source);
@@ -493,8 +521,13 @@ pub fn stage_core(
     );
     search.sort();
     search.dedup();
+    let closure = if android {
+        binary::android_core_closure
+    } else {
+        binary::closure
+    };
     for root in roots {
-        for (source, name) in binary::closure(&root, &search, &result.target)? {
+        for (source, name) in closure(&root, &search, &result.target)? {
             add_runtime(source, name)?;
         }
     }
@@ -508,6 +541,17 @@ pub fn stage_core(
         fs::create_dir(&dir)?;
         copy_entries(&entries, &dir)?;
         let staged_library = dir.join(library);
+        if android {
+            for (_, relative) in &entries {
+                if relative.contains('/') && is_runtime(Path::new(relative)) {
+                    // A nested resource DSO cannot resolve a dependency we
+                    // flattened to the core root; validate its actual layout.
+                    let staged = dir.join(relative);
+                    let sibling = staged.parent().context("resource DSO parent")?;
+                    binary::android_core_closure(&staged, &[sibling.into()], &result.target)?;
+                }
+            }
+        }
         if crate::apple::supported(&result.target) {
             for (_, relative) in &entries {
                 if is_runtime(Path::new(relative)) {
@@ -534,6 +578,7 @@ pub fn stage_core(
             library: library.into(),
             version: version.into(),
             identity: identity.cloned(),
+            recognition: recognition.clone(),
             abi: shinki_emu_build::ABI.into(),
             files,
         };
@@ -592,8 +637,8 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
     {
         dirs.push(runtime);
     }
-    let separate_subtitle = selected.subtitle
-        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    let separate_subtitle =
+        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
     if separate_subtitle {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, "subtitle")
@@ -612,7 +657,7 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
         dirs.push(p.parent().context("native library parent")?.to_owned());
         dirs.push(p.parent().context("native library parent")?.join("lib"));
     }
-    for native in dependencies::native_cores(inv, &result.target, &result.component) {
+    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
         dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
             dependencies::linux_runtime(inv, &result.target, &native.id)
         } else {
@@ -626,7 +671,9 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
         });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
-    if let Some(redist) = std::env::var_os("VCToolsRedistDir") {
+    if result.target.contains("windows")
+        && let Some(redist) = std::env::var_os("VCToolsRedistDir")
+    {
         let root = PathBuf::from(redist).join("x64");
         if root.is_dir() {
             for d in fs::read_dir(root)? {
@@ -658,10 +705,15 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
                 .join(if cfg!(windows) { "clang.exe" } else { "clang" });
             let runtime = dependencies::capture(
                 std::process::Command::new(clang)
-                    .arg(format!("--target={}", result.target))
+                    .arg(format!("--target={}{}", result.target, binary::ANDROID_API))
                     .arg("--print-file-name=libomp.so"),
             )?;
             let runtime = PathBuf::from(String::from_utf8(runtime)?.trim());
+            let runtime = dunce::canonicalize(&runtime)
+                .context("NDK Clang did not resolve its OpenMP runtime")?;
+            if !runtime.starts_with(dunce::canonicalize(&ndk)?) {
+                bail!("OpenMP runtime is outside the selected NDK");
+            }
             dirs.push(
                 runtime
                     .parent()
@@ -670,20 +722,19 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildResult) -> Result<Vec<P
                     .to_owned(),
             );
         }
-        if separate_subtitle {
-            dirs.push(
-                dependencies::subtitle_install(inv, &result.target, &result.component)?.join("lib"),
-            );
-        }
         let ndk_lib = ndk
             .join("toolchains/llvm/prebuilt")
             .join(host)
             .join("sysroot/usr/lib")
             .join(&result.target);
-        dirs.push(ndk_lib.clone());
-        // Embedded native dependencies and Manager share API 28; platform
-        // libraries such as libcamera2ndk.so live in the target/API directory.
-        dirs.push(ndk_lib.join("28"));
+        // Public system libraries are resolved by the device, not copied from
+        // NDK API stub directories. libc++_shared is a redistributable real DSO.
+        if result.component != "manager" {
+            plain(&ndk_lib.join("libc++_shared.so"))?;
+        } else {
+            dirs.push(ndk_lib.join(binary::ANDROID_API.to_string()));
+        }
+        dirs.push(ndk_lib);
     }
     Ok(dirs)
 }
@@ -723,8 +774,8 @@ pub(crate) fn licenses(
             entries.push((ndk.join(notice), format!("licenses/android-ndk/{notice}")));
         }
     }
-    let separate_subtitle = selected.subtitle
-        && !dependencies::shares_android_subtitle(&result.target, &result.component);
+    let separate_subtitle =
+        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
     if separate_subtitle
         && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
     {
@@ -755,7 +806,7 @@ pub(crate) fn licenses(
             ));
         }
     }
-    for native in dependencies::native_cores(inv, &result.target, &result.component) {
+    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
         let native_share = dependencies::native_install(inv, &result.target, &native.id)?
             .join(dependencies::native_triplet(inv, &result.target)?)
             .join("share");
@@ -868,8 +919,16 @@ pub fn package(
     let resolved = crate::release::resolve_version(inv, component, version)?;
     let version = resolved.as_str();
     let mut result = load_package_receipt(inv, target, component, out)?;
-    if component == "manager" {
+    if component == "manager" || inv.core(component)?.source.is_none() {
         result.require_product_version(version)?;
+        if component != "manager" {
+            result.require_product_source(&result.source_commit)?;
+        }
+        crate::release::check_product_source(
+            (!result.source_dirty).then_some(result.source_commit.as_str()),
+        )?;
+    }
+    if component == "manager" {
         if target.contains("android") {
             return package_android(inv, &result, version, out, &ANDROID_TARGETS);
         }
@@ -1010,6 +1069,7 @@ pub fn package(
             &result,
             version,
             identity.as_ref(),
+            &c.recognition,
             out,
             &search_dirs(inv, &result)?,
         )
@@ -1086,6 +1146,11 @@ pub(crate) fn static_core_entries(
             native.validate()?;
             for asset in &native.resources {
                 for (source, destination) in asset_entries(asset)? {
+                    if result.target.ends_with("-linux-android")
+                        && android_host::is_runtime_asset(&destination)
+                    {
+                        continue;
+                    }
                     entries.push((source, format!("cores/{}/{destination}", core.id)));
                 }
             }
@@ -1098,14 +1163,22 @@ pub(crate) fn static_core_entries(
                 }
             }
         }
-        embedded.push(serde_json::json!({
+        let mut entry = serde_json::json!({
             "id": core.id,
             "package": core.package,
             "source": core.source,
             "identity": core.source.as_ref().map(crate::cores::CoreSource::identity),
-            "version": core.source.as_ref().map_or_else(|| package["version"].as_str().context("embedded core version").map(str::to_owned), |source| Ok(source.identity().version()))?,
+            "version": if let Some(source) = &core.source {
+                source.identity().version()
+            } else {
+                result.product_version.as_deref().context("embedded core needs the Manager product version")?.to_owned()
+            },
             "display_version": core.source.as_ref().map(|source| source.identity().display_version()),
-        }));
+        });
+        if core.source.is_none() && !result.source_dirty {
+            entry["source_commit"] = result.source_commit.as_str().into();
+        }
+        embedded.push(entry);
     }
     let manifest = scratch.join("embedded-cores.json");
     fs::write(&manifest, serde_json::to_vec_pretty(&embedded)?)?;
@@ -1162,6 +1235,12 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
     {
         bundled.push(name.clone());
         entries.push((source, format!("assets/{name}")));
+    }
+    for (source, name) in android_host::inputs(inv, result, temp.path())? {
+        if let Some(asset) = name.strip_prefix("assets/") {
+            bundled.push(asset.to_owned());
+        }
+        entries.push((source, name));
     }
     copy_entries(&entries, stage)?;
     bundled.sort();
@@ -1395,6 +1474,7 @@ fn package_android(
         // Each ABI resolves its own Rust closure (target-specific crates differ), so
         // the asset listing is the union; every file present in both must still match.
         let mut bundled = std::collections::BTreeSet::new();
+        let mut previous_hosts = None;
         for (target, abi) in targets {
             let built = if *target == result.target {
                 result
@@ -1417,8 +1497,23 @@ fn package_android(
                     .filter(|line| !line.is_empty())
                     .map(str::to_owned),
             );
+            let staged = tree(inputs)?;
+            let host_hashes = android_host::hashes(&staged)?;
+            if qa {
+                // A single-ABI package reuses the build-time stage, but still
+                // checks it against the exact producer receipts.
+                let check = crate::temporary::directory()?;
+                let expected = android_host::inputs(inv, built, check.path())?;
+                if host_hashes != android_host::hashes(&expected)? {
+                    bail!("Android QA host compile inputs differ from their build receipts");
+                }
+            }
+            if previous_hosts.as_ref().is_some_and(|previous| previous != &host_hashes) {
+                bail!("Android ABI host compile-input sets or producer identities differ");
+            }
+            previous_hosts = Some(host_hashes);
             // Shared metadata/license bytes must be identical for both ABIs.
-            for (source, name) in tree(inputs)? {
+            for (source, name) in staged {
                 if name == ANDROID_BUNDLE_MANIFEST {
                     continue;
                 }
@@ -1426,7 +1521,9 @@ fn package_android(
                     if qa && !bundled.contains(asset) {
                         bail!("Android build asset missing from its manifest: {asset}");
                     }
-                } else if name.strip_prefix("jniLibs/").and_then(android_library_abi) != Some(*abi) {
+                } else if !name.starts_with("android-host/")
+                    && name.strip_prefix("jniLibs/").and_then(android_library_abi) != Some(*abi)
+                {
                     bail!("unexpected input for Android ABI {abi}: {name}");
                 }
                 let destination = stage.join(&name);
@@ -1541,6 +1638,7 @@ fn package_android(
                 "abis": targets.iter().map(|&(_, abi)| abi).collect::<serde_json::Value>(),
                 "signing": if signed { "release" } else { "debug-test" },
                 "apk": apk_name,
+                "host_compile_input_sha256": previous_hosts.context("Android host compile-input receipt")?,
                 "sha256": sha256(&apk)?,
                 "size": fs::metadata(&apk)?.len()
             }))?,
@@ -1617,8 +1715,17 @@ fn verify_android_apk(
         let mut entry = archive.by_index(i)?;
         let name = entry.name()?.into_owned();
         metadata |= name == "assets/metadata/index.json";
+        if name.starts_with("assets/android-host/")
+            || name.strip_prefix("assets/cores/").and_then(|entry| entry.split_once('/'))
+                .is_some_and(|(_, path)| android_host::is_runtime_asset(path))
+        {
+            bail!("APK contains host compile inputs as runtime assets: {name}");
+        }
         if let Some(relative) = name.strip_prefix("lib/").filter(|path| path.ends_with(".so")) {
             portable(&name)?;
+            if relative.rsplit('/').next().is_some_and(android_host::is_core_library) {
+                bail!("APK contains a standalone core library: {name}");
+            }
             if !android_library_abi(relative)
                 .is_some_and(|abi| targets.iter().any(|(_, expected)| *expected == abi))
             {

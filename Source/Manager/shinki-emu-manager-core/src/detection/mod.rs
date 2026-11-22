@@ -15,6 +15,8 @@ use std::{
 };
 use thiserror::Error;
 
+mod declared;
+pub use declared::{DeclaredMatch, DeclaredRules};
 mod formats;
 mod musica;
 mod roots;
@@ -39,8 +41,10 @@ const MAX_FILE_READ_BYTES: u64 = 4 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EngineDetection {
     pub family_id: String,
-    /// Resource-format identity, not an installed plugin or runtime guarantee.
+    /// Built-in resource-format identity; empty for a declaration-only match.
     pub format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared: Option<DeclaredMatch>,
 }
 #[derive(Debug, Error)]
 pub enum DetectionError {
@@ -119,7 +123,7 @@ impl DetectionTree for LocalTree {
 /// Cancellation is cooperative between filesystem calls; blocked OS I/O cannot
 /// be interrupted. Internal fixed limits bound enumeration, reads and allocation.
 pub fn detect_game_directory(root: &Path, cancellation: &NativeCancellation) -> DetectionResult<Vec<EngineDetection>> {
-    detect_tree_at(&LocalTree, root, cancellation)
+    detect_tree_at(&LocalTree, root, cancellation, None).map(|(matches, _)| matches)
 }
 
 /// Inspect a provider-backed tree with exactly the same format rules and budgets.
@@ -127,23 +131,28 @@ pub fn detect_game_tree<T: DetectionTree>(
     tree: &T,
     cancellation: &NativeCancellation,
 ) -> DetectionResult<Vec<EngineDetection>> {
-    detect_tree_at(tree, Path::new(""), cancellation)
+    detect_tree_at(tree, Path::new(""), cancellation, None).map(|(matches, _)| matches)
 }
 
 fn detect_tree_at<T: DetectionTree>(
     tree: &T,
     root: &Path,
     cancellation: &NativeCancellation,
-) -> DetectionResult<Vec<EngineDetection>> {
+    declared: Option<&DeclaredRules>,
+) -> DetectionResult<(Vec<EngineDetection>, bool)> {
     let mut scan = Scan { tree, cancellation, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
     scan.checkpoint()?;
     if tree.kind(root)? != EntryKind::Directory {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "game root must be a directory, not a link").into());
     }
     scan.directory(root, Path::new(""), true)?;
+    let has_files = scan.files != 0;
+    if let Some(declared) = declared {
+        declared.inspect(&mut scan, root)?;
+    }
     scan.checkpoint()?;
     scan.matches.sort_by(|a, b| a.family_id.cmp(&b.family_id));
-    Ok(scan.matches)
+    Ok((scan.matches, has_files))
 }
 
 struct Scan<'a, T> {
@@ -187,7 +196,7 @@ impl<T: DetectionTree> Scan<'_, T> {
     fn matched(&mut self, family: &str, format: &str) -> DetectionResult<()> {
         self.checkpoint()?;
         if !self.matches.iter().any(|m| m.family_id == family) {
-            self.matches.push(EngineDetection { family_id: family.into(), format: format.into() });
+            self.matches.push(EngineDetection { family_id: family.into(), format: format.into(), declared: None });
         }
         Ok(())
     }

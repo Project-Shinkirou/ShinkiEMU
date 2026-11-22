@@ -191,8 +191,8 @@ fn install_cores<C: ManagerController>(
         platform::pick_file(
             tr!("从本地安装核心"),
             &[platform::FileFilter {
-                label: tr!("核心包或核心文件"),
-                extensions: &["zip", std::env::consts::DLL_EXTENSION],
+                label: tr!("核心包"),
+                extensions: &["zip"],
             }],
             Box::new(move |picked| w.run(|c| c.install_core(&picked?))),
         );

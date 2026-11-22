@@ -13,6 +13,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(crate) const ANDROID_API: u32 = 28;
+const ANDROID_PAGE: u64 = 16 * 1024;
+const NT_ANDROID_TYPE_IDENT: object::elf::NoteType = object::elf::NoteType(1);
+
 #[derive(Debug)]
 pub struct BinaryInfo {
     pub dependencies: BTreeSet<String>,
@@ -48,8 +52,10 @@ fn pe<'a, P: ImageNtHeaders>(
 fn elf<'a, E: FileHeader>(
     file: &object::read::elf::ElfFile<'a, E>,
     info: &mut BinaryInfo,
+    android_core: Option<&Path>,
 ) -> Result<()> {
     let endian = file.endian();
+    let mut origin_runpath = false;
     for segment in file.elf_program_headers() {
         let Some(entries) = segment.dynamic(endian, file.data())? else {
             continue;
@@ -59,10 +65,11 @@ fn elf<'a, E: FileHeader>(
             .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
             .context("ELF dynamic segment lacks DT_NULL")?];
         if !entries.iter().any(|entry| {
+            let tag = entry.tag(endian);
             matches!(
-                entry.tag(endian),
+                tag,
                 object::elf::DT_NEEDED | object::elf::DT_RUNPATH | object::elf::DT_RPATH
-            )
+            ) || (android_core.is_some() && tag == object::elf::DT_SONAME)
         }) {
             continue;
         }
@@ -99,15 +106,98 @@ fn elf<'a, E: FileHeader>(
                         .insert(text(entry.string(endian, strings)?)?);
                 }
                 object::elf::DT_RUNPATH | object::elf::DT_RPATH => {
-                    info.rpaths.extend(
-                        text(entry.string(endian, strings)?)?
-                            .split(':')
-                            .map(str::to_owned),
-                    );
+                    let runpath = entry.string(endian, strings)?;
+                    if android_core.is_some() {
+                        // Android resolves sibling DSOs through DT_RUNPATH, not DT_RPATH.
+                        if entry.tag(endian) != object::elf::DT_RUNPATH
+                            || runpath != b"$ORIGIN"
+                            || origin_runpath
+                        {
+                            bail!("Android core libraries may only use DT_RUNPATH=$ORIGIN");
+                        }
+                        origin_runpath = true;
+                    }
+                    info.rpaths
+                        .extend(text(runpath)?.split(':').map(str::to_owned));
+                }
+                object::elf::DT_SONAME => {
+                    if let Some(path) = android_core {
+                        let soname = entry.string(endian, strings)?;
+                        let name = path.file_name().and_then(|name| name.to_str());
+                        if name.map(str::as_bytes) != Some(soname) {
+                            bail!("Android DT_SONAME differs from the packaged filename");
+                        }
+                    }
                 }
                 _ => {}
             }
         }
+    }
+    if android_core.is_some()
+        && !origin_runpath
+        && info.dependencies.iter().any(|name| !android_system(name))
+    {
+        bail!("Android library with private dependencies needs DT_RUNPATH=$ORIGIN");
+    }
+    Ok(())
+}
+
+fn android_elf<E: FileHeader>(
+    file: &object::read::elf::ElfFile<'_, E>,
+    core_entrypoint: bool,
+) -> Result<()> {
+    if !file.is_64() || !file.is_little_endian() || file.kind() != ObjectKind::Dynamic {
+        bail!("expected a little-endian ELF64 shared library");
+    }
+    let endian = file.endian();
+    let mut load = false;
+    let mut dynamic = false;
+    let mut api = None;
+    for segment in file.elf_program_headers() {
+        match segment.p_type(endian) {
+            object::elf::PT_LOAD => {
+                let align: u64 = segment.p_align(endian).into();
+                let offset: u64 = segment.p_offset(endian).into();
+                let address: u64 = segment.p_vaddr(endian).into();
+                if align < ANDROID_PAGE
+                    || !align.is_power_of_two()
+                    || offset % align != address % align
+                {
+                    bail!("ELF PT_LOAD is not 16 KiB page compatible");
+                }
+                load = true;
+            }
+            object::elf::PT_DYNAMIC if !dynamic => dynamic = true,
+            object::elf::PT_DYNAMIC | object::elf::PT_INTERP => {
+                bail!("invalid Android shared library program headers");
+            }
+            object::elf::PT_NOTE => {
+                let Some(mut notes) = segment.notes(endian, file.data())? else {
+                    continue;
+                };
+                while let Some(note) = notes.next()? {
+                    // NT_ANDROID_TYPE_IDENT from the NDK CRT; the first word is
+                    // the target API, independent of the NDK release string.
+                    if note.name() == b"Android" && note.n_type(endian) == NT_ANDROID_TYPE_IDENT {
+                        let word = note
+                            .desc()
+                            .first_chunk()
+                            .context("truncated Android ELF note")?;
+                        if api.replace(u32::from_le_bytes(*word)).is_some() {
+                            bail!("multiple Android ELF identification notes");
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if !load || !dynamic {
+        bail!("Android ELF lacks a loadable or dynamic segment");
+    }
+    let api = api.context("missing Android ELF identification note")?;
+    if api == 0 || api > ANDROID_API || (core_entrypoint && api != ANDROID_API) {
+        bail!("Android ELF targets API {api}, incompatible with core build API {ANDROID_API}");
     }
     Ok(())
 }
@@ -164,6 +254,20 @@ pub(crate) fn target_slice(bytes: &[u8], architecture: object::Architecture) -> 
 }
 
 pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryInfo> {
+    inspect_binary(
+        path,
+        target,
+        require_query,
+        require_query && target.ends_with("-linux-android"),
+    )
+}
+
+fn inspect_binary(
+    path: &Path,
+    target: &str,
+    require_query: bool,
+    android_core: bool,
+) -> Result<BinaryInfo> {
     crate::package::plain(path)?;
     let bytes = fs::read(path)?;
     let arch = if target.starts_with("x86_64-") {
@@ -210,6 +314,17 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
             for export in file.exports()? {
                 let export = export?;
                 if let object::read::NameOrOrdinal::Name(name) = export.name() {
+                    if android_core
+                        && !matches!(
+                            export.flags(),
+                            object::read::ExportFlags::Elf {
+                                st_info, st_other, version_hidden: false, ..
+                            } if st_info.st_type() == object::elf::STT_FUNC
+                                && matches!(st_other.visibility(), object::elf::STV_DEFAULT | object::elf::STV_PROTECTED)
+                        )
+                    {
+                        continue;
+                    }
                     has_query |= name == b"shinki_emu_query"
                         || (format == object::BinaryFormat::MachO && name == b"_shinki_emu_query");
                 }
@@ -227,8 +342,16 @@ pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryI
     match &file {
         object::File::Pe32(f) => pe(f, &mut info)?,
         object::File::Pe64(f) => pe(f, &mut info)?,
-        object::File::Elf32(f) => elf(f, &mut info)?,
-        object::File::Elf64(f) => elf(f, &mut info)?,
+        object::File::Elf32(_) if android_core => bail!("expected an Android ELF64 library"),
+        object::File::Elf32(f) => elf(f, &mut info, None)?,
+        object::File::Elf64(f) => {
+            if android_core {
+                android_elf(f, require_query)
+                    .with_context(|| format!("invalid Android ELF {}", path.display()))?;
+            }
+            elf(f, &mut info, android_core.then_some(path))
+                .with_context(|| format!("reading ELF dynamic table in {}", path.display()))?;
+        }
         object::File::MachO32(f) => macho(f, &mut info)?,
         object::File::MachO64(f) => macho(f, &mut info)?,
         _ => bail!("unsupported binary format"),
@@ -354,28 +477,7 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
             .contains(&n.as_str());
     }
     if target.contains("android") {
-        let n = name.to_ascii_lowercase();
-        return [
-            "libc.so",
-            "libm.so",
-            "libdl.so",
-            "liblog.so",
-            "libandroid.so",
-            "libegl.so",
-            "libglesv1_cm.so",
-            "libglesv2.so",
-            "libglesv3.so",
-            "libvulkan.so",
-            "libaaudio.so",
-            "libcamera2ndk.so",
-            "libopensles.so",
-            "libmediandk.so",
-            "libnativewindow.so",
-            "libz.so",
-            "libjnigraphics.so",
-            "libsync.so",
-        ]
-        .contains(&n.as_str());
+        return android_system(name);
     }
     if target.ends_with("ohos") {
         // OpenHarmony NDK libraries from the device image (sysroot/usr/lib/aarch64-linux-ohos).
@@ -450,6 +552,32 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
     ]
     .contains(&name)
 }
+
+// Public NDK libraries supported by the Android app's minimum API (28).
+// Bionic's names are case-sensitive even when packaging on Windows.
+fn android_system(name: &str) -> bool {
+    [
+        "libc.so",
+        "libm.so",
+        "libdl.so",
+        "liblog.so",
+        "libandroid.so",
+        "libEGL.so",
+        "libGLESv1_CM.so",
+        "libGLESv2.so",
+        "libGLESv3.so",
+        "libvulkan.so",
+        "libaaudio.so",
+        "libcamera2ndk.so",
+        "libOpenSLES.so",
+        "libmediandk.so",
+        "libnativewindow.so",
+        "libz.so",
+        "libjnigraphics.so",
+        "libsync.so",
+    ]
+    .contains(&name)
+}
 /// Resolve Linux SONAME links only within their explicitly selected build directory.
 /// Package entries keep the requested loader name but copy the regular file's bytes.
 pub(crate) fn runtime_source(path: &Path, directory: &Path, target: &str) -> Result<PathBuf> {
@@ -472,32 +600,48 @@ pub(crate) fn runtime_source(path: &Path, directory: &Path, target: &str) -> Res
 
 /// Resolve exclusively against explicitly distributable trees, never PATH/System32.
 pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(PathBuf, String)>> {
+    closure_impl(library, search, target, false)
+}
+
+pub(crate) fn android_core_closure(
+    library: &Path,
+    search: &[PathBuf],
+    target: &str,
+) -> Result<Vec<(PathBuf, String)>> {
+    closure_impl(library, search, target, true)
+}
+
+fn closure_impl(
+    library: &Path,
+    search: &[PathBuf],
+    target: &str,
+    android_core: bool,
+) -> Result<Vec<(PathBuf, String)>> {
+    let key = |name: &str| {
+        if android_core {
+            name.to_owned()
+        } else {
+            name.to_ascii_lowercase()
+        }
+    };
     let mut found = BTreeMap::<String, (PathBuf, String)>::new();
     let mut visited = BTreeSet::new();
     let mut pending = vec![library.to_owned()];
-    let root_name = library
-        .file_name()
-        .context("library filename")?
-        .to_string_lossy()
-        .to_ascii_lowercase();
+    let root_name = key(&library.file_name().context("library filename")?.to_string_lossy());
     while let Some(path) = pending.pop() {
-        let name = path
-            .file_name()
-            .context("binary filename")?
-            .to_string_lossy()
-            .to_ascii_lowercase();
+        let name = key(&path.file_name().context("binary filename")?.to_string_lossy());
         if !visited.insert(name) {
             continue;
         }
-        let info = inspect(&path, target, false)?;
+        let info = inspect_binary(&path, target, false, android_core)?;
         for dep in info.dependencies {
             if system(&dep, target) {
                 continue;
             }
             let leaf = dep.rsplit('/').next().context("dependency filename")?;
             crate::package::portable(leaf)?;
-            let key = leaf.to_ascii_lowercase();
-            if key == root_name || found.contains_key(&key) {
+            let dependency_key = key(leaf);
+            if dependency_key == root_name || found.contains_key(&dependency_key) {
                 continue;
             }
             let mut matches = Vec::new();
@@ -508,11 +652,14 @@ pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(
                 crate::package::plain(dir)?;
                 for entry in fs::read_dir(dir)? {
                     let entry = entry?;
-                    if entry
-                        .file_name()
-                        .to_string_lossy()
-                        .eq_ignore_ascii_case(leaf)
-                    {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    let matches_name = if android_core {
+                        name == leaf
+                    } else {
+                        name.eq_ignore_ascii_case(leaf)
+                    };
+                    if matches_name {
                         matches.push(runtime_source(&entry.path(), dir, target)?);
                     }
                 }
@@ -523,7 +670,7 @@ pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(
                     bail!("conflicting dependency {dep}");
                 }
             }
-            found.insert(key, (resolved.clone(), leaf.to_owned()));
+            found.insert(dependency_key, (resolved.clone(), leaf.to_owned()));
             pending.push(resolved.clone());
         }
     }

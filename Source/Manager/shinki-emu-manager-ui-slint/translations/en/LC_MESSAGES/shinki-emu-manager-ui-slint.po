@@ -2000,8 +2000,8 @@ msgstr "Source: {url}"
 msgid "核心加载或后台运行失败：{error}。请修复后重启应用。"
 msgstr "Loading cores or a background task failed: {error}. Fix it and restart the app."
 
-msgid "核心包或核心文件"
-msgstr "Core package or core file"
+msgid "核心包"
+msgstr "Core package"
 
 msgid "核心已下载，重启后生效"
 msgstr "Core downloaded. Restart to use it"
@@ -2574,6 +2574,12 @@ msgstr "The game folder is currently unavailable"
 
 msgid "所选目录中未识别到游戏引擎，请选择原生游戏目录。"
 msgstr "No game engine was recognized in the selected folder. Choose a native game folder."
+
+msgid "未识别到游戏引擎，可添加所选文件夹后手动选择核心。"
+msgstr "No game engine was recognized. Add the selected folder to choose a core manually."
+
+msgid "作为游戏添加"
+msgstr "Add as game"
 
 msgid "滤镜链"
 msgstr "Filter chain"

@@ -99,17 +99,23 @@ fn core_card_version(version: &str, identity: Option<&CoreIdentity>) -> String {
 }
 
 impl ShinkiEmuManagerController {
-    fn cores_dir(&self) -> PathBuf {
-        self.data_dir.join("cores")
+    fn cores_dir(&self) -> Result<PathBuf, String> {
+        core_directory(&self.data_dir)
+    }
+
+    fn allows_core_packages(plugin_id: &str) -> bool {
+        recognition::supports_installed_packages(plugin_id)
     }
 
     /// Highest released version of a core for this platform and ABI.
     pub(super) fn online_core(&self, plugin_id: &str) -> Option<&CoreCatalogEntry> {
+        if !Self::allows_core_packages(plugin_id) { return None; }
         self.metadata_catalog.as_ref()?.cores.latest(
             plugin_id,
             &core_platform(),
             INDEPENDENT_FAMILY_ABI_FINGERPRINT,
         )
+        .filter(|entry| recognition::allows_installed_release(plugin_id, &entry.version, entry.identity.as_ref()))
     }
     pub(super) fn core_release<'a>(
         &'a self,
@@ -125,8 +131,19 @@ impl ShinkiEmuManagerController {
     /// Loaded, installed-but-unloaded, failed, pending and online-available
     /// cores, plus each item's directory stem (empty for online-only entries).
     fn core_items(&self) -> Result<(CoresViewModel, Vec<String>), String> {
-        let cores = self.cores_dir();
+        let cores = self.cores_dir()?;
         let pending = core_package::pending_entries(&cores)?;
+        #[cfg(target_os = "android")]
+        let overlays: BTreeMap<_, _> = pending.iter()
+            .filter(|(_, kind)| **kind == PendingKind::Install)
+            .filter_map(|(stem, _)| {
+                let package = core_package::read_manifest(&cores.join(core_package::PENDING).join(stem))?;
+                (recognition::allows_installed_release(&package.plugin_id, &package.version, package.identity.as_ref())
+                    && recognition::is_static(&package.plugin_id)
+                    && !self.registry.installed().contains_key(&package.plugin_id))
+                    .then_some((package.plugin_id, stem))
+            })
+            .collect();
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
         let mut listed_stems = BTreeSet::new();
@@ -136,9 +153,20 @@ impl ShinkiEmuManagerController {
             let installed = self.registry.installed().get(&id);
             let catalog = shinki_emu_manager_core::static_core_catalog::lookup(&id);
             let native = self.registry.descriptor(&id);
-            let stem = installed.map(|core| shinki_emu_manager_core::library_stem(&core.library)).unwrap_or_default();
-            let bundled = recognition::is_static(&id) || installed.is_some_and(|core| core.bundled);
-            let state = match pending.get(&stem) {
+            let stem = installed
+                .filter(|core| !cfg!(any(target_os = "ios", target_env = "ohos")) || !core.bundled)
+                .map(|core| shinki_emu_manager_core::library_stem(&core.library))
+                .unwrap_or_default();
+            #[cfg(target_os = "android")]
+            let stem = overlays.get(&id).map_or(stem, |stem| String::clone(stem));
+            let bundled = installed.map_or_else(
+                || recognition::is_static(&id),
+                |core| core.bundled || (!cfg!(target_os = "android") && recognition::is_static(&id)),
+            );
+            let pending_kind = pending.get(&stem).filter(|kind| {
+                !cfg!(target_os = "android") || **kind != PendingKind::Install || !self.plugin_errors.contains_key(&stem)
+            });
+            let state = match pending_kind {
                 Some(PendingKind::Remove) => "pending-removal",
                 Some(PendingKind::Install) => "pending-update",
                 None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id) => "loading",
@@ -160,10 +188,8 @@ impl ShinkiEmuManagerController {
                 capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
                 state: state.into(),
                 source: if bundled { "bundled" } else { "user" }.into(),
-                message: self.native_failures.get(&id).cloned().unwrap_or_else(|| {
-                    if catalog.is_none() && native.is_none() { "Unknown plugin metadata; use explicit diagnosis or install an updated manifest.".into() } else { String::new() }
-                }),
-                removable: !bundled,
+                message: self.native_failures.get(&id).cloned().unwrap_or_default(),
+                removable: !bundled || (cfg!(target_os = "android") && state == "pending-update"),
                 update_version,
                 download: self.download_view(&id),
             }, stem));
@@ -175,13 +201,15 @@ impl ShinkiEmuManagerController {
                 if stem.starts_with('.') || listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem)
                     || !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
                 let manifest = core_package::read_manifest(&entry.path());
-                let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone()).unwrap_or_else(|| stem.clone());
+                let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone())
+                    .filter(|id| !cfg!(target_os = "android") || !listed_plugins.contains(id))
+                    .unwrap_or_else(|| stem.clone());
                 listed_stems.insert(stem.clone());
                 listed_plugins.insert(id.clone());
                 items.push((CoreViewModel {
                     id, name: stem.clone(), state: "failed".into(), source: "user".into(),
                     message: "SHINKI_EMU_CORE_PACKAGE_MANIFEST: missing or invalid package, library, or duplicate plugin identity; install an identified core package".into(),
-                    removable: directory == self.cores_dir(),
+                    removable: directory == cores,
                     ..CoreViewModel::default()
                 }, stem));
             }
@@ -206,14 +234,17 @@ impl ShinkiEmuManagerController {
                     state: "failed".into(),
                     source: "user".into(),
                     message: described.title,
-                    removable: cores.join(stem).is_dir(),
+                    removable: cores.join(stem).is_dir()
+                        || (cfg!(target_os = "android") && pending.get(stem) == Some(&PendingKind::Install)),
                     ..CoreViewModel::default()
                 },
                 stem.clone(),
             ));
         }
         for (stem, kind) in &pending {
-            if *kind != PendingKind::Install || listed_stems.contains(stem) {
+            if *kind != PendingKind::Install || listed_stems.contains(stem)
+                || (cfg!(target_os = "android") && self.plugin_errors.contains_key(stem))
+            {
                 continue;
             }
             let manifest =
@@ -269,7 +300,11 @@ impl ShinkiEmuManagerController {
         Ok((
             CoresViewModel {
                 items,
-                restart_required: !pending.is_empty() && self.cores_started(),
+                restart_required: if cfg!(target_os = "android") {
+                    pending.keys().any(|stem| !self.plugin_errors.contains_key(stem))
+                } else {
+                    !pending.is_empty() && self.cores_started()
+                },
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
                 update_all_count: i32::try_from(update_all_count).unwrap_or(i32::MAX),
                 batch: self.batch_view(),
@@ -283,18 +318,23 @@ impl ShinkiEmuManagerController {
         self.core_items().map(|(view, _)| view)
     }
 
-    /// Stage a local `.zip` core package or a single core library.
+    /// Stage a downloaded official release using the bundled or synced catalog.
     pub(super) fn install_core(&mut self, source: &Path) -> Result<ManagerViewModel, String> {
-        let pending = self.cores_dir().join(core_package::PENDING);
+        let pending = self.cores_dir()?.join(core_package::PENDING);
         let package = source
             .extension()
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"));
-        if package {
-            core_package::stage_package(source, None, &pending)?;
-        } else {
-            core_package::stage_library(source, &pending)?;
+        if !package {
+            return Err("SHINKI_EMU_CORE_PACKAGE_FORMAT".into());
         }
+        let platform = core_platform();
+        let entries = self.metadata_catalog.as_ref().into_iter()
+            .flat_map(|catalog| &catalog.cores.entries)
+            .filter(|entry| entry.platform == platform
+                && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
+                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
+        core_package::stage_local_release(source, entries, &pending)?;
         self.model()
     }
 
@@ -363,7 +403,7 @@ impl ShinkiEmuManagerController {
             .clone()
             .ok_or("SHINKI_EMU_HOST_WAKE_REQUIRED")?;
         let size = entry.size;
-        let pending = self.cores_dir().join(core_package::PENDING);
+        let pending = self.cores_dir()?.join(core_package::PENDING);
         self.core_downloads.start(entry, pending, wake)?;
         self.core_failures.remove(plugin_id);
         Ok(size)
@@ -589,11 +629,13 @@ impl ShinkiEmuManagerController {
             .core_stem(core_id)?
             .ok_or("SHINKI_EMU_CORE_UNINSTALL_BUNDLED")?;
         let stem = stem.as_str();
-        let cores = self.cores_dir();
+        let cores = self.cores_dir()?;
         let staged = cores.join(core_package::PENDING).join(stem);
         let installed = cores.join(stem);
-        if staged.is_dir() && !installed.is_dir() {
+        let rejected_stage = cfg!(target_os = "android") && self.plugin_errors.contains_key(stem);
+        if staged.is_dir() && (!installed.is_dir() || rejected_stage) {
             core_package::cancel_pending_install(&cores, stem)?;
+            self.plugin_errors.remove(stem);
         } else if installed.is_dir() {
             core_package::mark_removal(&cores, stem)?;
         } else {
@@ -831,13 +873,13 @@ mod tests {
 
     use crate::core_download::{
         CoreDownloads,
-        tests::{Served, entry as package_entry, package_for, serve},
+        tests::{Served, entry as package_entry, package_for, package_with_recognition, serve},
     };
 
     const PLUGINS: [(&str, &str); 3] = [
-        ("shinki.emu.alpha", "shinki_emu_alpha"),
-        ("shinki.emu.beta", "shinki_emu_beta"),
-        ("shinki.emu.gamma", "shinki_emu_gamma"),
+        ("rfvp", "shinki_emu_alpha"),
+        ("siglus_rs", "shinki_emu_beta"),
+        ("ethornell-rs", "shinki_emu_gamma"),
     ];
 
     /// A controller whose catalog lists the three fixture cores and whose
@@ -927,8 +969,8 @@ mod tests {
     fn restart_applies_install_update_and_removal_before_prepare() {
         let root = tempfile::tempdir().unwrap();
         let (id, stem) = PLUGINS[0];
-        let library = root.path().join(format!("{stem}.{}", env::consts::DLL_EXTENSION));
-        fs::write(&library, b"first installed library").unwrap();
+        let archive = root.path().join("official.zip");
+        let package = package_for(id, stem);
         let open = || {
             ShinkiEmuManagerController::open_library(
                 root.path().into(),
@@ -938,32 +980,52 @@ mod tests {
             .unwrap()
         };
         let mut app = open();
-        app.install_core(&library).unwrap();
-        // A bare library's generated manifest retains its unknown identity.
-        assert_eq!(item(&app, stem).state, "pending-install");
+        let cores = root.path().join("cores");
+        fs::write(&archive, &package).unwrap();
+        assert!(app.install_core(&archive).is_err(), "self-hashes do not authorize a ZIP");
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+        let mut catalog = crate::metadata_cache::tests::sample_catalog(root.path());
+        catalog.cores.entries = vec![package_entry(id, &package)];
+        app.metadata_catalog = Some(catalog);
+        assert!(!app.network_allowed);
+        let bare = root.path().join(format!("{stem}.{}", env::consts::DLL_EXTENSION));
+        fs::write(&bare, b"unidentified library bytes").unwrap();
+        assert!(app.install_core(&bare).is_err());
+        let mut altered = package.clone();
+        altered[0] ^= 1;
+        fs::write(&archive, altered).unwrap();
+        assert!(app.install_core(&archive).is_err(), "same-size archive still needs the official SHA");
+        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
+        fs::write(&archive, &package).unwrap();
+        app.install_core(&archive).unwrap();
+        assert_eq!(item(&app, id).state, "pending-install");
         drop(app);
 
         let mut app = open();
         assert!(!app.cores_started());
-        assert_eq!(item(&app, stem).state, "installed");
+        assert_eq!(item(&app, id).state, "installed");
         assert!(!app.cores_view().unwrap().restart_required);
-        let cores = root.path().join("cores");
         assert!(core_package::pending_entries(&cores).unwrap().is_empty());
         assert_eq!(
-            fs::read(cores.join(stem).join(library.file_name().unwrap())).unwrap(),
-            b"first installed library"
+            fs::read(cores.join(stem).join(format!("{stem}.{}", env::consts::DLL_EXTENSION))).unwrap(),
+            b"library bytes"
         );
 
-        let archive = root.path().join("update.zip");
-        fs::write(&archive, package_for(id, stem)).unwrap();
+        let update = package_with_recognition(id, stem, "0.3.0", Default::default());
+        fs::write(&archive, &update).unwrap();
+        let mut entry = package_entry(id, &update);
+        entry.version = "0.3.0".into();
+        let mut catalog = crate::metadata_cache::tests::sample_catalog(root.path());
+        catalog.cores.entries = vec![entry];
+        app.metadata_catalog = Some(catalog);
         app.install_core(&archive).unwrap();
-        assert_eq!(item(&app, stem).state, "pending-update");
+        assert_eq!(item(&app, id).state, "pending-update");
         drop(app);
 
         let mut app = open();
         let installed = item(&app, id);
         assert_eq!(installed.state, "installed");
-        assert_eq!(installed.version, "0.2.0");
+        assert_eq!(installed.version, "0.3.0");
         assert!(!app.cores_started());
         assert!(core_package::pending_entries(&cores).unwrap().is_empty());
 

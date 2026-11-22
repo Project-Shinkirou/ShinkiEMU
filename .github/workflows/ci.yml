@@ -177,6 +177,10 @@ jobs:
           } else {
             cargo xtask deps --target $env:TARGET --core $env:COMPONENT
           }
+      - name: Prepare standalone Android host producers
+        if: contains(matrix.target, 'android') && matrix.component == 'manager'
+        shell: bash
+        run: python3 build/ci/prepare-android-host-cores.py
       - name: Exercise real Krkr archive path consumers
         if: contains(matrix.target, 'android') && matrix.component == 'manager'
         shell: bash
@@ -194,16 +198,16 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: cargo xtask release --component kirikiroid2-web --target $env:TARGET --scope $env:RELEASE_SCOPE
       - uses: actions/setup-python@v6
-        if: matrix.component == 'kirikiroid2-web'
+        if: matrix.component == 'kirikiroid2-web' && !contains(matrix.target, 'android')
         with:
           python-version: '3.13'
       - name: Verify actual KiriKiri desktop package
-        if: matrix.component == 'kirikiroid2-web'
+        if: matrix.component == 'kirikiroid2-web' && !contains(matrix.target, 'android')
         env:
           TARGET: ${{ matrix.target }}
         run: python Tools/verify-krkr-desktop.py --target $env:TARGET --report .work/krkr-desktop-proof.json
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.component == 'kirikiroid2-web'
+        if: always() && matrix.component == 'kirikiroid2-web' && !contains(matrix.target, 'android')
         with:
           name: native-proof-kirikiroid2-web-${{ matrix.target }}
           path: |
@@ -231,14 +235,14 @@ jobs:
           name: source-closure-manager-${{ matrix.target }}
           path: .work/release/manager-v${{ env.SHINKI_EMU_CI_VERSION }}/${{ matrix.target }}/
           if-no-files-found: error
-      - name: Verify Krkr Android static host contract
+      - name: Verify Android host contract against the actual native producers
         if: contains(matrix.target, 'android') && matrix.component == 'manager'
         shell: bash
         run: python3 Tools/verify-krkr-android.py --ci-report .work/ci-report.json --out .work/krkr-android-proof.json
       - uses: actions/upload-artifact@v7
         if: contains(matrix.target, 'android') && matrix.component == 'manager'
         with:
-          name: krkr-android-static-host-proof
+          name: krkr-android-host-proof
           path: .work/krkr-android-proof.json
           if-no-files-found: error
       - name: Smoke packaged Linux Manager

@@ -144,7 +144,12 @@ impl ShinkiEmuManagerController {
         #[cfg_attr(not(target_os = "android"), allow(unused_mut))]
         let mut configuration = configuration.values;
         #[cfg(target_os = "android")]
-        if candidate.plugin_id == "impacto" {
+        if candidate.plugin_id == "impacto"
+            && matches!(
+                recognition::core_source(self.registry.installed(), &candidate.plugin_id),
+                Some(recognition::CoreSource::Static(_)),
+            )
+        {
             use shinki_emu_manager_core::model::ConfigValue;
             let resources = crate::platform::bundled_resource_dir()
                 .ok_or("SHINKI_EMU_DATA_DIRECTORY_UNAVAILABLE")?
