@@ -1,5 +1,6 @@
 mod compatibility;
 mod core_identity;
+mod core_recognition;
 mod cores;
 mod cover;
 mod fields;
@@ -16,6 +17,7 @@ pub use core_identity::{
     AdapterIdentity, CoreIdentity, UpstreamIdentity, UpstreamRefKind, is_git_ref,
     validate_core_version,
 };
+pub use core_recognition::{CoreRecognition, CoreRecognitionRule};
 pub use fields::{KNOWN_CORE_IDS, is_known_core_id};
 pub use json::parse_unique_json;
 pub use patches::*;

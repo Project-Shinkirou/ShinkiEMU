@@ -34,6 +34,7 @@ pub(super) fn manifest(data: &Path, plugin: &str, stem: &str, bytes: &[u8]) -> P
     let manifest = core_package::CoreManifest {
         schema: core_package::CORE_PACKAGE_SCHEMA.into(), plugin_id: plugin.into(), library: library.clone(),
         version: "0.2.0".into(), identity: None,
+        recognition: Default::default(),
         abi: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
         files: vec![core_package::CoreFile { path: library.clone(), sha256: core_package::sha256_hex(bytes) }],
     };
@@ -61,6 +62,167 @@ pub(super) fn import(app: &mut ShinkiEmuManagerController, path: &Path) -> Strin
     app.add_game_directory(path).unwrap();
     settle(app);
     app.library.list_games().unwrap().into_iter().find(|game| Path::new(&game.location) == fs::canonicalize(path).unwrap()).unwrap().game_id
+}
+
+fn rules(value: serde_json::Value) -> shinki_emu_metadata::CoreRecognition {
+    serde_json::from_value(value).unwrap()
+}
+
+fn stage_official_rule(
+    app: &mut ShinkiEmuManagerController, id: &str, stem: &str, version: &str, rule: serde_json::Value,
+) {
+    use crate::core_download::tests::{entry, package_with_recognition};
+    let bytes = package_with_recognition(id, stem, version, rules(rule));
+    let archive = app.data_dir.join("release.zip");
+    fs::write(&archive, &bytes).unwrap();
+    let mut release = entry(id, &bytes);
+    release.version = version.into();
+    let mut catalog = crate::metadata_cache::tests::sample_catalog(&app.data_dir);
+    catalog.cores.entries = vec![release];
+    app.metadata_catalog = Some(catalog);
+    app.install_core(&archive).unwrap();
+}
+
+#[test]
+fn installed_declaration_recognizes_data_only_and_updates_after_package_lifecycle() {
+    use serde_json::json;
+    let root = tempfile::tempdir().unwrap();
+    let data = root.path().join("manager");
+    let path = root.path().join("title");
+    fs::create_dir_all(path.join("data")).unwrap();
+    fs::write(path.join("data/Engine.id"), b"xxXY").unwrap();
+    let mut app = open(&data);
+    stage_official_rule(&mut app, "rfvp", "shinki_emu_fixture", "0.2.0",
+        json!([{"path":"DATA/engine.id", "offset":2, "magic":"5859"}]));
+    assert!(!app.plugin_available("rfvp"));
+    drop(app);
+
+    let mut app = open(&data);
+    let id = import(&mut app, &path);
+    assert_eq!(app.game(&id).unwrap().family_id.as_deref(), Some("fvp"));
+    assert_eq!(app.candidates[&id].plugin_id, "rfvp");
+    assert!(app.registry.descriptors().next().is_none(), "the fixture library is not executable");
+    stage_official_rule(&mut app, "rfvp", "shinki_emu_fixture", "0.3.0",
+        json!([{"path":"data/engine.id", "offset":2, "magic":"595a"}]));
+    assert!(app.candidates.contains_key(&id), "pending updates cannot change effective rules");
+    drop(app);
+
+    let mut app = open(&data);
+    assert!(!app.candidates.contains_key(&id), "don't restore an earlier package's recognition");
+    app.set_host_wake(std::sync::Arc::new(|| {}));
+    settle(&mut app);
+    assert!(!app.candidates.contains_key(&id), "the persisted filesystem hint must miss too");
+    assert!(app.probe_choices[&id].is_empty());
+    stage_official_rule(&mut app, "rfvp", "shinki_emu_fixture", "0.4.0",
+        json!([{"path":"data/engine.id", "offset":2, "magic":"5859"}]));
+    drop(app);
+
+    let mut app = open(&data);
+    app.set_host_wake(std::sync::Arc::new(|| {}));
+    settle(&mut app);
+    assert_eq!(app.candidates[&id].plugin_id, "rfvp", "the unchanged game must see the newly installed rule");
+    assert!(app.registry.descriptors().next().is_none());
+    app.uninstall_core("rfvp").unwrap();
+    drop(app);
+
+    let app = open(&data);
+    assert!(!app.plugin_available("rfvp"));
+    assert!(!app.candidates.contains_key(&id));
+    assert_eq!(app.library.list_games().unwrap().len(), 1);
+}
+
+#[test]
+fn declared_collisions_produce_only_catalog_candidates_without_preference() {
+    use serde_json::json;
+    let root = tempfile::tempdir().unwrap();
+    let data = root.path().join("manager");
+    let path = root.path().join("title");
+    fs::create_dir_all(&path).unwrap();
+    fs::write(path.join("engine.id"), b"engine marker").unwrap();
+    let mut app = open(&data);
+    for (plugin, stem) in [("siglus_rs", "shinki_emu_second"), ("cmvs-rs", "shinki_emu_first")] {
+        stage_official_rule(&mut app, plugin, stem, "0.2.0", json!([{"path":"engine.id"}]));
+    }
+    drop(app);
+    let unknown = "unknown.third-party";
+    let library = manifest(&data, unknown, "unknown", b"self-hashed unknown library");
+    let manifest_path = library.with_file_name("core.json");
+    let mut receipt: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    receipt["recognition"] = json!([{"path":"engine.id"}]);
+    fs::write(&manifest_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+
+    let mut app = open(&data);
+    let id = import(&mut app, &path);
+    let candidates = &app.probe_choices[&id];
+    assert_eq!(candidates.iter().map(|candidate| candidate.plugin_id.as_str()).collect::<Vec<_>>(), ["siglus_rs", "cmvs-rs"]);
+    assert!(app.game(&id).unwrap().family_id.is_none());
+    assert!(!app.candidates.contains_key(&id));
+    assert!(!app.plugin_available(unknown));
+    assert!(!app.registry.installed().contains_key(unknown));
+    assert!(app.set_game_emulator(&id, unknown).is_err());
+    assert_eq!(app.diagnose_core(unknown).unwrap_err(), "SHINKI_EMU_CORE_UNKNOWN_PLUGIN");
+    assert!(app.registry.descriptors().next().is_none());
+
+    // Even an advertised archive with a matching digest cannot extend the roster.
+    let archive = data.join("unknown.zip");
+    let bytes = crate::core_download::tests::package_for(unknown, "shinki_emu_unknown");
+    fs::write(&archive, &bytes).unwrap();
+    let mut catalog = crate::metadata_cache::tests::sample_catalog(&data);
+    catalog.cores.entries = vec![crate::core_download::tests::entry(unknown, &bytes)];
+    app.metadata_catalog = Some(catalog);
+    assert!(app.online_core(unknown).is_none());
+    assert!(app.install_core(&archive).is_err());
+}
+
+#[test]
+fn unrecognized_import_needs_explicit_confirmation_and_registers_only_the_scanned_root() {
+    use shinki_emu_manager::SnackbarOutcome;
+    use shinki_emu_manager_core::detection::EngineDetection;
+    let root = tempfile::tempdir().unwrap();
+    let data = root.path().join("manager");
+    let chosen = root.path().join("chosen");
+    let nested = chosen.join("nested");
+    let empty = root.path().join("empty");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir(&empty).unwrap();
+    fs::write(nested.join("asset.bin"), b"ordinary file without a format signature").unwrap();
+    let mut app = open(&data);
+    app.set_host_wake(std::sync::Arc::new(|| {}));
+    settle(&mut app);
+    app.register_library_root(fs::canonicalize(&chosen).unwrap(), false).unwrap();
+    settle(&mut app);
+    app.refresh_library().unwrap();
+    settle(&mut app);
+    assert!(app.library.list_games().unwrap().is_empty());
+    assert!(app.snackbar_action().is_err(), "background scans never admit a game");
+    app.add_game_directory(&chosen).unwrap();
+    settle(&mut app);
+    assert!(app.library.list_games().unwrap().is_empty());
+    assert!(!app.snackbar.view().action.is_empty());
+    let moved = root.path().join("moved");
+    fs::rename(&chosen, &moved).unwrap();
+    assert!(app.snackbar_action().is_err(), "the request cannot admit a missing root");
+    fs::rename(&moved, &chosen).unwrap();
+    app.add_game_directory(&chosen).unwrap();
+    settle(&mut app);
+
+    app.add_game_directory(&empty).unwrap();
+    settle(&mut app);
+    assert!(app.snackbar_action().is_err(), "a later empty import invalidates the previous offer");
+    assert!(app.library.list_games().unwrap().is_empty());
+
+    app.add_game_directory(&chosen).unwrap();
+    settle(&mut app);
+    assert!(matches!(app.snackbar_action().unwrap(), SnackbarOutcome::Model(_)));
+    let games = app.library.list_games().unwrap();
+    let [game] = games.as_slice() else { panic!("only the chosen root may be added") };
+    assert_eq!(Path::new(&game.location), fs::canonicalize(&chosen).unwrap());
+    assert_eq!(app.selected_case_id.as_deref(), Some(game.game_id.as_str()));
+    assert!(game.family_id.is_none());
+    assert!(app.library.app_state::<Vec<EngineDetection>>(&format!("recognition:{}", game.game_id)).unwrap().unwrap().is_empty());
+    assert!(app.registry.descriptors().next().is_none());
+    assert!(app.snackbar_action().is_err());
+    assert_eq!(fs::read(nested.join("asset.bin")).unwrap(), b"ordinary file without a format signature");
 }
 
 #[test]
@@ -96,6 +258,7 @@ fn multiple_plugins_and_families_need_choice_and_never_replace_saved_binding() {
     fs::create_dir(&path).unwrap();
     fs::write(path.join("resource.bin"), ps2a()).unwrap();
     let data = root.path().join("manager");
+    manifest(&data, "cmvs-rs", "selectable", b"installed core for an explicit choice");
     let mut app = open(&data);
     let id = import(&mut app, &path);
     assert_eq!(app.probe_choices[&id].len(), 2);
@@ -127,7 +290,9 @@ fn missing_saved_plugin_never_rebinds_to_a_new_catalog_choice() {
     let root = tempfile::tempdir().unwrap();
     let game = root.path().join("game");
     write_game(&game);
-    let mut app = open(&root.path().join("manager"));
+    let data = root.path().join("manager");
+    manifest(&data, "rfvp", "selectable", b"installed core for an explicit choice");
+    let mut app = open(&data);
     let id = import(&mut app, &game);
     app.library.select_game_emulator(&id, "fvp", "removed.user.plugin").unwrap();
     import(&mut app, &game);
@@ -197,11 +362,19 @@ mod native_consumer {
         let selected = install(&data, "SHINKI_TEST_NATIVE_FIXTURE", "rfvp", "selected");
         let other = install(&data, "SHINKI_TEST_NATIVE_ALTERNATIVE", "siglus_rs", "other");
         let failure = install(&data, "SHINKI_TEST_NATIVE_FAILURE", "ethornell-rs", "failure");
+        let mut receipt = core_package::read_manifest(selected.parent().unwrap()).unwrap();
+        receipt.recognition = rules(serde_json::json!([{"path":"engine.id", "magic":"53484b31"}]));
+        fs::write(selected.with_file_name("core.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let declared_game = root.path().join("declared");
+        fs::create_dir(&declared_game).unwrap();
+        fs::write(declared_game.join("engine.id"), b"SHK1").unwrap();
         let game = root.path().join("game");
         write_game(&game);
         let mut app = open(&data);
         let initial = app.model().unwrap();
         assert!(initial.cores.items.iter().all(|core| core.capabilities.is_empty()));
+        let declared = import(&mut app, &declared_game);
+        assert_eq!(app.candidates[&declared].plugin_id, "rfvp");
         let id = import(&mut app, &game);
         app.select_case(&id).unwrap();
         app.search("").unwrap();

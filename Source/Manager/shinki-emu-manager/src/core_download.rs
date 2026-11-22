@@ -491,6 +491,12 @@ pub(crate) mod tests {
 
     /// A valid core package for `plugin_id` whose library is `<stem>.<dll>`.
     pub(crate) fn package_for(plugin_id: &str, stem: &str) -> Vec<u8> {
+        package_with_recognition(plugin_id, stem, "0.2.0", Default::default())
+    }
+
+    pub(crate) fn package_with_recognition(
+        plugin_id: &str, stem: &str, version: &str, recognition: shinki_emu_metadata::CoreRecognition,
+    ) -> Vec<u8> {
         use std::io::Cursor;
         let library = format!("{stem}.{}", std::env::consts::DLL_EXTENSION);
         let files: [(&str, &[u8]); 2] = [(&library, b"library bytes"), ("licenses/LICENSE.txt", b"license")];
@@ -506,8 +512,9 @@ pub(crate) mod tests {
             schema: core_package::CORE_PACKAGE_SCHEMA.into(),
             plugin_id: plugin_id.into(),
             library: library.clone(),
-            version: "0.2.0".into(),
+            version: version.into(),
             identity: None,
+            recognition,
             abi: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
             files: listed,
         })

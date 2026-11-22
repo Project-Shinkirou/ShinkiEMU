@@ -20,6 +20,8 @@ pub struct Core {
     pub artifact_kind: String,
     pub resources: Vec<String>,
     pub licenses: Vec<String>,
+    #[serde(default)]
+    pub recognition: shinki_emu_metadata::CoreRecognition,
     pub supported_targets: Vec<String>,
     #[serde(default)]
     pub static_manager_targets: Vec<String>,
