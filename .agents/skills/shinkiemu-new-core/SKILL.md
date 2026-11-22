@@ -217,7 +217,7 @@ reason = "<具体原因>"
 移动端 Manager 不加载下载的动态库。三处必须一致，`validate_static_dependencies` 会比对前两处：
 
 1. `build/cores.toml`：`static_manager_targets` 列 triple，`static_features` 列静态构建 feature。
-2. `Source/Manager/shinki-emu-manager/Cargo.toml` 对应的 `cfg(target_os = "android")` / `cfg(target_os = "ios")` / `cfg(target_env = "ohos")` 段：`path` 依赖，`default-features = false`，`features` 与 `static_features` 完全相同。Musica 是现成例子。
+2. `Source/Manager/shinki-emu-manager/Cargo.toml`：覆盖整个平台时用 `cfg(target_os = "android")`、`cfg(target_os = "ios")` 或 `cfg(target_env = "ohos")`；只覆盖个别 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`。一个核心在同一 triple 上只声明一次。树内核心用 `path` 依赖，设置 `default-features = false`，`features` 与 `static_features` 完全相同。
 3. `Source/Manager/shinki-emu-manager/src/static_cores.rs` 的 `STATIC_CORES`：例如 `("shinki.emu.musica", shinki_emu_musica::musica_query)`。GUI owner 和 headless runner 共用这张表。
 
 打包会把 `embedded-cores.json` 和嵌入核心的许可写进 Manager 包。
