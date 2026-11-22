@@ -15,6 +15,7 @@ use std::{
 
 pub(crate) const ANDROID_API: u32 = 28;
 const ANDROID_PAGE: u64 = 16 * 1024;
+const NT_ANDROID_TYPE_IDENT: object::elf::NoteType = object::elf::NoteType(1);
 
 #[derive(Debug)]
 pub struct BinaryInfo {
@@ -177,7 +178,7 @@ fn android_elf<E: FileHeader>(
                 while let Some(note) = notes.next()? {
                     // NT_ANDROID_TYPE_IDENT from the NDK CRT; the first word is
                     // the target API, independent of the NDK release string.
-                    if note.name() == b"Android" && note.n_type(endian) == 1 {
+                    if note.name() == b"Android" && note.n_type(endian) == NT_ANDROID_TYPE_IDENT {
                         let word = note
                             .desc()
                             .first_chunk()
