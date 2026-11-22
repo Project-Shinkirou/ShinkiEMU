@@ -1,8 +1,8 @@
 import { MaterialPalette, MaterialText, MaterialTypography, FilledButton, OutlineButton, TextButton, HorizontalDivider, Icon, ScrollView } from "@material";
-import { App, Network, Onboarding } from "../globals.slint";
+import { App, Network, Onboarding, Settings } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { SettingGroup, SwitchRow } from "./settings/common.slint";
-import { PathRow, EmptyLine } from "./settings/roots.slint";
+import { PathRow, EmptyLine, SharedStorageAccess } from "./settings/roots.slint";
 import { ThemeChooser, CoverSizeChooser } from "./settings/appearance.slint";
 
 component StepDots {
@@ -79,6 +79,9 @@ component RootsStep {
             icon: Icons.folder-open;
             title: @tr("添加库目录");
             description: @tr("选一个存放游戏的文件夹，ShinkiEMU 会自动识别游戏。也可以稍后添加。");
+        }
+        if Settings.android-storage-access-available : SharedStorageAccess {
+            action-label: @tr("允许访问所有文件");
         }
         SettingGroup {
             flush: true;

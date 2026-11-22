@@ -1,6 +1,7 @@
 import { MaterialPalette, MaterialText, MaterialTypography, LinearProgressIndicator, OutlineButton, TextButton } from "@material";
 import { Library } from "../globals.slint";
 import { Icons } from "../icons.slint";
+import { DialogSurface, Scrim } from "./dialogs.slint";
 import { Theme } from "../theme.slint";
 
 // Linear progress that also animates while the total is unknown (Material's indicator stays static).
@@ -85,4 +86,65 @@ export component LibraryScanStatus {
             }
         }
     }
+}
+
+export component LibraryImportDialog {
+    in property <bool> can-cancel;
+    callback cancel();
+
+    Scrim {
+        width: root.width;
+        height: root.height;
+    }
+
+    keys := FocusScope {
+        width: root.width;
+        height: root.height;
+        key-pressed(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            if event.text == Key.Return || event.text == " " {
+                root.cancel();
+                return accept;
+            }
+            reject
+        }
+
+        surface := DialogSurface {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            width-limit: root.width - 32px;
+            height-limit: root.height - 32px;
+            surface-max-width: 460px;
+            title: @tr("正在导入游戏目录…");
+            accessible-role: groupbox;
+            accessible-label: self.title;
+            escape => { root.cancel(); }
+
+            if Library.prepare-detail != "" && Library.prepare-detail != surface.title : MaterialText {
+                text: Library.prepare-detail;
+                style: MaterialTypography.body-medium;
+                color: MaterialPalette.on-surface-variant;
+                wrap: word-wrap;
+                overflow: clip;
+            }
+
+            PrepareProgress {
+                progress: Library.prepare-progress;
+                accessible-label: surface.title;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                TextButton {
+                    enabled: root.can-cancel;
+                    text: @tr("取消");
+                    clicked => { root.cancel(); }
+                }
+            }
+        }
+    }
+
+    init => { surface.focus(); }
 }

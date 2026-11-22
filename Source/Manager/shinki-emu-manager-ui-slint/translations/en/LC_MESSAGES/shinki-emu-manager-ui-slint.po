@@ -636,9 +636,6 @@ msgstr "Online"
 msgid "版本未知"
 msgstr "Version unknown"
 
-msgid "更新到 {}"
-msgstr "Update to {}"
-
 msgid "安装"
 msgstr "Install"
 
@@ -2725,11 +2722,14 @@ msgstr "Couldn't read the folder"
 msgid "请检查文件夹权限，或选择其他文件夹。"
 msgstr "Check the folder's permissions or choose a different folder."
 
-msgid "文件夹内容过多"
-msgstr "Too many files in the folder"
+msgid "扫描未完成"
+msgstr "Scan incomplete"
 
-msgid "请选择范围更小的游戏文件夹。"
-msgstr "Choose a game folder with fewer files."
+msgid "已识别 {added} 部新作品；部分目录未扫描"
+msgstr "Found {added} new games; some folders were not scanned"
+
+msgid "部分目录未扫描"
+msgstr "Some folders were not scanned"
 
 msgid "文件夹名称包含不支持的字符"
 msgstr "The folder name contains unsupported characters"
@@ -2826,3 +2826,9 @@ msgstr "You can grant ShinkiEMU all files access in system settings."
 
 msgid "此游戏文件夹无法通过本机路径读写，不能应用文件补丁。"
 msgstr "File patches need direct read and write access to the game folder."
+
+msgid "允许访问所有文件"
+msgstr "Allow access to all files"
+
+msgid "更新核心"
+msgstr "Update core"
