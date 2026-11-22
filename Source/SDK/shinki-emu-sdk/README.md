@@ -26,8 +26,9 @@ SDK 提供移植核心共同使用的模块，当前替代 Musica 内部的文�
 
 `video-ffmpeg` 的 `VideoFramePacket.color` 描述实际 BGRA8 呈现转换。AVFrame 的已知 matrix/range 配置 swscale，随后从 `sws_getColorspaceDetails` 读取实际使用的系数和范围；无标签 WMV/AVI 沿用现有解码器的 SDR 呈现策略，不按 raster 尺寸猜矩阵，也不把输出 BGRA 误报为输入 RGB。显式 HDR/未支持标签仍保留拒绝状态，这不宣称恢复了未标记源的原始色彩意图。storage 与 viewport 分开传递。公开 `subtitle_scene` fixture 覆盖驻留、position-only、暂停、回退、销毁重建和带偏移 viewport。
 
+`TextScene::frame_parts` 将生命周期命令和各文字区域的绘制命令分开。ADV32 先提交生命周期命令，再按场景顺序交错提交图层和文字。`SceneTextureResidency::prepare_with_sources` 保留这些图层的源裁剪矩形；没有裁剪的核心仍使用 `prepare`。
 
-SDK 不创建 EngineSession、VN session、PlatformHost 或 package，不拥有游戏存档与归档语义。Musica 直接使用 RoukakuEngine 的 `WgpuOffscreenRenderer`，SDK 无需再包一层渲染 provider。
+SDK 不创建 EngineSession、VN session、PlatformHost 或 package，不拥有游戏存档与归档语义。
 
 ```sh
 cargo test -p shinki-emu-sdk

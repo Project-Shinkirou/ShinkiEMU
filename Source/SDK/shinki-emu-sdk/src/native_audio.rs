@@ -1,7 +1,7 @@
 use crate::runtime::{SessionError, SessionResult};
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
@@ -10,9 +10,10 @@ fn error(code: &str, message: &str) -> SessionError {
     SessionError::invalid(code, message)
 }
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use roukaku_platform::{AudioOutputLane, AudioWakeRegistration};
+use roukaku_platform::{AudioOutputLane, AudioOutputRequest, AudioWakeRegistration};
 use roukaku_platform_common::{
     AudioQueueTelemetryReader, NativeAudioConsumer, NativeAudioProducer, NativeAudioQueue,
+    NullAudioDevice,
 };
 
 /// The VM/Kira/movie source clock written to every native output.
@@ -44,7 +45,7 @@ impl NativeAudioProgressReader {
 
 /// Maps the device queue's consumed-sample counter back to source frames.
 struct PlaybackClock {
-    telemetry: AudioQueueTelemetryReader,
+    telemetry: AudioTelemetry,
     device_rate: u64,
     device_channels: u64,
     /// Device frames emitted before the first source frame (resampler delay).
@@ -54,9 +55,27 @@ struct PlaybackClock {
     accepted: AtomicU64,
     played: AtomicU64,
 }
+
+enum AudioTelemetry {
+    Device(AudioQueueTelemetryReader),
+    Null(Arc<Mutex<NativeAudioProducer>>),
+}
+
+impl AudioTelemetry {
+    fn consumed_samples(&self) -> u64 {
+        match self {
+            Self::Device(reader) => reader.snapshot().consumed_samples,
+            // Keep reads nonblocking while the null endpoint's producer waits for room.
+            Self::Null(producer) => producer
+                .try_lock()
+                .map_or(0, |value| value.consumed_samples()),
+        }
+    }
+}
+
 impl PlaybackClock {
     fn new(
-        telemetry: AudioQueueTelemetryReader,
+        telemetry: AudioTelemetry,
         device_rate: u32,
         device_channels: u16,
         delay_frames: usize,
@@ -104,8 +123,7 @@ impl PlaybackClock {
         // Device latency varies per callback; the watermark never retracts.
         let audible = self
             .telemetry
-            .snapshot()
-            .consumed_samples
+            .consumed_samples()
             .saturating_sub(self.latency_samples.load(Ordering::Acquire))
             / self.device_channels;
         let source = u128::from(audible.saturating_sub(self.delay_frames))
@@ -126,7 +144,8 @@ impl PlaybackClock {
 
 pub struct NativeAudioOutput {
     pipeline: Pipeline,
-    _stream: cpal::Stream,
+    _stream: Option<cpal::Stream>,
+    _null_device: Option<NullAudioDevice>,
 }
 impl NativeAudioOutput {
     pub fn open(stop: Arc<AtomicBool>) -> SessionResult<Self> {
@@ -161,7 +180,7 @@ impl NativeAudioOutput {
             NativeAudioQueue::create(4, chunk_samples, wake.clone())
                 .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "cannot create device queue"))?;
         let clock = Arc::new(PlaybackClock::new(
-            telemetry,
+            AudioTelemetry::Device(telemetry),
             supported.sample_rate(),
             supported.channels(),
             converter.output_delay(),
@@ -200,7 +219,7 @@ impl NativeAudioOutput {
         Ok(Self {
             pipeline: Pipeline {
                 blocks: BlockWriter {
-                    producer,
+                    producer: Producer::Device(producer),
                     partial: vec![0.0; chunk_samples],
                     partial_len: 0,
                     submitted: 0,
@@ -209,7 +228,52 @@ impl NativeAudioOutput {
                 converter,
                 clock,
             },
-            _stream: stream,
+            _stream: Some(stream),
+            _null_device: None,
+        })
+    }
+
+    /// Explicit audio clock for automation. Never selected on device failure.
+    pub fn open_null() -> SessionResult<Self> {
+        let request = AudioOutputRequest {
+            sample_rate: SOURCE_RATE,
+            channels: SOURCE_CHANNELS,
+            chunk_frames: 512,
+            max_buffered_frames: 2048,
+            start_paused: false,
+            capture_samples: false,
+        };
+        let (device, producer) =
+            NullAudioDevice::open(request, AudioWakeRegistration::default())
+                .map_err(|cause| error("SHINKI_EMU_AUDIO_NULL", &cause.to_string()))?;
+        let producer = Arc::new(Mutex::new(producer));
+        let converter = crate::NativeAudioConverter::new(
+            SOURCE_RATE,
+            SOURCE_CHANNELS,
+            SOURCE_RATE,
+            SOURCE_CHANNELS,
+        )
+        .map_err(conversion_error)?;
+        let clock = Arc::new(PlaybackClock::new(
+            AudioTelemetry::Null(producer.clone()),
+            SOURCE_RATE,
+            SOURCE_CHANNELS,
+            0,
+        ));
+        Ok(Self {
+            pipeline: Pipeline {
+                blocks: BlockWriter {
+                    producer: Producer::Null(producer),
+                    partial: vec![0.0; 512 * usize::from(SOURCE_CHANNELS)],
+                    partial_len: 0,
+                    submitted: 0,
+                },
+                failed: Arc::new(AtomicBool::new(false)),
+                converter,
+                clock,
+            },
+            _stream: None,
+            _null_device: Some(device),
         })
     }
     /// Observes the device queue; call `check` separately for device failure.
@@ -305,12 +369,27 @@ impl Pipeline {
 }
 /// Regroups device-format samples into the queue's fixed block size.
 struct BlockWriter {
-    producer: NativeAudioProducer,
+    producer: Producer,
     partial: Vec<f32>,
     partial_len: usize,
     /// Device samples handed to the queue.
     submitted: u64,
 }
+
+enum Producer {
+    Device(NativeAudioProducer),
+    Null(Arc<Mutex<NativeAudioProducer>>),
+}
+
+impl Producer {
+    fn with_lane<T>(&mut self, action: impl FnOnce(&mut NativeAudioProducer) -> T) -> T {
+        match self {
+            Self::Device(producer) => action(producer),
+            Self::Null(producer) => action(&mut producer.lock().expect("audio output producer")),
+        }
+    }
+}
+
 impl BlockWriter {
     fn push(
         &mut self,
@@ -329,7 +408,7 @@ impl BlockWriter {
             data = &data[count..];
             if self.partial_len == self.partial.len() {
                 self.producer
-                    .wait_for_capacity(self.partial.len(), stop)
+                    .with_lane(|lane| lane.wait_for_capacity(self.partial.len(), stop))
                     .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
                 if failed.load(Ordering::Acquire) {
                     return Err("SHINKI_EMU_AUDIO_DEVICE".into());
@@ -340,7 +419,7 @@ impl BlockWriter {
                 let len = self.partial.len();
                 self.partial = self
                     .producer
-                    .submit(std::mem::take(&mut self.partial))
+                    .with_lane(|lane| lane.submit(std::mem::take(&mut self.partial)))
                     .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
                 self.partial_len = 0;
                 self.submitted += len as u64;
@@ -408,12 +487,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn null_output_advances_the_same_clock_without_opening_a_device() {
+        let stop = AtomicBool::new(false);
+        let mut output = NativeAudioOutput::open_null().unwrap();
+        output.write(vec![0.25; 1024], &stop).unwrap().unwrap();
+        assert_eq!(output.progress().accepted_frames, 512);
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while output.progress().played_frames < 512 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(output.progress().played_frames, 512);
+        stop.store(true, Ordering::Release);
+        assert!(output.write(vec![0.0; 1024], &stop).unwrap().is_none());
+    }
+
+    #[test]
     fn progress_follows_audible_device_frames_and_never_exceeds_accepted() {
         // 96 kHz stereo device with 8 frames of resampler delay: 2 device
         // frames per source frame, 96 device frames per queued chunk.
         let (mut producer, mut consumer, telemetry) =
             NativeAudioQueue::create(4, 192, AudioWakeRegistration::default()).unwrap();
-        let clock = Arc::new(PlaybackClock::new(telemetry, 96_000, 2, 8));
+        let clock = Arc::new(PlaybackClock::new(
+            AudioTelemetry::Device(telemetry),
+            96_000,
+            2,
+            8,
+        ));
         let reader = NativeAudioProgressReader {
             clock: clock.clone(),
         };
@@ -455,7 +555,7 @@ mod tests {
         let (producer, mut consumer, _) =
             NativeAudioQueue::create(4, 8, AudioWakeRegistration::default()).unwrap();
         let mut blocks = BlockWriter {
-            producer,
+            producer: Producer::Device(producer),
             partial: vec![0.0; 8],
             partial_len: 0,
             submitted: 0,
@@ -483,14 +583,14 @@ mod tests {
             NativeAudioQueue::create(64, 1024, AudioWakeRegistration::default()).unwrap();
         let converter = crate::NativeAudioConverter::new(48_000, 2, 44_100, 2).unwrap();
         let clock = Arc::new(PlaybackClock::new(
-            telemetry,
+            AudioTelemetry::Device(telemetry),
             44_100,
             2,
             converter.output_delay(),
         ));
         let mut pipeline = Pipeline {
             blocks: BlockWriter {
-                producer,
+                producer: Producer::Device(producer),
                 partial: vec![0.0; 1024],
                 partial_len: 0,
                 submitted: 0,
