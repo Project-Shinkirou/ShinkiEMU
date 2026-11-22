@@ -10,7 +10,7 @@ runtime = ["dep:serde", "dep:shinki-emu-abi"]
 video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile", "dep:ffmpeg-next"]
 subtitle = ["dep:roukaku-subtitle"]
 audio = ["dep:kira", "dep:symphonia"]
-device-audio = ["runtime", "dep:rubato", "dep:cpal", "dep:roukaku-platform", "dep:roukaku-platform-common"]
+device-audio = ["runtime", "dep:rubato", "dep:cpal", "dep:roukaku-platform", "dep:roukaku-platform-common", "dep:ndk-context"]
 default = ["text", "image", "archive", "cache"]
 archive = ["dep:roukaku-core", "dep:roukaku-byte-source", "dep:serde", "dep:serde_json", "dep:schemars"]
 cache = ["dep:roukaku-core", "dep:lru", "dep:windows"]
@@ -39,6 +39,9 @@ lru = { workspace = true, optional = true }
 roukaku-core = { workspace = true, optional = true }
 roukaku-media-core = { workspace = true }
 roukaku-text = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = { version = "0.1.1", optional = true }
 
 # Unify the decoder's native linkage with the target's pinned static vcpkg tree.
 [target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "android", target_env = "ohos"))'.dependencies]
