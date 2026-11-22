@@ -57,6 +57,7 @@ fn record() -> MetadataRecord {
         provider: MetadataProviderId::Vndb,
         remote_id: "v1".into(),
         title: "Search result".into(),
+        localized_titles: Vec::new(),
         description: None,
         alternate_titles: vec!["Alias".into()],
         developers: vec!["Developer".into()],
@@ -160,6 +161,112 @@ fn metadata_linked_title_persists_and_unlink_hides_stale_snapshot() {
         app.refresh_metadata("vndb").unwrap_err(),
         "SHINKI_EMU_METADATA_NOT_LINKED"
     );
+}
+
+#[test]
+fn cached_work_titles_follow_live_language_without_changing_identity() {
+    use shinki_emu_manager_ui_slint::{ManagerWindow, i18n};
+    use slint::platform::{
+        Platform, WindowAdapter,
+        software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
+    };
+
+    struct SoftwarePlatform;
+    impl Platform for SoftwarePlatform {
+        fn create_window_adapter(
+            &self,
+        ) -> Result<std::rc::Rc<dyn WindowAdapter>, slint::PlatformError> {
+            Ok(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
+        }
+    }
+
+    slint::platform::set_platform(Box::new(SoftwarePlatform)).unwrap();
+    let _window = ManagerWindow::new().unwrap();
+    let original_locale = i18n::current();
+    let root = tempfile::tempdir().unwrap();
+    let mut app = controller(root.path());
+    let (runtime, commands, _completions) = MetadataRuntime::scripted();
+    app.metadata = runtime;
+    add_game(&mut app, "first");
+    add_game(&mut app, "legacy");
+
+    let cached_record = |title: &str, titles| {
+        let mut record = serde_json::to_value(record()).unwrap();
+        record["title"] = serde_json::json!(title);
+        if let Some(titles) = titles {
+            record["localized_titles"] = titles;
+        }
+        serde_json::from_value::<MetadataRecord>(record).unwrap()
+    };
+    let vndb = cached_record(
+        "Original work",
+        Some(serde_json::json!([
+            {"language": "en", "title": "English Work", "official": true},
+            {"language": "ja", "title": "日本語の作品", "main": true},
+            {"language": "zh-Hant", "title": "繁體作品"}
+        ])),
+    );
+    app.link_metadata("first", MetadataProviderId::Vndb, vndb, None)
+        .unwrap();
+    let mut bangumi = cached_record(
+        "Bangumi original",
+        Some(serde_json::json!([{"language": "zh", "title": "简体作品"}])),
+    );
+    bangumi.provider = MetadataProviderId::Bangumi;
+    bangumi.remote_id = "17".into();
+    app.link_metadata("first", MetadataProviderId::Bangumi, bangumi, None)
+        .unwrap();
+    app.link_metadata(
+        "legacy",
+        MetadataProviderId::Vndb,
+        cached_record("Midway", None),
+        None,
+    )
+    .unwrap();
+
+    app.selected_case_id = Some("first".into());
+    app.patch_game_id = Some("first".into());
+    releases(
+        &mut app,
+        "first",
+        r#"[{"release_id":"r17","title":"Retail release","released":null,"platforms":[]}]"#,
+    );
+    app.pin_release("r17").unwrap();
+    let identities = app.library.external_identities("first").unwrap();
+    for (locale, expected, first_card) in [
+        ("en", "English Work", "first"),
+        ("ja", "日本語の作品", "legacy"),
+        ("zh-CN", "简体作品", "legacy"),
+    ] {
+        let mut settings = app.appearance.clone();
+        settings.language = locale.into();
+        let model = app.set_appearance(settings).unwrap();
+        assert_eq!(model.selection.game.title, expected);
+        assert_eq!(model.patch.game.title, expected);
+        assert_eq!(model.library.games[0].id, first_card);
+        assert!(model.library.games.iter().any(|card| card.title == expected));
+        assert!(model.library.games.iter().any(|card| card.title == "Midway"));
+        assert_eq!(model.selection.pinned_release, "r17");
+        assert_eq!(model.selection.releases[0].title, "Retail release");
+    }
+
+    for query in ["ALIAS", "original work", "english work", "imported folder"] {
+        app.search_query = query.into();
+        app.patch_query = query.into();
+        let model = app.model().unwrap();
+        assert!(model.library.games.iter().any(|card| card.id == "first"));
+        assert!(model.patch.games.iter().any(|card| card.id == "first"));
+    }
+    app.library.set_game_user_title("first", Some("My title")).unwrap();
+    let mut settings = app.appearance.clone();
+    settings.language = "en".into();
+    let model = app.set_appearance(settings).unwrap();
+    assert_eq!(model.selection.game.title, "My title");
+    assert_eq!(model.patch.game.title, "My title");
+    assert_eq!(app.game("first").unwrap().title, "Imported folder");
+    assert_eq!(app.library.external_identities("first").unwrap(), identities);
+    assert!(commands.try_recv().is_err());
+    i18n::apply(original_locale.id());
 }
 
 #[test]

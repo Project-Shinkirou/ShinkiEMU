@@ -11,8 +11,9 @@ use shinki_emu_manager_ui_slint::{
 impl ShinkiEmuManagerController {
     pub(super) fn model(&mut self) -> Result<ManagerViewModel, String> {
         let now_ms = unix_time_ms()?;
-        let query = self.search_query.trim().to_ascii_lowercase();
-        let patch_query = self.patch_query.trim().to_ascii_lowercase();
+        let locale = shinki_emu_manager_ui_slint::i18n::current().id();
+        let query = self.search_query.trim();
+        let patch_query = self.patch_query.trim();
         let shinki_emu_manager_core::LibrarySnapshot {
             games,
             play_stats,
@@ -24,6 +25,7 @@ impl ShinkiEmuManagerController {
             .map_err(|error| error.to_string())?;
         let mut selected = None;
         let mut metadata = None;
+        let mut launch_title = None;
         let mut rows = Vec::new();
         let mut patch_games = Vec::new();
         let mut patch = PatchViewModel {
@@ -37,16 +39,34 @@ impl ShinkiEmuManagerController {
                 .get(&game.game_id)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let record = Self::metadata_from_snapshot(&game.game_id, linked, &metadata_snapshots)?;
-            let has_metadata = record.is_some();
+            let records = Self::metadata_from_snapshot(&game.game_id, linked, &metadata_snapshots)?;
+            let has_metadata = records.iter().any(Option::is_some);
+            let title = game
+                .user_title
+                .as_deref()
+                .or_else(|| records.iter().flatten().find_map(|record| record.localized_title(locale)))
+                .or_else(|| {
+                    records
+                        .iter()
+                        .flatten()
+                        .map(|record| record.title.as_str())
+                        .find(|title| !title.trim().is_empty())
+                })
+                .unwrap_or(&game.title);
+            let matches = |query| matches_game_title(&game, &records, title, query);
+            let patch_listed = matches(patch_query);
+            let library_listed = matches(query);
+            if title != game.display_title() {
+                game.title = title.to_owned();
+            }
             if self.selected_case_id.as_deref() == Some(game.game_id.as_str()) {
-                if let Some(record) = record {
-                    game.title.clone_from(&record.title);
-                    metadata = Some(record);
-                }
+                metadata = records.into_iter().flatten().next();
                 selected = Some(game.clone());
-            } else if let Some(record) = record {
-                game.title = record.title;
+            }
+            if self.active.as_ref().is_some_and(|active| {
+                active.game_id == game.game_id && active.closing.is_none()
+            }) {
+                launch_title = Some(game.display_title().into());
             }
             let cover_uri = if has_metadata {
                 self.data_dir
@@ -58,13 +78,7 @@ impl ShinkiEmuManagerController {
             } else {
                 String::new()
             };
-            let matches = |query: &str| {
-                query.is_empty()
-                    || game.display_title().to_ascii_lowercase().contains(query)
-                    || game.game_id.to_ascii_lowercase().contains(query)
-            };
             let patch_selected = self.patch_game_id.as_deref() == Some(game.game_id.as_str());
-            let patch_listed = matches(&patch_query);
             if patch_selected || patch_listed {
                 let row = PatchGameViewModel {
                     id: game.game_id.clone(),
@@ -81,7 +95,7 @@ impl ShinkiEmuManagerController {
                     patch_games.push(row);
                 }
             }
-            if !matches(&query) {
+            if !library_listed {
                 continue;
             }
             let stats = play_stats
@@ -168,7 +182,7 @@ impl ShinkiEmuManagerController {
                     .get(&game.game_id)
                     .ok_or("SHINKI_EMU_LIBRARY_SNAPSHOT_STATS")?;
                 let mut view =
-                    self.selection_view(game, metadata.as_ref(), linked, stats, now_ms)?;
+                    self.selection_view(game, metadata.as_ref(), linked, stats, now_ms, locale)?;
                 if let Some((vn_id, _)) = versions.get(&game.game_id) {
                     view.other_versions = versions
                         .iter()
@@ -262,7 +276,7 @@ impl ShinkiEmuManagerController {
                     .collect(),
             },
             filters: self.filter_view()?,
-            session: self.session_view()?,
+            session: self.session_view(launch_title)?,
             onboarding: OnboardingViewModel { roots },
             store: self.store.view(),
         })
@@ -326,6 +340,7 @@ impl ShinkiEmuManagerController {
         linked: &[shinki_emu_manager_core::ExternalIdentityRecord],
         stats: &shinki_emu_manager_core::PlayStats,
         now_ms: i64,
+        locale: &str,
     ) -> Result<SelectionViewModel, String> {
         let history = self
             .library
@@ -414,7 +429,7 @@ impl ShinkiEmuManagerController {
                         tr!(
                             "已关联 {provider}：{title}",
                             provider = record.provider.as_str(),
-                            title = record.title
+                            title = record.localized_title(locale).unwrap_or(&record.title)
                         )
                     })
                 })
@@ -430,7 +445,7 @@ impl ShinkiEmuManagerController {
                 .map(|(candidate_id, (_, record))| MatchViewModel {
                     id: candidate_id.clone(),
                     provider: record.provider.as_str().into(),
-                    title: record.title.clone(),
+                    title: record.localized_title(locale).unwrap_or(&record.title).to_owned(),
                     aliases: record.alternate_titles.join(" / "),
                     release_date: record.release_date.clone().unwrap_or_default(),
                     developer: record.developers.join(" / "),
@@ -571,14 +586,15 @@ impl ShinkiEmuManagerController {
         notices
     }
 
-    fn session_view(&self) -> Result<SessionViewModel, String> {
+    fn session_view(&self, launch_title: Option<String>) -> Result<SessionViewModel, String> {
         let active = self
             .active
             .as_ref()
             .filter(|active| active.closing.is_none());
-        let launch_title = match active {
-            Some(active) => self.game(&active.game_id)?.display_title().into(),
-            None => String::new(),
+        let launch_title = match (active, launch_title) {
+            (Some(_), Some(title)) => title,
+            (Some(active), None) => self.game(&active.game_id)?.display_title().into(),
+            (None, _) => String::new(),
         };
         Ok(SessionViewModel {
             phase: if active.is_some_and(|active| active.opened) {
@@ -664,6 +680,28 @@ impl ShinkiEmuManagerController {
             })
             .unwrap_or_default()
     }
+}
+
+fn matches_game_title(
+    game: &GameRecord,
+    records: &[Option<MetadataRecord>; 2],
+    title: &str,
+    query: &str,
+) -> bool {
+    let contains = |text: &str| {
+        text.as_bytes()
+            .windows(query.len())
+            .any(|part| part.eq_ignore_ascii_case(query.as_bytes()))
+    };
+    query.is_empty()
+        || contains(title)
+        || (title != game.title && contains(&game.title))
+        || contains(&game.game_id)
+        || records.iter().flatten().any(|record| {
+            contains(&record.title)
+                || record.alternate_titles.iter().any(|alias| contains(alias))
+                || record.localized_titles.iter().any(|entry| contains(&entry.title))
+        })
 }
 
 fn menu_icon_name(icon: u32) -> &'static str {

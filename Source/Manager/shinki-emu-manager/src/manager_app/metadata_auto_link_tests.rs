@@ -86,6 +86,7 @@ fn record(remote_id: &str, title: &str, alternate: &[&str]) -> MetadataRecord {
         provider: MetadataProviderId::Vndb,
         remote_id: remote_id.into(),
         title: title.into(),
+        localized_titles: Vec::new(),
         description: None,
         alternate_titles: alternate.iter().map(|title| (*title).into()).collect(),
         developers: Vec::new(),
