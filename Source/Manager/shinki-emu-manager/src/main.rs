@@ -20,7 +20,7 @@ use std::process::ExitCode;
 // Native VM boot may hold large temporaries. Reserve once per session owner.
 const FAMILY_OWNER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
-// The command line is desktop-only: the Android activity has no arguments.
+// Android and OHOS enter via their native app shells.
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 #[derive(Parser)]
 #[command(version = shinki_emu_manager::version())]
@@ -33,6 +33,7 @@ struct Arguments {
 #[derive(clap::Subcommand)]
 enum Command {
     /// Run a core and capture frames without creating a window.
+    #[cfg(not(target_os = "ios"))]
     Headless(shinki_emu_headless::Arguments),
     /// Render the Manager UI with synthetic data and no OS window.
     HeadlessUi(shinki_emu_headless::ui::Arguments),
@@ -86,6 +87,7 @@ fn main() -> ExitCode {
         attach_cli_console();
         return match command {
             Command::Patch { command } => patch_cli::run(command),
+            #[cfg(not(target_os = "ios"))]
             Command::Headless(arguments) => shinki_emu_headless::run_cli(
                 arguments,
                 shinki_emu_manager::static_cores::STATIC_CORES,
