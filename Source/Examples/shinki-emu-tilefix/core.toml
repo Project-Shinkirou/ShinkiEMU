@@ -1,0 +1,43 @@
+# Append this snippet to build/cores.toml only in a disposable checkout.
+# Never register this fixture in the production build inventory or Manager.
+
+[[cores]]
+id = "shinki.example.tilefix"
+family_id = "tilefix"
+display_name = "Tilefix Example"
+family_name = "Tilefix"
+license = "MIT OR Apache-2.0"
+manifest = "Source/Examples/shinki-emu-tilefix/Cargo.toml"
+package = "shinki-emu-tilefix"
+features = ["dynamic-plugin-export"]
+dependencies = []
+artifact_kind = "rust-cdylib"
+resources = []
+licenses = ["LICENSE-MIT", "LICENSE-APACHE"]
+supported_targets = ["x86_64-pc-windows-msvc", "aarch64-linux-android"]
+publish_blocked = "Local contributor example; never distribute as an official core."
+
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "The contributor example packages only Windows x64 and Android arm64."
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "The contributor example packages only Windows x64 and Android arm64."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "The contributor example packages only Windows x64 and Android arm64."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "The contributor example uses the Android arm64 NDK target only."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "The contributor example is not linked into the iOS Manager."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "The contributor example is not linked into the iOS Manager."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "The contributor example is not linked into the iOS Manager."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "The contributor example is not linked into the OHOS Manager."

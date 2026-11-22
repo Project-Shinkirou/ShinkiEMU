@@ -1,0 +1,6 @@
+[
+  {"schema":"roukaku.user_input_sequence.v1","session":"tilefix","sequence":1,"tick":1,"event":{"type":"checkpoint","id":"initial"}},
+  {"schema":"roukaku.user_input_sequence.v1","session":"tilefix","sequence":2,"tick":10,"event":{"type":"keyboard","physical_key":"Space","logical_key":" ","state":"pressed","repeat":false}},
+  {"schema":"roukaku.user_input_sequence.v1","session":"tilefix","sequence":3,"tick":11,"event":{"type":"keyboard","physical_key":"Space","logical_key":" ","state":"released","repeat":false}},
+  {"schema":"roukaku.user_input_sequence.v1","session":"tilefix","sequence":4,"tick":30,"event":{"type":"checkpoint","id":"after-space"}}
+]
