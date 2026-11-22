@@ -16,15 +16,7 @@ enum Command {
 fn main() -> std::process::ExitCode {
     match Cli::parse().command {
         Command::Compare(arguments) => shinki_emu_headless::capture::compare_cli(arguments),
-        Command::Run(arguments) => {
-            let queries: &[(&str, shinki_emu_abi::Query)] = &[
-                #[cfg(feature = "static-cmvs")]
-                ("shinki.emu.cmvs", shinki_emu_cmvs::cmvs_query),
-                #[cfg(feature = "static-siglus")]
-                ("siglus_rs", shinki_emu_siglus_rs::query),
-            ];
-            shinki_emu_headless::run_cli(arguments, queries)
-        }
+        Command::Run(arguments) => shinki_emu_headless::run_cli(arguments, &[]),
         #[cfg(feature = "manager-ui")]
         Command::Ui(arguments) => shinki_emu_headless::ui::run_cli(arguments),
     }
