@@ -335,6 +335,75 @@ cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <ver
 
 The test-PKI HAP is an experimental distribution. Its signature, packaged files and native-library closure are verified, but neither device/emulator launch nor retail installability has been verified. Device launch checks were waived for this release; a DevEco/AppGallery Connect-issued profile would be needed for an installability assessment.
 
+### Bundled Musica device acceptance
+
+The default OHOS Manager still embeds Musica statically. The local `ohos-bundled-musica`
+build replaces that registration with one separately linked Musica library in the
+same signed HAP. It is not a release artifact. OHOS disables core downloads in
+either mode.
+
+Use a clean checkout at the candidate commit, the DevEco SDK above, and the
+`aarch64-unknown-linux-ohos` Rust standard library. Set `OHOS_SDK_NATIVE` to the
+DevEco native SDK directory and `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside
+the checkout. On PowerShell, after these variables are set:
+
+```powershell
+$version = '0.1.0-beta.6'
+$env:SHINKI_EMU_PRODUCT_VERSION = $version
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask deps --target aarch64-unknown-linux-ohos
+cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-candidate
+```
+
+Retain the HAP, `ohos.json`, `musica-build.json`, and `ohos-bundled-musica-sources.zip`.
+The packager verifies the DevEco signature, the ARM64 ABI-v3 query export, the
+native-library dependency closure, and the hashes of the packaged Musica library
+and license files. No native member may import the candidate at Manager startup.
+The Manager uses the OS-installed copy alongside its own library, either in the
+same installed directory or in the same HAP's native members. The extracted
+`core.json` is only for recognition and capability declaration; it cannot name
+another library for execution.
+
+The [OpenHarmony loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)
+uses the caller's namespace and checks uncompressed, page-aligned HAP members.
+The Manager passes an absolute installed path, so the core's basename is not
+looked up in environment, relative, or inherited search paths.
+
+Run the device pass only on a dedicated ARM64 API 12+ target with working Vulkan,
+audio output, Developer Mode/debug authorization, and trust for the existing
+OpenHarmony SDK test PKI. A retail device's rejection of this test signature is
+an installability blocker, not a loader failure. Do not change device trust or
+signing policy to make this pass. With the SDK's `toolchains/hdc` on `PATH`,
+use the HAP named in `ohos.json`:
+
+```powershell
+hdc list targets
+$candidate = Get-Content .work/ohos-candidate/ohos.json -Raw | ConvertFrom-Json
+$hap = Join-Path .work/ohos-candidate $candidate.hap
+if ((Get-FileHash $hap -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidate.sha256) { throw 'HAP hash mismatch' }
+hdc install $hap
+hdc shell aa start -a EntryAbility -b org.shinkirou.shinkiemu
+```
+
+1. Record the exact device/OS build, commit and HAP SHA-256. With DevEco's native
+   debugger attached, capture LLDB `image list -f` at startup, then resume,
+   open the core list, import/scan a lawful Musica game and capture it again.
+   Both lists must omit `libshinki_emu_core_musica.so`. No
+   `shinki.emu.ohos.core_open` event may occur in the app's diagnostics.
+2. If recognition did not choose Musica, select it for the game without opening
+   core configuration. Press **Play** with genuine PAZ/SC data and a valid
+   private `key.toml`. Retain
+   `shinki.emu.ohos.core_abi_ready` (ABI 3, `shinki.emu.musica`, installed origin)
+   and a third `image list -f` with the candidate present. `core_open` should
+   occur once for the first activation. A loader or GPU error fails this pass.
+3. Advance past the game's boot screen, capture the first recognizable game
+   frame, and record the title's audible music or voice. Compare it with the
+   `shinki.emu.ohos.audio_started` event in `filesDir/ShinkiEMU/diagnostics`;
+   opening a renderer alone is not evidence of audible PCM. Close and reopen
+   the game and confirm playback restarts without a second module load. Keep
+   private keys and game files out of the evidence bundle.
+
 ## Matrix and CI
 
 `matrix` lists every declared Manager/core combination and its blocked reason. `matrix --json` selects hosted-runner jobs; the supported OHOS Manager uses `runner = "local-only"` and is excluded from hosted CI while its exact-head HAP is packaged with DevEco. `--ci` also drops the duplicate x86_64 Android Manager row. Read the current combinations in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/).

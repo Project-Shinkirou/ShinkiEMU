@@ -1,4 +1,7 @@
-use std::sync::OnceLock;
+#[cfg(target_env = "ohos")]
+mod ohos;
+#[cfg(target_env = "ohos")]
+pub use ohos::OhosAudioOutput;
 
 use super::{SessionError, SessionResult};
 
@@ -35,25 +38,3 @@ pub trait AudioSink: Send + Sync {
 }
 
 pub type AudioSinkBox = Box<dyn AudioSink>;
-
-/// Opens one host-owned PCM output per family session.
-pub type HostAudioOutput = fn() -> SessionResult<AudioSinkBox>;
-
-static HOST_AUDIO_OUTPUT: OnceLock<HostAudioOutput> = OnceLock::new();
-
-/// Installs the process-wide PCM output used by families statically embedded
-/// into a host whose platform has no SDK device-audio backend. Families open
-/// their own device when no host output is installed.
-pub fn install_host_audio_output(open: HostAudioOutput) -> SessionResult<()> {
-    HOST_AUDIO_OUTPUT.set(open).map_err(|_| {
-        SessionError::invalid(
-            "SHINKI_EMU_HOST_AUDIO_INSTALLED",
-            "a host audio output is already installed",
-        )
-    })
-}
-
-/// Opens the installed host PCM output, or None when the family owns its device.
-pub fn open_host_audio_output() -> Option<SessionResult<AudioSinkBox>> {
-    HOST_AUDIO_OUTPUT.get().map(|open| open())
-}

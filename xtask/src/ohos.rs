@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use std::{
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
     process::Command,
@@ -18,6 +19,82 @@ use std::{
 const ABI: &str = "arm64-v8a";
 const BUNDLE_NAME: &str = "org.shinkirou.shinkiemu";
 const MANAGER: &str = "libshinki_emu_manager.so";
+const TARGET: &str = "aarch64-unknown-linux-ohos";
+const MUSICA: &str = "shinki.emu.musica";
+const CORE_LIBRARY: &str = "libshinki_emu_core_musica.so";
+const FEATURE: &str = "ohos-bundled-musica";
+const INPUTS: &str = "ohos-hap-inputs.json";
+const OHOS_ARM64_PAGE: u64 = 4096;
+
+pub(crate) fn is_core_input(component: &str, target: &str) -> bool {
+    component == MUSICA && target == TARGET
+}
+
+pub(crate) fn manager_mode(target: &str, features: &[String]) -> Result<bool> {
+    let enabled = features.iter().any(|feature| feature == FEATURE);
+    if enabled && target != TARGET {
+        bail!("{FEATURE} is only supported on {TARGET}");
+    }
+    Ok(enabled)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct HapInputs {
+    manager_sha256: String,
+    musica: BuildResult,
+    musica_sha256: String,
+}
+
+pub(crate) fn build_inputs(inv: &Inventory, manager: &BuildResult) -> Result<()> {
+    if manager.source_dirty {
+        bail!("the bundled Musica HAP requires a clean build for corresponding source");
+    }
+    let manager_sha256 = sha256(&manager.library)?;
+    let musica = crate::build::execute_ohos_hap(inv, TARGET, MUSICA)?;
+    if musica.source_dirty || musica.source_commit != manager.source_commit {
+        bail!("the Manager and bundled Musica must be built from the same clean commit");
+    }
+    let inputs = HapInputs {
+        manager_sha256,
+        musica_sha256: sha256(&musica.library)?,
+        musica,
+    };
+    fs::write(
+        manager.target_dir.join(INPUTS),
+        serde_json::to_vec_pretty(&inputs)?,
+    )?;
+    Ok(())
+}
+
+fn bundled_input(inv: &Inventory, manager: &BuildResult) -> Result<Option<BuildResult>> {
+    if !manager_mode(&manager.target, &manager.features)? {
+        return Ok(None);
+    }
+    let state = crate::sources::state(&inv.root)?;
+    let inputs: HapInputs = serde_json::from_slice(&fs::read(manager.target_dir.join(INPUTS))?)?;
+    let musica = inputs.musica;
+    let manifest = musica.core_build.as_ref().context("bundled Musica build manifest")?;
+    manifest.validate()?;
+    if state.dirty
+        || manager.source_dirty
+        || musica.source_dirty
+        || manager.source_commit != state.commit
+        || musica.source_commit != state.commit
+        || !is_core_input(&musica.component, &musica.target)
+        || musica.profile != "release"
+        || musica.features != inv.core(MUSICA)?.features
+        || manifest.plugin_id != MUSICA
+        || manifest.target != TARGET
+        || manifest.profile != musica.profile
+        || manifest.artifact_kind != "rust-cdylib"
+        || manifest.abi != shinki_emu_build::ABI
+        || sha256(&manager.library)? != inputs.manager_sha256
+        || sha256(&musica.library)? != inputs.musica_sha256
+    {
+        bail!("bundled Musica HAP inputs do not match the clean Manager/core build");
+    }
+    Ok(Some(musica))
+}
 /// Public password of the OpenHarmony SDK test keystore (`OpenHarmony.p12`).
 /// The generated debug key lives in a copy of that test keystore.
 const TEST_KEYSTORE_PASSWORD: &str = "123456";
@@ -115,17 +192,19 @@ pub(crate) fn package(
     version: &str,
     out: &Path,
 ) -> Result<PathBuf> {
-    if result.target != "aarch64-unknown-linux-ohos" {
+    if result.target != TARGET {
         bail!("unsupported OHOS Manager target {}", result.target);
     }
+    let musica = bundled_input(inv, result)?;
     let tools = tools()?;
     let signing = signing_material(&tools)?;
     let project = inv.root.join("Platforms/OHOS");
     atomic_directory(out, |stage| {
-        stage_inputs(inv, result, &tools, &project)?;
+        let declaration = stage_inputs(inv, result, musica.as_ref(), &tools, &project)?;
         let unsigned = build_hap(&tools, &project, version)?;
+        let variant = if musica.is_some() { "-bundled-musica" } else { "" };
         let hap = stage.join(format!(
-            "ShinkiEMU-{version}-ohos-{ABI}-debug-test-signed.hap"
+            "ShinkiEMU-{version}-ohos-{ABI}{variant}-debug-test-signed.hap"
         ));
         dependencies::run(
             sign_tool(&tools)
@@ -148,20 +227,41 @@ pub(crate) fn package(
                 .arg("-outFile")
                 .arg(&hap),
         )?;
-        verify_hap(&tools, &hap, &result.target)?;
-        fs::write(
-            stage.join("ohos.json"),
-            serde_json::to_vec_pretty(&serde_json::json!({
-                "schema": "shinki.emu.ohos_package.v1",
-                "target": result.target,
-                "abi": ABI,
-                "bundle_name": BUNDLE_NAME,
-                "signing": "openharmony-sdk-test-pki-debug",
-                "hap": hap.file_name().unwrap().to_string_lossy(),
-                "sha256": sha256(&hap)?,
-                "size": fs::metadata(&hap)?.len()
-            }))?,
-        )?;
+        verify_hap(&tools, &hap, &result.target, declaration.as_deref())?;
+        let candidate = if let Some(musica) = &musica {
+            let source = stage.join("ohos-bundled-musica-sources.zip");
+            crate::sources::bundle_ohos_candidate(inv, result, musica, &source)?;
+            let state = crate::sources::state(&inv.root)?;
+            if state.dirty || state.commit != result.source_commit {
+                bail!("source checkout changed while packaging the bundled Musica HAP");
+            }
+            package::write_provenance(musica, &stage.join("musica-build.json"))?;
+            Some(serde_json::json!({
+                "plugin_id": MUSICA,
+                "library": format!("libs/{ABI}/{CORE_LIBRARY}"),
+                "abi": shinki_emu_build::ABI,
+                "source_commit": musica.source_commit,
+                "source": source.file_name().unwrap().to_string_lossy(),
+                "source_sha256": sha256(&source)?,
+                "library_sha256": sha256(&musica.library)?,
+            }))
+        } else {
+            None
+        };
+        let mut receipt = serde_json::json!({
+            "schema": "shinki.emu.ohos_package.v1",
+            "target": result.target,
+            "abi": ABI,
+            "bundle_name": BUNDLE_NAME,
+            "signing": "openharmony-sdk-test-pki-debug",
+            "hap": hap.file_name().unwrap().to_string_lossy(),
+            "sha256": sha256(&hap)?,
+            "size": fs::metadata(&hap)?.len()
+        });
+        if let Some(candidate) = candidate {
+            receipt["bundled_core"] = candidate;
+        }
+        fs::write(stage.join("ohos.json"), serde_json::to_vec_pretty(&receipt)?)?;
         package::write_provenance(result, &stage.join("build.json"))?;
         Ok(())
     })?;
@@ -173,9 +273,10 @@ pub(crate) fn package(
 fn stage_inputs(
     inv: &Inventory,
     result: &BuildResult,
+    musica: Option<&BuildResult>,
     tools: &Tools,
     project: &Path,
-) -> Result<()> {
+) -> Result<Option<Vec<u8>>> {
     let libs = project.join("entry/libs");
     let bundled = project.join("entry/src/main/resources/rawfile/bundled");
     for generated in [&libs, &bundled] {
@@ -186,15 +287,30 @@ fn stage_inputs(
         }
     }
     binary::inspect(&result.library, &result.target, false)?;
-    let mut native = vec![(result.library.clone(), MANAGER.to_owned())];
-    for dependency in binary::closure(
-        &result.library,
-        &package::search_dirs(inv, result)?,
-        &result.target,
-    )? {
-        native.push(dependency);
+    let mut native = BTreeMap::from([(MANAGER.to_owned(), result.library.clone())]);
+    let manager_search = package::search_dirs(inv, result)?;
+    for (library, name) in binary::closure(&result.library, &manager_search, &result.target)? {
+        native.insert(name, library);
+    }
+    if let Some(musica) = musica {
+        binary::inspect(&musica.library, TARGET, true)?;
+        if native.insert(CORE_LIBRARY.to_owned(), musica.library.clone()).is_some() {
+            bail!("bundled Musica is already in the Manager's native closure");
+        }
+        for (library, name) in
+            binary::closure(&musica.library, &package::search_dirs(inv, musica)?, TARGET)?
+        {
+            if let Some(existing) = native.get(&name) {
+                if existing != &library && sha256(existing)? != sha256(&library)? {
+                    bail!("conflicting OHOS HAP dependency {name}");
+                }
+            } else {
+                native.insert(name, library);
+            }
+        }
     }
     fs::create_dir_all(libs.join(ABI))?;
+    let native: Vec<_> = native.into_iter().map(|(name, path)| (path, name)).collect();
     copy_entries(&native, &libs.join(ABI))?;
 
     let temp = crate::temporary::directory()?;
@@ -210,7 +326,12 @@ fn stage_inputs(
     );
     entries.extend(package::metadata_entries(inv, temp.path())?);
     entries.extend(package::licenses(inv, result, temp.path())?);
-    entries.extend(package::static_core_entries(inv, result, temp.path())?);
+    let declaration = if let Some(musica) = musica {
+        Some(stage_core_manifest(inv, musica, temp.path(), &mut entries)?)
+    } else {
+        entries.extend(package::static_core_entries(inv, result, temp.path())?);
+        None
+    };
     fs::create_dir_all(&bundled)?;
     copy_entries(&entries, &bundled)?;
     let mut names = entries
@@ -220,7 +341,61 @@ fn stage_inputs(
     names.sort();
     // Read by ManagerBridge.ets `extractBundled`.
     fs::write(bundled.join("bundled.manifest"), names.join("\n") + "\n")?;
-    Ok(())
+    Ok(declaration)
+}
+
+fn stage_core_manifest(
+    inv: &Inventory,
+    musica: &BuildResult,
+    scratch: &Path,
+    entries: &mut Vec<(PathBuf, String)>,
+) -> Result<Vec<u8>> {
+    let core = inv.core(MUSICA)?;
+    let build = musica.core_build.as_ref().context("bundled Musica build manifest")?;
+    let scratch = scratch.join("musica");
+    fs::create_dir(&scratch)?;
+    let mut files = vec![package::FileRecord {
+        path: CORE_LIBRARY.into(),
+        sha256: sha256(&musica.library)?,
+    }];
+    let mut data = package::licenses(inv, musica, &scratch)?;
+    for asset in build.licenses.iter().chain(&build.resources) {
+        data.extend(package::asset_entries(asset)?);
+    }
+    if build.licenses.is_empty() || core.source.is_some() {
+        bail!("bundled Musica must have license inputs and be built from the product commit");
+    }
+    for (source, relative) in data {
+        if Path::new(&relative).extension().is_some_and(|extension| extension == "so") {
+            bail!("native code may not be staged in the HAP's rawfile data");
+        }
+        files.push(package::FileRecord { path: relative.clone(), sha256: sha256(&source)? });
+        entries.push((source, format!("cores/{MUSICA}/{relative}")));
+    }
+    files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+    let metadata = crate::build::cargo_metadata(inv, TARGET)?;
+    let version = metadata["packages"]
+        .as_array()
+        .context("Cargo packages")?
+        .iter()
+        .find(|package| package["name"] == core.package)
+        .and_then(|package| package["version"].as_str())
+        .context("bundled Musica Cargo version")?;
+    shinki_emu_metadata::validate_core_version(version, None)?;
+    let declaration = serde_json::to_vec_pretty(&package::CorePackage {
+        schema: "shinki.emu.core_package.v1".into(),
+        plugin_id: MUSICA.into(),
+        library: CORE_LIBRARY.into(),
+        version: version.into(),
+        identity: None,
+        recognition: core.recognition.clone(),
+        abi: shinki_emu_build::ABI.into(),
+        files,
+    })?;
+    let path = scratch.join("core.json");
+    fs::write(&path, &declaration)?;
+    entries.push((path, format!("cores/{MUSICA}/core.json")));
+    Ok(declaration)
 }
 
 fn build_hap(tools: &Tools, project: &Path, version: &str) -> Result<PathBuf> {
@@ -457,7 +632,7 @@ fn sign_tool(tools: &Tools) -> Command {
 
 /// `verify-app`, archive layout, and the dynamic section of every bundled
 /// native library (all remaining NEEDED entries must be OHOS system libraries).
-fn verify_hap(tools: &Tools, hap: &Path, target: &str) -> Result<()> {
+fn verify_hap(tools: &Tools, hap: &Path, target: &str, declaration: Option<&[u8]>) -> Result<()> {
     let evidence = crate::temporary::directory()?;
     dependencies::run(
         sign_tool(tools)
@@ -489,6 +664,50 @@ fn verify_hap(tools: &Tools, hap: &Path, target: &str) -> Result<()> {
         }
         names.push(name);
     }
+    let member = format!("libs/{ABI}/{CORE_LIBRARY}");
+    if declaration.is_some() != names.contains(&member) {
+        bail!("signed HAP contains an unexpected bundled-core roster");
+    }
+    if let Some(declaration) = declaration {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let prefix = format!("resources/rawfile/bundled/cores/{MUSICA}");
+        let signed_declaration = {
+            let mut bytes = Vec::new();
+            archive.by_name(&format!("{prefix}/core.json"))?.read_to_end(&mut bytes)?;
+            bytes
+        };
+        if signed_declaration.as_slice() != declaration {
+            bail!("signed HAP bundled Musica declaration differs from the staged declaration");
+        }
+        let manifest: package::CorePackage = serde_json::from_slice(declaration)?;
+        for file in manifest.files {
+            let name = if file.path == CORE_LIBRARY {
+                member.clone()
+            } else {
+                format!("{prefix}/{}", file.path)
+            };
+            let mut entry = archive.by_name(&name)?;
+            if name == member
+                && (entry.compression() != zip::CompressionMethod::Stored
+                    || entry.data_start().is_none_or(|offset| offset % OHOS_ARM64_PAGE != 0))
+            {
+                bail!("{member} must be stored uncompressed on an ARM64 page boundary");
+            }
+            let mut digest = Sha256::new();
+            let mut buffer = [0u8; 8192];
+            loop {
+                let len = entry.read(&mut buffer)?;
+                if len == 0 {
+                    break;
+                }
+                digest.update(&buffer[..len]);
+            }
+            if hex::encode(digest.finalize()) != file.sha256 {
+                bail!("signed HAP content differs from bundled Musica declaration: {name}");
+            }
+        }
+    }
     for required in [
         format!("libs/{ABI}/{MANAGER}"),
         "resources/rawfile/bundled/bundled.manifest".to_owned(),
@@ -501,7 +720,15 @@ fn verify_hap(tools: &Tools, hap: &Path, target: &str) -> Result<()> {
     }
     let dir = extracted.path().join("libs").join(ABI);
     for (library, name) in tree(&dir)? {
-        let info = binary::inspect(&library, target, false)?;
+        let candidate = name == CORE_LIBRARY;
+        let info = binary::inspect(&library, target, candidate)?;
+        if declaration.is_some()
+            && (!info.rpaths.is_empty()
+                || info.dependencies.iter().any(|name| name.contains('/'))
+                || (!candidate && info.dependencies.contains(CORE_LIBRARY)))
+        {
+            bail!("unexpected eager or path-based native dependency in HAP library {name}");
+        }
         println!("HAP libs/{ABI}/{name} NEEDED: {:?}", info.dependencies);
         dependencies::run(Command::new(&tools.readelf).arg("-d").arg(&library))?;
         binary::closure(&library, std::slice::from_ref(&dir), target)?;

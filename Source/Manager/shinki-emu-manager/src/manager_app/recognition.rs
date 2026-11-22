@@ -46,9 +46,17 @@ pub(super) fn is_static(plugin_id: &str) -> bool {
     shinki_emu_manager::static_cores::STATIC_CORES.iter().any(|(id, _)| *id == plugin_id)
 }
 
+fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
+    #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+    if core.plugin_id == shinki_emu_manager::platform::ohos::bundled::ID {
+        return true;
+    }
+    core.supported || is_static(core.plugin_id)
+}
+
 pub(super) fn supported_core(plugin_id: &str) -> Result<&'static static_core_catalog::CoreCatalogEntry, &'static str> {
     let core = static_core_catalog::lookup(plugin_id).ok_or("SHINKI_EMU_CORE_UNKNOWN_PLUGIN")?;
-    if !(core.supported || is_static(plugin_id)) {
+    if !is_supported(core) {
         return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET");
     }
     Ok(core)
@@ -66,7 +74,7 @@ pub(super) fn runnable_core(
 
 pub(super) fn choices(detections: &[EngineDetection]) -> Vec<Candidate> {
     static_core_catalog::entries().iter()
-        .filter(|entry| (entry.supported || is_static(entry.plugin_id)) && detections.iter().any(|item| {
+        .filter(|entry| is_supported(entry) && detections.iter().any(|item| {
             item.family_id == entry.family_id && item.declared.as_ref()
                 .is_none_or(|declared| declared.plugin_ids.iter().any(|id| id == entry.plugin_id))
         }))
@@ -145,6 +153,19 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         }
     }
     for id in duplicate { found.remove(&id); }
+    #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+    {
+        use shinki_emu_manager::platform::ohos::bundled;
+        if let Some(directory) = bundled::manifest_dir(bundled::ID)
+            && let Some(manifest) = core_package::read_manifest(&directory)
+            && manifest.plugin_id == bundled::ID
+            && manifest.library == bundled::LIBRARY
+            && manifest.version != "0.0.0-local"
+            && let Some(library) = bundled::library(bundled::ID)
+        {
+            found.insert(bundled::ID.to_owned(), InstalledCore { library, manifest, bundled: true });
+        }
+    }
     Ok(found)
 }
 

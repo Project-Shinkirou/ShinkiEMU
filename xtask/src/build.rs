@@ -201,8 +201,31 @@ pub fn execute(
     action: &str,
     release: bool,
 ) -> Result<Option<BuildResult>> {
-    inv.require_buildable(component, target)?;
-    dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
+    execute_configured(inv, target, component, action, release, false)
+}
+
+pub(crate) fn execute_ohos_hap(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
+    execute_configured(inv, target, component, "build", true, true)?
+        .context("OHOS HAP core build did not return an artifact")
+}
+
+fn execute_configured(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    action: &str,
+    release: bool,
+    ohos_hap_input: bool,
+) -> Result<Option<BuildResult>> {
+    if ohos_hap_input {
+        if !crate::ohos::is_core_input(component, target) {
+            bail!("no bundled OHOS HAP recipe for {component}/{target}");
+        }
+        // The Manager's doctor already validated the same native inputs.
+    } else {
+        inv.require_buildable(component, target)?;
+        dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
+    }
     let core = if component == "manager" {
         None
     } else {
@@ -229,7 +252,6 @@ pub fn execute(
         .map(|c| c.package.as_str())
         .unwrap_or("shinki-emu-manager");
     let features = core.map(|c| c.features.clone()).unwrap_or_default();
-    let target_dir = target_directory(inv, target, component)?;
     let metadata: serde_json::Value = if component == "manager"
         && inv.cores.iter().any(|core| {
             core.static_manager_targets
@@ -252,7 +274,7 @@ pub fn execute(
                 .arg(&manifest),
         )?)?
     };
-    let embedded_packages = if component == "manager" {
+    let mut embedded_packages = if component == "manager" {
         embedded_core_packages(inv, target, &metadata)?
     } else {
         BTreeMap::new()
@@ -266,6 +288,18 @@ pub fn execute(
     let package_id = package_metadata["id"]
         .as_str()
         .context("cargo package id")?;
+    let ohos_hap_manager = component == "manager" && crate::ohos::manager_mode(target, &features)?;
+    if ohos_hap_manager {
+        if action == "build" && !release {
+            bail!("use --release when building the bundled Musica OHOS Manager");
+        }
+        embedded_packages.retain(|_, id| !crate::ohos::is_core_input(id, target));
+    }
+    let target_dir = if ohos_hap_manager || ohos_hap_input {
+        target_directory(inv, target, &format!("{component}-ohos-hap"))?
+    } else {
+        target_directory(inv, target, component)?
+    };
     let version_inputs = (component == "manager").then(|| {
         [
             std::env::var_os("SHINKI_EMU_PRODUCT_VERSION"),
@@ -542,6 +576,13 @@ pub fn execute(
         features,
         target_dir,
     };
+    if ohos_hap_input {
+        // No public standalone receipt may be created for a HAP-only input.
+        return Ok(Some(result));
+    }
+    if ohos_hap_manager {
+        crate::ohos::build_inputs(inv, &result)?;
+    }
     if component == "manager" && target.contains("android") {
         let generated = result.target_dir.join("android-inputs");
         if generated.exists() {

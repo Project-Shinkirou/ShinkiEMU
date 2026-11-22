@@ -598,6 +598,9 @@ pub fn prepare(
     let receipt = crate::build::load_receipt(inv, target, component)?;
     if component == "manager" {
         receipt.require_product_version(version)?;
+        if crate::ohos::manager_mode(target, &receipt.features)? {
+            bail!("the bundled Musica OHOS HAP is for local device acceptance only");
+        }
     }
     let expected_source = id.core_source["rev"].as_str().unwrap_or(&id.commit);
     if receipt.source_dirty || receipt.source_commit != expected_source {

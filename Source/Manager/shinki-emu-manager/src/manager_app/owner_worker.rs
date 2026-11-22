@@ -321,8 +321,21 @@ fn activate(
     let provider = if let Some((_, query)) = STATIC_CORES.iter().find(|(id, _)| *id == plugin_id) {
         unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::from_query(*query) }.map_err(|error| error.to_string())?
     } else {
-        let core = &installed[plugin_id];
-        shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library).map_err(|error| error.to_string())?
+        #[cfg(all(target_env = "ohos", not(feature = "ohos-bundled-musica")))]
+        return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+        #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+        {
+            if !installed[plugin_id].bundled {
+                return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+            }
+            crate::platform::ohos::bundled::load(plugin_id)?
+        }
+        #[cfg(not(target_env = "ohos"))]
+        {
+            let core = &installed[plugin_id];
+            shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
+                .map_err(|error| error.to_string())?
+        }
     };
     let descriptor = provider.manager_descriptor();
     if descriptor.plugin_id != plugin_id || catalog.family_id != descriptor.family_id {

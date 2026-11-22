@@ -3,7 +3,7 @@
 //! `Platforms/OHOS/native`. Slint runs as a custom platform on its own thread:
 //! the software renderer draws straight into mapped OHNativeWindow buffers,
 //! and the stage frame reaches Slint as a CPU image (see `stage_software.rs`).
-//! Family PCM goes to OHAudio through the SDK host audio output.
+//! Musica uses the SDK OHAudio backend in whichever image owns the session.
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -18,9 +18,6 @@ use std::{
     time::Duration,
 };
 
-use shinki_emu_sdk::runtime::{
-    AudioSink, AudioSinkBox, PcmFormat, PcmFormatSpec, SessionError, SessionResult,
-};
 use slint::platform::{
     EventLoopProxy, Key, Platform, PointerEventButton, WindowAdapter, WindowEvent,
     software_renderer::{
@@ -414,12 +411,8 @@ pub unsafe fn start(
                 events: receiver,
                 sender,
             };
-            let result = shinki_emu_sdk::runtime::install_host_audio_output(open_audio_output)
+            let result = slint::platform::set_platform(Box::new(platform))
                 .map_err(|error| error.to_string())
-                .and_then(|()| {
-                    slint::platform::set_platform(Box::new(platform))
-                        .map_err(|error| error.to_string())
-                })
                 .and_then(|()| run().map_err(|error| error.to_string()));
             if let Err(error) = result {
                 tracing::error!(
@@ -529,7 +522,7 @@ pub(super) fn default_data_dir() -> Result<PathBuf, String> {
         .join("ShinkiEMU"))
 }
 
-/// The HAP's native library; nothing is executed from this path.
+/// A location for host data discovery, not an installed native-library path.
 pub(super) fn program_file() -> Result<PathBuf, String> {
     Ok(FILES
         .get()
@@ -540,6 +533,115 @@ pub(super) fn program_file() -> Result<PathBuf, String> {
 /// Rawfile resources the ArkTS shell extracts before starting the Manager.
 pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
     Some(FILES.get()?.join("bundled"))
+}
+
+#[cfg(feature = "ohos-bundled-musica")]
+pub mod bundled {
+    use super::{CStr, CString, Path, PathBuf, c_void};
+    use shinki_emu_manager_core::LoadedFamilyPlugin;
+    use std::{
+        os::unix::ffi::{OsStrExt, OsStringExt},
+        path::Component,
+    };
+
+    pub const ID: &str = "shinki.emu.musica";
+    pub const LIBRARY: &str = "libshinki_emu_core_musica.so";
+    const MANAGER: &str = "libshinki_emu_manager.so";
+    const BUNDLE_CODE: &str = "/data/storage/el1/bundle";
+    const ARCHIVE_LIBS: &str = "libs/arm64-v8a";
+
+    pub fn manifest_dir(plugin_id: &str) -> Option<PathBuf> {
+        if plugin_id != ID {
+            return None;
+        }
+        Some(super::bundled_resource_dir()?.join("cores").join(ID))
+    }
+
+    fn image_path(address: *const c_void) -> Option<PathBuf> {
+        let mut image = std::mem::MaybeUninit::<libc::Dl_info>::uninit();
+        if unsafe { libc::dladdr(address, image.as_mut_ptr()) } == 0 {
+            return None;
+        }
+        let name = unsafe { image.assume_init() }.dli_fname;
+        if name.is_null() {
+            return None;
+        }
+        Some(std::ffi::OsString::from_vec(unsafe { CStr::from_ptr(name) }.to_bytes().to_vec()).into())
+    }
+
+    fn installed_file(path: &Path) -> Option<PathBuf> {
+        // The sandbox's bundle mount is OS-installed code, not filesDir. Verify
+        // the resolved path too: an admitted symlink must not escape that mount.
+        let relative = path.strip_prefix(BUNDLE_CODE).ok()?;
+        if !relative.components().all(|part| matches!(part, Component::Normal(_))) {
+            return None;
+        }
+        let resolved = path.canonicalize().ok()?;
+        (resolved.starts_with(BUNDLE_CODE) && resolved.is_file()).then_some(resolved)
+    }
+
+    /// Resolve only the fixed HAP sibling. Discovery calls this without dlopen.
+    pub fn library(plugin_id: &str) -> Option<PathBuf> {
+        if plugin_id != ID {
+            return None;
+        }
+        let manager = image_path(library as *const c_void)?;
+        let name = manager.to_str()?;
+        if let Some((hap, member)) = name.split_once("!/") {
+            let hap = Path::new(hap);
+            if hap.extension().is_none_or(|extension| extension != "hap")
+                || member != concat!("libs/arm64-v8a/", "libshinki_emu_manager.so")
+            {
+                return None;
+            }
+            let hap = installed_file(hap)?;
+            return Some(PathBuf::from(format!("{}!/{ARCHIVE_LIBS}/{LIBRARY}", hap.to_str()?)));
+        }
+        if manager.file_name()? != MANAGER {
+            return None;
+        }
+        let manager = installed_file(&manager)?;
+        let candidate = installed_file(&manager.with_file_name(LIBRARY))?;
+        (candidate.parent() == manager.parent() && candidate.file_name()? == LIBRARY)
+            .then_some(candidate)
+    }
+
+    pub fn load(plugin_id: &str) -> Result<LoadedFamilyPlugin, String> {
+        let path = library(plugin_id).ok_or("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
+        let name = CString::new(path.as_os_str().as_bytes())
+            .map_err(|_| "SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
+        // An absolute installed path skips basename search (env, RPATH and
+        // inherited namespaces). The caller's existing namespace still applies.
+        tracing::info!(event = "shinki.emu.ohos.core_open", plugin_id, path = %path.display());
+        let module = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
+        if module.is_null() {
+            let error = unsafe { libc::dlerror() };
+            if error.is_null() {
+                return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN".into());
+            }
+            let error = unsafe { CStr::from_ptr(error) };
+            return Err(format!("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {}", error.to_string_lossy()));
+        }
+        // As in LoadedFamilyPlugin::load, the image is resident through process
+        // exit, including when ABI initialization or descriptor checks fail.
+        let symbol = unsafe { libc::dlsym(module, shinki_emu_abi::QUERY_SYMBOL.as_ptr().cast()) };
+        if symbol.is_null() || image_path(symbol).as_deref() != Some(path.as_path()) {
+            return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN".into());
+        }
+        let query = unsafe { std::mem::transmute::<*mut c_void, shinki_emu_abi::Query>(symbol) };
+        let provider = unsafe { LoadedFamilyPlugin::from_query(query) }
+            .map_err(|error| error.to_string())?;
+        if provider.manager_descriptor().plugin_id != ID {
+            return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
+        }
+        tracing::info!(
+            event = "shinki.emu.ohos.core_abi_ready",
+            plugin_id,
+            abi = shinki_emu_abi::ABI_VERSION,
+            path = %path.display()
+        );
+        Ok(provider)
+    }
 }
 
 pub(super) fn restart() -> Result<(), String> {
@@ -554,88 +656,3 @@ pub(super) fn open_url(url: &str) -> Result<(), String> {
     notify("openUrl", url)
 }
 
-#[repr(C)]
-struct AudioStream {
-    _opaque: [u8; 0],
-}
-
-unsafe extern "C" {
-    fn shinki_ohos_audio_open(
-        stream: *mut *mut AudioStream,
-        sample_rate: u32,
-        channels: u32,
-    ) -> i32;
-    fn shinki_ohos_audio_write(stream: *mut AudioStream, samples: *const f32, count: usize) -> i32;
-    fn shinki_ohos_audio_cancel(stream: *mut AudioStream);
-    fn shinki_ohos_audio_close(stream: *mut AudioStream);
-}
-
-/// One OHAudio renderer per family session, paced by its bounded queue.
-struct OhosAudioOutput {
-    stream: OnceLock<OhosAudioStream>,
-}
-
-struct OhosAudioStream(*mut AudioStream);
-
-// The C stream serializes every access behind its own mutex.
-unsafe impl Send for OhosAudioStream {}
-unsafe impl Sync for OhosAudioStream {}
-
-impl Drop for OhosAudioStream {
-    fn drop(&mut self) {
-        unsafe { shinki_ohos_audio_close(self.0) };
-    }
-}
-
-fn open_audio_output() -> SessionResult<AudioSinkBox> {
-    Ok(Box::new(OhosAudioOutput {
-        stream: OnceLock::new(),
-    }))
-}
-
-impl AudioSink for OhosAudioOutput {
-    fn configure(&self, format: PcmFormatSpec) -> SessionResult<()> {
-        format.validate()?;
-        let PcmFormat::F32 = format.format;
-        let mut stream = std::ptr::null_mut();
-        let result = unsafe {
-            shinki_ohos_audio_open(&mut stream, format.sample_rate, u32::from(format.channels))
-        };
-        if result != 0 || stream.is_null() {
-            return Err(SessionError::new(
-                "SHINKI_EMU_OHOS_AUDIO_OPEN",
-                format!("OHAudio renderer could not start: {result}"),
-            ));
-        }
-        self.stream.set(OhosAudioStream(stream)).map_err(|_| {
-            SessionError::invalid(
-                "SHINKI_EMU_OHOS_AUDIO_CONFIGURED",
-                "audio output is already configured",
-            )
-        })
-    }
-
-    fn write(&self, samples: Vec<f32>) -> SessionResult<Option<Vec<f32>>> {
-        let stream = self.stream.get().ok_or_else(|| {
-            SessionError::invalid(
-                "SHINKI_EMU_OHOS_AUDIO_UNCONFIGURED",
-                "audio output was not configured",
-            )
-        })?;
-        match unsafe { shinki_ohos_audio_write(stream.0, samples.as_ptr(), samples.len()) } {
-            0 => Ok(Some(samples)),
-            1 => Ok(None),
-            result => Err(SessionError::new(
-                "SHINKI_EMU_OHOS_AUDIO_WRITE",
-                format!("OHAudio queue rejected samples: {result}"),
-            )),
-        }
-    }
-
-    fn cancel(&self) -> SessionResult<()> {
-        if let Some(stream) = self.stream.get() {
-            unsafe { shinki_ohos_audio_cancel(stream.0) };
-        }
-        Ok(())
-    }
-}

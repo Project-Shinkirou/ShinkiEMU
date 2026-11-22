@@ -37,7 +37,10 @@ pub(super) fn run(
             focused: window.focused != 0,
             visible: window.suspended == 0,
         },
-        audio_output: shinki_emu_sdk::runtime::open_host_audio_output().transpose()?,
+        #[cfg(target_env = "ohos")]
+        audio_output: Some(Box::new(shinki_emu_sdk::runtime::OhosAudioOutput::default())),
+        #[cfg(not(target_env = "ohos"))]
+        audio_output: None,
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;
