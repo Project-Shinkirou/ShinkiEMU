@@ -87,10 +87,7 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("无法读取文件夹"),
             tr!("请检查文件夹权限，或选择其他文件夹。"),
         ),
-        "SHINKI_EMU_GAME_DIRECTORY_BOUNDS" => (
-            tr!("文件夹内容过多"),
-            tr!("请选择范围更小的游戏文件夹。"),
-        ),
+        "SHINKI_EMU_GAME_DIRECTORY_BOUNDS" => (tr!("扫描未完成"), ""),
         "SHINKI_EMU_GAME_PATH_UTF8" => (
             tr!("文件夹名称包含不支持的字符"),
             tr!("请重命名文件夹后再添加。"),

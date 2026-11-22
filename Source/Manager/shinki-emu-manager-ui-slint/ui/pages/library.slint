@@ -1,5 +1,5 @@
 import {
-    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, OutlineButton, TextField,
+    MaterialPalette, MaterialText, MaterialTypography, ScrollView, IconButton, TextField,
 } from "@material";
 import { App, Library, Store } from "../globals.slint";
 import { Icons } from "../icons.slint";
@@ -63,6 +63,13 @@ component EmptyState {
 
 export component LibraryPage {
     in property <bool> compact;
+    in property <bool> import-dialog-shown;
+    changed import-dialog-shown => {
+        if !root.import-dialog-shown && Library.prepare-state != "importing" && root.shown {
+            if root.searching { search.focus(); }
+            else { keys.focus(); }
+        }
+    }
     in property <bool> shown;
     visible: root.shown;
 
@@ -225,13 +232,12 @@ export component LibraryPage {
                     }
                     Rectangle {
                         min-width: 0px;
-                        max-width: root.compact && !root.searching ? 0px : root.content-w;
-                        horizontal-stretch: root.compact && !root.searching ? 0 : 1;
+                        horizontal-stretch: 1;
                         min-height: root.searching ? 56px : 40px;
                         MaterialText {
                             width: parent.width;
                             height: parent.height;
-                            visible: !root.searching && !root.compact;
+                            visible: !root.searching;
                             text: @tr("游戏库");
                             style: root.compact ? MaterialTypography.title-large : MaterialTypography.headline-small;
                             color: MaterialPalette.on-surface;
@@ -264,28 +270,25 @@ export component LibraryPage {
                         accessible-expanded: root.filters-open;
                         clicked => { root.filters-open = !root.filters-open; }
                     }
-                    if !root.searching : OutlineButton {
-                        horizontal-stretch: root.compact ? 1 : 0;
-                        min-height: 48px;
-                        horizontal-padding: root.compact ? 12px : 24px;
-                        text: @tr("搜索");
-                        icon: root.compact ? @image-url("") : Icons.search;
+                    if !root.searching : IconButton {
+                        width: 48px;
+                        height: 48px;
+                        icon: Icons.search;
+                        tooltip: @tr("搜索");
                         clicked => { root.open-search(); }
                     }
-                    if !root.searching : OutlineButton {
-                        horizontal-stretch: root.compact ? 1 : 0;
-                        min-height: 48px;
-                        horizontal-padding: root.compact ? 12px : 24px;
-                        text: @tr("添加文件夹");
-                        icon: root.compact ? @image-url("") : Icons.folder-open;
+                    if !root.searching : IconButton {
+                        width: 48px;
+                        height: 48px;
+                        icon: Icons.folder-open;
+                        tooltip: @tr("添加文件夹");
                         clicked => { Library.add-directory(); }
                     }
-                    if !root.searching : OutlineButton {
-                        horizontal-stretch: root.compact ? 1 : 0;
-                        min-height: 48px;
-                        horizontal-padding: root.compact ? 12px : 24px;
-                        text: @tr("下载");
-                        icon: root.compact ? @image-url("") : Icons.download;
+                    if !root.searching : IconButton {
+                        width: 48px;
+                        height: 48px;
+                        icon: Icons.download;
+                        tooltip: @tr("下载");
                         clicked => {
                             Library.detail-open = false;
                             App.page = "store";

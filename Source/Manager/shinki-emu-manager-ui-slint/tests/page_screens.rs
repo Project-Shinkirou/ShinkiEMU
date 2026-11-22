@@ -912,8 +912,17 @@ fn every_page_renders_stable_frames() {
             if only.is_empty() || only.iter().any(|p| "library-toolbar/interaction".starts_with(p)) {
                 exercise_library(&adapter, &software, &data, (width, height), save);
             }
+            if only.is_empty() || only.iter().any(|p| "library-import/interaction".starts_with(p)) {
+                exercise_import_dialog(&adapter, &software, &data, (width, height), save);
+            }
             if only.is_empty() || only.iter().any(|p| "settings/storage-access".starts_with(p)) {
                 exercise_storage_access(&adapter, &software, (width, height), save);
+            }
+            if only.is_empty() || only.iter().any(|p| "onboarding/storage-access".starts_with(p)) {
+                exercise_onboarding_storage(&adapter, &software, (width, height), save);
+            }
+            if only.is_empty() || only.iter().any(|p| "cores/cards".starts_with(p)) {
+                exercise_core_cards(&adapter, &software, (width, height), save);
             }
             for (id, setup) in states() {
                 if !only.is_empty() && !only.iter().any(|p| id.starts_with(p.as_str())) {
@@ -1056,11 +1065,12 @@ fn exercise_library(
     let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
     let game_visible = |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
     let check_toolbar = || {
-        let mut last = 0.0;
+        let mut last = width as f32 * 0.5;
         for label in [search_button, add, download] {
             let item = labeled_item(software, |text| text == label).expect("direct toolbar action");
             let bounds = item.geometry();
             let start = item.map_to_native_window(bounds.origin);
+            assert_eq!((bounds.size.width, bounds.size.height), (48.0, 48.0));
             assert!(start.x >= last && start.y < 64.0);
             last = start.x + bounds.size.width;
         }
@@ -1399,4 +1409,262 @@ fn exercise_storage_access(
     app.set_android_storage_access_granted(false);
     app.set_android_storage_access_available(false);
     material.set_touch(false);
+}
+
+fn exercise_import_dialog(
+    a: &Rc<SlintManagerAdapter>,
+    software: &MinimalSoftwareWindow,
+    data: &Data,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    let window = a.window();
+    let library = window.global::<Library>();
+    let app = window.global::<App>();
+    let frame = || render(software, width, height);
+    let label = tr!("正在导入游戏目录…");
+    let modal = || labeled_item(software, |text| text == label).is_some();
+    let add = tr!("添加文件夹");
+    let cancels = Rc::new(Cell::new(0));
+    let count = cancels.clone();
+    // Keep the host state importing until the simulated worker completes.
+    library.on_cancel_prepare(move || count.set(count.get() + 1));
+    reset(a);
+    let mut ready = library_model(data);
+    ready.library.selected_id = ready.library.games[0].id.clone();
+    let mut import = ready.clone();
+    import.library.prepare_state = "importing".into();
+    import.library.prepare_detail = tr!("正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…", directories = 18, games = 2);
+    import.library.prepare_progress = Some(0.65);
+    import.library.can_refresh = false;
+    import.library.can_cancel_prepare = true;
+    let adds = Rc::new(Cell::new(0));
+    let count = adds.clone();
+    let weak = Rc::downgrade(a);
+    let pending = import.clone();
+    library.on_add_directory(move || {
+        if let Some(a) = weak.upgrade() {
+            count.set(count.get() + 1);
+            a.apply(&pending);
+        }
+    });
+
+    for (i, key) in [None, Some(Key::Escape), Some(Key::Back)].into_iter().enumerate() {
+        a.apply(&ready);
+        frame();
+        click_label(software, add);
+        let progress = frame();
+        assert!(modal());
+        assert!(matching_label(software, |text, item| text == label
+            && item.accessible_string_property(AccessibleStringProperty::Value).is_some_and(|v| v == "65%")).is_some());
+        let add_item = labeled_item(software, |text| text == add).expect("background action");
+        let center = add_item.map_to_native_window(add_item.geometry().center());
+        click_at(software, LogicalPosition::new(center.x, center.y));
+        assert_eq!(adds.get(), i + 1, "modal shields the library header");
+        if let Some(key) = key {
+            press(software, key);
+        } else {
+            save("library-import/progress", progress);
+            click_label(software, tr!("取消"));
+            save("library-import/cancel-pending", frame());
+        }
+        press(software, Key::Back);
+        press(software, Key::Escape);
+        assert_eq!(cancels.get(), i + 1, "cancel is sent only once before terminal state");
+        assert!(modal());
+        a.apply(&ready);
+        frame();
+        assert!(!modal());
+        assert_eq!(app.get_page(), "library");
+        assert_eq!(library.get_selected_id(), ready.library.selected_id.as_str());
+        assert_eq!(library.get_games().row_count(), ready.library.games.len());
+    }
+
+    click_label(software, tr!("搜索"));
+    let mut filtered = ready.clone();
+    filtered.library.query = "Harbor".into();
+    filtered.library.games.truncate(1);
+    a.apply(&filtered);
+    import.library.query = filtered.library.query.clone();
+    import.library.games.truncate(1);
+    a.apply(&import);
+    frame();
+    assert!(modal());
+    a.apply(&filtered);
+    save("library-import/search-restored", frame());
+    assert!(!modal());
+    assert_eq!(app.get_page(), "library-search");
+    assert_eq!(library.get_query(), "Harbor");
+    assert_eq!(library.get_games().row_count(), 1);
+
+    for state in ["loading-cores", "scanning"] {
+        let mut background = filtered.clone();
+        background.library.prepare_state = state.into();
+        a.apply(&background);
+        frame();
+        assert!(!modal(), "background scans must stay nonmodal");
+    }
+
+    page(a, "onboarding");
+    a.apply(&import);
+    frame();
+    assert!(!modal(), "never interrupt onboarding with an import dialog");
+    reset(a);
+}
+
+fn exercise_onboarding_storage(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    use shinki_emu_manager_ui_slint::{MaterialWindowAdapter, Settings};
+
+    let window = a.window();
+    let state = window.global::<Settings>();
+    let material = window.global::<MaterialWindowAdapter>();
+    material.set_touch(width < 600);
+    let wizard = window.global::<Onboarding>();
+    let frame = || render(software, width, height);
+    let allow = tr!("允许访问所有文件");
+    let granted = tr!("已允许访问共享存储");
+    let visible = |label| labeled_item(software, |text| text == label).is_some();
+    reset(a);
+    page(a, "onboarding");
+    wizard.set_step(0);
+    frame();
+    assert!(!visible(allow) && !visible(granted), "permission entry is Android-only");
+
+    let opened = Rc::new(Cell::new(0));
+    let count = opened.clone();
+    state.on_open_android_storage_access(move || count.set(count.get() + 1));
+    state.set_android_storage_access_available(true);
+    save("onboarding/storage-available", frame());
+    let action = click_label(software, allow);
+    assert_eq!(opened.get(), 1);
+    let add = labeled_item(software, |text| text == tr!("添加目录")).expect("folder picker stays available");
+    assert!(action.y < add.map_to_native_window(add.geometry().center()).y);
+    assert!(!visible(granted), "the click did not grant permission");
+    click_label(software, tr!("下一步"));
+    assert_eq!(wizard.get_step(), 1, "permission is optional");
+    frame();
+    click_label(software, tr!("上一步"));
+    state.set_android_storage_access_granted(true);
+    save("onboarding/storage-granted", frame());
+    assert!(visible(granted) && !visible(allow));
+    assert!(visible(tr!("添加目录")));
+    state.set_android_storage_access_granted(false);
+    state.set_android_storage_access_available(false);
+    material.set_touch(false);
+    reset(a);
+}
+
+fn exercise_core_cards(
+    a: &SlintManagerAdapter,
+    software: &MinimalSoftwareWindow,
+    (width, height): (u32, u32),
+    save: impl Fn(&str, Vec<u8>),
+) {
+    use shinki_emu_manager_ui_slint::{CoreDownloadViewModel, CoreViewModel, Cores, MaterialWindowAdapter};
+
+    let window = a.window();
+    let cores = window.global::<Cores>();
+    let material = window.global::<MaterialWindowAdapter>();
+    material.set_touch(width < 600);
+    let frame = || render(software, width, height);
+    reset(a);
+    let core = |id: &str, title: &str, state: &str, version: &str| CoreViewModel {
+        id: id.into(), name: title.into(), state: state.into(), version: version.into(),
+        engine: "KiriKiri Z".into(), source: "bundled".into(),
+        ..Default::default()
+    };
+    let version = "v0.6.1-beta.12@02c366a5 (adapter e83a23bf)";
+    let long_version = "release/extended-runtime-and-scripting-support-2026.11@02c366a5 (adapter e83a23bf)";
+    let update = "feature/android-native-video-and-scripting-runtime@79f5c82e (adapter c77383b8)";
+    let mut model = base();
+    model.cores.items = vec![
+        core("next", "Prototype Core", "pending-install", "0.6.1-beta.12"),
+        CoreViewModel {
+            message: "Missing runtime archive; install the matching core package.".into(),
+            removable: true,
+            ..core("broken", "Legacy Core", "failed", "0.4.7")
+        },
+        CoreViewModel {
+            update_version: update.into(),
+            ..core("long", LONG_EN, "loaded", long_version)
+        },
+        core("other", LONG_JA, "installed", "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)"),
+        CoreViewModel {
+            source: "online".into(),
+            ..core("online", "Aurora VN Runtime", "available", version)
+        },
+    ];
+    a.apply(&model);
+    page(a, "cores");
+    save("cores/mixed-cards", frame());
+
+    let reveal = |label: &str| {
+        let position = LogicalPosition::new(if width < 600 { 160.0 } else { 480.0 }, 460.0);
+        let bottom_nav = if width < 600 { 80.0 } else { 0.0 };
+        for attempt in 0..16 {
+            let mut delta_y = if attempt < 8 { -216.0 } else { 216.0 };
+            if let Some(item) = labeled_item(software, |text| text == label) {
+                let center = item.map_to_native_window(item.geometry().center());
+                if center.y > 64.0 && center.y < height as f32 - bottom_nav - 8.0 {
+                    return;
+                }
+                delta_y = if center.y <= 64.0 { 144.0 } else { -144.0 };
+            }
+            software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y });
+            frame();
+        }
+        panic!("could not reveal core action {label}");
+    };
+    reveal(tr!("默认设置"));
+    let current = labeled_item(software, |text| text == long_version).expect("full current version is accessible");
+    let update_display = format!("→ {update}");
+    let next = labeled_item(software, |text| text == update_display).expect("full update version is accessible");
+    assert_eq!(current.geometry().size.height, next.geometry().size.height);
+    assert!(current.geometry().size.height < 32.0, "version text is a single line");
+    save("cores/installed-cards", frame());
+    click_label(software, tr!("默认设置"));
+    assert_eq!(cores.get_default_plugin(), "long");
+    frame();
+    reveal(tr!("收起默认设置"));
+    click_label(software, tr!("收起默认设置"));
+    assert!(cores.get_default_plugin().is_empty());
+    frame();
+
+    let clicked = Rc::new(RefCell::new(Vec::new()));
+    let calls = clicked.clone();
+    cores.on_install_online(move |id| calls.borrow_mut().push(id));
+    let update_label = tr!("更新核心");
+    reveal(update_label);
+    click_label(software, update_label);
+    assert_eq!(clicked.borrow()[0], "long");
+    model.cores.items[2].download = CoreDownloadViewModel {
+        phase: "downloading".into(), received: 2 * 1024, total: 8 * 1024,
+        ..Default::default()
+    };
+    a.apply(&model);
+    frame();
+    reveal(tr!("取消"));
+    save("cores/download-progress", frame());
+    let cancelled = Rc::new(RefCell::new(SharedString::default()));
+    let response = cancelled.clone();
+    cores.on_cancel_download(move |id| *response.borrow_mut() = id);
+    click_label(software, tr!("取消"));
+    assert_eq!(cancelled.borrow().as_str(), "long");
+    reveal(tr!("安装"));
+    save("cores/available-cards", frame());
+    click_label(software, tr!("安装"));
+    assert_eq!(clicked.borrow()[1], "online");
+    model.network.allowed = false;
+    a.apply(&model);
+    reveal(tr!("安装"));
+    save("cores/offline-install-disabled", frame());
+    click_label(software, tr!("安装"));
+    assert_eq!(clicked.borrow().len(), 2, "offline install remains disabled");
+    material.set_touch(false);
+    reset(a);
 }

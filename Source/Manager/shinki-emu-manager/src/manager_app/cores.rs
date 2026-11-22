@@ -6,7 +6,7 @@ use shinki_emu_manager_ui_slint::tr;
 use shinki_emu_manager_ui_slint::{
     CoreBatchViewModel, CoreDownloadViewModel, CoreViewModel, CoresViewModel, describe_error,
 };
-use shinki_emu_metadata::CoreCatalogEntry;
+use shinki_emu_metadata::{CoreCatalogEntry, CoreIdentity};
 use std::io::{self, BufRead, Seek, SeekFrom};
 
 /// One 全部更新 run: every member ends succeeded, failed or cancelled.
@@ -86,6 +86,18 @@ fn capability_label(capability: FamilyCapability) -> &'static str {
     }
 }
 
+/// Short commits only in the Manager's core cards. The identity still owns
+/// the full commits used to compare versions, select packages, and verify installs.
+fn core_card_version(version: &str, identity: Option<&CoreIdentity>) -> String {
+    let Some(identity) = identity else { return version.to_owned() };
+    format!(
+        "{}@{} (adapter {})",
+        identity.upstream.ref_name,
+        &identity.upstream.commit[..8],
+        &identity.adapter.commit[..8],
+    )
+}
+
 impl ShinkiEmuManagerController {
     fn cores_dir(&self) -> PathBuf {
         self.data_dir.join("cores")
@@ -137,14 +149,14 @@ impl ShinkiEmuManagerController {
             let (version, identity) = self.core_release(&id);
             let update_version = self.online_core(&id).filter(|entry| {
                 matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
-            }).map(CoreCatalogEntry::display_version).unwrap_or_default();
+            }).map(|entry| core_card_version(&entry.version, entry.identity.as_ref())).unwrap_or_default();
             listed_plugins.insert(id.clone());
             listed_stems.insert(stem.clone());
             items.push((CoreViewModel {
                 id: id.clone(),
                 name: catalog.map(|entry| entry.display_name.to_owned()).or_else(|| native.map(|descriptor| descriptor.display_name.clone())).unwrap_or_else(|| id.clone()),
                 engine: catalog.map(|entry| entry.family_id.to_owned()).or_else(|| native.map(|descriptor| descriptor.family_id.clone())).unwrap_or_default(),
-                version: identity.map_or_else(|| version.to_owned(), shinki_emu_metadata::CoreIdentity::display_version),
+                version: core_card_version(version, identity),
                 capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
                 state: state.into(),
                 source: if bundled { "bundled" } else { "user" }.into(),
@@ -219,12 +231,7 @@ impl ShinkiEmuManagerController {
                     name,
                     engine,
                     version: manifest
-                        .map(|manifest| {
-                            manifest.identity.as_ref().map_or_else(
-                                || manifest.version.clone(),
-                                shinki_emu_metadata::CoreIdentity::display_version,
-                            )
-                        })
+                        .map(|manifest| core_card_version(&manifest.version, manifest.identity.as_ref()))
                         .unwrap_or_default(),
                     state: "pending-install".into(),
                     source: "user".into(),
@@ -248,7 +255,7 @@ impl ShinkiEmuManagerController {
                         id: entry.plugin_id.clone(),
                         name: entry.display_name.clone(),
                         engine: entry.family_name.clone(),
-                        version: entry.display_version(),
+                        version: core_card_version(&entry.version, entry.identity.as_ref()),
                         state: "available".into(),
                         source: "online".into(),
                         download: self.download_view(&entry.plugin_id),
@@ -877,6 +884,43 @@ mod tests {
             .into_iter()
             .find(|item| item.id == id)
             .unwrap()
+    }
+
+    #[test]
+    fn core_cards_shorten_only_validated_commit_fields() {
+        use shinki_emu_metadata::{AdapterIdentity, UpstreamIdentity, UpstreamRefKind};
+
+        let mut identity = CoreIdentity {
+            upstream: UpstreamIdentity {
+                repo: "https://github.com/upstream/engine".into(),
+                ref_kind: UpstreamRefKind::Tag,
+                ref_name: "v0.6.1-beta.12".into(),
+                commit: "02c366a518d278eb4c2746c107baea061203c98d".into(),
+            },
+            adapter: AdapterIdentity {
+                repo: "https://github.com/Project-Shinkirou/engine".into(),
+                branch: "android/runtime".into(),
+                commit: "e83a23bf7d03a36b5d3d53e2dc1752fd5f428dd1".into(),
+            },
+            release_sequence: 17,
+        };
+        identity.validate().unwrap();
+        let original = identity.version();
+        assert_eq!(
+            core_card_version(&original, Some(&identity)),
+            "v0.6.1-beta.12@02c366a5 (adapter e83a23bf)"
+        );
+        assert_eq!(identity.version(), original);
+
+        identity.upstream.ref_kind = UpstreamRefKind::Branch;
+        identity.upstream.ref_name = "feature/02c366a518d278eb".into();
+        identity.validate().unwrap();
+        assert_eq!(
+            core_card_version(&identity.version(), Some(&identity)),
+            "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)"
+        );
+        let semver = "0.6.1-beta.12+e83a23bf7d03a36b";
+        assert_eq!(core_card_version(semver, None), semver);
     }
 
     #[test]

@@ -12,6 +12,7 @@ import {
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
 import { UpdateBanner } from "./components/update-banner.slint";
 import { LogsOverlay, EngineModal, FatalOverlay } from "./components/dialogs.slint";
+import { LibraryImportDialog } from "./components/library-scan.slint";
 import { CompactRail } from "./components/compact-rail.slint";
 import { LibraryPage } from "./pages/library.slint";
 import { GameSettingsPage } from "./pages/game-settings.slint";
@@ -50,6 +51,29 @@ export component ManagerWindow inherits MaterialWindow {
     property <bool> compact: root.usable-width < 600px;
     property <bool> medium: root.usable-width < 840px || root.usable-height < 480px;
     property <bool> onboarding: App.page == "onboarding";
+    property <bool> importing: Library.prepare-state == "importing";
+    property <bool> show-import-dialog: root.importing && !root.onboarding && !Session.active
+        && !Logs.open && !Dialogs.modal-active && !Dialogs.fatal-active
+        && !ProviderEditor.open && ProviderEditor.confirm-delete.id == "";
+    property <bool> import-cancel-requested;
+    changed importing => {
+        if !root.importing {
+            root.import-cancel-requested = false;
+        }
+    }
+    changed show-import-dialog => {
+        if !root.show-import-dialog && !root.importing && App.page != "library" && App.page != "library-search" {
+            keys.focus();
+        }
+    }
+
+    function cancel-import() {
+        if root.show-import-dialog && Library.can-cancel-prepare && !root.import-cancel-requested {
+            root.import-cancel-requested = true;
+            Library.cancel-prepare();
+        }
+    }
+
     property <bool> show-rail: !root.compact && !root.onboarding;
     // A Store game opened on a phone is a full-screen sheet above the bottom bar.
     property <bool> store-sheet: root.compact && App.page == "store" && Store.detail-open && Store.selected.title-id != "";
@@ -182,6 +206,14 @@ export component ManagerWindow inherits MaterialWindow {
         height: root.height;
         focus-on-tab-navigation: false;
 
+        capture-key-pressed(event) => {
+            if root.show-import-dialog && (event.text == Key.Escape || event.text == Key.Back) {
+                root.cancel-import();
+                return accept;
+            }
+            reject
+        }
+
         key-pressed(event) => {
             if event.text == Key.Escape && App.page == "library-search"
                 && !Logs.open && !Dialogs.modal-active && !Dialogs.fatal-active && !Session.active {
@@ -277,6 +309,7 @@ export component ManagerWindow inherits MaterialWindow {
                 height: pages.height;
                 compact: root.compact;
                 shown: App.page == "library" || App.page == "library-search";
+                import-dialog-shown: root.show-import-dialog;
             }
             if App.page == "game-settings" : GameSettingsPage {
                 x: 0px;
@@ -395,6 +428,15 @@ export component ManagerWindow inherits MaterialWindow {
             width: root.usable-width;
             height: root.usable-height - root.nav-bottom;
             bottom-inset: root.compact && Notices.snackbar-text != "" ? 88px : 16px;
+        }
+
+        if root.show-import-dialog : LibraryImportDialog {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
+            can-cancel: Library.can-cancel-prepare && !root.import-cancel-requested;
+            cancel => { root.cancel-import(); }
         }
 
         if Logs.open : LogsOverlay {

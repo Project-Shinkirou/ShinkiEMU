@@ -29,7 +29,9 @@ The prerelease channel is selectable and defaults to enabled when running a prer
 
 ## Add games and install cores
 
-Choose **Add folder** in the library header and select the original game folder. Manager scans it in place, even offline and before you install a core. Scan progress appears above the list. On Android, grant access when the system folder picker asks. If a folder cannot be read, check its permissions or choose another.
+Choose the **Add folder** icon in the library header and select the original game folder. Manager scans it in place, even offline and before you install a core. The import dialog shows progress and lets you cancel the scan. Background refreshes show progress above the list. On Android, grant access when the system folder picker asks. If a folder cannot be read, check its permissions or choose another.
+
+On Android 11 or later, the folder step in first-time setup also offers **Allow access to all files**. This opens Android's system settings and is optional.
 
 On a touch screen, pull down from the top of the library list and release to scan again. This also syncs metadata when networking is allowed. To manage folders or refresh with the keyboard, use **Settings → Library folders**.
 
