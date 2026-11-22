@@ -15,6 +15,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "android_host.rs"]
+mod android_host;
+
 pub fn portable(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("empty package path");
@@ -407,6 +410,9 @@ pub fn stage_core(
     let mut entries = vec![(result.library.clone(), library.into())];
     for asset in m.resources.iter().chain(&m.licenses) {
         entries.extend(asset_entries(asset)?);
+    }
+    if android && entries.iter().any(|(_, path)| android_host::is_runtime_asset(path)) {
+        bail!("Android core packages cannot contain APK-only host compile inputs");
     }
     let is_runtime = |path: &Path| {
         let name = path
@@ -1140,6 +1146,11 @@ pub(crate) fn static_core_entries(
             native.validate()?;
             for asset in &native.resources {
                 for (source, destination) in asset_entries(asset)? {
+                    if result.target.ends_with("-linux-android")
+                        && android_host::is_runtime_asset(&destination)
+                    {
+                        continue;
+                    }
                     entries.push((source, format!("cores/{}/{destination}", core.id)));
                 }
             }
@@ -1224,6 +1235,12 @@ pub(crate) fn android_inputs(inv: &Inventory, result: &BuildResult, stage: &Path
     {
         bundled.push(name.clone());
         entries.push((source, format!("assets/{name}")));
+    }
+    for (source, name) in android_host::inputs(inv, result, temp.path())? {
+        if let Some(asset) = name.strip_prefix("assets/") {
+            bundled.push(asset.to_owned());
+        }
+        entries.push((source, name));
     }
     copy_entries(&entries, stage)?;
     bundled.sort();
@@ -1457,6 +1474,7 @@ fn package_android(
         // Each ABI resolves its own Rust closure (target-specific crates differ), so
         // the asset listing is the union; every file present in both must still match.
         let mut bundled = std::collections::BTreeSet::new();
+        let mut previous_hosts = None;
         for (target, abi) in targets {
             let built = if *target == result.target {
                 result
@@ -1479,8 +1497,23 @@ fn package_android(
                     .filter(|line| !line.is_empty())
                     .map(str::to_owned),
             );
+            let staged = tree(inputs)?;
+            let host_hashes = android_host::hashes(&staged)?;
+            if qa {
+                // A single-ABI package reuses the build-time stage, but still
+                // checks it against the exact producer receipts.
+                let check = crate::temporary::directory()?;
+                let expected = android_host::inputs(inv, built, check.path())?;
+                if host_hashes != android_host::hashes(&expected)? {
+                    bail!("Android QA host compile inputs differ from their build receipts");
+                }
+            }
+            if previous_hosts.as_ref().is_some_and(|previous| previous != &host_hashes) {
+                bail!("Android ABI host compile-input sets or producer identities differ");
+            }
+            previous_hosts = Some(host_hashes);
             // Shared metadata/license bytes must be identical for both ABIs.
-            for (source, name) in tree(inputs)? {
+            for (source, name) in staged {
                 if name == ANDROID_BUNDLE_MANIFEST {
                     continue;
                 }
@@ -1488,7 +1521,9 @@ fn package_android(
                     if qa && !bundled.contains(asset) {
                         bail!("Android build asset missing from its manifest: {asset}");
                     }
-                } else if name.strip_prefix("jniLibs/").and_then(android_library_abi) != Some(*abi) {
+                } else if !name.starts_with("android-host/")
+                    && name.strip_prefix("jniLibs/").and_then(android_library_abi) != Some(*abi)
+                {
                     bail!("unexpected input for Android ABI {abi}: {name}");
                 }
                 let destination = stage.join(&name);
@@ -1603,6 +1638,7 @@ fn package_android(
                 "abis": targets.iter().map(|&(_, abi)| abi).collect::<serde_json::Value>(),
                 "signing": if signed { "release" } else { "debug-test" },
                 "apk": apk_name,
+                "host_compile_input_sha256": previous_hosts.context("Android host compile-input receipt")?,
                 "sha256": sha256(&apk)?,
                 "size": fs::metadata(&apk)?.len()
             }))?,
@@ -1679,8 +1715,17 @@ fn verify_android_apk(
         let mut entry = archive.by_index(i)?;
         let name = entry.name()?.into_owned();
         metadata |= name == "assets/metadata/index.json";
+        if name.starts_with("assets/android-host/")
+            || name.strip_prefix("assets/cores/").and_then(|entry| entry.split_once('/'))
+                .is_some_and(|(_, path)| android_host::is_runtime_asset(path))
+        {
+            bail!("APK contains host compile inputs as runtime assets: {name}");
+        }
         if let Some(relative) = name.strip_prefix("lib/").filter(|path| path.ends_with(".so")) {
             portable(&name)?;
+            if relative.rsplit('/').next().is_some_and(android_host::is_core_library) {
+                bail!("APK contains a standalone core library: {name}");
+            }
             if !android_library_abi(relative)
                 .is_some_and(|abi| targets.iter().any(|(_, expected)| *expected == abi))
             {

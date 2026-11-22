@@ -27,6 +27,8 @@ pub struct Core {
     #[serde(default)]
     pub recognition: shinki_emu_metadata::CoreRecognition,
     pub supported_targets: Vec<String>,
+    /// The shared catalog parser validates this policy at inventory load.
+    pub(crate) android_dynamic: Option<toml::Table>,
     #[serde(default)]
     pub static_manager_targets: Vec<String>,
     #[serde(default)]

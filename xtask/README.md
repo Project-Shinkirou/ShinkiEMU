@@ -90,8 +90,13 @@ Sena and Ethornell have no Android adapter target. The separate `cmvs-rs`
 remains Android-blocked and publish-blocked pending a supported upstream game
 sample. ReMinori remains Android-blocked; its AGPL obligations and separate
 engine and save identity are unchanged. The APK's existing `MainActivity`
-bootstraps `shinki_emu_manager` and supplies the bundled native host classes;
-an APK build must retain those inputs while it still embeds KiriKiri cores.
+bootstraps `shinki_emu_manager` and supplies the KiriKiri host classes.
+Its Java, AIDL, JAR and JNI contract are staged as APK compile inputs under
+`android-host/<core>` outside runtime assets and downloadable ZIPs. When the
+inventory selects a dynamic-only KiriKiri core, build that core explicitly
+for each ABI before building Manager. The universal packager checks both
+input sets, fork commits and file hashes. Embedded builds use the host inputs
+from their own static receipts.
 
 ### Other native inputs
 

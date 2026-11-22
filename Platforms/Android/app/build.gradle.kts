@@ -21,6 +21,7 @@ val generatedRoot = layout.projectDirectory.dir(
     providers.environmentVariable("SHINKI_EMU_ANDROID_GENERATED_ROOT")
         .orElse("../generated").get()
 )
+val androidHostRoot = generatedRoot.dir("android-host")
 
 android {
     namespace = "org.shinkirou.shinkiemu"
@@ -91,10 +92,11 @@ android {
         jniLibs.directories.add(generatedRoot.dir("jniLibs").asFile.absolutePath)
         assets.directories.add(generatedRoot.dir("assets").asFile.absolutePath)
         res.directories.add(generatedRoot.dir("res").asFile.absolutePath)
-        java.srcDir(generatedRoot.dir("assets/cores/kirikiroid2-web/Resources/android-host/java"))
-        aidl.srcDir(generatedRoot.dir("assets/cores/kirikiroid2-web/Resources/android-host/java"))
-        java.srcDir(generatedRoot.dir("assets/cores/krkr2/Resources/android-host/java"))
-        aidl.srcDir(generatedRoot.dir("assets/cores/krkr2/Resources/android-host/java"))
+        for (id in listOf("kirikiroid2-web", "krkr2")) {
+            val sources = androidHostRoot.dir("$id/java")
+            java.srcDir(sources)
+            aidl.srcDir(sources)
+        }
     }
 
     androidResources {
@@ -167,8 +169,8 @@ val rustlsPlatformVerifierVersion = providers.of(RustlsVersion::class.java) {
 }
 
 dependencies {
-    implementation(fileTree(generatedRoot.dir("assets/cores/kirikiroid2-web/Resources/android-host/libs")) {
-        include("*.jar")
+    implementation(fileTree(androidHostRoot) {
+        include("*/libs/*.jar")
     })
     // The Kotlin verifier component must match Cargo's resolved Android shim.
     // Minify stays off; enabling it also requires keeping its JNI-referenced classes.

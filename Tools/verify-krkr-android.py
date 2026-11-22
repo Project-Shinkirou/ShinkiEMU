@@ -155,6 +155,10 @@ def main():
     objdump = nm.with_name('llvm-objdump' + suffix)
     prefix = 'assets/cores/kirikiroid2-web/Resources/'
     proof = {'apk': str(apk.resolve()), 'sha256': digest(apk), 'device_launch': 'not run (waived)', 'abis': {}}
+    receipt = json.loads(apk.with_name('android.json').read_text(encoding='utf-8'))
+    if (receipt.get('schema') != 'shinki.emu.android_package.v1'
+            or receipt.get('apk') != apk.name or receipt.get('sha256') != proof['sha256']):
+        raise ValueError('APK differs from its actual universal packaging receipt')
     head = command('git', '-C', args.root, 'rev-parse', 'HEAD').strip()
     proof['source_commit'] = head
     inventory = tomllib.loads((args.root / 'build/cores.toml').read_text(encoding='utf-8'))
@@ -210,7 +214,21 @@ def main():
         proof['embedded_cores'] = sorted(ids)
         core = next(core for core in embedded if core['id'] == 'kirikiroid2-web')
         proof['fork'] = core['source']['rev']
-        contracts = json.loads(archive.read(prefix + 'android-host/jni-contract.json'))
+        contract_path = 'android-host/kirikiroid2-web/jni-contract.json'
+        producer_path = 'android-host/kirikiroid2-web/producer.json'
+        compile_hashes = receipt['host_compile_input_sha256']
+        for relative in (contract_path, producer_path):
+            leaked = prefix + 'android-host/' + Path(relative).name
+            if 'assets/' + relative in names or leaked in names:
+                raise ValueError(f'APK contains an Android host compile-only input: {relative}')
+            if digest(apk.parent / relative) != compile_hashes[relative]:
+                raise ValueError(f'Android host compile input differs from packaging receipt: {relative}')
+        producer = json.loads((apk.parent / producer_path).read_text(encoding='utf-8'))
+        if producer != {'plugin_id': 'kirikiroid2-web', 'source_commit': proof['fork'],
+                        'artifact_kind': 'native-static'}:
+            raise ValueError('Android host input has a different producer from the embedded core')
+        proof['jni_contract_sha256'] = compile_hashes[contract_path]
+        contracts = json.loads((apk.parent / contract_path).read_text(encoding='utf-8'))
         methods = {}
         for name in sorted(names):
             if re.fullmatch(r'classes\d*\.dex', name):
@@ -345,6 +363,9 @@ def main():
             if 'shinki_impacto_lua_ident' not in lua_defined or 'lua_ident' in lua_defined:
                 raise ValueError('Impacto compiled input lacks isolated original Lua data')
             staged = Path(built['target_dir']) / 'android-inputs/assets'
+            for relative in (contract_path, producer_path):
+                if digest(staged.parent / relative) != compile_hashes[relative]:
+                    raise ValueError(f'APK host input differs from {abi} build stage: {relative}')
             for relative, packaged_hash in resource_hashes_all.items():
                 original = staged / relative
                 if original.is_file():
