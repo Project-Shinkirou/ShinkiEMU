@@ -119,6 +119,17 @@ export global Library {
     callback open-folder(string);
     callback remove(string);
     callback cover-demand(int, string, bool, string);
+    // Desktop hosts that can list mounted optical data discs; mobile leaves it false.
+    in property <bool> optical-available;
+    // The host is listing mounted discs; the toolbar action waits for it.
+    in property <bool> optical-listing;
+    // Mounted discs to choose from (`id` is the volume root, `label` the volume
+    // name or empty); set only when more than one is mounted.
+    in property <[Choice]> optical-choices;
+    callback open-optical();
+    // Index into `optical-choices`, which the host clears with the dialog.
+    callback import-optical(int);
+    callback close-optical();
 }
 
 export struct SelectedGame {

@@ -1,4 +1,4 @@
-import { MaterialPalette, MaterialText, MaterialTypography, LinearProgressIndicator, OutlineButton, TextButton } from "@material";
+import { MaterialPalette, MaterialText, MaterialTypography, LinearProgressIndicator, OutlineButton, TextButton, ScrollView, StateLayerArea, Icon } from "@material";
 import { Library } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { DialogSurface, Scrim } from "./dialogs.slint";
@@ -142,6 +142,116 @@ export component LibraryImportDialog {
                     text: @tr("取消");
                     clicked => { root.cancel(); }
                 }
+            }
+        }
+    }
+
+    init => { surface.focus(); }
+}
+
+// One mounted disc: the volume name with its root path below it.
+component OpticalDiscRow {
+    in property <string> label;
+    in property <string> path;
+    callback clicked();
+
+    min-height: 64px;
+    preferred-height: 64px;
+    forward-focus: area;
+    accessible-role: button;
+    accessible-label: root.label != "" ? root.label : root.path;
+    accessible-description: root.label != "" ? root.path : "";
+    accessible-action-default => { root.clicked(); }
+
+    area := StateLayerArea {
+        width: root.width;
+        height: root.height;
+        border-radius: 12px;
+        color: MaterialPalette.on-surface;
+        clicked => { root.clicked(); }
+
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 16px;
+
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                Icon {
+                    width: 24px;
+                    height: 24px;
+                    source: Icons.album;
+                    colorize: MaterialPalette.on-surface-variant;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                MaterialText {
+                    text: root.label != "" ? root.label : root.path;
+                    style: MaterialTypography.body-large;
+                    color: MaterialPalette.on-surface;
+                    overflow: elide;
+                }
+                if root.label != "" : MaterialText {
+                    text: root.path;
+                    style: MaterialTypography.body-medium;
+                    color: MaterialPalette.on-surface-variant;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// Several mounted discs: the user picks one; nothing is imported until then.
+export component OpticalDiscDialog {
+    Scrim {
+        width: root.width;
+        height: root.height;
+        dismiss => { Library.close-optical(); }
+    }
+
+    surface := DialogSurface {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width-limit: root.width - 32px;
+        height-limit: root.height - 32px;
+        surface-max-width: 480px;
+        icon: Icons.album;
+        title: @tr("选择光盘");
+        accessible-role: groupbox;
+        accessible-label: self.title;
+        escape => { Library.close-optical(); }
+
+        MaterialText {
+            text: @tr("从光盘直接读取游戏，不会复制到本机。");
+            style: MaterialTypography.body-medium;
+            color: MaterialPalette.on-surface-variant;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            min-height: min(Library.optical-choices.length * 64px, 128px);
+            preferred-height: Library.optical-choices.length * 64px;
+            VerticalLayout {
+                for disc[index] in Library.optical-choices : OpticalDiscRow {
+                    label: disc.label;
+                    path: disc.id;
+                    clicked => { Library.import-optical(index); }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            TextButton {
+                text: @tr("取消");
+                clicked => { Library.close-optical(); }
             }
         }
     }

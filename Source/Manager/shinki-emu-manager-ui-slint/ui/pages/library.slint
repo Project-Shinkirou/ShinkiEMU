@@ -284,6 +284,14 @@ export component LibraryPage {
                         tooltip: @tr("添加文件夹");
                         clicked => { Library.add-directory(); }
                     }
+                    if !root.searching && Library.optical-available : IconButton {
+                        width: 48px;
+                        height: 48px;
+                        icon: Icons.album;
+                        tooltip: @tr("打开光驱");
+                        enabled: !Library.optical-listing;
+                        clicked => { Library.open-optical(); }
+                    }
                     if !root.searching : IconButton {
                         width: 48px;
                         height: 48px;

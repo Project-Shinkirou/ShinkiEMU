@@ -12,7 +12,7 @@ import {
 import { NoticeStack, SnackbarHost } from "./components/notices.slint";
 import { UpdateBanner } from "./components/update-banner.slint";
 import { LogsOverlay, EngineModal, FatalOverlay } from "./components/dialogs.slint";
-import { LibraryImportDialog } from "./components/library-scan.slint";
+import { LibraryImportDialog, OpticalDiscDialog } from "./components/library-scan.slint";
 import { CompactRail } from "./components/compact-rail.slint";
 import { LibraryPage } from "./pages/library.slint";
 import { GameSettingsPage } from "./pages/game-settings.slint";
@@ -138,6 +138,10 @@ export component ManagerWindow inherits MaterialWindow {
         Session.pointer-state-changed();
         if !Logs.open { keys.focus(); }
     }
+    property <bool> optical-open: Library.optical-choices.length > 0 && !root.onboarding && !Session.active;
+    changed optical-open => {
+        if !root.optical-open && !root.show-import-dialog { keys.focus(); }
+    }
     property <float> watch-pointer-x: Session.pointer-x;
     changed watch-pointer-x => { Session.pointer-state-changed(); }
     property <float> watch-pointer-y: Session.pointer-y;
@@ -246,6 +250,10 @@ export component ManagerWindow inherits MaterialWindow {
                 return accept;
             }
             if Dialogs.fatal-active {
+                return accept;
+            }
+            if root.optical-open {
+                Library.close-optical();
                 return accept;
             }
             if Dialogs.modal-active {
@@ -437,6 +445,13 @@ export component ManagerWindow inherits MaterialWindow {
             height: root.usable-height;
             can-cancel: Library.can-cancel-prepare && !root.import-cancel-requested;
             cancel => { root.cancel-import(); }
+        }
+
+        if root.optical-open : OpticalDiscDialog {
+            x: root.usable-x;
+            y: root.usable-y;
+            width: root.usable-width;
+            height: root.usable-height;
         }
 
         if Logs.open : LogsOverlay {

@@ -2838,3 +2838,27 @@ msgstr "Allow access to all files"
 
 msgid "更新核心"
 msgstr "Update core"
+
+msgid "打开光驱"
+msgstr "Open game disc"
+
+msgid "选择光盘"
+msgstr "Choose a disc"
+
+msgid "从光盘直接读取游戏，不会复制到本机。"
+msgstr "Games are read straight from the disc; nothing is copied to this computer."
+
+msgid "没有找到光盘"
+msgstr "No disc found"
+
+msgid "请放入游戏数据光盘，等系统识别后再试。"
+msgstr "Insert a game data disc, wait for the system to recognize it, then try again."
+
+msgid "光盘已更换或取出"
+msgstr "The disc was changed or removed"
+
+msgid "请放回原光盘，或再次点“打开光驱”选择当前光盘。"
+msgstr "Reinsert the original disc, or use “Open game disc” again to choose the current one."
+
+msgid "无法读取光驱"
+msgstr "Couldn't read the disc drive"
