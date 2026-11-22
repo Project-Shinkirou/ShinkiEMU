@@ -476,11 +476,19 @@ fn migrate_legacy(cores: &Path, failures: &mut Vec<(String, String)>) {
     }
 }
 
+#[cfg(any(not(target_os = "android"), test))]
+pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
+    apply_pending_checked(cores, |_, _| Ok(()))
+}
+
 /// Apply staged changes before the owner loads cores: migrate legacy files,
 /// then removals, then installs. An install renames the old directory to
 /// `pending/<stem>.old`, moves the new one into place and deletes the old
 /// copy; a failed move restores the old directory.
-pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
+pub(crate) fn apply_pending_checked(
+    cores: &Path,
+    validate_install: impl Fn(&str, &Path) -> Result<(), &'static str>,
+) -> Vec<(String, String)> {
     let mut failures = Vec::new();
     #[cfg(not(target_os = "android"))]
     migrate_legacy(cores, &mut failures);
@@ -505,6 +513,11 @@ pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
         if *kind != PendingKind::Install {
             continue;
         }
+        let staged = pending.join(stem);
+        if let Err(error) = validate_install(stem, &staged) {
+            failures.push((stem.clone(), error.to_owned()));
+            continue;
+        }
         let target = cores.join(stem);
         let old = pending.join(format!("{stem}{OLD_SUFFIX}"));
         if let Err(error) = remove_path(&old) {
@@ -517,7 +530,7 @@ pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
                 failures.push(failure(stem, &error));
                 continue;
             }
-        if let Err(error) = fs::rename(pending.join(stem), &target) {
+        if let Err(error) = fs::rename(staged, &target) {
             if had_old
                 && let Err(restore) = fs::rename(&old, &target) {
                     failures.push(failure(stem, &restore));

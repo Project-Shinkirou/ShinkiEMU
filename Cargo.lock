@@ -11262,6 +11262,7 @@ dependencies = [
  "parking_lot 0.13.0",
  "rusqlite",
  "schemars",
+ "semver",
  "serde",
  "serde_json",
  "shinki-emu-abi",

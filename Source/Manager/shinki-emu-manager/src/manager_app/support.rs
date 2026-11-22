@@ -59,7 +59,9 @@ pub(super) fn apply_startup_core_packages(cores: &Path) -> Vec<(String, String)>
     {
         // NativeActivity can recreate the controller in this process while
         // LoadedFamilyPlugin deliberately keeps the mapped libraries resident.
-        apply_core_packages_once(&ANDROID_STARTUP_CORE_PACKAGES, cores).to_vec()
+        apply_core_packages_once(&ANDROID_STARTUP_CORE_PACKAGES, cores, |stem, directory| {
+            recognition::validate_pending_package(cores, stem, directory)
+        }).to_vec()
     }
     #[cfg(not(target_os = "android"))]
     core_package::apply_pending(cores)
@@ -74,8 +76,9 @@ pub(super) fn startup_core_package_failures() -> &'static [(String, String)] {
 fn apply_core_packages_once<'a>(
     applied: &'a std::sync::OnceLock<Vec<(String, String)>>,
     cores: &Path,
+    validate_install: impl Fn(&str, &Path) -> Result<(), &'static str>,
 ) -> &'a [(String, String)] {
-    applied.get_or_init(|| core_package::apply_pending(cores))
+    applied.get_or_init(|| core_package::apply_pending_checked(cores, validate_install))
 }
 
 /// Filter foreign or truncated installed files before calling libdl. Android's
@@ -118,16 +121,16 @@ mod android_core_tests {
         fs::create_dir(&current).unwrap();
         fs::write(current.join("version"), b"old").unwrap();
         let process = OnceLock::new();
-        assert!(apply_core_packages_once(&process, cores).is_empty());
+        assert!(apply_core_packages_once(&process, cores, |_, _| Ok(())).is_empty());
 
         let staged = cores.join(core_package::PENDING).join(stem);
         fs::create_dir_all(&staged).unwrap();
         fs::write(staged.join("version"), b"new").unwrap();
-        assert!(apply_core_packages_once(&process, cores).is_empty());
+        assert!(apply_core_packages_once(&process, cores, |_, _| Ok(())).is_empty());
         assert_eq!(fs::read(current.join("version")).unwrap(), b"old");
         assert!(staged.is_dir());
 
-        assert!(apply_core_packages_once(&OnceLock::new(), cores).is_empty());
+        assert!(apply_core_packages_once(&OnceLock::new(), cores, |_, _| Ok(())).is_empty());
         assert_eq!(fs::read(current.join("version")).unwrap(), b"new");
         assert!(!staged.exists());
     }

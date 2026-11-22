@@ -115,7 +115,7 @@ impl ShinkiEmuManagerController {
             &core_platform(),
             INDEPENDENT_FAMILY_ABI_FINGERPRINT,
         )
-        .filter(|entry| recognition::allows_installed_release(plugin_id, entry.identity.as_ref()))
+        .filter(|entry| recognition::allows_installed_release(plugin_id, &entry.version, entry.identity.as_ref()))
     }
     pub(super) fn core_release<'a>(
         &'a self,
@@ -138,7 +138,7 @@ impl ShinkiEmuManagerController {
             .filter(|(_, kind)| **kind == PendingKind::Install)
             .filter_map(|(stem, _)| {
                 let package = core_package::read_manifest(&cores.join(core_package::PENDING).join(stem))?;
-                (recognition::allows_installed_release(&package.plugin_id, package.identity.as_ref())
+                (recognition::allows_installed_release(&package.plugin_id, &package.version, package.identity.as_ref())
                     && recognition::is_static(&package.plugin_id)
                     && !self.registry.installed().contains_key(&package.plugin_id))
                     .then_some((package.plugin_id, stem))
@@ -163,7 +163,10 @@ impl ShinkiEmuManagerController {
                 || recognition::is_static(&id),
                 |core| core.bundled || (!cfg!(target_os = "android") && recognition::is_static(&id)),
             );
-            let state = match pending.get(&stem) {
+            let pending_kind = pending.get(&stem).filter(|kind| {
+                !cfg!(target_os = "android") || **kind != PendingKind::Install || !self.plugin_errors.contains_key(&stem)
+            });
+            let state = match pending_kind {
                 Some(PendingKind::Remove) => "pending-removal",
                 Some(PendingKind::Install) => "pending-update",
                 None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id) => "loading",
@@ -231,14 +234,17 @@ impl ShinkiEmuManagerController {
                     state: "failed".into(),
                     source: "user".into(),
                     message: described.title,
-                    removable: cores.join(stem).is_dir(),
+                    removable: cores.join(stem).is_dir()
+                        || (cfg!(target_os = "android") && pending.get(stem) == Some(&PendingKind::Install)),
                     ..CoreViewModel::default()
                 },
                 stem.clone(),
             ));
         }
         for (stem, kind) in &pending {
-            if *kind != PendingKind::Install || listed_stems.contains(stem) {
+            if *kind != PendingKind::Install || listed_stems.contains(stem)
+                || (cfg!(target_os = "android") && self.plugin_errors.contains_key(stem))
+            {
                 continue;
             }
             let manifest =
@@ -294,7 +300,11 @@ impl ShinkiEmuManagerController {
         Ok((
             CoresViewModel {
                 items,
-                restart_required: !pending.is_empty() && (cfg!(target_os = "android") || self.cores_started()),
+                restart_required: if cfg!(target_os = "android") {
+                    pending.keys().any(|stem| !self.plugin_errors.contains_key(stem))
+                } else {
+                    !pending.is_empty() && self.cores_started()
+                },
                 updates_available: i32::try_from(updates_available).unwrap_or(i32::MAX),
                 update_all_count: i32::try_from(update_all_count).unwrap_or(i32::MAX),
                 batch: self.batch_view(),
@@ -323,7 +333,7 @@ impl ShinkiEmuManagerController {
             .flat_map(|catalog| &catalog.cores.entries)
             .filter(|entry| entry.platform == platform
                 && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
-                && recognition::allows_installed_release(&entry.plugin_id, entry.identity.as_ref()));
+                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
         core_package::stage_local_release(source, entries, &pending)?;
         self.model()
     }
@@ -622,8 +632,10 @@ impl ShinkiEmuManagerController {
         let cores = self.cores_dir()?;
         let staged = cores.join(core_package::PENDING).join(stem);
         let installed = cores.join(stem);
-        if staged.is_dir() && !installed.is_dir() {
+        let rejected_stage = cfg!(target_os = "android") && self.plugin_errors.contains_key(stem);
+        if staged.is_dir() && (!installed.is_dir() || rejected_stage) {
             core_package::cancel_pending_install(&cores, stem)?;
+            self.plugin_errors.remove(stem);
         } else if installed.is_dir() {
             core_package::mark_removal(&cores, stem)?;
         } else {

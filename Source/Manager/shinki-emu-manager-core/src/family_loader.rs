@@ -118,11 +118,12 @@ pub(crate) unsafe fn text(bytes: abi::Bytes, limit: usize) -> FamilyResult<Strin
         })
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 unsafe fn initialize_android_context(
     api: &abi::CoreApi,
     vm: *mut std::ffi::c_void,
     application: *mut std::ffi::c_void,
+    required: bool,
 ) -> Result<(), FamilyLoadError> {
     let mut extension = std::ptr::null();
     let status = unsafe {
@@ -133,6 +134,12 @@ unsafe fn initialize_android_context(
         )
     };
     if status == abi::UNSUPPORTED && extension.is_null() {
+        if required {
+            return Err(FamilyLoadError::ProviderError(FamilyError::new(
+                "SHINKI_EMU_FAMILY_ANDROID_CONTEXT_REQUIRED",
+                "This Android core must provide AndroidContextV1. Install a compatible official release.",
+            )));
+        }
         return Ok(());
     }
     let table = extension.cast::<abi::AndroidContextV1>();
@@ -177,11 +184,14 @@ impl LoadedFamilyPlugin {
         path: &Path,
         vm: *mut std::ffi::c_void,
         application: *mut std::ffi::c_void,
+        requires_context: bool,
     ) -> Result<Self, FamilyLoadError> {
         if !path.is_absolute() {
             return Err(FamilyLoadError::InvalidPath);
         }
-        Self::load_with(path, |api| unsafe { initialize_android_context(api, vm, application) })
+        Self::load_with(path, |api| unsafe {
+            initialize_android_context(api, vm, application, requires_context)
+        })
     }
 
     fn load_with(
@@ -754,6 +764,33 @@ impl Drop for NativeSession {
         if let Err(error) = self.close() {
             tracing::error!(event = "shinki.emu.core.close_failed", code = %error.code());
         }
+    }
+}
+
+#[cfg(test)]
+mod android_context_tests {
+    use super::*;
+
+    #[test]
+    fn core_without_android_context_uses_its_declared_policy() {
+        use crate::test_native::{Fixture, prepare_query};
+        let fixture = Fixture::new("fixture", "fixture", "fixture");
+        let calls = fixture.calls.clone();
+        let query = prepare_query(0, fixture);
+        // The fixture advertises the normal core ABI but not AndroidContextV1.
+        // Its extension handler never dereferences either Android handle.
+        let load = |required| unsafe {
+            LoadedFamilyPlugin::from_query_with(query, |api| {
+                initialize_android_context(api, std::ptr::null_mut(), std::ptr::null_mut(), required)
+            })
+        };
+        let Err(error) = load(true) else { panic!("required context was not enforced") };
+        assert_eq!(error.diagnostic_code(), "SHINKI_EMU_FAMILY_ANDROID_CONTEXT_REQUIRED");
+        assert!(calls.lock().is_empty(), "failed negotiation must precede core initialization");
+
+        let core = load(false).unwrap();
+        assert_eq!(core.manager_descriptor().plugin_id, "fixture");
+        assert!(calls.lock().iter().any(|call| call.name == "initialize"));
     }
 }
 

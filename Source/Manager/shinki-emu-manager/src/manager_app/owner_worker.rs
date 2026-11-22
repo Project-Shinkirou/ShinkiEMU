@@ -305,6 +305,7 @@ fn activate(
         recognition::CoreSource::Package(core) => {
             #[cfg(target_os = "android")]
             {
+                let policy = catalog.android_dynamic.ok_or("SHINKI_EMU_CORE_UNSUPPORTED_TARGET")?;
                 if !android_core_library(&core.library) {
                     return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
                 }
@@ -312,7 +313,11 @@ fn activate(
                 // Packaged cores locate their own resources beside the library.
                 let (vm, application) = crate::platform::android::core_application_context()?;
                 // SAFETY: the host holds these handles for the process lifetime.
-                unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::load_android(&core.library, vm, application) }
+                unsafe {
+                    shinki_emu_manager_core::LoadedFamilyPlugin::load_android(
+                        &core.library, vm, application, policy.requires_context,
+                    )
+                }
             }
             #[cfg(not(target_os = "android"))]
             shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
