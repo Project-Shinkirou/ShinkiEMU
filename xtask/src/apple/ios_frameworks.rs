@@ -90,7 +90,7 @@ pub(crate) fn inspect(path: &Path, target: &str, id: &str) -> Result<()> {
     } else {
         object::macho::CPU_SUBTYPE_X86_64_ALL
     };
-    if macho.macho_header().cpusubtype(endian) != subtype {
+    if macho.macho_header().cpusubtype(endian).id() != subtype {
         bail!("{id} uses a CPU subtype outside the {target} slice");
     }
     let flags = macho.macho_header().flags(endian);
@@ -113,7 +113,8 @@ pub(crate) fn inspect(path: &Path, target: &str, id: &str) -> Result<()> {
             object::macho::LC_RPATH => bail!("{id} has an unnecessary runtime search path"),
             object::macho::LC_BUILD_VERSION => {
                 let version: &object::macho::BuildVersionCommand<_> = command.data()?;
-                if has_build_version || version.minos.get(endian) != 0x10_00_00 {
+                if has_build_version || version.minos.get(endian) != object::macho::Version(0x10_00_00)
+                {
                     bail!("{id} must target iOS 16.0");
                 }
                 has_build_version = true;
