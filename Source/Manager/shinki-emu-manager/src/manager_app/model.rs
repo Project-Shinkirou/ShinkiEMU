@@ -151,7 +151,7 @@ impl ShinkiEmuManagerController {
             .into_iter()
             .map(
                 |(game, duration_ms, last_played_ms, cover_uri, compatibility_status)| {
-                    let problem = self.game_problem(&game);
+                    let (problem, provider_access) = self.game_problem(&game);
                     GameCardViewModel {
                         subtitle: self.engine_and_emulator(&game),
                         version: versions
@@ -163,6 +163,7 @@ impl ShinkiEmuManagerController {
                         cover_uri,
                         ready: problem.is_empty(),
                         problem,
+                        provider_access: provider_access.into(),
                         play_time: human_duration(duration_ms),
                         last_played: last_played_ms
                             .map(|value| human_relative(value, now_ms))
@@ -362,6 +363,7 @@ impl ShinkiEmuManagerController {
         let candidate = self.launch_candidate_for_game(game);
         let selected_plugin = self.library.game_settings(&game.game_id).map_err(|error| error.to_string())?.and_then(|settings| settings.emulator_id);
         let native_eligible = self.mapped_game_directory(game).is_some();
+        let (problem, provider_access) = self.game_problem(game);
         let joined = |values: &[String]| values.join(", ");
         Ok(SelectionViewModel {
             game: SelectedGameViewModel {
@@ -375,7 +377,8 @@ impl ShinkiEmuManagerController {
                     && native_eligible
                     && !shinki_emu_patch::is_staging_path(Path::new(&game.location))
                     && candidate.is_some(),
-                problem: self.game_problem(game),
+                problem,
+                provider_access: provider_access.into(),
                 play_time: human_duration(stats.total_duration_ms),
                 last_played: stats
                     .last_played_unix_ms
@@ -613,19 +616,24 @@ impl ShinkiEmuManagerController {
         })
     }
 
-    fn game_problem(&self, game: &GameRecord) -> String {
+    /// Launch blocker text and its typed provider state (`GameCardViewModel::provider_access`).
+    fn game_problem(&self, game: &GameRecord) -> (String, &'static str) {
         if shinki_emu_patch::is_staging_path(Path::new(&game.location)) {
-            return tr!("这是尚未发布的临时目录，不能启动").into();
+            return (tr!("这是尚未发布的临时目录，不能启动").into(), "");
         }
         if self.patch_busy() {
-            return tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into();
+            return (tr!("文件补丁转换或导入尚未结束，暂不能启动游戏").into(), "");
         }
         let Some(path) = self.mapped_game_directory(game) else {
             #[cfg(target_os = "android")]
-            return library::saf_only_problem().into();
+            return (library::saf_only_problem().into(), library::provider_access(&game.location));
             #[cfg(not(target_os = "android"))]
-            return tr!("游戏目录当前不可用").into();
+            return (tr!("游戏目录当前不可用").into(), "");
         };
+        (self.mapped_game_problem(game, path), "")
+    }
+
+    fn mapped_game_problem(&self, game: &GameRecord, path: &Path) -> String {
         if !path.is_dir() { return tr!("游戏目录当前不可用").into(); }
         if let Some(plugin) = self.library.game_settings(&game.game_id).ok().flatten().and_then(|settings| settings.emulator_id) {
             if !self.plugin_available(&plugin) { return tr!("缺少所选核心，请安装后重启应用").into(); }

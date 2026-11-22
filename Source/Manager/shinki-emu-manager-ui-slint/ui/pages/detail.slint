@@ -3,7 +3,7 @@ import {
     FilledButton, TonalButton, OutlineButton, TextButton, IconButton, OutlinedCard, HorizontalDivider,
     Icon, CircularProgressIndicator,
 } from "@material";
-import { App, Library, Selection, BangumiProgress } from "../globals.slint";
+import { App, Library, Selection, BangumiProgress, Settings } from "../globals.slint";
 import { Icons } from "../icons.slint";
 import { Theme, Accent } from "../theme.slint";
 import { ChoiceSelect } from "../components/select.slint";
@@ -271,7 +271,7 @@ export component DetailPanel {
                                     padding-top: 1px;
                                     Icon {
                                         width: 18px;
-                                        source: Icons.warning;
+                                        source: Selection.game.provider-access != "" ? Icons.folder-off : Icons.warning;
                                         colorize: MaterialPalette.error;
                                     }
                                 }
@@ -280,6 +280,19 @@ export component DetailPanel {
                                     text: Selection.game.problem != "" ? Selection.game.problem : @tr("暂时无法启动");
                                     style: MaterialTypography.body-medium;
                                     color: MaterialPalette.error;
+                                    wrap: word-wrap;
+                                    overflow: clip;
+                                }
+                            }
+                            // Only a provider that never maps to a path gets a definite note; whether
+                            // all-files access would help an external-storage folder is not known here.
+                            if Selection.game.provider-access == "unmappable" && Settings.android-storage-access-available : HorizontalLayout {
+                                padding-left: 26px;
+                                MaterialText {
+                                    horizontal-stretch: 1;
+                                    text: @tr("共享存储权限不适用于这个文件提供程序。");
+                                    style: MaterialTypography.body-medium;
+                                    color: MaterialPalette.on-surface-variant;
                                     wrap: word-wrap;
                                     overflow: clip;
                                 }

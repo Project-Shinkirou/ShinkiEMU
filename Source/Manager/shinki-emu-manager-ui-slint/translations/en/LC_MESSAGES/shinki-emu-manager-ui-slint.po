@@ -2818,6 +2818,9 @@ msgstr "Allow shared storage access"
 msgid "已允许访问共享存储"
 msgstr "Shared storage access granted"
 
+msgid "共享存储权限不适用于这个文件提供程序。"
+msgstr "Shared storage access doesn't apply to this file provider."
+
 msgid "无法打开系统权限设置"
 msgstr "Couldn't open system permission settings"
 

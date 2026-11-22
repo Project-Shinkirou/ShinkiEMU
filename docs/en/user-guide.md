@@ -39,7 +39,7 @@ On Android 11 or later, the folder step in first-time setup also offers **Allow 
 
 On a touch screen, pull down from the top of the library list and release to scan again. This also syncs metadata when networking is allowed. To manage folders or refresh with the keyboard, use **Settings → Library folders**.
 
-On Android 11 or later, if a compatible core needs direct file access, use **Settings → Library folders → Allow shared storage access**. Android asks whether to grant ShinkiEMU access to all files in shared storage. Folder scanning still uses the access you granted in the folder picker.
+On Android 11 or later, if a compatible core needs direct file access, use **Settings → Library folders → Allow shared storage access**. Android asks whether to grant ShinkiEMU access to all files in shared storage. Folder scanning still uses the access you granted in the folder picker. A crossed-out folder icon on a game card means the core cannot read that folder directly; select the game to see the cause in its details.
 
 Choose **Search** in the header, or press **Ctrl+F**. The list updates as you type. Select a result to open its details. Open **Filter options** to set compatibility, sort order, or layout, or to clear the search and filters together.
 
