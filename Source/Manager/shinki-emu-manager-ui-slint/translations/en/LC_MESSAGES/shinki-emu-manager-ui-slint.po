@@ -2875,6 +2875,9 @@ msgstr "The disc was changed or removed"
 msgid "请放回原光盘，或再次点“打开光驱”选择当前光盘。"
 msgstr "Reinsert the original disc, or use “Open game disc” again to choose the current one."
 
+msgid "请重新打开原来的光盘。"
+msgstr "Reopen the original disc."
+
 msgid "无法读取光驱"
 msgstr "Couldn't read the disc drive"
 
