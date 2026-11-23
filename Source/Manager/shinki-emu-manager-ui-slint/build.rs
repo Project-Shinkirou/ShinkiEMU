@@ -13,7 +13,7 @@ const PLURAL_FORMS: [usize; 2] = [2, 1];
 const DOMAIN: &str = "shinki-emu-manager-ui-slint";
 
 fn main() {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"));
     let translations = manifest.join("translations");
     let (catalog, plurals) = load_catalog(&translations);
     check_slint_sources(&manifest.join("ui"), &catalog, &plurals);
