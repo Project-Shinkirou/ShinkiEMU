@@ -224,7 +224,7 @@ fn write_embedded_core_identities() {
     let output = std::path::PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"))
         .join("embedded-core-identities.json");
     std::fs::write(
-        output,
+        &output,
         serde_json::to_vec(&identities).expect("identity JSON"),
     )
     .expect("embedded identity output");
