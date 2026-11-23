@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("com.android.application")
 }
@@ -168,10 +170,39 @@ val rustlsPlatformVerifierVersion = providers.of(RustlsVersion::class.java) {
     parameters.lockFile.set(rootProject.layout.projectDirectory.file("../../Cargo.lock"))
 }
 
+abstract class KiriExpansionJar : ValueSource<List<File>, KiriExpansionJar.Params> {
+    interface Params : ValueSourceParameters {
+        val hostRoot: DirectoryProperty
+    }
+
+    override fun obtain(): List<File> {
+        val root = parameters.hostRoot.get()
+        val jars = paths.map { root.file(it).asFile }.filter { it.isFile }
+        if (jars.size == 2 && Files.mismatch(jars[0].toPath(), jars[1].toPath()) != -1L) {
+            throw GradleException("Kiri expansion JARs differ: ${jars[0]} and ${jars[1]}")
+        }
+        return jars.take(1)
+    }
+
+    companion object {
+        val paths = listOf(
+            "kirikiroid2-web/libs/com.android.vending.expansion.zipfile.jar",
+            "krkr2/libs/com.android.vending.expansion.zipfile.jar",
+        )
+    }
+}
+
+val kiriExpansionJar = providers.of(KiriExpansionJar::class.java) {
+    parameters.hostRoot.set(androidHostRoot)
+}
+
 dependencies {
     implementation(fileTree(androidHostRoot) {
         include("*/libs/*.jar")
+        exclude(KiriExpansionJar.paths)
     })
+    // Both receipts retain their own JAR; D8 must see the shared classes once.
+    implementation(files(kiriExpansionJar))
     // The Kotlin verifier component must match Cargo's resolved Android shim.
     // Minify stays off; enabling it also requires keeping its JNI-referenced classes.
     implementation(rustlsPlatformVerifierVersion.map {
