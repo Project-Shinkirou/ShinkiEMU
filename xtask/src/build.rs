@@ -1,6 +1,5 @@
-use crate::{cores::Inventory, dependencies, sources};
+use crate::{cores::Inventory, dependencies};
 use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::CoreBuildManifest;
 use std::{
@@ -14,54 +13,15 @@ use std::{
 pub(crate) const ANDROID_CORE_LINK_ARG: &str =
     "-Wl,--no-undefined,-z,max-page-size=16384,--enable-new-dtags,-rpath,$ORIGIN";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BuildResult {
+pub struct BuildArtifact {
     pub component: String,
     pub target: String,
-    pub profile: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub product_version: Option<String>,
     pub library: PathBuf,
     pub core_build: Option<CoreBuildManifest>,
     pub embedded_core_builds: Vec<CoreBuildManifest>,
-    pub source_commit: String,
-    pub source_dirty: bool,
-    pub toolchain: String,
+    pub source_commit: Option<String>,
     pub features: Vec<String>,
-    pub target_dir: PathBuf,
-}
-
-impl BuildResult {
-    pub fn require_product_version(&self, expected: &str) -> Result<()> {
-        let actual = self.product_version.as_deref().context(
-            "build receipt lacks product_version; rebuild with SHINKI_EMU_PRODUCT_VERSION",
-        )?;
-        if actual != expected {
-            bail!(
-                "{} was built as {actual}, not requested package version {expected}; rebuild with the requested product version",
-                self.component
-            );
-        }
-        Ok(())
-    }
-
-    pub(crate) fn require_product_source(&self, expected: &str) -> Result<()> {
-        if self.source_dirty
-            || !valid_source_commit(&self.source_commit)
-            || self.source_commit != expected
-        {
-            bail!(
-                "{} requires a clean build receipt at source commit {expected}",
-                self.component
-            );
-        }
-        Ok(())
-    }
-}
-
-pub(crate) fn valid_source_commit(commit: &str) -> bool {
-    commit.len() == 40
-        && commit.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn select_product_version<'a>(
@@ -79,97 +39,27 @@ fn select_product_version<'a>(
     Ok(version)
 }
 
-#[derive(Deserialize)]
-struct ManagerBuildVersion {
-    version: String,
-    source_commit: Option<String>,
-}
-
-fn manager_build_version(path: &Path, expected: &str, source: Option<&str>) -> Result<String> {
-    let compiled: ManagerBuildVersion = serde_json::from_slice(
-        &fs::read(path)
-            .with_context(|| format!("missing Manager compile identity {}", path.display()))?,
-    )?;
-    if compiled.version != expected {
-        bail!(
-            "Manager build-script version {} differs from requested compile version {expected}",
-            compiled.version
-        );
-    }
-    if compiled.source_commit.as_deref() != source {
-        bail!("Manager build-script source commit differs from its compile input");
-    }
-    Ok(compiled.version)
-}
-fn receipt_path(inv: &Inventory, target: &str, component: &str) -> PathBuf {
-    inv.root
-        .join(".work/build")
-        .join(target)
-        .join(format!("{component}.json"))
-}
-
 fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<PathBuf> {
     let standard = dunce::simplified(&inv.root)
         .join(".work/target")
         .join(target)
         .join(component);
+    if let Some(directory) = std::env::var_os("CARGO_TARGET_DIR") {
+        return Ok(PathBuf::from(directory));
+    }
     let explicit = std::env::var_os("SHINKI_EMU_TARGET_ROOT").map(PathBuf::from);
     // Leave headroom for shaderc/CMake's nested source and object filenames.
     if explicit.is_none() && (!cfg!(windows) || standard.as_os_str().len() <= 60) {
         return Ok(standard);
     }
     let repository = dunce::canonicalize(&inv.root)?;
-    let owner = serde_json::json!({
-        "repository": repository, "target": target, "component": component
-    });
-    let identity = hex::encode(Sha256::digest(serde_json::to_vec(&owner)?));
+    let identity = hex::encode(Sha256::digest(format!("{}:{target}:{component}", repository.display())));
     let short_root = if let Some(root) = explicit {
         dunce::simplified(&std::path::absolute(root)?).to_owned()
     } else {
         repository.join(".work/t")
     };
-    let directory = short_root.join(&identity[..12]);
-    fs::create_dir_all(&directory).with_context(|| {
-        format!("cannot create isolated short target {}; set SHINKI_EMU_TARGET_ROOT to a writable short directory", directory.display())
-    })?;
-    crate::package::plain(&directory)?;
-    let marker = directory.join("owner.json");
-    if marker.exists() {
-        let actual: serde_json::Value = serde_json::from_slice(&fs::read(&marker)?)?;
-        if actual != owner {
-            bail!(
-                "short target directory belongs to another build: {}",
-                directory.display()
-            );
-        }
-    } else {
-        let file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(marker)?;
-        serde_json::to_writer_pretty(file, &owner)?;
-    }
-    Ok(directory)
-}
-pub fn load_receipt(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
-    inv.require_buildable(component, target)?;
-    let path = receipt_path(inv, target, component);
-    let r: BuildResult = serde_json::from_slice(&fs::read(&path).with_context(|| {
-        format!(
-            "missing {}; run cargo xtask build --target {target} --{} --release",
-            path.display(),
-            if component == "manager" {
-                "manager".into()
-            } else {
-                format!("core {component}")
-            }
-        )
-    })?)?;
-    if r.target != target || r.component != component {
-        bail!("build receipt component/target mismatch");
-    }
-    crate::package::plain(&r.library)?;
-    Ok(r)
+    Ok(short_root.join(&identity[..12]))
 }
 pub fn cargo_metadata(inv: &Inventory, target: &str) -> Result<serde_json::Value> {
     Ok(serde_json::from_slice(&dependencies::capture(
@@ -220,28 +110,66 @@ fn embedded_core_packages<'a>(
     Ok(selected)
 }
 
+pub(crate) fn source_commit(inv: &Inventory) -> Result<String> {
+    let stdout = dependencies::capture(
+        Command::new("git").current_dir(&inv.root).args(["rev-parse", "HEAD"]),
+    )?;
+    Ok(std::str::from_utf8(&stdout)?.trim().to_owned())
+}
+
+fn manager_manifest() -> Result<toml::Value> {
+    Ok(toml::from_str(include_str!("../../Source/Manager/shinki-emu-manager/Cargo.toml"))?)
+}
+
+pub(crate) fn default_product_version() -> Result<String> {
+    let manifest = manager_manifest()?;
+    let read_env = |name| match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).context(name),
+    };
+    let explicit = read_env("SHINKI_EMU_PRODUCT_VERSION")?;
+    let ci = read_env("SHINKI_EMU_CI_VERSION")?;
+    Ok(select_product_version(
+        manifest["package"]["version"].as_str().context("Manager package version")?,
+        explicit.as_deref(),
+        ci.as_deref(),
+    )?.to_owned())
+}
+
+pub(crate) fn package_artifact(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    version: &str,
+) -> Result<BuildArtifact> {
+    execute_configured(inv, target, component, "build", true, None, Some(version))?
+        .context("Cargo build did not report an artifact")
+}
+
 pub fn execute(
     inv: &Inventory,
     target: &str,
     component: &str,
     action: &str,
     release: bool,
-) -> Result<Option<BuildResult>> {
-    execute_configured(inv, target, component, action, release, None)
+) -> Result<()> {
+    execute_configured(inv, target, component, action, release, None, None).map(|_| ())
 }
 
 pub(crate) fn execute_ios_framework(
     inv: &Inventory,
     target: &str,
     component: &str,
-) -> Result<BuildResult> {
-    execute_configured(inv, target, component, "build", true, Some(BundledInput::IosFramework))?
-        .context("iOS Framework build did not return an artifact")
+    version: &str,
+) -> Result<BuildArtifact> {
+    execute_configured(inv, target, component, "build", true, Some(BundledInput::IosFramework), Some(version))?
+        .context("iOS Framework build did not report an artifact")
 }
 
-pub(crate) fn execute_ohos_hap(inv: &Inventory, target: &str, component: &str) -> Result<BuildResult> {
-    execute_configured(inv, target, component, "build", true, Some(BundledInput::OhosHap))?
-        .context("OHOS HAP core build did not return an artifact")
+pub(crate) fn execute_ohos_hap(inv: &Inventory, target: &str, component: &str, version: &str) -> Result<BuildArtifact> {
+    execute_configured(inv, target, component, "build", true, Some(BundledInput::OhosHap), Some(version))?
+        .context("OHOS HAP core build did not report an artifact")
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -257,7 +185,8 @@ fn execute_configured(
     action: &str,
     release: bool,
     bundled_input: Option<BundledInput>,
-) -> Result<Option<BuildResult>> {
+    version: Option<&str>,
+) -> Result<Option<BuildArtifact>> {
     let ios_framework_input = bundled_input == Some(BundledInput::IosFramework);
     let ohos_hap_input = bundled_input == Some(BundledInput::OhosHap);
     if ios_framework_input {
@@ -266,15 +195,12 @@ fn execute_configured(
         {
             bail!("no bundled iOS Framework recipe for {component}/{target}");
         }
-        // The Manager's doctor already validated the target's static closures.
     } else if ohos_hap_input {
         if !crate::ohos::is_core_input(component, target) {
             bail!("no bundled OHOS HAP recipe for {component}/{target}");
         }
-        // The Manager's doctor already validated the same native inputs.
     } else {
         inv.require_buildable(component, target)?;
-        dependencies::doctor(inv, target, Some(component).filter(|id| *id != "manager"))?;
     }
     let core = if component == "manager" {
         None
@@ -288,64 +214,17 @@ fn execute_configured(
     if !manifest.is_file() {
         bail!("adapter manifest missing: {}", manifest.display());
     }
-    let source_state = if action == "build" {
-        let directory = if let Some(core) = core {
-            core.source_directory(&inv.root)?
-        } else {
-            inv.root.clone()
-        };
-        let state = sources::state(&directory)?;
-        Some((directory, state))
-    } else {
-        None
-    };
     let package = core
         .map(|c| c.package.as_str())
         .unwrap_or("shinki-emu-manager");
     let features = core.map(|c| c.features.clone()).unwrap_or_default();
-    let metadata: serde_json::Value = if component == "manager"
-        && inv.cores.iter().any(|core| {
-            core.static_manager_targets
-                .iter()
-                .any(|triple| triple == target)
-        }) {
-        cargo_metadata(inv, target)?
-    } else {
-        serde_json::from_slice(&dependencies::capture(
-            Command::new("cargo")
-                .current_dir(&inv.root)
-                .args([
-                    "metadata",
-                    "--locked",
-                    "--format-version",
-                    "1",
-                    "--no-deps",
-                    "--manifest-path",
-                ])
-                .arg(&manifest),
-        )?)?
-    };
-    let mut embedded_packages = if component == "manager" {
-        embedded_core_packages(inv, target, &metadata)?
-    } else {
-        BTreeMap::new()
-    };
-    let package_metadata = metadata["packages"]
-        .as_array()
-        .context("cargo packages")?
-        .iter()
-        .find(|p| p["name"] == package)
-        .with_context(|| format!("package {package} absent from {}", manifest.display()))?;
-    let package_id = package_metadata["id"]
-        .as_str()
-        .context("cargo package id")?;
     let features = if component == "manager" {
         let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
         let requested = requested
             .as_deref()
             .map(|v| v.to_str().context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES"))
             .transpose()?;
-        manager_features(requested, package_metadata)?
+        manager_features(requested, &manager_manifest()?)?
     } else {
         features
     };
@@ -362,7 +241,6 @@ fn execute_configured(
         if action == "build" && !release {
             bail!("use --release when building the bundled Musica OHOS Manager");
         }
-        embedded_packages.retain(|_, id| !crate::ohos::is_core_input(id, target));
     }
     let target_dir = if ios_framework_input || ios_framework_manager {
         // Share Framework dependencies without replacing the default static artifact.
@@ -372,49 +250,13 @@ fn execute_configured(
     } else {
         target_directory(inv, target, component)?
     };
-    let version_inputs = product_owned.then(|| {
-        [
-            std::env::var_os("SHINKI_EMU_PRODUCT_VERSION"),
-            std::env::var_os("SHINKI_EMU_CI_VERSION"),
-        ]
-    });
-    let manager_manifest;
-    let default_product_version = if product_owned && component != "manager" {
-        // Standalone in-tree cores use the same development default as the
-        // Manager, not the workspace version of their individual crate.
-        manager_manifest = toml::from_str::<toml::Value>(&fs::read_to_string(
-            inv.root.join("Source/Manager/shinki-emu-manager/Cargo.toml"),
-        )?)?;
-        manager_manifest["package"]["version"].as_str()
-    } else {
-        package_metadata["version"].as_str()
-    };
-    let product_version = version_inputs
-        .as_ref()
-        .map(|[explicit, ci]| {
-            select_product_version(
-                default_product_version.context("Manager package version")?,
-                explicit
-                    .as_deref()
-                    .map(|v| v.to_str().context("non-UTF-8 SHINKI_EMU_PRODUCT_VERSION"))
-                    .transpose()?,
-                ci.as_deref()
-                    .map(|v| v.to_str().context("non-UTF-8 SHINKI_EMU_CI_VERSION"))
-                    .transpose()?,
-            )
-        })
-        .transpose()?;
-    let product_source = source_state
-        .as_ref()
-        .filter(|(_, state)| product_owned && !state.dirty)
-        .map(|(_, state)| state.commit.as_str());
-    let product_stamped = product_source.is_some();
-    if let Some(version) = product_version {
-        crate::release::check_product_version(version)?;
-    }
-    if product_owned && action == "build" {
-        crate::release::check_product_source(product_source)?;
-    }
+    let product_version = product_owned.then(|| match version {
+        Some(version) => Ok(version.to_owned()),
+        None => default_product_version(),
+    }).transpose()?;
+    // The commit is runtime version information for first-party cores.
+    let product_source = (product_owned && version.is_some())
+        .then(|| source_commit(inv)).transpose()?;
     let android_abi = if target.contains("android") {
         Some(if target.starts_with("aarch64") {
             "arm64-v8a"
@@ -436,11 +278,13 @@ fn execute_configured(
         .args([
             "-p",
             package,
-            "--message-format=json-render-diagnostics",
             "--target-dir",
         ])
         .arg(&target_dir);
     cmd.args(["--target", target]);
+    if version.is_some() {
+        cmd.arg("--message-format=json");
+    }
     if release {
         cmd.arg("--release");
     }
@@ -511,23 +355,44 @@ fn execute_configured(
             cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
         }
     }
-    if let Some(version) = product_version {
+    if let Some(version) = &product_version {
         cmd.env("SHINKI_EMU_PRODUCT_VERSION", version);
     }
-    cmd.env_remove("SHINKI_EMU_PRODUCT_SOURCE_COMMIT");
-    if let Some(commit) = product_source {
+    if let Some(commit) = &product_source {
         cmd.env("SHINKI_EMU_PRODUCT_SOURCE_COMMIT", commit);
-    }
-    if let Some((directory, before)) = &source_state {
-        let immediately_before = sources::state(directory)?;
-        if immediately_before.commit != before.commit || immediately_before.dirty != before.dirty {
-            bail!("source checkout changed before Cargo started: {}", directory.display());
-        }
     }
     if ios_framework_input {
         let install_name = crate::apple::ios_frameworks::install_name(component);
         cmd.args(["--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
     }
+    if version.is_none() {
+        dependencies::run(&mut cmd)?;
+        return Ok(None);
+    }
+
+    let metadata = if component == "manager"
+        && inv.cores.iter().any(|core| core.static_manager_targets.iter().any(|triple| triple == target))
+    {
+        cargo_metadata(inv, target)?
+    } else {
+        serde_json::from_slice(&dependencies::capture(
+            Command::new("cargo").current_dir(&inv.root)
+                .args(["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path"])
+                .arg(&manifest),
+        )?)?
+    };
+    let package_id = metadata["packages"].as_array().context("Cargo packages")?
+        .iter().find(|entry| entry["name"] == package)
+        .and_then(|entry| entry["id"].as_str())
+        .with_context(|| format!("package {package} absent from {}", manifest.display()))?;
+    let mut embedded_packages = BTreeMap::new();
+    if component == "manager" {
+        embedded_packages = embedded_core_packages(inv, target, &metadata)?;
+        if ohos_hap_manager {
+            embedded_packages.retain(|_, id| !crate::ohos::is_core_input(id, target));
+        }
+    }
+
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -536,7 +401,6 @@ fn execute_configured(
     let mut libraries = Vec::new();
     let mut manifests = Vec::new();
     let mut parse_error = None;
-    let mut compiled_product_version = None;
     for line in BufReader::new(output).lines() {
         let line = match line {
             Ok(l) => l,
@@ -565,16 +429,6 @@ fn execute_configured(
             && (value["package_id"] == package_id || expected_embedded.is_some())
             && let Some(dir) = value["out_dir"].as_str()
         {
-            if component == "manager"
-                && value["package_id"] == package_id
-                && let Some(expected) = product_version
-            {
-                let path = Path::new(dir).join("manager-build-version.json");
-                match manager_build_version(&path, expected, product_source) {
-                    Ok(version) => compiled_product_version = Some(version),
-                    Err(error) => parse_error = Some(error),
-                }
-            }
             let path = Path::new(dir).join("core-build.json");
             if path.is_file() {
                 match fs::read(&path)
@@ -583,15 +437,8 @@ fn execute_configured(
                         serde_json::from_slice::<CoreBuildManifest>(&bytes)
                             .map_err(anyhow::Error::from)
                     }) {
-                    Ok(m) if expected_embedded.is_none_or(|id| m.plugin_id == id) => {
-                        manifests.push(m);
-                    }
-                    Ok(_) => {
-                        parse_error = Some(anyhow::anyhow!(
-                            "core build manifest belongs to a different static core package"
-                        ));
-                    }
-                    Err(e) => parse_error = Some(e),
+                    Ok(m) => manifests.push(m),
+                    Err(error) => parse_error = Some(error),
                 }
             }
         }
@@ -630,68 +477,18 @@ fn execute_configured(
     if !status.success() {
         bail!("Cargo {action} failed for {component}/{target}: {status}");
     }
-    if action != "build" {
-        return Ok(None);
-    }
-    if component == "manager" && compiled_product_version.is_none() {
-        bail!("Cargo did not report the Manager build-script version identity");
-    }
-    let mut embedded_core_builds = Vec::new();
-    if component == "manager" {
-        for manifest in manifests.drain(..) {
-            let embedded = inv.core(&manifest.plugin_id)?;
-            manifest.validate()?;
-            if !embedded
-                .static_manager_targets
-                .iter()
-                .any(|triple| triple == target)
-                || manifest.target != target
-                || manifest.profile != if release { "release" } else { "debug" }
-                || !matches!(
-                    manifest.artifact_kind.as_str(),
-                    "native-static" | "rust-cdylib"
-                )
-                || embedded_core_builds
-                    .iter()
-                    .any(|accepted: &CoreBuildManifest| accepted.plugin_id == manifest.plugin_id)
-            {
-                bail!(
-                    "native build manifest does not match embedded core {}",
-                    embedded.id
-                );
-            }
-            embedded_core_builds.push(manifest);
-        }
-        if embedded_core_builds.len() != embedded_packages.len() {
-            bail!("Cargo did not report every selected static core build manifest");
-        }
-    }
-    libraries.sort();
-    libraries.dedup();
-    let core_build = if core.is_some() {
-        if manifests.len() != 1 {
-            bail!(
-                "expected one core-build.json from {package}'s build-script-executed, found {}",
-                manifests.len()
-            );
-        }
-        let m = manifests.remove(0);
-        m.validate()?;
-        if m.plugin_id != component
-            || m.target != target
-            || m.profile != if release { "release" } else { "debug" }
-            || Some(m.artifact_kind.as_str()) != core.map(|c| c.artifact_kind.as_str())
-        {
-            bail!("core-build manifest does not match requested build");
-        }
-        Some(m)
+    let (core_build, embedded_core_builds) = if core.is_some() {
+        let own = manifests.into_iter().find(|manifest| manifest.plugin_id == component);
+        (own, Vec::new())
     } else {
-        None
+        (None, manifests)
     };
-    let library = if let Some(native) = core_build.as_ref().and_then(|m| m.native_library.as_ref())
-    {
-        native.clone()
+    let library = if core.is_some_and(|core| core.artifact_kind == "native-shared") {
+        core_build.as_ref().and_then(|manifest| manifest.native_library.clone())
+            .with_context(|| format!("{package} did not report its native library in core-build.json"))?
     } else {
+        libraries.sort();
+        libraries.dedup();
         if libraries.len() != 1 {
             bail!(
                 "Cargo did not report exactly one dynamic library/executable for {package}: {libraries:?}"
@@ -699,61 +496,16 @@ fn execute_configured(
         }
         libraries.remove(0)
     };
-    if ios_framework_input {
-        crate::apple::ios_frameworks::inspect(&library, target, component)?;
-    } else {
-        crate::binary::inspect(&library, target, core.is_some())?;
-    }
-    let (source_directory, before) = source_state.context("build source state missing")?;
-    let after = sources::state(&source_directory)?;
-    let source_commit = before.commit;
-    let source_dirty = before.dirty || after.dirty || after.commit != source_commit;
-    if product_stamped && source_dirty {
-        bail!("product sources changed during a stamped build; rebuild from a clean checkout");
-    }
-    let toolchain = String::from_utf8(dependencies::capture(Command::new("rustc").arg("-Vv"))?)?;
-    let result = BuildResult {
+    Ok(Some(BuildArtifact {
         component: component.into(),
         target: target.into(),
-        profile: if release { "release" } else { "debug" }.into(),
         library,
         core_build,
         embedded_core_builds,
-        product_version: if component == "manager" {
-            compiled_product_version
-        } else {
-            product_version.map(str::to_owned)
-        },
-        source_commit,
-        source_dirty,
-        toolchain,
+        product_version,
+        source_commit: product_source,
         features,
-        target_dir,
-    };
-    // Neither signed-bundle input is a standalone core build receipt.
-    if bundled_input.is_some() {
-        return Ok(Some(result));
-    }
-    if ios_framework_manager {
-        crate::apple::ios_frameworks::build_inputs(inv, &result)?;
-    }
-    if ohos_hap_manager {
-        crate::ohos::build_inputs(inv, &result)?;
-    }
-    if component == "manager" && target.contains("android") {
-        let generated = result.target_dir.join("android-inputs");
-        if generated.exists() {
-            fs::remove_dir_all(&generated)?;
-        }
-        crate::package::atomic_directory(&generated, |stage| {
-            crate::package::android_inputs(inv, &result, stage)
-        })?;
-        println!("Android JNI/assets: {}", generated.display());
-    }
-    let path = receipt_path(inv, target, component);
-    fs::create_dir_all(path.parent().unwrap())?;
-    fs::write(path, serde_json::to_vec_pretty(&result)?)?;
-    Ok(Some(result))
+    }))
 }
 pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
     let mut cmd = Command::new("cargo");
@@ -766,12 +518,8 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
         if !c.features.is_empty() {
             cmd.arg("--features").arg(c.features.join(","));
         }
-        cmd.arg("--target-dir")
-            .arg(inv.root.join(".work/test").join(&c.id));
     } else if manager {
-        cmd.args(["-p", "shinki-emu-manager"])
-            .arg("--target-dir")
-            .arg(inv.root.join(".work/test/manager"));
+        cmd.args(["-p", "shinki-emu-manager"]);
     } else {
         cmd.args(["-p", "xtask", "-p", "shinki-emu-build"]);
     }
@@ -788,9 +536,9 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
 
 /// Additive Manager features from `SHINKI_EMU_MANAGER_FEATURES` (comma list).
 /// Default features stay on; each name must be declared by the Manager package.
-fn manager_features(requested: Option<&str>, package: &serde_json::Value) -> Result<Vec<String>> {
+fn manager_features(requested: Option<&str>, package: &toml::Value) -> Result<Vec<String>> {
     let declared = package["features"]
-        .as_object()
+        .as_table()
         .context("Manager package features")?;
     let mut features: Vec<String> = requested
         .unwrap_or_default()
@@ -816,9 +564,7 @@ mod version_tests {
 
     #[test]
     fn manager_features_are_declared_additive_and_normalized() {
-        let package = serde_json::json!({
-            "features": {"default": ["store-steam"], "store-steam": [], "no-core-download": []}
-        });
+        let package: toml::Value = toml::from_str("[features]\ndefault = ['store-steam']\nstore-steam = []\nno-core-download = []").unwrap();
         assert!(manager_features(None, &package).unwrap().is_empty());
         assert_eq!(
             manager_features(Some(" no-core-download,store-steam,no-core-download,"), &package)
@@ -870,21 +616,5 @@ mod version_tests {
             assert!(select_product_version("0.1.0-beta.6", Some(invalid), None).is_err());
             assert!(select_product_version("0.1.0-beta.6", None, Some(invalid)).is_err());
         }
-    }
-
-    #[test]
-    fn manager_build_sidecar_rejects_an_old_or_missing_compile_identity() {
-        let temp = crate::temporary::directory().unwrap();
-        let path = temp.path().join("manager-build-version.json");
-        let commit = "a".repeat(40);
-        assert!(manager_build_version(&path, "0.1.0-beta.8", Some(&commit)).is_err());
-        fs::write(&path, r#"{"version":"0.1.0-beta.6"}"#).unwrap();
-        assert!(manager_build_version(&path, "0.1.0-beta.8", Some(&commit)).is_err());
-        fs::write(&path, r#"{"version":"0.1.0-beta.8"}"#).unwrap();
-        assert!(manager_build_version(&path, "0.1.0-beta.8", Some(&commit)).is_err());
-        let compiled = serde_json::json!({"version":"0.1.0-beta.8", "source_commit":commit});
-        fs::write(&path, serde_json::to_vec(&compiled).unwrap()).unwrap();
-        assert!(manager_build_version(&path, "0.1.0-beta.8", Some(&"b".repeat(40))).is_err());
-        manager_build_version(&path, "0.1.0-beta.8", compiled["source_commit"].as_str()).unwrap();
     }
 }

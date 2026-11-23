@@ -79,8 +79,6 @@ fn main() {
         Err(error) => panic!("SHINKI_EMU_PRODUCT_VERSION: {error}"),
     };
     semver::Version::parse(&version).expect("SHINKI_EMU_PRODUCT_VERSION must be SemVer");
-    let output = std::path::PathBuf::from(env::var_os("OUT_DIR").expect("Manager OUT_DIR"));
-    let mut receipt = serde_json::json!({ "version": version });
     match env::var("SHINKI_EMU_PRODUCT_SOURCE_COMMIT") {
         Ok(commit) => {
             assert!(explicit_version, "source identity requires an explicit product version");
@@ -89,18 +87,12 @@ fn main() {
                 "SHINKI_EMU_PRODUCT_SOURCE_COMMIT must be a full lowercase Git SHA"
             );
             println!("cargo:rustc-env=SHINKI_EMU_COMPILED_SOURCE_COMMIT={commit}");
-            receipt["source_commit"] = commit.into();
         }
         Err(env::VarError::NotPresent) => println!("cargo:rustc-env=SHINKI_EMU_COMPILED_SOURCE_COMMIT="),
         Err(error) => panic!("SHINKI_EMU_PRODUCT_SOURCE_COMMIT: {error}"),
     }
     let target = env::var("TARGET").expect("build target");
     println!("cargo:rustc-env=SHINKI_EMU_BUILD_TARGET={target}");
-    std::fs::write(
-        output.join("manager-build-version.json"),
-        serde_json::to_vec(&receipt).expect("version JSON"),
-    )
-    .expect("Manager compiled version receipt");
     println!("cargo:rustc-env=SHINKI_EMU_PRODUCT_VERSION={version}");
     write_embedded_core_identities();
     println!("cargo:rerun-if-changed=../../../Assets/Branding/shinkiemu-icon.svg");

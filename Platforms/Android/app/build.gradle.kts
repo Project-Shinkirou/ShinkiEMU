@@ -201,7 +201,7 @@ dependencies {
         include("*/libs/*.jar")
         exclude(KiriExpansionJar.paths)
     })
-    // Both receipts retain their own JAR; D8 must see the shared classes once.
+    // The adapters each ship this JAR; D8 must see its classes once.
     implementation(files(kiriExpansionJar))
     // The Kotlin verifier component must match Cargo's resolved Android shim.
     // Minify stays off; enabling it also requires keeping its JNI-referenced classes.

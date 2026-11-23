@@ -34,6 +34,7 @@ pub(super) fn manifest(data: &Path, plugin: &str, stem: &str, bytes: &[u8]) -> P
     let manifest = core_package::CoreManifest {
         schema: core_package::CORE_PACKAGE_SCHEMA.into(), plugin_id: plugin.into(), library: library.clone(),
         version: "0.2.0".into(), identity: None,
+        source_commit: None,
         recognition: Default::default(),
         abi: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
         files: vec![core_package::CoreFile { path: library.clone(), sha256: core_package::sha256_hex(bytes) }],

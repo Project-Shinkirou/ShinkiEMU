@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use object::{
-    Object, ObjectKind,
+    Object,
     read::{
         elf::{Dyn, FileHeader, ProgramHeader},
         macho::{FatArch, MachHeader, MachOFatFile, MachOFatFile32, MachOFatFile64},
@@ -14,26 +14,17 @@ use std::{
 };
 
 pub(crate) const ANDROID_API: u32 = 28;
-const ANDROID_PAGE: u64 = 16 * 1024;
-const NT_ANDROID_TYPE_IDENT: object::elf::NoteType = object::elf::NoteType(1);
-
-#[derive(Debug)]
-pub struct BinaryInfo {
-    pub dependencies: BTreeSet<String>,
-    pub rpaths: Vec<String>,
-    pub signed: bool,
-}
 fn text(bytes: &[u8]) -> Result<String> {
     Ok(std::str::from_utf8(bytes)?.to_owned())
 }
 fn pe<'a, P: ImageNtHeaders>(
     file: &object::read::pe::PeFile<'a, P>,
-    info: &mut BinaryInfo,
+    dependencies: &mut BTreeSet<String>,
 ) -> Result<()> {
     if let Some(table) = file.import_table()? {
         let mut it = table.descriptors()?;
         while let Some(d) = it.next()? {
-            info.dependencies
+            dependencies
                 .insert(text(table.name(d.name.get(object::LittleEndian))?)?);
         }
     }
@@ -43,7 +34,7 @@ fn pe<'a, P: ImageNtHeaders>(
     {
         let mut it = table.descriptors()?;
         while let Some(d) = it.next()? {
-            info.dependencies
+            dependencies
                 .insert(text(table.name(d.dll_name_rva.get(object::LittleEndian))?)?);
         }
     }
@@ -51,11 +42,9 @@ fn pe<'a, P: ImageNtHeaders>(
 }
 fn elf<'a, E: FileHeader>(
     file: &object::read::elf::ElfFile<'a, E>,
-    info: &mut BinaryInfo,
-    android_core: Option<&Path>,
+    dependencies: &mut BTreeSet<String>,
 ) -> Result<()> {
     let endian = file.endian();
-    let mut origin_runpath = false;
     for segment in file.elf_program_headers() {
         let Some(entries) = segment.dynamic(endian, file.data())? else {
             continue;
@@ -64,13 +53,7 @@ fn elf<'a, E: FileHeader>(
             .iter()
             .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
             .context("ELF dynamic segment lacks DT_NULL")?];
-        if !entries.iter().any(|entry| {
-            let tag = entry.tag(endian);
-            matches!(
-                tag,
-                object::elf::DT_NEEDED | object::elf::DT_RUNPATH | object::elf::DT_RPATH
-            ) || (android_core.is_some() && tag == object::elf::DT_SONAME)
-        }) {
+        if !entries.iter().any(|entry| entry.tag(endian) == object::elf::DT_NEEDED) {
             continue;
         }
         let address: u64 = entries
@@ -100,110 +83,17 @@ fn elf<'a, E: FileHeader>(
         let data = data.context("ELF dynamic strings are not in a loadable segment")?;
         let strings = object::read::StringTable::new(data, 0, size);
         for entry in entries {
-            match entry.tag(endian) {
-                object::elf::DT_NEEDED => {
-                    info.dependencies
-                        .insert(text(entry.string(endian, strings)?)?);
-                }
-                object::elf::DT_RUNPATH | object::elf::DT_RPATH => {
-                    let runpath = entry.string(endian, strings)?;
-                    if android_core.is_some() {
-                        // Android resolves sibling DSOs through DT_RUNPATH, not DT_RPATH.
-                        if entry.tag(endian) != object::elf::DT_RUNPATH
-                            || runpath != b"$ORIGIN"
-                            || origin_runpath
-                        {
-                            bail!("Android core libraries may only use DT_RUNPATH=$ORIGIN");
-                        }
-                        origin_runpath = true;
-                    }
-                    info.rpaths
-                        .extend(text(runpath)?.split(':').map(str::to_owned));
-                }
-                object::elf::DT_SONAME => {
-                    if let Some(path) = android_core {
-                        let soname = entry.string(endian, strings)?;
-                        let name = path.file_name().and_then(|name| name.to_str());
-                        if name.map(str::as_bytes) != Some(soname) {
-                            bail!("Android DT_SONAME differs from the packaged filename");
-                        }
-                    }
-                }
-                _ => {}
+            if entry.tag(endian) == object::elf::DT_NEEDED {
+                dependencies.insert(text(entry.string(endian, strings)?)?);
             }
         }
-    }
-    if android_core.is_some()
-        && !origin_runpath
-        && info.dependencies.iter().any(|name| !android_system(name))
-    {
-        bail!("Android library with private dependencies needs DT_RUNPATH=$ORIGIN");
     }
     Ok(())
 }
 
-fn android_elf<E: FileHeader>(
-    file: &object::read::elf::ElfFile<'_, E>,
-    core_entrypoint: bool,
-) -> Result<()> {
-    if !file.is_64() || !file.is_little_endian() || file.kind() != ObjectKind::Dynamic {
-        bail!("expected a little-endian ELF64 shared library");
-    }
-    let endian = file.endian();
-    let mut load = false;
-    let mut dynamic = false;
-    let mut api = None;
-    for segment in file.elf_program_headers() {
-        match segment.p_type(endian) {
-            object::elf::PT_LOAD => {
-                let align: u64 = segment.p_align(endian).into();
-                let offset: u64 = segment.p_offset(endian).into();
-                let address: u64 = segment.p_vaddr(endian).into();
-                if align < ANDROID_PAGE
-                    || !align.is_power_of_two()
-                    || offset % align != address % align
-                {
-                    bail!("ELF PT_LOAD is not 16 KiB page compatible");
-                }
-                load = true;
-            }
-            object::elf::PT_DYNAMIC if !dynamic => dynamic = true,
-            object::elf::PT_DYNAMIC | object::elf::PT_INTERP => {
-                bail!("invalid Android shared library program headers");
-            }
-            object::elf::PT_NOTE => {
-                let Some(mut notes) = segment.notes(endian, file.data())? else {
-                    continue;
-                };
-                while let Some(note) = notes.next()? {
-                    // NT_ANDROID_TYPE_IDENT from the NDK CRT; the first word is
-                    // the target API, independent of the NDK release string.
-                    if note.name() == b"Android" && note.n_type(endian) == NT_ANDROID_TYPE_IDENT {
-                        let word = note
-                            .desc()
-                            .first_chunk()
-                            .context("truncated Android ELF note")?;
-                        if api.replace(u32::from_le_bytes(*word)).is_some() {
-                            bail!("multiple Android ELF identification notes");
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if !load || !dynamic {
-        bail!("Android ELF lacks a loadable or dynamic segment");
-    }
-    let api = api.context("missing Android ELF identification note")?;
-    if api == 0 || api > ANDROID_API || (core_entrypoint && api != ANDROID_API) {
-        bail!("Android ELF targets API {api}, incompatible with core build API {ANDROID_API}");
-    }
-    Ok(())
-}
 fn macho<'a, M: MachHeader>(
     file: &object::read::macho::MachOFile<'a, M>,
-    info: &mut BinaryInfo,
+    dependencies: &mut BTreeSet<String>,
 ) -> Result<()> {
     let e = file.endian();
     let mut it = file.macho_header().load_commands(e, file.data(), 0)?;
@@ -211,14 +101,7 @@ fn macho<'a, M: MachHeader>(
         if c.cmd() != object::macho::LC_ID_DYLIB
             && let Some(d) = c.dylib()?
         {
-            info.dependencies.insert(text(c.string(e, d.dylib.name)?)?);
-        }
-        if c.cmd() == object::macho::LC_RPATH {
-            let r: &object::macho::RpathCommand<_> = c.data()?;
-            info.rpaths.push(text(c.string(e, r.path)?)?);
-        }
-        if c.cmd() == object::macho::LC_CODE_SIGNATURE {
-            info.signed = true;
+            dependencies.insert(text(c.string(e, d.dylib.name)?)?);
         }
     }
     Ok(())
@@ -253,142 +136,27 @@ pub(crate) fn target_slice(bytes: &[u8], architecture: object::Architecture) -> 
     }
 }
 
-pub fn inspect(path: &Path, target: &str, require_query: bool) -> Result<BinaryInfo> {
-    inspect_binary(
-        path,
-        target,
-        require_query,
-        require_query && target.ends_with("-linux-android"),
-    )
-}
-
-fn inspect_binary(
-    path: &Path,
-    target: &str,
-    require_query: bool,
-    android_core: bool,
-) -> Result<BinaryInfo> {
+pub(crate) fn dependencies(path: &Path, target: &str) -> Result<BTreeSet<String>> {
     crate::package::plain(path)?;
     let bytes = fs::read(path)?;
-    let arch = if target.starts_with("x86_64-") {
-        object::Architecture::X86_64
-    } else if target.starts_with("aarch64-") {
+    let arch = if target.starts_with("aarch64-") {
         object::Architecture::Aarch64
     } else {
-        bail!("unsupported architecture {target}");
+        object::Architecture::X86_64
     };
     let file = object::File::parse(target_slice(&bytes, arch)?)
-        .with_context(|| format!("parsing {}", path.display()))?;
-    if file.architecture() != arch {
-        bail!(
-            "{}: architecture {:?} does not match {target}",
-            path.display(),
-            file.architecture()
-        );
-    }
-    let format = if target.contains("windows") {
-        object::BinaryFormat::Pe
-    } else if target.contains("apple") {
-        object::BinaryFormat::MachO
-    } else {
-        object::BinaryFormat::Elf
-    };
-    let runtime_bundle = !require_query
-        && match &file {
-            object::File::MachO32(f) => {
-                f.macho_header().filetype(f.endian()) == object::macho::MH_BUNDLE
-            }
-            object::File::MachO64(f) => {
-                f.macho_header().filetype(f.endian()) == object::macho::MH_BUNDLE
-            }
-            _ => false,
-        };
-    if file.format() != format
-        || !(matches!(file.kind(), ObjectKind::Dynamic | ObjectKind::Executable) || runtime_bundle)
-    {
-        bail!("{}: not a target executable/shared library", path.display());
-    }
-    if require_query {
-        let mut has_query = false;
-        if file.kind() == ObjectKind::Dynamic {
-            for export in file.exports()? {
-                let export = export?;
-                if let object::read::NameOrOrdinal::Name(name) = export.name() {
-                    if android_core
-                        && !matches!(
-                            export.flags(),
-                            object::read::ExportFlags::Elf {
-                                st_info, st_other, version_hidden: false, ..
-                            } if st_info.st_type() == object::elf::STT_FUNC
-                                && matches!(st_other.visibility(), object::elf::STV_DEFAULT | object::elf::STV_PROTECTED)
-                        )
-                    {
-                        continue;
-                    }
-                    has_query |= name == b"shinki_emu_query"
-                        || (format == object::BinaryFormat::MachO && name == b"_shinki_emu_query");
-                }
-            }
-        }
-        if !has_query {
-            bail!("{} lacks shinki_emu_query", path.display());
-        }
-    }
-    let mut info = BinaryInfo {
-        dependencies: BTreeSet::new(),
-        rpaths: Vec::new(),
-        signed: false,
-    };
+        .with_context(|| format!("reading dependencies of {}", path.display()))?;
+    let mut names = BTreeSet::new();
     match &file {
-        object::File::Pe32(f) => pe(f, &mut info)?,
-        object::File::Pe64(f) => pe(f, &mut info)?,
-        object::File::Elf32(_) if android_core => bail!("expected an Android ELF64 library"),
-        object::File::Elf32(f) => elf(f, &mut info, None)?,
-        object::File::Elf64(f) => {
-            if android_core {
-                android_elf(f, require_query)
-                    .with_context(|| format!("invalid Android ELF {}", path.display()))?;
-            }
-            elf(f, &mut info, android_core.then_some(path))
-                .with_context(|| format!("reading ELF dynamic table in {}", path.display()))?;
-        }
-        object::File::MachO32(f) => macho(f, &mut info)?,
-        object::File::MachO64(f) => macho(f, &mut info)?,
-        _ => bail!("unsupported binary format"),
+        object::File::Pe32(f) => pe(f, &mut names)?,
+        object::File::Pe64(f) => pe(f, &mut names)?,
+        object::File::Elf32(f) => elf(f, &mut names)?,
+        object::File::Elf64(f) => elf(f, &mut names)?,
+        object::File::MachO32(f) => macho(f, &mut names)?,
+        object::File::MachO64(f) => macho(f, &mut names)?,
+        _ => bail!("unsupported binary format: {}", path.display()),
     }
-    for r in &info.rpaths {
-        if target.ends_with("apple-darwin") && r == "@executable_path/../Frameworks" {
-            continue;
-        }
-        if !(r == "$ORIGIN"
-            || r.starts_with("$ORIGIN/")
-            || r == "@loader_path"
-            || r.starts_with("@loader_path/")
-            || r == "@executable_path"
-            || r.starts_with("@executable_path/"))
-            || r.split('/').any(|s| s == "..")
-        {
-            bail!(
-                "non-relocatable runtime search path {r} in {}",
-                path.display()
-            );
-        }
-    }
-    for dependency in &info.dependencies {
-        if target.contains("apple") {
-            if !system(dependency, target)
-                && (!(dependency.starts_with("@rpath/")
-                    || dependency.starts_with("@loader_path/")
-                    || dependency.starts_with("@executable_path/"))
-                    || dependency.split('/').any(|part| part == ".."))
-            {
-                bail!("non-relocatable Mach-O dependency {dependency}");
-            }
-        } else if dependency.contains(['/', '\\']) {
-            bail!("non-relocatable binary dependency {dependency}");
-        }
-    }
-    Ok(info)
+    Ok(names)
 }
 
 pub(crate) fn system(name: &str, target: &str) -> bool {
@@ -600,29 +368,9 @@ pub(crate) fn runtime_source(path: &Path, directory: &Path, target: &str) -> Res
 
 /// Resolve exclusively against explicitly distributable trees, never PATH/System32.
 pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(PathBuf, String)>> {
-    closure_impl(library, search, target, false)
-}
-
-pub(crate) fn android_core_closure(
-    library: &Path,
-    search: &[PathBuf],
-    target: &str,
-) -> Result<Vec<(PathBuf, String)>> {
-    closure_impl(library, search, target, true)
-}
-
-fn closure_impl(
-    library: &Path,
-    search: &[PathBuf],
-    target: &str,
-    android_core: bool,
-) -> Result<Vec<(PathBuf, String)>> {
+    let windows = target.contains("windows");
     let key = |name: &str| {
-        if android_core {
-            name.to_owned()
-        } else {
-            name.to_ascii_lowercase()
-        }
+        if windows { name.to_ascii_lowercase() } else { name.to_owned() }
     };
     let mut found = BTreeMap::<String, (PathBuf, String)>::new();
     let mut visited = BTreeSet::new();
@@ -633,8 +381,7 @@ fn closure_impl(
         if !visited.insert(name) {
             continue;
         }
-        let info = inspect_binary(&path, target, false, android_core)?;
-        for dep in info.dependencies {
+        for dep in dependencies(&path, target)? {
             if system(&dep, target) {
                 continue;
             }
@@ -644,34 +391,41 @@ fn closure_impl(
             if dependency_key == root_name || found.contains_key(&dependency_key) {
                 continue;
             }
-            let mut matches = Vec::new();
-            for dir in search {
-                if !dir.is_dir() {
-                    continue;
-                }
-                crate::package::plain(dir)?;
-                for entry in fs::read_dir(dir)? {
-                    let entry = entry?;
-                    let name = entry.file_name();
-                    let name = name.to_string_lossy();
-                    let matches_name = if android_core {
-                        name == leaf
-                    } else {
-                        name.eq_ignore_ascii_case(leaf)
-                    };
-                    if matches_name {
-                        matches.push(runtime_source(&entry.path(), dir, target)?);
+            let mut resolved: Option<PathBuf> = None;
+            for dir in search.iter().filter(|dir| dir.is_dir()) {
+                let candidate = dir.join(leaf);
+                let candidate = if fs::symlink_metadata(&candidate).is_ok() {
+                    candidate
+                } else if windows && !cfg!(windows) {
+                    let mut entry = None;
+                    for item in fs::read_dir(dir)? {
+                        let item = item?;
+                        if item.file_name().to_str().is_some_and(|name| name.eq_ignore_ascii_case(leaf)) {
+                            entry = Some(item.path());
+                            break;
+                        }
                     }
+                    let Some(entry) = entry else { continue };
+                    entry
+                } else {
+                    continue;
+                };
+                let candidate = runtime_source(&candidate, dir, target)?;
+                match resolved.as_ref() {
+                    Some(path) if path != &candidate => {
+                        if crate::package::sha256(path)? != crate::package::sha256(&candidate)? {
+                            bail!("conflicting dependency {dep}");
+                        }
+                    }
+                    Some(_) => {}
+                    None => resolved = Some(candidate),
                 }
             }
-            let resolved=matches.first().with_context(|| format!("{}: missing redistributable dependency {dep}; run cargo xtask deps or provide its build tree",path.display()))?;
-            for other in matches.iter().skip(1) {
-                if crate::package::sha256(other)? != crate::package::sha256(resolved)? {
-                    bail!("conflicting dependency {dep}");
-                }
-            }
-            found.insert(dependency_key, (resolved.clone(), leaf.to_owned()));
+            let resolved = resolved.with_context(|| format!(
+                "{}: missing redistributable dependency {dep}", path.display()
+            ))?;
             pending.push(resolved.clone());
+            found.insert(dependency_key, (resolved, leaf.to_owned()));
         }
     }
     Ok(found.into_values().collect())

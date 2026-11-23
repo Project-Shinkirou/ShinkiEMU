@@ -190,6 +190,7 @@ mod android_policy_tests {
                 schema: core_package::CORE_PACKAGE_SCHEMA.into(),
                 plugin_id: "siglus_rs".into(),
                 version: identity.version(),
+                source_commit: None,
                 identity: Some(identity),
                 library: library.clone(),
                 recognition: Default::default(),
@@ -282,7 +283,14 @@ pub(super) struct InstalledCore {
     pub(super) manifest: core_package::CoreManifest,
     pub(super) library: PathBuf,
     pub(super) bundled: bool,
-    pub(super) source_commit: Option<String>,
+}
+
+impl InstalledCore {
+    pub(super) fn source_commit(&self) -> Option<&str> {
+        static_core_catalog::lookup(&self.manifest.plugin_id)
+            .filter(|core| core.first_party)?;
+        self.manifest.product_source_commit()
+    }
 }
 
 pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> DeclaredRules {
@@ -319,7 +327,7 @@ fn package_library(
     directory: &Path,
     stem: &str,
     manifest: &core_package::CoreManifest,
-) -> Result<(PathBuf, String, Option<String>), &'static str> {
+) -> Result<(PathBuf, String), &'static str> {
     if !allows_installed_release(&manifest.plugin_id, &manifest.version, manifest.identity.as_ref())
         || manifest.version == "0.0.0-local"
     {
@@ -337,17 +345,13 @@ fn package_library(
     if !eligible {
         return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET");
     }
-    let is_first_party = static_core_catalog::lookup(&manifest.plugin_id)
-        .is_some_and(|core| core.first_party);
-    let source_commit = if is_first_party {
-        core_package::product_source_commit(directory, manifest)
-    } else {
-        None
-    };
-    if cfg!(target_os = "android") && is_first_party && source_commit.is_none() {
-        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing verified product build receipt");
+    if cfg!(target_os = "android")
+        && static_core_catalog::lookup(&manifest.plugin_id).is_some_and(|core| core.first_party)
+        && manifest.product_source_commit().is_none()
+    {
+        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing product source commit");
     }
-    Ok((library, expected_stem, source_commit))
+    Ok((library, expected_stem))
 }
 
 #[cfg(target_os = "android")]
@@ -381,10 +385,10 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             }
             let directory = entry.path();
             let Some(manifest) = core_package::read_manifest(&directory) else { continue };
-            let Ok((library, expected_stem, source_commit)) = package_library(&directory, stem, &manifest) else { continue };
+            let Ok((library, expected_stem)) = package_library(&directory, stem, &manifest) else { continue };
             if !stems.insert(expected_stem) { continue; }
             let id = manifest.plugin_id.clone();
-            let core = InstalledCore { library, manifest, source_commit, bundled: index > 0 };
+            let core = InstalledCore { library, manifest, bundled: index > 0 };
             if found.insert(id.clone(), core).is_some() { duplicate.insert(id); }
         }
     }
@@ -397,12 +401,7 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         let Some(executable_name) = library.file_name().and_then(|name| name.to_str()) else { continue };
         let Some(manifest) = core_package::read_bundled_manifest(&directory, executable_name) else { continue };
         if manifest.plugin_id == id && manifest.version != "0.0.0-local" {
-            let source_commit = if entry.first_party {
-                core_package::product_source_commit(&directory, &manifest)
-            } else {
-                None
-            };
-            found.insert(id.to_owned(), InstalledCore { library, manifest, source_commit, bundled: true });
+            found.insert(id.to_owned(), InstalledCore { library, manifest, bundled: true });
         }
     }
     #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
@@ -414,12 +413,12 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             && manifest.library == bundled::LIBRARY
             && manifest.version != "0.0.0-local"
             && manifest.version == shinki_emu_manager::version()
-            && let Some(source_commit) = core_package::product_source_commit(&directory, &manifest)
+            && let Some(source_commit) = manifest.product_source_commit()
             && source_commit == env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT")
             && let Some(library) = bundled::library(bundled::ID)
         {
             found.insert(bundled::ID.to_owned(), InstalledCore {
-                library, manifest, source_commit: Some(source_commit), bundled: true,
+                library, manifest, bundled: true,
             });
         }
     }

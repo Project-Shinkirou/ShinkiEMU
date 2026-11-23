@@ -1,6 +1,6 @@
 # ShinkiEMU Third-Party Notices
 
-本文件随 ShinkiEMU Windows 应用分发。发布包还需包含活动依赖的完整许可证文本；以下条目记录需要单独保留的来源与归因。
+本文件随 ShinkiEMU 一同分发。Rust 依赖的许可证清单由 cargo-about 生成，见 `licenses/rust-licenses.html`；vcpkg、Android Java、字体和其他运行资源的归因与许可声明随包附在 `licenses/`。各 fork 对应源码的公开地址和 Cargo.lock 固定提交见 `licenses/pinned-sources.txt`。
 
 ## steamroom / steamroom-client 0.3.0
 
@@ -30,15 +30,15 @@
 - Upstream: <https://github.com/mlua-rs/mlua/tree/v0.12.2>，MIT；使用 Cargo.lock 固定的 crates.io 源码。
 - 上游通过浮点位模式比较实现精确数字分类，保留 IEEE 负零，不以 epsilon 将极小非零值转成 `0`；旧的 0.10.5 本地回补已删除。
 - Luau 不区分整数和同值的整值浮点字面量；数据编码保留数值，不保证保留原 TOML 数字字面量的类型拼写。
-- 运行包从锁定的 mlua 源码复制完整 MIT 许可到 `licenses/rust/mlua-0.12.2/LICENSE`。
+- mlua 及其绑定的 Rust 许可证见 `licenses/rust-licenses.html`。
 
-- mlua-sys 0.13.0 使用官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`（MIT）：发布版仍只识别最大字节码版本 11，Luau 744 默认生成 13、支持到 14，会在 `Lua::new` 加载内置 require 时失败。该修复将识别上限同步为 14，Luau 编译器和 mlua 版本不降级。绑定使用上游仓库根目录的完整 MIT 许可，运行包复制为 `licenses/rust/mlua-sys-0.13.0/LICENSE`。
+- mlua-sys 0.13.0 使用官方上游修复 `ff96ed786295cae96f43ef1372bd22be0fbf7866`（MIT）：发布版仍只识别最大字节码版本 11，Luau 744 默认生成 13、支持到 14，会在 `Lua::new` 加载内置 require 时失败。该修复将识别上限同步为 14，Luau 编译器和 mlua 版本不降级。绑定使用上游仓库根目录的完整 MIT 许可。
 
 ## Luau 744 / luau0-src 0.22.1
 
 - Upstream: <https://github.com/luau-lang/luau>，MIT；ShinkiEMU lockfile 固定 `luau0-src 0.22.1+luau744`。
-- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，运行包逐字复制为 `licenses/rust/luau0-src-0.22.1+luau744/LICENSE`。
-- 打包器通过目标平台筛选的 `cargo metadata` 定位精确版本源码，与 Manager 完整 Rust 依赖闭包一起收集许可文件和 SPDX 声明；Git workspace 的仓库根目录许可也按原文保留，不生成替代许可文本。
+- `luau0-src` 的官方 `LICENSE` 同时保留 Aleksandr Orlenko、Roblox Corporation 和 Lua.org/PUC-Rio 的 MIT 条款，随 Rust 许可证清单提供。
+- cargo-about 按 Cargo 解析出的目标和功能生成 Rust 依赖的许可证清单；vcpkg `copyright`、Java/JAR 和字体等第三方声明单独附在包中。
 
 ## aPLib 通用解码
 
@@ -77,7 +77,7 @@ ADV32 核心的 CRX 图像、CRM/PCK 归档和 XPCM 音频读取参考了 [GARbr
 
 本产品使用 FreeType Project（<https://freetype.org/>）的软件，保留其完整许可与归因。闭包包含 FreeType 启用的 Brotli/bzip2/PNG/zlib，不能只附 libass 自身的许可。没有复制 DLL 的静态依赖仍须保留条款。
 
-FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核心放在各自核心目录（`cores/<stem>/`），用户可替换为自行构建的兼容 DLL。两个核心目录中的同名 DLL 在进程内只加载一份，因此同一 Release 的核心来自同一次 vcpkg 构建。Release 资产附 LGPL-2.1 文本，以及 FriBidi 的对应源码包（vcpkg `downloads/` 中的原始归档与 port 目录，含 portfile 和补丁）。
+FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核心放在各自核心目录（`cores/<stem>/`），用户可替换为自行构建的兼容 DLL。两个核心目录中的同名 DLL 在进程内只加载一份，因此同一 Release 的核心来自同一次 vcpkg 构建。随包保留 `licenses/subtitle/fribidi/copyright` 中的 LGPL-2.1 条款。
 
 ## ShinkiEMU C ABI v3
 
@@ -91,14 +91,14 @@ RFVP 后继统一固定 `cc0cc5c9648d481693cfa353c11e1d61311f6246`（`shinki` �
 
 - 上游：<https://github.com/ruffle-rs/rust-flash-lso>，固定基线 `61b717248aae853a4f5d8a103eba704268d286c8`，MIT 许可，原作者 CUB3D 及上游贡献者。
 - 兼容性 fork：<https://github.com/Project-Shinkirou/rust-flash-lso/tree/shinki>，提交 `5573168345ef2d92d01ee0766bab29acf89584c0`。仅将 flash-lso 0.6.0 的 `thiserror = "=2.0.18"` 放宽为 `thiserror = "2"`，以便 Ethornell 的原 Ruffle 实现与 Manager/RoukakuEngine 共同静态链接；解析和保存逻辑不变。
-- 主仓 `[patch]` 与 `Cargo.lock` 固定该来源，Rust 许可收集及对应源码中的 `cargo vendor` 保留源代码和 MIT 许可。
+- 主仓 `[patch]` 与 `Cargo.lock` 固定该来源。许可证见 Rust 依赖清单，精确 fork 源码地址随包列出。
 
 ## ReMinori
 
 - 上游：<https://github.com/luoyily/ReMinori>，基线 `79b00990324404bfbd496e7fa76c690cf040f744`；作者 luoyily 及上游贡献者，许可为 GNU Affero General Public License version 3。
 - 适配 fork：<https://github.com/Project-Shinkirou/ReMinori/tree/shinki-save-policy>，固定 `0eec31a7d1412ea9061ee1cff2d64ab6133bda00`；适配包为 `crates/shinki`，plugin ID 保留 `ReMinori` 大小写，family ID 为 `musica`，不替代自有 Musica 核心或复用其执行器。
 - 适配保留原 VM、GPU renderer、CPAL mixer、Media Foundation 视频、游戏 UI 和存档；新增生产 C ABI v3、固定三槽 CPU lease、独立保存位置、keys.v2 归档参数、严格 CP932/GBK 脚本读取、原生 UTF-8 port 保存及多声道设备接线。修改归属与代表流程见 fork 根 `README.md`。
-- 本地核心包附原样 `LICENSE` 和该 `README.md`。AGPL 对应源码及组合分发义务须在公开二进制发布前核验；本次仅交付本地验证产物，不把加入主仓等同于更改 RoukakuEngine 或其他核心的许可。商业资源、私有 profile 与测试存档不进入源码或包。
+- 本地核心包附原样 `LICENSE` 和修改说明。公开 fork 的锁定提交见 `licenses/pinned-sources.txt`。AGPL 对应源码及组合分发义务须在公开二进制发布前核验；本次仅交付本地验证产物，不把加入主仓等同于更改 RoukakuEngine 或其他核心的许可。商业资源、私有 profile 与测试存档不进入源码或包。
 
 ## impacto
 
@@ -143,7 +143,7 @@ RFVP 后继统一固定 `cc0cc5c9648d481693cfa353c11e1d61311f6246`（`shinki` �
 - 固定 fork revision：[`e681590a1075cb4be4e9d41d99cffc2cdba01bc3`](https://github.com/Project-Shinkirou/kirikiroid2-web/commit/e681590a1075cb4be4e9d41d99cffc2cdba01bc3)，发布分支 `shinki`；它是上游基线 `7105b508` 上的单个适配提交，包含 `shinki/` 适配（C++ 在 `shinki/native`）、`KRKR2_SHINKI_EMU` CMake 选项与 WindowEx overlay owner 初始化修复。此前的 `2532a699b260488db32b32739f9648858c00a9a4` 仅作历史记录。
 - 完整 fork 保留独立的 Windows 构建、可重入生命周期、游戏路径缓存与 WindowEx overlay owner 初始化修复。C++ 嵌入适配直接导出统一 ABI，删除 child/IPC，沿用原生 XP3/PSB/KBAD 与字体路径。Release 的实际游戏流程仍由用户人工验收。
 - 运行包保留完整核心的实际 `LICENSE`、fork 的 `shinki/README.md` 适配说明、layerExImage 与 DroidSansFallback 许可及构建依赖的 copyright 文件；没有独立许可文本的文件不补造许可证。根许可包含多个组件的实际条款，不用上游 README 的 MIT 概述替代。
-- FFmpeg 3.3.9（LGPL-2.1）改为动态链接：适配提交让 libbpg 经公开的 `avcodec_find_decoder_by_name("hevc")` 取得 HEVC 解码器，取代私有符号 `ff_hevc_decoder`，并删除 Windows port 的静态限制。`avcodec-57.dll` 等 FFmpeg DLL 随 KrKr 核心放在其核心目录，可由用户替换。Release 资产附 LGPL-2.1 文本与 FFmpeg 3.3.9 对应源码包（原始归档与 fork 内 `vcpkg/ports/ffmpeg`）。
+- FFmpeg 3.3.9（LGPL-2.1）改为动态链接：适配提交让 libbpg 经公开的 `avcodec_find_decoder_by_name("hevc")` 取得 HEVC 解码器，取代私有符号 `ff_hevc_decoder`，并删除 Windows port 的静态限制。`avcodec-57.dll` 等 FFmpeg DLL 随 KrKr 核心放在其核心目录，可由用户替换。随包保留 LGPL-2.1 条款；使用的 port 配方位于锁定 fork 的 `vcpkg/ports/ffmpeg`。
 - 包根的 VC runtime 与 KrKr 核心目录内的 OpenMP runtime（`vcomp140.dll`）取自 MSVC redist。
 
 ## Noto 字体
@@ -152,11 +152,11 @@ Musica 编译期嵌入 Noto Sans JP 与 Noto Sans SC，使用 SIL Open Font Lice
 
 ## Musica key.toml 解析
 
-`toml 1.1.3+spec-1.1.0` 来源为 <https://github.com/toml-rs/toml>，许可为 MIT OR Apache-2.0；`winnow 1.0.4` 来源为 <https://github.com/winnow-rs/winnow>，许可为 MIT。具体解析、序列化与关联 crate 版本固定于 ShinkiEMU lockfile；本地运行包在 `licenses/rust/` 保留本轮新增解析依赖的完整许可文本。
+`toml 1.1.3+spec-1.1.0` 来源为 <https://github.com/toml-rs/toml>，许可为 MIT OR Apache-2.0；`winnow 1.0.4` 来源为 <https://github.com/winnow-rs/winnow>，许可为 MIT。具体解析、序列化与关联 crate 版本固定于 ShinkiEMU lockfile；各项许可文本见 `licenses/rust-licenses.html`。
 
 ## 异步 GIF 封面
 
-封面缩略图使用 `image` 的 GIF 解码支持：[`gif 0.14.2`](https://crates.io/crates/gif/0.14.2) 与 [`weezl 0.1.12`](https://crates.io/crates/weezl/0.1.12) 为 MIT OR Apache-2.0，关联的 [`color_quant 1.1.0`](https://crates.io/crates/color_quant/1.1.0) 为 MIT。本地运行包在 `licenses/rust/` 保留这些版本的完整许可文本。
+封面缩略图使用 `image` 的 GIF 解码支持：[`gif 0.14.2`](https://crates.io/crates/gif/0.14.2) 与 [`weezl 0.1.12`](https://crates.io/crates/weezl/0.1.12) 为 MIT OR Apache-2.0，关联的 [`color_quant 1.1.0`](https://crates.io/crates/color_quant/1.1.0) 为 MIT。各项许可文本见 `licenses/rust-licenses.html`。
 
 ## WMV decoder
 
@@ -203,10 +203,10 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 - Fork: <https://github.com/Project-Shinkirou/cmvs-rs>, branch `shinki`, pin `b8de741dca3737d03351a5a45531616dff7ea39a`, release sequence 1.
 - Copyright (c) 2026 gkouen. License: MIT OR Apache-2.0. The upstream `THIRD_PARTY_NOTICES.txt` separately retains the MIT notice for X'moe's CMVS format implementations and lists native/audio/font/video dependencies under their original terms.
 - Adapter: `crates/shinki-emu-cmvs-rs`, using upstream VM, CPU/font/movie rendering, native audio and save/config behavior. The existing `shinki.emu.cmvs` implementation is unchanged and remains a separate core.
-- `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES.txt` and `MODIFICATIONS.md` are declared in both the adapter build manifest and `build/cores.toml`. Full pinned fork source accompanies corresponding-source archives. User-provided fonts and commercial game data are not included.
+- `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES.txt` and `MODIFICATIONS.md` are declared in both the adapter build manifest and `build/cores.toml`. The public source at the exact locked fork commit is listed in `licenses/pinned-sources.txt`. User-provided fonts and commercial game data are not included.
 
 ## KrKr2 独立核心
 
 - 上游：<https://github.com/2468785842/krkr2>，基线 `dca7264572a63e753c1b07ca7053513d1751ce70`；组织 fork 为 <https://github.com/Project-Shinkirou/krkr2/tree/shinki>，精确适配 revision 见 `build/cores.toml`。
 - 核心 ID 为 `krkr2`，与 `kirikiroid2-web` 并存。使用该上游自己的模块化 C++ VM、渲染、Oboe/OpenAL 混音和存档路径，不链接另一个核心。适配层移植了组织 kirikiroid2-web fork 的 MIT OR Apache-2.0 会话 owner、C ABI 和静态符号隔离代码，来源与修改范围见 fork 的 `MODIFICATIONS.md`。
-- 保留上游 `LICENSE` 中的 KiriKiri BSD 风格条款及全部所含组件条款；`LicenseRef-KiriKiri2` 不将整个依赖闭包重新许可为 BSD。运行资源、Cocos Java 代码和 vcpkg 依赖 copyright 文件由实际构建清单随包保留；源码包包含完整 fork 及适配修改。
+- 保留上游 `LICENSE` 中的 KiriKiri BSD 风格条款及全部所含组件条款；`LicenseRef-KiriKiri2` 不将整个依赖闭包重新许可为 BSD。运行资源、Cocos Java 代码和 vcpkg 依赖 copyright 文件由实际构建清单随包保留。公开 fork 的锁定提交包含适配修改，见 `licenses/pinned-sources.txt`。

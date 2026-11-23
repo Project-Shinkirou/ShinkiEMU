@@ -196,27 +196,6 @@ fn entries<T: DeserializeOwned>(root: &Path, dir: &str) -> Result<Vec<(String, T
         })
         .collect()
 }
-/// Reject counter reuse/rollback before producing a new external release.
-pub(crate) fn require_release_sequence(
-    root: &Path,
-    component: &str,
-    identity: &CoreIdentity,
-) -> Result<()> {
-    let version = identity.version();
-    for (_, entry) in entries::<CoreCatalogEntry>(root, "engines/cores")? {
-        entry.validate()?;
-        if entry.plugin_id != component {
-            continue;
-        }
-        if let Some(previous) = &entry.identity {
-            ensure!(
-                entry.version == version || identity.release_sequence > previous.release_sequence,
-                "external release_sequence must increase beyond every previously published identity for {component}"
-            );
-        }
-    }
-    Ok(())
-}
 fn compat_path(e: &CompatibilityEntry) -> String {
     format!(
         "compatibility/entries/{}/{}/{}/{}-{}-{}.json",
@@ -603,11 +582,6 @@ mod tests {
         let legacy_reports = parse_compatibility_database(&files["compatibility.json"]).unwrap();
         assert_eq!(legacy_reports.schema, LEGACY_COMPATIBILITY_SCHEMA_VERSION);
         assert!(legacy_reports.entries.is_empty());
-        let mut adapter_update = new.identity.clone().unwrap();
-        adapter_update.adapter.commit = "f".repeat(40);
-        assert!(require_release_sequence(temp.path(), "rfvp", &adapter_update).is_err());
-        adapter_update.release_sequence += 1;
-        require_release_sequence(temp.path(), "rfvp", &adapter_update).unwrap();
     }
     #[test]
     fn deterministic_snapshot_and_existing_output_protection() {

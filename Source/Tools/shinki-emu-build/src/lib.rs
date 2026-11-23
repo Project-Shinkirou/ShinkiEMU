@@ -8,7 +8,6 @@ use std::{
     process::Command,
 };
 
-pub const SCHEMA: &str = "shinki.emu.core_build.v1";
 pub const ABI: &str = "shinki.emu.native.c.v3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,13 +18,8 @@ pub struct BuildAsset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CoreBuildManifest {
-    pub schema: String,
     pub plugin_id: String,
-    pub target: String,
-    pub profile: String,
-    pub abi: String,
     pub artifact_kind: String,
     pub native_library: Option<PathBuf>,
     pub resources: Vec<BuildAsset>,
@@ -34,23 +28,18 @@ pub struct CoreBuildManifest {
 
 impl CoreBuildManifest {
     pub fn new(plugin_id: impl Into<String>, artifact_kind: impl Into<String>) -> Result<Self> {
-        Ok(Self {
-            schema: SCHEMA.into(),
+        let manifest = Self {
             plugin_id: plugin_id.into(),
-            target: env::var("TARGET").context("TARGET is required in build.rs")?,
-            profile: env::var("PROFILE").context("PROFILE is required in build.rs")?,
-            abi: ABI.into(),
             artifact_kind: artifact_kind.into(),
             native_library: None,
             resources: Vec::new(),
             licenses: Vec::new(),
-        })
+        };
+        manifest.validate_plugin_id()?;
+        Ok(manifest)
     }
 
-    pub fn validate(&self) -> Result<()> {
-        if self.schema != SCHEMA || self.abi != ABI {
-            bail!("invalid core build protocol");
-        }
+    fn validate_plugin_id(&self) -> Result<()> {
         if self.plugin_id.is_empty()
             || self.plugin_id.len() > 128
             || !self
@@ -60,9 +49,11 @@ impl CoreBuildManifest {
         {
             bail!("invalid plugin_id");
         }
-        if self.target.is_empty() || !matches!(self.profile.as_str(), "debug" | "release") {
-            bail!("invalid target/profile");
-        }
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        self.validate_plugin_id()?;
         match self.artifact_kind.as_str() {
             "rust-cdylib" if self.native_library.is_none() => {}
             "native-shared"
@@ -516,11 +507,7 @@ mod tests {
         let source = temp.path().join("license");
         fs::write(&source, b"license").unwrap();
         let mut manifest = CoreBuildManifest {
-            schema: SCHEMA.into(),
-            abi: ABI.into(),
             plugin_id: "test".into(),
-            target: "x86_64-pc-windows-msvc".into(),
-            profile: "release".into(),
             artifact_kind: "rust-cdylib".into(),
             native_library: None,
             resources: vec![],

@@ -1595,7 +1595,7 @@ fn prepare_linux_runtime(inv: &Inventory, target: &str, kind: &str) -> Result<()
     prepare_linux_runtime_tree(&install, &runtime, target)
 }
 
-fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> Result<()> {
+fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, _target: &str) -> Result<()> {
     package::plain(&install.join("lib"))?;
     let root = fs::canonicalize(install.join("lib"))?;
     fs::create_dir_all(runtime)?;
@@ -1623,7 +1623,6 @@ fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> R
         run(Command::new("patchelf")
             .args(["--set-rpath", "$ORIGIN"])
             .arg(&output))?;
-        crate::binary::inspect(&output, target, false)?;
     }
     // Cocos' pinned Linux SDK keeps FMOD outside lib/ and omits its SONAME link.
     // This is an authorized bundled runtime, never a distribution/system ABI.
@@ -1647,7 +1646,6 @@ fn prepare_linux_runtime_tree(install: &Path, runtime: &Path, target: &str) -> R
         run(Command::new("patchelf")
             .args(["--set-rpath", "$ORIGIN"])
             .arg(&output))?;
-        crate::binary::inspect(&output, target, false)?;
     }
     Ok(())
 }

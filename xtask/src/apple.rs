@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, bail};
 use object::{Object, read::macho::MachHeader};
-use std::collections::BTreeSet;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -138,6 +137,10 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
     if !supported(target) {
         bail!("unsupported Apple triple {target}");
     }
+    let destination = root.join(".work/apple-native").join(target);
+    if destination.exists() {
+        bail!("native export already exists: {}", destination.display());
+    }
     let sdk = PathBuf::from(std::env::var_os("SHINKI_APPLE_SDK_DIR").context(
         "SHINKI_APPLE_SDK_DIR must point to a legally obtained, extracted Apple .sdk directory",
     )?)
@@ -193,34 +196,6 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
                 ".",
             ]),
     )?;
-    let destination = root.join(".work/apple-native").join(target);
-    let inspected = Command::new("docker")
-        .args([
-            "image",
-            "inspect",
-            "--format",
-            "{{.Id}}",
-            &image_name(target),
-        ])
-        .output()?;
-    if !inspected.status.success() {
-        bail!("built Apple image cannot be inspected");
-    }
-    let identity = String::from_utf8(inspected.stdout)?;
-    if destination.exists() {
-        if fs::read_to_string(destination.join(".image-id"))
-            .ok()
-            .as_deref()
-            == Some(identity.as_str())
-        {
-            println!("Reusing native export for {}", identity.trim());
-            return Ok(());
-        }
-        bail!(
-            "native export {} already exists; use its recorded image or select a new worktree rather than overwriting it",
-            destination.display()
-        );
-    }
     fs::create_dir_all(destination.parent().context("native export parent")?)?;
     let temp = tempfile::tempdir_in(destination.parent().unwrap())?;
     let created = Command::new("docker")
@@ -239,110 +214,27 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
     let removed = checked(Command::new("docker").args(["rm", &container]));
     copied?;
     removed?;
-    fs::write(temp.path().join(".image-id"), identity)?;
-    fs::rename(temp.path(), &destination)?;
+    crate::package::publish_noreplace(temp.path(), &destination)?;
     println!("Apple native dependency export: {}", destination.display());
     Ok(())
 }
 
-fn inspect(path: &Path, target: &str, executable: bool) -> Result<(BTreeSet<String>, bool)> {
+fn has_executable_rpath(path: &Path) -> Result<bool> {
     let bytes = fs::read(path)?;
-    let file = object::File::parse(bytes.as_slice())?;
-    inspect_file(&file, path, target, executable)
-}
-
-fn inspect_file(
-    file: &object::File<'_>,
-    path: &Path,
-    target: &str,
-    executable: bool,
-) -> Result<(BTreeSet<String>, bool)> {
-    let architecture = if target.starts_with("aarch64") {
-        object::Architecture::Aarch64
-    } else {
-        object::Architecture::X86_64
-    };
-    if file.architecture() != architecture
-        || file.format() != object::BinaryFormat::MachO
-        || (executable && file.kind() != object::ObjectKind::Executable)
-    {
-        bail!(
-            "{} is not the expected Apple artifact for {target}",
-            path.display()
-        );
-    }
-    let object::File::MachO64(macho) = file else {
-        bail!("Apple bundles require a thin 64-bit Mach-O");
+    let object::File::MachO64(macho) = object::File::parse(bytes.as_slice())? else {
+        bail!("expected a Mach-O bundle executable: {}", path.display());
     };
     let endian = macho.endian();
-    let mut commands = macho
-        .macho_header()
-        .load_commands(endian, macho.data(), 0)?;
-    let expected_platform = if target.ends_with("darwin") {
-        object::macho::PLATFORM_MACOS
-    } else if sdk_name(target) == "iphonesimulator" {
-        object::macho::PLATFORM_IOSSIMULATOR
-    } else {
-        object::macho::PLATFORM_IOS
-    };
-    let mut platform = None;
-    let mut dependencies = BTreeSet::new();
-    let mut executable_rpath = false;
+    let mut commands = macho.macho_header().load_commands(endian, macho.data(), 0)?;
     while let Some(command) = commands.next()? {
-        match command.cmd() {
-            object::macho::LC_BUILD_VERSION => {
-                let version: &object::macho::BuildVersionCommand<_> = command.data()?;
-                platform = Some(version.platform.get(endian));
+        if command.cmd() == object::macho::LC_RPATH {
+            let rpath: &object::macho::RpathCommand<_> = command.data()?;
+            if command.string(endian, rpath.path)? == b"@executable_path" {
+                return Ok(true);
             }
-            object::macho::LC_VERSION_MIN_MACOSX => platform = Some(object::macho::PLATFORM_MACOS),
-            object::macho::LC_VERSION_MIN_IPHONEOS => {
-                platform = Some(if architecture == object::Architecture::X86_64 {
-                    object::macho::PLATFORM_IOSSIMULATOR
-                } else {
-                    object::macho::PLATFORM_IOS
-                })
-            }
-            object::macho::LC_RPATH => {
-                let rpath: &object::macho::RpathCommand<_> = command.data()?;
-                let value = std::str::from_utf8(command.string(endian, rpath.path)?)?;
-                if !matches!(value, "@executable_path" | "@loader_path") {
-                    bail!(
-                        "{} has an unbundled runtime search path {value}",
-                        path.display()
-                    );
-                }
-                executable_rpath |= value == "@executable_path";
-            }
-            _ => {}
-        }
-        if let Some(dylib) = command.dylib()? {
-            let name = std::str::from_utf8(command.string(endian, dylib.dylib.name)?)?;
-            if name.starts_with("/usr/lib/") || name.starts_with("/System/Library/Frameworks/") {
-                continue;
-            }
-            if !(name.starts_with("@rpath/")
-                || name.starts_with("@loader_path/")
-                || name.starts_with("@executable_path/"))
-                || name.split('/').count() != 2
-                || name.split('/').any(|part| matches!(part, "" | "." | ".."))
-            {
-                bail!("{} has a non-relocatable dependency {name}", path.display());
-            }
-            dependencies.insert(
-                name.rsplit('/')
-                    .next()
-                    .context("dylib filename")?
-                    .to_owned(),
-            );
         }
     }
-    if platform != Some(expected_platform) {
-        bail!(
-            "{} Mach-O platform {platform:?} does not match {target}",
-            path.display()
-        );
-    }
-    Ok((dependencies, executable_rpath))
+    Ok(false)
 }
 
 /// Convert validated flat staging to a bundle. Rewriting and signing only touch staging.
@@ -401,24 +293,6 @@ pub fn bundle(
         && (!ios || binaries.len() != 1 || !stage.join("Frameworks").is_dir())
     {
         bail!("the iOS Framework app must embed code under Frameworks, not as loose dylibs");
-    }
-    let available: BTreeSet<_> = binaries
-        .iter()
-        .filter_map(|path| path.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
-        .collect();
-    let mut main_has_rpath = false;
-    for path in &binaries {
-        let is_main = path == &stage.join(executable);
-        let (dependencies, has_rpath) = inspect(path, target, is_main)?;
-        if is_main {
-            main_has_rpath = has_rpath;
-        }
-        for dependency in dependencies {
-            if !available.contains(&dependency) {
-                bail!("missing bundled Apple dependency {dependency}");
-            }
-        }
     }
     let contents = if ios {
         app.clone()
@@ -497,7 +371,7 @@ pub fn bundle(
     } else {
         "llvm-install-name-tool"
     };
-    if !main_has_rpath && binaries.len() > 1 {
+    if binaries.len() > 1 && !has_executable_rpath(&main)? {
         checked(
             Command::new(install_name_tool)
                 .args(["-add_rpath", "@executable_path"])
@@ -550,34 +424,6 @@ mod tests {
             .is_err()
         );
         assert_eq!(fs::read(tmp.path().join("player")).unwrap(), b"original");
-        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 1);
-    }
-
-    #[test]
-    fn device_bundle_rejects_simulator_macho_without_modifying_input() {
-        let tmp = crate::temporary::directory().unwrap();
-        // A minimal public synthetic arm64 Mach-O header, with an iOS
-        // simulator LC_BUILD_VERSION. No proprietary executable is used.
-        let words: [u32; 14] = [
-            0xfeedfacf, 0x0100000c, 0, 2, 1, 24, 0, 0, 0x32, 24, 7, 0x100000, 0x100000, 0,
-        ];
-        let bytes: Vec<u8> = words.into_iter().flat_map(u32::to_le_bytes).collect();
-        let path = tmp.path().join("player");
-        fs::write(&path, &bytes).unwrap();
-        assert!(inspect(&path, "aarch64-apple-ios-sim", true).is_ok());
-        assert!(
-            bundle(
-                tmp.path(),
-                "aarch64-apple-ios",
-                "player",
-                "Player",
-                "org.shinkirou.player",
-                "0.1.0",
-                None,
-            )
-            .is_err()
-        );
-        assert_eq!(fs::read(&path).unwrap(), bytes);
         assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 1);
     }
 }

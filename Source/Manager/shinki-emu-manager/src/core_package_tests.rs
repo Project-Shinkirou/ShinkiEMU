@@ -21,6 +21,7 @@ fn manifest(plugin_id: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
         plugin_id: plugin_id.into(),
         library: LIBRARY.into(),
         version: "0.2.0".into(),
+        source_commit: None,
         identity: None,
         recognition: Default::default(),
         abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
@@ -30,43 +31,22 @@ fn manifest(plugin_id: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
 }
 
 #[test]
-fn in_repo_source_commit_comes_only_from_a_bound_release_receipt() {
-    let root = tempfile::tempdir().unwrap();
+fn first_party_source_commit_is_validated_from_core_json() {
     let plugin = "shinki.emu.cmvs";
     let commit = "0123456789abcdef0123456789abcdef01234567";
-    let mut receipt = serde_json::json!({
-        "schema": "shinki.emu.build_identity.v1",
-        "component": plugin,
-        "target": env!("SHINKI_EMU_BUILD_TARGET"),
-        "profile": "release",
-        "product_version": "0.2.0",
-        "source_commit": commit,
-        "source_dirty": false,
-        "sha256": "additional existing receipt fields are ignored"
-    });
-    let path = root.path().join("build.json");
-    let encode = |receipt: &serde_json::Value| {
-        let bytes = serde_json::to_vec(receipt).unwrap();
-        fs::write(&path, &bytes).unwrap();
-        serde_json::from_slice::<CoreManifest>(&manifest(plugin, &[("build.json", &bytes)])).unwrap()
-    };
-    let valid = encode(&receipt);
-    assert_eq!(product_source_commit(root.path(), &valid).as_deref(), Some(commit));
-
-    for (key, invalid) in [
-        ("component", serde_json::json!("shinki.emu.musica")),
-        ("target", serde_json::json!("foreign-target")),
-        ("profile", serde_json::json!("debug")),
-        ("product_version", serde_json::json!("0.1.0")),
-        ("source_commit", serde_json::json!("ABCDEF")),
-        ("source_dirty", serde_json::json!(true)),
-    ] {
-        let original = std::mem::replace(&mut receipt[key], invalid);
-        assert!(product_source_commit(root.path(), &encode(&receipt)).is_none(), "{key}");
-        receipt[key] = original;
-    }
-    fs::write(&path, serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
-    assert!(product_source_commit(root.path(), &valid).is_none(), "receipt bytes changed");
+    let bytes = manifest(plugin, &valid_files());
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let decode = |value: &serde_json::Value| serde_json::from_value::<CoreManifest>(value.clone()).unwrap();
+    assert!(decode(&value).product_source_commit().is_none());
+    value["source_commit"] = commit.into();
+    let decoded = decode(&value);
+    assert!(decoded.validate(Some(plugin)).is_ok());
+    assert_eq!(decoded.product_source_commit(), Some(commit));
+    value["source_commit"] = commit.to_ascii_uppercase().into();
+    assert!(decode(&value).validate(Some(plugin)).is_err());
+    value["source_commit"] = commit.into();
+    value["version"] = "0.0.0-local".into();
+    assert!(decode(&value).validate(Some(plugin)).is_err());
 }
 
 fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {

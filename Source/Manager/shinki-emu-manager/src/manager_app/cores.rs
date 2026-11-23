@@ -158,7 +158,7 @@ impl ShinkiEmuManagerController {
         plugin_id: &str,
     ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>, Option<&'a str>) {
         if let Some(core) = self.registry.installed().get(plugin_id) {
-            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref());
+            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit());
         }
         if let Some((version, source_commit)) = embedded_product_release(plugin_id) {
             return (version, None, Some(source_commit));

@@ -513,6 +513,7 @@ pub(crate) mod tests {
             plugin_id: plugin_id.into(),
             library: library.clone(),
             version: version.into(),
+            source_commit: None,
             identity: None,
             recognition,
             abi: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),

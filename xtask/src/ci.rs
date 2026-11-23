@@ -31,25 +31,15 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         Ok(())
     } else {
         (|| -> Result<()> {
-            if component == "manager" && target.contains("android") {
-                let other = if target == "aarch64-linux-android" {
-                    "x86_64-linux-android"
-                } else {
-                    "aarch64-linux-android"
-                };
-                build::execute(inv, other, component, "build", true)?;
-            }
-            let built = build::execute(inv, target, component, "build", true)?
-                .expect("build returns artifact");
-            report.status = "built";
-            report.artifact = Some(built.library);
-            let version = if component == "manager" || inv.core(component)?.source.is_none() {
-                built.product_version.context("build lacks product_version")?
+            let product = component == "manager" || inv.core(component)?.source.is_none();
+            let version = if product {
+                build::default_product_version()?
             } else {
                 crate::release::resolve_version(inv, component, "")?
             };
             // Restricted binaries are not uploaded, even as Actions artifacts.
             if component != "manager" && !inv.core(component)?.publish_blocked.is_empty() {
+                build::execute(inv, target, component, "build", true)?;
                 report.status = "publish_blocked";
                 report.reason = Some(inv.core(component)?.publish_blocked.clone());
                 report.artifact = None;
@@ -57,14 +47,17 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             }
             let out = inv.root.join(".work/ci").join(target).join(component);
             let staged = package::package(inv, target, component, &version, &out)?;
-            if component == "manager" && target.contains("android") {
-                let record: serde_json::Value =
-                    serde_json::from_slice(&fs::read(staged.join("android.json"))?)?;
-                let apk = record["apk"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("Android package APK missing"))?;
-                package::portable(apk)?;
-                report.artifact = Some(staged.join(apk));
+            report.status = "built";
+            if component == "manager" && (target.ends_with("android") || target.ends_with("ohos")) {
+                let (file, key) = if target.ends_with("android") {
+                    ("android.json", "apk")
+                } else {
+                    ("ohos.json", "hap")
+                };
+                let record: serde_json::Value = serde_json::from_slice(&fs::read(staged.join(file))?)?;
+                let name = record[key].as_str().context("mobile package filename")?;
+                package::portable(name)?;
+                report.artifact = Some(staged.join(name));
             } else if component == "manager" && target == "aarch64-apple-ios" {
                 report.artifact =
                     Some(staged.join(format!("ShinkiEMU-{version}-{target}-device-test.ipa")));

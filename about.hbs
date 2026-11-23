@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>ShinkiEMU Rust dependency licenses</title>
+<h1>ShinkiEMU Rust dependency licenses</h1>
+<p>See <a href="pinned-sources.txt">pinned Git sources</a> and the accompanying notices for native libraries and bundled assets.</p>
+{{#each licenses}}
+<section>
+<h2>{{name}}</h2>
+<ul>
+{{#each used_by}}
+<li>{{crate.name}} {{crate.version}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+</section>
+{{/each}}
+</html>

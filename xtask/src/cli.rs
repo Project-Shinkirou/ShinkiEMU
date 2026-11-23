@@ -96,6 +96,7 @@ pub enum Command {
         #[arg(long)]
         manager: bool,
     },
+    /// Build and stage a package. Install the cargo-about host tool first.
     Package {
         #[arg(long)]
         target: String,
@@ -105,7 +106,7 @@ pub enum Command {
         version: String,
         #[arg(long)]
         out: PathBuf,
-        /// Local Android QA only: reuse one clean release Manager build and its generated inputs.
+        /// Build and package one Android Manager ABI with the local debug key.
         /// Requires a new output directory and no release signing configuration.
         #[arg(long, requires = "manager", conflicts_with = "core")]
         qa_single_abi: bool,
@@ -114,20 +115,17 @@ pub enum Command {
     Release {
         #[arg(long)]
         component: String,
-        #[arg(long, required_unless_present_any = ["publish", "verify_handoff", "dry_run"], conflicts_with_all = ["publish", "verify_handoff", "dry_run"])]
+        #[arg(long, required_unless_present_any = ["publish", "dry_run"], conflicts_with_all = ["publish", "dry_run"])]
         target: Option<String>,
         #[arg(long, default_value = "")]
         version: String,
-        /// Apply the same platform scope to preparation, receipts and publication.
-        #[arg(long, conflicts_with = "verify_handoff")]
+        /// Apply the same platform scope to preparation and publication.
+        #[arg(long)]
         scope: Option<crate::release::Scope>,
         #[arg(long)]
         publish: bool,
-        /// Verify the staged OHOS HAP and corresponding source without DevEco.
+        /// Print the release version and targets without building.
         #[arg(long, conflicts_with = "publish")]
-        verify_handoff: bool,
-        /// Resolve and verify upstream/adapter identities without building or publishing.
-        #[arg(long, conflicts_with_all = ["publish", "verify_handoff"])]
         dry_run: bool,
     },
     Metadata {

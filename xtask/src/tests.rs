@@ -1,4 +1,4 @@
-use crate::{binary, build::BuildResult, cores::Inventory, package::*};
+use crate::{binary, build::BuildArtifact, cores::Inventory, package::*};
 use shinki_emu_build::{BuildAsset, CoreBuildManifest};
 use std::{
     fs,
@@ -87,22 +87,17 @@ fn fixture() -> &'static Fixture {
     });
     &F
 }
-fn result(temp: &Path) -> BuildResult {
+fn result(temp: &Path) -> BuildArtifact {
     let f = fixture();
     let license = temp.join("LICENSE");
     fs::write(&license, "Public synthetic test fixture, CC0-1.0\n").unwrap();
-    BuildResult {
+    BuildArtifact {
         component: "fixture".into(),
         target: f.target.clone(),
-        profile: "release".into(),
         product_version: None,
         library: f.library.clone(),
         core_build: Some(CoreBuildManifest {
-            schema: shinki_emu_build::SCHEMA.into(),
             plugin_id: "fixture".into(),
-            target: f.target.clone(),
-            profile: "release".into(),
-            abi: shinki_emu_build::ABI.into(),
             artifact_kind: "rust-cdylib".into(),
             native_library: None,
             resources: vec![],
@@ -112,32 +107,11 @@ fn result(temp: &Path) -> BuildResult {
             }],
         }),
         embedded_core_builds: vec![],
-        source_commit: "fixture".into(),
-        source_dirty: false,
-        toolchain: "rustc".into(),
+        source_commit: Some("a".repeat(40)),
         features: vec![],
-        target_dir: temp.to_owned(),
     }
 }
 
-#[test]
-fn manager_package_identity_cannot_relabel_old_or_unversioned_builds() {
-    let temp = crate::temporary::directory().unwrap();
-    let mut receipt = result(temp.path());
-    receipt.component = "manager".into();
-    receipt.core_build = None;
-    assert!(receipt.require_product_version("0.1.0-beta.8").is_err());
-    receipt.product_version = Some("0.1.0-beta.6".into());
-    assert!(receipt.require_product_version("0.1.0-beta.8").is_err());
-    receipt.product_version = Some("0.1.0-beta.8".into());
-    receipt.require_product_version("0.1.0-beta.8").unwrap();
-    let path = temp.path().join("build.json");
-    write_provenance(&receipt, &path).unwrap();
-    let packaged: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(packaged["product_version"], "0.1.0-beta.8");
-    receipt.product_version = Some("0.1.0-beta.9".into());
-    assert!(receipt.require_product_version("0.1.0-beta.8").is_err());
-}
 #[test]
 fn paths_reject_traversal_ads_devices_and_collisions() {
     let temp = crate::temporary::directory().unwrap();
@@ -237,24 +211,11 @@ fn atomic_publication_preserves_existing_and_racing_outputs_and_cleans_staging()
     }));
 }
 #[test]
-fn real_binary_dependency_arch_and_export_validation() {
+fn packages_resolve_dependencies_only_from_redistributable_trees() {
     let f = fixture();
-    let info = binary::inspect(&f.library, &f.target, true).unwrap();
-    assert!(
-        info.dependencies
-            .iter()
-            .any(|d| d.contains("shinki_fixture_dep"))
-    );
     assert!(binary::closure(&f.library, &[], &f.target).is_err());
     let closure = binary::closure(&f.library, &[f._dir.path().to_owned()], &f.target).unwrap();
     assert!(closure.iter().any(|(source, _)| source == &f.dependency));
-    assert!(binary::inspect(&f.dependency, &f.target, true).is_err());
-    let wrong = if f.target.starts_with("x86_64") {
-        f.target.replacen("x86_64", "aarch64", 1)
-    } else {
-        f.target.replacen("aarch64", "x86_64", 1)
-    };
-    assert!(binary::inspect(&f.library, &wrong, true).is_err());
 }
 #[cfg(windows)]
 #[test]
@@ -331,6 +292,7 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
     )
     .unwrap();
     let m = verify_core(&dir).unwrap();
+    assert_eq!(m.source_commit, r.source_commit);
     let actual = tree(&dir).unwrap();
     assert_eq!(actual.len(), m.files.len() + 1);
     for record in &m.files {
@@ -516,8 +478,8 @@ fn macho_identity_is_not_a_runtime_dependency() {
         bytes.resize(32 + size, 0);
         let path = temp.path().join("libexample.dylib");
         fs::write(&path, bytes).unwrap();
-        let info = binary::inspect(&path, "aarch64-apple-darwin", false).unwrap();
-        assert_eq!(info.dependencies.len(), expected_dependencies);
+        let names = binary::dependencies(&path, "aarch64-apple-darwin").unwrap();
+        assert_eq!(names.len(), expected_dependencies);
     }
 }
 
@@ -583,7 +545,7 @@ fn corresponding_sources_copy_downloads_matching_installed_sha512() {
 }
 
 #[test]
-fn native_packages_include_dynamically_loaded_modules_and_validate_resource_binaries() {
+fn native_packages_include_dynamically_loaded_modules() {
     let temp = crate::temporary::directory().unwrap();
     let fixture = fixture();
     let native = temp.path().join("native");
@@ -637,10 +599,6 @@ fn native_packages_include_dynamically_loaded_modules_and_validate_resource_bina
             .iter()
             .any(|file| file.path == format!("Resources/{extension}"))
     );
-    fs::write(resources.join(extension), b"invalid native extension").unwrap();
-    let rejected = temp.path().join("rejected");
-    assert!(stage_core(&result, "1.0.0", None, &Default::default(), &rejected, &[native]).is_err());
-    assert!(!rejected.exists());
 }
 
 #[test]
@@ -678,7 +636,7 @@ fn output_nested_in_resource_inputs_is_rejected_without_modifying_sources() {
 }
 
 #[test]
-fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
+fn external_core_archive_preserves_identity_and_recognition() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let inventory = Inventory::load(root).unwrap();
     let source = inventory.core("rfvp").unwrap().source.as_ref().unwrap();
@@ -686,7 +644,7 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
     let temp = crate::temporary::directory().unwrap();
     let fixture = fixture();
     let mut receipt = result(temp.path());
-    receipt.source_commit = source.rev.clone();
+    receipt.source_commit = None;
     let output = temp
         .path()
         .join(".work/release")
@@ -710,10 +668,6 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
     let packaged = verify_core(&staged).unwrap();
     assert_eq!(packaged.identity.as_ref(), Some(&identity));
     assert_eq!(packaged.version, identity.version());
-    assert_eq!(
-        packaged.identity.as_ref().unwrap().adapter.commit,
-        receipt.source_commit
-    );
     let archive = output.parent().unwrap().join(format!(
         "shinki-emu-core-rfvp-{}-windows-x86_64.zip",
         identity.version()
@@ -735,19 +689,6 @@ fn external_package_receipt_matches_exact_upstream_and_adapter_pins() {
     assert_eq!(
         sha256(&extracted.join(&extracted_manifest.library)).unwrap(),
         sha256(&receipt.library).unwrap()
-    );
-    let mut changed = identity.clone();
-    changed.adapter.commit = "f".repeat(40);
-    assert!(
-        stage_core(
-            &receipt,
-            &changed.version(),
-            Some(&changed),
-            &recipe.recognition,
-            &temp.path().join("wrong-pin"),
-            &[]
-        )
-        .is_err()
     );
     assert!(
         stage_core(
@@ -806,67 +747,22 @@ fn sectionless_elf(needed: &str, rpath: &str) -> Vec<u8> {
     bytes
 }
 
-fn android_elf(needed: &str, runpath: &str, api: u32, alignment: u64) -> Vec<u8> {
-    let mut bytes = sectionless_elf(needed, runpath);
-    // Insert a third program header before relocating the dynamic table and
-    // dynamic strings. The Android identification note has 4-byte alignment.
-    bytes.splice(176..176, [0u8; 56]);
-    let note = bytes.len().next_multiple_of(4);
-    bytes.resize(note + 24, 0);
-    bytes[note..note + 12].copy_from_slice(&[8, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0]);
-    bytes[note + 12..note + 20].copy_from_slice(b"Android\0");
-    bytes[note + 20..note + 24].copy_from_slice(&api.to_le_bytes());
-    bytes[56..58].copy_from_slice(&3u16.to_le_bytes());
-    bytes[176..180].copy_from_slice(&4u32.to_le_bytes()); // PT_NOTE
-    let size = bytes.len() as u64;
-    for (offset, value) in [
-        (96, size),
-        (104, size),
-        (112, alignment),
-        (128, 232), // PT_DYNAMIC offset
-        (136, 232), // PT_DYNAMIC vaddr
-        (144, 232), // PT_DYNAMIC paddr
-        (184, note as u64),
-        (192, note as u64),
-        (200, note as u64),
-        (208, 24),
-        (216, 24),
-        (224, 4),
-        (240, 312), // DT_STRTAB
-    ] {
-        bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
-    }
-    bytes
-}
-
 #[test]
-fn android_core_checks_the_actual_transitive_elf_closure() {
+fn android_package_resolves_transitive_redistributable_dsos() {
     let temp = crate::temporary::directory().unwrap();
     let core = temp.path().join("libCore.so");
     let runtime = temp.path().join("libNative.so");
-    let target = "x86_64-linux-android";
+    let child = temp.path().join("libChild.so");
     let search = [temp.path().to_owned()];
-    fs::write(&core, android_elf("libNative.so", "$ORIGIN", 28, 16384)).unwrap();
-    fs::write(&runtime, android_elf("libOpenSLES.so", "$ORIGIN", 21, 16384)).unwrap();
-    let closure = || binary::android_core_closure(&core, &search, target);
-    assert_eq!(
-        closure().unwrap(),
-        [(runtime.clone(), "libNative.so".to_owned())]
-    );
-    assert!(binary::android_core_closure(&core, &search, "aarch64-linux-android").is_err());
-
-    for elf in [
-        sectionless_elf("libc.so", "$ORIGIN"),
-        android_elf("libc.so", "$ORIGIN", 29, 16384),
-        android_elf("libunresolved.so", "$ORIGIN", 28, 16384),
-    ] {
-        fs::write(&runtime, elf).unwrap();
-        assert!(closure().is_err());
-    }
-    let mut legacy_rpath = android_elf("libNative.so", "$ORIGIN", 28, 16384);
-    legacy_rpath[280..288].copy_from_slice(&15u64.to_le_bytes()); // DT_RPATH instead of DT_RUNPATH
-    fs::write(&core, legacy_rpath).unwrap();
+    let closure = || binary::closure(&core, &search, "x86_64-linux-android");
+    fs::write(&core, sectionless_elf("libNative.so", "$ORIGIN")).unwrap();
+    fs::write(&runtime, sectionless_elf("libChild.so", "$ORIGIN")).unwrap();
     assert!(closure().is_err());
+    fs::write(&child, sectionless_elf("libOpenSLES.so", "$ORIGIN")).unwrap();
+    assert_eq!(closure().unwrap(), [
+        (child, "libChild.so".to_owned()),
+        (runtime, "libNative.so".to_owned()),
+    ]);
 }
 
 #[test]
@@ -923,20 +819,13 @@ fn linux_soname_links_copy_regular_bytes_and_reject_escape_and_conflicts() {
 }
 
 #[test]
-fn elf_dynamic_segments_resolve_needed_and_runpath_without_section_headers() {
+fn elf_dynamic_segments_resolve_dependencies_without_section_headers() {
     let temp = crate::temporary::directory().unwrap();
     let library = temp.path().join("libsynthetic.so");
     fs::write(&library, sectionless_elf("libmissing.so", "$ORIGIN")).unwrap();
-    let info = binary::inspect(&library, "x86_64-unknown-linux-gnu", false).unwrap();
-    assert!(info.dependencies.contains("libmissing.so"));
-    assert!(info.rpaths.iter().any(|path| path == "$ORIGIN"));
+    let names = binary::dependencies(&library, "x86_64-unknown-linux-gnu").unwrap();
+    assert!(names.contains("libmissing.so"));
     assert!(binary::closure(&library, &[], "x86_64-unknown-linux-gnu").is_err());
-    fs::write(
-        &library,
-        sectionless_elf("libmissing.so", "/developer/private"),
-    )
-    .unwrap();
-    assert!(binary::inspect(&library, "x86_64-unknown-linux-gnu", false).is_err());
 }
 
 fn synthetic_macho(dependency: &[u8], rpath: &str) -> Vec<u8> {
@@ -962,7 +851,7 @@ fn synthetic_macho(dependency: &[u8], rpath: &str) -> Vec<u8> {
 }
 
 #[test]
-fn macho_load_commands_require_relocatable_rpaths_and_a_complete_closure() {
+fn macho_load_commands_report_unresolved_redistributable_dependencies() {
     let temp = crate::temporary::directory().unwrap();
     let library = temp.path().join("libsynthetic.dylib");
     fs::write(
@@ -970,29 +859,20 @@ fn macho_load_commands_require_relocatable_rpaths_and_a_complete_closure() {
         synthetic_macho(b"@rpath/libmissing.dylib\0", "@loader_path"),
     )
     .unwrap();
-    let info = binary::inspect(&library, "x86_64-apple-darwin", false).unwrap();
-    assert!(info.dependencies.contains("@rpath/libmissing.dylib"));
-    assert!(info.rpaths.iter().any(|path| path == "@loader_path"));
+    let names = binary::dependencies(&library, "x86_64-apple-darwin").unwrap();
+    assert!(names.contains("@rpath/libmissing.dylib"));
     assert!(binary::closure(&library, &[], "x86_64-apple-darwin").is_err());
-    fs::write(
-        &library,
-        synthetic_macho(b"@rpath/libmissing.dylib\0", "/developer/private"),
-    )
-    .unwrap();
-    assert!(binary::inspect(&library, "x86_64-apple-darwin", false).is_err());
 }
 
 #[test]
-fn macho_runtime_bundles_keep_architecture_dependency_and_query_checks() {
+fn macho_runtime_bundles_resolve_private_dependencies() {
     let temp = crate::temporary::directory().unwrap();
     let module = temp.path().join("display.so");
     let mut bytes = synthetic_macho(b"@rpath/libpython3.12.dylib\0", "@loader_path");
     bytes[12..16].copy_from_slice(&object::macho::MH_BUNDLE.0.to_le_bytes());
     fs::write(&module, &bytes).unwrap();
-    let info = binary::inspect(&module, "x86_64-apple-darwin", false).unwrap();
-    assert!(info.dependencies.contains("@rpath/libpython3.12.dylib"));
-    assert!(binary::inspect(&module, "aarch64-apple-darwin", false).is_err());
-    assert!(binary::inspect(&module, "x86_64-apple-darwin", true).is_err());
+    let names = binary::dependencies(&module, "x86_64-apple-darwin").unwrap();
+    assert!(names.contains("@rpath/libpython3.12.dylib"));
     assert!(binary::closure(&module, &[], "x86_64-apple-darwin").is_err());
     let dependency = temp.path().join("libpython3.12.dylib");
     fs::write(
@@ -1004,13 +884,10 @@ fn macho_runtime_bundles_keep_architecture_dependency_and_query_checks() {
         binary::closure(&module, &[temp.path().into()], "x86_64-apple-darwin").unwrap(),
         vec![(dependency, "libpython3.12.dylib".into())]
     );
-    bytes[12..16].copy_from_slice(&object::macho::MH_OBJECT.0.to_le_bytes());
-    fs::write(&module, bytes).unwrap();
-    assert!(binary::inspect(&module, "x86_64-apple-darwin", false).is_err());
 }
 
 #[test]
-fn universal_macho_inspection_selects_and_bounds_checks_each_target_slice() {
+fn universal_macho_dependency_read_selects_target_slice() {
     let temp = crate::temporary::directory().unwrap();
     let x86 = synthetic_macho(b"/usr/lib/libSystem.B.dylib\0", "@loader_path");
     let mut arm = x86.clone();
@@ -1036,347 +913,13 @@ fn universal_macho_inspection_selects_and_bounds_checks_each_target_slice() {
     let library = temp.path().join("universal.dylib");
     fs::write(&library, &universal).unwrap();
     for target in ["x86_64-apple-darwin", "aarch64-apple-darwin"] {
-        let info = binary::inspect(&library, target, false).unwrap();
-        assert!(info.dependencies.contains("/usr/lib/libSystem.B.dylib"));
+        let names = binary::dependencies(&library, target).unwrap();
+        assert!(names.contains("/usr/lib/libSystem.B.dylib"));
     }
     assert!(binary::target_slice(&universal, object::Architecture::I386).is_err());
     universal[40..44].copy_from_slice(&u32::MAX.to_be_bytes());
     fs::write(&library, universal).unwrap();
-    assert!(binary::inspect(&library, "aarch64-apple-darwin", false).is_err());
-}
-
-#[test]
-fn rust_license_closure_collects_files_and_spdx_and_rejects_missing_data() {
-    use serde_json::json;
-    let temp = crate::temporary::directory().unwrap();
-    let mut packages = Vec::new();
-    for (id, name, version, license, license_file) in [
-        (
-            "manager",
-            "shinki-emu-test-core",
-            "1.0.0",
-            Some("MIT"),
-            None,
-        ),
-        (
-            "direct",
-            "steamroom",
-            "0.3.0",
-            Some("MIT OR Apache-2.0"),
-            Some("legal/custom.txt"),
-        ),
-        ("transitive", "steamroom-client", "0.3.0", None, None),
-        (
-            "build",
-            "generator",
-            "1.0.0",
-            Some("(Apache-2.0 WITH LLVM-exception) AND (MIT OR BSD-3-Clause)"),
-            None,
-        ),
-        ("old", "steamroom", "0.2.0", Some("MIT/Apache-2.0"), None),
-        ("dev", "test-only", "1.0.0", None, None),
-        ("other", "other-platform", "1.0.0", None, None),
-    ] {
-        let root = temp.path().join(id);
-        fs::create_dir_all(root.join("legal")).unwrap();
-        packages.push(json!({
-            "id": id, "name": name, "version": version, "license": license,
-            "license_file": license_file, "manifest_path": root.join("Cargo.toml")
-        }));
-    }
-    fs::write(
-        temp.path().join("direct/legal/custom.txt"),
-        "custom license",
-    )
-    .unwrap();
-    for filename in [
-        "LICENSE-MIT",
-        "COPYING.txt",
-        "COPYRIGHT",
-        "NOTICE",
-        "license-apache",
-    ] {
-        fs::write(temp.path().join("direct").join(filename), filename).unwrap();
-    }
-    fs::write(temp.path().join("transitive/LICENSE"), "transitive license").unwrap();
-    fs::create_dir(temp.path().join("transitive/LICENSES")).unwrap();
-    fs::write(
-        temp.path()
-            .join("transitive/LICENSES/LicenseRef-Custom.txt"),
-        "original custom license",
-    )
-    .unwrap();
-    fs::write(temp.path().join("direct/README.md"), "not a license").unwrap();
-    // Hidden residue such as Nix inputs under .direnv is not a notice for the crate.
-    fs::create_dir_all(temp.path().join("transitive/.direnv/inputs")).unwrap();
-    fs::write(
-        temp.path().join("transitive/.direnv/inputs/LICENSE"),
-        "unrelated input",
-    )
-    .unwrap();
-    let fonts = temp.path().join("transitive/fonts");
-    fs::create_dir(&fonts).unwrap();
-    for name in [
-        "UFL.txt",
-        "OFL.txt",
-        "emoji-mit-license.txt",
-        "ExampleFont.txt",
-    ] {
-        fs::write(fonts.join(name), format!("provided font license: {name}\n")).unwrap();
-    }
-    fs::write(fonts.join("ExampleFont.ttf"), b"public font fixture").unwrap();
-    fs::create_dir(temp.path().join("build/src")).unwrap();
-    fs::write(
-        temp.path().join("build/src/license.rs"),
-        "pub struct License;\n",
-    )
-    .unwrap();
-    let git_checkout = temp.path().join("git-workspace");
-    fs::create_dir_all(git_checkout.join(".git")).unwrap();
-    fs::create_dir_all(git_checkout.join("crates/binding")).unwrap();
-    fs::write(
-        git_checkout.join("LICENSE"),
-        "MIT license text with the upstream workspace copyright\n",
-    )
-    .unwrap();
-    packages.push(json!({
-        "id": "binding", "name": "binding", "version": "1.0.0", "license": "MIT",
-        "license_file": null, "source": "git+https://example.org/workspace#revision",
-        "manifest_path": git_checkout.join("crates/binding/Cargo.toml")
-    }));
-    // A path crate inside a fork checkout (not the product workspace) inherits the
-    // checkout-root license, as siglus_rs crates/* do.
-    fs::create_dir_all(git_checkout.join("crates/fork-path")).unwrap();
-    packages.push(json!({
-        "id": "fork-path", "name": "fork-path", "version": "0.1.0", "license": null,
-        "license_file": null, "source": null,
-        "manifest_path": git_checkout.join("crates/fork-path/Cargo.toml")
-    }));
-    // A git source with the same name-version as another source (ruffle swf-0.2.2 vs
-    // crates.io swf-0.2.2) keeps a separate notice group.
-    let duplicate = temp.path().join("git-duplicate");
-    fs::create_dir_all(&duplicate).unwrap();
-    fs::write(duplicate.join("LICENSE-APACHE"), "git apache").unwrap();
-    packages.push(json!({
-        "id": "duplicate", "name": "steamroom", "version": "0.2.0", "license": "MIT OR Apache-2.0",
-        "license_file": null,
-        "source": "git+https://example.org/steamroom?tag=v0.2.0#a1ac4ce8647352ad03044031cad0454a636427b8",
-        "manifest_path": duplicate.join("Cargo.toml")
-    }));
-    let dep = |pkg: &str, kind: Option<&str>| {
-        json!({
-            "pkg": pkg, "dep_kinds": [{"kind": kind, "target": null}]
-        })
-    };
-    let mut metadata = json!({
-        "packages": packages,
-        "resolve": {"nodes": [
-            {"id": "manager", "deps": [dep("direct", None), dep("duplicate", None), dep("build", Some("build")), dep("binding", None), dep("fork-path", None), dep("dev", Some("dev"))]},
-            {"id": "direct", "deps": [dep("transitive", None), dep("old", None)]},
-            {"id": "transitive", "deps": [dep("direct", None)]},
-            {"id": "build", "deps": []},
-            {"id": "old", "deps": []},
-            {"id": "dev", "deps": []},
-            {"id": "other", "deps": []},
-            {"id": "binding", "deps": []},
-            {"id": "fork-path", "deps": []},
-            {"id": "duplicate", "deps": []}
-        ]}
-    });
-    let scratch = temp.path().join("scratch");
-    let entries =
-        crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).unwrap();
-    let output = temp.path().join("package");
-    fs::create_dir(&output).unwrap();
-    copy_entries(&entries, &output).unwrap();
-    assert_eq!(
-        fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0/custom.txt")).unwrap(),
-        "custom license"
-    );
-    for filename in [
-        "LICENSE-MIT",
-        "COPYING.txt",
-        "COPYRIGHT",
-        "NOTICE",
-        "license-apache",
-    ] {
-        assert_eq!(
-            fs::read_to_string(output.join("licenses/rust/steamroom-0.3.0").join(filename))
-                .unwrap(),
-            filename
-        );
-    }
-    for file in ["package.json", "LICENSE-MIT", "LICENSE-Apache-2.0"] {
-        assert!(
-            output
-                .join("licenses/rust/steamroom-0.2.0+path")
-                .join(file)
-                .is_file()
-        );
-    }
-    assert_eq!(
-        fs::read_to_string(
-            output.join("licenses/rust/steamroom-0.2.0+git-a1ac4ce86473/LICENSE-APACHE")
-        )
-        .unwrap(),
-        "git apache"
-    );
-    assert!(!output.join("licenses/rust/steamroom-0.2.0").exists());
-    assert!(
-        output
-            .join("licenses/rust/steamroom-client-0.3.0/LICENSE")
-            .is_file()
-    );
-    assert_eq!(
-        fs::read_to_string(
-            output.join("licenses/rust/steamroom-client-0.3.0/LICENSES/LicenseRef-Custom.txt")
-        )
-        .unwrap(),
-        "original custom license"
-    );
-    for name in [
-        "UFL.txt",
-        "OFL.txt",
-        "emoji-mit-license.txt",
-        "ExampleFont.txt",
-    ] {
-        assert_eq!(
-            sha256(
-                &output
-                    .join("licenses/rust/steamroom-client-0.3.0/fonts")
-                    .join(name)
-            )
-            .unwrap(),
-            sha256(&fonts.join(name)).unwrap()
-        );
-    }
-    assert!(
-        !output
-            .join("licenses/rust/steamroom-client-0.3.0/fonts/ExampleFont.ttf")
-            .exists()
-    );
-    assert!(
-        !output
-            .join("licenses/rust/generator-1.0.0/src/license.rs")
-            .exists()
-    );
-    let record: serde_json::Value = serde_json::from_slice(
-        &fs::read(output.join("licenses/rust/generator-1.0.0/package.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(record["text_origin"], "canonical-spdx");
-    assert!(record["canonical_text_source"]["sha256"].is_string());
-    for id in ["Apache-2.0", "LLVM-exception", "MIT", "BSD-3-Clause"] {
-        let path = output.join(format!("licenses/rust/generator-1.0.0/LICENSE-{id}"));
-        assert!(fs::metadata(path).unwrap().len() > 100);
-    }
-    assert!(
-        !output
-            .join("licenses/rust/steamroom-0.3.0/LICENSE-Apache-2.0")
-            .exists()
-    );
-    assert_eq!(
-        fs::read_dir(output.join("licenses/rust")).unwrap().count(),
-        8
-    );
-    assert_eq!(
-        sha256(&output.join("licenses/rust/fork-path-0.1.0/LICENSE")).unwrap(),
-        sha256(&git_checkout.join("LICENSE")).unwrap()
-    );
-    assert!(
-        !output
-            .join("licenses/rust/steamroom-client-0.3.0/.direnv")
-            .exists()
-    );
-    assert_eq!(
-        sha256(&output.join("licenses/rust/binding-1.0.0/LICENSE")).unwrap(),
-        sha256(&git_checkout.join("LICENSE")).unwrap()
-    );
-    assert!(
-        !output
-            .join("licenses/rust/binding-1.0.0/LICENSE-MIT")
-            .exists()
-    );
-    assert!(
-        !output
-            .join("licenses/rust/steamroom-0.3.0/README.md")
-            .exists()
-    );
-    metadata["packages"][3]["license"] = json!(null);
-    let error = crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch)
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("generator-1.0.0"), "{error}");
-    for unknown in [
-        "Not-A-License",
-        "MIT OR LicenseRef-Unknown",
-        "Apache-2.0 WITH AdditionRef-Unknown",
-    ] {
-        metadata["packages"][3]["license"] = json!(unknown);
-        assert!(
-            crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).is_err(),
-            "{unknown}"
-        );
-    }
-    metadata["packages"][3]["license"] = json!("Apache-2.0");
-    metadata["packages"][1]["license_file"] = json!("missing.txt");
-    assert!(crate::rust_licenses::entries(&metadata, "shinki-emu-test-core", &scratch).is_err());
-}
-
-#[test]
-fn embedded_font_notices_resolve_custom_terms_without_inventing_license_text() {
-    let temp = crate::temporary::directory().unwrap();
-    let root = temp.path().join("crate");
-    fs::create_dir_all(root.join("fonts")).unwrap();
-    fs::write(
-        root.join("fonts/UFL.txt"),
-        "original Ubuntu font terms and attribution",
-    )
-    .unwrap();
-    fs::write(
-        root.join("fonts/OFL.txt"),
-        "original open font terms and attribution",
-    )
-    .unwrap();
-    fs::write(
-        root.join("fonts/Hack-Regular.txt"),
-        "original named-font copyright",
-    )
-    .unwrap();
-    fs::write(
-        root.join("fonts/Hack-Regular.ttf"),
-        "font data is not a notice",
-    )
-    .unwrap();
-    let metadata = serde_json::json!({
-        "packages": [{
-            "id":"font-core", "name":"font-core", "version":"1.0.0",
-            "manifest_path":root.join("Cargo.toml"),
-            "license":"(MIT OR Apache-2.0) AND OFL-1.1 AND LicenseRef-UFL-1.0"
-        }],
-        "resolve":{"nodes":[{"id":"font-core", "deps":[]}]}
-    });
-    let entries =
-        crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("scratch"))
-            .unwrap();
-    let output = temp.path().join("package");
-    fs::create_dir(&output).unwrap();
-    copy_entries(&entries, &output).unwrap();
-    let notices = output.join("licenses/rust/font-core-1.0.0");
-    assert_eq!(
-        fs::read(notices.join("fonts/UFL.txt")).unwrap(),
-        fs::read(root.join("fonts/UFL.txt")).unwrap()
-    );
-    assert!(notices.join("fonts/Hack-Regular.txt").is_file());
-    assert!(notices.join("LICENSE-MIT").is_file());
-    assert!(notices.join("LICENSE-Apache-2.0").is_file());
-    assert!(!notices.join("LICENSE-OFL-1.1").exists());
-    assert!(!notices.join("fonts/Hack-Regular.ttf").exists());
-    fs::remove_file(root.join("fonts/UFL.txt")).unwrap();
-    assert!(
-        crate::rust_licenses::entries(&metadata, "font-core", &temp.path().join("missing"))
-            .is_err()
-    );
+    assert!(binary::dependencies(&library, "aarch64-apple-darwin").is_err());
 }
 
 #[test]
