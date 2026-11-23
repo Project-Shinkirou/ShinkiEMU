@@ -541,10 +541,9 @@ mod tests {
         let identity = inventory
             .core("rfvp")
             .unwrap()
-            .source
-            .as_ref()
+            .identity(repository)
             .unwrap()
-            .identity();
+            .unwrap();
         let mut new = old.clone();
         new.version = identity.version();
         new.release_tag = format!("core-rfvp-{}", new.version);

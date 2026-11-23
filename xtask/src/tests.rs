@@ -639,8 +639,7 @@ fn output_nested_in_resource_inputs_is_rejected_without_modifying_sources() {
 fn external_core_archive_preserves_identity_and_recognition() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let inventory = Inventory::load(root).unwrap();
-    let source = inventory.core("rfvp").unwrap().source.as_ref().unwrap();
-    let identity = source.identity();
+    let identity = inventory.core("rfvp").unwrap().identity(root).unwrap().unwrap();
     let temp = crate::temporary::directory().unwrap();
     let fixture = fixture();
     let mut receipt = result(temp.path());

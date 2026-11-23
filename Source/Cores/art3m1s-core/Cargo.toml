@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-art3m1s-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MPL-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_art3m1s_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-art3m1s-core = { workspace = true }

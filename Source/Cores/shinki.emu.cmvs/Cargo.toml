@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-shinki-emu-cmvs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_cmvs"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-cmvs = { path = "../../Families/shinki-emu-cmvs", default-features = false, features = ["dynamic-plugin-export", "video-ffmpeg"] }

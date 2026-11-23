@@ -1,0 +1,10 @@
+[package]
+name = "shinki-emu-core-impacto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "ISC"
+publish = false
+
+[dependencies]
+shinki-emu-impacto = { workspace = true }

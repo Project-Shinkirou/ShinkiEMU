@@ -24,6 +24,11 @@ export struct Release {
     released: string,
 }
 
+export struct AdapterSource {
+    repo: string,
+    commit: string,
+}
+
 export global App {
     in-out property <string> page: "library";
     in-out property <string> settings-category: "appearance";
@@ -48,6 +53,7 @@ export global App {
     in property <string> about-license-text;
     callback load-about-licenses();
     callback read-about-license(int);
+    pure callback locked-adapter(string) -> AdapterSource;
     callback share-diagnostic-log();
     callback restart();
 }

@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-ReMinori"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "shinki_emu_ReMinori"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-ReMinori = { workspace = true, features = ["dynamic-plugin-export"] }

@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-shinki-emu-adv32"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_adv32"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-adv32 = { path = "../../Families/shinki-emu-adv32", default-features = false, features = ["dynamic-plugin-export", "video-ffmpeg"] }

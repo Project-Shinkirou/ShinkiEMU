@@ -1714,13 +1714,7 @@ fn exercise_about_credits(
     opened_urls: &RefCell<Vec<String>>,
     save: impl Fn(&str, Vec<u8>),
 ) {
-    const INVENTORY: &str = include_str!("../../../../build/cores.toml");
-    const ABOUT: &str = include_str!("../ui/pages/settings/about.slint");
     const NOTICE: &str = include_str!("../../../../THIRD_PARTY_NOTICES.md");
-    for line in INVENTORY.lines().filter(|line| line.starts_with("upstream_identity = ")) {
-        let repo = line.split("repo = \"").nth(1).unwrap().split('"').next().unwrap();
-        assert!(ABOUT.contains(&format!("url: \"{repo}\"")), "missing About credit for {repo}");
-    }
 
     reset(a);
     a.apply(&base());
@@ -1811,6 +1805,17 @@ fn exercise_about_credits(
         );
         click_label(software, label);
     }
+    reveal(&license("ethornell-rs"));
+    click_label(software, &license("ethornell-rs"));
+    reveal("ethornell-rs: Project Shinkirou");
+    click_label(software, "ethornell-rs: Project Shinkirou");
+    let lock = include_str!("../../../../Cargo.lock");
+    let adapter = lock.split("[[package]]").find(|package| package.contains("name = \"shinki-emu-ethornell-rs\"")).unwrap();
+    let source = adapter.lines().find_map(|line| line.strip_prefix("source = \"git+")).unwrap().trim_end_matches('"');
+    let (url, commit) = source.rsplit_once('#').unwrap();
+    let repo = url.split('?').next().unwrap();
+    let locked_license = format!("{repo}/blob/{commit}/LICENSE-MPL-2.0");
+    let locked_fork = format!("{repo}/commit/{commit}");
     reveal(&site("RFVP"));
     save("settings/about-credits-middle", frame());
     click_label(software, &site("RFVP"));
@@ -1825,6 +1830,8 @@ fn exercise_about_credits(
             "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE",
             "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT",
             "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE",
+            locked_license.as_str(),
+            locked_fork.as_str(),
             "https://github.com/xmoezzz/rfvp",
             "https://github.com/xmoezzz/sena-rs",
         ]

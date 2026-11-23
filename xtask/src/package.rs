@@ -974,9 +974,9 @@ pub fn package(
             .core_build
             .as_mut()
             .context("missing core-build.json")?;
-        for path in &c.licenses {
+        for (source, path, _) in c.license_files(&inv.root, target)? {
             m.licenses.push(BuildAsset {
-                source: inv.root.join(path),
+                source,
                 dest: path.find("licenses/").map_or_else(
                     || format!("licenses/{}/{}", c.id, path.replace('/', "_")),
                     |offset| path[offset..].to_owned(),
@@ -1005,7 +1005,7 @@ pub fn package(
                 .licenses
                 .push(BuildAsset { source, dest });
         }
-        let identity = c.source.as_ref().map(crate::cores::CoreSource::identity);
+        let identity = c.identity(&inv.root)?;
         stage_core(
             &result,
             version,
@@ -1028,54 +1028,25 @@ pub(crate) fn static_core_entries(
     {
         return Ok(Vec::new());
     }
-    let meta = build::cargo_metadata(inv, &result.target)?;
     let mut entries = Vec::new();
     for core in &inv.cores {
         if !core.static_manager_targets.contains(&result.target) {
             continue;
         }
-        let package = meta["packages"]
-            .as_array()
-            .context("cargo packages")?
-            .iter()
-            .find(|package| package["name"] == core.package)
-            .with_context(|| format!("statically linked package {} missing", core.package))?;
-        let checkout = core.source_directory(&inv.root)?;
-        let checkout_relative = checkout.strip_prefix(&inv.root)?;
-        let manifest_relative = core.manifest.strip_prefix(checkout_relative)?;
-        let mut source_root = PathBuf::from(
-            package["manifest_path"]
-                .as_str()
-                .context("static core manifest")?,
-        );
-        for _ in manifest_relative.components() {
-            source_root.pop();
-        }
-        for license in &core.licenses {
-            let path = Path::new(license);
-            let asset = if let Ok(relative) = path.strip_prefix(checkout_relative) {
-                BuildAsset {
-                    source: source_root.join(relative),
-                    dest: format!(
-                        "licenses/{}/{}",
-                        core.id,
-                        relative.to_string_lossy().replace('\\', "/")
-                    ),
-                }
+        for (source, path, from_adapter) in core.license_files(&inv.root, &result.target)? {
+            let dest = if from_adapter {
+                format!("licenses/{}/{path}", core.id)
             } else {
-                // Some inventory assets belong to the product, not the fork.
-                BuildAsset {
-                    source: inv.root.join(path),
-                    dest: license.clone(),
-                }
+                path.to_owned()
             };
+            let asset = BuildAsset { source, dest };
             entries.extend(asset_entries(&asset)?);
         }
         let native = result
             .embedded_core_builds
             .iter()
             .find(|build| build.plugin_id == core.id);
-        if core.artifact_kind == "native-shared" && native.is_none() {
+        if core.artifact_source() == crate::cores::ArtifactSource::NativeLibrary && native.is_none() {
             bail!(
                 "embedded native core {} has no recorded build manifest",
                 core.id

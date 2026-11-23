@@ -9,7 +9,7 @@ mod android_dynamic;
 pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, String> {
     let cores: toml::Value = toml::from_str(cores).map_err(|error| format!("core inventory: {error}"))?;
     let targets: toml::Value = toml::from_str(targets).map_err(|error| format!("target inventory: {error}"))?;
-    if text(&cores, "schema")? != "shinki.emu.build_cores.v1"
+    if text(&cores, "schema")? != "shinki.emu.build_cores.v2"
         || text(&targets, "schema")? != "shinki.emu.build_targets.v1"
     {
         return Err("unsupported build inventory schema".into());
@@ -44,7 +44,7 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         let embedded = enabled && contains_target(core, "static_manager_targets", target)?;
         let standalone = enabled && contains_target(core, "supported_targets", target)?;
         let supported = embedded || standalone;
-        let first_party = core.get("source").is_none();
+        let first_party = core.get("attribution").is_none();
         let policy = android_dynamic::parse(core)?;
         let android_dynamic = if standalone && android_dynamic::TARGETS.contains(&target) {
             policy.map(|(minimum, requires_context)| {

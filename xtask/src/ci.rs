@@ -31,7 +31,7 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         Ok(())
     } else {
         (|| -> Result<()> {
-            let product = component == "manager" || inv.core(component)?.source.is_none();
+            let product = component == "manager" || inv.core(component)?.attribution.is_none();
             let version = if product {
                 build::default_product_version()?
             } else {

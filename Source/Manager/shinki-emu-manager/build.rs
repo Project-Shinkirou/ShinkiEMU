@@ -2,6 +2,9 @@ use std::{env, process::Command};
 
 use sha2::{Digest, Sha256};
 
+#[path = "../../../build/core_adapters.rs"]
+mod core_adapters;
+
 fn write_runtime_icon() {
     use resvg::{tiny_skia, usvg};
     let tree = usvg::Tree::from_data(
@@ -184,32 +187,57 @@ fn link_android_compiler_runtime() {
 }
 
 fn write_embedded_core_identities() {
-    const INVENTORY: &str = "../../../build/cores.toml";
-    println!("cargo:rerun-if-changed={INVENTORY}");
-    let inventory: toml::Value =
-        toml::from_str(&std::fs::read_to_string(INVENTORY).expect("core inventory"))
-            .expect("valid core inventory");
+    let root = std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"))
+        .join("../../..");
+    let inventory = root.join("build/cores.toml");
+    let lock = root.join("Cargo.lock");
+    for path in [&inventory, &lock, &root.join("build/core_adapters.rs")] {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    let inventory: toml::Value = toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
+        .expect("valid core inventory");
+    let lock: toml::Value = toml::from_str(&std::fs::read_to_string(lock).expect("workspace lockfile"))
+        .expect("valid workspace lockfile");
     let target = env::var("TARGET").expect("build target");
     let mut identities = serde_json::Map::new();
     let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios")
         && env::var_os("CARGO_FEATURE_IOS_FRAMEWORK_CORES").is_some();
     let mut frameworks = Vec::new();
+    let mut registry = String::from("&[\n");
+    let ohos_bundled = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos")
+        && env::var_os("CARGO_FEATURE_OHOS_BUNDLED_MUSICA").is_some();
+    let optional_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
     for core in inventory["cores"].as_array().expect("cores") {
+        let id = core["id"].as_str().expect("core id");
         let embedded = core
             .get("static_manager_targets")
             .and_then(toml::Value::as_array)
             .is_some_and(|targets| targets.iter().any(|value| value.as_str() == Some(&target)));
-        if !embedded {
-            continue;
+        let framework = ios_frameworks && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
+        if embedded && framework {
+            frameworks.push(id);
         }
-        if ios_frameworks && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true) {
-            frameworks.push(core["id"].as_str().expect("core id"));
+        let linked = (embedded || (optional_cmvs && id == "shinki.emu.cmvs"))
+            && !framework && !(ohos_bundled && id == "shinki.emu.musica");
+        if linked {
+            use std::fmt::Write;
+            let adapter = core_adapters::adapter_id(id).replace('-', "_");
+            let query = match id {
+                "shinki.emu.cmvs" => "cmvs_query",
+                "shinki.emu.musica" => "musica_query",
+                "art3m1s-core" => "artemis_query",
+                "siglus_rs" | "renpy" | "kirikiroid2-web" | "krkr2" => "query",
+                _ => "shinki_emu_query",
+            };
+            writeln!(registry, "    ({id:?}, shinki_emu_{adapter}::{query}),").expect("write query registry");
         }
-        if let Some(source) = core.get("source") {
-            identities.insert(core["id"].as_str().expect("core id").to_owned(), serde_json::json!({
-                "upstream": source["upstream_identity"],
-                "adapter": {"repo":source["repo"],"branch":source["branch"],"commit":source["rev"]},
-                "release_sequence": source["release_sequence"],
+        if embedded && let Some(attribution) = core.get("attribution")
+            && let Some(adapter) = core_adapters::locked_adapter(&lock, id)
+        {
+            identities.insert(id.to_owned(), serde_json::json!({
+                "upstream": attribution["upstream_identity"],
+                "adapter": {"repo": adapter.repo, "branch": attribution["adapter_branch"], "commit": adapter.commit},
+                "release_sequence": attribution["release_sequence"],
             }));
         }
     }
@@ -220,6 +248,9 @@ fn write_embedded_core_identities() {
         serde_json::to_vec(&identities).expect("identity JSON"),
     )
     .expect("embedded identity output");
+    registry.push_str("]\n");
+    std::fs::write(output.with_file_name("static-core-queries.rs"), registry)
+        .expect("static query registry");
     if ios_frameworks {
         std::fs::write(
             output.with_file_name("ios-framework-core-ids.rs"),

@@ -4,9 +4,10 @@ mod catalog;
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"));
-    let cores = root.join("../../../build/cores.toml");
-    let targets = root.join("../../../build/targets.toml");
+    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"))
+        .join("../../..");
+    let cores = root.join("build/cores.toml");
+    let targets = root.join("build/targets.toml");
     for input in [&cores, &targets] {
         println!("cargo:rerun-if-changed={}", input.display());
     }

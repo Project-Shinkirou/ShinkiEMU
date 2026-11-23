@@ -68,14 +68,9 @@ fn run() -> Result<()> {
         }
         cli::Command::Deps(args) => {
             if args.all_cores {
-                dependencies::prepare_all(&inv, &args.target, args.allow_dirty_sources)?;
+                dependencies::prepare_all(&inv, &args.target)?;
             } else {
-                dependencies::prepare(
-                    &inv,
-                    &args.target,
-                    args.core.as_deref(),
-                    args.allow_dirty_sources,
-                )?;
+                dependencies::prepare(&inv, &args.target, args.core.as_deref())?;
             }
         }
         cli::Command::Build(args) => {

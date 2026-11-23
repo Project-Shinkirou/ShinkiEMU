@@ -1,4 +1,4 @@
-use crate::{cores::Inventory, dependencies};
+use crate::{cores::{ArtifactSource, Inventory}, dependencies};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::CoreBuildManifest;
@@ -88,17 +88,18 @@ fn embedded_core_packages<'a>(
         {
             continue;
         }
+        let adapter = core.adapter_package();
         let mut matches = packages
             .iter()
-            .filter(|package| package["name"] == core.package);
+            .filter(|package| package["name"] == adapter);
         let package = matches.next().with_context(|| {
             format!(
                 "static core package {} absent from Cargo metadata",
-                core.package
+                adapter
             )
         })?;
         if matches.next().is_some() {
-            bail!("ambiguous static core package {}", core.package);
+            bail!("ambiguous static core package {adapter}");
         }
         let id = package["id"]
             .as_str()
@@ -207,17 +208,9 @@ fn execute_configured(
     } else {
         Some(inv.core(component)?)
     };
-    let product_owned = core.is_none_or(|core| core.source.is_none());
-    let manifest = core
-        .map(|c| inv.root.join(&c.manifest))
-        .unwrap_or_else(|| inv.root.join("Cargo.toml"));
-    if !manifest.is_file() {
-        bail!("adapter manifest missing: {}", manifest.display());
-    }
-    let package = core
-        .map(|c| c.package.as_str())
-        .unwrap_or("shinki-emu-manager");
-    let features = core.map(|c| c.features.clone()).unwrap_or_default();
+    let product_owned = core.is_none_or(|core| core.attribution.is_none());
+    let package = core.map(|core| core.entry_package())
+        .unwrap_or_else(|| "shinki-emu-manager".to_owned());
     let features = if component == "manager" {
         let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
         let requested = requested
@@ -226,7 +219,7 @@ fn execute_configured(
             .transpose()?;
         manager_features(requested, &manager_manifest()?)?
     } else {
-        features
+        Vec::new()
     };
     let ios_framework_manager =
         component == "manager" && crate::apple::ios_frameworks::enabled(target, &features);
@@ -273,13 +266,7 @@ fn execute_configured(
     };
     cmd.current_dir(&inv.root);
     let cargo_action = if ios_framework_input { "rustc" } else { action };
-    cmd.args([cargo_action, "--locked", "--manifest-path"])
-        .arg(&manifest)
-        .args([
-            "-p",
-            package,
-            "--target-dir",
-        ])
+    cmd.args([cargo_action, "--locked", "-p", &package, "--target-dir"])
         .arg(&target_dir);
     cmd.args(["--target", target]);
     if version.is_some() {
@@ -334,7 +321,7 @@ fn execute_configured(
             )
             .env_remove(format!("CARGO_TARGET_{key}_RUNNER"));
         }
-        if core.is_some_and(|core| core.artifact_kind == "rust-cdylib") {
+        if core.is_some_and(|core| core.artifact_source() == ArtifactSource::Cdylib) {
             let mut flags = environment
                 .get("CARGO_ENCODED_RUSTFLAGS")
                 .cloned()
@@ -370,21 +357,15 @@ fn execute_configured(
         return Ok(None);
     }
 
-    let metadata = if component == "manager"
-        && inv.cores.iter().any(|core| core.static_manager_targets.iter().any(|triple| triple == target))
-    {
-        cargo_metadata(inv, target)?
-    } else {
-        serde_json::from_slice(&dependencies::capture(
-            Command::new("cargo").current_dir(&inv.root)
-                .args(["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path"])
-                .arg(&manifest),
-        )?)?
+    let metadata = cargo_metadata(inv, target)?;
+    let packages = metadata["packages"].as_array().context("Cargo packages")?;
+    let package_id = |name: &str| {
+        packages.iter().find(|entry| entry["name"] == name)
+            .and_then(|entry| entry["id"].as_str())
+            .with_context(|| format!("package {name} absent from Cargo metadata for {target}"))
     };
-    let package_id = metadata["packages"].as_array().context("Cargo packages")?
-        .iter().find(|entry| entry["name"] == package)
-        .and_then(|entry| entry["id"].as_str())
-        .with_context(|| format!("package {package} absent from {}", manifest.display()))?;
+    let adapter_package_id = core.map(|core| package_id(&core.adapter_package())).transpose()?;
+    let package_id = package_id(&package)?;
     let mut embedded_packages = BTreeMap::new();
     if component == "manager" {
         embedded_packages = embedded_core_packages(inv, target, &metadata)?;
@@ -426,7 +407,9 @@ fn execute_configured(
             .and_then(|id| embedded_packages.get(id))
             .copied();
         if value["reason"] == "build-script-executed"
-            && (value["package_id"] == package_id || expected_embedded.is_some())
+            && (value["package_id"] == package_id
+                || adapter_package_id.is_some_and(|id| value["package_id"] == id)
+                || expected_embedded.is_some())
             && let Some(dir) = value["out_dir"].as_str()
         {
             let path = Path::new(dir).join("core-build.json");
@@ -483,7 +466,7 @@ fn execute_configured(
     } else {
         (None, manifests)
     };
-    let library = if core.is_some_and(|core| core.artifact_kind == "native-shared") {
+    let library = if core.is_some_and(|core| core.artifact_source() == ArtifactSource::NativeLibrary) {
         core_build.as_ref().and_then(|manifest| manifest.native_library.clone())
             .with_context(|| format!("{package} did not report its native library in core-build.json"))?
     } else {
@@ -512,12 +495,7 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
     cmd.current_dir(&inv.root).args(["test", "--locked"]);
     if let Some(c) = core {
         let c = inv.core(c)?;
-        cmd.arg("--manifest-path")
-            .arg(inv.root.join(&c.manifest))
-            .args(["-p", &c.package]);
-        if !c.features.is_empty() {
-            cmd.arg("--features").arg(c.features.join(","));
-        }
+        cmd.args(["-p", &c.entry_package()]);
     } else if manager {
         cmd.args(["-p", "shinki-emu-manager"]);
     } else {

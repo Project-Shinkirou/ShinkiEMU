@@ -312,10 +312,8 @@ struct Identity {
 }
 
 pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Result<String> {
-    if component != "manager"
-        && let Some(source) = &inv.core(component)?.source
-    {
-        let identity = source.identity();
+    if component != "manager" && inv.core(component)?.attribution.is_some() {
+        let identity = inv.core(component)?.identity(&inv.root)?.context("release requires a locked adapter Git revision")?;
         let version = identity.version();
         if !supplied.is_empty() && supplied != version {
             bail!(
@@ -349,10 +347,7 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
     let external = if component == "manager" {
         None
     } else {
-        inv.core(component)?
-            .source
-            .as_ref()
-            .map(crate::cores::CoreSource::identity)
+        inv.core(component)?.identity(&inv.root)?
     };
     let (tag, core_source) = if component == "manager" {
         (format!("manager-v{version}"), Value::Null)
@@ -364,7 +359,7 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
             } else {
                 format!("core-{}-v{version}", slug(component))
             },
-            serde_json::to_value(&core.source)?,
+            serde_json::to_value(&core.attribution)?,
         )
     };
     package::portable(&tag)?;

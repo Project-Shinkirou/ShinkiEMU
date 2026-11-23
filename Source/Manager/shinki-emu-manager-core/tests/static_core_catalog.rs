@@ -41,6 +41,8 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         consumer.push_str(&format!(
             "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded), ({family:?}, {name:?}, {supported}, {standalone}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded);\n"
         ));
+        let first_party = core.get("attribution").is_none();
+        consumer.push_str(&format!("assert_eq!(entry.first_party, {first_party});\n"));
         let android = ["aarch64-linux-android", "x86_64-linux-android"].contains(&target);
         let policy = core.get("android_dynamic").filter(|_| android && standalone);
         let requires_context = policy.map(|policy| policy["requires_context"].as_bool().unwrap());

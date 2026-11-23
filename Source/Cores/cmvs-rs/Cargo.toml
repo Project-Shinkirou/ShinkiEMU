@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-cmvs-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_cmvs_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-cmvs-rs = { workspace = true, features = ["dynamic-plugin-export"] }

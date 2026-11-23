@@ -28,9 +28,6 @@ pub struct DependencyOptions {
     pub core: Option<String>,
     #[arg(long)]
     pub all_cores: bool,
-    /// Reuse unpublished fork edits only when HEAD exactly matches its source pin.
-    #[arg(long)]
-    pub allow_dirty_sources: bool,
 }
 
 #[derive(Args)]

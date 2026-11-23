@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-rfvp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MPL-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_rfvp"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-rfvp = { workspace = true, features = ["dynamic-plugin-export"] }

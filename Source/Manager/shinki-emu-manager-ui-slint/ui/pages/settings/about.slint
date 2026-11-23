@@ -1,6 +1,6 @@
 import { MaterialPalette, MaterialText, MaterialTypography, Icon, TextButton, HorizontalDivider, StateLayerArea } from "@material";
 import { AboutSlint, TextEdit } from "std-widgets.slint";
-import { App, Onboarding } from "../../globals.slint";
+import { AdapterSource, App, Onboarding } from "../../globals.slint";
 import { Icons } from "../../icons.slint";
 import { PageScroll, SettingGroup } from "./common.slint";
 
@@ -241,17 +241,17 @@ export component CreditsSection inherits PageScroll {
     // the reviewed upstream revision, or the distributed license if absent upstream.
     // A dual-licensed card needs a second action row on compact screens.
     for credit in [
-        { project: "Art3m1s Core", authors: "Alphaly2K", url: "https://github.com/Alphaly2K/art3m1s-core", license: "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE", alternate-license: "" },
-        { project: "cmvs-rs", authors: "gkouen", url: "https://github.com/Shizuku-in/cmvs-rs", license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT", alternate-license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE" },
-        { project: "ethornell-rs", authors: "xmoezzz", url: "https://github.com/xmoezzz/ethornell-rs", license: "https://github.com/Project-Shinkirou/ethornell-rs/blob/ace042bcda4ac3765a9f9198b5ffda1792b5f717/LICENSE-MPL-2.0", alternate-license: "" },
-        { project: "impacto", authors: "Committee of Zero", url: "https://github.com/CommitteeOfZero/impacto", license: "https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE", alternate-license: "" },
-        { project: "Kirikiroid2 Web", authors: "fenghengzhi", url: "https://github.com/fenghengzhi/kirikiroid2-web", license: "https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE", alternate-license: "" },
-        { project: "KrKr2", authors: "2468785842", url: "https://github.com/2468785842/krkr2", license: "https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE", alternate-license: "" },
-        { project: "ReMinori", authors: "luoyily", url: "https://github.com/luoyily/ReMinori", license: "https://github.com/luoyily/ReMinori/blob/79b00990324404bfbd496e7fa76c690cf040f744/LICENSE", alternate-license: "" },
-        { project: "Ren’Py", authors: "Tom Rothamel", url: "https://github.com/renpy/renpy", license: "https://www.renpy.org/doc/html/license.html", alternate-license: "" },
-        { project: "RFVP", authors: "xmoezzz", url: "https://github.com/xmoezzz/rfvp", license: "https://github.com/xmoezzz/rfvp/blob/99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1/LICENSE", alternate-license: "" },
-        { project: "Siglus RS", authors: "xmoezzz", url: "https://github.com/xmoezzz/siglus_rs", license: "https://github.com/xmoezzz/siglus_rs/blob/5f358ef1360b0439e92aed2b749e8f25d8721954/LICENSE-MPL-2.0", alternate-license: "" },
-        { project: "SoftPAL RS (Sena)", authors: "404-GCross, Alphaly2K, xmoezzz", url: "https://github.com/xmoezzz/sena-rs", license: "https://github.com/xmoezzz/sena-rs/blob/7f633dbb89408297827d6c1857eb8e97dc363dff/LICENSE-MPL-2.0", alternate-license: "" },
+        { id: "art3m1s-core", project: "Art3m1s Core", authors: "Alphaly2K", url: "https://github.com/Alphaly2K/art3m1s-core", license: "https://github.com/Alphaly2K/art3m1s-core/blob/ad90a62cb192b119b7cf8589aa7f87a94bd747c8/LICENSE", alternate-license: "" },
+        { id: "cmvs-rs", project: "cmvs-rs", authors: "gkouen", url: "https://github.com/Shizuku-in/cmvs-rs", license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-MIT", alternate-license: "https://github.com/Shizuku-in/cmvs-rs/blob/b9fed68ba05f80444338331bb3999f14c8f4f976/LICENSE-APACHE" },
+        { id: "ethornell-rs", project: "ethornell-rs", authors: "xmoezzz", url: "https://github.com/xmoezzz/ethornell-rs", license: "", alternate-license: "" },
+        { id: "impacto", project: "impacto", authors: "Committee of Zero", url: "https://github.com/CommitteeOfZero/impacto", license: "https://github.com/CommitteeOfZero/impacto/blob/3706ddd89d4ad4aed0e32e127355c4251f22e574/LICENSE", alternate-license: "" },
+        { id: "kirikiroid2-web", project: "Kirikiroid2 Web", authors: "fenghengzhi", url: "https://github.com/fenghengzhi/kirikiroid2-web", license: "https://github.com/fenghengzhi/kirikiroid2-web/blob/2028cbccaa91498bd36f270d349ae711d0e8fed3/LICENSE", alternate-license: "" },
+        { id: "krkr2", project: "KrKr2", authors: "2468785842", url: "https://github.com/2468785842/krkr2", license: "https://github.com/2468785842/krkr2/blob/dca7264572a63e753c1b07ca7053513d1751ce70/LICENSE", alternate-license: "" },
+        { id: "ReMinori", project: "ReMinori", authors: "luoyily", url: "https://github.com/luoyily/ReMinori", license: "https://github.com/luoyily/ReMinori/blob/79b00990324404bfbd496e7fa76c690cf040f744/LICENSE", alternate-license: "" },
+        { id: "renpy", project: "Ren’Py", authors: "Tom Rothamel", url: "https://github.com/renpy/renpy", license: "https://www.renpy.org/doc/html/license.html", alternate-license: "" },
+        { id: "rfvp", project: "RFVP", authors: "xmoezzz", url: "https://github.com/xmoezzz/rfvp", license: "https://github.com/xmoezzz/rfvp/blob/99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1/LICENSE", alternate-license: "" },
+        { id: "siglus_rs", project: "Siglus RS", authors: "xmoezzz", url: "https://github.com/xmoezzz/siglus_rs", license: "https://github.com/xmoezzz/siglus_rs/blob/5f358ef1360b0439e92aed2b749e8f25d8721954/LICENSE-MPL-2.0", alternate-license: "" },
+        { id: "sena-rs", project: "SoftPAL RS (Sena)", authors: "404-GCross, Alphaly2K, xmoezzz", url: "https://github.com/xmoezzz/sena-rs", license: "https://github.com/xmoezzz/sena-rs/blob/7f633dbb89408297827d6c1857eb8e97dc363dff/LICENSE-MPL-2.0", alternate-license: "" },
     ] : Rectangle {
         background: MaterialPalette.surface-container-low;
         border-color: MaterialPalette.outline-variant;
@@ -261,6 +261,9 @@ export component CreditsSection inherits PageScroll {
         preferred-height: card.preferred-height;
 
         card := VerticalLayout {
+            property <AdapterSource> adapter: App.locked-adapter(credit.id);
+            property <string> license-url: credit.license != "" ? credit.license :
+                (self.adapter.commit == "" ? "" : self.adapter.repo + "/blob/" + self.adapter.commit + "/LICENSE-MPL-2.0");
             property <bool> split-actions: credit.alternate-license != "" && self.width < 390px;
             width: parent.width;
             padding: 12px;
@@ -293,15 +296,23 @@ export component CreditsSection inherits PageScroll {
                     accessible-label: @tr("{}：项目主页", credit.project);
                     clicked => { Platform.open-url(credit.url); }
                 }
-                TextButton {
+                if card.license-url != "" : TextButton {
                     text: credit.alternate-license == "" ? @tr("许可证") : "MIT";
                     accessible-label: credit.alternate-license == "" ? @tr("{}：许可证", credit.project) : credit.project + ": MIT";
-                    clicked => { Platform.open-url(credit.license); }
+                    clicked => { Platform.open-url(card.license-url); }
                 }
                 if credit.alternate-license != "" : TextButton {
                     text: "Apache-2.0";
                     accessible-label: credit.project + ": Apache-2.0";
                     clicked => { Platform.open-url(credit.alternate-license); }
+                }
+            }
+            if card.adapter.commit != "" : HorizontalLayout {
+                alignment: start;
+                TextButton {
+                    text: "Project Shinkirou";
+                    accessible-label: credit.project + ": Project Shinkirou";
+                    clicked => { Platform.open-url(card.adapter.repo + "/commit/" + card.adapter.commit); }
                 }
             }
         }

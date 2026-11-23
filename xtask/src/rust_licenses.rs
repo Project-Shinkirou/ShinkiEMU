@@ -6,7 +6,7 @@ pub(crate) fn entries(inv: &Inventory, artifact: &BuildArtifact, scratch: &Path)
     let manifest = if artifact.component == "manager" {
         inv.root.join("Source/Manager/shinki-emu-manager/Cargo.toml")
     } else {
-        inv.root.join(&inv.core(&artifact.component)?.manifest)
+        inv.core(&artifact.component)?.entry_manifest(&inv.root)
     };
     let report = std::path::absolute(scratch)?.join("rust-licenses.html");
     let mut command = Command::new("cargo-about");
@@ -26,13 +26,7 @@ pub(crate) fn entries(inv: &Inventory, artifact: &BuildArtifact, scratch: &Path)
     command.arg(inv.root.join("about.hbs"));
     dependencies::run(&mut command).context("generate Rust notices with cargo-about (cargo install cargo-about --version 0.9.3 --locked)")?;
 
-    let mut links = locked_source_links(&fs::read_to_string(inv.root.join("Cargo.lock"))?)?;
-    // A standalone adapter workspace can also have its own lockfile.
-    if let Some(lock) = manifest.ancestors().skip(1).take_while(|dir| *dir != inv.root)
-        .map(|dir| dir.join("Cargo.lock")).find(|file| file.is_file())
-    {
-        links.extend(locked_source_links(&fs::read_to_string(lock)?)?);
-    }
+    let links = locked_source_links(&fs::read_to_string(inv.root.join("Cargo.lock"))?)?;
     let sources = scratch.join("pinned-sources.txt");
     fs::write(&sources, links.into_iter().collect::<Vec<_>>().join("\n") + "\n")?;
     Ok(vec![

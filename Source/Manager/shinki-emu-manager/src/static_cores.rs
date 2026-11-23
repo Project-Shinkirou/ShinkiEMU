@@ -1,34 +1,3 @@
 //! The single inventory of Manager-embedded query entrypoints, shared by UI and headless hosts.
-pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] = &[
-    #[cfg(all(
-        any(target_os = "android", target_os = "ios", feature = "static-cmvs"),
-        not(all(target_os = "ios", feature = "ios-framework-cores"))
-    ))]
-    ("shinki.emu.cmvs", shinki_emu_cmvs::cmvs_query),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    ("rfvp", shinki_emu_rfvp::shinki_emu_query),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    ("siglus_rs", shinki_emu_siglus_rs::query),
-    #[cfg(any(
-        target_os = "android",
-        all(target_os = "ios", not(feature = "ios-framework-cores")),
-        all(target_env = "ohos", not(feature = "ohos-bundled-musica")),
-    ))]
-    ("shinki.emu.musica", shinki_emu_musica::musica_query),
-    #[cfg(target_os = "android")]
-    ("art3m1s-core", shinki_emu_art3m1s_core::artemis_query),
-    #[cfg(target_os = "android")]
-    ("impacto", shinki_emu_impacto::shinki_emu_query),
-    #[cfg(target_os = "android")]
-    ("renpy", shinki_emu_renpy::query),
-    #[cfg(target_os = "android")]
-    ("kirikiroid2-web", shinki_emu_kirikiroid2_web::query),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    ("krkr2", shinki_emu_krkr2::query),
-    #[cfg(target_os = "ios")]
-    ("sena-rs", shinki_emu_sena_rs::shinki_emu_query),
-    #[cfg(target_os = "ios")]
-    ("ethornell-rs", shinki_emu_ethornell_rs::shinki_emu_query),
-    #[cfg(target_os = "ios")]
-    ("ReMinori", shinki_emu_ReMinori::shinki_emu_query),
-];
+pub const STATIC_CORES: &[(&str, shinki_emu_abi::Query)] =
+    include!(concat!(env!("OUT_DIR"), "/static-core-queries.rs"));

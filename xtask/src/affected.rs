@@ -106,6 +106,15 @@ fn classify(
             affected.manager = true;
         } else if path == "build/cores.toml" {
             core_table_changes(&mut affected, old_cores, new_cores)?;
+        } else if let Some((id, _)) = path.strip_prefix("Source/Cores/").and_then(|tail| tail.split_once('/'))
+            && let Ok(core) = inv.core(id)
+        {
+            // Manager uses adapters directly, except for its private dynamic sidecars.
+            affected.core(id, inv.targets.iter().filter(|target| {
+                (core.ios_framework && target.platform == "ios"
+                    || id == "shinki.emu.musica" && target.platform == "ohos")
+                    && core.static_manager_targets.contains(&target.triple)
+            }).map(|target| target.triple.as_str()));
         } else if let Some(core) = family_core(inv, path) {
             // A statically embedded core is also an input of those Manager builds.
             affected.core(
@@ -122,13 +131,10 @@ fn classify(
     Ok(affected)
 }
 
-/// The core whose manifest lives in the `Source/Families/<dir>/` that holds `path`.
+/// Locate an in-tree adapter; families without their own adapter are shared inputs.
 fn family_core<'a>(inv: &'a Inventory, path: &str) -> Option<&'a crate::cores::Core> {
     let (dir, _) = path.strip_prefix("Source/Families/")?.split_once('/')?;
-    let dir = std::path::Path::new("Source/Families").join(dir);
-    inv.cores
-        .iter()
-        .find(|core| core.manifest.starts_with(&dir))
+    inv.cores.iter().find(|core| core.attribution.is_none() && core.adapter_package() == dir)
 }
 
 /// A per-core table that differs affects that core and the Manager targets that embed
@@ -292,6 +298,22 @@ mod tests {
         assert_eq!(cmvs, core_rows(&inv, "shinki.emu.cmvs"));
         assert!(cmvs.contains(&("manager".into(), "aarch64-linux-android".into())));
         assert!(!cmvs.contains(&("manager".into(), "x86_64-pc-windows-msvc".into())));
+    }
+
+    #[test]
+    fn standalone_entry_changes_do_not_rebuild_embedded_manager() {
+        let (inv, _) = inventory();
+        let id = "siglus_rs";
+        let standalone: BTreeSet<_> = every_row(&inv).into_iter()
+            .filter(|(component, _)| component == id).collect();
+        assert!(!standalone.is_empty());
+        assert_eq!(changed(&inv, &["Source/Cores/siglus_rs/src/lib.rs"]), standalone);
+        let sidecar = changed(&inv, &["Source/Cores/shinki.emu.musica/src/lib.rs"]);
+        let expected: BTreeSet<_> = every_row(&inv).into_iter().filter(|(component, target)| {
+            component == "shinki.emu.musica"
+                || component == "manager" && inv.target(target).unwrap().platform == "ios"
+        }).collect();
+        assert_eq!(sidecar, expected);
     }
 
     #[test]

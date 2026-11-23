@@ -1,0 +1,10 @@
+[package]
+name = "shinki-emu-core-kirikiroid2-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2"
+publish = false
+
+[dependencies]
+shinki-emu-kirikiroid2-web = { workspace = true }

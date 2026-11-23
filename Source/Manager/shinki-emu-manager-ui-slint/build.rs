@@ -6,6 +6,9 @@ use std::{
 
 use rspolib::prelude::*;
 
+#[path = "../../../build/core_adapters.rs"]
+mod core_adapters;
+
 /// Bundled translation languages. zh-CN is the source language (msgid = zh text).
 const LANGUAGES: [&str; 2] = ["en", "ja"];
 /// `nplurals` of each entry of `LANGUAGES`, matching the .po `Plural-Forms` headers.
@@ -14,6 +17,7 @@ const DOMAIN: &str = "shinki-emu-manager-ui-slint";
 
 fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"));
+    write_adapter_links(&manifest);
     let translations = manifest.join("translations");
     let (catalog, plurals) = load_catalog(&translations);
     check_slint_sources(&manifest.join("ui"), &catalog, &plurals);
@@ -26,6 +30,30 @@ fn main() {
         .with_bundled_translations(translations)
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     slint_build::compile_with_config("ui/main.slint", config).expect("SHINKI_EMU_SLINT_COMPILE");
+}
+
+fn write_adapter_links(manifest: &Path) {
+    use std::fmt::Write;
+    let root = manifest.join("../../..");
+    let inventory = root.join("build/cores.toml");
+    let lock = root.join("Cargo.lock");
+    for path in [&inventory, &lock, &root.join("build/core_adapters.rs")] {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    let inventory: toml::Value = toml::from_str(&fs::read_to_string(inventory).expect("core inventory"))
+        .expect("valid core inventory");
+    let lock: toml::Value = toml::from_str(&fs::read_to_string(lock).expect("workspace lockfile"))
+        .expect("valid workspace lockfile");
+    let mut sources = String::from("&[\n");
+    for core in inventory["cores"].as_array().expect("cores") {
+        let id = core["id"].as_str().expect("core id");
+        if let Some(adapter) = core_adapters::locked_adapter(&lock, id) {
+            writeln!(sources, "    ({id:?}, {:?}, {:?}),", adapter.repo, adapter.commit).unwrap();
+        }
+    }
+    sources.push_str("]\n");
+    let output = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+    fs::write(output.join("adapter-links.rs"), sources).expect("adapter links output");
 }
 
 /// msgid -> one translation per entry of `LANGUAGES`.

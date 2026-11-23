@@ -2,7 +2,10 @@
 # For a verified Android Manager dynamic release, add `android_dynamic =
 # { minimum_release = <source sequence or product SemVer>, requires_context = true/false }`
 # to its core. This applies only to standalone-supported Android targets.
-schema = "shinki.emu.build_cores.v1"
+# Paths in `licenses` are product-relative; paths in `adapter_licenses` are
+# relative to the Cargo-resolved fork root. `adapter_branch` preserves published
+# CoreIdentity v1 attribution; it is not used to resolve or validate Cargo pins.
+schema = "shinki.emu.build_cores.v2"
 
 [[cores]]
 id = "rfvp"
@@ -10,21 +13,14 @@ family_id = "fvp"
 display_name = "RFVP"
 family_name = "FVP"
 license = "MPL-2.0"
-manifest = "ThirdParty/rfvp/crates/shinki-emu-rfvp/Cargo.toml"
-package = "shinki-emu-rfvp"
-features = ["dynamic-plugin-export"]
 dependencies = ["subtitle", "gstreamer"]
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/rfvp/LICENSE", "ThirdParty/rfvp/crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "ThirdParty/rfvp/crates/shinki-emu-rfvp/MODIFICATIONS.md"]
+adapter_licenses = ["LICENSE", "crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "crates/shinki-emu-rfvp/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/rfvp"
-branch = "fix/sakura-font"
-rev = "37f4d1fe10855aca034185a5afaa2123a36465ae"
-upstream = "https://github.com/xmoezzz/rfvp"
+[cores.attribution]
+adapter_branch = "fix/sakura-font"
 release_sequence = 3
 upstream_identity = { repo = "https://github.com/xmoezzz/rfvp", ref_kind = "tag", ref_name = "0.7.0", commit = "99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1" }
 [[cores.blocked]]
@@ -52,22 +48,14 @@ family_id = "siglus"
 display_name = "siglus-rs"
 family_name = "SiglusEngine"
 license = "MPL-2.0"
-manifest = "ThirdParty/siglus_rs/shinki/shinki-emu-siglus_rs/Cargo.toml"
-package = "shinki-emu-siglus_rs"
-features = ["dynamic"]
 dependencies = []
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/siglus_rs/LICENSE-MPL-2.0", "ThirdParty/siglus_rs/shinki/THIRD_PARTY_NOTICES.md", "ThirdParty/siglus_rs/shinki/MODIFICATIONS.md", "ThirdParty/siglus_rs/vendor/kira/LICENSE-MIT", "ThirdParty/siglus_rs/vendor/kira/LICENSE-APACHE", "ThirdParty/siglus_rs/crates/siglus_scene_vm/assets/font-fallback/OFL-NotoSansSC.txt"]
+adapter_licenses = ["LICENSE-MPL-2.0", "shinki/THIRD_PARTY_NOTICES.md", "shinki/MODIFICATIONS.md", "vendor/kira/LICENSE-MIT", "vendor/kira/LICENSE-APACHE", "crates/siglus_scene_vm/assets/font-fallback/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = []
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/siglus_rs"
-branch = "shinki-cjk-glyph-fallback"
-rev = "bc3e812578776931273642d5ae67eef0e8b56084"
-upstream = "https://github.com/xmoezzz/siglus_rs"
+[cores.attribution]
+adapter_branch = "shinki-cjk-glyph-fallback"
 release_sequence = 3
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }
 [[cores.blocked]]
@@ -89,22 +77,14 @@ family_id = "artemis"
 display_name = "Art3m1s"
 family_name = "Artemis"
 license = "MPL-2.0"
-manifest = "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/Cargo.toml"
-package = "shinki-emu-art3m1s-core"
-features = []
 dependencies = ["ffmpeg"]
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/art3m1s-core/LICENSE", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "ThirdParty/art3m1s-core/crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "ThirdParty/art3m1s-core/crates/pf8/LICENSE"]
+adapter_licenses = ["LICENSE", "crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "crates/pf8/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android", "x86_64-linux-android", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_features = ["static-core"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/art3m1s-core"
-branch = "shinki-android-isolation"
-rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c"
-upstream = "https://github.com/Alphaly2K/art3m1s-core"
+[cores.attribution]
+adapter_branch = "shinki-android-isolation"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/Alphaly2K/art3m1s-core", ref_kind = "branch", ref_name = "master", commit = "ad90a62cb192b119b7cf8589aa7f87a94bd747c8" }
 [[cores.blocked]]
@@ -126,16 +106,11 @@ family_id = "musica"
 display_name = "Shinki Musica"
 family_name = "Musica"
 license = "MIT OR Apache-2.0"
-manifest = "Source/Families/shinki-emu-musica/Cargo.toml"
-package = "shinki-emu-musica"
-features = ["dynamic-plugin-export", "ffmpeg-vcpkg"]
 dependencies = ["ffmpeg", "subtitle"]
-artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
-static_features = ["ffmpeg-vcpkg"]
 ios_framework = true
 publish_blocked = ""
 [[cores.blocked]]
@@ -163,22 +138,15 @@ family_id = "softpal"
 display_name = "Sena"
 family_name = "SoftPAL"
 license = "MPL-2.0"
-manifest = "ThirdParty/sena-rs/crates/shinki-emu-sena-rs/Cargo.toml"
-package = "shinki-emu-sena-rs"
-features = ["diagnostic-bridge"]
 dependencies = []
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/sena-rs/LICENSE-MPL-2.0", "docs/licenses/sena-rs/MS-PGothic.txt"]
+licenses = ["docs/licenses/sena-rs/MS-PGothic.txt"]
+adapter_licenses = ["LICENSE-MPL-2.0"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = []
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/sena-rs"
-branch = "shinki-save-policy"
-rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574"
-upstream = "https://github.com/xmoezzz/sena-rs"
+[cores.attribution]
+adapter_branch = "shinki-save-policy"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/xmoezzz/sena-rs", ref_kind = "branch", ref_name = "main", commit = "7f633dbb89408297827d6c1857eb8e97dc363dff" }
 [[cores.blocked]]
@@ -206,22 +174,14 @@ family_id = "krkr"
 display_name = "KiriKiri2"
 family_name = "KiriKiri"
 license = "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2"
-manifest = "ThirdParty/kirikiri2/shinki/Cargo.toml"
-package = "shinki-emu-kirikiroid2-web"
-features = []
 dependencies = ["native-vcpkg", "bison"]
-artifact_kind = "native-shared"
 resources = []
-licenses = ["ThirdParty/kirikiri2/LICENSE", "ThirdParty/kirikiri2/shinki/README.md", "ThirdParty/kirikiri2/cpp/plugins/layerExImage/LICENSE.TXT", "ThirdParty/kirikiri2/ui/cocos-studio/DroidSansFallback.LICENSE.txt", "ThirdParty/kirikiri2/shinki/licenses/libbpg-MIT.txt", "ThirdParty/kirikiri2/shinki/licenses/minizip-zlib.txt", "ThirdParty/kirikiri2/shinki/licenses/UnRAR.txt", "ThirdParty/kirikiri2/shinki/licenses/FMOD.txt"]
+adapter_licenses = ["LICENSE", "shinki/README.md", "cpp/plugins/layerExImage/LICENSE.TXT", "ui/cocos-studio/DroidSansFallback.LICENSE.txt", "shinki/licenses/libbpg-MIT.txt", "shinki/licenses/minizip-zlib.txt", "shinki/licenses/UnRAR.txt", "shinki/licenses/FMOD.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-static_features = ["static"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/kirikiroid2-web"
-branch = "shinki-common63"
-rev = "d72046c28e6ada623acdb1d72f7075edd488797d"
-upstream = "https://github.com/fenghengzhi/kirikiroid2-web"
+[cores.attribution]
+adapter_branch = "shinki-common63"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/fenghengzhi/kirikiroid2-web", ref_kind = "branch", ref_name = "web", commit = "2028cbccaa91498bd36f270d349ae711d0e8fed3" }
 [[cores.blocked]]
@@ -248,16 +208,11 @@ family_id = "ethornell"
 display_name = "ethornell-rs"
 family_name = "Ethornell / BGI"
 license = "MPL-2.0"
-manifest = "ThirdParty/ethornell-rs/crates/shinki-emu-ethornell-rs/Cargo.toml"
-package = "shinki-emu-ethornell-rs"
-features = ["diagnostic-bridge"]
 dependencies = []
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/ethornell-rs/LICENSE-MPL-2.0", "ThirdParty/ethornell-rs/MODIFICATIONS.md"]
+adapter_licenses = ["LICENSE-MPL-2.0", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = []
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -265,11 +220,8 @@ reason = "ethornell-rs embedded adapter build script supports no Android target 
 [[cores.blocked]]
 target = "x86_64-linux-android"
 reason = "ethornell-rs embedded adapter build script supports no Android target yet"
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/ethornell-rs"
-branch = "shinki-upstream-3ee43dab"
-rev = "ace042bcda4ac3765a9f9198b5ffda1792b5f717"
-upstream = "https://github.com/xmoezzz/ethornell-rs"
+[cores.attribution]
+adapter_branch = "shinki-upstream-3ee43dab"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "3ee43dab43854e2f9c614dd1d26213e17911d877" }
 [[cores.blocked]]
@@ -291,11 +243,7 @@ family_id = "adv32"
 display_name = "Shinki ADV32"
 family_name = "ADV32"
 license = "MIT OR Apache-2.0"
-manifest = "Source/Families/shinki-emu-adv32/Cargo.toml"
-package = "shinki-emu-adv32"
-features = ["dynamic-plugin-export", "video-ffmpeg"]
 dependencies = ["ffmpeg"]
-artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "docs/licenses/shinki-emu-adv32/GARbro.txt", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
@@ -325,16 +273,11 @@ family_id = "cmvs"
 display_name = "Shinki CMVS"
 family_name = "CMVS"
 license = "MIT OR Apache-2.0"
-manifest = "Source/Families/shinki-emu-cmvs/Cargo.toml"
-package = "shinki-emu-cmvs"
-features = ["dynamic-plugin-export", "video-ffmpeg"]
 dependencies = ["ffmpeg"]
-artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = ["video-ffmpeg"]
 ios_framework = true
 publish_blocked = ""
 [[cores.blocked]]
@@ -362,16 +305,11 @@ family_id = "musica"
 display_name = "ReMinori"
 family_name = "Musica"
 license = "AGPL-3.0-only"
-manifest = "ThirdParty/ReMinori/crates/shinki/Cargo.toml"
-package = "shinki-emu-ReMinori"
-features = ["dynamic-plugin-export"]
 dependencies = []
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/ReMinori/LICENSE", "ThirdParty/ReMinori/MODIFICATIONS.md"]
+adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = []
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -379,11 +317,8 @@ reason = "ReMinori embedded adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "x86_64-linux-android"
 reason = "ReMinori embedded adapter build script supports no Android target yet"
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/ReMinori"
-branch = "shinki-save-policy"
-rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
-upstream = "https://github.com/luoyily/ReMinori"
+[cores.attribution]
+adapter_branch = "shinki-save-policy"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/luoyily/ReMinori", ref_kind = "branch", ref_name = "main", commit = "79b00990324404bfbd496e7fa76c690cf040f744" }
 [[cores.blocked]]
@@ -405,22 +340,14 @@ family_id = "mages"
 display_name = "impacto"
 family_name = "MAGES."
 license = "ISC"
-manifest = "ThirdParty/impacto/shinki/Cargo.toml"
-package = "shinki-emu-impacto"
-features = []
 dependencies = ["native-vcpkg", "impacto-sources"]
-artifact_kind = "native-shared"
 resources = []
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-static_features = ["static"]
-licenses = ["ThirdParty/impacto/LICENSE", "ThirdParty/impacto/THIRDPARTY.md", "ThirdParty/impacto/README.md", "ThirdParty/impacto/licenses/NotoSansCJK-OFL.txt"]
+adapter_licenses = ["LICENSE", "THIRDPARTY.md", "README.md", "licenses/NotoSansCJK-OFL.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/impacto"
-branch = "shinki-android-ports"
-rev = "f49c94451784a370f623f466da89876e9b4c19db"
-upstream = "https://github.com/CommitteeOfZero/impacto"
+[cores.attribution]
+adapter_branch = "shinki-android-ports"
 release_sequence = 4
 upstream_identity = { repo = "https://github.com/CommitteeOfZero/impacto", ref_kind = "tag", ref_name = "0.10.8.930", commit = "3706ddd89d4ad4aed0e32e127355c4251f22e574" }
 [[cores.blocked]]
@@ -448,22 +375,14 @@ family_id = "renpy"
 display_name = "Ren’Py"
 family_name = "Ren’Py"
 license = "MIT AND LGPL-2.1-or-later"
-manifest = "ThirdParty/renpy/shinki/Cargo.toml"
-package = "shinki-emu-renpy"
-features = []
 dependencies = ["renpy"]
-artifact_kind = "native-shared"
 resources = []
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-static_features = ["static"]
-licenses = ["ThirdParty/renpy/shinki/LICENSE", "ThirdParty/renpy/licenses/renpy/README.txt", "ThirdParty/renpy/licenses/renpy/python", "ThirdParty/renpy/licenses/renpy/python-sources.json", "ThirdParty/renpy/licenses/renpy/native-sources.json"]
+adapter_licenses = ["shinki/LICENSE", "licenses/renpy/README.txt", "licenses/renpy/python", "licenses/renpy/python-sources.json", "licenses/renpy/native-sources.json"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/renpy"
-branch = "shinki-android-ports"
-rev = "0e1b1812035dfdd3d8a91f8ce419b935152f8c78"
-upstream = "https://github.com/renpy/renpy"
+[cores.attribution]
+adapter_branch = "shinki-android-ports"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/renpy/renpy", ref_kind = "tag", ref_name = "8.5.3.26051504", commit = "39895c1e017f0b36ffea2447d97eccd69d76ee1c" }
 [[cores.blocked]]
@@ -491,20 +410,13 @@ family_id = "cmvs"
 display_name = "cmvs-rs"
 family_name = "CMVS / CVNS"
 license = "MIT OR Apache-2.0"
-manifest = "ThirdParty/cmvs-rs/crates/shinki-emu-cmvs-rs/Cargo.toml"
-package = "shinki-emu-cmvs-rs"
-features = ["dynamic-plugin-export"]
 dependencies = []
-artifact_kind = "rust-cdylib"
 resources = []
-licenses = ["ThirdParty/cmvs-rs/LICENSE-MIT", "ThirdParty/cmvs-rs/LICENSE-APACHE", "ThirdParty/cmvs-rs/THIRD_PARTY_NOTICES.txt", "ThirdParty/cmvs-rs/MODIFICATIONS.md"]
+adapter_licenses = ["LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES.txt", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 publish_blocked = "Local CMVS samples do not match upstream-registered releases; real-game headless frame acceptance is blocked."
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/cmvs-rs"
-branch = "shinki"
-rev = "b8de741dca3737d03351a5a45531616dff7ea39a"
-upstream = "https://github.com/Shizuku-in/cmvs-rs"
+[cores.attribution]
+adapter_branch = "shinki"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/Shizuku-in/cmvs-rs", ref_kind = "branch", ref_name = "main", commit = "b9fed68ba05f80444338331bb3999f14c8f4f976" }
 [[cores.blocked]]
@@ -532,22 +444,14 @@ family_id = "krkr"
 display_name = "KrKr2"
 family_name = "KiriKiri"
 license = "LicenseRef-KiriKiri2"
-manifest = "ThirdParty/krkr2/shinki/Cargo.toml"
-package = "shinki-emu-krkr2"
-features = []
 dependencies = ["native-vcpkg", "bison"]
-artifact_kind = "native-static"
 resources = []
-licenses = ["ThirdParty/krkr2/LICENSE", "ThirdParty/krkr2/MODIFICATIONS.md"]
+adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
 supported_targets = []
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-static_features = ["static"]
 publish_blocked = ""
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/krkr2"
-branch = "shinki"
-rev = "ad17da9cd90d24ee9ae2d79543f055336e61cf82"
-upstream = "https://github.com/2468785842/krkr2"
+[cores.attribution]
+adapter_branch = "shinki"
 release_sequence = 1
 upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
 [[cores.blocked]]

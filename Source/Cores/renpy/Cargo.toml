@@ -1,0 +1,10 @@
+[package]
+name = "shinki-emu-core-renpy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT AND LGPL-2.1-or-later"
+publish = false
+
+[dependencies]
+shinki-emu-renpy = { workspace = true }

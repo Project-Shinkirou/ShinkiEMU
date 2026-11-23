@@ -1,0 +1,14 @@
+[package]
+name = "shinki-emu-core-ethornell-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MPL-2.0"
+publish = false
+
+[lib]
+name = "shinki_emu_ethornell_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+shinki-emu-ethornell-rs = { workspace = true, features = ["diagnostic-bridge"] }

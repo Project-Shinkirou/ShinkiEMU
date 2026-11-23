@@ -73,6 +73,13 @@ pub struct SlintManagerAdapter {
 impl SlintManagerAdapter {
     pub fn new() -> Result<Self, slint::PlatformError> {
         let window = ManagerWindow::new()?;
+        const ADAPTER_LINKS: &[(&str, &str, &str)] =
+            include!(concat!(env!("OUT_DIR"), "/adapter-links.rs"));
+        window.global::<App>().on_locked_adapter(|id| {
+            ADAPTER_LINKS.iter().find(|(core, _, _)| *core == id.as_str())
+                .map(|&(_, repo, commit)| crate::AdapterSource { repo: repo.into(), commit: commit.into() })
+                .unwrap_or_default()
+        });
         let adapter = Self {
             games: Rc::new(covers::CoverModel::new(window.as_weak())?),
             patch_games: Rc::new(covers::CoverModel::new(window.as_weak())?),

@@ -550,7 +550,7 @@ fn git_archive(repo: &str, rev: &str, sha: &str, out: &Path) -> Result<()> {
 fn renpy_android_root(inv: &Inventory, target: &str) -> Result<PathBuf> {
     let recipe = inv
         .core("renpy")?
-        .source_directory(&inv.root)?
+        .source_directory(&inv.root, target)?
         .join("shinki");
     let builder = package::sha256(&recipe.join("android_runtime.py"))?;
     let patch = package::sha256(&recipe.join("android/SDL2-offscreen-default-display.patch"))?;
@@ -576,7 +576,7 @@ fn validate_renpy_android(inv: &Inventory, target: &str, root: &Path) -> Result<
         })?)?;
     let recipe = inv
         .core("renpy")?
-        .source_directory(&inv.root)?
+        .source_directory(&inv.root, target)?
         .join("shinki");
     let sdk: serde_json::Value = serde_json::from_slice(&fs::read(recipe.join("sdk.json"))?)?;
     if receipt["target"] != target
@@ -654,7 +654,7 @@ fn prepare_renpy_android(inv: &Inventory, target: &str) -> Result<()> {
     }
     let recipe = inv
         .core("renpy")?
-        .source_directory(&inv.root)?
+        .source_directory(&inv.root, target)?
         .join("shinki");
     if !cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         bail!(
@@ -724,7 +724,7 @@ fn prepare_renpy_android(inv: &Inventory, target: &str) -> Result<()> {
     validate_renpy_android(inv, target, &root)
 }
 
-fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) -> Result<()> {
+fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds, target: &str) -> Result<()> {
     let get = |name: &str| {
         lock.native
             .get(name)
@@ -748,11 +748,9 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
             bail!("RenPy's pinned build interpreter requires a Windows, Linux or macOS host");
         }
         crate::sources::prepare_renpy_build(inv)?;
+        let renpy = inv.core("renpy")?.source_directory(&inv.root, target)?;
         for inventory in ["python-sources.json", "native-sources.json"] {
-            let path = inv
-                .root
-                .join("ThirdParty/renpy/licenses/renpy")
-                .join(inventory);
+            let path = renpy.join("licenses/renpy").join(inventory);
             let sources: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
             if sources["renpy_build"] != crate::sources::RENPY_BUILD_PIN {
                 bail!("RenPy source inventory build revision mismatch");
@@ -772,7 +770,7 @@ fn prepare_native_inputs(inv: &Inventory, lock: &Lock, selected: NativeNeeds) ->
             }
         }
         let sdk: serde_json::Value = serde_json::from_slice(&fs::read(
-            inv.root.join("ThirdParty/renpy/shinki/sdk.json"),
+            renpy.join("shinki/sdk.json"),
         )?)?;
         let sdk_archive = get("renpy-sdk")?;
         let python = get(&renpy_host_pin("python"))?;
@@ -962,17 +960,6 @@ pub fn doctor(inv: &Inventory, target: &str, core: Option<&str>) -> Result<()> {
     }
     let selected = needs(inv, target, core.unwrap_or("manager"))?;
     let mut missing = Vec::new();
-    if let Some(id) = core {
-        let core = inv.core(id)?;
-        match crate::sources::verify(inv, core, false) {
-            Ok(directory) => {
-                if let Some(source) = &core.source {
-                    println!("source: {id} @ {} ({})", source.rev, directory.display());
-                }
-            }
-            Err(error) => missing.push(format!("{error:#}")),
-        }
-    }
     for tool in &t.tools {
         if crate::apple::cross_host(target) && tool == "xcrun" {
             continue;
@@ -1338,21 +1325,6 @@ fn subtitle_source(inv: &Inventory, target: &str, component: Option<&str>) -> Re
         "--filter-platform",
         target,
     ]);
-    if let Some(id) = component {
-        let core = inv.core(id)?;
-        command
-            .arg("--manifest-path")
-            .arg(inv.root.join(&core.manifest));
-        if !core.features.is_empty() {
-            command.arg("--features").arg(
-                core.features
-                    .iter()
-                    .map(|feature| format!("{}/{feature}", core.package))
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
-        }
-    }
     let value: serde_json::Value = serde_json::from_slice(&capture(&mut command)?)?;
     let packages = value["packages"]
         .as_array()
@@ -2165,7 +2137,6 @@ pub fn prepare(
     inv: &Inventory,
     target: &str,
     core: Option<&str>,
-    allow_dirty_sources: bool,
 ) -> Result<()> {
     let target_spec = inv.target(target)?;
     if let Some(core) = core {
@@ -2197,27 +2168,6 @@ pub fn prepare(
     ) {
         bail!("no dependency preparation path for blocked target {target}");
     }
-    if let Some(id) = core {
-        crate::sources::prepare(inv, inv.core(id)?, allow_dirty_sources)?;
-    }
-    if core.is_none() {
-        for embedded in inv.cores.iter().filter(|entry| {
-            entry
-                .static_manager_targets
-                .iter()
-                .any(|triple| triple == target)
-                && entry.source.is_some()
-        }) {
-            crate::sources::prepare(inv, embedded, allow_dirty_sources)?;
-        }
-    }
-    if shared_subtitle && component != ANDROID_SUBTITLE_PROVIDER {
-        let provider = inv.core(ANDROID_SUBTITLE_PROVIDER)?;
-        // An embedded provider was already prepared above.
-        if component != "manager" || !provider.static_manager_targets.iter().any(|t| t == target) {
-            crate::sources::prepare(inv, provider, false)?;
-        }
-    }
     if crate::apple::supported(target)
         && !(selected.subtitle || selected.ffmpeg || selected.native_vcpkg || selected.renpy)
     {
@@ -2229,7 +2179,7 @@ pub fn prepare(
         return doctor(inv, target, core);
     }
     let pins = lock(inv)?;
-    prepare_native_inputs(inv, &pins, selected)?;
+    prepare_native_inputs(inv, &pins, selected, target)?;
     if selected.renpy && target_spec.platform == "android" {
         prepare_renpy_android(inv, target)?;
     }
@@ -2371,9 +2321,7 @@ pub fn prepare(
         prepare_ffmpeg(inv, target, &binary)?;
     }
     for native in native_cores(inv, target, component, selected) {
-        let source = inv
-            .root
-            .join(native.manifest.components().take(2).collect::<PathBuf>());
+        let source = native.source_directory(&inv.root, target)?;
         if !source.join("vcpkg.json").is_file() {
             bail!(
                 "native core manifest missing vcpkg.json: {}",
@@ -2443,7 +2391,7 @@ pub fn prepare(
     Ok(())
 }
 
-pub fn prepare_all(inv: &Inventory, target: &str, allow_dirty_sources: bool) -> Result<()> {
+pub fn prepare_all(inv: &Inventory, target: &str) -> Result<()> {
     inv.target(target)?;
     let mut prepared = false;
     for core in &inv.cores {
@@ -2451,7 +2399,7 @@ pub fn prepare_all(inv: &Inventory, target: &str, allow_dirty_sources: bool) -> 
             eprintln!("{}: blocked: {reason}", core.id);
             continue;
         }
-        prepare(inv, target, Some(&core.id), allow_dirty_sources)?;
+        prepare(inv, target, Some(&core.id))?;
         prepared = true;
     }
     if !prepared {

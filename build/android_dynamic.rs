@@ -24,12 +24,12 @@ pub fn parse(core: &toml::Value) -> Result<Option<(MinimumRelease<'_>, bool)>, S
         return Err(invalid("requires a supported Android standalone target"));
     }
     let minimum = &table["minimum_release"];
-    let floor = if let Some(source) = core.get("source") {
-        let current = source.get("release_sequence").and_then(toml::Value::as_integer);
+    let floor = if let Some(attribution) = core.get("attribution") {
+        let current = attribution.get("release_sequence").and_then(toml::Value::as_integer);
         let sequence = minimum.as_integer().filter(|&sequence| {
             (1..=9_007_199_254_740_991).contains(&sequence)
                 && current.is_some_and(|current| sequence <= current)
-        }).ok_or_else(|| invalid("requires a positive release sequence at or below the source pin"))?;
+        }).ok_or_else(|| invalid("requires a positive release sequence at or below the current release"))?;
         MinimumRelease::Sequence(sequence as u64)
     } else {
         let version = minimum.as_str().filter(|version| {
