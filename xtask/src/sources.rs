@@ -590,12 +590,6 @@ mod tests {
         (temp, inv, core, source, first, second)
     }
 
-    fn unpack(archive: &Path, out: &Path) {
-        tar::Archive::new(fs::File::open(archive).unwrap())
-            .unpack(out)
-            .unwrap();
-    }
-
     #[test]
     fn source_checkout_uses_pinned_commit_and_preserves_dirty_work_before_update() {
         let (_temp, inv, mut core, _upstream, first, second) = fixture();

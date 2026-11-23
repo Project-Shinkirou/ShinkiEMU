@@ -306,10 +306,7 @@ impl ShinkiEmuManagerController {
                     version: manifest
                         .map(|manifest| match manifest.identity.as_ref() {
                             Some(identity) => core_card_version(&manifest.version, Some(identity)),
-                            None => {
-                                let source = core_package::product_source_commit(&directory, &manifest);
-                                product_version_label(&manifest.version, source.as_deref())
-                            }
+                            None => product_version_label(&manifest.version, manifest.product_source_commit()),
                         })
                         .unwrap_or_default(),
                     state: "pending-install".into(),

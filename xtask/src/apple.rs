@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use object::{Object, read::macho::MachHeader};
+use object::read::macho::MachHeader;
 use std::{
     fs,
     path::{Path, PathBuf},

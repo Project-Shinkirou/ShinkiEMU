@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, bail};
 use object::{
-    Object,
     read::{
         elf::{Dyn, FileHeader, ProgramHeader},
         macho::{FatArch, MachHeader, MachOFatFile, MachOFatFile32, MachOFatFile64},
