@@ -141,7 +141,7 @@ fn a_single_eligible_core_is_listed_but_never_auto_picked() {
 fn recognized_single_candidate_still_associates_automatically() {
     let root = tempfile::tempdir().unwrap();
     let Manual { mut app, .. } = unrecognized(root.path(), false, None);
-    let detection = shinki_emu_manager_core::detection::EngineDetection { family_id: "musica".into(), format: "manual.test".into() };
+    let detection = shinki_emu_manager_core::detection::EngineDetection { family_id: "musica".into(), format: "manual.test".into(), declared: None };
     app.library.set_app_state(&format!("recognition:{GAME}"), &vec![detection]).unwrap();
     app.set_probe_candidates(GAME, vec![Candidate { plugin_id: MUSICA.into(), family_id: "musica".into() }]).unwrap();
     assert!(!app.manual_games.contains(GAME));
