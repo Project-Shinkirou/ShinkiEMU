@@ -126,7 +126,11 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 
 在专用 HarmonyOS x86_64 模拟器上测试时，使用本地的 `x86_64-unknown-linux-ohos` Manager 目标。该目标不生成独立核心包，也不进入托管 CI、公开发布或公开核心目录。HAP 和 `ohos.json` 记录都只在内部保存。记录包含源码提交、构建 feature、目标、ABI 和签名后 HAP 的哈希。
 
-使用带 x86_64 sysroot 库和 `libc++_shared.so` 的 DevEco OpenHarmony API 26 Native SDK。按上文配置 `OHOS_SDK_NATIVE`、私有签名目录和 `cargo-about`，在 x64 Visual Studio 开发者终端中，从已提交的工作树运行：
+使用带 x86_64 sysroot 库和 `libc++_shared.so` 的 DevEco OpenHarmony API 26 Native SDK。按上文配置 `OHOS_SDK_NATIVE`、私有签名目录和 `cargo-about`。
+
+项目的 triplet 声明 `OHOS`（不是 `Linux`），因此即使 Windows 主机也是 x86_64，vcpkg 仍会让 Meson 交叉编译，不会尝试在主机运行目标程序。
+
+在 x64 Visual Studio 开发者终端中，从已提交的工作树运行：
 
 ```powershell
 rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos

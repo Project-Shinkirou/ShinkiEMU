@@ -126,7 +126,11 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 
 Use the local `x86_64-unknown-linux-ohos` Manager row for a dedicated HarmonyOS x86_64 simulator. It has no standalone core packages and is excluded from hosted CI, releases and the public core catalog. Keep the HAP and its `ohos.json` receipt private. The receipt records the source commit, build features, target, ABI and signed HAP hash.
 
-Use DevEco's API 26 OpenHarmony native SDK with x86_64 sysroot libraries and `libc++_shared.so`. Set `OHOS_SDK_NATIVE` and the private signing directory as above, and install `cargo-about`. From a committed checkout and an x64 Visual Studio developer shell:
+Use DevEco's API 26 OpenHarmony native SDK with x86_64 sysroot libraries and `libc++_shared.so`. Set `OHOS_SDK_NATIVE` and the private signing directory as above, and install `cargo-about`.
+
+The project triplet declares `OHOS`, not `Linux`, so vcpkg configures Meson as a cross build even on an x86_64 Windows host. Target executables are not run as host build probes.
+
+From a committed checkout and an x64 Visual Studio developer shell:
 
 ```powershell
 rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
