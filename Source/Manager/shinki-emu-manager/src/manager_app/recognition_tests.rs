@@ -34,7 +34,6 @@ pub(super) fn manifest(data: &Path, plugin: &str, stem: &str, bytes: &[u8]) -> P
     let manifest = core_package::CoreManifest {
         schema: core_package::CORE_PACKAGE_SCHEMA.into(), plugin_id: plugin.into(), library: library.clone(),
         version: "0.2.0".into(), identity: None,
-        source_commit: None,
         recognition: Default::default(),
         abi: shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
         files: vec![core_package::CoreFile { path: library.clone(), sha256: core_package::sha256_hex(bytes) }],
@@ -82,6 +81,37 @@ fn stage_official_rule(
     catalog.cores.entries = vec![release];
     app.metadata_catalog = Some(catalog);
     app.install_core(&archive).unwrap();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+#[test]
+fn first_party_core_details_show_the_verified_package_commit() {
+    const PLUGIN: &str = "shinki.emu.musica";
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+    let root = tempfile::tempdir().unwrap();
+    let library = manifest(root.path(), PLUGIN, "musica", b"discovery fixture");
+    let directory = library.parent().unwrap();
+    let mut manifest = core_package::read_manifest(directory).unwrap();
+    manifest.files.push(core_package::CoreFile {
+        path: "source-commit.txt".into(),
+        sha256: core_package::sha256_hex(COMMIT.as_bytes()),
+    });
+    fs::write(directory.join("core.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let commit_path = directory.join("source-commit.txt");
+    fs::write(&commit_path, COMMIT).unwrap();
+
+    let mut app = open(root.path());
+    assert!(app.plugin_available(PLUGIN));
+    let model = app.model().unwrap();
+    let card = model.cores.items.iter().find(|item| item.id == PLUGIN).unwrap();
+    assert_eq!(card.version, "0.2.0 (01234567)");
+    assert!(app.emulator_label(PLUGIN).ends_with("0.2.0 (01234567)"));
+    drop(app);
+
+    fs::write(&commit_path, "ffffffffffffffffffffffffffffffffffffffff").unwrap();
+    let app = open(root.path());
+    assert!(!app.registry.installed().contains_key(PLUGIN));
+    assert_ne!(app.core_release(PLUGIN).0, "0.2.0");
 }
 
 #[test]

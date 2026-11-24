@@ -281,6 +281,26 @@ fn unsafe_zip_paths_cannot_escape_or_publish_partial_output() {
 }
 #[test]
 fn staged_disk_set_hashes_and_deterministic_archive_match() {
+    // Wire shape used by the shipped Manager beta.8, including strict file records.
+    #[allow(dead_code)]
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Beta8Manifest {
+        schema: String,
+        plugin_id: String,
+        library: String,
+        version: String,
+        identity: Option<shinki_emu_metadata::CoreIdentity>,
+        abi: String,
+        files: Vec<Beta8File>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Beta8File {
+        path: String,
+        sha256: String,
+    }
+
     let t = crate::temporary::directory().unwrap();
     let r = result(t.path());
     let f = fixture();
@@ -293,8 +313,9 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
         &[f._dir.path().to_owned()],
     )
     .unwrap();
-    let m = verify_core(&dir).unwrap();
-    assert_eq!(m.source_commit, r.source_commit);
+    let m: Beta8Manifest = serde_json::from_slice(&fs::read(dir.join("core.json")).unwrap()).unwrap();
+    let commit = m.files.iter().find(|record| record.path == "source-commit.txt").unwrap();
+    assert_eq!(fs::read(dir.join(&commit.path)).unwrap(), r.source_commit.unwrap().as_bytes());
     let actual = tree(&dir).unwrap();
     assert_eq!(actual.len(), m.files.len() + 1);
     for record in &m.files {

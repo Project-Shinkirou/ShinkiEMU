@@ -285,13 +285,16 @@ fn stage_core_manifest(
     }
     let version = musica.product_version.as_deref().context("bundled Musica product version")?;
     shinki_emu_metadata::validate_core_version(version, None)?;
+    let commit = musica.source_commit.as_deref().context("bundled Musica product source commit")?;
+    let product_source = package::write_product_source_commit(&scratch, commit)?;
+    entries.push((scratch.join(&product_source.path), format!("cores/{MUSICA}/{}", product_source.path)));
+    files.push(product_source);
     files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     let declaration = serde_json::to_vec_pretty(&package::CorePackage {
         schema: "shinki.emu.core_package.v1".into(),
         plugin_id: MUSICA.into(),
         library: CORE_LIBRARY.into(),
         version: version.into(),
-        source_commit: musica.source_commit.clone(),
         identity: None,
         recognition: core.recognition.clone(),
         abi: shinki_emu_build::ABI.into(),

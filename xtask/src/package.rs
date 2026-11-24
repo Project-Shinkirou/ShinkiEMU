@@ -300,13 +300,27 @@ pub struct CorePackage {
     pub library: String,
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_commit: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<shinki_emu_metadata::CoreIdentity>,
     #[serde(default, skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty")]
     pub recognition: shinki_emu_metadata::CoreRecognition,
     pub abi: String,
     pub files: Vec<FileRecord>,
+}
+
+const PRODUCT_SOURCE_COMMIT: &str = "source-commit.txt";
+
+pub(crate) fn write_product_source_commit(dir: &Path, commit: &str) -> Result<FileRecord> {
+    use std::io::Write;
+
+    ensure!(
+        commit.len() == 40 && commit.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+        "invalid product source commit"
+    );
+    fs::File::create_new(dir.join(PRODUCT_SOURCE_COMMIT))?.write_all(commit.as_bytes())?;
+    Ok(FileRecord {
+        path: PRODUCT_SOURCE_COMMIT.into(),
+        sha256: hex::encode(Sha256::digest(commit)),
+    })
 }
 pub(crate) fn asset_entries(asset: &BuildAsset) -> Result<Vec<(PathBuf, String)>> {
     portable(&asset.dest)?;
@@ -531,13 +545,21 @@ pub fn stage_core(
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        ensure!(
+            !files.iter().any(|file| file.path.split('/').next()
+                .is_some_and(|name| name.eq_ignore_ascii_case(PRODUCT_SOURCE_COMMIT))),
+            "core inputs collide with {PRODUCT_SOURCE_COMMIT}"
+        );
+        if let Some(commit) = result.source_commit.as_deref() {
+            ensure!(identity.is_none() && version != "0.0.0-local", "invalid product core release");
+            files.push(write_product_source_commit(&dir, commit)?);
+        }
         files.sort_by(|a, b| a.path.cmp(&b.path));
         let manifest = CorePackage {
             schema: "shinki.emu.core_package.v1".into(),
             plugin_id: m.plugin_id.clone(),
             library: library.into(),
             version: version.into(),
-            source_commit: result.source_commit.clone(),
             identity: identity.cloned(),
             recognition: recognition.clone(),
             abi: shinki_emu_build::ABI.into(),

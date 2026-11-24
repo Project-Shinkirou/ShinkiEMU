@@ -110,6 +110,7 @@ Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセ�
 ```text
 <library-stem>/
   core.json
+  source-commit.txt          # 公式の製品ビルド
   shinki_emu_<core>.dll       # または libshinki_emu_<core>.so/.dylib
   Resources/                 # ネイティブコアが必要とする場合
   licenses/
@@ -117,5 +118,7 @@ Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセ�
 ```
 
 `core.json` は `shinki.emu.core_package.v1` を使い、`plugin_id`、`library`、`version`、`abi`、ファイルパスと SHA256 を記録します。マニフェストは自身を除くすべてのパッケージファイルを対象とします。ライブラリの名前には `shinki_emu_`、query には `shinki_emu_query` を使います。パッケージングは不正なパス、リンク、大文字小文字の衝突を拒否し、新しいディレクトリにだけ出力します。Manager はインストール前にパッケージを検証します。コマンドは[ビルドとリリース](build-and-release.md)を参照してください。
+
+公式コアの製品ビルドは `source-commit.txt` に Git コミットを記録します。ASCII の小文字 16 進数 40 バイトで、改行は付けません。`core.json` の `files` に SHA-256 を記録するため、従来の Manager でも v1 のフィールドを読み取れます。同梱のカタログが公式コアを識別し、署名済みリリースカタログでアーカイブを検証します。Manager に表示するコミットはこのファイルから読み取ります。Android の公式コアには検証済みのファイルが必要です。OHOS に同梱する Musica は、コミットが Manager のビルドと一致する場合にのみ使用できます。このファイルがない旧デスクトップパッケージもインストールでき、バージョンのみを表示します。
 
 外部パッケージの `identity` には元の上流と Cargo が固定した組織 fork のコミットを記録し、`version` は計算した識別子と一致させます。旧パッケージには `identity` がなく、元の SemVer を保持します。Manager は配置前に plugin、version、identity をカタログと照合し、上流とアダプターの完全なラベルを表示します。C ABI と descriptor の版は独立しています。[版識別子の規則](build-and-release.md#パッケージングとリリース)を参照してください。

@@ -158,7 +158,7 @@ impl ShinkiEmuManagerController {
         plugin_id: &str,
     ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>, Option<&'a str>) {
         if let Some(core) = self.registry.installed().get(plugin_id) {
-            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit());
+            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref());
         }
         if let Some((version, source_commit)) = embedded_product_release(plugin_id) {
             return (version, None, Some(source_commit));
@@ -175,7 +175,7 @@ impl ShinkiEmuManagerController {
         let overlays: BTreeMap<_, _> = pending.iter()
             .filter(|(_, kind)| **kind == PendingKind::Install)
             .filter_map(|(stem, _)| {
-                let package = core_package::read_manifest(&cores.join(core_package::PENDING).join(stem))?;
+                let package = core_package::read_package(&cores.join(core_package::PENDING).join(stem)).ok()?.manifest;
                 (recognition::allows_installed_release(&package.plugin_id, &package.version, package.identity.as_ref())
                     && recognition::is_static(&package.plugin_id)
                     && !self.registry.installed().contains_key(&package.plugin_id))
@@ -242,7 +242,7 @@ impl ShinkiEmuManagerController {
                 let Some(stem) = entry.file_name().to_str().map(str::to_owned) else { continue; };
                 if stem.starts_with('.') || listed_stems.contains(&stem) || self.plugin_errors.contains_key(&stem)
                     || !entry.file_type().map_err(|error| error.to_string())?.is_dir() { continue; }
-                let manifest = core_package::read_manifest(&entry.path());
+                let manifest = core_package::read_package(&entry.path()).ok().map(|package| package.manifest);
                 let id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone())
                     .filter(|id| !cfg!(target_os = "android") || !listed_plugins.contains(id))
                     .unwrap_or_else(|| stem.clone());
@@ -290,8 +290,8 @@ impl ShinkiEmuManagerController {
                 continue;
             }
             let directory = cores.join(core_package::PENDING).join(stem);
-            let manifest = core_package::read_manifest(&directory);
-            let plugin_id = manifest.as_ref().map(|manifest| manifest.plugin_id.clone());
+            let package = core_package::read_package(&directory).ok();
+            let plugin_id = package.as_ref().map(|package| package.manifest.plugin_id.clone());
             let online = plugin_id.as_deref().and_then(|id| self.online_core(id));
             let name = online.map_or_else(|| stem.clone(), |entry| entry.display_name.clone());
             let engine = online
@@ -303,10 +303,10 @@ impl ShinkiEmuManagerController {
                     id: plugin_id.unwrap_or_else(|| stem.clone()),
                     name,
                     engine,
-                    version: manifest
-                        .map(|manifest| match manifest.identity.as_ref() {
-                            Some(identity) => core_card_version(&manifest.version, Some(identity)),
-                            None => product_version_label(&manifest.version, manifest.product_source_commit()),
+                    version: package
+                        .map(|package| match package.manifest.identity.as_ref() {
+                            Some(identity) => core_card_version(&package.manifest.version, Some(identity)),
+                            None => product_version_label(&package.manifest.version, package.source_commit.as_deref()),
                         })
                         .unwrap_or_default(),
                     state: "pending-install".into(),

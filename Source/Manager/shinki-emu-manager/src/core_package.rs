@@ -18,6 +18,10 @@ use sha2::{Digest, Sha256};
 pub(crate) const PENDING: &str = ".pending";
 pub(crate) const CORE_MANIFEST: &str = "core.json";
 pub(crate) const CORE_PACKAGE_SCHEMA: &str = "shinki.emu.core_package.v1";
+const PRODUCT_SOURCE_COMMIT: &str = "source-commit.txt";
+const PRODUCT_COMMIT_BYTES: usize = 40;
+const INVALID_PRODUCT_COMMIT: &str = "SHINKI_EMU_CORE_PACKAGE_MANIFEST: invalid product source commit";
+const REQUIRE_PRODUCT_COMMIT: bool = cfg!(target_os = "android");
 const REMOVE_SUFFIX: &str = ".remove";
 const OLD_SUFFIX: &str = ".old";
 const PARTIAL_PREFIX: &str = ".partial-";
@@ -34,8 +38,6 @@ pub(crate) struct CoreManifest {
     pub(crate) library: String,
     pub(crate) version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) source_commit: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) identity: Option<shinki_emu_metadata::CoreIdentity>,
     #[serde(default, skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty")]
     pub(crate) recognition: shinki_emu_metadata::CoreRecognition,
@@ -48,6 +50,12 @@ pub(crate) struct CoreManifest {
 pub(crate) struct CoreFile {
     pub(crate) path: String,
     pub(crate) sha256: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct CorePackage {
+    pub(crate) manifest: CoreManifest,
+    pub(crate) source_commit: Option<String>,
 }
 
 impl CoreManifest {
@@ -69,7 +77,6 @@ impl CoreManifest {
             || self.plugin_id.is_empty()
             || self.plugin_id.len() > 128
             || shinki_emu_metadata::validate_core_version(&self.version, self.identity.as_ref()).is_err()
-            || (self.source_commit.is_some() && self.product_source_commit().is_none())
             || self.library.contains(['/', '\\'])
             || match framework_executable {
                 Some(name) => self.library != name,
@@ -84,6 +91,12 @@ impl CoreManifest {
         let mut paths = BTreeSet::new();
         for file in &self.files {
             portable_path(&file.path)?;
+            if file.path != PRODUCT_SOURCE_COMMIT
+                && file.path.split('/').next()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(PRODUCT_SOURCE_COMMIT))
+            {
+                return Err(INVALID_PRODUCT_COMMIT.into());
+            }
             if !paths.insert(file.path.to_ascii_lowercase())
                 || file.sha256.len() != 64
                 || !file
@@ -105,14 +118,58 @@ impl CoreManifest {
         Ok(library_stem(Path::new(&self.library)))
     }
 
-    pub(crate) fn product_source_commit(&self) -> Option<&str> {
-        let commit = self.source_commit.as_deref()?;
-        (self.identity.is_none()
-            && self.version != "0.0.0-local"
-            && commit.len() == 40
-            && commit.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')))
-            .then_some(commit)
+    fn product_commit_record(&self, required: bool) -> Result<Option<&CoreFile>, &'static str> {
+        let first_party = shinki_emu_manager_core::static_core_catalog::lookup(&self.plugin_id)
+            .is_some_and(|core| core.first_party);
+        match self.files.iter().find(|file| file.path == PRODUCT_SOURCE_COMMIT) {
+            Some(file) if first_party && self.identity.is_none() && self.version != "0.0.0-local" => {
+                Ok(Some(file))
+            }
+            Some(_) => Err(INVALID_PRODUCT_COMMIT),
+            None if required && first_party => {
+                Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing product source commit")
+            }
+            None => Ok(None),
+        }
     }
+}
+
+fn read_product_commit(
+    mut reader: impl Read,
+    record: &CoreFile,
+) -> Result<[u8; PRODUCT_COMMIT_BYTES], &'static str> {
+    let mut commit = [0; PRODUCT_COMMIT_BYTES];
+    reader.read_exact(&mut commit).map_err(|_| INVALID_PRODUCT_COMMIT)?;
+    if reader.read(&mut [0]).map_err(|_| INVALID_PRODUCT_COMMIT)? != 0
+        || !commit.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(INVALID_PRODUCT_COMMIT);
+    }
+    let mut digest = [0; 64];
+    hex::encode_to_slice(Sha256::digest(commit), &mut digest).expect("SHA-256 hex length");
+    if digest.as_slice() != record.sha256.as_bytes() {
+        return Err("SHINKI_EMU_CORE_PACKAGE_HASH_MISMATCH: source-commit.txt");
+    }
+    Ok(commit)
+}
+
+fn read_product_metadata(
+    directory: &Path,
+    manifest: CoreManifest,
+    required: bool,
+) -> Result<CorePackage, &'static str> {
+    let record = manifest.product_commit_record(required)?;
+    let path = directory.join(PRODUCT_SOURCE_COMMIT);
+    let source_commit = match (record, fs::symlink_metadata(&path)) {
+        (None, Err(error)) if error.kind() == io::ErrorKind::NotFound => None,
+        (Some(record), Ok(metadata)) if metadata.is_file() && metadata.len() == PRODUCT_COMMIT_BYTES as u64 => {
+            let reader = fs::File::open(&path).map_err(|_| INVALID_PRODUCT_COMMIT)?;
+            let commit = read_product_commit(reader, record)?;
+            Some(std::str::from_utf8(&commit).expect("validated ASCII commit").to_owned())
+        }
+        _ => return Err(INVALID_PRODUCT_COMMIT),
+    };
+    Ok(CorePackage { manifest, source_commit })
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
@@ -214,6 +271,7 @@ pub(crate) fn stage_local_release<'a>(
         snapshot,
         Some((&release.plugin_id, &release.version, release.identity.as_ref())),
         pending,
+        REQUIRE_PRODUCT_COMMIT,
     )?;
     Ok(stem)
 }
@@ -230,13 +288,14 @@ pub(crate) fn stage_package(
     pending: &Path,
 ) -> Result<(String, CoreManifest), String> {
     let file = fs::File::open(archive).map_err(io_error("SHINKI_EMU_CORE_PACKAGE_READ"))?;
-    stage_open_package(file, expected, pending)
+    stage_open_package(file, expected, pending, REQUIRE_PRODUCT_COMMIT)
 }
 
 fn stage_open_package(
     file: fs::File,
     expected: Option<ExpectedRelease<'_>>,
     pending: &Path,
+    require_product_commit: bool,
 ) -> Result<(String, CoreManifest), String> {
     let mut zip = zip::ZipArchive::new(io::BufReader::new(file))
         .map_err(|_| "SHINKI_EMU_CORE_PACKAGE_FORMAT".to_owned())?;
@@ -297,13 +356,7 @@ fn stage_open_package(
     if expected.is_some_and(|(_, version, identity)| manifest.version != version || manifest.identity.as_ref() != identity) {
         return Err("SHINKI_EMU_CORE_PACKAGE_MANIFEST".into());
     }
-    #[cfg(target_os = "android")]
-    if shinki_emu_manager_core::static_core_catalog::lookup(&manifest.plugin_id)
-        .is_some_and(|core| core.first_party)
-        && manifest.product_source_commit().is_none()
-    {
-        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: missing product source commit".into());
-    }
+    manifest.product_commit_record(require_product_commit)?;
     let listed: BTreeSet<&str> = manifest
         .files
         .iter()
@@ -323,6 +376,12 @@ fn stage_open_package(
             .map_err(|_| "SHINKI_EMU_CORE_PACKAGE_FORMAT".to_owned())?;
         let mut output =
             fs::File::create(&destination).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
+        if file.path == PRODUCT_SOURCE_COMMIT {
+            let commit = read_product_commit(&mut source, file)?;
+            output.write_all(&commit).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
+            output.sync_all().map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
+            continue;
+        }
         let mut hasher = Sha256::new();
         let mut buffer = vec![0_u8; 64 * 1024];
         loop {
@@ -361,7 +420,6 @@ fn write_generated(directory: &Path, name: &str, stem: &str, bytes: &[u8]) -> Re
         plugin_id: stem.into(),
         library: name.into(),
         version: "0.0.0-local".into(),
-        source_commit: None,
         identity: None,
         recognition: Default::default(),
         abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
@@ -377,7 +435,14 @@ fn write_generated(directory: &Path, name: &str, stem: &str, bytes: &[u8]) -> Re
         .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))
 }
 
-/// Read `core.json` from a core directory.
+/// Read package identity and verify the small, optional product provenance payload.
+pub(crate) fn read_package(directory: &Path) -> Result<CorePackage, &'static str> {
+    let invalid = "SHINKI_EMU_CORE_PACKAGE_MANIFEST";
+    let manifest = read_manifest(directory).ok_or(invalid)?;
+    read_product_metadata(directory, manifest, REQUIRE_PRODUCT_COMMIT)
+}
+
+/// Read only the manifest, for comparing the installed identity during replacement.
 pub(crate) fn read_manifest(directory: &Path) -> Option<CoreManifest> {
     let manifest = read_package_manifest(directory)?;
     manifest.validate(None).ok()?;
@@ -386,7 +451,7 @@ pub(crate) fn read_manifest(directory: &Path) -> Option<CoreManifest> {
 
 /// Read the signed app resource for an already selected Framework executable.
 #[cfg(any(target_os = "ios", test))]
-pub(crate) fn read_bundled_manifest(directory: &Path, executable_name: &str) -> Option<CoreManifest> {
+pub(crate) fn read_bundled_package(directory: &Path, executable_name: &str) -> Option<CorePackage> {
     let manifest = read_package_manifest(directory)?;
     manifest
         .validate_with_library(Some(executable_name), Some(executable_name))
@@ -394,7 +459,7 @@ pub(crate) fn read_bundled_manifest(directory: &Path, executable_name: &str) -> 
     if !manifest.files.iter().any(|file| file.path == executable_name) {
         return None;
     }
-    Some(manifest)
+    read_product_metadata(directory, manifest, false).ok()
 }
 
 fn read_package_manifest(directory: &Path) -> Option<CoreManifest> {
@@ -531,7 +596,7 @@ fn migrate_legacy(cores: &Path, failures: &mut Vec<(String, String)>) {
 
 #[cfg(any(not(target_os = "android"), test))]
 pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
-    apply_pending_checked(cores, |_, _| Ok(()))
+    apply_pending_checked(cores, |_, directory| read_package(directory).map(|_| ()))
 }
 
 /// Apply staged changes before the owner loads cores: migrate legacy files,
