@@ -215,6 +215,10 @@ fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
             .env("CARGO_NDK_HOME", &ndk)
             .env("_CARGO_NDK_LINK_CLANG", clang)
             .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
+            .env(
+                format!("CMAKE_TOOLCHAIN_FILE_{}", target.replace('-', "_")),
+                inv.root.join("build/android.toolchain.cmake"),
+            )
             .env("ANDROID_PLATFORM", &api)
             .env("ANDROID_ABI", abi);
     }

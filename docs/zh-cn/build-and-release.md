@@ -56,6 +56,8 @@ rustup target add aarch64-linux-android x86_64-linux-android
 sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"
 ```
 
+`xtask package` 把 NDK 的 CMake 工具链传给 Cargo，ABI 与 API 28 均沿用 cargo-ndk 的目标设置。shaderc 等从 Cargo 构建脚本调用 CMake 的依赖也使用同一套配置。
+
 Android Manager 内嵌 Ren’Py。配置好 Ubuntu 24.04 x86_64 主机后，Cargo 会在 `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` 里准备目标运行库。配方需要装有 Jinja2 的 Python 3、LLVM/Clang/LLD 18、ccache 和 [CI](../../.github/workflows/ci.yml) 中列出的开发包。用非 Linux 主机构建时，把 Linux 生成的对应 ABI 的完整运行库目录复制过去，将 `RENPY_STATIC_ROOT` 指向它。目录应包含 `include/`、`lib/`、`Resources/` 和许可声明；换 ABI 时也要换目录。Ren’Py 配方用独立的 Linux NDK r29，ShinkiEMU 的 Cargo 构建用上面的 NDK r30。配方输入见 [Ren’Py](cores/renpy.md)。
 
 ### Apple

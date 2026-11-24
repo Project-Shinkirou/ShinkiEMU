@@ -56,6 +56,8 @@ rustup target add aarch64-linux-android x86_64-linux-android
 sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"
 ```
 
+For Android `xtask package`, Cargo uses the NDK's CMake toolchain with the same ABI and API 28 as cargo-ndk. This also covers dependencies such as shaderc that invoke CMake from a Cargo build script.
+
 The Android Manager embeds Ren’Py. On a provisioned Ubuntu 24.04 x86_64 build host, Cargo prepares the target runtime under `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/`. The recipe needs Python 3 with Jinja2, LLVM/Clang/LLD 18, ccache and the host development packages listed in [CI](../../.github/workflows/ci.yml). On a non-Linux build host, set `RENPY_STATIC_ROOT` to the complete runtime tree prepared on Linux for the matching ABI, including `include/`, `lib/`, `Resources/` and notices. Switch trees when building the other ABI. The Ren’Py recipe uses its own pinned Linux NDK r29; the ShinkiEMU Cargo build uses the NDK r30 above. See [Ren’Py](cores/renpy.md) for the recipe inputs.
 
 ### Apple
