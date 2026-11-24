@@ -4,6 +4,7 @@ use roukaku_media_core::TextureFrame;
 use shinki_emu_sdk::runtime::*;
 use std::{collections::BTreeMap, sync::Arc};
 mod audio;
+pub(crate) use audio::Cancellation;
 mod cmv;
 mod diagnostics;
 mod input;
@@ -27,6 +28,10 @@ const MAX_SCRIPT_RESIDENT: u64 = 256 * 1024 * 1024;
 /// command 718; headless binds are synchronous, so the count is current
 /// immediately.
 const LOADER_PROGRESS_FIELD: u32 = 11792;
+
+fn cancelled_error() -> SessionError {
+    error("SHINKI_EMU_CMVS_CANCELLED", "native session was cancelled")
+}
 
 /// Models one completed async resource load.
 fn record_completed_load(vm: &mut CmvsPs2aVmState) {
@@ -65,7 +70,7 @@ pub(crate) struct CmvsSession {
     movie: Option<movie::MoviePlayer>,
     cmv_players: BTreeMap<u8, cmv::CmvPlayer>,
     audio: Option<audio::AudioBridge>,
-    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    cancellation: Cancellation,
     native_sound_format: [u32; 2],
     movie_stage: Option<(u64, TextureFrame)>,
     timer_carry_ns: u64,
@@ -140,7 +145,7 @@ impl CmvsSession {
         let mut pending_window = window::WindowCommands::default();
         pending_window.submit(WindowCommand::SetFullscreen(vm.native_view.fullscreen))?;
         let audio = open_audio()?;
-        let cancelled = audio.cancellation_flag();
+        let cancellation = audio.cancellation();
         tracing::info!(
             event = "shinki.emu.cmvs.session.open",
             fullscreen = vm.native_view.fullscreen
@@ -163,7 +168,7 @@ impl CmvsSession {
             input: input::InputState::default(),
             script_names: std::collections::BTreeMap::new(),
             audio: Some(audio),
-            cancelled,
+            cancellation,
             native_sound_format,
             movie: None,
             cmv_players: BTreeMap::new(),
@@ -771,7 +776,7 @@ impl CmvsSession {
                                     &self.vm,
                                     movie::MOVIE_AUDIO_CHANNEL,
                                 ),
-                                &self.cancelled,
+                                self.cancellation.flag(),
                             ),
                             None => Err(error(
                                 "SHINKI_EMU_CMVS_MEDIA_UNBOUND",
@@ -1111,7 +1116,7 @@ impl CmvsSession {
             .map_err(core)?;
         let data = self
             .archive
-            .load_native_audio(&uri, &name, audio::MAX_CLIP_FRAMES, &self.cancelled)
+            .load_native_audio(&uri, &name, audio::MAX_CLIP_FRAMES, self.cancellation.flag())
             .map_err(core)?;
         Ok(audio::DecodedClip::from_kira(data.data.map_err(core)?)
             .with_source(name)
@@ -1263,13 +1268,8 @@ impl CmvsSession {
         let cascade_refresh = self.vm.dialog_dispatch_base_depth.is_some();
         let mut executed_count: u32 = 0;
         loop {
-            if executed_count.is_multiple_of(256)
-                && self.cancelled.load(std::sync::atomic::Ordering::Acquire)
-            {
-                return Err(error(
-                    "SHINKI_EMU_CMVS_CANCELLED",
-                    "native session was cancelled",
-                ));
+            if executed_count.is_multiple_of(256) && self.cancellation.is_cancelled() {
+                return Err(cancelled_error());
             }
             if executed_count >= MAX_INSTRUCTIONS {
                 break;
@@ -1716,8 +1716,8 @@ impl CmvsSession {
     ) -> SessionResult<(FrameInfo, roukaku_media_core::OwnedPixelBuffer)> {
         Ok((self.frame_info()?, self.frame.rgba8.clone()))
     }
-    pub(crate) fn native_audio_cancellation(&self) -> Arc<std::sync::atomic::AtomicBool> {
-        self.cancelled.clone()
+    pub(crate) fn cancellation(&self) -> Cancellation {
+        self.cancellation.clone()
     }
     pub(crate) fn native_pause(&mut self, paused: bool) -> SessionResult<()> {
         let changed = self.suspended != paused;
@@ -1733,13 +1733,20 @@ impl CmvsSession {
     pub(crate) fn native_suspended(&self) -> bool {
         self.suspended
     }
+    pub(crate) fn check_audio(&self) -> SessionResult<()> {
+        if let Some(audio) = &self.audio {
+            audio.check_failure()?;
+        }
+        Ok(())
+    }
     pub(crate) fn advance(
         &mut self,
         elapsed_ns: u64,
         events: &[RuntimeEvent],
     ) -> SessionResult<AdvanceResponse> {
-        if let Some(audio) = &self.audio {
-            audio.check_failure()?;
+        self.check_audio()?;
+        if self.cancellation.is_cancelled() {
+            return Err(cancelled_error());
         }
         if let Some(failure) = &self.failure {
             return Err(failure.clone());
@@ -1754,9 +1761,7 @@ impl CmvsSession {
         // Cancel outstanding PCM writes and join the audio worker before
         // the scene and lease drop.
         let mut session = *self;
-        session
-            .cancelled
-            .store(true, std::sync::atomic::Ordering::Release);
+        session.cancellation.cancel();
         let movie = session
             .movie
             .take()

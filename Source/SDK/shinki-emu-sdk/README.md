@@ -56,6 +56,8 @@ cargo test -p shinki-emu-musica gpu_text_updates -- --ignored
 
 `device-audio` 提供 `NativeAudioOutput` 和 `NativeAudioConverter`：在核心音频线程创建 CPAL 设备/stream，将来源 PCM 映射到设备通道并按实际采样率重采样，复用转换与队列存储。`write` 接受任意长度的 48 kHz 立体声交错样本，按设备块大小重新分组入队；不足一块的尾部留到下一次 `write`，块满后才送达设备，排空尾音用 `flush()`。写入背压观察核心停止标志，设备错误唤醒队列并上报，不切换到静音后端。混音规则、播放位置、影片时钟和 worker 的创建/关闭仍归核心所有。
 
+CPAL 的欠载/溢出、设备自动切换、实时调度未获准是非终止通知。SDK 保留首个终止错误，通过 `check()` 上报错误类型和可用的符号化后端原因，不对外传递后端的自由文本。`open_bounded_with_wake()` 将设备错误和队列超时与调用方取消区分开；调用方设置停止标志后可主动唤醒阻塞的写入。`open(stop)` 保留终止错误时设置停止标志的行为，`open_null()` 只用于显式选择静音时钟。
+
 `NativeAudioOutput::progress()` 返回 `NativeAudioProgress`，单位是 48 kHz 来源帧。`accepted_frames` 累计每次返回 `Ok(Some(_))` 的 `write`。`played_frames` 取设备队列已消费的样本，减去 CPAL 回调报告的输出延迟和重采样器延迟，再换算回 48 kHz；欠载补出的静音不计入。该值单调不减，且不超过 `accepted_frames`。核心用它推进声道位置和影片时钟；设备故障仍通过 `check()` 得到。`progress_reader()` 返回 `NativeAudioProgressReader`（`Clone + Send + Sync`），它的 `progress()` 与输出共享同一水位线，适合由 VM 线程在音频线程阻塞于 `write` 或空闲时读取；输出关闭后读取器停在最后的值。
 
 `flush()` 代为补入静音，直到调用前已接收的每一帧都能被播放（考虑重采样延迟、未满的块和最近一次回调的输出延迟），补入的静音计入 `accepted_frames`，时间轴因此保持连续；设备线程空闲前调用一次即可。停止标志置位时返回 `Ok(None)`。

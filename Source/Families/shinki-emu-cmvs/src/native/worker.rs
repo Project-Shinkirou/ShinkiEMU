@@ -75,7 +75,7 @@ pub(super) fn serve(
     .map_err(|cause| Failure::new(abi::CORE_ERROR, "SHINKI_EMU_CMVS_CANVAS", cause.to_string()))?;
     let shared = Arc::new(Shared {
         services: services.clone(),
-        audio_stop: session.native_audio_cancellation(),
+        cancellation: session.cancellation(),
         frame: Mutex::new(Published {
             info,
             pixels,
@@ -101,7 +101,7 @@ pub(super) fn serve(
     }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match pump(&mut session, &shared, commands) {
-            Err(cause) if cause.status == abi::CANCELLED && services.is_cancelled() => Ok(()),
+            Err(cause) if cause.status == abi::CANCELLED && shared.is_cancelled() => Ok(()),
             result => result,
         }
     }));
@@ -117,7 +117,7 @@ pub(super) fn serve(
                 "native scheduler panicked",
             ),
         );
-        services.cancel();
+        shared.cancel();
     }
     // Invalidate first, then close every media/audio owner even after failure.
     services.invalidate();
@@ -150,13 +150,13 @@ fn pump(
     let mut paused = session.native_suspended();
     let mut finished = false;
     let mut window_sequence = 0u64;
-    while !shared.services.is_cancelled() {
+    while !shared.is_cancelled() {
         let command = match commands.recv_timeout(Duration::from_millis(8)) {
             Ok(command) => Some(command),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => break,
         };
-        if shared.services.is_cancelled() {
+        if shared.is_cancelled() {
             break;
         }
         let now = Instant::now();
@@ -199,7 +199,11 @@ fn pump(
                 }
                 response
             }
-            None if paused || finished => continue,
+            None if finished => continue,
+            None if paused => {
+                session.check_audio()?;
+                continue;
+            }
             None => session.advance(elapsed, &[])?,
         };
         finished = response.status == RuntimeStatus::Finished;
