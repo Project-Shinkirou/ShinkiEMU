@@ -1,4 +1,5 @@
 use crate::{Game, Graphics, NativeCall, Step, Word};
+use roukaku_text::{LayoutLine, LogicalTextLayout};
 use std::{
     collections::BTreeMap,
     io,
@@ -2765,6 +2766,8 @@ impl Host {
         }
         let atlas = self.graphics.create(atlas_width as u32, height as u32)?;
         let result = (|| {
+            let engine = self.text.as_ref().unwrap();
+            let layout = engine.shape(&font, text, (right - text_x).max(1) as u32)?;
             self.graphics.fill(atlas, None, background);
             for (index, color_index) in [usize::from(visited), 2].into_iter().enumerate() {
                 let x = index as i32 * width;
@@ -2805,13 +2808,8 @@ impl Host {
                 if font.gradient.is_some() {
                     font.gradient = Some(gradients[color_index].map(packed_rgb));
                 }
-                let layout = self.text.as_ref().unwrap().layout(
-                    &font,
-                    text.clone(),
-                    (right - text_x).max(1) as u32,
-                )?;
-                self.graphics
-                    .draw_glyphs(atlas, x + text_x, text_y, &font, &layout)?;
+                let raster = engine.rasterize(Arc::clone(&layout), [x + text_x, text_y], [0, 0])?;
+                self.graphics.draw_glyphs(atlas, &font, &raster)?;
             }
             self.menu
                 .append_text_row(id, atlas, disabled, command, &mut self.graphics)
@@ -2935,28 +2933,32 @@ impl Host {
         let right = width.saturating_sub(right).clamp(left + 1, width);
         let bottom = height.saturating_sub(bottom).clamp(top + 1, height);
         let width = (right - left) as u32;
-        let mut layout = self.text.as_ref().unwrap().layout_with_wrap(
+        let engine = self.text.as_ref().unwrap();
+        let layout = engine.shape_with_wrap(
             &font,
             content.to_owned(),
             width,
             roukaku_text::WrapPolicy::WordOrGlyph,
         )?;
-        apply_dialogue_spacing(&mut layout, settings.flow[1]);
-        let [x, y] = alignment.map_or([left, top], |mode| {
+        let flow = settings.flow[1];
+        let ([x, y], justify) = alignment.map_or(([left, top], 0), |mode| {
             align_scroll_text(
-                &mut layout,
+                &layout,
                 [left, top, right, bottom],
                 settings.overhang,
                 mode,
+                flow,
             )
         });
-        self.graphics.draw_glyphs(bitmap, x, y, &font, &layout)?;
+        let spacing = [flow, justify];
         let caret = layout.lines.last().map_or([x, y], |line| {
             [
-                x.saturating_add(line.width.ceil() as i32),
+                x.saturating_add(spaced_line_width(&layout, line, spacing).ceil() as i32),
                 y.saturating_add(line.top as i32),
             ]
         });
+        let raster = engine.rasterize(layout, [x, y], spacing)?;
+        self.graphics.draw_glyphs(bitmap, &font, &raster)?;
         self.menu
             .set_scroll_caret(handle, caret, i32::from(font.size));
         Ok(0)
@@ -3634,7 +3636,8 @@ impl Host {
         if self.text.is_none() {
             self.text = Some(Text::open(self.text_encoding == encoding_rs::GBK)?);
         }
-        let layout = self.text.as_ref().unwrap().layout(font, text, 16_384)?;
+        let engine = self.text.as_ref().unwrap();
+        let layout = engine.shape(font, text, 16_384)?;
         let width = layout
             .lines
             .iter()
@@ -3644,17 +3647,19 @@ impl Host {
         let height = layout.height.ceil() as u32;
         let shadow_x = if font.effect.0 != 0 { font.effect.1 } else { 0 };
         let shadow_y = if font.effect.0 != 0 { font.effect.2 } else { 0 };
+        let raster = engine.rasterize(
+            layout,
+            [
+                shadow_x.saturating_neg().max(0),
+                shadow_y.saturating_neg().max(0),
+            ],
+            [0, 0],
+        )?;
         let bitmap = self.graphics.create(
             width.saturating_add(shadow_x.unsigned_abs()).max(1),
             height.saturating_add(shadow_y.unsigned_abs()).max(1),
         )?;
-        if let Err(error) = self.graphics.draw_glyphs(
-            bitmap,
-            shadow_x.saturating_neg().max(0),
-            shadow_y.saturating_neg().max(0),
-            font,
-            &layout,
-        ) {
+        if let Err(error) = self.graphics.draw_glyphs(bitmap, font, &raster) {
             self.graphics.free(bitmap);
             return Err(error);
         }
@@ -3677,7 +3682,8 @@ impl Host {
         if self.text.is_none() {
             self.text = Some(Text::open(self.text_encoding == encoding_rs::GBK)?);
         }
-        let layout = self.text.as_ref().unwrap().layout(font, value, 16_384)?;
+        let engine = self.text.as_ref().unwrap();
+        let layout = engine.shape(font, value, 16_384)?;
         let width = layout
             .lines
             .iter()
@@ -3685,15 +3691,11 @@ impl Host {
             .max()
             .unwrap_or(0);
         let height = layout.height.ceil() as i32;
-        let (left, top) = layout.shaped_runs.iter().flat_map(|run| &run.glyphs).fold(
-            (0, 0),
-            |(left, top), glyph| {
-                (
-                    left.min(glyph.render_x.unwrap_or_default()),
-                    top.min(glyph.render_y.unwrap_or_default()),
-                )
-            },
-        );
+        // Bearings are VM-visible and include the raster mask's overhang.
+        let raster = engine.rasterize(layout, [0, 0], [0, 0])?;
+        let (left, top) = raster.glyphs().fold((0, 0), |(left, top), (_, [x, y])| {
+            (left.min(x as i32), top.min(y as i32))
+        });
         let sizes = [Word::Integer(width), Word::Integer(height)];
         if call.function == 183 {
             let output = self.arg(call, 2)?.address()?;
@@ -3759,9 +3761,10 @@ impl Host {
         if self.text.is_none() {
             self.text = Some(Text::open(self.text_encoding == encoding_rs::GBK)?);
         }
-        let mut layout = self.text.as_ref().unwrap().layout(font, value, width)?;
-        apply_dialogue_spacing(&mut layout, spacing);
-        self.graphics.draw_glyphs(surface, x, y, font, &layout)
+        let engine = self.text.as_ref().unwrap();
+        let layout = engine.shape(font, value, width)?;
+        let raster = engine.rasterize(layout, [x, y], [spacing, 0])?;
+        self.graphics.draw_glyphs(surface, font, &raster)
     }
 
     fn open_dialogue(&mut self, call: NativeCall) -> io::Result<i32> {
@@ -4540,26 +4543,27 @@ fn motion_number(value: &str) -> io::Result<i32> {
 }
 
 fn align_scroll_text(
-    layout: &mut Arc<roukaku_text::TextLayoutResult>,
+    layout: &LogicalTextLayout,
     bounds: [i32; 4],
     overhang: [i32; 4],
     mode: u8,
-) -> [i32; 2] {
+    flow: i32,
+) -> ([i32; 2], i32) {
     let [left, top, right, bottom] = bounds;
     let [before_x, before_y, after_x, after_y] = overhang;
     let text_width = layout
         .lines
         .iter()
-        .map(|line| line.width.ceil() as i32)
+        .map(|line| spaced_line_width(layout, line, [flow, 0]).ceil() as i32)
         .max()
         .unwrap_or(0);
     let origin_x = left.saturating_sub(before_x);
     let end_x = right.saturating_add(after_x);
     let free_width = end_x.saturating_sub(origin_x).saturating_sub(text_width);
-    let x = match mode {
-        0 | 1 => origin_x.saturating_add(free_width / 2),
-        2 => left,
-        3 => end_x.saturating_sub(text_width),
+    let (x, justify) = match mode {
+        0 | 1 => (origin_x.saturating_add(free_width / 2), 0),
+        2 => (left, 0),
+        3 => (end_x.saturating_sub(text_width), 0),
         _ => {
             let glyphs = layout
                 .shaped_runs
@@ -4568,10 +4572,12 @@ fn align_scroll_text(
                 .sum::<usize>();
             let gaps = (glyphs as i32).saturating_add(1);
             let spacing = free_width / gaps;
-            apply_dialogue_spacing(layout, spacing);
-            origin_x
-                .saturating_add(spacing)
-                .saturating_add((free_width % gaps) / 2)
+            (
+                origin_x
+                    .saturating_add(spacing)
+                    .saturating_add((free_width % gaps) / 2),
+                spacing,
+            )
         }
     };
     let y = if mode == 0 || mode >= 4 {
@@ -4584,31 +4590,26 @@ fn align_scroll_text(
     } else {
         top
     };
-    [x, y]
+    ([x, y], justify)
 }
 
-fn apply_dialogue_spacing(layout: &mut Arc<roukaku_text::TextLayoutResult>, spacing: i32) {
-    if spacing == 0 {
-        return;
+// Logical placement leaves the shaper's line metrics unchanged. Compute each
+// scroll width as Lucifen did before: apply each tracking pass, then clamp.
+fn spaced_line_width(layout: &LogicalTextLayout, line: &LayoutLine, spacing: [i32; 2]) -> f32 {
+    if spacing == [0, 0] {
+        return line.width;
     }
-    let layout = Arc::make_mut(layout);
-    let mut counts = BTreeMap::<u32, i32>::new();
-    for run in &mut layout.shaped_runs {
-        let index = counts.entry(run.line).or_default();
-        for glyph in &mut run.glyphs {
-            let offset = spacing.saturating_mul(*index);
-            glyph.x += offset as f32;
-            if let Some(left) = &mut glyph.render_x {
-                *left = left.saturating_add(offset);
-            }
-            *index = index.saturating_add(1);
-        }
-    }
-    for line in &mut layout.lines {
-        if let Some(&count) = counts.get(&line.line) {
-            line.width = (line.width + spacing.saturating_mul((count - 1).max(0)) as f32).max(0.0);
-        }
-    }
+    let runs = &layout.shaped_runs;
+    let first = runs.partition_point(|run| run.line < line.line);
+    let gaps = runs[first..]
+        .iter()
+        .take_while(|run| run.line == line.line)
+        .map(|run| run.glyphs.len())
+        .sum::<usize>()
+        .saturating_sub(1) as i32;
+    spacing.into_iter().fold(line.width, |width, spacing| {
+        (width + spacing.saturating_mul(gaps) as f32).max(0.0)
+    })
 }
 
 fn slot_file_name(group: i32, slot: i32) -> Option<String> {
@@ -4664,4 +4665,102 @@ fn wrap_slot_summary(mut input: &[u8], chinese: bool) -> Vec<u8> {
         width += length;
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_text_positions_before_painting_straight_linear_edges() {
+        let font = Font {
+            family: "Noto Sans JP".into(),
+            size: 24,
+            line_spacing: 5,
+            foreground: [209, 132, 17],
+            shadow: [0; 3],
+            effect: (0, 0, 0),
+            glyph_capacity: 512,
+            gradient: None,
+            bold: false,
+            italic: false,
+        };
+        let engine = Text::open(false).unwrap();
+        let layout = engine.shape(&font, "OO\nOO".into(), 64).unwrap();
+        let original = engine
+            .rasterize(Arc::clone(&layout), [0, 0], [0, 0])
+            .unwrap();
+        assert_eq!(original.glyphs().count(), 4);
+        let (_, [first_x, _]) = original.glyphs().next().unwrap();
+        let origin = [-first_x as i32 - 2, 5];
+        let spacing = [11, 0];
+        let raster = engine
+            .rasterize(Arc::clone(&layout), origin, spacing)
+            .unwrap();
+        for (index, ((_, [base_x, base_y]), (_, [x, y]))) in
+            original.glyphs().zip(raster.glyphs()).enumerate()
+        {
+            let shift = if index % 2 == 0 { 0 } else { spacing[0] };
+            assert_eq!(x, base_x + i64::from(origin[0] + shift));
+            assert_eq!(y, base_y + i64::from(origin[1]));
+        }
+        let far = engine
+            .rasterize(layout, [i32::MAX, 5], [i32::MIN, 0])
+            .unwrap();
+        let (_, [plain_x, plain_y]) = original.glyphs().nth(1).unwrap();
+        let (_, [far_x, far_y]) = far.glyphs().nth(1).unwrap();
+        assert_eq!([far_x, far_y], [plain_x - 1, plain_y + 5]);
+
+        let (id, [x, y]) = raster.glyphs().nth(1).unwrap();
+        let mask = &raster
+            .resources()
+            .iter()
+            .find(|resource| resource.resource_id == id)
+            .unwrap()
+            .bitmap;
+        assert_eq!(mask.format, roukaku_media_core::GlyphBitmapFormat::Alpha8);
+        let (index, &coverage) = mask
+            .pixels
+            .as_slice()
+            .iter()
+            .enumerate()
+            .find(|(_, alpha)| (32..=223).contains(*alpha))
+            .unwrap();
+        let x = x as usize + index % mask.width as usize;
+        let y = y as usize + index / mask.width as usize;
+        let offset = (y * 64 + x) * 4;
+
+        let mut graphics = Graphics::open(64, 64).unwrap();
+        for background in [[37, 61, 122, 117], [8, 12, 99, 0]] {
+            let bitmap = graphics.create(64, 64).unwrap();
+            assert!(graphics.fill(bitmap, None, background));
+            graphics.draw_glyphs(bitmap, &font, &raster).unwrap();
+            let surface = graphics.surface(bitmap).unwrap();
+            assert_eq!([surface.width, surface.height], [64, 64]);
+            let pixel = &surface.pixels()[offset..offset + 4];
+            if background[3] == 0 {
+                assert_eq!(pixel, &[209, 132, 17, coverage]);
+            } else {
+                let src = f64::from(coverage) / 255.0;
+                let dst = f64::from(background[3]) / 255.0 * (1.0 - src);
+                let decode = |byte: u8| ((f64::from(byte) / 255.0 + 0.055) / 1.055).powf(2.4);
+                let expected = std::array::from_fn::<_, 3, _>(|channel| {
+                    let linear = (src * decode(font.foreground[channel])
+                        + dst * decode(background[channel]))
+                        / (src + dst);
+                    ((1.055 * linear.powf(1.0 / 2.4) - 0.055) * 255.0).round() as u8
+                });
+                assert_eq!(&pixel[..3], &expected);
+                assert_eq!(pixel[3], ((src + dst) * 255.0).round() as u8);
+            }
+            assert_eq!(&surface.pixels()[..4], &background);
+            assert_eq!(&surface.pixels()[surface.pixels().len() - 4..], &background);
+            assert!(
+                surface
+                    .pixels()
+                    .chunks_exact(64 * 4)
+                    .any(|row| row[..4] != background)
+            );
+        }
+    }
 }

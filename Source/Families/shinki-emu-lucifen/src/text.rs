@@ -1,8 +1,8 @@
 use roukaku_core::Hash256;
 use roukaku_text::{
-    CosmicTextLayoutProvider, FontBindingContext, LayoutConstraint, OverflowPolicy, PackagedFont,
-    TextDirection, TextLayoutConfig, TextLayoutRequest, TextLayoutResult, TextRun, UnicodeRange,
-    WrapPolicy,
+    CosmicTextLayoutProvider, FontBindingContext, GlyphPlacement, GlyphResource, LayoutConstraint,
+    LogicalTextLayout, OverflowPolicy, PackagedFont, TextDirection, TextLayoutConfig,
+    TextLayoutRequest, TextLayoutResult, TextRun, UnicodeRange, WrapPolicy,
 };
 use shinki_emu_sdk::TextScene;
 use std::{io, sync::Arc};
@@ -28,6 +28,68 @@ pub(crate) struct Text {
     scene: TextScene,
     chinese: bool,
     coverage: Vec<UnicodeRange>,
+}
+
+pub(crate) struct NativeTextRaster {
+    layout: Arc<TextLayoutResult>,
+    origin_carry: [i32; 2],
+    tracking_carry: [i32; 2],
+}
+
+impl NativeTextRaster {
+    pub(crate) fn resources(&self) -> &[GlyphResource] {
+        &self.layout.glyph_resources
+    }
+
+    pub(crate) fn glyphs(&self) -> impl Iterator<Item = (&str, [i64; 2])> {
+        let mut tracking = (self.tracking_carry != [0, 0])
+            .then(|| GlyphTracking::new(self.tracking_carry));
+        self.layout
+            .shaped_runs
+            .iter()
+            .flat_map(|run| &run.glyphs)
+            .filter_map(move |glyph| {
+                // Track every shaped glyph, including spaces with no bitmap.
+                let offsets = tracking.as_mut().map(|tracking| tracking.next(glyph.line));
+                let mut x = glyph.render_x?;
+                if let Some([first, second]) = offsets {
+                    x = x.saturating_add(first).saturating_add(second);
+                }
+                Some((
+                    glyph.resource_id.as_deref()?,
+                    [
+                        i64::from(x) + i64::from(self.origin_carry[0]),
+                        i64::from(glyph.render_y?) + i64::from(self.origin_carry[1]),
+                    ],
+                ))
+            })
+    }
+}
+
+struct GlyphTracking {
+    spacing: [i32; 2],
+    line: Option<u32>,
+    index: i32,
+}
+
+impl GlyphTracking {
+    fn new(spacing: [i32; 2]) -> Self {
+        Self {
+            spacing,
+            line: None,
+            index: 0,
+        }
+    }
+
+    fn next(&mut self, line: u32) -> [i32; 2] {
+        if self.line != Some(line) {
+            self.line = Some(line);
+            self.index = 0;
+        }
+        let offsets = self.spacing.map(|value| value.saturating_mul(self.index));
+        self.index += 1;
+        offsets
+    }
 }
 
 impl Text {
@@ -79,22 +141,22 @@ impl Text {
         })
     }
 
-    pub(crate) fn layout(
+    pub(crate) fn shape(
         &self,
         font: &Font,
         text: String,
         width: u32,
-    ) -> io::Result<Arc<TextLayoutResult>> {
-        self.layout_with_wrap(font, text, width, WrapPolicy::None)
+    ) -> io::Result<Arc<LogicalTextLayout>> {
+        self.shape_with_wrap(font, text, width, WrapPolicy::None)
     }
 
-    pub(crate) fn layout_with_wrap(
+    pub(crate) fn shape_with_wrap(
         &self,
         font: &Font,
         text: String,
         width: u32,
         wrap: WrapPolicy,
-    ) -> io::Result<Arc<TextLayoutResult>> {
+    ) -> io::Result<Arc<LogicalTextLayout>> {
         let families = if self.chinese { [SC, JP] } else { [JP, SC] };
         let covered = |value: char| {
             value.is_control()
@@ -137,7 +199,60 @@ impl Text {
             font_families: families.into_iter().map(str::to_owned).collect(),
             features: Vec::new(),
         };
-        self.scene.layout_shared(&request).map_err(layout_error)
+        self.scene.shape_shared(&request).map_err(layout_error)
+    }
+
+    pub(crate) fn rasterize(
+        &self,
+        mut layout: Arc<LogicalTextLayout>,
+        origin: [i32; 2],
+        spacing: [i32; 2],
+    ) -> io::Result<NativeTextRaster> {
+        // Native offsets are integer pixels at 1×, so carrying whole pixels
+        // outside the f32 rasterizer does not change either sampling phase.
+        // Keep extreme script tracking out of the rasterizer's i32 positions,
+        // where it can overflow even if an integer offset later cancels it.
+        const RASTER_WINDOW: i32 = 65_536;
+        let mut raster_origin = origin.map(|value| value % RASTER_WINDOW);
+        let mut tracking_carry = [0, 0];
+        if spacing != [0, 0] {
+            let gaps = layout
+                .shaped_runs
+                .iter()
+                .map(|run| run.glyphs.len())
+                .sum::<usize>()
+                .saturating_sub(1) as i64;
+            let max_shift = gaps
+                * spacing
+                    .into_iter()
+                    .map(|value| i64::from(value).abs())
+                    .sum::<i64>();
+            if max_shift < i64::from(RASTER_WINDOW) {
+                let mut tracking = GlyphTracking::new(spacing);
+                Arc::make_mut(&mut layout)
+                    .place_glyphs(|_, _, glyph| {
+                        let mut placement = GlyphPlacement::from(glyph);
+                        for offset in tracking.next(glyph.line) {
+                            placement.x += offset as f32;
+                        }
+                        Some(placement)
+                    })
+                    .map_err(layout_error)?;
+            } else {
+                raster_origin = [0, 0];
+                tracking_carry = spacing;
+            }
+        }
+        let [x, y] = raster_origin;
+        let layout = self
+            .scene
+            .rasterize_shared(&layout, 1.0, (x as f32, y as f32))
+            .map_err(layout_error)?;
+        Ok(NativeTextRaster {
+            layout,
+            origin_carry: [origin[0] - x, origin[1] - y],
+            tracking_carry,
+        })
     }
 }
 
