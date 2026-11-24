@@ -215,6 +215,8 @@ git rev-parse HEAD
 gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
 ```
 
+All supported targets must have publishable packages. A debug-signed Android APK cannot stand in for the production APK.
+
 The download creates one directory per artifact. Merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco, the signing directory and `cargo-about` configured, prepare the HAP and publish from that checkout. Set `VERSION` to the run's product version:
 
 ```sh

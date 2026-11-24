@@ -215,6 +215,8 @@ git rev-parse HEAD
 gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
 ```
 
+サポート対象のすべてに公開可能なパッケージが必要です。デバッグ署名の Android APK は正式版の代わりに使えません。
+
 ダウンロードすると成果物ごとにディレクトリが作られます。その中の `<tag>/<target>/` を `.work/release/<tag>/` にまとめます。DevEco、署名ディレクトリ、`cargo-about` を用意し、同じ作業ツリーで HAP を作って公開します。`VERSION` にはその実行の製品バージョンを設定します。
 
 ```sh

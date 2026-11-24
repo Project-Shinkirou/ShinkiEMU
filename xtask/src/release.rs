@@ -516,8 +516,7 @@ fn collect_records(
     component: &str,
     scope: Scope,
 ) -> Result<PreparedRelease> {
-    let local_manager = scope.local_manager(inv, component);
-    let strict = scope == Scope::WindowsAndroid;
+    let require_all = scope == Scope::WindowsAndroid || scope.local_manager(inv, component);
     let mut records = Vec::new();
     let mut blocked = Vec::new();
     for t in &inv.targets {
@@ -532,7 +531,7 @@ fn collect_records(
         let directory = id.root.join(&t.triple);
         let path = directory.join("release.json");
         if !path.is_file() {
-            if strict || local_manager {
+            if require_all {
                 bail!(
                     "{component} release requires a prepared package for {} in scope {}",
                     t.triple,
@@ -552,7 +551,7 @@ fn collect_records(
         }
         verify_asset(&directory, &record, "archive")?;
         if let Some(reason) = record["publish_blocked"].as_str().filter(|s| !s.is_empty()) {
-            if strict {
+            if require_all {
                 bail!("{component}/{} cannot be published: {reason}", t.triple);
             }
             blocked.push(format!(
@@ -786,5 +785,44 @@ mod tests {
         assert!(!scope.local_manager(&inv, "manager"));
         assert!(Scope::default().local_manager(&inv, "manager"));
         assert!(targets("manager", Scope::default()).contains(&"aarch64-unknown-linux-ohos"));
+    }
+
+    #[test]
+    fn all_platform_manager_rejects_a_debug_android_record() {
+        let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let mut id = identity(&inv, "manager", "1.0.0").unwrap();
+        id.root = out.path().to_owned();
+        let targets = release_targets(&inv, "manager", Scope::All).unwrap();
+        assert!(targets.iter().any(|target| target.triple == "aarch64-linux-android"));
+        for target in &targets {
+            let dir = id.root.join(&target.triple);
+            fs::create_dir(&dir).unwrap();
+            let archive = dir.join("asset");
+            fs::write(&archive, b"test release asset").unwrap();
+            fs::write(
+                dir.join("release.json"),
+                serde_json::to_vec(&json!({
+                    "component": "manager",
+                    "version": id.version,
+                    "target": target.triple,
+                    "release_scope": "all",
+                    "publish_blocked": if target.triple == "aarch64-linux-android" {
+                        "debug-signed CI test APK"
+                    } else { "" },
+                    "archive": {
+                        "name": "asset",
+                        "sha256": package::sha256(&archive).unwrap(),
+                        "size": fs::metadata(&archive).unwrap().len(),
+                    },
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        }
+        let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
+            panic!("all-platform publication accepted a debug Android record");
+        };
+        assert!(error.to_string().contains("debug-signed CI test APK"), "{error}");
     }
 }

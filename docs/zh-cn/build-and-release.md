@@ -215,6 +215,8 @@ git rev-parse HEAD
 gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
 ```
 
+所有受支持的目标都必须有可发布的包。调试签名的 Android APK 不能替代正式包。
+
 下载会为每份产物创建一个目录。将其中的 `<tag>/<target>/` 合并到 `.work/release/<tag>/`。配置好 DevEco、签名目录和 `cargo-about`，在同一份工作副本中制作 HAP 并发布。`VERSION` 设为该次运行的产品版本：
 
 ```sh
