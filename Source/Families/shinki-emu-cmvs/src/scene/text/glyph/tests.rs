@@ -8,7 +8,7 @@ impl NativeTextRenderer {
         width: u32,
         textures: &mut TextureCache,
     ) -> Result<Vec<SceneCommand>, CoreError> {
-        let mut groups = self.prepare_draw_groups(vm, width, textures)?;
+        let mut groups = self.prepare_draw_groups(vm, width, Transform2D::IDENTITY, textures)?;
         groups.admit(&mut 8192);
         let mut commands = Vec::new();
         groups.append(&mut commands);
@@ -428,7 +428,7 @@ fn linked_children_sort_independently_and_negative_order_skips_only_that_child()
         .filter_map(|command| match command {
             SceneCommand::Sprite { id, .. }
             | SceneCommand::Mesh2D { id, .. }
-            | SceneCommand::GlyphRun { id, .. } => Some(id.as_str()),
+            | SceneCommand::LinearGlyphRun { id, .. } => Some(id.as_str()),
             _ => None,
         })
         .collect();
@@ -874,7 +874,7 @@ fn text_queue_counts_started_alpha_and_width_zero_nodes_but_not_delayed_hidden_n
     for effect in [1, 2] {
         vm.native_text_reveals.get_mut(&3).unwrap()[0].effect = effect;
         let groups = renderer
-            .prepare_draw_groups(&mut vm, 128, &mut cache)
+            .prepare_draw_groups(&mut vm, 128, Transform2D::IDENTITY, &mut cache)
             .unwrap();
         assert_eq!(
             groups.groups.len(),
@@ -885,7 +885,7 @@ fn text_queue_counts_started_alpha_and_width_zero_nodes_but_not_delayed_hidden_n
     vm.native_text_reveals.get_mut(&3).unwrap()[0].started = false;
     assert_eq!(
         renderer
-            .prepare_draw_groups(&mut vm, 128, &mut cache)
+            .prepare_draw_groups(&mut vm, 128, Transform2D::IDENTITY, &mut cache)
             .unwrap()
             .groups
             .len(),
@@ -894,7 +894,7 @@ fn text_queue_counts_started_alpha_and_width_zero_nodes_but_not_delayed_hidden_n
     vm.native_text.get_mut(&3).unwrap().visible = false;
     assert!(
         renderer
-            .prepare_draw_groups(&mut vm, 128, &mut cache)
+            .prepare_draw_groups(&mut vm, 128, Transform2D::IDENTITY, &mut cache)
             .unwrap()
             .groups
             .is_empty()

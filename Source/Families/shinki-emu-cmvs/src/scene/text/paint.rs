@@ -1,4 +1,5 @@
 use super::*;
+use super::raster::PresentationGrid;
 use crate::CmvsNativeTextGlyph;
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat};
 
@@ -23,16 +24,29 @@ impl From<&CmvsNativeTextGlyph> for PaintStyle {
 
 // Native styles 1/2 use a maximum-alpha diamond kernel, including attenuated
 // corners. Repeated source-over glyph draws do not implement that operation.
-fn outline(glyph: &GlyphBitmap, radius: u32, padding: u32, width: u32, pixels: &mut [u8]) {
+fn outline(
+    glyph: &GlyphBitmap,
+    radius: u32,
+    padding: u32,
+    width: u32,
+    pixels: &mut [u8],
+    scale: f32,
+) {
+    let taps: [u32; 5] = std::array::from_fn(|i| {
+        (padding as i32 + ((i as f32 - radius as f32) * scale).round() as i32) as u32
+    });
     for y in 0..glyph.height {
         for x in 0..glyph.width {
             let alpha = glyph.pixels.as_slice()[(y * glyph.width + x) as usize];
+            if alpha == 0 {
+                continue;
+            }
             for dy in 0..=radius * 2 {
                 for dx in 0..=radius * 2 {
                     let distance = dx.abs_diff(radius) + dy.abs_diff(radius);
                     let value = alpha >> distance.saturating_sub(radius);
-                    let target_x = x + dx + padding - radius;
-                    let target_y = y + dy + padding - radius;
+                    let target_x = x + taps[dx as usize];
+                    let target_y = y + taps[dy as usize];
                     if target_x < width
                         && let Some(target) =
                             pixels.get_mut(((target_y * width + target_x) * 4 + 3) as usize)
@@ -50,13 +64,49 @@ fn outline(glyph: &GlyphBitmap, radius: u32, padding: u32, width: u32, pixels: &
 // outline using a 256 denominator. Two source-over glyph draws are different.
 pub(super) fn paint_upload(
     glyph: &GlyphBitmap,
-    style: impl Into<PaintStyle>,
+    style: PaintStyle,
     pixel_size: u32,
+    grid: PresentationGrid,
+    origin: [i32; 2],
+    mask_only: bool,
 ) -> Result<(GlyphBitmap, [i32; 2]), CoreError> {
-    let (width, height, mut pixels) = paint_buffer(glyph, style.into(), [0, 0], pixel_size, 2)?;
+    let scale = grid.scale();
+    let padding = if mask_only {
+        1
+    } else if grid.is_native() {
+        2
+    } else {
+        (outline_radius(style) as f32 * scale).round() as u32 + 1
+    };
+    let (width, height, mut pixels) = if mask_only {
+        debug_assert_eq!(glyph.format, GlyphBitmapFormat::Alpha8);
+        let (width, height) = (glyph.width + 2, glyph.height + 2);
+        let mut pixels = vec![0; width as usize * height as usize];
+        for (row, source) in glyph
+            .pixels
+            .as_slice()
+            .chunks_exact(glyph.width as usize)
+            .enumerate()
+        {
+            let start = (row + 1) * width as usize + 1;
+            pixels[start..start + source.len()].copy_from_slice(source);
+        }
+        (width, height, pixels)
+    } else {
+        paint_buffer(
+            glyph,
+            style,
+            Placement { grid, origin, pixel_size, padding },
+        )?
+    };
+    let (stride, format) = if mask_only {
+        (1, GlyphBitmapFormat::Alpha8)
+    } else {
+        (4, GlyphBitmapFormat::Rgba8)
+    };
     let (mut left, mut top, mut right, mut bottom) = (width, height, 0, 0);
-    for (index, pixel) in pixels.as_chunks::<4>().0.iter().enumerate() {
-        if pixel[3] != 0 {
+    for (index, pixel) in pixels.chunks_exact(stride).enumerate() {
+        if pixel[stride - 1] != 0 {
             let (x, y) = (index as u32 % width, index as u32 / width);
             left = left.min(x);
             top = top.min(y);
@@ -65,9 +115,9 @@ pub(super) fn paint_upload(
         }
     }
     if right == 0 {
-        pixels.truncate(4);
+        pixels.truncate(stride);
         pixels.fill(0);
-        return GlyphBitmap::from_vec(1, 1, GlyphBitmapFormat::Rgba8, pixels)
+        return GlyphBitmap::from_vec(1, 1, format, pixels)
             .map(|bitmap| (bitmap, [0, 0]))
             .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"));
     }
@@ -81,35 +131,56 @@ pub(super) fn paint_upload(
     let cropped_height = bottom - top;
     if cropped_width != width || cropped_height != height {
         for row in 0..cropped_height {
-            let source = ((top + row) * width + left) as usize * 4;
-            let destination = (row * cropped_width) as usize * 4;
-            pixels.copy_within(source..source + cropped_width as usize * 4, destination);
+            let source = ((top + row) * width + left) as usize * stride;
+            let destination = (row * cropped_width) as usize * stride;
+            pixels.copy_within(source..source + cropped_width as usize * stride, destination);
         }
-        pixels.truncate(cropped_width as usize * cropped_height as usize * 4);
+        pixels.truncate(cropped_width as usize * cropped_height as usize * stride);
     }
     GlyphBitmap::from_vec(
         cropped_width,
         cropped_height,
-        GlyphBitmapFormat::Rgba8,
+        format,
         pixels,
     )
-    .map(|bitmap| (bitmap, [left as i32, top as i32]))
+    .map(|bitmap| {
+        (
+            bitmap,
+            [
+                origin[0] + left as i32 - padding as i32,
+                origin[1] + top as i32 - padding as i32,
+            ],
+        )
+    })
     .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
+}
+
+#[derive(Clone, Copy)]
+struct Placement {
+    grid: PresentationGrid,
+    origin: [i32; 2],
+    pixel_size: u32,
+    padding: u32,
+}
+
+fn outline_radius(style: PaintStyle) -> u32 {
+    if matches!(style.style, 1 | 2) {
+        style.style
+    } else {
+        0
+    }
 }
 
 fn paint_buffer(
     glyph: &GlyphBitmap,
     style: PaintStyle,
-    offset: [i32; 2],
-    pixel_size: u32,
-    padding: u32,
+    placement: Placement,
 ) -> Result<(u32, u32, Vec<u8>), CoreError> {
-    let radius = if matches!(style.style, 1 | 2) {
-        style.style
-    } else {
-        0
-    };
-    if glyph.format != GlyphBitmapFormat::Alpha8 || padding < radius || pixel_size == 0 {
+    let padding = placement.padding;
+    if glyph.format != GlyphBitmapFormat::Alpha8
+        || padding < (outline_radius(style) as f32 * placement.grid.scale()).round() as u32
+        || placement.pixel_size == 0
+    {
         return Err(error("SHINKI_EMU_CMVS_GLYPH_FORMAT"));
     }
     let width = glyph
@@ -121,15 +192,7 @@ fn paint_buffer(
         .checked_add(padding * 2)
         .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))?;
     let mut pixels = vec![0; width as usize * height as usize * 4];
-    paint_pixels(
-        glyph,
-        style,
-        offset,
-        pixel_size,
-        padding,
-        width,
-        &mut pixels,
-    );
+    paint_pixels(glyph, style, placement, width, &mut pixels);
     Ok((width, height, pixels))
 }
 
@@ -151,7 +214,18 @@ pub(super) fn paint_cell(
         .and_then(|count| count.checked_mul(4))
         .ok_or_else(|| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))?;
     let mut pixels = vec![0; count];
-    paint_pixels(glyph, style, [0, 0], pixel_size, 2, cell_size, &mut pixels);
+    paint_pixels(
+        glyph,
+        style,
+        Placement {
+            grid: PresentationGrid::NATIVE,
+            origin: [0, 0],
+            pixel_size,
+            padding: 2,
+        },
+        cell_size,
+        &mut pixels,
+    );
     for pixel in pixels.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
@@ -161,24 +235,19 @@ pub(super) fn paint_cell(
 fn paint_pixels(
     glyph: &GlyphBitmap,
     style: PaintStyle,
-    offset: [i32; 2],
-    pixel_size: u32,
-    padding: u32,
+    placement: Placement,
     width: u32,
     pixels: &mut [u8],
 ) {
-    let radius = if matches!(style.style, 1 | 2) {
-        style.style
-    } else {
-        0
-    };
+    let padding = placement.padding;
+    let radius = outline_radius(style);
     let outline_rgb = [
         (style.outline_color >> 16) as u8,
         (style.outline_color >> 8) as u8,
         style.outline_color as u8,
     ];
     if radius != 0 {
-        outline(glyph, radius, padding, width, pixels);
+        outline(glyph, radius, padding, width, pixels, placement.grid.scale());
         for pixel in pixels
             .as_chunks_mut::<4>()
             .0
@@ -188,6 +257,7 @@ fn paint_pixels(
             pixel[..3].copy_from_slice(&outline_rgb);
         }
     }
+    let color = ColorRamp::new(style, placement.pixel_size, placement.grid);
     let height = pixels.len() / 4 / width as usize;
     for y in 0..glyph.height.min((height as u32).saturating_sub(padding)) {
         for x in 0..glyph.width.min(width.saturating_sub(padding)) {
@@ -197,14 +267,11 @@ fn paint_pixels(
             }
             let start = (((y + padding) * width + x + padding) * 4) as usize;
             let target = &mut pixels[start..start + 4];
-            let rgba = color(
-                style,
-                [
-                    i64::from(offset[0]) + i64::from(x),
-                    i64::from(offset[1]) + i64::from(y),
-                ],
-                pixel_size,
-            );
+            let point = [
+                i64::from(placement.origin[0]) + i64::from(x),
+                i64::from(placement.origin[1]) + i64::from(y),
+            ];
+            let rgba = color.at(point);
             for ((channel, source), background) in target[..3]
                 .iter_mut()
                 .zip(rgba[..3].iter())
@@ -223,23 +290,61 @@ fn paint_pixels(
     }
 }
 
+#[cfg(test)]
 fn color(style: impl Into<PaintStyle>, point: [i64; 2], pixel_size: u32) -> [u8; 4] {
-    let style = style.into();
-    let mode = style.color_mode & 3;
-    let mut rgba = [255; 4];
-    for (channel, shift) in rgba[..3].iter_mut().zip([16, 8, 0]) {
-        let start = i64::from((style.colors[0] >> shift) & 255) << 10;
-        let end = i64::from((style.colors[1] >> shift) & 255) << 10;
-        let step = (end - start) / i64::from(pixel_size);
-        let distance = match mode {
-            1 => step * point[1],
-            2 => step * point[0],
-            3 => (step / 2) * (point[0] + point[1]),
+    ColorRamp::new(style.into(), pixel_size, PresentationGrid::NATIVE).at(point)
+}
+
+struct ColorRamp {
+    mode: u32,
+    start: [i64; 3],
+    step: [i64; 3],
+    inverse_scale: f64,
+    phase: [f64; 2],
+    native: bool,
+}
+
+impl ColorRamp {
+    fn new(style: PaintStyle, pixel_size: u32, grid: PresentationGrid) -> Self {
+        let mode = style.color_mode & 3;
+        let channels = |rgb: u32| [16, 8, 0].map(|shift| i64::from((rgb >> shift) & 255) << 10);
+        let start = channels(style.colors[0]);
+        let end = channels(style.colors[1]);
+        let step = std::array::from_fn(|i| {
+            let step = (end[i] - start[i]) / i64::from(pixel_size);
+            if mode == 3 { step / 2 } else { step }
+        });
+        Self {
+            mode,
+            start,
+            step,
+            inverse_scale: 1024.0 / f64::from(grid.scale()),
+            phase: grid.phase.map(|value| f64::from(value) * 0.25),
+            native: grid.is_native(),
+        }
+    }
+
+    fn at(&self, point: [i64; 2]) -> [u8; 4] {
+        let coordinate = |i: usize| {
+            if self.native {
+                point[i] * 1024
+            } else {
+                ((point[i] as f64 - self.phase[i]) * self.inverse_scale) as i64
+            }
+        };
+        let distance = match self.mode {
+            1 => coordinate(1),
+            2 => coordinate(0),
+            3 => coordinate(0) + coordinate(1),
             _ => 0,
         };
-        *channel = ((start + distance) >> 10).clamp(0, 255) as u8;
+        let mut rgba = [255; 4];
+        for (i, channel) in rgba[..3].iter_mut().enumerate() {
+            *channel = (((self.start[i] << 10) + self.step[i] * distance) >> 20)
+                .clamp(0, 255) as u8;
+        }
+        rgba
     }
-    rgba
 }
 
 /// Paints one glyph into a padded RGBA bitmap, for composition tests.
@@ -251,7 +356,13 @@ pub(super) fn paint(
     pixel_size: u32,
     padding: u32,
 ) -> Result<GlyphBitmap, CoreError> {
-    let (width, height, pixels) = paint_buffer(glyph, style.into(), offset, pixel_size, padding)?;
+    let placement = Placement {
+        grid: PresentationGrid::NATIVE,
+        origin: offset,
+        pixel_size,
+        padding,
+    };
+    let (width, height, pixels) = paint_buffer(glyph, style.into(), placement)?;
     GlyphBitmap::from_vec(width, height, GlyphBitmapFormat::Rgba8, pixels)
         .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
 }
@@ -264,7 +375,7 @@ mod tests {
     fn native_outline_uses_maximum_coverage_and_attenuated_corners() {
         let source = GlyphBitmap::from_vec(1, 1, GlyphBitmapFormat::Alpha8, vec![200]).unwrap();
         let mut pixels = vec![0; 5 * 5 * 4];
-        outline(&source, 2, 2, 5, &mut pixels);
+        outline(&source, 2, 2, 5, &mut pixels, 1.0);
         assert_eq!(
             pixels
                 .as_chunks::<4>()
@@ -410,7 +521,9 @@ mod tests {
                 outline_color: 0,
             };
             let full = paint(&source, style, [0, 0], 40, 2).unwrap();
-            let (compact, offset) = paint_upload(&source, style, 40).unwrap();
+            let (compact, offset) =
+                paint_upload(&source, style, 40, PresentationGrid::NATIVE, [0, 0], false).unwrap();
+            let offset = offset.map(|value| value + 2);
             assert!(compact.pixels.len() < full.pixels.len());
             let full_id = format!("full.{style_id}");
             let compact_id = format!("compact.{style_id}");

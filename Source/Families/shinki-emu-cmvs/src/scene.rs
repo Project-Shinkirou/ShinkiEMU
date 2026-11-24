@@ -1,5 +1,5 @@
 use crate::{CmvsArchive, CmvsPs2aVmState};
-use roukaku_media_core::{BlendMode, Extent2D, RectI, SceneCommand, TextureFrame};
+use roukaku_media_core::{BlendMode, Extent2D, RectI, SceneCommand, TextureFrame, Transform2D};
 use roukaku_platform::SceneFrame;
 use shinki_emu_sdk::{
     CoreError, SceneTextureResidency, StageCanvas, TextureCache, WgpuOffscreenRenderer,
@@ -50,6 +50,13 @@ pub enum CmvsTextureSlot {
 enum NativeQueuedDraw {
     Image(CmvsTextureSlot, RectI),
     Group(surface::NativeDrawGroup),
+}
+
+struct DrawMapping {
+    logical: Extent2D,
+    canvas: StageCanvas,
+    viewport: Option<native_viewport::NativeViewport>,
+    flat_camera: Transform2D,
 }
 
 /// Core-owned GPU composition of the recovered parent/child texture stage.
@@ -218,9 +225,11 @@ impl CmvsScene {
         movie: Option<&TextureFrame>,
         mut commands: Vec<SceneCommand>,
     ) -> Result<TextureFrame, CoreError> {
+        let mapping =
+            self.draw_mapping(width, height, native_viewport::NativeViewport::from_vm(vm)?)?;
         let mut groups = self
             .text
-            .prepare_draw_groups(vm, width, &mut self.textures)?;
+            .prepare_draw_groups(vm, width, mapping.flat_camera, &mut self.textures)?;
         groups.admit(&mut 8192);
         groups.append(&mut commands);
         if let Some(movie) = movie {
@@ -229,7 +238,7 @@ impl CmvsScene {
             let added = commands.len() - overlays;
             commands.rotate_right(added);
         }
-        self.draw_final(vm, width, height, commands)
+        self.draw_mapped(mapping, commands)
     }
 
     pub(crate) fn clear_parent_image(&mut self, parent: u8) {
@@ -418,9 +427,14 @@ impl CmvsScene {
         }
         // Owner updates and GPU resource lifetimes run even after the shared
         // 4473C0 record pool fills. Only draw admission consumes this counter.
+        let mapping = self.draw_mapping(
+            stage_width,
+            stage_height,
+            native_viewport::NativeViewport::from_vm(vm)?,
+        )?;
         let mut draw_groups = self
             .text
-            .prepare_draw_groups(vm, stage_width, &mut self.textures)?;
+            .prepare_draw_groups(vm, stage_width, mapping.flat_camera, &mut self.textures)?;
         draw_groups.admit(&mut remaining_records);
         let mut channels = self.prepare_channel_draw_groups(vm, archive)?;
         channels.admit(&mut remaining_records);
@@ -628,8 +642,7 @@ impl CmvsScene {
             // Native 412800 creates a decoded-size quad at the origin.
             append_movie(&mut commands, vm, movie, stage_width)?;
         }
-        self.draw_final(vm, stage_width, stage_height, commands)
-            .map(Some)
+        self.draw_mapped(mapping, commands).map(Some)
     }
 
     pub(crate) fn native_pointer(
@@ -660,15 +673,32 @@ impl CmvsScene {
         )
     }
 
-    fn draw_final(
-        &mut self,
-        vm: &CmvsPs2aVmState,
+    fn draw_mapping(
+        &self,
         width: u32,
         height: u32,
-        commands: Vec<SceneCommand>,
-    ) -> Result<TextureFrame, CoreError> {
-        let viewport = native_viewport::NativeViewport::from_vm(vm)?;
-        self.draw_mapped(width, height, commands, viewport)
+        viewport: Option<native_viewport::NativeViewport>,
+    ) -> Result<DrawMapping, CoreError> {
+        let logical = Extent2D::new(width, height);
+        let output = viewport.map_or(logical, |viewport| viewport.extent());
+        let canvas = StageCanvas::new(output, self.raster.unwrap_or(output))?;
+        let transform = canvas.logical_to_raster_transform();
+        let flat_camera = viewport.map_or(transform, |viewport| {
+            let native = viewport.stage_to_view_transform();
+            Transform2D {
+                m11: transform.m11 * native.m11,
+                m22: transform.m22 * native.m22,
+                tx: transform.m11 * native.tx + transform.tx,
+                ty: transform.m22 * native.ty + transform.ty,
+                ..Transform2D::IDENTITY
+            }
+        });
+        Ok(DrawMapping {
+            logical,
+            canvas,
+            viewport,
+            flat_camera,
+        })
     }
 
     fn draw(
@@ -677,23 +707,24 @@ impl CmvsScene {
         height: u32,
         commands: Vec<SceneCommand>,
     ) -> Result<TextureFrame, CoreError> {
-        self.draw_mapped(width, height, commands, None)
+        self.draw_mapped(self.draw_mapping(width, height, None)?, commands)
     }
 
     fn draw_mapped(
         &mut self,
-        width: u32,
-        height: u32,
+        mapping: DrawMapping,
         mut commands: Vec<SceneCommand>,
-        viewport: Option<native_viewport::NativeViewport>,
     ) -> Result<TextureFrame, CoreError> {
         let sequence = self
             .sequence
             .checked_add(1)
             .ok_or_else(|| error("SHINKI_EMU_CMVS_FRAME_SEQUENCE"))?;
-        let logical = Extent2D::new(width, height);
-        let output_extent = viewport.map_or(logical, |viewport| viewport.extent());
-        let canvas = StageCanvas::new(output_extent, self.raster.unwrap_or(output_extent))?;
+        let DrawMapping {
+            logical,
+            canvas,
+            viewport,
+            flat_camera,
+        } = mapping;
         self.texture_residency
             .prepare(&mut commands)
             .map_err(|cause| {
@@ -709,7 +740,6 @@ impl CmvsScene {
             rect: canvas.viewport_rect()?,
         });
         let canvas_transform = canvas.logical_to_raster_transform();
-        let mut flat_camera = canvas_transform;
         // Camera is applied AFTER the command-local transform stack.
         mapped.push(SceneCommand::SetCamera {
             transform: canvas_transform,
@@ -718,16 +748,6 @@ impl CmvsScene {
             mapped.push(SceneCommand::PushClip {
                 rect: viewport.clip_rect(),
             });
-            let native = viewport.stage_to_view_transform();
-            let canvas = canvas_transform;
-            flat_camera = roukaku_media_core::Transform2D {
-                m11: canvas.m11 * native.m11 + canvas.m21 * native.m12,
-                m12: canvas.m12 * native.m11 + canvas.m22 * native.m12,
-                m21: canvas.m11 * native.m21 + canvas.m21 * native.m22,
-                m22: canvas.m12 * native.m21 + canvas.m22 * native.m22,
-                tx: canvas.m11 * native.tx + canvas.m21 * native.ty + canvas.tx,
-                ty: canvas.m12 * native.tx + canvas.m22 * native.ty + canvas.ty,
-            };
             mapped.push(SceneCommand::SetCamera {
                 transform: flat_camera,
             });

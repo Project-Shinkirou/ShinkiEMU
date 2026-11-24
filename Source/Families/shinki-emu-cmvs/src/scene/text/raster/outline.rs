@@ -157,22 +157,7 @@ pub(super) fn raster(
     scaler: &Scaler,
     key: CellKey,
 ) -> Result<cell::Cell, CoreError> {
-    let font = assets
-        .get(scaler.face)
-        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_FONT"))?
-        .font()?;
-    let glyph = character(key.code, key.font.shift_jis)
-        .and_then(|character| font.charmap().map(character))
-        .unwrap_or(GlyphId::NOTDEF);
-    let outlines = font.outline_glyphs();
-    let mut pen = Pen::default();
-    let mut advance = 0;
-    if let Some(outline) = outlines.get(glyph) {
-        let adjusted = outline
-            .draw(DrawSettings::hinted(&scaler.hinting, false), &mut pen)
-            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_OUTLINE"))?;
-        advance = adjusted.advance_width.unwrap_or_default().round() as i32;
-    }
+    let (pen, mut advance) = draw_outline(assets, scaler, key)?;
     if let Some(cell) = scaler.fixed_cell
         && key.code > 255
         && advance > cell
@@ -213,6 +198,120 @@ pub(super) fn raster(
         &levels,
         key.settings(),
     )
+}
+
+fn draw_outline(assets: &[Face], scaler: &Scaler, key: CellKey) -> Result<(Pen, i32), CoreError> {
+    let font = assets
+        .get(scaler.face)
+        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_FONT"))?
+        .font()?;
+    let glyph = character(key.code, key.font.shift_jis)
+        .and_then(|character| font.charmap().map(character))
+        .unwrap_or(GlyphId::NOTDEF);
+    let mut pen = Pen::default();
+    let mut advance = 0;
+    let outlines = font.outline_glyphs();
+    if let Some(outline) = outlines.get(glyph) {
+        let adjusted = outline
+            .draw(DrawSettings::hinted(&scaler.hinting, false), &mut pen)
+            .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_OUTLINE"))?;
+        advance = adjusted.advance_width.unwrap_or_default().round() as i32;
+    }
+    Ok((pen, advance))
+}
+
+/// Resample the native hinted outline on the presentation grid. The native
+/// black-box copy still determines the baseline, clipping, and descriptor.
+pub(super) fn presentation(
+    assets: &[Face],
+    scaler: &Scaler,
+    key: CellKey,
+    ink: &cell::Ink,
+    grid: PresentationGrid,
+) -> Result<(GlyphBitmap, [i32; 2]), CoreError> {
+    let (mut pen, _) = draw_outline(assets, scaler, key)?;
+    let scale = f64::from(grid.scale());
+    let [px, py] = grid.phase.map(f64::from);
+    let left = f64::from(ink.position[0]) * scale + px / 4.0;
+    let top = -f64::from(ink.position[1]) * scale - py / 4.0;
+    let samples = f64::from(OVERSAMPLE);
+    let clip = [
+        left * samples,
+        (top - f64::from(ink.extent[1]) * scale) * samples,
+        (left + f64::from(ink.extent[0]) * scale) * samples,
+        top * samples,
+    ];
+    let shift = [
+        (left - f64::from(ink.origin[0]) * scale) * samples,
+        (top - f64::from(ink.origin[1]) * scale) * samples,
+    ];
+    let transform = |point: &mut [f64; 2]| {
+        for axis in 0..2 {
+            point[axis] = point[axis] * scale + shift[axis];
+        }
+    };
+    for edge in &mut pen.edges {
+        transform(&mut edge.from);
+        transform(&mut edge.to);
+        if let Some(control) = &mut edge.control {
+            transform(control);
+        }
+    }
+    let fill = coverage_clipped(&pen.edges, Some(clip));
+    let bold = if scaler.embolden {
+        // The native synthetic bold is a saturating sum with the left
+        // neighbour, one native pixel away on every presentation grid.
+        let dx = scale * samples;
+        for edge in &mut pen.edges {
+            edge.from[0] += dx;
+            edge.to[0] += dx;
+            if let Some(control) = &mut edge.control {
+                control[0] += dx;
+            }
+        }
+        coverage_clipped(&pen.edges, Some(clip))
+    } else {
+        None
+    };
+    let layers = [fill.as_ref(), bold.as_ref()];
+    let mut bounds = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+    for layer in layers.into_iter().flatten() {
+        let [x, y] = [layer.origin[0], -layer.origin[1]];
+        bounds[0] = bounds[0].min(x);
+        bounds[1] = bounds[1].min(y);
+        bounds[2] = bounds[2].max(x + layer.width as i32);
+        bounds[3] = bounds[3].max(y + layer.height as i32);
+    }
+    let [left, top, right, bottom] = bounds;
+    let (width, height, mut pixels, origin) = if left < right && top < bottom {
+        let (width, height) = ((right - left) as u32, (bottom - top) as u32);
+        (
+            width,
+            height,
+            vec![0u8; width as usize * height as usize],
+            [left, top],
+        )
+    } else {
+        (1, 1, vec![0], [0, 0])
+    };
+    for layer in layers.into_iter().flatten() {
+        let stride = Coverage::stride(layer.width);
+        let x = (layer.origin[0] - left) as usize;
+        let y = (-layer.origin[1] - top) as usize;
+        for row in 0..layer.height as usize {
+            let src = &layer.levels[row * stride..][..layer.width as usize];
+            let dst = &mut pixels[(y + row) * width as usize + x..][..src.len()];
+            for (target, value) in dst.iter_mut().zip(src) {
+                *target = (*target + *value).min(16);
+            }
+        }
+    }
+    for pixel in &mut pixels {
+        *pixel = cell::alpha(*pixel, key.raster.alternate_coverage);
+    }
+    GlyphBitmap::from_vec(width, height, GlyphBitmapFormat::Alpha8, pixels)
+        .map(|bitmap| (bitmap, origin))
+        .map_err(|_| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))
 }
 
 /// One y-monotone edge in oversampled units, y up: a line (`control` is
@@ -421,6 +520,11 @@ impl Coverage {
 }
 
 fn coverage(edges: &[Edge]) -> Option<Coverage> {
+    coverage_clipped(edges, None)
+}
+
+// Both bounds and the optional native cell crop use oversampled y-up units.
+fn coverage_clipped(edges: &[Edge], clip: Option<[f64; 4]>) -> Option<Coverage> {
     let mut bounds = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
     for edge in edges {
         let [x0, y0, x1, y1] = edge.bounds();
@@ -433,6 +537,15 @@ fn coverage(edges: &[Edge]) -> Option<Coverage> {
     }
     if edges.is_empty() || bounds.iter().any(|value| !value.is_finite()) {
         return None;
+    }
+    if let Some(clip) = clip {
+        for axis in 0..2 {
+            bounds[axis] = bounds[axis].max(clip[axis]);
+            bounds[axis + 2] = bounds[axis + 2].min(clip[axis + 2]);
+        }
+        if bounds[0] >= bounds[2] || bounds[1] >= bounds[3] {
+            return None;
+        }
     }
     let oversample = f64::from(OVERSAMPLE);
     let left = (bounds[0] / oversample).floor() as i32;
@@ -448,6 +561,9 @@ fn coverage(edges: &[Edge]) -> Option<Coverage> {
     let mut crossings = Vec::new();
     for sample_row in 0..height * OVERSAMPLE as usize {
         let y = f64::from(bottom * OVERSAMPLE) + sample_row as f64 + 0.5;
+        if clip.is_some_and(|clip| y < clip[1] || y >= clip[3]) {
+            continue;
+        }
         crossings.clear();
         crossings.extend(edges.iter().filter_map(|edge| edge.crossing(y)));
         crossings.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -461,8 +577,11 @@ fn coverage(edges: &[Edge]) -> Option<Coverage> {
                 span_start = x;
             } else if before != 0 && winding == 0 {
                 // Subpixel centres at x + 0.5 inside [span_start, x).
-                let first = (span_start - 0.5).ceil() as i64;
-                let last = (x - 0.5).ceil() as i64;
+                let (start, end) = clip.map_or((span_start, x), |clip| {
+                    (span_start.max(clip[0]), x.min(clip[2]))
+                });
+                let first = (start - 0.5).ceil() as i64;
+                let last = (end - 0.5).ceil() as i64;
                 let origin = i64::from(left * OVERSAMPLE);
                 for sample in first.max(origin)..last.min(i64::from(right * OVERSAMPLE)) {
                     grid[row * width + ((sample - origin) / i64::from(OVERSAMPLE)) as usize] += 1;
