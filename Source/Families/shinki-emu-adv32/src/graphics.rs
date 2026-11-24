@@ -4,7 +4,7 @@ use crate::{
     binary::{c_string, decode_japanese, dword, range},
     crx::Crx,
     game::{Game, read_bounded},
-    render::Canvas,
+    render::{Canvas, RasterAxis},
 };
 use image::{Rgba, RgbaImage};
 use lru::LruCache;
@@ -276,17 +276,49 @@ pub(crate) fn blit_alpha(
     ) {
         return;
     }
-    let frame = frame.raster_mut();
-    let stop_x = (x + i64::from(width) * scale / 100).min(i64::from(frame.width()));
-    let stop_y = (y + i64::from(height) * scale / 100).min(i64::from(frame.height()));
-    if stop_x <= x.max(0) || stop_y <= y.max(0) {
+    let (target_width, target_height) = frame.dimensions();
+    let stop_x = (x + i64::from(width) * scale / 100).min(i64::from(target_width));
+    let stop_y = (y + i64::from(height) * scale / 100).min(i64::from(target_height));
+    let dst_x = x.max(0);
+    let dst_y = y.max(0);
+    if stop_x <= dst_x || stop_y <= dst_y {
         return;
     }
+    let opaque = opacity == 255 && source.is_opaque();
+    if let Some((raster, mapping)) = frame.physical_raster() {
+        let xs = RasterAxis::x(mapping);
+        let ys = RasterAxis::y(mapping);
+        let output_x = xs.span(dst_x, stop_x);
+        let samples_x: Vec<_> = output_x
+            .clone()
+            .map(|px| left + ((i64::from(xs.sample(px)) - x) * 100 / scale) as u32)
+            .collect();
+        let stride = raster.width() as usize * 4;
+        let left = output_x.start as usize * 4;
+        let right = output_x.end as usize * 4;
+        for py in ys.span(dst_y, stop_y) {
+            let sy = top + ((i64::from(ys.sample(py)) - y) * 100 / scale) as u32;
+            let row = py as usize * stride;
+            for (pixel, &sx) in raster.as_mut()[row + left..row + right]
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&samples_x)
+            {
+                let texel = source.image.get_pixel(sx, sy).0;
+                if opaque {
+                    *pixel = texel;
+                } else {
+                    blend_sample(pixel, texel, opacity);
+                }
+            }
+        }
+        return;
+    }
+    let frame = frame.raster_mut();
     let dst_stride = frame.width() as usize * 4;
     let src_stride = source.image.width() as usize * 4;
-    let dst_x = x.max(0);
     let span = (stop_x - dst_x) as usize * 4;
-    let opaque = opacity == 255 && source.is_opaque();
     if scale == 100 {
         let src_x = (i64::from(left) + dst_x - x) as usize;
         for dst_y in y.max(0)..stop_y {

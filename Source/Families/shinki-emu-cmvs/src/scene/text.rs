@@ -235,13 +235,15 @@ impl NativeTextRenderer {
         vm: &CmvsPs2aVmState,
         stage_width: u32,
     ) -> Result<Vec<SceneCommand>, CoreError> {
-        self.frame_with_owners(vm, stage_width, &mut Vec::new())
+        self.frame_with_owners(vm, stage_width, Transform2D::IDENTITY, [0.0; 2], &mut Vec::new())
     }
 
     fn frame_with_owners(
         &mut self,
         vm: &CmvsPs2aVmState,
         stage_width: u32,
+        camera: Transform2D,
+        shake: [f32; 2],
         owners: &mut Vec<(u8, usize)>,
     ) -> Result<Vec<SceneCommand>, CoreError> {
         let mut surfaces = [None; 12];
@@ -286,7 +288,7 @@ impl NativeTextRenderer {
             }
         }
         let mut drawn = Vec::new();
-        let commands = self.raster.frame_with_owners(&runs, &mut drawn)?;
+        let commands = self.raster.frame_with_owners(&runs, camera, shake, &mut drawn)?;
         owners.extend(drawn.into_iter().map(|index| run_owners[index]));
         Ok(commands)
     }

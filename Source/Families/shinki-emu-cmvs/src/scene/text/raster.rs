@@ -2,7 +2,7 @@
 //! their scene resources, on the portable glyph rasterizer in `outline`.
 use super::*;
 use crate::{CmvsNativeCustomGlyphBitmap, CmvsNativeFontRasterState, CmvsNativeTextGlyph};
-use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, GlyphInstance, Transform2D};
+use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, GlyphInstance};
 use std::{
     collections::{BTreeSet, btree_map::Entry},
     sync::Mutex,
@@ -69,10 +69,50 @@ impl CellKey {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct PaintKey {
     cell: CellKey,
+    grid: PresentationGrid,
     style: u32,
     colors: [u32; 2],
     color_mode: u32,
 }
+
+/// Actual texels per native cell pixel and snapped XY sample phase. The
+/// native size in `CellKey` and this density together determine raster ppem.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct PresentationGrid {
+    density: u32,
+    pub(super) phase: [u8; 2],
+}
+
+impl PresentationGrid {
+    pub(super) const NATIVE: Self = Self { density: 1.0f32.to_bits(), phase: [0; 2] };
+
+    pub(super) fn scale(self) -> f32 {
+        f32::from_bits(self.density)
+    }
+
+    pub(super) fn is_native(self) -> bool {
+        self == Self::NATIVE
+    }
+
+    fn at(run: &NativeRasterRun<'_>, camera: Transform2D, shake: [f32; 2], anchor: [i32; 2]) -> Self {
+        if run.style.raster.custom_bitmap_identity.is_some() {
+            return Self::NATIVE;
+        }
+        // Bound the temporary bitmap by the native 4096px cell budget,
+        // including the two MODE pixels on each side for the paint kernel.
+        let padded = run.pixel_size as f32 + 4.0;
+        let scale = (camera.m11 * run.logical_scale).min((4096.0f32 / padded).max(1.0));
+        // Reveal scales the final quad, not its mask. Shake follows the
+        // reveal transform in the native queue and contributes to phase.
+        let phase = std::array::from_fn(|axis| {
+            let logical = anchor[axis] as f32 * run.logical_scale + shake[axis];
+            let physical = logical * camera.m11 + [camera.tx, camera.ty][axis];
+            ((physical.rem_euclid(1.0) * 4.0).round() as u8) & 3
+        });
+        Self { density: scale.to_bits(), phase }
+    }
+}
+
 struct CachedCell {
     value: cell::Cell,
     live: bool,
@@ -161,6 +201,7 @@ impl State {
                     offset: [0, 0],
                     advance: 0,
                     empty: bitmap.coverage.iter().all(|value| *value == 0),
+                    ink: None,
                 }
             } else {
                 if let Entry::Vacant(entry) = self.fonts.entry(key.font) {
@@ -305,12 +346,14 @@ impl NativeRasterRenderer {
         &mut self,
         runs: &[NativeRasterRun<'_>],
     ) -> Result<Vec<SceneCommand>, CoreError> {
-        self.frame_with_owners(runs, &mut Vec::new())
+        self.frame_with_owners(runs, Transform2D::IDENTITY, [0.0; 2], &mut Vec::new())
     }
 
     pub(super) fn frame_with_owners(
         &mut self,
         runs: &[NativeRasterRun<'_>],
+        camera: Transform2D,
+        shake: [f32; 2],
         owners: &mut Vec<usize>,
     ) -> Result<Vec<SceneCommand>, CoreError> {
         let state = self
@@ -341,17 +384,42 @@ impl NativeRasterRenderer {
                 if cell.empty {
                     continue;
                 }
+                let anchor = [
+                    run.origin[0].checked_add(cell.offset[0]),
+                    run.origin[1].checked_add(cell.offset[1]),
+                ];
+                let [Some(x), Some(y)] = anchor else {
+                    return Err(error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"));
+                };
+                let anchor = [x, y];
+                let grid = PresentationGrid::at(run, camera, shake, anchor);
+                let colors = run.style.colors.map(|color| color & 0x00ff_ffff);
+                let color_mode = run.style.color_mode & 3;
+                let mask_only = run.style.style == 0 && (color_mode == 0 || colors[0] == colors[1]);
                 let paint_key = PaintKey {
                     cell: key,
+                    grid,
                     style: run.style.style,
-                    colors: run.style.colors,
-                    color_mode: run.style.color_mode & 3,
+                    colors: if mask_only { [0; 2] } else { colors },
+                    color_mode: if mask_only { 0 } else { color_mode },
                 };
                 let variant = match self.variants.entry(paint_key) {
                     Entry::Occupied(entry) => entry.into_mut(),
                     Entry::Vacant(entry) => {
-                        let (bitmap, upload_offset) =
-                            paint::paint_upload(&cell.bitmap, run.style, run.pixel_size)?;
+                        let style = run.style.into();
+                        let (bitmap, upload_offset) = if grid.is_native() {
+                            paint::paint_upload(
+                                &cell.bitmap, style, run.pixel_size, grid, [0; 2], mask_only,
+                            )?
+                        } else {
+                            let ink = cell.ink.expect("only a scalable cell has a presentation grid");
+                            let (source, origin) = outline::presentation(
+                                &state.assets, &state.fonts[&key.font], key, &ink, grid,
+                            )?;
+                            paint::paint_upload(
+                                &source, style, run.pixel_size, grid, origin, mask_only,
+                            )?
+                        };
                         let sequence = self.next_resource;
                         self.next_resource = sequence
                             .checked_add(1)
@@ -370,16 +438,28 @@ impl NativeRasterRenderer {
                     }
                 };
                 variant.live = true;
-                let x = run.origin[0]
-                    .checked_add(cell.offset[0])
-                    .and_then(|n| n.checked_sub(2))
-                    .and_then(|n| n.checked_add(variant.upload_offset[0]))
-                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?;
-                let y = run.origin[1]
-                    .checked_add(cell.offset[1])
-                    .and_then(|n| n.checked_sub(2))
-                    .and_then(|n| n.checked_add(variant.upload_offset[1]))
-                    .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?;
+                let mut point = variant.upload_offset;
+                if grid.is_native() {
+                    for axis in 0..2 {
+                        point[axis] = point[axis]
+                            .checked_add(anchor[axis])
+                            .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_GEOMETRY"))?;
+                    }
+                } else {
+                    let inverse = grid.scale().recip();
+                    let translate = |axis: usize| {
+                        anchor[axis] as f32 - f32::from(grid.phase[axis]) * 0.25 * inverse
+                    };
+                    commands.push(SceneCommand::PushTransform {
+                        transform: Transform2D {
+                            m11: inverse,
+                            m22: inverse,
+                            tx: translate(0),
+                            ty: translate(1),
+                            ..Transform2D::IDENTITY
+                        },
+                    });
+                }
                 if run.logical_scale != 1.0 {
                     commands.push(SceneCommand::PushTransform {
                         transform: Transform2D {
@@ -400,23 +480,29 @@ impl NativeRasterRenderer {
                     });
                 }
                 owners.push(index);
-                commands.push(SceneCommand::GlyphRun {
+                commands.push(SceneCommand::LinearGlyphRun {
                     id: run.id.clone(),
                     glyphs: vec![GlyphInstance {
                         resource_id: variant.resource_id.clone(),
-                        x,
-                        y,
+                        x: point[0],
+                        y: point[1],
                         rotation_quadrants: 0,
                     }]
                     .into(),
-                    rgba: [255; 4],
+                    rgba: if mask_only {
+                        [(colors[0] >> 16) as u8, (colors[0] >> 8) as u8, colors[0] as u8, 255]
+                    } else {
+                        [255; 4]
+                    },
                     opacity: run.visual[0],
-                    blend: BlendMode::Alpha,
                 });
                 if run.visual[1] != 1.0 {
                     commands.push(SceneCommand::PopTransform);
                 }
                 if run.logical_scale != 1.0 {
+                    commands.push(SceneCommand::PopTransform);
+                }
+                if !grid.is_native() {
                     commands.push(SceneCommand::PopTransform);
                 }
             }

@@ -1,10 +1,11 @@
 use crate::{
     crx::Crx,
     graphics::{self, Clip, Transform},
-    render::Canvas,
+    render::{Canvas, RasterAxis},
 };
 use image::{Pixel, Rgba, RgbaImage};
 use roukaku_media_core::OwnedPixelBuffer;
+use shinki_emu_sdk::StageCanvas;
 use std::{sync::Arc, time::Duration};
 
 const DENSITY: [usize; 7] = [0, 1, 3, 6, 9, 12, 20];
@@ -139,7 +140,7 @@ impl SceneLayer {
         x += (f64::from(motion.x_offset) * (1.0 - shown)).round() as i32;
         if let Some(mask) = &motion.mask {
             let (width, height) = frame.dimensions();
-            let mut layer = Canvas::Raster(RgbaImage::new(width, height));
+            let mut layer = Canvas::from_image(RgbaImage::new(width, height), None);
             graphics::blit_alpha(&mut layer, texture, x, y, None, 255, self.scale);
             let frame = frame.raster_mut();
             for (x, y, pixel) in layer.raster_mut().enumerate_pixels_mut() {
@@ -179,6 +180,7 @@ pub(crate) struct SceneTransition {
 
 pub(crate) struct ScreenBreak {
     frame: OwnedPixelBuffer,
+    presentation: Option<StageCanvas>,
     mask: Arc<Crx>,
     fragments: Vec<Fragment>,
     tick_fraction: u128,
@@ -203,6 +205,7 @@ impl ScreenBreak {
     pub(crate) fn new(
         frame: OwnedPixelBuffer,
         extent: (u32, u32),
+        presentation: Option<StageCanvas>,
         mask: Arc<Crx>,
         pattern: u8,
         random: &mut u32,
@@ -271,6 +274,7 @@ impl ScreenBreak {
         }
         Self {
             frame,
+            presentation: presentation.filter(|mapping| mapping.logical() != mapping.raster()),
             mask,
             fragments,
             tick_fraction: 0,
@@ -317,10 +321,16 @@ impl ScreenBreak {
         let frame = frame.raster_mut();
         let source = self.frame.as_slice();
         let (width, height) = (frame.width() as i32, frame.height() as i32);
+        let mapping = self.presentation.map(|canvas| {
+            (RasterAxis::x(canvas), RasterAxis::y(canvas), canvas.raster().width)
+        });
         for fragment in &self.fragments {
             let (x, y) = (fragment.position.0 as i32, fragment.position.1 as i32);
             let mask_x = fragment.age.max(0) * Self::CELL;
             for dy in y.max(0)..(y + Self::CELL).min(height) {
+                let source_row = mapping.map_or(dy as u32 * width as u32, |(_, ys, stride)| {
+                    ys.center(dy as u32) * stride
+                });
                 for dx in x.max(0)..(x + Self::CELL).min(width) {
                     // Fragments move the coverage mask. The captured RGB stays at its
                     // original screen coordinates, including where fragments overlap.
@@ -332,7 +342,8 @@ impl ScreenBreak {
                         continue;
                     };
                     if mask[0] == 0 {
-                        let i = 4 * (dy * width + dx) as usize;
+                        let sx = mapping.map_or(dx as u32, |(xs, _, _)| xs.center(dx as u32));
+                        let i = (source_row + sx) as usize * 4;
                         frame.put_pixel(
                             dx as u32,
                             dy as u32,
@@ -359,6 +370,7 @@ mod tests {
         let mut effect = ScreenBreak::new(
             original.into_raw().into(),
             extent,
+            None,
             Arc::new(Crx::from_image(0, 0, atlas)),
             4,
             &mut random,
@@ -367,7 +379,7 @@ mod tests {
         assert!(!effect.finished(Duration::from_millis(17), extent));
         effect.fragments[0].position = (17.0, 0.0);
 
-        let mut image = Canvas::new(extent.0, extent.1, false);
+        let mut image = Canvas::new(extent.0, extent.1);
         effect.draw(&mut image);
         assert_eq!(image.raster_mut().get_pixel(10, 0).0, [0, 0, 0, 255]);
         assert_eq!(image.raster_mut().get_pixel(27, 0).0, [27, 0, 0, 255]);

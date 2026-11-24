@@ -10,6 +10,15 @@ pub(super) struct Cell {
     pub offset: [i32; 2],
     pub advance: u32,
     pub empty: bool,
+    pub ink: Option<Ink>,
+}
+
+/// The native black-box copy, before the descriptor's external displacement.
+#[derive(Clone, Copy)]
+pub(super) struct Ink {
+    pub origin: [i32; 2],
+    pub position: [u32; 2],
+    pub extent: [u32; 2],
 }
 
 /// The `GLYPHMETRICS` fields 461840 consumes.
@@ -103,16 +112,10 @@ pub(super) fn compose(
                 .iter_mut()
                 .zip(&source[y * stride as usize..][..width as usize])
             {
-                *target = if settings.alternate_coverage {
-                    ALTERNATE
-                        .get(*value as usize)
-                        .copied()
-                        .ok_or_else(|| error("SHINKI_EMU_CMVS_RASTER_BITMAP"))?
-                } else if *value == 0 {
-                    0
-                } else {
-                    value.wrapping_mul(16).wrapping_sub(1)
-                };
+                if settings.alternate_coverage && usize::from(*value) >= ALTERNATE.len() {
+                    return Err(error("SHINKI_EMU_CMVS_RASTER_BITMAP"));
+                }
+                *target = alpha(*value, settings.alternate_coverage);
             }
         }
     }
@@ -126,7 +129,22 @@ pub(super) fn compose(
         offset,
         advance,
         empty,
+        ink: (!empty).then_some(Ink {
+            origin: gm.origin,
+            position: [ink_x as u32, ink_y as u32],
+            extent: [width, height],
+        }),
     })
+}
+
+pub(super) fn alpha(level: u8, alternate: bool) -> u8 {
+    if alternate {
+        ALTERNATE[usize::from(level)]
+    } else if level == 0 {
+        0
+    } else {
+        level.wrapping_mul(16).wrapping_sub(1)
+    }
 }
 
 #[cfg(test)]

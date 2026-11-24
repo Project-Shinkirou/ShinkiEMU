@@ -59,14 +59,16 @@ impl NativeTextRenderer {
         &mut self,
         vm: &mut CmvsPs2aVmState,
         stage_width: u32,
+        camera: Transform2D,
         textures: &mut TextureCache,
     ) -> Result<NativeDrawGroups, CoreError> {
         let mut glyph_groups = Vec::new();
         self.glyph_groups(vm, stage_width, textures, &mut glyph_groups)?;
         let mut owners = Vec::new();
-        let text = self.frame_with_owners(vm, stage_width, &mut owners)?;
+        let shake = crate::vm::screen_shake::logical_offset(vm, stage_width, 0)?;
+        let text = self.frame_with_owners(vm, stage_width, camera, shake, &mut owners)?;
         let mut output = NativeDrawGroups::default();
-        collect_text_groups(vm, stage_width, text, owners, &mut output)?;
+        collect_text_groups(vm, shake, text, owners, &mut output)?;
         output.resources.append(&mut self.glyph_pending);
         output.groups.append(&mut glyph_groups);
         Ok(output)
@@ -470,7 +472,7 @@ fn append_draw(
 
 fn collect_text_groups(
     vm: &CmvsPs2aVmState,
-    stage_width: u32,
+    shake: [f32; 2],
     commands: Vec<SceneCommand>,
     owners: Vec<(u8, usize)>,
     output: &mut NativeDrawGroups,
@@ -478,7 +480,6 @@ fn collect_text_groups(
     let mut transforms = Vec::new();
     let mut owners = owners.into_iter();
     let mut draws = BTreeMap::<(u8, usize), Vec<SceneCommand>>::new();
-    let shake = crate::vm::screen_shake::logical_offset(vm, stage_width, 0)?;
     for command in commands {
         match command {
             SceneCommand::UploadGlyph { .. }
@@ -490,7 +491,7 @@ fn collect_text_groups(
                     .pop()
                     .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_COMMAND"))?;
             }
-            SceneCommand::GlyphRun { .. } => {
+            SceneCommand::LinearGlyphRun { .. } => {
                 let owner = owners
                     .next()
                     .ok_or_else(|| error("SHINKI_EMU_CMVS_TEXT_COMMAND"))?;

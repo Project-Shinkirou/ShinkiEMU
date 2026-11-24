@@ -1,9 +1,10 @@
+use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat};
 use shinki_emu_lucifen_formats::{ElgImage, decode_elg};
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet},
     io,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 const MAX_PIXELS: u64 = 16_777_216;
@@ -2438,87 +2439,37 @@ impl Graphics {
     pub(crate) fn draw_glyphs(
         &mut self,
         target: i32,
-        x: i32,
-        y: i32,
         font: &crate::text::Font,
-        layout: &roukaku_text::TextLayoutResult,
+        raster: &crate::text::NativeTextRaster,
     ) -> io::Result<()> {
-        use roukaku_media_core::GlyphBitmapFormat;
+        let [shadow_x, shadow_y] = [i64::from(font.effect.1), i64::from(font.effect.2)];
+        let layers = [
+            (font.effect.0 != 0).then_some(([shadow_x, shadow_y], font.shadow, None)),
+            font.bold.then_some(([1, 0], font.foreground, font.gradient)),
+            Some(([0, 0], font.foreground, font.gradient)),
+        ];
         let surface = self
             .surfaces
             .get_mut(&target)
             .ok_or_else(|| invalid("unknown Lucifen surface"))?;
         let surface = Arc::make_mut(surface);
-        let glyphs: BTreeMap<_, _> = layout
-            .glyph_resources
+        let glyphs: BTreeMap<_, _> = raster
+            .resources()
             .iter()
             .map(|resource| (resource.resource_id.as_str(), &resource.bitmap))
             .collect();
-        for glyph in layout.shaped_runs.iter().flat_map(|run| &run.glyphs) {
-            let (Some(id), Some(left), Some(top)) =
-                (&glyph.resource_id, glyph.render_x, glyph.render_y)
-            else {
-                continue;
-            };
+        for (id, [x, y]) in raster.glyphs() {
             let bitmap = glyphs
-                .get(id.as_str())
+                .get(id)
                 .ok_or_else(|| invalid("missing shaped Lucifen glyph"))?;
-            let base = [
-                i64::from(x) + i64::from(left),
-                i64::from(y) + i64::from(top),
-            ];
-            let mut layers = Vec::with_capacity(3);
-            if font.effect.0 != 0 {
-                layers.push((
-                    i64::from(font.effect.1),
-                    i64::from(font.effect.2),
-                    font.shadow,
-                    None,
-                ));
-            }
-            if font.bold {
-                layers.push((1, 0, font.foreground, font.gradient));
-            }
-            layers.push((0, 0, font.foreground, font.gradient));
-            for (dx, dy, color, gradient) in layers {
-                for row in 0..bitmap.height {
-                    let y = base[1] + i64::from(row) + dy;
-                    if !(0..i64::from(surface.height)).contains(&y) {
-                        continue;
-                    }
-                    let shear = if font.italic {
-                        i64::from((bitmap.height - row) / 4)
-                    } else {
-                        0
-                    };
-                    let color = gradient.map_or(color, |[first, last]| {
-                        let top = bitmap.height - row;
-                        std::array::from_fn(|channel| {
-                            ((u32::from(first[channel]) * top + u32::from(last[channel]) * row)
-                                / bitmap.height) as u8
-                        })
-                    });
-                    for column in 0..bitmap.width {
-                        let x = base[0] + i64::from(column) + dx + shear;
-                        if !(0..i64::from(surface.width)).contains(&x) {
-                            continue;
-                        }
-                        let offset = (row * bitmap.width + column) as usize;
-                        let source = match bitmap.format {
-                            GlyphBitmapFormat::Alpha8 => [
-                                color[0],
-                                color[1],
-                                color[2],
-                                bitmap.pixels.as_slice()[offset],
-                            ],
-                            GlyphBitmapFormat::Rgba8 => bitmap.pixels.as_slice()[offset * 4..][..4]
-                                .try_into()
-                                .unwrap(),
-                        };
-                        let offset = (y as usize * surface.width as usize + x as usize) * 4;
-                        mix(&mut surface.pixels[offset..][..4], source, 255);
-                    }
-                }
+            for ([dx, dy], color, gradient) in layers.into_iter().flatten() {
+                surface.paint_glyph(
+                    bitmap,
+                    [x + dx, y + dy],
+                    color,
+                    gradient,
+                    font.italic,
+                );
             }
         }
         self.surface_changed(target);
@@ -3412,6 +3363,96 @@ fn mix(target: &mut [u8], source: [u8; 4], opacity: u8) {
         }
         target[3] = ((total + 127) / 255) as u8;
     }
+}
+
+impl Surface {
+    fn paint_glyph(
+        &mut self,
+        bitmap: &GlyphBitmap,
+        [x, y]: [i64; 2],
+        color: [u8; 3],
+        gradient: Option<[[u8; 3]; 2]>,
+        italic: bool,
+    ) {
+        let top = (-y).max(0);
+        let bottom = (i64::from(self.height) - y).min(i64::from(bitmap.height));
+        for row in top..bottom {
+            let remaining = i64::from(bitmap.height) - row;
+            let x = x + if italic { remaining / 4 } else { 0 };
+            let left = (-x).max(0);
+            let right = (i64::from(self.width) - x).min(i64::from(bitmap.width));
+            if right <= left {
+                continue;
+            }
+            let offset = ((y + row) as usize * self.width as usize + (x + left) as usize) * 4;
+            let count = (right - left) as usize;
+            let target = self.pixels[offset..offset + count * 4].as_chunks_mut::<4>().0;
+            let start = row as usize * bitmap.width as usize + left as usize;
+            let source = bitmap.pixels.as_slice();
+            match bitmap.format {
+                GlyphBitmapFormat::Alpha8 => {
+                    let [r, g, b] = gradient.map_or(color, |[first, last]| {
+                        std::array::from_fn(|channel| {
+                            ((i64::from(first[channel]) * remaining
+                                + i64::from(last[channel]) * row)
+                                / i64::from(bitmap.height)) as u8
+                        })
+                    });
+                    for (pixel, &coverage) in target.iter_mut().zip(&source[start..start + count]) {
+                        mix_text(pixel, [r, g, b, coverage]);
+                    }
+                }
+                GlyphBitmapFormat::Rgba8 => {
+                    let source = source[start * 4..(start + count) * 4].as_chunks::<4>().0;
+                    for (pixel, source) in target.iter_mut().zip(source) {
+                        mix_text(pixel, *source);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static SRGB_TO_LINEAR: LazyLock<[f32; 256]> = LazyLock::new(|| {
+    std::array::from_fn(|byte| {
+        let value = byte as f32 / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    })
+});
+
+// The native bitmap keeps straight sRGB bytes. Only glyph source-over blends
+// in linear light; the VM's other bitmap operations keep their own rules.
+fn mix_text(target: &mut [u8; 4], source: [u8; 4]) {
+    let alpha = u32::from(source[3]);
+    if alpha == 0 {
+        return;
+    }
+    if alpha == 255 || target[3] == 0 {
+        *target = source;
+        return;
+    }
+    let destination_alpha = u32::from(target[3]) * (255 - alpha);
+    let total = alpha * 255 + destination_alpha;
+    let weight = (alpha * 255) as f32 / total as f32;
+    let table = &*SRGB_TO_LINEAR;
+    for channel in 0..3 {
+        if source[channel] != target[channel] {
+            let from = table[target[channel] as usize];
+            let to = table[source[channel] as usize];
+            let blended = (to - from).mul_add(weight, from);
+            let encoded = if blended <= 0.0031308 {
+                blended * 12.92
+            } else {
+                1.055 * blended.powf(1.0 / 2.4) - 0.055
+            };
+            target[channel] = (encoded * 255.0).round() as u8;
+        }
+    }
+    target[3] = ((total + 127) / 255) as u8;
 }
 
 fn invalid(message: &'static str) -> io::Error {

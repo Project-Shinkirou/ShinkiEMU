@@ -67,6 +67,36 @@ fn run<'a>(id: &str, style: &'a CmvsNativeTextGlyph) -> NativeRasterRun<'a> {
 }
 
 #[test]
+fn solid_inline_colors_share_one_coverage_upload() {
+    let mut renderer = renderer();
+    let mut red = style(0xff0000);
+    red.style = 0;
+    let mut blue = style(0x0000ff);
+    blue.style = 0;
+    let commands = renderer.frame(&[run("red", &red), run("blue", &blue)]).unwrap();
+    let mut uploads = commands.iter().filter_map(|command| match command {
+        SceneCommand::UploadGlyph { resource_id, glyph } => {
+            assert_eq!(glyph.format, GlyphBitmapFormat::Alpha8);
+            Some(resource_id)
+        }
+        _ => None,
+    });
+    let upload = uploads.next().unwrap();
+    assert!(uploads.next().is_none());
+    let colors: Vec<_> = commands
+        .iter()
+        .filter_map(|command| match command {
+            SceneCommand::LinearGlyphRun { glyphs, rgba, .. } => {
+                assert_eq!(&glyphs[0].resource_id, upload);
+                Some(*rgba)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(colors, [[255, 0, 0, 255], [0, 0, 255, 255]]);
+}
+
+#[test]
 fn cache_hits_do_not_upload_and_only_live_paint_variants_survive() {
     let mut renderer = renderer();
     let red = style(0xff0000);
@@ -185,7 +215,7 @@ fn custom_descriptor_changes_update_advance_without_reuploading_pixels() {
             .iter()
             .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }))
     );
-    let SceneCommand::GlyphRun { glyphs, .. } = &commands[1] else {
+    let SceneCommand::LinearGlyphRun { glyphs, .. } = &commands[1] else {
         panic!("missing retained custom draw")
     };
     assert_eq!(glyphs[0].resource_id, resource_id);
