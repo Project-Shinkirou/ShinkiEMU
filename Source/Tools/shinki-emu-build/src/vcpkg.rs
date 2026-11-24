@@ -1,5 +1,5 @@
 //! Cargo-owned, target-isolated vcpkg manifest installations.
-use crate::{NativeInputs, pins, run, watch_env, work_root};
+use crate::{NativeInputs, inputs::Pins, pins, run, watch_env, work_root};
 use anyhow::{Context, Result, bail, ensure};
 use sha2::{Digest, Sha256};
 use std::{
@@ -33,7 +33,7 @@ fn triplet(target: &str) -> Result<&'static str> {
     })
 }
 
-fn target_triplet(target: &str) -> Result<String> {
+fn target_triplet(target: &str) -> Result<&'static str> {
     // The private cross image supplies its own SDK chainload triplet.
     if watch_env("SHINKI_EMU_APPLE_CROSS").is_some() {
         return Ok(match target {
@@ -43,9 +43,9 @@ fn target_triplet(target: &str) -> Result<String> {
             "aarch64-apple-ios-sim" => "arm64-ios-sim-cross",
             "x86_64-apple-ios" => "x64-ios-sim-cross",
             _ => bail!("no private Apple cross toolchain for {target}"),
-        }.into());
+        });
     }
-    Ok(triplet(target)?.to_owned())
+    triplet(target)
 }
 
 pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
@@ -60,7 +60,7 @@ pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
         ports.push(overlay);
     }
     let shared_libass = id == "impacto" && target.ends_with("-linux-android");
-    let installation = install(source, &target_triplet(&target)?, ports, shared_libass)?;
+    let installation = install(&pins()?, source, target_triplet(&target)?, ports, shared_libass)?;
     installation.report(&format!("native-vcpkg/{id}"), &target)?;
     Ok(installation)
 }
@@ -68,21 +68,21 @@ pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
 pub fn install_shared(name: &str) -> Result<Installation> {
     let target = env::var("TARGET")?;
     let lock = pins()?;
-    let triplet = match (name, target.as_str()) {
-        ("ffmpeg", "x86_64-pc-windows-msvc") => lock.ffmpeg_windows_triplet,
-        ("subtitle", "x86_64-pc-windows-msvc") => lock.subtitle_windows_triplet,
+    let triplet: &str = match (name, target.as_str()) {
+        ("ffmpeg", "x86_64-pc-windows-msvc") => &lock.ffmpeg_windows_triplet,
+        ("subtitle", "x86_64-pc-windows-msvc") => &lock.subtitle_windows_triplet,
         ("ffmpeg" | "subtitle", _) => target_triplet(&target)?,
         _ => bail!("unknown shared manifest {name}"),
     };
-    install(&crate::workspace().join("build/vcpkg").join(name), &triplet, Vec::new(), false)
+    install(&lock, &crate::workspace().join("build/vcpkg").join(name), triplet, Vec::new(), false)
 }
 
-fn install(manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>, shared_libass: bool) -> Result<Installation> {
+fn install(lock: &Pins, manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>, shared_libass: bool) -> Result<Installation> {
     ensure!(!triplet.is_empty() && triplet.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'), "invalid vcpkg triplet {triplet:?}");
     let workspace = crate::workspace();
     let work = work_root();
-    let lock = pins()?;
-    let root = watch_env("SHINKI_EMU_VCPKG_ROOT").map_or_else(|| work.join("vcpkg"), PathBuf::from);
+    let root = watch_env("SHINKI_EMU_VCPKG_ROOT")
+        .map_or_else(|| work.join("vcpkg"), |root| workspace.join(root));
     let root = std::path::absolute(root)?;
     let parent = root.parent().context("vcpkg root must have a parent")?;
     fs::create_dir_all(parent)?;
@@ -311,18 +311,12 @@ pub(crate) fn pkg_config_program(target: &str, installed: Option<&Path>) -> Resu
         {
             return Ok(program);
         }
-        let tools = work_root().join("vcpkg-downloads/tools/msys2");
-        let mut programs = Vec::new();
-        if let Ok(entries) = fs::read_dir(&tools) {
-            for entry in entries {
-                let candidate = entry?.path().join("mingw64/bin/pkgconf.exe");
-                if candidate.is_file() {
-                    programs.push(candidate);
-                }
-            }
-        }
-        programs.sort();
-        return programs.pop().with_context(|| format!("vcpkg did not install host pkgconf under {}", tools.display()));
+        // A transferred Ren'Py runtime has pkg-config files but no vcpkg
+        // installation of its own. It cannot depend on another core running first.
+        let host = install(&pins()?, &crate::workspace().join("build/vcpkg/pkgconf"), "x64-windows", Vec::new(), false)?;
+        let program = host.prefix.join("tools/pkgconf/pkgconf.exe");
+        ensure!(program.is_file(), "pkgconf manifest did not install {}", program.display());
+        return Ok(program);
     }
     Ok(PathBuf::from("pkg-config"))
 }
