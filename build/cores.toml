@@ -406,9 +406,10 @@ family_name = "Ren’Py"
 license = "MIT AND LGPL-2.1-or-later"
 resources = []
 static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-adapter_licenses = ["shinki/LICENSE", "licenses/renpy/README.txt", "licenses/renpy/python", "licenses/renpy/python-sources.json", "licenses/renpy/native-sources.json"]
+licenses = ["docs/licenses/renpy/README.md"]
+adapter_licenses = ["shinki/LICENSE", "licenses/renpy/python", "licenses/renpy/python-sources.json", "licenses/renpy/native-sources.json"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-publish_blocked = ""
+publish_blocked = "Publish the exact corresponding source and verify LGPL relinking for every shipped platform/ABI first. See docs/licenses/renpy/README.md."
 [cores.attribution]
 adapter_branch = "shinki-android-ports"
 release_sequence = 2
