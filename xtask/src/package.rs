@@ -981,67 +981,121 @@ const ANDROID_BUNDLE_MANIFEST: &str = "assets/bundled.manifest";
 // The official APK signing certificate (SHA-256).
 const ANDROID_PRODUCTION_CERT: &str =
     "c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc";
+// The published manager-v0.1.0-beta.8 APK used versionCode 86.
+const LAST_PUBLIC_ANDROID_VERSION_CODE: u32 = 86;
 
-/// Stage the ABI's native files; stage shared resources and Java inputs once.
-pub(crate) fn android_inputs(
+fn android_asset_entries(
     inv: &Inventory,
     result: &BuildArtifact,
-    stage: &Path,
-    shared: bool,
+    shared_scratch: Option<&Path>,
+) -> Result<Vec<(PathBuf, String)>> {
+    let mut assets = if let Some(scratch) = shared_scratch {
+        // This includes native notices for this ABI and one cargo-about
+        // report that already covers both Android targets.
+        let mut assets = licenses(inv, result, scratch)?;
+        assets.extend(metadata_entries(inv, scratch)?);
+        assets.push((
+            inv.root.join("THIRD_PARTY_NOTICES.md"),
+            "THIRD_PARTY_NOTICES.md".into(),
+        ));
+        let ndk = dependencies::ndk_root(inv)?;
+        for notice in ["NOTICE", "NOTICE.toolchain"] {
+            assets.push((ndk.join(notice), format!("licenses/android-ndk/{notice}")));
+        }
+        assets
+    } else {
+        result
+            .native_inputs
+            .iter()
+            .flat_map(|input| &input.licenses)
+            .map(|asset| (asset.source.clone(), asset.dest.clone()))
+            .collect()
+    };
+    assets.extend(static_core_entries(inv, result)?);
+    for (_, name) in &mut assets {
+        name.insert_str(0, "assets/");
+    }
+    Ok(assets)
+}
+
+fn android_inputs(
+    inv: &Inventory,
+    result: &BuildArtifact,
+    abi: &str,
+    shared_scratch: Option<&Path>,
+    entries: &mut Vec<(PathBuf, String)>,
 ) -> Result<()> {
-    let abi = ANDROID_TARGETS
-        .iter()
-        .find(|(target, _)| *target == result.target)
-        .map(|(_, abi)| *abi)
-        .context("unsupported Android ABI")?;
-    let mut entries = vec![(
+    entries.push((
         result.library.clone(),
         format!("jniLibs/{abi}/libshinki_emu_manager.so"),
-    )];
-    for dep in binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)? {
-        let (source, name) = dep;
+    ));
+    for (source, name) in binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)? {
         entries.push((source, format!("jniLibs/{abi}/{name}")));
     }
-    if !shared {
-        return copy_entries(&entries, stage);
+    entries.extend(android_asset_entries(inv, result, shared_scratch)?);
+    if shared_scratch.is_some() {
+        entries.extend(android_host::inputs(inv, result)?);
     }
-    let temp = crate::temporary::directory()?;
-    let metadata = metadata_entries(inv, temp.path())?;
-    let mut bundled = vec!["THIRD_PARTY_NOTICES.md".to_owned()];
-    entries.push((
-        inv.root.join("THIRD_PARTY_NOTICES.md"),
-        "assets/THIRD_PARTY_NOTICES.md".into(),
-    ));
-    let ndk = dependencies::ndk_root(inv)?;
-    for notice in ["NOTICE", "NOTICE.toolchain"] {
-        let name = format!("licenses/android-ndk/{notice}");
-        bundled.push(name.clone());
-        entries.push((ndk.join(notice), format!("assets/{name}")));
+    Ok(())
+}
+
+fn same_android_asset(first: &Path, second: &Path, mut len: u64) -> Result<bool> {
+    plain(first)?;
+    plain(second)?;
+    let mut first = fs::File::open(first)?;
+    let mut second = fs::File::open(second)?;
+    let metadata = second.metadata()?;
+    if !metadata.is_file() || metadata.len() != len {
+        return Ok(false);
     }
-    for (source, name) in metadata
-        .into_iter()
-        .chain(licenses(inv, result, temp.path())?)
-        .chain(static_core_entries(inv, result)?)
-    {
-        bundled.push(name.clone());
-        entries.push((source, format!("assets/{name}")));
-    }
-    for (source, name) in android_host::inputs(inv, result)? {
-        if let Some(asset) = name.strip_prefix("assets/") {
-            bundled.push(asset.to_owned());
+    let mut a = [0; 8192];
+    let mut b = [0; 8192];
+    while len != 0 {
+        let n = len.min(a.len() as u64) as usize;
+        first.read_exact(&mut a[..n])?;
+        second.read_exact(&mut b[..n])?;
+        if a[..n] != b[..n] {
+            return Ok(false);
         }
-        entries.push((source, name));
+        len -= n as u64;
     }
-    for (source, name) in &entries {
-        if name.starts_with("assets/") && fs::metadata(source)?.len() > 32 * 1024 * 1024 {
-            bail!("Android asset exceeds the runtime size limit: {name}");
+    Ok(true)
+}
+
+fn stage_android_inputs(mut entries: Vec<(PathBuf, String)>, stage: &Path) -> Result<()> {
+    // Sort the union so repeated asset destinations are adjacent and the
+    // runtime extraction list is deterministic.
+    entries.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+    let mut manifest = String::new();
+    for group in entries.chunk_by(|a, b| a.1 == b.1) {
+        let (source, name) = &group[0];
+        let Some(asset) = name.strip_prefix("assets/") else {
+            continue;
+        };
+        ensure!(
+            !name.eq_ignore_ascii_case(ANDROID_BUNDLE_MANIFEST),
+            "reserved Android asset destination: {name}"
+        );
+        let len = fs::metadata(source)?.len();
+        ensure!(
+            len <= 32 * 1024 * 1024,
+            "Android asset exceeds the runtime size limit: {name}"
+        );
+        for (other, _) in &group[1..] {
+            ensure!(
+                source == other || same_android_asset(source, other, len)?,
+                "conflicting Android asset {name}: {} and {}",
+                source.display(),
+                other.display(),
+            );
         }
+        manifest.push_str(asset);
+        manifest.push('\n');
     }
-    bundled.sort();
-    let manifest = bundled.join("\n") + "\n";
     if manifest.len() > 1024 * 1024 {
         bail!("Android bundled manifest exceeds the runtime size limit");
     }
+    entries.dedup_by(|a, b| a.1 == b.1 && a.1.starts_with("assets/"));
     copy_entries(&entries, stage)?;
     fs::write(stage.join(ANDROID_BUNDLE_MANIFEST), manifest)?;
     Ok(())
@@ -1156,6 +1210,15 @@ fn verify_android_certificate(signing: &str, expected: &str) -> Result<()> {
     Ok(())
 }
 
+fn signed_android_version_code(value: &str) -> Result<u32> {
+    let code: u32 = value.parse().context("invalid SHINKI_EMU_ANDROID_VERSION_CODE")?;
+    ensure!(
+        (LAST_PUBLIC_ANDROID_VERSION_CODE + 1..=i32::MAX as u32).contains(&code),
+        "signed Android versionCode must exceed {LAST_PUBLIC_ANDROID_VERSION_CODE} and fit a positive Android int",
+    );
+    Ok(code)
+}
+
 pub(crate) fn package_android_qa(
     inv: &Inventory,
     target: &str,
@@ -1206,6 +1269,14 @@ fn package_android(
             "Android release signing requires the keystore and all three password/alias variables; partial signing configuration is an error"
         );
     }
+    let version_code = if signed {
+        signed_android_version_code(
+            &std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE")
+                .context("set SHINKI_EMU_ANDROID_VERSION_CODE for a signed release APK")?,
+        )?
+    } else {
+        std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE").as_deref().unwrap_or("1").parse()?
+    };
     let private_key = if let Some(encoded) = encoded {
         let key = crate::temporary::file()?;
         fs::write(
@@ -1227,23 +1298,20 @@ fn package_android(
     if let Some(key) = &key {
         plain(key)?;
     }
-    let version_code = if signed {
-        std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE")
-            .context("set SHINKI_EMU_ANDROID_VERSION_CODE for a signed release APK")?
-            .parse::<std::num::NonZeroU32>()?.get()
-    } else {
-        std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE").as_deref().unwrap_or("1").parse()?
-    };
     atomic_directory(out, |stage| {
-        for (target, _) in targets {
+        let scratch = crate::temporary::directory()?;
+        let mut entries = Vec::new();
+        for (target, abi) in targets {
             if *target == result.target {
-                android_inputs(inv, result, stage, true)?;
+                android_inputs(inv, result, abi, Some(scratch.path()), &mut entries)?;
             } else {
                 let built = build::package_artifact(inv, target, "manager", version)?;
                 reject_overlap(&built.library, out)?;
-                android_inputs(inv, &built, stage, false)?;
+                android_inputs(inv, &built, abi, None, &mut entries)?;
             }
         }
+        stage_android_inputs(entries, stage)?;
+        drop(scratch);
         crate::icon::Icon::new()?.android(stage)?;
         let debug_key = if signed { None } else { Some(prepare_android_debug_key()?) };
         let certificate = match debug_key {
@@ -1382,6 +1450,114 @@ fn verify_android_apk(
 mod android_tests {
     use super::*;
     use clap::Parser as _;
+    use shinki_emu_build::{CoreBuildManifest, NativeInputs};
+
+    #[test]
+    fn android_stages_both_abi_asset_sets_and_lists_equal_resources_once() {
+        let root = crate::temporary::directory().unwrap();
+        let inv = Inventory {
+            root: root.path().into(),
+            cores: vec![serde_json::from_value(serde_json::json!({
+                "id": "renpy",
+                "family_id": "renpy",
+                "display_name": "Ren'Py",
+                "family_name": "Ren'Py",
+                "license": "MIT",
+                "resources": [],
+                "supported_targets": [],
+                "static_manager_targets": ANDROID_TARGETS.map(|(target, _)| target),
+                "blocked": [],
+                "publish_blocked": "",
+            })).unwrap()],
+            targets: vec![],
+        };
+        let common = "cores/renpy/Resources/lib/python3.12/os.py";
+        let mut expected = vec![(common.to_owned(), "common stdlib")];
+        let mut entries = Vec::new();
+        for (target, abi) in ANDROID_TARGETS {
+            let inputs = root.path().join(abi);
+            fs::create_dir(&inputs).unwrap();
+            let write = |name: &str, text: &str| {
+                let source = inputs.join(name);
+                fs::write(&source, text).unwrap();
+                source
+            };
+            let sysconfig = format!("Resources/lib/{target}/python3.12/_sysconfigdata__linux_.py");
+            let notice = format!("licenses/native/{abi}/NOTICE");
+            let core_notice = format!("licenses/renpy/{abi}/NOTICE");
+            let artifact = BuildArtifact {
+                component: "manager".into(),
+                target: target.into(),
+                product_version: None,
+                library: inputs.join("libshinki_emu_manager.so"),
+                core_build: None,
+                embedded_core_builds: vec![CoreBuildManifest {
+                    plugin_id: "renpy".into(),
+                    target: target.into(),
+                    artifact_kind: "native-static".into(),
+                    native_library: Some(write("librenpy.a", abi)),
+                    resources: vec![
+                        BuildAsset { source: write("sysconfig.py", abi), dest: sysconfig.clone() },
+                        BuildAsset {
+                            source: write("os.py", "common stdlib"),
+                            dest: "Resources/lib/python3.12/os.py".into(),
+                        },
+                    ],
+                    licenses: vec![BuildAsset {
+                        source: write("core-notice", abi),
+                        dest: core_notice.clone(),
+                    }],
+                }],
+                native_inputs: vec![NativeInputs {
+                    licenses: vec![BuildAsset { source: write("native-notice", abi), dest: notice.clone() }],
+                    ..Default::default()
+                }],
+                source_commit: None,
+                features: vec![],
+            };
+            entries.extend(android_asset_entries(&inv, &artifact, None).unwrap());
+            expected.extend([
+                (format!("cores/renpy/{sysconfig}"), abi),
+                (format!("licenses/embedded/renpy/{core_notice}"), abi),
+                (notice, abi),
+            ]);
+        }
+
+        let stage = root.path().join("stage");
+        stage_android_inputs(entries, &stage).unwrap();
+        expected.sort_unstable();
+        let manifest = fs::read_to_string(stage.join(ANDROID_BUNDLE_MANIFEST)).unwrap();
+        assert!(manifest.lines().eq(expected.iter().map(|(name, _)| name.as_str())));
+        for (name, bytes) in expected {
+            assert_eq!(fs::read_to_string(stage.join("assets").join(name)).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn android_rejects_conflicting_bytes_at_the_same_asset_destination() {
+        let root = crate::temporary::directory().unwrap();
+        let arm = root.path().join("arm64");
+        let x86 = root.path().join("x86_64");
+        let mut data = vec![b'a'; 8193];
+        fs::write(&arm, &data).unwrap();
+        data[8192] = b'b';
+        fs::write(&x86, &data).unwrap();
+        let name = "assets/cores/renpy/Resources/lib/python3.12/os.py";
+        let stage = root.path().join("stage");
+        let error = stage_android_inputs(vec![(arm, name.into()), (x86, name.into())], &stage)
+            .unwrap_err();
+        assert!(error.to_string().contains(name));
+        assert!(!stage.exists());
+    }
+
+    #[test]
+    fn signed_android_version_code_must_upgrade_and_fit_an_android_int() {
+        for code in ["-1", "0", "85", "86", "2147483648"] {
+            assert!(signed_android_version_code(code).is_err(), "{code}");
+        }
+        assert_eq!(signed_android_version_code("87").unwrap(), 87);
+        assert_eq!(signed_android_version_code("2147483647").unwrap(), 2147483647);
+    }
 
     #[test]
     fn single_abi_qa_is_available_only_for_manager_packaging() {
