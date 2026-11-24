@@ -12,3 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 shinki-emu-siglus_rs = { workspace = true, features = ["dynamic"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Siglus's Kira/CPAL path uses Oboe. Select the packaged NDK runtime instead
+# of oboe-sys's bare libc++_static, which omits libc++abi on NDK r30.
+oboe = { workspace = true, features = ["shared-stdcxx"] }

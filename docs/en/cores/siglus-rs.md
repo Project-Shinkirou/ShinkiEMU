@@ -21,6 +21,8 @@ Scene restarts retain the session's image and movie resource language. CHS mode 
 
 Android Manager statically embeds Siglus alongside RFVP, Artemis and Musica. Siglus and RFVP use the same wgpu 30 runtime as Manager. Their native WMV decoders keep the Rust API without exporting the optional `c-abi` functions into Manager, preventing duplicate `wmv2_decoder_*` symbols.
 
+The standalone Android core uses the NDK's `libc++_shared.so` for Oboe audio. Packaging includes the target ABI's library and the NDK notices.
+
 ## Saves and keys
 
 Saves stay where the original engine writes them: `<game>/savedata/` holds `NNNN.sav` slots and thumbnails, `global.sav`, `config.sav`, `read.sav` and Twitter state; captures and exports are written relative to the game directory. A recovered key goes to `<game>/key.toml`, as upstream does. The `chs` resource pair shares `savedata/` with the original pair, like the patched original. The game directory must be writable.

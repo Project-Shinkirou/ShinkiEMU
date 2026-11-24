@@ -11315,6 +11315,7 @@ dependencies = [
 name = "shinki-emu-core-siglus_rs"
 version = "0.1.0"
 dependencies = [
+ "oboe",
  "shinki-emu-siglus_rs",
 ]
 

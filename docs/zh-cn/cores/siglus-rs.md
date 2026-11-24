@@ -21,6 +21,8 @@ fork 保留 Siglus VM、renderer、文字/键盘输入和原生存档。适配�
 
 Android Manager 静态嵌入 Siglus、RFVP、Artemis 和 Musica。Siglus 与 RFVP 使用和 Manager 相同的 wgpu 30 运行时。两者的原生 WMV 解码器保留 Rust API，不在 Manager 中启用可选 `c-abi` 导出，避免重复的 `wmv2_decoder_*` 符号。
 
+Android 独立核心的 Oboe 音频使用 NDK 的 `libc++_shared.so`，打包时会附带对应 ABI 的运行库及 NDK 许可声明。
+
 ## 存档与密钥
 
 存档位置与原版引擎一致：`<游戏>/savedata/` 存放 `NNNN.sav` 存档位及缩略图、`global.sav`、`config.sav`、`read.sav` 和 Twitter 状态；截图和导出文件写在游戏目录下的相对路径。恢复出的密钥按上游写入 `<游戏>/key.toml`。`chs` 资源对与原版资源对共用 `savedata/`，和打过汉化补丁的原版行为相同。游戏目录需要可写。
