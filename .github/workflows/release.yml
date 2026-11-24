@@ -261,6 +261,7 @@ jobs:
         env:
           MATRIX: ${{ needs.select.outputs.matrix }}
           RELEASE_TAG: ${{ matrix.tag }}
+          SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
         run: |
           set -euo pipefail
           # Prepared files sit at .work/release/<tag>/<target>/release.json.
@@ -272,8 +273,8 @@ jobs:
             exit 1
           fi
           while IFS= read -r target; do
-            jq -e --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" \
-              '.component == $component and .version == $version and .target == $target and .release_scope == $scope' \
+            jq -e --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" --arg commit "$SOURCE_COMMIT" \
+              '.component == $component and .version == $version and .target == $target and .release_scope == $scope and .source_commit == $commit' \
               ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
       - name: Show local Manager release instructions

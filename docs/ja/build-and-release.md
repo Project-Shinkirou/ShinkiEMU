@@ -205,6 +205,8 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 `--dry-run` はビルドせずにバージョン、タグ、ターゲットを表示します。`--target` はビルドして `.work/release/<tag>/<target>/` に配布物と `release.json` を用意します。`--publish` は `GH_TOKEN` または `GITHUB_TOKEN` を使って準備済みの配布物を公開し、コアの場合はカタログ更新の PR を作ります。公開時に配布物のハッシュを確認し、カタログには公開ファイルの SHA-256 とサイズを記録します。Windows/Android のみを公開する場合は計画、準備、公開のすべてに `--scope windows-android` を付けます。既定は `all` です。
 
+各リリース記録には公開対象の製品コミットが必要です。別のコミットで準備した場合や記録にコミットがない場合は、パッケージを作り直してください。
+
 [リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。手動で実行するときは `components` を指定し、Manager と選択したリポジトリ内のコアには共通の製品 `version` を使います。Windows/Android のみなら `release_scope=windows-android`、公開せず準備するなら `prepare_only=true` を指定します。
 
 全プラットフォーム向け Manager の公開には、`source_commit` を上書きしていない成功実行を 1 件使います。実行 ID を `RUN_ID` に設定し、2 つのコミット SHA が一致することを確認してからダウンロードします。

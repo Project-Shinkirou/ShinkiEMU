@@ -471,6 +471,7 @@ pub fn prepare(
         fs::remove_dir_all(&staged)?;
         let record = json!({
             "component": component, "version": version, "target": target, "platform": platform,
+            "source_commit": id.commit,
             "release_scope": scope.name(), "publish_blocked": publish_blocked,
             "archive": {"name": filename, "sha256": package::sha256(&archive)?, "size": fs::metadata(&archive)?.len()},
         });
@@ -548,6 +549,9 @@ fn collect_records(
         if record["component"] != component || record["version"] != id.version
             || record["target"] != t.triple || record["release_scope"] != scope.name() {
             bail!("{} is not a package for this release", path.display());
+        }
+        if record["source_commit"] != id.commit {
+            bail!("{} was not prepared from product commit {}", path.display(), id.commit);
         }
         verify_asset(&directory, &record, "archive")?;
         if let Some(reason) = record["publish_blocked"].as_str().filter(|s| !s.is_empty()) {
@@ -788,13 +792,13 @@ mod tests {
     }
 
     #[test]
-    fn all_platform_manager_rejects_a_debug_android_record() {
+    fn all_platform_manager_requires_same_commit_and_publishable_packages() {
         let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let out = tempfile::tempdir().unwrap();
         let mut id = identity(&inv, "manager", "1.0.0").unwrap();
         id.root = out.path().to_owned();
         let targets = release_targets(&inv, "manager", Scope::All).unwrap();
-        assert!(targets.iter().any(|target| target.triple == "aarch64-linux-android"));
+        let android = id.root.join("aarch64-linux-android/release.json");
         for target in &targets {
             let dir = id.root.join(&target.triple);
             fs::create_dir(&dir).unwrap();
@@ -807,9 +811,8 @@ mod tests {
                     "version": id.version,
                     "target": target.triple,
                     "release_scope": "all",
-                    "publish_blocked": if target.triple == "aarch64-linux-android" {
-                        "debug-signed CI test APK"
-                    } else { "" },
+                    "source_commit": id.commit,
+                    "publish_blocked": "",
                     "archive": {
                         "name": "asset",
                         "sha256": package::sha256(&archive).unwrap(),
@@ -820,6 +823,22 @@ mod tests {
             )
             .unwrap();
         }
+        assert_eq!(
+            collect_records(&inv, &id, "manager", Scope::All).unwrap().records.len(),
+            targets.len(),
+        );
+        let mut record: Value = serde_json::from_slice(&fs::read(&android).unwrap()).unwrap();
+        let different_digit = if id.commit.starts_with('0') { "1" } else { "0" };
+        record["source_commit"] = json!(different_digit.repeat(40));
+        fs::write(&android, serde_json::to_vec(&record).unwrap()).unwrap();
+        let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
+            panic!("all-platform publication accepted a record from another commit");
+        };
+        assert!(error.to_string().contains("was not prepared from product commit"), "{error}");
+
+        record["source_commit"] = json!(id.commit);
+        record["publish_blocked"] = json!("debug-signed CI test APK");
+        fs::write(&android, serde_json::to_vec(&record).unwrap()).unwrap();
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("all-platform publication accepted a debug Android record");
         };
