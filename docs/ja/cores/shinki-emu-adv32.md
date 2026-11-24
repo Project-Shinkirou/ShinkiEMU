@@ -12,8 +12,8 @@ description: CIRCUS ADV32 コアの開発状況とローカルでの実行方法
 既定では CPU で合成します。**Hardware compositing**（`hardware_compositing`）を有効にすると、シーンのレイヤーと文字が GPU で合成されます。連続アニメーション中に処理中となる GPU フレームは最大 1 枚です。C ABI v3 では引き続き CPU への読み戻しが必要で、動画のデコードやピクセル単位のマスク処理も CPU が行います。速度向上の計測結果はまだありません。合成と読み戻しをまとめて GPU に送る共通レンダラーの変更は、このプレビューには含まれません。
 
 ```sh
-cargo build -p shinki-emu-adv32 --features dynamic-plugin-export,video-ffmpeg
-cargo build -p shinki-emu-headless --no-default-features
+cargo build --locked -p shinki-emu-core-shinki-emu-adv32
+cargo build --locked -p shinki-emu-headless --no-default-features
 ./target/debug/shinki-emu-headless run --audio-device nullaudiodevice --core "$core_library" --game-dir "$game_directory" --output "$temporary_output"
 ```
 

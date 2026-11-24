@@ -7,7 +7,7 @@ description: Ren’Py のフォーマット、ネイティブ動作、制約。
 
 `plugin_id: renpy` · エンジンファミリー: Ren’Py
 
-上流：[renpy/renpy](https://github.com/renpy/renpy)。適応 fork：[Project-Shinkirou/renpy の shinki ブランチ](https://github.com/Project-Shinkirou/renpy/tree/shinki)。
+上流：[renpy/renpy](https://github.com/renpy/renpy)。アダプターの fork：[Project-Shinkirou/renpy](https://github.com/Project-Shinkirou/renpy)。固定コミットは [`Cargo.lock`](../../../Cargo.lock) にあります。
 
 ## フォーマットと実行
 

@@ -125,7 +125,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 
 ## 6. 注册与嵌入
 
-- `Source/Cores/<id>` 的 Cargo 入口用 `workspace = true` 引用 fork adapter。Rust 入口输出 `cdylib`；驱动 CMake 的入口依赖原生 adapter 产出共享库。`build/cores.toml` 里加 `[[cores]]`，每个目标列入 `supported_targets` 或 `[[cores.blocked]]`，许可用 fork 相对的 `adapter_licenses` 或产品相对的 `licenses`。字段规则见 `shinkiemu-new-core` §6。
+- 需要独立库时，在 `Source/Cores/<id>` 添加 Cargo 入口，用 `workspace = true` 引用 fork adapter。Rust 入口输出 `cdylib`，驱动 CMake 的入口由原生 adapter 产出共享库。只做静态嵌入的核心直接接入 Manager。`build/cores.toml` 里加 `[[cores]]`，每个目标列入 `supported_targets` 或 `[[cores.blocked]]`，许可用 fork 相对的 `adapter_licenses` 或产品相对的 `licenses`。字段规则见 `shinkiemu-new-core` §6。
 - 静态嵌入在 `static_manager_targets`、Manager `Cargo.toml` 的目标依赖和 `static_cores.rs` 的 `STATIC_CORES` 三处对齐。Manager 继承同一个 workspace pin，按需开启静态 feature。只支持某个 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`，不要和覆盖它的 `cfg` 表重复声明。
 - 静态核心与 Manager 共享依赖图：kira（根 `[patch.crates-io]` 指向 `Project-Shinkirou/kira`）、mlua/mlua-sys、cpal、wgpu 必须统一。两个版本的 `links =` crate 会让解析失败。改 fork 对齐，不要再加 patch。Artemis 在所有平台都用 Luau，Android 嵌入时共用 Manager 的运行时。
 - Android 嵌入 C++ 核心时：Java 方法名不能和 SDK 父类冲突（Krkr 把 `getDeviceId` 改成 `getAndroidDeviceId`），整个 APK 只有一个 `JNI_OnLoad` 和一个 Activity，资源上限遵守 Manager 当前契约。

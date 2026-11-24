@@ -7,7 +7,7 @@ description: Formats, native behavior and limits of Ren’Py.
 
 `plugin_id: renpy` · Engine family: Ren’Py
 
-Upstream: [renpy/renpy](https://github.com/renpy/renpy). Adaptation fork: [Project-Shinkirou/renpy, shinki branch](https://github.com/Project-Shinkirou/renpy/tree/shinki).
+Upstream: [renpy/renpy](https://github.com/renpy/renpy). Adaptation fork: [Project-Shinkirou/renpy](https://github.com/Project-Shinkirou/renpy), pinned in [`Cargo.lock`](../../../Cargo.lock).
 
 ## Formats and execution
 

@@ -25,7 +25,7 @@ cargo install cargo-about --locked --version 0.9.3
 
 ### Windows x64
 
-安装 Visual Studio C++ 工具、CMake 和 Ninja。在 x64 Visual Studio 开发者环境中运行 Cargo 和打包命令（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll` 等可再分发的 MSVC 运行库。
+安装 Visual Studio C++ 工具、CMake、Ninja 和 NASM。在 x64 Visual Studio 开发者环境中运行 Cargo 和打包命令（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll` 等可再分发的 MSVC 运行库。
 
 ### Linux 桌面
 
@@ -55,6 +55,8 @@ Android Manager 内嵌 Ren’Py。配置好 Ubuntu 24.04 x86_64 主机后，Carg
 ### Apple
 
 在 macOS 上安装 Xcode，用 `xcode-select` 选中并接受许可。最低部署版本为 macOS 13、iOS 16。macOS 安装 `x86_64-apple-darwin` 或 `aarch64-apple-darwin`，iOS 实机安装 `aarch64-apple-ios`，模拟器安装 `aarch64-apple-ios-sim` 或 `x86_64-apple-ios`。
+
+iOS Manager 内嵌的 [KrKr2](cores/krkr2.md) 还需要运行 `rustup component add llvm-tools-preview`。
 
 在 Linux 上交叉构建需要带 Buildx 的 Docker、cross 0.2.5、apple-codesign 0.29.0（`rcodesign`）。在安装了 [Xcode](https://developer.apple.com/download/all/) 的 macOS 上，用 `xcrun --sdk <sdk> --show-sdk-path` 找到目标的 `macosx`、`iphoneos` 或 `iphonesimulator` SDK，再私下传输。`SHINKI_APPLE_SDK_DIR` 指向解压后含 `SDKSettings.json`、`System/` 和 `usr/` 的目录。按目标生成私有镜像，不公开 SDK 或含 SDK 的镜像。
 
@@ -96,7 +98,7 @@ Manager 默认启用 `store-steam`、`store-dlsite` 和 `store-dmm`。只启用 
 
 ## 新增核心或更新固定提交
 
-1. 参考最接近的现有实现，在 `Source/Cores/<id>/` 添加入口 crate。自研 Rust 核心通过路径依赖引用实现，由入口 `cdylib` 导出 ABI query；Rust fork 继承工作区依赖，按需开启独立构建用的导出 feature。原生 adapter 由构建脚本把原生库交给打包工具。静态嵌入 Manager 时，按目标为实现依赖开启静态 feature，并在 `static_cores.rs` 注册 Rust query。
+1. 要构建独立库，参考现有实现在 `Source/Cores/<id>/` 添加入口 crate。自研 Rust 核心通过路径依赖引用实现，由入口 `cdylib` 导出 ABI query；Rust fork 继承工作区依赖，按需开启独立构建用的导出 feature。原生 adapter 由构建脚本提供库。静态嵌入 Manager 时，直接引用实现，按目标开启静态 feature，再在 `static_cores.rs` 注册 Rust query。
 2. 在根目录 [`Cargo.toml`](../../Cargo.toml) 的 `[workspace.dependencies]` 里新增或更新 fork 的 `git` URL 和完整 `rev`。`build/cores.toml` 管理产品元数据，包括 ID、许可和声明、目标支持、静态嵌入及外部核心的上游身份与发布序号。`adapter_licenses` 的路径相对于 fork 根目录，`licenses` 的路径相对于 ShinkiEMU 根目录。
 3. 不加 `--locked` 运行一次 `cargo metadata --format-version 1`，更新 [`Cargo.lock`](../../Cargo.lock)。检查差异是否与本次新增或调整的提交一致，不批量更新无关依赖。将 manifest 和锁文件一起提交。日常构建使用 `--locked`。
 
@@ -133,11 +135,17 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-常规 Android Manager 包会将两个 ABI 打进同一个通用 APK，请在配好环境的 Linux 主机上打包。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。只需本地测试单个 ABI 时，可在 Manager 打包命令上加 `--qa-single-abi`，例如在非 Linux 主机上使用相应的 Ren’Py 运行库。公开 APK 必须使用项目发布证书。Android 独立核心产出核心包，无需 Gradle 签名。macOS 产出 `.app`，iOS 产出模拟器测试 `.app` 或真机测试 `.ipa`。Apple 默认使用 ad hoc 签名，真机安装需要有效的 provisioning。
+常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK，请在配好环境的 Linux 主机上打包。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。只需本地测试单个 ABI 时，加 `--qa-single-abi`，例如在非 Linux 主机上使用相应的 Ren’Py 运行库。Android 独立核心产出核心包，无需 Gradle 签名。
+
+制作正式 APK 时，`cargo xtask package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、指定的 `versionName` 和 `versionCode`，以及 `minSdk` 28。`release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`，每次公开的 APK 的 `versionCode` 都必须高于上一版。保留现有工作流文件，不要重建、改名或用另一个文件替代，否则编号可能从 1 重新开始，已安装的用户无法升级。
+
+macOS 产出 `.app`，iOS 产出模拟器测试 `.app` 或真机测试 `.ipa`。Apple 默认使用 ad hoc 签名，真机安装需要有效的 provisioning。
 
 打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。iOS 的 `ios-framework-cores` 和 HAP 的 `ohos-bundled-musica` 变体只用于本地 QA，不公开发布。
 
-Manager 和自研核心发布时指定统一的产品 `--version`（SemVer）。外部核心省略此参数。它的身份由原项目的 `upstream_identity`、`Cargo.lock` 解析出的适配仓库与提交、`adapter_branch` 和该核心的 `release_sequence` 决定。上游填写真实标签或分支，以及完整提交。外部核心版本为 `<tag|branch>-<ref slug>-<digest>`：取 ref 的前 16 个字节，ASCII 字母转小写，数字保留，其余换成连字符。摘要是上游仓库、ref 类型、ref 名、上游提交、适配仓库、适配分支、适配提交及十进制序号的 SHA-256，每个字段用 UTF-8 编码并在末尾加 LF。标签格式分别为 Manager 的 `manager-v<semver>`、自研核心的 `core-<slug>-v<semver>` 和外部核心的 `core-<slug>-<version>`。标签中的 slug 将核心 ID 转成小写，点和下划线换成连字符。调整外部核心的固定提交或再次发布时递增序号，目录按序号选择最新的带身份记录。
+打包或发布 Manager、自研核心时，用 `--version` 指定产品的 SemVer；外部核心省略此参数。
+
+外部核心的身份由原项目的 `upstream_identity`、`Cargo.lock` 解析出的适配仓库与提交、`adapter_branch` 和该核心的 `release_sequence` 决定。上游填写真实标签或分支，以及完整提交。外部核心版本为 `<tag|branch>-<ref slug>-<digest>`：取 ref 的前 16 个字节，ASCII 字母转小写，数字保留，其余换成连字符。摘要是上游仓库、ref 类型、ref 名、上游提交、适配仓库、适配分支、适配提交及十进制序号的 SHA-256，每个字段用 UTF-8 编码并在末尾加 LF。标签格式分别为 Manager 的 `manager-v<semver>`、自研核心的 `core-<slug>-v<semver>` 和外部核心的 `core-<slug>-<version>`。标签中的 slug 将核心 ID 转成小写，点和下划线换成连字符。调整外部核心的固定提交或再次发布时递增序号，目录按序号选择最新的带身份记录。
 
 ```sh
 cargo xtask release --component rfvp --dry-run
@@ -146,11 +154,21 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 `--dry-run` 只列出版本、标签和目标。`--target` 构建并将产物与 `release.json` 放在 `.work/release/<tag>/<target>/`。`--publish` 使用 `GH_TOKEN` 或 `GITHUB_TOKEN` 发布准备好的产物，发布核心时还会创建目录更新 PR。发布时核对产物哈希，目录记录公开文件的 SHA-256 和大小。只发 Windows/Android 时，规划、准备和公开都传同样的 `--scope windows-android`，默认范围为 `all`。
 
-[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。发布全平台 Manager 时，选用一次成功的 `release.yml` 运行，确保它与本地检出是同一提交，且未覆盖 `source_commit`。下载这次运行的所有 `release-files-manager@*` 产物，将其中各个 `<tag>/<target>/` 目录合并到 `.work/release/<tag>/`。在本地配置 DevEco 和签名目录，用同一产品版本制作 HAP 并发布：
+[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。手动触发时传入 `components`，Manager 和选中的自研核心使用同一个产品 `version`。只发 Windows/Android 时设置 `release_scope=windows-android`，只准备产物而不发布时设置 `prepare_only=true`。
+
+发布全平台 Manager 时，选一次成功且未覆盖 `source_commit` 的运行，将运行编号设为 `RUN_ID`。确认下面两条命令输出的提交一致，再下载产物：
 
 ```sh
-cargo xtask release --component manager --version 0.1.0-beta.1 --target aarch64-unknown-linux-ohos
-cargo xtask release --component manager --version 0.1.0-beta.1 --scope all --publish
+gh run view "$RUN_ID" --json headSha --jq .headSha
+git rev-parse HEAD
+gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
+```
+
+下载会为每份产物创建一个目录。将其中的 `<tag>/<target>/` 合并到 `.work/release/<tag>/`。配置好 DevEco、签名目录和 `cargo-about`，在同一份工作副本中制作 HAP 并发布。`VERSION` 设为该次运行的产品版本：
+
+```sh
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
+cargo xtask release --component manager --version "$VERSION" --scope all --publish
 ```
 
 快照和目录命令见[元数据](metadata.md)，原生包格式见[核心 ABI](core-abi.md)。

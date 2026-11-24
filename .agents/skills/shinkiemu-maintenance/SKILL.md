@@ -91,7 +91,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - digest 是 8 个字段（upstream repo/kind/ref/commit、adapter repo/branch/commit、十进制 sequence）各接一个 LF 后的完整 SHA256。版本为 `<tag|branch>-<ref slug>-<digest>`，tag 为 `core-<plugin slug>-<version>`。只改 adapter 也会得到新身份。
 - `release_sequence` 每个插件全局递增，跨平台共用一个序号。adapter/upstream pin 变了或要重新发布时 +1；同一序号不能对应两个不同版本，也不能回退。多个候选并行时，序号由发布 owner 统一预留，slice 不要自己占号。
 - 改完跑 `cargo xtask release --component <id> --dry-run`，核对版本、标签和目标。这个命令不构建、不发布。
-- Manager、Musica、CMVS 仍用 `manager-v<semver>` / `core-<slug>-v<semver>`，`package`/`release` 必须传 `--version`。给外部核心传 `--version` 会被拒绝。
+- Manager 和自研核心用 `manager-v<semver>` / `core-<slug>-v<semver>`，`package`/`release` 必须传 `--version`。外部核心省略 `--version`。
 - 已公开的 tag 和资产不可改写。修复只能走新 sequence 的新 release。
 
 ## 5. fork pin 升级
@@ -131,6 +131,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - 多核心 APK 只能有一个 `JNI_OnLoad` 和一个 Activity。
 - 资源和字体按 Manager 当前的资源上限契约打包（beta7 线为 32 MiB 有界流式），不要把旧分支的更小上限合回来。
 - Android 正式安装包必须用发布证书签名，证书 SHA256 为 `c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc`。签名材料从 `SHINKI_EMU_ANDROID_KEYSTORE`（或 `_KEYSTORE_BASE64`）、`_KEYSTORE_PASSWORD`、`_KEY_ALIAS`、`_KEY_PASSWORD` 读取，CI 从 secrets 注入。没有这些时产物是 `*-debug-signed.apk`，只能当 CI 测试包。
+- `release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`。不要重建、改名或替换工作流文件，否则编号可能从 1 重来，已安装的用户无法升级。`package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、`versionName`、`versionCode` 和 `minSdk` 28；公开 APK 的 `versionCode` 必须高于上一版。
 
 ## 8. 公开源码与许可证
 

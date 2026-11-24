@@ -7,7 +7,7 @@ description: Ren’Py 的格式、原生行为与限制。
 
 `plugin_id: renpy` · 引擎家族: Ren’Py
 
-上游：[renpy/renpy](https://github.com/renpy/renpy)。适配 fork：[Project-Shinkirou/renpy 的 shinki 分支](https://github.com/Project-Shinkirou/renpy/tree/shinki)。
+上游：[renpy/renpy](https://github.com/renpy/renpy)。适配 fork：[Project-Shinkirou/renpy](https://github.com/Project-Shinkirou/renpy)，固定提交见 [`Cargo.lock`](../../../Cargo.lock)。
 
 ## 格式与执行
 

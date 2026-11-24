@@ -99,8 +99,8 @@ Symphonia 在核心 audio worker 内完整解码，Kira 执行 resampling、混�
 ## 验证与剩余边界
 
 ```bash
-cargo test -p shinki-emu-musica --all-features
-cargo clippy -p shinki-emu-musica --all-targets --all-features -- -D warnings
+cargo test --locked -p shinki-emu-musica --all-features
+cargo clippy --locked -p shinki-emu-musica --all-targets --all-features -- -D warnings
 cargo build --locked --release -p shinki-emu-core-shinki-emu-musica
 ```
 

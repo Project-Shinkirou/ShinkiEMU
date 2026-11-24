@@ -25,7 +25,7 @@ cargo install cargo-about --locked --version 0.9.3
 
 ### Windows x64
 
-Visual Studio の C++ ツール、CMake、Ninja を導入します。Cargo とパッケージングは x64 開発者シェル（`vcvars64.bat`、PowerShell なら `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。`VCRUNTIME140.dll` などの MSVC 再頒布ファイルは `%VCToolsRedistDir%\x64` から取得します。
+Visual Studio の C++ ツール、CMake、Ninja、NASM を導入します。Cargo とパッケージングは x64 開発者シェル（`vcvars64.bat`、PowerShell なら `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。`VCRUNTIME140.dll` などの MSVC 再頒布ファイルは `%VCToolsRedistDir%\x64` から取得します。
 
 ### Linux デスクトップ
 
@@ -55,6 +55,8 @@ Android Manager は Ren’Py を組み込みます。環境を整えた Ubuntu 2
 ### Apple
 
 ネイティブビルドには Xcode をインストールし、`xcode-select` で選択してライセンスに同意します。最小バージョンは macOS 13 と iOS 16 です。macOS は `x86_64-apple-darwin` または `aarch64-apple-darwin`、iOS 実機は `aarch64-apple-ios`、シミュレーターは `aarch64-apple-ios-sim` または `x86_64-apple-ios` の Rust ターゲットを導入します。
+
+iOS Manager に組み込む [KrKr2](cores/krkr2.md) には `rustup component add llvm-tools-preview` も必要です。
 
 Linux からビルドする場合は Docker と Buildx、cross 0.2.5、apple-codesign 0.29.0（`rcodesign`）を用意します。macOS 上の [Xcode](https://developer.apple.com/download/all/) から `xcrun --sdk <sdk> --show-sdk-path` で対象 SDK（`macosx`、`iphoneos`、`iphonesimulator`）を探し、非公開で転送します。`SHINKI_APPLE_SDK_DIR` を、展開した `SDKSettings.json`、`System/`、`usr/` を含むディレクトリに設定し、ターゲット用のイメージを作ります。SDK とそれを含むイメージは公開しないでください。
 
@@ -96,7 +98,7 @@ Manager は `store-steam`、`store-dlsite`、`store-dmm` を既定で有効に�
 
 ## コアの追加と固定リビジョンの更新
 
-1. 既存の近い例に合わせて `Source/Cores/<id>/` にエントリークレートを追加します。リポジトリ内の Rust コアは実装をパス依存で参照し、エントリーの `cdylib` から ABI の query を公開します。Rust の fork はワークスペース依存を継承し、必要なら単独ビルド用のエクスポート feature を有効にします。ネイティブアダプターはビルドスクリプトからパッケージャーにライブラリを渡します。Manager に静的に組み込む場合は、実装をターゲット別の静的 feature で参照し、`static_cores.rs` に Rust の query を登録します。
+1. 単独ライブラリを作る場合は、既存の近い例に合わせて `Source/Cores/<id>/` にエントリークレートを追加します。リポジトリ内の Rust コアは実装をパス依存で参照し、`cdylib` から ABI の query を公開します。Rust の fork はワークスペース依存を継承し、必要なら単独ビルド用のエクスポート feature を有効にします。ネイティブアダプターはビルドスクリプトからライブラリを渡します。Manager に静的に組み込む場合は、実装をターゲット別の静的 feature で直接参照し、`static_cores.rs` に Rust の query を登録します。
 2. ルートの [`Cargo.toml`](../../Cargo.toml) の `[workspace.dependencies]` に fork の `git` URL と完全な `rev` を指定します。`build/cores.toml` には ID、ライセンス・通知、ターゲットの対応状況、静的組み込み、外部の上流情報とリリース連番を記載します。`adapter_licenses` は fork のルート、`licenses` は ShinkiEMU のルートからの相対パスです。
 3. `--locked` を付けずに `cargo metadata --format-version 1` を一度実行し、[`Cargo.lock`](../../Cargo.lock) を更新します。差分を確認し、意図した追加やリビジョンの変更だけを取り込みます。依存関係を一括更新せず、マニフェストとロックファイルを一緒にコミットします。通常のビルドでは `--locked` を使います。
 
@@ -133,11 +135,17 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。環境を整えた Linux ホストで作成してください。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければテスト用のデバッグ署名 APK になります。Linux 以外で対象 ABI の Ren’Py ランタイムを用意した場合など、単一 ABI のデバッグ APK が必要なら Manager のパッケージングに `--qa-single-abi` を付けます。公開用の Android APK にはプロジェクトのリリース証明書が必要です。Android の単独コアはコアパッケージであり、APK や Gradle 署名は不要です。macOS では `.app`、iOS ではシミュレーター用のテスト `.app` または実機用のテスト `.ipa` を作ります。Apple の既定は ad hoc 署名で、実機へのインストールには有効なプロビジョニングが必要です。
+通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。環境を整えた Linux ホストで作成してください。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。Linux 以外で対象 ABI の Ren’Py ランタイムを用意した場合など、単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。Android の単独コアはコアパッケージであり、APK や Gradle 署名は不要です。
+
+リリース APK の作成時に `cargo xtask package` は正式な署名証明書、パッケージ ID `org.shinkirou.shinkiemu`、指定された `versionName` と `versionCode`、`minSdk` 28 を照合します。`release.yml` は `github.run_number` を `SHINKI_EMU_ANDROID_VERSION_CODE` に設定します。公開する APK のコードは前回より大きくしてください。ワークフローの作り直し、改名、別ファイルへの差し替えで連番が 1 に戻ると、インストール済みのアプリが更新できなくなります。既存のワークフローファイルを使い続けてください。
+
+macOS では `.app`、iOS ではシミュレーター用のテスト `.app` または実機用のテスト `.ipa` を作ります。Apple の既定は ad hoc 署名で、実機へのインストールには有効なプロビジョニングが必要です。
 
 `SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。iOS の `ios-framework-cores` と HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
 
-Manager とリポジトリ内のコアには共通の製品 `--version`（SemVer）を指定します。外部コアは省略します。外部コアの識別子は、元のプロジェクトの `upstream_identity`、`Cargo.lock` から解決したアダプターのリポジトリとコミット、`adapter_branch`、コアごとの `release_sequence` から決まります。上流には実際のタグまたはブランチと完全なコミットを記録します。版の形式は `<tag|branch>-<ref slug>-<digest>` です。ref の先頭 16 バイトの ASCII 英数字を小文字にし、他はハイフンに置き換えます。上流のリポジトリ・ref 種別・ref 名・コミット、アダプターのリポジトリ・ブランチ・コミット、十進数の連番を UTF-8 で並べ、各項目に LF を付けて SHA-256 を求めます。タグは Manager が `manager-v<semver>`、リポジトリ内のコアが `core-<slug>-v<semver>`、外部コアが `core-<slug>-<version>` です。タグの slug はコア ID を小文字にし、ピリオドとアンダースコアをハイフンに置き換えます。外部コアのリビジョンを変えるか新しいリリースを出すときは連番を増やします。カタログは連番で最新を選びます。
+Manager やリポジトリ内のコアのパッケージングとリリースには、製品の SemVer を `--version` で指定します。外部コアでは省略します。
+
+外部コアの識別子は、元のプロジェクトの `upstream_identity`、`Cargo.lock` から解決したアダプターのリポジトリとコミット、`adapter_branch`、コアごとの `release_sequence` から決まります。上流には実際のタグまたはブランチと完全なコミットを記録します。版の形式は `<tag|branch>-<ref slug>-<digest>` です。ref の先頭 16 バイトの ASCII 英数字を小文字にし、他はハイフンに置き換えます。上流のリポジトリ・ref 種別・ref 名・コミット、アダプターのリポジトリ・ブランチ・コミット、十進数の連番を UTF-8 で並べ、各項目に LF を付けて SHA-256 を求めます。タグは Manager が `manager-v<semver>`、リポジトリ内のコアが `core-<slug>-v<semver>`、外部コアが `core-<slug>-<version>` です。タグの slug はコア ID を小文字にし、ピリオドとアンダースコアをハイフンに置き換えます。外部コアのリビジョンを変えるか新しいリリースを出すときは連番を増やします。カタログは識別子を持つエントリーのうち連番が最大のものを選びます。
 
 ```sh
 cargo xtask release --component rfvp --dry-run
@@ -146,11 +154,21 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 `--dry-run` はビルドせずにバージョン、タグ、ターゲットを表示します。`--target` はビルドして `.work/release/<tag>/<target>/` に配布物と `release.json` を用意します。`--publish` は `GH_TOKEN` または `GITHUB_TOKEN` を使って準備済みの配布物を公開し、コアの場合はカタログ更新の PR を作ります。公開時に配布物のハッシュを確認し、カタログには公開ファイルの SHA-256 とサイズを記録します。Windows/Android のみを公開する場合は計画、準備、公開のすべてに `--scope windows-android` を付けます。既定は `all` です。
 
-[リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。全プラットフォーム向け Manager を公開するには、ローカルと同じコミットの成功した `release.yml` 実行を 1 件使います。`source_commit` は上書きしません。その実行のすべての `release-files-manager@*` を取得し、各 `<tag>/<target>/` ディレクトリを `.work/release/<tag>/` にまとめます。DevEco と署名ディレクトリを設定してローカルで HAP を用意し、同じ製品バージョンで公開します。
+[リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。手動で実行するときは `components` を指定し、Manager と選択したリポジトリ内のコアには共通の製品 `version` を使います。Windows/Android のみなら `release_scope=windows-android`、公開せず準備するなら `prepare_only=true` を指定します。
+
+全プラットフォーム向け Manager の公開には、`source_commit` を上書きしていない成功実行を 1 件使います。実行 ID を `RUN_ID` に設定し、2 つのコミット SHA が一致することを確認してからダウンロードします。
 
 ```sh
-cargo xtask release --component manager --version 0.1.0-beta.1 --target aarch64-unknown-linux-ohos
-cargo xtask release --component manager --version 0.1.0-beta.1 --scope all --publish
+gh run view "$RUN_ID" --json headSha --jq .headSha
+git rev-parse HEAD
+gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
+```
+
+ダウンロードすると成果物ごとにディレクトリが作られます。その中の `<tag>/<target>/` を `.work/release/<tag>/` にまとめます。DevEco、署名ディレクトリ、`cargo-about` を用意し、同じ作業ツリーで HAP を作って公開します。`VERSION` にはその実行の製品バージョンを設定します。
+
+```sh
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
+cargo xtask release --component manager --version "$VERSION" --scope all --publish
 ```
 
 スナップショットとカタログのコマンドは [Metadata](metadata.md)、ネイティブパッケージの形式は[コア ABI](core-abi.md)を参照してください。

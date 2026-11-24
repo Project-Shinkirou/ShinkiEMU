@@ -14,8 +14,8 @@ description: CIRCUS ADV32 核心的开发状态和本地运行方式。
 用独立 headless 程序加载桌面核心。
 
 ```sh
-cargo build -p shinki-emu-adv32 --features dynamic-plugin-export,video-ffmpeg
-cargo build -p shinki-emu-headless --no-default-features
+cargo build --locked -p shinki-emu-core-shinki-emu-adv32
+cargo build --locked -p shinki-emu-headless --no-default-features
 ./target/debug/shinki-emu-headless run --audio-device nullaudiodevice --core "$core_library" --game-dir "$game_directory" --output "$temporary_output"
 ```
 

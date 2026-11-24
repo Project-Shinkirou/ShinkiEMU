@@ -14,8 +14,8 @@ CPU compositing is the default. Set the core's `hardware_compositing` option to 
 Run the desktop library with the standalone headless host.
 
 ```sh
-cargo build -p shinki-emu-adv32 --features dynamic-plugin-export,video-ffmpeg
-cargo build -p shinki-emu-headless --no-default-features
+cargo build --locked -p shinki-emu-core-shinki-emu-adv32
+cargo build --locked -p shinki-emu-headless --no-default-features
 ./target/debug/shinki-emu-headless run --audio-device nullaudiodevice --core "$core_library" --game-dir "$game_directory" --output "$temporary_output"
 ```
 

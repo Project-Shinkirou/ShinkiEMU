@@ -108,6 +108,8 @@ Vcpkg uses `.work/vcpkg-downloads/` for downloads, `.work/vcpkg-binary-cache/` f
 
 `package` builds and stages to a new output directory. On Windows run it in an x64 Visual Studio developer shell for redistributables. Android Manager packaging runs the Gradle wrapper and normally builds a universal APK; the `--qa-single-abi` variant uses the local debug key and requires no release signing inputs. Public APKs use `SHINKI_EMU_ANDROID_KEYSTORE` (path) or `SHINKI_EMU_ANDROID_KEYSTORE_BASE64`, plus `SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD`, `SHINKI_EMU_ANDROID_KEY_ALIAS` and `SHINKI_EMU_ANDROID_KEY_PASSWORD`. Partial configuration fails.
 
+Android packaging checks the production certificate when release-signed, the package ID, `versionName`, `versionCode` and `minSdk` 28. `release.yml` derives `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Keep the existing workflow file and sequence; a reset to 1 can block upgrades. Published APKs must use increasing codes.
+
 `release --dry-run` prints the plan. `release --target` builds and prepares an asset in `.work/release/<tag>/<target>/`; `release --publish` uploads staged assets and opens the core catalog PR when applicable. Pass an explicit `--version` for Manager and in-tree cores, and omit it for external cores. The catalog stores SHA-256 and size for each public asset. `publish_blocked` prevents publication independently of build availability.
 
 Manual `ci.yml` dispatch accepts `since`, using the existing
@@ -119,7 +121,7 @@ Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: t
 
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
-For an all-platform Manager release, download `release-files-manager@*` from one successful hosted release run for the local checkout's commit. Merge the staged target directories, prepare the OHOS HAP locally with DevEco, and publish from that checkout. Follow [Package and release](../docs/en/build-and-release.md#package-and-release).
+For an all-platform Manager release, use one successful hosted release run without a `source_commit` override. Match its `headSha` to local `HEAD`, merge that run's `release-files-manager@*` artifacts under `.work/release/`, prepare the OHOS HAP with DevEco and publish from that checkout. See [the commands](../docs/en/build-and-release.md#package-and-release).
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
 

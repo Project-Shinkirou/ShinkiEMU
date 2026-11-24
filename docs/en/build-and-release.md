@@ -25,7 +25,7 @@ cargo install cargo-about --locked --version 0.9.3
 
 ### Windows x64
 
-Run Cargo and packaging in an x64 Visual Studio developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Install the Visual Studio C++ tools, CMake and Ninja. The packager gets MSVC redistributables such as `VCRUNTIME140.dll` from `%VCToolsRedistDir%\x64`.
+Run Cargo and packaging in an x64 Visual Studio developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Install the Visual Studio C++ tools, CMake, Ninja and NASM. The packager gets MSVC redistributables such as `VCRUNTIME140.dll` from `%VCToolsRedistDir%\x64`.
 
 ### Linux desktop
 
@@ -55,6 +55,8 @@ The Android Manager embeds Ren’Py. On a provisioned Ubuntu 24.04 x86_64 build 
 ### Apple
 
 For native builds, install Xcode, select it with `xcode-select` and accept its license. Deployment minimums are macOS 13 and iOS 16. Install the relevant Rust target: `x86_64-apple-darwin` or `aarch64-apple-darwin` for macOS, `aarch64-apple-ios` for iOS devices, and `aarch64-apple-ios-sim` or `x86_64-apple-ios` for simulators.
+
+The iOS Manager's embedded [KrKr2](cores/krkr2.md) also needs `rustup component add llvm-tools-preview`.
 
 For a Linux-hosted Apple build, install Docker with Buildx, cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`). Find the matching `macosx`, `iphoneos` or `iphonesimulator` SDK from [Xcode](https://developer.apple.com/download/all/) on macOS via `xcrun --sdk <sdk> --show-sdk-path`. Transfer it privately. Point `SHINKI_APPLE_SDK_DIR` to the extracted SDK directory containing `SDKSettings.json`, `System/` and `usr/`, then build the image for the selected triple. Keep SDKs and SDK images private.
 
@@ -96,7 +98,7 @@ Manager enables `store-steam`, `store-dlsite` and `store-dmm` by default. For St
 
 ## Add or update a core pin
 
-1. Add the entry crate under `Source/Cores/<id>/`, following the closest existing entry. For an in-tree Rust core, depend on its implementation by path and expose the standalone ABI query through the entry `cdylib`; for a Rust fork, inherit the workspace dependency and enable its standalone export feature if needed. For a native adapter, the build script supplies the native library to the packager. A static Manager integration uses the implementation with target-specific static features and registers its Rust query in `static_cores.rs`.
+1. For a standalone library, add an entry crate under `Source/Cores/<id>/`, following the closest existing entry. An in-tree Rust entry uses a path dependency and exposes the ABI query through a `cdylib`; a Rust fork entry inherits the workspace dependency and enables its standalone export feature if needed. Native adapters supply the library through a build script. For static Manager integration, depend directly on the implementation with target-specific static features and register its Rust query in `static_cores.rs`.
 2. Declare or update the fork's `git` URL and full `rev` in root [`Cargo.toml`](../../Cargo.toml) under `[workspace.dependencies]`. `build/cores.toml` holds product metadata: IDs, licenses and notices, target support, static embedding and external upstream attribution/release sequence. `adapter_licenses` paths are relative to the fork root; `licenses` paths are relative to ShinkiEMU.
 3. Run `cargo metadata --format-version 1` without `--locked` once to refresh [`Cargo.lock`](../../Cargo.lock). Review the lockfile diff for the intended additions or pin changes; avoid a blanket dependency update. Commit the manifest and lockfile together. Use `--locked` for normal builds.
 
@@ -133,11 +135,17 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-The normal Android Manager package builds both ABIs into one universal APK; use a provisioned Linux host for it. Set `GRADLE_USER_HOME` for the debug key. With no release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` on the Manager packaging command for a local one-ABI debug APK, for example with a matching Ren’Py runtime tree on a non-Linux host. Public Android APKs require the project release certificate. Standalone Android cores are core packages, not APKs, and do not need Gradle signing. macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
+The normal Android Manager package builds both ABIs into one universal APK; use a provisioned Linux host for it. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK, for example with a matching Ren’Py runtime tree on a non-Linux host. Standalone Android cores are core packages, not APKs, and do not need Gradle signing.
+
+For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
+
+macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
 
 `SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The private `ios-framework-cores` iOS and `ohos-bundled-musica` HAP variants are for local QA, not release assets.
 
-Pass one explicit product `--version` (SemVer) for Manager and in-tree releases. Omit it for external cores: their identity combines the original project's `upstream_identity`, the adapter repo and commit resolved from `Cargo.lock`, the `adapter_branch` attribution and a per-core `release_sequence`. Use the real upstream tag or branch and full upstream commit. The external version is `<tag|branch>-<ref slug>-<digest>`: lowercase ASCII alphanumerics in the first 16 ref bytes and replace other bytes with hyphens; hash the UTF-8 upstream repo/kind/ref/commit, adapter repo/branch/commit and decimal sequence with SHA-256, ending each field with LF. Release tags are `manager-v<semver>`, `core-<slug>-v<semver>` for in-tree cores and `core-<slug>-<version>` for external cores. For release tags, lowercase the core ID and replace dots and underscores with hyphens. Increment the sequence for a changed external pin or a new publication; the latest typed catalog entry is selected by sequence.
+Pass an explicit product `--version` (SemVer) to package or release the Manager and in-tree cores. Omit it for external cores.
+
+An external core's identity combines `upstream_identity`, the adapter repository and commit resolved from `Cargo.lock`, the `adapter_branch` attribution and a per-core `release_sequence`. Use the real upstream tag or branch and full upstream commit. The external version is `<tag|branch>-<ref slug>-<digest>`: lowercase ASCII alphanumerics in the first 16 ref bytes and replace other bytes with hyphens; hash the UTF-8 upstream repo/kind/ref/commit, adapter repo/branch/commit and decimal sequence with SHA-256, ending each field with LF. Release tags are `manager-v<semver>`, `core-<slug>-v<semver>` for in-tree cores and `core-<slug>-<version>` for external cores. For release tags, lowercase the core ID and replace dots and underscores with hyphens. Increment the sequence for a changed external pin or a new publication; the latest typed catalog entry is selected by sequence.
 
 ```sh
 cargo xtask release --component rfvp --dry-run
@@ -146,11 +154,21 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 `--dry-run` prints the version, tag and targets without building. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
 
-[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. For an all-platform Manager release, use one successful `release.yml` run for the same commit as the local checkout, with no `source_commit` override. Download all `release-files-manager@*` artifacts from that run and merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco and the signing directory configured, prepare the local HAP and publish with the same product version:
+[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Dispatch it with `components` and a shared product `version` for Manager and any selected in-tree cores. Select `release_scope=windows-android` for a Windows/Android-only release, or `prepare_only=true` to stage without publishing.
+
+For an all-platform Manager release, use one successful run with no `source_commit` override. Set `RUN_ID` to that run's ID; compare the two commit SHAs before downloading:
 
 ```sh
-cargo xtask release --component manager --version 0.1.0-beta.1 --target aarch64-unknown-linux-ohos
-cargo xtask release --component manager --version 0.1.0-beta.1 --scope all --publish
+gh run view "$RUN_ID" --json headSha --jq .headSha
+git rev-parse HEAD
+gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
+```
+
+The download creates one directory per artifact. Merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco, the signing directory and `cargo-about` configured, prepare the HAP and publish from that checkout. Set `VERSION` to the run's product version:
+
+```sh
+cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
+cargo xtask release --component manager --version "$VERSION" --scope all --publish
 ```
 
 See [Metadata](metadata.md) for snapshot and catalog commands and [Core ABI](core-abi.md) for the native package format.
