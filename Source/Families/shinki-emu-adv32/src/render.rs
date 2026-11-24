@@ -1,9 +1,12 @@
 use crate::{crx::Crx, text::Text};
 use image::{Rgba, RgbaImage};
-use roukaku_media_core::{BlendMode, RectI, SceneCommand};
+#[cfg(not(target_env = "ohos"))]
+use roukaku_media_core::BlendMode;
+use roukaku_media_core::{RectI, SceneCommand};
+use shinki_emu_sdk::StageCanvas;
 
 pub(crate) enum Canvas {
-    Raster(RgbaImage),
+    Raster(Raster),
     #[cfg(not(target_env = "ohos"))]
     Scene(Scene),
 }
@@ -17,22 +20,42 @@ pub(crate) struct Scene {
 }
 
 impl Canvas {
-    pub(crate) fn new(width: u32, height: u32, _gpu: bool) -> Self {
+    pub(crate) fn new(width: u32, height: u32) -> Self {
+        Self::from_image(RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255])), None)
+    }
+
+    pub(crate) fn from_image(image: RgbaImage, presentation: Option<StageCanvas>) -> Self {
+        let presentation = presentation.filter(|mapping| mapping.raster() != mapping.logical());
+        Self::Raster(Raster {
+            image,
+            presentation,
+            physical: false,
+        })
+    }
+
+    pub(crate) fn for_output(mapping: StageCanvas, _gpu: bool) -> Self {
+        let logical = mapping.logical();
         #[cfg(not(target_env = "ohos"))]
         if _gpu {
             return Self::Scene(Scene {
-                extent: (width, height),
+                extent: (logical.width, logical.height),
                 commands: Vec::new(),
                 sources: Vec::new(),
                 text: Vec::new(),
             });
         }
-        Self::Raster(RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255])))
+        Self::from_image(
+            RgbaImage::from_pixel(logical.width, logical.height, Rgba([0, 0, 0, 255])),
+            Some(mapping),
+        )
     }
 
     pub(crate) fn dimensions(&self) -> (u32, u32) {
         match self {
-            Self::Raster(image) => image.dimensions(),
+            Self::Raster(raster) => match raster.presentation {
+                Some(mapping) => (mapping.logical().width, mapping.logical().height),
+                None => raster.image.dimensions(),
+            },
             #[cfg(not(target_env = "ohos"))]
             Self::Scene(scene) => scene.extent,
         }
@@ -44,9 +67,53 @@ impl Canvas {
 
     pub(crate) fn raster_mut(&mut self) -> &mut RgbaImage {
         match self {
-            Self::Raster(image) => image,
+            Self::Raster(raster) => {
+                assert!(!raster.physical, "native pixel effects precede text");
+                &mut raster.image
+            }
             #[cfg(not(target_env = "ohos"))]
             Self::Scene(_) => unreachable!("CPU pixel effect must select the raster canvas"),
+        }
+    }
+
+    pub(crate) fn text_raster(&mut self) -> (&mut RgbaImage, Option<StageCanvas>) {
+        match self {
+            Self::Raster(raster) => {
+                raster.promote();
+                (&mut raster.image, raster.presentation)
+            }
+            #[cfg(not(target_env = "ohos"))]
+            Self::Scene(_) => unreachable!("GPU text must be queued"),
+        }
+    }
+
+    pub(crate) fn physical_raster(&mut self) -> Option<(&mut RgbaImage, StageCanvas)> {
+        match self {
+            Self::Raster(raster) if raster.physical => {
+                Some((&mut raster.image, raster.presentation.unwrap()))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn for_each_raster_pixel(&mut self, mut edit: impl FnMut(u32, u32, &mut Rgba<u8>)) {
+        if let Some((image, mapping)) = self.physical_raster() {
+            let viewport = mapping.viewport();
+            let xs = RasterAxis::x(mapping);
+            let ys = RasterAxis::y(mapping);
+            let columns: Vec<_> = (viewport.x..viewport.x + viewport.width)
+                .map(|x| xs.sample(x))
+                .collect();
+            for y in viewport.y..viewport.y + viewport.height {
+                let logical_y = ys.sample(y);
+                for (x, &logical_x) in (viewport.x..).zip(&columns) {
+                    edit(logical_x, logical_y, image.get_pixel_mut(x, y));
+                }
+            }
+        } else {
+            for (x, y, pixel) in self.raster_mut().enumerate_pixels_mut() {
+                edit(x, y, pixel);
+            }
         }
     }
 
@@ -97,6 +164,105 @@ impl Canvas {
     }
 }
 
+pub(crate) struct Raster {
+    image: RgbaImage,
+    presentation: Option<StageCanvas>,
+    physical: bool,
+}
+
+impl Raster {
+    fn promote(&mut self) {
+        // Native pixel effects and sprite sampling run unchanged until the
+        // first text draw. Subsequent draws use the same logical pixel grid.
+        let Some(mapping) = self.presentation.filter(|_| !self.physical) else {
+            return;
+        };
+        let raster = mapping.raster();
+        let mut output = RgbaImage::from_pixel(raster.width, raster.height, Rgba([0, 0, 0, 255]));
+        let viewport = mapping.viewport();
+        let xs = RasterAxis::x(mapping);
+        let ys = RasterAxis::y(mapping);
+        let columns: Vec<_> = xs
+            .span(0, i64::from(mapping.logical().width))
+            .map(|x| xs.sample(x) as usize)
+            .collect();
+        let src_stride = self.image.width() as usize * 4;
+        let dst_stride = raster.width as usize * 4;
+        let left = viewport.x as usize * 4;
+        let span = columns.len() * 4;
+        let mut last_source = None;
+        for y in ys.span(0, i64::from(mapping.logical().height)) {
+            let sy = ys.sample(y) as usize;
+            let dst = y as usize * dst_stride + left;
+            if last_source == Some(sy) {
+                let previous = dst - dst_stride;
+                output.as_mut().copy_within(previous..previous + span, dst);
+            } else {
+                let src = &self.image.as_raw()[sy * src_stride..(sy + 1) * src_stride];
+                for (pixel, &x) in output.as_mut()[dst..dst + span]
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(&columns)
+                {
+                    pixel.copy_from_slice(&src[x * 4..x * 4 + 4]);
+                }
+                last_source = Some(sy);
+            }
+        }
+        self.image = output;
+        self.physical = true;
+    }
+
+    pub(crate) fn into_image(mut self) -> RgbaImage {
+        self.promote();
+        self.image
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RasterAxis {
+    offset: u32,
+    length: u32,
+    scale: f64,
+}
+
+impl RasterAxis {
+    pub(crate) fn x(mapping: StageCanvas) -> Self {
+        let viewport = mapping.viewport();
+        Self {
+            offset: viewport.x,
+            length: viewport.width,
+            scale: f64::from(mapping.scale()),
+        }
+    }
+
+    pub(crate) fn y(mapping: StageCanvas) -> Self {
+        let viewport = mapping.viewport();
+        Self {
+            offset: viewport.y,
+            length: viewport.height,
+            scale: f64::from(mapping.scale()),
+        }
+    }
+
+    pub(crate) fn span(self, start: i64, end: i64) -> std::ops::Range<u32> {
+        // A raster sample belongs to the logical pixel containing its center.
+        let edge = |logical| {
+            self.offset + ((logical as f64 * self.scale - 0.5).ceil() as u32).min(self.length)
+        };
+        edge(start)..edge(end)
+    }
+
+    pub(crate) fn sample(self, raster: u32) -> u32 {
+        ((f64::from(raster - self.offset) + 0.5) / self.scale) as u32
+    }
+
+    pub(crate) fn center(self, logical: u32) -> u32 {
+        self.offset + (((f64::from(logical) + 0.5) * self.scale) as u32).min(self.length - 1)
+    }
+}
+
 #[cfg(not(target_env = "ohos"))]
 pub(crate) use hardware::GpuCompositor;
 
@@ -105,7 +271,7 @@ mod hardware {
     use super::*;
     use crate::{Error, Result};
     use encoding_rs::Encoding;
-    use roukaku_media_core::{OwnedPixelBuffer, SceneCompositing2D};
+    use roukaku_media_core::{OwnedPixelBuffer, SceneCompositing2D, Transform2D};
     use roukaku_platform::SceneFrame;
     use roukaku_text::PackagedFont;
     use shinki_emu_sdk::{SceneTextureResidency, TextScene};
@@ -130,6 +296,7 @@ mod hardware {
         pub(crate) fn new(
             encoding: &'static Encoding,
             font: Option<Arc<PackagedFont>>,
+            mapping: StageCanvas,
         ) -> Result<Self> {
             let (commands, queue) = sync_channel::<Scene>(1);
             let (completed, frames) = sync_channel(1);
@@ -137,7 +304,7 @@ mod hardware {
             let worker = thread::Builder::new()
                 .name("adv32-gpu".into())
                 .spawn(move || {
-                    let mut renderer = match GpuRenderer::new(encoding, font) {
+                    let mut renderer = match GpuRenderer::new(encoding, font, mapping) {
                         Ok(renderer) => renderer,
                         Err(error) => {
                             let _ = initialize.send(Err(error));
@@ -232,17 +399,23 @@ mod hardware {
         sequence: u64,
         encoding: &'static Encoding,
         font: Option<Arc<PackagedFont>>,
+        mapping: StageCanvas,
     }
 
     impl GpuRenderer {
         pub(crate) fn new(
             encoding: &'static Encoding,
             font: Option<Arc<PackagedFont>>,
+            mapping: StageCanvas,
         ) -> Result<Self> {
             let instance = native_wgpu_instance().map_err(render_error)?;
             let renderer = pollster::block_on(WgpuOffscreenRenderer::new(&instance))
                 .map_err(render_error)?
                 .with_default_compositing(SceneCompositing2D::EncodedSrgb);
+            let raster = mapping.raster();
+            renderer
+                .validate_output_extent(raster.width, raster.height)
+                .map_err(render_error)?;
             tracing::info!(
                 event = "shinki.emu.adv32.gpu.adapter",
                 backend = %renderer.identity().backend,
@@ -258,12 +431,17 @@ mod hardware {
                 sequence: 0,
                 encoding,
                 font,
+                mapping,
             })
         }
 
         fn render(&mut self, mut scene: Scene) -> Result<OwnedPixelBuffer> {
             let (width, height) = scene.extent;
             let encoding = self.encoding;
+            let mapping = self.mapping;
+            let raster = mapping.raster();
+            let scaled = raster != mapping.logical();
+            let density = mapping.scale();
             let layouts = scene
                 .text
                 .iter()
@@ -279,17 +457,32 @@ mod hardware {
                 .collect::<Vec<_>>();
             let text = self
                 .text
-                .frame_parts_with_layout(&layouts, 1.0, |index, layout| {
+                .frame_parts_with_layout(&layouts, density, |index, layout| {
                     self.positioned
                         .position(&scene.text[index].1, layout, encoding)
                 })
                 .map_err(render_error)?;
             let mut commands = text.lifecycle;
+            if scaled {
+                commands.push(SceneCommand::PushClip {
+                    rect: mapping.viewport_rect().map_err(render_error)?,
+                });
+                commands.push(SceneCommand::PushTransform {
+                    transform: mapping.logical_to_raster_transform(),
+                });
+            }
             let mut sources = vec![None; commands.len()];
             let tail = scene.commands.len();
             let mut textures = scene.commands.drain(..).zip(scene.sources.drain(..));
             let mut position = 0;
             let mut draws = text.layouts.into_iter();
+            // Text origins include density but not the integer viewport offset.
+            // Cancel only the outer scale, leaving the viewport offset in place.
+            let inverse_scale = Transform2D {
+                m11: density.recip(),
+                m22: density.recip(),
+                ..Transform2D::IDENTITY
+            };
             for ((at, region), layout) in scene.text.into_iter().zip(layouts) {
                 for (command, source) in textures.by_ref().take(at - position) {
                     commands.push(command);
@@ -302,6 +495,12 @@ mod hardware {
                     });
                     sources.push(None);
                 }
+                if scaled {
+                    commands.push(SceneCommand::PushTransform {
+                        transform: inverse_scale,
+                    });
+                    sources.push(None);
+                }
                 // The atlas emits outline draws immediately before the foreground.
                 for draw in draws.by_ref() {
                     sources.extend(std::iter::repeat_n(None, draw.commands.len()));
@@ -309,6 +508,10 @@ mod hardware {
                     if draw.layout_id == layout.request.key {
                         break;
                     }
+                }
+                if scaled {
+                    commands.push(SceneCommand::PopTransform);
+                    sources.push(None);
                 }
                 if region.clip_width.is_some() {
                     commands.push(SceneCommand::PopClip);
@@ -318,6 +521,10 @@ mod hardware {
             for (command, source) in textures {
                 commands.push(command);
                 sources.push(source);
+            }
+            if scaled {
+                commands.extend([SceneCommand::PopTransform, SceneCommand::PopClip]);
+                sources.extend([None, None]);
             }
             debug_assert!(position <= tail);
             self.residency
@@ -331,13 +538,17 @@ mod hardware {
                 .renderer
                 .render(&SceneFrame {
                     sequence: self.sequence,
-                    width,
-                    height,
+                    width: raster.width,
+                    height: raster.height,
                     clear_rgba: [0, 0, 0, 255],
                     commands,
                     semantics: None,
                 })
                 .map_err(render_error)?;
+            let expected = raster.width as usize * raster.height as usize * 4;
+            if frame.rgba8.len() != expected {
+                return Err(Error::Invalid("ADV32 GPU readback size"));
+            }
             Ok(frame.rgba8.into())
         }
     }
@@ -354,8 +565,10 @@ mod tests {
     #[test]
     #[ignore = "requires a hardware GPU"]
     fn hardware_composites_a_clipped_texture_and_sdk_text_in_draw_order() {
-        let mut renderer = GpuCompositor::new(encoding_rs::GBK, None).unwrap();
-        let Canvas::Scene(previous) = Canvas::new(128, 64, true) else {
+        let extent = roukaku_media_core::Extent2D::new(128, 64);
+        let mapping = StageCanvas::new(extent, extent).unwrap();
+        let mut renderer = GpuCompositor::new(encoding_rs::GBK, None, mapping).unwrap();
+        let Canvas::Scene(previous) = Canvas::for_output(mapping, true) else {
             unreachable!()
         };
         renderer.submit(previous).unwrap();
@@ -365,7 +578,7 @@ mod tests {
             0,
             RgbaImage::from_vec(2, 1, vec![190, 0, 0, 255, 0, 120, 0, 255]).unwrap(),
         );
-        let mut canvas = Canvas::new(128, 64, true);
+        let mut canvas = Canvas::for_output(mapping, true);
         canvas.queue_sprite(&sprite, RectI::new(1, 0, 1, 1), RectI::new(0, 0, 1, 1), 1.0);
         canvas.queue_text(&Text {
             fixed_pitch: false,

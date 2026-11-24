@@ -1,4 +1,9 @@
-use crate::{Error, Result, game::read_bounded, native_data, render::Canvas};
+use crate::{
+    Error, Result,
+    game::read_bounded,
+    native_data,
+    render::{Canvas, RasterAxis},
+};
 use encoding_rs::{Encoding, GBK};
 use image::{Pixel, Rgba};
 use lru::LruCache;
@@ -348,29 +353,52 @@ impl TextPainter {
             .positioned
             .position(text, logical, encoding)
             .map_err(text_error)?;
+        let logical_width = frame.width();
+        let (frame, mapping) = frame.text_raster();
+        let density = mapping.map_or(1.0, |mapping| mapping.scale());
+        let offset = (text.x as f32 * density, text.y as f32 * density);
         let layout = raster
-            .rasterize_shared(&positioned, 1.0, (text.x as f32, text.y as f32))
+            .rasterize_shared(&positioned, density, offset)
             .map_err(text_error)?;
         let bitmaps: BTreeMap<_, _> = layout
             .glyph_resources
             .iter()
             .map(|resource| (resource.resource_id.as_str(), &resource.bitmap))
             .collect();
-        let frame = frame.raster_mut();
-        let clip = text.clip_width.map(|width| text.x..text.x + width as i32);
+        let (left, right) = text.clip_width.map_or((0, i64::from(logical_width)), |width| {
+            let left = i64::from(text.x);
+            (left, left + i64::from(width))
+        });
+        let (origin, clip_x, clip_y) = if let Some(mapping) = mapping {
+            let viewport = mapping.viewport();
+            (
+                (viewport.x as i32, viewport.y as i32),
+                RasterAxis::x(mapping).span(left, right),
+                viewport.y..viewport.y + viewport.height,
+            )
+        } else {
+            (
+                (0, 0),
+                left.clamp(0, i64::from(logical_width)) as u32
+                    ..right.clamp(0, i64::from(logical_width)) as u32,
+                0..frame.height(),
+            )
+        };
+        let clip = [&clip_x, &clip_y];
         if text.outline {
-            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let radius = density.round().max(1.0) as i32;
+            for (dx, dy) in [(-radius, 0), (radius, 0), (0, -radius), (0, radius)] {
                 draw_glyphs(
                     frame,
                     &layout,
                     &bitmaps,
-                    (dx, dy),
+                    (origin.0 + dx, origin.1 + dy),
                     [0; 3],
-                    clip.as_ref(),
+                    clip,
                 );
             }
         }
-        draw_glyphs(frame, &layout, &bitmaps, (0, 0), text.color, clip.as_ref());
+        draw_glyphs(frame, &layout, &bitmaps, origin, text.color, clip);
         Ok(())
     }
 }
@@ -381,7 +409,7 @@ fn draw_glyphs(
     bitmaps: &BTreeMap<&str, &roukaku_media_core::GlyphBitmap>,
     origin: (i32, i32),
     [r, g, b]: [u8; 3],
-    clip: Option<&std::ops::Range<i32>>,
+    [clip_x, clip_y]: [&std::ops::Range<u32>; 2],
 ) {
     for glyph in layout.shaped_runs.iter().flat_map(|run| &run.glyphs) {
         let (Some(resource), Some(x), Some(y)) =
@@ -395,9 +423,8 @@ fn draw_glyphs(
             for dx in 0..bitmap.width {
                 let x = origin.0 + x + dx as i32;
                 let y = origin.1 + y + dy as i32;
-                if x >= 0
-                    && y >= 0
-                    && clip.is_none_or(|clip| clip.contains(&x))
+                if clip_x.contains(&(x as u32))
+                    && clip_y.contains(&(y as u32))
                     && let Some(pixel) = frame.get_pixel_mut_checked(x as u32, y as u32)
                 {
                     let index = (dy * bitmap.width + dx) as usize;
@@ -470,6 +497,77 @@ mod tests {
         {
             let x = cell_x + (advance - original_advance) / 2.0;
             assert_eq!(glyph, (x, advance, line));
+        }
+    }
+
+    #[test]
+    fn raster_request_keeps_logical_cells_and_clips_at_fractional_density() {
+        use roukaku_media_core::Extent2D;
+        use shinki_emu_sdk::StageCanvas;
+
+        let mapping = StageCanvas::new(Extent2D::new(128, 64), Extent2D::new(192, 120)).unwrap();
+        assert_eq!(
+            mapping.logical_to_raster_point([13.0, 7.0]).unwrap(),
+            [19.5, 22.5]
+        );
+        assert_eq!(
+            mapping.raster_to_logical_point([19.5, 22.5]).unwrap(),
+            [13.0, 7.0]
+        );
+
+        let mut text = Text {
+            content: "I字".into(),
+            x: 13,
+            y: 7,
+            size: 24,
+            color: [255; 3],
+            width: None,
+            fixed_pitch: true,
+            line_height: None,
+            outline: false,
+            clip_width: None,
+        };
+        let mut painter = TextPainter::new(SHIFT_JIS, None);
+        let finish = |canvas| match canvas {
+            Canvas::Raster(raster) => raster.into_image(),
+            #[cfg(not(target_env = "ohos"))]
+            Canvas::Scene(_) => unreachable!(),
+        };
+        let mut native = Canvas::new(128, 64);
+        painter.draw(&mut native, &text).unwrap();
+        let upscaled = finish(Canvas::from_image(finish(native), Some(mapping)));
+
+        let mut full = Canvas::for_output(mapping, false);
+        painter.draw(&mut full, &text).unwrap();
+        let full = finish(full);
+        assert_ne!(full, upscaled);
+
+        let mut clipped = Canvas::for_output(mapping, false);
+        text.clip_width = Some(23); // Logical right edge 36 maps to raster x=54.
+        painter.draw(&mut clipped, &text).unwrap();
+        let chip = crate::crx::Crx::from_image(
+            0,
+            0,
+            image::RgbaImage::from_pixel(2, 2, Rgba([0, 90, 0, 255])),
+        );
+        // A later native sprite still samples on the logical pixel grid.
+        crate::graphics::blit(&mut clipped, &chip, 34, 0, None);
+        let clipped = finish(clipped);
+        assert_eq!(clipped.dimensions(), (192, 120));
+        let lit = |x: std::ops::Range<u32>| {
+            x.into_iter().any(|x| (23..85).any(|y| full.get_pixel(x, y)[0] != 0))
+        };
+        // The ASCII glyph is centered in its half cell, and the CJK glyph
+        // reaches beyond the right edge of the visible region.
+        assert!(lit(28..36));
+        assert!(lit(54..76));
+        for (x, y, pixel) in clipped.enumerate_pixels() {
+            let expected = match (x, y) {
+                (51..=53, 12..=14) => Rgba([0, 90, 0, 255]),
+                (19..=53, 12..=107) => *full.get_pixel(x, y),
+                _ => Rgba([0, 0, 0, 255]),
+            };
+            assert_eq!(*pixel, expected, "raster pixel ({x}, {y})");
         }
     }
 }

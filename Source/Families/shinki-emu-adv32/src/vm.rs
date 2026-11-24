@@ -26,7 +26,10 @@ use crate::{
 };
 use image::RgbaImage;
 use roukaku_media_core::OwnedPixelBuffer;
-use shinki_emu_sdk::runtime::{KeyCode, KeyState, PointerButton, RuntimeEvent, WindowCommand};
+use shinki_emu_sdk::{
+    StageCanvas,
+    runtime::{KeyCode, KeyState, PointerButton, RuntimeEvent, WindowCommand},
+};
 use std::{
     collections::{BTreeMap, VecDeque},
     path::Path,
@@ -441,6 +444,7 @@ pub(crate) struct Vm {
     next_label: Option<Vec<u8>>,
     ip: usize,
     extent: (u32, u32),
+    presentation: Option<StageCanvas>,
     texture_slots: TextureSlots,
     saves: Saves,
     player_names: PlayerNames,
@@ -632,6 +636,7 @@ impl Vm {
             next_label: None,
             ip,
             extent,
+            presentation: None,
             texture_slots,
             saves,
             player_names,
@@ -775,6 +780,10 @@ impl Vm {
         self.extent
     }
 
+    pub(crate) fn set_presentation(&mut self, canvas: StageCanvas) {
+        self.presentation = Some(canvas);
+    }
+
     pub(crate) fn finished(&self) -> bool {
         self.wait == Wait::Finished
     }
@@ -846,10 +855,13 @@ impl Vm {
     }
 
     fn render_raster_tick(&mut self) -> Result<Option<OwnedPixelBuffer>> {
-        if std::mem::take(&mut self.frame_dirty) {
-            Ok(Some(self.compose()?.into_raw().into()))
-        } else {
-            Ok(None)
+        if !std::mem::take(&mut self.frame_dirty) {
+            return Ok(None);
+        }
+        match self.paint(false, self.presentation)? {
+            Canvas::Raster(raster) => Ok(Some(raster.into_image().into_raw().into())),
+            #[cfg(not(target_env = "ohos"))]
+            Canvas::Scene(_) => unreachable!("software presentation uses a raster canvas"),
         }
     }
 
@@ -880,13 +892,13 @@ impl Vm {
         {
             return Ok(ready);
         }
-        let canvas = self.paint(use_gpu)?;
+        let canvas = self.paint(use_gpu, self.presentation)?;
         self.frame_dirty = false;
         let compositor = self.gpu.as_mut().expect("GPU compositor is enabled");
         match canvas {
-            Canvas::Raster(image) => {
+            Canvas::Raster(raster) => {
                 compositor.discard_pending();
-                Ok(Some(image.into_raw().into()))
+                Ok(Some(raster.into_image().into_raw().into()))
             }
             Canvas::Scene(scene) if defer => {
                 compositor.submit(scene)?;
@@ -897,10 +909,11 @@ impl Vm {
     }
 
     #[cfg(not(target_env = "ohos"))]
-    pub(crate) fn enable_hardware_compositor(&mut self) -> Result<()> {
+    pub(crate) fn enable_hardware_compositor(&mut self, canvas: StageCanvas) -> Result<()> {
         self.gpu = Some(crate::render::GpuCompositor::new(
             self.text_encoding,
             self.text_painter.font(),
+            canvas,
         )?);
         Ok(())
     }
@@ -2486,18 +2499,21 @@ impl Vm {
     }
 
     fn compose(&mut self) -> Result<RgbaImage> {
-        match self.paint(false)? {
-            Canvas::Raster(image) => Ok(image),
+        match self.paint(false, None)? {
+            Canvas::Raster(raster) => Ok(raster.into_image()),
             #[cfg(not(target_env = "ohos"))]
             Canvas::Scene(_) => unreachable!("snapshot uses a raster canvas"),
         }
     }
 
-    fn paint(&mut self, gpu: bool) -> Result<Canvas> {
+    fn paint(&mut self, gpu: bool, presentation: Option<StageCanvas>) -> Result<Canvas> {
         let (width, height) = self.extent;
         #[cfg(feature = "video-ffmpeg")]
         let gpu = gpu && self.movie.is_none();
-        let mut frame = Canvas::new(width, height, gpu);
+        let mut frame = match presentation {
+            Some(canvas) => Canvas::for_output(canvas, gpu),
+            None => Canvas::new(width, height),
+        };
         if let Some(entry) = &self.name_entry {
             if let Some(background) = &entry.backdrop {
                 graphics::blit(&mut frame, background, 0, 0, None);
@@ -2564,7 +2580,7 @@ impl Vm {
             if let Some(raster) = movie.frame() {
                 let (video_width, video_height) = raster.dimensions();
                 if (video_width, video_height) == self.extent {
-                    return Ok(Canvas::Raster(raster.clone()));
+                    return Ok(Canvas::from_image(raster.clone(), presentation));
                 }
                 let scale =
                     (width as f64 / video_width as f64).min(height as f64 / video_height as f64);
@@ -2799,7 +2815,7 @@ impl Vm {
             {
                 return Ok(frame);
             }
-            for (x, y, pixel) in frame.raster_mut().enumerate_pixels_mut() {
+            frame.for_each_raster_pixel(|x, y, pixel| {
                 let alpha = if let Some((mask, increase)) = &fade.mask {
                     let mx = x * mask.image.width() / width;
                     let my = y * mask.image.height() / height;
@@ -2813,7 +2829,7 @@ impl Vm {
                     *value = ((u16::from(*value) * (255 - alpha) + u16::from(color) * alpha) / 255)
                         as u8;
                 }
-            }
+            });
         }
         Ok(frame)
     }
@@ -3223,13 +3239,19 @@ impl Vm {
                         r"SYSTEM\EFFBREAK"
                     };
                     let mask = self.graphics.load(&self.game, resource)?;
-                    let frame = match captured.or_else(|| self.last_frame.clone()) {
-                        Some(frame) => frame,
-                        None => self.compose()?.into_raw().into(),
+                    let (frame, mapping) = if let Some(frame) = captured {
+                        (frame, None)
+                    } else if let Some(frame) = &self.last_frame {
+                        // The screen-break mask addresses logical pixels of the
+                        // last displayed frame, even when its stride is physical.
+                        (frame.clone(), self.presentation)
+                    } else {
+                        (self.compose()?.into_raw().into(), None)
                     };
                     self.screen_break = Some(ScreenBreak::new(
                         frame,
                         self.extent,
+                        mapping,
                         mask,
                         b,
                         &mut self.random,
@@ -6498,7 +6520,7 @@ mod tests {
             make_button(foreground, true),
             make_button(image::Rgba([20, 60, 255, 255]), false),
         ];
-        let mut canvas = Canvas::new(1, 1, false);
+        let mut canvas = Canvas::new(1, 1);
         draw_buttons(
             &mut canvas,
             &buttons,

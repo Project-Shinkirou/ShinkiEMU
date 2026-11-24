@@ -1,6 +1,8 @@
 use crate::{Error, game::Game, vm::Vm};
 use roukaku_media_core::{Extent2D, OwnedPixelBuffer};
 use shinki_emu_abi as abi;
+#[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
+use shinki_emu_sdk::runtime::WindowCommand;
 use shinki_emu_sdk::{
     StageCanvas,
     native::{NativeFailure, ServiceContext, config_entries, lease_cpu, window_request},
@@ -22,6 +24,14 @@ use std::{
 
 const FORMAT: abi::Bytes = abi::Bytes::from_static(b"adv32.mes");
 const FORMATS: &[abi::Bytes] = &[FORMAT];
+const RENDER: abi::RenderExtentSupport = abi::RenderExtentSupport {
+    min: abi::Extent { width: 320, height: 180 },
+    // At most 64 MiB per tightly packed RGBA8 frame, including letterboxing.
+    max: abi::Extent { width: 4096, height: 4096 },
+    default: abi::Extent { width: 0, height: 0 },
+    flags: abi::RENDER_PRESERVE_ASPECT,
+    reserved: 0,
+};
 #[cfg(not(target_env = "ohos"))]
 const HARDWARE_COMPOSITING: &str = "hardware_compositing";
 #[cfg(not(target_env = "ohos"))]
@@ -170,6 +180,7 @@ struct SessionOptions {
     null_audio: bool,
     skip_disc_check: bool,
     font_file: Option<PathBuf>,
+    render_extent: abi::Extent,
 }
 
 /// Query used by the statically linked Manager.
@@ -206,14 +217,14 @@ fn descriptor() -> abi::Descriptor {
         family_id: abi::Bytes::from_static(b"adv32"),
         plugin_id: abi::Bytes::from_static(b"shinki.emu.adv32"),
         version: abi::Bytes::from_static(env!("CARGO_PKG_VERSION").as_bytes()),
-        capabilities: abi::CAP_CPU_SURFACE,
+        capabilities: abi::CAP_CPU_SURFACE | abi::CAP_RENDER_EXTENT,
         formats: FORMATS.as_ptr(),
         format_count: FORMATS.len(),
         configuration: CONFIGURATION.as_ptr(),
         configuration_count: CONFIGURATION.len(),
         display_name: abi::Bytes::from_static(b"Shinki ADV32"),
         family_name: abi::Bytes::from_static(b"ADV32"),
-        render: abi::RenderExtentSupport::default(),
+        render: RENDER,
     }
 }
 
@@ -370,6 +381,7 @@ unsafe extern "C" fn open(
             null_audio,
             skip_disc_check,
             font_file,
+            render_extent: request.render_extent,
         };
         let path = PathBuf::from(unsafe { request.game_path.text(32768) }.map_err(invalid)?);
         let services = Arc::new(ServiceContext {
@@ -449,13 +461,23 @@ fn serve(
     vm.set_skip_disc_check(options.skip_disc_check);
     #[cfg(not(target_env = "ohos"))]
     vm.set_null_audio(options.null_audio);
-    #[cfg(not(target_env = "ohos"))]
-    if options.hardware_compositing {
-        vm.enable_hardware_compositor().map_err(runtime)?;
-    }
     let (width, height) = vm.extent();
     let extent = abi::Extent { width, height };
-    let os_extent = Extent2D { width, height };
+    let raster = if options.render_extent == abi::Extent::default() {
+        extent
+    } else {
+        options.render_extent
+    };
+    let canvas = StageCanvas::new(
+        Extent2D::new(extent.width, extent.height),
+        Extent2D::new(raster.width, raster.height),
+    )
+    .map_err(|_| invalid(abi::INVALID_ARGUMENT))?;
+    vm.set_presentation(canvas);
+    #[cfg(not(target_env = "ohos"))]
+    if options.hardware_compositing {
+        vm.enable_hardware_compositor(canvas).map_err(runtime)?;
+    }
     let surface = abi::SurfaceInfo {
         kind: abi::SURFACE_CPU,
         pixel_format: abi::PIXEL_RGBA8,
@@ -463,11 +485,11 @@ fn serve(
         alpha: abi::ALPHA_IGNORED,
         rows: abi::ROWS_TOP_DOWN,
         logical: extent,
-        raster: extent,
-        stride: u64::from(width) * 4,
+        raster,
+        stride: u64::from(raster.width) * 4,
     };
     surface.validate().map_err(invalid)?;
-    let canvas = StageCanvas::new(os_extent, os_extent).map_err(|_| invalid(abi::CORE_ERROR))?;
+    let frame_bytes = surface.cpu_bytes().map_err(invalid)?;
     let shared = Arc::new(Shared {
         services,
         surface,
@@ -517,6 +539,9 @@ fn serve(
                     .tick(now.saturating_duration_since(previous), &events)
                     .map_err(runtime)?
             {
+                if image.as_slice().len() != frame_bytes {
+                    return Err(runtime(Error::Invalid("ADV32 presentation frame size")));
+                }
                 let mut frame = shared.frame.lock().map_err(|_| invalid(abi::PANICKED))?;
                 if image.as_slice() != frame.pixels.as_slice() {
                     frame.pixels = image;
