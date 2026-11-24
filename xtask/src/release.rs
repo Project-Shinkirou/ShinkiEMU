@@ -879,12 +879,23 @@ mod tests {
             )
             .unwrap();
         }
+        let target_count = targets.len();
         let qa = shinki_emu_build::ohos::Target::X64.rust_target();
         let qa_dir = id.root.join(qa);
         fs::create_dir(&qa_dir).unwrap();
         fs::write(qa_dir.join("release.json"), b"untrusted local QA record").unwrap();
+        let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
+            panic!("accepted an Android APK without verified Ren'Py source and relinking");
+        };
+        assert!(error.to_string().contains("verify LGPL relinking"), "{error}");
+        inv.cores
+            .iter_mut()
+            .find(|core| core.id == "renpy")
+            .unwrap()
+            .publish_blocked
+            .clear();
         let prepared = collect_records(&inv, &id, "manager", Scope::All).unwrap();
-        assert_eq!(prepared.records.len(), targets.len());
+        assert_eq!(prepared.records.len(), target_count);
         assert!(prepared.blocked.iter().all(|row| !row.contains(qa)));
         let mut record: Value = serde_json::from_slice(&fs::read(&android).unwrap()).unwrap();
         let different_digit = if id.commit.starts_with('0') { "1" } else { "0" };
