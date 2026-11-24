@@ -119,6 +119,8 @@ Android 选择输出时只初始化应用私有的 `files/exports` 父目录，�
 
 `shinki-emu-manager patch list [--scripts <metadata 目录>]` 每行输出一条目录记录（JSON），不执行配方。CLI 失败退出码为 1，取消为 130。
 
+本地构建补丁 CLI 用 `cargo build --locked --release -p shinki-emu-manager`。配方若同时改了核心能力，用 `Source/Cores/<id>/` 下的 Cargo 入口包构建该核心；外部实现按根 `Cargo.toml` 和 `Cargo.lock` 取 pin，本地修改用临时 `[patch]`。见 [Build and release](../../../docs/en/build-and-release.md)。
+
 ## 5. 写一个新配方
 
 1. 确认目标发行的 VNDB rID/vID，从一份干净安装里取指纹文件的大小和 SHA256。同一补丁支持多个发行时，各写一项 `releases`，指纹必须能区分它们。
@@ -132,7 +134,7 @@ Android 选择输出时只初始化应用私有的 `files/exports` 父目录，�
 ## 6. 投稿与审核
 
 - 外部投稿用 GitHub issue 表单 `.github/ISSUE_TEMPLATE/patch.yml`（https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=patch.yml），说明为中英日三语。字段：补丁 id、中英标题和摘要、脚本版本、核心、发行绑定 JSON（vID、rID、发行标题、edition/版本、指纹）、来源 URL 和许可（都必填）、授权 URL（可选）、下载声明 JSON、完整 Luau 脚本。
-- 维护者给 issue 打上 `patch:accepted` 后，`metadata-intake.yml` 运行 `cargo xtask metadata intake --kind patch`（实现在 `xtask/src/metadata/intake.rs`）。它只做这些：必填字段非空；rID 为 `r` 加 1–63 位数字、vID 为 `v` 加 1–63 位数字；发行绑定和指纹走 DTO 校验；下载声明严格解析为 `PatchDownload`，要求 HTTPS、64 位小写 sha256、非负整数 size，URL 不能重复；拒绝重复的表单段落、重复的 JSON key 和不安全的 id；脚本去掉 Markdown 代码块外壳后，直接调用 Luau 编译器检查语法。它不执行脚本、不访问下载 URL、不构造合成游戏输入。任何一项失败都不会写出文件。
+- 维护者给 issue 打上 `patch:accepted` 后，`metadata-intake.yml` 运行 `cargo xtask metadata intake --kind patch --event intake-event.json --out .work/intake`（实现在 `xtask/src/metadata/intake.rs`）。它只做这些：必填字段非空；rID 为 `r` 加 1–63 位数字、vID 为 `v` 加 1–63 位数字；发行绑定和指纹走 DTO 校验；下载声明严格解析为 `PatchDownload`，要求 HTTPS、64 位小写 sha256、非负整数 size，URL 不能重复；拒绝重复的表单段落、重复的 JSON key 和不安全的 id；脚本去掉 Markdown 代码块外壳后，直接调用 Luau 编译器检查语法。它不执行脚本、不访问下载 URL、不构造合成游戏输入。任何一项失败都不会写出文件。
 - 通过后生成 `Metadata/patches/entries/<id>.json`（`recipe.script = "<id>.luau"`，下载声明写进 `downloads`）和 `Metadata/patches/<id>.luau`，再开一个普通 review PR，不会自动合并。issue 正文改动会撤销已有的接受标签，需要维护者重新确认。
 
 ## 完成检查

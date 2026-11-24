@@ -1,6 +1,6 @@
 # CMVS
 
-ShinkiEMU 的 CMVS 核心，启用 `dynamic-plugin-export` 时以 cdylib 导出 `shinki_emu_query`，静态注册用 `cmvs_query`。
+ShinkiEMU 的 CMVS 核心。独立入口 crate 导出 `shinki_emu_query`，静态注册用 `cmvs_query`。
 
 ## 支持的行为
 
@@ -24,13 +24,13 @@ cargo check -p shinki-emu-cmvs --all-targets --locked
 cargo test -p shinki-emu-cmvs --locked
 cargo test -p shinki-emu-cmvs --locked --lib static_initialize_preserves_the_installed_host_subscriber
 cargo test -p shinki-emu-cmvs --locked --lib --features dynamic-plugin-export dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement
-cargo build -p shinki-emu-cmvs --locked --lib --features dynamic-plugin-export
+cargo build --locked --release -p shinki-emu-core-shinki-emu-cmvs
 ```
 
 核心不依赖 Win32：Windows、Linux、macOS 与 Android 使用同一套文字、MP3 和设置实现。存档仍在原引擎的 `game/save/` 位置和格式。
 
-Android 和 iOS Manager 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`。独立 Android `cdylib` 在显式激活时通过 `AndroidContextV1` 初始化本库内的 CPAL/AAudio JNI 上下文，静态集成保留宿主初始化。两条路径都复用 SDK 的静态 FFmpeg 7.1.2，不改变播放或存档。独立核心和 Manager 分别打包原生依赖许可及对应源码。Android ARM64、x86_64 的独立包需要各自验证设备加载及实际运行。
+Android 和 iOS Manager 通过同一静态注册表调用 `cmvs_query`，启用 `video-ffmpeg`。独立核心支持 Windows x64、Linux x64 和两种 macOS 架构。入口 crate 与静态 Manager 共用 SDK 的 FFmpeg 消费路径，打包保留所用原生依赖的许可。目标支持以 [`build/cores.toml`](../../../build/cores.toml) 为准。
 
-动态构建由 `build/cores.toml` 的 `features` 启用 `dynamic-plugin-export`，在独立模块中安装diagnostic callback bridge；静态Manager的 `static_features` 不启用它，验证host诊断header、emit与flush后沿用同一进程的host tracing subscriber，不重复安装全局subscriber。无效诊断参数仍返回ABI错误，不破坏已完成的初始化；初始化和后续失败仍走原生ABI错误/host诊断通路。
+独立入口 crate 启用 `dynamic-plugin-export`，在独立模块中安装诊断回调桥。静态 Manager 不启用这个 feature，校验宿主诊断 header、emit 和 flush 后沿用进程的 tracing 订阅器。无效诊断参数返回 ABI 错误，不破坏已完成的初始化；初始化及后续失败仍走原生 ABI 错误和宿主诊断通路。
 
 创建场景的测试需要硬件 GPU。游戏原始文件、密钥和解码产物不进仓库。

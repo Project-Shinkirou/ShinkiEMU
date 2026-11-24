@@ -1,6 +1,6 @@
 ---
 name: shinkiemu-maintenance
-description: Use when maintaining ShinkiEMU itself rather than writing a core - xtask doctor/deps/build/package/release, build/cores.toml and targets.toml edits, external-core version identity (upstream_identity, release_sequence, canonical core tags), fork pin bumps and Cargo.lock discipline, vcpkg baseline/overlay triplets/overlay ports, Android/iOS static Manager embedding, corresponding-source and license bundles, GitHub CI exact-head runs and watchers, the contributor PR gate versus maintainer release acceptance, release/catalog publication, signing (Android release certificate, Apple ad-hoc, OHOS test PKI), native macOS builds and Mac disk capacity, and headless runs (shinki-emu-headless run/compare/ui, shinki-emu-manager headless/headless-ui) for frame acceptance, screenshot and hash baselines, input replay scripts, null audio selection and windowless Manager UI screenshots. Not for writing a new core (shinkiemu-new-core), porting a third-party engine (shinkiemu-integrate-existing-core) or Luau game patches (shinkiemu-patch).
+description: Use when maintaining ShinkiEMU itself rather than writing a core - Cargo builds and xtask packaging and releases, build/cores.toml and targets.toml edits, external-core version identity (upstream_identity, release_sequence, canonical core tags), fork pin bumps and Cargo.lock discipline, vcpkg baseline/overlay triplets/overlay ports, Android/iOS static Manager embedding, license notices and public fork commits, GitHub CI exact-head runs and watchers, the contributor PR gate versus maintainer release acceptance, release/catalog publication, signing (Android release certificate, Apple ad-hoc, OHOS test PKI), native macOS builds and Mac disk capacity, and headless runs (shinki-emu-headless run/compare/ui, shinki-emu-manager headless/headless-ui) for frame acceptance, screenshot and hash baselines, input replay scripts, null audio selection and windowless Manager UI screenshots. Not for writing a new core (shinkiemu-new-core), porting a third-party engine (shinkiemu-integrate-existing-core) or Luau game patches (shinkiemu-patch).
 ---
 
 # ShinkiEMU 项目维护
@@ -19,15 +19,16 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 
 | 文件 | 管什么 |
 |---|---|
-| `build/cores.toml` | 每个核心的 plugin_id、manifest、features、`dependencies` 配方、许可输入、`supported_targets`/`[[cores.blocked]]`、`static_manager_targets`/`static_features`、`publish_blocked`；外部核心的 `[cores.source]`（repo/branch/rev/upstream/`upstream_identity`/`release_sequence`） |
+| `build/cores.toml` | 核心 ID、引擎族、许可、`supported_targets`/`[[cores.blocked]]`、`static_manager_targets`、`publish_blocked` 和外部核心的 `[cores.attribution]` |
 | `build/targets.toml` | 10 个 triple、runner、`manager_supported`；target 级 `blocked` 覆盖所有组件 |
 | `build/dependencies.toml` | 工具版本和下载输入（SHA256 固定） |
 | `build/vcpkg/` | `ffmpeg/`、`subtitle/` manifest；`apple-triplets/`（arm64/x64-osx、arm64-ios、arm64-ios-simulator、x64-ios）；`mobile-triplets/`（`*-android-ffmpeg`、`arm64-ohos`、`ohos-toolchain.cmake`） |
 | `Source/Manager/shinki-emu-manager/Cargo.toml` | 静态核心依赖，按平台 `cfg` 或精确 target triple 声明 |
 | `Source/Manager/shinki-emu-manager/src/static_cores.rs` | Manager GUI 和 Manager 的 `headless` 子命令共用的 `STATIC_CORES` 表；GUI owner 在 `manager_app/owner_worker.rs` 注册入口 |
-| 根 `Cargo.toml` | `[patch."https://github.com/Project-Shinkirou/ShinkiEMU"]` 把 fork 里 git 依赖的 `shinki-emu-abi/build/sdk` 重定向到树内；`[patch.crates-io]` 固定 kira、cpal、ffmpeg-sys-next、mlua-sys |
+| 根 `Cargo.toml` + `Cargo.lock` | 核心 fork Git URL/提交和整个工作区的依赖；根 `[patch]` 将 fork 使用的 ShinkiEMU crate 指向树内实现 |
+| `Source/Cores/<id>/` | 单独构建的核心入口；按需开启实现的独立导出 feature |
 
-`Inventory::load`（`xtask/src/cores.rs`）在每条命令开头校验清单：每个 triple 在 supported 或 blocked 中恰好出现一次；`ThirdParty/` 下的 manifest 必须有 `[cores.source]`，树内核心不能有；slug 不能重复；外部 plugin slug 不超过 32 字节；`validate_static_dependencies` 要求 Manager 的 git/rev/path/features 与清单逐项一致，`default-features` 不能为 true。改清单后先跑 `cargo xtask matrix`，它会直接报出违反的规则。
+改清单后用 `cargo xtask matrix` 检查目标。每个 triple 在 `supported_targets` 或 `[[cores.blocked]]` 中恰好出现一次；slug 不能重复，外部 plugin slug 不超过 32 字节。`static_manager_targets` 单独声明嵌入目标。
 
 文档改动要三语同步：`docs/{zh-cn,en,ja}/` 同名文件一起改。
 
@@ -46,74 +47,69 @@ TEMP/TMP               <tmp>/<slice>
 ```
 
 - 新 worktree 从最新公开 `origin/main` 开：`git worktree add -b <branch> <worktrees>/<slice> origin/main`，再 `git -C <worktrees>/<slice> submodule update --init --recursive` 取得 `ThirdParty/cpal`。
-- `ThirdParty/*`（除 `README.md`、`cpal/`）被 `.gitignore` 忽略，不是子模块。`cargo xtask deps --core <id>` 会 clone/fetch fork 并 checkout 到 pin；本地有改动时拒绝执行，不会替你 reset。
-- 调试未提交的 adapter 改动时用 `deps --allow-dirty-sources`，前提是 fork HEAD 已经是清单 pin。构建记录会标出 dirty，`release` 拒绝 dirty 记录。
+- Cargo 根据根 `Cargo.toml` 和 `Cargo.lock` 获取 fork 依赖。要用自己的 fork 工作树调试，在根 `Cargo.toml` 添加临时 `[patch]`，运行 `cargo metadata --format-version 1` 重新解析后构建。提交前移除 patch，恢复公开 pin。示例见 [Build and release](../../../docs/en/build-and-release.md#work-on-a-fork-locally)。
 - 同一时刻 Mac 只有一个 native slot，`main`、tag、catalog 只有一个发布 owner。没被指派时不要 push `main`、打 tag 或开 catalog PR。
 
 ## 3. 构建命令
 
 ```sh
 cargo xtask matrix                      # 所有组合及 blocked 原因
-cargo xtask doctor --target <triple> [--core <id>]
-cargo xtask deps   --target <triple> [--core <id> | --all-cores] [--allow-dirty-sources]
-cargo xtask build  --target <triple> (--manager | --core <id> | --all-cores) --release
-cargo xtask check  --target <triple> (--manager | --core <id>)
-cargo xtask test   [--manager | --core <id>]   # 宿主运行，无 --target
+cargo build --locked --release --target <triple> -p <package>
+cargo check --locked --target <triple> -p <package>
+cargo test --locked -p <package>
+cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --lib
 cargo xtask package --target <triple> --core <id> --out <新目录>      # 外部核心不传 --version
 cargo xtask package --target <triple> --manager --version <semver> --out <新目录>
 cargo xtask ci --target <triple> --component <id|manager> --report .work/<name>.json
 cargo xtask metadata validate
 ```
 
-- `doctor` 只诊断，不安装；`deps` 是唯一的下载入口；普通命令不会隐式准备依赖。
-- 各组件构建到 `.work/target/<target>/<component>`，构建记录在 `.work/build/<target>/<component>.json`。xtask 从 Cargo JSON 读真实产物路径。
-- Windows 长路径会落到 `.work/t/<hash>`，路径仍超长时设 `SHINKI_EMU_TARGET_ROOT`。
-- 不要做 workspace-wide all-features 构建。各 fork 有自己的 lockfile 和依赖图。
+- Manager 包名 `shinki-emu-manager`。独立核心入口包名为 `shinki-emu-core-<id>`，把 ID 中的点换成连字符，保留大小写与下划线。测试直接选实现 crate。
+- Cargo build script 准备原生依赖。`package` 运行锁定依赖的 release 构建，从 Cargo JSON 读取实际产物和打包输入，输出必须是新目录。打包、`ci` 和 release 准备前安装 `cargo install cargo-about --locked --version 0.9.3`。自研核心和 Manager 打包必须传产品 `--version`。
+- 本地 Cargo 用 `CARGO_TARGET_DIR`，Windows 路径过长时将它设为短路径。xtask 启动的构建也接受此变量，或用 `SHINKI_EMU_TARGET_ROOT` 调整短路径根。
+- 构建按组件选择包，不做 workspace-wide all-features 构建。发布组件统一使用根工作区的锁文件。
 - CI 的 tools job 跑的是 `cargo fmt --check`、`cargo clippy --locked -p xtask -p shinki-emu-build --all-targets -- -D warnings`、`cargo test --locked -p xtask -p shinki-emu-build`、`cargo xtask metadata validate`，以及用 cbindgen 0.29.2 比对 `Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h`。本地改 xtask 后跑同一组即可；改了 `shinki-emu-abi/src` 就按 `docs/en/core-abi.md` 的命令重新生成头文件一起提交。
-- Windows 的 `build`/`package` 在 x64 VS 开发者环境里跑。打包只从 `%VCToolsRedistDir%\x64` 取 MSVC 运行库；`doctor` 不检查这个变量，报 `missing redistributable dependency VCRUNTIME140.dll` 时换到开发者环境重跑，`deps` 解决不了。
-- `cargo xtask` 是 `run --locked` 别名。新增 workspace 成员或依赖时，先不带 `--locked` 跑一次 `cargo metadata --format-version 1`，确认 `git diff -- Cargo.lock` 只有新增条目（当前 Cargo 可能顺带对调两个 `na_mpeg2_decoder 0.1.0`，版本不变），再跑 xtask。fork pin 升级仍按 §5 只改 rev 行。
+- Windows 的 Cargo 和打包命令在 x64 VS 开发者环境里跑。打包从 `%VCToolsRedistDir%\x64` 取 MSVC 运行库。
+- 新增 workspace 成员和依赖时，不带 `--locked` 跑一次 `cargo metadata --format-version 1` 更新锁文件，核对预期差异后用 `--locked`。fork pin 升级见 §5。
 
-**贡献者 PR 门禁与维护者职责。** 外部贡献者的硬门禁只有构建和打包：改动的组件在 Windows x64 和 Android ARM64 中声明支持的目标上跑通 `deps`、`build --release`、`package`，PR CI 再跑 tools 和受影响的 Windows/Linux 行。测试、ABI 探针、headless 和示例运行的结果写在 PR 描述里，截图、日志、hash、回执不进仓库。下面 §11 的发布验收、macOS/iOS/OHOS 构建、Android Manager 双 ABI 打包和组织 fork 写入都由维护者负责。
+**贡献者 PR 门禁与维护者职责。** 外部贡献者在 Windows x64 和 Android ARM64 中为改动组件声明支持的目标上跑通 Cargo release 构建和 `package`。PR CI 再跑 host 工具检查和受影响的 Windows/Linux 行。测试、ABI 探针、headless 和示例运行的结果写在 PR 描述里，截图、日志、hash 和运行产物不进仓库。§11 的发布验收、macOS/iOS/OHOS 构建、Android Manager 双 ABI 打包和组织 fork 写入由维护者负责。
 
 平台优先级与顺序：Windows x64 → Linux x64 → macOS（arm64、x64）→ Android（Manager 静态嵌入）→ iOS（Manager 静态嵌入）→ OHOS（local-only，DevEco 本机打包）。
 
 ## 4. 外部核心版本身份
 
-外部核心不用 SemVer。版本从 `[cores.source]` 推导：
+外部核心不用 SemVer。`Cargo.lock` 提供组织 fork 的仓库和完整提交；清单中另有：
 
 ```toml
-[cores.source]
-repo = "https://github.com/Project-Shinkirou/<repo>"
-branch = "<fork 上真实存在的分支，如 shinki-android-ports>"
-rev = "<adapter 完整 40 位小写 commit>"
-upstream = "https://github.com/<原作者>/<repo>"
-release_sequence = <正整数>
-upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", ref_name = "<原上游 ref>", commit = "<原上游完整 commit>" }
+[cores.attribution]
+adapter_branch = "<fork 的真实分支>"
+release_sequence = 1
+upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind = "tag", ref_name = "<原上游 tag>", commit = "<原上游完整 commit>" }
 ```
 
-- `upstream_identity` 记录原上游。上游 commit 上有 tag 时用 `ref_kind = "tag"`；否则用原上游真实存在、历史包含该 commit 的分支。组织 fork 的分支只写在 `branch`，不能当 upstream。`upstream` 不能是 Project-Shinkirou。
+- `upstream_identity` 记录原上游。上游 commit 有 tag 时用 `ref_kind = "tag"`；否则用包含该 commit 的真实上游分支。组织 fork 的分支只用于 `adapter_branch`。
 - digest 是 8 个字段（upstream repo/kind/ref/commit、adapter repo/branch/commit、十进制 sequence）各接一个 LF 后的完整 SHA256。版本为 `<tag|branch>-<ref slug>-<digest>`，tag 为 `core-<plugin slug>-<version>`。只改 adapter 也会得到新身份。
 - `release_sequence` 每个插件全局递增，跨平台共用一个序号。adapter/upstream pin 变了或要重新发布时 +1；同一序号不能对应两个不同版本，也不能回退。多个候选并行时，序号由发布 owner 统一预留，slice 不要自己占号。
-- 改完先跑 `cargo xtask release --component <id> --dry-run`。它会真实 fetch 原上游 ref，验证上游 commit 和 adapter 祖先关系，打印 canonical 版本和 tag，不构建也不发布。
+- 改完跑 `cargo xtask release --component <id> --dry-run`，核对版本、标签和目标。这个命令不构建、不发布。
 - Manager、Musica、CMVS 仍用 `manager-v<semver>` / `core-<slug>-v<semver>`，`package`/`release` 必须传 `--version`。给外部核心传 `--version` 会被拒绝。
 - 已公开的 tag 和资产不可改写。修复只能走新 sequence 的新 release。
 
 ## 5. fork pin 升级
 
 1. fork 改动在 fork 分支提交并 push（非 force），取完整 SHA。
-2. 在 `build/cores.toml` 里改 `rev`（必要时改 `branch`、`release_sequence`）。如果该核心静态嵌入，同步改 Manager `Cargo.toml` 对应 `cfg` 段里的 `rev`，三段（android/ios/ohos）凡有该核心都要改。
-3. `Cargo.lock` 只做文本替换：把该 fork 的 `source = "git+https://github.com/Project-Shinkirou/<repo>?rev=<old>#<old>"` 换成新 SHA。不要 `cargo update`，也不要 `cargo update -p`，它们会顺带漂移无关的 registry 版本（wgpu-hal 的 `windows` 版本就这样弄坏过 D3D12）。
-4. 验收条件：`git diff -- Cargo.lock` 只有该 fork 的 rev 行；`cargo metadata --locked` 成功；`cargo xtask matrix` 不报静态 pin 不一致。
+2. 在根 `Cargo.toml` 的 `[workspace.dependencies]` 更新 `rev`，入口和 Manager 继续继承同一个依赖。需要时更新 `build/cores.toml` 的 `adapter_branch`、`upstream_identity` 和 `release_sequence`。
+3. 跑 `cargo metadata --format-version 1` 更新 `Cargo.lock`。检查变更限于这次 fork 升级所需的提交和依赖，不批量更新无关依赖（例如不要改变 D3D12 所用的 `windows` 版本）。
+4. 用 `cargo metadata --locked --format-version 1` 和 `cargo xtask matrix` 检查锁文件与目标清单；按受影响目标重建。
 5. Android 和 iOS 的静态核心共享 Manager 的依赖图：kira、cpal、mlua/mlua-sys、wgpu、naga 必须能统一到一个版本。两个版本的 `links =` crate 会让解析失败。优先改 fork 对齐，不要再加 patch。iOS 需要同时开 naga 26 的 `termcolor` 特性，原因见 Manager `Cargo.toml` 注释。
 
 同一 fork 的多条平台线（例如 Linux、Mac、Android 各自修过 kirikiroid2-web）要用真实 merge 合到一个共同分支，保留每条线的祖先。不要 squash，不要 rebase 已推送的分支。合流后必须在共同 head 重跑全部目标的门禁，旧分支的通过记录不能挪用。
 
 ## 6. vcpkg 与原生依赖
 
-- vcpkg baseline 以 `docs/en/build-and-release.md`「Inputs and prerequisites」里记载的 commit 为准，升级 baseline 时三语文档一起改。registry 必须完整 clone，xtask 需要历史 port tree，不能浅克隆。
-- 原生缓存在 `.work/vcpkg-binary-cache`、`.work/vcpkg-downloads`、`.work/tmp`。下载不稳定时可以把同一版本的源码包预放入 `.work/vcpkg-downloads`，vcpkg 仍会按 port 的 SHA512 校验。
-- 每个核心、每个 target 用独立的 `installed-<triplet>` 根。Windows、Android arm64、Android x64 先后执行 `deps` 不会互相覆盖。
-- Apple overlay triplet 固定 macOS 13.0 / iOS 16.0，并让 libass 用 CoreText。`deps` 会清掉 `*_DEPLOYMENT_TARGET`，避免 macOS 构建机上的 host 工具被编成 iOS 目标。
+- 以 `build/dependencies.toml`、各 vcpkg manifest 和 overlay 为准。构建脚本从 `.work/vcpkg` 引导固定 vcpkg，或用 `SHINKI_EMU_VCPKG_ROOT` 指向已固定的共享 checkout。
+- 缓存是 `.work/vcpkg-binary-cache/` 和 `.work/vcpkg-downloads/`。下载不稳定时可以预放同版本源码包，vcpkg 仍按 port 的 SHA512 校验。
+- 安装树在 `.work/vcpkg-installs/<triplet>-<key>/installed/`，各架构和清单互不覆盖。FFmpeg 和 libass 由共享 `links` crate 供直接消费者使用。
+- Apple overlay triplet 固定 macOS 13.0/iOS 16.0，并让 libass 用 CoreText。原生工具在宿主运行，SDK 和交叉环境由调用方提供。
 - 修原生依赖时改 overlay port 或 patch（例如 kirikiroid2-web fork 的 `vcpkg/ports/<port>/`），保持配置校验开启。AppleIos64 的经验：
   - GLib 工具链接缺 CoreFoundation：给 `libintl.patch` 加真实的 Meson `appleframeworks` 依赖，而不是手塞链接参数。
   - libgdiplus 在 iOS 编到 Carbon：用 OSX 宏把 Carbon 代码限定在 macOS，iOS 走原有的 Cairo/Pango 路径。
@@ -123,10 +119,10 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 
 ## 7. 静态嵌入（Android / iOS / OHOS）
 
-以下是静态嵌入的要求。嵌入一个核心要同时改三处，`validate_static_dependencies` 会比对前两处：
+静态嵌入需要同时更新三处：
 
-1. `build/cores.toml`：`static_manager_targets` 列出 triple，`static_features` 列出静态构建用的 feature；动态导出 feature（`dynamic-plugin-export` 等）不能出现在这里。
-2. Manager `Cargo.toml`：全平台用 `cfg` 表，部分 ABI 用精确 triple 表（例如 `[target.aarch64-linux-android.dependencies]`）；两者不能在同一 triple 上重复声明同一个核心。外部核心写 `git` + 与清单相同的 `rev`，树内核心写 `path`；显式设置 `default-features = false`，`features` 与 `static_features` 完全一致。
+1. `build/cores.toml`：`static_manager_targets` 列出 triple。
+2. Manager `Cargo.toml`：全平台用 `cfg` 表，部分 ABI 用精确 triple 表（例如 `[target.aarch64-linux-android.dependencies]`），同一 triple 不重复声明。外部核心用 `workspace = true` 继承 pin，树内核心用 `path`。按需启用静态 feature，不开启独立 ABI 导出。
 3. `src/static_cores.rs` 的 `STATIC_CORES`：加 `#[cfg(...)] ("<plugin_id>", <crate>::<rust-path query>)`。独立的 `shinki-emu-headless` 不用这张表，按路径加载核心包。
 
 打包会写 `embedded-cores.json` 和每个嵌入核心的许可文件。Android 常见坑：
@@ -136,15 +132,11 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 - 资源和字体按 Manager 当前的资源上限契约打包（beta7 线为 32 MiB 有界流式），不要把旧分支的更小上限合回来。
 - Android 正式安装包必须用发布证书签名，证书 SHA256 为 `c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc`。签名材料从 `SHINKI_EMU_ANDROID_KEYSTORE`（或 `_KEYSTORE_BASE64`）、`_KEYSTORE_PASSWORD`、`_KEY_ALIAS`、`_KEY_PASSWORD` 读取，CI 从 secrets 注入。没有这些时产物是 `*-debug-signed.apk`，只能当 CI 测试包。
 
-## 8. 源码包与许可证
+## 8. 公开源码与许可证
 
-每个 release 附 `shinki-emu-<slug>-<version>-<platform>-sources.zip`（含 `source.tar` 和 `BUILD-FROM-SOURCE.md`）。验收源码包时检查：
-
-- `source.tar` 里确实有 `ThirdParty/<dir>/` 的完整 fork 快照，版本是 pin 的 commit。KrkrApkFinish61 曾遇到源码包里 kirikiri2 文件数为 0 的情况，起因是 static target 没走 whole-fork 归档规则。
-- 原生依赖覆盖 `vcpkg/status` 里所有 port，包括 host 工具；overlay port 在 fork 快照里。
-- 上游 `LICENSE`、notice、`MODIFICATIONS.md` 原样保留。不要把第三方许可改标成 MIT。FMOD、Spine、MS PGothic 等特殊条款分开记录。
-- Git LFS 指针要先 `git lfs checkout` 成真实内容，否则打包失败。
-
+- 每个外部核心的公开源码就是 `Cargo.lock` 记录的公开 fork 提交。发布前确认该提交可获取。
+- 保留上游 `LICENSE`、notice 和 `MODIFICATIONS.md`。`build/cores.toml` 用 `adapter_licenses` 指定 fork 内许可，用 `licenses` 指定产品树内的许可。原生依赖保留原声明；Rust 依赖许可由 `cargo-about` 0.9.3 收集。
+- FMOD、Spine、MS PGothic 等条款单独记录，不改标为 MIT。按所选许可履行对应源码和重链接义务。
 `publish_blocked` 非空的核心可以编译，但二进制不会上传。
 
 ## 9. CI 与 watcher
@@ -160,20 +152,20 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 4. 失败时读 `gh run view --job <job> -R Project-Shinkirou/ShinkiEMU --log-failed`，找第一个真实错误。
 5. 接手别人的 run 时只查一次状态，需要时再挂唯一 watcher。同一源码已经有 run 时不要重复 dispatch。被新 head 取代的 run 先保存日志和 artifact 元数据，经 owner 同意再取消。
 
-`release.yml` 在推 `manager-v*` / `core-*` tag 时运行，也可以 dispatch：`version`（只用于 Manager/自研核心）、`components`、`prepare_only`、`source_commit`（仅 prepare-only 可用）、`verify_local_manager`（OHOS 交接校验）。一次推超过三个新 tag 不会触发工作流。`prepare_only=true` 只准备并保留各平台产物，不公开；dispatch 所在的 SHA 只代表编排，产品来源以 `source_commit` 为准。
+`release.yml` 在推 `manager-v*`/`core-*` tag 时运行，也可 dispatch。输入有 `version`（Manager/自研核心）、`components`、`release_scope` 和 `prepare_only`；仅准备时可用 `source_commit` 选择检出。一次推超过三个新 tag 不会触发工作流。
 
 ## 10. 发布
 
 发布 owner 在干净 checkout 中按下面顺序操作：
 
-1. 所有目标的 CI 在同一产品 commit 上成功。所有平台的 `release.json` 指向同一个产品 commit 和同一个核心 pin。
-2. 把 prepare 产物下载到 `.work/release/<tag>/<target>/`：`gh run download <run> -R Project-Shinkirou/ShinkiEMU -p '<artifact 前缀>*' -D <scratch>`，再按 tag/target 复制。
-3. 公开：
+1. 选用同一源码提交上成功的发布运行。全部平台的 Manager 发布不要覆盖 `source_commit`，并用 `gh run view <run> --json headSha --jq .headSha` 对照本地 `git rev-parse HEAD`。
+2. 下载该运行的所有目标产物，用 `gh run download <run> -R Project-Shinkirou/ShinkiEMU -p 'release-files-manager@*' -D <scratch>`，再把各产物中的 `<tag>/<target>/` 放到 `.work/release/<tag>/`。
+3. 全平台 Manager 要在这份检出上设置好 DevEco 和签名目录，本地准备 HAP，再用授权的 `GH_TOKEN` 或 `GITHUB_TOKEN` 发布：
    ```sh
-   SHINKI_EMU_RELEASE_CI_RUN_ID=<成功的 CI run> GH_TOKEN=<token> cargo xtask release --component <id> --publish            # 外部核心
-   SHINKI_EMU_RELEASE_CI_RUN_ID=<run> GH_TOKEN=<token> cargo xtask release --component manager --version <semver> --publish
+   cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <semver>
+   cargo xtask release --component manager --version <semver> --scope all --publish
    ```
-   含 OHOS 的 Manager 还需要先建 draft、上传 HAP/源码/`ohos-handoff.json`，dispatch `verify_local_manager=true`，再加 `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID`。
+   外部核心发布用 `cargo xtask release --component <id> --publish`，不传版本。只发 Windows/Android 时，各步骤用同一个 `--scope windows-android`。
 4. 核心公开后，xtask 把每个平台的 catalog 条目提交到 `metadata/release-<tag>` 并开 PR 到 main（`Metadata/engines/cores/<plugin_id>/<platform>/<version>.json`）。这个目录 PR 由既有的 GitHub Actions bot 按批准流程自动 squash 合入，这是唯一允许 squash 的地方，不要改它的自动策略。"不 squash、不 rebase"约束的是被 pin 的产品源码和 fork 历史。
 5. 公开后匿名 HEAD 每个资产，确认 HTTP 200，并核对 API digest/size 与本地记录一致。不需要重复整包下载。
 
@@ -181,9 +173,9 @@ upstream_identity = { repo = "<与 upstream 相同>", ref_kind = "tag|branch", r
 
 ## 11. 验收范围
 
-发布验收必须做：真实构建、既有 CI 全绿、平台正常签名和正确证书、源码与原许可证随包、版本身份不串源（产品 commit、核心 pin、序号互相对应）、ABI query 探针、headless 出帧（见 §13）。这些由维护者在发布前完成，不是贡献者 PR 的门禁（PR 门禁见 §3 末尾）。
+维护者在发布前检查：支持目标在同一提交构建通过，包正常签名且证书正确，许可证随包，锁定的外部源码可获取，ABI query 探针和 headless 出帧通过（§13）。这些不是贡献者的 PR 门禁（§3）。
 
-用户已豁免、默认不做：逐 Git blob 或逐输入的来源追溯、签名逆变换和逐字节复原、全资源 census、为补证明而重建、重复下载大资产。豁免的项目在报告里写 "user-waived / not executed"，不要写成通过。实体设备、模拟器、真实账号上的启动验收也属于豁免，除非任务另有要求。新核心发布前，维护者用自己合法持有的游戏在桌面 headless 打开并出帧，这一项不豁免。
+除非任务另有要求，不额外重建取证或重复下载大资产。实体设备、模拟器、真实账号上的启动验收另行安排；报告注明实际执行的检查。新核心发布前仍要用维护者合法持有的游戏在桌面 headless 打开并出帧。
 
 ## 12. Mac 原生构建与容量
 
@@ -274,7 +266,7 @@ shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en
 
 - [ ] `cargo xtask matrix` 通过；文档三语同步。
 - [ ] 外部核心 `release --dry-run` 打印的 tag 符合预期；序号由发布 owner 确认。
-- [ ] `Cargo.lock` diff 只含 fork rev 行；静态嵌入三处一致。
+- [ ] `Cargo.lock` 只有预期 pin 和依赖变更，未提交本地 patch；静态嵌入三处一致。
 - [ ] 每个支持目标在同一 exact head 上 CI 成功，并且只有一个 watcher。
-- [ ] 源码包包含完整 fork 快照和原许可证；签名边界写进 release 说明。
+- [ ] 公共 fork 的锁定提交可获取，许可证随包，签名边界写进发布说明。
 - [ ] 公开 tag/资产没有改写；源码和 fork 历史用真实 merge，catalog PR 走既有 bot 自动 squash。

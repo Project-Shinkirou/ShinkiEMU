@@ -5,342 +5,152 @@ description: Cargo によるオーケストレーション、コアのビルド�
 
 # ビルドとリリース
 
-コアのウィンドウなし実行、入力リプレイ、PNG/hash 比較、Manager UI の撮影は[ヘッドレス実行](headless.md)を参照してください。
+リポジトリのルートで Cargo を使い、Manager や単独コアをビルドします。ターゲット一覧、パッケージング、リリース、メタデータには `cargo xtask` を使います。入力リプレイやフレーム・UI の確認は[ヘッドレス実行](headless.md)を参照してください。
 
 ## ゲームディレクトリ内の保存先
 
-ShinkiEMU 自身がゲームディレクトリ内に書き込むファイルは、すべて `<game>/.shinki/` 配下に置きます。製品のセーブ、キャッシュ、ログ、レシート、パッチ添付ファイル、一時ファイルを市販ゲームのルートや元のセーブディレクトリに書き込んではいけません。担当ごとの領域は Musica の `musica/saves/`、ダウンロード添付の `patch/`、トランザクションの `staging/`、元ファイルとマニフェストの `backup/<id>/`、その場で上書きしたレシートの `patch-result.json` です。新たな書き込み側もパス検証とディレクトリリンク非追跡を守ります。サードパーティ製コアは各上流の保存規約に従います。
+ShinkiEMU がゲームディレクトリ内に書き込むファイルは `<game>/.shinki/` 配下に置きます。Musica のセーブは `musica/saves/`、ダウンロードしたパッチは `patch/`、処理中のファイルは `staging/`、元ファイルとマニフェストは `backup/<id>/`、上書き適用の結果は `patch-result.json` に保存します。パスを検証し、ディレクトリのリンクはたどりません。サードパーティー製コアは上流の保存規約に従います。
 
 ## 入力と依存関係
 
-`git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` でクローンします。既存の checkout では `git submodule update --init --recursive` を実行してください。ワークスペースは `ThirdParty/cpal` サブモジュールで `cpal` を patch しているため、これがないと `cargo xtask --help` を含むすべての Cargo コマンドが `patch location ThirdParty\cpal does not contain packages matching cpal` で失敗します。Rust/Cargo とターゲットプラットフォームのネイティブツールチェーンも用意します。Windows のネイティブビルドには、x64 MSVC 開発者環境、CMake、Ninja、Git が必要です。Android では JDK 27、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。ツールのバージョンとダウンロード入力は `build/dependencies.toml`、コアの manifest、features、ライセンスは `build/cores.toml`、ターゲットと runner の定義は `build/targets.toml` にあります。
+`git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` でクローンします。既存のクローンでは `git submodule update --init --recursive` でワークスペースの `ThirdParty/cpal` パッチを初期化します。Git と rustup を導入し、[`rust-toolchain.toml`](../../rust-toolchain.toml) が指定する Rust 1.99.1 を使います。対象の Rust ターゲットと、必要なネイティブコンパイラー、CMake、Ninja、SDK を用意してください。
 
-Windows の `build` と `package` は x64 の Visual Studio 開発者シェル（`vcvars64.bat`、PowerShell では `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。パッケージングは `VCRUNTIME140.dll` などの MSVC ランタイム再頒布ファイルを `%VCToolsRedistDir%\x64` からだけ取得し、System32 は使いません。この変数は開発者シェルの中にしかありません。`doctor` は通常のシェルでも Visual Studio のレジストリから `cl.exe` を見つけるため、`doctor` が通っても `VCToolsRedistDir` が設定されているとは限りません。`missing redistributable dependency VCRUNTIME140.dll; run cargo xtask deps or provide its build tree` が出たら、シェルにこの変数がないことが原因で、`deps` では解決しません。
+ネイティブビルドスクリプトは `.work/vcpkg` に固定リビジョンの vcpkg を用意し、マニフェストと triplet ごとに `.work/vcpkg-installs/<triplet>-<key>/installed/` にインストールします。ダウンロードとビルド済みパッケージのキャッシュは `.work/vcpkg-downloads/` と `.work/vcpkg-binary-cache/` にあります。固定リビジョンの vcpkg を共有するには `SHINKI_EMU_VCPKG_ROOT` を指定します。ホストのシステムパッケージと SDK は別途導入します。KiriKiri のパーサージェネレーターはビルドホストで動きます。Windows ではビルドスクリプトが固定版の WinFlexBison を取得できます。他のホストでは Bison を導入するか、`BISON_EXECUTABLE` で指定します（KrKr2 は Bison 3.8.2 以上が必要です）。
 
-Ren’Py にはさらに、固定バージョンの公式 SDK が必要です。`RENPY_SDK_ROOT`、`RENPY_PYTHON_DEV`、`RENPY_SDL_INCLUDE` を設定し、CPython 3.12.7 に対応する公式の Cython 3.2.4 コンパイラーを用意してください。これらは上流のビルドと実行に必要な依存関係です。SDK の入力は fork の `shinki/sdk.json` に従います。
-POSIX SDL 2.0.20 のソースは SDL 公式 GitHub Release から取得します。SHA256 は `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06` のままで、アーカイブの内容と SDK ABI は変わりません。Android Ren’Py のソースビルドには LLVM 18/Clang 18、LLD、ccache とネイティブ開発パッケージも必要です。CI と Release は同じ既存の依存関係一覧を使います。Android SDK/NDK だけでは足りません。
-
-
-CMVS は Win32 に依存せず、Windows x64、Linux x64、macOS の両アーキテクチャ向けに動的コアとしてビルドします。Android と iOS は Manager への静的組み込みを待っています。RoukakuEngine は Android オフスクリーン Vulkan バックエンドを含む公開リビジョン `374a7a20780153766d9d0256e4cf4d7754fd02f9` に固定されています。
-
-リポジトリのルートで実行します。
+パッケージング、`ci` の実行、リリースの準備に先立ち、ホストにライセンス収集ツールを導入します。
 
 ```sh
-cargo xtask --help
-cargo xtask matrix
-cargo xtask doctor --target x86_64-pc-windows-msvc
-cargo xtask deps --target x86_64-pc-windows-msvc
-cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
+cargo install cargo-about --locked --version 0.9.3
 ```
 
-`doctor` は不足している入力を検査し、問題があれば 0 以外で終了します。依存関係のインストールは行いません。`deps` は明示的なダウンロードと準備の入口で、`--core <plugin_id>` で範囲を絞れます。準備するのはロックされたネイティブ依存関係で、システムパッケージはインストールしません。通常のコマンドが暗黙に deps を実行することはありませんが、Cargo が解決済みの依存関係を取得できる必要はあります。
+### Windows x64
 
-`cargo xtask` は Cargo のエイリアス `run --locked --package xtask`（`.cargo/config.toml`）で、xtask が呼ぶ Cargo もすべて `--locked` 付きです。そのため、ワークスペースのメンバーや依存関係を追加したら、`cargo xtask` を実行する前に lockfile を一度だけ意図して更新します。`--locked` なしで `cargo metadata --format-version 1 > /dev/null`（PowerShell では `| Out-Null`）を実行し、`git diff -- Cargo.lock` を確認してください。Cargo はロック済みのバージョンをすべて保ち、今回の変更で増えた項目だけを追加します。このために `cargo update` や `cargo update -p` を使ってはいけません。無関係な registry のバージョンが動くことがあります。現在のツリーでは、Cargo 1.99.1 が 2 つの `na_mpeg2_decoder 0.1.0`（siglus_rs と ethornell-rs 由来）の順序を入れ替えることがありますが、バージョンは変わりません。lockfile は手で直さず、Cargo の出力のまま PR で説明してください。
-
-## ビルド、チェック、テスト
-
-```sh
-cargo xtask build --target x86_64-pc-windows-msvc --manager --release
-cargo xtask build --target x86_64-pc-windows-msvc --core rfvp --release
-cargo xtask build --target x86_64-pc-windows-msvc --all-cores --release
-cargo xtask check --target x86_64-pc-windows-msvc --manager
-cargo xtask check --target x86_64-pc-windows-msvc --core rfvp
-cargo xtask test --manager
-cargo xtask test --core rfvp
-cargo xtask test
-```
-
-build では `--manager`、`--core`、`--all-cores` のいずれか 1 つを必ず指定します。check は Manager または単一のコアを選びます。test はホスト上で実行され、`--target` 引数はありません。選択なしの test は xtask とビルド補助ライブラリのテストを実行します。ネイティブ挙動の回帰テストには、実際の GPU、音声デバイス、公開フィクスチャーが必要な場合があります。
-
-xtask は一時ファイルやディレクトリを作成する前に、システムの一時ディレクトリの実体パスを解決します。macOS の既定の `/var/folders/...` やシンボリックリンクを含む `TMPDIR` を、環境変数の変更なしで使用できます。パッケージ入力のリンクや特殊ファイルは引き続き拒否し、アトミックな公開用の作業領域は出力先と同じファイルシステム上の隣接ディレクトリに置きます。
-
-各コアの `build.rs` は自身のターゲットと入力を検証し、Cargo の `OUT_DIR` に `core-build.json` を書き出します。C++ のアダプターはこれを通じて実際の CMake ビルドを駆動し、純粋な Rust コアはこれまでどおり Cargo がコンパイルします。ビルドスクリプトが Cargo を再帰的に実行したり、Release を公開したりすることはありません。xtask は `compiler-artifact` と `build-script-executed` の JSON から実際の成果物を読み取り、target のパスを推測しません。各コンポーネントは `.work/target/<target>/<component>` を使い、ビルド記録は `.work/build/` に書き込まれます。Artemis はすべてのプラットフォームで Luau を使用し、Android への静的組み込みでは Manager とランタイムを共有します。
-
-Manager は現在のターゲットの `static_manager_targets` と正確な Cargo package ID に基づいて組み込みマニフェストを収集します。リソースの読み取りに使うだけのコア依存は静的登録ではありません。選択した記録の plugin、ターゲット、profile、成果物の種類は引き続き厳密に照合し、欠落・曖昧・重複する記録ではビルドを失敗させます。
-
-検証済みの Windows グラフィックス構成は wgpu-hal 30.0.1 と gpu-allocator 0.28.0 が同じ windows 0.62.2 の型を使います。別の依存先には古い windows crate を残せますが、D3D12 の境界で型を分裂させてはいけません。ブランチの lockfile を統合するときも、検証済みの allocator の依存先を維持してください。
-
-Manager と配布対象の自作コアには同じ `SHINKI_EMU_PRODUCT_VERSION` を設定します。未設定なら `SHINKI_EMU_CI_VERSION` を使い、両方を設定する場合は一致させてください。どちらも未設定の開発ビルドでは Manager のクレート版を使います。xtask はリリースビルドを変更のない確定コミットに結び付け、Manager の `OUT_DIR/manager-build-version.json` をコンパイル時の入力と照合します。Android の両 ABI を含め、パッケージとリリースはビルド記録の版と一致させます。
-
-Manager の任意 Cargo feature は `SHINKI_EMU_MANAGER_FEATURES`（カンマ区切り）で指定します。`build`・`check`・`ci` が Manager の場合だけ読み取ります。名前は Manager の `[features]` に宣言されている必要があり、`default` と未宣言の名前は拒否します。既定 feature に追加する形で有効になり、`.work/build/<target>/manager.json` の `features` に記録されます。`no-core-download` はコアページからオンラインのインストール、更新、一括更新をなくし、Manager 側でもコアパッケージのダウンロードを拒否します。インストール済みのコア、同梱コア、ローカルの公式コアパッケージ、ゲームストア、メタデータはそのまま使えます。iOS と OHOS は feature の有無にかかわらずコアをダウンロードしません。
-
-beta.7 の既知の問題：公式 Windows バイナリは内部の版を `0.1.0-beta.6` と報告しますが、配布パッケージのラベルは beta.7 です。既存タグと添付ファイルは変更しません。上記のコンパイル時注入と receipt 検証で後続ビルドを修正し、[Manager beta.8 リリースノート](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)にもこの問題を記載しています。
-
-Manager は、ネットワーククライアントやワーカースレッドを作る前に、プロセス全体の Rustls 暗号プロバイダーを一度だけ初期化します。選ぶのは、reqwest 0.13 とプラットフォームの証明書検証スタックに合わせた AWS-LC です。VNDB が現在使っている reqwest 0.12 は ring も有効にするため、feature による自動選択には頼れません。Steam などの provider は、プロセス全体の既定実装を自分ではインストールしません。
-
-### コンパイル時に組み込むストア
-
-`shinki-emu-store` はオブジェクト安全な provider/session trait、キャンセル、秘密情報ストアの境界、`Registry` を定義します。Manager の `store-steam`、`store-dlsite`、`store-dmm` feature は既定で有効です。Steam のみのビルドでは Manager パッケージに `--no-default-features --features store-steam` を指定します。ストアを追加するには provider crate と任意の Cargo 依存関係・feature を追加し、`manager_app/store.rs` に `registry.register(...)` を一行追加します。動的ライブラリのロードは行いません。Provider はプロセス内だけで使う不透明な計画、秘密情報を含まない固定の `StoreError`、所有済み作品を返します。一時ファイルには渡された `.shinki/store/<provider>/` 作業ディレクトリを使い、認証情報は `SecretStore` だけに保存します。
-
+Visual Studio の C++ ツール、CMake、Ninja を導入します。Cargo とパッケージングは x64 開発者シェル（`vcvars64.bat`、PowerShell なら `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。`VCRUNTIME140.dll` などの MSVC 再頒布ファイルは `%VCToolsRedistDir%\x64` から取得します。
 
 ### Linux デスクトップ
 
-リポジトリで固定された Rust 1.99.1 ツールチェーンを使います。Ubuntu 22.04/24.04 では、ネイティブ開発パッケージを明示的にインストールします。
+Ubuntu 24.04 ではデスクトップビルドに必要な開発パッケージを導入します。
 
 ```sh
-sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm yasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
-sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm yasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev libgtk-3-dev libwebkit2gtk-4.1-dev unzip
+sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev
 ```
 
-`libltdl-dev` は vcpkg の `libxcrypt` autoreconf ステップが使う
-`LT_SYS_SYMBOL_USCORE` マクロを提供します。kirikiroid2-web のネイティブ依存関係ジェネレーターには `python3-jinja2`、Linux GTK 依存閉包には `libxtst-dev` も必要です。これらはビルドホストの前提条件であり、`cargo xtask deps` はシステムパッケージをインストールしません。
-`python3-venv` は libsystemd の隔離ビルド環境に ensurepip を提供し、`libxxf86vm-dev` は Linux Cocos のリンクに必要な Xxf86vm ライブラリを提供します。
+RFVP は `pkg-config` で GStreamer と GLib を検出します。コア ZIP にはこれらのライブラリを同梱しません。実行先の Ubuntu には `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0t64 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav` を導入します。t64 移行前のリリースでは `libglib2.0-0` を使います。
+
+グラフィックスドライバーを備えた X11 または Wayland 環境で、展開した Manager ディレクトリから `./shinki-emu-manager` を実行します。ディストリビューションの glibc、libstdc++、fontconfig、udev、ALSA と、ストアへのサインインに使う GTK 3、WebKitGTK 4.1 が必要です（Ubuntu では `libwebkit2gtk-4.1-0` を入れると GTK 3 も入ります）。Impacto は `libdrm2` も必要です。KiriKiri2 はシステムの OpenGL、X11、OpenMP、Pango、GTK を使います（Ubuntu 24.04 では `libgl1 libglx0 libopengl0 libx11-6 libgomp1 libpangocairo-1.0-0 libpangoft2-1.0-0 libgtk-3-0t64`）。
+
+### Android
+
+ユニバーサル Manager APK には cargo-ndk 4.1.2 と両方の Rust ターゲットが必要です。`ANDROID_HOME` を SDK ディレクトリに、`ANDROID_NDK_HOME` をその中の `ndk/30.0.16248370` に設定します。APK のパッケージングには JDK 27（`JAVA_HOME` とその `bin` を `PATH` に設定）、SDK platform 37.2、build-tools 37.0.0 が必要です。Gradle Wrapper はリポジトリに含まれています。
 
 ```sh
-cargo xtask deps --target x86_64-unknown-linux-gnu
-cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.1
-cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
-cargo xtask build --target x86_64-unknown-linux-gnu --all-cores --release
-cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-beta.1 --out .work/linux-manager
-cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --out .work/linux-siglus
-cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
-```
-
-Linux のネイティブコアを個別にビルドする場合、`CORE` を `renpy`、`impacto`、または `kirikiroid2-web` に置き換えてください。
-
-```sh
-cargo xtask deps --target x86_64-unknown-linux-gnu --core CORE
-cargo xtask ci --target x86_64-unknown-linux-gnu --component CORE --report .work/linux-core-ci.json
-```
-
-Ren'Py のパッケージには SDK ランタイムとインストール済みの `Resources` が含まれます。Impacto と KiriKiri2 のパッケージには、固定されたネイティブ共有ライブラリの依存閉包が含まれます。各パッケージの `build.json` はシステムの SONAME 要件を記録します。
-
-Linux のネイティブビルドディレクトリ内の SONAME シンボリックリンクは、同じディレクトリ内の通常ファイルに限り解決します。パッケージにはローダーが要求する名前で内容をコピーし、リンク自体は保存しません。ディレクトリ外へのリンク、壊れたリンク、循環リンク、依存ファイルの内容衝突はエラーになります。リソースやライセンスなどの一般入力では引き続きリンクを拒否します。
-
-Linux Manager の Bangumi provider は vendored の静的 OpenSSL で native-tls をビルドし、ビルド環境の `libssl.so.3`/`libcrypto.so.3` に依存しません。ネイティブコアが OpenSSL を必要とする場合は、引き続き固定済みの依存ライブラリを同梱します。
-
-Linux の Manager 向け `deps` は、ディストリビューションが提供する開発ライブラリを確認するだけで、`apt` は呼び出しません。コア向けの `deps` は、ターゲットごとに独立したディレクトリでロックされた vcpkg のネイティブライブラリを準備し、パッケージング用に再配置可能な共有ライブラリの通常ファイルを生成します。パッケージのディレクトリで `./shinki-emu-manager` を実行してください。パッケージングでは ELF のアーキテクチャ、ローダーのパス、依存関係の閉包を確認し、ライセンス表記とオフラインのメタデータスナップショットを同梱します。`ci` が報告する ZIP では実行権限が保持されます。CI とリリースのジョブは、同じ依存関係と xtask コマンドを使います。コアが利用できるかどうかは引き続き `matrix` に従い、blocked と宣言されたコアにはバイナリの添付ファイルが作られません。
-Linux パッケージは、ディストリビューションが提供する glibc、libstdc++、fontconfig、udev、ALSA の ABI ライブラリに加え、ストアの Web サインイン用に GTK 3 と WebKitGTK 4.1 を使います。導入先のシステムには対応するランタイムパッケージ（Ubuntu では GTK 3 も一緒に入る `libwebkit2gtk-4.1-0`）をインストールし、グラフィックドライバーを備えた X11 または Wayland のデスクトップを用意してください。
-Impacto の Linux VA-API ライブラリは、システムのグラフィックススタックに含まれる `libdrm.so.2`（Ubuntu パッケージ `libdrm2`）も必要とし、コアには同梱しません。
-KiriKiri2 は、ディストリビューションの OpenGL ディスパッチライブラリ `libGL.so.1`、`libGLX.so.0`、`libOpenGL.so.0`（Ubuntu パッケージ `libgl1 libglx0 libopengl0`）も使います。
-X11 と OpenMP には、ディストリビューションの `libX11.so.6` と `libgomp.so.1`（Ubuntu パッケージ `libx11-6 libgomp1`）を使います。
-gdiplus の文字描画には、ディストリビューションの `libpangocairo-1.0.so.0` と `libpangoft2-1.0.so.0`（Ubuntu パッケージ `libpangocairo-1.0-0 libpangoft2-1.0-0`）も必要です。
-GTK ダイアログにはディストリビューションの `libgtk-3.so.0`（Ubuntu 24.04 の `libgtk-3-0t64`）を使います。vcpkg curl が Ubuntu 24.04 より新しい OpenSSL シンボルを必要とするため、対応する固定版の `libssl.so.3` と `libcrypto.so.3` はシステム ABI とせず同梱します。
-Linux では未使用の `BUILD_EDITOR_SPINE` だけを無効にし、CocoStudio UI と MotionPlayer/Emote の実装は維持します。元の Spine ライセンスは完全な上流ソース tar に残し、バイナリが使うモジュールの表記から除きます。Android と Apple の構成は変更しません。
-KiriKiri2 Linux は、固定された Cocos の FMOD ランタイムを `libfmod.so.6` として同梱し、相対 `$ORIGIN` パスで読み込みます。システム ABI には分類しません。プロジェクト所有者は 2026-10-31 に再配布を承認しました。パッケージの `licenses/kirikiroid2-web/FMOD.txt` に Firelight の帰属表示と正確なバイナリ・アーカイブの出所を記録します。Cocos のソースは MIT ですが、FMOD を MIT に変更しません。ソースバンドルには元の依存アーカイブ、実際の FMOD ヘッダー・ビルド済み入力と再ビルド手順を含め、FMOD の実装ソースや過去の EULA を作成しません。
-
-RFVP は、ネイティブの動画デコードのために、ディストリビューションが提供する GStreamer 1.x（1.14 以上）、GLib 2.x（2.56 以上）、および base、good、libav プラグインも必要とします。これらはシステムの実行要件として宣言され、コアには同梱されません。Ubuntu では `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav` をインストールします。パッケージ内の `build.json` の `system_dependencies` には、実際に依存するシステムの SONAME が記録されます。
-
-ダウンロードが不安定な場合は、固定バージョンのソースとツールのアーカイブを `.work/vcpkg-downloads` に事前に配置できます。転送には再開可能な分割転送や `rsync --partial` を使ってください。vcpkg は、実際に選ばれたバージョン付き port に基づいて、各アーカイブの SHA512 を引き続き検証します。ディストリビューションの libass/FFmpeg で、ロックされたネイティブビルドを置き換えないでください。
-
-`deps` は既定で、変更のある fork のワークツリーを拒否します。未コミットの adapter の変更をデバッグする場合は、`--allow-dirty-sources` を明示的に指定できます。その場合でもワークツリーの HEAD はインベントリで固定された revision と一致している必要があり、ソースの準備でそのワークツリーに fetch、checkout、サブモジュールの更新は行われません。ビルド記録にはソースの変更状態が残り、`release` は変更のあるソースとそのビルド記録を拒否します。
-
-Linux の CI とリリースのジョブでは、報告された Manager の ZIP を展開し、独立したユーザーデータディレクトリを使って Xvfb 上で起動します。プロセスは 15 秒間動作し続ける必要があり、それより早く終了するとジョブは失敗します。
-
-### Android Manager テスト APK
-
-JDK 27（`JAVA_HOME` を設定し、その `bin` を `PATH` に追加）、Android SDK platform 37.2、build-tools 37.0.0、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。`ANDROID_HOME` は SDK のルート、`ANDROID_NDK_HOME` はその中の `ndk/30.0.16248370` を指します。固定された安定版 NDK revision のみを受け付けます。SDK パッケージが足りない場合は、その SDK の `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"` を明示的に実行します。`CARGO_HOME`、`CARGO_TARGET_DIR`、`TEMP`/`TMP`、`GRADLE_USER_HOME` は空き容量の十分なドライブに置いてください。
-
-```sh
+cargo install cargo-ndk --locked --version 4.1.2
 rustup target add aarch64-linux-android x86_64-linux-android
-cargo xtask deps --target aarch64-linux-android
-cargo xtask deps --target x86_64-linux-android
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.2
-cargo xtask build --target aarch64-linux-android --manager --release
-cargo xtask build --target x86_64-linux-android --manager --release
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
+sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"
 ```
 
-各ビルドは `cargo ndk-env` のツールチェーン環境を取り込み、Cargo を `--locked` で直接実行します。`static_manager_targets` にそのトリプルを含むコア（RFVP、Siglus、Shinki Musica、CMVS、Artemis、Impacto、Ren’Py、KiriKiri）を静的リンクし、ビルド記録が指す target ディレクトリの `android-inputs/` に、JNI ランタイムの依存関係、証明書検証用の AAR、メタデータ、ライセンスを集めます。パッケージングには、**両方のトリプル**について同じソースコミットから作られた release のビルド記録が必要です。続いて Gradle が `arm64-v8a`、`x86_64`、`assets/metadata/` を含むユニバーサル APK を生成し、xtask が署名と各ネイティブライブラリの依存関係の閉包を確認します。署名鍵がない場合の出力は `ShinkiEMU-<version>-android-universal-debug-signed.apk` です。これは debug 署名の CI テスト用パッケージで、正式なインストーラーではありません。テスト用の鍵は `GRADLE_USER_HOME` 内に生成されます。
+Android Manager は Ren’Py を組み込みます。環境を整えた Ubuntu 24.04 x86_64 ホストでは、Cargo が `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` に対象ランタイムを用意します。Python 3 と Jinja2、LLVM/Clang/LLD 18、ccache、[CI](../../.github/workflows/ci.yml) に記載の開発パッケージが必要です。Linux 以外では、対象 ABI 用に Linux で用意したランタイムディレクトリ全体（`include/`、`lib/`、`Resources/`、ライセンス表記を含む）を移し、`RENPY_STATIC_ROOT` に指定します。別の ABI をビルドするときは対応するディレクトリに切り替えます。Ren’Py のレシピは固定版の Linux NDK r29 を、ShinkiEMU の Cargo ビルドは上記の NDK r30 を使います。レシピの入力は [Ren’Py](cores/renpy.md) を参照してください。
 
-Manager のビルドスクリプトは Clang の `--print-libgcc-file-name` で対象 NDK の compiler-rt アーカイブを取得してリンクし、`--no-undefined` で未解決シンボルを含む cdylib を拒否します。組み込みネイティブライブラリが呼ぶ `__clear_cache` などは Rust の compiler_builtins だけでは解決できないため、Android の `System.loadLibrary` まで失敗を持ち越さず、リンク時に解決します。
-`ANDROID_NDK_HOME` を設定して `python Tools/test-android-compiler-runtime.py` を実行すると、実際の AArch64 キャッシュフラッシュ呼び出しで検証します。compiler-rt を省くリンクは失敗し、アーカイブを明示したリンクは成功する必要があります。
-Android のネイティブコア依存準備には `build/vcpkg/mobile-ports` も使います。fmt 11.2.0 の固定レシピに `<cstdlib>` の直接インクルードを追加し、NDK r30 の libc++ で `malloc`/`free` を解決します。ライブラリのバージョン変更やコンパイル検査の無効化は行いません。
-Android の最小 API は既存の組み込みネイティブ triplet と同じ 28 です。Manager のリンカー、システムライブラリ検索、APK minSdk も統一し、iconv、glob、posix_spawn などの API 28 インポートを API 26 のスタブへリンクしないようにします。
+### Apple
 
-AndroidのUIスレッドは `MainActivity.onCreate` の `super.onCreate` 後、`onStart` 前に両ネイティブコアのホストを初期化します。native appスレッドだけがActivityインスタンスの完了結果を待ってからTLSとリソースを初期化します。例外・エラーは起動失敗として伝わり、破棄時は未完了の待機を解除します。UIのonStart待機とnativeからUIへの初期化待機によるデッドロックを防ぎ、Activity再作成時にはnativeコンテキストを置き換え、Destroyで解放します。
-ロック解除済みの実機で `python Tools/test-android-startup.py --adb <adb> --serial <実機> --out <新規ディレクトリ>` を実行し、コールドスタートとバックグラウンド復帰のライフサイクル完了を回帰検証します。Managerだけを停止し、データを保持して起動結果と画面を記録し、元のonStartタイムアウトを失敗とします。画面の確認と実ゲーム入力は別途必要です。
-`Platforms/Android/tests` にある Kotlin の振る舞いテスト（ゲームウィンドウの没入/復元ポリシー、SAF の選択結果処理、ボリュームパスの対応付け、ツリー走査の上限、取り込みディレクトリの後始末）は `python Tools/test-android-host-kotlin.py` でホスト JVM 上で実行します。各プログラムはファイル先頭に記した製品ソースと一緒に SDK の `android.jar` に対してコンパイルし、通常の `main` として実行します。Gradle ビルド、実機、エミュレーター、テストランナーは使わず、ダウンロードも行いません。`kotlinc`（`KOTLINC`、`PATH`、または `ANDROID_STUDIO` 経由で Android Studio 同梱の Kotlin プラグイン）、`ANDROID_HOME` または `ANDROID_JAR`、JDK（`JAVA_HOME`）が必要です。`Platforms/Android` の Kotlin を変更したときのローカル確認であり、CI のゲートではありません。
-WGPU描画通知では有効なグラフィックスコンテキスト内のGPU描画とテクスチャ公開を維持します。worker完了モデル・通知・modal更新は再利用するSlintの遅延ゼロのsingle-shot timerで描画後に処理し、実行待ちtimerがあれば重複要求をまとめます。描画中のitem tree破棄によるSkiaキャッシュの再借用を防ぎ、window/adapterは弱参照、timerは描画notifierと共に解放します。実機では、操作せずにスキャンが始まり、対象のゲームがライブラリに表示されることをアプリ画面で別途確認してください。コマンドの成功や PID が変わらないことだけでは、スキャンの結果は確認できません。
-CMVSは単独コアビルドだけで `dynamic-plugin-export` を有効にし、`shinki_emu_query` の公開とモジュールの診断callback bridgeを設定します。静的Managerでは無効のまま `cmvs_query` を使い、診断headerとemit/flushの両callbackを検証後、hostの既存tracing subscriberを利用し、プロセス全体のsubscriberを再登録しません。不正な診断引数はABIエラーを返し、完了済みの初期化を無効にしません。
+ネイティブビルドには Xcode をインストールし、`xcode-select` で選択してライセンスに同意します。最小バージョンは macOS 13 と iOS 16 です。macOS は `x86_64-apple-darwin` または `aarch64-apple-darwin`、iOS 実機は `aarch64-apple-ios`、シミュレーターは `aarch64-apple-ios-sim` または `x86_64-apple-ios` の Rust ターゲットを導入します。
 
-CMVS は同じ静的レジストリの `cmvs_query` と `video-ffmpeg` を使います。SDK デコーダーは Musica の API 28 静的 FFmpeg vcpkg triplet と xtask の依存準備を共有します。Manager の `embedded-cores.json`、対応ソース、ライセンスに CMVS を含めます。APK 検証は `assets/licenses/shinki.emu.cmvs/` 内のライセンスをマニフェストの入力とバイト単位で比較します。Android 実機・エミュレーターでの実行はユーザーの指定により未検証です。
-
-Gradle の依存関係を一度ダウンロードしたあとは、`SHINKI_EMU_GRADLE_OFFLINE=1` を設定すると `--offline` が渡されます。パッケージングのたびに新しい出力ディレクトリを使ってください。`cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` は両方の ABI をビルドし、実際の APK のパスを報告します。CI は両方のトリプルの依存関係を準備したうえで、このコマンドを 1 回だけ実行します。`matrix --json --ci` が、同じユニバーサル APK を作るだけの `x86_64-linux-android` の Manager 行を除くためです。Release はユニバーサルな release 署名 APK を 1 つだけアップロードし、対応する sources ZIP も公開します。
-後継 Android Manager は CMVS と KiriKiri を含む八つのコアを静的登録します。既存の MainActivity と実際の JavaVM を使い、元の SDL/Cocos Java ヘルパーとネイティブ SDL/FFmpeg/JNI 閉包を隔離します。`Tools/verify-krkr-android.py` は新しい HEAD の実 APK に対して両 ABI、DEX/JNI、元のリソース、Spine 閉包を検査します。リソースの上限は 32 MiB で、有界ストリーミングと Impacto の 17,032,620 バイトの元フォントを維持します。debug 署名の証明は正式な公開署名の代わりにはなりません。
-
-
-すべての Manager パッケージは `Assets/Branding/shinkiemu-icon.svg` を共通のアイコンソースとして使います。Rust が Windows EXE の ICO リソース、macOS ICNS、iOS の app icon set、Android のアダプティブランチャー mipmap、Linux の hicolor PNG を生成します。Linux ZIP には `share/applications/shinkiemu.desktop` も含まれます。このファイルと `share/icons/hicolor` をアプリケーションとアイコンのディレクトリにインストールしてください。ゲームがウィンドウアイコンを変更した場合、ゲーム終了時に Manager アイコンへ戻ります。
-
-実行時の制約：標準の Slint 1.18.1 では、SwiftShader やソフトウェア Vulkan のエミュレーター上で最初のフレームしか描画されず、その後の画面が更新されない問題があります。`-gpu host` または実機を使ってください。単一の Text と単一の Timer だけを持つ別アプリでも、5 回のコールドスタートすべてで更新の停止が再現しました。同じ Manager テスト APK は、ホスト GPU モードでの 5 回のコールドスタートすべてで、中国語のオンボーディングとアイコンを正常に表示しました。ビルドやパッケージングの成功は、ゲームの互換性が検証されたことを意味しません。
-
-### Android ARM64 コアパッケージ
-
-`supported_targets` に `aarch64-linux-android` を含むコアは、単体でもビルドとパッケージングができます。JDK、SDK/NDK、環境変数は上のテスト APK と同じです。`deps` は固定バージョンの cargo-ndk を `.work/tools/bin` に専用でインストールします。
+Linux からビルドする場合は Docker と Buildx、cross 0.2.5、apple-codesign 0.29.0（`rcodesign`）を用意します。macOS 上の [Xcode](https://developer.apple.com/download/all/) から `xcrun --sdk <sdk> --show-sdk-path` で対象 SDK（`macosx`、`iphoneos`、`iphonesimulator`）を探し、非公開で転送します。`SHINKI_APPLE_SDK_DIR` を、展開した `SDKSettings.json`、`System/`、`usr/` を含むディレクトリに設定し、ターゲット用のイメージを作ります。SDK とそれを含むイメージは公開しないでください。
 
 ```sh
-rustup target add aarch64-linux-android
-cargo xtask doctor  --target aarch64-linux-android --core <plugin_id>
-cargo xtask deps    --target aarch64-linux-android --core <plugin_id>
-cargo xtask build   --target aarch64-linux-android --core <plugin_id> --release
-cargo xtask package --target aarch64-linux-android --core <plugin_id> [--version <semver>] --out <新しいディレクトリ>
-```
-
-自作コアでは `--version` が必須です。外部コアのバージョンはソースの pin から決まるため指定しません。出力は AArch64 ELF ライブラリ、依存ライブラリ、ライセンス、NDK の notice を含むコアパッケージのディレクトリで、APK ではありません。既定の Android 構成は静的登録を維持し、配布用の `android_dynamic` 最低バージョンは未設定です。単体ビルドが可能でも、インストールには公式パッケージごとの互換条件と両 ABI での動作確認が必要です。
-
-### Apple Manager：ネイティブ macOS と Linux からのクロスビルド
-
-ネイティブ CI は引き続き `build/targets.toml` の macOS runner を使い、Cargo/Xcode でビルドします。Linux では、`build` と `check` が cross 0.2.5 と `Cross.toml` で設定されたプライベートイメージを自動的に選びます。Apple のターゲットは、`x86_64-apple-darwin`、`aarch64-apple-darwin`、実機向けの `aarch64-apple-ios`、シミュレーター向けの `aarch64-apple-ios-sim` と `x86_64-apple-ios` です。最低システムバージョンは macOS 13.0、iOS 16.0 です。
-
-`build/targets.toml` のターゲットに空でない `blocked` を書くと、そのターゲット上のすべてのコンポーネントがその理由でブロックされ、コアの `supported_targets` と `manager_supported` より優先されます。ジョブマトリクスにはその行が含まれず、`deps`、`build`、`package` は実行を拒否し、リリースノートにはターゲットと理由が成果物なしで載ります。現在この項目を設定しているターゲットはなく、Apple の各行はコンポーネントごとの `supported_targets`/`manager_supported` の宣言に従います。
-
-Xcode は [Mac App Store](https://apps.apple.com/app/xcode/id497799835) または [Apple Developer Downloads](https://developer.apple.com/download/all/) から入手し、Apple のライセンスに従ってください。Mac 上で `xip --expand` を使って公式の Xcode `.xip` を展開し、その Xcode を選択して、同じ Mac 上でライセンスに同意します。Command Line Tools だけでは iOS SDK は提供されません。続いて次を実行します。
-
-```sh
-for sdk in macosx iphoneos iphonesimulator; do
-  tar -C "$(xcrun --sdk "$sdk" --show-sdk-path)" -cJf "$sdk.sdk.tar.xz" .
-done
-```
-
-アーカイブは非公開の手段で転送し、Linux 上でそれぞれ別のディレクトリに展開します。`SHINKI_APPLE_SDK_DIR` は、`SDKSettings.json`、`System/`、`usr/` を含む SDK の内容ディレクトリを直接指す必要があり、親ディレクトリやアーカイブを指定してはいけません。Darwin には `macosx`、実機には `iphoneos`、2 つのシミュレーターには `iphonesimulator` を使います。パイプラインがミラーサイトから SDK をダウンロードすることはありません。SDK と SDK を含むイメージを Git や公開レジストリに入れてはいけません。
-
-ソース、`CARGO_HOME`、`RUSTUP_HOME`、`CARGO_TARGET_DIR`、ツールは、`~/shinkirou-apple/` のような専用ディレクトリにまとめて置きます。Rust 1.98.0 と使用する Rust target を明示的にインストールし、`cargo +1.98.0 install --locked --root "$HOME/shinkirou-apple/tools"` で cross 0.2.5 と apple-codesign 0.29.0（`rcodesign` を提供）をインストールして、ツールディレクトリの `bin` を `PATH` に追加します。イメージの作成には `/` に 8 GiB 以上の空き容量が必要で、ユーザーのファイルやイメージを削除することはありません。本リポジトリで次を実行します。
-
-Docker には Buildx/BuildKit が必要です（`docker buildx version` で確認できます）。プライベートなプラグインは `$DOCKER_CONFIG/cli-plugins/docker-buildx` に置けるため、sudo は不要で、ユーザーの既存の Docker 設定も変更しません。[Buildx v0.38.1 の公式 Linux x86_64 用ファイル](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64)の SHA256 は `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4` です。ダイジェストを確認してから実行権限を付与してください。
-
-```sh
-export DOCKER_CONFIG="$HOME/shinkirou-apple/docker"
-export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/macosx.sdk"
 cargo xtask apple-image --target aarch64-apple-darwin
-cargo xtask deps --target aarch64-apple-darwin
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.1
-cargo xtask build --target aarch64-apple-darwin --manager --release
-cargo xtask package --target aarch64-apple-darwin --manager --version 0.1.0-beta.1 --out .work/macos-manager
-export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/iphonesimulator.sdk"
-cargo xtask apple-image --target aarch64-apple-ios-sim
-cargo xtask build --target aarch64-apple-ios-sim --manager --release
-cargo xtask package --target aarch64-apple-ios-sim --manager --version 0.1.0-beta.1 --out .work/ios-simulator-manager
+cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
-イメージはターゲットごとに個別に準備し、対応する SDK を選びます。イメージは Rust、osxcross、vcpkg の入力を固定し、LLVM/LLD、C/C++、CMake、Apple 用 triplet を提供します。ホストのコンパイラーとターゲットのコンパイラーは別々に設定されます。ネイティブ依存関係のライセンスは `.work/apple-native/<target>` にエクスポートされ、イメージの識別子が同じ場合に限り再利用されます。SDK、イメージ、Rust target が不足していると `doctor` がエラーを返します。対応ターゲットで実際にコンパイルエラーが起きた場合は、そのまま失敗として扱われます。
+### OpenHarmony Manager
 
-macOS のパッケージには `ShinkiEMU.app` が含まれ、実行ファイルは `Contents/MacOS`、メタデータとライセンスは `Contents/Resources` に置かれます。Apple バンドルには ShinkiEMU アプリケーションアイコンも含まれます。`ci`/`release` は ZIP を生成します。iOS の Manager はメインスレッドで Slint の winit/UIKit バックエンドと Metal レンダラーを使います。ネイティブの Files ピッカーはセキュリティスコープ付きの許可とブックマークを保持し、アプリケーションデータはアプリ自身の Library サンドボックスに保存されます。iOS での再起動は、ユーザーがアプリを閉じて開き直す必要があります。共有プラットフォーム層は実際の AVAudioSession を有効にします。Manager がコンパイルできても、iOS で任意にダウンロードしたコアのバイナリをインストールできるわけではありません。コアごとの組み込みとビルドの制約は引き続きインベントリに記載されています。
+DevEco Studio と付属の OpenHarmony Native SDK 5.0.5（API 17）を使います。Rust ターゲット `aarch64-unknown-linux-ohos` を導入し、`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定します。HAP を作るには `SHINKI_EMU_OHOS_SIGNING_DIR` にリポジトリ外のディレクトリを指定します。パッケージャーは SDK のリンカーを設定し、SDK のテスト PKI で署名した HAP を生成します。HAP は実験用で、市販端末へのインストールと実機起動は未確認です。
 
-シミュレーター向けパッケージには `simulator-test.app` が含まれます。実機向けパッケージでは `Payload/*.app` を含む `device-test.ipa` が生成され、`ci` は IPA の実際のパスを報告します。パッケージングでは、単一アーキテクチャの Mach-O、実機/シミュレーターのプラットフォーム、システムと同梱の依存関係の閉包を確認してから、コピーしたファイルに署名します。Linux では `rcodesign sign` を使い、各 Mach-O を個別に検証します。ネイティブの macOS では `codesign` を使います。ad-hoc 署名は実際の署名ですが、Apple の provisioning、公証、App Store の識別情報は提供しません。実機へのインストールには有効な Apple の署名と provisioning が必要です。これらの成果物はテストと統合用で、正式なインストーラーではありません。同じアーキテクチャの添付ファイル名が重複しないよう、Release 名には iOS の実機/シミュレーターのバリアントが含まれます。
+## ビルド、チェック、テスト
 
-SDK を使った受け入れ確認では、実際の成果物のパスとサイズ、ネイティブアーキテクチャと依存関係の確認、各プラットフォームの通常の署名検証結果を保持してください。ネイティブ macOS のパッケージングでは Apple の `codesign` を使います。正規の SDK がない場合、この受け入れ確認は行えません。コンパイルの成功だけでは、ゲームの実行互換性は示されません。
-
-Apple 版 Manager の `build.json` は、バンドルの書き換えと署名より前のネイティブ入力を記録するため、署名後の実行ファイルとはバイトハッシュが異なる場合があります。Release の記録は実際に配布するパッケージを識別します。通常のプラットフォーム署名検証と製品・対象・版の対応確認を維持し、入力の記録を署名後バイナリのハッシュに付け替えないでください。
-
-Shinki Musica は iOS Manager の静的レジストリとコア一覧に含まれ、FFmpeg の依存関係はターゲットごとに分離されます。独立したコミット `72ac926e1d15a452dc81ca84f3e82776aa302a26` は、実機ターゲットと両シミュレーターターゲットの exact-head CI、ネイティブコンパイル、パッケージ、署名、依存関係、ライセンスの確認を通過しました。ネイティブセーブと統合した後の Manager リリースには、新しい統合コミットでの確認が必要です。iOS では動的コアの単独インストールをサポートしません。デバイスでの起動確認は免除されています。
-
-FFmpeg を組み込む Manager には、対象の専用インストールツリーから FFmpeg と推移的依存 port のライセンスを `licenses/ffmpeg/` に同梱します。単体コアのパッケージも同じ収集処理を使います。
-
-ネイティブ静的コアは Cargo のビルドマニフェストに `native-static` アーカイブと実行時リソースを記録します。Manager のビルド記録は依存コアのマニフェストを保持し、パッケージではリソースを `cores/<id>/Resources` に配置します。依存関係の準備は組み込むコアごとに行い、`SHINKI_EMU_NATIVE_VCPKG_ROOT` に個別のインストールツリーを置きます。Apple の静的リンクではネイティブのアーカイブを結合し、対象 port のライブラリとシステム framework を Cargo に渡します。
-
-ネイティブ vcpkg のインストール先は `.work/native-vcpkg/<core>/installed-<triplet>/<triplet>` です。別の ABI の依存関係が削除されないよう、ビルド補助ライブラリと xtask が同じパスマッピングを使います。Android の静的リンクにはコア内部のネイティブライブラリ、ターゲットの vcpkg アーカイブ、pkg-config の private 依存関係を含め、APK には NDK の C++ 共有ランタイムを同梱します。Windows ホストでは vcpkg のビルドロックを共有するため、作業ツリーをまたぐ依存関係のインストールも直列に実行してください。
-
-## OpenHarmony Manager
-
-ローカルビルドには DevEco Studio 付属の OpenHarmony Native SDK 5.0.5（API 17。HAP は API 12 以降が対象）と Rust 1.99.1 が必要です。`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定すると、xtask は同じ DevEco インストールから Node、hvigor、ohpm、CMake/Ninja、`hap-sign-tool.jar`、`llvm-readelf` を見つけます。`SHINKI_EMU_OHOS_SIGNING_DIR` は checkout 外のディレクトリ（例：`.shinki-secrets/ohos-debug`）に設定します。
+Manager は `shinki-emu-manager`、単独コアは [`Source/Cores/`](../../Source/Cores/) のエントリーパッケージを指定します。パッケージ名はコア ID のピリオドをハイフンに置き換え、`shinki-emu-core-` を先頭に付けたものです。大文字とアンダースコアはそのままです。たとえば `rfvp` は `shinki-emu-core-rfvp`、`shinki.emu.musica` は `shinki-emu-core-shinki-emu-musica` です。
 
 ```sh
-cargo xtask deps --target aarch64-unknown-linux-ohos
-export SHINKI_EMU_PRODUCT_VERSION='<version>'
-cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
-cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
+cargo build --locked --release -p shinki-emu-manager
+cargo build --locked --release -p shinki-emu-core-shinki-emu-musica
+cargo check --locked -p shinki-emu-core-rfvp
+cargo test --locked -p shinki-emu-musica
+cargo test --locked -p xtask -p shinki-emu-build
 ```
 
-`deps` は `arm64-ohos` triplet で libass と FFmpeg をビルドします。Meson 1.12 の prefix には、Android の triplet と同じく Windows の拡張パスを使います。ビルドは SDK の clang でリンクし、`libc++_shared.so` を同梱します。`package` は Manager のライブラリを `Platforms/OHOS/entry/libs/arm64-v8a` に、メタデータのスナップショット、通知、ライセンスを `rawfile/bundled` に配置し、`ohpm install` と `hvigorw assembleHap` を実行します。初回は SDK の OpenHarmony テスト PKI から debug 署名データを作ります。`OpenHarmony.p12` のコピーに新しい鍵を作り、テスト用アプリ CA でアプリ証明書を発行し、profile-debug 鍵で `org.shinkirou.shinkiemu` の debug profile に署名します。`sign-app` で署名した後、`verify-app` で検証し、アーカイブの内容と、同梱した各ライブラリの `llvm-readelf -d` を出力します。残る `NEEDED` はすべて OHOS のシステムライブラリでなければなりません。出力先には `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`、`ohos.json`、`build.json` が入ります。keystore、証明書、profile は Git にコミットしません。
+特定のネイティブターゲットには `--target <triple>` を指定し、ホスト上のテストは対象の処理を持つクレートに対して実行します。ローカルビルドの構成は Cargo feature で切り替えます。たとえば Manager に `--features no-core-download` を指定できます。Manager の製品バージョンは `SHINKI_EMU_PRODUCT_VERSION` で上書きでき、省略時は Manager のパッケージバージョンを使います。
 
-テスト PKI で署名した HAP は実験用のテスト配布です。署名、内容、同梱ライブラリの依存関係を確認します。デバイス・エミュレーターでの起動確認は免除されており、市販デバイスへのインストール可能性は未確認です。インストール確認には DevEco/AppGallery Connect が発行した profile が必要です。
+Android では cargo-ndk で API 28 を指定します。以下は ARM64 Manager と x86_64 の単独 Siglus コアの例です。
+
+```sh
+cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --lib
+cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
+```
+
+単独コアの `supported_targets`、Manager の `static_manager_targets`、対象外の理由は [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。Android の単独コアは確認済みの `android_dynamic` ポリシーがある場合にインストールできます。iOS は同梱コアを使用し、OHOS は Musica を組み込みます。どちらもコアをダウンロードしてインストールすることはありません。`publish_blocked` はビルド対応とは別の配布制限です。
+
+### コンパイル時に組み込むストア
+
+Manager は `store-steam`、`store-dlsite`、`store-dmm` を既定で有効にします。Steam のみ有効にするには Cargo に `--no-default-features --features store-steam` を指定します。ストアを追加するには `shinki-emu-store` の trait を実装するクレートを用意し、任意の依存関係と feature を追加して `manager_app/store.rs` に登録します。プロバイダーは不透明なプラン、秘密情報を含まない固定エラー、所有済み作品を返します。一時ファイルは指定された `.shinki/store/<provider>/` に置き、認証情報は `SecretStore` に保存します。
+
+## コアの追加と固定リビジョンの更新
+
+1. 既存の近い例に合わせて `Source/Cores/<id>/` にエントリークレートを追加します。リポジトリ内の Rust コアは実装をパス依存で参照し、エントリーの `cdylib` から ABI の query を公開します。Rust の fork はワークスペース依存を継承し、必要なら単独ビルド用のエクスポート feature を有効にします。ネイティブアダプターはビルドスクリプトからパッケージャーにライブラリを渡します。Manager に静的に組み込む場合は、実装をターゲット別の静的 feature で参照し、`static_cores.rs` に Rust の query を登録します。
+2. ルートの [`Cargo.toml`](../../Cargo.toml) の `[workspace.dependencies]` に fork の `git` URL と完全な `rev` を指定します。`build/cores.toml` には ID、ライセンス・通知、ターゲットの対応状況、静的組み込み、外部の上流情報とリリース連番を記載します。`adapter_licenses` は fork のルート、`licenses` は ShinkiEMU のルートからの相対パスです。
+3. `--locked` を付けずに `cargo metadata --format-version 1` を一度実行し、[`Cargo.lock`](../../Cargo.lock) を更新します。差分を確認し、意図した追加やリビジョンの変更だけを取り込みます。依存関係を一括更新せず、マニフェストとロックファイルを一緒にコミットします。通常のビルドでは `--locked` を使います。
+
+外部コアの**公開ソースは `Cargo.lock` に記録された公開 fork のコミット**です。パッケージ公開前に、そのコミットを取得できる状態にしてください。リポジトリ内のコアのソースは ShinkiEMU のリリースコミットです。
+
+### ローカルの fork で作業する
+
+ローカルの fork はこのリポジトリの外に置き、ワークスペースの `Cargo.toml` に一時的なパッチを追加します。テーブルのキーは元の Git URL、パスはローカルの fork 内のアダプタークレートです。RFVP の例：
+
+```toml
+[patch."https://github.com/Project-Shinkirou/rfvp"]
+shinki-emu-rfvp = { path = "../rfvp/crates/shinki-emu-rfvp" }
+```
+
+fork の実際のパッケージ名と互換バージョンを使います。`cargo metadata --format-version 1` でパッチを解決し、同じエントリーパッケージをビルドします。リリース用の変更をコミットする前にパッチを外し、公開 Git リビジョンを使うようロックファイルを更新します。
 
 ## マトリクスと CI
 
-`matrix` はすべての Manager/コアの組み合わせと blocked 理由を表示します。`matrix --json` は GitHub runner のある行のみをジョブとして選びます。OHOS Manager は実験用のテスト署名配布に対応しますが `runner = "local-only"` であり、DevEco でビルドした成果物をローカルから引き渡します。`--ci` は重複する Android x86_64 Manager 行も除きます。現在の対応状況は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)を参照してください。
-
 ```sh
+cargo xtask matrix
+cargo xtask matrix --json --ci --since origin/main
 cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
 ```
 
-未対応の組み合わせは `blocked`、`artifact: null` を報告します。OHOS Manager のローカル署名ビルドは、同じコミットの成功したリモート CI と結合してから公開します。対応対象のビルド失敗は `failed` を返します。`publish_blocked` は配布上の制限を別に記録します。
-
-通常の CI/package は、カタログに新しいリリース番号があっても固定済みの外部コア pin を再ビルドできます。バージョンはその pin から導出します。Release の dry-run・準備・公開では、リリース成果物の作成前に番号の単調増加を確認します。古い pin をビルドできても、新規リリースとしての公開は許可されません。
-
-GitHub Actions が正式な CI であり、ホストされたプラットフォームのリリース成果物をビルドします。DevEco が必要な OHOS HAP は、以下のゲート付きローカル引き渡しで追加します。
-OHOS Manager を含むリリースでは、release ブランチを push し、同じコミットの `ci.yml` の成功を確認します。`components=manager` で `release.yml` を実行します。このワークフローは全ホスト行の成功を要求し、Manager の公開はローカル引き渡しに残します。実行中の `release-files-manager@*` artifact をすべてダウンロードし、その `<tag>/<target>/` を同じコミットのクリーンな checkout の `.work/release/<tag>/` に配置します。DevEco と checkout 外の署名ディレクトリを設定して、次を実行します。
-
-```sh
-cargo xtask deps --target aarch64-unknown-linux-ohos
-export SHINKI_EMU_PRODUCT_VERSION='<version>'
-cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
-cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
-SHINKI_EMU_RELEASE_CI_RUN_ID=<成功した-ci-実行-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<成功した-handoff-実行-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
-```
-
-最後の公開コマンドの前に、同じコミットで `manager-v<version>` のドラフトを作成し、OHOS HAP、対応ソース ZIP、`ohos-handoff.json` という名前にした OHOS の `release.json` をアップロードします。同じコミットの `release.yml` に `components=manager`、バージョン、`verify_local_manager=true` を指定します。この検証専用実行は実際のドラフト成果物を取得し、SHA256、HAP の内容、ネイティブ依存関係と対応ソースのコミットを確認します。ホスト runner に DevEco は不要です。検証済みファイルは `verified-ohos-handoff` artifact に保存されます。成功した実行 ID を `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` に設定します。テスト PKI 署名はローカル DevEco で確認し、ホスト側は成果物の完全性を確認します。ホスト側での再署名検証やデバイス検証は行いません。
-
-公開処理は同一コミット、全 archive の SHA256、全ホスト行（重複する Android x86_64 行を除く）と OHOS HAP、および同一コミットの両ワークフロー成功を照合します。公開名と説明にはテスト署名と起動検証の免除を明記します。
-
-ソースバンドルの字幕ライブラリ再ビルドコマンドは `build/vcpkg/mobile-triplets` を含み、OHOS の `arm64-ohos` triplet と同梱のネイティブソースアーカイブを使用します。
-検証専用ジョブは未公開のドラフト成果物を取得するためにリポジトリの `contents: write` 権限を必要としますが、ドラフトの公開や変更は行いません。
-
-ローカルランナーは push 前の任意の事前チェックで、リモートで失敗する問題を先に見つけるためのものです。`matrix --json [--ci] --since <ref>` は、入力が `<ref>` 以降に変わった行だけを残します。ランナーは `SHINKI_CI_SINCE` からこの引数を渡します。共有の入力はすべての行を選びます。対象はルートの `Cargo.toml`/`Cargo.lock`、`rust-toolchain.toml`、`xtask/`、`Source/{SDK,FamilyApi,Tools}/`、`build/targets.toml`、`build/vcpkg/`、`build/ci/`、およびここに挙げていないすべてのパスです。`Source/Manager/` と `Source/Providers/` は Manager の行を選びます。`Source/Families/<ディレクトリ>/` は、そのディレクトリにマニフェストがあるコアと、そのコアの `static_manager_targets` 上の Manager の行を選びます。`build/cores.toml` の `[[cores]]` テーブルが変わった場合も、そのコアについて同じです。`docs/**`、`Metadata/**`、Markdown ファイルはどの行も選びません。
+`matrix` は宣言された組み合わせと対象外の理由を表示します。JSON には対応するホストランナーの行が含まれます。`--ci` は ARM64 行でユニバーサル APK を作る場合、重複する Android x86_64 の Manager 行を除きます。`--since` は変更の影響を受ける行に絞ります。`ci` は選択した行をパッケージングし、成果物か対象外の理由を報告します。OpenHarmony はローカルの DevEco で処理します。
 
 ## パッケージングとリリース
 
-まず対象のコンポーネントをビルドし、次にビルド記録が指す成果物をパッケージングします。
+`package` はロック済みのリリースビルドを実行し、Cargo が報告するライブラリ、リソース、ネイティブランタイムを新しい出力ディレクトリに配置します。先に `cargo-about` を導入してください。コアパッケージは ABI v3 の `core.json` とファイルハッシュを保持します。`cargo-about` が生成する Rust のライセンス、コア・ネイティブ依存関係の通知、該当する Manager のオフラインメタデータを同梱します。サードパーティーのライセンスや再リンクの義務も引き続き適用されます。
 
 ```sh
-cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/packages/rfvp
-cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/packages/manager
+cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/rfvp-package
+cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/manager-package
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
+```
+
+通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。環境を整えた Linux ホストで作成してください。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければテスト用のデバッグ署名 APK になります。Linux 以外で対象 ABI の Ren’Py ランタイムを用意した場合など、単一 ABI のデバッグ APK が必要なら Manager のパッケージングに `--qa-single-abi` を付けます。公開用の Android APK にはプロジェクトのリリース証明書が必要です。Android の単独コアはコアパッケージであり、APK や Gradle 署名は不要です。macOS では `.app`、iOS ではシミュレーター用のテスト `.app` または実機用のテスト `.ipa` を作ります。Apple の既定は ad hoc 署名で、実機へのインストールには有効なプロビジョニングが必要です。
+
+`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。iOS の `ios-framework-cores` と HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
+
+Manager とリポジトリ内のコアには共通の製品 `--version`（SemVer）を指定します。外部コアは省略します。外部コアの識別子は、元のプロジェクトの `upstream_identity`、`Cargo.lock` から解決したアダプターのリポジトリとコミット、`adapter_branch`、コアごとの `release_sequence` から決まります。上流には実際のタグまたはブランチと完全なコミットを記録します。版の形式は `<tag|branch>-<ref slug>-<digest>` です。ref の先頭 16 バイトの ASCII 英数字を小文字にし、他はハイフンに置き換えます。上流のリポジトリ・ref 種別・ref 名・コミット、アダプターのリポジトリ・ブランチ・コミット、十進数の連番を UTF-8 で並べ、各項目に LF を付けて SHA-256 を求めます。タグは Manager が `manager-v<semver>`、リポジトリ内のコアが `core-<slug>-v<semver>`、外部コアが `core-<slug>-<version>` です。タグの slug はコア ID を小文字にし、ピリオドとアンダースコアをハイフンに置き換えます。外部コアのリビジョンを変えるか新しいリリースを出すときは連番を増やします。カタログは連番で最新を選びます。
+
+```sh
+cargo xtask release --component rfvp --dry-run
 cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 ```
 
-出力ディレクトリはまだ存在しないものでなければなりません。パッケージングは、安全でないパス、リンク、名前の衝突、ライセンスの欠落、アーキテクチャの誤り、query エクスポートの欠落、ネイティブ依存関係の不足を含む入力を拒否します。コアパッケージには、ライブラリ、リソース、依存ファイル、ライセンス、ビルドの来歴、ハッシュ付きの `core.json` が含まれます。ソースパッケージには、該当する対応ソースと再リンク用の入力が含まれます。
+`--dry-run` はビルドせずにバージョン、タグ、ターゲットを表示します。`--target` はビルドして `.work/release/<tag>/<target>/` に配布物と `release.json` を用意します。`--publish` は `GH_TOKEN` または `GITHUB_TOKEN` を使って準備済みの配布物を公開し、コアの場合はカタログ更新の PR を作ります。公開時に配布物のハッシュを確認し、カタログには公開ファイルの SHA-256 とサイズを記録します。Windows/Android のみを公開する場合は計画、準備、公開のすべてに `--scope windows-android` を付けます。既定は `all` です。
 
-`shinki-emu-<slug>-<バージョン>-<プラットフォーム>-sources.zip` には `source.tar` と `BUILD-FROM-SOURCE.md` が入っています。TAR には、リリースコミット時点の製品のコミット済みツリーと、選択した fork の固定 revision のコミット済みツリーが含まれ、どちらもサブモジュールを記録された revision で展開します。ワークツリー上の未コミットの変更は含まれません。Git LFS のポインターは、コミットされた SHA256 とサイズを確認したうえで実体のデータに置き換えます。データがない場合は先に `git lfs checkout` を実行してください。
+[リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。全プラットフォーム向け Manager を公開するには、ローカルと同じコミットの成功した `release.yml` 実行を 1 件使います。`source_commit` は上書きしません。その実行のすべての `release-files-manager@*` を取得し、各 `<tag>/<target>/` ディレクトリを `.work/release/<tag>/` にまとめます。DevEco と署名ディレクトリを設定してローカルで HAP を用意し、同じ製品バージョンで公開します。
 
-Rust の依存関係は変更していない `Cargo.lock`（registry のチェックサムと正確な Git コミット）で特定され、再ビルド時に Cargo が取得します。さらに `rust-sources/<名前>-<バージョン>+<ソース>/` には、ライセンスがソースの提供を求めるリンク済み crate のソースを入れます。対象は、選べるライセンスがすべて copyleft の crate（MPL-2.0 の symphonia、triple_buffer、option-ext など）と SPDX 式のない crate です。GPL/LGPL/AGPL でしか使えない crate が 1 つでもリンクされている場合（ReMinori）は、リンク済みの crate をすべて含めます。寛容なライセンスを選べる crate（`Apache-2.0 OR GPL-2.0-only`、Slint の `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR …`）はその選択肢で配布するため、ソースの提供義務は生じません。パス crate は fork のスナップショットに含まれます。
+```sh
+cargo xtask release --component manager --version 0.1.0-beta.1 --target aarch64-unknown-linux-ohos
+cargo xtask release --component manager --version 0.1.0-beta.1 --scope all --publish
+```
 
-ネイティブのソースは、選択したインストールツリーの vcpkg port をすべて対象にし、ホスト triplet のツールも含めて `vcpkg/status` から依存関係をたどります。`native/ports/<グループ>/` には、インストール時の SPDX `gitoid` が示す固定 registry tree から取り出した各 registry port の recipe とパッチを置きます。overlay port には tree の識別子がなく、fork のスナップショットに含まれます。`.work/vcpkg-downloads/` には、インストール済み SPDX が SHA512 で記録したソースアーカイブを置きます。ビルド手順では固定 revision の vcpkg を clone します。Impacto では準備済みの LibAtrac9/magic_enum のソースも含め、mspack は fork のスナップショットに含まれます。
-
-ソースパッケージは、`deps` と `build` が確認済みの入力をそのままコピーします。`.work/downloads` のハッシュの再計算、recipe の再検証、Cargo のオフライン解決、ワークツリーの再確認は行いません。`release` 自体は、未コミットの変更がある製品の checkout と、別のソース revision から作られたビルド記録を拒否します。
-
-`cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` は、固定された `.work/renpy-build` の checkout と再帰的な submodule を準備します。既存の checkout に未コミットの変更がある場合は更新前に失敗し、ソース収集は読み取り専用のままです。
-
-Manager のパッケージングでは、ターゲットプラットフォームで絞り込んだ Cargo の依存関係の閉包（通常の依存とビルド依存。テスト専用の依存エッジは除く）を収集します。各 crate が宣言した `license_file`、ソースルートの `LICENSE*`、`COPYING*`、`NOTICE*` ファイル、および同種のライセンスディレクトリの内容は `licenses/rust/<名前>-<バージョン>/` に置かれ、同じディレクトリの `package.json` に SPDX 式とテキストの出所が記録されます。crate がファイルを提供していない場合、パッケージャーは固定された `spdx` 0.13.6 に内蔵されたオフラインのデータから SPDX License List 3.29.0 の標準テキストを取り出し、SPDX 式が参照するすべてのライセンスと例外条項を `LICENSE-<SPDX>` として書き出します。データの出所となるバージョンとアーカイブの SHA256 は `build/dependencies.toml` に記録され、Cargo の固定依存と照合されます。パッケージング中にライセンステキストをダウンロードすることはありません。認識できない補完用の識別子や、ライセンスファイルも SPDX 式もない crate があると、パッケージングは失敗します。Material コンポーネント、アイコン、ネイティブ依存関係のライセンスは別途収集されます。
-
-Manager と自作 CMVS/Musica は独立した SemVer および `manager-v<semver>`、`core-<slug>-v<semver>` タグを維持し、`--version` を指定します。RFVP、Artemis を含む外部コアは `build/cores.toml` から識別子を計算するため `--version` は省略します。`cargo xtask release --component <id> --dry-run` は元の upstream ref、完全なコミットと adapter pin の関係だけを検証し、ビルド・公開しません。`release --target <トリプル>` は `.work/release/<tag>/<target>/` にバイナリ ZIP、対応ソース ZIP と `release.json` を作成します。ブロック対象と `publish_blocked` コアは成果物を作りません。
-
-**現在の版：Manager 0.1.0-beta.8。** タグ [`manager-v0.1.0-beta.8`](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) はソースコミット [`051a05bceff139e60ef6f973781ffa1f093fb2fc`](https://github.com/Project-Shinkirou/ShinkiEMU/commit/051a05bceff139e60ef6f973781ffa1f093fb2fc) を指します。2026年11月3日 07:04:31 UTC に公開され、公開資産は19個です。内訳は9プラットフォームのパッケージ、9個の対応ソースアーカイブ、OHOS 引き渡し記録です。[同一コミットの CI](https://github.com/Project-Shinkirou/ShinkiEMU/actions/runs/41543961859) は全マトリクスで成功し、[OHOS 引き渡し gate](https://github.com/Project-Shinkirou/ShinkiEMU/actions/runs/41576487998) も成功しました。
-
-| プラットフォーム | beta.8 の実際の配布物 |
-| --- | --- |
-| Windows x86_64、Linux x86_64、macOS aarch64/x86_64 | Manager のデスクトップパッケージ。単独コアは別途インストールします。 |
-| Android | aarch64 と x86_64 の2 ABI を含む正式配布用の単一 universal APK。RFVP、Siglus、Artemis、Musica、KiriKiri2、CMVS（本版で追加）、Impacto、Ren'Py の8コアを組み込みます。 |
-| iOS | aarch64 device-test、aarch64 simulator-test、x86_64 simulator-test の3テストパッケージ。それぞれ RFVP、Siglus、Musica、Sena、Ethornell、ReMinori の6コアを組み込みます。 |
-| OHOS aarch64 | Musica の1コアを組み込む実験的な debug-test 署名 HAP。OpenHarmony SDK テスト PKI を使用します。実機/エミュレーター起動と市販デバイスへのインストールは未検証です。 |
-
-Android の正式配布用証明書 SHA256 は引き続き `c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc` です。リリース資産一覧と当該ソースコミットの [`build/cores.toml`](https://github.com/Project-Shinkirou/ShinkiEMU/blob/051a05bceff139e60ef6f973781ffa1f093fb2fc/build/cores.toml) に配布対象と組み込みコアを記録しています。Android の2 ABI は同じ APK に含まれます。新しい Musica パッチには Musica コア `0.1.0-beta.5` 以降が必要です。**Manager beta.7 およびそれ以前の公開タグと資産は変更しません。**
-
-**前の版：Manager [0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7)。** `fd9c78a4cabf1d80430744e4bb5d140c2a837bb9` から9ターゲットを公開しました。Android は7コア、iOS の実機/シミュレーター用3テストパッケージは6コアを組み込み、OHOS は SDK debug-test-PKI で署名しています。公式 Windows バイナリは内部版を `0.1.0-beta.6` と報告します。後続のソース機能やコア pin の更新によって、これらの過去の配布物は変わりません。
-
-[KiriKiri2 連番2のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-kirikiroid2-web-branch-web-1e3603089b4951c8e2831d978ea6fe5a8097bceeb0a56fdeb65aa3953e67eecf) は、製品 `fe4e6f2d82c8b61f3f14e13d48af6d57722b9952`、adapter `d72046c28e6ada623acdb1d72f7075edd488797d` から Windows、Linux、両 macOS アーキテクチャを公開しています。同じ adapter は beta.7 Android に静的組み込み済みですが、iOS や OHOS への KiriKiri 追加を意味しません。デスクトップ版には対応ソースと元ライセンスを同梱し、FMOD の条項を別に維持します。
-
-外部識別子は原作者の `upstream {repo, ref_kind, ref_name, commit}` と組織の `adapter {repo, branch, commit}` を別々に保持します。コミットは小文字 40 桁の完全なハッシュです。upstream の該当コミットに検証済みタグがあればタグを使い、なければ本来の upstream ブランチを使います。組織の統合ブランチを upstream と表記しません。表示は `<ref>@<upstream commit12> (adapter <adapter commit12>)` です。ファイル用の版は `<tag|branch>-<ref slug>-<digest>`。ref の先頭 16 ASCII バイトを取り、英数字を小文字化し、それ以外をそれぞれ `-` にします。digest は upstream repo/kind/ref/commit、adapter repo/branch/commit、十進数の `release_sequence` の順で、各 UTF-8 フィールドに LF を付けた列の完全な SHA256 です。版は最大 88 バイト、タグは `core-<plugin slug>-<version>` です。plugin slug は ID を小文字化して `.` と `_` を `-` に置換します。ブランチの `/` はパスに入らず、adapter のみの変更でも別の識別子になります。
-
-外部 plugin slug は最大 32 バイトで、Release タグは安全な ASCII 文字で最大 126 バイトです。
-
-`release_sequence` は外部コアごとの厳密に増加する正整数（最大 9007199254740991）です。upstream、adapter pin の変更や意図した再ビルドで増加させます。タグ版とブランチ版は同じ連番で最新を選び、ブランチ名やハッシュは大小比較しません。型付き識別子は旧 beta エントリより優先し、残りは SemVer 順です。異なる版で同じ連番を使うことは、別プラットフォームでも拒否します。パッケージ、埋め込みコア一覧、ソース参照とカタログは同じ来歴を保持し、元のライセンス・著作権表示と対応ソースの要件も維持します。
-
-[Impacto 連番3のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-impacto-tag-0-10-8-930-96de7434c8b1a57df7ff24dcee829282194873fe596677056fa168485cb1555e) は、製品コミット `5b197c1c656186d3a535bb3486311623516166e5`、upstream `0.10.8.930`、adapter `34b89c29123d025d96f73ac9a746fb388e572065` から Windows、Linux、両 macOS アーキテクチャのパッケージを公開しています。4対象の対応ソース・ネイティブ入力・ライセンス・パッケージ監査と、認証なしでの全8バイナリ/ソース添付ファイルの実ダウンロード・ハッシュ照合が完了しました。この単独版は Manager6 内蔵の `910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157`/連番2を置き換えず、公開済み連番1の資産も変更しません。カタログは公開完了の順番ではなく連番3を選びます。
-
-開発ブランチの Impacto pin には、[Windows で KiriKiri と同時にロードできない問題（#37）](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)の [fmt v11 互換性修正](https://github.com/Project-Shinkirou/impacto/pull/2)が含まれます。vcpkg manifest は fmt を 11.2.0 に固定し、KiriKiri、spdlog、OpenAL の v11 ABI に合わせます。Windows はファイル名でロード済みの `fmt.dll` を再利用するため、DLL ディレクトリの検索フラグでは異なる ABI を分離できません。次の Impacto 公開は連番4を使い、公開済みの連番1–3は変更しません。
-
-[Ren’Py 連番1のリリース](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-renpy-tag-8-5-3-26051504-5f537560e1a1b852070dec65946d6c027e9f4f7482bddd8349ed47960c383133) は、製品コミット `05326439dcfafb81df79f3dabe0997fb696ad3f3`、upstream `8.5.3.26051504`、adapter `a52d9d9c006223c2b5a276c05e1b97ffeecbe66f` から4デスクトップ対象を公開しています。全対応ソースパッケージで、107バイトのシンボリックリンク先を含む固定再ビルド用レシピ389/389項目の実物確認が完了しました。公開された全8バイナリ/ソース添付ファイルを認証なしで実際に取得し、受け入れ済み記録とハッシュを照合しました。元のネイティブライセンス本文も固定 fork と原入力に対してバイト単位で確認済みです。
-
-同じ index に `cores-v2.json`（`shinki.emu.cores.v2`）を追加し、旧エントリと新識別子を収録します。`cores.json` は v1 と identity のない公開済みエントリを維持するため、旧 Manager のダウンロードは継続します。新 Manager は index にある v2 を優先し、旧 v1 snapshot も受け入れます。公開済み beta のタグ、添付ファイルや来歴は変更せず、引き続きインストールできます。更新は adapter crate の版ではなくパッケージの識別子を比較します。
-
-upstream 識別子付きパッケージには Manager `0.1.0-beta.6` 以降が必要です。beta.5 以前は追加の識別子と長い版フィールドを拒否するため、旧カタログと旧パッケージを維持してください。外部コアの新規 Release にはこの要件を明記します。対応 Manager beta.6 と更新版 RFVP がともに公開入手可能になったため、Sakura recipe 0.2 は公開済みです。変換先は新しい出力ディレクトリとし、元のゲームとセーブは変更しません。
-
-`cargo xtask release --component <id> --version <semver> --publish`（`GH_TOKEN` または `GITHUB_TOKEN` が必要）は、その tag で準備済みのターゲットをすべて集めます。別の製品コミットや別のコア固定 revision の記録、別のコミットを指す既存の tag、別のコミットから作られた draft、空の Release、公開済みの Release は拒否します。実行中のコミットで draft を作るか、そのコミットの draft を再利用し（中断した実行が残した同名の添付ファイルは置き換えます）、ソースとバイナリのアーカイブをアップロードして公開します。tag がなければ GitHub がそのコミットに作成します。コアの場合は続けて、各プラットフォームのカタログエントリを `metadata/release-<tag>` ブランチの `Metadata/engines/cores/` にコミットし、`main` への PR を作ります。組織の設定で Actions による PR 作成が許可されていない場合、この最後の手順は失敗しますが、エントリはすべてブランチにあるので、PR を手動で作成してください。カタログ URL は最終 tag から作り、draft の `untagged-*` URL は使いません。Manager とコアは別々にリリースされます。Android の debug 署名テスト用 APK はブロック扱いとなり、アップロードされません。
-
-`release.yml` は選択したコンポーネントのホスト対象行をすべてビルドし、ローカル専用ターゲットのないコンポーネントを公開します。OHOS 対応 Manager は、上記のゲート付きローカル引き渡しで HAP とソースを揃えてから公開します。単一のコアは tag を push してリリースできます。複数のコンポーネントは `version` と `components` を指定してワークフローを実行します。新しい tag を一度に 4 件以上 push してもワークフローは起動しません。
-
-公開せず準備する場合も同じ `release.yml` を使い、`prepare_only=true` と、必要に応じて正確な40桁の製品コミット `source_commit` を指定します。明示したソースコミットは準備専用モードでのみ使えます。既存のネイティブビルド、パッケージ、プラットフォーム署名、ソースとライセンスの同梱処理は変えません。最後の引き渡しでは各記録が実際の製品コミット、コンポーネント、版、対象に一致することを要求し、公開をスキップします。workflow dispatch SHA は編成コードの識別子であり、製品の来歴ではありません。受け入れ済み製品のクリーンな checkout から既存の xtask で実物を公開してください。CI 成功だけでは、成果物の取得可否、通常のパッケージ構造、署名要件を代替できません。
-
-自作コアを公開する場合は、Manager と一緒に選択し、dispatch に共通の `version` を指定します。手動の準備・公開でも `SHINKI_EMU_RELEASE_PRODUCT_VERSION` と `SHINKI_EMU_RELEASE_SOURCE_COMMIT` に同じ版と確定コミットの完全な SHA を設定し、対応する Manager のビルド記録と成果物を揃えてください。コアは Manager より先に公開できます。コアのビルド記録、組み込み一覧、対応ソースには製品コミットの完全な SHA を記録します。ダウンロードしたファイルは従来どおり個別の SHA-256 で検証します。外部コアは独自の識別子を使い、公開コマンドでは `--version` を省略します。
-
-メタデータのコマンドは [Metadata](metadata.md)、コアパッケージの契約は[コア ABI](core-abi.md) を参照してください。
+スナップショットとカタログのコマンドは [Metadata](metadata.md)、ネイティブパッケージの形式は[コア ABI](core-abi.md)を参照してください。

@@ -1,6 +1,6 @@
 ---
 name: shinkiemu-new-core
-description: Use when writing a new ShinkiEMU core from scratch on the in-repo Rust SDK (a crate under Source/Families/ implementing C ABI v3 with shinki-emu-sdk), when changing an in-repo core (CMVS, Musica), or when choosing between writing one and porting a third-party engine. Covers the engine-adapter rules (engine-trait probe without per-work whitelists or enums; per-work data from original files, then release-bound Metadata, then Luau patches; original-save compatibility), the port-vs-SDK decision, crate layout, Cargo.lock reconciliation, query/CoreApi table, worker, CPU frame leases and pending-frame identity, SDK modules, core-build.json, build/cores.toml registration and family_id, game recognition, static embedding, tests, docs, release tags, the contributor PR gate (Windows x64 and Android ARM64 build and package) and maintainer release acceptance (ABI probe, exact-head CI, sources/licenses, real game opens and renders headless). Not for wrapping an existing third-party engine; use shinkiemu-integrate-existing-core.
+description: Use when writing a new ShinkiEMU core from scratch on the in-repo Rust SDK (a Source/Families implementation and Source/Cores entry crate), when changing an in-repo core (CMVS, Musica), or when choosing between writing one and porting a third-party engine. Covers the engine-adapter rules (engine-trait probe without per-work whitelists or enums; per-work data from original files, then release-bound Metadata, then Luau patches; original-save compatibility), the port-vs-SDK decision, crate layout, Cargo.lock reconciliation, query/CoreApi table, worker, CPU frame leases and pending-frame identity, SDK modules, build/cores.toml registration and family_id, game recognition, static embedding, Cargo builds and tests, docs, release tags, the contributor PR gate (Windows x64 and Android ARM64 build and package) and maintainer release acceptance (ABI probe, exact-head CI, licenses, real game opens and renders headless). Not for wrapping an existing third-party engine; use shinkiemu-integrate-existing-core.
 ---
 
 # 基于 SDK 编写新的 ShinkiEMU 核心
@@ -9,7 +9,7 @@ description: Use when writing a new ShinkiEMU core from scratch on the in-repo R
 
 契约文档直接链接，不要抄进核心：[Core ABI](../../../docs/en/core-abi.md)、[Build and release](../../../docs/en/build-and-release.md)、[Metadata](../../../docs/en/metadata.md)、[SDK README](../../../Source/SDK/shinki-emu-sdk/README.md)。构建、CI、发布流程见 `shinkiemu-maintenance`。
 
-示例核心是 `Source/Examples/shinki-emu-tilefix`（package `shinki-emu-tilefix`，ID `shinki.example.tilefix`，family `tilefix`）。它用 SDK 实现 query/probe/open/input/frame/close，测试和示例程序在运行时生成很小的自造数据，不含商业资源。它不在官方目录里：`build/cores.toml` 没有它的条目，只有在临时 checkout 里把 `Source/Examples/shinki-emu-tilefix/core.toml` 的 `[[cores]]` 段追加到 `build/cores.toml`（PowerShell：`Add-Content build/cores.toml (Get-Content Source/Examples/shinki-emu-tilefix/core.toml -Raw)`），`cargo xtask` 才能按 ID 构建它。这处注册不要提交。命令见 §9。
+示例在 `Source/Examples/shinki-emu-tilefix`（package `shinki-emu-tilefix`，ID `shinki.example.tilefix`，family `tilefix`）。它用 SDK 实现 query/probe/open/input/frame/close，运行时生成自造数据，不含商业资源。示例不在官方目录，直接用 Cargo 构建和测试即可，命令见 §9。
 
 ## 引擎适配器，不是作品播放器
 
@@ -49,13 +49,13 @@ description: Use when writing a new ShinkiEMU core from scratch on the in-repo R
 | 没有上游实现，只有原版可执行文件 | 用本 skill，逆向原版行为后自研（CMVS、Musica 都是这样做的） |
 | 上游只覆盖部分格式 | 先移植上游；缺的部分作为 fork 内的 adapter 修改并尽量提交上游，不要在树内再写一个同引擎核心 |
 
-自研核心属于本仓库：plugin_id 用 `shinki.emu.<family>`，没有 `[cores.source]`，版本用 SemVer。
+自研核心属于本仓库，plugin_id 用 `shinki.emu.<family>`，版本用 SemVer。
 
 ## 1. 命名
 
 - **plugin_id**：`Descriptor.plugin_id`、`core-build.json`、`build/cores.toml` 的 `id`、catalog 和存档共用的稳定标识，格式 `shinki.emu.<family>`。字符限 `[A-Za-z0-9._-]`，最长 128 字节（`CoreBuildManifest::validate`，`Source/Tools/shinki-emu-build/src/lib.rs:54-62`）。发布后不能改名。
 - **slug**：由 plugin_id 推导，不手写。小写后把 `.`、`_` 换成 `-`（`shinki.emu.cmvs` → `shinki-emu-cmvs`）。docs 页名、tag `core-<slug>-v<semver>` 和归档名都用它。重复 slug 会被 `Inventory::validate` 拒绝。
-- **crate**：`Source/Families/shinki-emu-<family>`，package `shinki-emu-<family>`，加进根 `Cargo.toml` 的 `[workspace] members`。
+- **crate**：实现位于 `Source/Families/shinki-emu-<family>`（package `shinki-emu-<family>`）；独立入口位于 `Source/Cores/shinki.emu.<family>`（package `shinki-emu-core-shinki-emu-<family>`）。把实现加入根 `Cargo.toml` 的 `[workspace] members`，入口由 `Source/Cores/*` 纳入。
 - **family_id**：引擎族 ID，`build/cores.toml` 的必填字段，与 descriptor 里的族字符串一致（`"cmvs"`）。格式是 1–64 个小写 ASCII 字母、数字或连字符，以字母开头（`xtask/src/cores.rs`）。Manager 的目录识别按它把游戏关联到核心。多个核心可以共用一个 family，例如 `ReMinori` 和 `shinki.emu.musica` 都是 `musica`。
 
 ## 2. crate 骨架
@@ -71,15 +71,17 @@ license.workspace = true
 build = "build.rs"
 
 [lib]
-crate-type = ["rlib", "cdylib"]   # cdylib 给桌面动态加载，rlib 给移动端 Manager 静态链接
+crate-type = ["rlib", "cdylib"]   # 参照 CMVS；独立产物从入口 crate 构建
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime" /* 只开用到的 */] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime"] }
 
 [build-dependencies]
 shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
 ```
+
+参照 [`Source/Cores/shinki.emu.cmvs`](../../../Source/Cores/shinki.emu.cmvs/) 添加薄入口：`crate-type = ["cdylib"]`，通过相对路径依赖实现并开启 `dynamic-plugin-export` 和所需的原生 feature，引用实际 query 以链接导出。静态 Manager 直接依赖实现，不开启独立导出 feature。
 
 `build.rs` 参照 `Source/Families/shinki-emu-cmvs/build.rs`：
 
@@ -106,9 +108,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - 资产 source 是存在的绝对路径；dest 以 `Resources/` 或 `licenses/` 开头，不含 `\`、`:`、空段、`.`、`..`。
 - 随包的每个许可文件也要列进 `build/cores.toml` 的 `licenses`。
 
-`build.rs` 只校验输入并把 `core-build.json` 写进 `OUT_DIR`。不递归调用 Cargo，不下载，不发布。
+`build.rs` 将实际打包输入写入 `OUT_DIR`。需要原生库时，由构建脚本调用 `shinki-emu-build` 或依赖共享的原生库 crate；不递归调用 Cargo，不发布。
 
-新 crate 加进根 `Cargo.toml` 的 `[workspace] members` 之后，`Cargo.lock` 必须先更新一次：`cargo xtask` 是 `run --locked` 的别名，xtask 调用 Cargo 也都带 `--locked`，否则第一条命令就报 `cannot update the lock file ... because --locked was passed`。不带 `--locked` 执行一次 `cargo metadata --format-version 1 > /dev/null`（PowerShell 用 `| Out-Null`），再看 `git diff -- Cargo.lock`：应该只多出新 crate 和它新引入的依赖。不要用 `cargo update` 或 `cargo update -p`。当前代码上 Cargo 1.99.1 可能顺带对调两个 `na_mpeg2_decoder 0.1.0` 条目（siglus_rs、ethornell-rs 两个来源），版本不变，保留 Cargo 的输出并在 PR 里说明。
+添加 workspace 成员或依赖后，先不带 `--locked` 运行 `cargo metadata --format-version 1`，再核对 `git diff -- Cargo.lock`，只提交本次改动需要的锁文件变化。不要为此批量更新依赖。日常编译、测试和 `cargo xtask` 都用锁定的依赖。
 
 ## 3. C ABI 入口：`src/native.rs`
 
@@ -200,11 +202,6 @@ family_id = "<family>"
 display_name = "Shinki <Family>"
 family_name = "<Family>"
 license = "MIT OR Apache-2.0"
-manifest = "Source/Families/shinki-emu-<family>/Cargo.toml"
-package = "shinki-emu-<family>"
-features = []
-dependencies = []            # deps 配方，例如 "ffmpeg"；纯 Rust 为空
-artifact_kind = "rust-cdylib"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android"]
@@ -215,7 +212,7 @@ reason = "<具体原因>"
 # build/targets.toml 里其余每个 triple 各一条 [[cores.blocked]]
 ```
 
-清单加载时检查：每个 triple 恰好出现在 supported 或 blocked 中一次，blocked 原因非空；`family_id` 必填且格式合法，缺了直接报 `missing field family_id`；树内核心不能有 `[cores.source]`；`publish_blocked` 在许可或声明义务未满足时填写具体原因，这样的核心不会发布。新核心不要改 `build/targets.toml`。
+清单要求每个 triple 恰好出现在 supported 或 blocked 中一次，blocked 原因非空；`family_id` 必填且格式合法。`publish_blocked` 在许可或声明义务未满足时填写具体原因，这样的核心不会发布。新核心不要改 `build/targets.toml`。
 
 `supported_targets` 只写真实构建成功过的目标：你本地跑过的 Windows x64 和 Android ARM64，PR CI 会构建的 Linux x64，或维护者 dispatch 的 `ci.yml` 跑过的其他目标。没构建过的目标写 `[[cores.blocked]]`，原因写到能定位的程度（缺哪个依赖准备路径、哪个文件哪段代码、还没有哪次构建），不要写"暂不支持"。平台按 Windows x64 → Android ARM64 → Linux x64 → macOS → iOS → OHOS 的顺序推进。
 
@@ -232,17 +229,17 @@ reason = "<具体原因>"
 
 ## 7. Android / iOS / OHOS 静态嵌入
 
-采用静态嵌入的目标需要让以下三处一致，`validate_static_dependencies` 会比对前两处：
+采用静态嵌入的目标需要让以下三处一致：
 
-1. `build/cores.toml`：`static_manager_targets` 列 triple，`static_features` 列静态构建 feature。
-2. `Source/Manager/shinki-emu-manager/Cargo.toml`：覆盖整个平台时用 `cfg(target_os = "android")`、`cfg(target_os = "ios")` 或 `cfg(target_env = "ohos")`；只覆盖个别 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`。一个核心在同一 triple 上只声明一次。树内核心用 `path` 依赖，设置 `default-features = false`，`features` 与 `static_features` 完全相同。
+1. `build/cores.toml`：用 `static_manager_targets` 列出 triple。
+2. `Source/Manager/shinki-emu-manager/Cargo.toml`：覆盖整个平台时用 `cfg(target_os = "android")`、`cfg(target_os = "ios")` 或 `cfg(target_env = "ohos")`；只覆盖个别 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`。一个核心在同一 triple 上只声明一次。用 `path` 依赖实现、设置 `default-features = false` 并开启实际需要的静态 feature。
 3. `Source/Manager/shinki-emu-manager/src/static_cores.rs` 的 `STATIC_CORES`：例如 `("shinki.emu.musica", shinki_emu_musica::musica_query)`。Manager GUI 和 Manager 的 `headless` 子命令共用这张表；独立的 `shinki-emu-headless` 按路径加载核心包。
 
 打包会把 `embedded-cores.json` 和嵌入核心的许可写进 Manager 包。是否把核心嵌入官方 Manager 由维护者决定：它改变 Manager 的依赖图，正式 Android APK 要两个 ABI 的 release 构建，并随 Manager 发布。
 
 ## 8. 测试
 
-- 单元和行为测试放在代码旁边（CMVS 是 `src/native/tests.rs`），用 `cargo xtask test --core shinki.emu.<family>` 跑。
+- 单元和行为测试放在实现旁边（CMVS 是 `src/native/tests.rs`），用 `cargo test --locked -p shinki-emu-<family>` 跑。
 - `native/tests.rs` 里的 `queued_input_drives_real_session_and_cpu_lease_survives_joined_close` 是 ABI 层行为测试的模板：真实 worker、真实输入、窗口服务替身、关闭后租约仍可读。
 - 覆盖使用方看得到的行为：格式和预算边界、损坏或超大的输入、存档往返和完整性、open 期间取消、暂停/恢复、过期帧身份、租约在 worker 结束后仍有效、失败后 worker 正常退出。
 - 对 `frame` 的每个返回值调用 `FrameSurface::validate_cpu(session_epoch)`，Pending 也要过。只检查状态码的测试抓不到全零身份的 Pending，打包后的核心会在 headless 里以 `invalid CPU surface` 失败。
@@ -251,20 +248,19 @@ reason = "<具体原因>"
 
 ## 9. 本地构建与打包
 
-克隆时带上子模块（`git submodule update --init --recursive`），否则 Cargo 找不到 `ThirdParty/cpal`。Windows 命令在 x64 Visual Studio 开发者环境里运行（`vcvars64.bat` 或 `Launch-VsDevShell.ps1 -Arch amd64`）：打包只从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll`，普通 shell 里会报 `missing redistributable dependency VCRUNTIME140.dll`，`doctor` 不检查这一项。Android ARM64 需要 JDK 27、NDK 30.0.16248370、`ANDROID_HOME`/`ANDROID_NDK_HOME` 和 `rustup target add aarch64-linux-android`，cargo-ndk 由 `deps` 安装。完整前提见 [Build and release](../../../docs/en/build-and-release.md#inputs-and-prerequisites)。
+先初始化子模块（`git submodule update --init --recursive`），安装构建工具。Windows 用 x64 Visual Studio 开发者环境，Android 用 `cargo install cargo-ndk --locked --version 4.1.2` 和 NDK 30.0.16248370。打包前运行 `cargo install cargo-about --locked --version 0.9.3`。完整前提见 [Build and release](../../../docs/en/build-and-release.md#inputs-and-prerequisites)。
 
 ```sh
 cargo xtask matrix
-cargo xtask doctor  --target <triple> --core shinki.emu.<family>
-cargo xtask deps    --target <triple> --core shinki.emu.<family>
-cargo xtask build   --target <triple> --core shinki.emu.<family> --release
+cargo build --locked --release --target x86_64-pc-windows-msvc -p shinki-emu-core-shinki-emu-<family>
+cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-core-shinki-emu-<family>
 cargo xtask package --target <triple> --core shinki.emu.<family> --version 0.1.0 --out <新目录>
-cargo xtask test    --core shinki.emu.<family>
+cargo test --locked -p shinki-emu-<family>
 ```
 
-`<triple>` 依次取 `x86_64-pc-windows-msvc` 和 `aarch64-linux-android`。Windows 产物是 DLL 核心包；Android 产物是含 AArch64 ELF 和 NDK notice 的核心包，不是 APK。Android 默认保留 §7 的静态注册，尚未设置正式发布用的 `android_dynamic` 兼容下限；单独构建成功不会让 Manager 接受该包。缺 `shinki_emu_query` 导出、缺许可、架构不对或原生依赖不闭合时打包失败。要在桌面 Manager 里试跑，用 `cargo xtask build --target x86_64-pc-windows-msvc --manager --release` 构建 Manager 后安装核心包。
+只构建和打包清单中该核心声明支持的目标。`package` 自行运行 release 构建；`<triple>` 取 `x86_64-pc-windows-msvc` 或 `aarch64-linux-android`。Windows 核心包包含 DLL，Android 独立核心包包含 AArch64 ELF 和 NDK notice，不是 APK。Android 独立构建成功不等于可安装，还需要 `android_dynamic` 策略和设备验收。要构建桌面 Manager，运行 `cargo build --locked --release -p shinki-emu-manager`。
 
-示例核心在临时 checkout 里按开头的说明追加注册后，同一组命令把 `shinki.emu.<family>` 换成 `shinki.example.tilefix`、版本用 `0.1.0-local`。不追加注册也能跑它的宿主测试 `cargo test --locked -p shinki-emu-tilefix`。
+示例用 `cargo build --locked --release -p shinki-emu-tilefix --features dynamic-plugin-export` 构建共享库，用 `cargo test --locked -p shinki-emu-tilefix` 跑宿主测试。要 headless 回放，直接把共享库路径传给 `--core`（§11），无需注册目录或打包。
 
 ## 10. 文档、catalog、发布
 
@@ -274,11 +270,11 @@ cargo xtask test    --core shinki.emu.<family>
 
 ## 11. PR 门禁与发布验收
 
-**PR 门禁只有构建和打包。** 核心在 Windows x64 和 Android ARM64 中声明支持的每个目标，都跑通 §9 的 `deps`、`build --release`、`package`；PR CI 再跑 tools 任务和受影响组件的 Windows/Linux 行。PR 描述写明跑了哪些目标、结果如何。
+**PR 门禁只有构建和打包。** 核心在 Windows x64 和 Android ARM64 中声明支持的目标都跑通 §9 的 Cargo release 构建和 `package`。PR CI 再跑 tools 任务和受影响组件的 Windows/Linux 行。PR 描述写明跑了哪些目标、结果如何。
 
-可选检查，跑了就在 PR 描述里用一两行写结果（命令、退出码、帧数或 hash），截图、日志、hash、回执不进仓库：
+可选检查，跑了就在 PR 描述里写命令和结果（退出码、帧数或 hash）。截图、日志、hash 和运行输出不进仓库：
 
-- `cargo xtask test --core <id>`。
+- `cargo test --locked -p shinki-emu-<family>`。
 - ABI 探针：用 `Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h` 编译 `Tools/krkr-query-probe.c`（名字带 krkr，但对任何核心通用），参数是打包后的库路径；退出码 0 表示 ABI 3 返回完整表、其他版本返回 `UNSUPPORTED` 且输出为空、空输出指针返回 `INVALID_ARGUMENT`。
 - headless：`shinki-emu-headless run --core <打包输出里的核心目录> --game-dir <自造或合成的游戏目录> --script <回放> --output <新目录>`（构建用 `cargo build --locked -p shinki-emu-headless --no-default-features`）。示例核心带一份 `Source/Examples/shinki-emu-tilefix/replay.json`。
 
@@ -286,7 +282,7 @@ cargo xtask test    --core shinki.emu.<family>
 
 1. 所有 supported 目标在同一个 exact-head commit 上 `ci.yml` 成功，blocked 目标有具体原因。
 2. ABI 探针在干净进程里通过。
-3. `release --target` 生成的 sources ZIP 含产品快照和完整依赖源码，原许可证随包。
+3. 确认公开标签指向产品源码，包内含 `cargo-about` 生成的 Rust 许可及原生依赖声明。
 4. 维护者用自己合法持有的游戏，以 headless runner 打开并推进到确有画面输出，结果写进发布记录（用法见 `shinkiemu-maintenance` 的 headless 一节）。存档写在临时副本里。
 
 ## 完成检查
@@ -299,7 +295,7 @@ cargo xtask test    --core shinki.emu.<family>
 - [ ] 新 crate 的 `Cargo.lock` 变化只包含它引入的条目，没有用 `cargo update`。
 - [ ] `frame` 的每个返回值（含 Pending）带真实 session/output epoch，测试里过了 `validate_cpu`。
 - [ ] 静态嵌入在 `cores.toml`、Manager `Cargo.toml`、`STATIC_CORES` 三处一致。
-- [ ] 行为测试用合成 fixture，`cargo xtask test --core <id>` 通过。
+- [ ] 行为测试用合成 fixture，`cargo test --locked -p shinki-emu-<family>` 通过。
 - [ ] 三语文档和 README 表已更新；`cargo xtask metadata validate` 通过。
 - [ ] §11 的 PR 门禁已跑通，可选检查的结果写在 PR 描述里。
 - [ ] probe 只按引擎特征识别，没有 EXE 名、Steam appid、固定 hash、固定游戏 ID 白名单；probe 和 open 的接受条件一致。

@@ -111,12 +111,11 @@ Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセ�
 <library-stem>/
   core.json
   shinki_emu_<core>.dll       # または libshinki_emu_<core>.so/.dylib
-  build.json
   Resources/                 # ネイティブコアが必要とする場合
   licenses/
   <ネイティブ依存ファイル>
 ```
 
-`core.json` は `shinki.emu.core_package.v1` を使い、`plugin_id`、`library`、`version`、`abi`、ファイルパスと SHA256 を記録します。マニフェストは自身を除くすべてのパッケージファイルを対象とします。コアライブラリは新しいファイル名プレフィックスと query シンボルを使います。パッケージングでは、アーキテクチャ、依存関係の閉包、ライセンスを確認し、パストラバーサル、リンク、大文字小文字の衝突を拒否し、まだ存在しない新しいディレクトリにだけ出力します。Manager はインストール前にパッケージ全体を検証し、旧製品のプロトコルやローダーの別名は受け付けません。コマンドは[ビルドとリリース](build-and-release.md)を参照してください。
+`core.json` は `shinki.emu.core_package.v1` を使い、`plugin_id`、`library`、`version`、`abi`、ファイルパスと SHA256 を記録します。マニフェストは自身を除くすべてのパッケージファイルを対象とします。ライブラリの名前には `shinki_emu_`、query には `shinki_emu_query` を使います。パッケージングは不正なパス、リンク、大文字小文字の衝突を拒否し、新しいディレクトリにだけ出力します。Manager はインストール前にパッケージを検証します。コマンドは[ビルドとリリース](build-and-release.md)を参照してください。
 
-新しい外部パッケージは、元の upstream と組織 adapter の来歴を分けた `identity` を追加し、`version` がその安全な計算済み識別子と一致することを要求します。旧パッケージはこのフィールドを持たず、実際の SemVer を維持します。新 Manager はステージング前に catalog と package の plugin、version、identity を照合し、upstream/adapter の完全なラベルを表示します。C ABI と descriptor の版は独立したままです。[版識別子の規則](build-and-release.md#パッケージングとリリース)を参照してください。
+外部パッケージの `identity` には元の上流と Cargo が固定した組織 fork のコミットを記録し、`version` は計算した識別子と一致させます。旧パッケージには `identity` がなく、元の SemVer を保持します。Manager は配置前に plugin、version、identity をカタログと照合し、上流とアダプターの完全なラベルを表示します。C ABI と descriptor の版は独立しています。[版識別子の規則](build-and-release.md#パッケージングとリリース)を参照してください。

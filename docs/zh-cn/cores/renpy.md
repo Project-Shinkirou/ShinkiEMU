@@ -17,7 +17,7 @@ description: Ren’Py 的格式、原生行为与限制。
 
 Android 为 `arm64-v8a` 与 `x86_64` 构建静态适配层。固定的官方配方从源码构建 CPython 3.12.8、Ren’Py、SDL2 与编解码库，不使用桌面 SDK 二进制或 RAPT 共享库。`shinki/android_runtime.py` 需要 Ubuntu 24.04，以及 `shinki/sdk.json` 指定的 NDK r29 Linux 压缩包和 Cubism 4-r.6.2 头文件 SDK。Cubism Core 由游戏提供，不随 Manager 分发。
 
-Manager 在注册核心前设置解包后的 `cores/renpy/Resources` 路径。display 模块静态内建，通过私有 SDL2 EGL pbuffer 与 GLES 渲染，由 Manager 负责呈现。C/C++ 依赖符号与其他核心隔离；Python 资源使用清单内的纯 Python 包，不复制构建机的原生 wheel。源码包保留原生配方、补丁、Python 源码和完整 Manager/fork 源码，用于 LGPL 重链接。APK 构建、资源、原生依赖闭包与签名检查不代表设备或游戏验收。
+Manager 在注册核心前设置解包后的 `cores/renpy/Resources` 路径。display 模块静态内建，通过私有 SDL2 EGL pbuffer 与 GLES 渲染，由 Manager 负责呈现。C/C++ 依赖符号与其他核心隔离；Python 资源使用清单内的纯 Python 包，不复制构建机的原生 wheel。用非 Linux 主机构建时，将 `RENPY_STATIC_ROOT` 指向 Linux 生成的对应 ABI 的完整运行库目录。见 [Android 构建依赖](../build-and-release.md#android)。
 
 
 ## 存储
@@ -34,7 +34,9 @@ Beta.3 会在加载令牌和 persistent 前，一次性导入旧默认目录 `%L
 
 运行时桥保留在驻留解释器中。原生构建产出 display 扩展和真实共享核心，包内还需匹配的 SDK DLL 与 `Resources/`。关闭和跨游戏重开继续清理解释器/原生状态，不能只复制核心 DLL。
 
-桌面适配层支持 Windows x64/MSVC 与 Linux x64/GNU；其他目标需通过各自的原生运行时和打包检查。上游 Ren’Py 支持某个平台，不代表此适配已经移植。官方标准归档 reader 保持不变，发行版专用离线转换由已审查配方处理。不打包 Steam、Cubism、Bink、nvdrs 或可再分发 D3DCompiler DLL。
+在 Linux 上运行 `cargo build --locked --release --target x86_64-unknown-linux-gnu -p shinki-emu-core-renpy`，构建核心并准备固定版本的宿主 CPython/Cython，不使用 Windows DLL 或开发者环境中的 Python。
+
+独立核心支持 Windows x64/MSVC、Linux x64/GNU 和两种 macOS 架构。Android 仅支持静态嵌入 Manager；iOS 和 OpenHarmony 的阻塞原因见 [`build/cores.toml`](../../../build/cores.toml)。官方标准归档 reader 保持不变，发行版专用离线转换由已审查配方处理。不打包 Steam、Cubism、Bink、nvdrs 或可再分发 D3DCompiler DLL。
 
 运行时包含多种许可，其中 LGPL 依赖保留对应源码和重链接义务。完整保留官方声明，不能把整个运行时标成 MIT。
 

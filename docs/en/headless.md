@@ -30,7 +30,7 @@ shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --fra
 shinki-emu-headless compare --actual artifacts/comparison/frame-000180.png --baseline artifacts/capture/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001
 ```
 
-For standalone `run`, `--core` accepts a native library, unpacked core directory, or core ZIP. ZIP dependencies remain beside the extracted library, as in Manager. The runner performs the normal ABI query, descriptor, probe, and open checks; release provenance is outside this run.
+For standalone `run`, `--core` accepts a native library, unpacked core directory, or core ZIP. ZIP dependencies remain beside the extracted library, as in Manager. The runner performs the normal ABI query, descriptor, probe and open checks.
 
 The source game is copied into a unique temporary directory **before the core receives its path**. Writes to relative game saves/configuration therefore affect the disposable copy. Original saves are never passed to the core as writable paths. Copying a large game takes disk space and time; symbolic links and special files are rejected. This is isolation of ordinary core storage, not an operating-system sandbox for untrusted executable cores. Configuration files that deliberately point outside the game must be adjusted to a temporary location.
 

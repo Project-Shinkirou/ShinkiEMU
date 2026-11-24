@@ -1,25 +1,25 @@
 # Third-party sources / 第三方源码
 
-外部核心保留完整 fork、上游历史、作者归属和原生实现，由 `build/cores.toml` 的精确提交固定来源。适配代码和构建入口通过普通提交和 PR 维护，不要求压缩成单个适配提交，也不改上游默认分支。主仓不复制第二份外部核心执行器。
+外部核心保留完整 fork 历史、上游署名和原生实现。在根 `Cargo.toml` 固定 Git 提交，由 Cargo 获取；公开源码是 `Cargo.lock` 记录的公开 fork 提交。适配代码和构建入口通过普通提交和 PR 维护，保留上游默认分支。
 
-External cores retain their complete fork history, upstream attribution and native implementation. Exact source revisions in `build/cores.toml` pin the source. Adapters and build entry points use normal commits and PRs; the upstream default branch is retained.
+External cores retain their fork history, upstream attribution and native implementation. Cargo fetches exact Git revisions from the root `Cargo.toml`. The published source is the public fork commit in `Cargo.lock`. Adapters and build entry points use normal commits and PRs and retain the upstream default branch.
 
-核心唯一构建清单为根目录 `build/cores.toml`，记录精确 plugin_id、manifest、package、features、许可输入及目标状态。外部 plugin_id 保留上游仓库名和大小写。`kirikiri2/` 对应组织仓库 `kirikiroid2-web`。Musica 与 CMVS 在 `Source/Families/`，不是第三方 fork。
+`build/cores.toml` 记录 plugin ID、许可输入、目标状态、嵌入范围与上游身份。外部 ID 保留上游仓库名和大小写。构建独立核心时选 `Source/Cores/<id>` 下的 Cargo 入口包。Musica 和 CMVS 的实现在 `Source/Families/`。
 
-The authoritative build inventory is `build/cores.toml` at the repository root. It supplies exact plugin IDs, manifests, packages, features, license inputs and target status. External IDs keep upstream names and case. The `kirikiri2/` checkout corresponds to `kirikiroid2-web`; Musica and CMVS are in-tree cores under `Source/Families/`.
+`build/cores.toml` supplies plugin IDs, license inputs, target status, embedding and upstream attribution. External IDs keep upstream names and case. Build a standalone core through the Cargo entry package under `Source/Cores/<id>`. Musica and CMVS are implemented in-tree under `Source/Families/`.
 
-`krkr2/` is the independent [Project-Shinkirou/krkr2](https://github.com/Project-Shinkirou/krkr2) checkout. It coexists with `kirikiri2/`; its own `shinki/` adapter and static symbol closure do not link or forward to kirikiroid2-web.
+[Project-Shinkirou/krkr2](https://github.com/Project-Shinkirou/krkr2) is independent of kirikiroid2-web. Its own `shinki/` adapter and static symbol closure do not link or forward to kirikiroid2-web.
 
 ## ABI and build ownership / ABI 与构建职责
 
 所有核心使用 ShinkiEMU 的 `shinki-emu-abi`（C ABI v3），C++ 使用同一来源生成的 `shinki_emu.h`。共享底层库来自精确 revision 的 RoukakuEngine。VM、原生图形、音频、菜单及存档仍由核心负责；SDK 只复用公共机制。
 
-Each core's `build.rs` validates its own native inputs and writes `core-build.json`. Native CMake targets remain real shared libraries. xtask builds each component through its recorded manifest and collects Cargo-reported outputs. Ren’Py packages need the matching official runtime and `Resources/`, not just a core DLL.
+Cargo build scripts drive native CMake builds and supply the resulting libraries and runtime inputs to packaging. Rust standalone cores build through their entry crates. Ren’Py packages need the matching official runtime and `Resources/` alongside the library.
 
 Artemis 在所有平台统一使用 Luau，Android 静态嵌入时与 Manager 共用运行时。CPAL 保留产品的原生音频修复；mlua 0.12.2 已包含精确数字分类，使用 crates.io 版本，删除旧回补。不得把所有 fork 合并成一个 workspace-wide all-features 构建。
 
 Artemis uses Luau on every platform and shares Manager's runtime when statically embedded on Android. CPAL retains the product's native-audio fixes. Registry mlua 0.12.2 includes exact numeric classification and replaces the old vendored backport.
 
-The iOS and Android Managers embed the cores whose `static_manager_targets` in `build/cores.toml` list their triples; `cargo xtask matrix` prints the current set, and `Source/Manager/shinki-emu-manager/src/static_cores.rs` is the compiled registration table. RFVP and Siglus share wgpu 30 with Manager and disable their optional WMV `c-abi` exports in the static graph, avoiding duplicate decoder/render-bundle symbols. Sena, ReMinori and Ethornell remain iOS-only because their embedded adapter build scripts support no Android target. Manager pins are checked against that inventory. The workspace root also patches Ruffle's `rust-flash-lso` Git source to `Project-Shinkirou/rust-flash-lso@5573168345ef2d92d01ee0766bab29acf89584c0` (`shinki`), preserving upstream `61b717248aae853a4f5d8a103eba704268d286c8` with only its exact thiserror constraint relaxed to compatible 2.x. Cargo.lock records the source, and `cargo vendor` includes it in the corresponding-source closure.
+The iOS and Android Managers embed the cores whose `static_manager_targets` in `build/cores.toml` list their triples; `Source/Manager/shinki-emu-manager/src/static_cores.rs` is the compiled registration table. RFVP and Siglus share wgpu 30 with Manager and disable their optional WMV `c-abi` exports in the static graph, avoiding duplicate decoder/render-bundle symbols. Sena, ReMinori and Ethornell are embedded on iOS only. Manager inherits fork dependencies from the same workspace pins as the entry packages. The root patch for Ruffle's `rust-flash-lso` uses `Project-Shinkirou/rust-flash-lso@5573168345ef2d92d01ee0766bab29acf89584c0` (`shinki`), preserving upstream `61b717248aae853a4f5d8a103eba704268d286c8` with only its exact thiserror constraint relaxed to compatible 2.x.
 
 构建命令见[中文文档](../docs/zh-cn/build-and-release.md) / [English guide](../docs/en/build-and-release.md) / [日本語ガイド](../docs/ja/build-and-release.md)，格式与行为见[核心资料](../docs/zh-cn/index.md)。许可和分发义务见[第三方声明](../THIRD_PARTY_NOTICES.md)，历史来源见 [ORIGINS](../ORIGINS.md)。构建成功不代表附件已获分发许可或游戏已验证可玩。

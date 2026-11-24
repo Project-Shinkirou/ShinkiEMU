@@ -1,17 +1,19 @@
 # ShinkiEMU build tools
 
-Run from the repository root. Cargo subprocesses use `--locked`; update the lockfile deliberately when changing dependencies.
+Run from the repository root. Use Cargo directly for build, check and test. `cargo xtask` handles selection, packaging, releases and metadata through the locked workspace. Install `cargo-about` before running commands that package binaries:
+
+```sh
+cargo install cargo-about --locked --version 0.9.3
+```
 
 ```text
 cargo xtask --help
 cargo xtask matrix
-cargo xtask doctor --target x86_64-pc-windows-msvc
-cargo xtask deps --target x86_64-pc-windows-msvc
-cargo xtask deps --target x86_64-pc-windows-msvc --all-cores
-cargo xtask build --target x86_64-pc-windows-msvc --manager --release
-cargo xtask build --target x86_64-pc-windows-msvc --all-cores --release
-cargo xtask check --target x86_64-pc-windows-msvc --core rfvp
-cargo xtask test --core rfvp
+cargo xtask matrix --json --ci --since origin/main
+cargo build --locked --release -p shinki-emu-manager
+cargo build --locked --release -p shinki-emu-core-rfvp
+cargo check --locked -p shinki-emu-core-rfvp
+cargo test --locked -p shinki-emu-musica
 cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/rfvp-package
 cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 cargo xtask release --component rfvp --dry-run
@@ -20,24 +22,22 @@ cargo xtask metadata build --out .work/metadata-snapshot
 cargo xtask ci --target aarch64-apple-ios --component manager --report .work/ios-report.json
 ```
 
-`build/cores.toml` owns core identity, pinned external source repository/branch/revision, manifest, features, native prerequisites, license inputs and supported/blocked targets. `build/targets.toml` owns target identity, runner and Manager support. `matrix` emits every combination, including blocked rows. Runner labels are from [GitHub's hosted runner reference](https://docs.github.com/actions/reference/runners/github-hosted-runners): macOS Intel uses `macos-15-intel`, arm64 uses `macos-15`.
+[`build/cores.toml`](../build/cores.toml) supplies core IDs, licenses, attribution and target policy. [`build/targets.toml`](../build/targets.toml) supplies triples, runners and Manager support. `matrix` lists declared rows and blocked reasons; `--json` lists supported hosted rows. Root `Cargo.toml` holds Git pins and `Cargo.lock` records the resolved fork commits. For each external core the published source is that public fork commit.
 
 Each core declares a canonical `family_id` (1–64 lowercase ASCII letters, digits or hyphens, beginning with a letter), matching Manager directory recognition. Several implementations may share a family. Manager-core's build script projects this inventory and the selected target into `static_core_catalog::{entries, lookup}`: each borrowed entry contains only `plugin_id`, `family_id`, `display_name`, `supported` and `embedded`. `supported` means declared standalone or static Manager availability on that target, not installation, loading or game compatibility; `embedded` means static Manager integration. Target-wide blocks disable availability; `publish_blocked` only restricts distribution. Unsupported implementations remain in the catalog, and unknown plugin IDs return `None`. Reading these entries performs no I/O or native registration/query. Installed identity still comes from the existing validated `core.json`; callers keep unknown packages visible for explicit diagnosis rather than querying a library to fill in metadata.
 
 The `static_core_catalog` integration tests compile and run the actual pure catalog module with Windows and both Android ABI inventory projections on the host, from an empty installation directory. These are generation/consumption gates, not Android cross-linking or device execution gates. The existing native `STATIC_CORES` function table determines actual compiled static entrypoints, including optional desktop `static-cmvs`; inventory `embedded = false` must not hide such an entrypoint. Callers use that table's IDs for static availability and selected activation, and catalog entries for display/family/declared-target metadata. Reading either table performs no query or registration.
 
-`doctor` inspects installed tools, source revisions and the selected component's dependency trees; missing prerequisites fail without installation. `deps` is the explicit network/preparation command. No selection means Manager prerequisites; `--core` prepares that core, and `--all-cores` prepares supported cores individually. External core repositories are ignored working checkouts rather than product submodules. `deps` clones/fetches the configured fork and checks out its exact pinned commit, initializes that fork's own submodules, and refuses local modifications instead of resetting them. CPAL remains a small product submodule; mlua uses the registry release.
+Build each standalone core through its package under `Source/Cores/<id>/`. Use `shinki-emu-core-` plus the core ID with dots changed to hyphens, preserving case and underscores. Manager inherits the same fork dependencies for its static graph. For a local fork change, use a workspace `[patch]` and refresh the lockfile; see [Build and release](../docs/en/build-and-release.md#work-on-a-fork-locally).
 
-Native requirements are scoped per component. Only consumers prepare the pinned vcpkg subtitle/FFmpeg trees or DXC runtime. Subtitle lookup runs locked Cargo metadata for the selected core's own manifest and enabled build features, then uses triplets from that exact RoukakuEngine Git checkout with the workspace-owned, baseline-pinned libass manifest; it does not infer optional dependencies from the desktop Manager graph or a neighboring checkout. Android uses JDK 27, SDK 37.2, NDK 30.0.16248370 and private cargo-ndk 4.1.2. No command installs system packages.
-
-The Android Manager is the exception to separate subtitle installation: Impacto and RFVP share libass 0.17.5 from each ABI's Impacto vcpkg tree. Android Impacto preparation overlays the libass port from the locked product registry, overriding the fork's older baseline. Both consumers use that installation's headers, pkg-config metadata and archive. Impacto ASS rendering and RFVP's explicitly supplied font remain enabled. FriBidi is static in this closure; its license and corresponding sources ship with Impacto's other native dependencies.
+Cargo build scripts bootstrap pinned vcpkg and install manifests when needed. FFmpeg and libass are shared Cargo dependencies. Android Impacto and RFVP use the shared libass build; its headers, pkg-config data and static archives stay on the selected ABI. Windows Manager builds stage DXC through Cargo. The [build guide](../docs/en/build-and-release.md#inputs-and-prerequisites) lists required host tools, SDKs and cache paths.
 
 Android FFmpeg bindings use the target's versioned API 28 triple and NDK sysroot in both `BINDGEN_EXTRA_CLANG_ARGS_<target>` forms (hyphens and underscores). Bindgen prefers the hyphenated form, preserving the API level when cargo-ndk 4.1.2 replaces the underscored form with sysroot-only flags.
-Android Manager builds import `cargo ndk-env --json` and run Cargo directly. This preserves Cargo's artifact and build-script JSON, including every embedded core's resource/license manifest; cargo-ndk's build wrapper consumes those messages.
+For Android, use `cargo ndk` for standalone builds. The packager imports `cargo ndk-env --json` and invokes Cargo so it can collect the actual artifacts and each dependency's build-script outputs.
 Portable resource filenames preserve printable ASCII punctuation and internal spaces, except Windows-reserved characters. Leading/trailing spaces, control characters, traversal and Windows device aliases remain rejected; package copy/archive/extraction preserves resource bytes.
 ZIP persistence keeps the validated parent directory's canonical absolute path, including Windows extended-path syntax required by tempfile's direct Win32 rename. Public archive names and complete identity hashes stay unchanged; no-replace and reparse/path checks remain enforced before canonicalization. External tools do not receive this internal path.
 Embedded core license inputs use the same checked asset traversal as native resources, preserving inventoried notice directories as well as individual license files.
-Android packaging preserves underscore-prefixed runtime directories and verifies every APK bundled-manifest file against the staged bytes. Public Android system libraries, including GLES1 and camera2ndk, are resolved by the OS; NDK import stubs are not APK runtime inputs. Source-runtime preparation disables Python bytecode writes to keep the verified host interpreter unchanged across ABI preparation.
+Android packaging preserves underscore-prefixed runtime directories. Public Android system libraries such as GLES1 and camera2ndk come from the OS; NDK import stubs are not APK runtime inputs.
 
 ### Standalone Android core packages
 
@@ -47,21 +47,13 @@ cross-links the actual Android ABI; an x86_64 device gate uses the x86_64
 package, not translated arm64.
 
 ```sh
-target=x86_64-linux-android # repeat with aarch64-linux-android
-cargo xtask deps --target "$target" --core siglus_rs
-cargo xtask build --target "$target" --core siglus_rs --release
+cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
+target=x86_64-linux-android # use -t arm64-v8a and aarch64-linux-android for ARM64
 cargo xtask package --target "$target" --core siglus_rs --out ".work/qa/$target/siglus"
 ```
 
 `core.json` retains the ABI v3, official identity/recognition, and hashed
-library, resources, dependency and license files. The standalone entrypoint
-must be a little-endian ELF64 DSO for the requested machine with a visible
-`shinki_emu_query` function, the Android API 28 identification note, and 16 KiB
-compatible `PT_LOAD` segments. Private imports require `DT_RUNPATH=$ORIGIN`
-and a sibling runtime closure. Package only the selected target's prepared
-inputs, including the pinned NDK's `libc++_shared.so` when required; public
-device libraries are not packaged. Static FFmpeg comes from the pinned
-target vcpkg triplet with its notices, recipes and relinking sources.
+library, resources, dependency and license files. Package the selected target's native runtime inputs, including the NDK's `libc++_shared.so` when needed. Static FFmpeg comes from the pinned target triplet; retain its notices and license obligations.
 
 Android `supported_targets` currently has standalone rows for `siglus_rs`
 (`dynamic`, Rust cdylib; native Kira/CPAL) and `art3m1s-core` (default dynamic
@@ -78,8 +70,7 @@ policy with a verified compatibility floor. Standalone build rows alone do not
 admit packages. The default inventory has no production floor; keep the existing
 static registrations until each official replacement passes both ABI gates.
 `no-core-download` disables only online core install/update, not local official
-ZIP verification. For a registered self-owned core, `build.json` binds the
-package to its product version and full source commit.
+ZIP verification.
 
 Keep the APK's other embedded registrations until their replacement passes
 the same gate:
@@ -101,50 +92,23 @@ engine and save identity are unchanged. The APK's existing `MainActivity`
 bootstraps `shinki_emu_manager` and supplies the KiriKiri host classes.
 Its Java, AIDL, JAR and JNI contract are staged as APK compile inputs under
 `android-host/<core>` outside runtime assets and downloadable ZIPs. When the
-inventory selects a dynamic-only KiriKiri core, build that core explicitly
-for each ABI before building Manager. The universal packager checks both
-input sets, fork commits and file hashes. Embedded builds use the host inputs
-from their own static receipts.
+inventory selects a dynamic-only KiriKiri core, the packager builds its host inputs for each ABI. Static integrations supply those inputs through their Cargo build scripts.
 
 ### Other native inputs
 
-Apple RFVP and the iOS Manager prepare static libass 0.17.5 on a native macOS/Xcode host with the same vcpkg baseline and pinned RoukakuEngine triplet overlay. The Apple triplets map both Darwin architectures and all three iOS triples to target-isolated installs. No Apple GStreamer tree is needed. iOS packages include an `embedded-cores.json` source inventory and the embedded cores' licenses. Static dependencies and exact pins must match `static_manager_targets`. For the private Framework mode on the existing Manager build/package routes, see [the Apple packaging guide](../docs/en/build-and-release.md#private-ios-bundled-framework-proof).
+Apple native builds use macOS/Xcode and the matching SDK. Cargo prepares target-isolated libass for RFVP and the iOS Manager. iOS packages include `embedded-cores.json` and embedded-core licenses. Use `cargo xtask apple-image --target <triple>` to prepare a private Apple cross image on a Linux build host.
 
-The OHOS default Manager keeps Musica static. The separate [private signed HAP
-route](../docs/en/build-and-release.md#bundled-musica-device-acceptance) opts in
-with `ohos-bundled-musica`. Both private modes use the same
-`SHINKI_EMU_MANAGER_FEATURES` input; neither enables downloads on its platform
-or qualifies the resulting artifact for release.
+The default OHOS Manager embeds Musica statically. For local QA, `SHINKI_EMU_MANAGER_FEATURES` adds packaging features such as `ohos-bundled-musica` on OHOS or `ios-framework-cores` on iOS. With direct Cargo builds, use `--features` instead. These variants do not enable downloads or qualify for public release.
 
-Impacto's pinned `libatrac9` and `magic_enum` sources live under `.work/native-downloads/`. RenPy preparation downloads its official SDK, CPython 3.12.7, Cython 3.2.4, Cython source-license files and SDL 2.0.20 headers. Windows uses the pinned NuGet development tree and cp312 wheel. Linux builds the pinned CPython source with the host C compiler and loads Cython's pinned Python sources from its standard library. Both interpreters are task-owned under `.work/native-downloads/python`; no system interpreter or developer cache is used. Linux preserves archive executable modes and verifies the SDK's `librenpython.so`, which contains CPython as well as Ren'Py and SDL. Build environments receive `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE`, `Python3_EXECUTABLE` and `RENPY_CYTHON_LICENSE` automatically on either host.
+Cargo prepares Impacto's pinned `libatrac9` and `magic_enum` inputs under `.work/native-downloads/` and Ren’Py's desktop SDK, host CPython/Cython and SDL headers. For Android Ren’Py on non-Linux hosts, set `RENPY_STATIC_ROOT` to the matching ABI's complete runtime tree prepared on Linux. See the [Android prerequisites](../docs/en/build-and-release.md#android).
 
-Linux SDL headers come from the pinned source archive and run its configure
-step to generate the native `SDL_config.h`; the Visual C++ archive contains
-Windows-only configuration headers and is used only on Windows.
+Native build scripts resolve the pinned inputs and use Cargo's `OUT_DIR` to publish staging inputs, including native dependency paths, resources and notices.
 
-`deps --core <id>` also prepares a core listed in the target's `static_manager_targets`; this does not enable standalone dynamic-core installation. Linux's SDL source archive supplies `LICENSE.txt`, while the pinned Windows VC header archive supplies `COPYING.txt`. Android Renpy uses the official target CPython 3.12.8 source/runtime stage documented by its fork, separately from the host Cython interpreter.
+Vcpkg uses `.work/vcpkg-downloads/` for downloads, `.work/vcpkg-binary-cache/` for binary packages, and `.work/vcpkg-installs/<triplet>-<key>/installed/` for each manifest install. `SHINKI_EMU_VCPKG_ROOT` can point to a shared pinned vcpkg checkout. Keep independent worktree build and install outputs separate; on Windows use `CARGO_TARGET_DIR` with a short path if needed.
 
-Every native download is SHA256-pinned in `build/dependencies.toml`. Extraction is staged, rejects unsafe paths/links/collisions, and publishes only a complete tree. A local verification record binds every file to the archive recipe. A verified existing tree is reused without downloading; modified trees fail without overwriting their files. Bytecode writes are disabled for the task-owned build interpreter so builds do not mutate the verified installation.
+`package` builds and stages to a new output directory. On Windows run it in an x64 Visual Studio developer shell for redistributables. Android Manager packaging runs the Gradle wrapper and normally builds a universal APK; the `--qa-single-abi` variant uses the local debug key and requires no release signing inputs. Public APKs use `SHINKI_EMU_ANDROID_KEYSTORE` (path) or `SHINKI_EMU_ANDROID_KEYSTORE_BASE64`, plus `SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD`, `SHINKI_EMU_ANDROID_KEY_ALIAS` and `SHINKI_EMU_ANDROID_KEY_PASSWORD`. Partial configuration fails.
 
-Native subprocesses use `.work/vcpkg-binary-cache`, `.work/vcpkg-downloads` and `.work/tmp` rather than profile caches, with vcpkg concurrency capped at 4 and install operations waiting for the shared lock. The vcpkg registry checkout has complete history: historical port trees must be available locally, so registry acquisition never uses a partial or shallow clone. CMake respects an explicit `CMAKE_GENERATOR`; otherwise it prefers Ninja when available inside an MSVC developer environment.
-
-On Windows hosts, `deps` uses the exact CMake and PowerShell versions in the pinned vcpkg registry's `scripts/vcpkg-tools.json` for vcpkg installs, regardless of `VCPKG_FORCE_SYSTEM_BINARIES`. vcpkg reuses a matching executable or acquires its pinned archive with SHA512 verification. Seed only matching archives into the worktree's own `.work/vcpkg-downloads`; no system installation is required. Packages built with different tools keep their original ABI keys.
-
-For parallel worktrees, share trusted binary caches as read-only sources and write only to the current worktree's cache. For example, set `VCPKG_BINARY_SOURCES` to `clear;files,E:/shared/vcpkg-cache,read;files,E:/worktree/.work/vcpkg-binary-cache,readwrite`. vcpkg still matches full package ABIs. Keep registry checkouts, downloads, install trees, temporaries and build receipts private to each build owner.
-
-Each core is built through its own manifest and lockfile into `.work/target/<target>/<plugin_id>`. On Windows, long prefixes use `.work/t/<repository-target-component-hash>` inside the checkout and are checked against an owner record. Set `SHINKI_EMU_TARGET_ROOT` to choose another writable short root. CMake receives ordinary Windows paths after removing Rust's verbatim-path prefix. The build receipt in `.work/build` records the actual target directory, Cargo JSON artifact, build-script `OUT_DIR/core-build.json`, revision, toolchain and features. Native adapters must use `shinki-emu-build` and record the actual CMake DLL, resources and licenses. An absent manifest, incorrect ABI/architecture, missing query export or failed supported build is an error.
-
-Build receipts record whether source worktrees changed or were dirty during compilation. Local development packages retain that provenance; Release preparation requires a clean receipt at the configured source revision. Corresponding-source archives include the selected fork's pinned repository/revision, not whichever branch happens to be checked out.
-
-Build Manager and registered self-owned cores with one `SHINKI_EMU_PRODUCT_VERSION`, or `SHINKI_EMU_CI_VERSION` when the first is absent. The two inputs must agree when both exist; ordinary development defaults to the Manager crate version. xtask checks Manager's compile sidecar and records the product version and actual source commit. Packaging and publication reject mismatched receipts, including mixed Android ABI builds.
-
-Committed Git symbolic links retain their exact targets, including long PAX link targets in the nested Ren'Py rebuild recipes. Source archiving never follows a working-tree link or replaces it with Git's raw-header placeholder.
-
-Packaging consumes release build receipts. Output must be new; staging is in the same parent and publication uses a no-replace rename. Paths, links/reparse points, collisions, hashes, binary architecture and runtime dependency closure are checked without loading binaries. Dependency search is restricted to explicit build/redistributable trees, never the developer's system DLL directory. Cores are independent packages; Manager packages have an initially empty `cores` directory and use the same validated Metadata snapshot as online clients. Android packaging stages JNI/AAR/assets/licenses in a private directory and invokes the pinned Gradle wrapper. Without signing material it produces a clearly named debug-signed CI APK, excluded from Releases. Release signing reuses `SHINKI_EMU_ANDROID_KEYSTORE` (path) or `SHINKI_EMU_ANDROID_KEYSTORE_BASE64`, plus `SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD`, `SHINKI_EMU_ANDROID_KEY_ALIAS` and `SHINKI_EMU_ANDROID_KEY_PASSWORD`. Partial configuration fails; decoded keys remain temporary and are never packaged.
-
-Release archives are deterministic, include build provenance and have corresponding-source ZIPs containing downloaded source archives and their vcpkg ports/patches. Source downloads must match the installed package's SPDX SHA512 values; port recipes and patches must match its recorded SHA256 values. Release sources must be committed, and aggregated platforms must share the same product revision. License or source prerequisites stop publication. A core marked `publish_blocked` may compile but its binary is not uploaded. Resolve its concrete distribution review before changing that field.
-
-`release` writes to GitHub only under `--publish`. A new self-owned core release uses the same frozen product SemVer/SHA and verified artifacts as its Manager batch. Dispatch Manager together with those cores; manual preparation/publication requires `SHINKI_EMU_RELEASE_PRODUCT_VERSION`, `SHINKI_EMU_RELEASE_SOURCE_COMMIT` and matching prepared Manager receipts/assets for publication. Existing public tags and assets remain immutable. External versions still come from the pinned upstream/adapter identities and publication sequence; omit `--version` for external cores. The existing `build.json` and source archive carry product provenance; the catalog continues to verify each archive by its own SHA-256.
+`release --dry-run` prints the plan. `release --target` builds and prepares an asset in `.work/release/<tag>/<target>/`; `release --publish` uploads staged assets and opens the core catalog PR when applicable. Pass an explicit `--version` for Manager and in-tree cores, and omit it for external cores. The catalog stores SHA-256 and size for each public asset. `publish_blocked` prevents publication independently of build availability.
 
 Manual `ci.yml` dispatch accepts `since`, using the existing
 `cargo xtask matrix --json --ci --since <ref>` input classifier. The matrix
@@ -153,24 +117,9 @@ checkout fetches full history so the comparison ref is available. An optional
 `gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
 Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the base branch, limited to the Windows and Linux x86_64 targets.
 
-For a Windows/Android-only release, dispatch `ci.yml` with
-`release_scope=windows-android` and no `since`, `components` or `targets`.
-Use `--scope windows-android` for the local `release` plan, preparation and
-publication, or set `release_scope=windows-android` on `release.yml`. The same
-scope must be present in each prepared receipt. Publication requires all
-supported build rows of the selected component in that scope, including
-Windows binary and source ZIPs and any standalone Android core rows. The
-single Android Manager package uses clean release builds from both ABIs and
-includes separate corresponding-source ZIPs for both. Only an APK with the
-existing production signer, matching versionName, newer versionCode and
-Android API 28 minimum may publish. Its debug-signed equivalent is for QA.
+For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
-Before publishing scoped packages, set `SHINKI_EMU_RELEASE_CI_RUN_ID` (or
-`release.yml` input `ci_run_id`) to the successful same-scope exact-head
-`ci.yml` run. Download `release.yml` `prepare_only` artifacts and audit them
-before publishing from the original clean commit. `--scope` omitted and tag
-pushes keep all platforms and the OHOS local Manager handoff. Scope does not
-change which platforms the product supports.
+For an all-platform Manager release, download `release-files-manager@*` from one successful hosted release run for the local checkout's commit. Merge the staged target directories, prepare the OHOS HAP locally with DevEco, and publish from that checkout. Follow [Package and release](../docs/en/build-and-release.md#package-and-release).
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
 

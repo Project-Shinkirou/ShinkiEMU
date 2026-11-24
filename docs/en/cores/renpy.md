@@ -17,7 +17,7 @@ This core embeds the official Ren’Py runtime rather than translating its scrip
 
 Android uses a static adapter for `arm64-v8a` and `x86_64`. The pinned official source recipes build CPython 3.12.8, Ren’Py, SDL2 and codecs; desktop SDK binaries and RAPT shared libraries are not target inputs. `shinki/android_runtime.py` requires Ubuntu 24.04, the NDK r29 Linux archive and the Cubism 4-r.6.2 header SDK listed in `shinki/sdk.json`. Cubism Core is game-supplied and is not bundled.
 
-Manager sets the extracted `cores/renpy/Resources` path before registering the provider. The compiled display module remains a builtin, rendering through a private SDL2 EGL pbuffer and GLES while Manager owns presentation. C/C++ dependency symbols are isolated from other cores. Python resources use the inventoried pure Python artifacts, not host-native wheels. Source packages preserve native recipes, patches, Python sources and full Manager/fork sources for LGPL relinking. APK build, resource, native-closure and signature gates are separate from device/game acceptance.
+Manager sets the extracted `cores/renpy/Resources` path before registering the provider. The compiled display module remains a builtin, rendering through a private SDL2 EGL pbuffer and GLES while Manager owns presentation. C/C++ dependency symbols are isolated from other cores. Python resources use the inventoried pure Python artifacts, not host-native wheels. On a non-Linux build host, point `RENPY_STATIC_ROOT` to the complete runtime tree produced on Linux for the matching ABI. See the [Android prerequisites](../build-and-release.md#android).
 
 ## Storage
 
@@ -62,13 +62,11 @@ and the core. The package includes the SDK-generated `renpy/vc_version.py`.
 
 Linux builds use the official SDK's combined `librenpython.so` and a native
 `display.so` extension. Both resolve the runtime relative to the installed core.
-`cargo xtask deps --core renpy --target x86_64-unknown-linux-gnu` builds a
-task-owned CPython/Cython interpreter from pinned sources; it does not require
-Windows DLLs or an interpreter from a developer's environment.
+`cargo build --locked --release --target x86_64-unknown-linux-gnu -p shinki-emu-core-renpy` builds the core and prepares the pinned host CPython/Cython interpreter. It does not use Windows DLLs or a developer's Python installation.
 
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.
 
-The desktop adapter targets Windows x64/MSVC and Linux x64/GNU. Other targets remain blocked until their native runtime and packaging gates pass. Upstream Ren’Py platform support does not imply the adapter is ported to those platforms. Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
+Standalone targets are Windows x64/MSVC, Linux x64/GNU and both macOS architectures. Android supports static embedding in Manager only; iOS and OpenHarmony are blocked in [`build/cores.toml`](../../../build/cores.toml). Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
 
 The runtime includes multiple licenses, including LGPL dependencies with corresponding-source and relinking obligations. Preserve official notices rather than labeling the whole runtime MIT.
 

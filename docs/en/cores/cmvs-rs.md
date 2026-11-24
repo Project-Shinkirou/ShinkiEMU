@@ -31,4 +31,4 @@ The worker uses upstream's `Startup`, CPU/font scene composition, CMV/MGV movie 
 
 C ABI v3 has no custom cursor bitmap, monitor enumeration/selection or aspect/filter policy fields. Cosmetic cursor shape requests retain the Host default cursor and emit one diagnostic. Other unavailable requests return `UNSUPPORTED`, with the missing capability in the error. Host dialogs use the window service and can be cancelled; a headless host never invents an answer. No native game window is created by the core.
 
-The core retains upstream's save/key/config formats and paths. The original MIT/Apache-2.0 licenses, third-party notices and modification statement accompany the binary and corresponding-source bundle. Exact pins and target-level build restrictions are recorded in [`build/cores.toml`](../../../build/cores.toml).
+The core retains upstream's save/key/config formats and paths. Binary packages include the original MIT/Apache-2.0 licenses, third-party notices and modification statement. Published source is the public fork commit in [`Cargo.lock`](../../../Cargo.lock); see [`build/cores.toml`](../../../build/cores.toml) for build targets and publication restrictions.

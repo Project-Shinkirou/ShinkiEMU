@@ -31,4 +31,4 @@ worker 使用上游 `Startup`、CPU/字体场景合成、CMV/MGV 视频解码、
 
 C ABI v3 没有自定义光标位图、显示器枚举/选择或画面比例/滤镜策略字段。纯外观光标请求保留 Host 默认光标，并输出一次诊断；其他无法表达的请求返回 `UNSUPPORTED`，错误说明缺失能力。对话框走宿主窗口服务并支持取消；headless 宿主不会编造用户选择。核心不创建原生游戏窗口。
 
-存档、key、配置的位置和格式沿用上游。二进制与对应源码包保留原 MIT/Apache-2.0 许可证、第三方 notice 和修改声明。精确 pin 与逐目标构建限制见 [`build/cores.toml`](../../../build/cores.toml)。
+存档、key、配置的位置和格式沿用上游。允许分发的二进制包包含原 MIT/Apache-2.0 许可证、第三方声明与修改说明。公开源码是 [`Cargo.lock`](../../../Cargo.lock) 记录的公开 fork 提交。构建目标和发布限制见 [`build/cores.toml`](../../../build/cores.toml)。

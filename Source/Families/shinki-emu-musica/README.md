@@ -6,14 +6,9 @@ Musica 通过 C ABI v3 的 `shinki_emu_query` 提供原生核心；静态集成�
 
 ## 平台依赖
 
-`cargo xtask deps --target <triple> --core shinki.emu.musica` 使用同一份
-`build/vcpkg/ffmpeg/vcpkg.json`，固定 FFmpeg 7.1.2，保留完整内置解码器、demuxer
-和 parser。Windows 沿用 `x64-windows` 动态闭包，Linux 沿用 `x64-linux-dynamic`；
-Apple、Android 和 OHOS 使用静态库，不另打包 FFmpeg dylib/so。每个非 Windows
-target 独立安装到 `.work/vcpkg-ffmpeg/<triple>/installed/<triplet>`，避免 manifest
-安装裁掉其他设备或模拟器的依赖。
+从仓库根目录运行 `cargo build --locked --release -p shinki-emu-core-shinki-emu-musica` 构建独立核心。Cargo 的共享 FFmpeg 构建脚本使用 `build/vcpkg/ffmpeg/vcpkg.json`，按 triplet 和清单键在 `.work/vcpkg-installs/` 下隔离安装。Windows/Linux 使用动态库，Apple、Android 和 OHOS 使用静态库。
 
-Android Manager 通过 `musica_query` 静态注册核心，并启用 `ffmpeg-vcpkg`。iOS 静态 Manager 集成仍待 AppleNative 完成远端 macOS 构建与验证。Apple 构建使用原生 macOS/Xcode，部署版本为 macOS 13、iOS 16。Android FFmpeg 使用 API 28 静态 triplet。OHOS 依赖准备读取 `OHOS_SDK_NATIVE`；Windows 默认指向已安装的 DevEco Studio native SDK，并使用 API 17 arm64 工具链。xtask 为这些平台隔离 pkg-config，启用完整静态依赖闭包，并向 native 消费者导出 `SHINKI_EMU_FFMPEG_INSTALLED`；Windows/Linux 不设置此变量。
+Android、iOS 和 OHOS 的默认 Manager 通过 `musica_query` 静态注册核心，启用 `ffmpeg-vcpkg`。Apple 部署版本为 macOS 13、iOS 16；Android 用 API 28 静态 triplet；OHOS 使用 `OHOS_SDK_NATIVE` 指定的 DevEco native SDK。目标支持以 [`build/cores.toml`](../../../build/cores.toml) 为准。
 
 Android 离屏渲染使用 RoukakuEngine 的原生 Vulkan 策略，实例创建、适配器枚举与后端校验均包含 Android。旧 Engine revision `8392cf1` 在 `native_wgpu_instance` 明确拒绝 Android，会在加载有效游戏和密钥后返回 `SHINKI_EMU_MUSICA_RENDERER`。静态核心沿用 Manager 的日志订阅器。动态核心在显式激活时通过 `AndroidContextV1` 绑定本库内的 CPAL/AAudio JNI 上下文；扫描与查询不初始化音频。
 
@@ -106,7 +101,7 @@ Symphonia 在核心 audio worker 内完整解码，Kira 执行 resampling、混�
 ```bash
 cargo test -p shinki-emu-musica --all-features
 cargo clippy -p shinki-emu-musica --all-targets --all-features -- -D warnings
-cargo build -p shinki-emu-musica --features dynamic-plugin-export
+cargo build --locked --release -p shinki-emu-core-shinki-emu-musica
 ```
 
 测试覆盖 archive、图像、parser/VM、native codec 和 profile 边界。创建真实 session 的测试现在需要硬件 GPU；独立文字 GPU 测试显式使用 `--ignored` 运行，覆盖共享字形、移除区域、清空后重建与重复帧。公开最小字节格式 fixture 贯通 encrypted PAZ、SC、PNG、完整 PCM decode、Kira stereo pan、消息物理输入、atomic save/load 相同帧、translation cancel/load 和 close/reopen；单独验证阻塞 audio sink 退出、decode budget 与非挂起 VM 循环边界。Fixture audio sink 不是真实音频设备，动态模块编译也不代表 Manager 内实际安装验收。

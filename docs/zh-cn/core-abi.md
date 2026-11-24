@@ -111,12 +111,11 @@ Ready 状态的 `FrameSurface` 包含实际尺寸、stride、像素/颜色/行�
 <library-stem>/
   core.json
   shinki_emu_<core>.dll       # 或 libshinki_emu_<core>.so/.dylib
-  build.json
   Resources/                 # 原生核心需要时提供
   licenses/
   <原生依赖文件>
 ```
 
-`core.json` 使用 `shinki.emu.core_package.v1`，记录 `plugin_id`、`library`、`version`、`abi` 及文件路径/SHA256。清单覆盖除自身外的所有包文件。核心库使用新文件名前缀和 query 符号。打包检查架构、依赖闭包及许可，拒绝路径穿越、链接和大小写冲突，只发布到不存在的新目录。Manager 在安装前校验整个包，不接受旧产品协议或加载别名。命令见[构建与发布](build-and-release.md)。
+`core.json` 使用 `shinki.emu.core_package.v1`，记录 `plugin_id`、`library`、`version`、`abi` 及各文件的路径与 SHA256。清单覆盖除自身外的所有包文件。核心库使用 `shinki_emu_` 文件名前缀和 `shinki_emu_query` 符号。打包拒绝不安全路径、链接和大小写冲突，只输出到新目录。Manager 在安装前校验核心包。命令见[构建与发布](build-and-release.md)。
 
-新的第三方包增加 `identity`，分别记录原作者上游与组织适配仓库的来源；`version` 必须等于据此计算的安全标识。旧包不含此字段，保留原有 SemVer。新 Manager 在暂存前同时核对目录与包的 plugin、version 和 identity，并显示完整上游/适配标签；C ABI 和 descriptor 版本独立不变。详见[版本身份规则](build-and-release.md#打包与发布)。
+第三方包的 `identity` 分别记录原作者上游与 Cargo 锁定的组织 fork 提交，`version` 必须与算出的标识一致。旧包不含 `identity`，保留原有 SemVer。Manager 在暂存前用目录核对 plugin、version 和 identity，并显示完整的上游/适配标签。C ABI 与 descriptor 的版本独立。详见[版本身份规则](build-and-release.md#打包与发布)。
