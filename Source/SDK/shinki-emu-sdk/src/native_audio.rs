@@ -490,14 +490,22 @@ mod tests {
     fn null_output_advances_the_same_clock_without_opening_a_device() {
         let stop = AtomicBool::new(false);
         let mut output = NativeAudioOutput::open_null().unwrap();
-        output.write(vec![0.25; 1024], &stop).unwrap().unwrap();
-        assert_eq!(output.progress().accepted_frames, 512);
-
+        // Exercise refill and recycling by submitting past queue capacity.
+        const BLOCKS: u64 = 8;
+        const FRAMES_PER_BLOCK: u64 = 512;
+        let mut samples = vec![0.25; (FRAMES_PER_BLOCK * u64::from(SOURCE_CHANNELS)) as usize];
+        for blocks in 1..=BLOCKS {
+            samples = output.write(samples, &stop).unwrap().unwrap();
+            let progress = output.progress();
+            assert_eq!(progress.accepted_frames, blocks * FRAMES_PER_BLOCK);
+            assert!(progress.played_frames <= progress.accepted_frames);
+        }
+        let frames = BLOCKS * FRAMES_PER_BLOCK;
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while output.progress().played_frames < 512 && std::time::Instant::now() < deadline {
+        while output.progress().played_frames < frames && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(1));
         }
-        assert_eq!(output.progress().played_frames, 512);
+        assert_eq!(output.progress().played_frames, frames);
         stop.store(true, Ordering::Release);
         assert!(output.write(vec![0.0; 1024], &stop).unwrap().is_none());
     }

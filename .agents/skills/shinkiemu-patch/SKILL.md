@@ -91,6 +91,7 @@ VM 只开 table、string、utf8、math、bit32、buffer、coroutine 这几个标
 | `ctx.fail(code, message)` | 中止并回滚。`code` 取 `INVALID_REQUEST`、`UNSUPPORTED_INPUT`、`OUTPUT_EXISTS`、`PATH`、`BOUNDS`、`MEMORY`、`CODEC`、`INTEGRITY`、`CANCELLED`、`SCRIPT`、`IO`、`PUBLISH` |
 | `ctx.musica_embed(profile, translations, resource_paths, destination)` | 用 Musica 原生 PAZ/SC 读取器把翻译写成原生 SC 操作数，不安装运行时翻译表 |
 | `ctx.musica_profile(buffer)` | 用原生读取器解析私有 Musica `key.toml`（keys.v2，也接受旧的 `astra.emu.musica.keys.v2` 标识，只在内存里规范化，不改写用户的源文件） |
+| `ctx.lucifen_repack(archive, bootstrap_member, archives)` | 校验原档大小和 SHA-256，从原始 SOB 读取挂载参数，把授权补丁的替换成员写入原生 LPK。未进入目录的本地配方放在 `Tools/Research/`，不写入 Metadata 快照 |
 | 编解码与数据模块 | `codecs`、`data`、`pickle` 安装的格式工具 |
 
 Luau 原生 `error(message)` 也会中止并回滚，归为 `SCRIPT`；Manager 保留错误文本并报告已回滚。要给出具体失败类别时用 `ctx.fail`。

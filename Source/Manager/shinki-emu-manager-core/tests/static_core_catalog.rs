@@ -1,5 +1,7 @@
 #[path = "../build_support/catalog.rs"]
 mod generation;
+#[path = "../../../Families/shinki-emu-lucifen-formats/tests/support/mod.rs"]
+mod lucifen_fixture;
 
 use shinki_emu_manager_core::static_core_catalog;
 use std::{fs, path::{Path, PathBuf}, process::Command};
@@ -180,4 +182,42 @@ fn recognized_family_has_displayable_candidates_without_any_core_installation() 
     assert!(static_core_catalog::lookup("unknown.external.plugin").is_none());
     assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     println!("recognized {}: {candidates:?}", detected[0].family_id);
+}
+
+#[test]
+fn lucifen_recognizes_root_script_archive_without_loading_a_core() {
+    use shinki_emu_lucifen_formats::{Archive, Sob};
+    use shinki_emu_manager_core::{NativeCancellation, detection::detect_game_directory};
+
+    let script = lucifen_fixture::SCRIPT_LPK;
+    let read = |offset: u64, output: &mut [u8]| {
+        let offset = offset as usize;
+        output.copy_from_slice(&script[offset..offset + output.len()]);
+        Ok(())
+    };
+    let archive = Archive::open("SCRIPT.LPK", script.len() as u64, None, read).unwrap();
+    let entry = archive.entry("gameinit.sob").unwrap().unwrap();
+    let sob = archive.read_member(entry, 64, read).unwrap();
+    Sob::parse(&sob).unwrap();
+
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("data")).unwrap();
+    fs::write(root.path().join("data/SCRIPT.LPK"), script).unwrap();
+    fs::write(root.path().join("sample.lpk"), script).unwrap();
+    let path = root.path().join("ScRiPt.LpK");
+    let scan = || detect_game_directory(root.path(), &NativeCancellation::new(1)).unwrap();
+
+    // Even at the expected path, magic with a truncated index is insufficient.
+    fs::write(&path, &script[..8]).unwrap();
+    assert!(scan().is_empty());
+
+    fs::write(&path, script).unwrap();
+    let found = scan();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].format, "lucifen.lpk1-sob");
+    assert!(found[0].declared.is_none());
+    let core = static_core_catalog::lookup("shinki.emu.lucifen").unwrap();
+    assert_eq!(core.family_id, found[0].family_id);
+    assert_eq!(core.standalone, cfg!(all(target_os = "windows", target_arch = "x86_64", target_env = "msvc")));
+    assert!(!core.embedded);
 }

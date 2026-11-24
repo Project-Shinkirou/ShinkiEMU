@@ -37,6 +37,7 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 | `krkr` | XP3 索引，或 Scripts.execStorage 字面启动引用及实际目标中的 KiriKiri builtin 调用，排除注释/字符串 | 动态计算 loose TJS、歧义源码、EXE 内 XP3 和自定义归档保持未知 |
 | `ethornell` | BURIKO ARC20 索引，或含 `ipl._bp` 的 PackFile 索引，以及资源范围 | 不解压引导脚本，不保证 VM 兼容 |
 | `cmvs` | CPZ3/5/6/7 固定头和索引范围，或 PS2A 段范围 | CPZ1/2 保持未知；加密索引、校验和、profile 兼容性留给启动检查 |
+| `lucifen` | 根目录的 `SCRIPT.LPK`（不区分大小写）、LPK1 文件头和索引范围 | 加密索引、`gameinit.sob` 和启动资源由选定核心在启动时校验 |
 | `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
 | `renpy` | RPA2/3、RPC2，或旧 zlib-RPYC 中完整 pickle opcode 流声明的序列化 renpy.ast 对象 | 只检查字节，不导入、构造或执行 pickle；通用 zlib/pickle、RPA1、纯源码保持未知 |
 

@@ -13,6 +13,7 @@ static-adv32 = []
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
+shinki-emu-lucifen-formats = { path = "../../Families/shinki-emu-lucifen-formats" }
 shinki-emu-musica-format = { path = "../../Families/shinki-emu-musica-format" }
 shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 flate2.workspace = true

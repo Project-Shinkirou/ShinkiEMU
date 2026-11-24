@@ -246,6 +246,12 @@ reason = "<具体原因>"
 - fixture 在测试里生成或提交自制的小文件。商业游戏数据、正文、key、存档都不能进仓库。
 - 不要写固定措辞、常量、路径拼写或纯转发的测试。
 
+### 引擎行为验收
+
+按引擎版本和能力核对原生行为。解析到操作码不等于实现了所有操作数分支；默认值、边界、状态变化与等待和恢复都要在正常运行路径验证。
+
+用现有 headless 启动器回归输入、路线跳转、鉴赏、设置和读档后的状态；涉及存档时在副本中检查原版与核心的双向回读。涉及视觉差异时对照原版的同一状态。单例出帧或存档二进制往返只能验证相应环节，发布说明应列出已验收的版本和行为。
+
 ## 9. 本地构建与打包
 
 先初始化子模块（`git submodule update --init --recursive`），安装构建工具。Windows 用 x64 Visual Studio 开发者环境，Android 用 `cargo install cargo-ndk --locked --version 4.1.2` 和 NDK 30.0.16248370。打包前运行 `cargo install cargo-about --locked --version 0.9.3`。完整前提见 [Build and release](../../../docs/en/build-and-release.md#inputs-and-prerequisites)。

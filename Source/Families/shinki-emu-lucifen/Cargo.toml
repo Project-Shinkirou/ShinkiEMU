@@ -1,0 +1,25 @@
+[package]
+name = "shinki-emu-lucifen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+dynamic-plugin-export = []
+
+[dependencies]
+shinki-emu-lucifen-formats = { path = "../shinki-emu-lucifen-formats" }
+encoding_rs.workspace = true
+object.workspace = true
+kira.workspace = true
+roukaku-media-core.workspace = true
+roukaku-core.workspace = true
+roukaku-text.workspace = true
+tempfile.workspace = true
+time = { workspace = true, features = ["local-offset"] }
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime", "text", "device-audio", "audio"] }
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }

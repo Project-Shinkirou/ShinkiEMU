@@ -10,6 +10,8 @@ members = [
     "Source/Native/roukaku-libass",
     "Source/Families/shinki-emu-adv32",
     "Source/Families/shinki-emu-cmvs",
+    "Source/Families/shinki-emu-lucifen",
+    "Source/Families/shinki-emu-lucifen-formats",
     "Source/Families/shinki-emu-musica",
     "Source/Families/shinki-emu-musica-keys",
     "Source/Families/shinki-emu-musica-format",

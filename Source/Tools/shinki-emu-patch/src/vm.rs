@@ -17,6 +17,9 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+#[path = "lucifen.rs"]
+mod lucifen;
+
 #[derive(Serialize)]
 pub(crate) struct InputRecord {
     pub root: String,
@@ -326,6 +329,17 @@ pub(crate) fn execute(
             crate::codecs::install(&lua, &ctx, cancelled.clone())?;
             crate::data::install(&lua, &ctx, cancelled.clone())?;
             crate::pickle::install(&lua, &ctx, cancelled.clone())?;
+            let lucifen_files = files.clone();
+            ctx.set(
+                "lucifen_repack",
+                scope.create_function(
+                    move |lua, (bootstrap, member, specs): (String, String, Value)| {
+                        let specs = lua.from_value(specs)?;
+                        lucifen::repack(&lucifen_files, &bootstrap, &member, specs)
+                            .map_err(mlua::Error::external)
+                    },
+                )?,
+            )?;
             let native_files = files.clone();
             let staging = transaction.open_staging().map_err(mlua::Error::external)?;
             let staging_path =

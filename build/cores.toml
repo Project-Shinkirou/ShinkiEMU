@@ -262,6 +262,44 @@ target = "aarch64-unknown-linux-ohos"
 reason = "No standalone package; available for local static Manager builds only."
 
 [[cores]]
+id = "shinki.emu.lucifen"
+family_id = "lucifen"
+display_name = "Shinki Lucifen"
+family_name = "Lucifen"
+license = "MIT OR Apache-2.0"
+resources = []
+licenses = ["LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES.md", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
+supported_targets = ["x86_64-pc-windows-msvc"]
+publish_blocked = "Windows gameplay, input and native save slots are pending acceptance."
+[[cores.blocked]]
+target = "x86_64-unknown-linux-gnu"
+reason = "Standalone packaging and native playback have only been targeted for Windows x64."
+[[cores.blocked]]
+target = "x86_64-apple-darwin"
+reason = "Standalone packaging and native playback have only been targeted for Windows x64."
+[[cores.blocked]]
+target = "aarch64-apple-darwin"
+reason = "Standalone packaging and native playback have only been targeted for Windows x64."
+[[cores.blocked]]
+target = "aarch64-linux-android"
+reason = "No Android package or static Manager adapter."
+[[cores.blocked]]
+target = "x86_64-linux-android"
+reason = "No Android package or static Manager adapter."
+[[cores.blocked]]
+target = "aarch64-apple-ios"
+reason = "No iOS package or static Manager adapter."
+[[cores.blocked]]
+target = "aarch64-apple-ios-sim"
+reason = "No iOS package or static Manager adapter."
+[[cores.blocked]]
+target = "x86_64-apple-ios"
+reason = "No iOS package or static Manager adapter."
+[[cores.blocked]]
+target = "aarch64-unknown-linux-ohos"
+reason = "No OpenHarmony package or static Manager adapter."
+
+[[cores]]
 id = "shinki.emu.cmvs"
 family_id = "cmvs"
 display_name = "Shinki CMVS"

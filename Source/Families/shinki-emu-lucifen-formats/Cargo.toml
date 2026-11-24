@@ -1,0 +1,9 @@
+[package]
+name = "shinki-emu-lucifen-formats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+encoding_rs.workspace = true

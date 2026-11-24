@@ -50,6 +50,8 @@ The host waits up to `--startup-timeout-ms` (default 30000, after native open) f
 shinki-emu-headless run --core siglus-core.zip --game-dir C:/Games/MyGame --audio-device nullaudiodevice --frames 180 --output artifacts/siglus-null
 ```
 
+The Windows Lucifen core and ADV32 also accept this option through the SDK's clocked null output. Native audio remains the default. Frame and logic runs with the null output do not validate physical playback.
+
 ### Clock and frame meaning
 
 C ABI v3 gives the core ownership of its game clock and producer thread. It does not expose deterministic single-step/emulated time. The runner samples completed frames on the existing protocol's 16,666,667 ns host timeline, starting after the first completed frame. `--frames N` means N host presentation samples, **not** an instruction to execute exactly N native VM ticks. `acquired_frames` counts distinct completed leases actually acquired. A static title frame can validly appear at several sample points. Exact cross-run matching depends on the core/game's native timing and deterministic state; PNG tolerance is available when needed.

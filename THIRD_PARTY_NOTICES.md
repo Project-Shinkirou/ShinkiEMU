@@ -69,6 +69,33 @@ freely, subject to the following restrictions:
 
 ADV32 核心的 CRX 图像、CRM/PCK 归档和 XPCM 音频读取参考了 [GARbro 的 CIRCUS 格式实现](https://github.com/morkt/GARbro/tree/b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0/ArcFormats/Circus)。版权归 morkt（2015–2016），完整 MIT 许可随核心打包，见 [GARbro.txt](docs/licenses/shinki-emu-adv32/GARbro.txt)。原版游戏文件不属于核心源码或发布包。
 
+## Lucifen 资源格式
+
+Lucifen 的 LPK/ELG 读取参考 [GARbro](https://github.com/morkt/GARbro/tree/master/ArcFormats/Lucifen)，LPK 和 SOB 格式参考 [Lucifen-Tools](https://github.com/UBTL/Lucifen-Tools)。以下 MIT 声明适用于参考代码；商业游戏和翻译资源须由用户自行提供，不随核心或本地配方分发。
+
+```text
+Copyright (C) 2015-2017 by morkt
+Copyright (c) 2025 Uncle Bane
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ## ASS 字幕依赖
 
 `roukaku-subtitle` 使用 <https://github.com/libass/libass> 的 libass 0.17.5（ISC），原生依赖安装在独立 vcpkg 树中，使用 overlay triplet `x64-windows-static-md-dynbidi`（RoukakuEngine 的 `Engine/Source/Runtime/roukaku-subtitle/triplets/`）：libass、FreeType、HarfBuzz、Brotli、bzip2、libpng、zlib 静态链接，只有 FriBidi 构建为 DLL。RFVP 原生源码的 manifest 与独立 lockfile 固定共享实现 `Project-Shinkirou/RoukakuEngine`；Kira 另行固定。打包时显式指定该实际安装的 `share/`，逐字保留以下 `copyright` 文件到 `licenses/subtitle/<port>/copyright`：

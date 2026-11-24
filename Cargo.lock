@@ -11298,6 +11298,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-core-shinki-emu-lucifen"
+version = "0.1.0"
+dependencies = [
+ "shinki-emu-lucifen",
+]
+
+[[package]]
 name = "shinki-emu-core-shinki-emu-musica"
 version = "0.1.0"
 dependencies = [
@@ -11419,6 +11426,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-lucifen"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "kira 0.12.5",
+ "object 0.40.0",
+ "roukaku-core",
+ "roukaku-media-core",
+ "roukaku-text",
+ "shinki-emu-abi",
+ "shinki-emu-build",
+ "shinki-emu-lucifen-formats",
+ "shinki-emu-sdk",
+ "tempfile",
+ "time",
+]
+
+[[package]]
+name = "shinki-emu-lucifen-formats"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+]
+
+[[package]]
 name = "shinki-emu-manager"
 version = "0.1.0-beta.6"
 dependencies = [
@@ -11523,6 +11555,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shinki-emu-abi",
+ "shinki-emu-lucifen-formats",
  "shinki-emu-musica-format",
  "shinki-emu-musica-keys",
  "shinki-emu-translation",
@@ -11695,6 +11728,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "shinki-emu-abi",
+ "shinki-emu-lucifen-formats",
  "shinki-emu-metadata",
  "shinki-emu-musica",
  "shinki-emu-musica-keys",

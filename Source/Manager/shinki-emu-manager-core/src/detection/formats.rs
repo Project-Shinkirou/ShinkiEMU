@@ -1,6 +1,8 @@
 //! Format facts and source pins are documented in docs/*/core-abi.md.
 //! File extensions only route magic-less/ambiguous inputs; never establish a match.
 use super::*;
+use shinki_emu_lucifen_formats::{FORMAT_ID, SCRIPT_ARCHIVE, has_script_index};
+
 pub(super) enum Rejected { NoMatch, Abort(DetectionError) }
 impl From<DetectionError> for Rejected {
     fn from(error: DetectionError) -> Self { Self::Abort(error) }
@@ -79,6 +81,13 @@ impl<T: DetectionTree> Scan<'_, T> {
             }
             require(slots > 0)?;
             self.matched("renpy", "rpyc")?;
+            return Ok(());
+        }
+        if head.starts_with(b"LPK1") {
+            require(path.parent() == Some(Path::new("")))?;
+            require(path.file_name().is_some_and(|name| name.eq_ignore_ascii_case(SCRIPT_ARCHIVE)))?;
+            require(has_script_index(head, source.length))?;
+            self.matched("lucifen", FORMAT_ID)?;
             return Ok(());
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
