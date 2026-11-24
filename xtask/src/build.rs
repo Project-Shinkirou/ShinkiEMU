@@ -194,9 +194,12 @@ fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
         // cargo-ndk filters Cargo's build-script JSON. Import its toolchain
         // environment so packaging can read every producer's OUT_DIR.
         let api = crate::binary::ANDROID_API.to_string();
+        let ndk = std::path::absolute(dependencies::ndk_root(inv)?)?;
         let mut environment = Command::new("cargo");
         environment
             .current_dir(&inv.root)
+            .env("ANDROID_NDK_HOME", &ndk)
+            .env("CARGO_NDK_HOME", &ndk)
             .args(["ndk-env", "--target", target, "-P", &api, "--json"]);
         let environment: BTreeMap<String, String> =
             serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
@@ -210,6 +213,8 @@ fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
         };
         // ndk-env omits the two variables its linker wrapper requires.
         cmd.envs(&environment)
+            .env("ANDROID_NDK_HOME", &ndk)
+            .env("CARGO_NDK_HOME", &ndk)
             .env("_CARGO_NDK_LINK_CLANG", clang)
             .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
             .env("ANDROID_PLATFORM", &api)
