@@ -114,6 +114,9 @@ fn main() {
         link_android_compiler_runtime();
     }
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
+        let target = shinki_emu_build::ohos::Target::from_rust_target(&target)
+            .expect("unsupported OHOS Manager target");
+        println!("cargo:rustc-env=SHINKI_EMU_OHOS_ABI={}", target.abi());
         build_ohos_glue();
     }
     for asset in [

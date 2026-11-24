@@ -548,7 +548,7 @@ pub mod bundled {
     pub const LIBRARY: &str = "libshinki_emu_core_musica.so";
     const MANAGER: &str = "libshinki_emu_manager.so";
     const BUNDLE_CODE: &str = "/data/storage/el1/bundle";
-    const ARCHIVE_LIBS: &str = "libs/arm64-v8a";
+    const ARCHIVE_LIBS: &str = concat!("libs/", env!("SHINKI_EMU_OHOS_ABI"), "/");
 
     pub fn manifest_dir(plugin_id: &str) -> Option<PathBuf> {
         if plugin_id != ID {
@@ -590,12 +590,12 @@ pub mod bundled {
         if let Some((hap, member)) = name.split_once("!/") {
             let hap = Path::new(hap);
             if hap.extension().is_none_or(|extension| extension != "hap")
-                || member != concat!("libs/arm64-v8a/", "libshinki_emu_manager.so")
+                || member.strip_prefix(ARCHIVE_LIBS) != Some(MANAGER)
             {
                 return None;
             }
             let hap = installed_file(hap)?;
-            return Some(PathBuf::from(format!("{}!/{ARCHIVE_LIBS}/{LIBRARY}", hap.to_str()?)));
+            return Some(PathBuf::from(format!("{}!/{ARCHIVE_LIBS}{LIBRARY}", hap.to_str()?)));
         }
         if manager.file_name()? != MANAGER {
             return None;

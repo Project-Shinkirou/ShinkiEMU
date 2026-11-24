@@ -120,6 +120,21 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 2. 如需手动选择 Musica，不要先打开核心设置。用原版 PAZ/SC 文件和有效的私有 `key.toml` 启动游戏。应先出现一次 `shinki.emu.ohos.core_open`，再出现 `shinki.emu.ohos.core_abi_ready`，标明从安装路径加载 `shinki.emu.musica`、ABI 3。此时 `image list -f` 应列出该库。
 3. 推进到可辨认的游戏画面，确认听到音乐或语音，并对照 `shinki.emu.ohos.audio_started`。在同一 Manager 进程内关闭并重开游戏，确认恢复播放且未再次加载模块。记录设备、系统版本和结果，不分享密钥或游戏数据。
 
+#### x86_64 模拟器本地验收
+
+在专用 HarmonyOS x86_64 模拟器上测试时，使用本地的 `x86_64-unknown-linux-ohos` Manager 目标。该目标不生成独立核心包，也不进入托管 CI、公开发布或公开核心目录。HAP 和 `ohos.json` 记录都只在内部保存。记录包含源码提交、构建 feature、目标、ABI 和签名后 HAP 的哈希。
+
+使用带 x86_64 sysroot 库和 `libc++_shared.so` 的 DevEco OpenHarmony API 26 Native SDK。按上文配置 `OHOS_SDK_NATIVE`、私有签名目录和 `cargo-about`，在 x64 Visual Studio 开发者终端中，从已提交的工作树运行：
+
+```powershell
+rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask package --target x86_64-unknown-linux-ohos --manager --version 0.1.0-qa.1 --out .work/ohos-x64-qa
+Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
+```
+
+静态嵌入 Musica 时不设置该 feature，生成的 HAP 文件名包含 `ohos-x86_64-local-qa`。安装前须获准新建独立的 API 26 模拟器实例，确认它有单独的可写数据目录，来宾 ABI 为 x86_64，已信任 SDK 测试 PKI，且调试、Vulkan 和音频可用。安装时指定该实例的 `hdc` 标识；签名被拒就停止。镜像名称里的 `x86` 不能证明来宾 ABI，API 26 工具链能识别目标也不能证明 API 17 镜像可用。打包成功或 Manager 界面能打开，都不能代替游戏画面和音频验收。
+
 ## 构建、检查与测试
 
 Manager 的包名是 `shinki-emu-manager`，独立核心选择 [`Source/Cores/`](../../Source/Cores/) 下的入口包。包名以 `shinki-emu-core-` 开头，核心 ID 中的点换成连字符，保留大小写和下划线。例如 `rfvp` 对应 `shinki-emu-core-rfvp`，`shinki.emu.musica` 对应 `shinki-emu-core-shinki-emu-musica`。

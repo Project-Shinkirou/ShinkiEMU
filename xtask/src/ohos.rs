@@ -9,6 +9,7 @@ use crate::{
     package::{self, atomic_directory, copy_entries, sha256},
 };
 use anyhow::{Context, Result, bail};
+use shinki_emu_build::ohos::Target;
 use std::{
     collections::BTreeMap,
     fs, io,
@@ -16,17 +17,14 @@ use std::{
     process::Command,
 };
 
-const ABI: &str = "arm64-v8a";
 const BUNDLE_NAME: &str = "org.shinkirou.shinkiemu";
 const MANAGER: &str = "libshinki_emu_manager.so";
-const TARGET: &str = "aarch64-unknown-linux-ohos";
 const MUSICA: &str = "shinki.emu.musica";
 const CORE_LIBRARY: &str = "libshinki_emu_core_musica.so";
 const FEATURE: &str = "ohos-bundled-musica";
-const OHOS_ARM64_PAGE: u64 = 4096;
 
 pub(crate) fn is_core_input(component: &str, target: &str) -> bool {
-    component == MUSICA && target == TARGET
+    component == MUSICA && Target::from_rust_target(target).is_some()
 }
 
 pub(crate) fn bundles_core(component: &str, target: &str, features: &[String]) -> bool {
@@ -35,8 +33,8 @@ pub(crate) fn bundles_core(component: &str, target: &str, features: &[String]) -
 
 pub(crate) fn manager_mode(target: &str, features: &[String]) -> Result<bool> {
     let enabled = features.iter().any(|feature| feature == FEATURE);
-    if enabled && target != TARGET {
-        bail!("{FEATURE} is only supported on {TARGET}");
+    if enabled && Target::from_rust_target(target).is_none() {
+        bail!("{FEATURE} is only supported on OHOS ARM64 and x86_64");
     }
     Ok(enabled)
 }
@@ -128,29 +126,38 @@ pub(crate) fn tools() -> Result<Tools> {
     Ok(tools)
 }
 
+fn hap_name(target: Target, version: &str, bundled: bool) -> String {
+    let qa = if target.local_qa() { "-local-qa" } else { "" };
+    let variant = if bundled { "-bundled-musica" } else { "" };
+    format!(
+        "ShinkiEMU-{version}-ohos-{}{qa}{variant}-debug-test-signed.hap",
+        target.abi()
+    )
+}
+
 /// Build and test-sign the HAP from the Manager's Cargo output.
 pub(crate) fn package(
     inv: &Inventory,
+    target: Target,
     result: &BuildArtifact,
     version: &str,
     out: &Path,
 ) -> Result<PathBuf> {
-    if result.target != TARGET {
-        bail!("unsupported OHOS Manager target {}", result.target);
+    let triple = target.rust_target();
+    if result.target != triple {
+        bail!("OHOS Manager artifact target {} does not match {triple}", result.target);
     }
-    let musica = manager_mode(&result.target, &result.features)?
-        .then(|| crate::build::execute_ohos_hap(inv, TARGET, MUSICA, version))
+    let musica = manager_mode(triple, &result.features)?
+        .then(|| crate::build::execute_ohos_hap(inv, triple, MUSICA, version))
         .transpose()?;
     let tools = tools()?;
     let signing = signing_material(&tools)?;
     let project = inv.root.join("Platforms/OHOS");
     atomic_directory(out, |stage| {
-        let declaration = stage_inputs(inv, result, musica.as_ref(), &tools, &project)?;
-        let unsigned = build_hap(&tools, &project, version)?;
-        let variant = if musica.is_some() { "-bundled-musica" } else { "" };
-        let hap = stage.join(format!(
-            "ShinkiEMU-{version}-ohos-{ABI}{variant}-debug-test-signed.hap"
-        ));
+        let declaration = stage_inputs(inv, target, result, musica.as_ref(), &tools, &project)?;
+        let unsigned = build_hap(&tools, target, &project, version)?;
+        let name = hap_name(target, version, musica.is_some());
+        let hap = stage.join(&name);
         dependencies::run(
             sign_tool(&tools)
                 .args([
@@ -172,8 +179,17 @@ pub(crate) fn package(
                 .arg("-outFile")
                 .arg(&hap),
         )?;
-        verify_hap(&tools, &hap, declaration.as_deref())?;
-        let record = serde_json::json!({"hap": hap.file_name().context("HAP filename")?.to_string_lossy()});
+        verify_hap(&tools, target, &hap, declaration.as_deref())?;
+        let record = serde_json::json!({
+            "hap": name,
+            "sha256": sha256(&hap)?,
+            "target": triple,
+            "abi": target.abi(),
+            "local_qa": target.local_qa(),
+            "version": version,
+            "source_commit": result.source_commit.as_deref().context("OHOS Manager source commit")?,
+            "features": result.features,
+        });
         fs::write(stage.join("ohos.json"), serde_json::to_vec_pretty(&record)?)?;
         Ok(())
     })?;
@@ -184,6 +200,7 @@ pub(crate) fn package(
 /// ignored by Git) with this build's runtime closure and bundled files.
 fn stage_inputs(
     inv: &Inventory,
+    target: Target,
     result: &BuildArtifact,
     musica: Option<&BuildArtifact>,
     tools: &Tools,
@@ -200,7 +217,7 @@ fn stage_inputs(
     }
     let mut native = BTreeMap::from([(MANAGER.to_owned(), result.library.clone())]);
     let manager_search = package::search_dirs(inv, result)?;
-    for (library, name) in binary::closure(&result.library, &manager_search, &result.target)? {
+    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())? {
         native.insert(name, library);
     }
     if let Some(musica) = musica {
@@ -208,7 +225,7 @@ fn stage_inputs(
             bail!("bundled Musica is already in the Manager's native closure");
         }
         for (library, name) in
-            binary::closure(&musica.library, &package::search_dirs(inv, musica)?, TARGET)?
+            binary::closure(&musica.library, &package::search_dirs(inv, musica)?, target.rust_target())?
         {
             if let Some(existing) = native.get(&name) {
                 if existing != &library && sha256(existing)? != sha256(&library)? {
@@ -219,9 +236,10 @@ fn stage_inputs(
             }
         }
     }
-    fs::create_dir_all(libs.join(ABI))?;
+    let libs = libs.join(target.abi());
+    fs::create_dir_all(&libs)?;
     let native: Vec<_> = native.into_iter().map(|(name, path)| (path, name)).collect();
-    copy_entries(&native, &libs.join(ABI))?;
+    copy_entries(&native, &libs)?;
 
     let temp = crate::temporary::directory()?;
     let mut entries = vec![(
@@ -310,7 +328,7 @@ fn stage_core_manifest(
     Ok(declaration)
 }
 
-fn build_hap(tools: &Tools, project: &Path, version: &str) -> Result<PathBuf> {
+fn build_hap(tools: &Tools, target: Target, project: &Path, version: &str) -> Result<PathBuf> {
     let output = project.join("entry/build/default/outputs/default");
     match fs::remove_dir_all(&output) {
         Ok(()) => {}
@@ -321,7 +339,9 @@ fn build_hap(tools: &Tools, project: &Path, version: &str) -> Result<PathBuf> {
         .parent()
         .and_then(Path::parent)
         .context("repository root")?
-        .join(".work/ohos/hvigor-home");
+        .join(".work/ohos")
+        .join(target.rust_target())
+        .join("hvigor-home");
     fs::create_dir_all(&hvigor_home)?;
     let node = |script: &Path| {
         let mut command = Command::new(&tools.node);
@@ -542,7 +562,7 @@ fn sign_tool(tools: &Tools) -> Command {
     command
 }
 
-fn verify_hap(tools: &Tools, hap: &Path, declaration: Option<&[u8]>) -> Result<()> {
+fn verify_hap(tools: &Tools, target: Target, hap: &Path, declaration: Option<&[u8]>) -> Result<()> {
     let evidence = crate::temporary::directory()?;
     dependencies::run(
         sign_tool(tools)
@@ -553,8 +573,25 @@ fn verify_hap(tools: &Tools, hap: &Path, declaration: Option<&[u8]>) -> Result<(
             .arg("-outProfile")
             .arg(evidence.path().join("profile.p7b")),
     )?;
-    let member = format!("libs/{ABI}/{CORE_LIBRARY}");
-    let mut archive = zip::ZipArchive::new(fs::File::open(hap)?)?;
+    verify_archive(target, fs::File::open(hap)?, declaration)
+}
+
+fn verify_archive(
+    target: Target,
+    hap: impl io::Read + io::Seek,
+    declaration: Option<&[u8]>,
+) -> Result<()> {
+    let abi = target.abi();
+    let native_prefix = format!("{abi}/");
+    let mut archive = zip::ZipArchive::new(hap)?;
+    for name in archive.file_names() {
+        if name?.strip_prefix("libs/")
+            .is_some_and(|path| !path.is_empty() && !path.starts_with(&native_prefix))
+        {
+            bail!("signed HAP contains native libraries outside libs/{abi}/");
+        }
+    }
+    let member = format!("libs/{abi}/{CORE_LIBRARY}");
     if declaration.is_some() != archive.by_name(&member).is_ok() {
         bail!("signed HAP contains an unexpected bundled-core roster");
     }
@@ -580,9 +617,9 @@ fn verify_hap(tools: &Tools, hap: &Path, declaration: Option<&[u8]>) -> Result<(
             let mut entry = archive.by_name(&name)?;
             if name == member
                 && (entry.compression() != zip::CompressionMethod::Stored
-                    || entry.data_start().is_none_or(|offset| offset % OHOS_ARM64_PAGE != 0))
+                    || entry.data_start().is_none_or(|offset| offset % target.page_size() != 0))
             {
-                bail!("{member} must be stored uncompressed on an ARM64 page boundary");
+                bail!("{member} must be stored uncompressed on a {}-byte page boundary", target.page_size());
             }
             let mut digest = Sha256::new();
             let mut buffer = [0u8; 8192];
@@ -599,7 +636,7 @@ fn verify_hap(tools: &Tools, hap: &Path, declaration: Option<&[u8]>) -> Result<(
         }
     }
     for required in [
-        format!("libs/{ABI}/{MANAGER}"),
+        format!("libs/{abi}/{MANAGER}"),
         "resources/rawfile/bundled/bundled.manifest".to_owned(),
         "resources/rawfile/bundled/metadata/index.json".to_owned(),
         "module.json".to_owned(),
@@ -607,4 +644,69 @@ fn verify_hap(tools: &Tools, hap: &Path, declaration: Option<&[u8]>) -> Result<(
         archive.by_name(&required)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    use std::io::{Cursor, Write};
+    use zip::write::SimpleFileOptions;
+
+    #[test]
+    fn ohos_hap_checks_the_selected_abi_and_lazy_load_alignment() -> Result<()> {
+        let core = b"bundled library bytes";
+        let declaration = serde_json::to_vec(&serde_json::json!({
+            "schema": "shinki.emu.core_package.v1",
+            "plugin_id": MUSICA,
+            "library": CORE_LIBRARY,
+            "version": "1.0.0",
+            "abi": shinki_emu_build::ABI,
+            "files": [{"path": CORE_LIBRARY, "sha256": hex::encode(Sha256::digest(core))}],
+        }))?;
+        for (target, other) in [(Target::Arm64, Target::X64), (Target::X64, Target::Arm64)] {
+            let abi = target.abi();
+            let create_archive = |alignment, compression, mixed| -> Result<_> {
+                let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+                let stored = SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Stored);
+                let bundled = stored.with_alignment(alignment).compression_method(compression);
+                archive.start_file(format!("libs/{abi}/{MANAGER}"), stored)?;
+                archive.start_file(format!("libs/{abi}/{CORE_LIBRARY}"), bundled)?;
+                archive.write_all(core)?;
+                if mixed {
+                    archive.start_file(format!("libs/{}/libc++_shared.so", other.abi()), stored)?;
+                }
+                for path in [
+                    "module.json",
+                    "resources/rawfile/bundled/bundled.manifest",
+                    "resources/rawfile/bundled/metadata/index.json",
+                ] {
+                    archive.start_file(path, stored)?;
+                }
+                archive.start_file(
+                    format!("resources/rawfile/bundled/cores/{MUSICA}/core.json"),
+                    stored,
+                )?;
+                archive.write_all(&declaration)?;
+                let mut hap = archive.finish()?;
+                hap.set_position(0);
+                Ok(hap)
+            };
+            let page = u16::try_from(target.page_size())?;
+            let stored = zip::CompressionMethod::Stored;
+            let hap = create_archive(page, stored, false)?;
+            verify_archive(target, hap.clone(), Some(&declaration))?;
+            assert!(verify_archive(other, hap.clone(), Some(&declaration)).is_err());
+            assert!(verify_archive(target, hap, None).is_err());
+            for hap in [
+                create_archive(page, stored, true)?,
+                create_archive(1, stored, false)?,
+                create_archive(page, zip::CompressionMethod::Deflated, false)?,
+            ] {
+                assert!(verify_archive(target, hap, Some(&declaration)).is_err());
+            }
+        }
+        Ok(())
+    }
 }

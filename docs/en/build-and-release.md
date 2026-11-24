@@ -120,6 +120,21 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 2. If needed, select Musica without opening core settings. Press **Play** with the original PAZ/SC files and a valid private `key.toml`. Expect one `shinki.emu.ohos.core_open`, then `shinki.emu.ohos.core_abi_ready` for `shinki.emu.musica`, ABI 3, from the installed path. `image list -f` should now include the library.
 3. Advance past boot to a recognizable frame and listen for music or voice; compare this with `shinki.emu.ohos.audio_started`. Close and reopen the game in the same Manager process. Playback should restart without another module load. Report the device, OS build and result without sharing keys or game data.
 
+#### Private x86_64 simulator QA
+
+Use the local `x86_64-unknown-linux-ohos` Manager row for a dedicated HarmonyOS x86_64 simulator. It has no standalone core packages and is excluded from hosted CI, releases and the public core catalog. Keep the HAP and its `ohos.json` receipt private. The receipt records the source commit, build features, target, ABI and signed HAP hash.
+
+Use DevEco's API 26 OpenHarmony native SDK with x86_64 sysroot libraries and `libc++_shared.so`. Set `OHOS_SDK_NATIVE` and the private signing directory as above, and install `cargo-about`. From a committed checkout and an x64 Visual Studio developer shell:
+
+```powershell
+rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask package --target x86_64-unknown-linux-ohos --manager --version 0.1.0-qa.1 --out .work/ohos-x64-qa
+Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
+```
+
+Omit the feature for the statically embedded Musica build. The HAP name includes `ohos-x86_64-local-qa`. Before installation, confirm that a newly created, approved API 26 simulator has separate writable data, reports an x86_64 guest ABI, already trusts the SDK test PKI, and has debugging, a usable Vulkan adapter and audio. Use its exact `hdc` identifier; stop on signature rejection. An image labelled `x86` does not establish the guest ABI, and API 26 toolchain support does not validate an API 17 image. Successful packaging or a visible Manager UI is not evidence of gameplay.
+
 ## Build, check and test
 
 Use the Manager package `shinki-emu-manager`, or the standalone entry package under [`Source/Cores/`](../../Source/Cores/). Its package name starts with `shinki-emu-core-`; substitute hyphens for dots in the core ID and preserve case and underscores. For example, `rfvp` becomes `shinki-emu-core-rfvp`, and `shinki.emu.musica` becomes `shinki-emu-core-shinki-emu-musica`.

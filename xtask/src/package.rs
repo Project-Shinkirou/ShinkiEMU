@@ -642,9 +642,9 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildArtifact) -> Result<Vec
             }
         }
     }
-    if result.target.ends_with("ohos") {
+    if let Some(target) = shinki_emu_build::ohos::Target::from_rust_target(&result.target) {
         // libc++_shared.so; system libraries come from the device.
-        dirs.push(dependencies::ohos_sdk_native()?.join("llvm/lib/aarch64-linux-ohos"));
+        dirs.push(target.cxx_runtime_dir(&dependencies::ohos_sdk_native()?));
     }
     if result.target.contains("android") {
         let ndk = dependencies::ndk_root(inv)?;
@@ -812,8 +812,8 @@ pub fn package(
         if target.contains("android") {
             return package_android(inv, &result, version, out, &ANDROID_TARGETS);
         }
-        if target.ends_with("ohos") {
-            return crate::ohos::package(inv, &result, version, out);
+        if let Some(target) = shinki_emu_build::ohos::Target::from_rust_target(target) {
+            return crate::ohos::package(inv, target, &result, version, out);
         }
         let ios_signing = crate::apple::ios_frameworks::enabled(target, &result.features)
             .then(|| crate::apple::ios_frameworks::Signing::for_target(target))

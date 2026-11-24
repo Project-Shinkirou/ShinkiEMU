@@ -2,6 +2,7 @@ use crate::{cores::{ArtifactSource, Inventory}, dependencies};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::{CoreBuildManifest, NativeInputs};
+use shinki_emu_build::ohos::Target as OhosTarget;
 use std::{
     collections::BTreeMap,
     fs,
@@ -184,7 +185,7 @@ fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
         Command::new("cargo")
     };
     cmd.current_dir(&inv.root);
-    if target.ends_with("ohos") {
+    if let Some(target) = OhosTarget::from_rust_target(target) {
         dependencies::apply_ohos_environment(inv, target, &mut cmd)?;
     }
     if target.ends_with("android") {
@@ -279,7 +280,7 @@ fn execute_configured(
         .arg(&target_dir)
         .arg("--message-format=json");
     // Android and OHOS load the Manager as a cdylib from their app shells.
-    let library_host = target.contains("android") || target.ends_with("ohos");
+    let library_host = target.contains("android") || OhosTarget::from_rust_target(target).is_some();
     if core.is_some() || library_host {
         cmd.arg("--lib");
     } else {
@@ -550,6 +551,25 @@ mod version_tests {
         let features = [features[0].clone(), "ohos-bundled-musica".into()];
         let bundled = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
         assert_eq!(bundled, BTreeMap::from([("adv32-package", "shinki.emu.adv32")]));
+    }
+
+    #[test]
+    fn ohos_embeds_musica_unless_the_hap_bundles_it() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inventory = Inventory::load(root).unwrap();
+        let musica = inventory.core("shinki.emu.musica").unwrap();
+        let bundled = ["ohos-bundled-musica".to_owned()];
+        for target in [OhosTarget::Arm64, OhosTarget::X64] {
+            let triple = target.rust_target();
+            assert!(musica.embedded_in_manager(triple, &[]));
+            assert!(!crate::ohos::manager_mode(triple, &[]).unwrap());
+            assert!(crate::ohos::manager_mode(triple, &bundled).unwrap());
+            assert!(crate::ohos::bundles_core(&musica.id, triple, &bundled));
+            assert!(!musica.embedded_in_manager(triple, &bundled));
+            assert!(!crate::ohos::is_core_input("shinki.emu.adv32", triple));
+        }
+        assert!(crate::ohos::manager_mode("x86_64-unknown-linux-gnu", &bundled).is_err());
+        assert!(crate::ohos::manager_mode("armv7-unknown-linux-ohos", &bundled).is_err());
     }
 
     #[test]
