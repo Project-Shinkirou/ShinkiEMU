@@ -298,7 +298,27 @@ impl TextDrawState {
             .difference(&visible)
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let frame = self.resources.update_frame(&updates, &removals)?;
+        let mut frame = self.resources.update_frame(&updates, &removals)?;
+        for layout in &mut frame.layouts {
+            layout.commands = std::mem::take(&mut layout.commands)
+                .into_iter()
+                .map(|command| match command {
+                    SceneCommand::GlyphRun {
+                        id,
+                        glyphs,
+                        rgba,
+                        opacity,
+                        ..
+                    } => SceneCommand::LinearGlyphRun {
+                        id,
+                        glyphs,
+                        rgba,
+                        opacity,
+                    },
+                    command => command,
+                })
+                .collect();
+        }
         self.outlines = prepared
             .into_iter()
             .filter_map(|region| {

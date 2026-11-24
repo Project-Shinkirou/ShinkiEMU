@@ -169,8 +169,8 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
     assert_eq!(lifecycle, 2);
     assert_eq!(pixel(4, 3), &[255, 0, 0, 128]); // Two source samples overlap in the disk.
     assert_eq!(pixel(5, 4), &[0, 255, 0, 255]); // Opaque fill has no underlying stroke.
-    assert_eq!(pixel(4, 4)[3], 159);
-    assert!(pixel(4, 4)[1] > pixel(4, 4)[0]); // Partial fill sits above the stroke.
+    // Both layers keep their linear coverage; only their RGB mix changes.
+    assert_eq!(pixel(4, 4), &[123, 231, 0, 160]);
     assert_eq!(pixel(2, 4), &[0; 4]); // Same region clip for outline and fill.
     assert_eq!(pixel(7, 2), &[0; 4]); // The disk does not include its square corner.
 
@@ -212,8 +212,9 @@ fn raster_uses_logical_placement_and_fractional_region_origin() {
                 Ok(Arc::clone(placement))
             })
             .unwrap();
-        let [SceneCommand::GlyphRun { glyphs, .. }] = frame.layouts[0].commands.as_slice() else {
-            panic!("expected a single glyph run");
+        let [SceneCommand::LinearGlyphRun { glyphs, .. }] = frame.layouts[0].commands.as_slice()
+        else {
+            panic!("expected a single linear glyph run");
         };
         let upload = frame
             .lifecycle
