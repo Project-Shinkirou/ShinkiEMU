@@ -6,6 +6,7 @@ use object::{
         pe::ImageNtHeaders,
     },
 };
+use shinki_emu_build::ohos::Target as OhosTarget;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -138,13 +139,21 @@ pub(crate) fn target_slice(bytes: &[u8], architecture: object::Architecture) -> 
 pub(crate) fn dependencies(path: &Path, target: &str) -> Result<BTreeSet<String>> {
     crate::package::plain(path)?;
     let bytes = fs::read(path)?;
-    let arch = if target.starts_with("aarch64-") {
+    let ohos = OhosTarget::from_rust_target(target);
+    let arch = if let Some(target) = ohos {
+        target.architecture()
+    } else if target.starts_with("aarch64-") {
         object::Architecture::Aarch64
     } else {
         object::Architecture::X86_64
     };
     let file = object::File::parse(target_slice(&bytes, arch)?)
         .with_context(|| format!("reading dependencies of {}", path.display()))?;
+    if ohos.is_some()
+        && (!matches!(file, object::File::Elf64(_)) || object::Object::architecture(&file) != arch)
+    {
+        bail!("{} is not a {target} ELF64 library", path.display());
+    }
     let mut names = BTreeSet::new();
     match &file {
         object::File::Pe32(f) => pe(f, &mut names)?,
@@ -247,7 +256,7 @@ pub(crate) fn system(name: &str, target: &str) -> bool {
         return android_system(name);
     }
     if target.ends_with("ohos") {
-        // OpenHarmony NDK libraries from the device image (sysroot/usr/lib/aarch64-linux-ohos).
+        // OpenHarmony NDK system libraries are supplied by the device image.
         return [
             "libc.so",
             "libace_napi.z.so",

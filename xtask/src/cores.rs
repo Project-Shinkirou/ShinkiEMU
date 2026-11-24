@@ -1,6 +1,7 @@
 use crate::affected::Affected;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use shinki_emu_build::ohos::Target as OhosTarget;
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -181,6 +182,12 @@ pub struct Target {
     pub blocked: String,
 }
 
+impl Target {
+    pub(crate) fn is_local_qa(&self) -> bool {
+        OhosTarget::from_rust_target(&self.triple).is_some_and(OhosTarget::local_qa)
+    }
+}
+
 #[derive(Deserialize)]
 struct CoreFile {
     schema: String,
@@ -248,9 +255,17 @@ impl Inventory {
         let mut ids = BTreeSet::new();
         let mut slugs = BTreeSet::new();
         let mut triples = BTreeSet::new();
+        let mut standalone_triples = BTreeSet::new();
         for t in &self.targets {
             if !triples.insert(&t.triple) {
                 bail!("duplicate target {}", t.triple);
+            }
+            if t.is_local_qa() {
+                if t.runner != "local-only" || t.manager_supported || t.manager_local_build {
+                    bail!("{}: private QA target cannot be scheduled or published", t.triple);
+                }
+            } else {
+                standalone_triples.insert(&t.triple);
             }
             if !t.manager_supported && t.manager_blocked.is_empty() {
                 bail!("target needs a Manager blocked reason");
@@ -291,8 +306,8 @@ impl Inventory {
                     bail!("invalid blocked target for {}", c.id);
                 }
             }
-            if seen != triples {
-                bail!("core {} does not describe every target", c.id);
+            if seen != standalone_triples {
+                bail!("core {} must describe exactly the non-QA standalone targets", c.id);
             }
             if c.ios_framework
                 && (c.attribution.is_some()
@@ -307,7 +322,7 @@ impl Inventory {
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
-                if !(target.manager_supported || target.manager_local_build)
+                if !(target.manager_supported || target.is_local_qa())
                     || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
                 {
                     bail!("invalid static Manager integration");
@@ -348,6 +363,9 @@ impl Inventory {
             return Ok((!t.manager_supported).then_some(t.manager_blocked.as_str()));
         }
         let c = self.core(component)?;
+        if t.is_local_qa() {
+            return Ok(Some("Private OHOS QA only; no standalone core packages."));
+        }
         Ok(c.blocked
             .iter()
             .find(|b| b.target == triple)
@@ -359,11 +377,13 @@ impl Inventory {
         }
         Ok(())
     }
-    /// Like [`Self::require_supported`], but admits a Manager whose target
-    /// allows local builds of an unsupported Manager.
+    /// Packaging additionally admits a Manager on an explicitly local QA target.
     pub fn require_buildable(&self, component: &str, triple: &str) -> Result<()> {
         let t = self.target(triple)?;
-        if component == "manager" && t.blocked.is_empty() && t.manager_local_build {
+        if component == "manager"
+            && t.blocked.is_empty()
+            && (t.manager_local_build || t.is_local_qa())
+        {
             return Ok(());
         }
         self.require_supported(component, triple)
@@ -540,6 +560,27 @@ mod tests {
         assert!(inventory.require_buildable("manager", triple).is_err());
         inventory.targets[index].blocked.clear();
         inventory.targets[index].manager_supported = false;
+        assert!(inventory.validate().is_err());
+    }
+
+    #[test]
+    fn private_ohos_qa_target_is_package_only() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inventory = Inventory::load(root).unwrap();
+        let triple = OhosTarget::X64.rust_target();
+        assert!(inventory.require_buildable("manager", triple).is_ok());
+        assert!(inventory.require_supported("manager", triple).is_err());
+        for core in &inventory.cores {
+            assert!(inventory.require_buildable(&core.id, triple).is_err());
+        }
+        for ci in [false, true] {
+            assert!(
+                inventory.job_matrix(ci, None).unwrap().include
+                    .iter().all(|row| row.target != triple)
+            );
+        }
+        let row = inventory.targets.iter_mut().find(|row| row.triple == triple).unwrap();
+        row.manager_supported = true;
         assert!(inventory.validate().is_err());
     }
 

@@ -18,12 +18,14 @@ pub struct Installation {
 }
 
 fn triplet(target: &str) -> Result<&'static str> {
+    if let Some(target) = crate::ohos::Target::from_rust_target(target) {
+        return Ok(target.vcpkg_triplet());
+    }
     Ok(match target {
         "x86_64-pc-windows-msvc" => "x64-windows",
         "x86_64-unknown-linux-gnu" => "x64-linux-dynamic",
         "aarch64-linux-android" => "arm64-android-ffmpeg",
         "x86_64-linux-android" => "x64-android-ffmpeg",
-        "aarch64-unknown-linux-ohos" => "arm64-ohos",
         "aarch64-apple-darwin" => "arm64-osx",
         "x86_64-apple-darwin" => "x64-osx",
         "aarch64-apple-ios" => "arm64-ios",
@@ -329,6 +331,35 @@ pub(crate) fn pkg_config_program(target: &str, installed: Option<&Path>) -> Resu
 mod tests {
     use super::*;
     use std::{ffi::OsStr, fs::File};
+
+    #[test]
+    fn ohos_vcpkg_installs_are_isolated_by_cargo_target() -> Result<()> {
+        use crate::ohos::Target;
+
+        let work = Path::new("work");
+        let manifest = Path::new("build/vcpkg/ffmpeg");
+        let arm64 = triplet(Target::Arm64.rust_target())?;
+        let x64 = triplet(Target::X64.rust_target())?;
+        let arm64_root = install_root(work, manifest, arm64, "pin");
+        let x64_root = install_root(work, manifest, x64, "pin");
+        assert_ne!(arm64_root, x64_root);
+        let overlays = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../build/vcpkg/mobile-triplets");
+        for (triplet, root) in [(arm64, arm64_root), (x64, x64_root)] {
+            assert!(overlays.join(format!("{triplet}.cmake")).is_file());
+            let command = install_command(
+                Path::new("vcpkg"),
+                manifest,
+                triplet,
+                &root.join("installed"),
+                &[],
+                std::slice::from_ref(&overlays),
+            );
+            let args: Vec<_> = command.get_args().collect();
+            assert!(args.windows(2).any(|args| args == ["--triplet", triplet]));
+        }
+        Ok(())
+    }
 
     #[test]
     fn install_command_isolates_manifest_triplet_and_overlays() {

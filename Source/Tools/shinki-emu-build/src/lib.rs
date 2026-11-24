@@ -1,6 +1,7 @@
 //! Host-side native build support for ShinkiEMU and its adapters.
 
 pub mod inputs;
+pub mod ohos;
 pub mod vcpkg;
 
 use anyhow::{Context, Result, bail};

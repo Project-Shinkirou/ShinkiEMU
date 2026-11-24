@@ -32,6 +32,12 @@ impl Scope {
         self == Self::All || matches!(platform, "windows" | "android")
     }
 
+    fn release_row(self, target: &Target, component: &str) -> bool {
+        !target.is_local_qa()
+            && self.includes(&target.platform)
+            && (component != "manager" || target.triple != ANDROID_SECONDARY)
+    }
+
     fn local_manager(self, inv: &Inventory, component: &str) -> bool {
         component == "manager"
             && inv.targets.iter().any(|target| {
@@ -49,9 +55,8 @@ fn release_targets<'a>(
 ) -> Result<Vec<&'a Target>> {
     let mut targets = Vec::new();
     for target in &inv.targets {
-        if scope.includes(&target.platform)
+        if scope.release_row(target, component)
             && inv.blocked(component, &target.triple)?.is_none()
-            && (component != "manager" || target.triple != ANDROID_SECONDARY)
         {
             targets.push(target);
         }
@@ -394,9 +399,7 @@ pub fn prepare(
     scope: Scope,
 ) -> Result<()> {
     let spec = inv.target(target)?;
-    if !scope.includes(&spec.platform)
-        || (component == "manager" && target == ANDROID_SECONDARY)
-    {
+    if !scope.release_row(spec, component) {
         bail!(
             "{component}/{target} is not a release row in scope {}",
             scope.name()
@@ -528,8 +531,7 @@ fn collect_records(
     let mut records = Vec::new();
     let mut blocked = Vec::new();
     for t in &inv.targets {
-        let secondary = component == "manager" && t.triple == ANDROID_SECONDARY;
-        if !scope.includes(&t.platform) || secondary {
+        if !scope.release_row(t, component) {
             continue;
         }
         if let Some(reason) = inv.blocked(component, &t.triple)? {
@@ -810,6 +812,20 @@ mod tests {
     }
 
     #[test]
+    fn private_ohos_qa_is_excluded_from_release() {
+        let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let qa = shinki_emu_build::ohos::Target::X64.rust_target();
+        for component in ["manager", "shinki.emu.musica"] {
+            assert!(
+                release_targets(&inv, component, Scope::All).unwrap()
+                    .iter().all(|target| target.triple != qa)
+            );
+            let error = prepare(&inv, qa, component, "1.0.0", Scope::All).unwrap_err();
+            assert!(error.to_string().contains("not a release row"), "{error}");
+        }
+    }
+
+    #[test]
     fn all_platform_manager_requires_same_commit_and_publishable_packages() {
         let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let out = tempfile::tempdir().unwrap();
@@ -841,10 +857,13 @@ mod tests {
             )
             .unwrap();
         }
-        assert_eq!(
-            collect_records(&inv, &id, "manager", Scope::All).unwrap().records.len(),
-            targets.len(),
-        );
+        let qa = shinki_emu_build::ohos::Target::X64.rust_target();
+        let qa_dir = id.root.join(qa);
+        fs::create_dir(&qa_dir).unwrap();
+        fs::write(qa_dir.join("release.json"), b"untrusted local QA record").unwrap();
+        let prepared = collect_records(&inv, &id, "manager", Scope::All).unwrap();
+        assert_eq!(prepared.records.len(), targets.len());
+        assert!(prepared.blocked.iter().all(|row| !row.contains(qa)));
         let mut record: Value = serde_json::from_slice(&fs::read(&android).unwrap()).unwrap();
         let different_digit = if id.commit.starts_with('0') { "1" } else { "0" };
         record["source_commit"] = json!(different_digit.repeat(40));

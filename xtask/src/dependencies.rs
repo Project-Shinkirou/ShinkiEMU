@@ -1,5 +1,6 @@
 use crate::cores::Inventory;
 use anyhow::{Context, Result, bail};
+use shinki_emu_build::ohos::Target as OhosTarget;
 use std::{env, fs, path::{Path, PathBuf}, process::Command};
 
 pub fn run(cmd: &mut Command) -> Result<()> {
@@ -82,24 +83,32 @@ pub(crate) fn ohos_sdk_native() -> Result<PathBuf> {
     }
     Ok(sdk)
 }
-pub fn apply_ohos_environment(inv: &Inventory, target: &str, cmd: &mut Command) -> Result<()> {
-    let sdk = ohos_sdk_native()?;
+pub(crate) fn apply_ohos_environment(inv: &Inventory, target: OhosTarget, cmd: &mut Command) -> Result<()> {
+    configure_ohos_command(&inv.root, &ohos_sdk_native()?, target, cmd)
+}
+
+fn configure_ohos_command(root: &Path, sdk: &Path, target: OhosTarget, cmd: &mut Command) -> Result<()> {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     let tools = sdk.join("llvm/bin");
-    let target_key = target.replace('-', "_");
+    let target_key = target.rust_target().replace('-', "_");
     let sysroot = sdk.join("sysroot");
+    let llvm_target = target.llvm_target();
+    let sysroot_libs = sysroot.join("usr/lib").join(llvm_target);
+    if !sysroot_libs.is_dir() {
+        bail!("OHOS native SDK missing target sysroot libraries: {}", sysroot_libs.display());
+    }
     let clang_args = format!(
-        "--target=aarch64-linux-ohos --sysroot=\"{}\"",
+        "--target={llvm_target} --sysroot=\"{}\"",
         sysroot.display()
     );
     // The cc crate splits *FLAGS on whitespace without honoring quotes, and
     // the DevEco path contains a space: pass the flags as a response file.
-    let response = inv.root.join(".work/ohos/clang-target.rsp");
+    let response = root.join(".work/ohos").join(target.rust_target()).join("clang-target.rsp");
     fs::create_dir_all(response.parent().context("response file parent")?)?;
     fs::write(
         &response,
         format!(
-            "--target=aarch64-linux-ohos\n\"--sysroot={}\"\n",
+            "--target={llvm_target}\n\"--sysroot={}\"\n",
             sysroot.to_string_lossy().replace('\\', "/")
         ),
     )?;
@@ -107,9 +116,8 @@ pub fn apply_ohos_environment(inv: &Inventory, target: &str, cmd: &mut Command) 
     if cc_flags.contains(char::is_whitespace) {
         bail!("the repository path must not contain whitespace for OHOS builds");
     }
-    // Rust's default linker name (aarch64-unknown-linux-ohos-clang) is a
-    // shell wrapper in the SDK: link with the clang driver and give every
-    // final link (Manager and dependency cdylibs alike) target and sysroot.
+    // Rust's default linker name is a shell wrapper in the SDK. Use the clang
+    // driver with target and sysroot for every final link.
     // With --target, Cargo applies these flags to target crates only.
     let existing = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_else(|_| {
         env::var("RUSTFLAGS")
@@ -127,7 +135,7 @@ pub fn apply_ohos_environment(inv: &Inventory, target: &str, cmd: &mut Command) 
             format!("{existing}\x1f{link}")
         },
     );
-    cmd.env("OHOS_SDK_NATIVE", &sdk)
+    cmd.env("OHOS_SDK_NATIVE", sdk)
         .env(
             format!("CARGO_TARGET_{}_LINKER", target_key.to_ascii_uppercase()),
             tools.join(format!("clang{suffix}")),
@@ -170,6 +178,38 @@ pub fn apply_ohos_environment(inv: &Inventory, target: &str, cmd: &mut Command) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ohos_compiler_routes_keep_response_files_isolated() -> Result<()> {
+        let output = crate::temporary::directory()?;
+        let sdk = output.path().join("DevEco SDK");
+        let mut responses = Vec::new();
+        for (target, llvm) in [
+            (OhosTarget::Arm64, "aarch64-linux-ohos"),
+            (OhosTarget::X64, "x86_64-linux-ohos"),
+        ] {
+            fs::create_dir_all(sdk.join("sysroot/usr/lib").join(llvm))?;
+            let mut command = Command::new("cargo");
+            configure_ohos_command(output.path(), &sdk, target, &mut command)?;
+            let vars: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+            let key = target.rust_target().replace('-', "_");
+            let get = |name: &str| vars[std::ffi::OsStr::new(name)].unwrap().to_str().unwrap();
+            let flags = get(&format!("CFLAGS_{key}"));
+            assert_eq!(flags, get(&format!("CXXFLAGS_{key}")));
+            assert!(get("CARGO_ENCODED_RUSTFLAGS").ends_with(&format!("link-arg={flags}")));
+            let bindgen = get(&format!("BINDGEN_EXTRA_CLANG_ARGS_{key}"));
+            assert!(bindgen.starts_with(&format!("--target={llvm} ")));
+            assert!(bindgen.ends_with(&format!("--sysroot=\"{}\"", sdk.join("sysroot").display())));
+            let rsp = PathBuf::from(flags.strip_prefix('@').unwrap());
+            assert!(fs::read_to_string(&rsp)?.starts_with(&format!("--target={llvm}\n")));
+            responses.push((rsp, llvm));
+        }
+        assert_ne!(responses[0].0, responses[1].0);
+        for (rsp, llvm) in responses {
+            assert!(fs::read_to_string(rsp)?.starts_with(&format!("--target={llvm}\n")));
+        }
+        Ok(())
+    }
 
     #[test]
     fn ndk_requires_the_exact_stable_revision() {

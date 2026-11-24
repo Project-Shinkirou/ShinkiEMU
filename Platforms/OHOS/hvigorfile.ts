@@ -1,7 +1,7 @@
 import { hvigor, HvigorNode } from '@ohos/hvigor';
 import { appTasks, OhosAppContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin';
 
-// `cargo xtask package --target aarch64-unknown-linux-ohos --manager` passes the
+// `cargo xtask package --target <OHOS target> --manager` passes the
 // release version; plain DevEco builds keep AppScope/app.json5's versionName.
 const versionName = process.env.SHINKI_EMU_OHOS_VERSION_NAME;
 if (versionName) {
