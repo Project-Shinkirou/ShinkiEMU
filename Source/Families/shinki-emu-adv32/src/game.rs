@@ -47,7 +47,15 @@ impl SoundNames {
         resource_name(&self.pictures, index)
     }
 
+    pub(crate) fn picture_index(&self, name: &str) -> Option<usize> {
+        let name = name.split('.').next().unwrap_or(name).replace('/', "\\");
+        self.pictures
+            .iter()
+            .position(|entry| entry.eq_ignore_ascii_case(&name))
+    }
+
     pub(crate) fn scenario(&self, name: &str) -> Option<usize> {
+        let name = name.split('.').next().unwrap_or(name);
         self.scenarios
             .iter()
             .position(|entry| entry.eq_ignore_ascii_case(name))

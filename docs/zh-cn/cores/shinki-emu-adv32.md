@@ -5,11 +5,17 @@ description: CIRCUS ADV32 核心的开发状态和本地运行方式。
 
 # Shinki ADV32
 
-`shinki.emu.adv32` 是 CIRCUS ADV32 引擎的桌面开发预览。核心从游戏目录的 `AdvData` 中读取 MES 指令、CRX 图像、CRM/PCK 资源包和原生音频，通过 C ABI v3 提供 CPU 帧。目前没有公开下载，也未加入移动端 Manager。
+`shinki.emu.adv32` 是 CIRCUS ADV32 引擎的核心。它从游戏目录的 `AdvData` 中读取 MES 指令、CRX 图像、CRM/PCK 资源包和原生音频，通过 C ABI v3 提供 CPU 帧。桌面端可单独构建动态库。
 
-预览版实现了部分剧情、选项、菜单、影片和原生存档功能。发布前还需验证完整的 VM 指令覆盖和原版存档互通。请使用自己合法取得的游戏文件，并保留原版可执行文件。核心会从中读取存档初始设置、存档文件名前缀、音乐列表和已支持的鉴赏数据。核心不附带原版游戏文件，遇到未支持的指令会报告脚本名和字节位置。
+核心可运行剧情、选项、菜单和影片，并读写已实现格式的原版存档。请在游戏目录内保留原版可执行文件，核心会从中读取存档初始设置、存档文件名前缀、音乐列表和已支持的鉴赏数据。核心不附带原版游戏文件；遇到未支持的指令时会报告脚本名和字节位置。
 
-默认使用 CPU 合成。开启**硬件合成**（`hardware_compositing`）后，由 GPU 合成图层和文字，持续动画期间最多有一帧正在合成。C ABI v3 仍需把帧回读到 CPU 内存，影片解码和逐像素遮罩也仍由 CPU 处理。暂无实测提速数据。将 GPU 合成与回读合并提交的共享渲染器改动未纳入本预览。
+默认使用 CPU 合成。在 Windows、Linux、macOS、Android 和 iOS 上，开启 `hardware_compositing` 后可由 GPU 合成图层和文字，持续动画期间最多有一帧正在合成。C ABI v3 仍需把帧回读到 CPU 内存，影片解码和逐像素遮罩也由 CPU 处理。OpenHarmony 使用 CPU 合成和 OHAudio。
+
+如果系统已安装原版可执行文件指定的字体，核心会使用该字体。也可以用 `font_file` 指定游戏目录中的字体，例如翻译补丁附带的字体。
+
+脚本请求启动授权时，Windows 核心会按照原版可执行文件中的卷标检查已挂载的光盘。不支持基于注册表的免盘授权。若要从已安装的文件启动并跳过光盘检查，请显式开启 `skip_disc_check`（默认关闭）。用 headless 测试时，将 `[{"id":"skip_disc_check","value":{"Bool":true}}]` 写入 `--configuration` 指定的文件。
+
+桌面端、Android、iOS 和 OpenHarmony 的本地 Manager 构建可通过 `--features static-adv32` 静态接入。以上是接入目标，不代表构建或游玩已通过验收。公开版 Manager 不内置 ADV32，独立核心也要在平台和游玩验收通过后才发布。
 
 用独立 headless 程序加载桌面核心。
 

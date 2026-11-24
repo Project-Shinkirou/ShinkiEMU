@@ -1,6 +1,6 @@
 [package]
 name = "shinki-emu-adv32"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -15,14 +15,16 @@ dynamic-plugin-export = []
 video-ffmpeg = ["shinki-emu-sdk/video-ffmpeg"]
 
 [dependencies]
-cosmic-text.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
+fontdb.workspace = true
 image.workspace = true
 kira.workspace = true
 lru.workspace = true
 object.workspace = true
+roukaku-core.workspace = true
 roukaku-media-core.workspace = true
+roukaku-text.workspace = true
 rustfft.workspace = true
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
 shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["runtime", "image", "text", "audio"] }
@@ -30,14 +32,14 @@ tempfile.workspace = true
 thiserror.workspace = true
 time = { workspace = true, features = ["local-offset"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_WindowsProgramming"] }
+
 [target.'cfg(not(target_env = "ohos"))'.dependencies]
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["device-audio"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["device-audio", "gpu-render"] }
 pollster.workspace = true
 roukaku-byte-source.workspace = true
-roukaku-core.workspace = true
 roukaku-platform.workspace = true
-roukaku-platform-common.workspace = true
-roukaku-text.workspace = true
 tracing.workspace = true
 
 [build-dependencies]

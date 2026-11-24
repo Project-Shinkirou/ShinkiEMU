@@ -4,6 +4,8 @@ use sha2::{Digest, Sha256};
 
 #[path = "../../../build/core_adapters.rs"]
 mod core_adapters;
+#[path = "../../../build/adv32_candidate.rs"]
+mod adv32_candidate;
 
 fn write_runtime_icon() {
     use resvg::{tiny_skia, usvg};
@@ -194,7 +196,7 @@ fn write_embedded_core_identities() {
         .join("../../..");
     let inventory = root.join("build/cores.toml");
     let lock = root.join("Cargo.lock");
-    for path in [&inventory, &lock, &root.join("build/core_adapters.rs")] {
+    for path in [&inventory, &lock, &root.join("build/core_adapters.rs"), &root.join("build/adv32_candidate.rs")] {
         println!("cargo:rerun-if-changed={}", path.display());
     }
     let inventory: toml::Value = toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
@@ -210,6 +212,7 @@ fn write_embedded_core_identities() {
     let ohos_bundled = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos")
         && env::var_os("CARGO_FEATURE_OHOS_BUNDLED_MUSICA").is_some();
     let optional_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
+    let optional_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
         let embedded = core
@@ -220,12 +223,14 @@ fn write_embedded_core_identities() {
         if embedded && framework {
             frameworks.push(id);
         }
-        let linked = (embedded || (optional_cmvs && id == "shinki.emu.cmvs"))
+        let linked = (embedded || (optional_cmvs && id == "shinki.emu.cmvs")
+            || adv32_candidate::linked(core, &target, optional_adv32))
             && !framework && !(ohos_bundled && id == "shinki.emu.musica");
         if linked {
             use std::fmt::Write;
             let adapter = core_adapters::adapter_id(id).replace('-', "_");
             let query = match id {
+                "shinki.emu.adv32" => "adv32_query",
                 "shinki.emu.cmvs" => "cmvs_query",
                 "shinki.emu.musica" => "musica_query",
                 "art3m1s-core" => "artemis_query",

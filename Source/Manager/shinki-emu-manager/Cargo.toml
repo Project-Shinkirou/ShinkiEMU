@@ -20,6 +20,8 @@ store-steam = ["dep:shinki-emu-steam"]
 store-dlsite = ["dep:shinki-emu-dlsite"]
 store-dmm = ["dep:shinki-emu-dmm"]
 static-cmvs = ["dep:shinki-emu-cmvs"]
+# Local ADV32 QA only; not included in release builds.
+static-adv32 = ["dep:shinki-emu-adv32", "shinki-emu-manager-core/static-adv32"]
 # Hides online core install/update and refuses core package downloads.
 # Installed and bundled cores, local official packages, the game store and
 # metadata are unaffected.
@@ -34,6 +36,7 @@ shinki-emu-headless = { path = "../../Programs/shinki-emu-headless" }
 shinki-emu-manager-ui-slint = { path = "../shinki-emu-manager-ui-slint" }
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
 shinki-emu-cmvs = { path = "../../Families/shinki-emu-cmvs", optional = true }
+shinki-emu-adv32 = { path = "../../Families/shinki-emu-adv32", optional = true, default-features = false, features = ["video-ffmpeg"] }
 shinki-emu-patch = { path = "../../Tools/shinki-emu-patch" }
 shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 mlua.workspace = true
@@ -57,7 +60,7 @@ tokio.workspace = true
 directories.workspace = true
 dunce.workspace = true
 pollster.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["query"] }
 bytes = "1.12.1"
 futures-util.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }

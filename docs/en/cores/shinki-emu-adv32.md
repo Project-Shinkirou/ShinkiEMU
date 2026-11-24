@@ -5,11 +5,17 @@ description: Development status and local execution of the CIRCUS ADV32 core.
 
 # Shinki ADV32
 
-`shinki.emu.adv32` is a desktop development preview for the CIRCUS ADV32 engine. It opens a game's original `AdvData` directory, reads MES instructions, CRX images, CRM/PCK archives and native audio, and exposes CPU frames through C ABI v3. It is not available as a public download or as a mobile Manager core.
+`shinki.emu.adv32` opens a CIRCUS ADV32 game's original `AdvData` directory. It reads MES instructions, CRX graphics, CRM/PCK archives and native audio, and publishes CPU frames through C ABI v3. The desktop core is a standalone dynamic library.
 
-The preview implements parts of story playback, choices, menus, movies and native saves. Full VM coverage and interoperability with original saves are release gates. Supply your own lawful game installation, including the original executable: the core reads save defaults, slot filename prefixes, music lists and supported gallery data from it. No original game files are bundled. An unsupported instruction reports the script name and byte offset.
+The core runs story scripts, choices, menus and movies. It reads and writes original saves in the ADV32 dialects it implements. Keep the original executable in your game directory: the core reads save defaults, slot filename prefixes, music lists and supported gallery data from it. An unsupported instruction reports the script name and byte offset. No original game files are bundled.
 
-CPU compositing is the default. Set the core's `hardware_compositing` option to use the GPU for scene layers and text, with one frame in flight during continuous animation. C ABI v3 still requires CPU readback; video decoding and per-pixel masks stay on the CPU. No measured speedup is claimed. The separate shared-renderer work to combine GPU submission and readback is not part of this preview.
+CPU compositing is the default. On Windows, Linux, macOS, Android and iOS, `hardware_compositing` selects GPU composition for scene layers and text, with at most one frame in flight during continuous animation. C ABI v3 still requires CPU readback. Video decoding and per-pixel masks run on the CPU. OpenHarmony uses CPU composition and OHAudio.
+
+The core uses the executable's requested typeface when it is installed. Set `font_file` to select a font from the game directory, such as a font supplied by a translation patch.
+
+When a script requests startup authorization, the Windows core checks mounted optical media for the volume name in the original executable. Diskless registry authorization is unsupported. To run installed files without the startup check, explicitly set `skip_disc_check` (off by default). For headless runs, place `[{"id":"skip_disc_check","value":{"Bool":true}}]` in the file passed to `--configuration`.
+
+Local Manager builds can opt in with `--features static-adv32` on desktop, Android, iOS and OpenHarmony. The integration targets are not build or playability results. Published Manager builds do not embed ADV32, and standalone publication remains blocked pending platform and playtest acceptance.
 
 Run the desktop library with the standalone headless host.
 

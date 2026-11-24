@@ -93,6 +93,20 @@ impl TextScene {
         regions: &[TextSceneLayout],
         raster_scale: f32,
     ) -> Result<TextRenderFrameCommands, MediaError> {
+        self.frame_parts_with_layout(regions, raster_scale, |_, layout| layout)
+    }
+
+    /// Apply engine positioning to shaped glyphs before updating the glyph atlas.
+    /// The callback receives layouts in physical pixels, in region order.
+    pub fn frame_parts_with_layout(
+        &mut self,
+        regions: &[TextSceneLayout],
+        raster_scale: f32,
+        mut position: impl FnMut(
+            usize,
+            std::sync::Arc<TextLayoutResult>,
+        ) -> std::sync::Arc<TextLayoutResult>,
+    ) -> Result<TextRenderFrameCommands, MediaError> {
         if !raster_scale.is_finite() || raster_scale <= 0.0 {
             return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_SCALE"));
         }
@@ -141,7 +155,11 @@ impl TextScene {
         }
         let layouts = regions
             .iter()
-            .map(|region| self.layout_shared(&region.request))
+            .enumerate()
+            .map(|(index, region)| {
+                self.layout_shared(&region.request)
+                    .map(|layout| position(index, layout))
+            })
             .collect::<Result<Vec<_>, MediaError>>()?;
         let updates = layers
             .iter()

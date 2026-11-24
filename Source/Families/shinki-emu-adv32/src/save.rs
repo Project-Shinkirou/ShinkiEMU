@@ -21,6 +21,7 @@ struct Layout {
     system_tail: usize,
     slot_size: usize,
     instruction: usize,
+    preserve_view: usize,
     bank_shift: usize,
     classic: Option<ClassicScene>,
 }
@@ -43,6 +44,7 @@ const MODERN: Layout = Layout {
     system_tail: 0x7f8,
     slot_size: 0x56fe4,
     instruction: 5533 * 4 - 19328,
+    preserve_view: 66512 * 4 - 19328,
     bank_shift: 0,
     classic: None,
 };
@@ -51,17 +53,19 @@ const LEGACY: Layout = Layout {
     system_tail: 0,
     slot_size: 0xd800,
     instruction: 4950 * 4 - 17692,
+    preserve_view: 18245 * 4 - 17692,
     bank_shift: 36,
     classic: Some(ClassicScene {
         layer_bytes: LEGACY_LAYER_BYTES,
         layers: 95,
-        speaker_bytes: 244,
+        speaker_bytes: 236,
     }),
 };
 const CLASSIC_EXPANDED: Layout = Layout {
     header: 0x4520,
     system_tail: 0x7f8,
     slot_size: 0x11af8,
+    preserve_view: 22466 * 4 - 17696,
     bank_shift: 32,
     classic: Some(ClassicScene {
         layer_bytes: 432,
@@ -88,9 +92,11 @@ const LAYER_FIT_MODE: usize = 956;
 // Fitted backgrounds store relative scale in units of 1/10,000.
 const FIT_SCALE_UNIT: f64 = 10_000.0;
 const SCENE_SPEAKER: usize = 265812 - SCENE_START;
+const SCENE_CUSTOM_NAMES: usize = 66516 * 4 - SCENE_START;
 const SCENE_GIVEN_NAME: usize = 265268 - SCENE_START;
 const SCENE_FAMILY_NAME: usize = 265288 - SCENE_START;
 const SCENE_TEXTURE_VARIANT: usize = 66508 * 4 - SCENE_START;
+const SCENE_SPEAKER_BYTES: usize = SCENE_TEXTURE_VARIANT - SCENE_SPEAKER;
 const SCENE_FOG_ENABLED: usize = 66336 * 4 - SCENE_START;
 const SCENE_COMMENTS: usize = 266340 - SCENE_START;
 const COMMENT_BYTES: usize = 82;
@@ -132,9 +138,11 @@ pub(crate) struct Saves {
     layout: Layout,
     encoding: &'static Encoding,
     system: Option<Vec<u8>>,
+    persisted_system: Option<Vec<u8>>,
     preference_backup: Option<Vec<u8>>,
     system_path: Option<PathBuf>,
     slots: BTreeMap<u16, PathBuf>,
+    scene_titles: Option<BTreeMap<String, String>>,
     directory: PathBuf,
     namespace: Option<String>,
     temporary_music_favorites: BTreeSet<u16>,
@@ -158,9 +166,11 @@ impl Saves {
             layout,
             encoding,
             system: None,
+            persisted_system: None,
             preference_backup: None,
             system_path: None,
             slots: BTreeMap::new(),
+            scene_titles: None,
             directory: directory.clone().unwrap_or_else(|| data.join("SAVEDATA")),
             namespace: None,
             temporary_music_favorites: BTreeSet::new(),
@@ -184,9 +194,12 @@ impl Saves {
             let path = directory.clone().unwrap_or_else(|| data.join("SAVEDATA"));
             store.system_path = Some(path.join("system.dat"));
         }
+        store.persisted_system.clone_from(&store.system);
         let root = data
             .parent()
             .ok_or(Error::Invalid("ADV32 game directory"))?;
+        let declared_namespace = crate::native_data::save_namespace(root);
+        let prefix_hint = declared_namespace.as_ref().ok().and_then(Option::as_deref);
         let mut groups = BTreeMap::<String, BTreeMap<u16, PathBuf>>::new();
         if let Some(directory) = directory {
             for entry in fs::read_dir(directory)? {
@@ -197,7 +210,10 @@ impl Saves {
                     continue;
                 }
                 let name = entry.file_name();
-                let Some((prefix, slot)) = name.to_str().and_then(slot_filename) else {
+                let Some((prefix, slot)) = name
+                    .to_str()
+                    .and_then(|name| slot_filename(name, prefix_hint))
+                else {
                     continue;
                 };
                 if groups
@@ -218,7 +234,7 @@ impl Saves {
             store.slots = slots;
         }
         if store.namespace.is_none() {
-            store.namespace = crate::native_data::save_namespace(root)?;
+            store.namespace = declared_namespace?;
         }
         Ok(store)
     }
@@ -236,6 +252,20 @@ impl Saves {
             given: saved_text(system, 200 - self.layout.bank_shift, 16, encoding)?,
             family: saved_text(system, 184 - self.layout.bank_shift, 16, encoding)?,
         })
+    }
+
+    pub(crate) fn uses_custom_player_names(&self, names: &PlayerNames) -> Result<bool> {
+        let root = self
+            .directory
+            .parent()
+            .and_then(Path::parent)
+            .ok_or(Error::Invalid("ADV32 game directory"))?;
+        let Some(template) = crate::native_data::system_template(root, self.layout.header)? else {
+            return Ok(false);
+        };
+        let family = saved_string(&template, 184 - self.layout.bank_shift, 16)?;
+        let given = saved_string(&template, 200 - self.layout.bank_shift, 16)?;
+        Ok(names.family != family || names.given != given)
     }
 
     pub(crate) fn player_name_encoding(&self) -> Result<&'static Encoding> {
@@ -264,6 +294,58 @@ impl Saves {
         self.flush_globals()
     }
 
+    pub(crate) fn slot_caption(
+        &mut self,
+        slot: u16,
+        preview: bool,
+    ) -> Result<Option<(String, String)>> {
+        let Some(path) = self.slots.get(&slot) else {
+            return Ok(None);
+        };
+        let bytes = read_bounded(path, self.layout.slot_size)?;
+        if bytes.len() != self.layout.slot_size {
+            return Ok(None);
+        }
+        let (stamp, line_at) = match self.layout.classic {
+            Some(scene) => (LEGACY_STAMP, scene.tail_offset(LEGACY_LINE)),
+            None => (SCENE_STAMP, SCENE_LINE),
+        };
+        let [month, day, hour, minute, year, second] =
+            <[u8; 6]>::try_from(range(&bytes, stamp, 6)?)
+                .map_err(|_| Error::Invalid("ADV32 save timestamp"))?;
+        let year = 2000 + u16::from(year);
+        let date = if self.layout.classic.is_some() {
+            format!("{year} {month}/{day} {hour}:{minute}:{second}")
+        } else {
+            format!("{year} {month:02}/{day:02} {hour:02}:{minute:02}:{second:02}")
+        };
+        if self.scene_titles.is_none() {
+            let root = self
+                .directory
+                .parent()
+                .and_then(Path::parent)
+                .ok_or(Error::Invalid("ADV32 game directory"))?;
+            self.scene_titles = Some(
+                crate::native_data::save_scene_titles(root, self.encoding)?.unwrap_or_default(),
+            );
+        }
+        let script = saved_string(&bytes, SCENE_SCRIPT, 160)?;
+        let mut caption = self
+            .scene_titles
+            .as_ref()
+            .and_then(|titles| titles.get(&script.to_ascii_lowercase()))
+            .cloned()
+            .unwrap_or(script);
+        if preview {
+            let line = saved_text(&bytes, line_at, 260, self.encoding)?;
+            if !line.is_empty() {
+                caption.push(' ');
+                caption.push_str(&line);
+            }
+        }
+        Ok(Some((date, caption)))
+    }
+
     pub(crate) fn thumbnail(&self, slot: u16) -> Result<Option<RgbaImage>> {
         let Some(save) = self.slots.get(&slot) else {
             return Ok(None);
@@ -288,21 +370,42 @@ impl Saves {
             .map_err(|error| Error::Image(error.to_string()))
     }
 
-    pub(crate) fn mark_read(&mut self, scene: usize, label: u16) -> Result<()> {
-        let Some(data) = &mut self.system else {
-            return Ok(());
+    pub(crate) fn was_read(&self, scene: usize, label: u16) -> Result<Option<bool>> {
+        let Some(data) = &self.system else {
+            return Ok(None);
         };
-        if self.layout.bank_shift != 0 || scene >= READ_SCENES || label == 0 {
-            return Ok(());
+        if scene >= READ_SCENES || label == 0 {
+            return Ok(None);
         }
-        let entry = READ_INLINE + 20 * scene;
+        let entry = READ_INLINE - self.layout.bank_shift + 20 * scene;
+        let overflow_at = READ_OVERFLOW - self.layout.bank_shift;
         let pointer = dword(data, entry)? as usize;
-        let mut spans = read_spans(data, entry, pointer)?;
+        let spans = read_spans(data, entry, pointer, overflow_at)?;
+        Ok(Some(
+            spans
+                .iter()
+                .any(|&(first, last)| (first..=last).contains(&label)),
+        ))
+    }
+
+    /// Record a label and return whether it had already been reached.
+    pub(crate) fn mark_read(&mut self, scene: usize, label: u16) -> Result<Option<bool>> {
+        let Some(data) = &mut self.system else {
+            return Ok(None);
+        };
+        if scene >= READ_SCENES || label == 0 {
+            return Ok(None);
+        }
+        let inline = READ_INLINE - self.layout.bank_shift;
+        let overflow_at = READ_OVERFLOW - self.layout.bank_shift;
+        let entry = inline + 20 * scene;
+        let pointer = dword(data, entry)? as usize;
+        let mut spans = read_spans(data, entry, pointer, overflow_at)?;
         if spans
             .iter()
             .any(|&(first, last)| (first..=last).contains(&label))
         {
-            return Ok(());
+            return Ok(Some(true));
         }
         spans.push((label, label));
         spans.sort_unstable();
@@ -318,7 +421,7 @@ impl Saves {
         }
         if pointer == 0 && merged.len() <= 4 {
             write_spans(&mut data[entry + 4..entry + 20], &merged);
-            return Ok(());
+            return Ok(Some(false));
         }
 
         // Repack the bounded overflow lists before applying any writes so an
@@ -326,7 +429,7 @@ impl Saves {
         let mut overflow = vec![(0, 0)];
         let mut pointers = Vec::new();
         for index in 0..READ_SCENES {
-            let at = READ_INLINE + 20 * index;
+            let at = inline + 20 * index;
             let previous = dword(data, at)? as usize;
             if previous == 0 && index != scene {
                 continue;
@@ -335,20 +438,20 @@ impl Saves {
             if index == scene {
                 overflow.extend_from_slice(&merged);
             } else {
-                overflow.extend(read_spans(data, at, previous)?);
+                overflow.extend(read_spans(data, at, previous, overflow_at)?);
             }
             overflow.push((0, 0));
             pointers.push((at, start));
         }
         if overflow.len() <= READ_OVERFLOW_ENTRIES {
-            let end = READ_OVERFLOW + READ_OVERFLOW_ENTRIES * 4;
-            write_spans(&mut data[READ_OVERFLOW..end], &overflow);
-            put_dword(data, READ_OVERFLOW_USED, overflow.len() as u32)?;
+            let end = overflow_at + READ_OVERFLOW_ENTRIES * 4;
+            write_spans(&mut data[overflow_at..end], &overflow);
+            put_dword(data, overflow_at - 4, overflow.len() as u32)?;
             for (at, pointer) in pointers {
                 put_dword(data, at, pointer as u32)?;
             }
         }
-        Ok(())
+        Ok(Some(false))
     }
 
     pub(crate) fn global(&self, bank: u16, index: u16) -> Option<i32> {
@@ -408,6 +511,7 @@ impl Saves {
             && path.is_file()
         {
             self.system = Some(read_system(path, self.layout)?);
+            self.persisted_system.clone_from(&self.system);
         }
         Ok(())
     }
@@ -471,7 +575,7 @@ impl Saves {
         global_field(self.layout, bank, index).is_some()
     }
 
-    pub(crate) fn reset_classic_settings(&mut self) -> Result<()> {
+    pub(crate) fn reset_settings(&mut self) -> Result<()> {
         let Some(system) = &mut self.system else {
             return Err(Error::Unsupported("original ADV32 settings"));
         };
@@ -484,14 +588,30 @@ impl Saves {
             .ok_or(Error::Unsupported("original ADV32 settings defaults"))?;
         let settings_end = 184 - self.layout.bank_shift;
         system[..settings_end].copy_from_slice(&defaults[..settings_end]);
-        for (index, value) in [(84, 0), (85, 5), (86, 2), (87, 4)] {
-            put_dword(system, index * 4, value)?;
+        if self.layout.classic.is_some() {
+            for (index, value) in [(84, 0), (85, 5), (86, 2), (87, 4)] {
+                put_dword(system, index * 4, value)?;
+            }
+            system[17608..17692].fill(0);
+            self.temporary_music_favorites.clear();
+        } else {
+            for (index, value) in [(92, 0), (93, 5), (94, 2), (95, 4)] {
+                put_dword(system, index * 4, value)?;
+            }
+            let favorites_end = MUSIC_FAVORITES + MUSIC_TRACK_LIMIT * 4;
+            system[17640..favorites_end + 4].fill(0);
         }
-        system[17608..17692].fill(0);
         Ok(())
     }
 
-    pub(crate) fn flush_globals(&self) -> Result<()> {
+    pub(crate) fn flush_pending(&mut self) -> Result<()> {
+        if self.system != self.persisted_system {
+            self.flush_globals()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn flush_globals(&mut self) -> Result<()> {
         let (Some(data), Some(path)) = (&self.system, &self.system_path) else {
             return Err(Error::Unsupported(
                 "initialization of a new ADV32 system.dat",
@@ -505,6 +625,7 @@ impl Saves {
         staged.write_all(data)?;
         staged.as_file().sync_all()?;
         staged.persist(path).map_err(|error| error.error)?;
+        self.persisted_system.clone_from(&self.system);
         Ok(())
     }
 
@@ -602,11 +723,16 @@ fn ensure_save_directory(directory: &Path) -> Result<()> {
     }
 }
 
-fn read_spans(data: &[u8], at: usize, pointer: usize) -> Result<Vec<(u16, u16)>> {
+fn read_spans(
+    data: &[u8],
+    at: usize,
+    pointer: usize,
+    overflow_at: usize,
+) -> Result<Vec<(u16, u16)>> {
     let (start, count) = if pointer == 0 {
         (at + 4, 4)
     } else if pointer < READ_OVERFLOW_ENTRIES {
-        (READ_OVERFLOW + 4 * pointer, READ_OVERFLOW_ENTRIES - pointer)
+        (overflow_at + 4 * pointer, READ_OVERFLOW_ENTRIES - pointer)
     } else {
         return Err(Error::Invalid("ADV32 read-history index"));
     };
@@ -640,7 +766,7 @@ pub(crate) struct NativeLayer {
     pub(crate) order: u8,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct NativeSlot {
     pub(crate) script: String,
     pub(crate) instruction: usize,
@@ -655,9 +781,11 @@ pub(crate) struct NativeSlot {
     pub(crate) layers: BTreeMap<usize, NativeLayer>,
     pub(crate) anchors: BTreeMap<(u16, String), (i32, i32)>,
     pub(crate) texture_variant: u16,
+    pub(crate) preserve_view: bool,
     pub(crate) fog_enabled: bool,
     pub(crate) comments: SavedComments,
     pub(crate) player_names: PlayerNames,
+    pub(crate) custom_names: bool,
     pub(crate) lens_position: LensPosition,
     pub(crate) lens_strength: u8,
 }
@@ -718,6 +846,7 @@ impl NativeSlot {
             layers,
             anchors: BTreeMap::new(),
             texture_variant: 0,
+            preserve_view: dword(bytes, layout.preserve_view)? != 0,
             fog_enabled: dword(bytes, scene.tail_offset(LEGACY_FOG))? != 0,
             lens_position: read_lens_position(bytes, scene.tail_offset(LEGACY_LENS))?,
             lens_strength: dword(bytes, scene.tail_offset(LEGACY_LENS))? as u8,
@@ -726,6 +855,7 @@ impl NativeSlot {
                 given: saved_text(bytes, scene.tail_offset(LEGACY_GIVEN_NAME), 20, encoding)?,
                 family: saved_text(bytes, scene.tail_offset(LEGACY_FAMILY_NAME), 20, encoding)?,
             },
+            custom_names: false,
         })
     }
 
@@ -742,6 +872,7 @@ impl NativeSlot {
         put_dword(&mut data, instruction + 4, self.entry_step.into())?;
         put_dword(&mut data, instruction + 8, self.entry.into())?;
         put_dword(&mut data, instruction + 12, self.resume as u32)?;
+        put_dword(&mut data, layout.preserve_view, self.preserve_view.into())?;
         write_asset_table(&mut data, LEGACY_ASSETS, LEGACY_ASSET_COUNT, &self.assets)?;
         if let Some((number, name)) = &self.music {
             put_string(&mut data, LEGACY_MUSIC, 32, name)?;
@@ -883,7 +1014,12 @@ impl NativeSlot {
         let mut comments = SavedComments {
             period: u16::try_from(dword(bytes, SCENE_COMMENT_SETTINGS)?).ok(),
             random_order: dword(bytes, SCENE_COMMENT_SETTINGS + 4)? != 0,
-            repeat: dword(bytes, SCENE_COMMENT_SETTINGS + 8)? == 0,
+            clear_every: dword(bytes, SCENE_COMMENT_SETTINGS + 8)? as u16,
+            period_scale: [
+                dword(bytes, SCENE_COMMENT_SETTINGS + 12)? as i32,
+                dword(bytes, SCENE_COMMENT_SETTINGS + 16)? as i32,
+                dword(bytes, SCENE_COMMENT_SETTINGS + 20)? as i32,
+            ],
             visible: dword(bytes, SCENE_COMMENT_SETTINGS + 24)? != 0,
             ..SavedComments::default()
         };
@@ -907,12 +1043,13 @@ impl NativeSlot {
             } else {
                 Some((dword(bytes, SCENE_MUSIC_NUMBER)? as u16, music))
             },
-            speaker: saved_text(bytes, SCENE_SPEAKER, 260, encoding)?,
+            speaker: saved_text(bytes, SCENE_SPEAKER, SCENE_SPEAKER_BYTES, encoding)?,
             line: saved_text(bytes, SCENE_LINE, 260, encoding)?,
             variables,
             layers,
             anchors,
             texture_variant: dword(bytes, SCENE_TEXTURE_VARIANT)? as u16,
+            preserve_view: dword(bytes, MODERN.preserve_view)? != 0,
             fog_enabled: dword(bytes, SCENE_FOG_ENABLED)? != 0,
             lens_position: read_lens_position(bytes, SCENE_LENS)?,
             lens_strength: dword(bytes, SCENE_LENS)? as u8,
@@ -921,6 +1058,7 @@ impl NativeSlot {
                 given: saved_text(bytes, SCENE_GIVEN_NAME, 20, encoding)?,
                 family: saved_text(bytes, SCENE_FAMILY_NAME, 20, encoding)?,
             },
+            custom_names: dword(bytes, SCENE_CUSTOM_NAMES)? != 0,
         })
     }
 
@@ -929,6 +1067,7 @@ impl NativeSlot {
         put_string(&mut data, SCENE_SCRIPT, 160, &self.script)?;
         put_dword(&mut data, MODERN.instruction, self.instruction as u32)?;
         put_dword(&mut data, SCENE_RESUME, self.resume as u32)?;
+        put_dword(&mut data, MODERN.preserve_view, self.preserve_view.into())?;
         put_dword(&mut data, SCENE_ENTRY, u32::from(self.entry))?;
         put_dword(&mut data, SCENE_ENTRY - 4, u32::from(self.entry_step))?;
         write_asset_table(&mut data, SCENE_ASSETS, ASSET_COUNT, &self.assets)?;
@@ -936,8 +1075,15 @@ impl NativeSlot {
             put_string(&mut data, SCENE_MUSIC, 32, name)?;
             put_dword(&mut data, SCENE_MUSIC_NUMBER, u32::from(*number))?;
         }
-        put_text(&mut data, SCENE_SPEAKER, 260, &self.speaker, encoding)?;
+        put_text(
+            &mut data,
+            SCENE_SPEAKER,
+            SCENE_SPEAKER_BYTES,
+            &self.speaker,
+            encoding,
+        )?;
         put_text(&mut data, SCENE_LINE, 260, &self.line, encoding)?;
+        put_dword(&mut data, SCENE_CUSTOM_NAMES, self.custom_names.into())?;
         put_text(
             &mut data,
             SCENE_GIVEN_NAME,
@@ -984,8 +1130,15 @@ impl NativeSlot {
         put_dword(
             &mut data,
             SCENE_COMMENT_SETTINGS + 8,
-            (!self.comments.repeat).into(),
+            self.comments.clear_every.into(),
         )?;
+        for (index, value) in self.comments.period_scale.into_iter().enumerate() {
+            put_dword(
+                &mut data,
+                SCENE_COMMENT_SETTINGS + 12 + 4 * index,
+                value as u32,
+            )?;
+        }
         put_dword(
             &mut data,
             SCENE_COMMENT_SETTINGS + 24,
@@ -1238,72 +1391,90 @@ fn global_field(layout: Layout, bank: u16, index: u16) -> Option<Field> {
         93 if at < 20 => Some(Field::Word((4410 + at) * 4 - layout.bank_shift)),
         96 if at < 400 => Some(Field::Byte(384 + at - layout.bank_shift)),
         97 if at < 1200 => Some(Field::Byte(784 + at - layout.bank_shift)),
-        98 if at < 1200 => Some(Field::Byte(1984 + at - layout.bank_shift)),
+        98 if at < READ_SCENES => Some(Field::Byte(1984 + at - layout.bank_shift)),
         100 if at <= 0x95 => Some(Field::Byte(216 + at - layout.bank_shift)),
         99 if index == 11 => Some(Field::Inverse(6 * 4)),
-        99 => {
-            let field = match index {
-                5 => 18,
-                7 => 15,
-                8 => 17,
-                9 => 19,
-                10 => 9,
-                12 => 11,
-                13 => 4,
-                14 => 13,
-                15 => 16,
-                16 => 7,
-                17 => 12,
-                18 => 10,
-                26 => 1,
-                27 => 2,
-                28 => 5,
-                29 => 3,
-                30 => 8,
-                180 => 45,
-                181 => 44,
-                182 => 43,
-                184 => 42,
-                185 => 41,
-                188 => 40,
-                190 => 30,
-                191 => 39,
-                194 => 38,
-                196 => 95,
-                197 => 94,
-                198 => 93,
-                199 => 92,
-                200 => 37,
-                201 => 36,
-                202 => 35,
-                203 => 31,
-                205 => 33,
-                206 => 29,
-                207 => 22,
-                208 => 23,
-                209 => 28,
-                210 => 27,
-                211 => 26,
-                212 => 25,
-                213 => 24,
-                214 => 21,
-                221 => 4830,
-                225 => 32,
-                227 => 34,
-                237 => 20,
-                _ => return None,
+        99 if layout.classic.is_some() => {
+            let offset = match index {
+                194 if layout.bank_shift == 32 => 37,
+                196..=199 => 291 - at - layout.bank_shift / 4,
+                200 => 36,
+                201 => 35,
+                202 => 34,
+                203 => 30,
+                205 => 32,
+                221 if layout.bank_shift == 32 => 4422,
+                225 if layout.bank_shift == 32 => 31,
+                227 if layout.bank_shift == 32 => 33,
+                _ => return common_global_word(layout, index),
             };
-            // Field 4830 is reset by the executable and is outside the saved header.
-            if layout.classic.is_some() && field * 4 >= 184 - layout.bank_shift {
-                return None;
-            }
-            (field < layout.header / 4).then_some(Field::Word(field * 4))
+            Some(Field::Word(offset * 4))
         }
+        99 => common_global_word(layout, index),
         _ => None,
     }
 }
 
-fn slot_filename(name: &str) -> Option<(&str, u16)> {
+fn common_global_word(layout: Layout, index: u16) -> Option<Field> {
+    let field = match index {
+        5 => 18,
+        7 => 15,
+        8 => 17,
+        9 => 19,
+        10 => 9,
+        12 => 11,
+        13 => 4,
+        14 => 13,
+        15 => 16,
+        16 => 7,
+        17 => 12,
+        18 => 10,
+        26 => 1,
+        27 => 2,
+        28 => 5,
+        29 => 3,
+        30 => 8,
+        180 => 45,
+        181 => 44,
+        182 => 43,
+        184 => 42,
+        185 => 41,
+        188 => 40,
+        190 => 30,
+        191 => 39,
+        194 => 38,
+        196 => 95,
+        197 => 94,
+        198 => 93,
+        199 => 92,
+        200 => 37,
+        201 => 36,
+        202 => 35,
+        203 => 31,
+        205 => 33,
+        206 => 29,
+        207 => 22,
+        208 => 23,
+        209 => 28,
+        210 => 27,
+        211 => 26,
+        212 => 25,
+        213 => 24,
+        214 => 21,
+        221 => 4830,
+        225 => 32,
+        227 => 34,
+        237 => 20,
+        _ => return None,
+    };
+    // The fixed preference words end before the player names in classic slots.
+    if layout.classic.is_some() && field * 4 >= 184 - layout.bank_shift {
+        return None;
+    }
+    (field < layout.header / 4).then_some(Field::Word(field * 4))
+}
+
+fn slot_filename<'a>(name: &'a str, prefix_hint: Option<&str>) -> Option<(&'a str, u16)> {
     let (stem, ext) = name.rsplit_once('.')?;
     if !ext.eq_ignore_ascii_case("dat")
         || stem
@@ -1312,6 +1483,16 @@ fn slot_filename(name: &str) -> Option<(&str, u16)> {
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"PRE"))
     {
         return None;
+    }
+    // The original %02d suffix can follow a namespace that itself ends in digits.
+    if let Some(hint) = prefix_hint
+        && let Some(prefix) = stem.get(..hint.len())
+        && prefix.eq_ignore_ascii_case(hint)
+    {
+        let digits = &stem[hint.len()..];
+        if (2..=3).contains(&digits.len()) && digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Some((prefix, digits.parse().ok()?));
+        }
     }
     let suffix = stem
         .as_bytes()
@@ -1334,6 +1515,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_slot_parsing_preserves_digits_in_the_namespace() {
+        assert_eq!(
+            slot_filename("TEST400.dat", Some("test4")),
+            Some(("TEST4", 0))
+        );
+        assert_eq!(
+            slot_filename("TEST4100.dat", Some("test4")),
+            Some(("TEST4", 100))
+        );
+        assert_eq!(slot_filename("TEST00.dat", None), Some(("TEST", 0)));
+    }
+
+    #[test]
     fn native_checkpoint_preserves_a_named_anchor_for_actor_banks_above_four() {
         let snapshot = NativeSlot {
             script: "PROLOGUE".into(),
@@ -1349,15 +1543,18 @@ mod tests {
             layers: BTreeMap::new(),
             anchors: BTreeMap::from([((11, "POSE".into()), (146, 291))]),
             texture_variant: 0,
+            preserve_view: true,
             fog_enabled: false,
             comments: SavedComments::default(),
             player_names: PlayerNames::default(),
+            custom_names: false,
             lens_position: LensPosition::default(),
             lens_strength: 0,
         };
         let bytes = snapshot.encode(SHIFT_JIS).unwrap();
         assert_eq!(dword(&bytes, SCENE_ANCHOR_COUNT + 11 * 4).unwrap(), 1);
         let mut actual = NativeSlot::decode(&bytes, SHIFT_JIS).unwrap();
+        assert!(actual.preserve_view);
         assert_eq!(actual.anchors, snapshot.anchors);
         assert_eq!(actual.assets, snapshot.assets);
         assert_eq!(actual.resume, 300);
@@ -1370,26 +1567,40 @@ mod tests {
 
     #[test]
     fn additional_read_ranges_preserve_existing_scene_lists() {
-        let root = tempfile::tempdir().unwrap();
-        let directory = root.path().join("SAVEDATA");
-        fs::create_dir(&directory).unwrap();
-        fs::write(directory.join("system.dat"), vec![0; MODERN.system_size()]).unwrap();
-        let mut saves = Saves::open(root.path(), 0xabb6, SHIFT_JIS).unwrap();
-        for scene in [3, 5] {
-            for label in [1, 3, 5, 7, 9] {
-                saves.mark_read(scene, label).unwrap();
+        for (version, layout) in [
+            (0xabb6, MODERN),
+            (0x9f9a, CLASSIC_EXPANDED),
+            (0x9e97, LEGACY),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let directory = root.path().join("SAVEDATA");
+            fs::create_dir(&directory).unwrap();
+            fs::write(directory.join("system.dat"), vec![0; layout.system_size()]).unwrap();
+            let mut saves = Saves::open(root.path(), version, SHIFT_JIS).unwrap();
+            for scene in [3, 5] {
+                for label in [1, 3, 5, 7, 9] {
+                    assert_eq!(saves.mark_read(scene, label).unwrap(), Some(false));
+                }
             }
+            assert_eq!(saves.mark_read(3, 2).unwrap(), Some(false));
+            saves.flush_globals().unwrap();
+            let saves = Saves::open(root.path(), version, SHIFT_JIS).unwrap();
+            assert_eq!(saves.was_read(3, 2).unwrap(), Some(true));
+            assert_eq!(saves.was_read(5, 2).unwrap(), Some(false));
+            let data = saves.system.unwrap();
+            let spans = |scene: usize| {
+                let at = READ_INLINE - layout.bank_shift + 20 * scene;
+                read_spans(
+                    &data,
+                    at,
+                    dword(&data, at).unwrap() as usize,
+                    READ_OVERFLOW - layout.bank_shift,
+                )
+                .unwrap()
+            };
+            assert_eq!(spans(3), [(1, 3), (5, 5), (7, 7), (9, 9)]);
+            assert_eq!(spans(5), [(1, 1), (3, 3), (5, 5), (7, 7), (9, 9)]);
         }
-        saves.mark_read(3, 2).unwrap();
-        saves.flush_globals().unwrap();
-        let saves = Saves::open(root.path(), 0xabb6, SHIFT_JIS).unwrap();
-        let data = saves.system.unwrap();
-        let spans = |scene: usize| {
-            let at = READ_INLINE + 20 * scene;
-            read_spans(&data, at, dword(&data, at).unwrap() as usize).unwrap()
-        };
-        assert_eq!(spans(3), [(1, 3), (5, 5), (7, 7), (9, 9)]);
-        assert_eq!(spans(5), [(1, 1), (3, 3), (5, 5), (7, 7), (9, 9)]);
     }
 
     #[test]
@@ -1402,6 +1613,7 @@ mod tests {
             speaker: "@sName".into(),
             line: "Dialogue".into(),
             assets: BTreeMap::from([(26, "SYSTEM\\WINDOW".into())]),
+            preserve_view: true,
             ..NativeSlot::default()
         };
         let scene = LEGACY.classic.unwrap();
@@ -1412,6 +1624,7 @@ mod tests {
         assert_eq!(restored.assets, snapshot.assets);
         assert_eq!(restored.speaker, snapshot.speaker);
         assert_eq!(restored.line, snapshot.line);
+        assert!(restored.preserve_view);
     }
 
     #[test]
@@ -1436,6 +1649,7 @@ mod tests {
                 given: "雨晴".into(),
                 family: "林".into(),
             },
+            preserve_view: true,
             layers: BTreeMap::from([(
                 20,
                 NativeLayer {
@@ -1462,6 +1676,7 @@ mod tests {
         assert_eq!(loaded.speaker, snapshot.speaker);
         assert_eq!(loaded.player_names.given, snapshot.player_names.given);
         assert_eq!(loaded.layers[&20].position, (512, -24));
+        assert!(loaded.preserve_view);
     }
 
     #[test]
@@ -1473,6 +1688,7 @@ mod tests {
         saves.namespace = Some("TEST".into());
         let snapshot = NativeSlot {
             script: "SCENE".into(),
+            custom_names: true,
             layers: BTreeMap::from([(
                 0,
                 NativeLayer {
@@ -1490,6 +1706,7 @@ mod tests {
         let thumbnail = RgbaImage::from_pixel(32, 18, image::Rgba([10, 20, 30, 255]));
         saves.write_slot(4, &snapshot, &thumbnail).unwrap();
         let restored = saves.read_slot(4).unwrap().unwrap();
+        assert!(restored.custom_names);
         assert_eq!(restored.layers[&0].fitted_extent, Some((1280, 720)));
         assert_eq!(restored.layers[&0].position, (-320, -180));
         let picture = image::open(data.join("SAVEDATA/TEST04.png")).unwrap();

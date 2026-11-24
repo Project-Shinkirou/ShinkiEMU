@@ -104,18 +104,17 @@ pub(crate) use hardware::GpuCompositor;
 mod hardware {
     use super::*;
     use crate::{Error, Result};
-    use roukaku_core::Hash256;
+    use encoding_rs::Encoding;
     use roukaku_media_core::{OwnedPixelBuffer, SceneCompositing2D};
     use roukaku_platform::SceneFrame;
-    use roukaku_platform_common::{WgpuOffscreenRenderer, native_wgpu_instance};
-    use roukaku_text::{
-        CosmicTextLayoutProvider, FontBindingContext, LayoutConstraint, OverflowPolicy,
-        PackagedFont, TextDirection, TextLayoutConfig, TextLayoutRequest, TextRun, WrapPolicy,
-        font_unicode_coverage,
-    };
-    use shinki_emu_sdk::{SceneTextureResidency, TextScene, TextSceneLayout};
+    use roukaku_text::PackagedFont;
+    use shinki_emu_sdk::{SceneTextureResidency, TextScene};
+    use shinki_emu_sdk::{WgpuOffscreenRenderer, native_wgpu_instance};
     use std::{
-        sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
+        sync::{
+            Arc,
+            mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
+        },
         thread::{self, JoinHandle},
     };
 
@@ -128,14 +127,17 @@ mod hardware {
     }
 
     impl GpuCompositor {
-        pub(crate) fn new(chinese: bool) -> Result<Self> {
+        pub(crate) fn new(
+            encoding: &'static Encoding,
+            font: Option<Arc<PackagedFont>>,
+        ) -> Result<Self> {
             let (commands, queue) = sync_channel::<Scene>(1);
             let (completed, frames) = sync_channel(1);
             let (initialize, ready) = sync_channel(1);
             let worker = thread::Builder::new()
                 .name("adv32-gpu".into())
                 .spawn(move || {
-                    let mut renderer = match GpuRenderer::new(chinese) {
+                    let mut renderer = match GpuRenderer::new(encoding, font) {
                         Ok(renderer) => renderer,
                         Err(error) => {
                             let _ = initialize.send(Err(error));
@@ -226,12 +228,17 @@ mod hardware {
         renderer: WgpuOffscreenRenderer,
         residency: SceneTextureResidency,
         text: TextScene,
+        positioned: crate::text::NativeTextLayouts,
         sequence: u64,
-        chinese: bool,
+        encoding: &'static Encoding,
+        font: Option<Arc<PackagedFont>>,
     }
 
     impl GpuRenderer {
-        pub(crate) fn new(chinese: bool) -> Result<Self> {
+        pub(crate) fn new(
+            encoding: &'static Encoding,
+            font: Option<Arc<PackagedFont>>,
+        ) -> Result<Self> {
             let instance = native_wgpu_instance().map_err(render_error)?;
             let renderer = pollster::block_on(WgpuOffscreenRenderer::new(&instance))
                 .map_err(render_error)?
@@ -242,118 +249,71 @@ mod hardware {
                 device_type = %renderer.identity().device_type,
                 "Selected hardware compositor adapter"
             );
-            let fonts = [
-                (
-                    "Noto Sans JP",
-                    "asset:/font/adv32/noto-jp",
-                    crate::text::FONT,
-                ),
-                (
-                    "Noto Sans SC",
-                    "asset:/font/adv32/noto-sc",
-                    crate::text::FONT_SC,
-                ),
-            ]
-            .into_iter()
-            .map(|(family, id, bytes)| {
-                Ok(PackagedFont {
-                    asset_id: id.into(),
-                    family: family.into(),
-                    face_index: 0,
-                    hash: Hash256::from_sha256(bytes),
-                    license_id: "OFL-1.1".into(),
-                    subset: None,
-                    coverage: font_unicode_coverage(bytes, 0).map_err(render_error)?,
-                    targets: vec!["adv32".into()],
-                    profiles: vec!["adv32".into()],
-                    bytes: bytes.to_vec(),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-            let provider = CosmicTextLayoutProvider::new(
-                FontBindingContext {
-                    target: "adv32".into(),
-                    profile: "adv32".into(),
-                    default_locale: if chinese { "zh-Hans" } else { "ja-JP" }.into(),
-                },
-                fonts,
-                TextLayoutConfig::production_defaults(),
-            )
-            .map_err(render_error)?;
+            let text = crate::text::new_scene(encoding, font.as_deref())?;
             Ok(Self {
                 renderer,
                 residency: SceneTextureResidency::default(),
-                text: TextScene::new(provider),
+                text,
+                positioned: crate::text::NativeTextLayouts::new(),
                 sequence: 0,
-                chinese,
+                encoding,
+                font,
             })
         }
 
         fn render(&mut self, mut scene: Scene) -> Result<OwnedPixelBuffer> {
             let (width, height) = scene.extent;
-            let (language, families) = if self.chinese {
-                ("zh-Hans", ["Noto Sans SC", "Noto Sans JP"])
-            } else {
-                ("ja-JP", ["Noto Sans JP", "Noto Sans SC"])
-            };
+            let encoding = self.encoding;
             let layouts = scene
                 .text
                 .iter()
                 .enumerate()
                 .map(|(index, (_, text))| {
-                    let font_size = f32::from(text.size.min(256));
-                    let available =
-                        (i64::from(width) - i64::from(text.x)).clamp(1, i64::from(width));
-                    let max_width = text
-                        .width
-                        .map_or(available, |width| available.min(i64::from(width)));
-                    let [r, g, b] = text.color;
-                    TextSceneLayout {
-                        request: TextLayoutRequest {
-                            key: format!("adv32:{index}"),
-                            runs: vec![TextRun {
-                                text: text.content.clone(),
-                                language: language.into(),
-                                script: None,
-                                direction: TextDirection::LeftToRight,
-                                ruby: Vec::new(),
-                                voice: None,
-                            }],
-                            constraint: LayoutConstraint {
-                                max_width: max_width.max(1) as f32,
-                                max_height: None,
-                                max_lines: None,
-                                font_size,
-                                line_height: font_size * 1.25,
-                                wrap: WrapPolicy::WordOrGlyph,
-                                overflow: OverflowPolicy::Visible,
-                            },
-                            font_families: families
-                                .iter()
-                                .map(|family| (*family).to_owned())
-                                .collect(),
-                            features: Vec::new(),
-                        },
-                        translation: (text.x, text.y),
-                        rgba: [r, g, b, 255],
-                        outline: None,
-                    }
+                    text.request(
+                        format!("adv32:{index}"),
+                        width,
+                        encoding,
+                        self.font.as_deref(),
+                    )
                 })
                 .collect::<Vec<_>>();
-            let text = self.text.frame_parts(&layouts, 1.0).map_err(render_error)?;
+            let text = self
+                .text
+                .frame_parts_with_layout(&layouts, 1.0, |index, layout| {
+                    self.positioned
+                        .position(&scene.text[index].1, layout, encoding)
+                })
+                .map_err(render_error)?;
             let mut commands = text.lifecycle;
             let mut sources = vec![None; commands.len()];
             let tail = scene.commands.len();
             let mut textures = scene.commands.drain(..).zip(scene.sources.drain(..));
             let mut position = 0;
-            for ((at, _), layout) in scene.text.into_iter().zip(text.layouts) {
+            let mut draws = text.layouts.into_iter();
+            for ((at, region), layout) in scene.text.into_iter().zip(layouts) {
                 for (command, source) in textures.by_ref().take(at - position) {
                     commands.push(command);
                     sources.push(source);
                 }
                 position = at;
-                sources.extend(std::iter::repeat_n(None, layout.commands.len()));
-                commands.extend(layout.commands);
+                if let Some(visible) = region.clip_width {
+                    commands.push(SceneCommand::PushClip {
+                        rect: RectI::new(region.x, 0, visible, height),
+                    });
+                    sources.push(None);
+                }
+                // The atlas emits outline draws immediately before the foreground.
+                for draw in draws.by_ref() {
+                    sources.extend(std::iter::repeat_n(None, draw.commands.len()));
+                    commands.extend(draw.commands);
+                    if draw.layout_id == layout.request.key {
+                        break;
+                    }
+                }
+                if region.clip_width.is_some() {
+                    commands.push(SceneCommand::PopClip);
+                    sources.push(None);
+                }
             }
             for (command, source) in textures {
                 commands.push(command);
@@ -394,7 +354,7 @@ mod tests {
     #[test]
     #[ignore = "requires a hardware GPU"]
     fn hardware_composites_a_clipped_texture_and_sdk_text_in_draw_order() {
-        let mut renderer = GpuCompositor::new(true).unwrap();
+        let mut renderer = GpuCompositor::new(encoding_rs::GBK, None).unwrap();
         let Canvas::Scene(previous) = Canvas::new(128, 64, true) else {
             unreachable!()
         };
@@ -408,6 +368,10 @@ mod tests {
         let mut canvas = Canvas::new(128, 64, true);
         canvas.queue_sprite(&sprite, RectI::new(1, 0, 1, 1), RectI::new(0, 0, 1, 1), 1.0);
         canvas.queue_text(&Text {
+            fixed_pitch: false,
+            line_height: None,
+            outline: true,
+            clip_width: None,
             content: "字".into(),
             x: 30,
             y: 10,
@@ -417,6 +381,10 @@ mod tests {
         });
         canvas.queue(SceneCommand::rect("cover", 30, 0, 65, 64, [0, 0, 0, 255]));
         canvas.queue_text(&Text {
+            fixed_pitch: false,
+            line_height: None,
+            outline: true,
+            clip_width: Some(16),
             content: "字".into(),
             x: 90,
             y: 10,
@@ -430,6 +398,7 @@ mod tests {
         let pixels = renderer.render_now(scene).unwrap();
         assert_eq!(&pixels[..4], &[0, 120, 0, 255]);
         assert!((30..60).all(|x| (0..64).all(|y| pixels[(y * 128 + x) * 4] == 0)));
-        assert!((96..126).any(|x| (0..64).any(|y| pixels[(y * 128 + x) * 4] != 0)));
+        assert!((96..106).any(|x| (0..64).any(|y| pixels[(y * 128 + x) * 4] != 0)));
+        assert!((106..126).all(|x| (0..64).all(|y| pixels[(y * 128 + x) * 4] == 0)));
     }
 }

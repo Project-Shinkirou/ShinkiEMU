@@ -18,11 +18,11 @@ fn declared(core: &toml::Value, key: &str, target: &str) -> bool {
     })
 }
 
-fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: bool) {
+fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: bool, with_adv32: bool) {
     let root = tempfile::tempdir().unwrap();
     let data = root.path().join("empty-installation");
     fs::create_dir(&data).unwrap();
-    fs::write(root.path().join("static-core-catalog.rs"), generation::generate(&toml::to_string(cores).unwrap(), targets, target).unwrap()).unwrap();
+    fs::write(root.path().join("static-core-catalog.rs"), generation::generate(&toml::to_string(cores).unwrap(), targets, target, with_adv32).unwrap()).unwrap();
     // Compile the actual public catalog module against each target's generated
     // data, using the host compiler. This executes Android data consumption on
     // Windows without pretending to cross-link or run an Android application.
@@ -35,7 +35,8 @@ fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: 
         let id = core["id"].as_str().unwrap();
         let family = core["family_id"].as_str().unwrap();
         let name = core["display_name"].as_str().unwrap();
-        let embedded = enabled && declared(core, "static_manager_targets", target);
+        let embedded = enabled && (declared(core, "static_manager_targets", target)
+            || (id == "shinki.emu.adv32" && with_adv32));
         let standalone = enabled && declared(core, "supported_targets", target);
         let supported = embedded || standalone;
         consumer.push_str(&format!(
@@ -79,7 +80,24 @@ fn windows_and_both_android_catalogs_are_consumable_without_installed_plugins() 
     ).unwrap();
     cores["cores"][0].as_table_mut().unwrap().insert("recognition".into(), rule["recognition"].clone());
     for target in ["x86_64-pc-windows-msvc", "aarch64-linux-android", "x86_64-linux-android"] {
-        consume_generated(&cores, &targets, target, true);
+        consume_generated(&cores, &targets, target, true, false);
+    }
+}
+
+#[test]
+fn adv32_mobile_candidate_embedding_is_opt_in() {
+    let (cores, targets) = inventory();
+    for target in [
+        "aarch64-linux-android",
+        "x86_64-linux-android",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "x86_64-apple-ios",
+        "aarch64-unknown-linux-ohos",
+    ] {
+        for with_adv32 in [false, true] {
+            consume_generated(&cores, &targets, target, true, with_adv32);
+        }
     }
 }
 
@@ -94,9 +112,9 @@ fn android_policy_does_not_enable_a_foreign_or_blocked_target() {
         "android_dynamic".into(),
         toml::from_str::<toml::Value>("minimum_release = 3\nrequires_context = true").unwrap(),
     );
-    consume_generated(&cores, &targets, "aarch64-linux-android", true);
-    consume_generated(&cores, &targets, "x86_64-linux-android", true);
-    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
+    consume_generated(&cores, &targets, "aarch64-linux-android", true, false);
+    consume_generated(&cores, &targets, "x86_64-linux-android", true, false);
+    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true, false);
 }
 
 #[test]
@@ -107,8 +125,8 @@ fn target_blocks_and_undeclared_targets_preserve_visible_but_unsupported_entries
     let row = targets["targets"].as_array_mut().unwrap().iter_mut()
         .find(|row| row["triple"].as_str() == Some(target)).unwrap();
     row.as_table_mut().unwrap().insert("blocked".into(), "temporarily unavailable".into());
-    consume_generated(&cores, &toml::to_string(&targets).unwrap(), target, false);
-    consume_generated(&cores, &toml::to_string(&targets).unwrap(), "undeclared-target", false);
+    consume_generated(&cores, &toml::to_string(&targets).unwrap(), target, false, true);
+    consume_generated(&cores, &toml::to_string(&targets).unwrap(), "undeclared-target", false, true);
 }
 
 #[test]
@@ -117,7 +135,7 @@ fn generated_strings_and_publication_restrictions_keep_their_meaning() {
     let core = &mut cores["cores"][0];
     core["display_name"] = "A \"quoted\" engine\\with\na new line 🦊".into();
     core["publish_blocked"] = "distribution is restricted".into();
-    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
+    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true, false);
 }
 
 #[test]
@@ -127,17 +145,17 @@ fn malformed_family_fields_and_duplicate_plugin_ids_are_rejected() {
     for family in ["", "Siglus", "../cmvs", " softpal", "1family", "引擎"] {
         let mut changed = cores.clone();
         changed["cores"][0]["family_id"] = family.into();
-        assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err(), "{family}");
+        assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err(), "{family}");
     }
     let mut changed = cores.clone();
     changed["cores"][0].as_table_mut().unwrap().remove("family_id");
-    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err());
     let mut changed = cores.clone();
     changed["cores"][0]["display_name"] = " \n".into();
-    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err());
     let mut changed = cores;
     changed["cores"][1]["id"] = changed["cores"][0]["id"].clone();
-    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err());
 }
 
 #[test]

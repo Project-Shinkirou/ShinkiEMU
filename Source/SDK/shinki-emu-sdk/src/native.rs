@@ -213,6 +213,15 @@ pub fn window_request(
                 abi::FULLSCREEN_WINDOWED
             };
         }
+        WindowCommand::SetVisibility(visible) => {
+            request.kind = abi::WINDOW_VISIBILITY;
+            request.flags = u32::from(*visible);
+        }
+        WindowCommand::SetClientSize { width, height } => {
+            request.kind = abi::WINDOW_SIZE;
+            request.width = *width;
+            request.height = *height;
+        }
         WindowCommand::SetTitle(title) => {
             request.kind = abi::WINDOW_TITLE;
             request.text = abi::Bytes::new(title.as_bytes());

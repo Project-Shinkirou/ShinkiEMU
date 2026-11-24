@@ -3,7 +3,8 @@ use crate::{
     graphics::{self, Clip, Transform},
     render::Canvas,
 };
-use image::{Pixel, RgbaImage};
+use image::{Pixel, Rgba, RgbaImage};
+use roukaku_media_core::OwnedPixelBuffer;
 use std::{sync::Arc, time::Duration};
 
 const DENSITY: [usize; 7] = [0, 1, 3, 6, 9, 12, 20];
@@ -177,91 +178,200 @@ pub(crate) struct SceneTransition {
 }
 
 pub(crate) struct ScreenBreak {
-    frame: Crx,
+    frame: OwnedPixelBuffer,
+    mask: Arc<Crx>,
     fragments: Vec<Fragment>,
-    elapsed: Duration,
+    tick_fraction: u128,
+    drift: f32,
+    phase_step: f32,
 }
 
 struct Fragment {
-    clip: Clip,
-    velocity: (f64, f64),
-    delay: Duration,
+    origin: (f32, f32),
+    position: (f32, f32),
+    velocity: (f32, f32),
+    age: i32,
+    lifetime: i32,
+    phase: f32,
+    drift: f32,
 }
 
 impl ScreenBreak {
-    const LENGTH: Duration = Duration::from_secs(1);
+    const CELL: i32 = 32;
+    const LAST_AGE: i32 = 24;
 
-    pub(crate) fn new(image: RgbaImage, staggered: bool, random: &mut u32) -> Self {
-        let mut fragments = Vec::new();
-        for y in (0..image.height()).step_by(32) {
-            for x in (0..image.width()).step_by(32) {
-                let velocity = if staggered {
-                    (
-                        2.0 - f64::from(rand15(random) & 8),
-                        f64::from(rand15(random) & 8) - 2.0,
-                    )
-                } else {
-                    (
-                        32.0 - f64::from(rand15(random) & 63),
-                        32.0 - f64::from(rand15(random) & 48),
-                    )
-                };
+    pub(crate) fn new(
+        frame: OwnedPixelBuffer,
+        extent: (u32, u32),
+        mask: Arc<Crx>,
+        pattern: u8,
+        random: &mut u32,
+    ) -> Self {
+        let mut next = || rand15(random) as i32;
+        let (columns, rows) = (
+            extent.0 as i32 / Self::CELL + 1,
+            extent.1 as i32 / Self::CELL + 2,
+        );
+        let mut fragments = Vec::with_capacity((columns * rows) as usize);
+        for row in 0..rows {
+            for column in 0..columns {
+                let origin = ((Self::CELL * column) as f32, (Self::CELL * row) as f32);
+                let mut vx = 32 - (next() & 31);
+                let vy = 32 + (next() & 31);
+                if next() & 1 == 0 {
+                    vx = (next() & 31) - 32;
+                }
                 fragments.push(Fragment {
-                    clip: Clip {
-                        x: x as i32,
-                        y: y as i32,
-                        width: 32,
-                        height: 32,
-                    },
-                    velocity,
-                    delay: if staggered {
-                        Duration::from_micros(u64::from((x + 2 * y) / 32) * 5_000)
-                    } else {
-                        Duration::ZERO
-                    },
+                    origin,
+                    position: origin,
+                    velocity: (vx as f32, vy as f32),
+                    age: 0,
+                    lifetime: next() % Self::CELL + 16,
+                    phase: 0.0,
+                    drift: 0.0,
                 });
             }
         }
+        for (index, fragment) in fragments.iter_mut().enumerate() {
+            let row = index as i32 / columns;
+            let column = index as i32 % columns;
+            let (age, x, y) = match pattern {
+                0 => (0, 48 - (next() & 31), 48 - (next() & 31)),
+                1 => (
+                    next() % 2 - row / 5 + column - columns,
+                    32 - (next() & 31),
+                    32 - (next() & 48),
+                ),
+                2 => (
+                    next() % 2 + row - rows,
+                    4 - (next() & 8),
+                    32 + (next() & 31),
+                ),
+                3 => (
+                    next() % 2 - row / 5 - column,
+                    (next() & 31) - 32,
+                    32 - (next() & 48),
+                ),
+                4 => (0, 32 - (next() & 63), 32 - (next() & 48)),
+                5 => (-2 * row - column, 2 - (next() & 8), (next() & 8) - 2),
+                6 => (
+                    -((rows / 2 - row).abs() + (columns / 2 - column).abs()),
+                    4 - (next() & 8),
+                    4 - (next() & 8),
+                ),
+                9 => (0, next() % 16 - 8, -32 - next() % 32),
+                10 => {
+                    fragment.age = -(next() % 20);
+                    continue;
+                }
+                _ => continue,
+            };
+            fragment.age = age;
+            fragment.velocity = (x as f32, y as f32);
+        }
         Self {
-            frame: Crx::from_image(0, 0, image),
+            frame,
+            mask,
             fragments,
-            elapsed: Duration::ZERO,
+            tick_fraction: 0,
+            drift: match pattern {
+                3 => -1.0,
+                0 | 2 | 4..=6 | 9 => 0.0,
+                _ => 1.0,
+            },
+            phase_step: if pattern == 9 { 0.32 } else { 0.08 },
         }
     }
 
-    pub(crate) fn finished(&mut self, elapsed: Duration) -> bool {
-        self.elapsed = self.elapsed.saturating_add(elapsed);
-        self.elapsed
-            > Self::LENGTH
-                + self
-                    .fragments
-                    .last()
-                    .map_or(Duration::ZERO, |part| part.delay)
+    pub(crate) fn finished(&mut self, elapsed: Duration, extent: (u32, u32)) -> bool {
+        const TICK: u128 = Duration::from_secs(1).as_nanos();
+        self.tick_fraction += elapsed.as_nanos() * 60;
+        let steps = self.tick_fraction / TICK;
+        self.tick_fraction %= TICK;
+        for _ in 0..steps {
+            if self.fragments.is_empty() {
+                return true;
+            }
+            self.fragments.retain_mut(|fragment| {
+                fragment.age += 1;
+                if fragment.age <= 0 {
+                    return true;
+                }
+                let t = fragment.phase;
+                let (vx, vy) = fragment.velocity;
+                let (x, y) = fragment.origin;
+                fragment.position = (x + 4.0 * (vx * t + fragment.drift), y - (vy + 3.92 * t) * t);
+                fragment.drift += self.drift;
+                fragment.phase += self.phase_step;
+                fragment.lifetime -= 1;
+                fragment.age < Self::LAST_AGE
+                    && fragment.lifetime > 0
+                    && fragment.position.0 < extent.0 as f32
+                    && fragment.position.1 < extent.1 as f32
+            });
+        }
+        self.fragments.is_empty()
     }
 
     pub(crate) fn draw(&self, frame: &mut Canvas) {
+        let frame = frame.raster_mut();
+        let source = self.frame.as_slice();
+        let (width, height) = (frame.width() as i32, frame.height() as i32);
         for fragment in &self.fragments {
-            let motion = self
-                .elapsed
-                .saturating_sub(fragment.delay)
-                .div_duration_f64(Self::LENGTH);
-            if motion >= 1.0 {
-                continue;
+            let (x, y) = (fragment.position.0 as i32, fragment.position.1 as i32);
+            let mask_x = fragment.age.max(0) * Self::CELL;
+            for dy in y.max(0)..(y + Self::CELL).min(height) {
+                for dx in x.max(0)..(x + Self::CELL).min(width) {
+                    // Fragments move the coverage mask. The captured RGB stays at its
+                    // original screen coordinates, including where fragments overlap.
+                    let Some(mask) = self
+                        .mask
+                        .image
+                        .get_pixel_checked((mask_x + dx - x) as u32, (dy - y) as u32)
+                    else {
+                        continue;
+                    };
+                    if mask[0] == 0 {
+                        let i = 4 * (dy * width + dx) as usize;
+                        frame.put_pixel(
+                            dx as u32,
+                            dy as u32,
+                            Rgba([source[i], source[i + 1], source[i + 2], 255]),
+                        );
+                    }
+                }
             }
-            let travel = motion * motion;
-            let x = fragment.clip.x + (fragment.velocity.0 * motion * 20.0).round() as i32;
-            let y = fragment.clip.y
-                + (fragment.velocity.1 * motion * 20.0 + 400.0 * travel).round() as i32;
-            graphics::blit_alpha(
-                frame,
-                &self.frame,
-                x,
-                y,
-                Some(fragment.clip),
-                (255.0 * (1.0 - motion)) as u8,
-                100,
-            );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn screen_break_moves_the_mask_without_moving_captured_color() {
+        let extent = (64, 32);
+        let original = RgbaImage::from_fn(extent.0, extent.1, |x, _| Rgba([x as u8, 0, 0, 255]));
+        let mut atlas = RgbaImage::from_pixel(800, 32, Rgba([255; 4]));
+        atlas.put_pixel(32 + 10, 0, Rgba([0, 0, 0, 255]));
+        let mut random = 1;
+        let mut effect = ScreenBreak::new(
+            original.into_raw().into(),
+            extent,
+            Arc::new(Crx::from_image(0, 0, atlas)),
+            4,
+            &mut random,
+        );
+        effect.fragments.truncate(1);
+        assert!(!effect.finished(Duration::from_millis(17), extent));
+        effect.fragments[0].position = (17.0, 0.0);
+
+        let mut image = Canvas::new(extent.0, extent.1, false);
+        effect.draw(&mut image);
+        assert_eq!(image.raster_mut().get_pixel(10, 0).0, [0, 0, 0, 255]);
+        assert_eq!(image.raster_mut().get_pixel(27, 0).0, [27, 0, 0, 255]);
+        assert!(effect.finished(Duration::from_millis(400), extent));
     }
 }
 

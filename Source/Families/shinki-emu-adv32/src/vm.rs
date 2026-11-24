@@ -29,13 +29,17 @@ use roukaku_media_core::OwnedPixelBuffer;
 use shinki_emu_sdk::runtime::{KeyCode, KeyState, PointerButton, RuntimeEvent, WindowCommand};
 use std::{
     collections::{BTreeMap, VecDeque},
+    path::Path,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 const TICK_BUDGET: usize = 8192;
 const MAX_SURFACES: usize = 64;
+const COMPACT_MESSAGE_BANK: u8 = 1;
+const EXPANDED_MESSAGE_BANK: u8 = 6;
 const MESSAGE_MACROS: usize = 10;
+const BUTTON_SOUND_CHANNEL: u8 = 6;
 
 struct TextureSlots {
     actor: u8,
@@ -63,6 +67,7 @@ struct Sprite {
     x: i32,
     y: i32,
     clip: Option<Clip>,
+    use_window_alpha: bool,
     effect: Option<SpriteEffect>,
 }
 
@@ -104,6 +109,21 @@ struct Fade {
     remaining: Duration,
     color: [u8; 3],
     mask: Option<(Arc<Crx>, bool)>,
+    pulse: bool,
+}
+
+impl Fade {
+    const FLASH_PERIOD: Duration = Duration::from_micros(10 * 1_000_000 / 60);
+
+    fn opacity(&self) -> f64 {
+        if self.pulse {
+            let elapsed = self.total - self.remaining;
+            let phase = elapsed.div_duration_f64(Self::FLASH_PERIOD).fract();
+            1.0 - (2.0 * phase - 1.0).abs()
+        } else {
+            self.remaining.div_duration_f64(self.total)
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -200,20 +220,95 @@ impl Shake {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+struct Slider {
+    start: i32,
+    end: i32,
+    last_value: i32,
+    binding: (u16, u16),
+}
+
+impl Slider {
+    fn thumb_x(self, value: i32) -> i32 {
+        self.start + (self.end - self.start) * value.clamp(0, self.last_value) / self.last_value
+    }
+
+    fn value_at(self, x: i32) -> i32 {
+        let position = (x - self.start) as f64 / (self.end - self.start) as f64;
+        (position * f64::from(self.last_value))
+            .round()
+            .clamp(0.0, f64::from(self.last_value)) as i32
+    }
+}
+
+#[derive(Default)]
+struct MouseGesture {
+    held: Duration,
+    origin: Option<(i32, i32)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SliderDrag {
+    button: usize,
+    value: i32,
+}
+
+#[derive(Clone, Copy, Default)]
+struct ButtonDrag {
+    source: bool,
+    target: bool,
+}
+
+#[derive(Clone, Default)]
 struct Button {
     area: [i32; 4],
     label: Vec<u8>,
-    states: BTreeMap<u16, Sprite>,
-    captions: BTreeMap<u16, Text>,
+    states: BTreeMap<u16, Vec<Sprite>>,
+    captions: BTreeMap<u16, Vec<Text>>,
+    slider: Option<Slider>,
+    sounds: [u16; 2],
+    drag: ButtonDrag,
+    hit_test_alpha: bool,
+    music_slider: bool,
+    draw_on_top: bool,
     save_slot: Option<u16>,
     list_index: Option<u16>,
 }
 
 impl Button {
     fn selectable(&self) -> bool {
-        !self.label.is_empty() && self.label != b":n"
+        !self.drag.source && !self.label.is_empty() && self.label != b":n"
     }
+
+    fn hit_at(&self, x: i32, y: i32) -> bool {
+        let [left, top, right, bottom] = self.area;
+        if !(left..right).contains(&x) || !(top..bottom).contains(&y) {
+            return false;
+        }
+        if !self.hit_test_alpha {
+            return true;
+        }
+        let x = x - left;
+        let y = y - top;
+        if x == 0 || y == 0 {
+            return false;
+        }
+        self.states
+            .get(&99)
+            .and_then(|state| state.first())
+            .and_then(|sprite| {
+                let (left, top) = sprite.clip.map_or((0, 0), |clip| (clip.x, clip.y));
+                let x = u32::try_from(left + x).ok()?;
+                let y = u32::try_from(top + y).ok()?;
+                sprite.source.image.get_pixel_checked(x, y)
+            })
+            .is_some_and(|pixel| pixel[3] != 0)
+    }
+}
+
+struct MessageButtonBank {
+    buttons: Vec<Button>,
+    artwork: Template,
 }
 
 struct ScrollList {
@@ -241,6 +336,84 @@ enum Wait {
     #[cfg(feature = "video-ffmpeg")]
     Movie,
     Finished,
+}
+
+#[derive(Clone, Copy)]
+enum QuickOperation {
+    Save,
+    Load,
+}
+
+#[derive(Clone, Copy)]
+enum Confirmation {
+    Remember(u16),
+    Prompt,
+}
+
+struct QuickPrompt {
+    operation: QuickOperation,
+    save: Option<(NativeSlot, RgbaImage)>,
+    button_group: u8,
+    origin: (i32, i32),
+}
+
+struct BacklogEntry {
+    speaker: String,
+    line: String,
+    voice: Option<String>,
+    checkpoint: Option<Box<NativeSlot>>,
+}
+
+struct LogLayout {
+    rows: usize,
+    row_pitch: i32,
+    atlas: u8,
+    back: [i32; 4],
+    scrollbar: [i32; 4],
+}
+
+impl LogLayout {
+    fn for_dialect(classic: bool) -> Self {
+        if classic {
+            Self {
+                rows: 5,
+                row_pitch: 125,
+                atlas: 14,
+                back: [1234, 672, 1282, 716],
+                scrollbar: [1114, 84, 1146, 692],
+            }
+        } else {
+            Self {
+                rows: 4,
+                row_pitch: 150,
+                atlas: 19,
+                back: [1100, 672, 1216, 712],
+                scrollbar: [1232, 82, 1256, 664],
+            }
+        }
+    }
+
+    fn jump_area(&self, classic: bool, row: usize) -> [i32; 4] {
+        let y = row as i32 * self.row_pitch;
+        if classic {
+            [8, y + 118, 162, y + 164]
+        } else {
+            [328, y + 110, 488, y + 144]
+        }
+    }
+
+    fn voice_area(&self, classic: bool, row: usize) -> [i32; 4] {
+        let y = row as i32 * self.row_pitch;
+        if classic {
+            [288, y + 76, 1064, y + 186]
+        } else {
+            [328, y + 150, 488, y + 183]
+        }
+    }
+
+    fn contains([left, top, right, bottom]: [i32; 4], (x, y): (i32, i32)) -> bool {
+        (left..right).contains(&x) && (top..bottom).contains(&y)
+    }
 }
 
 struct ScriptMenu {
@@ -271,10 +444,10 @@ pub(crate) struct Vm {
     texture_slots: TextureSlots,
     saves: Saves,
     player_names: PlayerNames,
+    custom_names: bool,
     name_entry: Option<NameEntry>,
     sound_names: SoundNames,
     audio: Option<Audio>,
-    null_audio: bool,
     next_effect_channel: u8,
     background_music: Option<u16>,
     music_volume: Option<f32>,
@@ -302,8 +475,9 @@ pub(crate) struct Vm {
     choices: Option<Vec<Button>>,
     classic_choice_text: BTreeMap<Vec<u8>, String>,
     templates: BTreeMap<u8, Template>,
+    message_button_banks: BTreeMap<u8, MessageButtonBank>,
+    active_message_bank: u8,
     button_group: u8,
-    button_style: [u8; 2],
     button_highlight: bool,
     button_options: u16,
     button_routes: BTreeMap<u8, Vec<u8>>,
@@ -312,19 +486,24 @@ pub(crate) struct Vm {
     scroll_list: Option<ScrollList>,
     slot_thumbnails: BTreeMap<u16, Arc<Crx>>,
     menu_position: (i32, i32, u16),
-    confirmation_preference: Option<u16>,
+    confirmation: Option<Confirmation>,
+    quick_prompt: Option<QuickPrompt>,
+    menu_variant: Option<u16>,
     active_menu_origin: (i32, i32),
     menu_pan: Option<Pan>,
     keyboard_selection: Option<usize>,
+    slider_drag: Option<SliderDrag>,
+    dragged_button: Option<usize>,
     control_keys: u8,
     skip_dialogue: bool,
     auto_dialogue: bool,
-    auto_elapsed: Duration,
     hidden_message: bool,
-    backlog: VecDeque<(String, String)>,
+    backlog: VecDeque<BacklogEntry>,
     backlog_offset: Option<usize>,
     script_menu: Option<ScriptMenu>,
     last_voice: Option<String>,
+    pending_voice: Option<String>,
+    pending_log_entry: bool,
     background: Option<Arc<Crx>>,
     background_position: (i32, i32),
     camera: Camera,
@@ -332,6 +511,7 @@ pub(crate) struct Vm {
     camera_motion: Option<CameraMotion>,
     scene_translation: (i32, i32),
     scene_translation_motion: Option<Pan>,
+    preserve_view: bool,
     center_next_background: bool,
     centered_background: bool,
     fitted_background: Option<(u32, u32)>,
@@ -350,14 +530,15 @@ pub(crate) struct Vm {
     lens_position: LensPosition,
     fog_enabled: bool,
     transition: Option<SceneTransition>,
-    transition_backdrop: Option<RgbaImage>,
+    transition_backdrop: Option<OwnedPixelBuffer>,
+    last_frame: Option<OwnedPixelBuffer>,
     screen_break: Option<ScreenBreak>,
     cut_in: SceneLayer,
     overlays: Vec<Sprite>,
     overlay_text: Vec<Text>,
     gallery: Option<GalleryProfile>,
     gallery_portrait: Option<Arc<Crx>>,
-    text_painter: Option<TextPainter>,
+    text_painter: TextPainter,
     blit_offset: (i32, i32),
     actors: BTreeMap<u16, Actor>,
     actor_wave_frames: u16,
@@ -366,7 +547,9 @@ pub(crate) struct Vm {
     actor_anchors: BTreeMap<(u16, String), (i32, i32)>,
     resume_offset: Option<usize>,
     pointer: (i32, i32),
+    mouse_gesture: Option<MouseGesture>,
     message: Option<Message>,
+    message_offset: Option<usize>,
     message_panel: Option<Clip>,
     message_macros: [Option<MessageMacro>; MESSAGE_MACROS],
     message_macro_slot: usize,
@@ -379,15 +562,19 @@ pub(crate) struct Vm {
     voice_flags: Vec<String>,
     texture_variant: u16,
     input_mode: u8,
+    skip_disc_check: bool,
+    #[cfg(not(target_env = "ohos"))]
+    null_audio: bool,
     display_preference: u8,
-    window: Option<WindowCommand>,
+    window: VecDeque<WindowCommand>,
+    fullscreen: bool,
     random: u32,
     frame_dirty: bool,
     wait: Wait,
 }
 
 impl Vm {
-    pub(crate) fn new(game: Game) -> Result<Self> {
+    pub(crate) fn new(game: Game, font_file: Option<&Path>) -> Result<Self> {
         let script = Arc::clone(&game.startup);
         let extent = match script.dialect.version {
             // Logical extent used by this engine dialect's display transform.
@@ -395,6 +582,15 @@ impl Vm {
             version => return Err(Error::UnsupportedMesVersion(version)),
         };
         let text_encoding = game.text_encoding();
+        let root = game
+            .data
+            .parent()
+            .ok_or(Error::Invalid("ADV32 game directory"))?;
+        let font = if let Some(path) = font_file {
+            Some(crate::text::configured_font(root, path)?)
+        } else {
+            crate::text::native_font(root).ok().flatten()
+        };
         let saves = Saves::open(&game.data, script.dialect.version, text_encoding)?;
         let player_names = saves.player_names()?;
         let sound_names = game.sound_names()?;
@@ -439,10 +635,10 @@ impl Vm {
             texture_slots,
             saves,
             player_names,
+            custom_names: false,
             name_entry: None,
             sound_names,
             audio: None,
-            null_audio: false,
             next_effect_channel: 2,
             background_music: None,
             music_volume: None,
@@ -470,8 +666,9 @@ impl Vm {
             choices: None,
             classic_choice_text: BTreeMap::new(),
             templates: BTreeMap::new(),
+            message_button_banks: BTreeMap::new(),
+            active_message_bank: EXPANDED_MESSAGE_BANK,
             button_group: 0,
-            button_style: [255, 255],
             button_highlight: true,
             button_options: 0,
             button_routes: BTreeMap::new(),
@@ -480,19 +677,24 @@ impl Vm {
             scroll_list: None,
             slot_thumbnails: BTreeMap::new(),
             menu_position: (0, 0, 0),
-            confirmation_preference: None,
+            confirmation: None,
+            quick_prompt: None,
+            menu_variant: None,
             active_menu_origin: (0, 0),
             menu_pan: None,
             keyboard_selection: None,
+            slider_drag: None,
+            dragged_button: None,
             control_keys: 0,
             skip_dialogue: false,
             auto_dialogue: false,
-            auto_elapsed: Duration::ZERO,
             hidden_message: false,
             backlog: VecDeque::new(),
             backlog_offset: None,
             script_menu: None,
             last_voice: None,
+            pending_voice: None,
+            pending_log_entry: false,
             background: None,
             background_position: (0, 0),
             camera: Camera {
@@ -503,6 +705,7 @@ impl Vm {
             camera_motion: None,
             scene_translation: (0, 0),
             scene_translation_motion: None,
+            preserve_view: false,
             center_next_background: false,
             centered_background: false,
             fitted_background: None,
@@ -522,13 +725,14 @@ impl Vm {
             fog_enabled: false,
             transition: None,
             transition_backdrop: None,
+            last_frame: None,
             screen_break: None,
             cut_in: SceneLayer::default(),
             overlays: Vec::new(),
             overlay_text: Vec::new(),
             gallery: None,
             gallery_portrait: None,
-            text_painter: None,
+            text_painter: TextPainter::new(text_encoding, font),
             blit_offset: (0, 0),
             actors: BTreeMap::new(),
             actor_wave_frames: 60,
@@ -537,7 +741,9 @@ impl Vm {
             actor_anchors: BTreeMap::new(),
             resume_offset: None,
             pointer: (-1, -1),
+            mouse_gesture: None,
             message: None,
+            message_offset: None,
             message_panel: None,
             message_macros: Default::default(),
             message_macro_slot: 0,
@@ -550,8 +756,12 @@ impl Vm {
             voice_flags: Vec::new(),
             texture_variant: 0,
             input_mode: 0,
+            skip_disc_check: false,
+            #[cfg(not(target_env = "ohos"))]
+            null_audio: false,
             display_preference: 0,
-            window: None,
+            window: VecDeque::new(),
+            fullscreen: false,
             random: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
@@ -559,10 +769,6 @@ impl Vm {
             frame_dirty: false,
             wait: Wait::Ready,
         })
-    }
-
-    pub(crate) fn set_null_audio(&mut self, enabled: bool) {
-        self.null_audio = enabled;
     }
 
     pub(crate) fn extent(&self) -> (u32, u32) {
@@ -579,8 +785,37 @@ impl Vm {
         }
     }
 
+    pub(crate) fn set_skip_disc_check(&mut self, skip: bool) {
+        self.skip_disc_check = skip;
+    }
+
+    #[cfg(not(target_env = "ohos"))]
+    pub(crate) fn set_null_audio(&mut self, enabled: bool) {
+        self.null_audio = enabled;
+    }
+
+    fn ensure_audio(&mut self) -> Result<()> {
+        if self.audio.is_none() {
+            self.audio = Some(Audio::open(
+                #[cfg(not(target_env = "ohos"))]
+                self.null_audio,
+            )?);
+        }
+        Ok(())
+    }
+
     pub(crate) fn window_command(&mut self) -> Option<WindowCommand> {
-        self.window.take()
+        self.window.pop_front()
+    }
+
+    fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = fullscreen;
+        self.window
+            .push_back(WindowCommand::SetFullscreen(fullscreen));
+    }
+
+    pub(crate) fn flush_pending_saves(&mut self) -> Result<()> {
+        self.saves.flush_pending()
     }
 
     pub(crate) fn tick(
@@ -592,18 +827,30 @@ impl Vm {
         let previous_wait = std::mem::discriminant(&self.wait);
         self.advance_timeline(elapsed, events)?;
         #[cfg(not(target_env = "ohos"))]
-        if self.gpu.is_some() {
+        let frame = if self.gpu.is_some() {
             // Input, first frames and wait transitions are presented immediately.
             // A continuing animation can have one GPU frame in flight.
             let defer = elapsed != Duration::ZERO
                 && events.is_empty()
                 && previous_wait == std::mem::discriminant(&self.wait);
-            return self.render_tick(defer);
+            self.render_tick(defer)?
+        } else {
+            self.render_raster_tick()?
+        };
+        #[cfg(target_env = "ohos")]
+        let frame = self.render_raster_tick()?;
+        if let Some(pixels) = &frame {
+            self.last_frame = Some(pixels.clone());
         }
+        Ok(frame)
+    }
+
+    fn render_raster_tick(&mut self) -> Result<Option<OwnedPixelBuffer>> {
         if std::mem::take(&mut self.frame_dirty) {
-            return Ok(Some(self.compose()?.into_raw().into()));
+            Ok(Some(self.compose()?.into_raw().into()))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     #[cfg(not(target_env = "ohos"))]
@@ -618,6 +865,7 @@ impl Vm {
         }
         let use_gpu = !(1..1000).contains(&self.mosaic)
             && self.fade.as_ref().is_none_or(|fade| fade.mask.is_none())
+            && self.screen_break.is_none()
             && !self.cut_in.has_mask()
             && !self.actors.values().any(|actor| actor.layer.has_mask());
         #[cfg(feature = "video-ffmpeg")]
@@ -651,7 +899,8 @@ impl Vm {
     #[cfg(not(target_env = "ohos"))]
     pub(crate) fn enable_hardware_compositor(&mut self) -> Result<()> {
         self.gpu = Some(crate::render::GpuCompositor::new(
-            self.text_encoding == encoding_rs::GBK,
+            self.text_encoding,
+            self.text_painter.font(),
         )?);
         Ok(())
     }
@@ -812,9 +1061,10 @@ impl Vm {
                 self.stop_movie()?;
             }
         }
-        let character_frames = self.variable(99, 26)?.clamp(0, 20) as u32;
+        let speed = self.variable(99, 26)?.clamp(0, 11) as u32;
         if let Some(message) = &mut self.message {
-            self.frame_dirty |= message.advance(elapsed, character_frames);
+            self.frame_dirty |=
+                message.advance(elapsed, speed, self.script.dialect, self.text_encoding);
         }
         if let Some(comments) = &mut self.comments {
             self.frame_dirty |= comments.advance(elapsed, &mut self.random);
@@ -860,7 +1110,7 @@ impl Vm {
         }
         if let Some(effect) = &mut self.screen_break {
             self.frame_dirty = true;
-            if effect.finished(elapsed) {
+            if effect.finished(elapsed, self.extent) {
                 self.screen_break = None;
             }
         }
@@ -951,9 +1201,15 @@ impl Vm {
                 None => {}
             }
         }
+        self.advance_mouse_gesture(elapsed)?;
         for event in events {
             match event {
-                RuntimeEvent::WindowFocused { focused: false } => self.control_keys = 0,
+                RuntimeEvent::WindowFocused { focused: false } => {
+                    self.control_keys = 0;
+                    self.frame_dirty |= self.slider_drag.take().is_some();
+                    self.frame_dirty |= self.dragged_button.take().is_some();
+                    self.frame_dirty |= self.mouse_gesture.take().is_some();
+                }
                 RuntimeEvent::Key {
                     code: code @ (KeyCode::ControlLeft | KeyCode::ControlRight),
                     state,
@@ -967,13 +1223,29 @@ impl Vm {
                     }
                 }
                 RuntimeEvent::PointerMove { x, y } => {
-                    let before = self.hovered();
+                    let before = (self.hovered(), self.hovered_message_button());
                     self.pointer = (*x as i32, *y as i32);
+                    if let Some(drag) = self.slider_drag {
+                        self.update_slider_drag(drag.button);
+                    }
                     if self.hovered().is_some() {
                         self.keyboard_selection = None;
                     }
-                    if before != self.hovered() && self.wait == Wait::Menu {
-                        self.frame_dirty = true;
+                    let after = (self.hovered(), self.hovered_message_button());
+                    self.frame_dirty |= (self.wait == Wait::Menu
+                        && (before.0 != after.0 || self.dragged_button.is_some()))
+                        || before.1 != after.1;
+                    if self.slider_drag.is_none() && self.dragged_button.is_none() {
+                        let button = if self.wait == Wait::Menu && before.0 != after.0 {
+                            after.0.and_then(|index| self.menu_buttons()?.get(index))
+                        } else if before.1 != after.1 {
+                            after.1.and_then(|index| self.message_buttons()?.get(index))
+                        } else {
+                            None
+                        };
+                        if let Some(index) = button.map(|button| button.sounds[1]) {
+                            self.play_button_sound(index)?;
+                        }
                     }
                 }
                 RuntimeEvent::Wheel { delta_y, .. } if self.backlog_offset.is_some() => {
@@ -992,18 +1264,68 @@ impl Vm {
                 }
                 RuntimeEvent::PointerButton {
                     button: PointerButton::Primary,
+                    state: KeyState::Pressed,
+                } if self.wait == Wait::Menu => {
+                    if let Some(index) = self.hovered() {
+                        if self
+                            .menu_buttons()
+                            .is_some_and(|buttons| buttons[index].drag.source)
+                        {
+                            self.dragged_button = Some(index);
+                            self.frame_dirty = true;
+                        } else {
+                            self.update_slider_drag(index);
+                        }
+                    }
+                }
+                RuntimeEvent::PointerButton {
+                    button: PointerButton::Primary,
                     state: KeyState::Released,
                 } => {
-                    if !self.click_scrollbar()? && !self.invoke_input_route(2)? {
+                    if let Some(drag) = self.slider_drag.take() {
+                        self.frame_dirty = true;
+                        if self.wait == Wait::Menu
+                            && let Some((slider, value)) = self.slider_at(drag.button)
+                        {
+                            self.set_variable(slider.binding.0, slider.binding.1, value)?;
+                            self.activate_menu_button(drag.button, drag.button)?;
+                        }
+                    } else if let Some(source) = self.dragged_button.take() {
+                        self.frame_dirty = true;
+                        if self.wait == Wait::Menu
+                            && let Some((target, _)) = self.hovered_drop_target()
+                        {
+                            self.activate_menu_button(source, target)?;
+                        }
+                    } else if !self.click_backlog()?
+                        && !self.click_message_button()?
+                        && !self.click_scrollbar()?
+                        && !self.invoke_input_route(2)?
+                    {
                         self.advance(false)?;
                     }
                 }
                 RuntimeEvent::PointerButton {
                     button: PointerButton::Secondary,
+                    state: KeyState::Pressed,
+                } if self.wait == Wait::Input
+                    && !self.hidden_message
+                    && self.message.is_some()
+                    && self.script_menu.is_none()
+                    && self.variable(99, 201)? != 0 =>
+                {
+                    self.mouse_gesture = Some(MouseGesture::default());
+                }
+                RuntimeEvent::PointerButton {
+                    button: PointerButton::Secondary,
                     state: KeyState::Released,
                 } => {
-                    if !self.invoke_input_route(3)? {
-                        self.toggle_story_menu()?;
+                    if let Some(origin) =
+                        self.mouse_gesture.take().and_then(|gesture| gesture.origin)
+                    {
+                        self.finish_mouse_gesture(origin)?;
+                    } else if !self.invoke_input_route(3)? {
+                        self.secondary_click()?;
                     }
                 }
                 RuntimeEvent::Key {
@@ -1073,12 +1395,17 @@ impl Vm {
             && let Some(message) = &self.message
             && message.finished()
         {
-            self.auto_elapsed = self.auto_elapsed.saturating_add(elapsed);
-            let speed = self.variable(99, 29)?.clamp(0, 22) as u64;
-            let count = message.parts().0.chars().count() as u64;
-            let delay = Duration::from_millis(5 * (23 - speed) * count.max(1));
-            let voice = self.audio.as_ref().is_some_and(|audio| audio.playing(1));
-            if self.auto_elapsed >= delay && !voice {
+            let mode = self.variable(99, 28)?;
+            let voice_pending =
+                mode == 1 && self.audio.as_ref().is_some_and(|audio| audio.playing(1));
+            let delay = if mode == 2 && !self.script.dialect.classic() {
+                Duration::from_secs(self.variable(99, 184)?.max(0) as u64)
+            } else {
+                let speed = self.variable(99, 29)?.clamp(0, 22) as u64;
+                let bytes = self.text_encoding.encode(message.parts().0).0.len() as u64;
+                Duration::from_millis(5 * (23 - speed) * (bytes / 2))
+            };
+            if message.elapsed() >= delay && !voice_pending {
                 self.advance(true)?;
             }
         }
@@ -1135,6 +1462,7 @@ impl Vm {
         if self.wait == Wait::Motion
             && self.fade.is_none()
             && self.pan.is_none()
+            && self.scene_shake.is_none()
             && self.camera_motion.is_none()
             && self.scene_translation_motion.is_none()
             && !self
@@ -1144,10 +1472,12 @@ impl Vm {
             && self.transition.is_none()
             && self.screen_break.is_none()
             && !self.cut_in.active()
-            && !self
-                .actors
-                .values()
-                .any(|actor| actor.layer.active() || actor.motion.is_some() || actor.wave.is_some())
+            && !self.actors.values().any(|actor| {
+                actor.layer.active()
+                    || actor.motion.is_some()
+                    || actor.wave.is_some()
+                    || actor.shake.is_some()
+            })
             && self.mosaic_tween.is_none()
             && !self.animation.as_ref().is_some_and(Animation::busy)
         {
@@ -1165,6 +1495,17 @@ impl Vm {
                     self.wait = Wait::Ready;
                 }
             }
+        }
+        if self.wait == Wait::Menu
+            && self.slider_drag.is_none()
+            && self
+                .menu_buttons()
+                .is_some_and(|buttons| buttons.iter().any(|button| button.music_slider))
+            && let Some(position) = self.audio.as_ref().and_then(Audio::music_position)
+            && self.variable(99, 189)? != i32::from(position)
+        {
+            self.set_variable(99, 189, i32::from(position))?;
+            self.frame_dirty = true;
         }
         if self.wait == Wait::Ready {
             self.message_macros.fill(None);
@@ -1247,53 +1588,24 @@ impl Vm {
                 self.wait = Wait::Ready;
             }
             Wait::Menu => {
-                let target = self.menu_buttons().and_then(|buttons| {
-                    let selected = if keyboard {
-                        self.keyboard_selection
-                            .or_else(|| self.hovered())
-                            .or_else(|| {
-                                buttons
-                                    .iter()
-                                    .position(|button| self.menu_selectable(button))
-                            })
-                    } else {
-                        self.hovered()
-                    };
-                    buttons.get(selected?).map(|button| {
-                        (
-                            button.label.clone(),
-                            button.save_slot,
-                            button.list_index,
-                            button.area,
-                        )
-                    })
+                let hovered = self.hovered().filter(|&index| {
+                    self.menu_buttons()
+                        .is_some_and(|buttons| !buttons[index].drag.source)
                 });
-                if let Some((label, slot, list_index, area)) = target
-                    && !label.is_empty()
-                {
-                    if let Some(slot) = slot {
-                        self.set_variable(99, 254, i32::from(slot))?;
-                    }
-                    if let Some(index) = list_index {
-                        self.set_variable(99, 254, i32::from(index))?;
-                        let row = self
-                            .slot_rectangles
-                            .iter()
-                            .position(|rect| *rect == area)
-                            .unwrap_or(0);
-                        self.set_variable(99, 253, row as i32)?;
-                    }
-                    if label[0] == b':' {
-                        return self.menu_action(&label);
-                    }
-                    self.jump(&label)?;
-                    self.choices = None;
-                    self.confirmation_preference = None;
-                    self.wait = Wait::Ready;
-                    self.frame_dirty = true;
-                    self.active_menu_origin = (0, 0);
-                    self.menu_pan = None;
-                    self.keyboard_selection = None;
+                let selected = if keyboard {
+                    self.keyboard_selection.or_else(|| {
+                        let buttons = self.menu_buttons()?;
+                        hovered
+                            .filter(|&index| self.menu_selectable(&buttons[index]))
+                            .or_else(|| {
+                                buttons.iter().position(|button| self.menu_selectable(button))
+                            })
+                    })
+                } else {
+                    hovered
+                };
+                if let Some(index) = selected {
+                    self.activate_menu_button(index, index)?;
                 }
             }
             _ => {}
@@ -1301,20 +1613,73 @@ impl Vm {
         Ok(())
     }
 
+    fn activate_menu_button(&mut self, index: usize, selected: usize) -> Result<()> {
+        let Some(button) = self.menu_buttons().and_then(|buttons| buttons.get(index)) else {
+            return Ok(());
+        };
+        if button.label.is_empty() {
+            return Ok(());
+        }
+        let label = button.label.clone();
+        let (slot, list_index, area) = (button.save_slot, button.list_index, button.area);
+        let select_sound = button.sounds[0];
+        let slider = button.slider.filter(|_| button.music_slider);
+        self.set_variable(99, 245, selected as i32)?;
+        if let Some(slider) = slider {
+            let (bank, index) = slider.binding;
+            let position = self.variable(bank, index)?;
+            self.set_variable(99, 187, position)?;
+        }
+        if let Some(slot) = slot {
+            self.set_variable(99, 254, i32::from(slot))?;
+        }
+        if let Some(index) = list_index {
+            self.set_variable(99, 254, i32::from(index))?;
+            let row = self
+                .slot_rectangles
+                .iter()
+                .position(|rect| *rect == area)
+                .unwrap_or(0);
+            self.set_variable(99, 253, row as i32)?;
+        }
+        self.play_button_sound(select_sound)?;
+        if label[0] == b':' {
+            return self.menu_action(&label);
+        }
+        self.jump(&label)?;
+        self.choices = None;
+        self.slider_drag = None;
+        self.dragged_button = None;
+        self.confirmation = None;
+        self.menu_variant = None;
+        self.wait = Wait::Ready;
+        self.frame_dirty = true;
+        self.active_menu_origin = (0, 0);
+        self.menu_pan = None;
+        self.keyboard_selection = None;
+        Ok(())
+    }
+
     fn menu_action(&mut self, action: &[u8]) -> Result<()> {
-        if let Some(preference) = self.confirmation_preference {
-            match action {
-                b":y" | b":n" => {
+        if self.quick_prompt.is_some() && matches!(action, b":y" | b":n") {
+            return self.finish_quick_prompt(action == b":y");
+        }
+        if let Some(confirmation) = self.confirmation {
+            match (action, confirmation) {
+                (b":y" | b":n", _) => {
                     let selected = u8::from(action == b":n");
                     if let Some(label) = self.button_routes.get(&selected).cloned() {
                         self.jump(&label)?;
                     }
-                    self.confirmation_preference = None;
+                    self.confirmation = None;
+                    self.menu_variant = None;
                     self.wait = Wait::Ready;
                     self.frame_dirty = true;
+                    self.active_menu_origin = (0, 0);
+                    self.keyboard_selection = None;
                     return Ok(());
                 }
-                b":c" => {
+                (b":c", Confirmation::Remember(preference)) => {
                     let selected = self.variable(93, preference)?;
                     self.set_variable(93, preference, i32::from(selected == 0))?;
                     let paired = match preference {
@@ -1347,8 +1712,13 @@ impl Vm {
             b":dl" | b":aaload" => self.open_script_menu(3)?,
             b":option" | b":aaconfig" => self.open_script_menu(5)?,
             b":backlog" | b":aalog" => self.open_script_menu(6)?,
-            b":qs" | b":aaqsave" => self.save_slot(2)?,
-            b":ql" | b":aaqload" => self.load_slot(2)?,
+            b":manual" => {
+                if self.game.resource("mes", "MANUAL", "mes").is_ok() {
+                    self.open_named_menu(b"MANUAL", false)?;
+                }
+            }
+            b":qs" | b":aaqsave" => self.request_quick_operation(QuickOperation::Save)?,
+            b":ql" | b":aaqload" => self.request_quick_operation(QuickOperation::Load)?,
             b":rapid" | b":r" | b":aaskip" => {
                 self.auto_dialogue = false;
                 self.skip_dialogue = !self.skip_dialogue;
@@ -1359,14 +1729,14 @@ impl Vm {
                 self.auto_dialogue = !self.auto_dialogue;
                 self.return_from_script_menu()?;
             }
-            b":voice" => {
+            b":t" | b":voice" => {
                 if let Some(voice) = self.last_voice.clone() {
                     self.play_sound(&voice, 1, false)?;
                 }
             }
             b":aawin_size" => {
                 self.display_preference ^= 1;
-                self.window = Some(WindowCommand::SetFullscreen(self.display_preference != 0));
+                self.set_fullscreen(self.display_preference != 0);
             }
             b":aatitle" => {
                 if let Some(title) = self
@@ -1386,7 +1756,7 @@ impl Vm {
     }
 
     fn menu_selectable(&self, button: &Button) -> bool {
-        button.selectable() || (self.confirmation_preference.is_some() && button.label == b":n")
+        button.selectable() || (self.confirmation.is_some() && button.label == b":n")
     }
 
     fn menu_buttons(&self) -> Option<&[Button]> {
@@ -1470,11 +1840,7 @@ impl Vm {
             let top = height / 12 + index as i32 * (height / 8);
             Button {
                 area: [width / 4, top, width * 3 / 4, top + height / 10],
-                label: Vec::new(),
-                states: BTreeMap::new(),
-                captions: BTreeMap::new(),
-                save_slot: None,
-                list_index: None,
+                ..Button::default()
             }
         });
         button.label = label.to_vec();
@@ -1482,24 +1848,268 @@ impl Vm {
             let [left, top, right, bottom] = button.area;
             button.captions.insert(
                 99,
-                Text {
+                vec![Text {
+                    fixed_pitch: false,
+                    line_height: None,
+                    outline: false,
+                    clip_width: None,
                     content: caption,
                     x: left + 24,
                     y: (top + bottom) / 2 - 14,
                     width: Some((right - left - 48).max(1) as u32),
                     size: 26,
                     color: [255; 3],
-                },
+                }],
             );
         } else {
-            for text in button.captions.values_mut() {
+            for text in button.captions.values_mut().flatten() {
                 text.content.clone_from(&caption);
             }
         }
         choices.push(button);
     }
 
+    fn advance_mouse_gesture(&mut self, elapsed: Duration) -> Result<()> {
+        let Some(mut gesture) = self.mouse_gesture.take() else {
+            return Ok(());
+        };
+        if self.wait != Wait::Input || self.message.is_none() || self.hidden_message {
+            self.frame_dirty |= gesture.origin.is_some();
+            return Ok(());
+        }
+        if gesture.origin.is_none() {
+            gesture.held = gesture.held.saturating_add(elapsed);
+            let delay = if self.script.dialect.version == 0x9e97 {
+                Duration::from_secs(1)
+            } else {
+                Duration::from_millis(300 * self.variable(99, 194)?.max(0) as u64)
+            };
+            if gesture.held > delay {
+                gesture.origin = Some(self.pointer);
+                self.frame_dirty = true;
+                if !self.script.dialect.classic() {
+                    self.skip_dialogue = false;
+                    self.auto_dialogue = false;
+                }
+            }
+        }
+        self.mouse_gesture = Some(gesture);
+        Ok(())
+    }
+
+    fn finish_mouse_gesture(&mut self, origin: (i32, i32)) -> Result<()> {
+        self.frame_dirty = true;
+        let dx = self.pointer.0 - origin.0;
+        let dy = self.pointer.1 - origin.1;
+        let binding = if dy > 64 && dx.abs() < 100 {
+            197
+        } else if dx < -64 && dy.abs() < 100 {
+            196
+        } else if dy < -64 && dx.abs() < 100 {
+            199
+        } else if dx > 64 && dy.abs() < 100 {
+            198
+        } else {
+            return Ok(());
+        };
+        let action = self.variable(99, binding)?;
+        let script_menu_available = self.variable(9, 7)? == 0;
+        match action {
+            0 | 1 => {
+                self.set_variable(99, 30, i32::from(action == 0))?;
+                self.refresh_message_menu()?;
+                self.menu_action(b":rapid")?;
+            }
+            2 => self.menu_action(b":auto")?,
+            3 => self.open_script_menu(6)?,
+            4 if script_menu_available => self.open_script_menu(2)?,
+            5 if script_menu_available => self.open_script_menu(3)?,
+            6 => self.open_script_menu(5)?,
+            7 if script_menu_available => self.request_quick_operation(QuickOperation::Save)?,
+            8 if script_menu_available => self.request_quick_operation(QuickOperation::Load)?,
+            9 => self.menu_action(b":aawin_size")?,
+            10 => self.menu_action(b":manual")?,
+            11 => self.menu_action(b":aatitle")?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn secondary_click(&mut self) -> Result<()> {
+        if self.wait != Wait::Input || self.message.is_none() || self.script_menu.is_some() {
+            return self.toggle_story_menu();
+        }
+        if self.hidden_message || self.skip_dialogue || self.auto_dialogue {
+            self.hidden_message = false;
+            self.skip_dialogue = false;
+            self.auto_dialogue = false;
+            self.frame_dirty = true;
+            return Ok(());
+        }
+        if self.variable(9, 7)? != 0 {
+            return self.open_script_menu(4);
+        }
+
+        let preference = self.variable(99, 211)?;
+        let mode = if self.script.dialect.classic() {
+            [1, 2, 0].get(preference as usize).copied().unwrap_or(0)
+        } else {
+            preference
+        };
+        match mode {
+            1 => {
+                self.hidden_message = true;
+                self.frame_dirty = true;
+                Ok(())
+            }
+            2 => self.open_script_menu(6),
+            _ => self.open_script_menu(4),
+        }
+    }
+
+    fn request_quick_operation(&mut self, operation: QuickOperation) -> Result<()> {
+        if matches!(operation, QuickOperation::Load) && !self.saves.exists(2) {
+            return Ok(());
+        }
+        if self.wait != Wait::Input || self.script_menu.is_some() {
+            return self.perform_quick_operation(operation);
+        }
+        let (preference, origin) = match (self.script.dialect.classic(), operation) {
+            (true, QuickOperation::Save) => (5, (292, 160)),
+            (true, QuickOperation::Load) => (4, (292, 160)),
+            (false, QuickOperation::Save) => (7, (422, 248)),
+            (false, QuickOperation::Load) => (8, (422, 248)),
+        };
+        if self.variable(93, preference)? != 0 {
+            return self.perform_quick_operation(operation);
+        }
+        if self
+            .parties
+            .get(&2)
+            .is_some_and(|buttons| buttons.iter().any(|button| button.label == b":y"))
+        {
+            let save = if matches!(operation, QuickOperation::Save) {
+                Some((self.snapshot()?, self.compose()?))
+            } else {
+                None
+            };
+            self.quick_prompt = Some(QuickPrompt {
+                operation,
+                save,
+                button_group: self.button_group,
+                origin: self.active_menu_origin,
+            });
+            self.confirmation = Some(Confirmation::Remember(preference));
+            self.menu_variant = Some(preference);
+            self.button_group = 2;
+            self.active_menu_origin = origin;
+            self.keyboard_selection = None;
+            self.wait = Wait::Menu;
+            self.frame_dirty = true;
+        }
+        Ok(())
+    }
+
+    fn finish_quick_prompt(&mut self, accepted: bool) -> Result<()> {
+        if let Some(prompt) = self.quick_prompt.take() {
+            self.button_group = prompt.button_group;
+            self.active_menu_origin = prompt.origin;
+            self.confirmation = None;
+            self.menu_variant = None;
+            self.keyboard_selection = None;
+            self.wait = Wait::Input;
+            self.frame_dirty = true;
+            if accepted {
+                if let Some((story, thumbnail)) = prompt.save {
+                    self.saves.write_slot(2, &story, &thumbnail)?;
+                    self.refresh_message_menu()?;
+                } else {
+                    self.perform_quick_operation(prompt.operation)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn perform_quick_operation(&mut self, operation: QuickOperation) -> Result<()> {
+        match operation {
+            QuickOperation::Save => {
+                self.save_slot(2)?;
+                self.refresh_message_menu()
+            }
+            QuickOperation::Load => self.load_slot(2),
+        }
+    }
+
+    fn refresh_message_menu(&mut self) -> Result<()> {
+        let script = match self.game.script("MESMENU") {
+            Ok(script) => Arc::new(script),
+            Err(Error::MissingAsset(_)) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let entry = script.entry(0)?;
+        let program = (
+            std::mem::replace(&mut self.script, script),
+            std::mem::replace(&mut self.script_name, "MESMENU".into()),
+            std::mem::replace(&mut self.ip, entry),
+            std::mem::replace(&mut self.wait, Wait::Ready),
+        );
+        let mut parties = std::mem::take(&mut self.parties);
+        let mut templates = std::mem::take(&mut self.templates);
+        let mut message_buttons = std::mem::take(&mut self.message_button_banks);
+        let overlays = std::mem::take(&mut self.overlays);
+        let captions = std::mem::take(&mut self.overlay_text);
+        let variables = self.variables.clone();
+        let tick = (self.tick_label, self.tick_step);
+        let group = std::mem::take(&mut self.button_group);
+        let blit_offset = std::mem::take(&mut self.blit_offset);
+        let style = (self.button_options, self.button_highlight);
+
+        let result = (|| {
+            for _ in 0..TICK_BUDGET {
+                let instruction = self.script.instruction(self.ip)?;
+                let code = self.script.dialect.opcode(instruction.opcode);
+                if matches!(code, Some(0x00 | 0x1d)) {
+                    return Ok(());
+                }
+                self.step()?;
+                if self.wait != Wait::Ready {
+                    break;
+                }
+            }
+            Err(Error::Invalid("ADV32 message-menu setup did not return"))
+        })();
+        if result.is_ok() {
+            self.parties.remove(&0);
+            parties.append(&mut self.parties);
+            templates.append(&mut self.templates);
+            message_buttons.append(&mut self.message_button_banks);
+            self.frame_dirty = true;
+        }
+        (self.script, self.script_name, self.ip, self.wait) = program;
+        (self.tick_label, self.tick_step) = tick;
+        (self.button_options, self.button_highlight) = style;
+        self.button_group = group;
+        self.blit_offset = blit_offset;
+        self.parties = parties;
+        self.templates = templates;
+        self.message_button_banks = message_buttons;
+        self.overlays = overlays;
+        self.overlay_text = captions;
+        self.variables = variables;
+        result
+    }
+
     fn toggle_story_menu(&mut self) -> Result<()> {
+        if self.quick_prompt.is_some() {
+            return self.finish_quick_prompt(false);
+        }
+        if self.wait == Wait::Menu && self.confirmation.is_some() {
+            let can_cancel = self
+                .menu_buttons()
+                .is_some_and(|buttons| buttons.iter().any(|button| button.label == b":n"));
+            return self.menu_action(if can_cancel { b":n" } else { b":y" });
+        }
         if self.return_from_script_menu()? {
             return Ok(());
         }
@@ -1520,6 +2130,10 @@ impl Vm {
         let Some(name) = name.map(|name| name.as_bytes().to_vec()) else {
             return Ok(());
         };
+        self.open_named_menu(&name, system == 6)
+    }
+
+    fn open_named_menu(&mut self, name: &[u8], backlog: bool) -> Result<()> {
         if self.script_menu.is_none() {
             self.script_menu = Some(ScriptMenu {
                 story: self.snapshot()?,
@@ -1530,8 +2144,8 @@ impl Vm {
                 choices: self.choices.take(),
             });
         }
-        self.switch_script(&name)?;
-        self.backlog_offset = (system == 6).then_some(0);
+        self.switch_script(name)?;
+        self.backlog_offset = backlog.then_some(0);
         self.slot_rectangles.clear();
         self.slot_thumbnails.clear();
         self.button_group = 0;
@@ -1552,10 +2166,67 @@ impl Vm {
         self.choices = menu.choices;
         self.backlog_offset = None;
         self.button_group = menu.group;
-        self.confirmation_preference = None;
+        self.confirmation = None;
+        self.menu_variant = None;
         self.keyboard_selection = None;
         self.active_menu_origin = (0, 0);
         self.wait = menu.return_wait;
+        self.refresh_message_menu()?;
+        Ok(true)
+    }
+
+    fn click_backlog(&mut self) -> Result<bool> {
+        let Some(offset) = self.backlog_offset else {
+            return Ok(false);
+        };
+        if self.wait != Wait::Input {
+            return Ok(false);
+        }
+        let classic = self.script.dialect.classic();
+        let layout = LogLayout::for_dialect(classic);
+        if LogLayout::contains(layout.back, self.pointer) {
+            self.return_from_script_menu()?;
+        } else if LogLayout::contains(layout.scrollbar, self.pointer) {
+            let [_, top, _, bottom] = layout.scrollbar;
+            let pages = self.backlog.len().saturating_sub(layout.rows);
+            let position = (self.pointer.1 - top) as f64 / (bottom - top) as f64;
+            self.backlog_offset = Some(pages - (position * pages as f64).round() as usize);
+            self.frame_dirty = true;
+        } else {
+            let count = self.backlog.len().saturating_sub(offset).min(layout.rows);
+            let oldest = self.backlog.len().saturating_sub(offset + count);
+            let entry = (0..count)
+                .find(|&row| LogLayout::contains(layout.jump_area(classic, row), self.pointer));
+            if let Some(index) = entry.map(|row| oldest + row)
+                && let Some(checkpoint) = self
+                    .backlog
+                    .get(index)
+                    .and_then(|entry| entry.checkpoint.as_deref())
+                    .cloned()
+            {
+                let instruction = checkpoint.instruction;
+                self.script_menu = None;
+                self.backlog_offset = None;
+                self.auto_dialogue = false;
+                self.skip_dialogue = false;
+                self.restore_snapshot(checkpoint, instruction)?;
+                self.last_voice = self
+                    .backlog
+                    .get(index)
+                    .and_then(|entry| entry.voice.clone());
+                self.backlog.truncate(index + 1);
+                self.wait = Wait::Input;
+                self.refresh_message_menu()?;
+                return Ok(true);
+            }
+            let voice = (0..count)
+                .find(|&row| LogLayout::contains(layout.voice_area(classic, row), self.pointer))
+                .and_then(|row| self.backlog.get(oldest + row))
+                .and_then(|entry| entry.voice.clone());
+            if let Some(voice) = voice {
+                self.play_sound(&voice, 1, false)?;
+            }
+        }
         Ok(true)
     }
 
@@ -1564,19 +2235,50 @@ impl Vm {
             *offset = if towards_newer {
                 offset.saturating_sub(1)
             } else {
-                offset
-                    .saturating_add(1)
-                    .min(self.backlog.len().saturating_sub(1))
+                offset.saturating_add(1).min(
+                    self.backlog
+                        .len()
+                        .saturating_sub(LogLayout::for_dialect(self.script.dialect.classic()).rows),
+                )
             };
             self.frame_dirty = true;
         }
     }
 
-    fn log_message(&mut self, line: String, speaker: String) {
+    fn log_message(
+        &mut self,
+        line: String,
+        speaker: String,
+        voice: Option<String>,
+        checkpoint: Option<Box<NativeSlot>>,
+    ) {
         while self.backlog.len() >= 2048 {
             self.backlog.pop_front();
         }
-        self.backlog.push_back((speaker, line));
+        self.backlog.push_back(BacklogEntry {
+            speaker,
+            line,
+            voice,
+            checkpoint,
+        });
+    }
+
+    fn record_current_dialogue(&mut self) -> Result<()> {
+        if !std::mem::take(&mut self.pending_log_entry) {
+            return Ok(());
+        }
+        if let Some(message) = &self.message {
+            let (line, speaker) = message.parts();
+            let (line, speaker) = (line.to_owned(), speaker.to_owned());
+            let voice = self.pending_voice.take();
+            let checkpoint = if self.wait == Wait::Input {
+                Some(Box::new(self.snapshot()?))
+            } else {
+                None
+            };
+            self.log_message(line, speaker, voice, checkpoint);
+        }
+        Ok(())
     }
 
     fn move_menu_selection(&mut self, forward: bool) {
@@ -1613,14 +2315,105 @@ impl Vm {
         self.frame_dirty = true;
     }
 
+    fn message_buttons_visible(&self) -> bool {
+        self.wait == Wait::Input && !self.hidden_message && self.message.is_some()
+    }
+
+    fn message_buttons(&self) -> Option<&[Button]> {
+        self.message_buttons_visible()
+            .then(|| self.message_button_banks.get(&self.active_message_bank))
+            .flatten()
+            .map(|bank| bank.buttons.as_slice())
+    }
+
+    fn hovered_message_button(&self) -> Option<usize> {
+        self.hit_button(self.message_buttons()?, (0, 0))
+    }
+
+    fn click_message_button(&mut self) -> Result<bool> {
+        let Some((action, select_sound)) = self
+            .hovered_message_button()
+            .and_then(|index| self.message_buttons()?.get(index))
+            .filter(|button| button.label.starts_with(b":"))
+            .map(|button| (button.label.clone(), button.sounds[0]))
+        else {
+            return Ok(false);
+        };
+        self.play_button_sound(select_sound)?;
+        if action == b":n" {
+            let next_bank = if self.active_message_bank == EXPANDED_MESSAGE_BANK {
+                COMPACT_MESSAGE_BANK
+            } else {
+                EXPANDED_MESSAGE_BANK
+            };
+            if self.message_button_banks.contains_key(&next_bank) {
+                self.active_message_bank = next_bank;
+                self.frame_dirty = true;
+            }
+        } else {
+            self.menu_action(&action)?;
+        }
+        Ok(true)
+    }
+
     fn hovered(&self) -> Option<usize> {
-        let (x, y) = self.pointer;
-        let x = x - self.active_menu_origin.0;
-        let y = y - self.active_menu_origin.1;
-        self.menu_buttons()?.iter().rposition(|button| {
-            let [left, top, right, bottom] = button.area;
-            (left..right).contains(&x) && (top..bottom).contains(&y)
-        })
+        self.hit_button(self.menu_buttons()?, self.active_menu_origin)
+    }
+
+    fn hovered_drop_target(&self) -> Option<(usize, [i32; 4])> {
+        let (x, y) = (
+            self.pointer.0 - self.active_menu_origin.0,
+            self.pointer.1 - self.active_menu_origin.1,
+        );
+        self.menu_buttons()?
+            .iter()
+            .filter(|button| button.drag.target)
+            .map(|button| button.area)
+            .enumerate()
+            .find(|&(_, [left, top, right, bottom])| left < x && x < right && top < y && y < bottom)
+    }
+
+    fn hit_button(&self, buttons: &[Button], origin: (i32, i32)) -> Option<usize> {
+        let (x, y) = (self.pointer.0 - origin.0, self.pointer.1 - origin.1);
+        buttons.iter().rposition(|button| button.hit_at(x, y))
+    }
+
+    fn set_button_sounds(&mut self, sounds: [u16; 2]) {
+        if let Some(button) = self
+            .parties
+            .get_mut(&self.button_group)
+            .and_then(|buttons| buttons.last_mut())
+        {
+            for (stored, sound) in button.sounds.iter_mut().zip(sounds) {
+                if sound != 255 {
+                    *stored = sound;
+                }
+            }
+        }
+    }
+
+    fn slider_at(&self, index: usize) -> Option<(Slider, i32)> {
+        let button = self.menu_buttons()?.get(index)?;
+        let slider = button.slider?;
+        let half_thumb = button
+            .states
+            .get(&6)
+            .and_then(|images| images.first())
+            .and_then(|sprite| sprite.clip)
+            .map_or(0, |clip| (clip.width / 2) as i32);
+        let value = slider.value_at(self.pointer.0 - self.active_menu_origin.0 - half_thumb);
+        Some((slider, value))
+    }
+
+    fn update_slider_drag(&mut self, index: usize) {
+        if let Some((_, value)) = self.slider_at(index) {
+            let drag = Some(SliderDrag {
+                button: index,
+                value,
+            });
+            self.frame_dirty |= self.slider_drag != drag;
+            self.slider_drag = drag;
+        }
     }
 
     fn click_scrollbar(&mut self) -> Result<bool> {
@@ -1656,11 +2449,11 @@ impl Vm {
         for (item, &area) in list.items.iter().skip(offset).zip(&self.slot_rectangles) {
             let mut button = item.clone();
             button.area = area;
-            for state in button.states.values_mut() {
-                state.x += area[0];
-                state.y += area[1];
+            for sprite in button.states.values_mut().flatten() {
+                sprite.x += area[0];
+                sprite.y += area[1];
             }
-            for caption in button.captions.values_mut() {
+            for caption in button.captions.values_mut().flatten() {
                 caption.x += area[0];
                 caption.y += area[1];
             }
@@ -1671,14 +2464,18 @@ impl Vm {
             {
                 button.captions.insert(
                     99,
-                    Text {
+                    vec![Text {
+                        fixed_pitch: false,
+                        line_height: None,
+                        outline: false,
+                        clip_width: None,
                         content: title.clone(),
                         x: area[0] + 16,
                         y: area[1] + 8,
                         size: 22,
                         color: [255; 3],
                         width: Some((area[2] - area[0]).saturating_sub(32).max(1) as u32),
-                    },
+                    }],
                 );
             }
             buttons.push(button);
@@ -1712,7 +2509,7 @@ impl Vm {
             } else {
                 ("姓", "名", "Enter 決定 · Esc キャンセル")
             };
-            let painter = self.text_painter.get_or_insert_with(TextPainter::new);
+            let painter = &mut self.text_painter;
             for (row, (label, name)) in [(family, &entry.names.family), (given, &entry.names.given)]
                 .into_iter()
                 .enumerate()
@@ -1727,6 +2524,10 @@ impl Vm {
                     painter.draw(
                         &mut frame,
                         &Text {
+                            fixed_pitch: false,
+                            line_height: None,
+                            outline: false,
+                            clip_width: None,
                             content: text.to_owned(),
                             x: x + offset,
                             y: top,
@@ -1734,12 +2535,16 @@ impl Vm {
                             color,
                             width: Some(400),
                         },
-                    );
+                    )?;
                 }
             }
             painter.draw(
                 &mut frame,
                 &Text {
+                    fixed_pitch: false,
+                    line_height: None,
+                    outline: false,
+                    clip_width: None,
                     content: confirm.to_owned(),
                     x,
                     y: y + 138,
@@ -1747,7 +2552,7 @@ impl Vm {
                     color: [255; 3],
                     width: Some(500),
                 },
-            );
+            )?;
             return Ok(frame);
         }
         if let Some(roll) = &self.staff_roll {
@@ -1820,7 +2625,9 @@ impl Vm {
                 accessory,
             ));
         }
-        layers.push((&self.cut_in, (0, 0), None));
+        if !self.script.dialect.classic() {
+            layers.push((&self.cut_in, (0, 0), None));
+        }
         layers.sort_by_key(|(layer, ..)| layer.order);
         for (layer, offset, accessory) in layers {
             layer.draw(&mut frame, offset);
@@ -1828,45 +2635,12 @@ impl Vm {
                 layer.draw_texture(&mut frame, texture, offset);
             }
         }
+        if self.script.dialect.classic() {
+            // Classic places the cut-in after the actor priority range.
+            self.cut_in.draw(&mut frame, (0, 0));
+        }
         if let Some(portrait) = &self.gallery_portrait {
             graphics::blit_alpha(&mut frame, portrait, 408, -137, None, 255, 50);
-        }
-        for sprite in &self.overlays {
-            match sprite.effect {
-                None => graphics::blit(&mut frame, &sprite.source, sprite.x, sprite.y, sprite.clip),
-                Some(SpriteEffect::Entrance { dx, dy, remaining }) => {
-                    let fraction = remaining.div_duration_f64(SPRITE_ENTRANCE);
-                    let dx = (f64::from(dx) * fraction).round() as i32;
-                    let dy = (f64::from(dy) * fraction).round() as i32;
-                    let opacity = ((1.0 - fraction) * 255.0).round() as u8;
-                    graphics::blit_alpha(
-                        &mut frame,
-                        &sprite.source,
-                        sprite.x + dx,
-                        sprite.y + dy,
-                        sprite.clip,
-                        opacity,
-                        100,
-                    );
-                }
-                Some(SpriteEffect::Pulse {
-                    amplitude,
-                    period,
-                    elapsed,
-                    ..
-                }) => {
-                    let phase = elapsed.div_duration_f64(period).fract() * std::f64::consts::TAU;
-                    let dx = (phase.sin() * f64::from(amplitude.0)).round() as i32;
-                    let dy = (phase.sin() * f64::from(amplitude.1)).round() as i32;
-                    graphics::blit(
-                        &mut frame,
-                        &sprite.source,
-                        sprite.x + dx,
-                        sprite.y + dy,
-                        sprite.clip,
-                    );
-                }
-            }
         }
         if let Some(falling) = &self.falling {
             falling.draw(&mut frame);
@@ -1897,54 +2671,36 @@ impl Vm {
         if let Some(effect) = &self.screen_break {
             effect.draw(&mut frame);
         }
-        if self.wait == Wait::Menu
-            && let Some(buttons) = self
-                .choices
-                .as_deref()
-                .or_else(|| self.parties.get(&self.button_group).map(Vec::as_slice))
-        {
-            let hovered = self.keyboard_selection.or_else(|| self.hovered());
-            for (index, button) in buttons.iter().enumerate() {
-                let state = if (self.button_highlight || self.choices.is_some())
-                    && hovered == Some(index)
-                {
-                    2
-                } else {
-                    1
-                };
-                if let Some(sprite) = button.states.get(&state).or_else(|| button.states.get(&99)) {
-                    graphics::blit(
-                        &mut frame,
-                        &sprite.source,
-                        sprite.x + self.active_menu_origin.0,
-                        sprite.y + self.active_menu_origin.1,
-                        sprite.clip,
-                    );
-                }
-                if let Some(caption) = button
-                    .captions
-                    .get(&state)
-                    .or_else(|| button.captions.get(&99))
-                {
-                    let mut caption = caption.clone();
-                    caption.x += self.active_menu_origin.0;
-                    caption.y += self.active_menu_origin.1;
-                    self.text_painter
-                        .get_or_insert_with(TextPainter::new)
-                        .draw(&mut frame, &caption);
-                }
-            }
-        }
-        if !self.overlay_text.is_empty() {
-            let painter = self.text_painter.get_or_insert_with(TextPainter::new);
-            for text in &self.overlay_text {
-                painter.draw(&mut frame, text);
-            }
+        if let Some(comments) = &self.comments {
+            comments.draw(&mut frame, &mut self.text_painter)?;
         }
         if !self.hidden_message
             && let Some(message) = &self.message
         {
-            let top = if let Some(panel) = self.message_panel
+            let native_sprites = self
+                .templates
+                .get(&1)
+                .map(|template| template.sprites.as_slice())
+                .filter(|sprites| !sprites.is_empty());
+            let top = if let Some(sprites) = native_sprites {
+                for sprite in sprites {
+                    let alpha = self.sprite_alpha(sprite);
+                    graphics::blit_alpha(
+                        &mut frame,
+                        &sprite.source,
+                        sprite.x,
+                        sprite.y,
+                        sprite.clip,
+                        alpha,
+                        100,
+                    );
+                }
+                sprites
+                    .iter()
+                    .map(|sprite| sprite.y)
+                    .min()
+                    .unwrap_or_default()
+            } else if let Some(panel) = self.message_panel
                 && let Some(texture) = self.surfaces.get(&self.texture_slots.panel)
             {
                 let top = height.saturating_sub(panel.height) as i32;
@@ -1953,52 +2709,83 @@ impl Vm {
             } else {
                 (height * 3 / 4) as i32
             };
-            let painter = self.text_painter.get_or_insert_with(TextPainter::new);
-            for text in message.text(top, width, &self.palette) {
-                painter.draw(&mut frame, &text);
+            let painter = &mut self.text_painter;
+            let message_text = |bank| {
+                self.templates
+                    .get(&bank)
+                    .and_then(|template| template.text.last())
+            };
+            for text in message.text(
+                top,
+                width,
+                self.script.dialect,
+                &self.palette,
+                [message_text(2), message_text(1)],
+                self.text_encoding,
+            ) {
+                painter.draw(&mut frame, &text)?;
             }
         }
-        if let Some(comments) = &self.comments {
-            comments.draw(
-                &mut frame,
-                self.text_painter.get_or_insert_with(TextPainter::new),
-            );
-        }
-        if let Some(offset) = self.backlog_offset {
-            let painter = self.text_painter.get_or_insert_with(TextPainter::new);
-            let speaker_color = self.palette.get(&15).copied().unwrap_or([255; 3]);
-            let mut y = 78;
-            for (speaker, line) in self.backlog.iter().rev().skip(offset).take(6).rev() {
-                if !speaker.is_empty() {
-                    painter.draw(
-                        &mut frame,
-                        &Text {
-                            content: speaker.clone(),
-                            x: 100,
-                            y,
-                            width: Some(1080),
-                            size: 20,
-                            color: speaker_color,
-                        },
-                    );
-                    y += 24;
-                }
-                painter.draw(
+        if self.message_buttons_visible()
+            && let Some(bank) = self.message_button_banks.get(&self.active_message_bank)
+        {
+            for sprite in &bank.artwork.sprites {
+                let alpha = self.sprite_alpha(sprite);
+                graphics::blit_alpha(
                     &mut frame,
-                    &Text {
-                        content: line.clone(),
-                        x: 100,
-                        y,
-                        width: Some(1080),
-                        size: 22,
-                        color: [255; 3],
-                    },
+                    &sprite.source,
+                    sprite.x,
+                    sprite.y,
+                    sprite.clip,
+                    alpha,
+                    100,
                 );
-                y += 62;
             }
+            for text in &bank.artwork.text {
+                self.text_painter.draw(&mut frame, text)?;
+            }
+            let hovered = self.hit_button(&bank.buttons, (0, 0));
+            draw_buttons(
+                &mut frame,
+                &bank.buttons,
+                hovered,
+                true,
+                None,
+                (0, 0),
+                &mut self.text_painter,
+                None,
+                |_| 0,
+            )?;
+        }
+        if let Some((x, y)) = self
+            .mouse_gesture
+            .as_ref()
+            .and_then(|gesture| gesture.origin)
+            && let Some(artwork) = self.templates.get(&15)
+        {
+            let (dx, dy) = if self.script.dialect.classic() {
+                (216, 195)
+            } else {
+                (90, 103)
+            };
+            for sprite in &artwork.sprites {
+                graphics::blit(
+                    &mut frame,
+                    &sprite.source,
+                    x - dx + sprite.x,
+                    y - dy + sprite.y,
+                    sprite.clip,
+                );
+            }
+        }
+        // The scene visits the script menu bank after the dialogue bank.
+        self.draw_script_sprites(&mut frame);
+        self.draw_script_controls(&mut frame)?;
+        if let Some(offset) = self.backlog_offset {
+            self.draw_backlog(&mut frame, offset)?;
         }
         if let Some(fade) = &self.fade {
-            let fraction = fade.remaining.div_duration_f64(fade.total);
+            let fraction = fade.opacity();
             let [r, g, b] = fade.color;
             if fade.mask.is_none()
                 && frame.queue(roukaku_media_core::SceneCommand::rect(
@@ -2029,6 +2816,261 @@ impl Vm {
             }
         }
         Ok(frame)
+    }
+
+    fn draw_backlog(&mut self, frame: &mut Canvas, offset: usize) -> Result<()> {
+        let classic = self.script.dialect.classic();
+        let layout = LogLayout::for_dialect(classic);
+        let atlas = self.surfaces.get(&layout.atlas);
+        let draw_chip = |frame: &mut Canvas, x, y, sx, sy, width, height| {
+            if let Some(atlas) = atlas {
+                graphics::blit(
+                    frame,
+                    atlas,
+                    x,
+                    y,
+                    Some(Clip {
+                        x: sx,
+                        y: sy,
+                        width,
+                        height,
+                    }),
+                );
+            }
+        };
+        let painter = &mut self.text_painter;
+        for (row, entry) in self
+            .backlog
+            .iter()
+            .rev()
+            .skip(offset)
+            .take(layout.rows)
+            .rev()
+            .enumerate()
+        {
+            let y = row as i32 * layout.row_pitch;
+            let mut text = Text {
+                content: entry.line.clone(),
+                fixed_pitch: true,
+                line_height: None,
+                outline: true,
+                clip_width: None,
+                color: [255; 3],
+                x: if classic { 304 } else { 480 },
+                y: y + if classic { 76 } else { 104 },
+                width: None,
+                size: if classic { 24 } else { 22 },
+            };
+            let voice_area = layout.voice_area(classic, row);
+            let hovered = LogLayout::contains(voice_area, self.pointer);
+            if classic {
+                if !entry.speaker.is_empty() {
+                    text.content = format!("{}\n{}", entry.speaker, entry.line);
+                }
+                if entry.voice.is_some() {
+                    draw_chip(frame, 184, y + 114, 148, 0, 67, 55);
+                }
+            } else {
+                draw_chip(frame, 20, y + 96, 0, 220, 1203, 123);
+                if entry.voice.is_some() {
+                    let [x, y, ..] = voice_area;
+                    draw_chip(frame, x, y, if hovered { 492 } else { 362 }, 12, 126, 34);
+                }
+                if !entry.speaker.is_empty() {
+                    let width = self.text_encoding.encode(&entry.speaker).0.len() as i32;
+                    let (center, half_cell, size) = if width >= 20 {
+                        (75, 6, 12)
+                    } else {
+                        (48, 8, 16)
+                    };
+                    painter.draw(
+                        frame,
+                        &Text {
+                            content: entry.speaker.clone(),
+                            x: center - half_cell * width / 2,
+                            y: y + 82,
+                            size,
+                            ..text.clone()
+                        },
+                    )?;
+                }
+            }
+            if hovered && entry.voice.is_some() {
+                text.color = self.palette.get(&24).copied().unwrap_or([204; 3]);
+            }
+            if entry.checkpoint.is_some() {
+                let area = layout.jump_area(classic, row);
+                let [x, y, ..] = area;
+                let hover = LogLayout::contains(area, self.pointer);
+                if classic {
+                    draw_chip(frame, x, y, 0, if hover { 48 } else { 0 }, 147, 47);
+                } else {
+                    draw_chip(frame, x, y, if hover { 492 } else { 362 }, 52, 126, 35);
+                }
+            }
+            painter.draw(frame, &text)?;
+        }
+        let [back_x, back_y, ..] = layout.back;
+        let back_hover = LogLayout::contains(layout.back, self.pointer);
+        if classic {
+            draw_chip(
+                frame,
+                back_x,
+                back_y,
+                if back_hover { 48 } else { 0 },
+                96,
+                48,
+                44,
+            );
+        } else {
+            draw_chip(
+                frame,
+                back_x,
+                back_y,
+                640,
+                if back_hover { 47 } else { 8 },
+                104,
+                if back_hover { 42 } else { 39 },
+            );
+        }
+        let last = self.backlog.len().saturating_sub(layout.rows);
+        if last != 0 || !classic {
+            let [x, top, _, bottom] = layout.scrollbar;
+            let position = if last == 0 {
+                0
+            } else {
+                (bottom - top) * (last - offset.min(last)) as i32 / last as i32
+            };
+            let (sx, sy, width, height) = if classic {
+                (216, 0, 32, 31)
+            } else {
+                (1200, 38, 24, 30)
+            };
+            draw_chip(frame, x, top + position, sx, sy, width, height);
+        }
+        Ok(())
+    }
+
+    fn sprite_alpha(&self, sprite: &Sprite) -> u8 {
+        if !sprite.use_window_alpha {
+            return 255;
+        }
+        // Bank 99 exposes this setting as the inverse of the native alpha.
+        let setting = self.variable(99, 11).unwrap_or_default();
+        ((99i32.saturating_sub(setting).clamp(0, 100) * 255 + 50) / 100) as u8
+    }
+
+    fn draw_script_sprites(&self, frame: &mut Canvas) {
+        for sprite in &self.overlays {
+            let alpha = self.sprite_alpha(sprite);
+            match sprite.effect {
+                None => graphics::blit_alpha(
+                    frame,
+                    &sprite.source,
+                    sprite.x,
+                    sprite.y,
+                    sprite.clip,
+                    alpha,
+                    100,
+                ),
+                Some(SpriteEffect::Entrance { dx, dy, remaining }) => {
+                    let fraction = remaining.div_duration_f64(SPRITE_ENTRANCE);
+                    let dx = (f64::from(dx) * fraction).round() as i32;
+                    let dy = (f64::from(dy) * fraction).round() as i32;
+                    let opacity = ((1.0 - fraction) * f64::from(alpha)).round() as u8;
+                    graphics::blit_alpha(
+                        frame,
+                        &sprite.source,
+                        sprite.x + dx,
+                        sprite.y + dy,
+                        sprite.clip,
+                        opacity,
+                        100,
+                    );
+                }
+                Some(SpriteEffect::Pulse {
+                    amplitude,
+                    period,
+                    elapsed,
+                    ..
+                }) => {
+                    let phase = elapsed.div_duration_f64(period).fract() * std::f64::consts::TAU;
+                    let dx = (phase.sin() * f64::from(amplitude.0)).round() as i32;
+                    let dy = (phase.sin() * f64::from(amplitude.1)).round() as i32;
+                    graphics::blit_alpha(
+                        frame,
+                        &sprite.source,
+                        sprite.x + dx,
+                        sprite.y + dy,
+                        sprite.clip,
+                        alpha,
+                        100,
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_script_controls(&mut self, frame: &mut Canvas) -> Result<()> {
+        if self.wait == Wait::Menu
+            && let Some(buttons) = self
+                .choices
+                .as_deref()
+                .or_else(|| self.parties.get(&self.button_group).map(Vec::as_slice))
+        {
+            let hovered = (self.button_highlight || self.choices.is_some())
+                .then(|| self.keyboard_selection.or_else(|| self.hovered()))
+                .flatten()
+                .filter(|&index| {
+                    buttons
+                        .get(index)
+                        .is_some_and(|button| button.drag.target == self.dragged_button.is_some())
+                });
+            draw_buttons(
+                frame,
+                buttons,
+                hovered,
+                false,
+                self.menu_variant,
+                self.active_menu_origin,
+                &mut self.text_painter,
+                self.slider_drag,
+                |slider| {
+                    self.variables
+                        .get(&slider.binding)
+                        .copied()
+                        .or_else(|| self.saves.global(slider.binding.0, slider.binding.1))
+                        .unwrap_or_default()
+                },
+            )?;
+            if let Some(sprites) = self
+                .dragged_button
+                .and_then(|index| buttons.get(index))
+                .and_then(|button| button.states.get(&2))
+            {
+                let snap = self.hovered_drop_target().map(|(_, [x, y, ..])| {
+                    (x + self.active_menu_origin.0, y + self.active_menu_origin.1)
+                });
+                for sprite in sprites {
+                    let (width, height) = sprite.clip.map_or_else(
+                        || sprite.source.image.dimensions(),
+                        |clip| (clip.width, clip.height),
+                    );
+                    let (x, y) = snap.unwrap_or((
+                        self.pointer.0 - (width / 2) as i32,
+                        self.pointer.1 - (height / 2) as i32,
+                    ));
+                    graphics::blit(frame, &sprite.source, x, y, sprite.clip);
+                }
+            }
+        }
+        if !self.overlay_text.is_empty() {
+            let painter = &mut self.text_painter;
+            for text in &self.overlay_text {
+                painter.draw(frame, text)?;
+            }
+        }
+        Ok(())
     }
 
     fn step(&mut self) -> Result<()> {
@@ -2073,7 +3115,19 @@ impl Vm {
                 self.tick_label = u16::from_le_bytes([a, b]);
                 self.tick_step = self.script.read_step(self.tick_label).unwrap_or_default();
                 if let Some(scene) = self.sound_names.scenario(&self.script_name) {
-                    self.saves.mark_read(scene, self.tick_label)?;
+                    let read = if code == 0x03 && self.script.dialect.classic() {
+                        self.saves.was_read(scene, self.tick_label)?
+                    } else {
+                        self.saves.mark_read(scene, self.tick_label)?
+                    };
+                    if code == 0x03
+                        && read == Some(false)
+                        && self.skip_dialogue
+                        && self.variable(99, 30)? != 0
+                    {
+                        self.skip_dialogue = false;
+                        self.frame_dirty = true;
+                    }
                 }
             }
             0x05 => self.control_music_volume(a)?,
@@ -2081,11 +3135,12 @@ impl Vm {
                 if !self
                     .comments
                     .as_ref()
-                    .is_some_and(|comments| comments.visible)
+                    .is_some_and(|comments| comments.suppress_dialogue_wait)
                 {
                     self.wait = Wait::Input;
                     self.frame_dirty = self.background.is_some();
                 }
+                self.record_current_dialogue()?;
             }
             0x07 => self.wait = Wait::VoiceTail(Duration::from_secs(1)),
             0x09 => {
@@ -2105,7 +3160,12 @@ impl Vm {
                     .as_ref()
                     .is_some_and(|buttons| buttons.iter().any(Button::selectable))
                 {
-                    self.skip_dialogue = false;
+                    if self.variable(99, 210)? != 0 {
+                        self.skip_dialogue = false;
+                    }
+                    if self.variable(99, 209)? != 0 {
+                        self.auto_dialogue = false;
+                    }
                     self.wait = Wait::Menu;
                     self.active_menu_origin = (0, 0);
                     self.keyboard_selection = None;
@@ -2128,21 +3188,52 @@ impl Vm {
                 self.frame_dirty = true;
             }
             0x0c => {
-                self.open_menu(self.button_group);
+                self.open_menu(self.button_group, None);
                 self.refresh_scroll_list(self.variable(99, 246)?)?;
             }
             0x0f if matches!(a, 7 | 8 | 10 | 11 | 13 | 14) => {}
             0x0f if matches!(a, 0 | 1) => self.fade_in(b)?,
-            0x0f if a == 3 => self.fade_color = [255; 3],
-            0x0f if matches!(a, 4 | 6) => self.shake(None, a == 6, true),
+            0x0f if a == 3 => {
+                self.fade_color = [255; 3];
+                if self.variable(99, 10)? != 0 {
+                    let total = Fade::FLASH_PERIOD * (u32::from(b) + 1);
+                    self.fade = Some(Fade {
+                        total,
+                        remaining: total,
+                        color: self.fade_color,
+                        mask: None,
+                        pulse: true,
+                    });
+                    self.frame_dirty = true;
+                }
+            }
+            0x0f if matches!(a, 4 | 6) => {
+                self.shake(None, a == 6, a == 6 || self.script.dialect.classic());
+            }
             0x0f if a == 5 => self.frame_dirty |= self.background.is_some(),
-            0x0f if a == 9 => self.transition_backdrop = Some(self.compose()?),
+            0x0f if a == 9 => {
+                self.transition_backdrop = Some(self.compose()?.into_raw().into());
+            }
             0x0f if matches!(a, 15 | 16) => {
-                if self.control_keys == 0
-                    && !self.skip_dialogue
-                    && let Some(frame) = self.transition_backdrop.take()
-                {
-                    self.screen_break = Some(ScreenBreak::new(frame, a == 15, &mut self.random));
+                let captured = self.transition_backdrop.take();
+                if self.control_keys == 0 && !self.skip_dialogue && self.variable(99, 10)? != 0 {
+                    let resource = if self.script.dialect.version == 0x9e97 {
+                        r"SYSTEM\EFF"
+                    } else {
+                        r"SYSTEM\EFFBREAK"
+                    };
+                    let mask = self.graphics.load(&self.game, resource)?;
+                    let frame = match captured.or_else(|| self.last_frame.clone()) {
+                        Some(frame) => frame,
+                        None => self.compose()?.into_raw().into(),
+                    };
+                    self.screen_break = Some(ScreenBreak::new(
+                        frame,
+                        self.extent,
+                        mask,
+                        b,
+                        &mut self.random,
+                    ));
                     self.frame_dirty = true;
                 }
             }
@@ -2176,6 +3267,7 @@ impl Vm {
                     self.fade_in(b)?;
                 }
             }
+            0x10 => self.wait = Wait::Finished,
             0x15 if a == 0xff => {
                 self.wait = Wait::Input;
                 self.frame_dirty = true;
@@ -2221,11 +3313,14 @@ impl Vm {
                 self.speaker.clear();
                 self.tick_label = 0;
             }
-            0x17 => self.button_style = [a, b],
+            0x17 => self.set_button_sounds([u16::from(a), u16::from(b)]),
             0x13 => self.stop_music()?,
             0x18 if a == 0 => {
                 let slot = self.variable(99, 254)? as u16;
                 self.load_slot(slot)?;
+            }
+            0x18 if matches!(a, 2 | 3) => {
+                self.window.push_back(WindowCommand::SetVisibility(a == 3))
             }
             0x18 if a == 4 => {
                 let slot = if b == 0 {
@@ -2242,13 +3337,16 @@ impl Vm {
                 }
             }
             0x18 if a == 7 => self.display_preference = b,
-            0x18 if a == 8 => self.window = Some(WindowCommand::SetFullscreen(b != 0)),
-            // This dialect calls the startup checker and discards its result.
-            0x18 if a == 10 && self.script.dialect.version == 0x9f9a => {}
+            0x18 if a == 8 => self.set_fullscreen(b != 0),
+            0x18 if a == 10 => {
+                if !self.skip_disc_check {
+                    crate::authorization::check_disc(&self.game.data)?;
+                }
+            }
             0x18 if a == 15 => self.input_mode = b,
             0x18 if a == 18 => self.menu_layers_enabled = true,
-            0x18 if a == 20 && self.script.dialect.version == 0x9f9a => {
-                self.saves.reset_classic_settings()?;
+            0x18 if a == 20 => {
+                self.saves.reset_settings()?;
                 self.refresh_saved_preferences()?;
             }
             // These operations access the optional native cloud account.
@@ -2270,7 +3368,14 @@ impl Vm {
                 self.variables
                     .retain(|&(bank, index), _| !self.saves.is_global(bank, index));
             }
-            0x18 if a == 27 => self.frame_dirty = true,
+            0x18 if a == 27 => {
+                #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+                self.window.push_back(WindowCommand::SetClientSize {
+                    width: self.extent.0,
+                    height: self.extent.1,
+                });
+                self.frame_dirty = true;
+            }
             0x18 if a == 29 => {
                 self.saves.reset_preferences(b)?;
                 self.refresh_saved_preferences()?;
@@ -2282,7 +3387,20 @@ impl Vm {
             }
             0x1a => {
                 let buttons = self.parties.remove(&self.button_group).unwrap_or_default();
-                self.parties.insert(a, buttons);
+                if matches!(a, COMPACT_MESSAGE_BANK | EXPANDED_MESSAGE_BANK) {
+                    self.message_button_banks.insert(
+                        a,
+                        MessageButtonBank {
+                            buttons,
+                            artwork: Template {
+                                sprites: std::mem::take(&mut self.overlays),
+                                text: std::mem::take(&mut self.overlay_text),
+                            },
+                        },
+                    );
+                } else {
+                    self.parties.insert(a, buttons);
+                }
                 self.button_group = 0;
             }
             0x1c => {
@@ -2321,8 +3439,7 @@ impl Vm {
                 if let Some(changed) = self.saves.preference_mark(b) {
                     self.set_variable(3, 0, i32::from(changed))?;
                 } else if b > 1 {
-                    self.variables
-                        .retain(|&(bank, index), _| !self.saves.is_global(bank, index));
+                    self.refresh_saved_preferences()?;
                 }
             }
             0x1e if a == 19 => {
@@ -2332,8 +3449,8 @@ impl Vm {
             0x1e if a == 20 => {
                 self.slot_thumbnails.clear();
                 if b == 0 {
-                    let first = 3 + 10 * self.variable(99, 0)?.clamp(0, 9) as u16;
-                    for slot in first..first + 10 {
+                    let slots = self.save_grid_slots()?;
+                    for slot in slots {
                         if let Some(image) = self.saves.thumbnail(slot)? {
                             self.slot_thumbnails
                                 .insert(slot, Arc::new(Crx::from_image(0, 0, image)));
@@ -2351,7 +3468,10 @@ impl Vm {
             0x1e if a == 9 && (b == 0 || (b == 1 && self.script.dialect.version == 0x9f9a)) => {
                 self.start_staff_roll(b != 0)?
             }
-            0x1e if a == 51 && self.script.dialect.classic() => {
+            0x1e if a == 51 && b == 1 && !self.script.dialect.classic() => {
+                self.custom_names = self.saves.uses_custom_player_names(&self.player_names)?;
+            }
+            0x1e if a == 51 && b == 0 => {
                 let backdrop = match self.graphics.load(&self.game, "SYSTEM\\NAMEBACK") {
                     Ok(backdrop) => Some(backdrop),
                     Err(Error::MissingAsset(_)) => None,
@@ -2367,6 +3487,8 @@ impl Vm {
             }
             // Completion reporting is optional and requires a registered name and email.
             0x1e if a == 105 => {}
+            // These selectors leave the extension state unchanged in the modern dispatcher.
+            0x1e if matches!((a, b), (100 | 215, 0)) && !self.script.dialect.classic() => {}
             0x1e if a == 200 => self.music_room(b)?,
             0x1e if a == 201 || a == 202 => self.music_favorite(a == 201, b)?,
             0x1e if a == 203 && self.script.dialect.version == 0x9f9a => {
@@ -2380,11 +3502,12 @@ impl Vm {
             0x20 => {}
             // The CPU compositor already applies changes to staged objects.
             0x22 => self.frame_dirty = true,
-            // Unassigned button-bank selectors leave the current bank alone.
+            // Unassigned template selectors leave the current artwork alone.
             0x24 if matches!(a, 0 | 8..=12 | 17..=253) => {}
             0x24 => {
-                let buttons = self.parties.remove(&0).unwrap_or_default();
-                self.parties.insert(a, buttons);
+                // Sprite and text templates share selector numbers with the
+                // interactive banks registered by 0x1a.
+                self.parties.remove(&0);
                 let template = Template {
                     sprites: std::mem::take(&mut self.overlays),
                     text: std::mem::take(&mut self.overlay_text),
@@ -2440,6 +3563,30 @@ impl Vm {
                 self.frame_dirty = true;
             }
             0x32 => self.button_highlight = true,
+            0x33 => {
+                let button = self
+                    .parties
+                    .get_mut(&self.button_group)
+                    .and_then(|buttons| buttons.last_mut())
+                    .ok_or(Error::Invalid("ADV32 drag role outside a button"))?;
+                if a == 0 {
+                    button.drag.source = true;
+                } else {
+                    button.drag.target = true;
+                }
+            }
+            0x34 if matches!(a, 0 | 1 | 4) => {
+                let button = self
+                    .parties
+                    .get_mut(&self.button_group)
+                    .and_then(|buttons| buttons.last_mut())
+                    .ok_or(Error::Invalid("ADV32 button option outside a button"))?;
+                match a {
+                    0 => button.hit_test_alpha = true,
+                    1 => button.music_slider = true,
+                    _ => button.draw_on_top = true,
+                }
+            }
             0x34 if a < 16 => self.button_options |= 1 << a,
             0x35 => self.button_highlight = false,
             0x36 => self.finish_scene_motion()?,
@@ -2479,6 +3626,24 @@ impl Vm {
     ) -> Result<()> {
         match (code, index) {
             (0x3c, Some(0)) => {}
+            (0x3c, Some(1)) => {
+                self.load_surface(1, bytes)?;
+                if bytes.windows(8).any(|name| {
+                    name.eq_ignore_ascii_case(b"BG\\BLACK")
+                        || name.eq_ignore_ascii_case(b"BG\\WHITE")
+                }) {
+                    self.preserve_view = false;
+                }
+                if !self.preserve_view {
+                    self.camera = Camera {
+                        scale: 100,
+                        center: (0, 0),
+                    };
+                    self.camera_motion = None;
+                    self.scene_translation = (0, 0);
+                    self.scene_translation_motion = None;
+                }
+            }
             (0x3c, Some(slot)) => self.load_surface(slot, bytes)?,
             (0x3d, Some(index @ 0..=5)) => {
                 self.load_surface(self.texture_slots.panel + index, bytes)?
@@ -2550,17 +3715,37 @@ impl Vm {
                     self.actor_anchors.insert((actor, name), (x, y));
                 }
             }
-            (0x49, None) if bytes == b":n" || bytes == b":r" => {}
+            (0x49, None) if bytes == b":n" => self.preserve_view = true,
+            (0x49, None) if bytes == b":r" => self.preserve_view = false,
             (0x49, None) => {
-                self.background = Some(if bytes == b"--" {
-                    self.surface(1)?
+                let name = self.picture_name(bytes)?;
+                self.background = if matches!(name.as_str(), "-" | "--") {
+                    self.surfaces.get(&1).cloned()
                 } else {
-                    self.graphics.load(&self.game, &decode_japanese(bytes)?)?
-                });
-                self.background_position = (0, 0);
+                    Some(self.graphics.load(&self.game, &name)?)
+                };
+                if let Some(picture) = self.sound_names.picture_index(&name) {
+                    self.set_variable(97, picture as u16, 1)?;
+                }
+                if !self.preserve_view {
+                    self.background_position = (0, 0);
+                    self.pan = None;
+                }
                 self.centered_background = std::mem::take(&mut self.center_next_background);
                 self.fitted_background = None;
-                self.pan = None;
+                // A native background commit releases the previous actors and cut-in.
+                let actors = self.texture_slots.actor
+                    ..self.texture_slots.accessory + self.texture_slots.actor_count;
+                for slot in actors.chain(std::iter::once(self.texture_slots.cut_in)) {
+                    self.load_surface(slot, b"-")?;
+                }
+                self.actors.clear();
+                self.cut_in = SceneLayer::default();
+                self.scene_shake = None;
+                self.fade = None;
+                self.screen_break = None;
+                self.mosaic = 0;
+                self.mosaic_tween = None;
                 self.overlays.clear();
                 self.overlay_text.clear();
                 self.frame_dirty = true;
@@ -2569,13 +3754,22 @@ impl Vm {
             (0x4c | 0x4d | 0x4e, None) => {
                 let name = decode_japanese(bytes)?;
                 if name == "-" {
+                    self.pending_voice = None;
                     self.stop_sound(1)?;
-                } else if self.control_keys == 0 && !self.skip_dialogue {
-                    self.play_sound(&name, 1, false)?;
-                    self.last_voice = Some(name);
+                } else {
+                    self.pending_voice = Some(name.clone());
+                    if self.control_keys == 0 && !self.skip_dialogue {
+                        self.play_sound(&name, 1, false)?;
+                        self.last_voice = Some(name);
+                    }
                 }
             }
-            (0x4f | 0x50, None) => self.switch_script(bytes)?,
+            (0x4f | 0x50, None) => {
+                if let Some(scene) = self.sound_names.scenario(&self.script_name) {
+                    self.set_variable(98, scene as u16, 1)?;
+                }
+                self.switch_script(bytes)?;
+            }
             (0x51, None) => self.next_label = Some(bytes.to_vec()),
             #[cfg(feature = "video-ffmpeg")]
             (0x52, None) => {
@@ -2601,12 +3795,11 @@ impl Vm {
                 {
                     self.jump(&label)?;
                 } else {
-                    self.confirmation_preference = Some(self.menu_position.2);
-                    self.open_menu(2);
+                    self.open_confirmation(2, Confirmation::Remember(self.menu_position.2));
                 }
             }
-            (0x5a, None) => self.open_menu(16),
-            (0x5b, None) => self.open_menu(17),
+            (0x5a, None) => self.open_confirmation(16, Confirmation::Prompt),
+            (0x5b, None) => self.open_confirmation(17, Confirmation::Prompt),
             (0x5c, None) => {
                 let line = self.script.instruction(self.ip)?;
                 let Operands::Text { bytes: raw, .. } = line.args else {
@@ -2621,7 +3814,7 @@ impl Vm {
                 if self.choices.is_some() {
                     self.add_choice(bytes, caption);
                 } else {
-                    self.log_message(caption, decode_japanese(bytes)?);
+                    self.log_message(caption, decode_japanese(bytes)?, None, None);
                 }
             }
             // The script compiler emits this annotation without a runtime action.
@@ -2657,18 +3850,23 @@ impl Vm {
                     self.cursor = Some(name);
                 }
             }
-            (0x6a, None) => self.speaker = Script::decode_text(bytes, self.text_encoding)?,
+            (0x6a, None) => {
+                self.speaker =
+                    Script::decode_dialogue(bytes, self.text_encoding, self.script.dialect)?;
+            }
             (0x6b, None) => {
+                let decoded =
+                    Script::decode_dialogue(bytes, self.text_encoding, self.script.dialect)?;
                 let message = Message::new(
-                    bytes,
+                    decoded,
                     std::mem::take(&mut self.speaker),
                     &self.player_names,
-                    self.text_encoding,
+                    self.custom_names,
+                    self.script.dialect.version == 0x9f9a,
                 )?;
-                let (line, speaker) = message.parts();
-                self.log_message(line.to_owned(), speaker.to_owned());
                 self.message = Some(message);
-                self.auto_elapsed = Duration::ZERO;
+                self.pending_log_entry = true;
+                self.message_offset = Some(instruction.offset);
                 self.frame_dirty = true;
                 if self
                     .script
@@ -2678,6 +3876,7 @@ impl Vm {
                     != Some(0x06)
                 {
                     self.wait = Wait::Input;
+                    self.record_current_dialogue()?;
                 }
             }
             // Text operands are consumed by their owning instruction.
@@ -2738,10 +3937,7 @@ impl Vm {
                     .push(Button {
                         area: signed,
                         label,
-                        states: BTreeMap::new(),
-                        captions: BTreeMap::new(),
-                        save_slot: None,
-                        list_index: None,
+                        ..Button::default()
                     });
             }
             0x76 => {
@@ -2749,16 +3945,24 @@ impl Vm {
                 let Operands::Text { bytes, .. } = operand.args else {
                     return Err(Error::Invalid("ADV32 menu caption operand"));
                 };
-                let content = Script::decode_text(bytes, self.text_encoding)?;
+                let caption = self
+                    .text_encoding
+                    .decode_without_bom_handling_and_without_replacement(bytes)
+                    .ok_or(Error::Invalid("ADV32 menu caption encoding"))?;
+                let (content, size) = self.caption_style(caption.into_owned());
                 self.ip = operand.next;
                 if !content.is_empty() {
                     let palette = (a[2] & 0x7f) + 12;
                     let color = self.palette.get(&palette).copied().unwrap_or([255; 3]);
                     let caption = Text {
+                        fixed_pitch: true,
+                        line_height: None,
+                        outline: a[2] > 128,
+                        clip_width: None,
                         content,
                         x: signed[0],
                         y: signed[1],
-                        size: 24,
+                        size,
                         color,
                         width: None,
                     };
@@ -2767,7 +3971,7 @@ impl Vm {
                         .get_mut(&self.button_group)
                         .and_then(|buttons| buttons.last_mut())
                         .ok_or(Error::Invalid("ADV32 caption outside a button"))?;
-                    button.captions.insert(a[3], caption);
+                    button.captions.entry(a[3]).or_default().push(caption);
                 }
             }
             0x75 if !self.menu_layers_enabled
@@ -2776,6 +3980,23 @@ impl Vm {
                     .scroll_list
                     .as_ref()
                     .is_none_or(|list| list.items.is_empty()) => {}
+            0x73 if let Some([variable, _, _, 5]) = tail => {
+                let [start, end, positions, bank] = signed;
+                if start == end || positions <= 1 || bank < 0 {
+                    return Err(Error::Invalid("ADV32 slider range"));
+                }
+                let button = self
+                    .parties
+                    .get_mut(&self.button_group)
+                    .and_then(|buttons| buttons.last_mut())
+                    .ok_or(Error::Invalid("ADV32 slider outside a button"))?;
+                button.slider = Some(Slider {
+                    start,
+                    end,
+                    last_value: positions - 1,
+                    binding: (bank as u16, variable),
+                });
+            }
             0x73 | 0x74 | 0x75 | 0x7a => {
                 let Some(tail) = tail else {
                     return Err(Error::Invalid("ADV32 blit operands"));
@@ -2806,6 +4027,7 @@ impl Vm {
                         width: u32::from(tail[0]),
                         height: u32::from(tail[1]),
                     }),
+                    use_window_alpha: code == 0x7a && tail[2] & 0x80 != 0,
                     effect: None,
                 };
                 if code == 0x73 {
@@ -2814,7 +4036,7 @@ impl Vm {
                         .get_mut(&self.button_group)
                         .and_then(|buttons| buttons.last_mut())
                         .ok_or(Error::Invalid("ADV32 menu image outside a button"))?;
-                    button.states.insert(tail[3], sprite);
+                    button.states.entry(tail[3]).or_default().push(sprite);
                 } else if code == 0x75
                     && tail[3] != u16::MAX
                     && let Some(item) = self
@@ -2822,7 +4044,7 @@ impl Vm {
                         .as_mut()
                         .and_then(|list| list.items.last_mut())
                 {
-                    item.states.insert(tail[3], sprite);
+                    item.states.entry(tail[3]).or_default().push(sprite);
                 } else {
                     self.overlays.push(sprite);
                     self.frame_dirty = true;
@@ -2895,12 +4117,8 @@ impl Vm {
             0x7f => {
                 if let Some(list) = &mut self.scroll_list {
                     list.items.push(Button {
-                        area: [0; 4],
-                        label: Vec::new(),
-                        states: BTreeMap::new(),
-                        captions: BTreeMap::new(),
-                        save_slot: None,
                         list_index: Some(a[0]),
+                        ..Button::default()
                     });
                 }
             }
@@ -2921,18 +4139,22 @@ impl Vm {
                 {
                     item.captions.insert(
                         99,
-                        Text {
+                        vec![Text {
+                            fixed_pitch: false,
+                            line_height: None,
+                            outline: false,
+                            clip_width: None,
                             content: caption.into_owned(),
                             x: signed[0],
                             y: signed[1],
                             size: 22,
                             color: [255; 3],
                             width: None,
-                        },
+                        }],
                     );
                 }
             }
-            0x81 => self.button_style = [a[0] as u8, a[1] as u8],
+            0x81 => self.set_button_sounds([a[0], a[1]]),
             0x82 if a[3] <= 2 => {
                 let value = match a[3] {
                     1 => self.variable(a[0], a[1])?.wrapping_add(signed[2]),
@@ -2995,10 +4217,13 @@ impl Vm {
                 self.frame_dirty = true;
             }
             0x8b if a[3] & 0x40 != 0 && a[0] <= 3 => {
-                let (frames, offset) = match a[0] {
-                    0 => (12, 0),
-                    1 => (12, -20),
-                    2 => (12, 20),
+                let (frames, offset) = match (self.script.dialect.version, a[0]) {
+                    (0x9f9a, 0) => (20, -20),
+                    (0x9f9a, 1) => (20, 20),
+                    (0x9f9a, 2) => (20, 0),
+                    (_, 0) => (12, 0),
+                    (_, 1) => (12, -20),
+                    (_, 2) => (12, 20),
                     _ => (12 * u64::from(a[1]), 0),
                 };
                 let duration = if self.control_keys != 0 || self.skip_dialogue {
@@ -3212,7 +4437,11 @@ impl Vm {
             0xb2 if a[0] <= 100 && a[1] <= 100 => {
                 let (from, to) = (10 * i32::from(a[0]), 10 * i32::from(a[1]));
                 self.mosaic = from as u32;
-                let total = Duration::from_micros(u64::from(a[2]) * 1_000_000 / 60);
+                let total = if self.control_keys != 0 || self.skip_dialogue {
+                    Duration::ZERO
+                } else {
+                    Duration::from_micros(u64::from(a[2]) * 1_000_000 / 60)
+                };
                 self.mosaic_tween = (!total.is_zero()).then_some(Pan {
                     from: (from, 0),
                     to: (to, 0),
@@ -3231,10 +4460,15 @@ impl Vm {
         Ok(())
     }
 
-    fn control_comments(&mut self, [command, value, ..]: [u16; 4]) -> Result<()> {
+    fn control_comments(&mut self, [command, value, end, duration]: [u16; 4]) -> Result<()> {
         if command == 99 {
-            let background = if value == 1 {
-                match self.graphics.load(&self.game, "SYSTEM\\COMMENTBACK") {
+            let asset = match value {
+                1 => Some("SYSTEM\\COMMENTBACK"),
+                2 => Some("SYSTEM\\COMUCHIP"),
+                _ => None,
+            };
+            let background = if let Some(asset) = asset {
+                match self.graphics.load(&self.game, asset) {
                     Ok(texture) => Some(texture),
                     Err(Error::MissingAsset(_)) => None,
                     Err(error) => return Err(error),
@@ -3245,21 +4479,37 @@ impl Vm {
             self.comments = if value == 0 {
                 None
             } else {
-                Some(Comments::new(value, background)?)
+                let (stamps, senders) = if value == 2 {
+                    let stamps = match self.graphics.load(&self.game, "SYSTEM\\COMUSTAMP") {
+                        Ok(texture) => Some(texture),
+                        Err(Error::MissingAsset(_)) => None,
+                        Err(error) => return Err(error),
+                    };
+                    let root = self
+                        .game
+                        .data
+                        .parent()
+                        .ok_or(Error::Invalid("ADV32 game directory"))?;
+                    let senders = crate::native_data::comment_senders(root, self.text_encoding)?
+                        .unwrap_or_default();
+                    (stamps, senders)
+                } else {
+                    (None, BTreeMap::new())
+                };
+                Some(Comments::new(value, background, stamps, senders)?)
             };
         } else if let Some(comments) = &mut self.comments {
             match command {
-                0 => comments.reset(false),
-                u16::MAX => comments.reset(true),
-                1 => {
-                    comments.reset(true);
-                    comments.visible = true;
-                }
+                0 => comments.finish_batch(),
+                u16::MAX => comments.clear(),
+                1 => comments.show(true),
                 2 => comments.set_period(value),
                 3 => comments.set_random_order(value != 0),
-                6 => comments.set_repeat(value == 0),
-                7 => comments.visible = true,
-                98 => comments.visible = false,
+                4 => comments.prefill(&mut self.random),
+                5 => comments.scale_period(value as i16, end as i16, duration),
+                6 => comments.set_clear_every(value),
+                7 => comments.show(false),
+                98 => comments.hide(),
                 _ => return Err(Error::Unsupported("ADV32 comment overlay action")),
             }
         }
@@ -3314,6 +4564,28 @@ impl Vm {
                 }
                 MessageCommand::SwapTexture { from, to } => self.transfer_texture(from, to),
                 MessageCommand::Shake { actor, vertical } => self.shake(actor, vertical, true),
+                MessageCommand::ActorFade { actor, hide } => {
+                    let duration = if self.control_keys != 0 || self.skip_dialogue {
+                        Duration::ZERO
+                    } else {
+                        Duration::from_secs(1)
+                    };
+                    let slot = actor + self.texture_slots.actor;
+                    let layer = &mut self.actors.entry(u16::from(actor)).or_default().layer;
+                    if !hide && layer.texture.is_none() {
+                        layer.texture = self.surfaces.get(&slot).cloned();
+                    }
+                    if hide {
+                        self.surface_names.remove(&slot);
+                    }
+                    layer.transition(
+                        duration,
+                        0,
+                        hide,
+                        self.surfaces.get(&self.texture_slots.mask).cloned(),
+                    );
+                    self.frame_dirty = true;
+                }
             }
         }
         Ok(())
@@ -3348,6 +4620,17 @@ impl Vm {
         result
     }
 
+    fn picture_name(&self, bytes: &[u8]) -> Result<String> {
+        let Some(number) = bytes.strip_prefix(b"*") else {
+            return decode_japanese(bytes);
+        };
+        let number = std::str::from_utf8(number)
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .ok_or(Error::Invalid("ADV32 picture number"))?;
+        self.sound_names.picture(number).map(str::to_owned)
+    }
+
     fn load_surface(&mut self, slot: u8, bytes: &[u8]) -> Result<()> {
         if usize::from(slot) >= MAX_SURFACES {
             return Err(Error::Invalid("ADV32 surface number"));
@@ -3365,15 +4648,7 @@ impl Vm {
             self.surface_names.remove(&slot);
             self.animation_sources.remove(&slot);
         } else if bytes != b"--" {
-            let mut name = if let Some(number) = bytes.strip_prefix(b"*") {
-                let number = std::str::from_utf8(number)
-                    .ok()
-                    .and_then(|value| value.parse::<u16>().ok())
-                    .ok_or(Error::Invalid("ADV32 picture number"))?;
-                self.sound_names.picture(number)?.to_owned()
-            } else {
-                decode_japanese(bytes)?
-            };
+            let mut name = self.picture_name(bytes)?;
             if name.to_ascii_lowercase().ends_with(".pck") {
                 let source = Archive::open(self.game.resource("grp", &name, "pck")?)?;
                 self.animation_sources.insert(slot, Arc::new(source));
@@ -3418,7 +4693,7 @@ impl Vm {
             self.message_panel = self
                 .surfaces
                 .get(&slot)
-                .and_then(|image| message::panel(image));
+                .and_then(|image| message::panel(image, self.script.dialect));
         }
         Ok(())
     }
@@ -3515,7 +4790,13 @@ impl Vm {
         Ok(NativeSlot {
             script: self.script_name.clone(),
             instruction: self.ip,
-            resume: self.resume_offset.unwrap_or(self.ip),
+            resume: if self.wait == Wait::Input {
+                self.message_offset
+                    .or(self.resume_offset)
+                    .unwrap_or(self.ip)
+            } else {
+                self.resume_offset.unwrap_or(self.ip)
+            },
             entry: self.tick_label,
             entry_step: self.tick_step,
             assets: self.surface_names.clone(),
@@ -3530,8 +4811,10 @@ impl Vm {
             layers,
             anchors: self.actor_anchors.clone(),
             texture_variant: self.texture_variant,
+            preserve_view: self.preserve_view,
             fog_enabled: self.fog_enabled,
             player_names: self.player_names.clone(),
+            custom_names: self.custom_names,
             lens_position: self.lens_position.clone(),
             lens_strength: self.lens.as_ref().map_or(0, |lens| lens.strength),
             comments: self
@@ -3547,6 +4830,9 @@ impl Vm {
         };
         let instruction = snapshot.resume;
         self.script_menu = None;
+        self.skip_dialogue = false;
+        self.auto_dialogue = false;
+        self.last_voice = None;
         self.restore_snapshot(snapshot, instruction)?;
         self.wait = Wait::Ready;
         Ok(())
@@ -3562,9 +4848,17 @@ impl Vm {
         self.gallery_portrait = None;
         self.ip = instruction;
         self.resume_offset = Some(snapshot.resume);
+        self.message_offset = self
+            .script
+            .instruction(snapshot.resume)
+            .ok()
+            .filter(|record| self.script.dialect.opcode(record.opcode) == Some(0x6b))
+            .map(|record| record.offset);
         self.tick_label = snapshot.entry;
         self.tick_step = snapshot.entry_step;
         self.next_label = None;
+        self.pending_voice = None;
+        self.pending_log_entry = false;
         self.variables.retain(|&(bank, _), _| bank > 10);
         self.variables.extend(snapshot.variables);
         self.surface_names.clear();
@@ -3572,6 +4866,8 @@ impl Vm {
         self.surfaces.clear();
         self.actors.clear();
         self.texture_variant = snapshot.texture_variant;
+        self.preserve_view = snapshot.preserve_view;
+        self.custom_names = snapshot.custom_names;
         if !snapshot.player_names.given.is_empty() {
             self.player_names.given = snapshot.player_names.given;
         }
@@ -3584,10 +4880,17 @@ impl Vm {
         self.falling = None;
         self.particle_region = ParticleRegion::default();
         if let Some(comments) = &mut self.comments {
-            comments.restore(snapshot.comments, self.text_encoding)?;
+            comments.restore(snapshot.comments, self.text_encoding, &mut self.random)?;
         }
         self.animation_sources.clear();
         self.animation = None;
+        self.scene_shake = None;
+        self.fade = None;
+        self.mosaic = 0;
+        self.mosaic_tween = None;
+        self.transition = None;
+        self.transition_backdrop = None;
+        self.screen_break = None;
         self.panning_planes.clear();
         self.overlays.clear();
         self.overlay_text.clear();
@@ -3666,7 +4969,15 @@ impl Vm {
             self.cut_in.order = layer.order;
         }
         self.message = (!snapshot.line.is_empty() || !snapshot.speaker.is_empty())
-            .then(|| Message::resumed(snapshot.line, snapshot.speaker, &self.player_names))
+            .then(|| {
+                Message::resumed(
+                    snapshot.line,
+                    snapshot.speaker,
+                    &self.player_names,
+                    self.custom_names,
+                    self.script.dialect.version == 0x9f9a,
+                )
+            })
             .transpose()?;
         self.speaker.clear();
         self.stop_music()?;
@@ -3858,6 +5169,9 @@ impl Vm {
     }
 
     fn shake(&mut self, actor: Option<u8>, vertical: bool, alternate: bool) {
+        if self.control_keys != 0 || self.skip_dialogue {
+            return;
+        }
         let shake = Some(Shake {
             elapsed: Duration::ZERO,
             vertical,
@@ -3975,7 +5289,7 @@ impl Vm {
         Ok(())
     }
 
-    fn open_menu(&mut self, group: u8) {
+    fn open_menu(&mut self, group: u8, variant: Option<u16>) {
         if let Some(template) = self.templates.get(&group) {
             self.overlays.clone_from(&template.sprites);
             self.overlay_text.clone_from(&template.text);
@@ -3986,46 +5300,136 @@ impl Vm {
             .is_some_and(|buttons| !buttons.is_empty())
         {
             self.button_group = group;
+            self.menu_variant = variant;
+            self.confirmation = None;
             self.wait = Wait::Menu;
             self.active_menu_origin = (self.menu_position.0, self.menu_position.1);
             self.keyboard_selection = None;
+            self.dragged_button = None;
             self.frame_dirty = true;
         }
+    }
+
+    fn open_confirmation(&mut self, group: u8, confirmation: Confirmation) {
+        self.open_menu(group, Some(self.menu_position.2));
+        if self.wait == Wait::Menu && self.button_group == group {
+            self.confirmation = Some(confirmation);
+        }
+    }
+
+    fn save_grid_slots(&self) -> Result<std::ops::Range<u16>> {
+        let count = self.slot_rectangles.len().min(10) as u16;
+        let page = self.variable(99, 0)?.clamp(0, 9) as u16;
+        let first = match self.script.dialect.version {
+            0x9f9a if self.variable(3, 20)? != 0 => 100,
+            0x9f9a => count * page,
+            _ => 3 + count * page,
+        };
+        Ok(first..first + count)
     }
 
     fn queue_save_grid(&mut self, loading: bool) -> Result<()> {
         if self.slot_rectangles.is_empty() || self.script.label(b"selsave", 0x4b)?.is_none() {
             return Ok(());
         }
-        let first = 3 + 10 * self.variable(99, 0)?.clamp(0, 9) as u16;
+        let slots = self.save_grid_slots()?;
+        let classic = self.script.dialect.version == 0x9f9a;
+        let wide = classic && self.variable(3, 20)? != 0;
+        let atlas = self.surfaces.get(&if classic { 14 } else { 19 });
         let buttons = self.parties.entry(self.button_group).or_default();
         buttons.retain(|button| button.save_slot.is_none());
-        for (index, &area) in self.slot_rectangles.iter().take(10).enumerate() {
-            let slot = first + index as u16;
-            if loading && !self.saves.exists(slot) {
-                continue;
-            }
+        for (slot, &area) in slots.zip(&self.slot_rectangles) {
+            let caption = self.saves.slot_caption(slot, wide)?;
+            let occupied = caption.is_some();
+            let selectable = if loading {
+                occupied
+            } else {
+                !classic || slot >= 3
+            };
             let mut states = BTreeMap::new();
-            if let Some(source) = self.slot_thumbnails.get(&slot) {
-                let thumbnail_height = source.image.height() as i32;
-                states.insert(
-                    99,
-                    Sprite {
-                        source: source.clone(),
-                        x: area[0] + 12,
-                        y: area[1] + (area[3] - area[1] - thumbnail_height) / 2,
-                        clip: None,
-                        effect: None,
-                    },
-                );
+            let sprite = |source: &Arc<Crx>, (x, y), (sx, sy, width, height)| Sprite {
+                source: source.clone(),
+                x: area[0] + x,
+                y: area[1] + y,
+                clip: Some(Clip {
+                    x: sx,
+                    y: sy,
+                    width,
+                    height,
+                }),
+                use_window_alpha: false,
+                effect: None,
+            };
+            if let Some(atlas) = atlas {
+                for state in [99, 1, 2] {
+                    let idle = state == 99;
+                    let clip = if wide {
+                        (0, if !idle && selectable { 92 } else { 0 }, 659, 91)
+                    } else if classic {
+                        (
+                            if !idle && selectable { 532 } else { 190 },
+                            185 + 89 * i32::from(slot.min(3)),
+                            341,
+                            88,
+                        )
+                    } else {
+                        (2, 21, 447, 105)
+                    };
+                    let mut images = vec![sprite(atlas, (0, 0), clip)];
+                    if !classic {
+                        let outline_x = if !idle && selectable { 148 } else { 16 };
+                        images.push(sprite(atlas, (14, 14), (outline_x, 127, 129, 75)));
+                        if let Some(source) = self.slot_thumbnails.get(&slot) {
+                            images.push(sprite(source, (16, 16), (0, 0, 125, 71)));
+                        }
+                    }
+                    states.insert(state, images);
+                }
             }
+            let (date, annotation) =
+                caption.unwrap_or_else(|| ("---- --/-- --:--:--".into(), "No Data".into()));
+            let (x, date_y, title_y) = if classic { (48, 16, 40) } else { (160, 12, 50) };
+            let date_size = if classic || !occupied { 20 } else { 18 };
+            let title_size = if classic || !occupied {
+                20
+            } else {
+                // The native small-font selectors depend on length in MES bytes.
+                match self.text_encoding.encode(&annotation).0.len() {
+                    33.. => 12,
+                    29..=32 => 16,
+                    _ => 18,
+                }
+            };
+            let width = Some((area[2] - area[0] - x - 8).max(1) as u32);
+            let text = |content, y, size| Text {
+                fixed_pitch: true,
+                line_height: None,
+                outline: true,
+                clip_width: None,
+                content,
+                x: area[0] + x,
+                y: area[1] + y,
+                size,
+                color: [255; 3],
+                width,
+            };
             buttons.push(Button {
                 area,
-                label: b"selsave".to_vec(),
+                label: if selectable {
+                    b"selsave".to_vec()
+                } else {
+                    Vec::new()
+                },
                 states,
-                captions: BTreeMap::new(),
+                captions: BTreeMap::from([(
+                    99,
+                    vec![
+                        text(date, date_y, date_size),
+                        text(annotation, title_y, title_size),
+                    ],
+                )]),
                 save_slot: Some(slot),
-                list_index: None,
+                ..Button::default()
             });
         }
         self.frame_dirty = true;
@@ -4046,6 +5450,7 @@ impl Vm {
             remaining: total,
             color: self.fade_color,
             mask: None,
+            pulse: false,
         });
         self.frame_dirty |= self.background.is_some();
         Ok(())
@@ -4061,6 +5466,7 @@ impl Vm {
             remaining: total,
             color: self.fade_color,
             mask: Some((self.surface(self.texture_slots.mask)?, increase)),
+            pulse: false,
         });
         self.frame_dirty = true;
         Ok(())
@@ -4096,16 +5502,35 @@ impl Vm {
         self.frame_dirty = true;
     }
 
+    fn caption_style(&self, mut content: String) -> (String, u16) {
+        let normal = if self.script.dialect.classic() {
+            24
+        } else {
+            22
+        };
+        let size = match content.as_bytes().get(..2) {
+            Some(b"@l") => 32,
+            Some(b"@s") => 20,
+            Some(b"@i") => 18,
+            Some(b"@y") => 16,
+            Some(b"@r") => 12,
+            Some(b"@z") => 10,
+            Some(b"@m" | b"@w") => normal,
+            _ => return (content, normal),
+        };
+        content.drain(..2);
+        (content, size)
+    }
+
     fn queue_overlay_text(&mut self, [x, y, size, palette]: [u16; 4]) -> Result<()> {
         let operand = self.script.instruction(self.ip)?;
         let Operands::Text { bytes, .. } = operand.args else {
             return Err(Error::Invalid("ADV32 overlay text operand"));
         };
-        let content = Script::decode_text(bytes, self.text_encoding)?;
+        let (content, font_size) =
+            self.caption_style(Script::decode_text(bytes, self.text_encoding)?);
         self.ip = operand.next;
-        if content.is_empty() {
-            return Ok(());
-        }
+        let outline = palette > 128;
         let palette = palette & 0x7f;
         let color = self
             .palette
@@ -4113,10 +5538,14 @@ impl Vm {
             .copied()
             .unwrap_or([255; 3]);
         self.overlay_text.push(Text {
+            fixed_pitch: true,
+            line_height: (size < 99).then_some(size),
+            outline,
+            clip_width: None,
             content,
             x: i32::from(x as i16),
             y: i32::from(y as i16),
-            size: size.min(98),
+            size: font_size,
             color,
             width: None,
         });
@@ -4144,9 +5573,7 @@ impl Vm {
         } else {
             self.sound_pan[bus]
         };
-        if self.audio.is_none() {
-            self.audio = Some(Audio::open(self.null_audio)?);
-        }
+        self.ensure_audio()?;
         self.audio
             .as_mut()
             .expect("audio was opened")
@@ -4156,19 +5583,34 @@ impl Vm {
     fn play_effect(&mut self, index: u16, repeat: bool) -> Result<()> {
         let name = self.sound_names.effect(index)?.to_owned();
         let channel = self.next_effect_channel;
-        self.play_sound(&name, channel, repeat)?;
-        self.next_effect_channel = if channel == 5 { 2 } else { channel + 1 };
+        match self.play_sound(&name, channel, repeat) {
+            // An entry in the engine's table can have no effect asset in a release.
+            Ok(()) => self.next_effect_channel = if channel == 5 { 2 } else { channel + 1 },
+            Err(Error::MissingAsset(_)) => {}
+            Err(error) => return Err(error),
+        }
         Ok(())
+    }
+
+    fn play_button_sound(&mut self, index: u16) -> Result<()> {
+        if index == 0 || self.sound_gain(BUTTON_SOUND_CHANNEL) == 0.0 {
+            return Ok(());
+        }
+        let Ok(name) = self.sound_names.effect(index).map(str::to_owned) else {
+            return Ok(());
+        };
+        match self.play_sound(&name, BUTTON_SOUND_CHANNEL, false) {
+            Err(Error::MissingAsset(_)) => Ok(()),
+            result => result,
+        }
     }
 
     #[cfg(feature = "video-ffmpeg")]
     fn start_movie(&mut self, name: &str) -> Result<()> {
         let path = self.game.resource("movie", name, "mpg")?.to_path_buf();
-        if self.audio.is_none() {
-            self.audio = Some(Audio::open(self.null_audio)?);
-        }
+        self.ensure_audio()?;
         self.stop_music()?;
-        for channel in 1..=5 {
+        for channel in 1..=BUTTON_SOUND_CHANNEL {
             self.stop_sound(channel)?;
         }
         self.movie = Some(Movie::open(path)?);
@@ -4317,7 +5759,7 @@ impl Vm {
     fn refresh_saved_preferences(&mut self) -> Result<()> {
         self.variables
             .retain(|&(bank, index), _| !self.saves.is_global(bank, index));
-        for channel in 0..=5 {
+        for channel in 0..=BUTTON_SOUND_CHANNEL {
             let gain = self.sound_gain(channel);
             if let Some(audio) = &mut self.audio {
                 audio.set_volume(channel, gain)?;
@@ -4622,11 +6064,20 @@ impl Vm {
         };
         self.script = script;
         self.script_name = name;
+        self.resume_offset = None;
+        self.message_offset = None;
+        self.pending_voice = None;
+        self.pending_log_entry = false;
         self.classic_choice_text.clear();
         self.gallery_portrait = None;
         self.ip = entry;
         self.music_end_route = None;
         self.scroll_list = None;
+        self.slider_drag = None;
+        self.dragged_button = None;
+        self.mouse_gesture = None;
+        self.quick_prompt = None;
+        self.confirmation = None;
         self.message = None;
         self.speaker.clear();
         Ok(())
@@ -4680,6 +6131,9 @@ impl Vm {
     }
 
     fn variable(&self, bank: u16, index: u16) -> Result<i32> {
+        if (bank, index) == (99, 4) {
+            return Ok(i32::from(self.fullscreen));
+        }
         if let Some(value) = self.variables.get(&(bank, index)) {
             return Ok(*value);
         }
@@ -4698,13 +6152,14 @@ impl Vm {
         } else {
             value
         };
-        self.variables.insert((bank, index), value);
+        let previous = self.variables.insert((bank, index), value);
         self.saves.update_global(bank, index, value);
+        self.frame_dirty |= (bank, index) == (99, 11) && previous != Some(value);
         if bank == 99 && self.audio.is_some() {
             let channels: &[u8] = match index {
                 7 | 14 => &[0],
                 5 | 9 => &[1],
-                8 | 15 => &[2, 3, 4, 5],
+                8 | 15 => &[2, 3, 4, 5, BUTTON_SOUND_CHANNEL],
                 _ => &[],
             };
             for &channel in channels {
@@ -4716,8 +6171,9 @@ impl Vm {
         }
         if bank == 100 && index <= 0x95 {
             if index == 49 {
-                self.variables.insert((99, 11), value);
+                let previous = self.variables.insert((99, 11), value);
                 self.saves.update_global(99, 11, value);
+                self.frame_dirty |= previous != Some(value);
             }
             self.saves.flush_globals()?;
         }
@@ -4731,6 +6187,84 @@ impl Vm {
             offset: instruction.offset,
         }
     }
+}
+
+fn draw_buttons(
+    frame: &mut Canvas,
+    buttons: &[Button],
+    hovered: Option<usize>,
+    message_bar: bool,
+    variant: Option<u16>,
+    origin: (i32, i32),
+    painter: &mut TextPainter,
+    slider_drag: Option<SliderDrag>,
+    slider_value: impl Fn(Slider) -> i32,
+) -> Result<()> {
+    let buttons = buttons.iter().enumerate();
+    let ordered = buttons
+        .clone()
+        .filter(|(_, button)| !button.draw_on_top)
+        .chain(buttons.filter(|(_, button)| button.draw_on_top));
+    for (index, button) in ordered {
+        let decoration = variant.filter(|_| button.label.is_empty());
+        let states: &[u16] = if decoration.is_some() {
+            &[99]
+        } else if hovered == Some(index) {
+            &[2, 1, 99]
+        } else if message_bar {
+            &[99]
+        } else {
+            &[99, 1]
+        };
+        let sprites = states.iter().find_map(|state| button.states.get(state));
+        // An empty-label modal button carries its common artwork in state 99
+        // and one header sprite for each prompt type in state 2.
+        let header =
+            decoration.and_then(|variant| button.states.get(&2)?.get(usize::from(variant)));
+        for sprite in sprites.into_iter().flatten().chain(header) {
+            graphics::blit(
+                frame,
+                &sprite.source,
+                sprite.x + origin.0,
+                sprite.y + origin.1,
+                sprite.clip,
+            );
+        }
+        if let Some(slider) = button.slider {
+            let dragging = slider_drag.filter(|drag| drag.button == index);
+            let thumb_state = if dragging.is_some() { 8 } else { 6 };
+            let value = dragging.map_or_else(|| slider_value(slider), |drag| drag.value);
+            for sprite in button.states.get(&thumb_state).into_iter().flatten() {
+                graphics::blit(
+                    frame,
+                    &sprite.source,
+                    slider.thumb_x(value) + origin.0,
+                    sprite.y + origin.1,
+                    sprite.clip,
+                );
+            }
+            if dragging.is_some() || hovered == Some(index) {
+                for sprite in button.states.get(&10).into_iter().flatten() {
+                    graphics::blit(
+                        frame,
+                        &sprite.source,
+                        sprite.x + origin.0,
+                        sprite.y + origin.1,
+                        sprite.clip,
+                    );
+                }
+            }
+        }
+        if let Some(captions) = states.iter().find_map(|state| button.captions.get(state)) {
+            for caption in captions {
+                let mut caption = caption.clone();
+                caption.x += origin.0;
+                caption.y += origin.1;
+                painter.draw(frame, &caption)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -4757,19 +6291,22 @@ mod tests {
         let game = root.path().join("Sample");
         let scripts = game.join("advdata/MES");
         let backgrounds = game.join("advdata/GRP/BG");
+        let sprites = game.join("advdata/GRP/BST");
         fs::create_dir_all(&scripts).unwrap();
         fs::create_dir_all(&backgrounds).unwrap();
+        fs::create_dir_all(&sprites).unwrap();
         let mut mes = Vec::from(1u32.to_le_bytes());
         mes.extend(3u32.to_le_bytes());
         mes.extend([0, 0, 0xb6, 0xab, 0]);
-        mes.extend(b"\x49bg\\first\x00\x06\x00\x00\x49Bg\\second\x00\x00\x00\x00");
+        mes.extend(b"\x49bg\\first\0\x3c\x04bst\\actor\0\x3f\0.\0\x06\0\0\x49Bg\\second\0\0\0\0");
         fs::write(scripts.join("START.MES"), mes).unwrap();
         fs::write(backgrounds.join("FIRST.CRX"), colored_crx([25, 50, 75])).unwrap();
         fs::write(backgrounds.join("second.crx"), colored_crx([35, 55, 85])).unwrap();
-        let mut vm = Vm::new(Game::find(&game).unwrap().unwrap()).unwrap();
+        fs::write(sprites.join("ACTOR.CRX"), colored_crx([90, 110, 130])).unwrap();
+        let mut vm = Vm::new(Game::find(&game).unwrap().unwrap(), None).unwrap();
 
         let first = vm.tick(Duration::ZERO, &[]).unwrap().unwrap();
-        assert_eq!(&first[..4], &[25, 50, 75, 255]);
+        assert_eq!(&first[..4], &[90, 110, 130, 255]);
         assert!(vm.tick(Duration::from_secs(1), &[]).unwrap().is_none());
         let second = vm
             .tick(
@@ -4792,6 +6329,192 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+    fn reset_window_size_preserves_the_preceding_display_mode_change() {
+        let root = tempfile::tempdir().unwrap();
+        let scripts = root.path().join("AdvData/MES");
+        fs::create_dir_all(&scripts).unwrap();
+        let mut mes = Vec::from(1u32.to_le_bytes());
+        mes.extend(3u32.to_le_bytes());
+        mes.extend([0, 0, 0xb6, 0xaa, 0, 0x18, 8, 1, 0x83]);
+        mes.extend([3u16, 0, 99, 4].into_iter().flat_map(u16::to_le_bytes));
+        mes.extend([0x18, 8, 0, 0x83]);
+        mes.extend([3u16, 1, 99, 4].into_iter().flat_map(u16::to_le_bytes));
+        mes.extend([0x18, 27, 0, 0x10, 0, 0]);
+        fs::write(scripts.join("START.MES"), mes).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        assert_eq!(vm.variable(3, 0).unwrap(), 1);
+        assert_eq!(vm.variable(3, 1).unwrap(), 0);
+        assert_eq!(
+            vm.window_command(),
+            Some(WindowCommand::SetFullscreen(true))
+        );
+        assert_eq!(
+            vm.window_command(),
+            Some(WindowCommand::SetFullscreen(false))
+        );
+        let (width, height) = vm.extent();
+        assert_eq!(
+            vm.window_command(),
+            Some(WindowCommand::SetClientSize { width, height })
+        );
+        assert!(vm.window_command().is_none());
+    }
+
+    #[test]
+    fn disc_check_uses_the_session_option() {
+        let root = tempfile::tempdir().unwrap();
+        let scripts = root.path().join("AdvData/MES");
+        fs::create_dir_all(&scripts).unwrap();
+        let mut mes = Vec::from(1u32.to_le_bytes());
+        mes.extend(3u32.to_le_bytes());
+        mes.extend([0, 0, 0xb6, 0xaa, 0, 0x18, 10, 0, 0x10, 0, 0]);
+        fs::write(scripts.join("START.MES"), mes).unwrap();
+
+        let make_vm = || Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+        assert!(make_vm().advance_timeline(Duration::ZERO, &[]).is_err());
+        let mut vm = make_vm();
+        vm.set_skip_disc_check(true);
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        assert!(vm.finished());
+    }
+
+    #[test]
+    fn authored_button_drag_dispatches_only_on_a_drop_target() {
+        for (version, button, text, drag, menu, label, copy, quit) in [
+            (0xaab6u16, 0x72, 0x54, 0x33, 0x0b, 0x4b, 0x83, 0x10),
+            (0xabb6, 0x72, 0x54, 0x33, 0x0b, 0x4b, 0x83, 0x10),
+            (0x9f9a, 0x66, 0x4c, 0x32, 0x0a, 0x43, 0x76, 0x0f),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let scripts = root.path().join("AdvData/MES");
+            fs::create_dir_all(&scripts).unwrap();
+            let mut mes = Vec::from(1u32.to_le_bytes());
+            mes.extend(3u32.to_le_bytes());
+            mes.extend([0, 0]);
+            mes.extend(version.to_le_bytes());
+            mes.push(0);
+            let sounds = if version == 0x9f9a { 0x15 } else { 0x17 };
+            for (x, name, role) in [
+                (0, b"assign".as_slice(), Some(0)),
+                (20, b"".as_slice(), Some(1)),
+                (40, b"".as_slice(), None),
+                (60, b"".as_slice(), Some(1)),
+            ] {
+                mes.push(button);
+                mes.extend([x, 0, x + 10, 10u16].into_iter().flat_map(u16::to_le_bytes));
+                mes.push(text);
+                mes.extend(name);
+                mes.push(0);
+                if role == Some(0) {
+                    mes.extend([sounds, 10, 20, sounds, 255, 30]);
+                }
+                if let Some(role) = role {
+                    mes.extend([drag, role, 0]);
+                }
+            }
+            mes.extend([menu, 0, 0, label]);
+            mes.extend(b"assign\0");
+            mes.push(copy);
+            mes.extend([3u16, 0, 99, 245].into_iter().flat_map(u16::to_le_bytes));
+            mes.extend([quit, 0, 0, 6, 0, 0, 0, 0, 0]);
+            fs::write(scripts.join("START.MES"), mes).unwrap();
+            let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+
+            let pointer = |x| RuntimeEvent::PointerMove { x, y: 5.0 };
+            let primary = |state| RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state,
+            };
+            vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+            assert_eq!(vm.menu_buttons().unwrap()[0].sounds, [10, 30]);
+            for (drop_x, finished) in [(45.0, false), (65.0, true)] {
+                vm.advance_timeline(
+                    Duration::ZERO,
+                    &[
+                        pointer(5.0),
+                        primary(KeyState::Pressed),
+                        pointer(drop_x),
+                        primary(KeyState::Released),
+                    ],
+                )
+                .unwrap();
+                assert_eq!(vm.finished(), finished);
+            }
+            assert_eq!(vm.variable(3, 0).unwrap(), 1);
+        }
+    }
+
+    #[test]
+    fn alpha_hit_testing_uses_the_registered_atlas_region() {
+        let mut atlas = RgbaImage::new(10, 10);
+        atlas.put_pixel(5, 6, image::Rgba([0, 0, 0, 1]));
+        let button = Button {
+            area: [10, 20, 14, 24],
+            hit_test_alpha: true,
+            states: BTreeMap::from([(
+                99,
+                vec![Sprite {
+                    source: Arc::new(Crx::from_image(0, 0, atlas)),
+                    x: 10,
+                    y: 20,
+                    clip: Some(Clip {
+                        x: 4,
+                        y: 4,
+                        width: 4,
+                        height: 4,
+                    }),
+                    use_window_alpha: false,
+                    effect: None,
+                }],
+            )]),
+            ..Button::default()
+        };
+        assert!(button.hit_at(11, 22));
+        assert!(!button.hit_at(12, 22));
+        assert!(!button.hit_at(15, 22));
+    }
+
+    #[test]
+    fn foreground_control_art_draws_after_later_registered_controls() {
+        let make_button = |color, draw_on_top| Button {
+            draw_on_top,
+            states: BTreeMap::from([(
+                99,
+                vec![Sprite {
+                    source: Arc::new(Crx::from_image(0, 0, RgbaImage::from_pixel(1, 1, color))),
+                    x: 0,
+                    y: 0,
+                    clip: None,
+                    use_window_alpha: false,
+                    effect: None,
+                }],
+            )]),
+            ..Button::default()
+        };
+        let foreground = image::Rgba([255, 60, 20, 255]);
+        let buttons = [
+            make_button(foreground, true),
+            make_button(image::Rgba([20, 60, 255, 255]), false),
+        ];
+        let mut canvas = Canvas::new(1, 1, false);
+        draw_buttons(
+            &mut canvas,
+            &buttons,
+            None,
+            false,
+            None,
+            (0, 0),
+            &mut TextPainter::new(encoding_rs::SHIFT_JIS, None),
+            None,
+            |_| 0,
+        )
+        .unwrap();
+        assert_eq!(*canvas.raster_mut().get_pixel(0, 0), foreground);
+    }
+
+    #[test]
     fn expanded_classic_scene_translation_animates_and_restores_the_stage() {
         let root = tempfile::tempdir().unwrap();
         let scripts = root.path().join("AdvData/MES");
@@ -4811,7 +6534,7 @@ mod tests {
         mes.extend([6, 0, 0, 0, 0, 0]);
         fs::write(scripts.join("START.MES"), mes).unwrap();
         fs::write(backgrounds.join("FIRST.CRX"), colored_crx([25, 50, 75])).unwrap();
-        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap()).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
 
         vm.advance_timeline(Duration::ZERO, &[]).unwrap();
         assert_eq!(vm.compose().unwrap().get_pixel(0, 0).0, [25, 50, 75, 255]);
@@ -4822,6 +6545,84 @@ mod tests {
             .unwrap();
         assert_eq!(vm.compose().unwrap().get_pixel(0, 2).0, [25, 50, 75, 255]);
 
+        vm.advance(true).unwrap();
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        assert_eq!(vm.compose().unwrap().get_pixel(0, 0).0, [25, 50, 75, 255]);
+    }
+
+    #[test]
+    fn showing_a_registered_picture_and_leaving_a_scene_unlocks_both_galleries() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("AdvData");
+        let scripts = data.join("MES");
+        let graphics = data.join("GRP");
+        let saves = data.join("SAVEDATA");
+        fs::create_dir_all(&scripts).unwrap();
+        fs::create_dir_all(graphics.join("BG")).unwrap();
+        fs::create_dir_all(&saves).unwrap();
+
+        let mut directory = vec![0; 12];
+        for names in [
+            [b"bg\\first".as_slice(), b"bg\\second".as_slice()].as_slice(),
+            [b"start".as_slice()].as_slice(),
+        ] {
+            directory.extend((names.len() as u32).to_le_bytes());
+            for name in names {
+                directory.extend_from_slice(name);
+                directory.resize(directory.len() + 32 - name.len(), 0);
+            }
+        }
+        fs::write(graphics.join("NAMES.DAT"), directory).unwrap();
+        fs::write(graphics.join("BG/FIRST.CRX"), colored_crx([25, 50, 75])).unwrap();
+        fs::write(graphics.join("BG/SECOND.CRX"), colored_crx([35, 55, 85])).unwrap();
+
+        for (file, code) in [
+            (
+                "START.MES",
+                b"\x49BG\\FIRST\0\x49*1\0\x4fNEXT\0\0\0\0".as_slice(),
+            ),
+            ("NEXT.MES", b"\0\0\0".as_slice()),
+        ] {
+            let mut mes = Vec::from(1u32.to_le_bytes());
+            mes.extend(3u32.to_le_bytes());
+            mes.extend([0, 0, 0xb6, 0xab, 0]);
+            mes.extend(code);
+            fs::write(scripts.join(file), mes).unwrap();
+        }
+        let prefs = saves.join("system.dat");
+        fs::write(&prefs, vec![0; 0x4b80 + 0x7f8]).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        assert_eq!(vm.compose().unwrap().get_pixel(0, 0).0, [35, 55, 85, 255]);
+        vm.flush_pending_saves().unwrap();
+        let written = fs::read(prefs).unwrap();
+        assert_eq!(&written[784..786], &[1, 1]);
+        assert_eq!(written[1984], 1);
+    }
+
+    #[test]
+    fn a_background_change_preserves_view_only_while_the_script_locks_it() {
+        let root = tempfile::tempdir().unwrap();
+        let scripts = root.path().join("AdvData/MES");
+        let backgrounds = root.path().join("AdvData/GRP/BG");
+        fs::create_dir_all(&scripts).unwrap();
+        fs::create_dir_all(&backgrounds).unwrap();
+        fs::write(backgrounds.join("FIRST.CRX"), colored_crx([25, 50, 75])).unwrap();
+        fs::write(backgrounds.join("SECOND.CRX"), colored_crx([35, 55, 85])).unwrap();
+
+        let mut mes = Vec::from(1u32.to_le_bytes());
+        mes.extend(3u32.to_le_bytes());
+        mes.extend([0, 0, 0x9a, 0x9f, 0]);
+        mes.extend(b"\x3a\x01BG\\FIRST\0\x42BG\\FIRST\0");
+        mes.push(0x8d);
+        mes.extend([0i16, 0, 0, -2].into_iter().flat_map(i16::to_le_bytes));
+        mes.extend(b"\x42:n\0\x3a\x01BG\\SECOND\0\x42BG\\SECOND\0\x06\0\0");
+        mes.extend(b"\x42:r\0\x3a\x01BG\\FIRST\0\x42BG\\FIRST\0\0\0\0");
+        fs::write(scripts.join("START.MES"), mes).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        assert_eq!(vm.compose().unwrap().get_pixel(0, 2).0, [35, 55, 85, 255]);
         vm.advance(true).unwrap();
         vm.advance_timeline(Duration::ZERO, &[]).unwrap();
         assert_eq!(vm.compose().unwrap().get_pixel(0, 0).0, [25, 50, 75, 255]);
@@ -4844,7 +6645,7 @@ mod tests {
         fs::write(scripts.join("START.MES"), mes).unwrap();
         fs::write(backgrounds.join("FIRST.CRX"), colored_crx([25, 50, 75])).unwrap();
         fs::write(masks.join("MASK11A.CRX"), colored_crx([64; 3])).unwrap();
-        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap()).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
         vm.set_variable(99, 10, 1).unwrap();
 
         vm.advance_timeline(Duration::ZERO, &[]).unwrap();
@@ -4861,14 +6662,25 @@ mod tests {
         let mut mes = Vec::from(1u32.to_le_bytes());
         mes.extend(3u32.to_le_bytes());
         mes.extend([0, 0, 0xb6, 0xab, 0]);
+        let boxes = [[100i16, 100, 500, 160], [100, 170, 500, 230]];
+        for (area, label) in boxes.into_iter().zip([b":1", b":2"]) {
+            mes.push(0x72);
+            mes.extend(area.into_iter().flat_map(i16::to_le_bytes));
+            mes.push(0x54);
+            mes.extend(label);
+            mes.push(0);
+        }
+        mes.extend([0x1a, 3, 0, 0x24, 3, 0]);
         mes.extend(b"\x09\x01\0\x5cfirst\0\x6c&IRST\0\x5csecond\0\x6c3ECOND\0\x0a\0\0");
         mes.extend(b"\x4bfirst\0\x82\x03\0\0\0\x01\0\0\0\x54end\0");
         mes.extend(b"\x4bsecond\0\x82\x03\0\0\0\x02\0\0\0\x4bend\0\0\0\0");
         fs::write(scripts.join("START.MES"), mes).unwrap();
-        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap()).unwrap();
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
         vm.advance_timeline(Duration::ZERO, &[]).unwrap();
         assert_eq!(vm.variable(3, 0).unwrap(), 0);
         assert_eq!(vm.menu_buttons().unwrap().len(), 2);
+        assert_eq!(vm.menu_buttons().unwrap()[0].area, boxes[0].map(i32::from));
+        assert_eq!(vm.menu_buttons().unwrap()[1].area, boxes[1].map(i32::from));
 
         let inputs = [KeyCode::ArrowDown, KeyCode::ArrowDown, KeyCode::Enter].map(|code| {
             RuntimeEvent::Key {
@@ -4884,6 +6696,21 @@ mod tests {
         });
         vm.advance_timeline(Duration::ZERO, &inputs).unwrap();
         assert_eq!(vm.variable(3, 0).unwrap(), 2);
+        assert_eq!(vm.variable(99, 245).unwrap(), 1);
+        assert!(vm.finished());
+
+        let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
+        vm.advance_timeline(Duration::ZERO, &[]).unwrap();
+        vm.choices.as_mut().unwrap().push(Button {
+            area: [400, 400, 500, 500],
+            ..Button::default()
+        });
+        vm.pointer = (450, 450);
+
+        vm.advance(false).unwrap();
+        assert!(matches!(vm.wait, Wait::Menu));
+        vm.advance_timeline(Duration::ZERO, &inputs[2..]).unwrap();
+        assert_eq!(vm.variable(3, 0).unwrap(), 1);
         assert!(vm.finished());
     }
 }

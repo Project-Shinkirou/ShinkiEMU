@@ -17,7 +17,7 @@ dynamic-plugin-export = ["dep:jni"]
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "runtime"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", features = ["audio", "runtime", "gpu-render"] }
 roukaku-platform = { workspace = true }
 roukaku-platform-common = { workspace = true }
 pollster.workspace = true

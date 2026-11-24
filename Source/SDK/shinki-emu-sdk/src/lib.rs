@@ -29,6 +29,8 @@ mod text;
 mod texture;
 
 pub use error::CoreError;
+#[cfg(feature = "gpu-render")]
+pub use roukaku_platform_common::{WgpuOffscreenRenderer, native_wgpu_instance};
 #[cfg(feature = "image")]
 pub use scene_textures::SceneTextureResidency;
 pub use stage::{StageCanvas, TextureAsset};

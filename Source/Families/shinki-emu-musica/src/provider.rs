@@ -602,7 +602,7 @@ impl MusicaProvider {
             service.check_cancelled()?;
         }
         if self.gpu_instance.is_none() {
-            self.gpu_instance = Some(roukaku_platform_common::native_wgpu_instance().map_err(
+            self.gpu_instance = Some(shinki_emu_sdk::native_wgpu_instance().map_err(
                 |cause| {
                     error(
                         "SHINKI_EMU_MUSICA_RENDERER",

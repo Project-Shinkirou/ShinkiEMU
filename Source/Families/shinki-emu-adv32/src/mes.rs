@@ -63,7 +63,7 @@ impl Dialect {
                 0x09 => 0x0a,
                 0x0a | 0x0b => legacy + 1,
                 0x0e => 0x0f,
-                0x0f => 0x00,
+                0x0f => 0x10,
                 0x10 => 0x11,
                 0x12 => 0x13,
                 0x13..=0x16 => legacy + 2,
@@ -248,12 +248,19 @@ impl Script {
         Ok(None)
     }
 
-    fn display_bytes(bytes: &[u8]) -> Vec<u8> {
+    fn display_bytes(bytes: &[u8], classic_dialogue: bool) -> Vec<u8> {
         bytes
             .iter()
-            .map(|byte| {
+            .enumerate()
+            .map(|(index, byte)| {
                 let decoded = byte.wrapping_add(0x20);
-                if decoded == b'$' { b' ' } else { decoded }
+                if decoded == b'$'
+                    && !(classic_dialogue && matches!(bytes.get(index + 1), Some(b'F' | b'N')))
+                {
+                    b' '
+                } else {
+                    decoded
+                }
             })
             .collect()
     }
@@ -262,8 +269,27 @@ impl Script {
         bytes: &[u8],
         encoding: &'static encoding_rs::Encoding,
     ) -> Result<String> {
+        Self::decode_display_text(bytes, encoding, false)
+    }
+
+    pub(crate) fn decode_dialogue(
+        bytes: &[u8],
+        encoding: &'static encoding_rs::Encoding,
+        dialect: Dialect,
+    ) -> Result<String> {
+        Self::decode_display_text(bytes, encoding, dialect.classic())
+    }
+
+    fn decode_display_text(
+        bytes: &[u8],
+        encoding: &'static encoding_rs::Encoding,
+        classic_dialogue: bool,
+    ) -> Result<String> {
         encoding
-            .decode_without_bom_handling_and_without_replacement(&Self::display_bytes(bytes))
+            .decode_without_bom_handling_and_without_replacement(&Self::display_bytes(
+                bytes,
+                classic_dialogue,
+            ))
             .map(std::borrow::Cow::into_owned)
             .ok_or(Error::Invalid("ADV32 display text encoding"))
     }
@@ -276,7 +302,7 @@ impl Script {
             if let Some(0x6a | 0x6b) = self.dialect.opcode(instruction.opcode)
                 && let Operands::Text { bytes, .. } = instruction.args
             {
-                let raw = Self::display_bytes(bytes);
+                let raw = Self::display_bytes(bytes, false);
                 if encoding_rs::SHIFT_JIS
                     .decode_without_bom_handling_and_without_replacement(&raw)
                     .is_none()
@@ -342,6 +368,79 @@ impl Script {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dialogue_ruby_uses_a_small_separate_row_over_the_base_text() {
+        let encoding = encoding_rs::SHIFT_JIS;
+        let dialect = Dialect::from_header(&[0xb6, 0xab, 0]).unwrap();
+        let mut message = crate::message::Message::new(
+            "A｛よみ／漢字｝B".into(),
+            String::new(),
+            &crate::save::PlayerNames::default(),
+            false,
+            false,
+        )
+        .unwrap();
+        message.reveal();
+        let text = message.text(
+            0,
+            1280,
+            dialect,
+            &std::collections::BTreeMap::new(),
+            [None, None],
+            encoding,
+        );
+        assert_eq!(message.parts().0, "A漢字B");
+        assert_eq!(text[1].content, "よみ");
+        assert_eq!(text[2].content, message.parts().0);
+        assert!(text[1].y < text[2].y);
+        assert_eq!(text[1].x - text[2].x, 21);
+    }
+
+    #[test]
+    fn dialogue_reveal_clips_each_line_at_the_native_pixel_rate() {
+        let dialect = Dialect::from_header(&[0x9a, 0x9f, 0]).unwrap();
+        let encoding = encoding_rs::SHIFT_JIS;
+        let mut message = crate::message::Message::new(
+            "AB\nCD".into(),
+            String::new(),
+            &crate::save::PlayerNames::default(),
+            false,
+            true,
+        )
+        .unwrap();
+        let tick = std::time::Duration::from_nanos(16_666_667);
+        let palette = std::collections::BTreeMap::new();
+
+        assert!(message.advance(tick, 0, dialect, encoding));
+        let text = message.text(0, 1280, dialect, &palette, [None, None], encoding);
+        assert_eq!(text[1].content, "AB");
+        assert_eq!(text[1].clip_width, Some(8));
+
+        assert!(message.advance(tick * 4, 0, dialect, encoding));
+        let text = message.text(0, 1280, dialect, &palette, [None, None], encoding);
+        assert_eq!(text[1].clip_width, None);
+        assert_eq!(text[2].content, "CD");
+        assert_eq!(text[2].clip_width, Some(8));
+
+        assert!(message.advance(tick, 11, dialect, encoding));
+        assert!(message.finished());
+    }
+
+    #[test]
+    fn classic_dialogue_keeps_the_player_name_controls() {
+        let encoding = encoding_rs::SHIFT_JIS;
+        let dialect = Dialect::from_header(&[0x9a, 0x9f, 0]).unwrap();
+        let speaker = Script::decode_dialogue(&[4, b'N'], encoding, dialect).unwrap();
+        let line = Script::decode_dialogue(&[4, b'F', 4, 4, b'N'], encoding, dialect).unwrap();
+        let names = crate::save::PlayerNames {
+            family: "Family".into(),
+            given: "Given".into(),
+        };
+        let message = crate::message::Message::resumed(line, speaker, &names, false, true).unwrap();
+        assert_eq!(message.parts(), ("Family Given", "Given"));
+        assert_eq!(Script::decode_text(&[4, b'N'], encoding).unwrap(), " n");
+    }
 
     #[test]
     fn parses_jump_entries_and_rejects_a_jump_into_a_string() {

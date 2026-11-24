@@ -130,7 +130,7 @@ impl CmvsProvider {
         let game_root = Path::new(game_path).to_path_buf();
         let archive = Arc::new(mount_cmvs(&game_root, Path::new(profile)).map_err(core)?);
         if self.gpu_instance.is_none() {
-            self.gpu_instance = Some(roukaku_platform_common::native_wgpu_instance().map_err(
+            self.gpu_instance = Some(shinki_emu_sdk::native_wgpu_instance().map_err(
                 |_| {
                     error(
                         "SHINKI_EMU_CMVS_GPU_CREATE",

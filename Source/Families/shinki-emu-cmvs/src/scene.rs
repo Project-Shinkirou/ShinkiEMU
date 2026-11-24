@@ -1,8 +1,9 @@
 use crate::{CmvsArchive, CmvsPs2aVmState};
 use roukaku_media_core::{BlendMode, Extent2D, RectI, SceneCommand, TextureFrame};
 use roukaku_platform::SceneFrame;
-use roukaku_platform_common::WgpuOffscreenRenderer;
-use shinki_emu_sdk::{CoreError, SceneTextureResidency, StageCanvas, TextureCache};
+use shinki_emu_sdk::{
+    CoreError, SceneTextureResidency, StageCanvas, TextureCache, WgpuOffscreenRenderer,
+};
 use std::{collections::BTreeMap, num::NonZeroUsize};
 mod basic_geometry;
 #[cfg(test)]

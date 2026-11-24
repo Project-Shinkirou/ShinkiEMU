@@ -3,6 +3,7 @@
 mod animation;
 mod archive;
 mod audio;
+mod authorization;
 mod binary;
 mod comments;
 mod crx;
@@ -21,6 +22,8 @@ mod text;
 mod vm;
 mod xpcm;
 
+pub use native::adv32_query;
+#[cfg(feature = "dynamic-plugin-export")]
 pub use native::shinki_emu_query;
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +36,11 @@ enum Error {
     UnsupportedMesVersion(u16),
     #[error("missing ADV32 asset {0}")]
     MissingAsset(String),
+    #[cfg(windows)]
+    #[error(
+        "ADV32 requires its original optical disc. Windows registry diskless authorization is unsupported."
+    )]
+    DiscRequired,
     #[error("ADV32 surface {0} has not been loaded")]
     MissingSurface(u8),
     #[error("ADV32 audio: {0}")]

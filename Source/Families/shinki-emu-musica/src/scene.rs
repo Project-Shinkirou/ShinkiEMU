@@ -5,9 +5,10 @@ use crate::{
 use roukaku_byte_source::OwnedByteBuffer;
 use roukaku_media_core::{BlendMode, Extent2D, MaskRevealMode, RectI, SceneCommand, TextureFrame};
 use roukaku_platform::SceneFrame;
-use roukaku_platform_common::WgpuOffscreenRenderer;
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
-use shinki_emu_sdk::{SceneTextureResidency, StageCanvas, TextureAsset, TextureCache};
+use shinki_emu_sdk::{
+    SceneTextureResidency, StageCanvas, TextureAsset, TextureCache, WgpuOffscreenRenderer,
+};
 use std::{num::NonZeroUsize, sync::Arc};
 
 const MAX_ASSET_BYTES: u64 = 64 * 1024 * 1024;
