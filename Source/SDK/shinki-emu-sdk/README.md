@@ -28,7 +28,9 @@ SDK 提供移植核心共同使用的模块，当前替代 Musica 内部的文�
 
 `TextScene::frame_parts` 将生命周期命令和各文字区域的绘制命令分开。ADV32 先提交生命周期命令，再按场景顺序交错提交图层和文字。`SceneTextureResidency::prepare_with_sources` 保留这些图层的源裁剪矩形；没有裁剪的核心仍使用 `prepare`。
 
-`TextScene::frame_parts_with_layout` 允许核心调整已排版字形的位置，再更新字形图集。回调收到物理像素坐标，不会改变 SDK 缓存中的原始排版。
+`TextScene::frame_parts_with_layout` 先按逻辑尺寸排版，核心可在回调中调整字格位置或隐藏暂不显示的字形，再按目标像素密度栅格化。回调收到 `Arc<LogicalTextLayout>`；布局策略未变时可复用上次定位后的布局。`TextSceneLayout::translation` 在栅格化前按倍率换算成物理偏移，参与 X/Y 亚像素采样。输出的字形原点和裁剪已经包含该偏移，提交时不再平移；调用方只需应用整体的 raster-to-logical 变换。
+
+直接读取遮罩的核心可调用 `shape_shared` 和 `rasterize_shared`，在两步之间保留自己的字格布局。`rasterize_shared` 的偏移参数以物理像素计；`layout_shared` 一次完成 1×、原点为零的排版和栅格化。
 
 `TextOutline::radius` 以逻辑像素计（1–8），随栅格倍率取整，最多 64 个物理像素。SDK 对定位后的单个字形做圆盘最大值膨胀，再减去原字形覆盖率，生成一张 8 位描边遮罩。先画描边，再画正文，两者共用区域裁剪；同一字形不会按偏移位置反复混合。描边遮罩按字形栅格身份和半径复用，颜色和整数平移不触发重新上传。每张遮罩最多 1 MiB，每帧描边声明最多 4096 张、16 MiB；超出限制时返回错误。
 

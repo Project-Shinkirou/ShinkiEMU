@@ -121,7 +121,7 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
     let (mut scene, request) = fixture();
     let mut region = TextSceneLayout {
         request,
-        translation: (1, 1),
+        translation: (0, 0),
         rgba: [0, 255, 0, 255],
         outline: Some(TextOutline {
             radius: 2,
@@ -132,13 +132,13 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
     let mut positioned = scene.layout_shared(&region.request).unwrap();
     let layout = Arc::make_mut(&mut positioned);
     let glyph = &mut layout.shaped_runs[0].glyphs[0];
-    glyph.render_x = Some(3);
-    glyph.render_y = Some(3);
+    glyph.render_x = Some(4);
+    glyph.render_y = Some(4);
     layout.glyph_resources[0].bitmap =
         GlyphBitmap::from_vec(2, 1, GlyphBitmapFormat::Alpha8, vec![128, 255]).unwrap();
     layout.clip = Some(LayoutClip {
-        x: 2,
-        y: 0,
+        x: 3,
+        y: 1,
         width: 6,
         height: 8,
     });
@@ -151,11 +151,10 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
             profile: "text-outline".into(),
         })
         .unwrap();
-    let mut draw = |scene: &mut TextScene, region: &TextSceneLayout| {
+    let mut draw = |scene: &mut TextScene, region: &TextSceneLayout, raster: &Arc<_>| {
         let frame = scene
-            .frame_parts_with_layout(std::slice::from_ref(region), 1.0, |_, _| {
-                Arc::clone(&positioned)
-            })
+            .draws
+            .frame(std::slice::from_ref(region), 1.0, |_, _| Ok(Arc::clone(raster)))
             .unwrap();
         let mut commands = frame.lifecycle;
         let lifecycle = commands.len();
@@ -165,7 +164,7 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
         }
         (lifecycle, renderer.capture_frame(&commands).unwrap().bytes)
     };
-    let (lifecycle, pixels) = draw(&mut scene, &region);
+    let (lifecycle, pixels) = draw(&mut scene, &region, &positioned);
     let pixel = |x: usize, y: usize| &pixels[(y * 10 + x) * 4..(y * 10 + x) * 4 + 4];
     assert_eq!(lifecycle, 2);
     assert_eq!(pixel(4, 3), &[255, 0, 0, 128]); // Two source samples overlap in the disk.
@@ -175,12 +174,68 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
     assert_eq!(pixel(2, 4), &[0; 4]); // Same region clip for outline and fill.
     assert_eq!(pixel(7, 2), &[0; 4]); // The disk does not include its square corner.
 
-    region.translation.0 += 1;
-    let (lifecycle, moved) = draw(&mut scene, &region);
+    let layout = Arc::make_mut(&mut positioned);
+    layout.shaped_runs[0].glyphs[0].render_x = Some(5);
+    layout.clip.as_mut().unwrap().x += 1;
+    let (lifecycle, moved) = draw(&mut scene, &region, &positioned);
     assert_eq!(lifecycle, 0);
     assert_eq!(&moved[(3 * 10 + 5) * 4..][..4], pixel(4, 3));
     region.outline = None;
-    let (lifecycle, without_stroke) = draw(&mut scene, &region);
+    let (lifecycle, without_stroke) = draw(&mut scene, &region, &positioned);
     assert_eq!(lifecycle, 1);
     assert_eq!(&without_stroke[(3 * 10 + 5) * 4..][..4], &[0; 4]);
+}
+
+#[test]
+fn raster_uses_logical_placement_and_fractional_region_origin() {
+    let (mut scene, request) = fixture();
+    let mut region = TextSceneLayout {
+        request,
+        translation: (1, 1),
+        rgba: [255; 4],
+        outline: None,
+    };
+    let shaped = scene.shape_shared(&region.request).unwrap();
+    let mut positioned = Arc::clone(&shaped);
+    Arc::make_mut(&mut positioned)
+        .place_glyphs(|_, _, glyph| {
+            let mut placement = GlyphPlacement::from(glyph);
+            placement.x += 0.25;
+            placement.y += 0.25;
+            Some(placement)
+        })
+        .unwrap();
+    let draw = |scene: &mut TextScene, region: &TextSceneLayout, placement: &Arc<_>| {
+        let frame = scene
+            .frame_parts_with_layout(std::slice::from_ref(region), 1.5, |_, logical| {
+                assert!(Arc::ptr_eq(&logical, &shaped));
+                Ok(Arc::clone(placement))
+            })
+            .unwrap();
+        let [SceneCommand::GlyphRun { glyphs, .. }] = frame.layouts[0].commands.as_slice() else {
+            panic!("expected a single glyph run");
+        };
+        let upload = frame
+            .lifecycle
+            .iter()
+            .any(|command| matches!(command, SceneCommand::UploadGlyph { .. }));
+        (glyphs[0].clone(), upload)
+    };
+    let (initial, _) = draw(&mut scene, &region, &shaped);
+    let (placed, upload) = draw(&mut scene, &region, &positioned);
+    assert!(upload);
+    assert_ne!(initial.resource_id, placed.resource_id);
+
+    region.translation = (3, 3);
+    let (translated, upload) = draw(&mut scene, &region, &positioned);
+    assert!(!upload);
+    assert_eq!(translated.resource_id, placed.resource_id);
+    assert_eq!((translated.x - placed.x, translated.y - placed.y), (3, 3));
+
+    for translation in [(2, 3), (3, 2)] {
+        region.translation = translation;
+        let (fractional, upload) = draw(&mut scene, &region, &positioned);
+        assert!(upload);
+        assert_ne!(fractional.resource_id, placed.resource_id);
+    }
 }

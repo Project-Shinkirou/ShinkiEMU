@@ -1,11 +1,10 @@
 use roukaku_core::{DiagnosticSeverity, Hash256};
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, MediaError, SceneCommand};
 use roukaku_text::{
-    CosmicTextLayoutProvider, GlyphResource, TextLayoutRequest, TextLayoutResult,
+    CosmicTextLayoutProvider, GlyphResource, LogicalTextLayout, TextLayoutRequest, TextLayoutResult,
     TextRenderFrameCommands, TextRenderLayoutUpdate, TextRenderResourceOwner,
 };
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Weak},
 };
@@ -74,7 +73,6 @@ struct CachedOutline {
 struct PreparedRegion<'a> {
     id: &'a str,
     layout: Arc<TextLayoutResult>,
-    translation: (i32, i32),
     rgba: [u8; 4],
     outline: Option<(String, [u8; 4], CachedOutline)>,
 }
@@ -87,6 +85,11 @@ struct PreparedRegion<'a> {
 /// failure the caller must close the session, rather than discard the lifecycle.
 pub struct TextScene {
     provider: CosmicTextLayoutProvider,
+    draws: TextDrawState,
+}
+
+#[derive(Default)]
+struct TextDrawState {
     resources: TextRenderResourceOwner,
     visible: BTreeSet<String>,
     outlines: BTreeMap<String, CachedOutline>,
@@ -97,10 +100,7 @@ impl TextScene {
     pub fn new(provider: CosmicTextLayoutProvider) -> Self {
         Self {
             provider,
-            resources: TextRenderResourceOwner::default(),
-            visible: BTreeSet::new(),
-            outlines: BTreeMap::new(),
-            outline_masks: OutlineMasks::default(),
+            draws: TextDrawState::default(),
         }
     }
 
@@ -108,29 +108,37 @@ impl TextScene {
         self.frame_scaled(regions, 1.0)
     }
 
-    /// Shape through the same provider and cache used by `frame`. Family-native
-    /// layout policies can read glyph advances without guessing from bitmaps or
-    /// owning a second font system. The result owns no renderer resources.
+    /// Lay out and rasterize at 1× and origin zero, for direct CPU consumers.
     pub fn layout_shared(
         &self,
         request: &TextLayoutRequest,
     ) -> Result<Arc<TextLayoutResult>, MediaError> {
-        let layout = self.provider.layout_shared(request)?;
-        if layout.diagnostics.iter().any(|diagnostic| {
-            matches!(
-                diagnostic.severity,
-                DiagnosticSeverity::Error | DiagnosticSeverity::Blocking
-            )
-        }) {
-            return Err(MediaError::Diagnostics(layout.diagnostics.clone()));
-        }
-        Ok(layout)
+        let layout = self.shape_shared(request)?;
+        self.rasterize_shared(&layout, 1.0, (0.0, 0.0))
+    }
+
+    /// Get logical glyph positions and metrics without allocating raster masks.
+    pub fn shape_shared(
+        &self,
+        request: &TextLayoutRequest,
+    ) -> Result<Arc<LogicalTextLayout>, MediaError> {
+        checked_shape(&self.provider, request)
+    }
+
+    /// Rasterize logical glyphs with a physical offset included in the X/Y phase.
+    /// Returned bitmap origins and clip already include the offset.
+    pub fn rasterize_shared(
+        &self,
+        layout: &LogicalTextLayout,
+        raster_scale: f32,
+        physical_offset: (f32, f32),
+    ) -> Result<Arc<TextLayoutResult>, MediaError> {
+        checked_raster(&self.provider, layout, raster_scale, physical_offset)
     }
 
     /// Build a frame at a physical raster density while keeping the caller's
-    /// layout in logical stage units. The provider receives scaled constraints
-    /// and therefore rasterizes glyphs at the requested density; the caller can
-    /// map the resulting commands back through its raster-to-logical transform.
+    /// layout in logical stage units. The painter can map the physical commands
+    /// back through its raster-to-logical transform.
     pub fn frame_scaled(
         &mut self,
         regions: &[TextSceneLayout],
@@ -151,17 +159,79 @@ impl TextScene {
         regions: &[TextSceneLayout],
         raster_scale: f32,
     ) -> Result<TextRenderFrameCommands, MediaError> {
-        self.frame_parts_with_layout(regions, raster_scale, |_, layout| layout)
+        self.frame_parts_with_layout(regions, raster_scale, |_, layout| Ok(layout))
     }
 
-    /// Apply engine positioning to shaped glyphs before updating the glyph atlas.
-    /// The callback receives layouts in physical pixels, in region order.
-    /// Each outlined region draws its stroke once per glyph before the fill.
+    /// Apply engine placement in logical units before selecting raster size and phase.
+    /// The callback runs in region order. The physical glyph origins and clip
+    /// already include the region translation; draw each stroke before its fill.
     pub fn frame_parts_with_layout(
         &mut self,
         regions: &[TextSceneLayout],
         raster_scale: f32,
-        mut position: impl FnMut(usize, Arc<TextLayoutResult>) -> Arc<TextLayoutResult>,
+        mut position: impl FnMut(
+            usize,
+            Arc<LogicalTextLayout>,
+        ) -> Result<Arc<LogicalTextLayout>, MediaError>,
+    ) -> Result<TextRenderFrameCommands, MediaError> {
+        let provider = &self.provider;
+        self.draws.frame(regions, raster_scale, |index, region| {
+            let logical = position(index, checked_shape(provider, &region.request)?)?;
+            let offset = (
+                region.translation.0 as f32 * raster_scale,
+                region.translation.1 as f32 * raster_scale,
+            );
+            checked_raster(provider, &logical, raster_scale, offset)
+        })
+    }
+
+    /// Release all glyphs while the consumer's renderer is still alive.
+    pub fn clear(&mut self) -> Vec<SceneCommand> {
+        self.draws.visible.clear();
+        self.draws.outlines.clear();
+        self.draws.outline_masks = OutlineMasks::default();
+        self.draws.resources.shutdown()
+    }
+}
+
+fn checked_shape(
+    provider: &CosmicTextLayoutProvider,
+    request: &TextLayoutRequest,
+) -> Result<Arc<LogicalTextLayout>, MediaError> {
+    let layout = provider.shape_shared(request)?;
+    check_diagnostics(&layout)?;
+    Ok(layout)
+}
+
+fn checked_raster(
+    provider: &CosmicTextLayoutProvider,
+    layout: &LogicalTextLayout,
+    raster_scale: f32,
+    physical_offset: (f32, f32),
+) -> Result<Arc<TextLayoutResult>, MediaError> {
+    let layout = provider.rasterize_shared(layout, raster_scale, physical_offset)?;
+    check_diagnostics(&layout)?;
+    Ok(layout)
+}
+
+fn check_diagnostics(layout: &TextLayoutResult) -> Result<(), MediaError> {
+    if layout.diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic.severity,
+            DiagnosticSeverity::Error | DiagnosticSeverity::Blocking
+        )
+    }) {
+        return Err(MediaError::Diagnostics(layout.diagnostics.clone()));
+    }
+    Ok(())
+}
+
+impl TextDrawState {
+    fn frame(
+        &mut self,
+        regions: &[TextSceneLayout],
+        raster_scale: f32,
+        mut rasterize: impl FnMut(usize, &TextSceneLayout) -> Result<Arc<TextLayoutResult>, MediaError>,
     ) -> Result<TextRenderFrameCommands, MediaError> {
         if !raster_scale.is_finite() || raster_scale <= 0.0 {
             return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_SCALE"));
@@ -169,14 +239,14 @@ impl TextScene {
         let mut visible = BTreeSet::new();
         let mut prepared = Vec::with_capacity(regions.len());
         let mut outline_budget = OutlineBudget::default();
-        for (index, logical) in regions.iter().enumerate() {
-            let id = logical.request.key.as_str();
+        for (index, region) in regions.iter().enumerate() {
+            let id = region.request.key.as_str();
             if id.trim().is_empty() || !visible.insert(id.to_owned()) {
                 return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_LAYOUT_ID"));
             }
-            let region = scale_layout(logical, raster_scale)?;
-            let layout = position(index, self.layout_shared(&region.request)?);
-            let outline = if let Some(outline) = region.outline {
+            let outline = raster_outline(region.outline, raster_scale)?;
+            let layout = rasterize(index, region)?;
+            let outline = if let Some(outline) = outline {
                 let outline_id = format!("{id}.outline");
                 if !visible.insert(outline_id.clone()) {
                     return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_LAYOUT_ID"));
@@ -200,7 +270,6 @@ impl TextScene {
             prepared.push(PreparedRegion {
                 id,
                 layout,
-                translation: region.translation,
                 rgba: region.rgba,
                 outline,
             });
@@ -213,7 +282,7 @@ impl TextScene {
                     layout: &outline.layout,
                     shared_layout: Some(&outline.layout),
                     rgba: *rgba,
-                    translation: region.translation,
+                    translation: (0, 0),
                 });
             }
             updates.push(TextRenderLayoutUpdate {
@@ -221,7 +290,7 @@ impl TextScene {
                 layout: &region.layout,
                 shared_layout: Some(&region.layout),
                 rgba: region.rgba,
-                translation: region.translation,
+                translation: (0, 0),
             });
         }
         let removals = self
@@ -239,14 +308,6 @@ impl TextScene {
             .collect();
         self.visible = visible;
         Ok(frame)
-    }
-
-    /// Release all glyphs while the consumer's renderer is still alive.
-    pub fn clear(&mut self) -> Vec<SceneCommand> {
-        self.visible.clear();
-        self.outlines.clear();
-        self.outline_masks = OutlineMasks::default();
-        self.resources.shutdown()
     }
 }
 
@@ -425,68 +486,20 @@ fn dilate_outline(
     GlyphBitmap::from_vec(width as u32, height as u32, GlyphBitmapFormat::Alpha8, pixels)
 }
 
-fn scale_layout(
-    region: &TextSceneLayout,
+fn raster_outline(
+    outline: Option<TextOutline>,
     scale: f32,
-) -> Result<Cow<'_, TextSceneLayout>, MediaError> {
-    if let Some(outline) = region.outline
-        && (!(1..=MAX_LOGICAL_OUTLINE_RADIUS).contains(&outline.radius) || outline.rgba[3] == 0)
-    {
+) -> Result<Option<TextOutline>, MediaError> {
+    let Some(mut outline) = outline else {
+        return Ok(None);
+    };
+    if !(1..=MAX_LOGICAL_OUTLINE_RADIUS).contains(&outline.radius) || outline.rgba[3] == 0 {
         return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
     }
-    let constraint = &region.request.constraint;
-    let max_width = scale_f32(constraint.max_width, scale)?;
-    let max_height = constraint
-        .max_height
-        .map(|value| scale_f32(value, scale))
-        .transpose()?;
-    let font_size = scale_f32(constraint.font_size, scale)?;
-    let line_height = scale_f32(constraint.line_height, scale)?;
-    if scale == 1.0 {
-        return Ok(Cow::Borrowed(region));
+    let radius = (f32::from(outline.radius) * scale).round().max(1.0);
+    if !(1.0..=f32::from(MAX_RASTER_OUTLINE_RADIUS)).contains(&radius) {
+        return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
     }
-    let mut request = region.request.clone();
-    request.constraint.max_width = max_width;
-    request.constraint.max_height = max_height;
-    request.constraint.font_size = font_size;
-    request.constraint.line_height = line_height;
-    let translation = (
-        scale_i32(region.translation.0, scale)?,
-        scale_i32(region.translation.1, scale)?,
-    );
-    let outline = region
-        .outline
-        .map(|outline| {
-            let radius = (f32::from(outline.radius) * scale).round().max(1.0);
-            if !(1.0..=f32::from(MAX_RASTER_OUTLINE_RADIUS)).contains(&radius) {
-                return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_OUTLINE"));
-            }
-            Ok(TextOutline {
-                radius: radius as u8,
-                rgba: outline.rgba,
-            })
-        })
-        .transpose()?;
-    Ok(Cow::Owned(TextSceneLayout {
-        request,
-        translation,
-        rgba: region.rgba,
-        outline,
-    }))
-}
-
-fn scale_f32(value: f32, scale: f32) -> Result<f32, MediaError> {
-    let scaled = value * scale;
-    if !scaled.is_finite() || scaled <= 0.0 {
-        return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_SCALE"));
-    }
-    Ok(scaled)
-}
-
-fn scale_i32(value: i32, scale: f32) -> Result<i32, MediaError> {
-    let scaled = f64::from(value) * f64::from(scale);
-    if !scaled.is_finite() || scaled < f64::from(i32::MIN) || scaled > f64::from(i32::MAX) {
-        return Err(MediaError::message("SHINKI_EMU_SDK_TEXT_SCALE"));
-    }
-    Ok(scaled.round() as i32)
+    outline.radius = radius as u8;
+    Ok(Some(outline))
 }

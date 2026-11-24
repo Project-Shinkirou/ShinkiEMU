@@ -3,11 +3,12 @@ use encoding_rs::{Encoding, GBK};
 use image::{Pixel, Rgba};
 use lru::LruCache;
 use roukaku_core::Hash256;
-use roukaku_media_core::GlyphBitmapFormat;
+use roukaku_media_core::{GlyphBitmapFormat, MediaError};
 use roukaku_text::{
-    CosmicTextLayoutProvider, FontBindingContext, LayoutConstraint, OpenTypeFeature,
-    OverflowPolicy, PackagedFont, TextDirection, TextLayoutConfig, TextLayoutRequest,
-    TextLayoutResult, TextRun, WrapPolicy, font_unicode_coverage,
+    CosmicTextLayoutProvider, FontBindingContext, GlyphPlacement, LayoutConstraint,
+    LogicalTextLayout, OpenTypeFeature, OverflowPolicy, PackagedFont, TextDirection,
+    TextLayoutConfig, TextLayoutRequest, TextLayoutResult, TextRun, WrapPolicy,
+    font_unicode_coverage,
 };
 use shinki_emu_sdk::{TextOutline, TextScene, TextSceneLayout};
 use std::{collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc};
@@ -205,13 +206,9 @@ impl Text {
 
     fn position_glyphs(
         &self,
-        mut layout: Arc<TextLayoutResult>,
+        mut layout: Arc<LogicalTextLayout>,
         encoding: &'static Encoding,
-    ) -> Arc<TextLayoutResult> {
-        if !self.fixed_pitch {
-            return layout;
-        }
-
+    ) -> std::result::Result<Arc<LogicalTextLayout>, MediaError> {
         // ADV32's GDI text renderer uses a half cell for a single-byte
         // character and a full cell for a double-byte character. The glyph's
         // advance is only used to center it inside that cell.
@@ -230,20 +227,15 @@ impl Text {
                 Some((index, (x, f32::from(cell))))
             })
             .collect();
-        for glyph in Arc::make_mut(&mut layout)
-            .shaped_runs
-            .iter_mut()
-            .flat_map(|run| &mut run.glyphs)
-        {
+        Arc::make_mut(&mut layout).place_glyphs(|_, _, glyph| {
+            let mut placement = GlyphPlacement::from(glyph);
             if let Some(&(x, advance)) = cells.get(&glyph.source.start) {
-                let centered = x as f32 + (advance - glyph.advance) / 2.0;
-                let shift = (centered - glyph.x).round() as i32;
-                glyph.render_x = glyph.render_x.map(|render_x| render_x + shift);
-                glyph.x = centered;
-                glyph.advance = advance;
+                placement.x = x as f32 + (advance - glyph.advance) / 2.0;
+                placement.advance = advance;
             }
-        }
-        layout
+            Some(placement)
+        })?;
+        Ok(layout)
     }
 }
 
@@ -288,7 +280,9 @@ pub(crate) fn new_scene(
     Ok(TextScene::new(provider))
 }
 
-pub(crate) struct NativeTextLayouts(LruCache<u64, Arc<TextLayoutResult>>);
+type NativeLayoutKey = (u64, u16, &'static str);
+
+pub(crate) struct NativeTextLayouts(LruCache<NativeLayoutKey, Arc<LogicalTextLayout>>);
 
 impl NativeTextLayouts {
     pub(crate) fn new() -> Self {
@@ -298,15 +292,17 @@ impl NativeTextLayouts {
     pub(crate) fn position(
         &mut self,
         text: &Text,
-        layout: Arc<TextLayoutResult>,
+        layout: Arc<LogicalTextLayout>,
         encoding: &'static Encoding,
-    ) -> Arc<TextLayoutResult> {
+    ) -> std::result::Result<Arc<LogicalTextLayout>, MediaError> {
         if !text.fixed_pitch {
-            return layout;
+            return Ok(layout);
         }
+        // Raster density and region origin do not affect logical cell placement.
+        let key = (layout.revision, text.size, encoding.name());
         self.0
-            .get_or_insert(layout.revision, || text.position_glyphs(layout, encoding))
-            .clone()
+            .try_get_or_insert(key, || text.position_glyphs(layout, encoding))
+            .map(Arc::clone)
     }
 }
 
@@ -347,18 +343,20 @@ impl TextPainter {
             self.font.as_deref(),
         );
         let raster = self.raster.as_ref().expect("text scene initialized");
-        let layout = self.positioned.position(
-            text,
-            raster.layout_shared(&request.request).map_err(text_error)?,
-            encoding,
-        );
+        let logical = raster.shape_shared(&request.request).map_err(text_error)?;
+        let positioned = self
+            .positioned
+            .position(text, logical, encoding)
+            .map_err(text_error)?;
+        let layout = raster
+            .rasterize_shared(&positioned, 1.0, (text.x as f32, text.y as f32))
+            .map_err(text_error)?;
         let bitmaps: BTreeMap<_, _> = layout
             .glyph_resources
             .iter()
             .map(|resource| (resource.resource_id.as_str(), &resource.bitmap))
             .collect();
         let frame = frame.raster_mut();
-        let origin = (text.x, text.y);
         let clip = text.clip_width.map(|width| text.x..text.x + width as i32);
         if text.outline {
             for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
@@ -366,13 +364,13 @@ impl TextPainter {
                     frame,
                     &layout,
                     &bitmaps,
-                    (origin.0 + dx, origin.1 + dy),
+                    (dx, dy),
                     [0; 3],
                     clip.as_ref(),
                 );
             }
         }
-        draw_glyphs(frame, &layout, &bitmaps, origin, text.color, clip.as_ref());
+        draw_glyphs(frame, &layout, &bitmaps, (0, 0), text.color, clip.as_ref());
         Ok(())
     }
 }
@@ -439,8 +437,17 @@ mod tests {
         };
         let painter = new_scene(SHIFT_JIS, None).unwrap();
         let request = text.request("cells".into(), 1280, SHIFT_JIS, None);
-        let original = painter.layout_shared(&request.request).unwrap();
-        let positioned = text.position_glyphs(original.clone(), SHIFT_JIS);
+        let original = painter.shape_shared(&request.request).unwrap();
+        let mut layouts = NativeTextLayouts::new();
+        let positioned = layouts
+            .position(&text, Arc::clone(&original), SHIFT_JIS)
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            &positioned,
+            &layouts
+                .position(&text, Arc::clone(&original), SHIFT_JIS)
+                .unwrap()
+        ));
         let glyphs = |layout: &TextLayoutResult| {
             layout
                 .shaped_runs
