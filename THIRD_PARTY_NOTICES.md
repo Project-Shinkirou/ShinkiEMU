@@ -12,6 +12,7 @@
 - Copyright © SixtyFPS GmbH.
 - License mode: Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0.
 - License: <https://slint.dev/terms-and-conditions>
+- Full text in Manager packages: `licenses/slint/LicenseRef-Slint-Royalty-free-2.0.md`.
 - ShinkiEMU 在 设置→关于 中直接显示 Slint 官方 `AboutSlint` widget，该位置可从一级导航“设置”到达。不得从 shipping UI 删除它或把它放到无法从一级导航到达的位置。
 - Slint 同时提供其他许可证；RoukakuEngine workspace 不因本产品选择 Royalty-free 2.0 而改为 GPL。
 

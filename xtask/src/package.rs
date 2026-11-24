@@ -707,7 +707,25 @@ pub(crate) fn licenses(
         }
     }
     if result.component == "manager" {
+        // cargo-about 0.9.3 drops matching LicenseRef clarifications from its report.
+        const SLINT_LICENSE: &str = "LicenseRef-Slint-Royalty-free-2.0.md";
+        let metadata = build::cargo_metadata(inv, &result.target)?;
+        let mut slint = metadata["packages"]
+            .as_array()
+            .context("Cargo packages")?
+            .iter()
+            .filter(|package| package["name"] == "slint");
+        let manifest = slint
+            .next()
+            .and_then(|package| package["manifest_path"].as_str())
+            .context("Slint manifest missing from Cargo metadata")?;
+        ensure!(slint.next().is_none(), "ambiguous Slint package in Cargo metadata");
+        let slint_root = Path::new(manifest).parent().context("Slint crate directory")?;
         entries.extend([
+            (
+                slint_root.join("LICENSES").join(SLINT_LICENSE),
+                format!("licenses/slint/{SLINT_LICENSE}"),
+            ),
             (
                 inv.root
                     .join("Source/Manager/shinki-emu-manager-ui-slint/material-1.1.0/LICENSE.md"),
