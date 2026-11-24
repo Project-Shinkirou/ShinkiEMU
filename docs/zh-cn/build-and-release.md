@@ -27,6 +27,8 @@ cargo install cargo-about --locked --version 0.9.3
 
 安装 Visual Studio C++ 工具、CMake、Ninja 和 NASM。在 x64 Visual Studio 开发者环境中运行 Cargo 和打包命令（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll` 等可再分发的 MSVC 运行库。
 
+`Assets/Effects/dxc.lock.json` 记录的是 ZIP 内的原始条目名，不是文件系统路径。当前 DXC 压缩包的条目名使用反斜杠，部分 ZIP 工具会显示成正斜杠。
+
 Windows 会按文件名复用已加载的 DLL，Impacto 与 KiriKiri 必须使用兼容的 `fmt.dll` ABI。当前固定的 Impacto 提交用 fmt 11.2.0 处理 [#37](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)。
 
 ### Linux 桌面

@@ -27,6 +27,8 @@ cargo install cargo-about --locked --version 0.9.3
 
 Run Cargo and packaging in an x64 Visual Studio developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Install the Visual Studio C++ tools, CMake, Ninja and NASM. The packager gets MSVC redistributables such as `VCRUNTIME140.dll` from `%VCToolsRedistDir%\x64`.
 
+`Assets/Effects/dxc.lock.json` records exact ZIP member names, not filesystem paths. The pinned DXC archive uses backslashes in its raw member names; ZIP listing tools may display them as forward slashes.
+
 Windows reuses loaded DLLs by basename, so Impacto and KiriKiri must agree on the `fmt.dll` ABI; the current Impacto pin uses fmt 11.2.0 to address [#37](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37).
 
 ### Linux desktop
