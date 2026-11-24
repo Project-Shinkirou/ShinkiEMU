@@ -20,6 +20,8 @@ pub struct BuildAsset {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreBuildManifest {
     pub plugin_id: String,
+    /// Cargo target used by adapter build scripts when selecting packaged assets.
+    pub target: String,
     pub artifact_kind: String,
     pub native_library: Option<PathBuf>,
     pub resources: Vec<BuildAsset>,
@@ -30,6 +32,7 @@ impl CoreBuildManifest {
     pub fn new(plugin_id: impl Into<String>, artifact_kind: impl Into<String>) -> Result<Self> {
         let manifest = Self {
             plugin_id: plugin_id.into(),
+            target: env::var("TARGET").context("TARGET is required in build.rs")?,
             artifact_kind: artifact_kind.into(),
             native_library: None,
             resources: Vec::new(),
@@ -508,6 +511,7 @@ mod tests {
         fs::write(&source, b"license").unwrap();
         let mut manifest = CoreBuildManifest {
             plugin_id: "test".into(),
+            target: "x86_64-pc-windows-msvc".into(),
             artifact_kind: "rust-cdylib".into(),
             native_library: None,
             resources: vec![],

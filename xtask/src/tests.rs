@@ -98,6 +98,7 @@ fn result(temp: &Path) -> BuildArtifact {
         library: f.library.clone(),
         core_build: Some(CoreBuildManifest {
             plugin_id: "fixture".into(),
+            target: f.target.clone(),
             artifact_kind: "rust-cdylib".into(),
             native_library: None,
             resources: vec![],
