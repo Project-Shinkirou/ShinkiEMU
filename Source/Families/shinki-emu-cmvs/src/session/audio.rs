@@ -8,12 +8,14 @@
 //! blocks on the device queue so the device callback never calls back into
 //! the Family.
 use crate::family::error;
+use roukaku_platform::AudioWakeRegistration;
 use shinki_emu_sdk::NativeAudioOutput;
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
+use std::time::Duration;
 mod static_sounds;
 mod streams;
 #[cfg(test)]
@@ -24,6 +26,7 @@ pub(super) use streams::{
 
 const OUTPUT_RATE: u32 = 48_000;
 const CHUNK_FRAMES: usize = 2_400;
+const DEVICE_STALL_TIMEOUT: Duration = Duration::from_millis(500);
 // Streaming bank592 slot15 uses bus39; static bank608 slots0..23 use15..38.
 const CHANNEL_SOUNDS: usize = 40;
 /// Upper bound on one decoded clip: ten minutes at the source rate.
@@ -244,12 +247,35 @@ struct Fade {
 
 type AudioFailure = Arc<Mutex<Option<SessionError>>>;
 
-pub(super) struct AudioBridge {
+/// Session cancellation wakes both queue backpressure and idle command intake.
+/// Only host cancellation and session teardown can request it.
+#[derive(Clone)]
+pub(crate) struct Cancellation {
+    requested: Arc<AtomicBool>,
     commands: std::sync::mpsc::Sender<Command>,
+    queue_wake: AudioWakeRegistration,
+}
+
+impl Cancellation {
+    pub(crate) fn cancel(&self) {
+        if !self.requested.swap(true, Ordering::AcqRel) {
+            self.queue_wake.notify();
+            let _ = self.commands.send(Command::Shutdown);
+        }
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.flag().load(Ordering::Acquire)
+    }
+
+    pub(super) fn flag(&self) -> &AtomicBool {
+        &self.requested
+    }
+}
+
+pub(super) struct AudioBridge {
+    cancellation: Cancellation,
     worker: Option<std::thread::JoinHandle<()>>,
-    /// Shared with the output device and every session decode; the device
-    /// sets it on failure so blocked writers and decoders unwind.
-    cancelled: Arc<AtomicBool>,
     failure: AudioFailure,
     playback: streams::progress::PlaybackClock,
     pending_drains: streams::progress::PendingDrains,
@@ -334,15 +360,15 @@ impl Output for NativeAudioOutput {
 
 impl AudioBridge {
     pub(super) fn new() -> SessionResult<Self> {
-        Self::start(|stop| {
-            let output = NativeAudioOutput::open(stop)?;
+        Self::start(|wake| {
+            let output = NativeAudioOutput::open_bounded_with_wake(DEVICE_STALL_TIMEOUT, wake)?;
             let clock: streams::progress::PlaybackClock = Arc::new(output.progress_reader());
             Ok((output, clock))
         })
     }
 
     fn start<W: Output + 'static>(
-        open: impl FnOnce(Arc<AtomicBool>) -> SessionResult<(W, streams::progress::PlaybackClock)>
+        open: impl FnOnce(AudioWakeRegistration) -> SessionResult<(W, streams::progress::PlaybackClock)>
         + Send
         + 'static,
     ) -> SessionResult<Self> {
@@ -350,13 +376,19 @@ impl AudioBridge {
             Arc::new(Mutex::new([None; CHANNEL_SOUNDS]));
         let worker_drains = Arc::clone(&pending_drains);
         let (tx, rx) = std::sync::mpsc::channel::<Command>();
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let queue_wake = AudioWakeRegistration::default();
+        let worker_wake = queue_wake.clone();
+        let worker_cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation = Cancellation {
+            requested: Arc::clone(&worker_cancelled),
+            commands: tx,
+            queue_wake,
+        };
         let failure: AudioFailure = Arc::new(Mutex::new(None));
         let channel_frames_written: Arc<[AtomicU64; CHANNEL_SOUNDS]> =
             Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
         let channel_generations: Arc<[AtomicU64; CHANNEL_SOUNDS]> =
             Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
-        let worker_cancelled = Arc::clone(&cancelled);
         let worker_failure = Arc::clone(&failure);
         let worker_counters = Arc::clone(&channel_frames_written);
         let worker_generations = Arc::clone(&channel_generations);
@@ -365,7 +397,7 @@ impl AudioBridge {
             .name("cmvs-audio-worker".into())
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let (mut output, clock) = match open(Arc::clone(&worker_cancelled)) {
+                    let (mut output, clock) = match open(worker_wake) {
                         Ok(opened) => opened,
                         Err(cause) => {
                             let _ = ready.send(Err(cause));
@@ -384,7 +416,7 @@ impl AudioBridge {
                     };
                     run_worker(
                         &mut output,
-                        rx,
+                        &rx,
                         state,
                         &worker_cancelled,
                         &worker_failure,
@@ -425,9 +457,8 @@ impl AudioBridge {
             }
         };
         Ok(Self {
-            commands: tx,
+            cancellation,
             worker: Some(worker),
-            cancelled,
             playback,
             pending_drains,
             failure,
@@ -440,11 +471,11 @@ impl AudioBridge {
     }
 
     pub(super) fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.cancellation.is_cancelled()
     }
 
-    pub(super) fn cancellation_flag(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.cancelled)
+    pub(super) fn cancellation(&self) -> Cancellation {
+        self.cancellation.clone()
     }
 
     /// Pauses mixing while the window is suspended; queued audio drains first.
@@ -555,17 +586,24 @@ impl AudioBridge {
     }
 
     fn submit(&self, command: Command) -> SessionResult<()> {
-        self.check_failure()?;
-        self.commands.send(command).map_err(|_| {
+        self.ensure_running()?;
+        if self.cancellation.commands.send(command).is_err() {
+            self.ensure_running()?;
             record_failure(
                 &self.failure,
                 "CMVS audio worker stopped accepting commands",
             );
-            error(
-                "SHINKI_EMU_CMVS_AUDIO_WORKER",
-                "CMVS audio worker stopped accepting commands",
-            )
-        })
+            self.check_failure()?;
+        }
+        Ok(())
+    }
+
+    fn ensure_running(&self) -> SessionResult<()> {
+        self.check_failure()?;
+        if self.is_cancelled() {
+            return Err(super::cancelled_error());
+        }
+        Ok(())
     }
 
     pub(in crate::session) fn check_failure(&self) -> SessionResult<()> {
@@ -581,7 +619,7 @@ impl AudioBridge {
                 .worker
                 .as_ref()
                 .is_some_and(|worker| worker.is_finished())
-                && !self.cancelled.load(Ordering::Acquire) =>
+                && !self.is_cancelled() =>
             {
                 Err(error(
                     "SHINKI_EMU_CMVS_AUDIO_WORKER",
@@ -592,11 +630,10 @@ impl AudioBridge {
         }
     }
 
-    /// Cancel outstanding requests, drain the queue and join the worker.
+    /// Cancel outstanding requests, wake and join the worker.
     /// Any close error is still returned after cleanup completes.
     pub(super) fn close(&mut self) -> SessionResult<()> {
-        self.cancelled.store(true, Ordering::Release);
-        let _ = self.commands.send(Command::Shutdown);
+        self.cancellation.cancel();
         let mut result = self.check_failure();
         if let Some(worker) = self.worker.take()
             && worker.join().is_err()
@@ -615,13 +652,7 @@ impl AudioBridge {
         &self,
         globals: &mut crate::system_save::slot_globals::NativeGlobals,
     ) -> SessionResult<()> {
-        self.check_failure()?;
-        if self.cancelled.load(Ordering::Acquire) {
-            return Err(error(
-                "SHINKI_EMU_CMVS_AUDIO_WORKER",
-                "native audio capture requested after shutdown",
-            ));
-        }
+        self.ensure_running()?;
         if self.native_source_missing {
             return Err(error(
                 "SHINKI_EMU_CMVS_NATIVE_AUDIO_SOURCE",
@@ -783,7 +814,7 @@ impl Worker {
 #[allow(clippy::too_many_arguments)]
 fn run_worker(
     output: &mut impl Output,
-    commands: std::sync::mpsc::Receiver<Command>,
+    commands: &std::sync::mpsc::Receiver<Command>,
     mut state: Worker,
     cancelled: &AtomicBool,
     failure: &AudioFailure,
@@ -799,6 +830,12 @@ fn run_worker(
     loop {
         // Command intake: drain everything queued, then wait when idle.
         loop {
+            if let Err(cause) = output.check() {
+                return record_error(failure, cause);
+            }
+            if cancelled.load(Ordering::Acquire) {
+                return;
+            }
             let command = if state.any_active() && !suspended {
                 match commands.try_recv() {
                     Ok(command) => command,
@@ -816,9 +853,12 @@ fn run_worker(
                     accepted_bus_frames = playback.progress().accepted_frames;
                     unflushed = false;
                 }
-                match commands.recv() {
+                match commands.recv_timeout(Duration::from_millis(100)) {
                     Ok(command) => command,
-                    Err(_) => return record_closed(failure, cancelled),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        return record_closed(failure, cancelled);
+                    }
                 }
             };
             match command {
@@ -968,7 +1008,7 @@ fn run_worker(
             }
         }
         if cancelled.load(Ordering::Acquire) {
-            return record_closed(failure, cancelled);
+            return;
         }
         mix.clear();
         mix.resize(CHUNK_FRAMES * 2, 0.0);
@@ -1299,7 +1339,7 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn device_open_failure_is_returned_and_joins_the_worker() {
+    fn audio_boundary_device_open_failure_is_returned_and_joins_the_worker() {
         let result = AudioBridge::start(|_| -> SessionResult<(PacedOutput, PlaybackClock)> {
             Err(error("SHINKI_EMU_AUDIO_DEVICE", "no device"))
         });
@@ -1375,10 +1415,11 @@ pub(super) mod tests {
                     Ok(Some(samples))
                 }
                 Ok(OutputStep::Close) => Ok(None),
-                Ok(OutputStep::Fail) | Err(_) => Err(error(
-                    "SHINKI_EMU_CMVS_AUDIO_TEST",
-                    "controlled audio output failure",
+                Ok(OutputStep::Fail) => Err(error(
+                    "SHINKI_EMU_AUDIO_DEVICE",
+                    "native output device disconnected",
                 )),
+                Err(_) => Err(error("SHINKI_EMU_CMVS_AUDIO_TEST", "test output timed out")),
             }
         }
 
@@ -2088,37 +2129,107 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn playing_state_propagates_worker_rejection_and_unexpected_closure() {
+    fn audio_boundary_host_cancel_wakes_blocked_pcm_and_releases_queued_query() {
+        struct BlockedOutput {
+            wake: AudioWakeRegistration,
+            entered: std::sync::mpsc::Sender<()>,
+        }
+
+        impl Output for BlockedOutput {
+            fn check(&self) -> SessionResult<()> {
+                Ok(())
+            }
+
+            fn write(&mut self, _: Vec<f32>, stop: &AtomicBool) -> SessionResult<Option<Vec<f32>>> {
+                self.entered.send(()).unwrap();
+                assert!(self.wake.wait_timeout(0, Duration::from_secs(5)).is_some());
+                assert!(stop.load(Ordering::Acquire));
+                Ok(None)
+            }
+
+            fn flush(&mut self, _: &AtomicBool) -> SessionResult<Option<()>> {
+                Ok(Some(()))
+            }
+        }
+
+        let (entered, writing) = std::sync::mpsc::channel();
+        let mut bridge = AudioBridge::start(move |wake| {
+            Ok((
+                BlockedOutput { wake, entered },
+                Arc::new(TestPlayback::default()),
+            ))
+        })
+        .unwrap();
+        bridge
+            .play_channel(5, tone_clip(100, 48_000), true, 256)
+            .unwrap();
+        writing.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (reply, result) = std::sync::mpsc::channel();
+        bridge
+            .submit(Command::StreamSnapshot {
+                channel: 5,
+                observe_position: false,
+                reply,
+            })
+            .unwrap();
+
+        bridge.cancellation().cancel();
+        assert_eq!(
+            result.recv_timeout(Duration::from_secs(5)).err(),
+            Some(std::sync::mpsc::RecvTimeoutError::Disconnected)
+        );
+        assert!(bridge.is_cancelled());
+        bridge.close().unwrap();
+        assert_eq!(
+            bridge.snapshot(5, false).err().unwrap(),
+            super::super::cancelled_error()
+        );
+    }
+
+    #[test]
+    fn audio_boundary_device_failure_and_unexpected_closure_reach_playing_state() {
         for failure in [OutputStep::Fail, OutputStep::Close] {
             let (mut bridge, control) = OutputControl::new();
             bridge
                 .play_channel(8, tone_clip(100, 48_000), true, 256)
                 .unwrap();
             control.wait_for_write();
+            let is_device_loss = matches!(failure, OutputStep::Fail);
             control.steps.send(failure).unwrap();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            while bridge.playing_channels().is_ok() {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let cause = loop {
+                if let Err(cause) = bridge.playing_channels() {
+                    break cause;
+                }
                 assert!(
                     std::time::Instant::now() < deadline,
                     "worker failure must reach consumer"
                 );
                 std::thread::yield_now();
-            }
-            assert!(bridge.close().is_err());
+            };
+            assert!(!bridge.is_cancelled());
+            assert_eq!(
+                cause.code,
+                if is_device_loss {
+                    "SHINKI_EMU_AUDIO_DEVICE"
+                } else {
+                    "SHINKI_EMU_CMVS_AUDIO_WORKER"
+                },
+            );
+            assert_eq!(bridge.close(), Err(cause));
             assert!(bridge.playing_channels().is_err());
         }
     }
 
     #[test]
-    fn playing_state_rejects_a_play_after_shutdown() {
+    fn audio_boundary_cancelled_play_does_not_record_worker_failure() {
         let (mut bridge, control) = OutputControl::new();
         control.finish(&mut bridge);
-        assert!(
-            bridge
-                .play_channel(8, tone_clip(100, 48_000), false, 256)
-                .is_err()
+        assert_eq!(
+            bridge.play_channel(8, tone_clip(100, 48_000), false, 256),
+            Err(super::super::cancelled_error())
         );
-        assert!(bridge.playing_channels().is_err());
+        assert_eq!(bridge.playing_channels().unwrap(), 0);
     }
     #[test]
     fn static_main_natural_end_keeps_a_replayable_buffer_and_emits_real_pcm() {

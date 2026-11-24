@@ -168,13 +168,6 @@ impl AudioBridge {
         observe_position: bool,
     ) -> SessionResult<NativeStreamSnapshot> {
         check_channel(channel)?;
-        self.check_failure()?;
-        if self.cancelled.load(Ordering::Acquire) {
-            return Err(error(
-                "SHINKI_EMU_CMVS_AUDIO_WORKER",
-                "stream query requested after shutdown",
-            ));
-        }
         let (reply, result) = std::sync::mpsc::channel();
         self.submit(Command::StreamSnapshot {
             channel,
@@ -183,14 +176,14 @@ impl AudioBridge {
         })?;
         // The worker cannot consume this request until prior output writes complete.
         let Ok(snapshot) = result.recv() else {
-            self.check_failure()?;
+            self.ensure_running()?;
             record_failure(&self.failure, "CMVS audio worker dropped a stream query");
             return Err(error(
                 "SHINKI_EMU_CMVS_AUDIO_WORKER",
                 "CMVS audio worker dropped a stream query",
             ));
         };
-        self.check_failure()?;
+        self.ensure_running()?;
         Ok(snapshot)
     }
 

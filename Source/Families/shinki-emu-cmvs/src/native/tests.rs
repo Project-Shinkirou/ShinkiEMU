@@ -95,7 +95,7 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
         .unwrap()
         .unwrap();
     let leases = shared.leases.clone();
-    let audio_stopped = shared.audio_stop.clone();
+    let cancellation = shared.cancellation.clone();
     let session = Box::into_raw(Box::new(Handle {
         shared,
         commands,
@@ -129,7 +129,7 @@ fn queued_input_drives_real_session_and_cpu_lease_survives_joined_close() {
     assert_eq!(retained.pixels(), original_pixels);
     drop(latest);
     assert_eq!(unsafe { close(session, std::ptr::null_mut()) }, abi::OK);
-    assert!(audio_stopped.load(Ordering::Acquire));
+    assert!(cancellation.is_cancelled());
     assert_eq!(retained.pixels(), original_pixels);
     assert_eq!(leases.load(Ordering::Acquire), 1);
     std::thread::spawn(move || drop(retained)).join().unwrap();

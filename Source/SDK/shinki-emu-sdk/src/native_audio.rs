@@ -1,10 +1,10 @@
 use crate::runtime::{SessionError, SessionResult};
 use std::{
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 fn error(code: &str, message: &str) -> SessionError {
     SessionError::invalid(code, message)
@@ -149,6 +149,24 @@ pub struct NativeAudioOutput {
 }
 impl NativeAudioOutput {
     pub fn open(stop: Arc<AtomicBool>) -> SessionResult<Self> {
+        Self::open_device(Some(stop), None, AudioWakeRegistration::default())
+    }
+
+    /// Bound queue backpressure and report a device failure without modifying
+    /// the caller's stop flag. Notify `wake` after setting stop to release a
+    /// blocked writer immediately.
+    pub fn open_bounded_with_wake(
+        stall_timeout: Duration,
+        wake: AudioWakeRegistration,
+    ) -> SessionResult<Self> {
+        Self::open_device(None, Some(stall_timeout), wake)
+    }
+
+    fn open_device(
+        stop_on_error: Option<Arc<AtomicBool>>,
+        stall_timeout: Option<Duration>,
+        wake: AudioWakeRegistration,
+    ) -> SessionResult<Self> {
         let device = cpal::default_host()
             .default_output_device()
             .ok_or_else(|| {
@@ -173,11 +191,11 @@ impl NativeAudioOutput {
         )
         .map_err(conversion_error)?;
         let chunk_samples = 512 * usize::from(supported.channels());
+        const DEVICE_BLOCKS: usize = 4;
         let format = supported.sample_format();
         let config = supported.into();
-        let wake = AudioWakeRegistration::default();
         let (producer, consumer, telemetry) =
-            NativeAudioQueue::create(4, chunk_samples, wake.clone())
+            NativeAudioQueue::create(DEVICE_BLOCKS, chunk_samples, wake.clone())
                 .map_err(|_| error("SHINKI_EMU_AUDIO_QUEUE", "cannot create device queue"))?;
         let clock = Arc::new(PlaybackClock::new(
             AudioTelemetry::Device(telemetry),
@@ -185,12 +203,18 @@ impl NativeAudioOutput {
             supported.channels(),
             converter.output_delay(),
         ));
-        let failed = Arc::new(AtomicBool::new(false));
+        let bounded = stall_timeout.map(|timeout| DeviceCapacity {
+            wake: wake.clone(),
+            observed_wake: 0,
+            blocks: DEVICE_BLOCKS as u64,
+            timeout,
+        });
+        let failed = Arc::new(OnceLock::new());
         let callback = Callback {
             consumer,
             wake,
             failed: failed.clone(),
-            stop,
+            stop_on_error,
             clock: clock.clone(),
         };
         let stream = match format {
@@ -223,6 +247,7 @@ impl NativeAudioOutput {
                     partial: vec![0.0; chunk_samples],
                     partial_len: 0,
                     submitted: 0,
+                    bounded,
                 },
                 failed,
                 converter,
@@ -267,8 +292,9 @@ impl NativeAudioOutput {
                     partial: vec![0.0; 512 * usize::from(SOURCE_CHANNELS)],
                     partial_len: 0,
                     submitted: 0,
+                    bounded: None,
                 },
-                failed: Arc::new(AtomicBool::new(false)),
+                failed: Arc::new(OnceLock::new()),
                 converter,
                 clock,
             },
@@ -311,47 +337,42 @@ impl NativeAudioOutput {
 /// Converter, block regrouping and timeline of one output, without the stream.
 struct Pipeline {
     blocks: BlockWriter,
-    failed: Arc<AtomicBool>,
+    failed: Arc<OnceLock<cpal::Error>>,
     converter: crate::NativeAudioConverter,
     clock: Arc<PlaybackClock>,
 }
 impl Pipeline {
     fn check(&self) -> SessionResult<()> {
-        if self.failed.load(Ordering::Acquire) {
-            Err(error(
-                "SHINKI_EMU_AUDIO_DEVICE",
-                "native output device failed",
-            ))
-        } else {
-            Ok(())
-        }
+        self.failed
+            .get()
+            .map_or(Ok(()), |cause| Err(stream_error(cause)))
     }
     fn write(&mut self, samples: Vec<f32>, stop: &AtomicBool) -> SessionResult<Option<Vec<f32>>> {
-        // wait_for_capacity observes this independent flag at most every 20 ms.
-        // The device error callback also sets it, waking a blocked producer.
         self.check()?;
         if stop.load(Ordering::Acquire) {
             return Ok(None);
         }
         let blocks = &mut self.blocks;
         let failed = &self.failed;
-        if self.converter.needs_conversion() {
+        let conversion = if self.converter.needs_conversion() {
             self.converter
                 .convert(&samples, |converted| blocks.push(converted, failed, stop))
-                .map_err(conversion_error)?;
         } else {
-            blocks
-                .push(&samples, failed, stop)
-                .map_err(conversion_error)?;
-        }
+            blocks.push(&samples, failed, stop)
+        };
         self.check()?;
         if stop.load(Ordering::Acquire) {
             return Ok(None);
         }
+        conversion.map_err(conversion_error)?;
         self.clock.accept(samples.len());
         Ok(Some(samples))
     }
     fn flush(&mut self, stop: &AtomicBool) -> SessionResult<Option<()>> {
+        self.check()?;
+        if stop.load(Ordering::Acquire) {
+            return Ok(None);
+        }
         // One extra block absorbs callback-to-callback latency jitter.
         let target = self
             .clock
@@ -367,6 +388,42 @@ impl Pipeline {
         Ok(Some(()))
     }
 }
+
+struct DeviceCapacity {
+    wake: AudioWakeRegistration,
+    observed_wake: u64,
+    blocks: u64,
+    timeout: Duration,
+}
+
+impl DeviceCapacity {
+    fn wait(
+        &mut self,
+        lane: &NativeAudioProducer,
+        submitted: u64,
+        chunk_samples: u64,
+        failed: &OnceLock<cpal::Error>,
+        stop: &AtomicBool,
+    ) -> Result<(), String> {
+        // Only fully consumed blocks have returned a reusable allocation.
+        let full = || submitted - lane.consumed_samples() > (self.blocks - 1) * chunk_samples;
+        if !full() {
+            return Ok(());
+        }
+        let start = Instant::now();
+        while full() && failed.get().is_none() && !stop.load(Ordering::Acquire) {
+            let remaining = self.timeout.saturating_sub(start.elapsed());
+            if remaining.is_zero() {
+                return Err("SHINKI_EMU_AUDIO_STALLED: native device queue made no progress".into());
+            }
+            if let Some(sequence) = self.wake.wait_timeout(self.observed_wake, remaining) {
+                self.observed_wake = sequence;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Regroups device-format samples into the queue's fixed block size.
 struct BlockWriter {
     producer: Producer,
@@ -374,6 +431,7 @@ struct BlockWriter {
     partial_len: usize,
     /// Device samples handed to the queue.
     submitted: u64,
+    bounded: Option<DeviceCapacity>,
 }
 
 enum Producer {
@@ -394,11 +452,11 @@ impl BlockWriter {
     fn push(
         &mut self,
         mut data: &[f32],
-        failed: &AtomicBool,
+        failed: &OnceLock<cpal::Error>,
         stop: &AtomicBool,
     ) -> Result<(), String> {
         while !data.is_empty() {
-            if stop.load(Ordering::Acquire) {
+            if failed.get().is_some() || stop.load(Ordering::Acquire) {
                 return Ok(());
             }
             let count = (self.partial.len() - self.partial_len).min(data.len());
@@ -407,16 +465,19 @@ impl BlockWriter {
             self.partial_len += count;
             data = &data[count..];
             if self.partial_len == self.partial.len() {
-                self.producer
-                    .with_lane(|lane| lane.wait_for_capacity(self.partial.len(), stop))
-                    .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
-                if failed.load(Ordering::Acquire) {
-                    return Err("SHINKI_EMU_AUDIO_DEVICE".into());
+                let len = self.partial.len();
+                if let Some(capacity) = &mut self.bounded {
+                    self.producer.with_lane(|lane| {
+                        capacity.wait(lane, self.submitted, len as u64, failed, stop)
+                    })?;
+                } else {
+                    self.producer
+                        .with_lane(|lane| lane.wait_for_capacity(len, stop))
+                        .map_err(|_| "SHINKI_EMU_AUDIO_QUEUE".to_owned())?;
                 }
-                if stop.load(Ordering::Acquire) {
+                if failed.get().is_some() || stop.load(Ordering::Acquire) {
                     return Ok(());
                 }
-                let len = self.partial.len();
                 self.partial = self
                     .producer
                     .with_lane(|lane| lane.submit(std::mem::take(&mut self.partial)))
@@ -440,10 +501,51 @@ fn conversion_error(cause: String) -> SessionError {
 struct Callback {
     consumer: NativeAudioConsumer,
     wake: AudioWakeRegistration,
-    failed: Arc<AtomicBool>,
-    stop: Arc<AtomicBool>,
+    failed: Arc<OnceLock<cpal::Error>>,
+    stop_on_error: Option<Arc<AtomicBool>>,
     clock: Arc<PlaybackClock>,
 }
+
+fn stream_error(cause: &cpal::Error) -> SessionError {
+    // Keep symbolic backend codes such as AAudio's Disconnected. Freeform
+    // messages can contain private host paths.
+    let reason = cause.message().filter(|message| {
+        !message.is_empty()
+            && message.len() <= 64
+            && message
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    });
+    let kind = cause.kind();
+    SessionError::new(
+        "SHINKI_EMU_AUDIO_DEVICE",
+        match reason {
+            Some(reason) => format!("native output device failed ({kind:?}): {reason}"),
+            None => format!("native output device failed ({kind:?}): {kind}"),
+        },
+    )
+}
+
+fn on_stream_error(
+    cause: cpal::Error,
+    failed: &OnceLock<cpal::Error>,
+    stop_on_error: Option<&AtomicBool>,
+    wake: &AudioWakeRegistration,
+) {
+    use cpal::ErrorKind::{DeviceChanged, RealtimeDenied, Xrun};
+    // These are notifications on a stream that keeps running. AAudio
+    // reports Xrun from the normal data callback, for example.
+    if matches!(cause.kind(), DeviceChanged | RealtimeDenied | Xrun) {
+        return;
+    }
+    if failed.set(cause).is_ok() {
+        if let Some(stop) = stop_on_error {
+            stop.store(true, Ordering::Release);
+        }
+        wake.notify();
+    }
+}
+
 fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
     device: &cpal::Device,
     config: cpal::StreamConfig,
@@ -453,7 +555,7 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
         mut consumer,
         wake,
         failed,
-        stop,
+        stop_on_error,
         clock,
     } = callback;
     let error_wake = wake.clone();
@@ -473,11 +575,7 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
             }
             wake.notify();
         },
-        move |_| {
-            failed.store(true, Ordering::Release);
-            stop.store(true, Ordering::Release);
-            error_wake.notify();
-        },
+        move |cause| on_stream_error(cause, &failed, stop_on_error.as_deref(), &error_wake),
         None,
     )
 }
@@ -485,6 +583,122 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bounded_pipeline(
+        wake: &AudioWakeRegistration,
+        timeout: Duration,
+    ) -> (Pipeline, NativeAudioConsumer) {
+        let (producer, consumer, telemetry) = NativeAudioQueue::create(1, 8, wake.clone()).unwrap();
+        let clock = Arc::new(PlaybackClock::new(AudioTelemetry::Device(telemetry), 48_000, 2, 0));
+        let pipeline = Pipeline {
+            blocks: BlockWriter {
+                producer: Producer::Device(producer),
+                partial: vec![0.0; 8],
+                partial_len: 0,
+                submitted: 0,
+                bounded: Some(DeviceCapacity {
+                    wake: wake.clone(),
+                    observed_wake: 0,
+                    blocks: 1,
+                    timeout,
+                }),
+            },
+            failed: Arc::new(OnceLock::new()),
+            converter: crate::NativeAudioConverter::new(48_000, 2, 48_000, 2).unwrap(),
+            clock,
+        };
+        (pipeline, consumer)
+    }
+
+    #[test]
+    fn stream_notices_keep_playing_and_terminal_error_retains_first_cause() {
+        use cpal::ErrorKind::{BackendError, DeviceChanged, DeviceNotAvailable, RealtimeDenied, Xrun};
+
+        let stop = AtomicBool::new(false);
+        let wake = AudioWakeRegistration::default();
+        let (mut pipeline, mut consumer) = bounded_pipeline(&wake, Duration::from_secs(2));
+        let failed = pipeline.failed.clone();
+        for kind in [Xrun, DeviceChanged, RealtimeDenied] {
+            on_stream_error(kind.into(), &failed, Some(&stop), &wake);
+            assert!(pipeline.write(vec![0.25; 8], &stop).unwrap().is_some());
+            let mut consumed = [0.0; 8];
+            assert_eq!(consumer.pop_samples(&mut consumed), 8);
+            assert_eq!(consumed, [0.25; 8]);
+        }
+        pipeline.write(vec![0.5; 8], &stop).unwrap().unwrap();
+        let first = cpal::Error::with_message(DeviceNotAvailable, "Disconnected");
+        let cause = std::thread::scope(|scope| {
+            let writer = scope.spawn(|| pipeline.write(vec![0.75; 8], &stop));
+            on_stream_error(first.clone(), &failed, None, &wake);
+            on_stream_error(BackendError.into(), &failed, None, &wake);
+            assert_eq!(wake.wait_timeout(0, Duration::ZERO), Some(1));
+            writer.join().unwrap().unwrap_err()
+        });
+        assert!(!stop.load(Ordering::Acquire));
+        assert_eq!(failed.get(), Some(&first));
+        assert_eq!(cause.code, "SHINKI_EMU_AUDIO_DEVICE");
+        assert!(cause.message.contains("DeviceNotAvailable"));
+        assert!(cause.message.ends_with("Disconnected"));
+        assert_eq!(pipeline.clock.progress().played_frames, 12);
+        assert_eq!(pipeline.clock.progress().accepted_frames, 16);
+        assert_eq!(pipeline.flush(&stop), Err(cause));
+    }
+
+    #[test]
+    fn stream_diagnostic_cannot_publish_freeform_backend_text() {
+        let backend =
+            cpal::Error::with_message(cpal::ErrorKind::BackendError, "opening /home/private");
+        let cause = stream_error(&backend);
+        assert!(cause.message.contains("BackendError"));
+        assert!(!cause.message.contains("/home/private"));
+    }
+
+    #[test]
+    fn bounded_queue_stalls_until_a_full_block_is_recycled() {
+        let stop = AtomicBool::new(false);
+        let wake = AudioWakeRegistration::default();
+        let (mut pipeline, mut consumer) = bounded_pipeline(&wake, Duration::from_millis(30));
+        pipeline.write(vec![0.25; 8], &stop).unwrap().unwrap();
+        assert_eq!(consumer.pop_samples(&mut [0.0; 8]), 8);
+        pipeline.write(vec![0.5; 8], &stop).unwrap().unwrap();
+        assert_eq!(consumer.pop_samples(&mut [0.0; 7]), 7);
+        let cause = pipeline.write(vec![0.75; 8], &stop).unwrap_err();
+        assert_eq!(cause.code, "SHINKI_EMU_AUDIO_STALLED");
+        assert_eq!(pipeline.clock.progress().accepted_frames, 8);
+        assert!(!stop.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn bounded_queue_host_cancel_does_not_report_an_audio_failure() {
+        let stop = AtomicBool::new(false);
+        let wake = AudioWakeRegistration::default();
+        let (mut pipeline, _consumer) = bounded_pipeline(&wake, Duration::from_secs(5));
+        pipeline.write(vec![0.25; 8], &stop).unwrap().unwrap();
+        std::thread::scope(|scope| {
+            let (entered, writing) = std::sync::mpsc::channel();
+            let (complete, result) = std::sync::mpsc::channel();
+            let pipeline = &mut pipeline;
+            let stop = &stop;
+            let writer = scope.spawn(move || {
+                entered.send(()).unwrap();
+                complete.send(pipeline.write(vec![0.5; 8], stop)).unwrap();
+            });
+            writing.recv_timeout(Duration::from_secs(5)).unwrap();
+            stop.store(true, Ordering::Release);
+            wake.notify();
+            assert!(
+                result
+                    .recv_timeout(Duration::from_secs(2))
+                    .unwrap()
+                    .unwrap()
+                    .is_none()
+            );
+            writer.join().unwrap();
+        });
+        assert_eq!(pipeline.clock.progress().accepted_frames, 4);
+        assert_eq!(pipeline.flush(&stop).unwrap(), None);
+        assert!(pipeline.check().is_ok());
+    }
 
     #[test]
     fn null_output_advances_the_same_clock_without_opening_a_device() {
@@ -567,8 +781,9 @@ mod tests {
             partial: vec![0.0; 8],
             partial_len: 0,
             submitted: 0,
+            bounded: None,
         };
-        let (failed, stop) = (AtomicBool::new(false), AtomicBool::new(false));
+        let (failed, stop) = (OnceLock::new(), AtomicBool::new(false));
         let source: Vec<f32> = (0..24).map(|sample| sample as f32).collect();
         let mut device = [0.0; 24];
 
@@ -602,8 +817,9 @@ mod tests {
                 partial: vec![0.0; 1024],
                 partial_len: 0,
                 submitted: 0,
+                bounded: None,
             },
-            failed: Arc::new(AtomicBool::new(false)),
+            failed: Arc::new(OnceLock::new()),
             converter,
             clock: clock.clone(),
         };

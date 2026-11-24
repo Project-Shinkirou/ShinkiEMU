@@ -175,7 +175,7 @@ struct Published {
 }
 struct Shared {
     services: Arc<shinki_emu_sdk::native::ServiceContext>,
-    audio_stop: Arc<AtomicBool>,
+    cancellation: crate::session::Cancellation,
     canvas: shinki_emu_sdk::StageCanvas,
     frame: Mutex<Published>,
     state: Mutex<abi::SessionState>,
@@ -184,7 +184,15 @@ struct Shared {
 impl Shared {
     fn cancel(&self) {
         self.services.cancel();
-        self.audio_stop.store(true, Ordering::Release);
+        self.cancellation.cancel();
+    }
+
+    fn is_cancelled(&self) -> bool {
+        let cancelled = self.services.is_cancelled();
+        if cancelled {
+            self.cancellation.cancel();
+        }
+        cancelled
     }
 }
 enum Command {
@@ -319,7 +327,7 @@ unsafe extern "C" fn open(
             commands,
             worker: Some(worker),
         });
-        if owned.shared.services.is_cancelled() {
+        if owned.shared.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
         let surface = owned
@@ -347,7 +355,7 @@ unsafe extern "C" fn input(
 ) -> abi::Status {
     boundary(error, || {
         let handle = unsafe { handle(session) }?;
-        if handle.shared.services.is_cancelled() {
+        if handle.shared.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
         let events = unsafe { abi::borrowed_array(events, count, 256) }.map_err(invalid)?;
@@ -381,7 +389,7 @@ unsafe extern "C" fn control(
         if !matches!(command, abi::CONTROL_PAUSE | abi::CONTROL_RESUME) {
             return Err(invalid(abi::UNSUPPORTED));
         }
-        if handle.shared.services.is_cancelled() {
+        if handle.shared.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
         handle
@@ -405,7 +413,7 @@ unsafe extern "C" fn state(
             .state
             .lock()
             .map_err(|_| invalid(abi::PANICKED))?;
-        let cancelled = handle.shared.services.is_cancelled();
+        let cancelled = handle.shared.is_cancelled();
         state.context_epoch = handle.shared.services.epoch.load(Ordering::Acquire);
         if cancelled && state.state != abi::SESSION_FAILED {
             state.state = abi::SESSION_FINISHED;
