@@ -362,11 +362,16 @@ pub fn link_android_static_core(native: &Path, installations: &[PathBuf]) -> Res
 
 fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
     let target = env::var("TARGET")?;
-    let program = vcpkg::pkg_config_program(&target)?;
     let dirs = installations.iter().flat_map(|installation| [
         installation.join("lib/pkgconfig"), installation.join("share/pkgconfig"),
-    ]).collect::<Vec<_>>();
-    configure_pkg_config(&target, &dirs, &program)?;
+    ]).filter(|path| path.is_dir()).collect::<Vec<_>>();
+    if !dirs.is_empty() {
+        let installed = installations.iter()
+            .filter_map(|prefix| prefix.parent())
+            .find(|root| root.file_name().is_some_and(|name| name == "installed"));
+        let program = vcpkg::pkg_config_program(&target, installed)?;
+        configure_pkg_config(&target, &dirs, &program)?;
+    }
     for installation in installations {
         let libraries = installation.join("lib");
         println!("cargo:rustc-link-search=native={}", libraries.display());
@@ -474,7 +479,7 @@ pub fn configure_cmake(
         )
     {
         let prefix = Path::new(installed).join(triplet);
-        let program = vcpkg::pkg_config_program(&target)?;
+        let program = vcpkg::pkg_config_program(&target, Some(Path::new(installed)))?;
         configure
             .arg(format!("-DPKG_CONFIG_EXECUTABLE={}", program.display()))
             .env("PKG_CONFIG_PATH", "")

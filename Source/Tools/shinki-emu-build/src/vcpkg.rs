@@ -276,7 +276,7 @@ impl Installation {
         println!("cargo::metadata=triplet={}", self.triplet);
         println!("cargo::metadata=pkg_config_dirs={}", env::join_paths(self.pkg_config_dirs())?.to_string_lossy());
         println!("cargo::metadata=runtime_dsos={}", env::join_paths(&inputs.runtime)?.to_string_lossy());
-        println!("cargo::metadata=pkg_config={}", pkg_config_program(&env::var("TARGET")?)?.display());
+        println!("cargo::metadata=pkg_config={}", pkg_config_program(&env::var("TARGET")?, Some(&self.install_root.join("installed")))?.display());
         Ok(())
     }
 }
@@ -300,11 +300,17 @@ fn stage_elf(src: &Path, out: &Path) -> Result<PathBuf> {
     Ok(out.to_owned())
 }
 
-pub fn pkg_config_program(target: &str) -> Result<PathBuf> {
+pub(crate) fn pkg_config_program(target: &str, installed: Option<&Path>) -> Result<PathBuf> {
     if let Some(program) = watch_env("PKG_CONFIG") {
         return Ok(program.into());
     }
     if cfg!(windows) && !target.contains("windows") {
+        if let Some(program) = installed
+            .map(|root| root.join("x64-windows/tools/pkgconf/pkgconf.exe"))
+            .filter(|program| program.is_file())
+        {
+            return Ok(program);
+        }
         let tools = work_root().join("vcpkg-downloads/tools/msys2");
         let mut programs = Vec::new();
         if let Ok(entries) = fs::read_dir(&tools) {

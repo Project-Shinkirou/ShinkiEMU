@@ -613,4 +613,54 @@ mod tests {
         }
         Ok(())
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_archives_preserve_executable_inputs() {
+        let temp = tempfile::tempdir().unwrap();
+        let bytes = b"#!/bin/sh\nexit 7\n";
+        for format in ["zip", "tar-gz"] {
+            let input = temp.path().join(format);
+            if format == "zip" {
+                let mut zip = zip::ZipWriter::new(fs::File::create(&input).unwrap());
+                zip.start_file(
+                    "fixture/tool",
+                    zip::write::SimpleFileOptions::default().unix_permissions(0o755),
+                )
+                .unwrap();
+                zip.write_all(bytes).unwrap();
+                zip.finish().unwrap();
+            } else {
+                let gzip = flate2::write::GzEncoder::new(
+                    fs::File::create(&input).unwrap(),
+                    flate2::Compression::default(),
+                );
+                let mut tar = tar::Builder::new(gzip);
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_mode(0o755);
+                header.set_cksum();
+                tar.append_data(&mut header, "fixture/tool", &bytes[..])
+                    .unwrap();
+                tar.into_inner().unwrap().finish().unwrap();
+            }
+            let pin = NativeArchive {
+                version: "fixture".into(),
+                url: "https://not-used.invalid/fixture".into(),
+                sha256: sha256(&input).unwrap(),
+                file_name: format.into(),
+                format: format.into(),
+                strip_prefix: "fixture".into(),
+                include: Vec::new(),
+                required: vec!["tool".into()],
+            };
+            let out = temp.path().join(format!("out-{format}"));
+            extract_native_archive(&pin, &input, &out, "bin").unwrap();
+            assert_eq!(
+                Command::new(out.join("bin/tool")).status().unwrap().code(),
+                Some(7)
+            );
+        }
+    }
+
 }
