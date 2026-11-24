@@ -1,2 +1,8 @@
 [alias]
 xtask = "run --locked --package xtask --"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN"]
+
+[target.'cfg(target_os = "android")']
+rustflags = ["-C", "link-arg=-Wl,--no-undefined,-z,max-page-size=16384,--enable-new-dtags,-rpath,$ORIGIN"]

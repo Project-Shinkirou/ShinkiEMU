@@ -12,7 +12,6 @@ mod ohos;
 mod package;
 mod release;
 mod rust_licenses;
-mod sources;
 mod temporary;
 #[cfg(test)]
 mod tests;
@@ -61,16 +60,6 @@ fn run() -> Result<()> {
                         r.blocked.unwrap_or_default()
                     );
                 }
-            }
-        }
-        cli::Command::Doctor(args) => {
-            dependencies::doctor(&inv, &args.target, args.core.as_deref())?
-        }
-        cli::Command::Deps(args) => {
-            if args.all_cores {
-                dependencies::prepare_all(&inv, &args.target)?;
-            } else {
-                dependencies::prepare(&inv, &args.target, args.core.as_deref())?;
             }
         }
         cli::Command::Build(args) => {

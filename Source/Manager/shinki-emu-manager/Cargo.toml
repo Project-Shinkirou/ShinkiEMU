@@ -164,6 +164,7 @@ libc.workspace = true
 rustls-platform-verifier = "=0.7.1"
 
 [build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
 toml = "1.1.8"
 serde_json.workspace = true
 semver.workspace = true

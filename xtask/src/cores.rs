@@ -20,7 +20,6 @@ pub struct Core {
     pub display_name: String,
     pub family_name: String,
     pub license: String,
-    pub dependencies: Vec<String>,
     pub resources: Vec<String>,
     #[serde(default)]
     licenses: Vec<String>,
@@ -154,7 +153,6 @@ pub struct Target {
     pub platform: String,
     pub architecture: String,
     pub variant: String,
-    pub tools: Vec<String>,
     pub manager_supported: bool,
     pub manager_blocked: String,
     /// Buildable and publishable on a host with the native SDK, but never

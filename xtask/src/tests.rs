@@ -1,5 +1,5 @@
 use crate::{binary, build::BuildArtifact, cores::Inventory, package::*};
-use shinki_emu_build::{BuildAsset, CoreBuildManifest};
+use shinki_emu_build::{BuildAsset, CoreBuildManifest, NativeInputs};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -108,6 +108,7 @@ fn result(temp: &Path) -> BuildArtifact {
             }],
         }),
         embedded_core_builds: vec![],
+        native_inputs: vec![],
         source_commit: Some("a".repeat(40)),
         features: vec![],
     }
@@ -485,81 +486,19 @@ fn macho_identity_is_not_a_runtime_dependency() {
 }
 
 #[test]
-fn apple_subtitle_installs_isolate_architectures_and_platforms() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let inventory = Inventory::load(root).unwrap();
-    let mut installs = std::collections::BTreeSet::new();
-    for target in inventory
-        .targets
-        .iter()
-        .filter(|t| crate::apple::supported(&t.triple))
-    {
-        let install =
-            crate::dependencies::subtitle_install(&inventory, &target.triple, "rfvp").unwrap();
-        assert!(installs.insert(install));
-        let needs = crate::dependencies::needs(&inventory, &target.triple, "rfvp").unwrap();
-        assert!(needs.subtitle);
-        assert!(!needs.gstreamer);
-        let manager = crate::dependencies::needs(&inventory, &target.triple, "manager").unwrap();
-        assert_eq!(manager.subtitle, target.platform == "ios");
-    }
-}
-
-#[test]
-fn corresponding_sources_copy_downloads_matching_installed_sha512() {
-    use sha2::Digest;
-    let temp = crate::temporary::directory().unwrap();
-    let downloads = temp.path().join("downloads");
-    fs::create_dir(&downloads).unwrap();
-    let upstream = downloads.join("source.tar.gz");
-    fs::write(&upstream, b"upstream source archive").unwrap();
-    let required = [hex::encode(sha2::Sha512::digest(
-        fs::read(&upstream).unwrap(),
-    ))]
-    .into_iter()
-    .collect();
-    let output = temp.path().join("output");
-    crate::sources::collect_archives(&downloads, &output, required).unwrap();
-    assert_eq!(
-        fs::read(output.join("source.tar.gz")).unwrap(),
-        fs::read(&upstream).unwrap()
-    );
-    let required = [hex::encode(sha2::Sha512::digest(
-        fs::read(&upstream).unwrap(),
-    ))]
-    .into_iter()
-    .collect::<std::collections::BTreeSet<_>>();
-    fs::write(&upstream, b"same filename, changed contents").unwrap();
-    assert!(
-        crate::sources::collect_archives(
-            &downloads,
-            &temp.path().join("changed"),
-            required.clone()
-        )
-        .is_err()
-    );
-    fs::remove_file(&upstream).unwrap();
-    assert!(
-        crate::sources::collect_archives(&downloads, &temp.path().join("missing"), required)
-            .is_err()
-    );
-}
-
-#[test]
 fn native_packages_include_dynamically_loaded_modules() {
     let temp = crate::temporary::directory().unwrap();
     let fixture = fixture();
     let native = temp.path().join("native");
+    let redistributables = temp.path().join("redistributables");
     let resources = temp.path().join("resources");
     fs::create_dir(&native).unwrap();
+    fs::create_dir(&redistributables).unwrap();
     fs::create_dir(&resources).unwrap();
     let library = native.join(fixture.library.file_name().unwrap());
     fs::copy(&fixture.library, &library).unwrap();
-    fs::copy(
-        &fixture.dependency,
-        native.join(fixture.dependency.file_name().unwrap()),
-    )
-    .unwrap();
+    let shared_dep = redistributables.join(fixture.dependency.file_name().unwrap());
+    fs::copy(&fixture.dependency, &shared_dep).unwrap();
     let optional = fixture
         .dependency
         .file_name()
@@ -575,6 +514,7 @@ fn native_packages_include_dynamically_loaded_modules() {
     fs::copy(&fixture.dependency, resources.join(extension)).unwrap();
     let mut result = result(temp.path());
     result.library = library.clone();
+    result.native_inputs.push(NativeInputs { runtime: vec![shared_dep.clone()], ..Default::default() });
     let manifest = result.core_build.as_mut().unwrap();
     manifest.artifact_kind = "native-shared".into();
     manifest.native_library = Some(library);
@@ -582,6 +522,8 @@ fn native_packages_include_dynamically_loaded_modules() {
         source: resources.clone(),
         dest: "Resources".into(),
     });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let inv = Inventory::load(root).unwrap();
     let output = temp.path().join("complete");
     let core = stage_core(
         &result,
@@ -589,10 +531,13 @@ fn native_packages_include_dynamically_loaded_modules() {
         None,
         &Default::default(),
         &output,
-        std::slice::from_ref(&native),
+        &search_dirs(&inv, &result).unwrap(),
     )
     .unwrap();
     let manifest = verify_core(&core).unwrap();
+    assert!(manifest.files.iter().any(|file| {
+        Path::new(&file.path).as_os_str() == shared_dep.file_name().unwrap()
+    }));
     assert!(manifest.files.iter().any(|file| file.path == optional));
     assert!(
         manifest

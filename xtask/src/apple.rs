@@ -137,10 +137,6 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
     if !supported(target) {
         bail!("unsupported Apple triple {target}");
     }
-    let destination = root.join(".work/apple-native").join(target);
-    if destination.exists() {
-        bail!("native export already exists: {}", destination.display());
-    }
     let sdk = PathBuf::from(std::env::var_os("SHINKI_APPLE_SDK_DIR").context(
         "SHINKI_APPLE_SDK_DIR must point to a legally obtained, extracted Apple .sdk directory",
     )?)
@@ -195,28 +191,8 @@ pub fn image(root: &Path, target: &str) -> Result<()> {
                 "build/cross/Dockerfile",
                 ".",
             ]),
-    )?;
-    fs::create_dir_all(destination.parent().context("native export parent")?)?;
-    let temp = tempfile::tempdir_in(destination.parent().unwrap())?;
-    let created = Command::new("docker")
-        .args(["create", &image_name(target)])
-        .output()?;
-    if !created.status.success() {
-        bail!("cannot create native dependency export container");
-    }
-    let container = String::from_utf8(created.stdout)?.trim().to_owned();
-    let copied = checked(
-        Command::new("docker")
-            .arg("cp")
-            .arg(format!("{container}:/opt/apple/native/."))
-            .arg(temp.path()),
-    );
-    let removed = checked(Command::new("docker").args(["rm", &container]));
-    copied?;
-    removed?;
-    crate::package::publish_noreplace(temp.path(), &destination)?;
-    println!("Apple native dependency export: {}", destination.display());
-    Ok(())
+    )
+    .context("build private Apple SDK image")
 }
 
 fn has_executable_rpath(path: &Path) -> Result<bool> {

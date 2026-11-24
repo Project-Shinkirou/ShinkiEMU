@@ -1,0 +1,11 @@
+[package]
+name = "shinki-emu-ffmpeg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+links = "shinki_ffmpeg"
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
+anyhow.workspace = true

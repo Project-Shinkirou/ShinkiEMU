@@ -194,6 +194,7 @@ pub fn copy_entries(entries: &[(PathBuf, String)], stage: &Path) -> Result<()> {
     }
     Ok(())
 }
+#[cfg(test)]
 pub fn extract_zip(archive: &Path, out: &Path) -> Result<()> {
     atomic_directory(out, |stage| {
         let mut z = zip::ZipArchive::new(fs::File::open(archive)?)?;
@@ -584,7 +585,6 @@ pub fn verify_core(dir: &Path) -> Result<CorePackage> {
     Ok(m)
 }
 pub(crate) fn search_dirs(inv: &Inventory, result: &BuildArtifact) -> Result<Vec<PathBuf>> {
-    let selected = dependencies::needs(inv, &result.target, &result.component)?;
     let mut dirs = vec![
         result
             .library
@@ -592,43 +592,19 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildArtifact) -> Result<Vec
             .context("library parent")?
             .to_owned(),
     ];
-    if selected.ffmpeg
-        && let Some(runtime) = dependencies::ffmpeg_runtime(inv, &result.target)?
-    {
-        dirs.push(runtime);
-    }
-    let separate_subtitle =
-        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
-    if separate_subtitle {
-        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_runtime(inv, &result.target, "subtitle")
-        } else if crate::apple::supported(&result.target) {
-            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("lib")
-        } else {
-            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("bin")
-        });
-    }
-    if selected.dxc {
-        dirs.push(inv.root.join(".work/dxc"));
+    for input in &result.native_inputs {
+        for path in &input.runtime {
+            let dir = path.parent().context("native runtime parent")?;
+            if !dirs.iter().any(|seen| seen == dir) {
+                dirs.push(dir.to_owned());
+            }
+        }
     }
     if let Some(native) = &result.core_build
         && let Some(p) = &native.native_library
     {
         dirs.push(p.parent().context("native library parent")?.to_owned());
         dirs.push(p.parent().context("native library parent")?.join("lib"));
-    }
-    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
-        dirs.push(if result.target == "x86_64-unknown-linux-gnu" {
-            dependencies::linux_runtime(inv, &result.target, &native.id)
-        } else {
-            dependencies::native_install(inv, &result.target, &native.id)?
-                .join(dependencies::native_triplet(inv, &result.target)?)
-                .join(if result.target.contains("windows") {
-                    "bin"
-                } else {
-                    "lib"
-                })
-        });
     }
     // MSVC runtime redistributables are explicit SDK redistributable inputs, never System32.
     if result.target.contains("windows")
@@ -657,7 +633,7 @@ pub(crate) fn search_dirs(inv: &Inventory, result: &BuildArtifact) -> Result<Vec
         } else {
             "linux-x86_64"
         };
-        if selected.native_vcpkg {
+        if result.native_inputs.iter().any(|input| input.ndk_openmp) {
             let clang = ndk
                 .join("toolchains/llvm/prebuilt")
                 .join(host)
@@ -698,86 +674,14 @@ pub(crate) fn licenses(
     result: &BuildArtifact,
     scratch: &Path,
 ) -> Result<Vec<(PathBuf, String)>> {
-    let selected = dependencies::needs(inv, &result.target, &result.component)?;
-    let mut entries = vec![];
-    if selected.ffmpeg {
-        let share = dependencies::ffmpeg_install(inv, &result.target)?.join("share");
-        entries.push((
-            share.join("ffmpeg/copyright"),
-            "licenses/ffmpeg/copyright".into(),
-        ));
-        for entry in fs::read_dir(share)? {
-            let entry = entry?;
-            if entry.file_name() == "ffmpeg" {
-                continue;
-            }
-            let copyright = entry.path().join("copyright");
-            if copyright.is_file() {
-                entries.push((
-                    copyright,
-                    format!(
-                        "licenses/ffmpeg/{}/copyright",
-                        entry.file_name().to_string_lossy()
-                    ),
-                ));
-            }
-        }
-    }
+    let mut entries = result.native_inputs.iter()
+        .flat_map(|input| input.licenses.iter())
+        .map(|asset| (asset.source.clone(), asset.dest.clone()))
+        .collect::<Vec<_>>();
     if result.target.contains("android") && result.component != "manager" {
         let ndk = dependencies::ndk_root(inv)?;
         for notice in ["NOTICE", "NOTICE.toolchain"] {
             entries.push((ndk.join(notice), format!("licenses/android-ndk/{notice}")));
-        }
-    }
-    let separate_subtitle =
-        selected.subtitle && !dependencies::shares_android_subtitle(&result.target, selected);
-    if separate_subtitle
-        && (result.target == "x86_64-unknown-linux-gnu" || crate::apple::supported(&result.target))
-    {
-        let share =
-            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("share");
-        for entry in fs::read_dir(share)? {
-            let entry = entry?;
-            let copyright = entry.path().join("copyright");
-            if copyright.is_file() {
-                entries.push((
-                    copyright,
-                    format!(
-                        "licenses/subtitle/{}/copyright",
-                        entry.file_name().to_string_lossy()
-                    ),
-                ));
-            }
-        }
-    } else if separate_subtitle {
-        let share =
-            dependencies::subtitle_install(inv, &result.target, &result.component)?.join("share");
-        for port in [
-            "libass", "freetype", "fribidi", "harfbuzz", "brotli", "bzip2", "libpng", "zlib",
-        ] {
-            entries.push((
-                share.join(port).join("copyright"),
-                format!("licenses/subtitle/{port}/copyright"),
-            ));
-        }
-    }
-    for native in dependencies::native_cores(inv, &result.target, &result.component, selected) {
-        let native_share = dependencies::native_install(inv, &result.target, &native.id)?
-            .join(dependencies::native_triplet(inv, &result.target)?)
-            .join("share");
-        for item in fs::read_dir(native_share)? {
-            let path = item?.path().join("copyright");
-            if path.is_file() {
-                let port = path
-                    .parent()
-                    .and_then(Path::file_name)
-                    .context("native license port")?
-                    .to_string_lossy();
-                entries.push((
-                    path.clone(),
-                    format!("licenses/native-vcpkg/{}/{port}/copyright", native.id),
-                ));
-            }
         }
     }
     if result.component == "manager" {
@@ -892,17 +796,9 @@ pub fn package(
             for dep in binary::closure(&result.library, &search_dirs(inv, &result)?, target)? {
                 entries.push(dep);
             }
-            if dependencies::needs(inv, target, component)?.dxc {
-                for name in [
-                    "dxcompiler.dll",
-                    "dxil.dll",
-                    "LICENSE-MS.txt",
-                    "LICENSE-LLVM.txt",
-                    "LICENCE-MIT.txt",
-                ] {
-                    entries.push((inv.root.join(".work/dxc").join(name), name.into()));
-                }
-            }
+            entries.extend(result.native_inputs.iter()
+                .flat_map(|input| input.package_files.iter())
+                .map(|asset| (asset.source.clone(), asset.dest.clone())));
             entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
             entries.extend(static_core_entries(inv, &result)?);

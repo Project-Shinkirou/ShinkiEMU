@@ -1,4 +1,8 @@
-//! Host-side build support. This crate never invokes Cargo or downloads tools.
+//! Host-side native build support for ShinkiEMU and its adapters.
+
+pub mod inputs;
+pub mod vcpkg;
+
 use anyhow::{Context, Result, bail};
 use object::Object;
 use serde::{Deserialize, Serialize};
@@ -121,6 +125,117 @@ pub fn write_core_build_manifest_to(manifest: &CoreBuildManifest, out: &Path) ->
     Ok(path)
 }
 
+/// Redistributables and notices read from the producer's Cargo OUT_DIR.
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct NativeInputs {
+    pub runtime: Vec<PathBuf>,
+    pub licenses: Vec<BuildAsset>,
+    pub package_files: Vec<BuildAsset>,
+    pub ndk_openmp: bool,
+}
+
+impl NativeInputs {
+    pub const FILE: &str = "native-inputs.json";
+
+    pub fn write(&self) -> Result<()> {
+        fs::write(out_dir()?.join(Self::FILE), serde_json::to_vec(self)?)?;
+        Ok(())
+    }
+}
+
+fn workspace() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("ShinkiEMU workspace")
+}
+
+fn work_root() -> PathBuf {
+    workspace().join(".work")
+}
+
+fn out_dir() -> Result<PathBuf> {
+    Ok(PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?))
+}
+
+fn pins() -> Result<inputs::Pins> {
+    let path = workspace().join("build/dependencies.toml");
+    println!("cargo:rerun-if-changed={}", path.display());
+    Ok(toml::from_str(&fs::read_to_string(&path)?)?)
+}
+
+fn watch_env(key: &str) -> Option<std::ffi::OsString> {
+    println!("cargo:rerun-if-env-changed={key}");
+    env::var_os(key)
+}
+
+fn lock_file(path: &Path) -> Result<fs::File> {
+    let file = fs::File::options().read(true).write(true).create(true).truncate(false).open(path)
+        .with_context(|| format!("opening lock {}", path.display()))?;
+    file.lock().with_context(|| format!("locking {}", path.display()))?;
+    Ok(file)
+}
+
+fn capture(command: &mut Command) -> Result<String> {
+    let output = command.output().with_context(|| format!("starting {command:?}"))?;
+    if !output.status.success() {
+        bail!("{command:?} failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+fn sha256(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut hash = Sha256::new();
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0; 65536];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hex::encode(hash.finalize()))
+}
+
+pub fn android_ndk() -> Result<PathBuf> {
+    [
+        "ANDROID_NDK_HOME",
+        "ANDROID_NDK_ROOT",
+        "CARGO_NDK_HOME",
+    ]
+    .into_iter()
+    .find_map(watch_env)
+    .map(PathBuf::from)
+    .or_else(|| {
+        let sysroot = PathBuf::from(watch_env("CARGO_NDK_SYSROOT_PATH")?);
+        Some(sysroot.ancestors().nth(5)?.to_owned())
+    })
+    .context("select an Android NDK with cargo ndk or ANDROID_NDK_HOME")
+}
+
+/// Restrict this build-script process's pkg-config probes to the installation.
+pub fn configure_pkg_config(target: &str, paths: &[PathBuf], program: &Path) -> Result<()> {
+    let target_key = target.replace('-', "_");
+    let paths = env::join_paths(paths)?;
+    // Build scripts call this before starting external probes and own the
+    // process; this does not modify Cargo's or another crate's environment.
+    unsafe {
+        env::set_var(format!("PKG_CONFIG_{target}"), program);
+        env::set_var(format!("PKG_CONFIG_PATH_{target}"), "");
+        env::set_var(format!("PKG_CONFIG_LIBDIR_{target}"), paths);
+        env::set_var("PKG_CONFIG_ALLOW_CROSS", "1");
+        for name in ["PKG_CONFIG_SYSROOT_DIR", "PKG_CONFIG_SYSTEM_LIBRARY_PATH"] {
+            for key in [name.to_owned(), format!("{name}_{target}"), format!("{name}_{target_key}"), format!("TARGET_{name}")] {
+                env::remove_var(key);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run(command: &mut Command) -> Result<()> {
     let status = command
         .status()
@@ -135,13 +250,12 @@ fn run(command: &mut Command) -> Result<()> {
 }
 
 /// Keep native build/download caches and temporary files in an owned work tree.
-pub fn configure_native_environment(work_root: &Path, command: &mut Command) -> Result<()> {
+fn configure_native_environment(work_root: &Path, command: &mut Command) -> Result<()> {
     let absolute = std::path::absolute(work_root)?;
     let work_root = dunce::simplified(&absolute);
     let binary_cache = work_root.join("vcpkg-binary-cache");
     let downloads = work_root.join("vcpkg-downloads");
-    let temporary = work_root.join("tmp");
-    for directory in [&binary_cache, &downloads, &temporary] {
+    for directory in [&binary_cache, &downloads] {
         for ancestor in directory.ancestors() {
             match fs::symlink_metadata(ancestor) {
                 Ok(metadata) => {
@@ -165,30 +279,8 @@ pub fn configure_native_environment(work_root: &Path, command: &mut Command) -> 
     command
         .env("VCPKG_DEFAULT_BINARY_CACHE", binary_cache)
         .env("VCPKG_DOWNLOADS", downloads)
-        .env("VCPKG_MAX_CONCURRENCY", "4")
-        .env("TEMP", &temporary)
-        .env("TMP", temporary);
+        .env("VCPKG_MAX_CONCURRENCY", "4");
     Ok(())
-}
-
-/// Manifest-mode installations must not prune another target's dependency set.
-pub fn native_vcpkg_install_root(root: &Path, core: &str, triplet: &str) -> PathBuf {
-    root.join(core).join(format!("installed-{triplet}"))
-}
-
-/// Resolve one native core's installation within the Manager's shared build environment.
-pub fn native_vcpkg_installation(core: &str) -> Result<PathBuf> {
-    println!("cargo:rerun-if-env-changed=SHINKI_EMU_NATIVE_VCPKG_ROOT");
-    let root = env::var_os("SHINKI_EMU_NATIVE_VCPKG_ROOT")
-        .context("SHINKI_EMU_NATIVE_VCPKG_ROOT is required; run cargo xtask deps")?;
-    println!("cargo:rerun-if-env-changed=SHINKI_EMU_VCPKG_TRIPLET");
-    let triplet = env::var("SHINKI_EMU_VCPKG_TRIPLET")
-        .context("SHINKI_EMU_VCPKG_TRIPLET is required; run cargo xtask deps")?;
-    let installed = native_vcpkg_install_root(Path::new(&root), core, &triplet);
-    if !installed.is_dir() {
-        bail!("native vcpkg installation missing: {}", installed.display());
-    }
-    Ok(installed)
 }
 
 /// Merge the native build's archives and publish its prepared static link closure to Cargo.
@@ -269,6 +361,12 @@ pub fn link_android_static_core(native: &Path, installations: &[PathBuf]) -> Res
 }
 
 fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
+    let target = env::var("TARGET")?;
+    let program = vcpkg::pkg_config_program(&target)?;
+    let dirs = installations.iter().flat_map(|installation| [
+        installation.join("lib/pkgconfig"), installation.join("share/pkgconfig"),
+    ]).collect::<Vec<_>>();
+    configure_pkg_config(&target, &dirs, &program)?;
     for installation in installations {
         let libraries = installation.join("lib");
         println!("cargo:rustc-link-search=native={}", libraries.display());
@@ -335,10 +433,6 @@ pub fn configure_cmake(
         "LIB",
         "INCLUDE",
         "VCToolsInstallDir",
-        "VCPKG_ROOT",
-        "BISON_EXECUTABLE",
-        "SHINKI_EMU_VCPKG_TRIPLET",
-        "SHINKI_EMU_NATIVE_DOWNLOADS",
         "HOST",
         "TARGET",
     ] {
@@ -355,14 +449,7 @@ pub fn configure_cmake(
         bail!("cross CMake build {host} -> {target} requires CMAKE_TOOLCHAIN_FILE");
     }
     let cmake = env::var_os("CMAKE").unwrap_or_else(|| "cmake".into());
-    let work_root = if let Some(downloads) = env::var_os("SHINKI_EMU_NATIVE_DOWNLOADS") {
-        PathBuf::from(downloads)
-            .parent()
-            .context("native downloads work root")?
-            .to_owned()
-    } else {
-        PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?).join("host-cache")
-    };
+    let work_root = work_root();
     let mut configure = Command::new(&cmake);
     configure_native_environment(&work_root, &mut configure)?;
     configure.env("VCPKG_DISABLE_METRICS", "1");
@@ -379,6 +466,21 @@ pub fn configure_cmake(
         .arg("-DFETCHCONTENT_FULLY_DISCONNECTED=ON")
         .arg("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON")
         .arg("-DVCPKG_MANIFEST_INSTALL=OFF");
+    let definition = |name: &str| definitions.iter().find_map(|(key, value)| (key == name).then_some(value));
+    if target != host
+        && let (Some(installed), Some(triplet)) = (
+            definition("VCPKG_INSTALLED_DIR"),
+            definition("VCPKG_TARGET_TRIPLET"),
+        )
+    {
+        let prefix = Path::new(installed).join(triplet);
+        let program = vcpkg::pkg_config_program(&target)?;
+        configure
+            .arg(format!("-DPKG_CONFIG_EXECUTABLE={}", program.display()))
+            .env("PKG_CONFIG_PATH", "")
+            .env("PKG_CONFIG_LIBDIR", env::join_paths([prefix.join("lib/pkgconfig"), prefix.join("share/pkgconfig")])?)
+            .env_remove("PKG_CONFIG_SYSROOT_DIR");
+    }
     if let Some(generator) = env::var_os("CMAKE_GENERATOR") {
         configure.arg("-G").arg(generator);
     } else if target.ends_with("-linux-android") {
@@ -398,14 +500,13 @@ pub fn configure_cmake(
             .args(["-G", "Ninja"])
             .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
     }
-    if let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE") {
+    if !definitions.iter().any(|(key, _)| key == "CMAKE_TOOLCHAIN_FILE")
+        && let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE")
+    {
         configure.arg(format!(
             "-DCMAKE_TOOLCHAIN_FILE={}",
             dunce::simplified(Path::new(&toolchain)).display()
         ));
-    }
-    if let Ok(triplet) = env::var("SHINKI_EMU_VCPKG_TRIPLET") {
-        configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
     }
     for (key, value) in definitions {
         configure.arg(format!(

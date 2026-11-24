@@ -100,6 +100,10 @@ fn main() {
     write_embedded_core_identities();
     println!("cargo:rerun-if-changed=../../../Assets/Branding/shinkiemu-icon.svg");
     write_runtime_icon();
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        shinki_emu_build::inputs::dxc(std::path::Path::new("../../../Assets/Effects/dxc.lock.json"))
+            .expect("prepare pinned DirectX shader compiler runtime");
+    }
     #[cfg(windows)]
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         embed_windows_icon();
@@ -111,7 +115,6 @@ fn main() {
         build_ohos_glue();
     }
     for asset in [
-        "../../../Assets/Effects/dxc.lock.json",
         "../../../Assets/Effects/Builtin/scale.hlsl",
         "../../../Assets/Effects/Builtin/sharpen.hlsl",
         "../../../Assets/Effects/Anime4K/restore_cnn_s.hlsl",

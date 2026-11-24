@@ -13,24 +13,6 @@ pub struct Cli {
 }
 
 #[derive(Args)]
-pub struct TargetCore {
-    #[arg(long)]
-    pub target: String,
-    #[arg(long)]
-    pub core: Option<String>,
-}
-
-#[derive(Args)]
-pub struct DependencyOptions {
-    #[arg(long)]
-    pub target: String,
-    #[arg(long, conflicts_with = "all_cores")]
-    pub core: Option<String>,
-    #[arg(long)]
-    pub all_cores: bool,
-}
-
-#[derive(Args)]
 #[group(required = true, multiple = false)]
 pub struct Selection {
     #[arg(long)]
@@ -64,8 +46,6 @@ pub enum Command {
         #[arg(long)]
         target: String,
     },
-    Doctor(TargetCore),
-    Deps(DependencyOptions),
     /// List every combination; `--json` emits the job matrix of supported rows only.
     Matrix {
         #[arg(long)]

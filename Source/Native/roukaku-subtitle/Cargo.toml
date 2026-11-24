@@ -1,0 +1,18 @@
+[package]
+name = "roukaku-subtitle"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+links = "roukaku_subtitle_ass"
+# Source: Project-Shinkirou/RoukakuEngine@374a7a2, Engine/Source/Runtime/roukaku-subtitle
+description = "Owner-thread libass subtitle masks at explicit media timestamps"
+
+[dependencies]
+shinki-emu-libass = { path = "../shinki-emu-libass" }
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
+vcpkg = "=0.2.15"
+cc = "1"
+pkg-config = "0.3"

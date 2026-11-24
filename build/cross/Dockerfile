@@ -8,7 +8,7 @@ ARG NASM_VERSION=3.02
 ARG NASM_SHA256=87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang lld llvm cmake ninja-build pkg-config git curl ca-certificates \
-    make g++ zlib1g-dev libxml2-dev libssl-dev xz-utils bzip2 patch autoconf automake libtool \
+    make g++ zlib1g-dev libxml2-dev libssl-dev xz-utils bzip2 patch autoconf automake libtool bison \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.xz" -o /tmp/nasm.tar.xz \
     && echo "${NASM_SHA256}  /tmp/nasm.tar.xz" | sha256sum -c - \
@@ -18,13 +18,10 @@ RUN curl -fsSL "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-
 COPY --from=apple-sdk . /input-sdk/
 COPY build/cross/build-toolchain.sh /tmp/build-toolchain.sh
 COPY build/cross/toolchain.cmake /opt/apple/toolchain.cmake
-COPY build/cross/triplets /opt/apple/triplets
-COPY build/cross/vcpkg.json /opt/apple/deps/vcpkg.json
 RUN bash /tmp/build-toolchain.sh "$TARGET" "$SDK_VERSION" "$OSXCROSS_REV" \
     && rm /tmp/build-toolchain.sh
 ENV PATH="/opt/apple/bin:/opt/osxcross/bin:${PATH}" \
-    VCPKG_OVERLAY_TRIPLETS=/opt/apple/triplets \
-    PKG_CONFIG_ALLOW_CROSS=1
+    SHINKI_EMU_APPLE_CROSS=1
 ENV SDKROOT=/opt/apple-sdk \
     MACOSX_DEPLOYMENT_TARGET=13.0 \
     IPHONEOS_DEPLOYMENT_TARGET=16.0 \
@@ -33,52 +30,26 @@ ENV SDKROOT=/opt/apple-sdk \
     CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=/opt/apple/bin/apple-cc \
     CARGO_TARGET_AARCH64_APPLE_IOS_SIM_LINKER=/opt/apple/bin/apple-cc \
     CARGO_TARGET_X86_64_APPLE_IOS_LINKER=/opt/apple/bin/apple-cc
-RUN case "$TARGET" in \
-      x86_64-apple-darwin) triplet=x64-osx-cross ;; \
-      aarch64-apple-darwin) triplet=arm64-osx-cross ;; \
-      aarch64-apple-ios) triplet=arm64-ios-cross ;; \
-      aarch64-apple-ios-sim) triplet=arm64-ios-sim-cross ;; \
-      x86_64-apple-ios) triplet=x64-ios-sim-cross ;; \
-      *) exit 1 ;; \
-    esac \
-    && git clone https://github.com/microsoft/vcpkg.git /opt/apple/vcpkg \
-    && git -C /opt/apple/vcpkg checkout --detach 0c2a9ace1964b818b15f7ae50ba1c42404918a7b \
-    && /opt/apple/vcpkg/bootstrap-vcpkg.sh -disableMetrics \
-    && /opt/apple/vcpkg/vcpkg install --x-manifest-root=/opt/apple/deps \
-       --x-install-root=/opt/apple/installed --overlay-triplets=/opt/apple/triplets \
-       --triplet="$triplet" --clean-after-build --disable-metrics \
-    && ln -s "/opt/apple/installed/$triplet" /opt/apple/native
-ENV LIBASS_STATIC=1
 ENV CC_x86_64_apple_darwin=/opt/apple/bin/apple-cc \
     CXX_x86_64_apple_darwin=/opt/apple/bin/apple-cxx \
     AR_x86_64_apple_darwin=/opt/apple/bin/apple-ar \
     CMAKE_TOOLCHAIN_FILE_x86_64_apple_darwin=/opt/apple/toolchain.cmake \
-    PKG_CONFIG_PATH_x86_64_apple_darwin=/opt/apple/native/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR_x86_64_apple_darwin=/opt/apple/native/lib/pkgconfig \
     CC_aarch64_apple_darwin=/opt/apple/bin/apple-cc \
     CXX_aarch64_apple_darwin=/opt/apple/bin/apple-cxx \
     AR_aarch64_apple_darwin=/opt/apple/bin/apple-ar \
     CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin=/opt/apple/toolchain.cmake \
-    PKG_CONFIG_PATH_aarch64_apple_darwin=/opt/apple/native/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR_aarch64_apple_darwin=/opt/apple/native/lib/pkgconfig \
     CC_aarch64_apple_ios=/opt/apple/bin/apple-cc \
     CXX_aarch64_apple_ios=/opt/apple/bin/apple-cxx \
     AR_aarch64_apple_ios=/opt/apple/bin/apple-ar \
     CMAKE_TOOLCHAIN_FILE_aarch64_apple_ios=/opt/apple/toolchain.cmake \
-    PKG_CONFIG_PATH_aarch64_apple_ios=/opt/apple/native/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR_aarch64_apple_ios=/opt/apple/native/lib/pkgconfig \
     CC_aarch64_apple_ios_sim=/opt/apple/bin/apple-cc \
     CXX_aarch64_apple_ios_sim=/opt/apple/bin/apple-cxx \
     AR_aarch64_apple_ios_sim=/opt/apple/bin/apple-ar \
     CMAKE_TOOLCHAIN_FILE_aarch64_apple_ios_sim=/opt/apple/toolchain.cmake \
-    PKG_CONFIG_PATH_aarch64_apple_ios_sim=/opt/apple/native/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR_aarch64_apple_ios_sim=/opt/apple/native/lib/pkgconfig \
     CC_x86_64_apple_ios=/opt/apple/bin/apple-cc \
     CXX_x86_64_apple_ios=/opt/apple/bin/apple-cxx \
     AR_x86_64_apple_ios=/opt/apple/bin/apple-ar \
-    CMAKE_TOOLCHAIN_FILE_x86_64_apple_ios=/opt/apple/toolchain.cmake \
-    PKG_CONFIG_PATH_x86_64_apple_ios=/opt/apple/native/lib/pkgconfig \
-    PKG_CONFIG_LIBDIR_x86_64_apple_ios=/opt/apple/native/lib/pkgconfig
+    CMAKE_TOOLCHAIN_FILE_x86_64_apple_ios=/opt/apple/toolchain.cmake
 ENV BINDGEN_EXTRA_CLANG_ARGS_x86_64_apple_darwin="--target=x86_64-apple-macos13.0 -isysroot /opt/apple-sdk" \
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_darwin="--target=arm64-apple-macos13.0 -isysroot /opt/apple-sdk" \
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios16.0 -isysroot /opt/apple-sdk" \

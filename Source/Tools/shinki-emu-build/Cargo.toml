@@ -10,10 +10,15 @@ description = "Host-side native core build support for ShinkiEMU adapters"
 anyhow = "1.0.104"
 cc = "1.10.0"
 dunce = "1.0.5"
+flate2 = "=1.1.10"
+hex = "0.4.3"
 object = { version = "0.40.0", default-features = false, features = ["read"] }
 pkg-config = "0.3.34"
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-
-[dev-dependencies]
+sha2 = "0.11.1"
+tar = "0.4.46"
 tempfile = "3.27.0"
+toml = "1.1.8"
+zip = { version = "9.1.0", default-features = false, features = ["deflate"] }

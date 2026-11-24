@@ -1,0 +1,11 @@
+[package]
+name = "shinki-emu-libass"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+links = "shinki_libass"
+
+[build-dependencies]
+shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
+anyhow.workspace = true

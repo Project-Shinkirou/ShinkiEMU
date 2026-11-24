@@ -1,7 +1,7 @@
 use crate::{cores::{ArtifactSource, Inventory}, dependencies};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
-use shinki_emu_build::CoreBuildManifest;
+use shinki_emu_build::{CoreBuildManifest, NativeInputs};
 use std::{
     collections::BTreeMap,
     fs,
@@ -10,9 +10,6 @@ use std::{
     process::{Command, Stdio},
 };
 
-pub(crate) const ANDROID_CORE_LINK_ARG: &str =
-    "-Wl,--no-undefined,-z,max-page-size=16384,--enable-new-dtags,-rpath,$ORIGIN";
-
 pub struct BuildArtifact {
     pub component: String,
     pub target: String,
@@ -20,6 +17,7 @@ pub struct BuildArtifact {
     pub library: PathBuf,
     pub core_build: Option<CoreBuildManifest>,
     pub embedded_core_builds: Vec<CoreBuildManifest>,
+    pub native_inputs: Vec<NativeInputs>,
     pub source_commit: Option<String>,
     pub features: Vec<String>,
 }
@@ -285,62 +283,25 @@ fn execute_configured(
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
     }
-    dependencies::apply_environment(inv, target, component, &mut cmd)?;
+    if target.ends_with("ohos") {
+        dependencies::apply_ohos_environment(inv, target, &mut cmd)?;
+    }
     if let Some(abi) = android_abi {
         // cargo-ndk consumes build-script JSON. Import its toolchain environment
         // and invoke Cargo directly so every embedded manifest stays observable.
         let api = crate::binary::ANDROID_API.to_string();
-        let mut environment = if core.is_some() {
-            dependencies::cargo_plugin(&dependencies::private_android_tool(inv, "cargo-ndk-env"))
-        } else {
-            Command::new("cargo")
-        };
-        environment
-            .current_dir(&inv.root)
+        let mut environment = Command::new("cargo");
+        environment.current_dir(&inv.root)
             .args(["ndk-env", "--target", target, "-P", &api, "--json"]);
-        dependencies::apply_environment(inv, target, component, &mut environment)?;
-        let environment: std::collections::BTreeMap<String, String> =
+        let environment: BTreeMap<String, String> =
             serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
-        let clang = environment
-            .get("CLANG_PATH")
-            .context("cargo ndk-env omitted CLANG_PATH")?;
-        // ndk-env omits the two private variables its linker wrapper requires.
+        let clang = environment.get("CLANG_PATH").context("cargo ndk-env omitted CLANG_PATH")?;
+        // ndk-env omits the two variables its linker wrapper requires.
         cmd.envs(&environment)
             .env("_CARGO_NDK_LINK_CLANG", clang)
             .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
             .env("ANDROID_PLATFORM", &api)
-            .env("ANDROID_ABI", abi)
-            .env("CARGO_NDK_ANDROID_PLATFORM", abi);
-        if core.is_some() {
-            // Keep the linker beside the private tool that generated the
-            // environment; Cargo's external plugin lookup can prefer CARGO_HOME.
-            let key = target.replace('-', "_").to_ascii_uppercase();
-            cmd.env(
-                format!("CARGO_TARGET_{key}_LINKER"),
-                dependencies::private_android_tool(inv, "cargo-ndk"),
-            )
-            .env_remove(format!("CARGO_TARGET_{key}_RUNNER"));
-        }
-        if core.is_some_and(|core| core.artifact_source() == ArtifactSource::Cdylib) {
-            let mut flags = environment
-                .get("CARGO_ENCODED_RUSTFLAGS")
-                .cloned()
-                .or_else(|| std::env::var("CARGO_ENCODED_RUSTFLAGS").ok())
-                .unwrap_or_else(|| {
-                    std::env::var("RUSTFLAGS")
-                        .unwrap_or_default()
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join("\x1f")
-                });
-            if !flags.is_empty() {
-                flags.push('\x1f');
-            }
-            // Bionic finds package-local dependencies beside the selected core.
-            flags.push_str("-C\x1flink-arg=");
-            flags.push_str(ANDROID_CORE_LINK_ARG);
-            cmd.env("CARGO_ENCODED_RUSTFLAGS", flags);
-        }
+            .env("ANDROID_ABI", abi);
     }
     if let Some(version) = &product_version {
         cmd.env("SHINKI_EMU_PRODUCT_VERSION", version);
@@ -381,6 +342,7 @@ fn execute_configured(
     let output = child.stdout.take().context("Cargo stdout")?;
     let mut libraries = Vec::new();
     let mut manifests = Vec::new();
+    let mut native_inputs = Vec::new();
     let mut parse_error = None;
     for line in BufReader::new(output).lines() {
         let line = match line {
@@ -401,6 +363,19 @@ fn execute_configured(
             && let Some(s) = value["message"]["rendered"].as_str()
         {
             eprint!("{s}");
+        }
+        if value["reason"] == "build-script-executed"
+            && let Some(dir) = value["out_dir"].as_str()
+        {
+            let path = Path::new(dir).join(NativeInputs::FILE);
+            if path.is_file() {
+                match fs::read(&path).map_err(anyhow::Error::from)
+                    .and_then(|bytes| Ok(serde_json::from_slice::<NativeInputs>(&bytes)?))
+                {
+                    Ok(inputs) => native_inputs.push(inputs),
+                    Err(error) => parse_error = Some(error.context(path.display().to_string())),
+                }
+            }
         }
         let expected_embedded = value["package_id"]
             .as_str()
@@ -485,6 +460,7 @@ fn execute_configured(
         library,
         core_build,
         embedded_core_builds,
+        native_inputs,
         product_version,
         source_commit: product_source,
         features,
@@ -500,14 +476,6 @@ pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
         cmd.args(["-p", "shinki-emu-manager"]);
     } else {
         cmd.args(["-p", "xtask", "-p", "shinki-emu-build"]);
-    }
-    if core.is_some() || manager {
-        let version = String::from_utf8(dependencies::capture(Command::new("rustc").arg("-vV"))?)?;
-        let host = version
-            .lines()
-            .find_map(|s| s.strip_prefix("host: "))
-            .context("rustc host triple")?;
-        dependencies::apply_environment(inv, host, core.unwrap_or("manager"), &mut cmd)?;
     }
     dependencies::run(&mut cmd)
 }
