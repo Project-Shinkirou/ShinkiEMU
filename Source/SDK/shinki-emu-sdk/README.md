@@ -30,6 +30,10 @@ SDK 提供移植核心共同使用的模块，当前替代 Musica 内部的文�
 
 `TextScene::frame_parts_with_layout` 允许核心调整已排版字形的位置，再更新字形图集。回调收到物理像素坐标，不会改变 SDK 缓存中的原始排版。
 
+`TextOutline::radius` 以逻辑像素计（1–8），随栅格倍率取整，最多 64 个物理像素。SDK 对定位后的单个字形做圆盘最大值膨胀，再减去原字形覆盖率，生成一张 8 位描边遮罩。先画描边，再画正文，两者共用区域裁剪；同一字形不会按偏移位置反复混合。描边遮罩按字形栅格身份和半径复用，颜色和整数平移不触发重新上传。每张遮罩最多 1 MiB，每帧描边声明最多 4096 张、16 MiB；超出限制时返回错误。
+
+当前 `GlyphRun` 沿用渲染器的场景混合策略；描边遮罩改变的是覆盖率，不会把编码 sRGB 混合转换成线性光混合。
+
 `gpu-render` 导出 RoukakuEngine 的 `WgpuOffscreenRenderer` 和 `native_wgpu_instance`，供 ADV32、CMVS 和 Musica 创建离屏渲染器。合成、滤镜和 CPU 回读由 RoukakuEngine 实现。
 
 SDK 不创建 EngineSession、VN session、PlatformHost 或 package，不拥有游戏存档与归档语义。
