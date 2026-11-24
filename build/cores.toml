@@ -239,25 +239,27 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "docs/licenses/shinki-emu-adv32/GARbro.txt", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+# Enabled only for a Manager built with the local static-adv32 feature.
+static_manager_candidate_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
 publish_blocked = "Development preview: complete VM coverage, native save interoperability, and publication review have not passed."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "The ADV32 development core is desktop-only."
+reason = "No standalone package; available for local static Manager builds only."
 
 [[cores]]
 id = "shinki.emu.cmvs"

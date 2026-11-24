@@ -100,6 +100,8 @@ Apple native builds use macOS/Xcode and the matching SDK. Cargo prepares target-
 
 The default OHOS Manager embeds Musica statically. For local QA, `SHINKI_EMU_MANAGER_FEATURES` adds packaging features such as `ohos-bundled-musica` on OHOS or `ios-framework-cores` on iOS. With direct Cargo builds, use `--features` instead. These variants do not enable downloads or qualify for public release.
 
+Use `SHINKI_EMU_MANAGER_FEATURES=static-adv32` when packaging a local ADV32 Manager candidate. The packager collects ADV32's build-reported resources and licenses only when that feature is enabled. `release prepare` rejects this feature.
+
 Cargo prepares Impacto's pinned `libatrac9` and `magic_enum` inputs under `.work/native-downloads/` and Ren’Py's desktop SDK, host CPython/Cython and SDL headers. For Android Ren’Py on non-Linux hosts, set `RENPY_STATIC_ROOT` to the matching ABI's complete runtime tree prepared on Linux. See the [Android prerequisites](../docs/en/build-and-release.md#android).
 
 Native build scripts resolve the pinned inputs and use Cargo's `OUT_DIR` to publish staging inputs, including native dependency paths, resources and notices.

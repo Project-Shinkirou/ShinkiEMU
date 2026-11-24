@@ -3,10 +3,12 @@ use std::fmt::Write;
 
 #[path = "../../../../build/android_dynamic.rs"]
 mod android_dynamic;
+#[path = "../../../../build/adv32_candidate.rs"]
+mod adv32_candidate;
 
 /// Build-time projection of the authoritative inventories. No core manifests or
 /// source checkouts are opened, and publication restrictions do not affect use.
-pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, String> {
+pub fn generate(cores: &str, targets: &str, target: &str, with_adv32: bool) -> Result<String, String> {
     let cores: toml::Value = toml::from_str(cores).map_err(|error| format!("core inventory: {error}"))?;
     let targets: toml::Value = toml::from_str(targets).map_err(|error| format!("target inventory: {error}"))?;
     if text(&cores, "schema")? != "shinki.emu.build_cores.v2"
@@ -41,7 +43,9 @@ pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, Stri
         {
             return Err(format!("invalid family_id or display_name for {plugin_id}"));
         }
-        let embedded = enabled && contains_target(core, "static_manager_targets", target)?;
+        let embedded = enabled
+            && (contains_target(core, "static_manager_targets", target)?
+                || adv32_candidate::linked(core, target, with_adv32));
         let standalone = enabled && contains_target(core, "supported_targets", target)?;
         let supported = embedded || standalone;
         let first_party = core.get("attribution").is_none();

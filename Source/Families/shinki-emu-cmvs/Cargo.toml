@@ -16,7 +16,7 @@ video-ffmpeg = ["shinki-emu-sdk/video-ffmpeg"]
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", features = ["diagnostic-bridge"] }
 roukaku-byte-source = { workspace = true }
-shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["archive", "cache", "image", "audio", "text", "runtime", "device-audio"] }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["archive", "cache", "image", "audio", "text", "runtime", "device-audio", "gpu-render"] }
 roukaku-text = { workspace = true }
 fontdb.workspace = true
 configparser = "=3.3.0"

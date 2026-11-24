@@ -74,16 +74,13 @@ pub fn cargo_metadata(inv: &Inventory, target: &str) -> Result<serde_json::Value
 fn embedded_core_packages<'a>(
     inv: &'a Inventory,
     target: &str,
+    features: &[String],
     metadata: &'a serde_json::Value,
 ) -> Result<BTreeMap<&'a str, &'a str>> {
     let packages = metadata["packages"].as_array().context("cargo packages")?;
     let mut selected = BTreeMap::new();
     for core in &inv.cores {
-        if !core
-            .static_manager_targets
-            .iter()
-            .any(|triple| triple == target)
-        {
+        if !core.embedded_in_manager(target, features) {
             continue;
         }
         let adapter = core.adapter_package();
@@ -254,12 +251,7 @@ fn execute_configured(
     let package = core.map(|core| core.entry_package())
         .unwrap_or_else(|| "shinki-emu-manager".to_owned());
     let features = if component == "manager" {
-        let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
-        let requested = requested
-            .as_deref()
-            .map(|v| v.to_str().context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES"))
-            .transpose()?;
-        manager_features(requested, &manager_manifest()?)?
+        requested_manager_features()?
     } else {
         Vec::new()
     };
@@ -316,13 +308,11 @@ fn execute_configured(
     };
     let adapter_package_id = core.map(|core| package_id(&core.adapter_package())).transpose()?;
     let package_id = package_id(&package)?;
-    let mut embedded_packages = BTreeMap::new();
-    if component == "manager" {
-        embedded_packages = embedded_core_packages(inv, target, &metadata)?;
-        if ohos_hap_manager {
-            embedded_packages.retain(|_, id| !crate::ohos::is_core_input(id, target));
-        }
-    }
+    let embedded_packages = if component == "manager" {
+        embedded_core_packages(inv, target, &features, &metadata)?
+    } else {
+        BTreeMap::new()
+    };
 
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -456,6 +446,15 @@ fn execute_configured(
     })
 }
 
+pub(crate) fn requested_manager_features() -> Result<Vec<String>> {
+    let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
+    let requested = requested
+        .as_deref()
+        .map(|value| value.to_str().context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES"))
+        .transpose()?;
+    manager_features(requested, &manager_manifest()?)
+}
+
 /// Additive Manager features from `SHINKI_EMU_MANAGER_FEATURES` (comma list).
 /// Default features stay on; each name must be declared by the Manager package.
 fn manager_features(requested: Option<&str>, package: &toml::Value) -> Result<Vec<String>> {
@@ -510,11 +509,11 @@ mod version_tests {
             ]
         });
         assert!(
-            embedded_core_packages(&inv, "x86_64-unknown-linux-gnu", &metadata)
+            embedded_core_packages(&inv, "x86_64-unknown-linux-gnu", &[], &metadata)
                 .unwrap()
                 .is_empty()
         );
-        let selected = embedded_core_packages(&inv, "aarch64-linux-android", &metadata).unwrap();
+        let selected = embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).unwrap();
         assert_eq!(selected.get("reader-package"), Some(&"shinki.emu.musica"));
         assert!(!selected.contains_key("patch-package"));
         metadata["packages"]
@@ -523,9 +522,34 @@ mod version_tests {
             .push(serde_json::json!({
                 "name": "shinki-emu-musica", "id": "other-version"
             }));
-        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &metadata).is_err());
+        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).is_err());
         metadata["packages"] = serde_json::json!([]);
-        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &metadata).is_err());
+        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).is_err());
+    }
+
+    #[test]
+    fn adv32_build_reports_are_selected_only_with_the_candidate_feature() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inv = Inventory::load(root).unwrap();
+        inv.cores.retain(|core| matches!(core.id.as_str(), "shinki.emu.adv32" | "shinki.emu.musica"));
+        let target = "x86_64-pc-windows-msvc";
+        let metadata = serde_json::json!({
+            "packages": [
+                {"name": "shinki-emu-adv32", "id": "adv32-package"},
+                {"name": "shinki-emu-musica", "id": "musica-package"}
+            ]
+        });
+        assert!(embedded_core_packages(&inv, target, &[], &metadata).unwrap().is_empty());
+        let features = [crate::cores::ADV32_CANDIDATE_FEATURE.to_owned()];
+        let selected = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
+        assert_eq!(selected.get("adv32-package"), Some(&"shinki.emu.adv32"));
+
+        let target = "aarch64-unknown-linux-ohos";
+        let default = embedded_core_packages(&inv, target, &[], &metadata).unwrap();
+        assert_eq!(default, BTreeMap::from([("musica-package", "shinki.emu.musica")]));
+        let features = [features[0].clone(), "ohos-bundled-musica".into()];
+        let bundled = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
+        assert_eq!(bundled, BTreeMap::from([("adv32-package", "shinki.emu.adv32")]));
     }
 
     #[test]

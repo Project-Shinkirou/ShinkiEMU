@@ -12,6 +12,10 @@ pub enum WindowCommand {
     /// crosses the ABI. Hosts must execute this on their window thread or fail
     /// the session explicitly when window control is unavailable.
     SetFullscreen(bool),
+    /// Set the window's client area in physical pixels.
+    SetClientSize { width: u32, height: u32 },
+    /// Show or hide the host-owned game window.
+    SetVisibility(bool),
     /// UTF-8 window caption. Empty clears it; native encodings are decoded by the family.
     SetTitle(String),
     /// Owned, tightly packed straight-alpha RGBA8 small window icon.
@@ -84,6 +88,9 @@ impl WindowCommand {
     pub fn validate(&self) -> SessionResult<()> {
         if let Self::SetIcon(icon) = self {
             return icon.validate();
+        }
+        if let Self::SetClientSize { width, height } = self {
+            return validate_window_size(*width, *height);
         }
         if let Self::SetTitle(title) = self
             && (title.len() > MAX_WINDOW_TITLE_BYTES || title.chars().any(char::is_control))

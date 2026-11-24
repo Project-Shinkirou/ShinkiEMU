@@ -22,8 +22,11 @@ use std::{
 
 const FORMAT: abi::Bytes = abi::Bytes::from_static(b"adv32.mes");
 const FORMATS: &[abi::Bytes] = &[FORMAT];
+#[cfg(not(target_env = "ohos"))]
 const HARDWARE_COMPOSITING: &str = "hardware_compositing";
+#[cfg(not(target_env = "ohos"))]
 const HEADLESS_AUDIO_DEVICE: &str = "headless_audio_device";
+#[cfg(not(target_env = "ohos"))]
 const NULL_AUDIO_DEVICE: &str = "nullaudiodevice";
 #[cfg(not(target_env = "ohos"))]
 const AUDIO_DEVICES: &[abi::Bytes] = &[
@@ -35,15 +38,12 @@ const AUDIO_DEVICE_LABELS: &[abi::Bytes] = &[
     abi::Bytes::from_static(b"Native audio"),
     abi::Bytes::from_static(b"Clocked null audio (test only)"),
 ];
-#[cfg(target_env = "ohos")]
-const CONFIGURATION: &[abi::ConfigField] = &[];
-#[cfg(not(target_env = "ohos"))]
-const CONFIGURATION: &[abi::ConfigField] = &[HARDWARE_COMPOSITING_FIELD, HEADLESS_AUDIO_FIELD];
-#[cfg(not(target_env = "ohos"))]
-const HARDWARE_COMPOSITING_FIELD: abi::ConfigField = abi::ConfigField {
-    id: abi::Bytes::from_static(HARDWARE_COMPOSITING.as_bytes()),
-    label: abi::Bytes::from_static(b"Hardware compositing"),
-    group: abi::Bytes::from_static(b"Video"),
+const FONT_FILE: &str = "font_file";
+const SKIP_DISC_CHECK: &str = "skip_disc_check";
+const DISC_CONFIGURATION: abi::ConfigField = abi::ConfigField {
+    id: abi::Bytes::from_static(SKIP_DISC_CHECK.as_bytes()),
+    label: abi::Bytes::from_static(b"Skip startup disc check"),
+    group: abi::Bytes::from_static(b"Startup"),
     default_value: abi::ConfigValue {
         kind: abi::VALUE_BOOL,
         reserved: 0,
@@ -56,39 +56,95 @@ const HARDWARE_COMPOSITING_FIELD: abi::ConfigField = abi::ConfigField {
     number_min: 0.0,
     number_max: 0.0,
     max_bytes: 0,
-    flags: 0,
+    flags: abi::CONFIG_FLAG_ADVANCED,
     choices: ptr::null(),
     choice_count: 0,
-    description: abi::Bytes::from_static(b"Use a hardware GPU to composite supported scenes."),
+    description: abi::Bytes::from_static(
+        b"Start ADV32 from installed data without performing native startup media authorization.",
+    ),
     choice_labels: ptr::null(),
     step: 0.0,
     unit: abi::Bytes::EMPTY,
 };
-#[cfg(not(target_env = "ohos"))]
-const HEADLESS_AUDIO_FIELD: abi::ConfigField = abi::ConfigField {
-    id: abi::Bytes::from_static(HEADLESS_AUDIO_DEVICE.as_bytes()),
-    label: abi::Bytes::from_static(b"Headless audio device"),
-    group: abi::Bytes::from_static(b"Diagnostics"),
+const FONT_CONFIGURATION: abi::ConfigField = abi::ConfigField {
+    id: abi::Bytes::from_static(FONT_FILE.as_bytes()),
+    label: abi::Bytes::from_static(b"Font file"),
+    group: abi::Bytes::from_static(b"Text"),
     default_value: abi::ConfigValue {
-        kind: abi::VALUE_ENUM,
+        kind: abi::VALUE_STRING,
         reserved: 0,
         integer: 0,
         number: 0.0,
-        text: AUDIO_DEVICES[0],
+        text: abi::Bytes::EMPTY,
     },
     integer_min: 0,
     integer_max: 0,
     number_min: 0.0,
     number_max: 0.0,
-    max_bytes: 0,
-    flags: abi::CONFIG_FLAG_ADVANCED,
-    choices: AUDIO_DEVICES.as_ptr(),
-    choice_count: AUDIO_DEVICES.len(),
-    description: abi::Bytes::from_static(b"Use a clocked PCM sink for explicit audio tests."),
-    choice_labels: AUDIO_DEVICE_LABELS.as_ptr(),
+    max_bytes: 1024,
+    flags: abi::CONFIG_FLAG_FILE_PATH | abi::CONFIG_FLAG_GAME_RELATIVE,
+    choices: ptr::null(),
+    choice_count: 0,
+    description: abi::Bytes::from_static(b"Use a font file from the game directory."),
+    choice_labels: ptr::null(),
     step: 0.0,
     unit: abi::Bytes::EMPTY,
 };
+#[cfg(target_env = "ohos")]
+const CONFIGURATION: &[abi::ConfigField] = &[FONT_CONFIGURATION, DISC_CONFIGURATION];
+#[cfg(not(target_env = "ohos"))]
+const CONFIGURATION: &[abi::ConfigField] = &[
+    FONT_CONFIGURATION,
+    DISC_CONFIGURATION,
+    abi::ConfigField {
+        id: abi::Bytes::from_static(HARDWARE_COMPOSITING.as_bytes()),
+        label: abi::Bytes::from_static(b"Hardware compositing"),
+        group: abi::Bytes::from_static(b"Video"),
+        default_value: abi::ConfigValue {
+            kind: abi::VALUE_BOOL,
+            reserved: 0,
+            integer: 0,
+            number: 0.0,
+            text: abi::Bytes::EMPTY,
+        },
+        integer_min: 0,
+        integer_max: 0,
+        number_min: 0.0,
+        number_max: 0.0,
+        max_bytes: 0,
+        flags: 0,
+        choices: ptr::null(),
+        choice_count: 0,
+        description: abi::Bytes::from_static(b"Use a hardware GPU to composite supported scenes."),
+        choice_labels: ptr::null(),
+        step: 0.0,
+        unit: abi::Bytes::EMPTY,
+    },
+    abi::ConfigField {
+        id: abi::Bytes::from_static(HEADLESS_AUDIO_DEVICE.as_bytes()),
+        label: abi::Bytes::from_static(b"Headless audio device"),
+        group: abi::Bytes::from_static(b"Diagnostics"),
+        default_value: abi::ConfigValue {
+            kind: abi::VALUE_ENUM,
+            reserved: 0,
+            integer: 0,
+            number: 0.0,
+            text: AUDIO_DEVICES[0],
+        },
+        integer_min: 0,
+        integer_max: 0,
+        number_min: 0.0,
+        number_max: 0.0,
+        max_bytes: 0,
+        flags: abi::CONFIG_FLAG_ADVANCED,
+        choices: AUDIO_DEVICES.as_ptr(),
+        choice_count: AUDIO_DEVICES.len(),
+        description: abi::Bytes::from_static(b"Use a clocked PCM sink for explicit audio tests."),
+        choice_labels: AUDIO_DEVICE_LABELS.as_ptr(),
+        step: 0.0,
+        unit: abi::Bytes::EMPTY,
+    },
+];
 static PROBE_ID: Mutex<String> = Mutex::new(String::new());
 static API: abi::CoreApi = abi::CoreApi {
     header: abi::Header::of::<abi::CoreApi>(),
@@ -107,12 +163,20 @@ static API: abi::CoreApi = abi::CoreApi {
 
 type Result<T> = std::result::Result<T, NativeFailure>;
 
-/// Typed C ABI v3 query. The feature exposes the unmangled library entry.
+struct SessionOptions {
+    #[cfg(not(target_env = "ohos"))]
+    hardware_compositing: bool,
+    #[cfg(not(target_env = "ohos"))]
+    null_audio: bool,
+    skip_disc_check: bool,
+    font_file: Option<PathBuf>,
+}
+
+/// Query used by the statically linked Manager.
 ///
 /// # Safety
 /// A non-null output pointer must be writable for one pointer.
-#[cfg_attr(feature = "dynamic-plugin-export", unsafe(no_mangle))]
-pub unsafe extern "C" fn shinki_emu_query(
+pub unsafe extern "C" fn adv32_query(
     version: u32,
     output: *mut *const abi::CoreApi,
 ) -> abi::Status {
@@ -125,6 +189,15 @@ pub unsafe extern "C" fn shinki_emu_query(
     }
     unsafe { output.write(&API) };
     abi::OK
+}
+
+#[cfg(feature = "dynamic-plugin-export")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn shinki_emu_query(
+    version: u32,
+    output: *mut *const abi::CoreApi,
+) -> abi::Status {
+    unsafe { adv32_query(version, output) }
 }
 
 fn descriptor() -> abi::Descriptor {
@@ -272,13 +345,32 @@ unsafe extern "C" fn open(
             .validate_request(descriptor.capabilities, request.render_extent)
             .map_err(invalid)?;
         let config = unsafe { config_entries(descriptor, request) }.map_err(invalid)?;
+        #[cfg(not(target_env = "ohos"))]
         let hardware_compositing = config.iter().any(|entry| {
             entry.id == HARDWARE_COMPOSITING && matches!(entry.value, ConfigValue::Bool(true))
         });
+        #[cfg(not(target_env = "ohos"))]
         let null_audio = config.iter().any(|entry| {
             entry.id == HEADLESS_AUDIO_DEVICE
                 && matches!(&entry.value, ConfigValue::Enum(device) if device == NULL_AUDIO_DEVICE)
         });
+        let skip_disc_check = config.iter().any(|entry| {
+            entry.id == SKIP_DISC_CHECK && matches!(entry.value, ConfigValue::Bool(true))
+        });
+        let font_file = config.iter().find_map(|entry| match &entry.value {
+            ConfigValue::String(value) if entry.id == FONT_FILE && !value.is_empty() => {
+                Some(PathBuf::from(value))
+            }
+            _ => None,
+        });
+        let options = SessionOptions {
+            #[cfg(not(target_env = "ohos"))]
+            hardware_compositing,
+            #[cfg(not(target_env = "ohos"))]
+            null_audio,
+            skip_disc_check,
+            font_file,
+        };
         let path = PathBuf::from(unsafe { request.game_path.text(32768) }.map_err(invalid)?);
         let services = Arc::new(ServiceContext {
             session: request.session_epoch,
@@ -300,15 +392,7 @@ unsafe extern "C" fn open(
             .spawn(move || {
                 let worker_services = Arc::clone(&services);
                 let mut result = catch_unwind(AssertUnwindSafe(|| {
-                    serve(
-                        &path,
-                        paused,
-                        hardware_compositing,
-                        null_audio,
-                        worker_services,
-                        commands,
-                        &ready,
-                    )
+                    serve(&path, paused, options, worker_services, commands, &ready)
                 }))
                 .unwrap_or_else(|_| Err(invalid(abi::PANICKED)));
                 if let Err(cause) = &result {
@@ -353,8 +437,7 @@ unsafe extern "C" fn open(
 fn serve(
     path: &Path,
     mut paused: bool,
-    _hardware_compositing: bool,
-    null_audio: bool,
+    options: SessionOptions,
     services: Arc<ServiceContext>,
     commands: Receiver<Command>,
     ready: &SyncSender<Result<Arc<Shared>>>,
@@ -362,10 +445,12 @@ fn serve(
     let game = Game::find(path)
         .map_err(runtime)?
         .ok_or_else(|| invalid(abi::NO_MATCH))?;
-    let mut vm = Vm::new(game).map_err(runtime)?;
-    vm.set_null_audio(null_audio);
+    let mut vm = Vm::new(game, options.font_file.as_deref()).map_err(runtime)?;
+    vm.set_skip_disc_check(options.skip_disc_check);
     #[cfg(not(target_env = "ohos"))]
-    if _hardware_compositing {
+    vm.set_null_audio(options.null_audio);
+    #[cfg(not(target_env = "ohos"))]
+    if options.hardware_compositing {
         vm.enable_hardware_compositor().map_err(runtime)?;
     }
     let (width, height) = vm.extent();
@@ -441,7 +526,15 @@ fn serve(
                 }
             }
             events.clear();
-            if let Some(window) = vm.window_command() {
+            while let Some(window) = vm.window_command() {
+                // Mobile hosts own one fixed game surface, not a movable client window.
+                #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
+                if matches!(
+                    window,
+                    WindowCommand::SetVisibility(_) | WindowCommand::SetClientSize { .. }
+                ) {
+                    continue;
+                }
                 window_sequence += 1;
                 window_request(&shared.services, window_sequence, &window)?;
             }
@@ -455,7 +548,7 @@ fn serve(
                 abi::SESSION_RUNNING
             };
         }
-        Ok(())
+        vm.flush_pending_saves().map_err(runtime)
     }))
     .unwrap_or_else(|_| Err(invalid(abi::PANICKED)));
     if let Err(cause) = &result {

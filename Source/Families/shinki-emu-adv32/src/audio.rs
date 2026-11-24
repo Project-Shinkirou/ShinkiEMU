@@ -14,14 +14,15 @@ use kira::{
         static_sound::{StaticSoundData, StaticSoundHandle},
     },
 };
-use shinki_emu_sdk::runtime::{AudioSinkBox, PcmFormat, PcmFormatSpec};
+#[cfg(target_env = "ohos")]
+use shinki_emu_sdk::runtime::{AudioSink, OhosAudioOutput, PcmFormat, PcmFormatSpec};
 #[cfg(feature = "video-ffmpeg")]
 use std::sync::Mutex;
 use std::{
     collections::BTreeMap,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         mpsc::{Receiver, SyncSender, TrySendError, sync_channel},
     },
     thread::{self, JoinHandle},
@@ -34,7 +35,7 @@ const MAX_ASSET_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DECODED_FRAMES: usize = 24 * 1024 * 1024;
 
 enum Command {
-    Play(u8, StaticSoundData, Arc<AtomicBool>),
+    Play(u8, StaticSoundData, Arc<SoundProgress>),
     Stop(u8),
     Fade(u8, std::time::Duration),
     Pause(u8, bool),
@@ -43,27 +44,28 @@ enum Command {
     Pan(u8, f32),
 }
 
+struct SoundProgress {
+    playing: AtomicBool,
+    percent: AtomicU8,
+}
+
 pub(crate) struct Audio {
     stop: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
     commands: SyncSender<Command>,
-    active: BTreeMap<u8, Arc<AtomicBool>>,
+    active: BTreeMap<u8, Arc<SoundProgress>>,
     voice_archive: Option<Archive>,
     worker: Option<JoinHandle<Result<()>>>,
-    sink: Option<Arc<AudioSinkBox>>,
+    #[cfg(target_env = "ohos")]
+    sink: Arc<OhosAudioOutput>,
     #[cfg(feature = "video-ffmpeg")]
     movie: Arc<Mutex<Option<Arc<MovieAudio>>>>,
 }
 
 impl Audio {
-    pub(crate) fn open(null_audio: bool) -> Result<Self> {
+    pub(crate) fn open(#[cfg(not(target_env = "ohos"))] null_audio: bool) -> Result<Self> {
         #[cfg(target_env = "ohos")]
-        let sink = (!null_audio).then(|| {
-            let output: AudioSinkBox = Box::new(shinki_emu_sdk::runtime::OhosAudioOutput::default());
-            Arc::new(output)
-        });
-        #[cfg(not(target_env = "ohos"))]
-        let sink = None;
+        let sink = Arc::new(OhosAudioOutput::default());
         let stop = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
         #[cfg(feature = "video-ffmpeg")]
@@ -71,6 +73,7 @@ impl Audio {
         let (commands, receive) = sync_channel(32);
         let (ready, wait) = sync_channel(1);
         let worker = {
+            #[cfg(target_env = "ohos")]
             let sink = sink.clone();
             let stop = stop.clone();
             let paused = paused.clone();
@@ -80,7 +83,9 @@ impl Audio {
                 .name("adv32-audio".into())
                 .spawn(move || {
                     run(
+                        #[cfg(target_env = "ohos")]
                         sink,
+                        #[cfg(not(target_env = "ohos"))]
                         null_audio,
                         &stop,
                         &paused,
@@ -104,6 +109,7 @@ impl Audio {
             active: BTreeMap::new(),
             voice_archive: None,
             worker: Some(worker),
+            #[cfg(target_env = "ohos")]
             sink,
             #[cfg(feature = "video-ffmpeg")]
             movie,
@@ -124,7 +130,10 @@ impl Audio {
             .volume(decibels(gain))
             .panning(Panning(pan));
         let data = if repeat { data.loop_region(..) } else { data };
-        let active = Arc::new(AtomicBool::new(true));
+        let active = Arc::new(SoundProgress {
+            playing: AtomicBool::new(true),
+            percent: AtomicU8::new(0),
+        });
         self.send(Command::Play(channel, data, active.clone()))?;
         self.active.insert(channel, active);
         Ok(())
@@ -141,7 +150,16 @@ impl Audio {
     pub(crate) fn playing(&self, channel: u8) -> bool {
         self.active
             .get(&channel)
-            .is_some_and(|active| active.load(Ordering::Acquire))
+            .is_some_and(|active| active.playing.load(Ordering::Acquire))
+    }
+
+    pub(crate) fn music_position(&self) -> Option<u8> {
+        self.active.get(&0).and_then(|track| {
+            track
+                .playing
+                .load(Ordering::Acquire)
+                .then(|| track.percent.load(Ordering::Relaxed))
+        })
     }
 
     pub(crate) fn fade_channel(
@@ -215,8 +233,10 @@ impl Audio {
             return Ok(());
         };
         self.stop.store(true, Ordering::Release);
-        let cancel = self.sink.as_ref().map(|sink| sink.cancel()).transpose();
+        #[cfg(target_env = "ohos")]
+        let cancel = self.sink.cancel();
         let worker = worker.join();
+        #[cfg(target_env = "ohos")]
         cancel.map_err(audio_error)?;
         worker.map_err(|_| Error::Audio("device worker panicked".into()))?
     }
@@ -312,7 +332,7 @@ struct MixerBackend(Option<Renderer>);
 
 struct MixedSound {
     handle: StaticSoundHandle,
-    active: Arc<AtomicBool>,
+    active: Arc<SoundProgress>,
     duration: f64,
 }
 
@@ -331,37 +351,28 @@ impl Backend for MixerBackend {
 }
 
 fn run(
-    sink: Option<Arc<AudioSinkBox>>,
-    _null_audio: bool,
+    #[cfg(target_env = "ohos")] sink: Arc<OhosAudioOutput>,
+    #[cfg(not(target_env = "ohos"))] null_audio: bool,
     stop: &Arc<AtomicBool>,
     paused: &AtomicBool,
     commands: &Receiver<Command>,
     ready: &SyncSender<()>,
     #[cfg(feature = "video-ffmpeg")] movie: &Mutex<Option<Arc<MovieAudio>>>,
 ) -> Result<()> {
-    if let Some(sink) = &sink {
-        sink.configure(PcmFormatSpec {
-            sample_rate: RATE,
-            channels: CHANNELS,
-            format: PcmFormat::F32,
-        })
-        .map_err(audio_error)?;
-    }
-    #[cfg(not(target_env = "ohos"))]
-    let mut device = if sink.is_none() {
-        let output = if _null_audio {
-            shinki_emu_sdk::NativeAudioOutput::open_null()
-        } else {
-            shinki_emu_sdk::NativeAudioOutput::open(stop.clone())
-        };
-        Some(output.map_err(audio_error)?)
-    } else {
-        None
-    };
     #[cfg(target_env = "ohos")]
-    if sink.is_none() {
-        return Err(Error::Audio("the host has no audio output".into()));
+    sink.configure(PcmFormatSpec {
+        sample_rate: RATE,
+        channels: CHANNELS,
+        format: PcmFormat::F32,
+    })
+    .map_err(audio_error)?;
+    #[cfg(not(target_env = "ohos"))]
+    let mut device = if null_audio {
+        shinki_emu_sdk::NativeAudioOutput::open_null()
+    } else {
+        shinki_emu_sdk::NativeAudioOutput::open(stop.clone())
     }
+    .map_err(audio_error)?;
 
     let mut mixer =
         AudioManager::<MixerBackend>::new(AudioManagerSettings::default()).map_err(audio_error)?;
@@ -418,7 +429,7 @@ fn run(
             };
             if let Some(mut current) = sounds.remove(&channel) {
                 current.handle.stop(Tween::default());
-                current.active.store(false, Ordering::Release);
+                current.active.playing.store(false, Ordering::Release);
             }
             if let Some((sound, active)) = replacement {
                 let duration = sound.duration().as_secs_f64();
@@ -443,9 +454,16 @@ fn run(
                 .ok_or_else(|| Error::Audio("mixer renderer unavailable".into()))?;
             renderer.on_start_processing();
             renderer.process(&mut samples, CHANNELS);
-            sounds.retain(|_, sound| {
+            sounds.retain(|channel, sound| {
                 let state = sound.handle.state();
-                sound.active.store(
+                if *channel == 0 && sound.duration > 0.0 {
+                    let percent = 100.0 * sound.handle.position() / sound.duration;
+                    sound
+                        .active
+                        .percent
+                        .store(percent.clamp(0.0, 100.0) as u8, Ordering::Relaxed);
+                }
+                sound.active.playing.store(
                     !matches!(state, PlaybackState::Paused | PlaybackState::Stopped),
                     Ordering::Release,
                 );
@@ -461,17 +479,10 @@ fn run(
         } else {
             None
         };
-        let buffer = match sink.as_ref() {
-            Some(sink) => sink.write(samples).map_err(audio_error)?,
-            #[cfg(not(target_env = "ohos"))]
-            None => device
-                .as_mut()
-                .expect("device or host sink")
-                .write(samples, stop)
-                .map_err(audio_error)?,
-            #[cfg(target_env = "ohos")]
-            None => unreachable!(),
-        };
+        #[cfg(target_env = "ohos")]
+        let buffer = sink.write(samples).map_err(audio_error)?;
+        #[cfg(not(target_env = "ohos"))]
+        let buffer = device.write(samples, stop).map_err(audio_error)?;
         let Some(buffer) = buffer else {
             break;
         };

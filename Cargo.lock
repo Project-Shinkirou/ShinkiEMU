@@ -1745,7 +1745,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 [[package]]
 name = "cmvs-audio"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "cmvs-core",
  "lewton",
@@ -1755,7 +1755,7 @@ dependencies = [
 [[package]]
 name = "cmvs-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -1763,7 +1763,7 @@ dependencies = [
 [[package]]
 name = "cmvs-desktop"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "cmvs-audio",
  "cmvs-core",
@@ -1782,7 +1782,7 @@ dependencies = [
 [[package]]
 name = "cmvs-font"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "ab_glyph",
  "cmvs-core",
@@ -1793,7 +1793,7 @@ dependencies = [
 [[package]]
 name = "cmvs-input"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "cmvs-core",
 ]
@@ -1801,7 +1801,7 @@ dependencies = [
 [[package]]
 name = "cmvs-native"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "android-activity 0.6.1",
  "jni 0.22.4",
@@ -2993,7 +2993,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "eluna_rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -6281,7 +6281,7 @@ dependencies = [
 [[package]]
 name = "kira"
 version = "0.9.6"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "cpal 0.15.3",
  "glam 0.29.3",
@@ -7118,7 +7118,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -7132,7 +7132,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=646b877091af6702db74a0e2cc0f05c0fb4623c1#646b877091af6702db74a0e2cc0f05c0fb4623c1"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -9793,7 +9793,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=646b877091af6702db74a0e2cc0f05c0fb4623c1#646b877091af6702db74a0e2cc0f05c0fb4623c1"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9847,7 +9847,7 @@ dependencies = [
  "video-sys",
  "wgpu 30.0.1",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=646b877091af6702db74a0e2cc0f05c0fb4623c1)",
 ]
 
 [[package]]
@@ -9937,7 +9937,7 @@ dependencies = [
 [[package]]
 name = "roukaku-asset"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "camino",
  "roukaku-core",
@@ -9951,7 +9951,7 @@ dependencies = [
 [[package]]
 name = "roukaku-byte-source"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -9963,7 +9963,7 @@ dependencies = [
 [[package]]
 name = "roukaku-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "blake3",
  "hex",
@@ -9980,7 +9980,7 @@ dependencies = [
 [[package]]
 name = "roukaku-headless-protocol"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "base16ct",
  "roukaku-byte-source",
@@ -10007,7 +10007,7 @@ dependencies = [
 [[package]]
 name = "roukaku-media"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "ffmpeg-next",
  "image 0.25.10",
@@ -10037,7 +10037,7 @@ dependencies = [
 [[package]]
 name = "roukaku-media-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "rayon",
  "roukaku-byte-source",
@@ -10051,7 +10051,7 @@ dependencies = [
 [[package]]
 name = "roukaku-observability"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "file-rotate",
  "libc",
@@ -10071,7 +10071,7 @@ dependencies = [
 [[package]]
 name = "roukaku-package"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "aes-gcm-siv",
  "hkdf",
@@ -10095,7 +10095,7 @@ dependencies = [
 [[package]]
 name = "roukaku-platform"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "objc2 0.6.5",
  "objc2-avf-audio",
@@ -10117,7 +10117,7 @@ dependencies = [
 [[package]]
 name = "roukaku-platform-common"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "base16ct",
  "directories",
@@ -10143,7 +10143,7 @@ dependencies = [
 [[package]]
 name = "roukaku-plugin-abi"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -10154,7 +10154,7 @@ dependencies = [
 [[package]]
 name = "roukaku-property-derive"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10164,7 +10164,7 @@ dependencies = [
 [[package]]
 name = "roukaku-subtitle"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=b82c56fd29d4db2ed03ce26be30d6d3d1b4d83dc#b82c56fd29d4db2ed03ce26be30d6d3d1b4d83dc"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "cc",
  "roukaku-libass",
@@ -10173,7 +10173,7 @@ dependencies = [
 [[package]]
 name = "roukaku-target"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "roukaku-core",
  "schemars",
@@ -10186,7 +10186,7 @@ dependencies = [
 [[package]]
 name = "roukaku-text"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "cosmic-text",
  "roukaku-core",
@@ -10201,7 +10201,7 @@ dependencies = [
 [[package]]
 name = "roukaku-ui-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "postcard",
  "roukaku-core",
@@ -10213,7 +10213,7 @@ dependencies = [
 [[package]]
 name = "roukaku-worker-budget"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=374a7a20780153766d9d0256e4cf4d7754fd02f9#374a7a20780153766d9d0256e4cf4d7754fd02f9"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=584fdc85e8ffb00b285f6f822d822bad7b5def45#584fdc85e8ffb00b285f6f822d822bad7b5def45"
 dependencies = [
  "tokio",
 ]
@@ -11107,9 +11107,9 @@ dependencies = [
 name = "shinki-emu-adv32"
 version = "0.1.0"
 dependencies = [
- "cosmic-text",
  "encoding_rs",
  "flate2",
+ "fontdb 0.24.0",
  "image 0.25.10",
  "kira 0.12.5",
  "lru 0.19.0",
@@ -11119,7 +11119,6 @@ dependencies = [
  "roukaku-core",
  "roukaku-media-core",
  "roukaku-platform",
- "roukaku-platform-common",
  "roukaku-text",
  "rustfft",
  "shinki-emu-abi",
@@ -11129,6 +11128,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11207,7 +11207,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-cmvs-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=5a74df4176bf2833cf2021d9960b9020fb39795c#5a74df4176bf2833cf2021d9960b9020fb39795c"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=47f31aa8851de44672f7b264654ddf96c919e327#47f31aa8851de44672f7b264654ddf96c919e327"
 dependencies = [
  "cmvs-audio",
  "cmvs-core",
@@ -11468,6 +11468,7 @@ dependencies = [
  "sha2 0.11.1",
  "shinki-emu-ReMinori",
  "shinki-emu-abi",
+ "shinki-emu-adv32",
  "shinki-emu-art3m1s-core",
  "shinki-emu-build",
  "shinki-emu-cmvs",
@@ -11722,7 +11723,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=646b877091af6702db74a0e2cc0f05c0fb4623c1#646b877091af6702db74a0e2cc0f05c0fb4623c1"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -11782,7 +11783,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-siglus_rs"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "pollster 0.3.0",
  "shinki-emu-abi",
@@ -11848,7 +11849,7 @@ dependencies = [
 [[package]]
 name = "shion-xfile"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "flate2",
 ]
@@ -11868,7 +11869,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 [[package]]
 name = "siglus_assets"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -11876,13 +11877,13 @@ dependencies = [
  "hex",
  "image 0.24.9",
  "lewton",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88)",
 ]
 
 [[package]]
 name = "siglus_key_recovery"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "siglus_assets",
 ]
@@ -11890,7 +11891,7 @@ dependencies = [
 [[package]]
 name = "siglus_omv_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "anyhow",
  "lewton",
@@ -11901,7 +11902,7 @@ dependencies = [
 [[package]]
 name = "siglus_scene_vm"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "ab_glyph",
  "android_logger 0.14.1",
@@ -11921,7 +11922,7 @@ dependencies = [
  "js-sys",
  "kira 0.9.6",
  "log 0.4.34",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88)",
  "ndk-context",
  "pollster 0.3.0",
  "raw-window-handle 0.6.2",
@@ -13206,7 +13207,7 @@ dependencies = [
 [[package]]
 name = "theora-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 
 [[package]]
 name = "thiserror"
@@ -16484,7 +16485,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=646b877091af6702db74a0e2cc0f05c0fb4623c1#646b877091af6702db74a0e2cc0f05c0fb4623c1"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -16494,7 +16495,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.1"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=c89d47b489752455a309dca9a2365d92ca4dc6d2#c89d47b489752455a309dca9a2365d92ca4dc6d2"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=fa6d790b28035ce080c104c60d0129f49d9aaa88#fa6d790b28035ce080c104c60d0129f49d9aaa88"
 dependencies = [
  "byteorder",
  "log 0.4.34",

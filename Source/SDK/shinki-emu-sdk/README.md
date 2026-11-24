@@ -28,6 +28,10 @@ SDK 提供移植核心共同使用的模块，当前替代 Musica 内部的文�
 
 `TextScene::frame_parts` 将生命周期命令和各文字区域的绘制命令分开。ADV32 先提交生命周期命令，再按场景顺序交错提交图层和文字。`SceneTextureResidency::prepare_with_sources` 保留这些图层的源裁剪矩形；没有裁剪的核心仍使用 `prepare`。
 
+`TextScene::frame_parts_with_layout` 允许核心调整已排版字形的位置，再更新字形图集。回调收到物理像素坐标，不会改变 SDK 缓存中的原始排版。
+
+`gpu-render` 导出 RoukakuEngine 的 `WgpuOffscreenRenderer` 和 `native_wgpu_instance`，供 ADV32、CMVS 和 Musica 创建离屏渲染器。合成、滤镜和 CPU 回读由 RoukakuEngine 实现。
+
 SDK 不创建 EngineSession、VN session、PlatformHost 或 package，不拥有游戏存档与归档语义。
 
 ```sh
