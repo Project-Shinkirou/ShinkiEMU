@@ -5,7 +5,13 @@ use crate::{
     paths::AuthorizedRoot,
 };
 use shinki_emu_musica::{MusicaResourcePaths, MusicaTranslationTable, ScriptEncoding};
-use std::{io::Write, path::Path, sync::atomic::AtomicBool};
+use shinki_emu_musica_keys::{MAX_KEY_BYTES, MusicaTextureVariant, parse_key_file};
+use std::{
+    collections::BTreeMap,
+    io::{Read, Write},
+    path::Path,
+    sync::atomic::AtomicBool,
+};
 
 pub(crate) struct MusicaEmbedConfig<'a, Progress> {
     pub root: &'a Path,
@@ -96,6 +102,140 @@ pub(crate) fn embed(
         ));
     }
     Ok(replaced)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TextureVariantSpec {
+    source: String,
+    path: String,
+    conversion: MonoConversion,
+}
+
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MonoConversion {
+    CnbgMono,
+    NativeMono,
+}
+
+pub(crate) fn generate_texture_variants(
+    root: &Path,
+    output: &AuthorizedRoot,
+    profile_path: &str,
+    resources: &MusicaResourcePaths,
+    specs: BTreeMap<String, TextureVariantSpec>,
+    cancelled: &AtomicBool,
+) -> Result<(), PatchError> {
+    check_cancelled(cancelled)?;
+    let mut profile_bytes = Vec::new();
+    output
+        .open_read(profile_path)?
+        .take(MAX_KEY_BYTES + 1)
+        .read_to_end(&mut profile_bytes)?;
+    let mut profile = parse_key_file(&profile_bytes).map_err(|error| {
+        PatchError::with_source(PatchErrorKind::Integrity, "invalid staged Musica profile", error)
+    })?;
+    if specs.is_empty() || !profile.texture_variants.is_empty() {
+        return Err(PatchError::new(
+            PatchErrorKind::Integrity,
+            "texture variant declarations must be supplied once",
+        ));
+    }
+    let (archive, _) =
+        shinki_emu_musica::mount_musica_with_resources(root, Path::new(profile_path), resources)
+            .map_err(native_error)?;
+    for (uri, spec) in &specs {
+        check_cancelled(cancelled)?;
+        crate::paths::relative(&spec.path, false)?;
+        profile.texture_variants.insert(
+            uri.clone(),
+            MusicaTextureVariant {
+                source: spec.source.clone(),
+                path: spec.path.clone(),
+            },
+        );
+    }
+    profile.validate().map_err(|error| {
+        PatchError::with_source(PatchErrorKind::Integrity, "invalid texture variant declarations", error)
+    })?;
+    for (uri, spec) in &specs {
+        check_cancelled(cancelled)?;
+        archive
+            .validate_texture_variant(uri, &spec.source)
+            .map_err(native_error)?;
+    }
+    let encoded = toml::to_string(&profile)
+        .map_err(|_| PatchError::new(PatchErrorKind::Codec, "Musica profile encoding failed"))?;
+    if encoded.len() as u64 > MAX_KEY_BYTES {
+        return Err(PatchError::new(
+            PatchErrorKind::Bounds,
+            "Musica profile exceeds its size limit",
+        ));
+    }
+    for spec in specs.into_values() {
+        check_cancelled(cancelled)?;
+        let (width, height, mut rgba) = match spec.conversion {
+            MonoConversion::CnbgMono => {
+                let path = profile.texture_overrides.get(&spec.source).ok_or_else(|| {
+                    PatchError::new(
+                        PatchErrorKind::Integrity,
+                        "cnbg variant requires its converted bitmap",
+                    )
+                })?;
+                let mut png = Vec::new();
+                output
+                    .open_read(path)?
+                    .take(buffer::MAX_NATIVE_BYTES as u64 + 1)
+                    .read_to_end(&mut png)?;
+                crate::data::decode_png(&png, cancelled)?
+            }
+            MonoConversion::NativeMono => {
+                // This mode always reads PAZ, even if the base URI has an override.
+                let source = archive.entry_descriptor(&spec.source).map_err(native_error)?;
+                let size = usize::try_from(source.unpacked_size).unwrap_or(usize::MAX);
+                buffer::bounded(size)?;
+                let png = archive
+                    .read_range(&spec.source, 0, source.unpacked_size)
+                    .map_err(native_error)?;
+                crate::data::decode_png(png.bytes.as_ref(), cancelled)?
+            }
+        };
+        mono_pixels(&mut rgba, spec.conversion, cancelled)?;
+        let png = crate::data::encode_png(width, height, &rgba, cancelled)?;
+        if let Some((parent, _)) = spec.path.rsplit_once('/') {
+            output.mkdir(parent)?;
+        }
+        let mut file = output.create(&spec.path)?;
+        file.write_all(&png)?;
+        file.sync_all()?;
+    }
+    check_cancelled(cancelled)?;
+    let mut file = output.edit(profile_path)?;
+    file.write_all(encoded.as_bytes())?;
+    file.set_len(encoded.len() as u64)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn mono_pixels(
+    rgba: &mut [u8],
+    conversion: MonoConversion,
+    cancelled: &AtomicBool,
+) -> Result<(), PatchError> {
+    for chunk in rgba.chunks_mut(64 * 1024) {
+        check_cancelled(cancelled)?;
+        for pixel in chunk.chunks_exact_mut(4) {
+            let (r, g, b) = (u16::from(pixel[0]), u16::from(pixel[1]), u16::from(pixel[2]));
+            let gray = match conversion {
+                MonoConversion::CnbgMono => (30 * r + 59 * g + 11 * b) / 100,
+                MonoConversion::NativeMono if pixel[3] != 0 => (5 * r + 2 * g + b) >> 3,
+                MonoConversion::NativeMono => continue,
+            } as u8;
+            pixel[..3].fill(gray);
+        }
+    }
+    Ok(())
 }
 
 fn native_error(error: shinki_emu_musica::CoreError) -> PatchError {

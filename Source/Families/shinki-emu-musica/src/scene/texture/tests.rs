@@ -3,7 +3,7 @@ use crate::{
     MusicaVm, ScOpcodeCatalog, mount_musica, parse_sc, profile::mount_musica_with_texture_overrides,
 };
 use roukaku_core::Hash256;
-use shinki_emu_musica_keys::MUSICA_KEY_FILE;
+use shinki_emu_musica_keys::{MUSICA_KEY_FILE, MusicaTextureVariant};
 use std::io::{Cursor, Write};
 
 fn ani() -> Vec<u8> {
@@ -153,6 +153,127 @@ fn texture_override_profile_rejects_unsupported_archive_sources() {
         multi_frame_source.code(),
         "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_ANI_FRAMES"
     );
+}
+
+#[test]
+fn texture_variant_selects_exact_uri_and_preserves_native_geometry() {
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b".end\r\n");
+    let native = png(8, 9, [10, 20, 30, 255]);
+    crate::test_fixture::assets(root.path(), "bg", &[("base.png", &native), ("other.png", &native)]);
+    std::fs::write(root.path().join("hd.png"), png(24, 27, [70, 80, 90, 255])).unwrap();
+    std::fs::write(root.path().join("variant.png"), png(16, 18, [60, 60, 60, 255])).unwrap();
+    let mut disguised = Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(1, 1, image::Rgba([1, 2, 3, 255]))
+        .write_to(&mut disguised, image::ImageFormat::Bmp)
+        .unwrap();
+    std::fs::write(root.path().join("not-png.png"), disguised.into_inner()).unwrap();
+    let profile_path = root.path().join(MUSICA_KEY_FILE);
+    let mut key = shinki_emu_musica_keys::load_musica_key_file(&profile_path).unwrap();
+    key.texture_overrides
+        .insert("musica:/bg/base.png".into(), "hd.png".into());
+    let variant_uri = "musica:/bg/[mono]base.png";
+    key.texture_variants.insert(
+        variant_uri.into(),
+        MusicaTextureVariant {
+            source: "musica:/bg/base.png".into(),
+            path: "variant.png".into(),
+        },
+    );
+    key.texture_variants.insert(
+        "musica:/bg/[invalid]base.png".into(),
+        MusicaTextureVariant {
+            source: "musica:/bg/base.png".into(),
+            path: "not-png.png".into(),
+        },
+    );
+    std::fs::write(&profile_path, toml::to_string(&key).unwrap()).unwrap();
+    let (archive, overrides) =
+        mount_musica_with_texture_overrides(root.path(), &profile_path).unwrap();
+    assert!(archive.entry_descriptor(variant_uri).is_err());
+    let mut textures = TextureCache::new(NonZeroUsize::new(4).unwrap(), 64 * 1024, 32).unwrap();
+    let mut sources = lru::LruCache::new(NonZeroUsize::new(4).unwrap());
+    let mut resolve =
+        |uri| Scene::resolve_texture_asset(&archive, &mut textures, &mut sources, &overrides, uri);
+    for (uri, extent, color) in [
+        ("musica:/bg/base.png", (24, 27), [70, 80, 90, 255]),
+        (variant_uri, (16, 18), [60, 60, 60, 255]),
+        ("musica:/bg/other.png", (8, 9), [10, 20, 30, 255]),
+        (variant_uri, (16, 18), [60, 60, 60, 255]),
+    ] {
+        let texture = resolve(uri).unwrap();
+        assert_eq!(texture.logical_extent, Extent2D::new(8, 9));
+        assert_eq!((texture.frame.width, texture.frame.height), extent);
+        assert_eq!(&texture.frame.rgba8[..4], &color);
+    }
+    for uri in ["musica:/bg/[mono]other.png", "musica:/bg/[MONO]base.png"] {
+        assert_eq!(
+            resolve(uri).err().unwrap().code(),
+            "SHINKI_EMU_VFS_NOT_FOUND",
+        );
+    }
+    assert_eq!(
+        resolve("musica:/bg/[invalid]base.png").err().unwrap().code(),
+        "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_DECODE",
+    );
+}
+
+#[test]
+fn texture_variant_mount_rejects_invalid_sources_and_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b".end\r\n");
+    let native = png(8, 9, [10, 20, 30, 255]);
+    crate::test_fixture::assets(root.path(), "bg", &[("base.png", &native), ("other.png", &native)]);
+    let profile_path = root.path().join(MUSICA_KEY_FILE);
+    let mut key = shinki_emu_musica_keys::load_musica_key_file(&profile_path).unwrap();
+    for (uri, source, path, code) in [
+        (
+            "[mono]base.png",
+            "base.png",
+            "../out.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
+        ),
+        (
+            "[mono]base.png",
+            "base.png",
+            "missing.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
+        ),
+        (
+            "[mono]base.png",
+            "missing.png",
+            "variant.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+        ),
+        (
+            "OTHER.PNG",
+            "base.png",
+            "variant.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+        (
+            "other.png/extra.png",
+            "base.png",
+            "variant.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+    ] {
+        key.texture_variants = std::collections::BTreeMap::from([(
+            format!("musica:/bg/{uri}"),
+            MusicaTextureVariant {
+                source: format!("musica:/bg/{source}"),
+                path: path.into(),
+            },
+        )]);
+        std::fs::write(&profile_path, toml::to_string(&key).unwrap()).unwrap();
+        assert_eq!(
+            mount_musica_with_texture_overrides(root.path(), &profile_path)
+                .err()
+                .unwrap()
+                .code(),
+            code,
+        );
+    }
 }
 
 #[test]

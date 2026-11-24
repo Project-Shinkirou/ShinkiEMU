@@ -15,6 +15,11 @@ use std::{
 
 pub type MusicaTextureOverrides = BTreeMap<String, PathBuf>;
 
+pub(crate) struct TextureVariant {
+    pub(crate) source: String,
+    pub(crate) path: PathBuf,
+}
+
 fn core_error(e: KeyFileError) -> CoreError {
     CoreError::invalid(e.code, e.message)
 }
@@ -101,6 +106,25 @@ pub fn mount_musica_with_resources(
         MusicaMountedVfs::mount("musica.local", "musica:/", configs, Arc::new(decrypt), hash)?;
     archive.set_script_directory(&root, &resources.script_directory)?;
     archive.name_resources = crate::MusicaNameResources::load(&root, &resources.script_directory)?;
+    for (uri, variant) in key.texture_variants {
+        archive.validate_texture_variant(&uri, &variant.source)?;
+        let path = resolve_texture_file(&root, &variant.path)?;
+        if texture_overrides.values().any(|other| *other == path)
+            || archive.texture_variants.values().any(|other| other.path == path)
+        {
+            return Err(invalid(
+                "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+                "texture variant file resolves to another texture file",
+            ));
+        }
+        archive.texture_variants.insert(
+            uri,
+            TextureVariant {
+                source: variant.source,
+                path,
+            },
+        );
+    }
     Ok((archive, texture_overrides))
 }
 
@@ -111,29 +135,28 @@ pub(crate) fn resolve_texture_overrides(
     key.texture_overrides
         .iter()
         .map(|(source, replacement)| {
-            let path = shinki_emu_sdk::resolve_game_file(root, replacement).map_err(|_| {
-                invalid(
-                    "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
-                    "texture replacement path is missing or unsafe",
-                )
-            })?;
-            let metadata = fs::metadata(&path).map_err(|_| {
-                invalid(
-                    "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
-                    "texture replacement path is missing or unsafe",
-                )
-            })?;
-            if metadata.len() == 0 || metadata.len() > MAX_TEXTURE_OVERRIDE_BYTES {
-                return Err(invalid(
-                    "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_BOUND",
-                    "texture replacement exceeds the supported size",
-                ));
-            }
-            Ok((source.clone(), path))
+            resolve_texture_file(root, replacement).map(|path| (source.clone(), path))
         })
         .collect()
 }
 
+fn resolve_texture_file(root: &Path, relative: &str) -> Result<PathBuf, CoreError> {
+    let path_error = || {
+        invalid(
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
+            "texture replacement path is missing or unsafe",
+        )
+    };
+    let path = shinki_emu_sdk::resolve_game_file(root, relative).map_err(|_| path_error())?;
+    let metadata = fs::metadata(&path).map_err(|_| path_error())?;
+    if metadata.len() == 0 || metadata.len() > MAX_TEXTURE_OVERRIDE_BYTES {
+        return Err(invalid(
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_BOUND",
+            "texture replacement exceeds the supported size",
+        ));
+    }
+    Ok(path)
+}
 
 fn invalid(code: &'static str, message: &'static str) -> CoreError {
     CoreError::invalid(code, message)

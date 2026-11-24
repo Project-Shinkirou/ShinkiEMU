@@ -135,21 +135,27 @@ impl Fixture {
             fs::write(scripts.join("common").join(name), text).unwrap();
         }
         let mut inputs = Vec::new();
+        let native_pixels = image::RgbaImage::from_raw(
+            2,
+            2,
+            vec![255, 0, 0, 0, 255, 0, 0, 32, 0, 2, 0, 127, 0, 0, 255, 255],
+        )
+        .unwrap();
+        let mut png = std::io::Cursor::new(Vec::new());
+        native_pixels
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let native_png = png.into_inner();
         for (path, role) in ROLES {
-            let payload: &[u8] = if role == "scr" {
-                b".message 1  \xd6\xd0 \xd6\xd0\r\n.message 2  \x02\x01 literal\r\n.end\r\n"
-            } else {
-                b"public native resource"
+            let (name, payload): (&str, &[u8]) = match role {
+                "scr" => (
+                    "test.sc",
+                    b".message 1  \xd6\xd0 \xd6\xd0\r\n.message 2  \x02\x01 literal\r\n.end\r\n",
+                ),
+                "bg" => ("public_0.png", &native_png),
+                _ => ("fixture.bin", b"public native resource"),
             };
-            let bytes = native::archive(
-                role,
-                if role == "scr" {
-                    "test.sc"
-                } else {
-                    "fixture.bin"
-                },
-                payload,
-            );
+            let bytes = native::archive(role, name, payload);
             fs::write(source.join(path), &bytes).unwrap();
             inputs.push(format!(
                 "{{path={path:?},role={role:?},size={},sha256=\"{}\"}}",
@@ -233,8 +239,31 @@ impl Fixture {
     }
 
     fn run(&self) -> Result<shinki_emu_patch::PatchResult, shinki_emu_patch::PatchError> {
+        self.run_with_variants("")
+    }
+
+    fn run_with_variants(
+        &self,
+        variants: &str,
+    ) -> Result<shinki_emu_patch::PatchResult, shinki_emu_patch::PatchError> {
         let script = self.root.join("scripts/entry.luau");
-        fs::write(&script, format!("return {{id='public-yorino',version=1,title='Public Yorino conversion fixture',apply=function(ctx) return ctx.load('common/yorino_entry.luau').apply(ctx,{}) end}}", self.edition)).unwrap();
+        fs::write(
+            &script,
+            format!(
+                r#"
+                return {{
+                    id='public-yorino', version=1, title='Public Yorino conversion fixture',
+                    apply=function(ctx)
+                        local result = ctx.load('common/yorino_entry.luau').apply(ctx,{})
+                        {variants}
+                        return result
+                    end,
+                }}
+                "#,
+                self.edition,
+            ),
+        )
+        .unwrap();
         let result = apply(
             PatchRequest {
                 script,
@@ -329,6 +358,7 @@ fn ordered_acr_rows_embed_into_native_sc_and_backgrounds_preserve_alpha() {
         profile["texture_overrides"]["musica:/bg/public_0.png"].as_str(),
         Some("yorino-backgrounds/public_0.png")
     );
+    assert!(profile.get("texture_variants").is_none());
     for i in 0..40 {
         let image = image::open(
             result
@@ -365,6 +395,83 @@ fn ordered_acr_rows_embed_into_native_sc_and_backgrounds_preserve_alpha() {
     assert!(result.output.join("existing.png").is_file());
     assert!(result.output.join("bg.pazA").is_file());
     assert!(result.output.join("st.pazA").is_file());
+}
+
+#[test]
+fn texture_variants_apply_explicit_source_rounding_and_alpha() {
+    let root = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new(root.path(), 44, 1, false, false);
+    let result = fixture
+        .run_with_variants(
+            r#"
+            ctx.musica_texture_variants("key.toml", {scr_archive="cnscr.paz", sys_archive="cnsys.paz"}, {
+                ["musica:/bg/[patch]public_0.png"] = {
+                    source="musica:/bg/public_0.png", path="variants/patch.png", conversion="cnbg_mono",
+                },
+                ["musica:/bg/[native]public_0.png"] = {
+                    source="musica:/bg/public_0.png", path="variants/native.png", conversion="native_mono",
+                },
+            })
+            "#,
+        )
+        .unwrap();
+    let marker = shinki_emu_patch::read_output_profile(&result.output, &AtomicBool::new(false))
+        .unwrap()
+        .unwrap();
+    assert_eq!(marker.configuration, result.profile.configuration);
+    assert_eq!(marker.required_capabilities, result.profile.required_capabilities);
+    let key = shinki_emu_musica_keys::load_musica_key_file(&result.output.join("key.toml")).unwrap();
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &fs::read(result.output.join("shinki-patch-result.json")).unwrap(),
+    )
+    .unwrap();
+    let outputs = receipt["outputs"].as_array().unwrap();
+    for (name, expected) in [
+        ("patch", [76, 76, 76, 0, 150, 150, 150, 32, 28, 28, 28, 127, 255, 255, 255, 255]),
+        ("native", [255, 0, 0, 0, 159, 159, 159, 32, 0, 0, 0, 127, 31, 31, 31, 255]),
+    ] {
+        let path = format!("variants/{name}.png");
+        let bytes = fs::read(result.output.join(&path)).unwrap();
+        let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .unwrap()
+            .into_rgba8();
+        assert_eq!(image.as_raw(), &expected);
+        let manifest_entry = outputs.iter().find(|entry| entry["path"] == path).unwrap();
+        assert_eq!(manifest_entry["sha256"], hex::encode(Sha256::digest(&bytes)));
+        let variant = &key.texture_variants[&format!("musica:/bg/[{name}]public_0.png")];
+        assert_eq!(variant.source, "musica:/bg/public_0.png");
+        assert_eq!(variant.path, path);
+    }
+    assert_eq!(key.texture_variants.len(), 2);
+    assert_eq!(
+        key.texture_overrides["musica:/bg/public_0.png"],
+        "yorino-backgrounds/public_0.png",
+    );
+}
+
+#[test]
+fn texture_variants_cannot_replace_staged_outputs() {
+    let root = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new(root.path(), 44, 1, false, false);
+    let error = fixture
+        .run_with_variants(
+            r#"
+            local output = ctx.create("occupied.png")
+            output:write(0, buffer.fromstring("existing staged file"))
+            ctx.musica_texture_variants("key.toml", {scr_archive="cnscr.paz", sys_archive="cnsys.paz"}, {
+                ["musica:/bg/[first]public_0.png"] = {
+                    source="musica:/bg/public_0.png", path="variants/first.png", conversion="native_mono",
+                },
+                ["musica:/bg/[second]public_0.png"] = {
+                    source="musica:/bg/public_0.png", path="occupied.png", conversion="native_mono",
+                },
+            })
+            "#,
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.kind(), PatchErrorKind::OutputExists);
+    assert!(!root.path().join("output").exists());
 }
 
 #[test]

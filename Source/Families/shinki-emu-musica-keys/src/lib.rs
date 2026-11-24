@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     fs::File,
     io::{ErrorKind, Read},
@@ -74,6 +74,16 @@ pub struct MusicaKeyFile {
     pub archive_keys: BTreeMap<String, MusicaArchiveKey>,
     #[serde(default)]
     pub texture_overrides: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub texture_variants: BTreeMap<String, MusicaTextureVariant>,
+}
+
+/// A supplemental PNG URI whose geometry comes from a native archive PNG.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MusicaTextureVariant {
+    pub source: String,
+    pub path: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -217,7 +227,8 @@ impl MusicaKeyFile {
                 ));
             }
         }
-        self.validate_texture_overrides()
+        self.validate_texture_overrides()?;
+        self.validate_texture_variants()
     }
 
     fn validate_texture_overrides(&self) -> Result<(), KeyFileError> {
@@ -240,36 +251,91 @@ impl MusicaKeyFile {
                     "texture override source URI is invalid",
                 ));
             }
-            let path = Path::new(replacement);
-            if replacement.len() > MAX_TEXTURE_OVERRIDE_PATH_BYTES
-                || !path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
-            {
+            validate_texture_path(replacement)?;
+        }
+        Ok(())
+    }
+
+    fn validate_texture_variants(&self) -> Result<(), KeyFileError> {
+        if self.texture_variants.is_empty() {
+            return Ok(());
+        }
+        if self.texture_variants.len() > MAX_TEXTURE_OVERRIDES {
+            return Err(invalid(
+                "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COUNT",
+                "too many texture variants are configured",
+            ));
+        }
+        let mut uris: BTreeSet<_> = self
+            .texture_overrides
+            .keys()
+            .map(|uri| uri.to_ascii_lowercase())
+            .collect();
+        let mut paths: BTreeSet<_> = self
+            .texture_overrides
+            .values()
+            .map(|path| path.to_ascii_lowercase())
+            .collect();
+        for (uri, variant) in &self.texture_variants {
+            if [uri, &variant.source].into_iter().any(|value| {
+                value.len() > MAX_TEXTURE_OVERRIDE_URI_BYTES
+                    || !valid_texture_source(value)
+                    || !is_png(value)
+            }) {
                 return Err(invalid(
-                    "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_FORMAT",
-                    "texture replacements must be PNG files",
+                    "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+                    "texture variants must declare exact PNG URIs",
                 ));
             }
-            if replacement.is_empty()
-                || replacement.contains(['\\', ':', '\0'])
-                || path.is_absolute()
-                || replacement
-                    .split('/')
-                    .any(|part| part.is_empty() || part == "." || part == "..")
-                || path
-                    .components()
-                    .any(|part| !matches!(part, Component::Normal(_)))
+            validate_texture_path(&variant.path)?;
+            if uri.eq_ignore_ascii_case(&variant.source)
+                || !uris.insert(uri.to_ascii_lowercase())
+                || !paths.insert(variant.path.to_ascii_lowercase())
             {
                 return Err(invalid(
-                    "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
-                    "texture replacement path is unsafe",
+                    "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+                    "texture variant URI or output path collides with another texture",
                 ));
             }
         }
         Ok(())
     }
+}
+
+fn is_png(value: &str) -> bool {
+    value
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("png"))
+}
+
+fn validate_texture_path(value: &str) -> Result<(), KeyFileError> {
+    let path = Path::new(value);
+    if value.len() > MAX_TEXTURE_OVERRIDE_PATH_BYTES
+        || !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
+        return Err(invalid(
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_FORMAT",
+            "texture replacements must be PNG files",
+        ));
+    }
+    if value.contains(['\\', ':', '\0'])
+        || path.is_absolute()
+        || value
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        || path
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(invalid(
+            "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_PATH",
+            "texture replacement path is unsafe",
+        ));
+    }
+    Ok(())
 }
 
 // Same rules as the SDK archive URI check for the Musica mount prefix.

@@ -344,6 +344,7 @@ pub(crate) fn execute(
             let staging = transaction.open_staging().map_err(mlua::Error::external)?;
             let staging_path =
                 crate::transaction::final_dir_path(&staging).map_err(mlua::Error::external)?;
+            let variant_staging = staging_path.clone();
             ctx.set(
                 "musica_embed",
                 scope.create_function(
@@ -377,6 +378,24 @@ pub(crate) fn execute(
                             cancelled: &native_files.cancelled,
                             progress,
                         })
+                        .map_err(mlua::Error::external)
+                    },
+                )?,
+            )?;
+            let variant_files = files.clone();
+            ctx.set(
+                "musica_texture_variants",
+                scope.create_function(
+                    move |lua, (profile, resources, variants): (String, Value, Value)| {
+                        variant_files.close_outputs().map_err(mlua::Error::external)?;
+                        crate::musica::generate_texture_variants(
+                            &variant_staging,
+                            &variant_files.output,
+                            &profile,
+                            &lua.from_value(resources)?,
+                            lua.from_value(variants)?,
+                            &variant_files.cancelled,
+                        )
                         .map_err(mlua::Error::external)
                     },
                 )?,

@@ -122,6 +122,7 @@ fn decode(bytes: &[u8]) -> Result<MusicaKeyFile, Box<dyn std::error::Error>> {
             })
             .collect(),
         texture_overrides: profile.texture_overrides,
+        texture_variants: BTreeMap::new(),
     };
     key.validate()?;
     Ok(key)

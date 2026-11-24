@@ -31,6 +31,7 @@ fn key_file() -> MusicaKeyFile {
             })
             .collect(),
         texture_overrides: BTreeMap::new(),
+        texture_variants: BTreeMap::new(),
     }
 }
 

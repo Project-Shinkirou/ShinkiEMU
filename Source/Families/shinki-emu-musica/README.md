@@ -60,6 +60,10 @@ Yorino 的带括号姓名由核心根据实际 SC speaker 生成。补丁只写�
 
 同一 key.toml 可以可选地声明 `texture_overrides`。它是 `musica:/` 原资源 URI 到游戏目录内安全相对 PNG 路径的显式映射，例如 `musica:/bg/BG.png` 到 `hd/BG.png`。启动先验证原资源、帧数和映射路径，首次使用先解码原资源；逻辑尺寸与 ANI 原点始终来自原资源，替换图只提供物理像素。静态 PNG 与单帧 ANI 支持 PNG 替换；多帧 ANI、SQZ、缺失文件、非法路径、尺寸超限和解码失败都明确报错，不回退原图。原生和替换纹理共用 SDK `TextureCache`，通过不同 cache identity 区分。高清素材放在 ignored 私有目录，不进入仓库、日志或存档。
 
+`texture_variants` 是另一个可选映射。键是脚本请求的精确 PNG URI；`source` 指向已有的 PAZ PNG，提供逻辑尺寸和立绘定位；`path` 指向游戏目录内的生成 PNG，提供实际像素。变体不能占用原生资源或普通替换的 URI，也不能共用输出路径。未声明的名字仍按原生路径查找，缺失照常报错。省略此映射的旧 `keys.v2` 和已有转换输出仍可读取。
+
+离线补丁可在写完归档、`key.toml` 和普通替换图后调用 `ctx.musica_texture_variants(profile_path, resource_paths, variants)`。`variants` 按精确 URI 声明 `source`、`path` 和 `conversion`；`cnbg_mono` 从同一 `source` 的已生成替换 PNG 取像素，`native_mono` 直接读 PAZ PNG。前者对所有像素计算 `(30R + 59G + 11B) / 100`，后者仅处理非全透明像素并用 `(5R + 2G + B) / 8`。两者均向下取整且保留 alpha。生成图只写入当前事务的新路径，完成后才更新该事务内的 profile；源安装不会被这个入口直接改写。
+
 PAZ 的边界/重叠校验、分卷读取、Blowfish/RC4、XOR、解压和源文件变化校验保留。SDK 的 `ArchiveManifest` 是核心本地索引，不是 Host VFS 或产品 package。配置相对路径以游戏目录为基准，资源始终限于游戏目录内；公共读取错误使用 `SHINKI_EMU_PROFILE_*`。读取不运行 managed helper、BinaryFormatter 或 executable patch。
 
 存档身份先从原版 `system.dat` 和编号 `.sav` 解析，再由发行版 Metadata preset 的 `native_save` JSON 描述补充；核心不按作品名或 exe 名选择目录与格式。解析不了且没有描述时，仍在 `<game>/.shinki/musica/generic-v1/` 真实持久化全部状态，按游戏目录隔离。通用槽使用独立签名，与未知原版 exe 不互通；配置了已恢复的原生布局时保留原版字节格式，可显式写入原版目录。字段来源、格式差异和旧数据迁移见[存档说明](../../../docs/zh-cn/cores/shinki-emu-musica.md#存档)。旧 beta `.asav`（`AMUSSV06` 及更早）不兼容，保持原样，请备份并新建槽位。
