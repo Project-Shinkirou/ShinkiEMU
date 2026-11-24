@@ -6,7 +6,8 @@ members = [
     "Source/SDK/shinki-emu-sdk",
     "Source/FamilyApi/shinki-emu-abi",
     "Source/Cores/*",
-    "Source/Native/*",
+    "Source/Native/shinki-emu-ffmpeg",
+    "Source/Native/roukaku-libass",
     "Source/Families/shinki-emu-adv32",
     "Source/Families/shinki-emu-cmvs",
     "Source/Families/shinki-emu-musica",
@@ -168,10 +169,12 @@ roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine
 roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
 roukaku-platform = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
 roukaku-platform-common = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
-roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
+# RFVP and the SDK share this leaf's Cargo-native libass support. Unify the
+# pins on the next full RoukakuEngine upgrade; no other crate changed here.
+roukaku-subtitle = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "b82c56fd29d4db2ed03ce26be30d6d3d1b4d83dc" }
 roukaku-text = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
 
-shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "37f4d1fe10855aca034185a5afaa2123a36465ae", default-features = false }
+shinki-emu-rfvp = { git = "https://github.com/Project-Shinkirou/rfvp", rev = "490bb3d1d600069e1447451c6b15f828fe4cd099", default-features = false }
 shinki-emu-siglus_rs = { git = "https://github.com/Project-Shinkirou/siglus_rs", rev = "c89d47b489752455a309dca9a2365d92ca4dc6d2", default-features = false }
 shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-core", rev = "5243005cf0aaaeac89b1803e57381e9c0b14b95c", default-features = false }
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
@@ -187,9 +190,10 @@ shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
 shinki-emu-build = { path = "Source/Tools/shinki-emu-build" }
 shinki-emu-sdk = { path = "Source/SDK/shinki-emu-sdk" }
+shinki-emu-ffmpeg = { path = "Source/Native/shinki-emu-ffmpeg" }
 
 [patch.crates-io]
-ffmpeg-sys-next = { path = "Source/Native/ffmpeg-sys-next" }
+ffmpeg-sys-next = { git = "https://github.com/Project-Shinkirou/rust-ffmpeg-sys", rev = "4d990f745d3605142240cb897063af12e20f7c2d" }
 cpal = { path = "ThirdParty/cpal" }
 kira = { git = "https://github.com/Project-Shinkirou/kira.git", rev = "d3b2c85160361adcd7c899bfd91c09b31cf7979c" }
 mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f43ef1372bd22be0fbf7866" }
@@ -198,7 +202,7 @@ mlua-sys = { git = "https://github.com/mlua-rs/mlua", rev = "ff96ed786295cae96f4
 cpal = { path = "ThirdParty/cpal" }
 
 [patch."https://github.com/Project-Shinkirou/RoukakuEngine"]
-roukaku-subtitle = { path = "Source/Native/roukaku-subtitle" }
+roukaku-libass = { path = "Source/Native/roukaku-libass" }
 
 [patch."https://github.com/ruffle-rs/rust-flash-lso"]
 flash-lso = { git = "https://github.com/Project-Shinkirou/rust-flash-lso", rev = "5573168345ef2d92d01ee0766bab29acf89584c0" }

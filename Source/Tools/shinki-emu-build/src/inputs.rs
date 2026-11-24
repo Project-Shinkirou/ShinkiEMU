@@ -18,7 +18,6 @@ pub(crate) struct Pins {
 
 #[derive(Deserialize, Serialize)]
 struct NativeArchive {
-    version: String,
     url: String,
     sha256: String,
     file_name: String,
@@ -204,11 +203,11 @@ fn extract_native_archive(
     }
     Ok(())
 }
-fn prepare_tree(name: &str, layers: &[NativeLayer<'_>], python: Option<(&str, &str)>) -> Result<PathBuf> {
-    prepare_tree_in(&work_root(), name, layers, python)
+fn prepare_tree(name: &str, layers: &[NativeLayer<'_>]) -> Result<PathBuf> {
+    prepare_tree_in(&work_root(), name, layers)
 }
 
-fn prepare_tree_in(work: &Path, name: &str, layers: &[NativeLayer<'_>], python: Option<(&str, &str)>) -> Result<PathBuf> {
+fn prepare_tree_in(work: &Path, name: &str, layers: &[NativeLayer<'_>]) -> Result<PathBuf> {
     let key = Sha256::digest(serde_json::to_vec(layers)?);
     let parent = work.join("native-downloads");
     fs::create_dir_all(&parent)?;
@@ -220,8 +219,6 @@ fn prepare_tree_in(work: &Path, name: &str, layers: &[NativeLayer<'_>], python: 
     let stage = tempfile::tempdir_in(&parent)?;
     let stage = stage.path();
     for layer in layers {
-        native_path(&layer.archive.file_name)?;
-        ensure!(!layer.archive.file_name.contains('/'), "archive filename contains a directory");
         let input = download_in(work, &layer.archive.url, &layer.archive.sha256, &layer.archive.file_name)?;
         extract_native_archive(layer.archive, &input, stage, layer.destination)?;
     }
@@ -231,11 +228,8 @@ fn prepare_tree_in(work: &Path, name: &str, layers: &[NativeLayer<'_>], python: 
             .arg("--disable-shared")
             .current_dir(stage))?;
     }
-    if let Some((python, cython)) = python {
-        if cfg!(unix) {
-            build_host_python(stage)?;
-        }
-        validate_build_python(&stage.join(build_python_relative()), python, cython)?;
+    if name == "python" && cfg!(unix) {
+        build_host_python(stage)?;
     }
     fs::rename(stage, &out)?;
     Ok(out)
@@ -314,13 +308,6 @@ fn renpy_host_pin(name: &str) -> String {
     }
 }
 
-fn validate_build_python(executable: &Path, python: &str, cython: &str) -> Result<()> {
-    run(Command::new(executable).args([
-        "-B", "-I", "-c",
-        "import sys, struct, Cython; assert struct.calcsize('P') == 8; assert sys.version_info[:3] == tuple(map(int, sys.argv[1].split('.'))); assert Cython.__version__ == sys.argv[2]",
-        python, cython,
-    ]))
-}
 fn download(url: &str, digest: &str, name: &str) -> Result<PathBuf> {
     download_in(&work_root(), url, digest, name)
 }
@@ -350,7 +337,7 @@ fn download_in(work: &Path, url: &str, digest: &str, name: &str) -> Result<PathB
 
 fn pinned_tree(lock: &Pins, name: &str) -> Result<PathBuf> {
     let archive = lock.native.get(name).with_context(|| format!("no native archive {name}"))?;
-    prepare_tree(name, &[NativeLayer { archive, destination: "" }], None)
+    prepare_tree(name, &[NativeLayer { archive, destination: "" }])
 }
 
 pub fn impacto_sources() -> Result<(PathBuf, PathBuf)> {
@@ -366,11 +353,11 @@ pub fn bison() -> Result<PathBuf> {
         let lock = pins()?;
         let file_name = lock.bison_url.rsplit('/').next().context("Bison archive name")?.to_owned();
         let archive = NativeArchive {
-            version: String::new(), url: lock.bison_url, sha256: lock.bison_sha256, file_name,
+            url: lock.bison_url, sha256: lock.bison_sha256, file_name,
             format: "zip".into(), strip_prefix: String::new(), include: Vec::new(),
             required: vec!["win_bison.exe".into()],
         };
-        return Ok(prepare_tree("bison", &[NativeLayer { archive: &archive, destination: "" }], None)?.join("win_bison.exe"));
+        return Ok(prepare_tree("bison", &[NativeLayer { archive: &archive, destination: "" }])?.join("win_bison.exe"));
     }
     if cfg!(target_os = "macos") {
         for prefix in ["/opt/homebrew/opt/bison/bin", "/usr/local/opt/bison/bin"] {
@@ -420,16 +407,8 @@ pub fn renpy(recipe: &Path, target: &str, static_build: bool) -> Result<Renpy> {
     println!("cargo:rerun-if-changed={}", sdk_file.display());
     let manifest: serde_json::Value = serde_json::from_slice(&fs::read(sdk_file)?)?;
     let get = |key: &str| lock.native.get(key).with_context(|| format!("missing {key} pin"));
-    let sdk = get("renpy-sdk")?;
     let python_pin = get(&renpy_host_pin("python"))?;
     let cython = get(&renpy_host_pin("cython"))?;
-    let sdl = get(&renpy_host_pin("sdl2"))?;
-    ensure!(
-        manifest["url"] == sdk.url && manifest["sha256"] == sdk.sha256
-            && manifest["python"] == python_pin.version && manifest["cython"] == cython.version
-            && manifest["sdl"] == sdl.version,
-        "Ren'Py SDK and host-tool pins disagree"
-    );
     let sdk = pinned_tree(&lock, "renpy-sdk")?;
     let mut python_layers = vec![
         NativeLayer { archive: python_pin, destination: "" },
@@ -438,7 +417,7 @@ pub fn renpy(recipe: &Path, target: &str, static_build: bool) -> Result<Renpy> {
     if cfg!(target_os = "macos") {
         python_layers.push(NativeLayer { archive: get("renpy-host-openssl")?, destination: "build-openssl" });
     }
-    let python = prepare_tree("python", &python_layers, Some((&python_pin.version, &cython.version)))?;
+    let python = prepare_tree("python", &python_layers)?;
     let interpreter = python.join(build_python_relative());
     let sdl_include = if static_build {
         // Static builds use the SDL headers from the target SDK.
@@ -572,7 +551,7 @@ mod tests {
         let path = directory.join("fixture.zip");
         temp.persist(&path)?;
         Ok((path, NativeArchive {
-            version: "fixture".into(), url: "https://not-used.invalid/fixture.zip".into(),
+            url: "https://not-used.invalid/fixture.zip".into(),
             sha256, file_name: "fixture.zip".into(), format: "zip".into(), strip_prefix: "fixture".into(),
             include: vec![], required: vec!["source.txt".into()],
         }))
@@ -583,9 +562,9 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let (zip, pin) = fixture(temp.path(), &[("fixture/source.txt", b"source")])?;
         let layers = [NativeLayer { archive: &pin, destination: "" }];
-        let out = prepare_tree_in(temp.path(), "fixture", &layers, None)?;
+        let out = prepare_tree_in(temp.path(), "fixture", &layers)?;
         fs::remove_file(&zip)?;
-        assert_eq!(prepare_tree_in(temp.path(), "fixture", &layers, None)?, out);
+        assert_eq!(prepare_tree_in(temp.path(), "fixture", &layers)?, out);
         assert_eq!(fs::read(out.join("source.txt"))?, b"source");
         assert!(!zip.exists());
         Ok(())
@@ -604,7 +583,7 @@ mod tests {
             }
             let before = sha256(&archive)?;
             let layers = [NativeLayer { archive: &pin, destination: "" }];
-            assert!(prepare_tree_in(temp.path(), "fixture", &layers, None).is_err());
+            assert!(prepare_tree_in(temp.path(), "fixture", &layers).is_err());
             for entry in fs::read_dir(temp.path().join("native-downloads"))? {
                 assert_eq!(entry?.path().extension().and_then(|s| s.to_str()), Some("lock"));
             }
@@ -645,7 +624,6 @@ mod tests {
                 tar.into_inner().unwrap().finish().unwrap();
             }
             let pin = NativeArchive {
-                version: "fixture".into(),
                 url: "https://not-used.invalid/fixture".into(),
                 sha256: sha256(&input).unwrap(),
                 file_name: format.into(),

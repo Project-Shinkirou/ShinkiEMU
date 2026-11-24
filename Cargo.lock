@@ -3448,10 +3448,12 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys-next"
 version = "9.0.1"
+source = "git+https://github.com/Project-Shinkirou/rust-ffmpeg-sys?rev=4d990f745d3605142240cb897063af12e20f7c2d#4d990f745d3605142240cb897063af12e20f7c2d"
 dependencies = [
  "bindgen 0.73.2",
  "cc",
  "libc",
+ "num_cpus",
  "pkg-config",
  "shinki-emu-build",
  "shinki-emu-ffmpeg",
@@ -7130,7 +7132,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -7562,6 +7564,16 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
+dependencies = [
+ "hermit-abi 0.5.3",
+ "libc",
 ]
 
 [[package]]
@@ -9781,7 +9793,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9835,7 +9847,7 @@ dependencies = [
  "video-sys",
  "wgpu 30.0.1",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099)",
 ]
 
 [[package]]
@@ -9980,6 +9992,16 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "roukaku-libass"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pkg-config",
+ "shinki-emu-build",
+ "vcpkg",
 ]
 
 [[package]]
@@ -10142,12 +10164,10 @@ dependencies = [
 [[package]]
 name = "roukaku-subtitle"
 version = "0.1.0"
+source = "git+https://github.com/Project-Shinkirou/RoukakuEngine?rev=b82c56fd29d4db2ed03ce26be30d6d3d1b4d83dc#b82c56fd29d4db2ed03ce26be30d6d3d1b4d83dc"
 dependencies = [
  "cc",
- "pkg-config",
- "shinki-emu-build",
- "shinki-emu-libass",
- "vcpkg",
+ "roukaku-libass",
 ]
 
 [[package]]
@@ -11401,14 +11421,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinki-emu-libass"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "shinki-emu-build",
-]
-
-[[package]]
 name = "shinki-emu-manager"
 version = "0.1.0-beta.6"
 dependencies = [
@@ -11712,7 +11724,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -16474,7 +16486,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=37f4d1fe10855aca034185a5afaa2123a36465ae#37f4d1fe10855aca034185a5afaa2123a36465ae"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=490bb3d1d600069e1447451c6b15f828fe4cd099#490bb3d1d600069e1447451c6b15f828fe4cd099"
 dependencies = [
  "byteorder",
  "log 0.4.34",

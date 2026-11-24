@@ -270,13 +270,17 @@ impl Installation {
         Ok(inputs)
     }
 
+    pub fn pkg_config_program(&self, target: &str) -> Result<PathBuf> {
+        pkg_config_program(target, Some(&self.install_root.join("installed")))
+    }
+
     pub fn publish(&self, inputs: &NativeInputs) -> Result<()> {
         println!("cargo::metadata=root={}", self.prefix.display());
         println!("cargo::metadata=vcpkg_root={}", self.install_root.display());
         println!("cargo::metadata=triplet={}", self.triplet);
         println!("cargo::metadata=pkg_config_dirs={}", env::join_paths(self.pkg_config_dirs())?.to_string_lossy());
         println!("cargo::metadata=runtime_dsos={}", env::join_paths(&inputs.runtime)?.to_string_lossy());
-        println!("cargo::metadata=pkg_config={}", pkg_config_program(&env::var("TARGET")?, Some(&self.install_root.join("installed")))?.display());
+        println!("cargo::metadata=pkg_config={}", self.pkg_config_program(&env::var("TARGET")?)?.display());
         Ok(())
     }
 }

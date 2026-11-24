@@ -1,11 +1,13 @@
 [package]
-name = "shinki-emu-libass"
+name = "roukaku-libass"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-links = "shinki_libass"
+links = "roukaku_libass"
 
 [build-dependencies]
 shinki-emu-build = { path = "../../Tools/shinki-emu-build" }
 anyhow.workspace = true
+pkg-config = "0.3"
+vcpkg = "=0.2.15"
