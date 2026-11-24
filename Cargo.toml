@@ -185,7 +185,7 @@ shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", r
 shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "e441ad1e6ca5ba084b149f561ae5ae60f2f55c42", default-features = false }
 shinki-emu-renpy = { git = "https://github.com/Project-Shinkirou/renpy", rev = "9e5184065bed9ddb028055b5434da5cde95a6175", default-features = false }
 shinki-emu-cmvs-rs = { git = "https://github.com/Project-Shinkirou/cmvs-rs", rev = "320f7d3eae40f7702662347ee33246e339893b12", default-features = false }
-shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "250afa97cee54e5a7339f08e350945e1e3bb1402", default-features = false }
+shinki-emu-krkr2 = { git = "https://github.com/Project-Shinkirou/krkr2", rev = "d88fee63ee5887cf71b5c2c1de45135b30cec814", default-features = false }
 
 [patch."https://github.com/Project-Shinkirou/ShinkiEMU"]
 shinki-emu-abi = { path = "Source/FamilyApi/shinki-emu-abi" }
