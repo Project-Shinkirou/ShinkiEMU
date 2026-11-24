@@ -27,6 +27,8 @@ cargo install cargo-about --locked --version 0.9.3
 
 Run Cargo and packaging in an x64 Visual Studio developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Install the Visual Studio C++ tools, CMake, Ninja and NASM. The packager gets MSVC redistributables such as `VCRUNTIME140.dll` from `%VCToolsRedistDir%\x64`.
 
+Windows reuses loaded DLLs by basename, so Impacto and KiriKiri must agree on the `fmt.dll` ABI; the current Impacto pin uses fmt 11.2.0 to address [#37](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37).
+
 ### Linux desktop
 
 On Ubuntu 24.04, install the development packages used by the desktop builds:
@@ -44,6 +46,8 @@ Run `./shinki-emu-manager` from the unpacked Manager directory on X11 or Wayland
 
 Install cargo-ndk 4.1.2 and both Rust targets for the universal Manager APK. Set `ANDROID_HOME` to the SDK directory and `ANDROID_NDK_HOME` to its `ndk/30.0.16248370` directory. APK packaging needs JDK 27 (`JAVA_HOME` and its `bin` on `PATH`), SDK platform 37.2 and build-tools 37.0.0. The project supplies the Gradle wrapper.
 
+The [Gradle 9.8.2 compatibility matrix](https://docs.gradle.org/9.8.2/userguide/compatibility.html#java_runtime) confirms JDK 27 can run the wrapper. [Android Gradle Plugin 9.4](https://developer.android.com/build/releases/agp-9-4-0-release-notes) requires at least JDK 17; this project uses AGP 9.4.1 and still targets JVM 17 for Java and Kotlin bytecode.
+
 ```sh
 cargo install cargo-ndk --locked --version 4.1.2
 rustup target add aarch64-linux-android x86_64-linux-android
@@ -60,14 +64,61 @@ The iOS Manager's embedded [KrKr2](cores/krkr2.md) also needs `rustup component 
 
 For a Linux-hosted Apple build, install Docker with Buildx, cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`). Find the matching `macosx`, `iphoneos` or `iphonesimulator` SDK from [Xcode](https://developer.apple.com/download/all/) on macOS via `xcrun --sdk <sdk> --show-sdk-path`. Transfer it privately. Point `SHINKI_APPLE_SDK_DIR` to the extracted SDK directory containing `SDKSettings.json`, `System/` and `usr/`, then build the image for the selected triple. Keep SDKs and SDK images private.
 
+On Linux x86_64, the pinned [Buildx v0.38.1 binary](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) has SHA-256 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`. Verify the download, then install it as the executable `$DOCKER_CONFIG/cli-plugins/docker-buildx` for a private Docker configuration without sudo. Confirm with `docker buildx version`. Leave at least 8 GiB free on `/` to build the image.
+
 ```sh
 cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
+#### Private iOS bundled frameworks
+
+On native macOS with Xcode, `ios-framework-cores` packages Shinki CMVS and Musica as signed ABI v3 frameworks instead of registering those two statically. The other cores remain static. Choose one target: `aarch64-apple-ios` for `iphoneos`, or `aarch64-apple-ios-sim` / `x86_64-apple-ios` for `iphonesimulator`.
+
+Install `cargo-about` as above. For a device build, set `SHINKI_EMU_IOS_SIGN_IDENTITY` to an Apple Development signing identity with its private key in Keychain. Set `SHINKI_EMU_IOS_PROVISIONING_PROFILE` to the development profile for `org.shinkirou.shinkiemu` and the test device, and `SHINKI_EMU_IOS_ENTITLEMENTS` to the matching entitlements file. The simulator uses ad hoc signing and needs none of these inputs.
+
+```sh
+target=aarch64-apple-ios-sim
+version=0.1.0-qa.1
+SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+```
+
+The simulator output is `ShinkiEMU-simulator-test.app`; the device output is a `*-device-test.ipa` containing `Payload/ShinkiEMU.app` with `embedded.mobileprovision`. The app contains `Frameworks/<id>.framework/<id>` and `cores/<id>/core.json`. Packaging signs the frameworks before the app. Opening Manager or scanning games should leave both frameworks unloaded. Launch a known game per core, check ABI v3 selection and a first frame, then close and reopen in the same process. Check logs for dyld errors or duplicate Objective-C classes.
+
 ### OpenHarmony Manager
 
 Use DevEco Studio and its OpenHarmony native SDK 5.0.5 (API 17). Install the `aarch64-unknown-linux-ohos` Rust target and set `OHOS_SDK_NATIVE` to `sdk/default/openharmony/native`. For HAP packaging, set `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside the checkout. The packager configures the SDK linker and produces a HAP signed with the SDK's test PKI. The HAP is experimental; retail installation and on-device launch are unverified.
+
+#### Bundled Musica device acceptance
+
+The default OHOS Manager statically embeds Musica. The private `ohos-bundled-musica` feature packages a separate `libshinki_emu_core_musica.so` in the signed HAP and loads it on activation. The Manager resolves the fixed sibling beside its OS-installed library, or in that same HAP; it does not load code from extracted assets or writable app data. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) uses the caller’s namespace and requires directly loaded HAP entries to be uncompressed and page-aligned. Passing the absolute installed path avoids basename lookup through environment or inherited search paths.
+
+Use a dedicated ARM64 device on API 12 or later with Vulkan, audio output, developer debugging enabled and existing trust for the SDK test PKI. If installation rejects the test signature, stop there; do not change device trust. With the SDK’s `hdc` on `PATH`, build the HAP in PowerShell:
+
+```powershell
+$version = '0.1.0-qa.1'
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
+Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
+```
+
+After packaging succeeds, connect the test device, select its key from `hdc list targets`, and set `$device` to that key:
+
+```powershell
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+hdc -t $device install $hap
+```
+
+After `hdc` reports a successful install, start the app in debug mode:
+
+```powershell
+hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
+```
+
+1. Attach the DevEco native debugger at startup. Run LLDB `image list -f` before resuming and again after opening the core list and scanning a lawful Musica game. Neither list should show `libshinki_emu_core_musica.so`. Check `filesDir/ShinkiEMU/diagnostics` for the current run: there should be no `shinki.emu.ohos.core_open` yet.
+2. If needed, select Musica without opening core settings. Press **Play** with the original PAZ/SC files and a valid private `key.toml`. Expect one `shinki.emu.ohos.core_open`, then `shinki.emu.ohos.core_abi_ready` for `shinki.emu.musica`, ABI 3, from the installed path. `image list -f` should now include the library.
+3. Advance past boot to a recognizable frame and listen for music or voice; compare this with `shinki.emu.ohos.audio_started`. Close and reopen the game in the same Manager process. Playback should restart without another module load. Report the device, OS build and result without sharing keys or game data.
 
 ## Build, check and test
 

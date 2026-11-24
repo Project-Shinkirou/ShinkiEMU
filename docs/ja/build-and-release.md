@@ -27,6 +27,8 @@ cargo install cargo-about --locked --version 0.9.3
 
 Visual Studio の C++ ツール、CMake、Ninja、NASM を導入します。Cargo とパッケージングは x64 開発者シェル（`vcvars64.bat`、PowerShell なら `Launch-VsDevShell.ps1 -Arch amd64`）で実行します。`VCRUNTIME140.dll` などの MSVC 再頒布ファイルは `%VCToolsRedistDir%\x64` から取得します。
 
+Windows はファイル名が同じ DLL を再利用するため、Impacto と KiriKiri の `fmt.dll` は ABI を揃える必要があります。現在の Impacto の固定リビジョンは [#37](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37) の対策として fmt 11.2.0 を使用します。
+
 ### Linux デスクトップ
 
 Ubuntu 24.04 ではデスクトップビルドに必要な開発パッケージを導入します。
@@ -44,6 +46,8 @@ RFVP は `pkg-config` で GStreamer と GLib を検出します。コア ZIP に
 
 ユニバーサル Manager APK には cargo-ndk 4.1.2 と両方の Rust ターゲットが必要です。`ANDROID_HOME` を SDK ディレクトリに、`ANDROID_NDK_HOME` をその中の `ndk/30.0.16248370` に設定します。APK のパッケージングには JDK 27（`JAVA_HOME` とその `bin` を `PATH` に設定）、SDK platform 37.2、build-tools 37.0.0 が必要です。Gradle Wrapper はリポジトリに含まれています。
 
+[Gradle 9.8.2 の互換性表](https://docs.gradle.org/9.8.2/userguide/compatibility.html#java_runtime)では JDK 27 で Wrapper を実行できます。[Android Gradle Plugin 9.4](https://developer.android.com/build/releases/agp-9-4-0-release-notes) の最低要件は JDK 17 です。本プロジェクトは AGP 9.4.1 を使い、Java と Kotlin のバイトコードは引き続き JVM 17 を対象とします。
+
 ```sh
 cargo install cargo-ndk --locked --version 4.1.2
 rustup target add aarch64-linux-android x86_64-linux-android
@@ -60,14 +64,61 @@ iOS Manager に組み込む [KrKr2](cores/krkr2.md) には `rustup component add
 
 Linux からビルドする場合は Docker と Buildx、cross 0.2.5、apple-codesign 0.29.0（`rcodesign`）を用意します。macOS 上の [Xcode](https://developer.apple.com/download/all/) から `xcrun --sdk <sdk> --show-sdk-path` で対象 SDK（`macosx`、`iphoneos`、`iphonesimulator`）を探し、非公開で転送します。`SHINKI_APPLE_SDK_DIR` を、展開した `SDKSettings.json`、`System/`、`usr/` を含むディレクトリに設定し、ターゲット用のイメージを作ります。SDK とそれを含むイメージは公開しないでください。
 
+Linux x86_64 用の固定版 [Buildx v0.38.1 バイナリー](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) の SHA-256 は `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4` です。ダウンロードを確認してから、専用の Docker 設定の `$DOCKER_CONFIG/cli-plugins/docker-buildx` に実行権限を付けて配置できます。sudo は不要です。`docker buildx version` で確認し、イメージの作成に備えて `/` に 8 GiB 以上の空きを確保します。
+
 ```sh
 cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
+#### iOS の非公開フレームワーク構成
+
+Xcode を導入した macOS で `ios-framework-cores` を有効にすると、Shinki CMVS と Musica の静的登録が外れ、署名付きの ABI v3 フレームワークとして同梱されます。他のコアは静的なままです。`iphoneos` は `aarch64-apple-ios`、`iphonesimulator` は `aarch64-apple-ios-sim` または `x86_64-apple-ios` のうち 1 つを選びます。
+
+上記の手順で `cargo-about` を導入します。実機向けには `SHINKI_EMU_IOS_SIGN_IDENTITY` に Apple Development の署名 ID を指定し、対応する秘密鍵をキーチェーンに入れます。`SHINKI_EMU_IOS_PROVISIONING_PROFILE` に `org.shinkirou.shinkiemu` とテスト端末に対応する開発用プロファイルを、`SHINKI_EMU_IOS_ENTITLEMENTS` にそのプロファイルに合った権限ファイルを指定します。シミュレーターは ad hoc 署名を使うため、これらの入力は不要です。
+
+```sh
+target=aarch64-apple-ios-sim
+version=0.1.0-qa.1
+SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+```
+
+シミュレーターの出力は `ShinkiEMU-simulator-test.app` です。実機向けの `*-device-test.ipa` には `Payload/ShinkiEMU.app` とアプリ内の `embedded.mobileprovision` が入ります。アプリ内の配置は `Frameworks/<id>.framework/<id>` と `cores/<id>/core.json` です。フレームワークを先に署名し、その後にアプリを署名します。Manager の起動やゲームのスキャンでは、どちらのフレームワークもロードされないことを確認します。各コアで既知のゲームを起動して ABI v3 と最初のフレームを確認し、同じプロセスで閉じて再び開きます。ログに dyld エラーや Objective-C クラスの重複がないことも確認します。
+
 ### OpenHarmony Manager
 
 DevEco Studio と付属の OpenHarmony Native SDK 5.0.5（API 17）を使います。Rust ターゲット `aarch64-unknown-linux-ohos` を導入し、`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定します。HAP を作るには `SHINKI_EMU_OHOS_SIGNING_DIR` にリポジトリ外のディレクトリを指定します。パッケージャーは SDK のリンカーを設定し、SDK のテスト PKI で署名した HAP を生成します。HAP は実験用で、市販端末へのインストールと実機起動は未確認です。
+
+#### 同梱 Musica の実機テスト
+
+既定の OHOS Manager は Musica を静的に組み込みます。非公開テスト用の `ohos-bundled-musica` を有効にすると、署名済み HAP に独立した `libshinki_emu_core_musica.so` を同梱し、利用開始時にロードします。Manager は OS がインストールした自身のライブラリと同じディレクトリ、または同じ HAP 内の固定パスを使います。展開したリソースや書き込み可能なアプリデータからはコードを読み込みません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)は呼び出し元の名前空間で動作し、HAP から直接読む項目には非圧縮とページ境界への整列が必要です。インストール済みの絶対パスを渡すため、ファイル名だけで環境変数や継承したパスを検索しません。
+
+API 12 以降の専用 ARM64 端末を用意し、Vulkan、音声出力、開発者デバッグ、SDK テスト PKI への既存の信頼設定を確認します。テスト署名が拒否されたらそこで止め、端末の信頼設定は変更しません。SDK の `hdc` を `PATH` に追加し、PowerShell で HAP を作ります。
+
+```powershell
+$version = '0.1.0-qa.1'
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
+Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
+```
+
+パッケージングが成功したらテスト端末を接続し、`hdc list targets` に表示される対象端末のキーを `$device` に設定します。
+
+```powershell
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+hdc -t $device install $hap
+```
+
+`hdc` がインストールの成功を報告してから、デバッグモードで起動します。
+
+```powershell
+hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
+```
+
+1. 起動時に DevEco のネイティブデバッガーを接続します。実行を再開する前と、コア一覧を開いて正規に入手した Musica ゲームをスキャンした後に、LLDB の `image list -f` を実行します。どちらにも `libshinki_emu_core_musica.so` が表示されず、`filesDir/ShinkiEMU/diagnostics` の今回のログに `shinki.emu.ohos.core_open` がないことを確認します。
+2. 必要ならコア設定を開かずに Musica を選びます。元の PAZ/SC と有効な非公開 `key.toml` を使って再生します。`shinki.emu.ohos.core_open` が一度出た後、インストール先から `shinki.emu.musica` を ABI 3 で開いた `shinki.emu.ohos.core_abi_ready` が出ることを確認します。この時点で `image list -f` にライブラリが表示されます。
+3. 起動画面を進め、ゲーム画面が表示されて音楽や音声が聞こえることを確認し、`shinki.emu.ohos.audio_started` と照合します。同じ Manager プロセスでゲームを閉じて再度開き、ライブラリを再ロードせず再生が始まることを確認します。端末、OS ビルド、結果を記録し、鍵とゲームデータは共有しません。
 
 ## ビルド、チェック、テスト
 

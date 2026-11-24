@@ -27,6 +27,8 @@ cargo install cargo-about --locked --version 0.9.3
 
 安装 Visual Studio C++ 工具、CMake、Ninja 和 NASM。在 x64 Visual Studio 开发者环境中运行 Cargo 和打包命令（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包从 `%VCToolsRedistDir%\x64` 取 `VCRUNTIME140.dll` 等可再分发的 MSVC 运行库。
 
+Windows 会按文件名复用已加载的 DLL，Impacto 与 KiriKiri 必须使用兼容的 `fmt.dll` ABI。当前固定的 Impacto 提交用 fmt 11.2.0 处理 [#37](https://github.com/Project-Shinkirou/ShinkiEMU/issues/37)。
+
 ### Linux 桌面
 
 Ubuntu 24.04 上的桌面构建需要以下开发包：
@@ -44,6 +46,8 @@ RFVP 通过 `pkg-config` 找到 GStreamer 和 GLib，核心 ZIP 不包含这些�
 
 构建通用 Manager APK 需要 cargo-ndk 4.1.2 和两个 Rust 目标。将 `ANDROID_HOME` 指向 SDK 目录，`ANDROID_NDK_HOME` 指向其中的 `ndk/30.0.16248370`。APK 打包需要 JDK 27（设置 `JAVA_HOME`，将其 `bin` 加入 `PATH`）、SDK platform 37.2 和 build-tools 37.0.0。仓库自带 Gradle wrapper。
 
+[Gradle 9.8.2 兼容性表](https://docs.gradle.org/9.8.2/userguide/compatibility.html#java_runtime)确认 wrapper 可以在 JDK 27 下运行。[Android Gradle Plugin 9.4](https://developer.android.com/build/releases/agp-9-4-0-release-notes) 最低要求 JDK 17。项目使用 AGP 9.4.1，Java 和 Kotlin 仍生成 JVM 17 字节码。
+
 ```sh
 cargo install cargo-ndk --locked --version 4.1.2
 rustup target add aarch64-linux-android x86_64-linux-android
@@ -60,14 +64,61 @@ iOS Manager 内嵌的 [KrKr2](cores/krkr2.md) 还需要运行 `rustup component 
 
 在 Linux 上交叉构建需要带 Buildx 的 Docker、cross 0.2.5、apple-codesign 0.29.0（`rcodesign`）。在安装了 [Xcode](https://developer.apple.com/download/all/) 的 macOS 上，用 `xcrun --sdk <sdk> --show-sdk-path` 找到目标的 `macosx`、`iphoneos` 或 `iphonesimulator` SDK，再私下传输。`SHINKI_APPLE_SDK_DIR` 指向解压后含 `SDKSettings.json`、`System/` 和 `usr/` 的目录。按目标生成私有镜像，不公开 SDK 或含 SDK 的镜像。
 
+固定版本的 [Buildx v0.38.1 Linux x86_64 二进制](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) 的 SHA-256 是 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`。核对下载后，可将它放到私有 Docker 配置的 `$DOCKER_CONFIG/cli-plugins/docker-buildx` 并赋予执行权限，无需 sudo。用 `docker buildx version` 检查；创建镜像前在 `/` 留出至少 8 GiB。
+
 ```sh
 cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
+#### iOS 私有 Framework 打包
+
+在装有 Xcode 的 macOS 上，`ios-framework-cores` 会将 Shinki CMVS 和 Musica 从静态注册改为随应用提供的签名 ABI v3 Framework；其他核心仍静态嵌入。每次选一个目标：`iphoneos` 用 `aarch64-apple-ios`，`iphonesimulator` 用 `aarch64-apple-ios-sim` 或 `x86_64-apple-ios`。
+
+先按上文安装 `cargo-about`。真机打包时，把 `SHINKI_EMU_IOS_SIGN_IDENTITY` 设为 Apple Development 签名身份，确保钥匙串内有对应私钥。`SHINKI_EMU_IOS_PROVISIONING_PROFILE` 指向适用于 `org.shinkirou.shinkiemu` 和测试设备的开发描述文件，`SHINKI_EMU_IOS_ENTITLEMENTS` 指向与该描述文件匹配的权限文件。模拟器用 ad hoc 签名，不需要这三项。
+
+```sh
+target=aarch64-apple-ios-sim
+version=0.1.0-qa.1
+SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+```
+
+模拟器产出 `ShinkiEMU-simulator-test.app`；真机产出 `*-device-test.ipa`，其中的 `Payload/ShinkiEMU.app` 含 `embedded.mobileprovision`。应用内的框架和核心清单分别位于 `Frameworks/<id>.framework/<id>` 和 `cores/<id>/core.json`。打包先签框架，再签应用。打开 Manager 或扫描游戏时不应加载这两个框架。分别用已知游戏启动两个核心，确认选择 ABI v3 并出首帧，再在同一进程中关闭、重开游戏。查看日志是否有 dyld 错误或 Objective-C 类名冲突。
+
 ### OpenHarmony Manager
 
 使用 DevEco Studio 自带的 OpenHarmony Native SDK 5.0.5（API 17）。安装 Rust 目标 `aarch64-unknown-linux-ohos`，将 `OHOS_SDK_NATIVE` 指向 `sdk/default/openharmony/native`。打包 HAP 时，将 `SHINKI_EMU_OHOS_SIGNING_DIR` 设为仓库外的目录。打包工具会配置 SDK 链接器，生成用 SDK 测试 PKI 签名的 HAP。这个 HAP 用于实验，尚未验证在零售设备上的安装或真机启动。
+
+#### 随 HAP 分发的 Musica 真机验收
+
+默认 OHOS Manager 静态嵌入 Musica。用私有的 `ohos-bundled-musica` feature 打包时，签名 HAP 会包含独立的 `libshinki_emu_core_musica.so`，启用核心时才加载。Manager 只用系统安装的固定同目录库，或同一个 HAP 内的固定成员，不从解包资源或可写应用数据目录加载代码。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 使用调用者的命名空间，直接从 HAP 加载的成员必须不压缩且按页对齐。传入安装后的绝对路径可跳过按文件名查询环境变量和继承的搜索路径。
+
+用专用的 ARM64、API 12 或更新版本设备，确认 Vulkan、音频输出和开发者调试可用，且设备已信任 SDK 测试 PKI。若设备拒绝测试签名，停止安装，不要修改设备信任设置。将 SDK 的 `hdc` 加入 `PATH` 后，用 PowerShell 打包：
+
+```powershell
+$version = '0.1.0-qa.1'
+$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
+cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
+Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
+```
+
+打包成功后连接测试机，从 `hdc list targets` 找到它的设备标识，将 `$device` 设为该标识：
+
+```powershell
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+hdc -t $device install $hap
+```
+
+确认 `hdc` 报告安装成功，再以调试模式启动：
+
+```powershell
+hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
+```
+
+1. 启动时附加 DevEco 原生调试器。先在恢复进程前运行一次 LLDB 的 `image list -f`，再打开核心列表、扫描合法持有的 Musica 游戏后运行一次。两次都不应出现 `libshinki_emu_core_musica.so`，`filesDir/ShinkiEMU/diagnostics` 中本次运行的日志也不应有 `shinki.emu.ohos.core_open`。
+2. 如需手动选择 Musica，不要先打开核心设置。用原版 PAZ/SC 文件和有效的私有 `key.toml` 启动游戏。应先出现一次 `shinki.emu.ohos.core_open`，再出现 `shinki.emu.ohos.core_abi_ready`，标明从安装路径加载 `shinki.emu.musica`、ABI 3。此时 `image list -f` 应列出该库。
+3. 推进到可辨认的游戏画面，确认听到音乐或语音，并对照 `shinki.emu.ohos.audio_started`。在同一 Manager 进程内关闭并重开游戏，确认恢复播放且未再次加载模块。记录设备、系统版本和结果，不分享密钥或游戏数据。
 
 ## 构建、检查与测试
 
