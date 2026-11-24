@@ -128,7 +128,7 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 
 使用带 x86_64 sysroot 库和 `libc++_shared.so` 的 DevEco OpenHarmony API 26 Native SDK。按上文配置 `OHOS_SDK_NATIVE`、私有签名目录和 `cargo-about`。
 
-项目的 triplet 声明 `OHOS`（不是 `Linux`），因此即使 Windows 主机也是 x86_64，vcpkg 仍会让 Meson 交叉编译，不会尝试在主机运行目标程序。
+Meson 依赖使用 `OHOS` 目标声明，在同为 x86_64 的 Windows 主机上也会走交叉编译。固定版 FFmpeg port 使用自身的 Linux 配置分支，编译器和 sysroot 仍来自 DevEco OHOS SDK。
 
 在 x64 Visual Studio 开发者终端中，从已提交的工作树运行：
 

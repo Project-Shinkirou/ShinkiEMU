@@ -128,7 +128,7 @@ Use the local `x86_64-unknown-linux-ohos` Manager row for a dedicated HarmonyOS 
 
 Use DevEco's API 26 OpenHarmony native SDK with x86_64 sysroot libraries and `libc++_shared.so`. Set `OHOS_SDK_NATIVE` and the private signing directory as above, and install `cargo-about`.
 
-The project triplet declares `OHOS`, not `Linux`, so vcpkg configures Meson as a cross build even on an x86_64 Windows host. Target executables are not run as host build probes.
+The triplet declares `OHOS` for Meson ports so that vcpkg cross-compiles them even on x86_64 Windows. The pinned FFmpeg port uses its Linux configure branch, but still builds with the DevEco OHOS compiler and sysroot.
 
 From a committed checkout and an x64 Visual Studio developer shell:
 

@@ -1,8 +1,14 @@
 set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
-# vcpkg's Meson helper treats same-CPU Linux as native on Windows.
-set(VCPKG_CMAKE_SYSTEM_NAME OHOS)
+# The pinned FFmpeg port only passes --target-os=linux on its Linux branch.
+# Keep the DevEco compiler/sysroot for that port. Meson ports must see OHOS
+# or the helper treats same-CPU Linux as native on Windows.
+if(PORT STREQUAL "ffmpeg")
+    set(VCPKG_CMAKE_SYSTEM_NAME Linux)
+else()
+    set(VCPKG_CMAKE_SYSTEM_NAME OHOS)
+endif()
 set(VCPKG_ENV_PASSTHROUGH OHOS_SDK_NATIVE)
 set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/ohos-toolchain.cmake")
 set(VCPKG_MAKE_BUILD_TRIPLET "--host=x86_64-unknown-linux-ohos")
