@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "cargo xtask",
-    about = "ShinkiEMU build, packaging, release and metadata tools",
+    about = "ShinkiEMU packaging, release, metadata and CI tools",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -26,19 +26,6 @@ impl Selection {
     }
 }
 
-#[derive(Args)]
-pub struct Build {
-    #[arg(long)]
-    pub target: String,
-    #[arg(long, conflicts_with_all=["manager", "all_cores"])]
-    pub core: Option<String>,
-    #[arg(long, conflicts_with = "all_cores")]
-    pub manager: bool,
-    #[arg(long)]
-    pub all_cores: bool,
-    #[arg(long)]
-    pub release: bool,
-}
 #[derive(Subcommand)]
 pub enum Command {
     /// Build a private Apple cross image from SHINKI_APPLE_SDK_DIR.
@@ -59,19 +46,6 @@ pub enum Command {
         /// Release platform scope; omitted means all inventory platforms.
         #[arg(long, requires = "json", conflicts_with = "since")]
         scope: Option<crate::release::Scope>,
-    },
-    Build(Build),
-    Check {
-        #[arg(long)]
-        target: String,
-        #[command(flatten)]
-        selection: Selection,
-    },
-    Test {
-        #[arg(long, conflicts_with = "manager")]
-        core: Option<String>,
-        #[arg(long)]
-        manager: bool,
     },
     /// Build and stage a package. Install the cargo-about host tool first.
     Package {
@@ -109,6 +83,7 @@ pub enum Command {
         #[command(subcommand)]
         cmd: crate::metadata::MetadataCommand,
     },
+    /// Build and package one CI matrix row.
     Ci {
         #[arg(long)]
         target: String,

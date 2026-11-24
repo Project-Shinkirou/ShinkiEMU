@@ -1,7 +1,7 @@
 name: Component release
 # Manager and external cores can use tags. Dispatch Manager with any self-owned core.
 # Preparation uses the selected exact product commit; prepare-only dispatches
-# keep every build/source gate but never create a tag or public release.
+# run the same builds and tests without creating a tag or public release.
 on:
   push:
     tags: ['manager-v*', 'core-*']
@@ -13,10 +13,6 @@ on:
       components:
         description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
         required: true
-      verify_local_manager:
-        description: 'Verify staged OHOS HAP/source in the draft Manager release; no rebuild or publication'
-        type: boolean
-        default: false
       prepare_only:
         description: 'Prepare and retain every selected platform without publishing; audit actual artifacts before a separate publication'
         type: boolean
@@ -30,10 +26,6 @@ on:
         type: choice
         options: [all, windows-android]
         default: all
-      ci_run_id:
-        description: 'Exact-head ci.yml run ID from the same release scope (required for scoped publication)'
-        type: string
-        required: false
 permissions:
   contents: read
 env:
@@ -45,7 +37,6 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       components: ${{ steps.select.outputs.components }}
-      version: ${{ steps.select.outputs.version }}
       local_manager: ${{ steps.select.outputs.local_manager }}
       source_commit: ${{ steps.select.outputs.source_commit }}
     steps:
@@ -63,28 +54,17 @@ jobs:
           INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
           EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
           PREPARE_ONLY: ${{ inputs.prepare_only }}
-          VERIFY_LOCAL_MANAGER: ${{ inputs.verify_local_manager }}
-          CI_RUN_ID: ${{ inputs.ci_run_id }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:EXPECTED_SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$') { throw 'source_commit must be an exact lowercase 40-hex product SHA' }
           if ($env:INPUT_SOURCE_COMMIT -and $env:PREPARE_ONLY -ne 'true') { throw 'An explicit source_commit requires prepare_only=true' }
-          if ($env:RELEASE_SCOPE -ne 'all') {
-            if ($env:VERIFY_LOCAL_MANAGER -eq 'true') { throw 'OHOS handoff requires release_scope=all' }
-            if ($env:PREPARE_ONLY -ne 'true' -and $env:CI_RUN_ID -notmatch '^[0-9]+$') {
-              throw 'Scoped publication needs an exact-head ci_run_id; use prepare_only to build without publishing'
-            }
-          }
           $sourceCommit = (git rev-parse HEAD).Trim()
           if ($sourceCommit -cne $env:EXPECTED_SOURCE_COMMIT) { throw 'Checked-out product SHA differs from the selected source_commit' }
           "source_commit=$sourceCommit" >> $env:GITHUB_OUTPUT
           "Workflow dispatch SHA: $env:GITHUB_SHA; actual product/source SHA: $sourceCommit; scope=$env:RELEASE_SCOPE; prepare_only=$env:PREPARE_ONLY" >> $env:GITHUB_STEP_SUMMARY
           $localManager = $false
           $matrixArguments = @('xtask', 'matrix', '--json', '--ci')
-          if ($env:RELEASE_SCOPE -eq 'all') {
-            # Older source_commit overrides still use their original xtask CLI.
-            $localManager = @((cargo xtask matrix) | Where-Object { $_ -match '^manager\taarch64-unknown-linux-ohos\tsupported\t' }).Count -gt 0
-          } else {
+          if ($env:RELEASE_SCOPE -ne 'all') {
             $matrixArguments += @('--scope', $env:RELEASE_SCOPE)
           }
           $rows = @((cargo @matrixArguments | ConvertFrom-Json).include)
@@ -113,8 +93,6 @@ jobs:
           if ($ownedRows.Count -gt 0 -and 'manager' -cnotin $requested) {
             throw 'Select Manager with self-owned cores so they share one product version and source commit'
           }
-          $env:SHINKI_EMU_RELEASE_PRODUCT_VERSION = $version
-          $env:SHINKI_EMU_RELEASE_SOURCE_COMMIT = $sourceCommit
           $versions = @{}
           $components = @()
           foreach ($component in $requested) {
@@ -125,10 +103,8 @@ jobs:
             if ($env:RELEASE_SCOPE -ne 'all') { $arguments += @('--scope', $env:RELEASE_SCOPE) }
             if (-not $own[0].external) { $arguments += @('--version', $version) }
             $identity = cargo @arguments | ConvertFrom-Json
-            if ($identity.source_commit -cne $sourceCommit) { throw "Mixed product revision for $component" }
-            if (-not $own[0].external -and $identity.version -cne $version) { throw "Mixed product version for $component" }
-            if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match verified component identity' }
-            if ($env:RELEASE_SCOPE -ne 'all') { $localManager = $localManager -or $identity.local_manager }
+            if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match component release identity' }
+            $localManager = $localManager -or $identity.local_manager
             $versions[$component] = $identity.version
             $components += @{component=$component; version=$identity.version; external=$own[0].external; tag=$identity.release_tag}
           }
@@ -137,11 +113,14 @@ jobs:
           })
           "matrix=$(@{include=$include} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
           "components=$(@{include=$components} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
-          "version=$version" >> $env:GITHUB_OUTPUT
           "local_manager=$($localManager.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "Per-component release identities: $($components | ConvertTo-Json -Compress)" >> $env:GITHUB_STEP_SUMMARY
+  test:
+    needs: select
+    uses: ./.github/workflows/tools.yml
+    with:
+      ref: ${{ needs.select.outputs.source_commit }}
   build:
-    if: ${{ inputs.verify_local_manager != true }}
     needs: select
     strategy:
       fail-fast: false
@@ -149,10 +128,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     env:
-      SHINKI_EMU_CI_VERSION: ${{ matrix.version }}
-      SHINKI_EMU_RELEASE_PRODUCT_VERSION: ${{ needs.select.outputs.version }}
-      SHINKI_EMU_RELEASE_SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
-      ROUKAKU_SUBTITLE_VCPKG_ROOT: ${{ github.workspace }}/.work/vcpkg-subtitle
+      VERSION: ${{ matrix.version }}
       SHINKI_EMU_ANDROID_KEYSTORE_BASE64: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_BASE64 }}
       SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SHINKI_EMU_ANDROID_KEYSTORE_PASSWORD }}
       SHINKI_EMU_ANDROID_KEY_ALIAS: ${{ secrets.SHINKI_EMU_ANDROID_KEY_ALIAS }}
@@ -167,6 +143,10 @@ jobs:
           ref: ${{ needs.select.outputs.source_commit }}
           submodules: true
           lfs: true
+      - uses: actions/cache@v5
+        with:
+          path: .work/vcpkg-binary-cache
+          key: vcpkg-${{ matrix.target }}-${{ matrix.component }}-${{ hashFiles('build/dependencies.toml', 'build/vcpkg/**', 'Cargo.lock') }}
       - run: rustup show
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
@@ -175,12 +155,19 @@ jobs:
       - uses: ilammy/setup-nasm@v1
         with:
           version: '3.02'
-      - name: Apple native assembler prerequisite
-        if: runner.os == 'macOS' && (matrix.component == 'kirikiroid2-web' || (matrix.component == 'manager' && contains(matrix.target, 'ios')))
+      - name: Apple native prerequisites
+        if: runner.os == 'macOS' && (matrix.component == 'kirikiroid2-web' || (matrix.component == 'manager' && matrix.platform == 'ios'))
         shell: bash
         run: |
           brew install bison yasm
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
           rustup component add llvm-tools-preview
+      - name: KiriKiri desktop prerequisites
+        if: runner.os == 'macOS' && matrix.component == 'kirikiroid2-web'
+        shell: bash
+        run: |
+          brew install autoconf automake autoconf-archive libtool gperf
+          echo "$(brew --prefix gperf)/bin" >> "$GITHUB_PATH"
       - name: Linux desktop prerequisites
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
@@ -211,53 +198,28 @@ jobs:
           set -o pipefail
           "$sdkmanager" --sdk_root="$ANDROID_HOME" --channel=0 'platforms;android-37.2' 'build-tools;37.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - name: Prepare dependencies
+      - name: Install cargo-ndk
+        if: matrix.platform == 'android'
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Install Rust target
+        env:
+          TARGET: ${{ matrix.target }}
+        run: rustup target add $env:TARGET
+      - name: Install the second ABI for the universal Android Manager
+        if: matrix.target == 'aarch64-linux-android' && matrix.component == 'manager'
+        run: rustup target add x86_64-linux-android
+      - run: cargo install cargo-about --version 0.9.3 --locked
+      - name: Prepare release files
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          rustup target add $env:TARGET
-          if ($env:COMPONENT -eq 'manager') {
-            cargo xtask deps --target $env:TARGET
-            if ($env:TARGET.Contains('android')) {
-              $other = if ($env:TARGET -eq 'aarch64-linux-android') { 'x86_64-linux-android' } else { 'aarch64-linux-android' }
-              rustup target add $other
-              cargo xtask deps --target $other
-            }
-          }
-          else { cargo xtask deps --target $env:TARGET --core $env:COMPONENT }
-      - name: Prepare standalone Android host producers
-        if: contains(matrix.target, 'android') && matrix.component == 'manager'
-        shell: bash
-        run: python3 build/ci/prepare-android-host-cores.py
-      - name: Preserve failed Renpy host NASM configuration
-        if: failure() && matrix.component == 'manager' && contains(matrix.target, 'android')
-        uses: actions/upload-artifact@v7
-        with:
-          name: renpy-nasm-host-config-${{ matrix.component }}-${{ matrix.target }}
-          path: .work/renpy-build/tmp/build/nasm.host/nasm-2.14.02/config.log
-          include-hidden-files: true
-          if-no-files-found: warn
-      - name: Build and package
-        env:
-          TARGET: ${{ matrix.target }}
-          COMPONENT: ${{ matrix.component }}
-        run: cargo xtask ci --target $env:TARGET --component $env:COMPONENT --report .work/ci-report.json
+        run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:VERSION --scope $env:RELEASE_SCOPE
       - name: Smoke packaged Linux Manager
         if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
         shell: bash
         run: |
-          bash build/ci/linux-manager-smoke.sh "$(jq -er '.artifact' .work/ci-report.json)"
-      - name: Prepare Release files
-        env:
-          TARGET: ${{ matrix.target }}
-          COMPONENT: ${{ matrix.component }}
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $releaseArguments = @('xtask', 'release', '--component', $env:COMPONENT, '--target', $env:TARGET, '--version', $env:SHINKI_EMU_CI_VERSION)
-          if ($env:RELEASE_SCOPE -ne 'all') { $releaseArguments += @('--scope', $env:RELEASE_SCOPE) }
-          cargo @releaseArguments
+          root=".work/release/manager-v$VERSION/x86_64-unknown-linux-gnu"
+          bash build/ci/linux-manager-smoke.sh "$root/$(jq -er '.archive.name' "$root/release.json")"
       - uses: actions/upload-artifact@v7
         with:
           # Component ids and triples never contain '@', so publish can select one component.
@@ -265,43 +227,10 @@ jobs:
           path: .work/release/
           include-hidden-files: true
           if-no-files-found: error
-  verify-ohos-handoff:
-    needs: select
-    if: ${{ inputs.verify_local_manager == true }}
-    runs-on: ubuntu-24.04
-    # GitHub hides draft releases from read-only tokens. This job only downloads
-    # and verifies the unpublished assets; it never publishes the draft.
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      VERSION: ${{ needs.select.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.select.outputs.source_commit }}
-          submodules: true
-      - run: rustup show
-      - name: Download actual test-signed HAP and corresponding source from draft
-        shell: bash
-        run: |
-          set -euo pipefail
-          root=".work/release/manager-v$VERSION/aarch64-unknown-linux-ohos"
-          mkdir -p "$root"
-          gh release download "manager-v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$root" \
-            --pattern '*ohos*' --pattern ohos-handoff.json
-          mv "$root/ohos-handoff.json" "$root/release.json"
-          cargo xtask release --component manager --version "$VERSION" --verify-handoff
-          echo "Verified exact-head OHOS HAP/source hashes and native closure. DevEco verified the test-PKI signature locally; no device launch or retail-installability acceptance." >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: verified-ohos-handoff
-          path: .work/release/
-          if-no-files-found: error
   publish:
-    needs: [select, build]
+    needs: [select, build, test]
     # Failed build rows fail only their own component's publish job.
-    if: ${{ !cancelled() && needs.select.result == 'success' && inputs.verify_local_manager != true }}
+    if: ${{ !cancelled() && needs.select.result == 'success' && needs.test.result == 'success' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.components) }}
@@ -316,9 +245,6 @@ jobs:
     env:
       COMPONENT: ${{ matrix.component }}
       VERSION: ${{ matrix.version }}
-      SHINKI_EMU_RELEASE_CI_RUN_ID: ${{ inputs.ci_run_id }}
-      SHINKI_EMU_RELEASE_PRODUCT_VERSION: ${{ needs.select.outputs.version }}
-      SHINKI_EMU_RELEASE_SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -330,19 +256,11 @@ jobs:
           pattern: release-files-${{ matrix.component }}@*
           path: .work/release/
           merge-multiple: true
-      - uses: actions/download-artifact@v8
-        if: matrix.component != 'manager' && !matrix.external
-        with:
-          pattern: release-files-manager@*
-          path: .work/release/
-          merge-multiple: true
       - name: Require every build row of this component
         shell: bash
         env:
           MATRIX: ${{ needs.select.outputs.matrix }}
-          SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
           RELEASE_TAG: ${{ matrix.tag }}
-          EXTERNAL: ${{ matrix.external }}
         run: |
           set -euo pipefail
           # Prepared files sit at .work/release/<tag>/<target>/release.json.
@@ -354,28 +272,29 @@ jobs:
             exit 1
           fi
           while IFS= read -r target; do
-            jq -e --arg commit "$SOURCE_COMMIT" --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" --arg external "$EXTERNAL" \
-              '.source_commit == $commit and .component == $component and .version == $version and .target == $target and (.release_scope // "all") == $scope and ($external == "true" or .product_version == $version)' \
+            jq -e --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" \
+              '.component == $component and .version == $version and .target == $target and .release_scope == $scope' \
               ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
-      - name: Local Manager artifact handoff
+      - name: Show local Manager release instructions
         if: matrix.component == 'manager' && needs.select.outputs.local_manager == 'true'
         run: |
-          echo "Manager $VERSION requires its DevEco-signed local-only artifact. Download all release-files-manager@* artifacts from this exact-head run, prepare the OHOS release record locally, and publish only after ci.yml succeeds at the same head SHA." >> "$GITHUB_STEP_SUMMARY"
-      - name: Prepare-only artifact handoff
+          {
+            echo "Manager $VERSION requires a DevEco-signed OHOS package."
+            echo "Use a run without a source_commit override. Compare \`gh run view $GITHUB_RUN_ID --json headSha --jq .headSha\` with \`git rev-parse HEAD\` before combining artifacts."
+            echo "Download this run's release-files-manager@* artifacts and merge their contents into .work/release/."
+            echo "With DevEco and cargo-about installed, prepare and publish from the same checkout:"
+            echo '```sh'
+            echo "cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version $VERSION"
+            echo "cargo xtask release --component manager --version $VERSION --scope all --publish"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Summarize prepare-only run
         if: inputs.prepare_only == true
         env:
           SOURCE_COMMIT: ${{ needs.select.outputs.source_commit }}
         run: |
-          echo "Prepared every $COMPONENT platform in scope $RELEASE_SCOPE from actual product/source SHA $SOURCE_COMMIT (workflow dispatch SHA $GITHUB_SHA). No tag or public release was created. Download this run's release-files artifacts and audit their actual binary/source/native/license bytes before publishing from the clean product commit." >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-java@v6
-        if: inputs.prepare_only != true && matrix.component == 'manager' && env.RELEASE_SCOPE == 'windows-android'
-        with:
-          distribution: temurin
-          java-version: '27'
-      - name: Install Android tools for production APK verification
-        if: inputs.prepare_only != true && matrix.component == 'manager' && env.RELEASE_SCOPE == 'windows-android'
-        run: sdkmanager --sdk_root="$ANDROID_HOME" 'build-tools;37.0.0'
+          echo "Prepared $COMPONENT for scope $RELEASE_SCOPE from product SHA $SOURCE_COMMIT (workflow SHA $GITHUB_SHA). Download the release-files artifacts for inspection. This run does not create a tag or public release." >> "$GITHUB_STEP_SUMMARY"
       - name: Publish every prepared platform as one Release
         id: publish
         if: inputs.prepare_only != true && (matrix.component != 'manager' || needs.select.outputs.local_manager != 'true')

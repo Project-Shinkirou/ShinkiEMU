@@ -15,7 +15,7 @@ mod rust_licenses;
 mod temporary;
 #[cfg(test)]
 mod tests;
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::Parser;
 fn main() {
     if let Err(error) = run() {
@@ -61,44 +61,6 @@ fn run() -> Result<()> {
                     );
                 }
             }
-        }
-        cli::Command::Build(args) => {
-            inv.target(&args.target)?;
-            if args.all_cores {
-                let mut built = false;
-                for core in &inv.cores {
-                    if let Some(reason) = inv.blocked(&core.id, &args.target)? {
-                        eprintln!("{}: blocked: {reason}", core.id);
-                        continue;
-                    }
-                    build::execute(&inv, &args.target, &core.id, "build", args.release)?;
-                    built = true;
-                }
-                if !built {
-                    bail!(
-                        "no standalone core supports {}; select --manager for static integrations",
-                        args.target
-                    );
-                }
-            } else {
-                let component = if args.manager {
-                    "manager"
-                } else {
-                    args.core
-                        .as_deref()
-                        .ok_or_else(|| anyhow::anyhow!("select --core, --all-cores or --manager"))?
-                };
-                build::execute(&inv, &args.target, component, "build", args.release)?;
-            }
-        }
-        cli::Command::Check { target, selection } => {
-            build::execute(&inv, &target, selection.component(), "check", false)?;
-        }
-        cli::Command::Test { core, manager } => {
-            if manager && core.is_some() {
-                bail!("select one component");
-            }
-            build::tests(&inv, core.as_deref(), manager)?;
         }
         cli::Command::Package {
             target,

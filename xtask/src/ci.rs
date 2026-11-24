@@ -31,20 +31,23 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         Ok(())
     } else {
         (|| -> Result<()> {
-            let product = component == "manager" || inv.core(component)?.attribution.is_none();
-            let version = if product {
+            let core = if component == "manager" {
+                None
+            } else {
+                Some(inv.core(component)?)
+            };
+            // Restricted binaries are not uploaded, even as Actions artifacts.
+            if let Some(core) = core.filter(|core| !core.publish_blocked.is_empty()) {
+                build::build_restricted_core(inv, target, component)?;
+                report.status = "publish_blocked";
+                report.reason = Some(core.publish_blocked.clone());
+                return Ok(());
+            }
+            let version = if core.is_none_or(|core| core.attribution.is_none()) {
                 build::default_product_version()?
             } else {
                 crate::release::resolve_version(inv, component, "")?
             };
-            // Restricted binaries are not uploaded, even as Actions artifacts.
-            if component != "manager" && !inv.core(component)?.publish_blocked.is_empty() {
-                build::execute(inv, target, component, "build", true)?;
-                report.status = "publish_blocked";
-                report.reason = Some(inv.core(component)?.publish_blocked.clone());
-                report.artifact = None;
-                return Ok(());
-            }
             let out = inv.root.join(".work/ci").join(target).join(component);
             let staged = package::package(inv, target, component, &version, &out)?;
             report.status = "built";

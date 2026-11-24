@@ -142,18 +142,18 @@ pub(crate) fn package_artifact(
     component: &str,
     version: &str,
 ) -> Result<BuildArtifact> {
-    execute_configured(inv, target, component, "build", true, None, Some(version))?
-        .context("Cargo build did not report an artifact")
+    execute_configured(inv, target, component, None, version)
 }
 
-pub fn execute(
-    inv: &Inventory,
-    target: &str,
-    component: &str,
-    action: &str,
-    release: bool,
-) -> Result<()> {
-    execute_configured(inv, target, component, action, release, None, None).map(|_| ())
+pub(crate) fn build_restricted_core(inv: &Inventory, target: &str, component: &str) -> Result<()> {
+    let package = inv.core(component)?.entry_package();
+    let target_dir = target_directory(inv, target, component)?;
+    dependencies::run(
+        cargo_command(inv, target)?
+            .args(["build", "--locked", "--release", "--lib", "-p", &package])
+            .args(["--target", target, "--target-dir"])
+            .arg(target_dir),
+    )
 }
 
 pub(crate) fn execute_ios_framework(
@@ -162,13 +162,16 @@ pub(crate) fn execute_ios_framework(
     component: &str,
     version: &str,
 ) -> Result<BuildArtifact> {
-    execute_configured(inv, target, component, "build", true, Some(BundledInput::IosFramework), Some(version))?
-        .context("iOS Framework build did not report an artifact")
+    execute_configured(inv, target, component, Some(BundledInput::IosFramework), version)
 }
 
-pub(crate) fn execute_ohos_hap(inv: &Inventory, target: &str, component: &str, version: &str) -> Result<BuildArtifact> {
-    execute_configured(inv, target, component, "build", true, Some(BundledInput::OhosHap), Some(version))?
-        .context("OHOS HAP core build did not report an artifact")
+pub(crate) fn execute_ohos_hap(
+    inv: &Inventory,
+    target: &str,
+    component: &str,
+    version: &str,
+) -> Result<BuildArtifact> {
+    execute_configured(inv, target, component, Some(BundledInput::OhosHap), version)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -177,15 +180,51 @@ enum BundledInput {
     OhosHap,
 }
 
+fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
+    let mut cmd = if crate::apple::supported(target) {
+        crate::apple::command(&inv.root, target)?
+    } else {
+        Command::new("cargo")
+    };
+    cmd.current_dir(&inv.root);
+    if target.ends_with("ohos") {
+        dependencies::apply_ohos_environment(inv, target, &mut cmd)?;
+    }
+    if target.ends_with("android") {
+        // cargo-ndk filters Cargo's build-script JSON. Import its toolchain
+        // environment so packaging can read every producer's OUT_DIR.
+        let api = crate::binary::ANDROID_API.to_string();
+        let mut environment = Command::new("cargo");
+        environment
+            .current_dir(&inv.root)
+            .args(["ndk-env", "--target", target, "-P", &api, "--json"]);
+        let environment: BTreeMap<String, String> =
+            serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
+        let clang = environment
+            .get("CLANG_PATH")
+            .context("cargo ndk-env omitted CLANG_PATH")?;
+        let abi = if target.starts_with("aarch64") {
+            "arm64-v8a"
+        } else {
+            "x86_64"
+        };
+        // ndk-env omits the two variables its linker wrapper requires.
+        cmd.envs(&environment)
+            .env("_CARGO_NDK_LINK_CLANG", clang)
+            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
+            .env("ANDROID_PLATFORM", &api)
+            .env("ANDROID_ABI", abi);
+    }
+    Ok(cmd)
+}
+
 fn execute_configured(
     inv: &Inventory,
     target: &str,
     component: &str,
-    action: &str,
-    release: bool,
     bundled_input: Option<BundledInput>,
-    version: Option<&str>,
-) -> Result<Option<BuildArtifact>> {
+    version: &str,
+) -> Result<BuildArtifact> {
     let ios_framework_input = bundled_input == Some(BundledInput::IosFramework);
     let ohos_hap_input = bundled_input == Some(BundledInput::OhosHap);
     if ios_framework_input {
@@ -223,16 +262,8 @@ fn execute_configured(
         component == "manager" && crate::apple::ios_frameworks::enabled(target, &features);
     if ios_framework_manager {
         crate::apple::ios_frameworks::require_native_host()?;
-        if action == "build" && !release {
-            bail!("use --release when building the iOS Framework Manager");
-        }
     }
     let ohos_hap_manager = component == "manager" && crate::ohos::manager_mode(target, &features)?;
-    if ohos_hap_manager {
-        if action == "build" && !release {
-            bail!("use --release when building the bundled Musica OHOS Manager");
-        }
-    }
     let target_dir = if ios_framework_input || ios_framework_manager {
         // Share Framework dependencies without replacing the default static artifact.
         target_directory(inv, target, "manager-ios-framework")?
@@ -241,38 +272,15 @@ fn execute_configured(
     } else {
         target_directory(inv, target, component)?
     };
-    let product_version = product_owned.then(|| match version {
-        Some(version) => Ok(version.to_owned()),
-        None => default_product_version(),
-    }).transpose()?;
-    // The commit is runtime version information for first-party cores.
-    let product_source = (product_owned && version.is_some())
-        .then(|| source_commit(inv)).transpose()?;
-    let android_abi = if target.contains("android") {
-        Some(if target.starts_with("aarch64") {
-            "arm64-v8a"
-        } else {
-            "x86_64"
-        })
-    } else {
-        None
-    };
-    let mut cmd = if crate::apple::supported(target) {
-        crate::apple::command(&inv.root, target)?
-    } else {
-        Command::new("cargo")
-    };
-    cmd.current_dir(&inv.root);
-    let cargo_action = if ios_framework_input { "rustc" } else { action };
-    cmd.args([cargo_action, "--locked", "-p", &package, "--target-dir"])
-        .arg(&target_dir);
-    cmd.args(["--target", target]);
-    if version.is_some() {
-        cmd.arg("--message-format=json");
-    }
-    if release {
-        cmd.arg("--release");
-    }
+    let product_version = product_owned.then(|| version.to_owned());
+    // First-party cores expose the source commit in their runtime identity.
+    let product_source = product_owned.then(|| source_commit(inv)).transpose()?;
+    let mut cmd = cargo_command(inv, target)?;
+    let action = if ios_framework_input { "rustc" } else { "build" };
+    cmd.args([action, "--locked", "--release", "-p", &package])
+        .args(["--target", target, "--target-dir"])
+        .arg(&target_dir)
+        .arg("--message-format=json");
     // Android and OHOS load the Manager as a cdylib from their app shells.
     let library_host = target.contains("android") || target.ends_with("ohos");
     if core.is_some() || library_host {
@@ -283,26 +291,6 @@ fn execute_configured(
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
     }
-    if target.ends_with("ohos") {
-        dependencies::apply_ohos_environment(inv, target, &mut cmd)?;
-    }
-    if let Some(abi) = android_abi {
-        // cargo-ndk consumes build-script JSON. Import its toolchain environment
-        // and invoke Cargo directly so every embedded manifest stays observable.
-        let api = crate::binary::ANDROID_API.to_string();
-        let mut environment = Command::new("cargo");
-        environment.current_dir(&inv.root)
-            .args(["ndk-env", "--target", target, "-P", &api, "--json"]);
-        let environment: BTreeMap<String, String> =
-            serde_json::from_slice(&dependencies::capture(&mut environment)?)?;
-        let clang = environment.get("CLANG_PATH").context("cargo ndk-env omitted CLANG_PATH")?;
-        // ndk-env omits the two variables its linker wrapper requires.
-        cmd.envs(&environment)
-            .env("_CARGO_NDK_LINK_CLANG", clang)
-            .env("_CARGO_NDK_LINK_TARGET", format!("--target={target}{api}"))
-            .env("ANDROID_PLATFORM", &api)
-            .env("ANDROID_ABI", abi);
-    }
     if let Some(version) = &product_version {
         cmd.env("SHINKI_EMU_PRODUCT_VERSION", version);
     }
@@ -312,10 +300,6 @@ fn execute_configured(
     if ios_framework_input {
         let install_name = crate::apple::ios_frameworks::install_name(component);
         cmd.args(["--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
-    }
-    if version.is_none() {
-        dependencies::run(&mut cmd)?;
-        return Ok(None);
     }
 
     let metadata = cargo_metadata(inv, target)?;
@@ -454,7 +438,7 @@ fn execute_configured(
         }
         libraries.remove(0)
     };
-    Ok(Some(BuildArtifact {
+    Ok(BuildArtifact {
         component: component.into(),
         target: target.into(),
         library,
@@ -464,20 +448,7 @@ fn execute_configured(
         product_version,
         source_commit: product_source,
         features,
-    }))
-}
-pub fn tests(inv: &Inventory, core: Option<&str>, manager: bool) -> Result<()> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(&inv.root).args(["test", "--locked"]);
-    if let Some(c) = core {
-        let c = inv.core(c)?;
-        cmd.args(["-p", &c.entry_package()]);
-    } else if manager {
-        cmd.args(["-p", "shinki-emu-manager"]);
-    } else {
-        cmd.args(["-p", "xtask", "-p", "shinki-emu-build"]);
-    }
-    dependencies::run(&mut cmd)
+    })
 }
 
 /// Additive Manager features from `SHINKI_EMU_MANAGER_FEATURES` (comma list).
