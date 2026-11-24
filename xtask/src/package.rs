@@ -917,16 +917,11 @@ pub(crate) fn static_core_entries(
     inv: &Inventory,
     result: &BuildArtifact,
 ) -> Result<Vec<(PathBuf, String)>> {
-    if !inv
-        .cores
-        .iter()
-        .any(|core| core.static_manager_targets.contains(&result.target))
-    {
-        return Ok(Vec::new());
-    }
+    let target = &result.target;
+    let features = &result.features;
     let mut entries = Vec::new();
     for core in &inv.cores {
-        if !core.static_manager_targets.contains(&result.target) {
+        if !core.embedded_in_manager(target, features) {
             continue;
         }
         for (source, path, from_adapter) in core.license_files(&inv.root, &result.target)? {
@@ -938,19 +933,19 @@ pub(crate) fn static_core_entries(
             let asset = BuildAsset { source, dest };
             entries.extend(asset_entries(&asset)?);
         }
-        let native = result
+        let manifest = result
             .embedded_core_builds
             .iter()
             .find(|build| build.plugin_id == core.id);
-        if core.artifact_source() == crate::cores::ArtifactSource::NativeLibrary && native.is_none() {
-            bail!(
-                "embedded native core {} has no recorded build manifest",
-                core.id
-            );
+        if manifest.is_none()
+            && (core.artifact_source() == crate::cores::ArtifactSource::NativeLibrary
+                || core.embedded_candidate(target, features))
+        {
+            bail!("embedded core {} has no recorded build manifest", core.id);
         }
-        if let Some(native) = native {
-            native.validate()?;
-            for asset in &native.resources {
+        if let Some(manifest) = manifest {
+            manifest.validate()?;
+            for asset in &manifest.resources {
                 for (source, destination) in asset_entries(asset)? {
                     if result.target.ends_with("-linux-android")
                         && android_host::is_runtime_asset(&destination)
@@ -960,7 +955,7 @@ pub(crate) fn static_core_entries(
                     entries.push((source, format!("cores/{}/{destination}", core.id)));
                 }
             }
-            for asset in &native.licenses {
+            for asset in &manifest.licenses {
                 for (source, destination) in asset_entries(asset)? {
                     entries.push((
                         source,
@@ -1451,6 +1446,61 @@ mod android_tests {
     use super::*;
     use clap::Parser as _;
     use shinki_emu_build::{CoreBuildManifest, NativeInputs};
+
+    #[test]
+    fn adv32_candidate_package_stages_its_reported_resources_and_licenses() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inv = Inventory::load(repo).unwrap();
+        inv.cores.retain(|core| core.id == "shinki.emu.adv32");
+        let scratch = crate::temporary::directory().unwrap();
+        let resource = scratch.path().join("resource.dat");
+        fs::write(&resource, b"candidate resource").unwrap();
+        let target = "x86_64-pc-windows-msvc";
+        let licenses = [
+            ("docs/licenses/shinki-emu-adv32/GARbro.txt", "GARbro.txt"),
+            ("Assets/Fonts/OFL-NotoSansJP.txt", "OFL-NotoSansJP.txt"),
+            ("Assets/Fonts/OFL-NotoSansSC.txt", "OFL-NotoSansSC.txt"),
+        ];
+        let mut artifact = BuildArtifact {
+            component: "manager".into(),
+            target: target.into(),
+            product_version: None,
+            library: scratch.path().join("shinki-emu-manager.exe"),
+            core_build: None,
+            embedded_core_builds: vec![CoreBuildManifest {
+                plugin_id: "shinki.emu.adv32".into(),
+                target: target.into(),
+                artifact_kind: "rust-cdylib".into(),
+                native_library: None,
+                resources: vec![BuildAsset { source: resource, dest: "Resources/resource.dat".into() }],
+                licenses: licenses
+                    .map(|(source, name)| BuildAsset {
+                        source: repo.join(source),
+                        dest: format!("licenses/shinki.emu.adv32/{name}"),
+                    })
+                    .into(),
+            }],
+            native_inputs: vec![],
+            source_commit: None,
+            features: vec![],
+        };
+        // A stale report cannot add ADV32 files to a default Manager package.
+        assert!(static_core_entries(&inv, &artifact).unwrap().is_empty());
+        artifact.features.push(crate::cores::ADV32_CANDIDATE_FEATURE.to_owned());
+        let stage = scratch.path().join("candidate");
+        fs::create_dir(&stage).unwrap();
+        copy_entries(&static_core_entries(&inv, &artifact).unwrap(), &stage).unwrap();
+        assert_eq!(
+            fs::read(stage.join("cores/shinki.emu.adv32/Resources/resource.dat")).unwrap(),
+            b"candidate resource",
+        );
+        let embedded_dir = stage.join("licenses/embedded/shinki.emu.adv32/licenses/shinki.emu.adv32");
+        for (source, name) in licenses {
+            assert_eq!(fs::read(embedded_dir.join(name)).unwrap(), fs::read(repo.join(source)).unwrap());
+        }
+        artifact.embedded_core_builds.clear();
+        assert!(static_core_entries(&inv, &artifact).is_err());
+    }
 
     #[test]
     fn android_stages_both_abi_asset_sets_and_lists_equal_resources_once() {

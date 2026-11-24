@@ -29,6 +29,10 @@ pub(crate) fn is_core_input(component: &str, target: &str) -> bool {
     component == MUSICA && target == TARGET
 }
 
+pub(crate) fn bundles_core(component: &str, target: &str, features: &[String]) -> bool {
+    is_core_input(component, target) && features.iter().any(|feature| feature == FEATURE)
+}
+
 pub(crate) fn manager_mode(target: &str, features: &[String]) -> Result<bool> {
     let enabled = features.iter().any(|feature| feature == FEATURE);
     if enabled && target != TARGET {
@@ -232,6 +236,7 @@ fn stage_inputs(
     );
     entries.extend(package::metadata_entries(inv, temp.path())?);
     entries.extend(package::licenses(inv, result, temp.path())?);
+    entries.extend(package::static_core_entries(inv, result)?);
     let declaration = if let Some(musica) = musica {
         Some(stage_core_manifest(
             inv,
@@ -240,7 +245,6 @@ fn stage_inputs(
             &mut entries,
         )?)
     } else {
-        entries.extend(package::static_core_entries(inv, result)?);
         None
     };
     fs::create_dir_all(&bundled)?;

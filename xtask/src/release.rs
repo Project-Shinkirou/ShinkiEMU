@@ -1,5 +1,6 @@
 use crate::{
-    cores::{Inventory, Target, slug},
+    build,
+    cores::{ADV32_CANDIDATE_FEATURE, Inventory, Target, slug},
     dependencies, package,
 };
 use anyhow::{Context, Result, bail};
@@ -374,6 +375,16 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
     })
 }
 
+fn require_public_manager_variant(target: &str, features: &[String]) -> Result<()> {
+    if features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
+        || crate::apple::ios_frameworks::enabled(target, features)
+        || crate::ohos::manager_mode(target, features)?
+    {
+        bail!("private QA Manager variants cannot be prepared for release");
+    }
+    Ok(())
+}
+
 /// Package one target and record the asset for publication.
 pub fn prepare(
     inv: &Inventory,
@@ -391,6 +402,9 @@ pub fn prepare(
             scope.name()
         );
     }
+    if component == "manager" {
+        require_public_manager_variant(target, &build::requested_manager_features()?)?;
+    }
     let id = identity(inv, component, version)?;
     let version = id.version.as_str();
     if let Some(reason) = inv.blocked(component, target)? {
@@ -406,13 +420,6 @@ pub fn prepare(
     }
     let root = id.root.join(target);
     let record_path = root.join("release.json");
-    if component == "manager" {
-        let features = env::var("SHINKI_EMU_MANAGER_FEATURES").unwrap_or_default();
-        let features: Vec<_> = features.split(',').map(|feature| feature.trim().to_owned()).collect();
-        if crate::apple::ios_frameworks::enabled(target, &features) || crate::ohos::manager_mode(target, &features)? {
-            bail!("private device-test Manager variants cannot be prepared for release");
-        }
-    }
     let platform = if component == "manager" && target.contains("android") {
         "android-universal".to_owned()
     } else if spec.platform == "ios" {
@@ -727,6 +734,17 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adv32_candidate_manager_is_rejected_before_release_packaging() {
+        for target in ["x86_64-pc-windows-msvc", "aarch64-linux-android"] {
+            assert!(require_public_manager_variant(target, &[]).is_ok());
+            assert!(
+                require_public_manager_variant(target, &["store-steam".into(), "static-adv32".into()])
+                    .is_err()
+            );
+        }
+    }
 
     #[test]
     fn catalog_urls_use_final_tags_and_escape_asset_path_segments() {

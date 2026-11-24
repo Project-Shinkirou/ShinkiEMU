@@ -13,6 +13,8 @@ mod core_adapters;
 #[allow(dead_code, reason = "xtask validates the policy; only Manager uses the projection")]
 mod android_dynamic;
 
+pub(crate) const ADV32_CANDIDATE_FEATURE: &str = "static-adv32";
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Core {
     pub id: String,
@@ -32,6 +34,8 @@ pub struct Core {
     pub(crate) android_dynamic: Option<toml::Table>,
     #[serde(default)]
     pub static_manager_targets: Vec<String>,
+    #[serde(default)]
+    static_manager_candidate_targets: Vec<String>,
     #[serde(default)]
     pub ios_framework: bool,
     pub blocked: Vec<Blocked>,
@@ -64,6 +68,17 @@ impl Core {
 
     pub fn adapter_package(&self) -> String {
         format!("shinki-emu-{}", core_adapters::adapter_id(&self.id))
+    }
+
+    pub(crate) fn embedded_candidate(&self, target: &str, features: &[String]) -> bool {
+        self.static_manager_candidate_targets.iter().any(|triple| triple == target)
+            && features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
+    }
+
+    pub(crate) fn embedded_in_manager(&self, target: &str, features: &[String]) -> bool {
+        !crate::ohos::bundles_core(&self.id, target, features)
+            && (self.static_manager_targets.iter().any(|triple| triple == target)
+                || self.embedded_candidate(target, features))
     }
 
     /// The native adapters build their own DSO; the entry package drives that
@@ -296,6 +311,17 @@ impl Inventory {
                     || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
                 {
                     bail!("invalid static Manager integration");
+                }
+            }
+            let mut candidates = BTreeSet::new();
+            for triple in &c.static_manager_candidate_targets {
+                if c.id != "shinki.emu.adv32"
+                    || c.publish_blocked.is_empty()
+                    || !self.target(triple)?.manager_supported
+                    || c.static_manager_targets.contains(triple)
+                    || !candidates.insert(triple)
+                {
+                    bail!("invalid private Manager candidate target {triple} for {}", c.id);
                 }
             }
         }
