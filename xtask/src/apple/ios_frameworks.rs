@@ -117,16 +117,20 @@ pub(crate) fn stage(
         // whose signed executable it hashes, so the signatures have no cycle.
         let dir = stage.join("cores").join(id);
         fs::create_dir_all(&dir)?;
+        let commit = build.source_commit.as_deref().context("Framework core product source commit")?;
+        let product_source = package::write_product_source_commit(&dir, commit)?;
         let sidecar = CorePackage {
             schema: "shinki.emu.core_package.v1".into(),
             plugin_id: id.clone(),
             library: id.clone(),
             version: version.to_owned(),
             identity: None,
-            source_commit: manager.source_commit.clone(),
             recognition: core.recognition.clone(),
             abi: shinki_emu_build::ABI.into(),
-            files: vec![FileRecord { path: id.clone(), sha256: package::sha256(&executable)? }],
+            files: vec![
+                FileRecord { path: id.clone(), sha256: package::sha256(&executable)? },
+                product_source,
+            ],
         };
         fs::write(dir.join("core.json"), serde_json::to_vec_pretty(&sidecar)?)?;
     }
