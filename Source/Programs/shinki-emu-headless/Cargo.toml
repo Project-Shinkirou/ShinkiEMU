@@ -14,7 +14,7 @@ shinki-emu-manager-ui-slint = { path = "../../Manager/shinki-emu-manager-ui-slin
 slint = { workspace = true, optional = true, features = ["std", "compat-1-2", "renderer-software"] }
 shinki-emu-manager-core = { path = "../../Manager/shinki-emu-manager-core" }
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
-roukaku-headless-protocol = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "374a7a20780153766d9d0256e4cf4d7754fd02f9" }
+roukaku-headless-protocol = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "584fdc85e8ffb00b285f6f822d822bad7b5def45" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
