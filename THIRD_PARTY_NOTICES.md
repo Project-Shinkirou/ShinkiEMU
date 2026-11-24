@@ -138,9 +138,9 @@ RFVP 后继统一固定 `cc0cc5c9648d481693cfa353c11e1d61311f6246`（`shinki` �
 
 ## Ren'Py
 
-- 上游：<https://github.com/renpy/renpy>，稳定版 `8.5.3.26051504`，基线 `39895c1e017f0b36ffea2447d97eccd69d76ee1c`；适配 fork 为 <https://github.com/Project-Shinkirou/renpy/tree/shinki>，固定 `a3b698e3af5369cc6573a3392f9c63065e7a029d`，薄接入在 `shinki/`。
-- 执行、Screen Language、ATL、GL2、音视频及保存沿用官方实现。CPython 3.12.7、原生扩展和同一份 SDL 2.0.20 取自官方 SDK；仅重新编译必要的 display 模块，不复制原游戏可执行文件或 DLL。来源及五个 SDK DLL 的固定校验和见 fork 的 `shinki/sdk.json`。
-- 适配与共享 C ABI 的 MIT 许可见 fork `shinki/LICENSE`，原文件保留原许可。核心包附官方完整 `LICENSE.txt`、pthread 说明与修改说明；Ren'Py 及依赖中的 MIT、Zlib、BSD、Python 与 LGPL 等许可各自保留，不能将整个运行时标成纯 MIT。公开分发仍需满足 LGPL 对应源码及重新链接义务。
+- 上游 Ren’Py 稳定版 `8.5.3.26051504` 的基线是 <https://github.com/renpy/renpy/tree/39895c1e017f0b36ffea2447d97eccd69d76ee1c>；适配层在 fork 的 `shinki/`，确切提交见随包的 `licenses/pinned-sources.txt`。
+- 执行、Screen Language、ATL、GL2、音视频及存档沿用官方实现。桌面使用官方 SDK 的运行库，单独重编必要的 display 模块；Android 从固定上游配方构建静态归档并链接进 Manager。SDK 与源码输入的版本和校验和见 fork 的 `shinki/sdk.json`。
+- 适配与共享 C ABI 的 MIT 许可见 fork 的 `shinki/LICENSE`。Ren’Py 及依赖保留各自的 MIT、Zlib、BSD、Python、LGPL 等许可。公开分发独立 Ren’Py 核心或内嵌 Ren’Py 的 Android APK 前，必须提供确切的对应源码，并验证接收者能重链接修改过的 LGPL 组件；详见 [Ren’Py 源码与重链接说明](docs/licenses/renpy/README.md)。打包工具不提供源码 ZIP。
 - 包内不含 Steam、Cubism、Bink、nvdrs 或微软 D3DCompiler 再发行 DLL；ANGLE 如需 D3DCompiler，使用 Windows 系统组件。商业资源、存档及验证画面不进入源码或核心包。
 
 ## 离线补丁数据原语

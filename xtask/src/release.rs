@@ -65,6 +65,21 @@ fn release_targets<'a>(
     Ok(targets)
 }
 
+fn publish_restriction<'a>(inv: &'a Inventory, component: &str, target: &str) -> Result<Option<&'a str>> {
+    let core = if component == "manager" {
+        // The Android release row packages both ABIs into one APK.
+        inv.cores.iter().find(|core| {
+            core.id == "renpy" && target.ends_with("-linux-android")
+                && core.static_manager_targets.iter().any(|triple| {
+                    triple == target || triple == ANDROID_SECONDARY
+                })
+        })
+    } else {
+        Some(inv.core(component)?)
+    };
+    Ok(core.map(|core| core.publish_blocked.as_str()).filter(|reason| !reason.is_empty()))
+}
+
 struct GitHub {
     client: reqwest::blocking::Client,
     token: String,
@@ -331,6 +346,12 @@ pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Resu
 pub fn dry_run(inv: &Inventory, component: &str, version: &str, scope: Scope) -> Result<()> {
     let targets = release_targets(inv, component, scope)?;
     let id = identity(inv, component, version)?;
+    let mut publish_blocked = std::collections::BTreeMap::new();
+    for target in &targets {
+        if let Some(reason) = publish_restriction(inv, component, &target.triple)? {
+            publish_blocked.insert(target.triple.as_str(), reason);
+        }
+    }
     println!(
         "{}",
         serde_json::to_string(&json!({
@@ -338,6 +359,7 @@ pub fn dry_run(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
             "source_commit":id.commit, "core_source":id.core_source, "identity":id.identity,
             "release_scope":scope.name(), "local_manager":scope.local_manager(inv, component),
             "targets":targets.iter().map(|target| target.triple.as_str()).collect::<Vec<_>>(),
+            "publish_blocked": publish_blocked,
         }))?
     );
     Ok(())
@@ -411,12 +433,10 @@ pub fn prepare(
         println!("{component}/{target}: blocked: {reason}; artifact=null");
         return Ok(());
     }
-    if component != "manager" {
-        let restriction = &inv.core(component)?.publish_blocked;
-        if !restriction.is_empty() {
-            println!("{component}: publish_blocked: {restriction}; artifact=null");
-            return Ok(());
-        }
+    let restriction = publish_restriction(inv, component, target)?;
+    if component != "manager" && let Some(reason) = restriction {
+        println!("{component}: publish_blocked: {reason}; artifact=null");
+        return Ok(());
     }
     let root = id.root.join(target);
     let record_path = root.join("release.json");
@@ -457,7 +477,7 @@ pub fn prepare(
             if android["signing"] != "release" {
                 "This bundle contains a debug-signed CI test APK; it is not a Release installer."
             } else {
-                ""
+                restriction.unwrap_or_default()
             }
         } else {
             ""
@@ -561,7 +581,9 @@ fn collect_records(
             bail!("{} was not prepared from product commit {}", path.display(), id.commit);
         }
         verify_asset(&directory, &record, "archive")?;
-        if let Some(reason) = record["publish_blocked"].as_str().filter(|s| !s.is_empty()) {
+        let restriction = record["publish_blocked"].as_str().filter(|reason| !reason.is_empty())
+            .or(publish_restriction(inv, component, &t.triple)?);
+        if let Some(reason) = restriction {
             if require_all {
                 bail!("{component}/{} cannot be published: {reason}", t.triple);
             }
@@ -811,7 +833,7 @@ mod tests {
 
     #[test]
     fn all_platform_manager_requires_same_commit_and_publishable_packages() {
-        let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let mut inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let out = tempfile::tempdir().unwrap();
         let mut id = identity(&inv, "manager", "1.0.0").unwrap();
         id.root = out.path().to_owned();
@@ -841,6 +863,12 @@ mod tests {
             )
             .unwrap();
         }
+        // A record staged without the blocker cannot override current policy.
+        let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
+            panic!("accepted an Android APK without verified Ren'Py source and relinking");
+        };
+        assert!(error.to_string().contains("verify LGPL relinking"), "{error}");
+        inv.cores.iter_mut().find(|core| core.id == "renpy").unwrap().publish_blocked.clear();
         assert_eq!(
             collect_records(&inv, &id, "manager", Scope::All).unwrap().records.len(),
             targets.len(),

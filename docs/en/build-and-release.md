@@ -203,9 +203,11 @@ cargo xtask release --component rfvp --dry-run
 cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 ```
 
-`--dry-run` prints the version, tag and targets without building. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
+`--dry-run` prints the version, tag, build targets and known per-target `publish_blocked` reasons without building a product. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
 
 Each release record must name the product commit being published. Prepare the package again if the record is from a different commit or does not record a commit.
+
+Before distribution, check the exact source links in `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core and the Android Manager APK are publication-blocked until [Ren’Py source and relinking](../licenses/renpy/README.md) is fulfilled. Local packaging remains available, and a release plan alone does not clear the block.
 
 [The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Dispatch it with `components` and a shared product `version` for Manager and any selected in-tree cores. Select `release_scope=windows-android` for a Windows/Android-only release, or `prepare_only=true` to stage without publishing.
 
