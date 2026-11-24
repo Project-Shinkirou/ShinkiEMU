@@ -312,8 +312,26 @@ fn download(url: &str, digest: &str, name: &str) -> Result<PathBuf> {
     download_in(&work_root(), url, digest, name)
 }
 
+/// Download a checked vcpkg source archive independently of vcpkg's cache.
+pub fn download_sha512(url: &str, digest: &str, name: &str) -> Result<PathBuf> {
+    let path = download_checked(&work_root(), url, digest, name, 128, crate::file_digest::<sha2::Sha512>)?;
+    println!("cargo:rerun-if-changed={}", path.display());
+    Ok(path)
+}
+
 fn download_in(work: &Path, url: &str, digest: &str, name: &str) -> Result<PathBuf> {
-    ensure!(url.starts_with("https://") && digest.len() == 64 && digest.bytes().all(|c| c.is_ascii_hexdigit()), "invalid pinned download {url}");
+    download_checked(work, url, digest, name, 64, sha256)
+}
+
+fn download_checked(
+    work: &Path,
+    url: &str,
+    digest: &str,
+    name: &str,
+    digest_len: usize,
+    hash: fn(&Path) -> Result<String>,
+) -> Result<PathBuf> {
+    ensure!(url.starts_with("https://") && digest.len() == digest_len && digest.bytes().all(|c| c.is_ascii_hexdigit()), "invalid pinned download {url}");
     native_path(name)?;
     ensure!(!name.contains('/'), "download expects a filename");
     let parent = work.join("downloads").join(digest);
@@ -327,10 +345,10 @@ fn download_in(work: &Path, url: &str, digest: &str, name: &str) -> Result<PathB
             .timeout(Duration::from_secs(3600))
             .build()?.get(url).send()?.error_for_status()?;
         io::copy(&mut response, &mut temp)?;
-        ensure!(sha256(temp.path())? == digest, "SHA256 mismatch for {url}");
+        ensure!(hash(temp.path())? == digest, "archive digest mismatch for {url}");
         temp.persist_noclobber(&output).map_err(|err| err.error)?;
     } else {
-        ensure!(sha256(&output)? == digest, "SHA256 mismatch for cached {}", output.display());
+        ensure!(hash(&output)? == digest, "archive digest mismatch for cached {}", output.display());
     }
     Ok(output)
 }
@@ -346,8 +364,14 @@ pub fn impacto_sources() -> Result<(PathBuf, PathBuf)> {
 }
 
 pub fn bison() -> Result<PathBuf> {
+    let executable = find_bison()?;
+    println!("cargo:rerun-if-changed={}", executable.display());
+    Ok(executable)
+}
+
+fn find_bison() -> Result<PathBuf> {
     if let Some(executable) = watch_env("BISON_EXECUTABLE") {
-        return Ok(PathBuf::from(executable));
+        return resolve_bison(Path::new(&executable));
     }
     if cfg!(windows) {
         let lock = pins()?;
@@ -365,7 +389,31 @@ pub fn bison() -> Result<PathBuf> {
             if path.is_file() { return Ok(path); }
         }
     }
-    Ok(PathBuf::from("bison"))
+    resolve_bison(Path::new("bison"))
+}
+
+fn resolve_bison(executable: &Path) -> Result<PathBuf> {
+    if executable.is_file() {
+        return Ok(std::path::absolute(executable)?);
+    }
+    if executable.parent() != Some(Path::new("")) {
+        bail!("Bison executable does not exist: {}", executable.display());
+    }
+    if let Some(path) = watch_env("PATH") {
+        for directory in std::env::split_paths(&path) {
+            let candidate = directory.join(executable);
+            if candidate.is_file() {
+                return Ok(std::path::absolute(candidate)?);
+            }
+            if cfg!(windows) && candidate.extension().is_none() {
+                let candidate = candidate.with_extension("exe");
+                if candidate.is_file() {
+                    return Ok(std::path::absolute(candidate)?);
+                }
+            }
+        }
+    }
+    bail!("{} not found on PATH; set BISON_EXECUTABLE", executable.display())
 }
 
 pub fn dxc(lock: &Path) -> Result<()> {
@@ -567,6 +615,25 @@ mod tests {
         assert_eq!(prepare_tree_in(temp.path(), "fixture", &layers)?, out);
         assert_eq!(fs::read(out.join("source.txt"))?, b"source");
         assert!(!zip.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn sha512_download_uses_only_a_matching_cached_archive() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let bytes = b"pinned archive";
+        let digest = hex::encode(sha2::Sha512::digest(bytes));
+        let directory = temp.path().join("downloads").join(&digest);
+        fs::create_dir_all(&directory)?;
+        let archive = directory.join("source.tar.gz");
+        fs::write(&archive, bytes)?;
+        let fetch = || download_checked(
+            temp.path(), "https://not-used.invalid/source.tar.gz", &digest,
+            "source.tar.gz", 128, crate::file_digest::<sha2::Sha512>,
+        );
+        assert_eq!(fetch()?, archive);
+        fs::write(&archive, b"corrupted")?;
+        assert!(fetch().is_err());
         Ok(())
     }
 

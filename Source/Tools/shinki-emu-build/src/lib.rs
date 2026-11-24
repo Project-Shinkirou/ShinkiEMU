@@ -184,10 +184,9 @@ fn capture(command: &mut Command) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-fn sha256(path: &Path) -> Result<String> {
-    use sha2::{Digest, Sha256};
+fn file_digest<D: sha2::Digest>(path: &Path) -> Result<String> {
     use std::io::Read;
-    let mut hash = Sha256::new();
+    let mut hash = D::new();
     let mut file = fs::File::open(path)?;
     let mut buffer = [0; 65536];
     loop {
@@ -198,6 +197,10 @@ fn sha256(path: &Path) -> Result<String> {
         hash.update(&buffer[..count]);
     }
     Ok(hex::encode(hash.finalize()))
+}
+
+fn sha256(path: &Path) -> Result<String> {
+    file_digest::<sha2::Sha256>(path)
 }
 
 pub fn android_ndk() -> Result<PathBuf> {
