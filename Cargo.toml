@@ -166,6 +166,7 @@ ndk-sys = "0.6.0"
 oboe = "0.6.1"
 roukaku-byte-source = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
 roukaku-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
+roukaku-headless-protocol = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
 roukaku-media = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
 roukaku-media-core = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
 roukaku-observability = { git = "https://github.com/Project-Shinkirou/RoukakuEngine", rev = "c8f94895ab8281c33a4c1b0a4d25afd5eeaca224" }
