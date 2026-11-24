@@ -23,6 +23,37 @@ fn png(entries: &[(&str, &str, u8)]) -> Vec<u8> {
 }
 
 #[test]
+fn texture_variant_stand_uses_native_placement_chunks() {
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b".end\r\n");
+    let original = png(&[("ol", "5", 0), ("ot", "2", 0), ("or", "7", 0), ("ob", "9", 0)]);
+    crate::test_fixture::assets(root.path(), "st", &[("stand.png", &original)]);
+    std::fs::write(root.path().join("variant.png"), png(&[])).unwrap();
+    let variant_uri = "musica:/st/[mono]stand.png";
+    let profile_path = root.path().join(shinki_emu_musica_keys::MUSICA_KEY_FILE);
+    let mut key = shinki_emu_musica_keys::load_musica_key_file(&profile_path).unwrap();
+    key.texture_variants.insert(
+        variant_uri.into(),
+        shinki_emu_musica_keys::MusicaTextureVariant {
+            source: "musica:/st/stand.png".into(),
+            path: "variant.png".into(),
+        },
+    );
+    std::fs::write(&profile_path, toml::to_string(&key).unwrap()).unwrap();
+    let archive = crate::mount_musica(root.path(), &profile_path).unwrap();
+    let mut cache = lru::LruCache::new(NonZeroUsize::new(4).unwrap());
+    assert_eq!(
+        Scene::read_stand_offsets(&archive, &mut cache, variant_uri).unwrap(),
+        Offsets {
+            left: 5,
+            top: 2,
+            right: 7,
+            bottom: 9,
+        },
+    );
+}
+
+#[test]
 fn native_offsets_support_png_text_encodings_without_using_top_as_screen_y() {
     let offsets = Offsets::read(&png(&[
         ("ol", "3", 0),

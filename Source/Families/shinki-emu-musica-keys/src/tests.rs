@@ -29,6 +29,7 @@ fn key_file() -> MusicaKeyFile {
             })
             .collect(),
         texture_overrides: BTreeMap::new(),
+        texture_variants: BTreeMap::new(),
     }
 }
 
@@ -78,6 +79,7 @@ fn canonical_toml_defaults_only_optional_maps_and_options() {
     }
     let key = parse_key_file(toml::to_string_pretty(&table).unwrap().as_bytes()).unwrap();
     assert!(key.texture_overrides.is_empty());
+    assert!(key.texture_variants.is_empty());
     assert!(
         key.archive_keys
             .values()
@@ -85,6 +87,64 @@ fn canonical_toml_defaults_only_optional_maps_and_options() {
                 && role.archive_xor.is_none()
                 && role.video_key_hex.is_none())
     );
+}
+
+#[test]
+fn texture_variants_reject_non_png_sources_and_case_folded_collisions() {
+    let mut key = key_file();
+    key.texture_overrides
+        .insert("musica:/bg/source.png".into(), "hd/source.png".into());
+    key.texture_variants.insert(
+        "musica:/bg/extra.png".into(),
+        MusicaTextureVariant {
+            source: "musica:/bg/source.png".into(),
+            path: "generated/extra.png".into(),
+        },
+    );
+    let encoded = text(&key);
+    assert_eq!(text(&parse_key_file(encoded.as_bytes()).unwrap()), encoded);
+    for (uri, source, path, expected) in [
+        (
+            "musica:/bg/SOURCE.PNG",
+            "musica:/bg/source.png",
+            "other.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+        (
+            "musica:/bg/EXTRA.PNG",
+            "musica:/bg/source.png",
+            "other.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+        (
+            "musica:/bg/other.png",
+            "musica:/bg/source.png",
+            "GENERATED/EXTRA.PNG",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+        (
+            "musica:/bg/other.png",
+            "musica:/bg/source.png",
+            "HD/SOURCE.PNG",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+        ),
+        (
+            "musica:/bg/other.png",
+            "musica:/bg/source.ani",
+            "other.png",
+            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+        ),
+    ] {
+        key.texture_variants.insert(
+            uri.into(),
+            MusicaTextureVariant {
+                source: source.into(),
+                path: path.into(),
+            },
+        );
+        rejected(text(&key).as_bytes(), expected);
+        key.texture_variants.remove(uri);
+    }
 }
 
 #[test]

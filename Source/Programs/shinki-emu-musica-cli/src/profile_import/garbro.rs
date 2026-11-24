@@ -57,6 +57,7 @@ pub fn import(
         index_size_xor,
         rc4_skip_crc,
         texture_overrides: BTreeMap::new(),
+        texture_variants: BTreeMap::new(),
         archive_keys: roles
             .into_iter()
             .map(|(role, value)| {

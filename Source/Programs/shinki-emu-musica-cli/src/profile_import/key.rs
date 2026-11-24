@@ -129,6 +129,7 @@ fn decode(
         rc4_skip_crc,
         archive_keys: roles,
         texture_overrides: BTreeMap::new(),
+        texture_variants: BTreeMap::new(),
     };
     profile.validate()?;
     Ok(profile)

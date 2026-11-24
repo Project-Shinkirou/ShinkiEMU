@@ -180,21 +180,8 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
         lua.create_function(move |lua, (width, height, bytes): (Value, Value, Buffer)| {
             let width = dimension(width)?;
             let height = dimension(height)?;
-            let length = rgba_length(width, height).map_err(mlua::Error::external)?;
-            let png = buffer::input(lua, bytes, |bytes| {
-                if bytes.len() != length {
-                    return Err(bounds("RGBA pixel count does not match dimensions"));
-                }
-                check_cancelled(&cancelled)?;
-                let mut writer = CheckedWriter::new(&cancelled);
-                image::codecs::png::PngEncoder::new(&mut writer)
-                    .write_image(bytes, width, height, image::ExtendedColorType::Rgba8)
-                    .map_err(|_| {
-                        writer.error("PNG encoding failed", Diagnostic::stage("PNG encoding"))
-                    })?;
-                check_cancelled(&cancelled)?;
-                Ok(writer.finish())
-            })?;
+            let png =
+                buffer::input(lua, bytes, |bytes| encode_png(width, height, bytes, &cancelled))?;
             buffer::output(lua, &png)
         })?,
     )?;
@@ -992,6 +979,25 @@ fn rgba_length(width: u32, height: u32) -> Result<usize, PatchError> {
     bounded(length)?;
     Ok(length)
 }
+
+pub(crate) fn encode_png(
+    width: u32,
+    height: u32,
+    bytes: &[u8],
+    cancelled: &AtomicBool,
+) -> Result<Vec<u8>, PatchError> {
+    if bytes.len() != rgba_length(width, height)? {
+        return Err(bounds("RGBA pixel count does not match dimensions"));
+    }
+    check_cancelled(cancelled)?;
+    let mut writer = CheckedWriter::new(cancelled);
+    image::codecs::png::PngEncoder::new(&mut writer)
+        .write_image(bytes, width, height, image::ExtendedColorType::Rgba8)
+        .map_err(|_| writer.error("PNG encoding failed", Diagnostic::stage("PNG encoding")))?;
+    check_cancelled(cancelled)?;
+    Ok(writer.finish())
+}
+
 fn decode_image(bytes: &[u8], cancelled: &AtomicBool) -> Result<(u32, u32, Vec<u8>), PatchError> {
     bounded(bytes.len())?;
     check_cancelled(cancelled)?;
@@ -1005,6 +1011,29 @@ fn decode_image(bytes: &[u8], cancelled: &AtomicBool) -> Result<(u32, u32, Vec<u
             "only PNG and BMP images are supported",
         ));
     };
+    decode_image_with_format(bytes, format, cancelled)
+}
+
+pub(crate) fn decode_png(
+    bytes: &[u8],
+    cancelled: &AtomicBool,
+) -> Result<(u32, u32, Vec<u8>), PatchError> {
+    bounded(bytes.len())?;
+    check_cancelled(cancelled)?;
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err(PatchError::new(
+            PatchErrorKind::Integrity,
+            "texture variant base must be a PNG",
+        ));
+    }
+    decode_image_with_format(bytes, ImageFormat::Png, cancelled)
+}
+
+fn decode_image_with_format(
+    bytes: &[u8],
+    format: ImageFormat,
+    cancelled: &AtomicBool,
+) -> Result<(u32, u32, Vec<u8>), PatchError> {
     let failure = |_| match check_cancelled(cancelled) {
         Err(error) => error,
         _ => PatchError::with_source(

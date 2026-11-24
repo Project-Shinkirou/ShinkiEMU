@@ -99,6 +99,7 @@ pub(crate) fn game(root: &Path, script: &[u8]) {
         index_size_xor: 0,
         rc4_skip_crc: true,
         texture_overrides: BTreeMap::new(),
+        texture_variants: BTreeMap::new(),
         archive_keys: FIXTURE_ARCHIVE_ROLES
             .iter()
             .map(|role| {

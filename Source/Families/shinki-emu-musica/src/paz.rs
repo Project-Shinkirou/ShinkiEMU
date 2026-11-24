@@ -236,6 +236,7 @@ pub struct MusicaMountedVfs {
     cache: Option<PlaintextCache>,
     pub(crate) loose_scripts: BTreeMap<String, (PathBuf, String)>,
     pub(crate) name_resources: Option<crate::MusicaNameResources>,
+    pub(crate) texture_variants: BTreeMap<String, crate::profile::TextureVariant>,
 }
 
 impl MusicaMountedVfs {
@@ -507,6 +508,7 @@ impl MusicaMountedVfs {
             cache,
             loose_scripts: BTreeMap::new(),
             name_resources: None,
+            texture_variants: BTreeMap::new(),
         })
     }
 
@@ -587,6 +589,44 @@ impl MusicaMountedVfs {
     /// Physical reader metadata for explicit offline inspection; no payload read.
     pub fn entry_descriptor(&self, uri: &str) -> Result<&ArchiveEntryDescriptor, PazError> {
         Ok(&self.entry(uri)?.descriptor)
+    }
+
+    /// Validate a supplemental PNG URI against the native PAZ index.
+    pub fn validate_texture_variant(&self, uri: &str, source: &str) -> Result<(), PazError> {
+        validate_archive_uri(&self.prefix, uri)?;
+        if ![uri, source].into_iter().all(|value| {
+            value
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("png"))
+        }) || self.entry(source).is_err()
+        {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+                "texture variant requires an existing archive PNG source",
+            ));
+        }
+        if self.entries.keys().any(|native| {
+            let (short, long) = if native.len() < uri.len() {
+                (native.as_str(), uri)
+            } else {
+                (uri, native.as_str())
+            };
+            long.get(..short.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(short))
+                && matches!(long.as_bytes().get(short.len()), None | Some(b'/'))
+        }) {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",
+                "texture variant URI collides with the native archive",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn texture_source<'a>(&'a self, uri: &'a str) -> &'a str {
+        self.texture_variants
+            .get(uri)
+            .map_or(uri, |variant| variant.source.as_str())
     }
 
     pub fn read_dir(&self, uri: &str) -> Result<Vec<ArchiveNode>, PazError> {

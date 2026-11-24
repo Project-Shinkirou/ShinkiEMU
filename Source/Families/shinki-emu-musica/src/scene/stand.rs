@@ -118,6 +118,22 @@ impl Offsets {
 }
 
 impl Scene {
+    fn read_stand_offsets(
+        archive: &MusicaMountedVfs,
+        cache: &mut lru::LruCache<String, Offsets>,
+        uri: &str,
+    ) -> SessionResult<Offsets> {
+        // Supplemental pixels do not replace the native positioning chunks.
+        let source = archive.texture_source(uri);
+        if let Some(offsets) = cache.get(source) {
+            return Ok(*offsets);
+        }
+        let bytes = read_asset(archive, source, MAX_ASSET_BYTES)?;
+        let offsets = Offsets::read(&bytes)?;
+        cache.put(source.to_owned(), offsets);
+        Ok(offsets)
+    }
+
     pub(super) fn stand(
         &mut self,
         commands: &mut Vec<SceneCommand>,
@@ -125,18 +141,11 @@ impl Scene {
         opacity: f32,
     ) -> SessionResult<()> {
         let uri = &stand.resource_uri;
-        let offsets = if let Some(offsets) = self.stand_offsets.get(uri) {
-            *offsets
-        } else {
-            let (_, extension) = uri.rsplit_once('.').ok_or_else(invalid_metadata)?;
-            if !extension.eq_ignore_ascii_case("png") {
-                return Err(invalid_metadata());
-            }
-            let bytes = read_asset(&self.archive, uri, MAX_ASSET_BYTES)?;
-            let offsets = Offsets::read(&bytes)?;
-            self.stand_offsets.put(uri.clone(), offsets);
-            offsets
-        };
+        let (_, extension) = uri.rsplit_once('.').ok_or_else(invalid_metadata)?;
+        if !extension.eq_ignore_ascii_case("png") {
+            return Err(invalid_metadata());
+        }
+        let offsets = Self::read_stand_offsets(&self.archive, &mut self.stand_offsets, uri)?;
         let asset = self.texture_asset_animated(uri)?;
         let (_, destination) = offsets.placement(
             asset.logical_extent.width,
@@ -174,14 +183,7 @@ impl Scene {
         phase: f32,
     ) -> SessionResult<()> {
         let uri = &stand.resource_uri;
-        let offsets = if let Some(offsets) = self.stand_offsets.get(uri) {
-            *offsets
-        } else {
-            let bytes = read_asset(&self.archive, uri, MAX_ASSET_BYTES)?;
-            let offsets = Offsets::read(&bytes)?;
-            self.stand_offsets.put(uri.clone(), offsets);
-            offsets
-        };
+        let offsets = Self::read_stand_offsets(&self.archive, &mut self.stand_offsets, uri)?;
         let asset = self.texture_asset_animated(uri)?;
         let (_, destination) = offsets.placement(
             asset.logical_extent.width,

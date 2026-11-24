@@ -7,11 +7,14 @@ use std::{
     path::Path,
 };
 
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextureSourceGeometry {
     pub(super) logical_extent: Extent2D,
     pub(super) logical_origin: [i32; 2],
     kind: TextureSourceKind,
+    is_png: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -90,15 +93,20 @@ fn validate_replacement_file(path: &Path) -> SessionResult<()> {
 }
 
 impl Scene {
-    fn native_texture(&mut self, uri: &str) -> SessionResult<NativeTexture> {
+    fn native_texture(
+        archive: &MusicaMountedVfs,
+        textures: &mut TextureCache,
+        sources: &mut lru::LruCache<String, TextureSourceGeometry>,
+        uri: &str,
+    ) -> SessionResult<NativeTexture> {
         let cache_key = native_cache_key(uri);
         if let (Some(frame), Some(geometry)) = (
-            self.textures.get(&cache_key),
-            self.texture_sources.get(uri).copied(),
+            textures.get(&cache_key),
+            sources.get(uri).copied(),
         ) {
             return Ok(NativeTexture { frame, geometry });
         }
-        let bytes = read_asset(&self.archive, uri, MAX_ASSET_BYTES)?;
+        let bytes = read_asset(archive, uri, MAX_ASSET_BYTES)?;
         let extension = uri.rsplit_once('.').map(|(_, value)| value);
         let (frame, kind, origin) = match extension {
             Some(value) if value.eq_ignore_ascii_case("ani") => {
@@ -127,7 +135,7 @@ impl Scene {
                 )
             }
             _ => (
-                self.textures
+                textures
                     .decode(cache_key.clone(), &bytes)
                     .map_err(|_| {
                         error(
@@ -144,7 +152,7 @@ impl Scene {
             ),
         };
         if !matches!(kind, TextureSourceKind::Other) {
-            self.textures
+            textures
                 .insert(cache_key, frame.clone())
                 .map_err(|_| {
                     error(
@@ -157,14 +165,20 @@ impl Scene {
             logical_extent: Extent2D::new(frame.width, frame.height),
             logical_origin: origin,
             kind,
+            is_png: matches!(kind, TextureSourceKind::Png) && bytes.starts_with(PNG_SIGNATURE),
         };
-        self.texture_sources.put(uri.to_owned(), geometry);
+        sources.put(uri.to_owned(), geometry);
         Ok(NativeTexture { frame, geometry })
     }
 
-    fn replacement_texture(&mut self, uri: &str, path: &Path) -> SessionResult<TextureFrame> {
+    fn replacement_texture(
+        textures: &mut TextureCache,
+        uri: &str,
+        path: &Path,
+        require_png: bool,
+    ) -> SessionResult<TextureFrame> {
         let cache_key = replacement_cache_key(uri);
-        if let Some(frame) = self.textures.get(&cache_key) {
+        if let Some(frame) = textures.get(&cache_key) {
             return Ok(frame);
         }
         validate_replacement_file(path)?;
@@ -190,7 +204,13 @@ impl Scene {
                 "texture replacement exceeds the supported size",
             ));
         }
-        self.textures.decode(cache_key, &bytes).map_err(|_| {
+        if require_png && !bytes.starts_with(PNG_SIGNATURE) {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_DECODE",
+                "texture variant file must contain a PNG",
+            ));
+        }
+        textures.decode(cache_key, &bytes).map_err(|_| {
             error(
                 "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_DECODE",
                 "texture replacement PNG could not be decoded",
@@ -199,8 +219,35 @@ impl Scene {
     }
 
     pub(super) fn texture_asset(&mut self, uri: &str) -> SessionResult<TextureAsset> {
-        let native = self.native_texture(uri)?;
-        let frame = if let Some(path) = self.texture_overrides.get(uri).cloned() {
+        Self::resolve_texture_asset(
+            &self.archive,
+            &mut self.textures,
+            &mut self.texture_sources,
+            &self.texture_overrides,
+            uri,
+        )
+    }
+
+    fn resolve_texture_asset(
+        archive: &MusicaMountedVfs,
+        textures: &mut TextureCache,
+        sources: &mut lru::LruCache<String, TextureSourceGeometry>,
+        overrides: &MusicaTextureOverrides,
+        uri: &str,
+    ) -> SessionResult<TextureAsset> {
+        let variant = archive.texture_variants.get(uri);
+        let (source, replacement) = match variant {
+            Some(variant) => (variant.source.as_str(), Some(&variant.path)),
+            None => (uri, overrides.get(uri)),
+        };
+        let native = Self::native_texture(archive, textures, sources, source)?;
+        if variant.is_some() && !native.geometry.is_png {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+                "texture variant requires an existing archive PNG source",
+            ));
+        }
+        let frame = if let Some(path) = replacement {
             if !matches!(
                 native.geometry.kind,
                 TextureSourceKind::Png | TextureSourceKind::Ani { frame_count: 1 }
@@ -210,7 +257,7 @@ impl Scene {
                     "texture override source format is unsupported",
                 ));
             }
-            self.replacement_texture(uri, &path)?
+            Self::replacement_texture(textures, uri, path, variant.is_some())?
         } else {
             native.frame
         };
