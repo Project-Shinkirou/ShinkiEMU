@@ -52,7 +52,13 @@ struct AndroidContext {
 }
 
 static CONTEXT: RwLock<Option<Arc<AndroidContext>>> = RwLock::new(None);
-static CORE_APPLICATION: OnceLock<Result<Global<JObject<'static>>, String>> = OnceLock::new();
+
+struct AndroidProcess {
+    vm: JavaVM,
+    application: Global<JObject<'static>>,
+}
+
+static PROCESS: OnceLock<Result<AndroidProcess, String>> = OnceLock::new();
 
 /// A picker waiting for `nativeOnPickResult`. `extensions` is `None` for
 /// folder pickers and file pickers without filters.
@@ -86,69 +92,41 @@ pub enum LifecycleEvent {
 pub fn initialize(app: AndroidApp) -> Result<(), String> {
     // SAFETY: android-activity hands out the process JavaVM pointer.
     let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) };
-    let activity = app.activity_as_ptr();
-    vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-        let status = env
-            .call_method(
-                unsafe { JObject::from_raw(env, activity.cast()) },
-                jni_str!("awaitNativeHosts"),
-                jni_sig!("()I"),
-                &[],
-            )?
-            .i()?;
-        if status != 0 {
-            return Err(jni::errors::Error::NullPtr("Android core host initialization failed"));
-        }
-        // SAFETY: `activity` is the global reference android-activity keeps
-        // alive for the lifetime of the process.
-        let activity = unsafe { JObject::from_raw(env, activity.cast()) };
-        rustls_platform_verifier::android::init_with_env(env, activity).inspect_err(|_| {
-            clear_jni_exception(env);
-        })
-    })
-    .map_err(|error| format!("SHINKI_EMU_ANDROID_TLS_VERIFIER: {error}"))?;
+    PROCESS
+        .get_or_init(|| initialize_process(&app, &vm))
+        .as_ref()
+        .map_err(Clone::clone)?;
     *CONTEXT.write().expect("Android context lock") = Some(Arc::new(AndroidContext { app, vm }));
     configure_temporary_directory()?;
     extract_bundled_assets()
 }
 
-/// Called on the Java UI thread after NativeActivity.onCreate, before onStart.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_org_shinkirou_shinkiemu_MainActivity_nativeInitializeHosts(
-    mut env: EnvUnowned<'_>,
-    activity: JObject<'_>,
-) -> jni::sys::jint {
-    let outcome = env
-        .with_env(|env| -> jni::errors::Result<_> {
-            let vm = env.get_java_vm()?;
-            // SAFETY: both handles belong to this live Java UI-thread callback.
-            let first = unsafe {
-                shinki_emu_kirikiroid2_web::initialize_android(
-                    vm.get_raw().cast(),
-                    activity.as_raw().cast(),
-                )
-            };
-            if first != shinki_emu_abi::OK {
-                clear_jni_exception(env);
-                return Ok(Err(format!("KRKR_ANDROID_HOST_INITIALIZATION ({first})")));
-            }
-            let second = unsafe {
-                shinki_emu_krkr2::initialize_android(
-                    vm.get_raw().cast(),
-                    activity.as_raw().cast(),
-                )
-            };
-            if second != shinki_emu_abi::OK {
-                clear_jni_exception(env);
-                return Ok(Err(format!("KRKR2_ANDROID_HOST_INITIALIZATION ({second})")));
-            }
-            Ok(Ok(()))
+fn initialize_process(app: &AndroidApp, vm: &JavaVM) -> Result<AndroidProcess, String> {
+    let application = vm
+        .attach_current_thread(|env| -> jni::errors::Result<_> {
+            let result = (|| {
+                // SAFETY: android-activity owns this global reference while the Activity is live.
+                let activity = unsafe { JObject::from_raw(env, app.activity_as_ptr().cast()) };
+                let application = env
+                    .call_method(
+                        activity,
+                        jni_str!("getApplicationContext"),
+                        jni_sig!("()Landroid/content/Context;"),
+                        &[],
+                    )?
+                    .l()?;
+                if application.as_raw().is_null() {
+                    return Err(jni::errors::Error::NullPtr("Application context"));
+                }
+                let global = env.new_global_ref(&application)?;
+                // The verifier also retains its context for the lifetime of the process.
+                rustls_platform_verifier::android::init_with_env(env, application)?;
+                Ok(global)
+            })();
+            result.inspect_err(|_| clear_jni_exception(env))
         })
-        .into_outcome();
-    match outcome {
-        jni::Outcome::Ok(Ok(())) => 0,
-        jni::Outcome::Ok(Err(_)) | jni::Outcome::Err(_) | jni::Outcome::Panic(_) => -1,
-    }
+        .map_err(|error| format!("SHINKI_EMU_ANDROID_CORE_CONTEXT: {error}"))?;
+    Ok(AndroidProcess { vm: vm.clone(), application })
 }
 
 fn configure_temporary_directory() -> Result<(), String> {
@@ -194,25 +172,12 @@ fn context() -> Result<Arc<AndroidContext>, String> {
 /// A dynamic core can retain these JNI handles until process exit. The
 /// Application context does not pin the Activity across recreation.
 pub(crate) fn core_application_context() -> Result<(*mut c_void, *mut c_void), String> {
-    let vm = context()?.vm.get_raw().cast();
-    let application = CORE_APPLICATION.get_or_init(|| {
-        call_activity("getApplicationContext", |env, activity| {
-            let application = env
-                .call_method(
-                    activity,
-                    jni_str!("getApplicationContext"),
-                    jni_sig!("()Landroid/content/Context;"),
-                    &[],
-                )?
-                .l()?;
-            if application.as_raw().is_null() {
-                return Err(jni::errors::Error::NullPtr("Application context"));
-            }
-            env.new_global_ref(application)
-        })
-        .map_err(|error| format!("SHINKI_EMU_ANDROID_CORE_CONTEXT: {error}"))
-    }).as_ref().map_err(Clone::clone)?;
-    Ok((vm, application.as_raw().cast()))
+    let process = PROCESS
+        .get()
+        .ok_or("SHINKI_EMU_ANDROID_CORE_CONTEXT: process not initialized")?
+        .as_ref()
+        .map_err(Clone::clone)?;
+    Ok((process.vm.get_raw().cast(), process.application.as_raw().cast()))
 }
 
 /// The activity handle stored by [`initialize`], valid for this lifecycle.

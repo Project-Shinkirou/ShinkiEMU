@@ -170,6 +170,42 @@ mod android_policy_tests {
     }
 
     #[test]
+    fn online_selection_ranks_only_android_releases_that_can_be_installed() {
+        let legacy = legacy_siglus();
+        let platform = &legacy.platform;
+        let abi = shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT;
+        let product = |version: &str, platform: &str, abi: &str| {
+            shinki_emu_metadata::CoreCatalogEntry {
+                version: version.into(),
+                platform: platform.into(),
+                abi: abi.into(),
+                identity: None,
+                ..legacy.clone()
+            }
+        };
+        let releases = [
+            legacy.clone(),
+            product("1.2.3-rc.1", platform, abi),
+            product("1.2.3", platform, abi),
+            product("1.3.0", platform, abi),
+            product("2.0.0", "android-aarch64", abi),
+            product("3.0.0", platform, "incompatible-abi"),
+        ];
+        let select = |releases| cores::latest_eligible_release(
+            releases, &legacy.plugin_id, platform, |entry| {
+                android_release_eligible(
+                    Semver("1.2.3"), false, None, None, &entry.version, entry.identity.as_ref(),
+                )
+            },
+        );
+        assert!(select(&releases[..2]).is_none());
+        assert_eq!(select(&releases[..3]).unwrap().version, "1.2.3");
+        let update = select(&releases).unwrap();
+        assert_eq!(update.version, "1.3.0");
+        assert!(update.is_update_for("1.2.3", None));
+    }
+
+    #[test]
     fn rejecting_a_staged_legacy_release_preserves_the_installed_core() {
         let root = tempfile::tempdir().unwrap();
         let stem = "libshinki_emu_siglus_rs";
