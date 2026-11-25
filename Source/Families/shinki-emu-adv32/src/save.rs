@@ -9,6 +9,7 @@ use crate::{
 use encoding_rs::{Encoding, SHIFT_JIS};
 use image::RgbaImage;
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
@@ -659,11 +660,18 @@ impl Saves {
             .ok_or(Error::Unsupported("original ADV32 save namespace"))?;
         let directory = &self.directory;
         ensure_save_directory(directory)?;
-        let path = self
-            .slots
-            .get(&slot)
-            .cloned()
-            .unwrap_or_else(|| directory.join(format!("{namespace}{slot:02}.dat")));
+        let path = match self.slots.get(&slot) {
+            Some(path) => Cow::Borrowed(path.as_path()),
+            None => {
+                let name = format!("{namespace}{slot:02}.dat");
+                // Files of an incompatible size are not indexed as slots. An
+                // empty slot in the menu must not overwrite one of those files.
+                if find_file(directory, &name)?.is_some() {
+                    return Err(Error::Invalid("occupied ADV32 save destination"));
+                }
+                Cow::Owned(directory.join(name))
+            }
+        };
         let mut staged = tempfile::NamedTempFile::new_in(directory)?;
         staged.write_all(&bytes)?;
         staged.as_file().sync_all()?;
@@ -680,8 +688,15 @@ impl Saves {
             png.persist(path.with_extension("png"))
                 .map_err(|error| error.error)?;
         }
-        staged.persist(&path).map_err(|error| error.error)?;
-        self.slots.insert(slot, path);
+        match path {
+            Cow::Borrowed(path) => {
+                staged.persist(path).map_err(|error| error.error)?;
+            }
+            Cow::Owned(path) => {
+                staged.persist_noclobber(&path).map_err(|error| error.error)?;
+                self.slots.insert(slot, path);
+            }
+        }
         Ok(())
     }
 
@@ -1677,6 +1692,33 @@ mod tests {
         assert_eq!(loaded.player_names.given, snapshot.player_names.given);
         assert_eq!(loaded.layers[&20].position, (512, -24));
         assert!(loaded.preserve_view);
+    }
+
+    #[test]
+    fn write_slot_preserves_an_unrecognized_native_file_at_the_destination() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("AdvData");
+        fs::create_dir(&data).unwrap();
+        let mut saves = Saves::open(&data, 0x9f9a, SHIFT_JIS).unwrap();
+        saves.namespace = Some("TEST".into());
+        let mut snapshot = NativeSlot {
+            script: "SCENE".into(),
+            ..NativeSlot::default()
+        };
+        let thumbnail = RgbaImage::new(1, 1);
+        saves.write_slot(0, &snapshot, &thumbnail).unwrap();
+        let foreign = saves.directory.join("TEST01.DAT");
+        fs::write(&foreign, b"a different save format").unwrap();
+
+        let mut saves = Saves::open(&data, 0x9f9a, SHIFT_JIS).unwrap();
+        assert!(!saves.exists(1));
+        assert!(saves.write_slot(1, &snapshot, &thumbnail).is_err());
+        assert_eq!(fs::read(&foreign).unwrap(), b"a different save format");
+        assert!(!saves.exists(1));
+
+        snapshot.resume = 12;
+        saves.write_slot(0, &snapshot, &thumbnail).unwrap();
+        assert_eq!(saves.read_slot(0).unwrap().unwrap().resume, 12);
     }
 
     #[test]

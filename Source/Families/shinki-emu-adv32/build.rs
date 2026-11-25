@@ -7,13 +7,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .join("../../..")
     .canonicalize()?;
     let mut manifest = CoreBuildManifest::new("shinki.emu.adv32", "rust-cdylib")?;
+    let windows_standalone = std::env::var("TARGET")? == "x86_64-pc-windows-msvc"
+        && std::env::var_os("CARGO_FEATURE_DYNAMIC_PLUGIN_EXPORT").is_some()
+        && std::env::var_os("CARGO_FEATURE_VIDEO_FFMPEG").is_some();
     for path in [
         "LICENSE-MIT",
         "LICENSE-APACHE",
         "docs/licenses/shinki-emu-adv32/GARbro.txt",
         "Assets/Fonts/OFL-NotoSansJP.txt",
         "Assets/Fonts/OFL-NotoSansSC.txt",
-    ] {
+    ]
+    .into_iter()
+    .chain(windows_standalone.then_some("docs/licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md"))
+    {
         let source = repo.join(path);
         println!("cargo:rerun-if-changed={}", source.display());
         let file = source
