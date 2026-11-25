@@ -12,3 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 shinki-emu-ethornell-rs = { workspace = true, features = ["diagnostic-bridge"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# CPAL's Oboe backend needs the packaged NDK C++ runtime in this DSO.
+oboe = { workspace = true, features = ["shared-stdcxx"] }
