@@ -257,7 +257,7 @@ reason = "ethornell-rs embedded adapter build script supports no Android target 
 [cores.source]
 repo = "https://github.com/Project-Shinkirou/ethornell-rs"
 branch = "shinki"
-rev = "0ab81da7faa30e57da3f69fc7d09ea6fad0085f5"
+rev = "2c32ccfa5de21236df7a4657b76cac4ac14e2619"
 upstream = "https://github.com/xmoezzz/ethornell-rs"
 release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "b5de417e4cff681bd2afb929e22e903d64602456" }
