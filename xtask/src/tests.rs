@@ -50,6 +50,15 @@ fn fixture() -> &'static Fixture {
             .arg(&dependency);
         if target.contains("windows") {
             cmd.args(["-C", "link-arg=/NOENTRY"]);
+        } else if target.contains("apple") {
+            // no_std does not link the system library that provides dyld_stub_binder.
+            // Keep dependents relocatable when the fixture is copied into a package.
+            cmd.args([
+                "-l",
+                "System",
+                "-C",
+                "link-arg=-Wl,-install_name,@rpath/libshinki_fixture_dep.dylib",
+            ]);
         }
         let status = cmd.status().unwrap();
         assert!(status.success());
@@ -75,6 +84,8 @@ fn fixture() -> &'static Fixture {
             .arg(&library);
         if target.contains("windows") {
             cmd.args(["-C", "link-arg=/NOENTRY"]);
+        } else if target.contains("apple") {
+            cmd.args(["-l", "System", "-C", "link-arg=-Wl,-rpath,@loader_path"]);
         }
         let status = cmd.status().unwrap();
         assert!(status.success());
@@ -611,6 +622,7 @@ fn external_core_archive_preserves_identity_and_recognition() {
     let fixture = fixture();
     let mut receipt = result(temp.path());
     receipt.source_commit = None;
+    let original_library_hash = sha256(&receipt.library).unwrap();
     let output = temp
         .path()
         .join(".work/release")
@@ -632,6 +644,12 @@ fn external_core_archive_preserves_identity_and_recognition() {
     )
     .unwrap();
     let packaged = verify_core(&staged).unwrap();
+    // Apple packaging rewrites the install ID and signs the staged copy.
+    let packaged_library_hash = sha256(&staged.join(&packaged.library)).unwrap();
+    if !receipt.target.contains("apple") {
+        assert_eq!(packaged_library_hash, original_library_hash);
+    }
+    assert_eq!(sha256(&receipt.library).unwrap(), original_library_hash);
     assert_eq!(packaged.identity.as_ref(), Some(&identity));
     assert_eq!(packaged.version, identity.version());
     let archive = output.parent().unwrap().join(format!(
@@ -654,7 +672,7 @@ fn external_core_archive_preserves_identity_and_recognition() {
     assert_eq!(extracted_manifest.recognition.rules()[0].magic_bytes(), [0xbe, 0xef]);
     assert_eq!(
         sha256(&extracted.join(&extracted_manifest.library)).unwrap(),
-        sha256(&receipt.library).unwrap()
+        packaged_library_hash
     );
     assert!(
         stage_core(
