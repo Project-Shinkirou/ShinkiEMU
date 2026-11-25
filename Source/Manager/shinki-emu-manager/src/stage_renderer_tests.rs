@@ -421,7 +421,11 @@ fn gpu_scene_presents_cpu_native_effects_in_order_and_old_hosts_keep_offscreen_p
     };
     // Leave the epoch inactive. Trying to create a target would report
     // STALE_CONTEXT, so successful fallback proves negotiation happens first.
-    let mut fallback = SceneOutput::open(Some(offered(&v1)), requirements, || Ok(instance)).unwrap();
+    let mut fallback = SceneOutput::open(Some(offered(&v1)), requirements, || {
+        shinki_emu_sdk::native_wgpu_instance().map_err(|cause| {
+            shinki_emu_sdk::runtime::SessionError::new("SHINKI_EMU_GPU_TEST", cause.to_string())
+        })
+    }).unwrap();
     let fallback_pixels = fallback.submit(&frame(1, after), extent).unwrap().unwrap();
     assert_eq!(&*fallback_pixels, after.repeat(4));
     eprintln!("Scene→native raster→scene→replacement advanced generations 1–4; v1 fallback returned 16 RGBA bytes");
