@@ -131,8 +131,6 @@ Linux CI 与发布任务还会解压报告中的 Manager ZIP，使用独立用�
 
 使用 JDK 27（设置 `JAVA_HOME`，将其 `bin` 加入 `PATH`）、Android SDK platform 37.2、build-tools 37.0.0、NDK 30.0.16248370 和 cargo-ndk 4.1.2。`ANDROID_HOME` 指向 SDK 根目录，`ANDROID_NDK_HOME` 指向其中的 `ndk/30.0.16248370`。构建只接受清单固定的稳定版 NDK revision。缺少 SDK 包时，显式调用该 SDK 的 `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"`。将 `CARGO_HOME`、`CARGO_TARGET_DIR`、`TEMP`/`TMP` 和 `GRADLE_USER_HOME` 放在空间充足的磁盘上。
 
-Android 原生核心使用仓库内的 fmt 11.2.0 vcpkg overlay，补上 NDK r30 要求的内存分配函数声明。其他平台继续使用原有 port。
-
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
 cargo xtask deps --target aarch64-linux-android

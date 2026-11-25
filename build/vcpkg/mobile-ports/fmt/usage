@@ -1,3 +1,6 @@
+This repository overlay is used only for Android Impacto builds, including
+corresponding-source rebuilds. It supplies declarations required by NDK r30.
+
 The package fmt provides CMake targets:
 
     find_package(fmt CONFIG REQUIRED)

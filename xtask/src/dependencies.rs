@@ -103,6 +103,12 @@ pub(crate) fn native_cores<'a>(
     })
 }
 
+/// Repository-owned overlay shared by preparation and source-bundle rebuilds.
+pub(crate) fn native_port_overlay(target: &str, component: &str) -> Option<&'static str> {
+    (component == "impacto" && target.ends_with("-linux-android"))
+        .then_some("build/vcpkg/mobile-ports")
+}
+
 const NATIVE_RECORD: &str = ".shinki-native.json";
 
 #[derive(Serialize)]
@@ -2325,13 +2331,16 @@ pub fn prepare(
                 inv.root.join("build/vcpkg/mobile-triplets").display()
             ));
         if target.contains("android") {
-            command.env("ANDROID_NDK_HOME", ndk_root(inv)?).arg(format!(
-                "--overlay-ports={}",
-                inv.root.join("build/vcpkg/mobile-ports").display()
-            ));
+            command.env("ANDROID_NDK_HOME", ndk_root(inv)?);
         }
         if target.ends_with("ohos") {
             command.env("OHOS_SDK_NATIVE", ohos_sdk_native()?);
+        }
+        if let Some(overlay) = native_port_overlay(target, &native.id) {
+            command.arg(format!(
+                "--overlay-ports={}",
+                inv.root.join(overlay).display()
+            ));
         }
         let overlay = source.join("vcpkg/ports");
         if overlay.is_dir() {

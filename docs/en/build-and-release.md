@@ -182,8 +182,6 @@ Linux CI and release jobs also unpack the reported Manager ZIP and launch it und
 
 Use JDK 27 (`JAVA_HOME` and its `bin` on `PATH`), Android SDK platform 37.2, build-tools 37.0.0, NDK 30.0.16248370 and cargo-ndk 4.1.2. Set `ANDROID_HOME` to the SDK root and `ANDROID_NDK_HOME` to its `ndk/30.0.16248370` directory. Only the exact stable NDK revision is accepted. Obtain missing SDK packages explicitly with that SDK's `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"`. Keep `CARGO_HOME`, `CARGO_TARGET_DIR`, `TEMP`/`TMP` and `GRADLE_USER_HOME` on a drive with enough space.
 
-Native Android cores use the repository's fmt 11.2.0 vcpkg overlay to include the allocation declarations required by NDK r30. Other platforms keep their existing ports.
-
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
 cargo xtask deps --target aarch64-linux-android
