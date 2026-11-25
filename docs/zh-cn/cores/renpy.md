@@ -13,11 +13,11 @@ description: Ren’Py 的格式、原生行为与限制。
 
 该核心嵌入官方 Ren’Py 运行时，不把脚本转成新的 VM。脚本执行、Screen Language、ATL、GL2 合成、媒体和存档沿用官方行为。接入固定官方 SDK、CPython 3.12.7、Cython 3.2.4 和 SDL 2.0.20，DLL 校验和及来源记录在 `shinki/sdk.json`。
 
-### Android Manager 静态接入
+### Android 独立核心
 
-Android 为 `arm64-v8a` 与 `x86_64` 构建静态适配层。固定的官方配方从源码构建 CPython 3.12.8、Ren’Py、SDL2 与编解码库，不使用桌面 SDK 二进制或 RAPT 共享库。`shinki/android_runtime.py` 需要 Ubuntu 24.04，以及 `shinki/sdk.json` 指定的 NDK r29 Linux 压缩包和 Cubism 4-r.6.2 头文件 SDK。Cubism Core 由游戏提供，不随 Manager 分发。
+Android 为 `arm64-v8a` 与 `x86_64` 构建独立动态核心。固定的官方配方从源码构建 CPython 3.12.8、Ren’Py、SDL2 与编解码库，不使用桌面 SDK 二进制或 RAPT 共享库。`shinki/android_runtime.py` 需要 Ubuntu 24.04，以及 `shinki/sdk.json` 指定的 NDK r29 Linux 压缩包和 Cubism 4-r.6.2 头文件 SDK。Cubism Core 由游戏提供，不随核心分发。
 
-Manager 在注册核心前设置解包后的 `cores/renpy/Resources` 路径。display 模块静态内建，通过私有 SDL2 EGL pbuffer 与 GLES 渲染，由 Manager 负责呈现。C/C++ 依赖符号与其他核心隔离；Python 资源使用清单内的纯 Python 包，不复制构建机的原生 wheel。用非 Linux 主机构建时，将 `RENPY_STATIC_ROOT` 指向 Linux 生成的对应 ABI 的完整运行库目录。见 [Android 构建依赖](../build-and-release.md#android)。
+核心从动态库所在目录读取 `Resources/`。display 模块仍为内建模块，通过私有 SDL2 EGL pbuffer 与 GLES 绘制，由 Manager 负责显示。Python 资源使用清单里的纯 Python 包，不复制构建机的原生 wheel。用非 Linux 主机构建时，将 `RENPY_STATIC_ROOT` 指向 Linux 生成的对应 ABI 的完整运行库目录。见 [Android 构建依赖](../build-and-release.md#android)。
 
 
 ## 存储
@@ -36,7 +36,7 @@ Beta.3 会在加载令牌和 persistent 前，一次性导入旧默认目录 `%L
 
 在 Linux 上运行 `cargo build --locked --release --target x86_64-unknown-linux-gnu -p shinki-emu-core-renpy`，构建核心并准备固定版本的宿主 CPython/Cython，不使用 Windows DLL 或开发者环境中的 Python。
 
-独立核心支持 Windows x64/MSVC、Linux x64/GNU 和两种 macOS 架构。Android 仅支持静态嵌入 Manager；iOS 和 OpenHarmony 的阻塞原因见 [`build/cores.toml`](../../../build/cores.toml)。官方标准归档 reader 保持不变，发行版专用离线转换由已审查配方处理。不打包 Steam、Cubism、Bink、nvdrs 或可再分发 D3DCompiler DLL。
+独立核心可为 Windows x64/MSVC、Linux x64/GNU、两种 macOS 架构和两种 Android ABI 构建。公开分发前仍须验证源码与重链接材料；iOS 和 OpenHarmony 的构建限制见 [`build/cores.toml`](../../../build/cores.toml)。官方标准归档读取器保持不变，发行版专用离线转换由已审查的配方处理。不打包 Steam、Cubism、Bink、nvdrs 或可再分发 D3DCompiler DLL。
 
 运行时包含多种许可，其中 LGPL 依赖保留对应源码和重链接义务。完整保留官方声明，不能把整个运行时标成 MIT。
 

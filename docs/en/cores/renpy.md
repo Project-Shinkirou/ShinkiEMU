@@ -13,11 +13,11 @@ Upstream: [renpy/renpy](https://github.com/renpy/renpy). Adaptation fork: [Proje
 
 This core embeds the official Ren’Py runtime rather than translating its scripts to a new VM. Script execution, Screen Language, ATL, GL2 composition, media and saves keep their official behavior. The integration pins the official SDK, CPython 3.12.7, Cython 3.2.4 and SDL 2.0.20; runtime checksums and sources are recorded in `shinki/sdk.json`.
 
-### Android Manager embedding
+### Android standalone core
 
-Android uses a static adapter for `arm64-v8a` and `x86_64`. The pinned official source recipes build CPython 3.12.8, Ren’Py, SDL2 and codecs; desktop SDK binaries and RAPT shared libraries are not target inputs. `shinki/android_runtime.py` requires Ubuntu 24.04, the NDK r29 Linux archive and the Cubism 4-r.6.2 header SDK listed in `shinki/sdk.json`. Cubism Core is game-supplied and is not bundled.
+The Android build produces a standalone shared core for `arm64-v8a` and `x86_64`. The pinned official source recipes build CPython 3.12.8, Ren’Py, SDL2 and codecs; desktop SDK binaries and RAPT shared libraries are not target inputs. `shinki/android_runtime.py` requires Ubuntu 24.04, the NDK r29 Linux archive and the Cubism 4-r.6.2 header SDK listed in `shinki/sdk.json`. Cubism Core is game-supplied and is not bundled.
 
-Manager sets the extracted `cores/renpy/Resources` path before registering the provider. The compiled display module remains a builtin, rendering through a private SDL2 EGL pbuffer and GLES while Manager owns presentation. C/C++ dependency symbols are isolated from other cores. Python resources use the inventoried pure Python artifacts, not host-native wheels. On a non-Linux build host, point `RENPY_STATIC_ROOT` to the complete runtime tree produced on Linux for the matching ABI. See the [Android prerequisites](../build-and-release.md#android).
+The core resolves `Resources/` beside the installed shared library. The display module remains a builtin, rendering through a private SDL2 EGL pbuffer and GLES while Manager owns presentation. Python resources use the inventoried pure Python artifacts, not host-native wheels. On a non-Linux build host, point `RENPY_STATIC_ROOT` to the complete runtime tree produced on Linux for the matching ABI. See the [Android prerequisites](../build-and-release.md#android).
 
 ## Storage
 
@@ -66,7 +66,7 @@ Linux builds use the official SDK's combined `librenpython.so` and a native
 
 The runtime bridge remains part of the embedded interpreter. Native build output includes the display extension and real shared core, while the package also needs matching SDK DLLs and `Resources/`. Session close and cross-game reopening retain interpreter/native cleanup responsibilities; copying only the core DLL is insufficient.
 
-Standalone targets are Windows x64/MSVC, Linux x64/GNU and both macOS architectures. Android supports static embedding in Manager only; iOS and OpenHarmony are blocked in [`build/cores.toml`](../../../build/cores.toml). Official standard archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
+Standalone build targets are Windows x64/MSVC, Linux x64/GNU, both macOS architectures and both Android ABIs. Public distribution remains blocked pending source and relinking verification; iOS and OpenHarmony builds are blocked in [`build/cores.toml`](../../../build/cores.toml). Official archive readers remain unchanged; edition-specific offline transformations belong in reviewed recipes. No Steam, Cubism, Bink, nvdrs or redistributable D3DCompiler DLL is bundled.
 
 The runtime includes multiple licenses, including LGPL dependencies with corresponding-source and relinking obligations. Preserve official notices rather than labeling the whole runtime MIT.
 

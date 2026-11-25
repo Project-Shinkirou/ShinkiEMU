@@ -19,7 +19,7 @@ fork 保留 Siglus VM、renderer、文字/键盘输入和原生存档。适配�
 
 场景重启后保留会话的图片和影片资源语言。CHS 模式选择原生 G01 和 `mov_chs` 替换资源，不覆盖原版 G00 文件。
 
-Android Manager 静态嵌入 Siglus、RFVP、Artemis 和 Musica。Siglus 与 RFVP 使用和 Manager 相同的 wgpu 30 运行时。两者的原生 WMV 解码器保留 Rust API，不在 Manager 中启用可选 `c-abi` 导出，避免重复的 `wmv2_decoder_*` 符号。
+Android Manager 在启动游戏时从独立核心包加载 Siglus。扫描只读核心包的元数据，不加载库。激活时 Manager 通过 ABI 扩展传入 Android 上下文；Siglus 仍提供 CPU 帧。
 
 Android 独立核心的 Oboe 音频使用 NDK 的 `libc++_shared.so`，打包时会附带对应 ABI 的运行库及 NDK 许可声明。
 

@@ -2993,7 +2993,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "eluna_rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -3203,7 +3203,7 @@ checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
 [[package]]
 name = "ethornell-app"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "ab_glyph",
  "chardetng",
@@ -3217,7 +3217,7 @@ dependencies = [
  "ethornell-vm",
  "image 0.25.10",
  "libc",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512)",
  "pelite",
  "pollster 0.3.0",
  "ruffle_core",
@@ -3227,12 +3227,13 @@ dependencies = [
  "vitasdk-sys",
  "wgpu 0.19.4",
  "winit 0.31.0-beta.3",
+ "winit-core",
 ]
 
 [[package]]
 name = "ethornell-archive"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "byteorder",
  "encoding_rs",
@@ -3243,7 +3244,7 @@ dependencies = [
 [[package]]
 name = "ethornell-audio"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "ethornell-core",
  "kira 0.8.7",
@@ -3254,7 +3255,7 @@ dependencies = [
 [[package]]
 name = "ethornell-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "thiserror 1.0.69",
  "tracing-subscriber",
@@ -3263,7 +3264,7 @@ dependencies = [
 [[package]]
 name = "ethornell-image"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "byteorder",
  "ethornell-core",
@@ -3274,7 +3275,7 @@ dependencies = [
 [[package]]
 name = "ethornell-render"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "ab_glyph",
  "bytemuck",
@@ -3290,7 +3291,7 @@ dependencies = [
 [[package]]
 name = "ethornell-script"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "byteorder",
  "encoding_rs",
@@ -3301,7 +3302,7 @@ dependencies = [
 [[package]]
 name = "ethornell-vm"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "encoding_rs",
  "ethornell-archive",
@@ -6281,7 +6282,7 @@ dependencies = [
 [[package]]
 name = "kira"
 version = "0.9.6"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "cpal 0.15.3",
  "glam 0.29.3",
@@ -7108,7 +7109,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -7122,7 +7123,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -7132,7 +7133,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.1"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=72a221539de42addf99a08499796eb3e7dc46720#72a221539de42addf99a08499796eb3e7dc46720"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=6172c534b427d11633f5082e1c8773b1bbb1585e#6172c534b427d11633f5082e1c8773b1bbb1585e"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -9793,7 +9794,7 @@ dependencies = [
 [[package]]
 name = "rfvp"
 version = "0.7.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=72a221539de42addf99a08499796eb3e7dc46720#72a221539de42addf99a08499796eb3e7dc46720"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=6172c534b427d11633f5082e1c8773b1bbb1585e#6172c534b427d11633f5082e1c8773b1bbb1585e"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -9807,6 +9808,7 @@ dependencies = [
  "chrono",
  "clap",
  "crossbeam-channel",
+ "cursor-icon",
  "egui",
  "egui-wgpu",
  "encoding_rs",
@@ -9847,7 +9849,7 @@ dependencies = [
  "video-sys",
  "wgpu 30.0.1",
  "winit 0.30.13",
- "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=72a221539de42addf99a08499796eb3e7dc46720)",
+ "wmv-decoder 0.2.0 (git+https://github.com/Project-Shinkirou/rfvp?rev=6172c534b427d11633f5082e1c8773b1bbb1585e)",
 ]
 
 [[package]]
@@ -11246,6 +11248,7 @@ dependencies = [
 name = "shinki-emu-core-ethornell-rs"
 version = "0.1.0"
 dependencies = [
+ "oboe",
  "shinki-emu-ethornell-rs",
 ]
 
@@ -11264,6 +11267,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinki-emu-core-krkr2"
+version = "0.1.0"
+dependencies = [
+ "shinki-emu-krkr2",
+]
+
+[[package]]
 name = "shinki-emu-core-renpy"
 version = "0.1.0"
 dependencies = [
@@ -11274,6 +11284,7 @@ dependencies = [
 name = "shinki-emu-core-rfvp"
 version = "0.1.0"
 dependencies = [
+ "oboe",
  "shinki-emu-rfvp",
 ]
 
@@ -11356,10 +11367,11 @@ dependencies = [
 [[package]]
 name = "shinki-emu-ethornell-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=a79085f73e49d6acbf54acf93738251f036f0579#a79085f73e49d6acbf54acf93738251f036f0579"
+source = "git+https://github.com/Project-Shinkirou/ethornell-rs?rev=406612f9740f392b2cf1ccf7b31c9926c9605512#406612f9740f392b2cf1ccf7b31c9926c9605512"
 dependencies = [
  "ethornell-app",
  "ethornell-archive",
+ "ndk-context",
  "shinki-emu-abi",
  "shinki-emu-build",
  "tracing",
@@ -11404,7 +11416,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-kirikiroid2-web"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=82864bfdb8cdf8c72e2af03fb99a03695f0554ee#82864bfdb8cdf8c72e2af03fb99a03695f0554ee"
+source = "git+https://github.com/Project-Shinkirou/kirikiroid2-web?rev=a25d8af55f980033ae6c2f16d52fde2db2199e32#a25d8af55f980033ae6c2f16d52fde2db2199e32"
 dependencies = [
  "flate2",
  "serde_json",
@@ -11417,7 +11429,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-krkr2"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/krkr2?rev=d88fee63ee5887cf71b5c2c1de45135b30cec814#d88fee63ee5887cf71b5c2c1de45135b30cec814"
+source = "git+https://github.com/Project-Shinkirou/krkr2?rev=be0e3809b5c2601c03ee17ecfc58c5c60d42da7a#be0e3809b5c2601c03ee17ecfc58c5c60d42da7a"
 dependencies = [
  "flate2",
  "serde_json",
@@ -11503,7 +11515,6 @@ dependencies = [
  "shinki-emu-ReMinori",
  "shinki-emu-abi",
  "shinki-emu-adv32",
- "shinki-emu-art3m1s-core",
  "shinki-emu-build",
  "shinki-emu-cmvs",
  "shinki-emu-dlsite",
@@ -11511,7 +11522,6 @@ dependencies = [
  "shinki-emu-ethornell-rs",
  "shinki-emu-headless",
  "shinki-emu-impacto",
- "shinki-emu-kirikiroid2-web",
  "shinki-emu-krkr2",
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
@@ -11519,7 +11529,6 @@ dependencies = [
  "shinki-emu-musica",
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
- "shinki-emu-renpy",
  "shinki-emu-rfvp",
  "shinki-emu-sena-rs",
  "shinki-emu-siglus_rs",
@@ -11747,7 +11756,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-renpy"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/renpy?rev=9e5184065bed9ddb028055b5434da5cde95a6175#9e5184065bed9ddb028055b5434da5cde95a6175"
+source = "git+https://github.com/Project-Shinkirou/renpy?rev=0072512dc0181fa737784f309fbf228b605617dd#0072512dc0181fa737784f309fbf228b605617dd"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -11759,14 +11768,13 @@ dependencies = [
 [[package]]
 name = "shinki-emu-rfvp"
 version = "0.6.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=72a221539de42addf99a08499796eb3e7dc46720#72a221539de42addf99a08499796eb3e7dc46720"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=6172c534b427d11633f5082e1c8773b1bbb1585e#6172c534b427d11633f5082e1c8773b1bbb1585e"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
  "rfvp",
  "shinki-emu-abi",
  "shinki-emu-build",
- "winit 0.30.13",
 ]
 
 [[package]]
@@ -11819,7 +11827,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-siglus_rs"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "pollster 0.3.0",
  "shinki-emu-abi",
@@ -11885,7 +11893,7 @@ dependencies = [
 [[package]]
 name = "shion-xfile"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "flate2",
 ]
@@ -11905,7 +11913,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 [[package]]
 name = "siglus_assets"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -11913,13 +11921,13 @@ dependencies = [
  "hex",
  "image 0.24.9",
  "lewton",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986)",
 ]
 
 [[package]]
 name = "siglus_key_recovery"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "siglus_assets",
 ]
@@ -11927,7 +11935,7 @@ dependencies = [
 [[package]]
 name = "siglus_omv_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "anyhow",
  "lewton",
@@ -11938,7 +11946,7 @@ dependencies = [
 [[package]]
 name = "siglus_scene_vm"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "ab_glyph",
  "android_logger 0.14.1",
@@ -11958,7 +11966,7 @@ dependencies = [
  "js-sys",
  "kira 0.9.6",
  "log 0.4.34",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986)",
  "ndk-context",
  "pollster 0.3.0",
  "raw-window-handle 0.6.2",
@@ -13243,7 +13251,7 @@ dependencies = [
 [[package]]
 name = "theora-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 
 [[package]]
 name = "thiserror"
@@ -16521,7 +16529,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.0"
-source = "git+https://github.com/Project-Shinkirou/rfvp?rev=72a221539de42addf99a08499796eb3e7dc46720#72a221539de42addf99a08499796eb3e7dc46720"
+source = "git+https://github.com/Project-Shinkirou/rfvp?rev=6172c534b427d11633f5082e1c8773b1bbb1585e#6172c534b427d11633f5082e1c8773b1bbb1585e"
 dependencies = [
  "byteorder",
  "log 0.4.34",
@@ -16531,7 +16539,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.1"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=85c863700c7ed8b1acf695298cc96a5df0e38feb#85c863700c7ed8b1acf695298cc96a5df0e38feb"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=498501d5552af974e7a643c82a165dd201594986#498501d5552af974e7a643c82a165dd201594986"
 dependencies = [
  "byteorder",
  "log 0.4.34",

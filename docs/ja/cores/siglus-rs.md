@@ -19,7 +19,7 @@ fork は Siglus の VM、レンダラー、テキスト・キーボード入力�
 
 scene の再起動後も、セッションの画像と動画のリソース言語を保持します。CHS モードは元の G00 ファイルを上書きせず、ネイティブの G01 と `mov_chs` の置換リソースを選択します。
 
-Android Manager は Siglus、RFVP、Artemis、Musica を静的に組み込みます。Siglus と RFVP は Manager と同じ wgpu 30 ランタイムを使用します。両方のネイティブ WMV デコーダーは Rust API を保持し、Manager では任意の `c-abi` エクスポートを有効にしないため、`wmv2_decoder_*` シンボルの重複を防ぎます。
+Android Manager はゲーム起動時に別パッケージから Siglus コアを読み込みます。ディレクトリの検出ではメタデータだけを参照し、ネイティブライブラリは読み込みません。コアの有効化時に ABI 拡張経由で Android のコンテキストを渡します。Siglus は引き続き CPU フレームを生成します。
 
 ## セーブとキー
 
