@@ -5,16 +5,23 @@ description: Windowless core acceptance, replay, baseline comparisons and Manage
 
 # Headless execution and Manager screenshots
 
-The shared runner uses Manager's C ABI v3 loader, native session owner and immutable CPU frame leases. Scripts use the existing `roukaku.user_input_sequence.v1` messages from `roukaku-headless-protocol` at the workspace's pinned RoukakuEngine revision. No engine checkout changes are required.
+The shared runner drives automated core frame acceptance and Manager UI screenshots using Manager's C ABI v3 loader, native session owner and immutable CPU frame leases. Scripts use the existing `roukaku.user_input_sequence.v1` messages from `roukaku-headless-protocol` at the workspace's pinned RoukakuEngine revision.
 
-The current [Manager `0.1.0-beta.8` release packages](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) do not include the `shinki-emu-headless` binary. The runner is available in repository source; build it using the steps below.
+| Use case | Standalone runner | Manager subcommand |
+|---|---|---|
+| Core frame acceptance &amp; input replay | `shinki-emu-headless run ...` | `shinki-emu-manager headless ...` |
+| PNG pixel baseline comparison | `shinki-emu-headless compare ...` | — |
+| Capture Manager light/dark UI shots | `shinki-emu-headless ui ...` | `shinki-emu-manager headless-ui ...` |
+
+> [!NOTE]
+> The historical [Manager `0.1.0-beta.8` packages](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) did not include the standalone executable. Build the runner from source using the commands below.
 
 ## Build
 
 ```powershell
-cargo build -p shinki-emu-headless
-cargo test -p shinki-emu-headless
-cargo clippy -p shinki-emu-headless --all-targets -- -D warnings
+cargo build --locked -p shinki-emu-headless
+cargo test --locked -p shinki-emu-headless
+cargo clippy --locked -p shinki-emu-headless --all-targets -- -D warnings
 ```
 
 The standalone runner loads cores by path. Build it with `--no-default-features` to omit the Manager UI. Manager reuses the runner through `shinki-emu-manager headless ...` and `shinki-emu-manager headless-ui ...`. Its embedded core IDs come from the same `static_cores::STATIC_CORES` inventory used by the graphical owner. Other hosts can pass their own linked inventory to the library's `run_cli` entry point.

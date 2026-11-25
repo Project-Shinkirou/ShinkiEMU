@@ -1,43 +1,68 @@
 ---
-title: Metadata 贡献
-description: 兼容性 v4、补丁审查和生成快照。
+title: 元数据与补丁贡献
+description: 如何提交游戏兼容性报告与 Luau 补丁，以及维护者审核与快照构建流程。
 ---
 
-# Metadata 贡献
+# 元数据与补丁贡献
 
-## 提交报告
+`Metadata/` 是官方门户与 ShinkiEMU Manager 共享的唯一数据源，统一托管在 `https://project-shinkirou.github.io/data/shinkiemu/v1/`。社区可以通过 Issue 表单安全贡献兼容性报告与 Luau 补丁。
 
-使用[兼容性或补丁 issue 表单](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new/choose)。兼容性报告需要 VNDB vID/rID、精确核心标识和版本、Manager 版本、平台、架构、变体、状态及简短复现步骤。只记录实际观察，不附游戏正文、密钥、商业资源或存档。构建报告不能生成可玩结论。
+## 一、提交游戏兼容性报告
 
-`shinki.emu.compatibility.v4` 使用完整键：
+前往[游戏兼容性报告表单](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml)，只需提供你的真实运行观察：
 
-`(release_id, emulator, platform, architecture, variant)`
+1. **查出 VNDB 编号**：在 VNDB 作品页网址中找到 `vID`（如 `v17`），在对应发行版页面找到 `rID`（如 `r1234`）。
+2. **填写精确版本与环境**：在 Manager 的**设置 → 关于**与**核心**页查看精确的 Manager 版本、核心 ID 与核心版本，并选择测试使用的平台、架构（`x86_64` / `aarch64`）及变体（桌面选 `desktop`，移动选 `device` / `simulator`）。
+3. **选择运行状态**：
 
-平台为 `windows`、`linux`、`macos`、`android`、`ios`、`ohos`；架构为 `x86_64`/`aarch64`。桌面平台使用 `desktop`，移动平台使用 `device`/`simulator`。核心标识区分大小写。状态为 `perfect`、`completable`、`flawed`、`boot_only`、`unplayable`。不同目标的记录独立保留；缺少对应记录时显示“尚无报告”。
+| 状态 | 含义 |
+|---|---|
+| `perfect` | 音画、视频、脚本与存读档全程表现正常 |
+| `completable` | 存在轻微瑕疵，但可以正常推完主线 |
+| `flawed` | 可进入游戏，但存在明显影响体验的缺陷 |
+| `boot_only` | 仅能启动到标题或菜单，无法正常游玩 |
+| `unplayable` | 无法启动或立即崩溃 |
 
-源记录路径为 `Metadata/compatibility/entries/<vid>/<rid>/<plugin_id>/<platform>-<architecture>-<variant>.json`。旧记录缺少明确架构时，需要先找到依据，不猜测补齐后发布。
+> [!CAUTION]
+> 请勿在报告中附带任何商业游戏素材、剧本正文、解密密钥或存档文件。仅能编译通过或识别引擎不作为兼容性结论。
 
-## Luau 补丁与授权
+每条报告按完整 5 元组 `(release_id, emulator, platform, architecture, variant)` 独立建档，存储于 `Metadata/compatibility/entries/<vid>/<rid>/<plugin_id>/<platform>-<architecture>-<variant>.json`。
 
-补丁源记录位于 `Metadata/patches/entries/<id>.json`。`patches-v2.json` 使用 `shinki.emu.patches.v2`，每条记录引用 `Metadata/patches/` 下安全相对路径的已审查 `.luau` 脚本。v2 不再区分 recipe/external/hosted 种类。提供 id、semver 版本、`title`/`summary`（必须含 `zh-CN` 和 `en`，可选 `ja`）、精确核心标识、来源、许可、授权及 issue 引用。
+## 二、编写与投稿 Luau 补丁
 
-每条 `releases` 记录绑定具体 VNDB `release_id`、`vn_id`、发行标题、edition、已知游戏版本及文件指纹（`path`、`size`、`sha256`）。缺少发行信息时不猜测补齐。Manager 在创建可写事务前核对所选发行指纹。
+前往[Luau 补丁投稿表单](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=patch.yml)提交补丁配方，详见仓库内的 [shinkiemu-patch](../../.agents/skills/shinkiemu-patch/SKILL.md) 指南。
 
-脚本可调用 `ctx.download(url, sha256, size)`。在线条目必须在 `downloads` 声明每个允许的 HTTPS URL、SHA256 和字节数；缺省或空列表不允许下载。大小范围为 1 字节至 1 GiB。通过校验的文件按摘要命名，缓存到 `<game>/.shinki/patch/`；跳转保持 HTTPS，复用缓存前重新校验。仅填写许可证名称不能证明已获分发授权。
+### 必填要素
 
-在线目录和本地 Luau/ZIP 共用 VM 与事务；未绑定目录的本地脚本标记为未经审核。默认输出到独立新目录，原位覆盖支持备份与哈希校验还原。资源补丁不能新增或修改 EXE。新 Musica 原生补丁要求核心 beta.5 或更高版本；Manager 检查实际 descriptor 的能力位，Yorino 需要 256 和 512。
+- **基础信息**：稳定 ASCII `id`、语义版本号、`title` 与 `summary`（必填 `zh-CN` 与 `en`，可选 `ja`）、精确核心 ID、来源链接、许可证及适用时的授权依据链接。
+- **发行指纹绑定（`releases`）**：每条记录绑定具体 VNDB `release_id`、`vn_id`、发行标题、`edition`、游戏版本及源文件指纹列表（`path`、`size`、`sha256`）。Manager 在创建可写事务前会逐项校验指纹。
+- **显式下载声明（`downloads`）**：若脚本调用 `ctx.download(url, sha256, size)`，必须在 `downloads` 中声明每一个允许的 HTTPS URL、64 位小写 SHA-256 及字节数（1 B ~ 1 GiB）；空列表禁止下载。跳转须保持 HTTPS，缓存于 `<game>/.shinki/patch/` 并在复用前重新校验。
+- **沙箱边界**：脚本运行在统一宿主沙箱中，禁止启动进程、任意联网、路径逃逸、符号链接以及新增/修改 EXE。自动检查仅验证字段与 Luau 语法，不执行脚本也不访问外部 URL。
 
-旧 Manager 继续读取从 `Metadata/legacy` 生成的 `patches.json`、`patches/catalog.json` 和 `patches/legacy/` 下的脚本，不读取 v2 条目。
+> [!NOTE]
+> 仅填写许可证名称不能代替分发授权证明；涉及第三方汉化文本或素材时请提供明确授权依据。
 
-## 维护者审查
+## 三、维护者审查与快照架构
 
-具有 write/maintain/admin 权限的维护者审查 issue 后，添加 `compat:accepted` 或 `patch:accepted`。intake 将正文作为数据处理，记录原始正文 SHA256 和 `updated_at`，通过普通 PR 提议键控记录，不执行 issue 中的脚本。正文修改后应撤销批准并重新审查，合并前再次核对绑定。审查内容包括 schema/路径一致性、重复键、交叉引用和授权依据。本地 intake 只生成候选文件及 `approval.json`，不授予批准，也不发布附件。
+### Intake 审查流
 
-## 核心发行目录
+1. 具有 `write` / `maintain` / `admin` 权限的维护者审查 Issue 后，添加 `compat:accepted` 或 `patch:accepted` 标签；
+2. 自动化工作流将 Issue 正文作为纯数据处理，记录原文 SHA-256 与 `updated_at`，通过普通 PR 生成键控源记录与 `Metadata/intake/<issue>.json`（不执行脚本）；
+3. 若 Issue 正文在批准后被编辑，工作流会自动撤销批准标签并关闭候选 PR，要求重新审查。
+4. 维护者核对键与路径、schema、引用、分发授权和批准时的正文，再合并入库 PR。本地 `intake` 生成候选文件和 `approval.json`，不会批准或发布内容。
 
-发布核心后，自动化会为每个平台生成一条目录记录并创建 PR。受信任的 metadata 工作流会按仓库 schema 校验记录，并在校验通过后自动 squash 合并；门户的定时构建随后发布 Manager 读取的快照。若 PR 仍未合并，请检查 metadata 校验工作流及其权限，不要另行维护一份目录。
+### 核心发行目录自动化
 
-## 命令与生成文件
+每次核心发布后，自动化工作流会为对应平台生成 `Metadata/engines/cores/<plugin_id>/<platform>/<version>.json` 并提交 PR；受信任的校验工作流验证通过后自动合并，门户站定时构建随后发布最新快照。
+
+### 快照格式与版本兼容
+
+- **核心目录**：快照同时发布 `cores-v2.json`（`shinki.emu.cores.v2`，含第三方 `identity` 身份字段）与兼容旧 Manager 的 `cores.json`（v1）；新版本优先读取 v2。
+- **兼容性索引**：`compatibility-v5.json` 的核心版本字段最长 88 字节，Manager 版本仍为 64 字节。旧 `compatibility.json`（v4）仅包含核心版本不超过 64 字节的记录，源条目保持不变。
+- **补丁目录**：`patches-v2.json`（`shinki.emu.patches.v2`）汇总 `Metadata/patches/entries/<id>.json` 与已审查 `.luau` 脚本；旧 Manager 继续读取从 `Metadata/legacy` 生成的 v1 `patches.json` 与 `patches/catalog.json`。
+- **确定性快照与限额**：`index.json` 记录全部索引文件的 SHA-256、大小与源提交哈希（单文件 ≤ 8 MiB、总计 ≤ 64 MiB、≤ 4096 个文件）。
+
+### 常用校验与构建命令
 
 ```sh
 cargo xtask metadata schema
@@ -48,12 +73,6 @@ cargo xtask metadata intake --kind compatibility --event event.json --out .work/
 cargo xtask metadata intake --kind patch --event event.json --out .work/patch-candidate
 ```
 
-schema 默认导出到 `Metadata/schema`，规则来自 Rust DTO。修改源记录和脚本，不手写另一套 schema。validate/build 接受 `--root`；build/intake 要求输出目录尚不存在。
+Schema 由 Rust DTO 自动导出至 `Metadata/schema/`，请勿手工维护第二份 schema。
 
-快照包含 `compatibility.json`、`cores.json`、`presets.json`、`patches-v2.json`、旧版 `patches.json` 和 `patches/catalog.json`、已审查的新旧脚本及 `index.json`。核心发行记录来自 `Metadata/engines/cores/<plugin_id>/<platform>/<version>.json`，下载只指向本仓库 Releases。index 记录生成文件的 SHA256、大小和来源提交，时间取源提交时间，同一已提交输入可生成相同字节。限制为单文件 8 MiB、总计 64 MiB、4096 个文件，大下载文件不计入该快照。
-
-索引还包含 `cores-v2.json`（`shinki.emu.cores.v2`），其中既有真实的旧记录，也有新的第三方 `identity`。`cores.json` 保持旧 v1，并保留已发布下载，供旧 Manager 使用。新消费者优先读索引中的 v2，仅在 v2 不存在时读取 v1；上游/适配身份、安全文件名及按发布序号选最新的规则见[构建与发布](build-and-release.md#打包与发布)。
-
-Manager 与门户读取同一份 `https://project-shinkirou.github.io/data/shinkiemu/v1/` 快照。`Metadata/` 是唯一数据源，不另行手写兼容性或核心状态表。另见[用户指南](user-guide.md)和[构建与发布](build-and-release.md)。
-
-第三方完整核心标识最长 88 字节，因此索引另加 `compatibility-v5.json`（`shinki.emu.compatibility.v5`，核心版本上限 88，Manager 版本仍为 64）。新消费者优先读取此索引文件。`compatibility.json` 保持 v4，仅收录核心版本符合原有 64 字符上限的报告，确保旧 Manager 仍能读取整份快照；源报告不删改。
+`validate` 与 `build` 接受 `--root`。`build` 和 `intake` 需要尚未创建的输出目录。v2 核心目录同时保留旧条目与新身份，详见[外部核心版本规则](release-runbook.md#打包与发布)。

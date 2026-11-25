@@ -5,6 +5,31 @@ description: C ABI v3 lifecycle, owner threads, CPU leases and core packages.
 
 # Core ABI and SDK
 
+## Architecture & Lifecycle Overview
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless (Host Owner Thread)
+  participant Core as Native Core (Core Owner Thread)
+  Host->>Core: query() → CoreApi v3 table
+  Host->>Core: initialize() / describe()
+  Host->>Core: open(config, host_services) → session handle
+  loop Active Session
+    Host->>Core: input() / control() (owned events queued)
+    Core-->>Host: state() / frame() (published state & immutable CPU frame lease)
+    Host->>Core: release_frame(lease) (returned once after upload)
+  end
+  Host->>Core: cancel() (concurrent wakeup of blocking native calls)
+  Host->>Core: close() (joins workers & consumes handle)
+```
+
+| Capability (`Descriptor.capabilities`) | Bit | Meaning |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | Validates converted script hash and isolates saves/read state |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | Prefers configured font over script/restored font hints |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | Native SC operands support offline embedded Unicode text (Musica) |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | Reads name constants from native SC with read-only EXE fallback |
+
 ## Protocol and entry point
 
 The native protocol is `shinki.emu.native.c.v3`, with numeric ABI version **3**. Dynamic cores export `shinki_emu_query`; static integration registers the same Query function shape. The Rust contract is `Source/FamilyApi/shinki-emu-abi`, and its generated C header is `include/shinki_emu.h`. C++ consumers use this header rather than maintaining another ABI definition. After changing the Rust types, regenerate the header with cbindgen 0.29.2 from the repository root and commit it; the CI tools job runs the same two commands and fails when the committed header differs:
@@ -138,6 +163,6 @@ A package contains a directory named after the library stem:
 
 `core.json` uses `shinki.emu.core_package.v1` and records `plugin_id`, `library`, `version`, `abi` and file paths/SHA256 hashes. The file inventory includes every payload file except the manifest itself. Libraries use the `shinki_emu_` filename prefix and `shinki_emu_query`. Packaging rejects unsafe paths, links and case collisions and writes to a new directory. Manager verifies the package before installation. See [Build and release](build-and-release.md).
 
-First-party product builds put the Git commit in `source-commit.txt`: exactly 40 lowercase hexadecimal ASCII bytes, with no newline. `core.json` lists its SHA-256 in `files`, keeping the v1 fields readable by older Managers. The embedded catalog identifies first-party cores; the signed release catalog authenticates the archive, and the payload supplies the commit shown in Manager. Android requires the verified payload for first-party packages. Bundled OHOS Musica also requires the commit to match the Manager build. Older desktop packages without the payload remain installable and show their version without a product commit.
+First-party product builds put the Git commit in `source-commit.txt`: exactly 40 lowercase hexadecimal ASCII bytes, with no newline. `core.json` lists its SHA-256 in `files`, keeping the v1 fields readable by older Managers. The embedded catalog identifies first-party cores; the official release catalog supplies the archive SHA-256 and size, and the payload supplies the commit shown in Manager. Android requires the verified payload for first-party packages. Bundled OHOS Musica also requires the commit to match the Manager build. Older desktop packages without the payload remain installable and show their version without a product commit.
 
-External packages add `identity` with the original upstream and the organization fork commit locked by Cargo; `version` must equal the computed identifier. Legacy packages omit `identity` and keep their original SemVer. Manager checks plugin, version and identity against the catalog before staging and displays the full upstream/adapter label. The C ABI and descriptor version remain independent. See [version identity rules](build-and-release.md#package-and-release).
+External packages add `identity` with the original upstream and the organization fork commit locked by Cargo; `version` must equal the computed identifier. Legacy packages omit `identity` and keep their original SemVer. Manager checks plugin, version and identity against the catalog before staging and displays the full upstream/adapter label. The C ABI and descriptor version remain independent. See [version identity rules](release-runbook.md#package-and-release).

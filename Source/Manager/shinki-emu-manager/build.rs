@@ -2,10 +2,10 @@ use std::{env, process::Command};
 
 use sha2::{Digest, Sha256};
 
-#[path = "../../../build/core_adapters.rs"]
-mod core_adapters;
 #[path = "../../../build/adv32_candidate.rs"]
 mod adv32_candidate;
+#[path = "../../../build/core_adapters.rs"]
+mod core_adapters;
 
 fn write_runtime_icon() {
     use resvg::{tiny_skia, usvg};
@@ -16,10 +16,10 @@ fn write_runtime_icon() {
     .expect("SHINKI_EMU_MANAGER_ICON_INVALID");
     let mut pixmap =
         tiny_skia::Pixmap::new(64, 64).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
-    pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
+    pixmap.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
     resvg::render(
         &tree,
-        tiny_skia::Transform::from_scale(2.0, 2.0),
+        tiny_skia::Transform::from_scale(64.0 / tree.size().width(), 64.0 / tree.size().height()),
         &mut pixmap.as_mut(),
     );
     let output = env::var_os("OUT_DIR").expect("SHINKI_EMU_MANAGER_OUT_DIR_MISSING");
@@ -46,7 +46,7 @@ fn embed_windows_icon() {
     for size in [16, 24, 32, 48, 64, 128, 256] {
         let mut pixmap =
             tiny_skia::Pixmap::new(size, size).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
-        pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
+        pixmap.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
         resvg::render(
             &tree,
             tiny_skia::Transform::from_scale(
@@ -86,14 +86,22 @@ fn main() {
     semver::Version::parse(&version).expect("SHINKI_EMU_PRODUCT_VERSION must be SemVer");
     match env::var("SHINKI_EMU_PRODUCT_SOURCE_COMMIT") {
         Ok(commit) => {
-            assert!(explicit_version, "source identity requires an explicit product version");
             assert!(
-                commit.len() == 40 && commit.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+                explicit_version,
+                "source identity requires an explicit product version"
+            );
+            assert!(
+                commit.len() == 40
+                    && commit
+                        .bytes()
+                        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
                 "SHINKI_EMU_PRODUCT_SOURCE_COMMIT must be a full lowercase Git SHA"
             );
             println!("cargo:rustc-env=SHINKI_EMU_COMPILED_SOURCE_COMMIT={commit}");
         }
-        Err(env::VarError::NotPresent) => println!("cargo:rustc-env=SHINKI_EMU_COMPILED_SOURCE_COMMIT="),
+        Err(env::VarError::NotPresent) => {
+            println!("cargo:rustc-env=SHINKI_EMU_COMPILED_SOURCE_COMMIT=")
+        }
         Err(error) => panic!("SHINKI_EMU_PRODUCT_SOURCE_COMMIT: {error}"),
     }
     let target = env::var("TARGET").expect("build target");
@@ -103,8 +111,10 @@ fn main() {
     println!("cargo:rerun-if-changed=../../../Assets/Branding/shinkiemu-icon.svg");
     write_runtime_icon();
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        shinki_emu_build::inputs::dxc(std::path::Path::new("../../../Assets/Effects/dxc.lock.json"))
-            .expect("prepare pinned DirectX shader compiler runtime");
+        shinki_emu_build::inputs::dxc(std::path::Path::new(
+            "../../../Assets/Effects/dxc.lock.json",
+        ))
+        .expect("prepare pinned DirectX shader compiler runtime");
     }
     #[cfg(windows)]
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
@@ -183,7 +193,10 @@ fn link_android_compiler_runtime() {
         .arg("--print-libgcc-file-name")
         .output()
         .expect("Android compiler runtime lookup");
-    assert!(output.status.success(), "Android compiler runtime lookup failed");
+    assert!(
+        output.status.success(),
+        "Android compiler runtime lookup failed"
+    );
     let archive = String::from_utf8(output.stdout).expect("Android compiler runtime path");
     let archive = archive.trim();
     assert!(
@@ -195,17 +208,25 @@ fn link_android_compiler_runtime() {
 }
 
 fn write_embedded_core_identities() {
-    let root = std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"))
-        .join("../../..");
+    let root =
+        std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"))
+            .join("../../..");
     let inventory = root.join("build/cores.toml");
     let lock = root.join("Cargo.lock");
-    for path in [&inventory, &lock, &root.join("build/core_adapters.rs"), &root.join("build/adv32_candidate.rs")] {
+    for path in [
+        &inventory,
+        &lock,
+        &root.join("build/core_adapters.rs"),
+        &root.join("build/adv32_candidate.rs"),
+    ] {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    let inventory: toml::Value = toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
-        .expect("valid core inventory");
-    let lock: toml::Value = toml::from_str(&std::fs::read_to_string(lock).expect("workspace lockfile"))
-        .expect("valid workspace lockfile");
+    let inventory: toml::Value =
+        toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
+            .expect("valid core inventory");
+    let lock: toml::Value =
+        toml::from_str(&std::fs::read_to_string(lock).expect("workspace lockfile"))
+            .expect("valid workspace lockfile");
     let target = env::var("TARGET").expect("build target");
     let mut identities = serde_json::Map::new();
     let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios")
@@ -223,13 +244,16 @@ fn write_embedded_core_identities() {
             .get("static_manager_targets")
             .and_then(toml::Value::as_array)
             .is_some_and(|targets| targets.iter().any(|value| value.as_str() == Some(&target)));
-        let framework = ios_frameworks && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
+        let framework = ios_frameworks
+            && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
         if embedded && framework {
             frameworks.push(id);
         }
-        let linked = (embedded || (optional_cmvs && id == "shinki.emu.cmvs")
+        let linked = (embedded
+            || (optional_cmvs && id == "shinki.emu.cmvs")
             || adv32_candidate::linked(core, &target, optional_adv32))
-            && !framework && !(ohos_bundled && id == "shinki.emu.musica");
+            && !framework
+            && !(ohos_bundled && id == "shinki.emu.musica");
         if linked {
             use std::fmt::Write;
             let adapter = core_adapters::adapter_id(id).replace('-', "_");
@@ -240,9 +264,11 @@ fn write_embedded_core_identities() {
                 "siglus_rs" | "krkr2" => "query",
                 _ => "shinki_emu_query",
             };
-            writeln!(registry, "    ({id:?}, shinki_emu_{adapter}::{query}),").expect("write query registry");
+            writeln!(registry, "    ({id:?}, shinki_emu_{adapter}::{query}),")
+                .expect("write query registry");
         }
-        if embedded && let Some(attribution) = core.get("attribution")
+        if embedded
+            && let Some(attribution) = core.get("attribution")
             && let Some(adapter) = core_adapters::locked_adapter(&lock, id)
         {
             identities.insert(id.to_owned(), serde_json::json!({

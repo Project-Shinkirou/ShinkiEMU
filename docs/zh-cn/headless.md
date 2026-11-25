@@ -5,16 +5,23 @@ description: 核心出帧验收、输入回放、截图基线比较和 Manager �
 
 # 无窗口运行与界面截图
 
-`shinki-emu-headless` 复用 Manager 的 C ABI v3 loader、原生会话和 CPU 帧租约。输入脚本直接使用已 pin 的 RoukakuEngine `roukaku-headless-protocol` 中的 `roukaku.user_input_sequence.v1`，没有新增第二套输入协议。完整字段说明和脚本样例见[英文接口文档](../en/headless.md)。
+`shinki-emu-headless` 面向自动化核心验收与文档/门户 UI 截图，复用 Manager 的 C ABI v3 loader、原生会话和 CPU 帧租约。输入脚本直接使用已 pin 的 RoukakuEngine `roukaku-headless-protocol` 中的 `roukaku.user_input_sequence.v1`，没有新增第二套输入协议。完整字段说明和脚本样例见[英文接口文档](../en/headless.md)。
 
-当前 [Manager `0.1.0-beta.8` 发布包](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)不包含 `shinki-emu-headless` 二进制。运行器已在仓库源码中实现，请按下面的步骤从源码构建。
+| 场景 | 独立运行器命令 | Manager 内置入口 |
+|---|---|---|
+| 核心出帧验收与输入回放 | `shinki-emu-headless run ...` | `shinki-emu-manager headless ...` |
+| PNG 像素基线比对 | `shinki-emu-headless compare ...` | — |
+| 截取 Manager 深/浅主题三语界面 | `shinki-emu-headless ui ...` | `shinki-emu-manager headless-ui ...` |
+
+> [!NOTE]
+> 历史发行版 [Manager `0.1.0-beta.8`](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) 不含独立可执行文件。可以用下方命令从源码构建。
 
 ## 构建与核心验收
 
 ```powershell
-cargo build -p shinki-emu-headless
-cargo test -p shinki-emu-headless
-cargo clippy -p shinki-emu-headless --all-targets -- -D warnings
+cargo build --locked -p shinki-emu-headless
+cargo test --locked -p shinki-emu-headless
+cargo clippy --locked -p shinki-emu-headless --all-targets -- -D warnings
 shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --frames 180 --capture-frame 1,60,180 --output artifacts/run
 shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --frames 180 --script replay.json --output artifacts/compare --baseline artifacts/run
 shinki-emu-headless compare --actual artifacts/compare/frame-000180.png --baseline artifacts/run/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001

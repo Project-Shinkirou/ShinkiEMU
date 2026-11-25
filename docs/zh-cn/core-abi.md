@@ -5,6 +5,31 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 # 核心 ABI 与 SDK
 
+## 架构与调用总览
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless (宿主 owner 线程)
+  participant Core as Native Core (原生核心 owner 线程)
+  Host->>Core: query() → CoreApi v3 表
+  Host->>Core: initialize() / describe()
+  Host->>Core: open(config, host_services) → session handle
+  loop 活跃会话
+    Host->>Core: input() / control() (入队拥有型事件)
+    Core-->>Host: state() / frame() (只读已发布状态与不可变 CPU 帧租约)
+    Host->>Core: release_frame(lease) (上传完成后归还一次)
+  end
+  Host->>Core: cancel() (可并发唤醒阻塞调用)
+  Host->>Core: close() (等待 worker 退出并释放句柄)
+```
+
+| 能力位（`Descriptor.capabilities`） | 数值 | 含义 |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | 校验转换脚本 hash，隔离对应存档与既读命名空间 |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | 配置字体优先于脚本或恢复状态中的首选字体 |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | 原生 SC 支持离线嵌入 Unicode 译文（Musica 配方） |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | 从原生 SC 读取姓名常量并只读回退 EXE |
+
 ## 协议与入口
 
 原生协议为 `shinki.emu.native.c.v3`，ABI 数值版本为 **3**。动态核心导出 `shinki_emu_query`，静态集成注册相同形状的 Query 函数。Rust 契约位于 `Source/FamilyApi/shinki-emu-abi`，生成的 C 头文件为 `include/shinki_emu.h`。C++ 使用这份头文件，不另行维护 ABI 定义。改动 Rust 类型后，在仓库根目录用 cbindgen 0.29.2 重新生成头文件并一起提交；CI 的 tools job 跑同样两条命令，提交的头文件与生成结果不一致就失败：
@@ -120,6 +145,6 @@ Ready 状态的 `FrameSurface` 包含实际尺寸、stride、像素/颜色/行�
 
 `core.json` 使用 `shinki.emu.core_package.v1`，记录 `plugin_id`、`library`、`version`、`abi` 及各文件的路径与 SHA256。清单覆盖除自身外的所有包文件。核心库使用 `shinki_emu_` 文件名前缀和 `shinki_emu_query` 符号。打包拒绝不安全路径、链接和大小写冲突，只输出到新目录。Manager 在安装前校验核心包。命令见[构建与发布](build-and-release.md)。
 
-第一方核心的产品构建把 Git 提交写入 `source-commit.txt`，固定为 40 个小写十六进制 ASCII 字符，不带换行。`core.json` 在 `files` 中记录该文件的 SHA-256，旧版 Manager 仍可读取 v1 清单。第一方核心由内置目录识别，发布归档由签名发布目录认证，Manager 显示的提交则取自包内文件。Android 第一方包必须带有通过校验的提交文件；OHOS 随附的 Musica 还要求该提交与 Manager 的构建提交一致。没有该文件的旧桌面包仍可安装，只显示版本号。
+第一方核心的产品构建把 Git 提交写入 `source-commit.txt`，固定为 40 个小写十六进制 ASCII 字符，不带换行。`core.json` 在 `files` 中记录该文件的 SHA-256，旧版 Manager 仍可读取 v1 清单。第一方核心由内置目录识别，发布归档以官方发布目录中的 SHA-256 和大小为准，Manager 显示的提交则取自包内文件。Android 第一方包必须带有通过校验的提交文件；OHOS 随附的 Musica 还要求该提交与 Manager 的构建提交一致。没有该文件的旧桌面包仍可安装，只显示版本号。
 
-第三方包的 `identity` 分别记录原作者上游与 Cargo 锁定的组织 fork 提交，`version` 必须与算出的标识一致。旧包不含 `identity`，保留原有 SemVer。Manager 在暂存前用目录核对 plugin、version 和 identity，并显示完整的上游/适配标签。C ABI 与 descriptor 的版本独立。详见[版本身份规则](build-and-release.md#打包与发布)。
+第三方包的 `identity` 分别记录原作者上游与 Cargo 锁定的组织 fork 提交，`version` 必须与算出的标识一致。旧包不含 `identity`，保留原有 SemVer。Manager 在暂存前用目录核对 plugin、version 和 identity，并显示完整的上游/适配标签。C ABI 与 descriptor 的版本独立。详见[版本身份规则](release-runbook.md#打包与发布)。

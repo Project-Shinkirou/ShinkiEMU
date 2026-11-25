@@ -1,17 +1,19 @@
 ---
-title: ビルドとリリース
-description: Cargo によるオーケストレーション、コアのビルドスクリプト、パッケージング、明示的な blocked 状態。
+title: ソースからのビルド
+description: Cargo によるローカルビルド、固定されたネイティブ依存関係、対応ビルド行列。
 ---
 
-# ビルドとリリース
+# ソースからのビルド
 
-リポジトリのルートで Cargo を使い、Manager や単独コアをビルドします。ターゲット一覧、パッケージング、リリース、メタデータには `cargo xtask` を使います。入力リプレイやフレーム・UI の確認は[ヘッドレス実行](headless.md)を参照してください。
+リポジトリのルートから Cargo で Manager と単独コアをビルドします。ビルド行列と CI には `cargo xtask` を使います。パッケージング、公開手順、過去の配布内容は[リリース・メンテナー手順書](release-runbook.md)、フレーム検証やリプレイ、UI 撮影は[ヘッドレス実行](headless.md)をご覧ください。
 
 ## ゲームディレクトリ内の保存先
 
 ShinkiEMU がゲームディレクトリ内に書き込むファイルは `<game>/.shinki/` 配下に置きます。Musica のセーブは `musica/saves/`、ダウンロードしたパッチは `patch/`、処理中のファイルは `staging/`、元ファイルとマニフェストは `backup/<id>/`、上書き適用の結果は `patch-result.json` に保存します。パスを検証し、ディレクトリのリンクはたどりません。サードパーティー製コアは上流の保存規約に従います。
 
 ## 入力と依存関係
+
+外部コアの固定コミットは [Cargo.toml](../../Cargo.toml) と [Cargo.lock](../../Cargo.lock) から解決します。[ネイティブ依存関係](../../build/dependencies.toml)、[コア定義](../../build/cores.toml)、[ターゲット定義](../../build/targets.toml)も参照してください。
 
 `git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` でクローンします。既存のクローンでは `git submodule update --init --recursive` でワークスペースの `ThirdParty/cpal` パッチを初期化します。Git と rustup を導入し、[`rust-toolchain.toml`](../../rust-toolchain.toml) が指定する Rust 1.99.1 を使います。対象の Rust ターゲットと、必要なネイティブコンパイラー、CMake、Ninja、SDK を用意してください。
 
@@ -176,54 +178,10 @@ cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/r
 
 `matrix` は宣言された組み合わせと対象外の理由を表示します。JSON には対応するホストランナーの行が含まれます。`--ci` は ARM64 行でユニバーサル APK を作る場合、重複する Android x86_64 の Manager 行を除きます。`--since` は変更の影響を受ける行に絞ります。`ci` は選択した行をパッケージングし、成果物か対象外の理由を報告します。OpenHarmony はローカルの DevEco で処理します。
 
+## アプリアイコン
+
+Windows、macOS、iOS、Android、Linux の Manager パッケージは `Assets/Branding/shinkiemu-icon.svg` を使用します。Android のアダプティブアイコンは前景を分け、OpenHarmony は専用のアイコンリソースを使用します（[ブランドガイドライン](../../Assets/Branding/BRANDING.md)）。
+
 ## パッケージングとリリース
 
-`package` はロック済みのリリースビルドを実行し、Cargo が報告するライブラリ、リソース、ネイティブランタイムを新しい出力ディレクトリに配置します。先に `cargo-about` を導入してください。コアパッケージは ABI v3 の `core.json` とファイルハッシュを保持します。`cargo-about` が生成する Rust のライセンス、コア・ネイティブ依存関係の通知、該当する Manager のオフラインメタデータを同梱します。サードパーティーのライセンスや再リンクの義務も引き続き適用されます。
-
-```sh
-cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/rfvp-package
-cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/manager-package
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
-```
-
-通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。APK には Impacto と KiriKiri の Java ホストが含まれます。ほかの対応コアは Manager から個別にインストールします。単独コアに Gradle 署名は不要です。
-
-リリース APK の作成時に `cargo xtask package` は正式な署名証明書、パッケージ ID `org.shinkirou.shinkiemu`、指定された `versionName` と `versionCode`、`minSdk` 28 を照合します。`release.yml` は `github.run_number` を `SHINKI_EMU_ANDROID_VERSION_CODE` に設定します。公開する APK のコードは前回より大きくしてください。ワークフローの作り直し、改名、別ファイルへの差し替えで連番が 1 に戻ると、インストール済みのアプリが更新できなくなります。既存のワークフローファイルを使い続けてください。
-
-macOS では `.app`、iOS ではシミュレーター用のテスト `.app` または実機用のテスト `.ipa` を作ります。Apple の既定は ad hoc 署名で、実機へのインストールには有効なプロビジョニングが必要です。
-
-`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。iOS の `ios-framework-cores` と HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
-
-Manager やリポジトリ内のコアのパッケージングとリリースには、製品の SemVer を `--version` で指定します。外部コアでは省略します。
-
-外部コアの識別子は、元のプロジェクトの `upstream_identity`、`Cargo.lock` から解決したアダプターのリポジトリとコミット、`adapter_branch`、コアごとの `release_sequence` から決まります。上流には実際のタグまたはブランチと完全なコミットを記録します。版の形式は `<tag|branch>-<ref slug>-<digest>` です。ref の先頭 16 バイトの ASCII 英数字を小文字にし、他はハイフンに置き換えます。上流のリポジトリ・ref 種別・ref 名・コミット、アダプターのリポジトリ・ブランチ・コミット、十進数の連番を UTF-8 で並べ、各項目に LF を付けて SHA-256 を求めます。タグは Manager が `manager-v<semver>`、リポジトリ内のコアが `core-<slug>-v<semver>`、外部コアが `core-<slug>-<version>` です。タグの slug はコア ID を小文字にし、ピリオドとアンダースコアをハイフンに置き換えます。外部コアのリビジョンを変えるか新しいリリースを出すときは連番を増やします。カタログは識別子を持つエントリーのうち連番が最大のものを選びます。
-
-```sh
-cargo xtask release --component rfvp --dry-run
-cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
-```
-
-`--dry-run` はビルドせずにバージョン、タグ、ターゲットを表示します。`--target` はビルドして `.work/release/<tag>/<target>/` に配布物と `release.json` を用意します。`--publish` は `GH_TOKEN` または `GITHUB_TOKEN` を使って準備済みの配布物を公開し、コアの場合はカタログ更新の PR を作ります。公開時に配布物のハッシュを確認し、カタログには公開ファイルの SHA-256 とサイズを記録します。Windows/Android のみを公開する場合は計画、準備、公開のすべてに `--scope windows-android` を付けます。既定は `all` です。
-
-各リリース記録には公開対象の製品コミットが必要です。別のコミットで準備した場合や記録にコミットがない場合は、パッケージを作り直してください。
-
-[リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。手動で実行するときは `components` を指定し、Manager と選択したリポジトリ内のコアには共通の製品 `version` を使います。Windows/Android のみなら `release_scope=windows-android`、公開せず準備するなら `prepare_only=true` を指定します。
-
-全プラットフォーム向け Manager の公開には、`source_commit` を上書きしていない成功実行を 1 件使います。実行 ID を `RUN_ID` に設定し、2 つのコミット SHA が一致することを確認してからダウンロードします。
-
-```sh
-gh run view "$RUN_ID" --json headSha --jq .headSha
-git rev-parse HEAD
-gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
-```
-
-サポート対象のすべてに公開可能なパッケージが必要です。デバッグ署名の Android APK は正式版の代わりに使えません。
-
-ダウンロードすると成果物ごとにディレクトリが作られます。その中の `<tag>/<target>/` を `.work/release/<tag>/` にまとめます。DevEco、署名ディレクトリ、`cargo-about` を用意し、同じ作業ツリーで HAP を作って公開します。`VERSION` にはその実行の製品バージョンを設定します。
-
-```sh
-cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
-cargo xtask release --component manager --version "$VERSION" --scope all --publish
-```
-
-スナップショットとカタログのコマンドは [Metadata](metadata.md)、ネイティブパッケージの形式は[コア ABI](core-abi.md)を参照してください。
+パッケージコマンド、署名、外部コアのバージョン、公開条件は[パッケージングとリリース](release-runbook.md#パッケージングとリリース)を参照してください。

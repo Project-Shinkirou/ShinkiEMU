@@ -1,17 +1,19 @@
 ---
-title: Build and release
-description: Cargo orchestration, native build scripts, packaging and explicit blocked targets.
+title: Build from Source
+description: Local Cargo builds, pinned native prerequisites and the supported build matrix.
 ---
 
-# Build and release
+# Build from Source
 
-Build the Manager and standalone cores with Cargo from the repository root. Use `cargo xtask` for the target matrix, packaging, releases and metadata. For input replay and headless frame or UI checks, see [Headless execution](headless.md).
+Build the Manager and standalone cores with Cargo from the repository root. Use `cargo xtask` for the target matrix and CI. See the [Release & Maintainer Runbook](release-runbook.md) for packaging, publication and historical releases, and [Headless execution](headless.md) for frame acceptance, replay and UI screenshots.
 
 ## Game-local on-disk layout
 
 ShinkiEMU writes its own files inside game directories under `<game>/.shinki/`. Use `musica/saves/` for Musica, `patch/` for downloaded patch artifacts, `staging/` for transactions, `backup/<id>/` for original files and their manifest, and `patch-result.json` for the in-place patch result. Validate paths and resolve directories without following links. Third-party cores retain their upstream storage contracts.
 
 ## Inputs and prerequisites
+
+Cargo resolves external-core pins from [Cargo.toml](../../Cargo.toml) and [Cargo.lock](../../Cargo.lock). See [native inputs](../../build/dependencies.toml), [core inventory](../../build/cores.toml) and [target definitions](../../build/targets.toml).
 
 Clone with `git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU`. In an existing clone, run `git submodule update --init --recursive` to initialize the workspace's `ThirdParty/cpal` patch. Install Git and rustup; [`rust-toolchain.toml`](../../rust-toolchain.toml) selects Rust 1.99.1. Add the Rust target and install the native compiler, CMake, Ninja and SDK needed for your target.
 
@@ -199,56 +201,10 @@ cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/r
 
 `matrix` lists declared rows and block reasons. JSON lists supported hosted rows; `--ci` omits the duplicate Android x86_64 Manager row when ARM64 drives the universal APK build. `--since` filters the matrix to affected rows. `ci` packages its selected row and reports the artifact or blocked reason. OpenHarmony is a local DevEco row.
 
+## Application icons
+
+**Canonical application icon**: Windows, macOS, iOS, Android, and Linux packages use `Assets/Branding/shinkiemu-icon.svg`. Android draws only the adaptive foreground over a separate indigo background. OpenHarmony keeps its own application resources. See [Brand Kit](../../Assets/Branding/BRANDING.md).
+
 ## Package and release
 
-`package` runs the locked release build and stages Cargo's reported library, resources and native runtime inputs in a new output directory. Core packages keep the ABI v3 `core.json` and its file hashes. Packages include Rust license notices from `cargo-about`, explicit core and native notices, and the Manager's offline metadata where applicable. Retain applicable third-party license and relinking obligations.
-
-```sh
-cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/rfvp-package
-cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/manager-package
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
-```
-
-The normal Android Manager package builds both ABIs into one universal APK. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK. The APK embeds Impacto and stages the KiriKiri Java hosts; other admitted cores ship as separate packages installed through Manager. The core packages do not need Gradle signing.
-
-For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
-
-macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
-
-`SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The private `ios-framework-cores` iOS and `ohos-bundled-musica` HAP variants are for local QA, not release assets.
-
-Pass an explicit product `--version` (SemVer) to package or release the Manager and in-tree cores. Omit it for external cores.
-
-An external core's identity combines `upstream_identity`, the adapter repository and commit resolved from `Cargo.lock`, the `adapter_branch` attribution and a per-core `release_sequence`. Use the real upstream tag or branch and full upstream commit. The external version is `<tag|branch>-<ref slug>-<digest>`: lowercase ASCII alphanumerics in the first 16 ref bytes and replace other bytes with hyphens; hash the UTF-8 upstream repo/kind/ref/commit, adapter repo/branch/commit and decimal sequence with SHA-256, ending each field with LF. Release tags are `manager-v<semver>`, `core-<slug>-v<semver>` for in-tree cores and `core-<slug>-<version>` for external cores. For release tags, lowercase the core ID and replace dots and underscores with hyphens. Increment the sequence for a changed external pin or a new publication; the latest typed catalog entry is selected by sequence.
-
-```sh
-cargo xtask release --component rfvp --dry-run
-cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
-```
-
-`--dry-run` prints the version, tag, build targets and known per-target `publish_blocked` reasons without building a product. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
-
-Each release record must name the product commit being published. Prepare the package again if the record is from a different commit or does not record a commit.
-
-Before distribution, check `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core remains publication-blocked until its [source and relinking requirements](../licenses/renpy/README.md) are fulfilled. The same restriction applies to any Manager APK that embeds Ren’Py. Local packaging remains available.
-
-[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Dispatch it with `components` and a shared product `version` for Manager and any selected in-tree cores. Select `release_scope=windows-android` for a Windows/Android-only release, or `prepare_only=true` to stage without publishing.
-
-For an all-platform Manager release, use one successful run with no `source_commit` override. Set `RUN_ID` to that run's ID; compare the two commit SHAs before downloading:
-
-```sh
-gh run view "$RUN_ID" --json headSha --jq .headSha
-git rev-parse HEAD
-gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
-```
-
-All supported targets must have publishable packages. A debug-signed Android APK cannot stand in for the production APK.
-
-The download creates one directory per artifact. Merge their `<tag>/<target>/` directories into `.work/release/<tag>/`. With DevEco, the signing directory and `cargo-about` configured, prepare the HAP and publish from that checkout. Set `VERSION` to the run's product version:
-
-```sh
-cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
-cargo xtask release --component manager --version "$VERSION" --scope all --publish
-```
-
-See [Metadata](metadata.md) for snapshot and catalog commands and [Core ABI](core-abi.md) for the native package format.
+See [Package and release](release-runbook.md#package-and-release) for package commands, signing, external core versions and release gates.

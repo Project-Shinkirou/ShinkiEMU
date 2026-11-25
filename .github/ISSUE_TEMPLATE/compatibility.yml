@@ -1,25 +1,33 @@
-name: Compatibility report
-description: Report a specific release, core and target combination
+name: Compatibility report / 游戏兼容性报告 / 互換性レポート
+description: Report how a specific game release runs on a core and platform / 提交具体发行版在对应核心与平台上的运行结论 / 特定のリリース・コア・環境での動作結果を報告
 body:
   - type: markdown
     attributes:
-      value: Do not include keys, game text, commercial assets or saves. Reports require maintainer review.
+      value: |
+        - **中文**：维护者审核实测结果并合并入库 PR 后，记录会出现在官方兼容性列表。请勿附带密钥、游戏正文、商业素材或存档。VNDB ID 可在作品或发行页网址中查看（如 `vndb.org/v17` → `v17`，`vndb.org/r1234` → `r1234`）。
+        - **English**: Reports appear in the official compatibility catalog after a maintainer reviews the result and merges the intake PR. Record observed results only — never attach keys, game text, commercial assets, or saves. Find VNDB IDs in the page URL (`vndb.org/v17` → `v17`, release `vndb.org/r1234` → `r1234`).
+        - **日本語**：メンテナーが実測結果を確認し、登録用 PR をマージすると、公式互換性一覧に掲載されます。鍵・本文・商用素材・セーブデータは添付しないでください。VNDB ID は URL から確認できます（例：`v17`、`r1234`）。
   - type: input
     id: vid
     attributes:
       label: VNDB vID
+      description: "Work ID on VNDB (e.g. v17) / VNDB 作品编号（如 v17） / VNDB 作品 ID（例：v17）"
+      placeholder: "v17"
     validations:
       required: true
   - type: input
     id: rid
     attributes:
       label: VNDB rID
+      description: "Exact release ID on VNDB (e.g. r1234) / 对应发行版编号（如 r1234） / 対象リリース ID（例：r1234）"
+      placeholder: "r1234"
     validations:
       required: true
   - type: dropdown
     id: emulator
     attributes:
       label: Core
+      description: "Exact core ID used for testing / 测试使用的精确核心 ID / テストに使用したコア ID"
       options:
         - rfvp
         - siglus_rs
@@ -38,18 +46,23 @@ body:
     id: emulator_version
     attributes:
       label: Core version
+      description: "Exact version shown in Manager → Cores (e.g. 0.1.0-beta.5 or tag-0-7-0-...) / 核心页显示的精确版本 / コア画面に表示される正確なバージョン"
+      placeholder: "0.1.0-beta.5"
     validations:
       required: true
   - type: input
     id: manager_version
     attributes:
       label: Manager version
+      description: "Shown in Settings → About (e.g. 0.1.0-beta.8) / 设置 → 关于 中显示的版本 / 設定 → バージョン情報のバージョン"
+      placeholder: "0.1.0-beta.8"
     validations:
       required: true
   - type: dropdown
     id: platform
     attributes:
       label: Platform
+      description: "Target OS / 测试操作系统 / テスト対象 OS"
       options:
         - windows
         - linux
@@ -63,6 +76,7 @@ body:
     id: architecture
     attributes:
       label: Architecture
+      description: "CPU architecture / CPU 架构 / CPU アーキテクチャ"
       options:
         - x86_64
         - aarch64
@@ -72,6 +86,7 @@ body:
     id: variant
     attributes:
       label: Variant
+      description: "Desktop for PC; device or simulator for mobile / PC 选 desktop，移动端按真机或模拟器选择 / PC は desktop、モバイルは実機・シミュレーターを選択"
       options:
         - desktop
         - device
@@ -82,6 +97,7 @@ body:
     id: status
     attributes:
       label: Status
+      description: "perfect (no issues) · completable (playable to ending with minor glitches) · flawed (major bugs) · boot_only (title/menu only) · unplayable"
       options:
         - perfect
         - completable
@@ -94,5 +110,7 @@ body:
     id: notes
     attributes:
       label: Notes / reproduction
+      description: "Briefly describe what you tested (title, gameplay, video/audio, save/load, issues observed) / 简述测试范围（标题、剧情推进、音画/视频、存读档及发现的问题） / テスト範囲と確認した挙動を簡潔に記入"
+      placeholder: "Booted to title screen, played through prologue, video playback and save/load worked smoothly."
     validations:
       required: true

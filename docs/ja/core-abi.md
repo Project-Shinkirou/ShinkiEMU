@@ -5,6 +5,31 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 # コア ABI と SDK
 
+## アーキテクチャとライフサイクル概要
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless（ホスト owner スレッド）
+  participant Core as Native Core（コア owner スレッド）
+  Host->>Core: query() → CoreApi v3 テーブル
+  Host->>Core: initialize() / describe()
+  Host->>Core: open(config, host_services) → セッションハンドル
+  loop アクティブセッション
+    Host->>Core: input() / control()（所有イベントをキュー投入）
+    Core-->>Host: state() / frame()（公開済み状態と不変 CPU フレームリース）
+    Host->>Core: release_frame(lease)（アップロード完了後に 1 回返却）
+  end
+  Host->>Core: cancel()（ブロック中呼び出しを並行起床）
+  Host->>Core: close()（ワーカー終了待機とハンドル消費）
+```
+
+| 機能ビット（`Descriptor.capabilities`） | 値 | 内容 |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | 変換済みスクリプトのハッシュ検証とセーブ・既読分離 |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | スクリプトや復元状態より設定フォントを優先 |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | ネイティブ SC でのオフライン埋め込み Unicode テキスト対応（Musica） |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | ネイティブ SC からの名前定数読み取りと EXE 読み取り専用フォールバック |
+
 ## プロトコルとエントリーポイント
 
 ネイティブプロトコルは `shinki.emu.native.c.v3` で、ABI の数値バージョンは **3** です。動的コアは `shinki_emu_query` をエクスポートし、静的統合では同じ形の Query 関数を登録します。Rust の契約は `Source/FamilyApi/shinki-emu-abi` にあり、生成される C ヘッダーは `include/shinki_emu.h` です。C++ はこのヘッダーを使い、ABI 定義を別に保守することはしません。Rust の型を変更したら、リポジトリのルートで cbindgen 0.29.2 によりヘッダーを再生成して一緒にコミットします。CI の tools ジョブは同じ 2 つのコマンドを実行し、コミットされたヘッダーが生成結果と異なると失敗します。
@@ -120,6 +145,6 @@ Ready 状態の `FrameSurface` には、実際のサイズ、stride、ピクセ�
 
 `core.json` は `shinki.emu.core_package.v1` を使い、`plugin_id`、`library`、`version`、`abi`、ファイルパスと SHA256 を記録します。マニフェストは自身を除くすべてのパッケージファイルを対象とします。ライブラリの名前には `shinki_emu_`、query には `shinki_emu_query` を使います。パッケージングは不正なパス、リンク、大文字小文字の衝突を拒否し、新しいディレクトリにだけ出力します。Manager はインストール前にパッケージを検証します。コマンドは[ビルドとリリース](build-and-release.md)を参照してください。
 
-公式コアの製品ビルドは `source-commit.txt` に Git コミットを記録します。ASCII の小文字 16 進数 40 バイトで、改行は付けません。`core.json` の `files` に SHA-256 を記録するため、従来の Manager でも v1 のフィールドを読み取れます。同梱のカタログが公式コアを識別し、署名済みリリースカタログでアーカイブを検証します。Manager に表示するコミットはこのファイルから読み取ります。Android の公式コアには検証済みのファイルが必要です。OHOS に同梱する Musica は、コミットが Manager のビルドと一致する場合にのみ使用できます。このファイルがない旧デスクトップパッケージもインストールでき、バージョンのみを表示します。
+公式コアの製品ビルドは `source-commit.txt` に Git コミットを記録します。ASCII の小文字 16 進数 40 バイトで、改行は付けません。`core.json` の `files` に SHA-256 を記録するため、従来の Manager でも v1 のフィールドを読み取れます。同梱のカタログが公式コアを識別し、公式リリースカタログの SHA-256 とサイズでアーカイブを検証します。Manager に表示するコミットはこのファイルから読み取ります。Android の公式コアには検証済みのファイルが必要です。OHOS に同梱する Musica は、コミットが Manager のビルドと一致する場合にのみ使用できます。このファイルがない旧デスクトップパッケージもインストールでき、バージョンのみを表示します。
 
-外部パッケージの `identity` には元の上流と Cargo が固定した組織 fork のコミットを記録し、`version` は計算した識別子と一致させます。旧パッケージには `identity` がなく、元の SemVer を保持します。Manager は配置前に plugin、version、identity をカタログと照合し、上流とアダプターの完全なラベルを表示します。C ABI と descriptor の版は独立しています。[版識別子の規則](build-and-release.md#パッケージングとリリース)を参照してください。
+外部パッケージの `identity` には元の上流と Cargo が固定した組織 fork のコミットを記録し、`version` は計算した識別子と一致させます。旧パッケージには `identity` がなく、元の SemVer を保持します。Manager は配置前に plugin、version、identity をカタログと照合し、上流とアダプターの完全なラベルを表示します。C ABI と descriptor の版は独立しています。[版識別子の規則](release-runbook.md#パッケージングとリリース)を参照してください。

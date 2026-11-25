@@ -1,17 +1,19 @@
 ---
-title: 构建与发布
-description: Cargo 编排、核心构建脚本、打包及明确的 blocked 状态。
+title: 从源码构建
+description: Cargo 本地构建、固定的原生依赖和构建目标矩阵。
 ---
 
-# 构建与发布
+# 从源码构建
 
-在仓库根目录用 Cargo 构建 Manager 和独立核心。查看目标矩阵、打包、发布和处理元数据用 `cargo xtask`。输入回放、游戏帧和界面截图的检查方法见[无窗口运行](headless.md)。
+在仓库根目录用 Cargo 构建 Manager 和独立核心，用 `cargo xtask` 查看目标矩阵和运行 CI。打包、发布和历史交付记录见[发布与维护手册](release-runbook.md)，出帧验收、回放和界面截图见[无窗口执行](headless.md)。
 
 ## 游戏目录中的磁盘布局
 
 ShinkiEMU 自己写入游戏目录的文件统一放在 `<game>/.shinki/` 下。Musica 存档用 `musica/saves/`，下载的补丁用 `patch/`，事务暂存用 `staging/`，原文件和清单用 `backup/<id>/`，原位覆盖的结果写进 `patch-result.json`。写入时校验路径，不跟随目录链接。第三方核心沿用各自上游的存储约定。
 
 ## 输入与依赖
+
+Cargo 根据 [Cargo.toml](../../Cargo.toml) 和 [Cargo.lock](../../Cargo.lock) 解析外部核心的固定提交。另见[原生依赖](../../build/dependencies.toml)、[核心清单](../../build/cores.toml)和[目标定义](../../build/targets.toml)。
 
 用 `git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU` 克隆。已有工作副本时，运行 `git submodule update --init --recursive` 初始化工作区使用的 `ThirdParty/cpal` 补丁。安装 Git 和 rustup，由 [`rust-toolchain.toml`](../../rust-toolchain.toml) 选用 Rust 1.99.1。按需安装 Rust 目标和对应的原生编译器、CMake、Ninja、SDK。
 
@@ -199,56 +201,10 @@ cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/r
 
 `matrix` 列出已声明的组合及阻塞原因。JSON 只列可在托管 runner 上构建的行。ARM64 行负责生成通用 APK 时，`--ci` 会去掉重复的 Android x86_64 Manager 行。`--since` 只保留受改动影响的行。`ci` 打包所选目标，报告产物或阻塞原因。OpenHarmony 在装有 DevEco 的本地机器上处理。
 
+## 应用图标
+
+**应用图标**：Windows、macOS、iOS、Android 和 Linux 安装包使用 `Assets/Branding/shinkiemu-icon.svg`。Android 自适应图标的前景和背景分开绘制，OpenHarmony 仍使用独立的图标资源。详见[品牌规范](../../Assets/Branding/BRANDING.md)。
+
 ## 打包与发布
 
-`package` 会运行锁定依赖的 release 构建，将 Cargo 报告的库、资源和原生运行依赖放进新的输出目录。运行前先安装 `cargo-about`。核心包保留 ABI v3 的 `core.json` 和文件哈希。包内包含 `cargo-about` 生成的 Rust 许可声明、明确列出的核心与原生依赖声明，以及适用的 Manager 离线元数据。仍需遵守第三方许可和重链接义务。
-
-```sh
-cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/rfvp-package
-cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/manager-package
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
-```
-
-常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。本地只测一个 ABI 时，加 `--qa-single-abi`。APK 内置 Impacto 和 KiriKiri 的 Java 宿主；其他获准的核心单独打包，由 Manager 安装。独立核心包不需要 Gradle 签名。
-
-制作正式 APK 时，`cargo xtask package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、指定的 `versionName` 和 `versionCode`，以及 `minSdk` 28。`release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`，每次公开的 APK 的 `versionCode` 都必须高于上一版。保留现有工作流文件，不要重建、改名或用另一个文件替代，否则编号可能从 1 重新开始，已安装的用户无法升级。
-
-macOS 产出 `.app`，iOS 产出模拟器测试 `.app` 或真机测试 `.ipa`。Apple 默认使用 ad hoc 签名，真机安装需要有效的 provisioning。
-
-打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。iOS 的 `ios-framework-cores` 和 HAP 的 `ohos-bundled-musica` 变体只用于本地 QA，不公开发布。
-
-打包或发布 Manager、自研核心时，用 `--version` 指定产品的 SemVer；外部核心省略此参数。
-
-外部核心的身份由原项目的 `upstream_identity`、`Cargo.lock` 解析出的适配仓库与提交、`adapter_branch` 和该核心的 `release_sequence` 决定。上游填写真实标签或分支，以及完整提交。外部核心版本为 `<tag|branch>-<ref slug>-<digest>`：取 ref 的前 16 个字节，ASCII 字母转小写，数字保留，其余换成连字符。摘要是上游仓库、ref 类型、ref 名、上游提交、适配仓库、适配分支、适配提交及十进制序号的 SHA-256，每个字段用 UTF-8 编码并在末尾加 LF。标签格式分别为 Manager 的 `manager-v<semver>`、自研核心的 `core-<slug>-v<semver>` 和外部核心的 `core-<slug>-<version>`。标签中的 slug 将核心 ID 转成小写，点和下划线换成连字符。调整外部核心的固定提交或再次发布时递增序号，目录按序号选择最新的带身份记录。
-
-```sh
-cargo xtask release --component rfvp --dry-run
-cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
-```
-
-`--dry-run` 不构建产品，只列出版本、标签、构建目标和各目标已知的 `publish_blocked` 原因。`--target` 构建并将产物与 `release.json` 放在 `.work/release/<tag>/<target>/`。`--publish` 使用 `GH_TOKEN` 或 `GITHUB_TOKEN` 发布准备好的产物，发布核心时还会创建目录更新 PR。发布时核对产物哈希，目录记录公开文件的 SHA-256 和大小。只发 Windows/Android 时，规划、准备和公开都传同样的 `--scope windows-android`，默认范围为 `all`。
-
-每份发布记录都要标明本次发布的产品提交。记录来自其他提交，或未记录提交时，需要重新打包。
-
-公开分发前，检查 `licenses/pinned-sources.txt` 中的确切提交链接，并按实际分发的二进制文件核对对应源码和重链接材料。独立 Ren’Py 核心和内嵌 Ren’Py 的 Android Manager APK 只有满足 [Ren’Py 源码与重链接要求](../licenses/renpy/README.md)后才能发布。仍可在本地打包；发布计划不代表可以公开分发。
-
-[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。手动触发时传入 `components`，Manager 和选中的自研核心使用同一个产品 `version`。只发 Windows/Android 时设置 `release_scope=windows-android`，只准备产物而不发布时设置 `prepare_only=true`。
-
-发布全平台 Manager 时，选一次成功且未覆盖 `source_commit` 的运行，将运行编号设为 `RUN_ID`。确认下面两条命令输出的提交一致，再下载产物：
-
-```sh
-gh run view "$RUN_ID" --json headSha --jq .headSha
-git rev-parse HEAD
-gh run download "$RUN_ID" --pattern 'release-files-manager@*' --dir .work/release
-```
-
-所有受支持的目标都必须有可发布的包。调试签名的 Android APK 不能替代正式包。
-
-下载会为每份产物创建一个目录。将其中的 `<tag>/<target>/` 合并到 `.work/release/<tag>/`。配置好 DevEco、签名目录和 `cargo-about`，在同一份工作副本中制作 HAP 并发布。`VERSION` 设为该次运行的产品版本：
-
-```sh
-cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version "$VERSION"
-cargo xtask release --component manager --version "$VERSION" --scope all --publish
-```
-
-快照和目录命令见[元数据](metadata.md)，原生包格式见[核心 ABI](core-abi.md)。
+打包命令、签名、外部核心版本和发布条件见维护手册的[打包与发布](release-runbook.md#打包与发布)。

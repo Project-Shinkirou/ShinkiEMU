@@ -1,4 +1,6 @@
-# Contributing / 贡献
+# Contributing to ShinkiEMU / 参与贡献
+
+**Localized guides / 各语言指南：** [English](docs/en/contributing.md) · [简体中文](docs/zh-cn/contributing.md) · [日本語](docs/ja/contributing.md)
 
 ## 准备环境 / Setup
 
@@ -9,16 +11,16 @@ Clone with `git clone --recurse-submodules https://github.com/Project-Shinkirou/
 外部贡献者的构建目标是 Windows x64 和 Android ARM64：
 
 - **Windows x64**（`x86_64-pc-windows-msvc`）：安装 Visual Studio 的 x64 C++ 工具、CMake、Ninja、Git 和 `rust-toolchain.toml` 固定的 Rust。在 x64 开发者环境中运行 Cargo 和打包命令（`vcvars64.bat`，PowerShell 用 `Launch-VsDevShell.ps1 -Arch amd64`）。打包从 `%VCToolsRedistDir%\x64` 获取 MSVC 运行库。
-- **Android ARM64**（`aarch64-linux-android`）：运行 `rustup target add aarch64-linux-android` 和 `cargo install cargo-ndk --locked --version 4.1.2`，将 `ANDROID_NDK_HOME` 指向 NDK `30.0.16248370`。Manager APK 还需要 JDK 27、SDK platform 37.2 和 build-tools 37.0.0；非 Linux 主机需要对应 ABI 的 `RENPY_STATIC_ROOT`。
+- **Android ARM64**（`aarch64-linux-android`）：运行 `rustup target add aarch64-linux-android` 和 `cargo install cargo-ndk --locked --version 4.1.2`，将 `ANDROID_NDK_HOME` 指向 NDK `30.0.16248370`。Manager APK 还需要 JDK 27、SDK platform 37.2 和 build-tools 37.0.0；在非 Linux 主机构建独立 Ren’Py 核心时，需要对应 ABI 的 `RENPY_STATIC_ROOT`。
 
 Contributor build targets are Windows x64 and Android ARM64:
 
 - **Windows x64** (`x86_64-pc-windows-msvc`): install the Visual Studio x64 C++ tools, CMake, Ninja, Git and the Rust pinned by `rust-toolchain.toml`. Run Cargo and packaging in an x64 developer shell (`vcvars64.bat`, or `Launch-VsDevShell.ps1 -Arch amd64` in PowerShell). Packaging takes MSVC redistributables from `%VCToolsRedistDir%\x64`.
-- **Android ARM64** (`aarch64-linux-android`): run `rustup target add aarch64-linux-android` and `cargo install cargo-ndk --locked --version 4.1.2`; point `ANDROID_NDK_HOME` to NDK `30.0.16248370`. The Manager APK also needs JDK 27, SDK platform 37.2 and build-tools 37.0.0. On non-Linux hosts set `RENPY_STATIC_ROOT` to the matching ABI's runtime for Manager.
+- **Android ARM64** (`aarch64-linux-android`): run `rustup target add aarch64-linux-android` and `cargo install cargo-ndk --locked --version 4.1.2`; point `ANDROID_NDK_HOME` to NDK `30.0.16248370`. The Manager APK also needs JDK 27, SDK platform 37.2 and build-tools 37.0.0. On non-Linux hosts set `RENPY_STATIC_ROOT` to the matching ABI's runtime when building the standalone Ren’Py core.
 
-PR CI 还会构建受影响组件的 Linux x64 行，依赖清单见[构建文档](docs/zh-cn/build-and-release.md#linux-桌面)。macOS、iOS 和 Android Manager（含静态嵌入的核心）由维护者通过完整 `ci.yml` 和发布流程构建，OHOS 由维护者在本机 DevEco 打包。`build/cores.toml` 里已声明的支持目标不能为了通过检查而删除；新增目标只有真实构建成功后才写进 `supported_targets`，否则写带具体原因的 `[[cores.blocked]]`。
+PR CI 还会构建受影响组件的 Linux x64 行，依赖清单见[构建文档](docs/zh-cn/build-and-release.md#linux-桌面)。macOS、iOS 和 Android Manager由维护者通过完整 `ci.yml` 和发布流程构建，OHOS 由维护者在本机 DevEco 打包。`build/cores.toml` 里已声明的支持目标不能为了通过检查而删除；新增目标只有真实构建成功后才写进 `supported_targets`，否则写带具体原因的 `[[cores.blocked]]`。
 
-PR CI also builds the Linux x64 rows of affected components; its package list is in [Build and release](docs/en/build-and-release.md#linux-desktop). Maintainers build macOS, iOS and the Android Manager (with its statically embedded cores) through the full `ci.yml` and release workflows, and package OHOS locally with DevEco. Never remove an existing supported target to pass a check. List a new target in `supported_targets` only after a real build of it succeeded; otherwise add a `[[cores.blocked]]` entry with a concrete reason.
+PR CI also builds the Linux x64 rows of affected components; its package list is in [Build and release](docs/en/build-and-release.md#linux-desktop). Maintainers build macOS, iOS and the Android Manager through the full `ci.yml` and release workflows, and package OHOS locally with DevEco. Never remove an existing supported target to pass a check. List a new target in `supported_targets` only after a real build of it succeeded; otherwise add a `[[cores.blocked]]` entry with a concrete reason.
 
 ## 命令 / Commands
 
@@ -59,11 +61,11 @@ Work on a topic branch from `main` and open a normal, focused PR describing beha
 ## 核心 / Cores
 
 - 基于 SDK 写新核心：读 [shinkiemu-new-core](.agents/skills/shinkiemu-new-core/SKILL.md)。示例核心 `Source/Examples/shinki-emu-tilefix`（ID `shinki.example.tilefix`）用自造数据演示 SDK API，可直接用 Cargo 构建，不登记到官方目录。
-- 移植现有引擎：读 [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md)。在个人 GitHub fork 上开发 adapter，用本地 `[patch]` 验证。维护者将审查过的提交推到 `Project-Shinkirou/<repo>` 后，ShinkiEMU 的 PR 新增或更新根 `Cargo.toml` 的 `git`/`rev` 和 `Cargo.lock`，并在 `Source/Cores/<id>` 接上入口 crate。原作者仓库的 `upstream_identity` 和 `release_sequence` 放在 `build/cores.toml`。
+- 移植现有引擎：读 [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md)。在个人 GitHub fork 上开发适配层并用本地 `[patch]` 验证。向组织 fork 提交 PR 时，目标是 `build/cores.toml` 为该核心声明的适配分支。维护者将审查过的提交推到 `Project-Shinkirou/<repo>` 后，ShinkiEMU 的 PR 新增或更新根 `Cargo.toml` 的 `git`/`rev` 和 `Cargo.lock`，并在 `Source/Cores/<id>` 接上入口 crate。原作者仓库的 `upstream_identity` 和 `release_sequence` 放在 `build/cores.toml`。
 - 只有维护者能往组织 fork、`main`、tag 和 catalog 写入。贡献者需要有权按上游许可再分发代码和二进制；保留上游 `LICENSE`、署名和 notice，在 fork 里写 `MODIFICATIONS.md`。外部核心的公开源码是 `Cargo.lock` 上记录的公开 fork 提交。GPL/AGPL 核心默认以独立核心包分发；静态嵌入 Manager 之前需要维护者单独评审许可及对应源码义务。
 
 - New SDK core: read [shinkiemu-new-core](.agents/skills/shinkiemu-new-core/SKILL.md). The example core `Source/Examples/shinki-emu-tilefix` (ID `shinki.example.tilefix`) demonstrates the SDK API with generated data. Build it directly with Cargo; it is outside the official catalog.
-- Porting an existing engine: read [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md). Develop the adapter in your personal GitHub fork and verify it with a local `[patch]`. Once a maintainer pushes the reviewed commit to `Project-Shinkirou/<repo>`, the ShinkiEMU PR adds or updates the root `Cargo.toml` `git`/`rev` and `Cargo.lock`, and wires the entry crate under `Source/Cores/<id>`. The original repository's `upstream_identity` and `release_sequence` go in `build/cores.toml`.
+- Porting an existing engine: read [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md). Develop the adapter in your personal GitHub fork and verify it with a local `[patch]`. Target the organization fork’s adapter branch declared in `build/cores.toml`. Once a maintainer pushes the reviewed commit to `Project-Shinkirou/<repo>`, the ShinkiEMU PR adds or updates the root `Cargo.toml` `git`/`rev` and `Cargo.lock`, and wires the entry crate under `Source/Cores/<id>`. The original repository's `upstream_identity` and `release_sequence` go in `build/cores.toml`.
 - Only maintainers write to organization forks, `main`, tags and the catalog. Contributors must have the right to redistribute code and binaries; keep upstream `LICENSE`, attribution and notices and record changes in the fork's `MODIFICATIONS.md`. Each external core's published source is the public fork commit in `Cargo.lock`. GPL/AGPL cores default to standalone distribution; static Manager embedding requires a separate maintainer review of license and corresponding-source obligations.
 
 ## 检查与测试 / Checks and tests
@@ -87,3 +89,9 @@ Simplified Chinese is the source language. Slint `@tr("…")` and Rust `tr!("…
 保留作者、上游来源和完整许可；引入依赖或可分发附件前核实分发条件。不得提交商业游戏资源、正文、密钥、私有配置、商业存档、解码导出或含敏感数据的日志。回归使用公开授权或自造夹具。兼容性与补丁通过 issue 表单和维护者审查贡献，规则见 [Metadata](docs/zh-cn/metadata.md)。
 
 Retain author attribution, upstream references and complete licenses. Check distribution rights before adding dependencies or attachments. Never commit commercial assets/text/saves, keys, private profiles, decoded exports or sensitive logs. Use public licensed or self-created fixtures. Compatibility and patch contributions use issue forms and maintainer review; see [Metadata](docs/en/metadata.md).
+
+## AI 辅助贡献 / AI-assisted contributions
+
+可以使用 AI 编程助手。提交者须能解释改动，只报告实际运行的检查；许可、署名和敏感数据规则与其他 PR 相同。
+
+AI-assisted contributions follow the same review rules. Explain the changes yourself, report only checks you ran, and meet the same licensing, attribution and sensitive-data requirements.

@@ -1,24 +1,64 @@
-name: Bug report
-description: Report a Manager or core problem
+name: Bug report / Bug 报告 / バグ報告
+description: Report a bug in ShinkiEMU Manager or a core / 报告 Manager 或核心的问题 / Manager やコアの不具合を報告
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
-      value: Do not include keys, game text, commercial assets or saves. Reports require maintainer review.
+      value: |
+        - **中文**：提交前请先查看[常见问题](https://project-shinkirou.github.io/zh-cn/shinkiemu/faq/)与[故障排查](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/zh-cn/troubleshooting.md)。请勿附带密钥、游戏正文、商业素材、存档或未脱敏的账号 Cookie/Token。
+        - **English**: Please check the [FAQ](https://project-shinkirou.github.io/en/shinkiemu/faq/) and [Troubleshooting](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/en/troubleshooting.md) first. Do not include keys, game text, commercial assets, saves, or account tokens/cookies.
+        - **日本語**：投稿前に [FAQ](https://project-shinkirou.github.io/ja/shinkiemu/faq/) と[トラブルシューティング](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/ja/troubleshooting.md)をご確認ください。鍵、ゲーム本文、商用素材、セーブデータ、認証トークンは添付しないでください。
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 受影响组件 / 対象コンポーネント
+      options:
+        - Manager UI / Library
+        - Store Download (Steam / DLsite / DMM)
+        - Luau Patch Runner
+        - Native Core (specify below)
+        - Headless Runner / Build & Packaging
+        - Documentation / Portal
+    validations:
+      required: true
   - type: input
     id: version
     attributes:
-      label: Version
+      label: Version / 版本号 / バージョン
+      description: "Manager version (Settings → About) and core version if applicable / Manager 版本（设置 → 关于）及核心版本 / Manager（設定 → バージョン情報）とコアのバージョン"
+      placeholder: "Manager 0.1.0-beta.8 / rfvp 0.7.0"
     validations:
       required: true
   - type: input
     id: platform
     attributes:
-      label: Platform
+      label: Platform & Architecture / 平台与架构 / プラットフォームとアーキテクチャ
+      placeholder: "Windows 11 x86_64 / Ubuntu 24.04 x86_64 / Android 15 arm64-v8a / macOS 15 arm64"
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction
+      label: Reproduction Steps / 复现步骤 / 再現手順
+      description: "Step-by-step actions to reproduce the problem / 清晰列出触发问题的操作步骤 / 問題を再現するための手順"
+      placeholder: |
+        1. Open Manager and select ...
+        2. Click ...
+        3. Observe ...
     validations:
       required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs Actual Behavior / 预期与实际表现 / 期待される動作と実際の動作
+      placeholder: "Expected: ... / Actual: ..."
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted Logs or Error Message / 脱敏日志或错误信息 / ログ・エラーメッセージ（機密除去済み）
+      description: "Optional. Remove any personal paths, cookies, or game text before pasting. / 可选，粘贴前请去除个人路径、凭据或游戏正文。"
+      render: text
+    validations:
+      required: false

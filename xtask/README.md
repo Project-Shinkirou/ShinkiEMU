@@ -24,7 +24,7 @@ cargo xtask ci --target aarch64-apple-ios --component manager --report .work/ios
 
 [`build/cores.toml`](../build/cores.toml) supplies core IDs, licenses, attribution and target policy. [`build/targets.toml`](../build/targets.toml) supplies triples, runners and Manager support. `matrix` lists declared rows and blocked reasons; `--json` lists supported hosted rows. Root `Cargo.toml` holds Git pins and `Cargo.lock` records the resolved fork commits. For each external core the published source is that public fork commit.
 
-Each core declares a canonical `family_id` (1–64 lowercase ASCII letters, digits or hyphens, beginning with a letter), matching Manager directory recognition. Several implementations may share a family. Manager-core's build script projects this inventory and the selected target into `static_core_catalog::{entries, lookup}`: each borrowed entry contains only `plugin_id`, `family_id`, `display_name`, `supported` and `embedded`. `supported` means declared standalone or static Manager availability on that target, not installation, loading or game compatibility; `embedded` means static Manager integration. Target-wide blocks disable availability; `publish_blocked` only restricts distribution. Unsupported implementations remain in the catalog, and unknown plugin IDs return `None`. Reading these entries performs no I/O or native registration/query. Installed identity still comes from the existing validated `core.json`; callers keep unknown packages visible for explicit diagnosis rather than querying a library to fill in metadata.
+Each core declares a canonical `family_id` (1–64 lowercase ASCII letters, digits or hyphens, beginning with a letter), matching Manager directory recognition. Several implementations may share a family. Manager-core's build script projects this inventory and the selected target into `static_core_catalog::{entries, lookup}`: entries carry plugin identity, declared availability, first-party status, Android admission policy and recognition data. `supported` means declared standalone or static Manager availability on that target, not installation, loading or game compatibility; `embedded` means static Manager integration. Target-wide blocks disable availability; `publish_blocked` only restricts distribution. Unsupported implementations remain in the catalog, and unknown plugin IDs return `None`. Reading these entries performs no I/O or native registration/query. Installed identity still comes from the existing validated `core.json`; callers keep unknown packages visible for explicit diagnosis rather than querying a library to fill in metadata.
 
 The `static_core_catalog` integration tests compile and run the actual pure catalog module with Windows and both Android ABI inventory projections on the host, from an empty installation directory. These are generation/consumption gates, not Android cross-linking or device execution gates. The existing native `STATIC_CORES` function table determines actual compiled static entrypoints, including optional desktop `static-cmvs`; inventory `embedded = false` must not hide such an entrypoint. Callers use that table's IDs for static availability and selected activation, and catalog entries for display/family/declared-target metadata. Reading either table performs no query or registration.
 
@@ -55,44 +55,11 @@ cargo xtask package --target "$target" --core siglus_rs --out ".work/qa/$target/
 `core.json` retains the ABI v3, official identity/recognition, and hashed
 library, resources, dependency and license files. Package the selected target's native runtime inputs, including the NDK's `libc++_shared.so` when needed. Static FFmpeg comes from the pinned target triplet; retain its notices and license obligations.
 
-Android `supported_targets` currently has standalone rows for `siglus_rs`
-(`dynamic`, Rust cdylib; native Kira/CPAL) and `art3m1s-core` (default dynamic
-export, Rust cdylib; Vulkan, Luau, Kira/CPAL and static FFmpeg). Neither row
-by itself qualifies a core as a replacement for its static APK registration.
-Promote Siglus first, then Artemis: boot the website APK normally, install
-the matching official ZIP through staging, restart, and verify launch with
-native audio, first frame, pause/resume and existing saves on both ABIs.
-The process-local Android context extension is negotiated only on launch.
-Legacy API-26 packages do not establish this parity.
+Android’s standalone build rows and install admission are separate. An Android package must match the target ABI, ABI v3, the official catalog’s archive SHA-256/size and identity, and the per-core `android_dynamic` minimum release. First-party Android packages also require a verified `source-commit.txt`. Downloads and local official ZIPs go through the same checks; `no-core-download` disables online core install/update, not verified local ZIPs.
 
-An Android core is installable only when its inventory has an `android_dynamic`
-policy with a verified compatibility floor. Standalone build rows alone do not
-admit packages. The default inventory has no production floor; keep the existing
-static registrations until each official replacement passes both ABI gates.
-`no-core-download` disables only online core install/update, not local official
-ZIP verification.
+The universal Manager APK registers Impacto statically. The Manager also includes the Java/AIDL, JAR and JNI host inputs for KiriKiri, assembled per ABI under `android-host/<core>`; these inputs do not move into downloadable core ZIPs. The other admitted implementations are loaded only when explicitly activated. If their policy requires it, activation passes the process-local Android context before initialization.
 
-Keep the APK's other embedded registrations until their replacement passes
-the same gate:
-
-| Core | Android standalone work |
-| --- | --- |
-| `shinki.emu.cmvs` | `rust-cdylib`, `dynamic-plugin-export` + `video-ffmpeg`; prove the private FFmpeg and GPU/real audio path. |
-| `shinki.emu.musica` | `rust-cdylib`, `dynamic-plugin-export` + `ffmpeg-vcpkg`; retain FFmpeg, libass, FriBidi, fonts and their licenses. |
-| `rfvp` | `rust-cdylib`, `dynamic-plugin-export`; retain Android native movie/audio and target libass/FriBidi. GStreamer is a desktop Linux input. |
-| `impacto` | Android standalone work is deferred. Keep the existing static registration and its shared libass 0.17.5 provider. |
-| `renpy` | `native-shared` for standalone, `static` in the APK; preserve the target CPython/SDL/FFmpeg runtime, resources and LGPL relinking material. |
-| `kirikiroid2-web` | `native-shared` for standalone, `static` in the APK; account for native vcpkg/Bison, Java/AIDL, JNI initialization, resources and the FMOD distribution terms. |
-| `krkr2` | `native-static` only today; needs a shared adapter and a supported Android Java/native host and resource lifecycle. |
-
-Sena and Ethornell have no Android adapter target. The separate `cmvs-rs`
-remains Android-blocked and publish-blocked pending a supported upstream game
-sample. ReMinori remains Android-blocked; its AGPL obligations and separate
-engine and save identity are unchanged. The APK's existing `MainActivity`
-bootstraps `shinki_emu_manager` and supplies the KiriKiri host classes.
-Its Java, AIDL, JAR and JNI contract are staged as APK compile inputs under
-`android-host/<core>` outside runtime assets and downloadable ZIPs. When the
-inventory selects a dynamic-only KiriKiri core, the packager builds its host inputs for each ABI. Static integrations supply those inputs through their Cargo build scripts.
+When admitting a new package, test the exact archive on each ABI: install through Manager, restart, verify lazy activation, launch to a real frame with native audio, pause/resume, and verify existing saves. Do not use a translated ARM64 package or historical API-26 results for x86_64 acceptance. Ren’Py standalone packaging retains its CPython/SDL/FFmpeg runtime and resources; its source/relinking [publication block](../docs/licenses/renpy/README.md) still applies.
 
 ### Other native inputs
 
@@ -100,7 +67,7 @@ Apple native builds use macOS/Xcode and the matching SDK. Cargo prepares target-
 
 The default OHOS Manager embeds Musica statically. For local QA, `SHINKI_EMU_MANAGER_FEATURES` adds packaging features such as `ohos-bundled-musica` on OHOS or `ios-framework-cores` on iOS. With direct Cargo builds, use `--features` instead. These variants do not enable downloads or qualify for public release.
 
-Use `SHINKI_EMU_MANAGER_FEATURES=static-adv32` when packaging a local ADV32 Manager candidate. The packager collects ADV32's build-reported resources and licenses only when that feature is enabled. `release prepare` rejects this feature.
+Use `SHINKI_EMU_MANAGER_FEATURES=static-adv32` when packaging a local ADV32 Manager candidate. The packager collects ADV32's build-reported resources and licenses only when that feature is enabled. `cargo xtask release --target <triple>` rejects this feature.
 
 Cargo prepares Impacto's pinned `libatrac9` and `magic_enum` inputs under `.work/native-downloads/` and Ren’Py's desktop SDK, host CPython/Cython and SDL headers. For Android Ren’Py on non-Linux hosts, set `RENPY_STATIC_ROOT` to the matching ABI's complete runtime tree prepared on Linux. See the [Android prerequisites](../docs/en/build-and-release.md#android).
 
@@ -118,12 +85,12 @@ Manual `ci.yml` dispatch accepts `since`, using the existing
 `cargo xtask matrix --json --ci --since <ref>` input classifier. The matrix
 checkout fetches full history so the comparison ref is available. An optional
 `components` comma-separated list narrows that affected matrix. For example:
-`gh workflow run ci.yml --ref feat/unblock-renpy-linux -f since=ee20b99 -f components=renpy`.
+`gh workflow run ci.yml --ref main -f since=<base-commit> -f components=renpy`.
 Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the base branch, limited to the Windows and Linux x86_64 targets.
 
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
-For an all-platform Manager release, use one successful hosted release run without a `source_commit` override. Match its `headSha` to local `HEAD`, merge that run's `release-files-manager@*` artifacts under `.work/release/`, prepare the OHOS HAP with DevEco and publish from that checkout. See [the commands](../docs/en/build-and-release.md#package-and-release).
+For an all-platform Manager release, use one successful hosted release run without a `source_commit` override. Match its `headSha` to local `HEAD`, merge that run's `release-files-manager@*` artifacts under `.work/release/`, prepare the OHOS HAP with DevEco and publish from that checkout. See [the commands](../docs/en/release-runbook.md#package-and-release).
 
 Tool behavior tests: `cargo test --locked -p xtask -p shinki-emu-build`. Tests compile their own public synthetic shared libraries; no game installation or private data is used.
 

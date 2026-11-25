@@ -5,16 +5,23 @@ description: コアの描画確認、入力リプレイ、画像比較、Manager
 
 # ヘッドレス実行と Manager のスクリーンショット
 
-`shinki-emu-headless` は Manager の C ABI v3 ローダー、ネイティブセッション、CPU フレームリースを再利用します。入力には固定済み RoukakuEngine の `roukaku-headless-protocol` にある `roukaku.user_input_sequence.v1` を使用します。全フィールドと JSON サンプルは[英語のインターフェース文書](../en/headless.md)を参照してください。
+`shinki-emu-headless` は自動コア描画検証と Manager UI 撮影のための共有ランナーで、Manager の C ABI v3 ローダー、ネイティブセッション、CPU フレームリースを再利用します。入力には固定済み RoukakuEngine の `roukaku-headless-protocol` にある `roukaku.user_input_sequence.v1` を使用します。全フィールドと JSON サンプルは[英語のインターフェース文書](../en/headless.md)を参照してください。
 
-現在の [Manager `0.1.0-beta.8` 配布パッケージ](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)には `shinki-emu-headless` バイナリは含まれません。ランナーはリポジトリのソースに実装済みです。以下の手順でソースからビルドしてください。
+| 用途 | 独立ランナー | Manager サブコマンド |
+|---|---|---|
+| コア描画検証・入力リプレイ | `shinki-emu-headless run ...` | `shinki-emu-manager headless ...` |
+| PNG ピクセル比較 | `shinki-emu-headless compare ...` | — |
+| Manager ライト／ダーク UI 撮影 | `shinki-emu-headless ui ...` | `shinki-emu-manager headless-ui ...` |
+
+> [!NOTE]
+> 過去の [Manager `0.1.0-beta.8` パッケージ](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)には単独実行ファイルが含まれていません。以下のコマンドでソースからビルドしてください。
 
 ## ビルドとコア実行
 
 ```powershell
-cargo build -p shinki-emu-headless
-cargo test -p shinki-emu-headless
-cargo clippy -p shinki-emu-headless --all-targets -- -D warnings
+cargo build --locked -p shinki-emu-headless
+cargo test --locked -p shinki-emu-headless
+cargo clippy --locked -p shinki-emu-headless --all-targets -- -D warnings
 shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --frames 180 --capture-frame 1,60,180 --output artifacts/run
 shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --frames 180 --script replay.json --output artifacts/compare --baseline artifacts/run
 shinki-emu-headless compare --actual artifacts/compare/frame-000180.png --baseline artifacts/run/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001
