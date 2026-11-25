@@ -143,6 +143,30 @@ pub struct GpuSceneServiceV1 {
     pub destroy: Option<unsafe extern "C" fn(*mut c_void, u64)>,
 }
 
+/// A completed CPU-native effect frame. Its ordered `sequence` shares the
+/// target namespace with GPU submits; it never changes the base frame API.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuRasterFrameV2 {
+    pub header: Header,
+    pub sequence: u64,
+    pub logical: Extent,
+    pub image: GpuImageV1,
+}
+
+/// Optional tail of the v1 service, advertised by `base.size`. `base.version`
+/// remains 1. Old clients copy and use only the v1 prefix.
+/// `present_raster` publishes immutable, packed, top-down RGBA8 (encoded sRGB,
+/// ignored alpha) through the same ordered output as `submit`. It is for
+/// native CPU producers, not for copying back a scene. The receiver may
+/// retain the image. It does not change the v1 capture source.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuSceneServiceV2 {
+    pub base: GpuSceneServiceV1,
+    pub present_raster: Option<unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status>,
+}
+
 impl GpuSceneServiceV1 {
     pub fn validate(&self) -> Result<(), Status> {
         if self.version != GPU_SCENE_VERSION || (self.size as usize) < std::mem::size_of::<Self>()

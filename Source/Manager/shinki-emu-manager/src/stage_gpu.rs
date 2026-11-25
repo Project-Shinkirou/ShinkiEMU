@@ -56,15 +56,18 @@ impl GpuStage {
     }
 }
 
-pub(super) fn service(context: &Arc<FrameMailboxInner>) -> abi::GpuSceneServiceV1 {
-    abi::GpuSceneServiceV1 {
-        version: abi::GPU_SCENE_VERSION,
-        size: std::mem::size_of::<abi::GpuSceneServiceV1>() as u32,
-        context: Arc::as_ptr(context).cast_mut().cast(),
-        create: Some(create),
-        submit: Some(submit),
-        capture: Some(capture),
-        destroy: Some(destroy),
+pub(super) fn service(context: &Arc<FrameMailboxInner>) -> abi::GpuSceneServiceV2 {
+    abi::GpuSceneServiceV2 {
+        base: abi::GpuSceneServiceV1 {
+            version: abi::GPU_SCENE_VERSION,
+            size: std::mem::size_of::<abi::GpuSceneServiceV2>() as u32,
+            context: Arc::as_ptr(context).cast_mut().cast(),
+            create: Some(create),
+            submit: Some(submit),
+            capture: Some(capture),
+            destroy: Some(destroy),
+        },
+        present_raster: Some(present_raster),
     }
 }
 
@@ -155,6 +158,47 @@ unsafe extern "C" fn submit(pointer: *mut c_void, id: u64, frame: *const abi::Gp
             .ok_or_else(|| Failure::status(abi::STALE_CONTEXT))?;
         context.require_epoch(target.epoch).map_err(Failure::status)?;
         target.submit(device, queue, frame, info, context)
+    })
+}
+
+unsafe extern "C" fn present_raster(
+    pointer: *mut c_void,
+    id: u64,
+    frame: *const abi::GpuRasterFrameV2,
+    error: *mut abi::Error,
+) -> abi::Status {
+    boundary(error, || {
+        if !frame.is_aligned() {
+            return Err(Failure::status(abi::INVALID_ARGUMENT));
+        }
+        let header = unsafe { frame.cast::<abi::Header>().as_ref() }
+            .ok_or_else(|| Failure::status(abi::INVALID_ARGUMENT))?;
+        if !header.accepts::<abi::GpuRasterFrameV2>() {
+            return Err(Failure::status(abi::INVALID_ARGUMENT));
+        }
+        let frame = unsafe { &*frame };
+        let context = unsafe { context(pointer) }?;
+        let mut gpu = context.gpu.lock().map_err(|_| Failure::status(abi::PANICKED))?;
+        let target = gpu.targets.iter_mut().flatten().find(|target| target.id == id)
+            .ok_or_else(|| Failure::status(abi::STALE_CONTEXT))?;
+        context.require_epoch(target.epoch).map_err(Failure::status)?;
+        if frame.sequence <= target.scratch.sequence {
+            return Err(Failure::status(abi::STALE_CONTEXT));
+        }
+        let raster = frame.image.extent;
+        let info = FrameInfo {
+            width: raster.width,
+            height: raster.height,
+            logical_width: frame.logical.width,
+            logical_height: frame.logical.height,
+            stride: raster.width.checked_mul(4).ok_or_else(|| Failure::status(abi::INVALID_ARGUMENT))?,
+            format: FrameFormat::Rgba8Srgb { alpha: FrameAlpha::Ignored },
+            rows: FrameRowOrder::TopToBottom,
+        };
+        let pixels = unsafe { shinki_emu_sdk::gpu_scene::decode_raster(frame) }.map_err(Failure::status)?;
+        context.publish_native_raster(target.epoch, info, pixels).map_err(Failure::status)?;
+        target.scratch.sequence = frame.sequence;
+        Ok(())
     })
 }
 

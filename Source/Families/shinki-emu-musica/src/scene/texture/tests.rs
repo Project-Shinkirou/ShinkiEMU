@@ -321,7 +321,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
         let mut vm = make_vm();
         vm.step(1).unwrap();
         let mut scene = Scene::new_scaled(
-            SceneTarget::Cpu(crate::test_fixture::gpu_instance()),
+            SceneOutput::offscreen(crate::test_fixture::gpu_instance().clone()).unwrap(),
             archive.clone(),
             16,
             16,
@@ -409,7 +409,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
 
         drop(scene);
         let mut reopened = Scene::new_scaled(
-            SceneTarget::Cpu(crate::test_fixture::gpu_instance()),
+            SceneOutput::offscreen(crate::test_fixture::gpu_instance().clone()).unwrap(),
             archive.clone(),
             16,
             16,

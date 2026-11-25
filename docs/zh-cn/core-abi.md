@@ -76,7 +76,11 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 
 Manager 持有 WGPU 设备和队列。核心只拿到当前会话内有效的目标 ID，通过 C 布局提交有序绘制命令。SDK 在调用期间借出命令；宿主可通过 retain/release 保留不可变的贴图和字形。Manager 在自己的纹理上绘制，直接采样，或把纹理交给滤镜。普通出帧不跨 ABI 传设备、Rust 对象或帧缓冲像素。帧代次由宿主分配；换目标不重置代次，关闭后的提交会被拒绝。
 
-Musica 在 Manager 有兼容硬件渲染器时使用该服务。Android 当前的 Skia/Vulkan 队列和 OpenHarmony 软件呈现仍使用 CPU 帧。只有存档缩略图等显式抓取才会回读。
+`shinki_emu_sdk::gpu_scene::SceneOutput` 在开局时选定出帧路径，持有绘制目标，重建目标时不重新协商。整套绘制命令都能用 v1 表达的核心以 `SceneRequirements::Sprites` 打开，再调用 `submit(&frame, logical)`。只有离屏分支返回的像素才走原有 CPU 帧租约；宿主 GPU 分支只在确实需要像素时调用 `capture()`。Musica 用这套接口出帧，并显式捕获存档缩略图。
+
+`GpuSceneServiceV2` 在原样保留的 v1 表尾部加上 `present_raster`，用表大小声明支持，前缀的版本仍为 1。已经在 CPU 上画好的特效可以走这个回调，不会改用基础 CPU 帧租约；两个提交回调共用同一目标序号和宿主帧代次。宿主保留不可变的特效画面，只在显示时上传。启用硬件合成的 ADV32 请求 `SpritesWithNativeRaster`。普通场景一直留在宿主 GPU 上；碎屏特效只在进入时按需捕获一次画面，原有的 CPU 存档绘制不变。
+
+旧宿主、headless、Android 当前的 Skia/Vulkan 舞台和 OpenHarmony 软件舞台缺少所需服务时，整个会话沿用离屏渲染与 CPU 帧租约。树内 CMVS 固定选择 SDK 离屏路径：除了协议未覆盖的相机、网格、投影网格和交叉淡入淡出，父子层遮罩还要求先合成中间画面，精确地按字节应用 alpha 查找表，再按原绘制顺序插入结果。接入宿主 GPU 前，合成器必须能在同一设备完成这些步骤，并把中间纹理直接用作后续绘制资源。Lucifen 继续用 `native::lease_cpu` 发布可变 CPU 画布的不可变快照，不产生可交给宿主的场景命令。
 
 ## 转换结果兼容性
 

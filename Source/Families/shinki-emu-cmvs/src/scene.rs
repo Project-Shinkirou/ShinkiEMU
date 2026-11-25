@@ -2,7 +2,7 @@ use crate::{CmvsArchive, CmvsPs2aVmState};
 use roukaku_media_core::{BlendMode, Extent2D, RectI, SceneCommand, TextureFrame, Transform2D};
 use roukaku_platform::SceneFrame;
 use shinki_emu_sdk::{
-    CoreError, SceneTextureResidency, StageCanvas, TextureCache, WgpuOffscreenRenderer,
+    CoreError, SceneTextureResidency, StageCanvas, TextureCache, gpu_scene::SceneOutput,
 };
 use std::{collections::BTreeMap, num::NonZeroUsize};
 mod basic_geometry;
@@ -61,7 +61,7 @@ struct DrawMapping {
 
 /// Core-owned GPU composition of the recovered parent/child texture stage.
 pub struct CmvsScene {
-    renderer: WgpuOffscreenRenderer,
+    output: SceneOutput,
     textures: TextureCache,
     texture_residency: SceneTextureResidency,
     bindings: BTreeMap<CmvsTextureSlot, String>,
@@ -85,20 +85,20 @@ pub struct CmvsScene {
     reload_surfaces: BTreeMap<CmvsTextureSlot, reload::ReloadSurfaces>,
     reload_releases: Vec<String>,
     reload_generation: u64,
-    // Keep the loader alive until every session GPU resource has dropped.
-    _gpu_instance: wgpu::Instance,
 }
 
 impl CmvsScene {
     pub fn new(instance: &wgpu::Instance) -> Result<Self, CoreError> {
-        let renderer = pollster::block_on(WgpuOffscreenRenderer::new(instance))
-            .map_err(|_| error("SHINKI_EMU_CMVS_GPU_CREATE"))?
-            .with_default_compositing(roukaku_media_core::SceneCompositing2D::EncodedSrgb);
-        tracing::info!(event = "cmvs.gpu.created", backend = %renderer.identity().backend,
-            device_type = %renderer.identity().device_type, vendor_id = renderer.identity().vendor_id,
-            device_id = renderer.identity().device_id);
+        // A masked family is first composed, raster-masked, then inserted into
+        // another command stream. The hosted v1 compositor has no such pass.
+        let output = SceneOutput::offscreen(instance.clone())
+            .map_err(|cause| CoreError::invalid("SHINKI_EMU_CMVS_GPU_CREATE", cause.to_string()))?;
+        Self::with_output(output)
+    }
+
+    fn with_output(output: SceneOutput) -> Result<Self, CoreError> {
         Ok(Self {
-            renderer,
+            output,
             textures: TextureCache::new(NonZeroUsize::new(512).unwrap(), 1024 * 1024 * 1024, 16384)
                 .map_err(|_| error("SHINKI_EMU_CMVS_TEXTURE_BUDGET"))?,
             texture_residency: SceneTextureResidency::default(),
@@ -122,12 +122,13 @@ impl CmvsScene {
             reload_surfaces: BTreeMap::new(),
             reload_releases: Vec::new(),
             reload_generation: 0,
-            _gpu_instance: instance.clone(),
         })
     }
 
     pub(crate) fn native_restore_candidate(&self) -> Result<Self, CoreError> {
-        let mut candidate = Self::new(&self._gpu_instance)?;
+        let output = self.output.rebuild()
+            .map_err(|cause| CoreError::invalid("SHINKI_EMU_CMVS_GPU_CREATE", cause.to_string()))?;
+        let mut candidate = Self::with_output(output)?;
         candidate.text = self.text.native_restore_context()?;
         // Native load retains the live stage. Font cells are rebuilt before
         // the candidate's first draw and need its logical width immediately.
@@ -144,8 +145,8 @@ impl CmvsScene {
         raster
             .validate()
             .map_err(|_| error("SHINKI_EMU_CMVS_CANVAS"))?;
-        self.renderer
-            .validate_output_extent(width, height)
+        self.output
+            .validate_raster(shinki_emu_abi::Extent { width, height })
             .map_err(|_| error("SHINKI_EMU_CMVS_CANVAS"))?;
         self.raster = Some(raster);
         Ok(())
@@ -777,27 +778,27 @@ impl CmvsScene {
         });
         mapped.push(SceneCommand::PopClip);
         let raster = canvas.raster();
-        let output = self
-            .renderer
-            .render(&SceneFrame {
-                sequence,
-                width: raster.width,
-                height: raster.height,
-                clear_rgba: [0, 0, 0, 255],
-                commands: mapped,
-                semantics: None,
-            })
-            .map_err(|cause| {
-                tracing::error!(event = "cmvs.gpu.failed", operation = %cause.operation, code = ?cause.code, message = %cause);
-                error("SHINKI_EMU_CMVS_GPU_RENDER")
-            })?;
+        let output = self.output
+            .submit(
+                &SceneFrame {
+                    sequence,
+                    width: raster.width,
+                    height: raster.height,
+                    clear_rgba: [0, 0, 0, 255],
+                    commands: mapped,
+                    semantics: None,
+                },
+                shinki_emu_abi::Extent { width: logical.width, height: logical.height },
+            )
+            .map_err(|cause| CoreError::invalid("SHINKI_EMU_CMVS_GPU_RENDER", cause.to_string()))?
+            .expect("CMVS masked intermediate passes require offscreen pixels");
         self.sequence = sequence;
         self.logical = Some(logical);
         self.canvas = Some(canvas);
         Ok(TextureFrame {
             width: raster.width,
             height: raster.height,
-            rgba8: output.rgba8.into(),
+            rgba8: output.into(),
         })
     }
 }

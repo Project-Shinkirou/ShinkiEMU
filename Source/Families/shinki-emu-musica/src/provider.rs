@@ -3,11 +3,11 @@ use crate::{
     MusicaVm, ScriptEncoding,
     audio::Audio,
     profile::mount_musica_with_resources,
-    scene::{Scene, SceneTarget, core_error, error},
+    scene::{Scene, core_error, error},
     session::MusicaSession,
 };
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
-use shinki_emu_sdk::gpu_scene::GpuSceneHost;
+use shinki_emu_sdk::gpu_scene::{GpuSceneHost, SceneOutput, SceneRequirements};
 use shinki_emu_sdk::runtime::*;
 use std::{
     path::{Component, Path},
@@ -603,17 +603,11 @@ impl MusicaProvider {
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
-        let hosted = if let Some(host) = gpu_host {
-            host.create()?.map(|client| SceneTarget::Hosted(host, client))
-        } else {
-            None
-        };
-        let target = match hosted {
-            Some(target) => target,
-            None => SceneTarget::Cpu(self.cpu_gpu_instance()?),
-        };
+        let output = SceneOutput::open(gpu_host, SceneRequirements::Sprites, || {
+            self.cpu_gpu_instance().cloned()
+        })?;
         let mut scene = Scene::new_scaled(
-            target,
+            output,
             archive.clone(),
             logical_width,
             logical_height,

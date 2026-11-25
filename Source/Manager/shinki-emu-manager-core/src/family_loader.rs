@@ -452,7 +452,7 @@ impl LoadedFamilyPlugin {
                 },
                 text_async: request.text_async.as_ref().map_or(std::ptr::null(), |service| service),
             },
-            gpu_scene: request.gpu_scene.as_ref().map_or(std::ptr::null(), |service| service),
+            gpu_scene: request.gpu_scene.as_ref().map_or(std::ptr::null(), |service| std::ptr::from_ref(service).cast()),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();
@@ -516,7 +516,7 @@ pub struct NativeOpenRequest {
     pub initial_window: WindowState,
     pub host: abi::HostServices,
     pub text_async: Option<abi::AsyncTextServiceV1>,
-    pub gpu_scene: Option<abi::GpuSceneServiceV1>,
+    pub gpu_scene: Option<abi::GpuSceneServiceV2>,
     pub cancellation: crate::NativeCancellation,
     pub render_extent: Option<(u32, u32)>,
 }

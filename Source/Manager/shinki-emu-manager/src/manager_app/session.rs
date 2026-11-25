@@ -202,7 +202,7 @@ impl ActiveFamilySession {
             shinki_emu_abi::SESSION_FINISHED => FamilyStatus::Finished,
             _ => return Err("SHINKI_EMU_CORE_STATE".into()),
         };
-        if let Some(identity) = self.mailbox.gpu_identity()? {
+        if let Some(identity) = self.mailbox.scene_identity()? {
             let ready = self.observed_gpu_frame.replace(identity) != Some(identity);
             self.next_poll = Instant::now() + Duration::from_millis(2);
             return Ok(ready || failure_changed);

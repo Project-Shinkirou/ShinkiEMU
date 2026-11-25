@@ -271,11 +271,15 @@ mod hardware {
     use super::*;
     use crate::{Error, Result};
     use encoding_rs::Encoding;
-    use roukaku_media_core::{OwnedPixelBuffer, SceneCompositing2D, Transform2D};
+    use roukaku_media_core::{OwnedPixelBuffer, Transform2D};
     use roukaku_platform::SceneFrame;
     use roukaku_text::PackagedFont;
-    use shinki_emu_sdk::{SceneTextureResidency, TextScene};
-    use shinki_emu_sdk::{WgpuOffscreenRenderer, native_wgpu_instance};
+    use shinki_emu_abi::Extent;
+    use shinki_emu_sdk::{
+        SceneTextureResidency, TextScene,
+        gpu_scene::{GpuSceneHost, SceneOutput, SceneRequirements},
+        native_wgpu_instance,
+    };
     use std::{
         sync::{
             Arc,
@@ -284,7 +288,81 @@ mod hardware {
         thread::{self, JoinHandle},
     };
 
-    pub(crate) struct GpuCompositor {
+    #[allow(clippy::large_enum_variant, reason = "Keep hosted presentation inline on the VM worker")]
+    enum Compositor {
+        Hosted(GpuRenderer),
+        Compatibility(OffscreenWorker),
+    }
+
+    pub(crate) struct GpuCompositor(Compositor);
+
+    impl GpuCompositor {
+        pub(crate) fn new(
+            encoding: &'static Encoding,
+            font: Option<Arc<PackagedFont>>,
+            mapping: StageCanvas,
+            host: Option<GpuSceneHost>,
+        ) -> Result<Self> {
+            let hosted = SceneOutput::try_hosted(host, SceneRequirements::SpritesWithNativeRaster)
+                .map_err(render_error)?;
+            match hosted {
+                Some(output) => Ok(Self(Compositor::Hosted(GpuRenderer::new(
+                    encoding, font, mapping, output,
+                )?))),
+                None => OffscreenWorker::new(encoding, font, mapping)
+                    .map(|worker| Self(Compositor::Compatibility(worker))),
+            }
+        }
+
+        pub(crate) fn is_hosted(&self) -> bool {
+            matches!(self.0, Compositor::Hosted(_))
+        }
+
+        pub(crate) fn is_busy(&self) -> bool {
+            matches!(&self.0, Compositor::Compatibility(worker) if worker.pending)
+        }
+
+        pub(crate) fn poll(&mut self) -> Result<Option<OwnedPixelBuffer>> {
+            match &mut self.0 {
+                Compositor::Hosted(_) => Ok(None),
+                Compositor::Compatibility(worker) => worker.poll(),
+            }
+        }
+
+        pub(crate) fn render(&mut self, scene: Scene, defer: bool) -> Result<Option<OwnedPixelBuffer>> {
+            match &mut self.0 {
+                // Keep hosted submits and native effects in VM order, with no
+                // in-flight readback or async result that can overwrite an effect.
+                Compositor::Hosted(renderer) => renderer.render(scene),
+                Compositor::Compatibility(worker) if defer => {
+                    worker.submit(scene)?;
+                    Ok(None)
+                }
+                Compositor::Compatibility(worker) => worker.render_now(scene).map(Some),
+            }
+        }
+
+        pub(crate) fn present_raster(&mut self, pixels: &OwnedPixelBuffer) -> Result<()> {
+            match &mut self.0 {
+                Compositor::Hosted(renderer) => renderer.present_raster(pixels),
+                Compositor::Compatibility(worker) => {
+                    worker.publish_pending = false;
+                    Ok(())
+                }
+            }
+        }
+
+        pub(crate) fn capture_scene(&self) -> Result<Option<OwnedPixelBuffer>> {
+            match &self.0 {
+                Compositor::Hosted(renderer) if renderer.sequence != 0 => renderer.output.capture()
+                    .map(|pixels| Some(pixels.into()))
+                    .map_err(render_error),
+                _ => Ok(None),
+            }
+        }
+    }
+
+    struct OffscreenWorker {
         worker: Option<JoinHandle<()>>,
         commands: Option<SyncSender<Scene>>,
         frames: Receiver<Result<OwnedPixelBuffer>>,
@@ -292,8 +370,8 @@ mod hardware {
         publish_pending: bool,
     }
 
-    impl GpuCompositor {
-        pub(crate) fn new(
+    impl OffscreenWorker {
+        fn new(
             encoding: &'static Encoding,
             font: Option<Arc<PackagedFont>>,
             mapping: StageCanvas,
@@ -304,7 +382,11 @@ mod hardware {
             let worker = thread::Builder::new()
                 .name("adv32-gpu".into())
                 .spawn(move || {
-                    let mut renderer = match GpuRenderer::new(encoding, font, mapping) {
+                    let mut renderer = match (|| {
+                        let instance = native_wgpu_instance().map_err(render_error)?;
+                        let output = SceneOutput::offscreen(instance).map_err(render_error)?;
+                        GpuRenderer::new(encoding, font, mapping, output)
+                    })() {
                         Ok(renderer) => renderer,
                         Err(error) => {
                             let _ = initialize.send(Err(error));
@@ -315,7 +397,9 @@ mod hardware {
                         return;
                     }
                     while let Ok(scene) = queue.recv() {
-                        let frame = renderer.render(scene);
+                        let frame = renderer.render(scene).map(|pixels| {
+                            pixels.expect("offscreen worker renders CPU frames")
+                        });
                         let failed = frame.is_err();
                         if completed.send(frame).is_err() || failed {
                             break;
@@ -336,15 +420,7 @@ mod hardware {
             })
         }
 
-        pub(crate) fn is_busy(&self) -> bool {
-            self.pending
-        }
-
-        pub(crate) fn discard_pending(&mut self) {
-            self.publish_pending = false;
-        }
-
-        pub(crate) fn poll(&mut self) -> Result<Option<OwnedPixelBuffer>> {
+        fn poll(&mut self) -> Result<Option<OwnedPixelBuffer>> {
             if !self.pending {
                 return Ok(None);
             }
@@ -358,7 +434,7 @@ mod hardware {
             }
         }
 
-        pub(crate) fn submit(&mut self, scene: Scene) -> Result<()> {
+        fn submit(&mut self, scene: Scene) -> Result<()> {
             debug_assert!(!self.pending);
             self.commands
                 .as_ref()
@@ -370,7 +446,7 @@ mod hardware {
             Ok(())
         }
 
-        pub(crate) fn render_now(&mut self, scene: Scene) -> Result<OwnedPixelBuffer> {
+        fn render_now(&mut self, scene: Scene) -> Result<OwnedPixelBuffer> {
             if self.pending {
                 self.frames.recv().map_err(render_error)??;
                 self.pending = false;
@@ -382,7 +458,7 @@ mod hardware {
         }
     }
 
-    impl Drop for GpuCompositor {
+    impl Drop for OffscreenWorker {
         fn drop(&mut self) {
             self.commands.take();
             if let Some(worker) = self.worker.take() {
@@ -392,7 +468,7 @@ mod hardware {
     }
 
     struct GpuRenderer {
-        renderer: WgpuOffscreenRenderer,
+        output: SceneOutput,
         residency: SceneTextureResidency,
         text: TextScene,
         positioned: crate::text::NativeTextLayouts,
@@ -403,28 +479,17 @@ mod hardware {
     }
 
     impl GpuRenderer {
-        pub(crate) fn new(
+        fn new(
             encoding: &'static Encoding,
             font: Option<Arc<PackagedFont>>,
             mapping: StageCanvas,
+            output: SceneOutput,
         ) -> Result<Self> {
-            let instance = native_wgpu_instance().map_err(render_error)?;
-            let renderer = pollster::block_on(WgpuOffscreenRenderer::new(&instance))
-                .map_err(render_error)?
-                .with_default_compositing(SceneCompositing2D::EncodedSrgb);
-            let raster = mapping.raster();
-            renderer
-                .validate_output_extent(raster.width, raster.height)
-                .map_err(render_error)?;
-            tracing::info!(
-                event = "shinki.emu.adv32.gpu.adapter",
-                backend = %renderer.identity().backend,
-                device_type = %renderer.identity().device_type,
-                "Selected hardware compositor adapter"
-            );
+            let raster = extent(mapping.raster());
+            output.validate_raster(raster).map_err(render_error)?;
             let text = crate::text::new_scene(encoding, font.as_deref())?;
             Ok(Self {
-                renderer,
+                output,
                 residency: SceneTextureResidency::default(),
                 text,
                 positioned: crate::text::NativeTextLayouts::new(),
@@ -435,7 +500,7 @@ mod hardware {
             })
         }
 
-        fn render(&mut self, mut scene: Scene) -> Result<OwnedPixelBuffer> {
+        fn render(&mut self, mut scene: Scene) -> Result<Option<OwnedPixelBuffer>> {
             let (width, height) = scene.extent;
             let encoding = self.encoding;
             let mapping = self.mapping;
@@ -530,27 +595,44 @@ mod hardware {
             self.residency
                 .prepare_with_sources(&mut commands, &sources)
                 .map_err(render_error)?;
-            self.sequence = self
-                .sequence
-                .checked_add(1)
-                .ok_or(Error::Invalid("ADV32 render sequence"))?;
-            let frame = self
-                .renderer
-                .render(&SceneFrame {
-                    sequence: self.sequence,
+            let sequence = self.next_sequence()?;
+            let pixels = self.output.submit(
+                &SceneFrame {
+                    sequence,
                     width: raster.width,
                     height: raster.height,
                     clear_rgba: [0, 0, 0, 255],
                     commands,
                     semantics: None,
-                })
-                .map_err(render_error)?;
+                },
+                extent(mapping.logical()),
+            ).map_err(render_error)?;
             let expected = raster.width as usize * raster.height as usize * 4;
-            if frame.rgba8.len() != expected {
+            if pixels.as_ref().is_some_and(|pixels| pixels.len() != expected) {
                 return Err(Error::Invalid("ADV32 GPU readback size"));
             }
-            Ok(frame.rgba8.into())
+            Ok(pixels.map(Into::into))
         }
+
+        fn next_sequence(&mut self) -> Result<u64> {
+            self.sequence = self.sequence.checked_add(1)
+                .ok_or(Error::Invalid("ADV32 render sequence"))?;
+            Ok(self.sequence)
+        }
+
+        fn present_raster(&mut self, pixels: &OwnedPixelBuffer) -> Result<()> {
+            let sequence = self.next_sequence()?;
+            self.output.present_native_raster(
+                sequence,
+                extent(self.mapping.logical()),
+                extent(self.mapping.raster()),
+                pixels,
+            ).map_err(render_error)
+        }
+    }
+
+    fn extent(size: roukaku_media_core::Extent2D) -> Extent {
+        Extent { width: size.width, height: size.height }
     }
 
     fn render_error(error: impl std::fmt::Debug) -> Error {
@@ -567,12 +649,12 @@ mod tests {
     fn hardware_composites_a_clipped_texture_and_sdk_text_in_draw_order() {
         let extent = roukaku_media_core::Extent2D::new(128, 64);
         let mapping = StageCanvas::new(extent, extent).unwrap();
-        let mut renderer = GpuCompositor::new(encoding_rs::GBK, None, mapping).unwrap();
+        let mut renderer = GpuCompositor::new(encoding_rs::GBK, None, mapping, None).unwrap();
         let Canvas::Scene(previous) = Canvas::for_output(mapping, true) else {
             unreachable!()
         };
-        renderer.submit(previous).unwrap();
-        renderer.discard_pending();
+        assert!(renderer.render(previous, true).unwrap().is_none());
+        renderer.present_raster(&vec![0; 128 * 64 * 4].into()).unwrap();
         let sprite = Crx::from_image(
             0,
             0,
@@ -608,7 +690,7 @@ mod tests {
         let Canvas::Scene(scene) = canvas else {
             unreachable!()
         };
-        let pixels = renderer.render_now(scene).unwrap();
+        let pixels = renderer.render(scene, false).unwrap().unwrap();
         assert_eq!(&pixels[..4], &[0, 120, 0, 255]);
         assert!((30..60).all(|x| (0..64).all(|y| pixels[(y * 128 + x) * 4] == 0)));
         assert!((96..106).any(|x| (0..64).any(|y| pixels[(y * 128 + x) * 4] != 0)));

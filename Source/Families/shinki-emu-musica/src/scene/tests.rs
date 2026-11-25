@@ -704,7 +704,7 @@ fn native_gpu_scaled_ani_offset_scroll_clip_and_shake_preserve_logical_geometry(
         let mut vm = make_vm();
         vm.step(1).unwrap();
         let mut scene = Scene::new_scaled(
-            SceneTarget::Cpu(crate::test_fixture::gpu_instance()),
+            SceneOutput::offscreen(crate::test_fixture::gpu_instance().clone()).unwrap(),
             archive.clone(),
             16,
             16,

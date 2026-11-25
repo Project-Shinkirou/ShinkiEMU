@@ -10,10 +10,16 @@ use roukaku_platform::SceneFrame;
 use shinki_emu_abi::{self as abi, *};
 use std::{ffi::c_void, num::NonZeroU64, ptr::NonNull, sync::Arc};
 
+mod output;
+pub use output::{SceneOutput, SceneRequirements};
+
+type PresentRaster = unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status;
+
 /// Copy of the optional service table and the open request's session epoch.
 #[derive(Clone, Copy)]
 pub struct GpuSceneHost {
     service: GpuSceneServiceV1,
+    present_raster: Option<PresentRaster>,
     session_epoch: u64,
 }
 
@@ -32,9 +38,20 @@ impl GpuSceneHost {
     /// worker, and a successful capture initializes every destination byte.
     /// Keep all copies and created targets within that lifetime.
     pub unsafe fn from_request(request: *const abi::OpenRequest) -> Result<Option<Self>, abi::Status> {
-        let service = unsafe { abi::OpenRequest::gpu_scene(request)? };
-        Ok(service.map(|service| Self {
+        let Some(service) = (unsafe { abi::OpenRequest::gpu_scene(request)? }) else {
+            return Ok(None);
+        };
+        let present_raster = if service.size as usize >= std::mem::size_of::<GpuSceneServiceV2>() {
+            // The v1 reader validated the original request, service prefix,
+            // and its declared size. Both tables have the same alignment.
+            let table = unsafe { (*request.cast::<OpenRequestGpuV1>()).gpu_scene };
+            unsafe { (*table.cast::<GpuSceneServiceV2>()).present_raster }
+        } else {
+            None
+        };
+        Ok(Some(Self {
             service,
+            present_raster,
             session_epoch: unsafe { (*request).session_epoch },
         }))
     }
@@ -59,6 +76,7 @@ impl GpuSceneHost {
                 })?;
                 Ok(Some(GpuSceneClient {
                     service: self.service,
+                    present_raster: self.present_raster,
                     target,
                     commands: Vec::new(),
                     glyphs: Vec::new(),
@@ -73,6 +91,7 @@ impl GpuSceneHost {
 /// Core-worker owner of one ordered host scene target.
 pub struct GpuSceneClient {
     service: GpuSceneServiceV1,
+    present_raster: Option<PresentRaster>,
     target: NonZeroU64,
     commands: Vec<GpuSceneCommandV1>,
     glyphs: Vec<GpuGlyphV1>,
@@ -111,6 +130,30 @@ impl GpuSceneClient {
         self.commands.clear();
         self.glyphs.clear();
         result
+    }
+
+    fn present_raster(
+        &self,
+        sequence: u64,
+        logical: abi::Extent,
+        raster: abi::Extent,
+        pixels: &OwnedPixelBuffer,
+    ) -> Result<(), SessionError> {
+        validate_extents(logical, raster).map_err(encode_error)?;
+        let present = self.present_raster.ok_or_else(|| encode_error(UNSUPPORTED))?;
+        let frame = GpuRasterFrameV2 {
+            header: Header::of::<GpuRasterFrameV2>(),
+            sequence,
+            logical,
+            image: encode_image(raster.width, raster.height, GPU_IMAGE_RGBA8, pixels)
+                .map_err(encode_error)?,
+        };
+        let mut error = Error::default();
+        let status = unsafe { present(self.service.context, self.target.get(), &frame, &mut error) };
+        if status != OK {
+            return Err(host_error(&error, "SHINKI_EMU_RASTER_PRESENT", "CPU-native effect presentation failed"));
+        }
+        Ok(())
     }
 
     /// Explicitly read the last submitted raster as tightly packed, top-down RGBA8.
@@ -511,6 +554,18 @@ unsafe fn decode_image(image: &GpuImageV1, expected_format: u32) -> Result<Owned
     let token = NonNull::new(unsafe { retain(image.owner) }).ok_or(INVALID_ARGUMENT)?;
     let lease = ImageLease { pixels, len: image.pixels.len, token, release };
     Ok(OwnedPixelBuffer::from_owned(OwnedByteBuffer::from_owner(lease, ImageLease::bytes)))
+}
+
+/// Validate and retain an ordered CPU-native raster without copying pixels.
+///
+/// # Safety
+/// The image and its callbacks must satisfy `GpuImageV1`'s lifetime contract.
+pub unsafe fn decode_raster(frame: &GpuRasterFrameV2) -> Result<OwnedPixelBuffer, Status> {
+    if !frame.header.accepts::<GpuRasterFrameV2>() || frame.sequence == 0 {
+        return Err(INVALID_ARGUMENT);
+    }
+    validate_extents(frame.logical, frame.image.extent)?;
+    unsafe { decode_image(&frame.image, GPU_IMAGE_RGBA8) }
 }
 
 unsafe fn decode_texture(image: &GpuImageV1) -> Result<TextureFrame, Status> {

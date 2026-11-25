@@ -60,17 +60,24 @@ impl FrameMailboxInner {
         lease: Arc<()>,
     ) -> Result<(), shinki_emu_abi::Status> {
         let mut state = self.state.lock().map_err(|_| shinki_emu_abi::PANICKED)?;
-        if state.session_epoch != Some(session_epoch) {
-            return Err(shinki_emu_abi::STALE_CONTEXT);
-        }
-        let generation = match &state.frame {
-            None => 1,
-            Some(StageFrame::Gpu(previous)) => previous.identity.generation
-                .checked_add(1).ok_or(shinki_emu_abi::INVALID_STATE)?,
-            Some(StageFrame::Cpu(_)) => return Err(shinki_emu_abi::INVALID_STATE),
-        };
-        let identity = FrameIdentity { session_epoch, output_epoch: 1, generation };
+        let identity = state.next_scene_identity(session_epoch)?;
         state.frame = Some(StageFrame::Gpu(GpuFrame { identity, info, texture, _lease: lease }));
+        state.scene_output = true;
+        Ok(())
+    }
+
+    pub(super) fn publish_native_raster(
+        &self,
+        session_epoch: u64,
+        info: FrameInfo,
+        pixels: roukaku_media_core::OwnedPixelBuffer,
+    ) -> Result<(), shinki_emu_abi::Status> {
+        let mut state = self.state.lock().map_err(|_| shinki_emu_abi::PANICKED)?;
+        let identity = state.next_scene_identity(session_epoch)?;
+        let frame = FrameLease::from_owner(pixels, |pixels| pixels.as_slice(), info, identity)
+            .map_err(|_| shinki_emu_abi::INVALID_ARGUMENT)?;
+        state.frame = Some(StageFrame::Cpu(frame));
+        state.scene_output = true;
         Ok(())
     }
 }
@@ -79,13 +86,28 @@ impl FrameMailboxInner {
 struct FrameMailboxState {
     session_epoch: Option<u64>,
     gpu_committed: bool,
+    scene_output: bool,
     frame: Option<StageFrame>,
     displayed: Option<(FrameIdentity, FrameInfo)>,
 }
 
 impl FrameMailboxState {
     fn visible_frame(&self) -> Option<&StageFrame> {
-        self.frame.as_ref().filter(|frame| self.gpu_committed || matches!(frame, StageFrame::Cpu(_)))
+        self.frame.as_ref().filter(|_| self.gpu_committed || !self.scene_output)
+    }
+
+    fn next_scene_identity(&self, session_epoch: u64) -> Result<FrameIdentity, shinki_emu_abi::Status> {
+        use shinki_emu_abi as abi;
+        if self.session_epoch != Some(session_epoch) {
+            return Err(abi::STALE_CONTEXT);
+        }
+        let generation = match &self.frame {
+            None => 1,
+            Some(previous) if self.scene_output => previous.identity().generation
+                .checked_add(1).ok_or(abi::INVALID_STATE)?,
+            Some(_) => return Err(abi::INVALID_STATE),
+        };
+        Ok(FrameIdentity { session_epoch, output_epoch: 1, generation })
     }
 }
 
@@ -104,6 +126,7 @@ impl FrameMailbox {
         let mut state = self.inner.state.lock().map_err(|_| lock_error())?;
         state.session_epoch = Some(session_epoch);
         state.gpu_committed = false;
+        state.scene_output = false;
         state.frame = None;
         state.displayed = None;
         Ok(())
@@ -118,7 +141,7 @@ impl FrameMailbox {
                 "frame belongs to an inactive session",
             ));
         }
-        if matches!(&state.frame, Some(StageFrame::Gpu(_))) {
+        if state.scene_output {
             return Err(shinki_emu_manager_core::model::FamilyError::invalid(
                 "SHINKI_EMU_HOST_FRAME_TRANSPORT",
                 "frame transport changed during the session",
@@ -155,12 +178,9 @@ impl FrameMailbox {
             .map(|state| state.visible_frame().map(StageFrame::identity))
     }
 
-    pub(crate) fn gpu_identity(&self) -> Result<Option<FrameIdentity>, String> {
+    pub(crate) fn scene_identity(&self) -> Result<Option<FrameIdentity>, String> {
         let state = self.inner.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
-        Ok(match state.visible_frame() {
-            Some(StageFrame::Gpu(frame)) => Some(frame.identity),
-            _ => None,
-        })
+        Ok(state.visible_frame().filter(|_| state.scene_output).map(StageFrame::identity))
     }
 
     pub(crate) fn commit_gpu_open(&self, epoch: u64) -> Result<(), String> {
@@ -172,7 +192,7 @@ impl FrameMailbox {
         Ok(())
     }
 
-    pub(crate) fn gpu_service(&self) -> Option<shinki_emu_abi::GpuSceneServiceV1> {
+    pub(crate) fn gpu_service(&self) -> Option<shinki_emu_abi::GpuSceneServiceV2> {
         self.inner.gpu.lock().ok()?.available().then(|| super::gpu::service(&self.inner))
     }
 
@@ -244,6 +264,7 @@ impl FrameMailbox {
             state.frame = None;
             state.session_epoch = None;
             state.gpu_committed = false;
+            state.scene_output = false;
             state.displayed = None;
         }
         Ok(())

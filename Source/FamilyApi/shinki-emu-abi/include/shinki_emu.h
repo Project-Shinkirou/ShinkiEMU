@@ -927,6 +927,33 @@ typedef struct ShinkiEmuOpenRequestGpuV1 {
 } ShinkiEmuOpenRequestGpuV1;
 
 /**
+ * A completed CPU-native effect frame. Its ordered `sequence` shares the
+ * target namespace with GPU submits; it never changes the base frame API.
+ */
+typedef struct ShinkiEmuGpuRasterFrameV2 {
+  struct ShinkiEmuHeader header;
+  uint64_t sequence;
+  struct ShinkiEmuExtent logical;
+  struct ShinkiEmuGpuImageV1 image;
+} ShinkiEmuGpuRasterFrameV2;
+
+/**
+ * Optional tail of the v1 service, advertised by `base.size`. `base.version`
+ * remains 1. Old clients copy and use only the v1 prefix.
+ * `present_raster` publishes immutable, packed, top-down RGBA8 (encoded sRGB,
+ * ignored alpha) through the same ordered output as `submit`. It is for
+ * native CPU producers, not for copying back a scene. The receiver may
+ * retain the image. It does not change the v1 capture source.
+ */
+typedef struct ShinkiEmuGpuSceneServiceV2 {
+  struct ShinkiEmuGpuSceneServiceV1 base;
+  ShinkiEmuStatus (*present_raster)(void*,
+                                    uint64_t,
+                                    const struct ShinkiEmuGpuRasterFrameV2*,
+                                    struct ShinkiEmuError*);
+} ShinkiEmuGpuSceneServiceV2;
+
+/**
  * Optional Android `CoreApi.extension` table for a dynamically loaded core.
  * Negotiate `shinki.emu.android_context`, version 1; the header uses ABI v3.
  * On explicit activation, before `CoreApi.initialize`, call `initialize` with
