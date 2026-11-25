@@ -103,7 +103,7 @@ resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"]
-android_dynamic = { minimum_release = "0.1.0-beta.9", requires_context = true }
+android_dynamic = { minimum_release = "0.1.0-beta.6", requires_context = true }
 ios_framework = true
 publish_blocked = ""
 [[cores.blocked]]
@@ -289,7 +289,7 @@ resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
-android_dynamic = { minimum_release = "0.1.0-beta.9", requires_context = true }
+android_dynamic = { minimum_release = "0.1.0-beta.5", requires_context = true }
 ios_framework = true
 publish_blocked = ""
 [[cores.blocked]]
