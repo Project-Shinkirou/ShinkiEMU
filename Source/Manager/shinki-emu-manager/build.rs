@@ -214,7 +214,8 @@ fn write_embedded_core_identities() {
     let mut registry = String::from("&[\n");
     let ohos_bundled = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos")
         && env::var_os("CARGO_FEATURE_OHOS_BUNDLED_MUSICA").is_some();
-    let optional_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
+    let optional_cmvs = env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android")
+        && env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
     let optional_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
@@ -236,8 +237,7 @@ fn write_embedded_core_identities() {
                 "shinki.emu.adv32" => "adv32_query",
                 "shinki.emu.cmvs" => "cmvs_query",
                 "shinki.emu.musica" => "musica_query",
-                "art3m1s-core" => "artemis_query",
-                "siglus_rs" | "renpy" | "kirikiroid2-web" | "krkr2" => "query",
+                "siglus_rs" | "krkr2" => "query",
                 _ => "shinki_emu_query",
             };
             writeln!(registry, "    ({id:?}, shinki_emu_{adapter}::{query}),").expect("write query registry");

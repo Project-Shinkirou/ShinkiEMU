@@ -313,11 +313,9 @@ fn activate(
     let catalog = recognition::supported_core(plugin_id)?;
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
     let provider = match recognition::core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")? {
-        recognition::CoreSource::Static(query) => {
-            #[cfg(target_os = "android")]
-            set_static_android_resource_root(plugin_id)?;
-            unsafe { shinki_emu_manager_core::LoadedFamilyPlugin::from_query(query) }
-        }
+        recognition::CoreSource::Static(query) => unsafe {
+            shinki_emu_manager_core::LoadedFamilyPlugin::from_query(query)
+        },
         recognition::CoreSource::Package(core) => {
             #[cfg(target_os = "android")]
             {
@@ -358,28 +356,6 @@ fn activate(
         return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
     }
     registry.register_provider(provider).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-#[cfg(target_os = "android")]
-fn set_static_android_resource_root(plugin_id: &str) -> Result<(), String> {
-    let (encoding, code) = match plugin_id {
-        "renpy" => ("RENPY_RESOURCE_ROOT_ENCODING", "RENPY_RESOURCE_ROOT"),
-        "kirikiroid2-web" | "krkr2" => ("KRKR_RESOURCE_ROOT_ENCODING", "KRKR_RESOURCE_ROOT"),
-        _ => return Ok(()),
-    };
-    let root = crate::platform::bundled_resource_dir()
-        .ok_or("SHINKI_EMU_DATA_DIRECTORY_UNAVAILABLE")?;
-    let resources = root.join("cores").join(plugin_id).join("Resources");
-    let path = resources.to_str().ok_or(encoding)?;
-    let status = match plugin_id {
-        "renpy" => shinki_emu_renpy::set_resource_root(path, &mut shinki_emu_abi::Error::default()),
-        "krkr2" => shinki_emu_krkr2::set_resource_root(path),
-        _ => shinki_emu_kirikiroid2_web::set_resource_root(path),
-    };
-    if status != shinki_emu_abi::OK {
-        return Err(format!("{code} ({status})"));
-    }
     Ok(())
 }
 

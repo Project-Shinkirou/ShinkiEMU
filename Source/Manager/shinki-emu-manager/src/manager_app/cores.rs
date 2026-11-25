@@ -127,6 +127,24 @@ pub(super) fn product_version_label(version: &str, source_commit: Option<&str>) 
     }
 }
 
+fn release_matches_target(entry: &CoreCatalogEntry, platform: &str) -> bool {
+    entry.platform == platform && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
+}
+
+pub(super) fn latest_eligible_release<'a>(
+    entries: &'a [CoreCatalogEntry],
+    plugin_id: &str,
+    platform: &str,
+    eligible: impl Fn(&CoreCatalogEntry) -> bool,
+) -> Option<&'a CoreCatalogEntry> {
+    entries
+        .iter()
+        .filter(|entry| entry.plugin_id == plugin_id && release_matches_target(entry, platform))
+        .filter(|entry| eligible(entry))
+        // Legacy provenance sorts ahead of SemVer. Rank only eligible releases.
+        .max_by(|left, right| left.release_cmp(right))
+}
+
 impl ShinkiEmuManagerController {
     fn cores_dir(&self) -> Result<PathBuf, String> {
         core_directory(&self.data_dir)
@@ -139,12 +157,12 @@ impl ShinkiEmuManagerController {
     /// Highest released version of a core for this platform and ABI.
     pub(super) fn online_core(&self, plugin_id: &str) -> Option<&CoreCatalogEntry> {
         if !Self::allows_core_packages(plugin_id) { return None; }
-        self.metadata_catalog.as_ref()?.cores.latest(
+        latest_eligible_release(
+            &self.metadata_catalog.as_ref()?.cores.entries,
             plugin_id,
             &core_platform(),
-            INDEPENDENT_FAMILY_ABI_FINGERPRINT,
+            |entry| recognition::allows_installed_release(plugin_id, &entry.version, entry.identity.as_ref()),
         )
-        .filter(|entry| recognition::allows_installed_release(plugin_id, &entry.version, entry.identity.as_ref()))
     }
 
     /// The release online install, update and 全部更新 may fetch for a core;
@@ -377,8 +395,7 @@ impl ShinkiEmuManagerController {
         let platform = core_platform();
         let entries = self.metadata_catalog.as_ref().into_iter()
             .flat_map(|catalog| &catalog.cores.entries)
-            .filter(|entry| entry.platform == platform
-                && entry.abi == INDEPENDENT_FAMILY_ABI_FINGERPRINT
+            .filter(|entry| release_matches_target(entry, &platform)
                 && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
         let stem = core_package::stage_local_release(source, entries, &pending)?;
         if cfg!(target_os = "android") {

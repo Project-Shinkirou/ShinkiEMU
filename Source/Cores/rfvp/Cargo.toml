@@ -12,3 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 shinki-emu-rfvp = { workspace = true, features = ["dynamic-plugin-export"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# CPAL's Oboe backend needs the packaged NDK C++ runtime in this DSO.
+oboe = { workspace = true, features = ["shared-stdcxx"] }
