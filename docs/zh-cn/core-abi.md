@@ -5,6 +5,31 @@ description: C ABI v3 生命周期、owner 线程、CPU 帧租约和核心包。
 
 # 核心 ABI 与 SDK
 
+## 架构与调用总览
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless (宿主 owner 线程)
+  participant Core as Native Core (原生核心 owner 线程)
+  Host->>Core: query() → CoreApi v3 表
+  Host->>Core: initialize() / describe() / probe(game_dir)
+  Host->>Core: open(config, host_services) → session handle
+  loop 活跃会话
+    Host->>Core: input() / control() (入队拥有型事件)
+    Core-->>Host: state() / frame() (只读已发布状态与不可变 CPU 帧租约)
+    Host->>Core: release_frame(lease) (上传完成后归还一次)
+  end
+  Host->>Core: cancel() (可并发唤醒阻塞调用)
+  Host->>Core: close() (等待 worker 退出并释放句柄)
+```
+
+| 能力位（`Descriptor.capabilities`） | 数值 | 含义 |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | 校验转换脚本 hash，隔离对应存档与既读命名空间 |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | 配置字体优先于脚本或恢复状态中的首选字体 |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | 原生 SC 支持离线嵌入 Unicode 译文（Musica 配方） |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | 从原生 SC 读取姓名常量并只读回退 EXE |
+
 ## 协议与入口
 
 原生协议为 `shinki.emu.native.c.v3`，ABI 数值版本为 **3**。动态核心导出 `shinki_emu_query`，静态集成注册相同形状的 Query 函数。Rust 契约位于 `Source/FamilyApi/shinki-emu-abi`，生成的 C 头文件为 `include/shinki_emu.h`。C++ 使用这份头文件，不另行维护 ABI 定义。

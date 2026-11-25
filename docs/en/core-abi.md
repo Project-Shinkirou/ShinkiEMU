@@ -5,6 +5,31 @@ description: C ABI v3 lifecycle, owner threads, CPU leases and core packages.
 
 # Core ABI and SDK
 
+## Architecture & Lifecycle Overview
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless (Host Owner Thread)
+  participant Core as Native Core (Core Owner Thread)
+  Host->>Core: query() → CoreApi v3 table
+  Host->>Core: initialize() / describe() / probe(game_dir)
+  Host->>Core: open(config, host_services) → session handle
+  loop Active Session
+    Host->>Core: input() / control() (owned events queued)
+    Core-->>Host: state() / frame() (published state & immutable CPU frame lease)
+    Host->>Core: release_frame(lease) (returned once after upload)
+  end
+  Host->>Core: cancel() (concurrent wakeup of blocking native calls)
+  Host->>Core: close() (joins workers & consumes handle)
+```
+
+| Capability (`Descriptor.capabilities`) | Bit | Meaning |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | Validates converted script hash and isolates saves/read state |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | Prefers configured font over script/restored font hints |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | Native SC operands support offline embedded Unicode text (Musica) |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | Reads name constants from native SC with read-only EXE fallback |
+
 ## Protocol and entry point
 
 The native protocol is `shinki.emu.native.c.v3`, with numeric ABI version **3**. Dynamic cores export `shinki_emu_query`; static integration registers the same Query function shape. The Rust contract is `Source/FamilyApi/shinki-emu-abi`, and its generated C header is `include/shinki_emu.h`. C++ consumers use this header rather than maintaining another ABI definition.

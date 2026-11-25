@@ -11,10 +11,13 @@ fn write_runtime_icon() {
     .expect("SHINKI_EMU_MANAGER_ICON_INVALID");
     let mut pixmap =
         tiny_skia::Pixmap::new(64, 64).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
-    pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
+    pixmap.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
     resvg::render(
         &tree,
-        tiny_skia::Transform::from_scale(2.0, 2.0),
+        tiny_skia::Transform::from_scale(
+            64.0 / tree.size().width(),
+            64.0 / tree.size().height(),
+        ),
         &mut pixmap.as_mut(),
     );
     let output = env::var_os("OUT_DIR").expect("SHINKI_EMU_MANAGER_OUT_DIR_MISSING");
@@ -41,7 +44,7 @@ fn embed_windows_icon() {
     for size in [16, 24, 32, 48, 64, 128, 256] {
         let mut pixmap =
             tiny_skia::Pixmap::new(size, size).expect("SHINKI_EMU_MANAGER_ICON_DIMENSIONS_INVALID");
-        pixmap.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
+        pixmap.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
         resvg::render(
             &tree,
             tiny_skia::Transform::from_scale(

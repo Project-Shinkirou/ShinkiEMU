@@ -5,9 +5,16 @@ description: Windowless core acceptance, replay, baseline comparisons and Manage
 
 # Headless execution and Manager screenshots
 
-The shared runner uses Manager's C ABI v3 loader, native session owner and immutable CPU frame leases. Scripts use the existing `roukaku.user_input_sequence.v1` messages from `roukaku-headless-protocol` at the workspace's pinned RoukakuEngine revision. No engine checkout changes are required.
+The shared runner drives automated core frame acceptance and Manager UI screenshots using Manager's C ABI v3 loader, native session owner and immutable CPU frame leases. Scripts use the existing `roukaku.user_input_sequence.v1` messages from `roukaku-headless-protocol` at the workspace's pinned RoukakuEngine revision.
 
-The current [Manager `0.1.0-beta.8` release packages](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) do not include the `shinki-emu-headless` binary. The runner is available in repository source; build it using the steps below.
+| Use case | Standalone runner | Manager subcommand |
+|---|---|---|
+| Core frame acceptance &amp; input replay | `shinki-emu-headless run ...` | `shinki-emu-manager headless ...` |
+| PNG pixel baseline comparison | `shinki-emu-headless compare ...` | — |
+| Capture Manager light/dark UI shots | `shinki-emu-headless ui ...` | `shinki-emu-manager headless-ui ...` |
+
+> [!NOTE]
+> The current [Manager `0.1.0-beta.8` release packages](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) do not include the `shinki-emu-headless` binary. The runner is available in repository source; build it using the steps below.
 
 ## Build
 

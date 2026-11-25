@@ -1,450 +1,102 @@
 ---
-title: Build and release
-description: Cargo orchestration, native build scripts, packaging and explicit blocked targets.
+title: Build from Source
+description: Local toolchain setup, cargo xtask build/check/test commands, and per-platform developer workflows.
 ---
 
-# Build and release
+# Build from Source
 
-For windowless core acceptance, input replay, PNG/hash baselines and screenshots of the Manager itself, see [Headless execution](headless.md).
+This guide covers everyday local building, checking, and testing of ShinkiEMU. For full maintainer release engineering — pinned vcpkg/FFmpeg/Ren'Py SDK details, Apple cross-build SDK extraction, OHOS handoff gates, corresponding-source bundling, and historical release records — see the [Release & Maintainer Runbook](release-runbook.md). For headless frame acceptance and Manager UI screenshots, see the [Headless Runner](headless.md).
 
-## Game-local on-disk layout
+## Toolchain & Prerequisites
 
-Every file written by ShinkiEMU itself inside a game directory belongs under `<game>/.shinki/`; never write product saves, cache, logs, receipts, patch artifacts or temporary outputs into the commercial game's root or original save paths. Allocate each owner its own subtree: `musica/saves/` for Musica, `patch/` for downloaded artifacts, `staging/` for transactions, `backup/<id>/` for original files plus manifest, and `patch-result.json` for the in-place receipt. Keep path validation and no-follow directory resolution when adding owners. Third-party cores retain their upstream storage contracts.
+- **Rust toolchain**: Rust 2024 edition, pinned to **Rust 1.99.1** via `rust-toolchain.toml`.
+- **Clone with submodules**: `ThirdParty/cpal` is the only Git submodule (external cores are fetched by `cargo xtask deps` from `build/cores.toml`):
+  ```sh
+  git clone --recurse-submodules https://github.com/Project-Shinkirou/ShinkiEMU.git
+  ```
+- **Authoritative manifests**: `build/dependencies.toml` (tools & downloads), `build/cores.toml` (cores & features), `build/targets.toml` (targets & runners).
 
-## Inputs and prerequisites
+| Platform | Prerequisites |
+|---|---|
+| **Windows x64** | x64 MSVC Developer environment, CMake, Ninja, Git |
+| **Linux x64** | GCC/Clang, CMake, Ninja, pkg-config, NASM, WebKitGTK 4.1 dev packages, audio/graphics dev libs (see apt command below) |
+| **macOS / iOS** | Native Xcode (or Linux `cross 0.2.5` + private official Apple SDKs; see [Release Runbook](release-runbook.md)) |
+| **Android** | JDK 27, Android SDK platform 37.2, build-tools 37.0.0, NDK r30 (`30.0.16248370`), `cargo-ndk 4.1.2` |
+| **OpenHarmony** | DevEco Studio Native SDK 5.0.5 (API 17, `OHOS_SDK_NATIVE`) |
 
-Clone the repository with its recursive submodules. Use Rust/Cargo and the target's native toolchain. Windows native builds require an x64 MSVC developer environment, CMake, Ninja and Git. Android uses JDK 27, NDK 30.0.16248370 and cargo-ndk 4.1.2. Tool versions and downloads are inputs in `build/dependencies.toml`; core manifests/features/licenses are in `build/cores.toml`, and target/runner definitions in `build/targets.toml`.
+## Common `cargo xtask` Commands
 
-KiriKiri's parser generator runs on the build host, including Android cross-builds.
-Windows uses the pinned WinFlexBison prepared by `deps`; other hosts require Bison
-on `PATH`. CI installs Bison/Flex for its Linux-hosted Android rows.
-
-Ren’Py additionally needs the official pinned SDK: `RENPY_SDK_ROOT`, `RENPY_PYTHON_DEV`, `RENPY_SDL_INCLUDE` and the official Cython 3.2.4 compiler matching CPython 3.12.7. These are upstream build/runtime dependencies, not replacement product build tools. Inspect the selected fork's `shinki/sdk.json` for SDK inputs.
-
-The POSIX SDL 2.0.20 source archive is downloaded from the official SDL GitHub release. Its SHA256 remains `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06`; the archive bytes and SDK ABI are unchanged. The Android Ren’Py source builder also requires its LLVM 18/Clang 18, LLD and ccache host toolchain and native development packages. CI and Release install the same existing prerequisite list; the Android SDK/NDK alone is insufficient.
-
-All workspace crates use Rust 2024 with MSRV 1.99. The toolchain is Rust 1.99.1. Android packaging uses Gradle 9.8.2, AGP 9.4.1 with built-in Kotlin, JDK 27, platform 37.2, build-tools 37.0.0 and stable NDK r30 (30.0.16248370). CMVS has no Win32 dependency and builds as a dynamic core for Windows x64, Linux x64 and both macOS architectures; Android and iOS wait on static Manager embedding.
-
-Native libraries use vcpkg baseline `0c2a9ace1964b818b15f7ae50ba1c42404918a7b` (FFmpeg 9.0.2#2, libass 0.17.5, HarfBuzz 14.6.0, FriBidi 1.0.17, FreeType 2.14.3). CI pins NASM 3.02; DXC is 1.9.2609. Java/Kotlin bytecode stays at JVM 17 for Android compatibility while the build runs on JDK 27. RoukakuEngine is pinned to published revision `374a7a20780153766d9d0256e4cf4d7754fd02f9`, including the Android offscreen Vulkan backend; external-core source pins are integrated separately. The Bangumi/VNDB SDKs still require reqwest 0.12 public types, so that compatibility dependency tracks 0.12.28 alongside the application’s reqwest 0.13.5. Ren’Py’s CPython/Cython/SDL inputs remain tied to its pinned SDK ABI. Android static cores share the workspace ABI and build helper through the existing source patch, avoiding duplicate same-version helper packages.
-
-mlua 0.12.2 uses official upstream mlua-sys 0.13.0 revision `ff96ed786295cae96f43ef1372bd22be0fbf7866`: the published binding rejects bytecode generated by current Luau 744 during `Lua::new`; upstream synchronizes the supported maximum from 11 to 14.
-
-Windows cross builds use the pinned Engine’s Android triplets, whose extended absolute Windows prefix is valid for Meson 1.12’s POSIX target-path checks and native staging. Java 27 runtime support follows [Gradle 9.8.2’s compatibility matrix](https://docs.gradle.org/9.8.2/userguide/compatibility.html); [Android’s JDK guide](https://developer.android.com/build/jdks) requires a JDK at or above AGP’s minimum (17 for AGP 9.4).
-
-Run from the repository root:
+Run from the repository root and scope to `--manager` or a single `--core` so you do not mix unrelated native dependency graphs:
 
 ```sh
-cargo xtask --help
+# Inspect build matrix and local prerequisites (doctor checks only; never installs OS packages)
 cargo xtask matrix
 cargo xtask doctor --target x86_64-pc-windows-msvc
+
+# Explicitly fetch pinned external core forks and native dependencies
 cargo xtask deps --target x86_64-pc-windows-msvc
-cargo xtask doctor --target x86_64-pc-windows-msvc --core renpy
-```
+cargo xtask deps --target x86_64-pc-windows-msvc --core rfvp
 
-`doctor` diagnoses missing inputs and exits nonzero; it does not install them. `deps` is the explicit download/preparation entry and can be narrowed with `--core <plugin_id>`. It prepares locked native dependencies rather than installing system packages. Ordinary commands do not prepare downloads implicitly; Cargo still needs its resolved dependencies available.
-
-## Build, check and test
-
-```sh
-cargo xtask build --target x86_64-pc-windows-msvc --manager --release
-cargo xtask build --target x86_64-pc-windows-msvc --core rfvp --release
-cargo xtask build --target x86_64-pc-windows-msvc --all-cores --release
+# Check, build, and test
 cargo xtask check --target x86_64-pc-windows-msvc --manager
 cargo xtask check --target x86_64-pc-windows-msvc --core rfvp
+cargo xtask build --target x86_64-pc-windows-msvc --manager --release
+cargo xtask build --target x86_64-pc-windows-msvc --core rfvp --release
 cargo xtask test --manager
 cargo xtask test --core rfvp
 cargo xtask test
+cargo xtask metadata validate
 ```
 
-Select exactly one of `--manager`, `--core` and `--all-cores` for build. Check takes one Manager/core selection; tests run on the host and have no `--target` flag. Test without a selection runs xtask and build-helper tests. Native regressions may require real GPU/audio devices and public fixtures.
+- Unselected `cargo xtask test` runs `xtask` and build-helper tests (including icon generation and metadata intake parsing).
+- Pass `--allow-dirty-sources` to `deps` when iterating on uncommitted adapter fork edits (HEAD must still match the pinned commit; release builds reject dirty sources).
+- Build artifacts are isolated under `.work/target/<target>/<component>` and receipts under `.work/build/`.
 
-xtask resolves the system temporary root before creating scratch files and directories. On macOS this supports the default `/var/folders/...` path and a symlinked `TMPDIR` without changing that variable. Package inputs still reject links and special files; atomic publication stages beside the destination on the same filesystem.
+## Compiled-In Store Features
 
-Each core owns a real `build.rs`. It validates target inputs and records `core-build.json` in Cargo's `OUT_DIR`. C++ adapters drive their native CMake builds; pure Rust cores are compiled by Cargo. Build scripts do not recursively run Cargo or publish releases. xtask reads `compiler-artifact` and `build-script-executed` JSON, not guessed target paths. Components build independently under `.work/target/<target>/<component>`; receipts are under `.work/build/`. Artemis uses Luau on every platform and shares Manager's runtime when statically embedded on Android.
+`shinki-emu-store` defines object-safe provider/session traits, cancellation, and secret-store boundaries. Manager enables `store-steam`, `store-dlsite`, and `store-dmm` by default. Build Steam-only with `--no-default-features --features store-steam`. Adding a new store requires a provider crate, an optional Cargo feature, and one `registry.register(...)` line in `manager_app/store.rs`.
 
-Manager collects embedded build manifests only from the current target's `static_manager_targets`, matched to exact Cargo package IDs. A core used merely as a resource reader is not a static registration. Selected manifests still require matching plugin, target, profile and artifact kind; missing, ambiguous or duplicate records fail the build.
+## Linux Desktop
 
-The accepted Windows graphics graph uses wgpu-hal 30.0.1 and gpu-allocator 0.28.0 with the same windows 0.62.2 types. Older windows crate versions may coexist for unrelated consumers, but must not split that D3D12 boundary; preserve the accepted allocator lock edge when merging branch lockfiles.
-
-Before compiling a versioned Manager, set `SHINKI_EMU_PRODUCT_VERSION` to the same SemVer passed to `package`/`release`. CI's existing `SHINKI_EMU_CI_VERSION` is used when the product variable is absent; if both are set they must agree. Without either input, a development build uses the Manager package version. Do not change `Cargo.toml` merely to label a release. The Manager build script writes `OUT_DIR/manager-build-version.json`; xtask checks that actual compile identity and records `product_version` in the build/package/release records. Packaging rejects missing or different versions, including mixed Android ABI versions: rebuild normally with the intended version instead of relabeling an old receipt. Apple cross containers forward the same product variable.
-
-Known beta.7 issue: the official Windows binary reports `0.1.0-beta.6` internally although its release/package label is beta.7. Its existing tag and assets remain immutable. The compile-time injection and receipt checks above fix subsequent builds; the [Manager beta.8 release notes](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) retain this known-issue record.
-
-Android Manager and standalone-core builds import the pinned `cargo ndk-env` toolchain and invoke Cargo directly, preserving its real build-script manifests. Native standalone builds receive their selected core's exact prepared installation through `SHINKI_EMU_VCPKG_INSTALLED`; embedded builds use the per-core native root so multiple cores do not share one installation.
-
-Manager initializes the process-wide Rustls crypto provider once, before creating network clients or workers. It selects AWS-LC, matching reqwest 0.13 and platform certificate verification; VNDB's current reqwest 0.12 dependency also enables ring, so automatic feature-based selection is ambiguous. Steam and the other providers do not install a process default themselves.
-
-### Compile-in stores
-
-`shinki-emu-store` defines the object-safe provider/session traits, cancellation, secret-store boundary and `Registry`. Manager features `store-steam`, `store-dlsite` and `store-dmm` are enabled by default. For a Steam-only build, use `--no-default-features --features store-steam` with the Manager package. Add a provider crate and its optional Cargo feature/dependency, then one `registry.register(...)` line in `manager_app/store.rs`; no dynamic library loading is involved. Providers return opaque in-process plans, fixed secret-free `StoreError` messages, and owned titles only. All provider temporary files must use the supplied `.shinki/store/<provider>/` work directory. Credentials belong exclusively to `SecretStore`.
-
-
-### Linux desktop
-
-Use the repository's pinned Rust 1.99.1 toolchain. On Ubuntu 22.04/24.04 install the native development packages explicitly:
+Install native development packages on Ubuntu 22.04 / 24.04:
 
 ```sh
 sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config nasm patchelf autoconf automake libtool libltdl-dev autoconf-archive python3-jinja2 python3-venv libxtst-dev libxxf86vm-dev libxinerama-dev bison flex gperf libssl-dev libasound2-dev libudev-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers xvfb xauth unzip jq
 sudo apt-get install -y --no-install-recommends libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
-`libltdl-dev` supplies the `LT_SYS_SYMBOL_USCORE` macro used by the vcpkg
-`libxcrypt` autoreconf step. `python3-jinja2` is required by the kirikiroid2-web
-native dependency generator, and `libxtst-dev` is required by its Linux GTK
-dependency closure. These packages are host prerequisites; `cargo xtask deps`
-does not install them.
-`python3-venv` supplies ensurepip for libsystemd's isolated build environment.
-`libxxf86vm-dev` supplies the Xxf86vm linker input required by Linux Cocos.
-The CI and component-release workflows install the same prerequisite list, so
-release-only native dependency builds receive these tools too.
+Then prepare dependencies, build, and package:
 
 ```sh
 cargo xtask deps --target x86_64-unknown-linux-gnu
-cargo xtask deps --target x86_64-unknown-linux-gnu --all-cores
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.1
+export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.8
 cargo xtask build --target x86_64-unknown-linux-gnu --manager --release
-cargo xtask build --target x86_64-unknown-linux-gnu --all-cores --release
-cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-beta.1 --out .work/linux-manager
-cargo xtask package --target x86_64-unknown-linux-gnu --core siglus_rs --out .work/linux-siglus
-cargo xtask ci --target x86_64-unknown-linux-gnu --component manager --report .work/linux-ci.json
+cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-beta.8 --out .work/linux-manager
 ```
 
-For an individual native Linux core, replace `CORE` with `renpy`, `impacto`, or `kirikiroid2-web`:
+End-user Linux runtime packages are listed in [Troubleshooting — Linux Runtime Libraries](troubleshooting.md#linux-runtime-libraries).
 
-```sh
-cargo xtask deps --target x86_64-unknown-linux-gnu --core CORE
-cargo xtask ci --target x86_64-unknown-linux-gnu --component CORE --report .work/linux-core-ci.json
-```
+## Android Local Test APK
 
-The Ren'Py package includes its SDK runtime and installed `Resources`; Impacto and KiriKiri2 include the pinned native shared-library closure. Each core package records system SONAME requirements in `build.json`.
-
-Linux SONAME symlinks in explicitly selected native build directories are resolved to regular files within that same directory. Packages copy their bytes under the loader-requested name, never store symlinks, and reject escaping, broken or cyclic links and conflicting dependency contents. General resource and license inputs still reject symlinks.
-
-The Manager's Linux Bangumi provider builds native-tls with vendored, static OpenSSL, so its executable does not depend on the build host's `libssl.so.3`/`libcrypto.so.3`. Native core packages still bundle their own pinned OpenSSL closure when required.
-
-Linux Manager `deps` checks the distribution's development libraries; it does not run `apt`. Core `deps` prepares the pinned vcpkg native libraries in target-specific roots and materializes relocatable shared-library files for packaging. Run `./shinki-emu-manager` from the packaged directory. Packaging validates ELF architecture, loader paths and the dependency closure, includes notices and the offline metadata snapshot, and preserves executable permissions in the ZIP reported by `ci`. The same prerequisites and xtask commands run in CI and release jobs. Core availability remains defined by `matrix`; declared blocked cores produce no binary artifact.
-The Linux package uses the distribution's glibc, libstdc++, fontconfig, udev and ALSA ABI libraries, plus GTK 3 and WebKitGTK 4.1 for store web sign-in. Install their runtime packages (on Ubuntu `libwebkit2gtk-4.1-0`, which pulls in GTK 3) on the destination system and provide an X11 or Wayland desktop with a graphics driver.
-Impacto's Linux VA-API libraries also require the distribution's `libdrm.so.2`
-(Ubuntu package `libdrm2`), which remains part of the system graphics stack.
-KiriKiri2 also uses the distribution's OpenGL dispatch libraries `libGL.so.1`,
-`libGLX.so.0` and `libOpenGL.so.0` (Ubuntu packages `libgl1 libglx0 libopengl0`).
-Its X11 and OpenMP dependencies use the distribution's `libX11.so.6` and
-`libgomp.so.1` (Ubuntu packages `libx11-6 libgomp1`).
-Its gdiplus text renderer uses the distribution's Pango Cairo/FreeType modules
-`libpangocairo-1.0.so.0` and `libpangoft2-1.0.so.0`
-(Ubuntu packages `libpangocairo-1.0-0 libpangoft2-1.0-0`).
-The GTK dialog ABI `libgtk-3.so.0` is also supplied by the distribution
-(Ubuntu 24.04 package `libgtk-3-0t64`). Pinned OpenSSL libraries are bundled:
-the vcpkg curl build requires OpenSSL symbols newer than Ubuntu 24.04 supplies,
-so matching `libssl.so.3`/`libcrypto.so.3` cannot be treated as system ABI files.
-Linux disables Cocos' unused `BUILD_EDITOR_SPINE` module; the core/plugin
-consumers, CocoStudio UI and MotionPlayer/Emote remain intact. The original
-Spine license stays in the untouched source tar, not the binary's used-module
-notice set. This Linux-only choice does not change Android or Apple builds.
-KiriKiri2 Linux bundles the pinned Cocos FMOD runtime as `libfmod.so.6`,
-using relative `$ORIGIN` lookup. It is a third-party runtime, not a system ABI.
-The project owner authorized its redistribution on 2026-10-31. The package's
-`licenses/kirikiroid2-web/FMOD.txt` preserves Firelight attribution and exact
-binary/archive provenance. Cocos source remains MIT; FMOD is not relicensed MIT.
-The source bundle contains the original dependency archive and rebuild recipes,
-including genuine FMOD headers/prebuilt input, not invented FMOD source or EULA.
-
-The common KiriKiri desktop candidate merges the accepted Linux, macOS and Android
-fork histories on `shinki-common63`, with a new upstream-derived release sequence.
-Its desktop gates rebuild and package Windows x64, Linux x64 and both macOS
-architectures at the same fork revision. CI also prepares corresponding source
-archives without publishing a release or tag. Those archives retain the complete
-fork snapshot, recursive Gitlinks/LFS payloads, native recipe inputs and original
-third-party licenses; the shared PAX-link handling preserves long link targets.
-The product keeps the modern Manager pins and 32 MiB resource contract. Android
-seven-core integration is gated by its own product owner; broad iOS integration
-remains a separate candidate and is not enabled by merging source history.
-`Tools/verify-krkr-desktop.py` checks the actual package's indexed bytes,
-original resource/license assets and native closure. It loads only the packaged
-library and calls the real ABI query for version 3, an unsupported version and a
-null output; it never initializes a core or opens a session. Linux additionally
-checks every packaged ELF with `ldd -r` without `LD_LIBRARY_PATH`; macOS verifies
-every Mach-O with strict codesign and resolves its relocatable dependencies.
-Windows retains the existing unsigned core distribution contract.
-The ABI probe is a separate native consumer compiled against the pinned C header.
-It cannot inherit Python's already-loaded OpenSSL when auditing the bundled
-OpenSSL runtime, and it retains the same real loader and ABI failure checks.
-
-RFVP additionally uses the distribution's GStreamer 1.x (at least 1.14) and GLib 2.x (at least 2.56), including the base, good and libav plugin packages for native movie decoding. These are system runtime requirements, not bundled copies. On Ubuntu install `libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav`. Package `build.json` records the actual required system SONAMEs in `system_dependencies`.
-
-For unreliable archive downloads, preseed `.work/vcpkg-downloads` with the exact pinned source/tool archives. Transfer with resumable chunks or `rsync --partial`; vcpkg still checks each archive's SHA512 against its selected versioned port. Do not substitute a distribution libass/FFmpeg for the pinned native build.
-
-`deps` rejects edited fork checkouts by default. For unpublished adapter work, pass `--allow-dirty-sources`: the checkout must already be at the inventory's exact revision, and source preparation performs no fetch, checkout or submodule update on that dirty tree. Build receipts record source dirtiness; `release` refuses dirty sources and dirty receipts.
-
-Linux CI and release jobs also unpack the reported Manager ZIP and launch it under Xvfb with isolated user-data directories. The process must remain alive for 15 seconds; an early exit fails the job.
-
-### Android Manager test APK
-
-Use JDK 27 (`JAVA_HOME` and its `bin` on `PATH`), Android SDK platform 37.2, build-tools 37.0.0, NDK 30.0.16248370 and cargo-ndk 4.1.2. Set `ANDROID_HOME` to the SDK root and `ANDROID_NDK_HOME` to its `ndk/30.0.16248370` directory. Only the exact stable NDK revision is accepted. Obtain missing SDK packages explicitly with that SDK's `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"`. Keep `CARGO_HOME`, `CARGO_TARGET_DIR`, `TEMP`/`TMP` and `GRADLE_USER_HOME` on a drive with enough space.
+Configure `JAVA_HOME` (JDK 27), `ANDROID_HOME`, and `ANDROID_NDK_HOME` (`ndk/30.0.16248370`), then run:
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
 cargo xtask deps --target aarch64-linux-android
 cargo xtask deps --target x86_64-linux-android
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.2
+export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.8
 cargo xtask build --target aarch64-linux-android --manager --release
 cargo xtask build --target x86_64-linux-android --manager --release
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.2 --out .work/android-test
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.8 --out .work/android-test
 ```
 
-Each build imports the `cargo ndk-env` toolchain and invokes Cargo directly with `--locked`, statically links the cores whose `static_manager_targets` include the triple (RFVP, Siglus, Shinki Musica, CMVS, Artemis, Impacto, Ren’Py and KiriKiri) and stages the JNI runtime closure, metadata and licenses under its recorded target directory's `android-inputs/`. Packaging requires release receipts for **both** triples from the same source commit. Gradle then creates a universal APK containing `arm64-v8a`, `x86_64` and `assets/metadata/`; xtask checks its signature and every native library's dependency closure. Without signing secrets the output is `ShinkiEMU-<version>-android-universal-debug-signed.apk`: a debug-signed CI test APK, not a release installer. The test key is generated inside `GRADLE_USER_HOME`. The Kotlin verifier component is resolved from the official Maven archive using the Android shim version in `Cargo.lock`, not copied from Cargo's source directory.
+Packaging requires release build receipts for both `arm64-v8a` and `x86_64` from the same commit. Without a release signing key, xtask outputs `ShinkiEMU-<version>-android-universal-debug-signed.apk` for testing; set `SHINKI_EMU_GRADLE_OFFLINE=1` for offline Gradle runs after the initial sync.
 
-CMVS uses `cmvs_query` in the same static registry and enables `video-ffmpeg`. Its SDK decoder shares Musica's API 28 static FFmpeg vcpkg triplets and xtask dependency path. The Manager package includes CMVS in `embedded-cores.json`, corresponding sources and licenses. APK verification compares its license bytes under `assets/licenses/shinki.emu.cmvs/` with the inventory inputs. Android device/emulator execution is unverified at the user's request.
+## Disk Layout & Application Icons
 
-KiriKiri is also statically embedded on both Android ABIs. Its native-static
-manifest stages the original Cocos resources and dependency notices into APK
-assets. Before query registration, Manager supplies the extracted app-private
-resource directory. Ren'Py and KiriKiri resolve their resource paths from one
-host directory lookup before either query is registered. The adapter retains
-the original VM, EGL/Cocos renderer and
-audio path; its resolved native archive closure is symbol-isolated from the
-Manager's SDL, JNI, Lua and FFmpeg implementations. Android dynamic core
-downloads/installations remain unsupported; a standalone native ZIP is not a
-Manager integration.
+- **Game directory isolation**: Everything ShinkiEMU writes inside a game directory lives under `<game>/.shinki/` (`musica/`, `patch/`, `staging/`, `backup/<id>/`, `patch-result.json`), with symlink rejection.
+- **Canonical application icon**: All Manager packages rasterize `Assets/Branding/shinkiemu-icon.svg` into Windows EXE ICO, macOS ICNS, iOS AppIcon sets, Android adaptive mipmaps, and Linux hicolor PNGs (plus `share/applications/shinkiemu.desktop`). See [Brand Kit](../../Assets/Branding/BRANDING.md).
 
-The Android host initializes Krkr's private JavaVM/classloader services before
-static query registration. The original SDL/Cocos Java helpers compile from
-the native-static resource manifest into private Java packages; the existing
-MainActivity supplies lifecycle callbacks. No second Activity entry point or
-exported JNI_OnLoad is installed. CI runs
-`python3 Tools/verify-krkr-android.py --ci-report .work/ci-report.json --out .work/krkr-android-proof.json`
-against the real APK, checking compiled SDL RegisterNatives arrays and their
-private implementation relocations against DEX, the Cocos/host declarations,
-both native query/symbol closures, the single entry Activity, resources and authentic notices.
-Activity attributes are checked on their own manifest element; nested intent
-actions and metadata names are not counted as Activities. Extra Activities,
-unnamed Activity declarations and Activity aliases are rejected.
-The packaged Manager ELF must byte-match the receipt's actual library after
-the pinned NDK's `llvm-strip --strip-unneeded`, matching Gradle's packaging
-transformation without depending on an optional ELF build-ID note.
-The SDL table reader handles ELF extended section counts and symbol indices
-in the large resolved closure. Final linked queries may be local to the
-Manager's shared object; they must still be defined there. Cocos native
-declarations must match DEX and retain their original private implementations.
-The Spine census includes both local and external defined symbols.
-Manager corresponding-source archives include the full Git snapshot of every
-selected external static core under its `ThirdParty/` path, including native
-sources, build recipes, recursive submodules and original per-file licenses.
-`source-references.json` records each embedded fork's exact revision. Rust
-adapter crate sources alone do not supply a native fork's source closure.
-The checker also inspects native exit/environment implementations and verifies
-original UI resource hashes and both-ABI Spine membership. This inspection
-does not launch a device or establish runtime gameplay compatibility.
-Packaging compares the complete bundled manifest and every listed asset's bytes
-with its staged input. AAPT's default underscore-directory exclusion is disabled;
-the package checker enforces this host's 32 MiB per-asset extraction limit with
-bounded streaming, including Impacto's authentic 17,032,620-byte font.
-Archive-path regressions compile and partially link real NDK callers/libraries,
-covering Windows drive/backslash/space paths and generator-specific link directories.
+## Maintainer Packaging & Release
 
-After the first Gradle dependency download, set `SHINKI_EMU_GRADLE_OFFLINE=1` to pass `--offline`; use a new package output directory each time. `cargo xtask ci --target aarch64-linux-android --component manager --report .work/android-ci.json` builds both ABIs and reports the actual APK path. CI prepares dependencies for both triples and runs this command once: `matrix --json --ci` drops the `x86_64-linux-android` Manager row, which would build the same universal APK. Release publishes one universal, release-signed `.apk` and retains the matching sources ZIP.
-
-All Manager packages derive their application icon from `Assets/Branding/shinkiemu-icon.svg`. Rust renders the Windows executable's ICO resource, macOS ICNS, iOS app icon set, Android adaptive launcher mipmaps, and Linux hicolor PNGs. Linux ZIPs also contain `share/applications/shinkiemu.desktop`; install that file and `share/icons/hicolor` under your applications and icon directories. The desktop runtime restores the Manager icon after a game replaces its window icon.
-
-Known runtime issue: SwiftShader/software-Vulkan emulators render only the first frame with stock Slint 1.18.1; use `-gpu host` or a device. A separate one-Text/one-Timer app reproduced the stalled updates in five cold launches. The same Manager test APK rendered its CJK onboarding and icons in five host-GPU cold launches. Build/package success does not establish game compatibility.
-
-### Apple Manager: native macOS and Linux-hosted cross
-
-Native CI keeps the macOS runners from `build/targets.toml` and invokes Cargo/Xcode. On Linux, `build` and `check` select cross 0.2.5 and the private image configured in `Cross.toml`. The Apple triples are `x86_64-apple-darwin`, `aarch64-apple-darwin`, `aarch64-apple-ios` (device), `aarch64-apple-ios-sim` and `x86_64-apple-ios` (simulators). Deployment minima are macOS 13.0 and iOS 16.0.
-
-A non-empty `blocked` reason on a target in `build/targets.toml` blocks every component on that target, overriding core `supported_targets` and `manager_supported`: the job matrix omits its rows, `deps`/`build`/`package` refuse it, and release notes list the target with its reason and no artifact. The five Apple targets currently carry this reason and are excluded from CI and releases until the cross-build toolchain is validated; removing the field restores them.
-
-Obtain Xcode from the [Mac App Store](https://apps.apple.com/app/xcode/id497799835) or [Apple Developer Downloads](https://developer.apple.com/download/all/) under Apple's license. Expand an official Xcode `.xip` on macOS using `xip --expand`, select that Xcode installation and accept its license there. Command Line Tools alone do not provide iOS SDKs. On that Mac:
-
-```sh
-for sdk in macosx iphoneos iphonesimulator; do
-  tar -C "$(xcrun --sdk "$sdk" --show-sdk-path)" -cJf "$sdk.sdk.tar.xz" .
-done
-```
-
-Transfer the archives privately and extract each into a separate directory on Linux. `SHINKI_APPLE_SDK_DIR` points directly to the extracted SDK contents (`SDKSettings.json`, `System/`, `usr/`), not its parent or an archive. Use `macosx` for Darwin, `iphoneos` for the device and `iphonesimulator` for both simulators. The pipeline never downloads SDKs from mirrors. Keep SDKs and SDK-containing images out of Git and public registries.
-
-Keep the checkout, `CARGO_HOME`, `RUSTUP_HOME`, `CARGO_TARGET_DIR` and tools under a dedicated directory such as `~/shinkirou-apple/`. Install Rust 1.99.1 and the selected Rust targets explicitly, then install cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`) with `cargo +1.99.1 install --locked --root "$HOME/shinkirou-apple/tools"`. Add its `bin` to `PATH`. Image construction requires at least 8 GiB free on `/` and never evicts user files or images. From this repository:
-
-Docker needs Buildx/BuildKit (`docker buildx version`). A private plugin can live at `$DOCKER_CONFIG/cli-plugins/docker-buildx` without sudo or changing the user's Docker configuration. The official [Buildx v0.38.1 Linux x86_64 asset](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) has SHA256 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`; verify the digest before granting execute permission.
-
-```sh
-export DOCKER_CONFIG="$HOME/shinkirou-apple/docker"
-export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/macosx.sdk"
-cargo xtask apple-image --target aarch64-apple-darwin
-cargo xtask deps --target aarch64-apple-darwin
-export SHINKI_EMU_PRODUCT_VERSION=0.1.0-beta.1
-cargo xtask build --target aarch64-apple-darwin --manager --release
-cargo xtask package --target aarch64-apple-darwin --manager --version 0.1.0-beta.1 --out .work/macos-manager
-export SHINKI_APPLE_SDK_DIR="$HOME/shinkirou-apple/sdks/iphonesimulator.sdk"
-cargo xtask apple-image --target aarch64-apple-ios-sim
-cargo xtask build --target aarch64-apple-ios-sim --manager --release
-cargo xtask package --target aarch64-apple-ios-sim --manager --version 0.1.0-beta.1 --out .work/ios-simulator-manager
-```
-
-Repeat image preparation for each selected triple with its matching SDK. Images pin Rust, osxcross, and vcpkg inputs, provide LLVM/LLD, C/C++, CMake and Apple triplets, and keep host compilers separate from target compilers. Native dependency licenses are exported to `.work/apple-native/<target>`; only the same image identity can reuse that export. Missing SDK/image/target inputs fail in `doctor`; supported-target compile errors stay failures.
-
-Ren'Py's macOS build interpreter uses pinned CPython 3.12.7 and a private OpenSSL 3.3.2 installation, not a host Homebrew OpenSSL. Its source archive and host build tree are retained for corresponding-source reconstruction. The desktop package inspects the requested slice of each universal Mach-O, validates Python runtime bundles and their complete dependency closure, then signs every staged native runtime. Android retains its separate target CPython 3.12.8 recipe and both-ABI runtime preparation.
-`deps --core renpy` prepares those native inputs before running prerequisite validation; on macOS the SDK check targets `lib/py3-mac-universal/librenpython.dylib`, not the Linux SDK payload.
-
-macOS packaging produces a real `ShinkiEMU.app` with its executable in `Contents/MacOS`, metadata/licenses in `Contents/Resources`, and a ZIP from `ci`/`release`. Apple bundles include the ShinkiEMU application icon. The iOS Manager uses Slint's winit/UIKit backend and Metal renderer on the main thread. Native Files pickers retain security-scoped authorization and bookmarks; application data lives in the app's Library sandbox. iOS process restart requires the user to close and reopen the app. The shared platform activates an actual AVAudioSession for playback; installing arbitrary downloaded core binaries on iOS is not enabled by compiling the Manager. Core-specific embedding/build blockers remain in the inventory.
-
-RFVP, Siglus, Sena, Ethornell and ReMinori build as dynamic cores on both macOS architectures and are statically registered in the iOS Manager on device and both simulator architectures. iOS does not load downloaded core dylibs. The successor Android Manager statically registers eight cores: RFVP, Siglus, Shinki Musica, CMVS, Artemis, Impacto, Ren’Py and KiriKiri. It preserves the frozen six-core Manager's pins and resource contract; its APK, complete corresponding source and exact-head CI require independent acceptance. Manager dependency pins are checked against `build/cores.toml`; packages include `embedded-cores.json` and each embedded core's license assets.
-
-Shinki Musica is included in the iOS Manager's static registry and inventory, with target-isolated static FFmpeg dependencies. Isolated commit `72ac926e1d15a452dc81ca84f3e82776aa302a26` passed exact-head CI and native compilation, packaging, signature, dependency and license checks for the device and both simulator targets. Later Manager releases combining this port with native saves require fresh integrated-head gates. Standalone dynamic-core installation remains unsupported on iOS; device launch acceptance is waived.
-
-Artemis desktop packages support both macOS architectures using fork `5243005cf0aaaeac89b1803e57381e9c0b14b95c`. The staged core dylib's install ID is normalized to `@rpath/<filename>` before signing; the source build artifact is unchanged. This isolated packaging behavior comes from `f6f72cc` as exercised by Apple candidate `e295f536`; universal/framework/Python bundle changes and unverified iOS or other-core pins are not part of this desktop cutover. Each isolated release candidate runs new exact-head desktop gates.
-
-Manager packages with embedded FFmpeg include the FFmpeg notice and every transitive port notice from the selected target's private installation under `licenses/ffmpeg/`; the same collector is used for standalone core packages.
-OHOS uses this shared collector once; it does not append a second copy of the same FFmpeg copyright. The strict destination-collision checks remain in force, and all transitive notices keep their source paths.
-
-Native static cores record `native-static` archives and runtime assets in their Cargo build manifests. Manager receipts retain those dependency manifests, and packaging stages their assets under `cores/<id>/Resources` rather than discarding them. Dependency preparation selects each embedded native core independently; `SHINKI_EMU_NATIVE_VCPKG_ROOT` contains its per-core installation. Apple static linking combines native-build archives and publishes the prepared port libraries/frameworks to Cargo.
-
-Native vcpkg manifests use `.work/native-vcpkg/<core>/installed-<triplet>/<triplet>` so preparing one ABI cannot remove another ABI's ports. The build helper and xtask share this path mapping. Android static archives include each in-tree native library, target vcpkg archives and pkg-config's private dependency closure; the APK retains the NDK C++ shared runtime. Dependency installs on a Windows host must run serially across worktrees because vcpkg's tool-root build lock is shared.
-
-RFVP's Apple subtitle dependency is built on native macOS/Xcode using the pinned vcpkg libass 0.17.5 manifest. Each target has its own static installation (`arm64-osx`, `x64-osx`, `arm64-ios`, `arm64-ios-simulator`, `x64-ios`). The overlay triplets in `build/vcpkg/apple-triplets/` set the deployment targets (macOS 13.0, iOS 16.0) and build libass with CoreText instead of fontconfig. `deps` clears the `*_DEPLOYMENT_TARGET` variables so that macOS host tools are never built for iOS. pkg-config passes private static libraries and Apple frameworks to Rust. Apple RFVP uses native Rust WMV/MPEG decoders, not GStreamer. CoreAudio is supplied by the system. FFmpeg, C++ native and CMVS Apple blockers remain unchanged in the inventory.
-
-Simulator packages contain a `simulator-test.app`; device packaging creates a `device-test.ipa` with `Payload/*.app`, and `ci` reports that IPA path. Packaging checks thin Mach-O architecture, device/simulator platform and system/bundled dependency closure before signing copied files. Linux uses `rcodesign sign` and verifies every Mach-O; native macOS uses `codesign`. Ad-hoc signatures are real but provide no Apple provisioning, notarization or App Store identity. Device installation needs valid Apple signing/provisioning; these are test/integration artifacts, not production installers. Release names include the iOS device/simulator variant to avoid collisions.
-
-For SDK-backed acceptance, retain actual artifact paths/sizes, native architecture and dependency inspection, and the existing platform's normal signature-verification output. Native macOS packaging uses Apple's `codesign`. Missing legal SDK input prevents that acceptance; compilation alone does not establish runtime/game compatibility.
-
-Apple Manager `build.json` records the native input before bundle rewriting and signing. The signed executable can therefore have a different byte hash; the release record identifies the distributed package. Keep the normal platform signature verification and correct product/target/version binding, without relabeling the raw receipt as a signed-binary hash.
-
-## OpenHarmony Manager
-
-Use DevEco Studio with its OpenHarmony native SDK 5.0.5 (API 17; the HAP targets API 12 and newer) and Rust 1.99.1. Set `OHOS_SDK_NATIVE` to `sdk/default/openharmony/native`; xtask finds Node, hvigor, ohpm, CMake/Ninja, `hap-sign-tool.jar` and `llvm-readelf` in that DevEco installation. Set `SHINKI_EMU_OHOS_SIGNING_DIR` to a directory outside the checkout (for example `.shinki-secrets/ohos-debug`):
-
-```sh
-cargo xtask deps --target aarch64-unknown-linux-ohos
-export SHINKI_EMU_PRODUCT_VERSION='<version>'
-cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
-cargo xtask package --target aarch64-unknown-linux-ohos --manager --version <version> --out <dir>
-```
-
-`deps` builds libass and FFmpeg with the `arm64-ohos` triplet (Meson 1.12 gets a Windows extended-path prefix, as the Android triplets do). The build links with the SDK clang and bundles `libc++_shared.so`. `package` stages the Manager libraries into `Platforms/OHOS/entry/libs/arm64-v8a` and the metadata snapshot, notices and licenses into `rawfile/bundled`, then runs `ohpm install` and `hvigorw assembleHap`. On first use it creates debug signing material from the SDK's OpenHarmony test PKI: a new key in a copy of `OpenHarmony.p12`, an app certificate issued by the test application CA, and a debug profile for `org.shinkirou.shinkiemu` signed with the profile-debug key. It signs with `sign-app`, then runs `verify-app`, lists the archive, and prints `llvm-readelf -d` for every bundled library. Every remaining `NEEDED` entry must be an OHOS system library. The output holds `ShinkiEMU-<version>-ohos-arm64-v8a-debug-test-signed.hap`, `ohos.json` and `build.json`. Never commit keystores, certificates or profiles.
-
-The test-PKI HAP is an experimental distribution. Its signature, packaged files and native-library closure are verified, but neither device/emulator launch nor retail installability has been verified. Device launch checks were waived for this release; a DevEco/AppGallery Connect-issued profile would be needed for an installability assessment.
-
-## Matrix and CI
-
-`matrix` lists every declared Manager/core combination and its blocked reason. `matrix --json` selects hosted-runner jobs; the supported OHOS Manager uses `runner = "local-only"` and is excluded from hosted CI while its exact-head HAP is packaged with DevEco. `--ci` also drops the duplicate x86_64 Android Manager row. Read the current combinations in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/).
-
-```sh
-cargo xtask ci --target x86_64-pc-windows-msvc --component rfvp --report .work/reports/rfvp-windows.json
-```
-
-Unsupported combinations report `blocked` with `artifact: null`. The OHOS Manager is supported for experimental test-signed packaging only; its local-only build is joined to a successful exact-head GitHub CI run before publication. A supported build failure reports `failed` and exits nonzero. `publish_blocked` denotes distribution restrictions independently of build availability.
-
-Ordinary CI/package builds may rebuild a frozen external-core pin even when the catalog contains a newer release sequence. The version still derives from that pin. Release dry-run, preparation and publication enforce sequence monotonicity before creating release artifacts; building an older pin does not authorize publishing it as a new release.
-
-GitHub Actions is the CI of record and builds the hosted-platform release assets. The DevEco-only OHOS HAP is prepared and uploaded in the gated local handoff below.
-For a Manager release containing a local-only OHOS target, push the release branch and require `ci.yml` to finish successfully at the exact release commit. Dispatch `release.yml` for that commit with `components=manager` and the version; its `publish (manager)` job checks all hosted build rows and leaves publication to the local handoff. In a clean checkout of that exact commit, download every `release-files-manager@*` artifact from the release run into `.work/release/` (`gh run download <release-run-id> -R Project-Shinkirou/ShinkiEMU -p 'release-files-manager@*' -D <scratch>`; copy each artifact's `<tag>/<target>/` directory into `.work/release/<tag>/`). Then, with DevEco and the signing directory set, run:
-
-```sh
-cargo xtask deps --target aarch64-unknown-linux-ohos
-export SHINKI_EMU_PRODUCT_VERSION='<version>'
-cargo xtask build --target aarch64-unknown-linux-ohos --manager --release
-cargo xtask release --component manager --target aarch64-unknown-linux-ohos --version <version>
-SHINKI_EMU_RELEASE_CI_RUN_ID=<successful-ci-run-id> SHINKI_EMU_RELEASE_HANDOFF_RUN_ID=<successful-handoff-run-id> GH_TOKEN=<GitHub-token> cargo xtask release --component manager --version <version> --publish
-```
-
-Before the final publish command, create the draft `manager-v<version>` at the exact release commit. Upload the OHOS HAP, its source ZIP and a copy of its `release.json` named `ohos-handoff.json`. Dispatch `release.yml` at the same commit with `components=manager`, the version and `verify_local_manager=true`. This verification-only run downloads the actual draft assets and checks their hashes, HAP layout, native dependency closure and corresponding-source revision without requiring the hosted runner to have DevEco. It retains the verified files as `verified-ohos-handoff`. Set `SHINKI_EMU_RELEASE_HANDOFF_RUN_ID` to that successful run. The local DevEco packaging step verifies the test-PKI signature; the hosted handoff checks artifact integrity and does not claim a second signature or device check.
-
-Publication checks each record's exact product commit and both archive hashes, requires all hosted artifacts (except the duplicate Android x86_64 row) and the OHOS HAP, and queries both exact-head workflow gates. The release name and notes identify the HAP as debug-test-signed and state the waived launch verification.
-
-The source bundle's subtitle rebuild commands include `build/vcpkg/mobile-triplets`, which supplies the OHOS `arm64-ohos` triplet alongside the bundled native source archives.
-The verification-only job needs repository `contents: write` permission to read unpublished draft assets; its steps do not publish or alter the draft.
-
-Local runners are optional pre-checks that catch failures before a push. `matrix --json [--ci] --since <ref>` keeps only the rows whose inputs changed since `<ref>`, and the runners pass it from `SHINKI_CI_SINCE`. Shared inputs select every row: the root `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `xtask/`, `Source/{SDK,FamilyApi,Tools}/`, `build/targets.toml`, `build/vcpkg/` and `build/ci/`, and any path not listed here. `Source/Manager/` and `Source/Providers/` select the Manager rows. `Source/Families/<dir>/` selects the core whose manifest is in that directory, plus the Manager rows on its `static_manager_targets`; an edited `[[cores]]` table in `build/cores.toml` does the same for that core. `docs/**`, `Metadata/**` and Markdown files select nothing.
-
-## Package and release
-
-Build the selected component first, then package its recorded output:
-
-```sh
-cargo xtask package --target x86_64-pc-windows-msvc --core rfvp --out .work/packages/rfvp
-cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-beta.1 --out .work/packages/manager
-cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
-```
-
-Output directories must be new. Packaging rejects unsafe paths, links, collisions, missing licenses, wrong architectures, missing query exports and unresolved native dependencies. A core package includes the library, resources, dependencies, licenses, provenance and hashed `core.json`. Source bundles retain applicable corresponding-source/relinking inputs.
-
-Manager and standalone core packages collect their own target-filtered Cargo dependency closure (normal and build dependencies, excluding test-only edges), using the selected manifest, package and build features. Each crate's declared `license_file`, source-root `LICENSE*`, `COPYING*`, `COPYRIGHT*`, and `NOTICE*` files, and matching license-directory contents ship under `licenses/rust/<name>-<version>/`, alongside `package.json` recording its SPDX expression and text provenance. Git/workspace root notices are retained when a member crate provides none. If the crate supplies no file, every license and exception referenced by its SPDX expression is included as `LICENSE-<SPDX>` using the offline canonical SPDX License List 3.29.0 texts embedded in pinned `spdx` 0.13.6. The source version and archive SHA256 are recorded in `build/dependencies.toml` and checked against the Cargo pins; packaging does not fetch license texts. Unknown fallback identifiers, or a crate with neither files nor an expression, fail packaging. Material components, icons and native dependency notices are collected separately.
-
-Embedded-font text sidecars under `fonts/` are retained with their original names and attributions. A custom `LicenseRef` such as `LicenseRef-UFL-1.0` is satisfied only by the matching upstream text (for example `fonts/UFL.txt`); no custom license body is invented. A crate with only font sidecars still receives fallback texts for its code's declared standard licenses.
-
-Each `shinki-emu-<slug>-<version>-<platform>-sources.zip` contains `source.tar` and `BUILD-FROM-SOURCE.md`. The TAR holds the product's committed tree at the release commit and the selected fork's committed tree at its exact pin, each with every submodule expanded at its recorded revision. Working-tree edits never enter it. Git LFS pointers are replaced by the materialized payload after checking its committed SHA256 and size; run `git lfs checkout` first if a payload is missing.
-
-Rust dependencies are identified by the unchanged `Cargo.lock` (registry checksums and exact Git commits) and fetched by Cargo when rebuilding. `rust-sources/<name>-<version>+<source>/` additionally holds the exact sources of each linked crate whose license requires source distribution: crates whose every license choice is copyleft (MPL-2.0 symphonia, triple_buffer and option-ext, for example), crates without an SPDX expression, and every linked crate when any linked crate is GPL/LGPL/AGPL-only (ReMinori). Crates with a permissive alternative (`Apache-2.0 OR GPL-2.0-only`, Slint's `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR …`) are distributed under that alternative and add no source obligation. Path crates are already in the fork snapshot.
-
-Native sources cover every installed vcpkg port of the selected installation, followed from `vcpkg/status` including host-triplet build tools. `native/ports/<group>/` holds each registry port's recipe and patches, extracted from the pinned registry tree recorded by its SPDX `gitoid`; overlay ports have no tree identity and are part of the fork snapshot. `.work/vcpkg-downloads/` contains the archives whose SHA512 the installed SPDX records. The instructions clone the pinned vcpkg revision. Impacto additionally retains the prepared LibAtrac9/magic_enum sources; its in-fork mspack is in the fork snapshot.
-
-SPDX Git resources use their exact `git+https://…@<commit>` identity instead of a
-download checksum. The bundle archives that committed tree from vcpkg's Git object
-cache, or fetches the pinned commit into a private temporary repository when it is
-absent. It writes vcpkg's `<port>-<commit>.tar.gz` cache name for offline rebuilds.
-Named SPDX archive inputs retain their recorded cache-relative paths, including
-nested OpenCV caches, after matching the recorded SHA512.
-
-Native vcpkg manifest installations use one `installed-<triplet>` root per core and target. Running Windows, Android arm64 and Android x64 `deps` sequentially therefore preserves each target's dependency and license closure; CMake receives that root and the matching explicit triplet rather than inferring a different Android triplet. Corresponding-source rebuild commands retain the Apple/mobile triplet overlays used by `deps`, including the standalone Android core's `*-android-ffmpeg` triplets.
-
-Standalone Android cores ship native core packages, not APKs. The release APK-signing restriction applies only to Android Manager installers.
-
-Standalone Android native cores resolve the pinned NDK's OpenMP runtime through
-Clang's `--print-file-name=libomp.so`, bundle it when the binary closure needs it,
-and ship the NDK's `NOTICE` and `NOTICE.toolchain` texts alongside core licenses.
-Android corresponding-source recipes run on a Linux build host, require the pinned
-NDK through `ANDROID_NDK_HOME`, and resolve the host Bison rather than WinFlexBison.
-
-The bundle copies inputs that `deps` and `build` already verified: it does not re-hash `.work/downloads`, re-verify recipes, re-resolve Cargo offline or check for dirty trees a second time. `release` itself refuses a dirty product checkout and a build receipt from another source revision.
-
-`cargo xtask deps --core renpy --target x86_64-pc-windows-msvc` prepares the pinned `.work/renpy-build` checkout and its recursive submodules. It preserves dirty existing checkouts by failing before any update; release collection remains read-only.
-
-Ren'Py requires `.work/renpy-build` at `7bfab40c1174f622f644b24669afd5fb167fbb79`, including its tracked FFmpeg/FriBidi/SDL source archives and patches. The fork's `licenses/renpy/{native,python}-sources.json` inventories exact extra native archives, actual SDK Python-package versions, checksums and upstream URLs; `deps` downloads them to `.work/downloads/` and checks each hash. The source bundle includes those archives, readable chardet/certifi sources, an archive-backed combined-runtime driver, and source/relink/replacement directions. The documented Ubuntu cross-build tools and Windows compiler/OS SDKs are system prerequisites. The SDK's urllib3/certifi versions differ from the tagged recipe; the generated instructions preserve and explain the observed SDK versions rather than claiming byte-identical reproduction from the tag alone.
-
-Records without a `url` (the Gitiles-hosted aom and libyuv sources, whose generated archives change bytes on every download) pin `repo` and `rev` instead: `deps` shallow-fetches that commit, checks the fetched commit ID, and hashes the uncompressed `git archive --format=tar` output, which is identical across Git versions.
-
-Sena retains the upstream embedded MS PGothic font under the approved upstream-distribution policy. `licenses/sena-rs/MS-PGothic.txt` records that upstream supplies no documented redistribution grant; the MPL license does not replace the font's terms.
-
-Source notice discovery also includes nested asset licenses and font-paired text notices, preserving their relative paths without copying the fonts themselves. Git workspace members inherit provided checkout-root license files when their package directory has none, retaining upstream copyright notices before considering canonical SPDX texts.
-
-Manager and self-owned CMVS/Musica retain `manager-v<semver>` and `core-<slug>-v<semver>` tags and require `--version`. Third-party cores, including RFVP and Artemis, derive their identity from `build/cores.toml`; omit `--version`. `cargo xtask release --component <id> --dry-run` verifies the original upstream ref and full commit against the adapter pin without building or publishing. `release --target <triple>` writes binary/source ZIPs and `release.json` under `.work/release/<tag>/<target>/`. Blocked targets and `publish_blocked` cores produce nothing.
-
-**Current release: Manager 0.1.0-beta.8.** Tag [`manager-v0.1.0-beta.8`](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8) points to source commit [`051a05bceff139e60ef6f973781ffa1f093fb2fc`](https://github.com/Project-Shinkirou/ShinkiEMU/commit/051a05bceff139e60ef6f973781ffa1f093fb2fc). Published on 2026-11-03 at 07:04:31 UTC, it has 19 public assets: nine platform packages, nine corresponding-source archives and the OHOS handoff record. The [exact-head CI](https://github.com/Project-Shinkirou/ShinkiEMU/actions/runs/41543961859) passed the full matrix, and the [OHOS handoff gate](https://github.com/Project-Shinkirou/ShinkiEMU/actions/runs/41576487998) passed.
-
-| Platform | Actual beta.8 delivery |
-| --- | --- |
-| Windows x86_64, Linux x86_64, macOS aarch64/x86_64 | Manager desktop packages; install standalone cores separately. |
-| Android | One universal release APK for aarch64 and x86_64, embedding 8 cores: RFVP, Siglus, Artemis, Musica, KiriKiri2, CMVS (new), Impacto and Ren'Py. |
-| iOS | Three test packages: aarch64 device-test, aarch64 simulator-test and x86_64 simulator-test. Each embeds 6 cores: RFVP, Siglus, Musica, Sena, Ethornell and ReMinori. |
-| OHOS aarch64 | Experimental debug-test-signed HAP with 1 embedded core, Musica; signed with the OpenHarmony SDK test PKI. Device/emulator launch and retail-device installability remain unverified. |
-
-The Android release-certificate SHA256 remains `c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc`. The release asset list and the source commit's [`build/cores.toml`](https://github.com/Project-Shinkirou/ShinkiEMU/blob/051a05bceff139e60ef6f973781ffa1f093fb2fc/build/cores.toml) describe the delivered targets and embedded inventories; Android's two ABI rows share the single APK. New Musica patches require Musica core `0.1.0-beta.5` or later. **Manager beta.7 and all earlier public tags and assets remain immutable.**
-
-**Previous release: Manager [0.1.0-beta.7](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.7).** It was published from `fd9c78a4cabf1d80430744e4bb5d140c2a837bb9` with all nine targets. Android embedded seven cores; the three iOS device/simulator test packages embedded six cores. OHOS used SDK debug-test-PKI signing. Its official Windows binary self-reports `0.1.0-beta.6`. Later source features and core pin updates do not change these historical downloads.
-
-The [KiriKiri2 sequence2 release](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-kirikiroid2-web-branch-web-1e3603089b4951c8e2831d978ea6fe5a8097bceeb0a56fdeb65aa3953e67eecf) publishes Windows, Linux and both macOS architectures from product `fe4e6f2d82c8b61f3f14e13d48af6d57722b9952`, adapter `d72046c28e6ada623acdb1d72f7075edd488797d`. The same adapter is statically embedded in beta.7 Android; this does not add KiriKiri to iOS or OHOS. Corresponding sources and original licenses, including the separate FMOD terms, accompany the desktop packages.
-
-External identities retain original `upstream {repo, ref_kind, ref_name, commit}` separately from organization `adapter {repo, branch, commit}`. Commits are full lowercase 40-hex IDs. Prefer a verified upstream tag at the upstream commit; otherwise record its real upstream branch, never the integration branch. Display is `<ref>@<upstream commit12> (adapter <adapter commit12>)`. Version filenames are `<tag|branch>-<ref slug>-<digest>`: take the first 16 ASCII ref bytes, lowercase alphanumerics and replace every other byte with `-`; digest is full SHA256 of UTF-8 upstream repo/kind/ref/commit, adapter repo/branch/commit and decimal `release_sequence`, each terminated by LF. Versions are at most 88 bytes. Release tags are `core-<plugin slug>-<version>`; plugin slugs lowercase the ID and replace `.`/`_` with `-`. Branch slashes cannot enter paths, and adapter-only changes change the digest.
-
-External plugin slugs are limited to 32 bytes, bounding release tags to 126 safe ASCII bytes.
-
-`release_sequence` is a positive, strictly increasing publication counter per external plugin (maximum 9007199254740991). Increment it for a changed upstream, adapter pin or deliberate rebuild. Tags and branch snapshots share this order; neither branch names nor hashes are ranked. New typed entries supersede legacy beta entries; otherwise latest uses SemVer. Different versions may not reuse a sequence, even across platforms. Packages, embedded-core inventories, source references and catalog entries carry the same typed provenance. Existing upstream license/copyright notices and complete corresponding sources remain required.
-
-The [Impacto sequence3 release](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-impacto-tag-0-10-8-930-96de7434c8b1a57df7ff24dcee829282194873fe596677056fa168485cb1555e) publishes Windows, Linux and both macOS architectures from product `5b197c1c656186d3a535bb3486311623516166e5`, with upstream `0.10.8.930` and adapter `34b89c29123d025d96f73ac9a746fb388e572065`. All four corresponding-source/native-input/license/package audits and unauthenticated downloads of all eight binary/source assets passed. This standalone sequence3 does not replace Manager6's embedded adapter `910a820ba3ea8d4dd8d6e19c560df1d5a3bc5157`/sequence2 or rewrite the published sequence1 assets; catalogs select sequence3 independently of publication completion order.
-
-The [Ren’Py sequence1 release](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/core-renpy-tag-8-5-3-26051504-5f537560e1a1b852070dec65946d6c027e9f4f7482bddd8349ed47960c383133) publishes all four desktop platforms from product `05326439dcfafb81df79f3dabe0997fb696ad3f3`, upstream `8.5.3.26051504` and adapter `a52d9d9c006223c2b5a276c05e1b97ffeecbe66f`. Every actual corresponding-source archive passed the complete 389-entry pinned rebuild-recipe audit, including its 107-byte symbolic-link target. All eight public binary/source assets were downloaded without authentication and their hashes matched the accepted prepared records; original native license bytes were checked against the pinned fork and original inputs.
-
-The indexed snapshot includes `cores-v2.json` (`shinki.emu.cores.v2`) with legacy and typed entries. `cores.json` stays `shinki.emu.cores.v1` and keeps every identity-free published entry, so old Managers retain their downloadable catalog. New Managers prefer indexed v2 and accept v1 snapshots. Old beta entries remain authentic, installable history; public tags/assets are never rewritten. Installation compares package identities, not the adapter crate's independent version.
-
-Upstream-identity packages first require Manager `0.1.0-beta.6`. Beta.5 and earlier reject the added package identity and its longer version field; keep their legacy catalog and packages available. Every new external-core release states this requirement. Sakura recipe 0.2 is now public: compatible Manager beta.6 and the updated RFVP core are both publicly obtainable. Conversion still requires a fresh output directory and leaves the original game and saves untouched.
-
-`cargo xtask release --component <id> --version <semver> --publish` (with `GH_TOKEN` or `GITHUB_TOKEN`) collects every prepared target of that tag. It refuses records from another product commit or core pin, a tag that already names another commit, a draft opened from another commit, and an empty or already-published Release. It creates a draft at the run's commit or reuses that draft (replacing same-name assets from an interrupted run), uploads the source and binary archives, and publishes it; GitHub creates a missing tag at that commit. For a core it then commits every platform's catalog entry under `Metadata/engines/cores/` to `metadata/release-<tag>` and opens a PR to `main`. If the organization does not allow Actions to create PRs, that last step fails with every entry already on the branch; open the PR by hand. Catalog URLs are built from the final tag, never from the draft's `untagged-*` URL. Manager releases are independent of core releases. Debug-signed Android test APKs are recorded as blocked and never uploaded.
-
-`release.yml` builds all selected hosted component × target rows and publishes components without local-only targets. A Manager release with the supported OHOS target stays unpublished until the gated local handoff above supplies its HAP and sources. To release one core, push its tag; to release several components, dispatch the workflow with `version` and `components` (comma-separated plugin_ids, or `all`). Pushing more than three new tags at once triggers no workflow.
-
-To prepare without publishing, dispatch this same `release.yml` with `prepare_only=true` and an optional exact 40-hex `source_commit`. An explicit source commit is allowed only in prepare-only mode. Existing native build, package, platform signing and source/license packaging commands remain unchanged. The final handoff requires each record to match the actual product commit, component, version and target; the public-release step is skipped. The workflow dispatch SHA identifies orchestration, not product provenance. Publish the actual prepared packages with the existing xtask from the accepted clean product checkout; CI success does not replace artifact availability or the normal package/signature requirements.
-
-The dispatch `version` applies only to Manager/self-owned cores; each external component resolves its own verified identity before fan-out. For external publication omit `--version` from the publish command above; Manager/self-owned publication still supplies it.
-
-Metadata commands are described in [Metadata](metadata.md); native package requirements in [Core ABI](core-abi.md).
+For pinned dependency details, Ren'Py SDK inputs, Apple cross-builds, OpenHarmony HAP handoff, corresponding-source and license collection, third-party core version hashing, and release history, read the [Release & Maintainer Runbook](release-runbook.md).

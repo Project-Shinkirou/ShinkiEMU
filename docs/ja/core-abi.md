@@ -5,6 +5,31 @@ description: C ABI v3 のライフサイクル、owner スレッド、CPU フレ
 
 # コア ABI と SDK
 
+## アーキテクチャとライフサイクル概要
+
+```mermaid
+sequenceDiagram
+  participant Host as Manager / Headless（ホスト owner スレッド）
+  participant Core as Native Core（コア owner スレッド）
+  Host->>Core: query() → CoreApi v3 テーブル
+  Host->>Core: initialize() / describe() / probe(game_dir)
+  Host->>Core: open(config, host_services) → セッションハンドル
+  loop アクティブセッション
+    Host->>Core: input() / control()（所有イベントをキュー投入）
+    Core-->>Host: state() / frame()（公開済み状態と不変 CPU フレームリース）
+    Host->>Core: release_frame(lease)（アップロード完了後に 1 回返却）
+  end
+  Host->>Core: cancel()（ブロック中呼び出しを並行起床）
+  Host->>Core: close()（ワーカー終了待機とハンドル消費）
+```
+
+| 機能ビット（`Descriptor.capabilities`） | 値 | 内容 |
+|---|---|---|
+| `CAP_NATIVE_SCRIPT_IDENTITY` | `64` | 変換済みスクリプトのハッシュ検証とセーブ・既読分離 |
+| `CAP_CONFIGURED_FONT_PRIORITY` | `128` | スクリプトや復元状態より設定フォントを優先 |
+| `CAP_NATIVE_EMBEDDED_TEXT` | `256` | ネイティブ SC でのオフライン埋め込み Unicode テキスト対応（Musica） |
+| `CAP_NATIVE_NAME_RESOURCES` | `512` | ネイティブ SC からの名前定数読み取りと EXE 読み取り専用フォールバック |
+
 ## プロトコルとエントリーポイント
 
 ネイティブプロトコルは `shinki.emu.native.c.v3` で、ABI の数値バージョンは **3** です。動的コアは `shinki_emu_query` をエクスポートし、静的統合では同じ形の Query 関数を登録します。Rust の契約は `Source/FamilyApi/shinki-emu-abi` にあり、生成される C ヘッダーは `include/shinki_emu.h` です。C++ はこのヘッダーを使い、ABI 定義を別に保守することはしません。

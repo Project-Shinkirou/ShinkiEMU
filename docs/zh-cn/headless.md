@@ -5,9 +5,16 @@ description: 核心出帧验收、输入回放、截图基线比较和 Manager �
 
 # 无窗口运行与界面截图
 
-`shinki-emu-headless` 复用 Manager 的 C ABI v3 loader、原生会话和 CPU 帧租约。输入脚本直接使用已 pin 的 RoukakuEngine `roukaku-headless-protocol` 中的 `roukaku.user_input_sequence.v1`，没有新增第二套输入协议。完整字段说明和脚本样例见[英文接口文档](../en/headless.md)。
+`shinki-emu-headless` 面向自动化核心验收与文档/门户 UI 截图，复用 Manager 的 C ABI v3 loader、原生会话和 CPU 帧租约。输入脚本直接使用已 pin 的 RoukakuEngine `roukaku-headless-protocol` 中的 `roukaku.user_input_sequence.v1`，没有新增第二套输入协议。完整字段说明和脚本样例见[英文接口文档](../en/headless.md)。
 
-当前 [Manager `0.1.0-beta.8` 发布包](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)不包含 `shinki-emu-headless` 二进制。运行器已在仓库源码中实现，请按下面的步骤从源码构建。
+| 场景 | 独立运行器命令 | Manager 内置入口 |
+|---|---|---|
+| 核心出帧验收与输入回放 | `shinki-emu-headless run ...` | `shinki-emu-manager headless ...` |
+| PNG 像素基线比对 | `shinki-emu-headless compare ...` | — |
+| 截取 Manager 深/浅主题三语界面 | `shinki-emu-headless ui ...` | `shinki-emu-manager headless-ui ...` |
+
+> [!NOTE]
+> 当前 [Manager `0.1.0-beta.8` 发布包](https://github.com/Project-Shinkirou/ShinkiEMU/releases/tag/manager-v0.1.0-beta.8)不包含 `shinki-emu-headless` 独立二进制；运行器已在仓库源码中实现，可按下方步骤从源码构建。
 
 ## 构建与核心验收
 

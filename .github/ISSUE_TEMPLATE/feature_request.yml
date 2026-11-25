@@ -1,0 +1,37 @@
+name: Feature or engine request / 功能或引擎支持建议 / 機能・エンジン要望
+description: Propose a Manager improvement or request support for a visual novel engine / 提出 Manager 改进建议或希望支持的引擎 / Manager の機能提案や対応エンジンの要望
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        - **中文**：对于开放性讨论或尚未定型的想法，欢迎先在 [GitHub Discussions](https://github.com/Project-Shinkirou/ShinkiEMU/discussions) 交流。若请求新增引擎支持，提供已有的开源引擎复刻项目链接会非常有帮助。
+        - **English**: For open-ended ideas, consider starting in [GitHub Discussions](https://github.com/Project-Shinkirou/ShinkiEMU/discussions). When requesting a new engine, linking an existing open-source engine reimplementation helps greatly.
+        - **日本語**：オープンなアイデア相談は [GitHub Discussions](https://github.com/Project-Shinkirou/ShinkiEMU/discussions) もご活用ください。新エンジン要望の場合、既存のオープンソース再実装プロジェクトの URL があると検討しやすくなります。
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category / 建议类别 / カテゴリ
+      options:
+        - Manager UI & Library UX
+        - New Engine / Core Support
+        - Store Integration
+        - Luau Patch Capability
+        - Platform / Packaging Support
+        - Documentation / Developer Experience
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Use Case & Motivation / 使用场景与动机 / ユースケースと背景
+      description: "What problem are you trying to solve or what workflow would this improve? / 你希望解决什么问题或改善什么体验？"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution / 建议方案 / 提案内容
+      description: "Describe the expected behavior. For engine requests, list engine name, example formats, and any known open-source implementations & licenses. / 描述期望行为；引擎支持请求请附引擎名、常见格式及已知开源项目和许可证。"
+    validations:
+      required: true

@@ -16,7 +16,7 @@ impl Icon {
     pub fn render(&self, size: u32, opaque: bool) -> Result<tiny_skia::Pixmap> {
         let mut image = tiny_skia::Pixmap::new(size, size).context("icon dimensions")?;
         if opaque {
-            image.fill(tiny_skia::Color::from_rgba8(11, 18, 38, 255));
+            image.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
         }
         resvg::render(
             &self.0,
@@ -55,7 +55,7 @@ impl Icon {
         }
         fs::write(
             res.join("values/ic_launcher.xml"),
-            "<resources><color name=\"ic_launcher_background\">#0b1226</color></resources>",
+            "<resources><color name=\"ic_launcher_background\">#12326e</color></resources>",
         )?;
         let xml = "<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\"><background android:drawable=\"@color/ic_launcher_background\"/><foreground android:drawable=\"@mipmap/ic_launcher_foreground\"/></adaptive-icon>";
         for name in ["ic_launcher", "ic_launcher_round"] {

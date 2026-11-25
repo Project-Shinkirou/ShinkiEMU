@@ -1,91 +1,86 @@
 ---
-title: User guide
-description: Install Manager, manage native cores and read platform-specific reports.
+title: User Guide
+description: Complete guide to ShinkiEMU Manager — library management, cores, store downloads, Luau patches, and saves.
 ---
 
-# User guide
+# User Guide
 
-## Install and start
+This guide covers everyday use of ShinkiEMU Manager. If you are installing for the first time, start with the [3-Minute Quick Start](quick-start.md).
 
-Download a Manager asset matching your platform and architecture from [ShinkiEMU Releases](https://github.com/Project-Shinkirou/ShinkiEMU/releases). Extract the complete desktop bundle into a writable location and start `shinki-emu-manager` (`.exe` on Windows). Keep its bundled dependencies, licenses and resources together. `shinki-emu-manager --help` opens desktop CLI help; starting without a subcommand opens the GUI.
+## Languages & Appearance
 
-Only select assets actually attached to a release. Build availability is listed in the [core directory](https://project-shinkirou.github.io/en/shinkiemu/cores/). Android debug-signed CI APKs are test builds, not release installers. iOS device and simulator outputs are distinct; a library is not an installable IPA.
+Manager ships with Simplified Chinese, English, and Japanese interfaces under **Settings → Appearance → Language**. "Follow system" matches your OS locale (Chinese → Simplified Chinese, Japanese → Japanese, all others → English). CJK fonts are bundled inside Manager so text renders cleanly even on systems without CJK fonts installed, using Japanese glyphs in Japanese mode and Simplified Chinese glyphs otherwise.
 
-On first launch, read the bilingual anti-resale notice and tick “我已阅读 / I have read this”. Continue becomes available after the notice has been visible for eight seconds. The acknowledgement is stored locally with the notice's SHA-256 digest; a revised notice requires acknowledgement again. ShinkiEMU is free, open-source software: use the official website and GitHub Releases, and request a refund and report the seller if you paid for the software. The notice is also available in Settings → About.
+Game titles, descriptions, and patch notes come from community metadata and follow your chosen interface language (falling back from Japanese to English, then Simplified Chinese). Light mode, dark mode, and custom accent colors are supported.
 
-The bilingual image is rasterized in Rust and displayed in the onboarding and About image slots. Reading time advances only while the complete image fits at its readable size inside the visible scroll viewport; hidden, undersized, clipped or minimized views pause it. Resize a narrow window vertically or scroll the notice fully into view before reading. Removing the UI image does not bypass the Rust completion gate: onboarding stays locked.
+## Manager Update Checks
 
-The image follows the current light/dark theme and its surface/text colors, including custom theme colors. Changing the theme refreshes the raster without resetting accumulated reading time.
+With networking enabled, Manager checks for new Manager releases in the background on startup without blocking launch or popping up errors on offline failures. You can also trigger a manual check under **Settings → Updates**.
 
-## Language
+- Updates come from `Project-Shinkirou/ShinkiEMU` GitHub Releases (`manager-v<semver>`). Pre-release builds opt in to pre-release notifications by default.
+- When an update is available, Manager shows release notes and opens the platform download link in your browser — it never auto-installs silently.
+- "Ignore this version" persists locally; "Later" hides the prompt for the current session only.
 
-Manager is available in Simplified Chinese, English and Japanese. Choose **Settings → Appearance → Language**. **Follow system** uses the operating-system language: Chinese locales select Simplified Chinese, Japanese locales select Japanese, and every other locale selects English. The choice applies immediately and is saved with the other settings. Chinese and Japanese fonts are bundled, so text displays correctly on systems without CJK fonts. Han characters use Japanese glyph forms when the UI is Japanese and Simplified Chinese forms otherwise.
+## Game Library & Core Management
 
-Game titles, descriptions and patch notes come from metadata. Manager shows the entry for the current language, falls back to English when a Japanese entry is missing, and falls back to Simplified Chinese when English is missing too. The anti-resale notice is always bilingual (Chinese and English).
+### Scanning Local Games
 
-Metadata request failures belong to the selected installation. Starting a retry clears its previous failure state while the request is pending; changing the interface language does not change whether a request failed.
+Add directories containing legally acquired games in **Settings** and scan your library. Selecting a game displays its detected core and core-specific configuration. If a title uses encrypted archives, supply its private key configuration locally (keys never leave your device). Deprecated settings are cleaned up automatically after core updates.
 
-## Manager updates
+### Installing & Updating Desktop Cores
 
-When networking is allowed, Manager checks its own version once in the background at startup. This never blocks startup or opens an error dialog. **Settings → Updates → Check now** performs a manual check and displays failures. Releases come from Project-Shinkirou/ShinkiEMU's GitHub Releases and are compared using `manager-v<semver>` tags. Core and store-game updates keep their separate controls.
+Desktop cores ship and update independently of Manager:
 
-The prerelease channel is selectable and defaults to enabled when running a prerelease Manager. An available update shows its version, release notes and a download link for the current platform, opened in the system browser. Manager never downloads or installs itself. Ignored versions are saved locally and are not prompted again; **Later** hides the prompt for this session. Offline mode sends no update requests.
+1. Enable networking in **Settings**.
+2. Open the **Cores** page and refresh the catalog (which records version, ABI, download URL, and SHA-256 hash).
+3. Install or update the cores for your platform.
 
-## Add games and install cores
+If an update replaces an already-loaded core library, close any running game session and restart Manager when prompted. Keep each core's complete directory (`core.json`, dependencies, optional `Resources/`, and `licenses/`).
 
-In Settings, add the directories containing your legally obtained game installations, then scan the library. Select the detected game and check the selected core and game-specific configuration before starting. An engine probe identifies a format; encrypted resources can still require a private profile. Keep all keys local.
+## Store Downloads (Steam / DLsite / DMM)
 
-Settings removed by a core update are removed from saved configuration automatically.
+With networking enabled, open **Add Game → Store Download** to download owned PC games directly into your library. Cookies and refresh tokens are stored exclusively in your OS secret store (Windows Credential Manager, Linux Secret Service, macOS/iOS Keychain, or AndroidKeyStore) and cleared on sign-out.
 
-Allow networking in Settings before synchronizing metadata or downloading cores. In the core management page, refresh the catalog and install or update the desired core for your platform. The catalog supplies the version, ABI, download URL and hash. Complete the session and restart Manager when an update requires replacing a loaded library. Keep the whole core directory, including `core.json`, dependencies, `Resources/` when present and licenses; a DLL copied alone is not an installation.
+### Steam
 
-## Store downloads
+- **Sign-in**: Supports password + Steam Guard email/mobile confirmation, passwordless QR scan from the Steam mobile app, and cached desktop Steam client login import on PC.
+- **Downloads & maintenance**: Pick content depots (Windows depots are selected by default even on mobile for cross-platform play) and branches. Finished downloads are added to your library and probed automatically. Supports **Check for updates** (incremental depot reuse) and **Verify and repair**; keep `.DepotDownloader` inside the game folder for incremental updates.
 
-Open **Add game → Store downloads** after allowing network access in Settings. When several providers are compiled in, select a store first. The login options come from that provider: Steam offers QR, account/password with Steam Guard, and desktop client import; DLsite and DMM/FANZA sign in on their own pages inside Manager. Cookies and refresh tokens are stored only in the platform secret store, never in installation records or logs. Logging out removes that provider’s stored login.
+### DLsite & DMM GAMES / FANZA
 
-**Web sign-in (DLsite, DMM/FANZA):** choose **Open sign-in page**. Manager shows the store’s official sign-in page in the system web view — WebView2 on Windows, WKWebView on macOS and iOS, a WebKitGTK window on Linux, and Android’s WebView over the app. Sign in there, including any CAPTCHA or two-step verification. Once the store reaches its signed-in page with the account session, Manager reads that store’s cookies (HttpOnly ones included) directly from the web view, closes it and finishes the login; there is nothing to copy or paste. The web view starts with an empty private cookie store and keeps nothing after it closes; only the provider’s login is saved, in the platform secret store. **Cancel**, closing the window, Android’s back gesture or leaving the Store page abandons the sign-in. Windows needs the Microsoft Edge WebView2 Runtime (included with Windows 11) and Linux needs WebKitGTK 4.1 (`libwebkit2gtk-4.1`).
+- **Web sign-in**: Clicking "Open sign-in page" opens the store's official login page in a clean, ephemeral native webview (WebView2 on Windows, WKWebView on macOS/iOS, WebKitGTK on Linux, WebView on Android) so CAPTCHA and 2FA work naturally. Once signed in, Manager reads the session cookie automatically and discards the temporary webview storage.
+- **DLsite downloads**: Lists PC games purchased on your account via DLsite Play and downloads original PC files only (never Play viewer media). ZIP archives are extracted after path-safety checks; RAR archives and installers are kept intact for manual extraction or installation.
+- **DMM GAMES / FANZA**: Currently supports sign-in only; downloads are not yet available.
 
-**Steam sign-in:** Sign in with an account and password, a Steam Guard email/mobile code or mobile confirmation, or scan the locally rendered QR code with Steam's mobile app. Desktop platforms can also import a cached Steam client login; mobile platforms use password or QR login. Passwords are never persisted. Refresh tokens live in the platform secret store: Windows Credential Manager, Linux secret service, Apple Keychain (macOS/iOS), or AndroidKeyStore-backed encrypted app storage. Sign out removes the saved login.
+New store installs live under `<library-root>/.shinki/store/<store>/installs/`. Manager never removes or bypasses store DRM, launch tokens, or license checks.
 
-**QR login** requests a fresh Steam challenge without an account name or password. The code appears once Steam responds; approve it in the mobile app to finish signing in. Cancel stops the pending request without completing login.
+## Compatibility & Metadata Sync
 
-Search your owned games, select a game, choose depots and a branch, then select a writable library folder. Windows depots are selected by default even on mobile; choose language depots separately. A downloaded game is added to Manager and probed for compatible cores. Download availability does not imply that a core supports the game's engine.
+The default metadata endpoint is `https://project-shinkirou.github.io/data/shinkiemu/v1/`. You can sync manually from **Settings**; corrupt or invalid snapshots never overwrite a working local cache.
 
-**Check updates** compares installed depot manifests with Steam. Download again to apply a delta update; **Verify and repair** checks and repairs installed files. Cancellation preserves the interrupted-install marker and waits for outstanding writes; retrying resumes verified local chunks. Keep each game's `.DepotDownloader` directory: it records installed manifests and the metadata needed for delta reuse.
+When reading compatibility reports, match the exact **VNDB release rID, core, platform, architecture, and desktop/device/simulator variant**. Share your own findings via the [Compatibility Report](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new?template=compatibility.yml) form.
 
-Only PC downloads owned by the signed-in account are eligible. Play-only, streaming and browser titles show why they cannot be downloaded. DRM, launch tokens and licence checks remain the store’s responsibility. Branch/depot controls and verification appear only when supported by the selected provider. New installs live below `<library folder>/.shinki/store/<provider>/installs/`; staging and caches live below `<Manager data root>/.shinki/store/<provider>/`. Existing Steam installation records and secret-store references are migrated once without moving games.
+## Luau Patches
 
-When the store cannot determine the installed version, Manager shows **Update status unavailable** as a neutral status and hides update actions. Refreshing the library asks the provider again. Some downloads are archives or installers: after completion, **Downloaded archives need manual extraction or installer run** appears with **Open folder**. Extract or run the official installer yourself, then add the playable game directory to Manager; Manager does not bypass installers or DRM.
+The **Patches** page runs both reviewed **Online Patches** (bound to concrete VNDB releases and source SHA-256 fingerprints) and local `.luau`/ZIP scripts (**Load local patch…**, clearly marked unreviewed) inside the same host sandbox.
 
+Scripts run only when you explicitly apply them. Allowed downloads must use HTTPS, match their declared size and SHA-256, and are cached under `<game>/.shinki/patch/`. Resource patches cannot add or modify EXE files.
 
-## DLsite downloads
+### Output Modes & Restore
 
-DLsite sign-in uses the web sign-in above, starting at DLsite Play’s login page; it completes once DLsite returns to Play with the `__DLsite_SID` account session. The provider stores the session only in the platform secret store. It lists owned works from DLsite Play and retrieves original PC files only when DLsite exposes an authenticated PC download plan; Play-optimized reader/media files are not installed as games. ZIP files are extracted with path-safety checks. RAR and self-extracting installer parts are kept unchanged and require manual extraction or installation; Manager never runs downloaded executables. DLsite does not provide a reliable installed-build identifier through the researched endpoints, so update state is reported as unknown.
+- **New directory (default)**: Writes the patched copy to `<chosen-parent>/localized-output` (`localized-output-1`, etc. if taken), leaving the original game untouched without copying saves.
+- **In-place overwrite**: Stages output privately, backs up modified or removed original files to `<game>/.shinki/backup/<id>/` with a hash `manifest.json`, and supports **Restore last patch** without overwriting files you modified afterward.
 
-If a work's download plan cannot be resolved, reproduce it in a signed-in browser and export a HAR with response content, beginning at `https://play.dlsite.com/api/v3/download?workno=<owned work number>` through redirects and any `/home/download`, `/home/serial`, or split listing request. Remove cookies, serial numbers and signed URL tokens before sharing. Never commit the HAR.
+> [!TIP]
+> Some patches require newer core capabilities (for example, newer Musica patches require Musica core `beta.5` or later). Manager verifies loaded core capabilities before applying or launching and tells you if a core update is needed.
 
-## Compatibility and metadata
+## Data Directories & Original Saves
 
-The default metadata source is:
+All files written by ShinkiEMU inside a game folder stay under `<game>/.shinki/`. You can open the platform app-data directory directly from **Settings**, or override it on desktop with an absolute `SHINKI_EMU_DATA_DIR` path.
 
-`https://project-shinkirou.github.io/data/shinkiemu/v1/`
+Save locations depend on the core:
 
-Settings controls network permission and manual synchronization. A rejected or damaged snapshot does not replace a valid cached snapshot. Match your VNDB release rID, core, platform, architecture and variant (desktop/device/simulator) when reading a report. A result on another platform or architecture is not your result. Submit reproducible observations through the [issue forms](https://github.com/Project-Shinkirou/ShinkiEMU/issues/new/choose).
+- **External cores** (RFVP, Siglus, Artemis, KiriKiri2, Ren'Py, impacto, etc.): Keep upstream save locations and formats; see each core's page.
+- **Shinki Musica** (`shinki.emu.musica`): Reads and writes byte-compatible original `.sav` and `.png` files under `<game>/.shinki/musica/minori/<title>/`, interchangeable with Windows `Documents\minori\<title>\` (see [Musica core notes](cores/shinki-emu-musica.md)).
 
-Release selection keeps the full release title, platform list and known release date separate from the stable VNDB rID. Each installed copy has its own pin; refreshing releases keeps that pin even if the provider omits it. Release details are cached for the current session. After restart, an existing pin still appears with its saved title (or just its rID for older records); platforms and date remain unknown until fetched.
-
-## Patches
-
-Choose a reviewed Luau patch from **Online patches**, or use **Load local patch…** for a `.luau` script or ZIP. Local scripts without catalog binding are marked unreviewed. Catalog patches match a concrete release and verify file fingerprints before writing. Scripts run only when explicitly selected; permitted script downloads use HTTPS and verify declared size and SHA256 before caching under `<game>/.shinki/patch/`. Online entries allow only their declared downloads.
-
-The patch page defaults to **New directory**, which keeps the source game unchanged and does not copy saves. **In-place overwrite** writes through private staging, backs up changed/removed originals under `<game>/.shinki/backup/<id>/`, and records hashes in `manifest.json`. **Restore latest patch** refuses to overwrite patched files you have edited. The in-place receipt is `<game>/.shinki/patch-result.json`. Resource patches cannot create or modify EXE files. See [patch contributions](metadata.md).
-
-In **New directory** mode on Windows, macOS and Linux, **Choose output** opens a folder picker. Choose the parent location, or create a folder there using the system's folder controls. Manager displays the full proposed output path below that location: `localized-output`, or `localized-output-1`, `localized-output-2`, etc. if a name is already occupied. Check this path before starting. Selection never creates the conversion directory; only a successful conversion publishes it. Cancelling the picker leaves the previous selection unchanged. Existing files and directories are never overwritten, including anything created at the proposed path after selection. Output cannot overlap the game or patch input. **In-place overwrite** does not use the output selection. On iOS the selected parent receives a new `localized-output` child; Android uses a new app-private export directory.
-
-New Musica patches require Musica core beta.5 or later; Yorino requires capability bits 256 and 512. RFVP native-script patches require isolated script saves and configured-font priority. Manager checks the actual loaded core before importing or launching converted outputs. If it requests a core update, update before retrying; a version label alone is insufficient. Older Managers continue reading the retained v1 patch catalog and legacy scripts.
-
-## Data and saves
-
-ShinkiEMU uses a new per-platform application data directory. Open its location from Settings; desktop deployments can set `SHINKI_EMU_DATA_DIR` to an absolute path. Android uses the application's private data directory. Pre-rename application databases, caches and product-owned saves are not imported. Existing game installations and original commercial saves remain untouched by that cutover.
-
-Save behavior is core-specific. [Musica](cores/shinki-emu-musica.md) uses original eden/Perseus `.sav` and `.png` files under `<game>/.shinki/musica/minori/<title>/`. Old beta `.asav` files are incompatible and remain unread and untouched; no conversion is provided. ReMinori has a separate save directory. Close the active session before backing up data or exchanging supported original-format files.
+Always close a running game before backing up or exchanging saves.

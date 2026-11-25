@@ -1,29 +1,35 @@
 ---
-title: ShinkiEMU
-description: 旧世代のビジュアルノベルエンジン向けの Manager とネイティブコア。
+title: ShinkiEMU ドキュメント
+description: プレイヤー・コントリビューター・開発者向けの ShinkiEMU ドキュメント総合案内。
 ---
 
-# ShinkiEMU
+# ShinkiEMU ドキュメント
 
-ShinkiEMU は、ゲームライブラリを管理する Manager とネイティブコアで構成され、旧世代のビジュアルノベルエンジンで作られたゲームを動かします。Manager はゲームの検出、コアのインストール、コア画面の表示、メタデータとの連携を担当します。VM、描画、音声、ゲーム内メニュー、セーブの挙動は各コアが担当します。[RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine) は独立した制作用エンジンで、共通の低レベルライブラリも提供しています。
+ShinkiEMU は、クロスプラットフォーム対応のゲームライブラリマネージャー **Manager** とモジュール式の**ネイティブエンジンコア**で構成され、現代の PC やスマートフォンでビジュアルノベルをネイティブ動作させます。共有ランタイムライブラリは姉妹エンジン [RoukakuEngine](https://github.com/Project-Shinkirou/RoukakuEngine) から提供されています。
 
-## コア、エンジンファミリー、識別子
+## はじめての方へ（プレイヤー）
 
-- **family** は元のエンジンまたはフォーマットのファミリーを表します。
-- **core（コア）** はそのエンジンの実装の一つです。
-- **plugin_id** はインストールとメタデータで使う正確な識別子で、大文字と小文字を区別します。外部コアは上流リポジトリ名をそのまま使います（例: `ReMinori`）。
+- [クイックスタート](quick-start.md)：3 分でダウンロード・ゲーム追加・コア導入・起動まで完了。
+- [ユーザーガイド](user-guide.md)：表示言語、更新確認、コア管理、Steam/DLsite ダウンロード、Luau パッチ、原版セーブ互換。
+- [トラブルシューティング](troubleshooting.md)：Linux ランタイム、Android GPU 設定、DLsite 診断、よくある問題と解決策。
 
-`shinki.emu.musica` と `ReMinori` はどちらも Musica ファミリーに属しますが、別々のコアです。実行部、設定、セーブの識別はそれぞれ独立しています。一方をインストール・設定しても、もう一方に同じ操作が行われることはありません。
+## コミュニティと参加
 
-## 利用と開発
+- [コントリビュートガイド](contributing.md)：コード不要の貢献方法、構成図、UI 翻訳（`.po`）、AI 活用ガイドラインと PR 手順。
+- [メタデータとパッチ投稿](metadata.md)：互換性レポートと Luau パッチの提出方法およびレビュー規則。
+- [GitHub Discussions](https://github.com/Project-Shinkirou/ShinkiEMU/discussions)：質問、情報共有、アイデア相談の場。
 
-- [ユーザーガイド](user-guide.md)：インストール、ゲームの追加、コアの更新、パッチの利用。
-- [ビルドとリリース](build-and-release.md)：Cargo のエントリーポイントと blocked ターゲット。
-- [コア ABI と SDK](core-abi.md)：ネイティブの所有権とフレームのライフサイクル。
-- [Metadata への貢献](metadata.md)：互換性レポート、パッチ、レビューの流れ。
+## 開発者・メンテナー向け
 
-## 各コアの資料
+- [ソースからのビルド](build-and-release.md)：固定ツールチェーン、`cargo xtask` コマンド、プラットフォーム別ビルド入口。
+- [コア ABI と SDK](core-abi.md)：C ABI v3 ライフサイクル、機能ビット、非同期テキスト置換、CPU フレームリース仕様。
+- [ヘッドレス実行と UI 撮影](headless.md)：`shinki-emu-headless` による描画検証、入力再生、Manager 画面キャプチャ。
+- [リリース・メンテナー手順書](release-runbook.md)：依存ピン固定、CI マトリクス、Apple/OHOS 引き渡し、対応ソース・ライセンス収集、リリース記録。
 
-[RFVP](cores/rfvp.md) · [Siglus](cores/siglus-rs.md) · [Artemis](cores/art3m1s-core.md) · [Musica](cores/shinki-emu-musica.md) · [Sena](cores/sena-rs.md) · [KiriKiri](cores/kirikiroid2-web.md) · [Ethornell](cores/ethornell-rs.md) · [CMVS](cores/shinki-emu-cmvs.md) · [ReMinori](cores/reminori.md) · [impacto](cores/impacto.md) · [Ren’Py](cores/renpy.md)。
+## コアの概念と各コア仕様
 
-現在のビルドとリリースの情報は[コア一覧](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、ゲームの動作結果は[互換性レポート](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)で確認できます。ビルドの成功やプローブの一致は、ゲームがプレイできることを意味しません。該当するレポートがない場合は「報告なし」と表示されます。
+ShinkiEMU では、**エンジン系統（family）**が元のエンジン形式を、**コア（core）**がその具体的実装を、**`plugin_id`** が導入やメタデータで用いる大文字・小文字区別の識別子を表します（`shinki.emu.musica` と `ReMinori` は同じ Musica 系統ですが、実行系・設定・セーブは独立しています）。
+
+[RFVP](cores/rfvp.md) · [Siglus](cores/siglus-rs.md) · [Artemis](cores/art3m1s-core.md) · [Musica（独自）](cores/shinki-emu-musica.md) · [ReMinori](cores/reminori.md) · [CMVS（独自）](cores/shinki-emu-cmvs.md) · [KiriKiri2](cores/kirikiroid2-web.md) · [impacto](cores/impacto.md) · [Ren’Py](cores/renpy.md) · [Sena](cores/sena-rs.md) · [Ethornell](cores/ethornell-rs.md)
+
+最新の公開コアは[コアカタログ](https://project-shinkirou.github.io/ja/shinkiemu/cores/)、作品別の実測結果は[互換性一覧](https://project-shinkirou.github.io/ja/shinkiemu/compatibility/)をご確認ください。
