@@ -29,6 +29,9 @@ The normal Android Manager package builds both ABIs into one universal APK. Set 
 
 For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
 
+The APK metadata check accepts `minSdkVersion` from current Android Build Tools
+and `sdkVersion` from older badging output; both must indicate API 28.
+
 macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
 
 `SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The private `ios-framework-cores` iOS and `ohos-bundled-musica` HAP variants are for local QA, not release assets.

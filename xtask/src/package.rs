@@ -1460,7 +1460,15 @@ fn verify_android_apk(
     let badging = dependencies::capture(
         std::process::Command::new(aapt2).args(["dump", "badging"]).arg(apk),
     )?;
-    let badging = std::str::from_utf8(&badging)?;
+    verify_android_badging(std::str::from_utf8(&badging)?, version, version_code)?;
+    // The bundled manifest is the runtime extraction list.
+    let mut archive = zip::ZipArchive::new(fs::File::open(apk)?)?;
+    archive.by_name("assets/metadata/index.json")?;
+    archive.by_name(ANDROID_BUNDLE_MANIFEST)?;
+    Ok(())
+}
+
+fn verify_android_badging(badging: &str, version: &str, version_code: u32) -> Result<()> {
     let package = badging.lines().find(|line| line.starts_with("package: "))
         .context("Android APK package metadata missing")?;
     let version_field = format!("versionName='{version}'");
@@ -1471,13 +1479,13 @@ fn verify_android_apk(
     {
         bail!("Android APK must use org.shinkirou.shinkiemu, versionName {version} and versionCode {version_code}");
     }
-    if !badging.lines().any(|line| line == "sdkVersion:'28'") {
+    let mut minimums = badging.lines().filter_map(|line| {
+        line.strip_prefix("minSdkVersion:")
+            .or_else(|| line.strip_prefix("sdkVersion:"))
+    });
+    if minimums.next() != Some("'28'") || minimums.any(|minimum| minimum != "'28'") {
         bail!("Android APK must require API 28");
     }
-    // The bundled manifest is the runtime extraction list.
-    let mut archive = zip::ZipArchive::new(fs::File::open(apk)?)?;
-    archive.by_name("assets/metadata/index.json")?;
-    archive.by_name(ANDROID_BUNDLE_MANIFEST)?;
     Ok(())
 }
 
@@ -1486,6 +1494,30 @@ mod android_tests {
     use super::*;
     use clap::Parser as _;
     use shinki_emu_build::{CoreBuildManifest, NativeInputs};
+
+    #[test]
+    fn android_badging_accepts_both_build_tools_minimum_sdk_fields() {
+        let package =
+            "package: name='org.shinkirou.shinkiemu' versionCode='1' versionName='0.1.0-qa.1'";
+        for sdk in ["sdkVersion:'28'", "minSdkVersion:'28'"] {
+            verify_android_badging(&format!("{package}\n{sdk}\n"), "0.1.0-qa.1", 1).unwrap();
+        }
+        for sdk in [
+            "",
+            "targetSdkVersion:'28'",
+            "minSdkVersion:'27'",
+            "minSdkVersion:'29'",
+            "sdkVersion:'28'\nminSdkVersion:'27'",
+        ] {
+            assert!(
+                verify_android_badging(&format!("{package}\n{sdk}\n"), "0.1.0-qa.1", 1)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("require API 28"),
+                "{sdk}"
+            );
+        }
+    }
 
     #[test]
     fn adv32_candidate_package_stages_its_reported_resources_and_licenses() {
