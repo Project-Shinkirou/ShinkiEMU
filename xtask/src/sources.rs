@@ -769,6 +769,9 @@ fn native_sources(
         commands.push_str(&format!(
             "& $vcpkg install --vcpkg-root=\"$PWD/.work/vcpkg\" --triplet {triplet} --x-manifest-root=\"$PWD/{manifest}\" --x-install-root=\"$PWD/{install_root}\""
         ));
+        if let Some(overlay) = dependencies::native_port_overlay(target, group) {
+            commands.push_str(&format!(" --overlay-ports=\"$PWD/{overlay}\""));
+        }
         if !matches!(*group, "subtitle" | "ffmpeg")
             && inv.root.join(&manifest).join("vcpkg/ports").is_dir()
         {
@@ -1199,7 +1202,7 @@ pub(crate) fn bundle(inv: &Inventory, component: &str, target: &str, out: &Path)
     }
     if !native_commands.is_empty() {
         instructions.push_str(
-            "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the fork snapshot. \
+            "\nnative/ports/ holds the exact vcpkg recipes and patches of the installed registry ports; overlay ports are part of the product or fork snapshots. \
              .work/vcpkg-downloads/ holds the original source archives vcpkg consumed. \
              Static libraries can be modified, rebuilt with these recipes, and relinked by rebuilding the consumer above. \
              Compatible replacement and reverse engineering for debugging modifications to LGPL components are permitted.\n",
