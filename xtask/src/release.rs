@@ -884,16 +884,21 @@ mod tests {
         let qa_dir = id.root.join(qa);
         fs::create_dir(&qa_dir).unwrap();
         fs::write(qa_dir.join("release.json"), b"untrusted local QA record").unwrap();
+        assert!(
+            publish_restriction(&inv, "renpy", "aarch64-linux-android")
+                .unwrap()
+                .unwrap()
+                .contains("verify LGPL relinking")
+        );
+        assert!(publish_restriction(&inv, "manager", "aarch64-linux-android").unwrap().is_none());
+        // If either ABI embeds Ren'Py, a staged receipt cannot override its blocker.
+        let renpy = inv.cores.iter().position(|core| core.id == "renpy").unwrap();
+        inv.cores[renpy].static_manager_targets.push(ANDROID_SECONDARY.into());
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("accepted an Android APK without verified Ren'Py source and relinking");
         };
         assert!(error.to_string().contains("verify LGPL relinking"), "{error}");
-        inv.cores
-            .iter_mut()
-            .find(|core| core.id == "renpy")
-            .unwrap()
-            .publish_blocked
-            .clear();
+        inv.cores[renpy].static_manager_targets.pop();
         let prepared = collect_records(&inv, &id, "manager", Scope::All).unwrap();
         assert_eq!(prepared.records.len(), target_count);
         assert!(prepared.blocked.iter().all(|row| !row.contains(qa)));

@@ -58,7 +58,7 @@ sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "buil
 
 `xtask package` 把 NDK 的 CMake 工具链传给 Cargo，ABI 与 API 28 均沿用 cargo-ndk 的目标设置。shaderc 等从 Cargo 构建脚本调用 CMake 的依赖也使用同一套配置。
 
-Android Manager 内嵌 Ren’Py。配置好 Ubuntu 24.04 x86_64 主机后，Cargo 会在 `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` 里准备目标运行库。配方需要装有 Jinja2 的 Python 3、LLVM/Clang/LLD 18、ccache 和 [CI](../../.github/workflows/ci.yml) 中列出的开发包。用非 Linux 主机构建时，把 Linux 生成的对应 ABI 的完整运行库目录复制过去，将 `RENPY_STATIC_ROOT` 指向它。目录应包含 `include/`、`lib/`、`Resources/` 和许可声明；换 ABI 时也要换目录。Ren’Py 配方用独立的 Linux NDK r29，ShinkiEMU 的 Cargo 构建用上面的 NDK r30。配方输入见 [Ren’Py](cores/renpy.md)。
+构建 Android 独立 Ren’Py 核心需要对应 ABI 的原生运行库。配置好 Ubuntu 24.04 x86_64 主机后，Cargo 会在 `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` 里准备运行库。配方需要装有 Jinja2 的 Python 3、LLVM/Clang/LLD 18、ccache 和 [CI](../../.github/workflows/ci.yml) 中列出的开发包。用非 Linux 主机构建时，把 Linux 生成的对应 ABI 的完整运行库目录复制过去，将 `RENPY_STATIC_ROOT` 指向它。目录应包含 `include/`、`lib/`、`Resources/` 和许可声明；换 ABI 时也要换目录。Ren’Py 配方用独立的 Linux NDK r29，ShinkiEMU 的 Cargo 构建用上面的 NDK r30。配方输入见 [Ren’Py](cores/renpy.md)。
 
 ### Apple
 
@@ -209,7 +209,7 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK，请在配好环境的 Linux 主机上打包。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。只需本地测试单个 ABI 时，加 `--qa-single-abi`，例如在非 Linux 主机上使用相应的 Ren’Py 运行库。Android 独立核心产出核心包，无需 Gradle 签名。
+常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。本地只测一个 ABI 时，加 `--qa-single-abi`。APK 内置 Impacto 和 KiriKiri 的 Java 宿主；其他获准的核心单独打包，由 Manager 安装。独立核心包不需要 Gradle 签名。
 
 制作正式 APK 时，`cargo xtask package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、指定的 `versionName` 和 `versionCode`，以及 `minSdk` 28。`release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`，每次公开的 APK 的 `versionCode` 都必须高于上一版。保留现有工作流文件，不要重建、改名或用另一个文件替代，否则编号可能从 1 重新开始，已安装的用户无法升级。
 

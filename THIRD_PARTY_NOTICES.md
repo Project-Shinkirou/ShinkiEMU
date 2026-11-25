@@ -109,9 +109,7 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 
 ## ShinkiEMU C ABI v3
 
-外部核心的 Rust 适配与 KrKr 头文件均固定 [`Project-Shinkirou/ShinkiEMU`](https://github.com/Project-Shinkirou/ShinkiEMU) 的 `shinki-emu-abi`（C ABI v3），源码路径为 `Source/FamilyApi/shinki-emu-abi`。外部核心在各自 fork 的 manifest 上独立构建；Android Manager 静态链接 RFVP，iOS Manager 静态链接 RFVP、Siglus、Sena、Ethornell 和 ReMinori，通过 `[patch]` 将同一 ABI 来源映射到本地源码。精确核心提交由 `build/cores.toml` 固定。
-
-RFVP 后继统一固定 `cc0cc5c9648d481693cfa353c11e1d61311f6246`（`shinki` 分支），使用发布序号 2。旧公开 `f86a19f5160bfbbdaf58a0b3f541b1d4cac70d03`/序号 1 的目录、tag 和资产保持不变；新身份从实际集成源码重新构建，不复用旧包换标签。
+外部核心使用 [`Project-Shinkirou/ShinkiEMU`](https://github.com/Project-Shinkirou/ShinkiEMU) 的 `shinki-emu-abi`（C ABI v3，源码位于 `Source/FamilyApi/shinki-emu-abi`）。产品工作区通过 `[patch]` 将 Rust 适配层的 ABI 依赖统一到这份源码。独立核心通过 `Source/Cores/` 入口构建，fork 的确切提交见 `Cargo.lock` 和包内 `licenses/pinned-sources.txt`。Android Manager 静态链接 Impacto；KiriKiri 的 Java 宿主随 APK 分发，原生核心另行安装。
 
 外部核心适配代码保留在各 fork，主仓不保留第二份适配源码。所有 fork 只保留 `shinki` 分支（同时是默认分支），Apple 扩展提交也在该分支上，精确来源见构建清单。plugin ID 等于上游仓库名，适配包命名为 `shinki-emu-<上游仓库名>`。
 
@@ -139,7 +137,7 @@ RFVP 后继统一固定 `cc0cc5c9648d481693cfa353c11e1d61311f6246`（`shinki` �
 ## Ren'Py
 
 - 上游 Ren’Py 稳定版 `8.5.3.26051504` 的基线是 <https://github.com/renpy/renpy/tree/39895c1e017f0b36ffea2447d97eccd69d76ee1c>；适配层在 fork 的 `shinki/`，确切提交见随包的 `licenses/pinned-sources.txt`。
-- 执行、Screen Language、ATL、GL2、音视频及存档沿用官方实现。桌面使用官方 SDK 的运行库，单独重编必要的 display 模块；Android 从固定上游配方构建静态归档并链接进 Manager。SDK 与源码输入的版本和校验和见 fork 的 `shinki/sdk.json`。
+- 执行、Screen Language、ATL、GL2、音视频及存档沿用官方实现。桌面使用官方 SDK 的运行库，单独重编必要的 display 模块；Android 从固定上游配方构建同 ABI 的运行库，链接到独立核心。SDK 与源码输入的版本和校验和见 fork 的 `shinki/sdk.json`。
 - 适配与共享 C ABI 的 MIT 许可见 fork 的 `shinki/LICENSE`。Ren’Py 及依赖保留各自的 MIT、Zlib、BSD、Python、LGPL 等许可。公开分发独立 Ren’Py 核心或内嵌 Ren’Py 的 Android APK 前，必须提供确切的对应源码，并验证接收者能重链接修改过的 LGPL 组件；详见 [Ren’Py 源码与重链接说明](docs/licenses/renpy/README.md)。打包工具不提供源码 ZIP。
 - 包内不含 Steam、Cubism、Bink、nvdrs 或微软 D3DCompiler 再发行 DLL；ANGLE 如需 D3DCompiler，使用 Windows 系统组件。商业资源、存档及验证画面不进入源码或核心包。
 

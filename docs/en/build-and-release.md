@@ -58,7 +58,7 @@ sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "buil
 
 For Android `xtask package`, Cargo uses the NDK's CMake toolchain with the same ABI and API 28 as cargo-ndk. This also covers dependencies such as shaderc that invoke CMake from a Cargo build script.
 
-The Android Manager embeds Ren’Py. On a provisioned Ubuntu 24.04 x86_64 build host, Cargo prepares the target runtime under `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/`. The recipe needs Python 3 with Jinja2, LLVM/Clang/LLD 18, ccache and the host development packages listed in [CI](../../.github/workflows/ci.yml). On a non-Linux build host, set `RENPY_STATIC_ROOT` to the complete runtime tree prepared on Linux for the matching ABI, including `include/`, `lib/`, `Resources/` and notices. Switch trees when building the other ABI. The Ren’Py recipe uses its own pinned Linux NDK r29; the ShinkiEMU Cargo build uses the NDK r30 above. See [Ren’Py](cores/renpy.md) for the recipe inputs.
+Building the standalone Android Ren’Py core requires its matching runtime tree. On a provisioned Ubuntu 24.04 x86_64 build host, Cargo prepares it under `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/`. The recipe needs Python 3 with Jinja2, LLVM/Clang/LLD 18, ccache and the host development packages listed in [CI](../../.github/workflows/ci.yml). On a non-Linux build host, set `RENPY_STATIC_ROOT` to the complete runtime tree prepared on Linux for the matching ABI, including `include/`, `lib/`, `Resources/` and notices. Switch trees when building the other ABI. The Ren’Py recipe uses its own pinned Linux NDK r29; the ShinkiEMU Cargo build uses the NDK r30 above. See [Ren’Py](cores/renpy.md) for the recipe inputs.
 
 ### Apple
 
@@ -209,7 +209,7 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-The normal Android Manager package builds both ABIs into one universal APK; use a provisioned Linux host for it. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK, for example with a matching Ren’Py runtime tree on a non-Linux host. Standalone Android cores are core packages, not APKs, and do not need Gradle signing.
+The normal Android Manager package builds both ABIs into one universal APK. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK. The APK embeds Impacto and stages the KiriKiri Java hosts; other admitted cores ship as separate packages installed through Manager. The core packages do not need Gradle signing.
 
 For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
 
@@ -230,7 +230,7 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 Each release record must name the product commit being published. Prepare the package again if the record is from a different commit or does not record a commit.
 
-Before distribution, check the exact source links in `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core and the Android Manager APK are publication-blocked until [Ren’Py source and relinking](../licenses/renpy/README.md) is fulfilled. Local packaging remains available, and a release plan alone does not clear the block.
+Before distribution, check `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core remains publication-blocked until its [source and relinking requirements](../licenses/renpy/README.md) are fulfilled. The same restriction applies to any Manager APK that embeds Ren’Py. Local packaging remains available.
 
 [The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Dispatch it with `components` and a shared product `version` for Manager and any selected in-tree cores. Select `release_scope=windows-android` for a Windows/Android-only release, or `prepare_only=true` to stage without publishing.
 

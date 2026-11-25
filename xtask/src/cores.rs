@@ -86,7 +86,7 @@ impl Core {
     /// build, but its rlib is not a distributable artifact.
     pub fn artifact_source(&self) -> ArtifactSource {
         match self.id.as_str() {
-            "kirikiroid2-web" | "impacto" | "renpy" => ArtifactSource::NativeLibrary,
+            "kirikiroid2-web" | "krkr2" | "impacto" | "renpy" => ArtifactSource::NativeLibrary,
             _ => ArtifactSource::Cdylib,
         }
     }

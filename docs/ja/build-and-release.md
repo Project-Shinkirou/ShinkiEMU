@@ -54,7 +54,7 @@ rustup target add aarch64-linux-android x86_64-linux-android
 sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"
 ```
 
-Android Manager は Ren’Py を組み込みます。環境を整えた Ubuntu 24.04 x86_64 ホストでは、Cargo が `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` に対象ランタイムを用意します。Python 3 と Jinja2、LLVM/Clang/LLD 18、ccache、[CI](../../.github/workflows/ci.yml) に記載の開発パッケージが必要です。Linux 以外では、対象 ABI 用に Linux で用意したランタイムディレクトリ全体（`include/`、`lib/`、`Resources/`、ライセンス表記を含む）を移し、`RENPY_STATIC_ROOT` に指定します。別の ABI をビルドするときは対応するディレクトリに切り替えます。Ren’Py のレシピは固定版の Linux NDK r29 を、ShinkiEMU の Cargo ビルドは上記の NDK r30 を使います。レシピの入力は [Ren’Py](cores/renpy.md) を参照してください。
+Android 向けの単独 Ren’Py コアをビルドするには、対象 ABI に対応するランタイムが必要です。環境を整えた Ubuntu 24.04 x86_64 ホストでは、Cargo が `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` に対象ランタイムを用意します。Python 3 と Jinja2、LLVM/Clang/LLD 18、ccache、[CI](../../.github/workflows/ci.yml) に記載の開発パッケージが必要です。Linux 以外では、対象 ABI 用に Linux で用意したランタイムディレクトリ全体（`include/`、`lib/`、`Resources/`、ライセンス表記を含む）を移し、`RENPY_STATIC_ROOT` に指定します。別の ABI をビルドするときは対応するディレクトリに切り替えます。Ren’Py のレシピは固定版の Linux NDK r29 を、ShinkiEMU の Cargo ビルドは上記の NDK r30 を使います。レシピの入力は [Ren’Py](cores/renpy.md) を参照してください。
 
 ### Apple
 
@@ -186,7 +186,7 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-be
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-beta.1 --out .work/android-test
 ```
 
-通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。環境を整えた Linux ホストで作成してください。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。Linux 以外で対象 ABI の Ren’Py ランタイムを用意した場合など、単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。Android の単独コアはコアパッケージであり、APK や Gradle 署名は不要です。
+通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。APK には Impacto と KiriKiri の Java ホストが含まれます。ほかの対応コアは Manager から個別にインストールします。単独コアに Gradle 署名は不要です。
 
 リリース APK の作成時に `cargo xtask package` は正式な署名証明書、パッケージ ID `org.shinkirou.shinkiemu`、指定された `versionName` と `versionCode`、`minSdk` 28 を照合します。`release.yml` は `github.run_number` を `SHINKI_EMU_ANDROID_VERSION_CODE` に設定します。公開する APK のコードは前回より大きくしてください。ワークフローの作り直し、改名、別ファイルへの差し替えで連番が 1 に戻ると、インストール済みのアプリが更新できなくなります。既存のワークフローファイルを使い続けてください。
 

@@ -15,22 +15,17 @@ family_name = "FVP"
 license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE", "crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "crates/shinki-emu-rfvp/MODIFICATIONS.md"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+android_dynamic = { minimum_release = 4, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "fix/sakura-font"
-release_sequence = 3
+release_sequence = 4
 upstream_identity = { repo = "https://github.com/xmoezzz/rfvp", ref_kind = "tag", ref_name = "0.7.0", commit = "99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1" }
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "GStreamer is not the only OHOS blocker: RFVP's kira audio runs on cpal, which selects ALSA (alsa-sys) on aarch64-unknown-linux-ohos and has no OHAudio backend, and its mp4 movie path uses video-sys, which selects GStreamer on target_os = \"linux\"."
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Only the existing rfvp static-in-Manager integration is adapted; no standalone dynamic-core Android packaging path."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
@@ -50,11 +45,12 @@ license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE-MPL-2.0", "shinki/THIRD_PARTY_NOTICES.md", "shinki/MODIFICATIONS.md", "vendor/kira/LICENSE-MIT", "vendor/kira/LICENSE-APACHE", "crates/siglus_scene_vm/assets/font-fallback/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+android_dynamic = { minimum_release = 4, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki-cjk-glyph-fallback"
-release_sequence = 3
+release_sequence = 4
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
@@ -78,11 +74,11 @@ license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE", "crates/shinki-emu-art3m1s-core/THIRD_PARTY_NOTICES.md", "crates/shinki-emu-art3m1s-core/MODIFICATIONS.md", "crates/pf8/LICENSE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android", "x86_64-linux-android", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+android_dynamic = { minimum_release = 2, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki-android-isolation"
-release_sequence = 1
+release_sequence = 2
 upstream_identity = { repo = "https://github.com/Alphaly2K/art3m1s-core", ref_kind = "branch", ref_name = "master", commit = "ad90a62cb192b119b7cf8589aa7f87a94bd747c8" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
@@ -105,16 +101,11 @@ family_name = "Musica"
 license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"]
+android_dynamic = { minimum_release = "0.1.0-beta.9", requires_context = true }
 ios_framework = true
 publish_blocked = ""
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Bundled in the iOS Manager; standalone core packages are not supported."
@@ -171,19 +162,13 @@ family_name = "KiriKiri"
 license = "(MIT OR Apache-2.0) AND LicenseRef-KiriKiri2"
 resources = []
 adapter_licenses = ["LICENSE", "shinki/README.md", "cpp/plugins/layerExImage/LICENSE.TXT", "ui/cocos-studio/DroidSansFallback.LICENSE.txt", "shinki/licenses/libbpg-MIT.txt", "shinki/licenses/minizip-zlib.txt", "shinki/licenses/UnRAR.txt", "shinki/licenses/FMOD.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
+android_dynamic = { minimum_release = 3, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki-common63"
-release_sequence = 2
+release_sequence = 3
 upstream_identity = { repo = "https://github.com/fenghengzhi/kirikiroid2-web", ref_kind = "branch", ref_name = "web", commit = "2028cbccaa91498bd36f270d349ae711d0e8fed3" }
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Integrated iOS KiriKiri Manager gates are owned by a separate candidate and have not been accepted for this desktop release."
@@ -204,18 +189,13 @@ family_name = "Ethornell / BGI"
 license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE-MPL-2.0", "MODIFICATIONS.md"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+android_dynamic = { minimum_release = 2, requires_context = true }
 publish_blocked = ""
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "ethornell-rs embedded adapter build script supports no Android target yet"
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "ethornell-rs embedded adapter build script supports no Android target yet"
 [cores.attribution]
 adapter_branch = "shinki-upstream-3ee43dab"
-release_sequence = 1
+release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "3ee43dab43854e2f9c614dd1d26213e17911d877" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
@@ -307,16 +287,11 @@ family_name = "CMVS"
 license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+android_dynamic = { minimum_release = "0.1.0-beta.9", requires_context = true }
 ios_framework = true
 publish_blocked = ""
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Bundled in the iOS Manager; standalone core packages are not supported."
@@ -405,21 +380,15 @@ display_name = "Ren’Py"
 family_name = "Ren’Py"
 license = "MIT AND LGPL-2.1-or-later"
 resources = []
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+android_dynamic = { minimum_release = 3, requires_context = false }
 licenses = ["docs/licenses/renpy/README.md"]
 adapter_licenses = ["shinki/LICENSE", "licenses/renpy/python", "licenses/renpy/python-sources.json", "licenses/renpy/native-sources.json"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 publish_blocked = "Publish the exact corresponding source and verify LGPL relinking for every shipped platform/ABI first. See docs/licenses/renpy/README.md."
 [cores.attribution]
 adapter_branch = "shinki-android-ports"
-release_sequence = 2
+release_sequence = 3
 upstream_identity = { repo = "https://github.com/renpy/renpy", ref_kind = "tag", ref_name = "8.5.3.26051504", commit = "39895c1e017f0b36ffea2447d97eccd69d76ee1c" }
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "AppleNative iOS static Ren'Py runtime build has not run."
@@ -474,12 +443,13 @@ family_name = "KiriKiri"
 license = "LicenseRef-KiriKiri2"
 resources = []
 adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
-supported_targets = []
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+supported_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+android_dynamic = { minimum_release = 2, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki"
-release_sequence = 1
+release_sequence = 2
 upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
 [[cores.blocked]]
 target = "x86_64-pc-windows-msvc"
@@ -493,12 +463,6 @@ reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Man
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
 reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
