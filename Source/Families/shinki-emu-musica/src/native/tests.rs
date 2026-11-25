@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::atomic::AtomicU64;
 
-fn handle_fixture() -> *mut c_void {
+fn handle_fixture(cpu: bool) -> *mut c_void {
     let info = abi::SurfaceInfo {
         kind: abi::SURFACE_CPU,
         pixel_format: abi::PIXEL_RGBA8,
@@ -42,11 +42,14 @@ fn handle_fixture() -> *mut c_void {
         services,
         audio_stop: Arc::new(AtomicBool::new(false)),
         canvas,
-        frame: Mutex::new(Published {
-            info,
-            pixels: Arc::from([1, 2, 3, 255, 4, 5, 6, 255]),
-            generation: 1,
-            timestamp_ns: 7,
+        surface: info,
+        cpu: cpu.then(|| CpuFrames {
+            latest: Mutex::new(Published {
+                pixels: Arc::from([1, 2, 3, 255, 4, 5, 6, 255]),
+                generation: 1,
+                timestamp_ns: 7,
+            }),
+            leases: Arc::new(AtomicUsize::new(0)),
         }),
         state: Mutex::new(abi::SessionState {
             state: abi::SESSION_RUNNING,
@@ -55,7 +58,6 @@ fn handle_fixture() -> *mut c_void {
             output_epoch: 1,
             error: abi::Error::default(),
         }),
-        leases: Arc::new(AtomicUsize::new(0)),
     });
     let (commands, _) = sync_channel(1);
     Box::into_raw(Box::new(Handle {
@@ -108,7 +110,7 @@ fn descriptor_declares_v3_presentation_and_render_extent() {
 }
 #[test]
 fn cpu_leases_are_bounded_and_outlive_the_session() {
-    let session = handle_fixture();
+    let session = handle_fixture(true);
     let mut leases = Vec::new();
     for _ in 0..3 {
         let mut raw = std::mem::MaybeUninit::uninit();
@@ -165,8 +167,32 @@ fn cpu_leases_are_bounded_and_outlive_the_session() {
 }
 
 #[test]
+fn hosted_frame_has_metadata_but_never_acquires_a_cpu_lease() {
+    let session = handle_fixture(false);
+    let identity = abi::FrameIdentity {
+        session_epoch: 19,
+        output_epoch: 1,
+        generation: 0,
+    };
+    for after in [abi::FrameIdentity::default(), identity] {
+        let mut raw = std::mem::MaybeUninit::uninit();
+        assert_eq!(
+            unsafe { frame(session, after, raw.as_mut_ptr(), std::ptr::null_mut()) },
+            abi::OK
+        );
+        let pending = unsafe { raw.assume_init() };
+        assert_eq!(pending.state, abi::FRAME_PENDING);
+        assert_eq!(pending.identity, identity);
+        pending.info.validate().unwrap();
+        assert_eq!(pending.info.cpu_bytes().unwrap(), 8);
+        pending.validate_cpu(19).unwrap();
+    }
+    assert_eq!(unsafe { close(session, std::ptr::null_mut()) }, abi::OK);
+}
+
+#[test]
 fn cancellation_preserves_failed_state_and_disables_retry() {
-    let session = handle_fixture();
+    let session = handle_fixture(true);
     let handle = unsafe { handle(session) }.unwrap_or_else(|_| panic!("valid fixture handle"));
     {
         let mut state = handle
@@ -200,7 +226,7 @@ fn cancellation_preserves_failed_state_and_disables_retry() {
 
 #[test]
 fn quick_load_invalidates_text_context_before_worker_consumes_command() {
-    let session = handle_fixture();
+    let session = handle_fixture(true);
     let handle = unsafe { &mut *session.cast::<Handle>() };
     let (commands, pending) = sync_channel(1);
     handle.commands = commands;

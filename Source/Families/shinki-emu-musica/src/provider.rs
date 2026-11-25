@@ -3,10 +3,11 @@ use crate::{
     MusicaVm, ScriptEncoding,
     audio::Audio,
     profile::mount_musica_with_resources,
-    scene::{Scene, core_error, error},
+    scene::{Scene, SceneTarget, core_error, error},
     session::MusicaSession,
 };
 use shinki_emu_musica_keys::MUSICA_KEY_FILE;
+use shinki_emu_sdk::gpu_scene::GpuSceneHost;
 use shinki_emu_sdk::runtime::*;
 use std::{
     path::{Component, Path},
@@ -341,7 +342,7 @@ impl MusicaProvider {
         &mut self,
         request: OpenRequest,
     ) -> SessionResult<(OpenResponse, MusicaSession)> {
-        self.open_native_session(request, shinki_emu_abi::Extent::default(), None)
+        self.open_native_session(request, shinki_emu_abi::Extent::default(), None, None)
     }
 
     /// `render_extent` is already checked against the declared render support;
@@ -351,6 +352,7 @@ impl MusicaProvider {
         request: OpenRequest,
         render_extent: shinki_emu_abi::Extent,
         replacement: Option<crate::native::text::TextBridge>,
+        gpu_host: Option<GpuSceneHost>,
     ) -> SessionResult<(OpenResponse, MusicaSession)> {
         if let Some(service) = &replacement {
             service.check_cancelled()?;
@@ -601,23 +603,17 @@ impl MusicaProvider {
         if let Some(service) = &replacement {
             service.check_cancelled()?;
         }
-        if self.gpu_instance.is_none() {
-            self.gpu_instance = Some(shinki_emu_sdk::native_wgpu_instance().map_err(
-                |cause| {
-                    error(
-                        "SHINKI_EMU_MUSICA_RENDERER",
-                        &format!(
-                            "GPU instance creation failed ({:?} during {})",
-                            cause.code, cause.operation
-                        ),
-                    )
-                },
-            )?);
-        }
+        let hosted = if let Some(host) = gpu_host {
+            host.create()?.map(|client| SceneTarget::Hosted(host, client))
+        } else {
+            None
+        };
+        let target = match hosted {
+            Some(target) => target,
+            None => SceneTarget::Cpu(self.cpu_gpu_instance()?),
+        };
         let mut scene = Scene::new_scaled(
-            self.gpu_instance
-                .as_ref()
-                .expect("GPU instance initialized"),
+            target,
             archive.clone(),
             logical_width,
             logical_height,
@@ -689,6 +685,21 @@ impl MusicaProvider {
         session.sync_read_flags()?;
         tracing::info!(event = "shinki.emu.musica.session.open");
         Ok((response, session))
+    }
+
+    fn cpu_gpu_instance(&mut self) -> SessionResult<&wgpu::Instance> {
+        if self.gpu_instance.is_none() {
+            self.gpu_instance = Some(shinki_emu_sdk::native_wgpu_instance().map_err(|cause| {
+                error(
+                    "SHINKI_EMU_MUSICA_RENDERER",
+                    &format!(
+                        "GPU instance creation failed ({:?} during {})",
+                        cause.code, cause.operation
+                    ),
+                )
+            })?);
+        }
+        Ok(self.gpu_instance.as_ref().expect("GPU instance initialized"))
     }
 }
 fn relative(value: &str) -> SessionResult<()> {

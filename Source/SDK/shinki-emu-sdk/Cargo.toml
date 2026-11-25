@@ -7,7 +7,7 @@ license.workspace = true
 
 [features]
 runtime = ["dep:serde", "dep:shinki-emu-abi"]
-gpu-render = ["dep:roukaku-platform", "dep:roukaku-platform-common"]
+gpu-render = ["runtime", "dep:roukaku-byte-source", "dep:roukaku-platform", "dep:roukaku-platform-common"]
 video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile", "dep:ffmpeg-next"]
 subtitle = ["dep:roukaku-subtitle"]
 audio = ["dep:kira", "dep:symphonia"]

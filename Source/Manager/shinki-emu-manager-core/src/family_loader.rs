@@ -426,34 +426,43 @@ impl LoadedFamilyPlugin {
         crate::model::validate_game_path(&request.game_path)?;
         let resolved = resolve_config(&self.configuration, &request.configuration)?;
         let entries = super::native_config::entries(&resolved);
-        let raw = abi::OpenRequestTextV1 {
-            base: abi::OpenRequest {
-                header: abi::Header::of::<abi::OpenRequestTextV1>(),
-                game_path: abi::Bytes::new(request.game_path.as_bytes()),
-                session_epoch: request.session_epoch,
-                configuration: entries.as_ptr(),
-                configuration_count: entries.len(),
-                window: native_window(request.initial_window),
-                host: request.host,
-                module_owner: self
-                    .inner
-                    .resources
-                    .as_ref()
-                    .map_or(std::ptr::null_mut(), |resources| resources.handle()),
-                render_extent: request.render_extent.map_or(
-                    abi::Extent::default(),
-                    |(width, height)| abi::Extent { width, height },
-                ),
+        let raw = abi::OpenRequestGpuV1 {
+            text: abi::OpenRequestTextV1 {
+                base: abi::OpenRequest {
+                    header: if request.gpu_scene.is_some() {
+                        abi::Header::of::<abi::OpenRequestGpuV1>()
+                    } else {
+                        abi::Header::of::<abi::OpenRequestTextV1>()
+                    },
+                    game_path: abi::Bytes::new(request.game_path.as_bytes()),
+                    session_epoch: request.session_epoch,
+                    configuration: entries.as_ptr(),
+                    configuration_count: entries.len(),
+                    window: native_window(request.initial_window),
+                    host: request.host,
+                    module_owner: self
+                        .inner
+                        .resources
+                        .as_ref()
+                        .map_or(std::ptr::null_mut(), |resources| resources.handle()),
+                    render_extent: request.render_extent.map_or(
+                        abi::Extent::default(),
+                        |(width, height)| abi::Extent { width, height },
+                    ),
+                },
+                text_async: request.text_async.as_ref().map_or(std::ptr::null(), |service| service),
             },
-            text_async: request
-                .text_async
-                .as_ref()
-                .map_or(std::ptr::null(), |service| service),
+            gpu_scene: request.gpu_scene.as_ref().map_or(std::ptr::null(), |service| service),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();
-        let status =
-            unsafe { self.inner.api.open.unwrap()(&raw.base, output.as_mut_ptr(), &mut error) };
+        let status = unsafe {
+            self.inner.api.open.unwrap()(
+                std::ptr::from_ref(&raw).cast(),
+                output.as_mut_ptr(),
+                &mut error,
+            )
+        };
         let output = unsafe { output.assume_init() };
         if status != abi::OK {
             if !output.session.is_null() {
@@ -507,6 +516,7 @@ pub struct NativeOpenRequest {
     pub initial_window: WindowState,
     pub host: abi::HostServices,
     pub text_async: Option<abi::AsyncTextServiceV1>,
+    pub gpu_scene: Option<abi::GpuSceneServiceV1>,
     pub cancellation: crate::NativeCancellation,
     pub render_extent: Option<(u32, u32)>,
 }

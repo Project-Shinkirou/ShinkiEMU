@@ -125,6 +125,66 @@
  */
 #define ShinkiEmuSESSION_CAN_RETRY 1
 
+#define ShinkiEmuGPU_SCENE_VERSION 1
+
+#define ShinkiEmuGPU_MAX_COMMANDS 65536
+
+#define ShinkiEmuGPU_MAX_GLYPHS 65536
+
+#define ShinkiEmuGPU_MAX_LABEL_BYTES 512
+
+#define ShinkiEmuGPU_MAX_IMAGE_BYTES ((128 * 1024) * 1024)
+
+#define ShinkiEmuGPU_CLEAR 1
+
+#define ShinkiEmuGPU_RECT 2
+
+#define ShinkiEmuGPU_UPLOAD_TEXTURE 3
+
+#define ShinkiEmuGPU_UPLOAD_GLYPH 4
+
+#define ShinkiEmuGPU_RELEASE_RESOURCE 5
+
+#define ShinkiEmuGPU_SPRITE 6
+
+#define ShinkiEmuGPU_GLYPH_RUN 7
+
+#define ShinkiEmuGPU_LINEAR_GLYPH_RUN 8
+
+#define ShinkiEmuGPU_PUSH_CLIP 9
+
+#define ShinkiEmuGPU_POP_CLIP 10
+
+#define ShinkiEmuGPU_PUSH_TRANSFORM 11
+
+#define ShinkiEmuGPU_POP_TRANSFORM 12
+
+#define ShinkiEmuGPU_MASK_REVEAL 13
+
+#define ShinkiEmuGPU_TEXTURE 14
+
+#define ShinkiEmuGPU_UPDATE_TEXTURE 15
+
+#define ShinkiEmuGPU_BLEND_ALPHA 1
+
+#define ShinkiEmuGPU_BLEND_ADD 2
+
+#define ShinkiEmuGPU_BLEND_OPAQUE 3
+
+#define ShinkiEmuGPU_BLEND_MULTIPLY 4
+
+#define ShinkiEmuGPU_BLEND_SCREEN 5
+
+#define ShinkiEmuGPU_BLEND_SCREEN_RGB 6
+
+#define ShinkiEmuGPU_MASK_GRADIENT 1
+
+#define ShinkiEmuGPU_MASK_THRESHOLD 2
+
+#define ShinkiEmuGPU_IMAGE_RGBA8 1
+
+#define ShinkiEmuGPU_IMAGE_R8 2
+
 #define ShinkiEmuMODULE_OWNER_VERSION 1
 
 #define ShinkiEmuLOG_ERROR 1
@@ -770,6 +830,101 @@ typedef struct ShinkiEmuOpenRequestTextV1 {
   struct ShinkiEmuOpenRequest base;
   const struct ShinkiEmuAsyncTextServiceV1 *text_async;
 } ShinkiEmuOpenRequestTextV1;
+
+typedef struct ShinkiEmuGpuRectV1 {
+  int32_t x;
+  int32_t y;
+  uint32_t width;
+  uint32_t height;
+} ShinkiEmuGpuRectV1;
+
+/**
+ * Bytes are immutable through submit. `retain(owner)` optionally extends that
+ * lifetime and returns a new owned token for `release`. A nonempty image
+ * requires both callbacks. Retain/release may run on any thread; neither
+ * callback may unwind or depend on the lifetime of the open session.
+ */
+typedef struct ShinkiEmuGpuImageV1 {
+  struct ShinkiEmuExtent extent;
+  uint32_t format;
+  struct ShinkiEmuBytes pixels;
+  const void *owner;
+  void *(*retain)(const void*);
+  void (*release)(void*);
+} ShinkiEmuGpuImageV1;
+
+typedef struct ShinkiEmuGpuGlyphV1 {
+  struct ShinkiEmuBytes resource;
+  int32_t x;
+  int32_t y;
+  uint32_t rotation_quadrants;
+} ShinkiEmuGpuGlyphV1;
+
+/**
+ * `op` selects the named fields. Resource mutations use `resource`, draws
+ * use `id`, and Sprite also uses `resource`. A zero-size `source` is absent.
+ * A transform is [m11, m12, m21, m22, tx, ty]. Unused fields are zero/empty.
+ */
+typedef struct ShinkiEmuGpuSceneCommandV1 {
+  uint32_t op;
+  uint32_t mode;
+  struct ShinkiEmuBytes id;
+  struct ShinkiEmuBytes resource;
+  struct ShinkiEmuGpuRectV1 rect;
+  struct ShinkiEmuGpuRectV1 source;
+  struct ShinkiEmuGpuImageV1 image;
+  struct ShinkiEmuGpuImageV1 mask;
+  const struct ShinkiEmuGpuGlyphV1 *glyphs;
+  size_t glyph_count;
+  uint8_t color[4];
+  float opacity;
+  float phase;
+  float transform[6];
+} ShinkiEmuGpuSceneCommandV1;
+
+typedef struct ShinkiEmuGpuSceneFrameV1 {
+  struct ShinkiEmuHeader header;
+  uint64_t sequence;
+  struct ShinkiEmuExtent logical;
+  struct ShinkiEmuExtent raster;
+  uint8_t clear_rgba[4];
+  const struct ShinkiEmuGpuSceneCommandV1 *commands;
+  size_t command_count;
+} ShinkiEmuGpuSceneFrameV1;
+
+/**
+ * Optional host table. `create` returns a nonzero opaque target or UNSUPPORTED
+ * (choose CPU leases before opening the game). Each target has an ordered
+ * resource namespace and strictly increasing nonzero `sequence` values.
+ * `submit` queues a complete frame on the host GPU without CPU pixel access.
+ * The host publishes it after open commits, with its own generation under
+ * output epoch 1. A GPU session's base `frame` reports Pending with generation
+ * 0 and no CPU lease; `state` and `open` still report output epoch 1.
+ * `capture` synchronously initializes the entire caller-owned destination with
+ * packed, top-down RGBA8 (encoded sRGB, opaque alpha) on success. The requested
+ * length must equal the last submitted raster's width × height × 4.
+ * The host's table is borrowed for `open`; its context must stay live through
+ * failed-open cleanup or `close`. Core serializes callbacks per target and
+ * destroys every target before returning from open failure or close. Target
+ * destruction releases retained images without clearing a published frame.
+ */
+typedef struct ShinkiEmuGpuSceneServiceV1 {
+  uint32_t version;
+  uint32_t size;
+  void *context;
+  ShinkiEmuStatus (*create)(void*, uint64_t, uint64_t*, struct ShinkiEmuError*);
+  ShinkiEmuStatus (*submit)(void*,
+                            uint64_t,
+                            const struct ShinkiEmuGpuSceneFrameV1*,
+                            struct ShinkiEmuError*);
+  ShinkiEmuStatus (*capture)(void*, uint64_t, uint8_t*, size_t, struct ShinkiEmuError*);
+  void (*destroy)(void*, uint64_t);
+} ShinkiEmuGpuSceneServiceV1;
+
+typedef struct ShinkiEmuOpenRequestGpuV1 {
+  struct ShinkiEmuOpenRequestTextV1 text;
+  const struct ShinkiEmuGpuSceneServiceV1 *gpu_scene;
+} ShinkiEmuOpenRequestGpuV1;
 
 /**
  * Optional Android `CoreApi.extension` table for a dynamically loaded core.

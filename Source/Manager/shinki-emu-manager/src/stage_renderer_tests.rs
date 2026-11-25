@@ -217,6 +217,96 @@ fn vulkan_stage_handoff_reuses_texture_across_generations() {
 }
 
 #[test]
+#[ignore = "requires a physical WGPU adapter"]
+fn gpu_scene_presents_replacement_target_without_cpu_frame_upload() {
+    use shinki_emu_abi as abi;
+    use shinki_emu_manager_core::FilterStage;
+
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::PRIMARY;
+    let instance = wgpu::Instance::new(descriptor);
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+        .expect("native WGPU adapter");
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&Default::default())).expect("WGPU device");
+    let context = || WgpuFrameContext { device: &device, queue: &queue };
+    let mailbox = FrameMailbox::new();
+    let mut renderer = ManagerStageRenderer::new(mailbox.clone());
+    mailbox.activate(7).unwrap();
+    renderer.setup(context()).unwrap();
+    renderer.configure_filter_inner(&FilterSettings { stages: vec![FilterStage::Scale2x] }).unwrap();
+    let svc = mailbox.gpu_service().expect("physical WGPU adapter");
+    let mut error = abi::Error::default();
+    let mut make_target = || {
+        let mut id = 0;
+        assert_eq!(unsafe { svc.create.unwrap()(svc.context, 7, &mut id, &mut error) }, abi::OK);
+        id
+    };
+    let old = make_target();
+    let fresh = make_target();
+    let submit = |id, sequence, rgba| {
+        let command = abi::GpuSceneCommandV1 {
+            op: abi::GPU_CLEAR,
+            color: rgba,
+            ..Default::default()
+        };
+        let frame = abi::GpuSceneFrameV1 {
+            header: abi::Header::of::<abi::GpuSceneFrameV1>(),
+            sequence,
+            logical: abi::Extent { width: 2, height: 2 },
+            raster: abi::Extent { width: 2, height: 2 },
+            clear_rgba: rgba,
+            commands: &command,
+            command_count: 1,
+        };
+        let mut error = abi::Error::default();
+        let status = unsafe { svc.submit.unwrap()(svc.context, id, &frame, &mut error) };
+        (status, error)
+    };
+    let assert_submit = |id, sequence, rgba| {
+        let (status, error) = submit(id, sequence, rgba);
+        assert_eq!(status, abi::OK, "{}", String::from_utf8_lossy(&error.message[..error.message_len as usize]));
+    };
+    assert_submit(old, 1, [37, 73, 101, 255]);
+    assert!(mailbox.identity().unwrap().is_none(), "an in-flight open must not display a provisional frame");
+    mailbox.commit_gpu_open(7).unwrap();
+    renderer.render(context()).unwrap();
+    let first = renderer.take_stage_texture_update().unwrap().unwrap();
+    assert_eq!((first.logical_width, first.raster_width), (2, 4));
+    assert_eq!(read_pixels(context(), &first.texture), vec![[37, 73, 101, 255]; 16]);
+    let mut thumbnail = [0u8; 16];
+    assert_eq!(unsafe { svc.capture.unwrap()(svc.context, old, thumbnail.as_mut_ptr(), thumbnail.len(), &mut error) }, abi::OK);
+    assert_eq!(thumbnail.as_slice(), [37, 73, 101, 255].repeat(4));
+    assert_submit(fresh, 1, [193, 149, 83, 17]);
+    assert_eq!(unsafe { svc.capture.unwrap()(svc.context, fresh, thumbnail.as_mut_ptr(), thumbnail.len(), &mut error) }, abi::OK);
+    let reference: [u8; 4] = thumbnail[..4].try_into().unwrap();
+    assert_eq!(reference[3], 255);
+    assert!(reference[..3].iter().zip([193, 149, 83]).all(|(&a, b)| a.abs_diff(b) <= 1));
+    unsafe { svc.destroy.unwrap()(svc.context, old) };
+    assert_eq!(submit(old, 2, [0; 4]).0, abi::STALE_CONTEXT);
+    renderer.render(context()).unwrap();
+    assert_eq!(mailbox.displayed_identity().unwrap().unwrap().generation, 2);
+    for pixel in read_pixels(context(), &first.texture) {
+        // The filter's floating-point path can round by one channel value.
+        assert_eq!(pixel[3], 255);
+        assert!(pixel[..3].iter().zip(reference).all(|(&a, b)| a.abs_diff(b) <= 1));
+    }
+    assert!(renderer.input_texture.is_none(), "GPU publication must not allocate an upload texture");
+    renderer.configure_filter_inner(&FilterSettings::default()).unwrap();
+    renderer.render(context()).unwrap();
+    let raw = renderer.take_stage_texture_update().unwrap().unwrap();
+    let Some(StageFrame::Gpu(gpu)) = mailbox.stage_snapshot().unwrap() else {
+        panic!("expected a leased GPU target");
+    };
+    assert_eq!(raw.texture, gpu.texture, "bypass must sample the scene texture itself");
+    assert_eq!(read_pixels(context(), &raw.texture), vec![reference; 4]);
+    assert!(mailbox.snapshot().unwrap().is_none(), "no CPU lease is published");
+    mailbox.clear(7).unwrap();
+    assert_eq!(submit(fresh, 2, [0; 4]).0, abi::STALE_CONTEXT);
+    unsafe { svc.destroy.unwrap()(svc.context, fresh) };
+}
+
+#[test]
 #[ignore = "requires a native compute adapter and a format-4 DXC installation"]
 fn gpu_filter_chain_preserves_pixels_geometry_and_rollback() {
     use shinki_emu_manager::effects::FilterEngine;

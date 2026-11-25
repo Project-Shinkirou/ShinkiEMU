@@ -1,17 +1,92 @@
 use super::*;
-use shinki_emu_manager_core::model::{FamilyResult, FrameIdentity, FrameLease};
+use shinki_emu_manager_core::model::{FamilyResult, FrameIdentity, FrameInfo, FrameLease};
 
-/// Latest complete immutable CPU lease. No pixel copying.
+/// Latest complete frame; CPU bytes and GPU targets both remain leased.
 #[derive(Clone, Default)]
 pub(crate) struct FrameMailbox {
-    state: Arc<Mutex<FrameMailboxState>>,
+    inner: Arc<FrameMailboxInner>,
+}
+
+#[derive(Default)]
+pub(super) struct FrameMailboxInner {
+    state: Mutex<FrameMailboxState>,
+    pub(super) gpu: Mutex<super::gpu::GpuStage>,
+}
+
+#[derive(Clone)]
+pub(super) struct GpuFrame {
+    pub(super) identity: FrameIdentity,
+    pub(super) info: FrameInfo,
+    pub(super) texture: wgpu::Texture,
+    pub(super) _lease: Arc<()>,
+}
+
+#[derive(Clone)]
+pub(super) enum StageFrame {
+    Cpu(FrameLease),
+    Gpu(GpuFrame),
+}
+
+impl StageFrame {
+    pub(super) fn identity(&self) -> FrameIdentity {
+        match self {
+            Self::Cpu(frame) => frame.identity,
+            Self::Gpu(frame) => frame.identity,
+        }
+    }
+
+    pub(super) fn info(&self) -> FrameInfo {
+        match self {
+            Self::Cpu(frame) => frame.info,
+            Self::Gpu(frame) => frame.info,
+        }
+    }
+}
+
+impl FrameMailboxInner {
+    pub(super) fn require_epoch(&self, epoch: u64) -> Result<(), shinki_emu_abi::Status> {
+        let state = self.state.lock().map_err(|_| shinki_emu_abi::PANICKED)?;
+        if state.session_epoch != Some(epoch) {
+            return Err(shinki_emu_abi::STALE_CONTEXT);
+        }
+        Ok(())
+    }
+
+    pub(super) fn publish_gpu(
+        &self,
+        session_epoch: u64,
+        info: FrameInfo,
+        texture: wgpu::Texture,
+        lease: Arc<()>,
+    ) -> Result<(), shinki_emu_abi::Status> {
+        let mut state = self.state.lock().map_err(|_| shinki_emu_abi::PANICKED)?;
+        if state.session_epoch != Some(session_epoch) {
+            return Err(shinki_emu_abi::STALE_CONTEXT);
+        }
+        let generation = match &state.frame {
+            None => 1,
+            Some(StageFrame::Gpu(previous)) => previous.identity.generation
+                .checked_add(1).ok_or(shinki_emu_abi::INVALID_STATE)?,
+            Some(StageFrame::Cpu(_)) => return Err(shinki_emu_abi::INVALID_STATE),
+        };
+        let identity = FrameIdentity { session_epoch, output_epoch: 1, generation };
+        state.frame = Some(StageFrame::Gpu(GpuFrame { identity, info, texture, _lease: lease }));
+        Ok(())
+    }
 }
 
 #[derive(Default)]
 struct FrameMailboxState {
     session_epoch: Option<u64>,
-    frame: Option<FrameLease>,
-    displayed: Option<(FrameIdentity, shinki_emu_manager_core::model::FrameInfo)>,
+    gpu_committed: bool,
+    frame: Option<StageFrame>,
+    displayed: Option<(FrameIdentity, FrameInfo)>,
+}
+
+impl FrameMailboxState {
+    fn visible_frame(&self) -> Option<&StageFrame> {
+        self.frame.as_ref().filter(|frame| self.gpu_committed || matches!(frame, StageFrame::Cpu(_)))
+    }
 }
 
 impl FrameMailbox {
@@ -26,8 +101,9 @@ impl FrameMailbox {
             generation: 0,
         }
         .validate(false)?;
-        let mut state = self.state.lock().map_err(|_| lock_error())?;
+        let mut state = self.inner.state.lock().map_err(|_| lock_error())?;
         state.session_epoch = Some(session_epoch);
+        state.gpu_committed = false;
         state.frame = None;
         state.displayed = None;
         Ok(())
@@ -35,14 +111,20 @@ impl FrameMailbox {
 
     pub(crate) fn publish(&self, frame: FrameLease) -> FamilyResult<()> {
         frame.validate()?;
-        let mut state = self.state.lock().map_err(|_| lock_error())?;
+        let mut state = self.inner.state.lock().map_err(|_| lock_error())?;
         if state.session_epoch != Some(frame.identity.session_epoch) {
             return Err(shinki_emu_manager_core::model::FamilyError::invalid(
                 "SHINKI_EMU_HOST_FRAME_EPOCH",
                 "frame belongs to an inactive session",
             ));
         }
-        if let Some(previous) = &state.frame {
+        if matches!(&state.frame, Some(StageFrame::Gpu(_))) {
+            return Err(shinki_emu_manager_core::model::FamilyError::invalid(
+                "SHINKI_EMU_HOST_FRAME_TRANSPORT",
+                "frame transport changed during the session",
+            ));
+        }
+        if let Some(StageFrame::Cpu(previous)) = &state.frame {
             if frame.identity.output_epoch < previous.identity.output_epoch
                 || (frame.identity.output_epoch == previous.identity.output_epoch
                     && frame.identity.generation < previous.identity.generation)
@@ -62,15 +144,51 @@ impl FrameMailbox {
                 return Ok(());
             }
         }
-        state.frame = Some(frame);
+        state.frame = Some(StageFrame::Cpu(frame));
         Ok(())
     }
 
     pub(crate) fn identity(&self) -> Result<Option<FrameIdentity>, String> {
-        self.state
+        self.inner.state
             .lock()
             .map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK".to_owned())
-            .map(|state| state.frame.as_ref().map(|frame| frame.identity))
+            .map(|state| state.visible_frame().map(StageFrame::identity))
+    }
+
+    pub(crate) fn gpu_identity(&self) -> Result<Option<FrameIdentity>, String> {
+        let state = self.inner.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
+        Ok(match state.visible_frame() {
+            Some(StageFrame::Gpu(frame)) => Some(frame.identity),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn commit_gpu_open(&self, epoch: u64) -> Result<(), String> {
+        let mut state = self.inner.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
+        if state.session_epoch != Some(epoch) {
+            return Err("SHINKI_EMU_HOST_FRAME_EPOCH".into());
+        }
+        state.gpu_committed = true;
+        Ok(())
+    }
+
+    pub(crate) fn gpu_service(&self) -> Option<shinki_emu_abi::GpuSceneServiceV1> {
+        self.inner.gpu.lock().ok()?.available().then(|| super::gpu::service(&self.inner))
+    }
+
+    pub(super) fn setup_gpu(&self, context: &WgpuFrameContext<'_>) -> Result<(), String> {
+        let mut gpu = self.inner.gpu.lock().map_err(|_| "SHINKI_EMU_HOST_GPU_SCENE_LOCK")?;
+        gpu.setup(context.device, context.queue);
+        Ok(())
+    }
+
+    pub(super) fn teardown_gpu(&self) {
+        self.inner.gpu.lock().unwrap_or_else(std::sync::PoisonError::into_inner).teardown();
+        let mut state = self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if matches!(&state.frame, Some(StageFrame::Gpu(_))) {
+            state.frame = None;
+            state.displayed = None;
+        }
     }
     pub(crate) fn presented(
         &self,
@@ -78,7 +196,7 @@ impl FrameMailbox {
         info: shinki_emu_manager_core::model::FrameInfo,
     ) -> Result<(), String> {
         let first = {
-            let mut state = self.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
+            let mut state = self.inner.state.lock().map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK")?;
             if state.session_epoch != Some(identity.session_epoch) {
                 return Ok(());
             }
@@ -101,7 +219,7 @@ impl FrameMailbox {
         Ok(())
     }
     pub(crate) fn displayed_identity(&self) -> Result<Option<FrameIdentity>, String> {
-        self.state
+        self.inner.state
             .lock()
             .map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK".to_owned())
             .map(|state| state.displayed.map(|v| v.0))
@@ -109,7 +227,7 @@ impl FrameMailbox {
     pub(crate) fn displayed(
         &self,
     ) -> Result<Option<(FrameIdentity, shinki_emu_manager_core::model::FrameInfo)>, String> {
-        self.state
+        self.inner.state
             .lock()
             .map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK".to_owned())
             .map(|state| state.displayed)
@@ -118,22 +236,32 @@ impl FrameMailbox {
     /// Late shutdown from an old owner cannot clear the new session baseline.
     pub(crate) fn clear(&self, session_epoch: u64) -> Result<(), String> {
         let mut state = self
+            .inner
             .state
             .lock()
             .map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK".to_owned())?;
         if state.session_epoch == Some(session_epoch) {
             state.frame = None;
             state.session_epoch = None;
+            state.gpu_committed = false;
             state.displayed = None;
         }
         Ok(())
     }
 
-    pub(crate) fn snapshot(&self) -> Result<Option<FrameLease>, String> {
-        self.state
+    pub(super) fn stage_snapshot(&self) -> Result<Option<StageFrame>, String> {
+        self.inner.state
             .lock()
             .map_err(|_| "SHINKI_EMU_HOST_FRAME_LOCK".to_owned())
-            .map(|state| state.frame.clone())
+            .map(|state| state.visible_frame().cloned())
+    }
+
+    #[cfg(any(test, target_env = "ohos"))]
+    pub(crate) fn snapshot(&self) -> Result<Option<FrameLease>, String> {
+        Ok(match self.stage_snapshot()? {
+            Some(StageFrame::Cpu(frame)) => Some(frame),
+            _ => None,
+        })
     }
 }
 

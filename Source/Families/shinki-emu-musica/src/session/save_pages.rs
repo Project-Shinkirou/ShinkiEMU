@@ -61,7 +61,7 @@ impl MusicaSession {
                 } = event
             {
                 self.cancel_text()?;
-                self.gameplay_frame = Some(self.scene.pixels.clone());
+                self.gameplay_frame = Some(self.scene.capture()?);
                 if matches!(
                     event,
                     RuntimeEvent::Key {

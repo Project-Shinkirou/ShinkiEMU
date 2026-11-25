@@ -70,6 +70,14 @@ Ordinary ABI calls are serialized on the host's owner thread. The core's native 
 
 The shared Rust diagnostic bridge forwards each original event once. If a host callback emits tracing events into the same statically linked subscriber, those nested events are not forwarded back through the ABI. A thread-local guard covers formatting and the callback, resets on return or unwind, and leaves other threads and subsequent events independent. This applies to every core using `shinki-emu-abi/diagnostic-bridge`, without changing log levels or worker stack budgets.
 
+## Optional GPU scene service
+
+`OpenRequestGpuV1` retains the complete `OpenRequestTextV1` prefix and appends a pointer to `GpuSceneServiceV1`. A new core first checks the request size, then the table version, size and callbacks. An absent service, or `UNSUPPORTED` from `create`, selects CPU leases before the session starts. The core must still support CPU output for older hosts and headless use. ABI version 3 and the core entry point are unchanged.
+
+Manager owns the WGPU device and queue. The core gets an opaque session-scoped target ID and submits ordered C-layout draw commands. The SDK borrows commands for the call and provides retain/release callbacks for immutable texture and glyph assets. Manager draws into its own texture and samples it directly or feeds it to the selected filter. No device, Rust object or framebuffer pixels cross the ABI during ordinary presentation. The host stamps frame generations and rejects submissions from closed sessions; replacing a target does not reset the session's generation.
+
+Musica uses this service when the Manager has a compatible hardware renderer. Android's current Skia/Vulkan queue and OpenHarmony's software presentation continue to use CPU leases. Save thumbnails request a separate, synchronous capture; that is the only readback in the shared path.
+
 ## Converted-game compatibility
 
 The existing `Descriptor.capabilities` mask has four optional semantic bits; ABI

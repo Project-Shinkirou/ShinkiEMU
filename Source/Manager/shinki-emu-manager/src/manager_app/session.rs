@@ -23,6 +23,7 @@ pub(super) struct ActiveFamilySession {
     mailbox: FrameMailbox,
     pub(super) status: FamilyStatus,
     next_poll: Instant,
+    observed_gpu_frame: Option<shinki_emu_manager_core::model::FrameIdentity>,
     pub(super) failure: Option<NativeFailure>,
     pub(super) surface: shinki_emu_manager_core::SurfaceRecord,
 }
@@ -73,6 +74,7 @@ impl ActiveFamilySession {
                             .text
                             .as_ref()
                             .map(TextReplacementBridge::async_sink),
+                        gpu_scene: mailbox.gpu_service(),
                         cancellation: services.cancellation,
                         render_extent,
                     },
@@ -91,6 +93,7 @@ impl ActiveFamilySession {
                 if let Some(modal) = &services.modal {
                     modal.cancel_pending();
                 }
+                let _ = mailbox.clear(epoch);
                 return Err(error);
             }
         };
@@ -106,9 +109,10 @@ impl ActiveFamilySession {
             mailbox,
             status: FamilyStatus::Running,
             next_poll: Instant::now(),
+            observed_gpu_frame: None,
             failure: None,
         };
-        if let Err(error) = active.poll() {
+        if let Err(error) = active.mailbox.commit_gpu_open(epoch).and_then(|()| active.poll()) {
             let cleanup = active.close();
             return Err(cleanup
                 .err()
@@ -198,6 +202,11 @@ impl ActiveFamilySession {
             shinki_emu_abi::SESSION_FINISHED => FamilyStatus::Finished,
             _ => return Err("SHINKI_EMU_CORE_STATE".into()),
         };
+        if let Some(identity) = self.mailbox.gpu_identity()? {
+            let ready = self.observed_gpu_frame.replace(identity) != Some(identity);
+            self.next_poll = Instant::now() + Duration::from_millis(2);
+            return Ok(ready || failure_changed);
+        }
         let after = self.mailbox.identity()?;
         let polled = session.acquire_frame(after).map_err(|e| e.to_string())?;
         let ready = matches!(&polled, FramePoll::Ready(_));

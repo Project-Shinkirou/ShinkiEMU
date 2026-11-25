@@ -170,6 +170,7 @@ fn semantic_hook_failure_retries_same_event_without_reexecuting_vm() {
             request(root.path(), Sink::default()),
             shinki_emu_abi::Extent::default(),
             Some(service.bridge()),
+            None,
         )
         .unwrap();
     let failure = session.advance(16_666_667, &[]).unwrap_err();
@@ -263,6 +264,7 @@ fn hook_glyph_error_is_a_renderer_failure_not_a_retryable_service_error() {
             request(root.path(), Sink::default()),
             shinki_emu_abi::Extent::default(),
             Some(service.bridge()),
+            None,
         )
         .unwrap();
     assert_eq!(
@@ -301,6 +303,7 @@ fn delayed_translation_keeps_frames_audio_and_input_alive_and_drops_skip_and_loa
             request(root.path(), sink.clone()),
             abi::Extent::default(),
             Some(service.bridge()),
+            None,
         )
         .unwrap();
     for _ in 0..10 {
@@ -410,6 +413,7 @@ fn embedded_display_precedes_hook_and_retry_keeps_vm_and_hook_identity() {
             request(root.path(), Sink::default()),
             shinki_emu_abi::Extent::default(),
             Some(service.bridge()),
+            None,
         )
         .unwrap();
     assert_eq!(
@@ -463,6 +467,7 @@ fn embedded_native_text_survives_save_restore_without_tab_overlay_state() {
         .open_native_session(
             request(root.path(), Sink::default()),
             shinki_emu_abi::Extent::default(),
+            None,
             None,
         )
         .unwrap();

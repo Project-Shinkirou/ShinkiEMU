@@ -321,7 +321,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
         let mut vm = make_vm();
         vm.step(1).unwrap();
         let mut scene = Scene::new_scaled(
-            crate::test_fixture::gpu_instance(),
+            SceneTarget::Cpu(crate::test_fixture::gpu_instance()),
             archive.clone(),
             16,
             16,
@@ -331,7 +331,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
             crate::ScriptEncoding::ShiftJis,
         )
         .unwrap();
-        assert_ne!(scene.renderer.identity().device_type, "cpu");
+        assert_ne!(scene.cpu_renderer().identity().device_type, "cpu");
 
         let static_asset = scene.texture_asset("musica:/bg/BG.png").unwrap();
         assert_eq!(static_asset.frame.width, 32);
@@ -353,7 +353,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
             (3, 12, [0, 0, 255, 255]),
             (12, 12, [255, 255, 0, 255]),
         ] {
-            assert_eq!(sample_logical(&scene.pixels, raster, 16, x, y), color);
+            assert_eq!(sample_logical(scene.pixels(), raster, 16, x, y), color);
         }
 
         vm.step(2).unwrap();
@@ -362,11 +362,11 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
         cropped_state.screen_shake = None;
         scene.render(&cropped_state, None, None).unwrap();
         assert_ne!(
-            sample_logical(&scene.pixels, raster, 16, 1, 1),
+            sample_logical(scene.pixels(), raster, 16, 1, 1),
             [0, 0, 0, 255]
         );
         assert_eq!(
-            sample_logical(&scene.pixels, raster, 16, 14, 1),
+            sample_logical(scene.pixels(), raster, 16, 14, 1),
             [0, 0, 0, 255]
         );
 
@@ -374,11 +374,11 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
         vm.advance_screen_shake_clock(30_000_000).unwrap();
         scene.render(vm.state(), None, None).unwrap();
         assert_eq!(
-            sample_logical(&scene.pixels, raster, 16, 14, 1),
+            sample_logical(scene.pixels(), raster, 16, 14, 1),
             [0, 0, 0, 255]
         );
         assert_eq!(
-            sample_logical(&scene.pixels, raster, 16, 1, 15),
+            sample_logical(scene.pixels(), raster, 16, 1, 15),
             [0, 0, 0, 255]
         );
 
@@ -395,11 +395,11 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
         assert_eq!(ani_asset.logical_origin, [3, 4]);
         scene.render(&ani_state, None, None).unwrap();
         assert_eq!(
-            sample_logical(&scene.pixels, raster, 16, 3, 4),
+            sample_logical(scene.pixels(), raster, 16, 3, 4),
             [80, 220, 100, 255]
         );
         assert_eq!(
-            sample_logical(&scene.pixels, raster, 16, 2, 4),
+            sample_logical(scene.pixels(), raster, 16, 2, 4),
             [0, 0, 0, 255]
         );
         assert_eq!(
@@ -409,7 +409,7 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
 
         drop(scene);
         let mut reopened = Scene::new_scaled(
-            crate::test_fixture::gpu_instance(),
+            SceneTarget::Cpu(crate::test_fixture::gpu_instance()),
             archive.clone(),
             16,
             16,
@@ -419,10 +419,10 @@ fn profile_texture_overrides_render_gpu_at_all_scales_with_crop_and_offset() {
             crate::ScriptEncoding::ShiftJis,
         )
         .unwrap();
-        assert_ne!(reopened.renderer.identity().device_type, "cpu");
+        assert_ne!(reopened.cpu_renderer().identity().device_type, "cpu");
         reopened.render(vm.state(), None, None).unwrap();
         assert_eq!(
-            sample_logical(&reopened.pixels, raster, 16, 3, 3),
+            sample_logical(reopened.pixels(), raster, 16, 3, 3),
             [255, 0, 0, 255]
         );
     }
@@ -461,14 +461,14 @@ fn native_container_images_use_shared_gpu_cache_and_restore() {
         .unwrap();
         scene.render(vm.state(), None, None).unwrap();
         assert_eq!(
-            &scene.pixels[(3 * 16 + 2) * 4..(3 * 16 + 3) * 4],
+            &scene.pixels()[(3 * 16 + 2) * 4..(3 * 16 + 3) * 4],
             &[224, 96, 32, 255]
         );
         assert_eq!(scene.textures.resident_bytes(), 4);
-        let expected = scene.pixels.clone();
+        let expected = scene.pixels().clone();
         scene.render(vm.state(), None, None).unwrap();
         assert_eq!(scene.textures.resident_bytes(), 4);
-        assert_eq!(scene.pixels, expected);
+        assert_eq!(scene.pixels(), &expected);
         let mut invalid = vm.state().clone();
         invalid
             .stage
@@ -482,7 +482,7 @@ fn native_container_images_use_shared_gpu_cache_and_restore() {
             scene.render(&invalid, None, None).unwrap_err().code(),
             "SHINKI_EMU_MUSICA_ANI_HEADER"
         );
-        assert_eq!(scene.pixels, expected);
+        assert_eq!(scene.pixels(), &expected);
         assert_eq!(scene.textures.resident_bytes(), 4);
         vm.install_test_state(&saved, 1).unwrap();
         let mut restored = Scene::new(
@@ -494,7 +494,7 @@ fn native_container_images_use_shared_gpu_cache_and_restore() {
         )
         .unwrap();
         restored.render(vm.state(), None, None).unwrap();
-        assert_eq!(restored.pixels, expected);
+        assert_eq!(restored.pixels(), &expected);
     }
 }
 
@@ -545,7 +545,7 @@ fn stage_base_background_copies_rgb_while_transparent_foreground_remains_transpa
     scene.render(vm.state(), None, None).unwrap();
     for (x, y) in [(0, 0), (8, 8)] {
         assert_eq!(
-            &sample_logical(&scene.pixels, 16, 16, x, y)[..3],
+            &sample_logical(scene.pixels(), 16, 16, x, y)[..3],
             &[224, 96, 32]
         );
     }

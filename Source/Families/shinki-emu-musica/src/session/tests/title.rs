@@ -171,7 +171,7 @@ fn native_gpu_title_without_texture_overrides_starts_loads_returns_and_exits() {
     let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(title_request(root.path())).unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
-    assert_eq!(&session.scene.pixels[..4], &[20, 30, 40, 255]);
+    assert_eq!(&session.scene.pixels()[..4], &[20, 30, 40, 255]);
     session.advance(500_000_000, &[]).unwrap();
     assert_eq!(session.vm.state().instruction_count, 0);
     session
@@ -193,7 +193,7 @@ fn native_gpu_title_without_texture_overrides_starts_loads_returns_and_exits() {
         .unwrap();
     let pixel = ((80 * 1280 + 1100) * 4) as usize;
     assert_eq!(
-        &session.scene.pixels[pixel..pixel + 4],
+        &session.scene.pixels()[pixel..pixel + 4],
         &[100, 150, 200, 255]
     );
     session.advance(0, &[key(KeyCode::Enter)]).unwrap();
@@ -252,7 +252,7 @@ fn native_gpu_lowercase_title_without_texture_overrides_starts_and_enters_story(
     let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(title_request(root.path())).unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::Title);
-    assert_eq!(&session.scene.pixels[..4], &[20, 30, 40, 255]);
+    assert_eq!(&session.scene.pixels()[..4], &[20, 30, 40, 255]);
     session.advance(500_000_000, &[]).unwrap();
     session
         .advance(0, &[RuntimeEvent::PointerMove { x: 1100.0, y: 80.0 }])
@@ -415,7 +415,7 @@ fn native_gpu_unknown_release_uses_frontend_data_and_opens_without_optional_arch
             .next()
             .is_none()
     );
-    assert_eq!(&session.scene.pixels[..4], &[30, 60, 90, 255]);
+    assert_eq!(&session.scene.pixels()[..4], &[30, 60, 90, 255]);
     session
         .advance(
             0,
