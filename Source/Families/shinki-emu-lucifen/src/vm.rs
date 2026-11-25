@@ -1190,7 +1190,10 @@ mod tests {
             )
             .unwrap();
         let slot = vm.encode_slot(&history, true, Some(&checkpoint)).unwrap();
-        vm.write(position, Word::Integer(0)).unwrap();
+        drop(vm);
+
+        let mut vm = Vm::open(&program, None).unwrap();
+        vm.set_user_variables(&user).unwrap();
 
         let (mut loaded, earlier) = vm.decode_slot(&slot).unwrap();
         assert_eq!(vm.read(position).unwrap(), Word::Integer(42));

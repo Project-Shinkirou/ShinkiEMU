@@ -1113,29 +1113,25 @@ impl Menu {
 
     pub(crate) fn update(
         &mut self,
-        input: &Input,
+        input: &mut Input,
         graphics: &mut Graphics,
         read: &mut BTreeSet<(u8, u16)>,
     ) -> io::Result<i32> {
         let routed = self.routed_buttons();
         let visible =
             |handle: i32, button: &Button| button.enabled && graphics.texture_visible(handle);
-        let [x, y] = input.pointer;
+        let (press, release) = input.take_primary_edges();
         let focus_changed = self.pointer.replace(input.pointer) != Some(input.pointer);
-        if focus_changed || input.mouse(0, true) {
-            self.focus = routed.iter().copied().find(|&handle| {
-                self.hotspots.get(&handle).is_some_and(|hotspot| {
-                    let [left, top, width, height] = hotspot.rect;
-                    hotspot.enabled
-                        && hotspot.mouse
-                        && (left..left.saturating_add(width)).contains(&x)
-                        && (top..top.saturating_add(height)).contains(&y)
-                }) || self.buttons.get(&handle).is_some_and(|button| {
-                    visible(handle, button)
-                        && graphics.hit_texture(handle, x, y, !button.rectangular_hit)
-                })
-            });
+        if focus_changed || press.is_some() {
+            self.focus = self.hit_button(&routed, graphics, input.pointer);
         }
+        let pressed = press.map(|point| {
+            if point == input.pointer {
+                self.focus
+            } else {
+                self.hit_button(&routed, graphics, point)
+            }
+        });
         let direction = match input.first_action(0, 4, true) {
             0 | 2 => -1,
             1 | 3 => 1,
@@ -1171,19 +1167,23 @@ impl Menu {
             }
         }
         let mut event = if direction == 0 { 0 } else { 4 };
-        if input.mouse(0, true) {
-            self.pressed = self.focus;
-            if self.pressed.is_some() {
+        if let Some(target) = pressed {
+            self.pressed = target;
+            if target.is_some() {
+                event = 1;
+            }
+        }
+        if let Some(point) = release {
+            if let Some(handle) = self.pressed.take()
+                && self.hit_button(&routed, graphics, point) == Some(handle)
+                && let Some(command) = self.routed_command(handle, graphics)
+            {
+                self.toggle_button(handle, read);
+                self.command = command;
                 event = 1;
             }
         } else if !input.mouse(0, false) {
-            if let Some(handle) = self.pressed.take().filter(|id| Some(*id) == self.focus) {
-                if let Some(command) = self.routed_command(handle, graphics) {
-                    self.toggle_button(handle, read);
-                    self.command = command;
-                    event = 1;
-                }
-            }
+            self.pressed = None;
         }
         if input.action(4, true) != 0 {
             if let Some((handle, command)) = self.focus.and_then(|id| {
@@ -1197,6 +1197,22 @@ impl Menu {
         }
         self.refresh(graphics)?;
         Ok(event)
+    }
+
+    fn hit_button(&self, routed: &[i32], graphics: &Graphics, [x, y]: [i32; 2]) -> Option<i32> {
+        routed.iter().copied().find(|&handle| {
+            self.hotspots.get(&handle).is_some_and(|hotspot| {
+                let [left, top, width, height] = hotspot.rect;
+                hotspot.enabled
+                    && hotspot.mouse
+                    && (left..left.saturating_add(width)).contains(&x)
+                    && (top..top.saturating_add(height)).contains(&y)
+            }) || self.buttons.get(&handle).is_some_and(|button| {
+                button.enabled
+                    && graphics.texture_visible(handle)
+                    && graphics.hit_texture(handle, x, y, !button.rectangular_hit)
+            })
+        })
     }
 
     fn routed_command(&self, handle: i32, graphics: &Graphics) -> Option<i32> {
@@ -1419,4 +1435,93 @@ fn load_image(
         })?;
     let bytes = assets.read(&format!("{directory}/{name}"), 64 * 1024 * 1024)?;
     graphics.load_image(&bytes, color_key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shinki_emu_sdk::runtime::{KeyState, PointerButton, RuntimeEvent};
+
+    fn menu() -> Menu {
+        let mut menu = Menu::default();
+        for (id, left) in [(1, 0), (2, 10)] {
+            menu.hotspots.insert(
+                id,
+                Hotspot {
+                    group: Word::Integer(0),
+                    rect: [left, 0, 10, 10],
+                    center: [left + 5, 5],
+                    mouse: true,
+                    can_activate: true,
+                    enabled: true,
+                    command: id,
+                },
+            );
+            assert_eq!(menu.attach_input(id, i32::MAX), 0);
+        }
+        menu
+    }
+
+    fn primary(input: &mut Input, x: f32, state: KeyState) {
+        input.event(RuntimeEvent::PointerMove { x, y: 5.0 });
+        input.event(RuntimeEvent::PointerButton {
+            button: PointerButton::Primary,
+            state,
+        });
+    }
+
+    #[test]
+    fn batched_primary_click_uses_both_endpoints_and_activates_once() {
+        let mut menu = menu();
+        let mut input = Input::default();
+        let mut graphics = Graphics::open(20, 10).unwrap();
+        let mut read = BTreeSet::new();
+        primary(&mut input, 5.0, KeyState::Pressed);
+        primary(&mut input, 15.0, KeyState::Released);
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        input.next_tick();
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        assert_eq!(menu.take_command(), -1);
+
+        primary(&mut input, 15.0, KeyState::Pressed);
+        primary(&mut input, 15.0, KeyState::Released);
+        input.event(RuntimeEvent::PointerMove { x: 5.0, y: 5.0 });
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        assert_eq!(menu.take_command(), 2);
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        assert_eq!(menu.take_command(), -1);
+    }
+
+    #[test]
+    fn primary_release_survives_a_frame_after_the_menu_observes_the_press() {
+        let mut menu = menu();
+        let mut input = Input::default();
+        let mut graphics = Graphics::open(20, 10).unwrap();
+        let mut read = BTreeSet::new();
+        primary(&mut input, 5.0, KeyState::Pressed);
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        input.next_tick();
+
+        primary(&mut input, 5.0, KeyState::Released);
+        input.next_tick();
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        assert_eq!(menu.take_command(), 1);
+    }
+
+    #[test]
+    fn focus_loss_cancels_primary_press_even_if_pointer_returns_before_poll() {
+        let mut menu = menu();
+        let mut input = Input::default();
+        let mut graphics = Graphics::open(20, 10).unwrap();
+        let mut read = BTreeSet::new();
+        primary(&mut input, 5.0, KeyState::Pressed);
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        input.next_tick();
+
+        input.event(RuntimeEvent::WindowFocused { focused: false });
+        input.event(RuntimeEvent::WindowFocused { focused: true });
+        primary(&mut input, 5.0, KeyState::Released);
+        menu.update(&mut input, &mut graphics, &mut read).unwrap();
+        assert_eq!(menu.take_command(), -1);
+    }
 }

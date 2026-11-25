@@ -6,11 +6,22 @@ struct Binding {
     code: u8,
 }
 
+#[derive(Default)]
+enum PrimaryGesture {
+    #[default]
+    Idle,
+    Press([i32; 2]),
+    PolledPress,
+    Click([i32; 2], [i32; 2]),
+    Release([i32; 2]),
+}
+
 pub(crate) struct Input {
     keys: [bool; 256],
     key_edges: [bool; 256],
     buttons: [bool; 3],
     button_edges: [bool; 3],
+    primary: PrimaryGesture,
     pub(crate) pointer: [i32; 2],
     pub(crate) target: Option<i32>,
     bindings: [Vec<Binding>; 20],
@@ -26,6 +37,7 @@ impl Default for Input {
             key_edges: [false; 256],
             buttons: [false; 3],
             button_edges: [false; 3],
+            primary: PrimaryGesture::Idle,
             pointer: [-1; 2],
             target: None,
             bindings: std::array::from_fn(|_| Vec::new()),
@@ -67,6 +79,23 @@ impl Input {
                     PointerButton::Middle => 2,
                     _ => return,
                 };
+                if index == 0 {
+                    match state {
+                        KeyState::Pressed if !self.buttons[0] => {
+                            self.primary = PrimaryGesture::Press(self.pointer);
+                        }
+                        KeyState::Released if self.buttons[0] => {
+                            self.primary = match self.primary {
+                                PrimaryGesture::Press(press) => {
+                                    PrimaryGesture::Click(press, self.pointer)
+                                }
+                                PrimaryGesture::PolledPress => PrimaryGesture::Release(self.pointer),
+                                _ => PrimaryGesture::Idle,
+                            };
+                        }
+                        _ => {}
+                    }
+                }
                 update(
                     &mut self.buttons[index],
                     &mut self.button_edges[index],
@@ -77,6 +106,7 @@ impl Input {
                 self.keys.fill(false);
                 self.buttons.fill(false);
                 self.pointer = [-1; 2];
+                self.primary = PrimaryGesture::Idle;
                 self.next_tick();
             }
             _ => {}
@@ -86,6 +116,28 @@ impl Input {
     pub(crate) fn next_tick(&mut self) {
         self.key_edges.fill(false);
         self.button_edges.fill(false);
+        if matches!(
+            self.primary,
+            PrimaryGesture::Press(_) | PrimaryGesture::Click(..)
+        ) {
+            self.primary = PrimaryGesture::Idle;
+        }
+    }
+
+    pub(crate) fn take_primary_edges(&mut self) -> (Option<[i32; 2]>, Option<[i32; 2]>) {
+        match std::mem::take(&mut self.primary) {
+            PrimaryGesture::Idle => (None, None),
+            PrimaryGesture::Press(point) => {
+                self.primary = PrimaryGesture::PolledPress;
+                (Some(point), None)
+            }
+            PrimaryGesture::PolledPress => {
+                self.primary = PrimaryGesture::PolledPress;
+                (None, None)
+            }
+            PrimaryGesture::Click(press, release) => (Some(press), Some(release)),
+            PrimaryGesture::Release(point) => (None, Some(point)),
+        }
     }
 
     pub(crate) fn mouse(&self, button: usize, edge: bool) -> bool {

@@ -22,6 +22,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             dest: format!("licenses/shinki.emu.lucifen/{name}"),
         });
     }
+    for name in ["SOURCE.md", "aws-lc-sys-0.46.0-LICENSE.txt"] {
+        let path = format!("docs/licenses/shinki-emu-lucifen/{name}");
+        let source = root.join(&path);
+        println!("cargo:rerun-if-changed={}", source.display());
+        manifest.licenses.push(BuildAsset {
+            source,
+            dest: format!("licenses/shinki.emu.lucifen/{name}"),
+        });
+    }
     write_core_build_manifest(&manifest)?;
     Ok(())
 }

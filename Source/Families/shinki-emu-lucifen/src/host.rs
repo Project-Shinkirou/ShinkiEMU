@@ -2239,7 +2239,7 @@ impl Host {
                 0
             }
             698 => self.menu.update(
-                &self.input,
+                &mut self.input,
                 &mut self.graphics,
                 &mut self.dialogue.choices_read,
             )?,
