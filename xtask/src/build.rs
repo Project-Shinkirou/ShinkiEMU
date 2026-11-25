@@ -219,7 +219,8 @@ fn cargo_command(inv: &Inventory, target: &str) -> Result<Command> {
                 format!("CMAKE_TOOLCHAIN_FILE_{}", target.replace('-', "_")),
                 inv.root.join("build/android.toolchain.cmake"),
             )
-            .env("ANDROID_PLATFORM", &api)
+            // ANDROID_PLATFORM selects Java's SDK jar in Slint's build script.
+            .env("SHINKI_EMU_ANDROID_NATIVE_API", &api)
             .env("ANDROID_ABI", abi);
     }
     Ok(cmd)
