@@ -126,6 +126,8 @@ Linux の CI とリリースのジョブでは、報告された Manager の ZIP
 
 JDK 27（`JAVA_HOME` を設定し、その `bin` を `PATH` に追加）、Android SDK platform 37.2、build-tools 37.0.0、NDK 30.0.16248370、cargo-ndk 4.1.2 を使います。`ANDROID_HOME` は SDK のルート、`ANDROID_NDK_HOME` はその中の `ndk/30.0.16248370` を指します。固定された安定版 NDK revision のみを受け付けます。SDK パッケージが足りない場合は、その SDK の `sdkmanager --sdk_root=<sdk> --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"` を明示的に実行します。`CARGO_HOME`、`CARGO_TARGET_DIR`、`TEMP`/`TMP`、`GRADLE_USER_HOME` は空き容量の十分なドライブに置いてください。
 
+Android のネイティブコアは、NDK r30 が必要とするメモリ割り当て関数の宣言を追加した fmt 11.2.0 の vcpkg overlay を使用します。他のプラットフォームの port は変更しません。
+
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
 cargo xtask deps --target aarch64-linux-android
