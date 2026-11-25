@@ -17,6 +17,8 @@ fn write_runtime_icon() {
         tiny_skia::Transform::from_scale(64.0 / tree.size().width(), 64.0 / tree.size().height()),
         &mut pixmap.as_mut(),
     );
+    let output = env::var_os("OUT_DIR").expect("SHINKI_EMU_MANAGER_OUT_DIR_MISSING");
+    std::fs::write(
         std::path::PathBuf::from(output).join("window-icon.rgba"),
         pixmap.data(),
     )
