@@ -22,4 +22,4 @@
 - [ ] No commercial game assets, scripts, saves, keys, or unredacted logs are included / 不含商业游戏素材、正文、存档、密钥或未脱敏日志
 - [ ] Existing behavior regressions pass and new behavior changes are tested / 既有回归测试通过，行为变化已补充验证
 - [ ] Updated trilingual docs (`docs/{zh-cn,en,ja}/`) or UI translations (`.po`) if user-facing behavior changed / 若涉及用户可见改动，已同步更新三语文档或 `.po` 界面翻译
-- [ ] External-core changes (if any) were reviewed on the fork's `shinki` branch and pinned in `build/cores.toml` / 外部核心改动（如有）已按规范提交至 fork 分支并在 `build/cores.toml` 固定提交
+- [ ] External-core changes (if any) were reviewed on the declared adapter branch and pinned in `build/cores.toml` / 外部核心改动（如有）已在声明的适配分支审查并在 `build/cores.toml` 固定提交

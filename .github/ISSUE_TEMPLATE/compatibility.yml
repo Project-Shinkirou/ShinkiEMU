@@ -4,9 +4,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        - **中文**：本表单会经维护者审核后自动入库至官方兼容性列表。请只记录真实实测结果，切勿附带密钥、游戏正文、商业素材或存档。VNDB ID 可在作品/发行页网址中查看（如 `vndb.org/v17` → `v17`，发行页 `vndb.org/r1234` → `r1234`）。
-        - **English**: Maintainers review and import approved reports into the official compatibility catalog. Record observed results only — never attach keys, game text, commercial assets, or saves. Find VNDB IDs in the page URL (`vndb.org/v17` → `v17`, release `vndb.org/r1234` → `r1234`).
-        - **日本語**：承認されたレポートは公式互換性一覧に自動登録されます。実測結果のみを記入し、鍵・本文・商用素材・セーブデータは添付しないでください。VNDB ID は URL から確認できます（例：`v17`、`r1234`）。
+        - **中文**：维护者审核实测结果并合并入库 PR 后，记录会出现在官方兼容性列表。请勿附带密钥、游戏正文、商业素材或存档。VNDB ID 可在作品或发行页网址中查看（如 `vndb.org/v17` → `v17`，`vndb.org/r1234` → `r1234`）。
+        - **English**: Reports appear in the official compatibility catalog after a maintainer reviews the result and merges the intake PR. Record observed results only — never attach keys, game text, commercial assets, or saves. Find VNDB IDs in the page URL (`vndb.org/v17` → `v17`, release `vndb.org/r1234` → `r1234`).
+        - **日本語**：メンテナーが実測結果を確認し、登録用 PR をマージすると、公式互換性一覧に掲載されます。鍵・本文・商用素材・セーブデータは添付しないでください。VNDB ID は URL から確認できます（例：`v17`、`r1234`）。
   - type: input
     id: vid
     attributes:

@@ -58,12 +58,14 @@
   <rect width="512" height="512" rx="116" fill="url(#topHighlight)"/>
   <rect x="6" y="6" width="500" height="500" rx="110" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="4"/>
 
-  <circle cx="356" cy="126" r="22" fill="#FFF7DF" opacity="0.92"/>
-  <path d="M168 176 C192 174 206 164 218 148 L294 148 C306 164 320 174 344 176 C332 190 314 195 292 193 L220 193 C198 195 180 190 168 176 Z" fill="url(#eaveTop)"/>
-  <path d="M110 238 C148 236 174 224 192 206 L320 206 C338 224 364 236 402 238 C384 256 356 261 324 258 L188 258 C156 261 128 256 110 238 Z" fill="url(#eaveMain)"/>
-  <rect x="216" y="269" width="80" height="14" rx="7" fill="url(#lantern)"/>
-  <rect x="94" y="295" width="324" height="12" rx="6" fill="url(#horizon)"/>
-  <rect x="138" y="324" width="236" height="15" rx="7.5" fill="url(#refl1)"/>
-  <rect x="178" y="356" width="156" height="13" rx="6.5" fill="url(#refl2)"/>
-  <rect x="216" y="386" width="80" height="11" rx="5.5" fill="url(#refl3)"/>
+  <g id="launcher-foreground">
+    <circle cx="356" cy="126" r="22" fill="#FFF7DF" opacity="0.92"/>
+    <path d="M168 176 C192 174 206 164 218 148 L294 148 C306 164 320 174 344 176 C332 190 314 195 292 193 L220 193 C198 195 180 190 168 176 Z" fill="url(#eaveTop)"/>
+    <path d="M110 238 C148 236 174 224 192 206 L320 206 C338 224 364 236 402 238 C384 256 356 261 324 258 L188 258 C156 261 128 256 110 238 Z" fill="url(#eaveMain)"/>
+    <rect x="216" y="269" width="80" height="14" rx="7" fill="url(#lantern)"/>
+    <rect x="94" y="295" width="324" height="12" rx="6" fill="url(#horizon)"/>
+    <rect x="138" y="324" width="236" height="15" rx="7.5" fill="url(#refl1)"/>
+    <rect x="178" y="356" width="156" height="13" rx="6.5" fill="url(#refl2)"/>
+    <rect x="216" y="386" width="80" height="11" rx="5.5" fill="url(#refl3)"/>
+  </g>
 </svg>

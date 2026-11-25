@@ -61,7 +61,7 @@ Add every new or edited string to both `.po` files; missing or empty entries fai
 ## Branching, PRs & External Cores
 
 - **Main repository PRs**: Branch from `main`, open a focused PR describing behavior changes and exact checks run, and update regressions and trilingual docs together.
-- **External core PRs**: Submit adapter changes to the `shinki` branch of the corresponding `Project-Shinkirou/<core>` fork via normal PR review, then update `[cores.source].rev` in `build/cores.toml`. External cores are not Git submodules (`ThirdParty/cpal` is the only submodule).
+- **External core PRs**: Submit adapter changes to the corresponding `Project-Shinkirou/<core>` fork through a PR targeting the adapter branch declared in `build/cores.toml`, then pin the merged commit in `[cores.source].rev`. External cores are not Git submodules (`ThirdParty/cpal` is the only submodule).
 - **Writing or integrating a core**: Follow [shinkiemu-new-core](../../.agents/skills/shinkiemu-new-core/SKILL.md) and [shinkiemu-integrate-existing-core](../../.agents/skills/shinkiemu-integrate-existing-core/SKILL.md).
 
 ## AI / Agent-Assisted Contributions

@@ -53,7 +53,7 @@ cargo xtask metadata validate
 ### Branching, PRs & External Cores
 
 - **ShinkiEMU repository:** Branch from `main` and open a focused PR describing the behavior change, reproduction steps, and the exact commands you ran. Update callers, behavior regressions, and trilingual docs together.
-- **External cores:** Submit adapter changes to the `shinki` branch of the corresponding `Project-Shinkirou/<core>` fork via a normal PR. Then update the full commit hash in `[cores.source].rev` of `build/cores.toml` in ShinkiEMU (`cargo xtask deps` fetches it). Do not duplicate adapter code here or modify upstream's default branch. External cores are not Git submodules — `ThirdParty/cpal` is the only submodule.
+- **External cores:** Submit adapter changes to the corresponding `Project-Shinkirou/<core>` fork through a PR targeting the adapter branch declared for that core in `build/cores.toml`. Then update that core's `[cores.source].rev` to the full merged commit hash (`cargo xtask deps` fetches it). Do not duplicate adapter code here or modify upstream's default branch. External cores are not Git submodules — `ThirdParty/cpal` is the only submodule.
 - **Adding or integrating a core:** Follow our step-by-step skills in [shinkiemu-new-core](.agents/skills/shinkiemu-new-core/SKILL.md) and [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md).
 
 ### Testing Standards
@@ -118,7 +118,7 @@ cargo xtask metadata validate
 ### 分支、PR 与外部核心规范
 
 - **主仓库改动**：从 `main` 建立功能分支并提交聚焦的普通 PR，说明行为变化、复现方式与实际运行的验证命令；源码、调用方、行为回归与三语文档同步更新。
-- **外部核心改动**：提交到对应 `Project-Shinkirou/<core>` 组织 fork 的 `shinki` 分支（走普通 PR 审查），随后在 ShinkiEMU 的 `build/cores.toml` 中更新 `[cores.source].rev` 的完整提交哈希（`cargo xtask deps` 按此拉取）。不在主仓库复制适配源码，也不修改上游默认分支。外部核心不是子模块，仓库唯一的子模块是 `ThirdParty/cpal`。
+- **外部核心改动**：按 `build/cores.toml` 中对应条目的声明，向 `Project-Shinkirou/<core>` fork 的适配分支提 PR。合并后更新 `[cores.source].rev` 的完整提交哈希（`cargo xtask deps` 按此拉取）。不在主仓库复制适配源码，也不修改上游默认分支。外部核心不是子模块，仓库唯一的子模块是 `ThirdParty/cpal`。
 - **编写新核心或接入现有引擎**：按内置工作流 [shinkiemu-new-core](.agents/skills/shinkiemu-new-core/SKILL.md) 与 [shinkiemu-integrate-existing-core](.agents/skills/shinkiemu-integrate-existing-core/SKILL.md) 操作。
 
 ### 测试原则

@@ -25,6 +25,7 @@ The brand draws from the image of a mirage pavilion (*Shinkirou*, 蜃気楼) ref
 | File | Purpose |
 |---|---|
 | `shinkiemu-icon.svg` | Canonical `512×512` application icon rasterized into Windows ICO, macOS ICNS, iOS AppIcon, Android adaptive mipmaps, Linux hicolor PNG, and Slint window icon |
+| `launcher-foreground` group | Android adaptive icon mark, padded within the launcher mask over a full-bleed indigo background |
 | `shinkiemu-mark.svg` | Transparent geometric mark for ShinkiEMU |
 | `shinkirou-icon.svg` | Dual-accent (Azure + Dawn Gold) organization icon for Project-Shinkirou |
 | `shinkirou-mark.svg` | Transparent organization mark |

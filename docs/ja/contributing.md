@@ -61,7 +61,7 @@ UI の原文は簡体字中国語（`msgid`）で、日本語と英語の翻訳�
 ## ブランチ・PR・外部コア規則
 
 - **メインリポジトリ**：`main` からトピックブランチを切り、変更理由・再現手順・実行済みテストを明記して PR を作成します。
-- **外部コア**：対応する `Project-Shinkirou/<core>` フォークの `shinki` ブランチへ PR を出し、マージ後に `build/cores.toml` の `[cores.source].rev` を更新します。
+- **外部コア**：対応する `Project-Shinkirou/<core>` フォークで、`build/cores.toml` に記載されたアダプターブランチへ PR を出し、マージ後に `[cores.source].rev` を更新します。
 - **新コア作成／移植**：リポジトリ内蔵ガイド [shinkiemu-new-core](../../.agents/skills/shinkiemu-new-core/SKILL.md)・[shinkiemu-integrate-existing-core](../../.agents/skills/shinkiemu-integrate-existing-core/SKILL.md) を参照してください。
 
 ## AI / エージェント支援による貢献

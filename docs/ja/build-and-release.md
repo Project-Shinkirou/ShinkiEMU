@@ -88,8 +88,12 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 ## ディスク配置とアプリアイコン
 
 - ShinkiEMU がゲームフォルダ内へ書き込むファイルはすべて `<game>/.shinki/` 以下に隔離されます。
-- 全プラットフォームの Manager パッケージは `Assets/Branding/shinkiemu-icon.svg` から Windows ICO、macOS ICNS、iOS AppIcon、Android アダプティブアイコン、Linux hicolor PNG を自動生成します（[ブランドガイドライン](../../Assets/Branding/BRANDING.md)）。
+- Windows、macOS、iOS、Android、Linux の Manager パッケージは `Assets/Branding/shinkiemu-icon.svg` を使用します。Android のアダプティブアイコンは前景を分け、OpenHarmony は専用のアイコンリソースを使用します（[ブランドガイドライン](../../Assets/Branding/BRANDING.md)）。
 
 ## メンテナー向けリリース手順
 
 詳細な依存ピン固定、Apple/OHOS パッケージング、対応ソース・ライセンス収集およびリリース履歴は[リリース・メンテナー手順書](release-runbook.md)をご覧ください。
+
+## パッケージングとリリース
+
+[パッケージングとリリース](release-runbook.md#パッケージングとリリース)を参照してください。

@@ -95,8 +95,12 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-bet
 ## 磁盘布局与应用图标约定
 
 - **游戏目录隔离**：ShinkiEMU 在游戏目录内写入的所有内容统一位于 `<game>/.shinki/`（如 `musica/`、`patch/`、`staging/`、`backup/<id>/`、`patch-result.json`），不跟随目录链接，也不污染原商业目录。
-- **全平台应用图标**：所有 Manager 安装包共用 `Assets/Branding/shinkiemu-icon.svg`。Rust 构建与打包阶段自动光栅化生成 Windows EXE ICO、macOS ICNS、iOS AppIcon、Android 自适应启动器 mipmap 及 Linux hicolor PNG（含 `share/applications/shinkiemu.desktop`）。详见[品牌规范](../../Assets/Branding/BRANDING.md)。
+- **应用图标**：Windows、macOS、iOS、Android 和 Linux 安装包使用 `Assets/Branding/shinkiemu-icon.svg`。Android 自适应图标的前景和背景分开绘制，OpenHarmony 仍使用独立的图标资源。详见[品牌规范](../../Assets/Branding/BRANDING.md)。
 
 ## 维护者打包与发布
 
 完整的依赖锁定细节、Ren'Py SDK 准备、Apple 交叉构建、OpenHarmony HAP 打包与托管交接 gate、对应源码与许可收集规则、第三方核心身份哈希算法以及历史版本交付记录，请阅读[发布与维护手册](release-runbook.md)。
+
+## 打包与发布
+
+参见维护手册中的[打包与发布](release-runbook.md#打包与发布)。

@@ -158,7 +158,7 @@ pub unsafe extern "C" fn shinki_emu_query(version: u32, out: *mut *const abi::Co
 - **窗口/模态请求** 走 `shinki_emu_sdk::native::window_request`（`worker.rs:210`）。核心不能自己开系统窗口。
 - **配置。** 字段只在 family descriptor 里声明一次。Manager 会拒绝未知字段 id 的存储值，所以删字段等于一次迁移。
 - **日志。** 打开 `shinki-emu-abi/diagnostic-bridge`，用 `tracing` 输出稳定的 `event = "shinki.emu.<family>.<event>"`。正文、私有路径、未审查的 Debug 内容不能进日志。
-- **存档。** 自研核心按原引擎的位置和字节格式写原生存档，让原版可执行文件也能读。原引擎放在注册表、AppData、Documents 里的东西放到 `<game>/.shinki/<family>/`（CMVS：`<game>/.shinki/cmvs/registry.json`）。ShinkiEMU 在游戏目录写的其他文件也都放在 `<game>/.shinki/` 下（[Build and release](../../../docs/en/build-and-release.md#game-local-on-disk-layout)）。
+- **存档。** 自研核心按原引擎的位置和字节格式写原生存档，让原版可执行文件也能读。原引擎放在注册表、AppData、Documents 里的东西放到 `<game>/.shinki/<family>/`（CMVS：`<game>/.shinki/cmvs/registry.json`）。ShinkiEMU 在游戏目录写的其他文件也都放在 `<game>/.shinki/` 下（[Game-local on-disk layout](../../../docs/en/release-runbook.md#game-local-on-disk-layout)）。
 
 ## 5. SDK 模块怎么选
 

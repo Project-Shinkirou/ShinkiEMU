@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        - **中文**：提交前请先查看[常见问题](https://project-shinkirou.github.io/zh-cn/shinkiemu/faq/)与[故障排查](https://project-shinkirou.github.io/zh-cn/shinkiemu/docs/troubleshooting/)。请勿附带密钥、游戏正文、商业素材、存档或未脱敏的账号 Cookie/Token。
-        - **English**: Please check the [FAQ](https://project-shinkirou.github.io/en/shinkiemu/faq/) and [Troubleshooting](https://project-shinkirou.github.io/en/shinkiemu/docs/troubleshooting/) first. Do not include keys, game text, commercial assets, saves, or account tokens/cookies.
-        - **日本語**：投稿前に [FAQ](https://project-shinkirou.github.io/ja/shinkiemu/faq/) と[トラブルシューティング](https://project-shinkirou.github.io/ja/shinkiemu/docs/troubleshooting/)をご確認ください。鍵、ゲーム本文、商用素材、セーブデータ、認証トークンは添付しないでください。
+        - **中文**：提交前请先查看[常见问题](https://project-shinkirou.github.io/zh-cn/shinkiemu/faq/)与[故障排查](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/zh-cn/troubleshooting.md)。请勿附带密钥、游戏正文、商业素材、存档或未脱敏的账号 Cookie/Token。
+        - **English**: Please check the [FAQ](https://project-shinkirou.github.io/en/shinkiemu/faq/) and [Troubleshooting](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/en/troubleshooting.md) first. Do not include keys, game text, commercial assets, saves, or account tokens/cookies.
+        - **日本語**：投稿前に [FAQ](https://project-shinkirou.github.io/ja/shinkiemu/faq/) と[トラブルシューティング](https://github.com/Project-Shinkirou/ShinkiEMU/blob/main/docs/ja/troubleshooting.md)をご確認ください。鍵、ゲーム本文、商用素材、セーブデータ、認証トークンは添付しないでください。
   - type: dropdown
     id: component
     attributes:

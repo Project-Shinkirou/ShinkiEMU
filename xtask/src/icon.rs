@@ -41,6 +41,15 @@ impl Icon {
         let res = root.join("res");
         fs::create_dir_all(res.join("values"))?;
         fs::create_dir_all(res.join("mipmap-anydpi-v26"))?;
+        let mark = self
+            .0
+            .node_by_id("launcher-foreground")
+            .context("missing adaptive icon foreground")?;
+        let bounds = mark
+            .abs_layer_bounding_box()
+            .context("empty adaptive icon foreground")?;
+        // A 60 dp diagonal leaves room for antialiasing in Android's 66 dp safe circle.
+        let scale_per_pixel = (60.0 / 108.0) / bounds.width().hypot(bounds.height());
         for (density, size) in [
             ("mdpi", 48),
             ("hdpi", 72),
@@ -49,7 +58,16 @@ impl Icon {
             ("xxxhdpi", 192),
         ] {
             let dir = res.join(format!("mipmap-{density}"));
-            self.png(size, false, &dir.join("ic_launcher_foreground.png"))?;
+            let mut foreground = tiny_skia::Pixmap::new(size, size).context("icon dimensions")?;
+            let scale = size as f32 * scale_per_pixel;
+            let position = tiny_skia::Transform::from_scale(scale, scale).post_translate(
+                (size as f32 - bounds.width() * scale) * 0.5,
+                (size as f32 - bounds.height() * scale) * 0.5,
+            );
+            resvg::render_node(mark, position, &mut foreground.as_mut())
+                .context("render adaptive icon foreground")?;
+            fs::create_dir_all(&dir)?;
+            foreground.save_png(dir.join("ic_launcher_foreground.png"))?;
             self.png(size, true, &dir.join("ic_launcher.png"))?;
             self.png(size, true, &dir.join("ic_launcher_round.png"))?;
         }
@@ -145,6 +163,24 @@ mod tests {
                 .unwrap()
                 .contains("adaptive-icon")
         );
+        let foreground = tiny_skia::Pixmap::load_png(
+            temp.path()
+                .join("res/mipmap-xxxhdpi/ic_launcher_foreground.png"),
+        )
+        .unwrap();
+        let width = foreground.width() as usize;
+        let center = width as f32 * 0.5;
+        let safe_radius = width as f32 * (33.0 / 108.0);
+        let mut visible = false;
+        for (i, pixel) in foreground.data().as_chunks::<4>().0.iter().enumerate() {
+            if pixel[3] != 0 {
+                visible = true;
+                let dx = (i % width) as f32 + 0.5 - center;
+                let dy = (i / width) as f32 + 0.5 - center;
+                assert!(dx.hypot(dy) <= safe_radius, "foreground clips at {dx},{dy}");
+            }
+        }
+        assert!(visible, "foreground is blank");
         icon.ios(temp.path()).unwrap();
         let ios = tiny_skia::Pixmap::load_png(temp.path().join("AppIcon60x60@3x.png")).unwrap();
         assert_eq!((ios.width(), ios.height()), (180, 180));

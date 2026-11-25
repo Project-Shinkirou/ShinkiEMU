@@ -95,8 +95,16 @@ Packaging requires release build receipts for both `arm64-v8a` and `x86_64` from
 ## Disk Layout & Application Icons
 
 - **Game directory isolation**: Everything ShinkiEMU writes inside a game directory lives under `<game>/.shinki/` (`musica/`, `patch/`, `staging/`, `backup/<id>/`, `patch-result.json`), with symlink rejection.
-- **Canonical application icon**: All Manager packages rasterize `Assets/Branding/shinkiemu-icon.svg` into Windows EXE ICO, macOS ICNS, iOS AppIcon sets, Android adaptive mipmaps, and Linux hicolor PNGs (plus `share/applications/shinkiemu.desktop`). See [Brand Kit](../../Assets/Branding/BRANDING.md).
+- **Canonical application icon**: Windows, macOS, iOS, Android, and Linux packages use `Assets/Branding/shinkiemu-icon.svg`. Android draws only the adaptive foreground over a separate indigo background. OpenHarmony keeps its own application resources. See [Brand Kit](../../Assets/Branding/BRANDING.md).
 
 ## Maintainer Packaging & Release
 
 For pinned dependency details, Ren'Py SDK inputs, Apple cross-builds, OpenHarmony HAP handoff, corresponding-source and license collection, third-party core version hashing, and release history, read the [Release & Maintainer Runbook](release-runbook.md).
+
+## Game-local on-disk layout
+
+See [Game-local on-disk layout](release-runbook.md#game-local-on-disk-layout).
+
+## Package and release
+
+See [Package and release](release-runbook.md#package-and-release).

@@ -61,7 +61,7 @@ Manager 以简体中文为源语言（Slint `@tr("…")` 与 Rust `tr!("…")` �
 ## 分支、PR 与外部核心规则
 
 - **主仓 PR**：从 `main` 切出聚焦的功能分支，说明改动动机、复现步骤与实际运行的验证命令；源码、行为回归测试与三语文档同步更新。
-- **外部核心 PR**：外部核心的适配改动提交到对应组织 fork（`Project-Shinkirou/<core>`）的 `shinki` 分支，合并后再在主仓 `build/cores.toml` 更新 `[cores.source].rev` 完整提交哈希。外部核心不是 Git 子模块，主仓唯一子模块为 `ThirdParty/cpal`。
+- **外部核心 PR**：按 `build/cores.toml` 中对应条目的声明，向组织 fork（`Project-Shinkirou/<core>`）的适配分支提 PR，合并后更新 `[cores.source].rev` 的完整提交哈希。外部核心不是 Git 子模块，主仓唯一的子模块是 `ThirdParty/cpal`。
 - **开发新核心或接入外部引擎**：仓库内置了完整指导手册 [shinkiemu-new-core](../../.agents/skills/shinkiemu-new-core/SKILL.md) 与 [shinkiemu-integrate-existing-core](../../.agents/skills/shinkiemu-integrate-existing-core/SKILL.md)。
 
 ## AI / Agent 辅助贡献说明

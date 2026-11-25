@@ -14,10 +14,7 @@ fn write_runtime_icon() {
     pixmap.fill(tiny_skia::Color::from_rgba8(18, 50, 110, 255));
     resvg::render(
         &tree,
-        tiny_skia::Transform::from_scale(
-            64.0 / tree.size().width(),
-            64.0 / tree.size().height(),
-        ),
+        tiny_skia::Transform::from_scale(64.0 / tree.size().width(), 64.0 / tree.size().height()),
         &mut pixmap.as_mut(),
     );
     let output = env::var_os("OUT_DIR").expect("SHINKI_EMU_MANAGER_OUT_DIR_MISSING");
