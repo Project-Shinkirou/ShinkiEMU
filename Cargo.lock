@@ -2900,7 +2900,7 @@ dependencies = [
 [[package]]
 name = "eden-engine"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=0eec31a7d1412ea9061ee1cff2d64ab6133bda00#0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2924,7 +2924,7 @@ dependencies = [
 [[package]]
 name = "eden-formats"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=0eec31a7d1412ea9061ee1cff2d64ab6133bda00#0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
 dependencies = [
  "anyhow",
  "crc32fast",
@@ -2938,7 +2938,7 @@ dependencies = [
 [[package]]
 name = "eden-vm"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=0eec31a7d1412ea9061ee1cff2d64ab6133bda00#0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
 dependencies = [
  "anyhow",
  "eden-formats",
@@ -11085,7 +11085,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-ReMinori"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=0eec31a7d1412ea9061ee1cff2d64ab6133bda00#0eec31a7d1412ea9061ee1cff2d64ab6133bda00"
+source = "git+https://github.com/Project-Shinkirou/ReMinori?rev=04272470932cf5096fed23b2937ae131e1cd73dc#04272470932cf5096fed23b2937ae131e1cd73dc"
 dependencies = [
  "anyhow",
  "eden-engine",
