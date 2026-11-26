@@ -459,7 +459,33 @@ pub(crate) fn read_bundled_package(directory: &Path, executable_name: &str) -> O
     if !manifest.files.iter().any(|file| file.path == executable_name) {
         return None;
     }
-    read_product_metadata(directory, manifest, false).ok()
+    read_product_metadata(directory, manifest, true).ok()
+}
+
+/// Check the executable linked by the app-sealed sidecar before dlopen.
+#[cfg(any(target_os = "ios", test))]
+pub(crate) fn verify_bundled_executable(manifest: &CoreManifest, path: &Path) -> Result<(), String> {
+    const INVALID: &str = "SHINKI_EMU_IOS_FRAMEWORK_EXECUTABLE";
+    let expected = manifest.files.iter().find(|file| file.path == manifest.library).ok_or(INVALID)?;
+    if path.file_name().and_then(|leaf| leaf.to_str()) != Some(&manifest.library)
+        || !fs::symlink_metadata(path).map_err(io_error(INVALID))?.is_file()
+    {
+        return Err(INVALID.into());
+    }
+    let mut file = fs::File::open(path).map_err(io_error(INVALID))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(io_error(INVALID))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    if hex_digest(&digest.finalize()) != expected.sha256 {
+        return Err(format!("SHINKI_EMU_CORE_PACKAGE_HASH_MISMATCH: {}", manifest.library));
+    }
+    Ok(())
 }
 
 fn read_package_manifest(directory: &Path) -> Option<CoreManifest> {

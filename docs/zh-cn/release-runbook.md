@@ -29,9 +29,10 @@ QA 包用独立的 SemVer，例如上面的 `0.1.0-qa.1`。Gradle 首次同步�
 
 制作正式 APK 时，`cargo xtask package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、指定的 `versionName` 和 `versionCode`，以及 `minSdk` 28。`release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`，每次公开的 APK 的 `versionCode` 都必须高于上一版。保留现有工作流文件，不要重建、改名或用另一个文件替代，否则编号可能从 1 重新开始，已安装的用户无法升级。
 
-macOS 产出 `.app`，iOS 产出模拟器测试 `.app` 或真机测试 `.ipa`。Apple 默认使用 ad hoc 签名，真机安装需要有效的 provisioning。
+macOS 产出 `.app`。iOS 仍只提供测试包：模拟器 `.app` 用 ad hoc 签名，真机 `.ipa` 用 Apple Development 证书和匹配的开发描述文件。CI 和发布记录逐项核对八个签名框架以及产品提交。
+普通 CI 只构建真机目标并检查原生依赖，不读取签名密钥，也不生成可安装的 IPA。
 
-打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。iOS 的 `ios-framework-cores` 和 HAP 的 `ohos-bundled-musica` 变体只用于本地 QA，不公开发布。
+打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。HAP 的 `ohos-bundled-musica` 变体只用于本地 QA，不公开发布。
 
 打包或发布 Manager、自研核心时，用 `--version` 指定产品的 SemVer；外部核心省略此参数。
 

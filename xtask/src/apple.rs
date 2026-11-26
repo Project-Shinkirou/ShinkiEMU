@@ -265,8 +265,8 @@ pub fn bundle(
             })
             .cloned(),
     );
-    if ios_signing.is_some()
-        && (!ios || binaries.len() != 1 || !stage.join("Frameworks").is_dir())
+    if ios != ios_signing.is_some()
+        || (ios && (binaries.len() != 1 || !stage.join("Frameworks").is_dir()))
     {
         bail!("the iOS Framework app must embed code under Frameworks, not as loose dylibs");
     }

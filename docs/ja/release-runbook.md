@@ -29,9 +29,10 @@ QA には例の `0.1.0-qa.1` のような専用の SemVer を使います。Grad
 
 リリース APK の作成時に `cargo xtask package` は正式な署名証明書、パッケージ ID `org.shinkirou.shinkiemu`、指定された `versionName` と `versionCode`、`minSdk` 28 を照合します。`release.yml` は `github.run_number` を `SHINKI_EMU_ANDROID_VERSION_CODE` に設定します。公開する APK のコードは前回より大きくしてください。ワークフローの作り直し、改名、別ファイルへの差し替えで連番が 1 に戻ると、インストール済みのアプリが更新できなくなります。既存のワークフローファイルを使い続けてください。
 
-macOS では `.app`、iOS ではシミュレーター用のテスト `.app` または実機用のテスト `.ipa` を作ります。Apple の既定は ad hoc 署名で、実機へのインストールには有効なプロビジョニングが必要です。
+macOS では `.app` を作ります。iOS の配布物はテスト用です。シミュレーター用 `.app` は ad hoc 署名、実機用 `.ipa` は Apple Development の証明書と対応する開発用プロファイルを使用します。CI とリリースの記録は 8 個の署名済みフレームワークと製品コミットを照合します。
+通常の CI の実機行はビルドとネイティブ依存関係の検証だけを行い、署名シークレットやインストール可能な IPA は扱いません。
 
-`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。iOS の `ios-framework-cores` と HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
+`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
 
 Manager やリポジトリ内のコアのパッケージングとリリースには、製品の SemVer を `--version` で指定します。外部コアでは省略します。
 

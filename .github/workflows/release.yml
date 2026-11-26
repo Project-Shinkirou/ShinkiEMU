@@ -210,10 +210,37 @@ jobs:
         run: rustup target add x86_64-linux-android
       - run: cargo install cargo-about --version 0.9.3 --locked
       - name: Prepare release files
+        if: matrix.component != 'manager' || matrix.target != 'aarch64-apple-ios'
         env:
           TARGET: ${{ matrix.target }}
           COMPONENT: ${{ matrix.component }}
         run: cargo xtask release --component $env:COMPONENT --target $env:TARGET --version $env:VERSION --scope $env:RELEASE_SCOPE
+      - name: Require a trusted exact-head iOS signing ref
+        if: >-
+          matrix.component == 'manager' && matrix.target == 'aarch64-apple-ios'
+          && !(github.repository == 'Project-Shinkirou/ShinkiEMU' && github.ref_protected
+            && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+              || startsWith(github.ref, 'refs/tags/manager-v'))
+            && needs.select.outputs.source_commit == github.sha)
+        shell: bash
+        run: |
+          echo "::error::The iOS device test IPA requires an exact-head release run on a protected Project-Shinkirou/ShinkiEMU main, release branch or Manager tag."
+          exit 1
+      - name: Prepare development-provisioned iOS device test release
+        if: >-
+          matrix.component == 'manager' && matrix.target == 'aarch64-apple-ios'
+          && github.repository == 'Project-Shinkirou/ShinkiEMU' && github.ref_protected
+          && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+            || startsWith(github.ref, 'refs/tags/manager-v'))
+          && needs.select.outputs.source_commit == github.sha
+        shell: bash
+        env:
+          SHINKI_EMU_IOS_CERTIFICATE_BASE64: ${{ secrets.SHINKI_EMU_IOS_CERTIFICATE_BASE64 }}
+          SHINKI_EMU_IOS_CERTIFICATE_PASSWORD: ${{ secrets.SHINKI_EMU_IOS_CERTIFICATE_PASSWORD }}
+          SHINKI_EMU_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.SHINKI_EMU_IOS_PROVISIONING_PROFILE_BASE64 }}
+          SHINKI_EMU_IOS_ENTITLEMENTS_BASE64: ${{ secrets.SHINKI_EMU_IOS_ENTITLEMENTS_BASE64 }}
+        run: |
+          bash build/ci/ios-device-signing.sh cargo xtask release --component manager --target aarch64-apple-ios --version "$VERSION" --scope "$RELEASE_SCOPE"
       - name: Smoke packaged Linux Manager
         if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
         shell: bash
@@ -276,6 +303,14 @@ jobs:
             jq -e --arg component "$COMPONENT" --arg version "$VERSION" --arg target "$target" --arg scope "$RELEASE_SCOPE" --arg commit "$SOURCE_COMMIT" \
               '.component == $component and .version == $version and .target == $target and .release_scope == $scope and .source_commit == $commit' \
               ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
+            if [[ "$COMPONENT" == manager && "$target" == *-apple-ios* ]]; then
+              channel=ad-hoc-simulator-test
+              if [[ "$target" == aarch64-apple-ios ]]; then channel=development-device-test; fi
+              jq -e --arg version "$VERSION" --arg target "$target" --arg commit "$SOURCE_COMMIT" --arg channel "$channel" '
+                .ios | .distribution == $channel and .source_commit == $commit
+                and .version == $version and .target == $target and (.frameworks | type == "object" and length == 8)
+              ' ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
+            fi
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")
       - name: Show local Manager release instructions
         if: matrix.component == 'manager' && needs.select.outputs.local_manager == 'true'

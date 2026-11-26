@@ -104,21 +104,11 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
     Some(program_file().ok()?.parent()?.to_owned())
 }
 
-pub(super) fn is_bundled_core(plugin_id: &str) -> bool {
-    #[cfg(feature = "ios-framework-cores")]
-    {
-        const IDS: &[&str] = include!(concat!(env!("OUT_DIR"), "/ios-framework-core-ids.rs"));
-        IDS.contains(&plugin_id)
-    }
-    #[cfg(not(feature = "ios-framework-cores"))]
-    {
-        let _ = plugin_id;
-        false
-    }
-}
+pub(super) const BUNDLED_CORE_IDS: &[&str] =
+    include!(concat!(env!("OUT_DIR"), "/ios-framework-core-ids.rs"));
 
-fn bundle_subdir(plugin_id: &str, parent: &str, framework: bool) -> Option<PathBuf> {
-    if !is_bundled_core(plugin_id) {
+fn bundle_subdir(plugin_id: &str, parent: &str, leaf: &str) -> Option<PathBuf> {
+    if !BUNDLED_CORE_IDS.contains(&plugin_id) {
         return None;
     }
     let app = bundled_resource_dir()?;
@@ -131,20 +121,17 @@ fn bundle_subdir(plugin_id: &str, parent: &str, framework: bool) -> Option<PathB
     if !std::fs::symlink_metadata(&parent).ok()?.is_dir() {
         return None;
     }
-    let mut directory = parent.join(plugin_id);
-    if framework {
-        directory.add_extension("framework");
-    }
+    let directory = parent.join(leaf);
     std::fs::symlink_metadata(&directory).ok()?.is_dir().then_some(directory)
 }
 
 pub(super) fn bundled_core_library(plugin_id: &str) -> Option<PathBuf> {
-    let executable = bundle_subdir(plugin_id, "Frameworks", true)?.join(plugin_id);
+    let executable = bundle_subdir(plugin_id, "Frameworks", &format!("{plugin_id}.framework"))?.join(plugin_id);
     std::fs::symlink_metadata(&executable).ok()?.is_file().then_some(executable)
 }
 
 pub(super) fn bundled_core_manifest_dir(plugin_id: &str) -> Option<PathBuf> {
-    bundle_subdir(plugin_id, "cores", false)
+    bundle_subdir(plugin_id, "cores", plugin_id)
 }
 pub(super) fn report_startup_error(message: &str) {
     tracing::error!(event = "shinki.emu.ios.startup_failed", error = message);

@@ -12,3 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 shinki-emu-ReMinori = { workspace = true, features = ["dynamic-plugin-export"] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+# Keep naga 26's buffer type in sync with codespan-reporting's unified
+# termcolor feature when the iOS workspace graph also resolves naga 27.
+naga-26 = { package = "naga", version = "26.0.0", default-features = false, features = ["termcolor"] }

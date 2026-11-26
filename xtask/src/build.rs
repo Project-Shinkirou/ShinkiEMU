@@ -262,14 +262,14 @@ fn execute_configured(
         Vec::new()
     };
     let ios_framework_manager =
-        component == "manager" && crate::apple::ios_frameworks::enabled(target, &features);
-    if ios_framework_manager {
+        component == "manager" && crate::apple::ios_frameworks::target_supported(target);
+    if ios_framework_input || ios_framework_manager {
         crate::apple::ios_frameworks::require_native_host()?;
     }
     let ohos_hap_manager = component == "manager" && crate::ohos::manager_mode(target, &features)?;
     let target_dir = if ios_framework_input || ios_framework_manager {
-        // Share Framework dependencies without replacing the default static artifact.
-        target_directory(inv, target, "manager-ios-framework")?
+        // Each core links independently but can reuse the Manager's Cargo cache.
+        target_directory(inv, target, "manager")?
     } else if ohos_hap_manager || ohos_hap_input {
         target_directory(inv, target, &format!("{component}-ohos-hap"))?
     } else {
@@ -302,7 +302,7 @@ fn execute_configured(
     }
     if ios_framework_input {
         let install_name = crate::apple::ios_frameworks::install_name(component);
-        cmd.args(["--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
+        cmd.args(["--crate-type", "cdylib", "--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
     }
 
     let metadata = cargo_metadata(inv, target)?;
@@ -393,7 +393,7 @@ fn execute_configured(
                 if let Some(s) = value["executable"].as_str() {
                     libraries.push(PathBuf::from(s));
                 }
-            } else if value["target"]["crate_types"]
+            } else if ios_framework_input || value["target"]["crate_types"]
                 .as_array()
                 .is_some_and(|a| a.iter().any(|v| v == "cdylib"))
             {
@@ -426,7 +426,9 @@ fn execute_configured(
     } else {
         (None, manifests)
     };
-    let library = if core.is_some_and(|core| core.artifact_source() == ArtifactSource::NativeLibrary) {
+    let library = if !ios_framework_input
+        && core.is_some_and(|core| core.artifact_source() == ArtifactSource::NativeLibrary)
+    {
         core_build.as_ref().and_then(|manifest| manifest.native_library.clone())
             .with_context(|| format!("{package} did not report its native library in core-build.json"))?
     } else {

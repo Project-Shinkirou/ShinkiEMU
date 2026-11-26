@@ -163,6 +163,14 @@ fn signed_framework_sidecar_matches_the_selected_executable_and_product_hash() {
     assert_eq!(bundle.manifest, sidecar);
     assert_eq!(bundle.source_commit.as_deref(), Some(commit));
     assert!(read_manifest(root.path()).is_none());
+    let executable = root.path().join(id);
+    fs::write(&executable, b"digest").unwrap();
+    verify_bundled_executable(&bundle.manifest, &executable).unwrap();
+    fs::write(&executable, b"changed").unwrap();
+    assert!(verify_bundled_executable(&bundle.manifest, &executable).is_err());
+
+    fs::remove_file(&commit_path).unwrap();
+    assert!(read_bundled_package(root.path(), id).is_none());
 
     fs::write(&commit_path, [b'a'; 40]).unwrap();
     assert!(read_bundled_package(root.path(), id).is_none());

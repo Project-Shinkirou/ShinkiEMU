@@ -335,6 +335,10 @@ fn activate(
             }
             #[cfg(all(not(target_os = "android"), not(target_env = "ohos")))]
             {
+                // iOS code signing controls executable mappings. Bind this path
+                // to the exact binary recorded by the app seal before dlopen.
+                #[cfg(target_os = "ios")]
+                crate::core_package::verify_bundled_executable(&core.manifest, &core.library)?;
                 shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
             }
             #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]

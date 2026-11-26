@@ -81,20 +81,22 @@ cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
-#### Private iOS bundled frameworks
+#### iOS test distribution
 
-On native macOS with Xcode, `ios-framework-cores` packages Shinki CMVS and Musica as signed ABI v3 frameworks instead of registering those two statically. The other cores remain static. Choose one target: `aarch64-apple-ios` for `iphoneos`, or `aarch64-apple-ios-sim` / `x86_64-apple-ios` for `iphonesimulator`.
+Native macOS packaging includes RFVP, Siglus, Musica, CMVS, Sena, Ethornell, ReMinori and KrKr2 as independently signed ABI v3 frameworks. Choose `aarch64-apple-ios` for devices or `aarch64-apple-ios-sim` / `x86_64-apple-ios` for simulators. The Manager loads these cores only from its app bundle; core downloads and static fallback are disabled.
 
 Install `cargo-about` as above. For a device build, set `SHINKI_EMU_IOS_SIGN_IDENTITY` to an Apple Development signing identity with its private key in Keychain. Set `SHINKI_EMU_IOS_PROVISIONING_PROFILE` to the development profile for `org.shinkirou.shinkiemu` and the test device, and `SHINKI_EMU_IOS_ENTITLEMENTS` to the matching entitlements file. The simulator uses ad hoc signing and needs none of these inputs.
 
 ```sh
 target=aarch64-apple-ios-sim
 version=0.1.0-qa.1
-SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
-  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-test-$target"
 ```
 
-The simulator output is `ShinkiEMU-simulator-test.app`; the device output is a `*-device-test.ipa` containing `Payload/ShinkiEMU.app` with `embedded.mobileprovision`. The app contains `Frameworks/<id>.framework/<id>` and `cores/<id>/core.json`. Packaging signs the frameworks before the app. Opening Manager or scanning games should leave both frameworks unloaded. Launch a known game per core, check ABI v3 selection and a first frame, then close and reopen in the same process. Check logs for dyld errors or duplicate Objective-C classes.
+The simulator output is `ShinkiEMU-simulator-test.app`; the device output is a `*-device-test.ipa` containing `Payload/ShinkiEMU.app` with `embedded.mobileprovision`. Packaging verifies the target, ABI export and native dependencies, signs each framework before signing the app, and records all eight executable hashes and source identities in `ios.json`. CI and release preparation require this manifest to match the exact product commit and archive.
+
+For runtime acceptance, verify that opening Manager and scanning games do not load core code. For each core, open a known game, confirm ABI v3 selection and a first frame, then close and reopen in the same process. Check for dyld errors or duplicate Objective-C classes.
 
 ### OpenHarmony Manager
 
@@ -170,7 +172,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-Use [`build/cores.toml`](../../build/cores.toml) to distinguish standalone `supported_targets`, `static_manager_targets` and explicit blocks. A build row is not a gameplay compatibility result. Android standalone packages only become installable through a verified `android_dynamic` policy. iOS uses bundled cores and OHOS includes Musica; neither installs downloaded cores. `publish_blocked` governs distribution separately from build support.
+Use [`build/cores.toml`](../../build/cores.toml) to distinguish standalone `supported_targets`, `static_manager_targets`, `ios_framework` and explicit blocks. A build row is not a gameplay compatibility result. Android standalone packages only become installable through a verified `android_dynamic` policy. iOS uses bundled cores and OHOS includes Musica; neither installs downloaded cores. `publish_blocked` governs distribution separately from build support.
 
 ### Compile-in stores
 

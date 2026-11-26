@@ -11227,6 +11227,7 @@ dependencies = [
 name = "shinki-emu-core-ReMinori"
 version = "0.1.0"
 dependencies = [
+ "naga 26.0.0",
  "shinki-emu-ReMinori",
 ]
 
@@ -11270,6 +11271,7 @@ dependencies = [
 name = "shinki-emu-core-krkr2"
 version = "0.1.0"
 dependencies = [
+ "shinki-emu-abi",
  "shinki-emu-krkr2",
 ]
 
@@ -11490,7 +11492,6 @@ dependencies = [
  "jni 0.22.4",
  "libc",
  "mlua",
- "naga 26.0.0",
  "naga 30.0.1",
  "ndk 0.9.0",
  "objc2 0.6.5",
@@ -11512,26 +11513,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "shinki-emu-ReMinori",
  "shinki-emu-abi",
  "shinki-emu-adv32",
  "shinki-emu-build",
  "shinki-emu-cmvs",
  "shinki-emu-dlsite",
  "shinki-emu-dmm",
- "shinki-emu-ethornell-rs",
  "shinki-emu-headless",
  "shinki-emu-impacto",
- "shinki-emu-krkr2",
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",
  "shinki-emu-musica",
  "shinki-emu-musica-keys",
  "shinki-emu-patch",
- "shinki-emu-rfvp",
- "shinki-emu-sena-rs",
- "shinki-emu-siglus_rs",
  "shinki-emu-steam",
  "shinki-emu-store",
  "shinki-emu-translation",

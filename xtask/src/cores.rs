@@ -246,6 +246,7 @@ impl Inventory {
             targets: t.targets,
         };
         result.validate()?;
+        crate::apple::ios_frameworks::validate_inventory(&result)?;
         Ok(result)
     }
     fn validate(&self) -> Result<()> {
@@ -310,20 +311,16 @@ impl Inventory {
                 bail!("core {} must describe exactly the non-QA standalone targets", c.id);
             }
             if c.ios_framework
-                && (c.attribution.is_some()
-                    || !c.resources.is_empty()
-                    || !c.id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
-                    || self.targets.iter().filter(|target| target.platform == "ios").any(|target| {
-                        !c.static_manager_targets.contains(&target.triple)
-                            || c.supported_targets.contains(&target.triple)
-                    }))
+                && (!c.id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+                    || !c.publish_blocked.is_empty()
+                    || c.supported_targets.iter().any(|target| crate::apple::ios_frameworks::target_supported(target)))
             {
-                bail!("invalid private iOS Framework recipe for {}", c.id);
+                bail!("invalid iOS Framework recipe for {}", c.id);
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;
                 if !(target.manager_supported || target.is_local_qa())
-                    || !matches!(target.platform.as_str(), "android" | "ios" | "ohos")
+                    || !matches!(target.platform.as_str(), "android" | "ohos")
                 {
                     bail!("invalid static Manager integration");
                 }

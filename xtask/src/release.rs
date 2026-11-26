@@ -404,7 +404,6 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
 
 fn require_public_manager_variant(target: &str, features: &[String]) -> Result<()> {
     if features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
-        || crate::apple::ios_frameworks::enabled(target, features)
         || crate::ohos::manager_mode(target, features)?
     {
         bail!("private QA Manager variants cannot be prepared for release");
@@ -474,6 +473,9 @@ pub fn prepare(
     package::atomic_directory(&root, |work| {
         let staged = work.join("package");
         let package_dir = package::package(inv, target, component, version, &staged)?;
+        let ios = (component == "manager" && crate::apple::ios_frameworks::target_supported(target))
+            .then(|| crate::apple::ios_frameworks::read_manifest(inv, &package_dir, target, version, &id.commit))
+            .transpose()?;
         let publish_blocked = if component == "manager" && target.contains("android") {
             let android: Value =
                 serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
@@ -498,13 +500,19 @@ pub fn prepare(
         } else {
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
         }
+        if let Some(manifest) = &ios {
+            manifest.verify_release_archive(&archive)?;
+        }
         fs::remove_dir_all(&staged)?;
-        let record = json!({
+        let mut record = json!({
             "component": component, "version": version, "target": target, "platform": platform,
             "source_commit": id.commit,
             "release_scope": scope.name(), "publish_blocked": publish_blocked,
             "archive": {"name": filename, "sha256": package::sha256(&archive)?, "size": fs::metadata(&archive)?.len()},
         });
+        if let Some(ios) = ios {
+            record["ios"] = serde_json::to_value(ios)?;
+        }
         fs::write(
             work.join("release.json"),
             serde_json::to_vec_pretty(&record)?,
@@ -558,10 +566,11 @@ fn collect_records(
             blocked.push(format!("- {}: {reason} (artifact=null)", t.triple));
             continue;
         }
+        let ios = component == "manager" && crate::apple::ios_frameworks::target_supported(&t.triple);
         let directory = id.root.join(&t.triple);
         let path = directory.join("release.json");
         if !path.is_file() {
-            if require_all {
+            if require_all || ios {
                 bail!(
                     "{component} release requires a prepared package for {} in scope {}",
                     t.triple,
@@ -583,6 +592,12 @@ fn collect_records(
             bail!("{} was not prepared from product commit {}", path.display(), id.commit);
         }
         verify_asset(&directory, &record, "archive")?;
+        if ios {
+            let manifest: crate::apple::ios_frameworks::Manifest = serde_json::from_value(record["ios"].clone())
+                .context("iOS release requires the exact-head Framework manifest")?;
+            manifest.validate(inv, &t.triple, &id.version, &id.commit)?;
+            manifest.verify_release_archive(&directory.join(asset_name(&record, "archive")?))?;
+        }
         let restriction = record["publish_blocked"].as_str().filter(|reason| !reason.is_empty())
             .or(publish_restriction(inv, component, &t.triple)?);
         if let Some(reason) = restriction {

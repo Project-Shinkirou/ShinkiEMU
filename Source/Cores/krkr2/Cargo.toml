@@ -8,3 +8,6 @@ publish = false
 
 [dependencies]
 shinki-emu-krkr2 = { workspace = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }

@@ -109,18 +109,17 @@ fn classify(
         } else if let Some((id, _)) = path.strip_prefix("Source/Cores/").and_then(|tail| tail.split_once('/'))
             && let Ok(core) = inv.core(id)
         {
-            // Manager uses adapters directly, except for its private dynamic sidecars.
+            // The iOS Framework and OHOS companion builds use the entry package.
             affected.core(id, inv.targets.iter().filter(|target| {
-                (core.ios_framework && target.platform == "ios"
-                    || id == "shinki.emu.musica" && target.platform == "ohos")
-                    && core.static_manager_targets.contains(&target.triple)
+                core.ios_framework && target.platform == "ios"
+                    || id == "shinki.emu.musica" && target.platform == "ohos"
+                        && core.static_manager_targets.contains(&target.triple)
             }).map(|target| target.triple.as_str()));
         } else if let Some(core) = family_core(inv, path) {
-            // A statically embedded core is also an input of those Manager builds.
-            affected.core(
-                &core.id,
-                core.static_manager_targets.iter().map(String::as_str),
-            );
+            affected.core(&core.id, inv.targets.iter().filter(|target| {
+                core.ios_framework && target.platform == "ios"
+                    || core.static_manager_targets.contains(&target.triple)
+            }).map(|target| target.triple.as_str()));
         } else {
             affected.all = true;
         }
@@ -158,13 +157,14 @@ fn core_table_changes(affected: &mut Affected, old: Option<&str>, new: &str) -> 
         if before == after {
             continue;
         }
-        let static_targets = [before, after]
-            .into_iter()
-            .flatten()
-            .filter_map(|core| core.get("static_manager_targets")?.as_array())
-            .flatten()
-            .filter_map(toml::Value::as_str);
-        affected.core(id, static_targets);
+        for core in [before, after].into_iter().flatten() {
+            let static_targets = core.get("static_manager_targets")
+                .and_then(toml::Value::as_array).into_iter().flatten()
+                .filter_map(toml::Value::as_str);
+            let frameworks = (core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true))
+                .then_some(crate::apple::ios_frameworks::TARGETS).into_iter().flatten();
+            affected.core(id, static_targets.chain(frameworks));
+        }
     }
     Ok(())
 }

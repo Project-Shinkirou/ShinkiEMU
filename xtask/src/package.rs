@@ -72,7 +72,7 @@ pub fn sha256(path: &Path) -> Result<String> {
     sha256_reader(fs::File::open(path)?)
 }
 
-fn sha256_reader(mut reader: impl Read) -> Result<String> {
+pub(crate) fn sha256_reader(mut reader: impl Read) -> Result<String> {
     let mut hash = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
@@ -266,7 +266,7 @@ pub fn zip_entries(entries: &[(PathBuf, String)], out: &Path) -> Result<()> {
                 .last_modified_time(zip::DateTime::default())
                 .large_file(fs::metadata(&source)?.len() >= u64::from(u32::MAX))
                 .unix_permissions(permissions)
-                .compression_method(if name.starts_with("downloads/") {
+                .compression_method(if name.starts_with("downloads/") || name.ends_with(".ipa") {
                     zip::CompressionMethod::Stored
                 } else {
                     zip::CompressionMethod::Deflated
@@ -812,15 +812,15 @@ pub fn package(
     if component == "manager" && target.contains("android") {
         return package_android(inv, target, version, out, AndroidPackageMode::Universal);
     }
+    let ios_signing = (component == "manager" && crate::apple::ios_frameworks::target_supported(target))
+        .then(|| crate::apple::ios_frameworks::Signing::for_target(target))
+        .transpose()?;
     let result = build::package_artifact(inv, target, component, version)?;
     reject_overlap(&result.library, out)?;
     if component == "manager" {
         if let Some(target) = shinki_emu_build::ohos::Target::from_rust_target(target) {
             return crate::ohos::package(inv, target, &result, version, out);
         }
-        let ios_signing = crate::apple::ios_frameworks::enabled(target, &result.features)
-            .then(|| crate::apple::ios_frameworks::Signing::for_target(target))
-            .transpose()?;
         atomic_directory(out, |stage| {
             let temp = tempfile::tempdir_in(stage)?;
             let name = result
@@ -836,8 +836,8 @@ pub fn package(
                     "THIRD_PARTY_NOTICES.md".into(),
                 ),
             ];
-            for dep in binary::closure(&result.library, &search_dirs(inv, &result)?, target)? {
-                entries.push(dep);
+            if ios_signing.is_none() {
+                entries.extend(binary::closure(&result.library, &search_dirs(inv, &result)?, target)?);
             }
             entries.extend(result.native_inputs.iter()
                 .flat_map(|input| input.package_files.iter())
@@ -848,12 +848,12 @@ pub fn package(
             copy_entries(&entries, stage)?;
             drop(temp);
             fs::create_dir_all(stage.join("cores"))?;
-            fs::write(
-                stage.join("README.md"),
-                format!(
-                    "# ShinkiEMU {version}\n\nRun shinki-emu-manager. Install separately released cores from Project-Shinkirou/ShinkiEMU.\n"
-                ),
-            )?;
+            let instructions = if ios_signing.is_some() {
+                "ShinkiEMU iOS test app. The signed cores are included in the app bundle."
+            } else {
+                "Run shinki-emu-manager. Install separately released cores from Project-Shinkirou/ShinkiEMU."
+            };
+            fs::write(stage.join("README.md"), format!("# ShinkiEMU {version}\n\n{instructions}\n"))?;
             if let Some(signing) = &ios_signing {
                 crate::apple::ios_frameworks::stage(inv, &result, stage, signing, version)?;
             }
@@ -889,6 +889,10 @@ pub fn package(
                     version,
                     ios_signing.as_ref(),
                 )?;
+                if ios_signing.is_some() {
+                    let manifest = crate::apple::ios_frameworks::MANIFEST;
+                    fs::copy(app.join(manifest), stage.join(manifest))?;
+                }
                 if target == "aarch64-apple-ios" {
                     let payload_stage = tempfile::tempdir_in(stage)?;
                     let payload = payload_stage.path().join("Payload");
@@ -897,7 +901,7 @@ pub fn package(
                         &app,
                         payload.join(app.file_name().context("iOS app filename")?),
                     )?;
-                    let ipa = stage.join(format!("ShinkiEMU-{version}-{target}-device-test.ipa"));
+                    let ipa = stage.join(crate::apple::ios_frameworks::device_filename(target, version));
                     zip_entries(&tree(payload_stage.path())?, &ipa)?;
                 }
             }

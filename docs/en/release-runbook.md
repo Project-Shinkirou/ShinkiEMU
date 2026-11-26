@@ -37,9 +37,9 @@ For a release APK, `cargo xtask package` checks the official signing certificate
 The APK metadata check accepts `minSdkVersion` from current Android Build Tools
 and `sdkVersion` from older badging output; both must indicate API 28.
 
-macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
+macOS packaging produces a `.app`. iOS distribution is for testing: simulators use ad hoc-signed `.app` bundles; the device `.ipa` needs an Apple Development certificate and matching provisioning profile. The hosted device release signs only the checked-out workflow commit on a protected `Project-Shinkirou/ShinkiEMU` main branch, release branch, or Manager tag. It requires the Actions secrets `SHINKI_EMU_IOS_CERTIFICATE_BASE64` (PKCS#12), `SHINKI_EMU_IOS_CERTIFICATE_PASSWORD`, `SHINKI_EMU_IOS_PROVISIONING_PROFILE_BASE64`, and `SHINKI_EMU_IOS_ENTITLEMENTS_BASE64`. A missing secret fails the device release row before signing.
 
-`SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The private `ios-framework-cores` iOS and `ohos-bundled-musica` HAP variants are for local QA, not release assets.
+Ordinary CI builds the device Manager and all eight Framework executables, verifies their native closure, and records an unsigned build report; it receives no signing credentials and produces no installable IPA. The iOS release records require all eight signed Frameworks and the exact product commit. `SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging; the `ohos-bundled-musica` HAP variant is for local QA, not release assets.
 
 Pass an explicit product `--version` (SemVer) to package or release the Manager and in-tree cores. Omit it for external cores.
 

@@ -260,7 +260,7 @@ fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
             return true;
         }
         #[cfg(target_os = "ios")]
-        { shinki_emu_manager::platform::is_bundled_core(core.plugin_id) }
+        { shinki_emu_manager::platform::bundled_core_ids().contains(&core.plugin_id) }
         #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
         { core.plugin_id == shinki_emu_manager::platform::ohos::bundled::ID }
         #[cfg(not(any(target_os = "ios", all(target_env = "ohos", feature = "ohos-bundled-musica"))))]
@@ -294,9 +294,12 @@ pub(super) fn core_source<'a>(
     plugin_id: &str,
 ) -> Option<CoreSource<'a>> {
     let package = installed.get(plugin_id);
-    // Desktop keeps static precedence. Android selects a verified install
-    // over the embedded copy; iOS only admits packages bundled with the app.
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(target_os = "ios")]
+    if shinki_emu_manager::platform::bundled_core_ids().contains(&plugin_id) {
+        return package.filter(|core| core.bundled).map(CoreSource::Package);
+    }
+    // Android selects a verified install over the embedded copy.
+    #[cfg(target_os = "android")]
     if let Some(package) = package {
         return Some(CoreSource::Package(package));
     }
@@ -453,17 +456,22 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
     }
     for id in duplicate { found.remove(&id); }
     #[cfg(target_os = "ios")]
-    for entry in static_core_catalog::entries() {
-        let id = entry.plugin_id;
-        let Some(library) = shinki_emu_manager::platform::bundled_core_library(id) else { continue };
-        let Some(directory) = shinki_emu_manager::platform::bundled_core_manifest_dir(id) else { continue };
-        let Some(executable_name) = library.file_name().and_then(|name| name.to_str()) else { continue };
-        let Some(package) = core_package::read_bundled_package(&directory, executable_name) else { continue };
-        if package.manifest.plugin_id == id && package.manifest.version != "0.0.0-local" {
-            found.insert(id.to_owned(), InstalledCore {
-                library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
-            });
+    for &id in shinki_emu_manager::platform::bundled_core_ids() {
+        use shinki_emu_manager::platform;
+        let invalid = || format!("SHINKI_EMU_IOS_FRAMEWORK_PACKAGE: {id}");
+        let library = platform::bundled_core_library(id).ok_or_else(invalid)?;
+        let directory = platform::bundled_core_manifest_dir(id).ok_or_else(invalid)?;
+        let package = core_package::read_bundled_package(&directory, id).ok_or_else(invalid)?;
+        match cores::embedded_identity(id) {
+            Some(identity) if package.manifest.identity.as_ref() == Some(identity) => {}
+            None if package.manifest.identity.is_none()
+                && package.manifest.version == shinki_emu_manager::version()
+                && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT")) => {}
+            _ => return Err(invalid()),
         }
+        found.insert(id.to_owned(), InstalledCore {
+            library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
+        });
     }
     #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
     {
@@ -505,7 +513,13 @@ impl ShinkiEmuManagerController {
                 // Legacy records retain identity and binding. Fresh selected probe is
                 // still mandatory before open; no format/runtime claim is invented.
                 let choices = static_core_catalog::entries().iter()
-                    .filter(|entry| (entry.supported || is_static(entry.plugin_id)) && entry.family_id == family)
+                    .filter(|entry| {
+                        #[cfg(target_os = "ios")]
+                        let supported = is_supported(entry);
+                        #[cfg(not(target_os = "ios"))]
+                        let supported = entry.supported || is_static(entry.plugin_id);
+                        supported && entry.family_id == family
+                    })
                     .map(|entry| Candidate { plugin_id: entry.plugin_id.into(), family_id: family.clone() }).collect();
                 self.set_probe_candidates(&game.game_id, choices)?;
             }

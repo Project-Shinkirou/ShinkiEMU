@@ -77,20 +77,22 @@ cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
-#### iOS 私有 Framework 打包
+#### iOS 测试包
 
-在装有 Xcode 的 macOS 上，`ios-framework-cores` 会将 Shinki CMVS 和 Musica 从静态注册改为随应用提供的签名 ABI v3 Framework；其他核心仍静态嵌入。每次选一个目标：`iphoneos` 用 `aarch64-apple-ios`，`iphonesimulator` 用 `aarch64-apple-ios-sim` 或 `x86_64-apple-ios`。
+在装有 Xcode 的 macOS 上，默认将 RFVP、Siglus、Musica、CMVS、Sena、Ethornell、ReMinori 和 KrKr2 打包为各自签名的 ABI v3 Framework。真机选 `aarch64-apple-ios`，模拟器选 `aarch64-apple-ios-sim` 或 `x86_64-apple-ios`。Manager 只从应用包加载这些核心，不下载核心，也不回退到静态核心。
 
 先按上文安装 `cargo-about`。真机打包时，把 `SHINKI_EMU_IOS_SIGN_IDENTITY` 设为 Apple Development 签名身份，确保钥匙串内有对应私钥。`SHINKI_EMU_IOS_PROVISIONING_PROFILE` 指向适用于 `org.shinkirou.shinkiemu` 和测试设备的开发描述文件，`SHINKI_EMU_IOS_ENTITLEMENTS` 指向与该描述文件匹配的权限文件。模拟器用 ad hoc 签名，不需要这三项。
 
 ```sh
 target=aarch64-apple-ios-sim
 version=0.1.0-qa.1
-SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
-  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-test-$target"
 ```
 
-模拟器产出 `ShinkiEMU-simulator-test.app`；真机产出 `*-device-test.ipa`，其中的 `Payload/ShinkiEMU.app` 含 `embedded.mobileprovision`。应用内的框架和核心清单分别位于 `Frameworks/<id>.framework/<id>` 和 `cores/<id>/core.json`。打包先签框架，再签应用。打开 Manager 或扫描游戏时不应加载这两个框架。分别用已知游戏启动两个核心，确认选择 ABI v3 并出首帧，再在同一进程中关闭、重开游戏。查看日志是否有 dyld 错误或 Objective-C 类名冲突。
+模拟器产出 `ShinkiEMU-simulator-test.app`；真机产出 `*-device-test.ipa`，其中的 `Payload/ShinkiEMU.app` 含 `embedded.mobileprovision`。打包时先逐个签名 Framework，再签名应用。`ios.json` 记录八个框架的哈希和源码来源；CI 和发布准备会与实际包和产品提交核对。
+
+验收时，先确认打开 Manager 或扫描游戏不会加载核心。再用各核心已有的可玩样本验证 ABI v3 和首帧，在同一进程内关闭并重开游戏。查看日志中是否有 dyld 错误或 Objective-C 类名冲突。
 
 ### OpenHarmony Manager
 

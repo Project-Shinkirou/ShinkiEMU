@@ -1,4 +1,5 @@
 use crate::{build, cores::Inventory, package};
+use crate::apple::ios_frameworks;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::{fs, io::Write, path::Path};
@@ -10,6 +11,8 @@ struct Report<'a> {
     status: &'static str,
     reason: Option<String>,
     artifact: Option<std::path::PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ios: Option<crate::apple::ios_frameworks::Manifest>,
 }
 pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Result<()> {
     let mut blocked = inv.blocked(component, target)?.map(str::to_owned);
@@ -26,6 +29,7 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         status: "blocked",
         reason: blocked.clone(),
         artifact: None,
+        ios: None,
     };
     let result = if blocked.is_some() {
         Ok(())
@@ -48,8 +52,20 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             } else {
                 crate::release::resolve_version(inv, component, "")?
             };
+            if component == "manager" && ios_frameworks::device(target) {
+                report.ios = Some(ios_frameworks::build_device_closure(inv, &version)?);
+                report.status = "built";
+                report.reason = Some("Unsigned device build and native closure only; no installable IPA".into());
+                return Ok(());
+            }
             let out = inv.root.join(".work/ci").join(target).join(component);
             let staged = package::package(inv, target, component, &version, &out)?;
+            let ios = ios_frameworks::target_supported(target) && component == "manager";
+            if ios {
+                report.ios = Some(crate::apple::ios_frameworks::read_manifest(
+                    inv, &staged, target, &version, &build::source_commit(inv)?,
+                )?);
+            }
             report.status = "built";
             if component == "manager" && (target.ends_with("android") || target.ends_with("ohos")) {
                 let (file, key) = if target.ends_with("android") {
@@ -61,11 +77,11 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
                 let name = record[key].as_str().context("mobile package filename")?;
                 package::portable(name)?;
                 report.artifact = Some(staged.join(name));
-            } else if component == "manager" && target == "aarch64-apple-ios" {
-                report.artifact =
-                    Some(staged.join(format!("ShinkiEMU-{version}-{target}-device-test.ipa")));
             } else {
                 report.artifact = Some(archive_package(&staged, &out)?);
+            }
+            if let Some(manifest) = &report.ios {
+                manifest.verify_release_archive(report.artifact.as_deref().context("missing iOS package artifact")?)?;
             }
             Ok(())
         })()
@@ -74,6 +90,7 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
         report.status = "failed";
         report.reason = Some(format!("{e:#}"));
         report.artifact = None;
+        report.ios = None;
     }
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent)?;

@@ -73,20 +73,22 @@ cargo xtask apple-image --target aarch64-apple-darwin
 cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manager
 ```
 
-#### iOS の非公開フレームワーク構成
+#### iOS テスト配布
 
-Xcode を導入した macOS で `ios-framework-cores` を有効にすると、Shinki CMVS と Musica の静的登録が外れ、署名付きの ABI v3 フレームワークとして同梱されます。他のコアは静的なままです。`iphoneos` は `aarch64-apple-ios`、`iphonesimulator` は `aarch64-apple-ios-sim` または `x86_64-apple-ios` のうち 1 つを選びます。
+Xcode を導入した macOS では、RFVP、Siglus、Musica、CMVS、Sena、Ethornell、ReMinori、KrKr2 を個別に署名した ABI v3 フレームワークとして同梱します。実機は `aarch64-apple-ios`、シミュレーターは `aarch64-apple-ios-sim` または `x86_64-apple-ios` を選びます。Manager はアプリ内のフレームワークだけをロードし、ダウンロードや静的コアへの切り替えは行いません。
 
 上記の手順で `cargo-about` を導入します。実機向けには `SHINKI_EMU_IOS_SIGN_IDENTITY` に Apple Development の署名 ID を指定し、対応する秘密鍵をキーチェーンに入れます。`SHINKI_EMU_IOS_PROVISIONING_PROFILE` に `org.shinkirou.shinkiemu` とテスト端末に対応する開発用プロファイルを、`SHINKI_EMU_IOS_ENTITLEMENTS` にそのプロファイルに合った権限ファイルを指定します。シミュレーターは ad hoc 署名を使うため、これらの入力は不要です。
 
 ```sh
 target=aarch64-apple-ios-sim
 version=0.1.0-qa.1
-SHINKI_EMU_MANAGER_FEATURES=ios-framework-cores cargo xtask package \
-  --target "$target" --manager --version "$version" --out ".work/ios-framework-qa-$target"
+cargo xtask package \
+  --target "$target" --manager --version "$version" --out ".work/ios-test-$target"
 ```
 
-シミュレーターの出力は `ShinkiEMU-simulator-test.app` です。実機向けの `*-device-test.ipa` には `Payload/ShinkiEMU.app` とアプリ内の `embedded.mobileprovision` が入ります。アプリ内の配置は `Frameworks/<id>.framework/<id>` と `cores/<id>/core.json` です。フレームワークを先に署名し、その後にアプリを署名します。Manager の起動やゲームのスキャンでは、どちらのフレームワークもロードされないことを確認します。各コアで既知のゲームを起動して ABI v3 と最初のフレームを確認し、同じプロセスで閉じて再び開きます。ログに dyld エラーや Objective-C クラスの重複がないことも確認します。
+シミュレーターの出力は `ShinkiEMU-simulator-test.app` です。実機向けの `*-device-test.ipa` には `Payload/ShinkiEMU.app` とアプリ内の `embedded.mobileprovision` が入ります。各フレームワークを先に署名し、その後にアプリを署名します。CI とリリース準備では、8 個のフレームワークのハッシュと出所を記録した `ios.json` を、対象コミットとアーカイブに照合します。
+
+Manager の起動やスキャンではコアがロードされないことを確認します。各コアで動作実績のあるゲームを開き、ABI v3 と最初のフレームを確認してから、同じプロセスでゲームを開き直します。ログに dyld エラーや Objective-C クラスの重複がないことも確認します。
 
 ### OpenHarmony Manager
 

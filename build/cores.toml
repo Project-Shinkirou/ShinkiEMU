@@ -16,7 +16,7 @@ license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE", "crates/shinki-emu-rfvp/THIRD_PARTY_NOTICES.md", "crates/shinki-emu-rfvp/MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 android_dynamic = { minimum_release = 4, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
@@ -28,13 +28,13 @@ target = "aarch64-unknown-linux-ohos"
 reason = "GStreamer is not the only OHOS blocker: RFVP's kira audio runs on cpal, which selects ALSA (alsa-sys) on aarch64-unknown-linux-ohos and has no OHAudio backend, and its mp4 movie path uses video-sys, which selects GStreamer on target_os = \"linux\"."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 
 [[cores]]
 id = "siglus_rs"
@@ -45,7 +45,7 @@ license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE-MPL-2.0", "shinki/THIRD_PARTY_NOTICES.md", "shinki/MODIFICATIONS.md", "vendor/kira/LICENSE-MIT", "vendor/kira/LICENSE-APACHE", "crates/siglus_scene_vm/assets/font-fallback/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 android_dynamic = { minimum_release = 4, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
@@ -54,13 +54,13 @@ release_sequence = 4
 upstream_identity = { repo = "https://github.com/xmoezzz/siglus_rs", ref_kind = "tag", ref_name = "1.0.0", commit = "5f358ef1360b0439e92aed2b749e8f25d8721954" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -102,7 +102,7 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"]
+static_manager_targets = ["aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"]
 android_dynamic = { minimum_release = "0.1.0-beta.6", requires_context = true }
 ios_framework = true
 publish_blocked = ""
@@ -129,7 +129,7 @@ resources = []
 licenses = ["docs/licenses/sena-rs/MS-PGothic.txt"]
 adapter_licenses = ["LICENSE-MPL-2.0"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki-save-policy"
@@ -143,13 +143,13 @@ target = "x86_64-linux-android"
 reason = "sena-rs adapter build script supports no Android target yet"
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -190,7 +190,7 @@ license = "MPL-2.0"
 resources = []
 adapter_licenses = ["LICENSE-MPL-2.0", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 android_dynamic = { minimum_release = 2, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
@@ -199,13 +199,13 @@ release_sequence = 2
 upstream_identity = { repo = "https://github.com/xmoezzz/ethornell-rs", ref_kind = "branch", ref_name = "main", commit = "3ee43dab43854e2f9c614dd1d26213e17911d877" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -288,7 +288,6 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
 android_dynamic = { minimum_release = "0.1.0-beta.5", requires_context = true }
 ios_framework = true
 publish_blocked = ""
@@ -314,7 +313,7 @@ license = "AGPL-3.0-only"
 resources = []
 adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-linux-android"
@@ -328,13 +327,13 @@ release_sequence = 1
 upstream_identity = { repo = "https://github.com/luoyily/ReMinori", ref_kind = "branch", ref_name = "main", commit = "79b00990324404bfbd496e7fa76c690cf040f744" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the iOS Manager; standalone dynamic-core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "Native OpenHarmony host and core adapter are not implemented; OHOS_SDK_NATIVE is additionally required."
@@ -444,7 +443,7 @@ license = "LicenseRef-KiriKiri2"
 resources = []
 adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
 supported_targets = ["aarch64-linux-android", "x86_64-linux-android"]
-static_manager_targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]
+ios_framework = true
 android_dynamic = { minimum_release = 2, requires_context = true }
 publish_blocked = ""
 [cores.attribution]
@@ -465,13 +464,13 @@ target = "aarch64-apple-darwin"
 reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "Statically embedded in the mobile Manager; standalone core installation is not supported."
+reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
 reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
