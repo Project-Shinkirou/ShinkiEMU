@@ -134,6 +134,41 @@ fn detect(root: &Path) -> DetectionResult<Vec<EngineDetection>> {
     detect_game_directory(root, &NativeCancellation::new(1))
 }
 #[test]
+fn recognizes_only_an_adv32_root_with_a_structural_bootstrap() {
+    let collection = tempfile::tempdir().unwrap();
+    let game = collection.path().join("Arbitrary Folder");
+    let mes = game.join("aDvDaTa/mEs");
+    fs::create_dir_all(&mes).unwrap();
+    // A correctly named file with no MES structure is not a match.
+    let startup = mes.join("StArT.MeS");
+    fs::write(&startup, b"unrelated bytes").unwrap();
+    assert!(detect(&game).unwrap().is_empty());
+
+    let mut bytes = vec![0; 25];
+    word(&mut bytes, 0, 2);
+    word(&mut bytes, 4, 3);
+    word(&mut bytes, 8, 6 | (1 << 31));
+    bytes[16..18].copy_from_slice(&0x9f9au16.to_le_bytes());
+    // Two three-byte instructions, one at each entrypoint.
+    fs::write(game.join("start.mes"), &bytes).unwrap();
+    fs::remove_file(&startup).unwrap();
+    assert!(detect(&game).unwrap().is_empty());
+    fs::write(&startup, &bytes).unwrap();
+    let (matches, has_files) = DeclaredRules::default()
+        .inspect_game_directory(&game, &NativeCancellation::new(1))
+        .unwrap();
+    assert!(has_files);
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].family_id, "adv32");
+    assert_eq!(matches[0].format, "adv32.mes");
+    assert!(detect(collection.path()).unwrap().is_empty());
+
+    word(&mut bytes, 8, 9 | (1 << 31));
+    fs::write(&startup, bytes).unwrap();
+    assert!(detect(&game).unwrap().is_empty());
+}
+
+#[test]
 fn recognizes_format_structures_without_executables_or_plugins() {
     for (name, family, bytes) in cases() {
         let root = tempfile::tempdir().unwrap();
