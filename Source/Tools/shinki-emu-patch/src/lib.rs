@@ -60,7 +60,8 @@ pub enum PatchMode {
 pub(crate) const PROFILE_CAPABILITIES: u64 = shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY
     | shinki_emu_abi::CAP_CONFIGURED_FONT_PRIORITY
     | shinki_emu_abi::CAP_NATIVE_EMBEDDED_TEXT
-    | shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES;
+    | shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES
+    | shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

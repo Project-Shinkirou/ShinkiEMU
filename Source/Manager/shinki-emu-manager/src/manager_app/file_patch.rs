@@ -33,6 +33,9 @@ pub(super) fn require_profile_capabilities(
     if descriptor.has_capability(shinki_emu_manager_core::FamilyCapability::NativeNameResources) {
         supported |= shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES;
     }
+    if descriptor.has_capability(shinki_emu_manager_core::FamilyCapability::AuthoredGalleryClip) {
+        supported |= shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP;
+    }
     if descriptor.plugin_id != profile.plugin_id || profile.required_capabilities & !supported != 0
     {
         return Err(format!(

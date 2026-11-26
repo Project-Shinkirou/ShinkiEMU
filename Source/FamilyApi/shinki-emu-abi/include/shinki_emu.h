@@ -81,6 +81,11 @@
  */
 #define ShinkiEmuCAP_NATIVE_NAME_RESOURCES 512
 
+/**
+ * Authored gallery layers support logical clip rectangles.
+ */
+#define ShinkiEmuCAP_AUTHORED_GALLERY_CLIP 1024
+
 #define ShinkiEmuMAX_DISPLAY_NAME_BYTES 64
 
 #define ShinkiEmuMAX_RENDER_EXTENT 16384

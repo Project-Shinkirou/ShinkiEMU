@@ -98,6 +98,9 @@ pub(super) unsafe fn descriptor(
     if raw.capabilities & abi::CAP_NATIVE_NAME_RESOURCES != 0 {
         capabilities.push(FamilyCapability::NativeNameResources);
     }
+    if raw.capabilities & abi::CAP_AUTHORED_GALLERY_CLIP != 0 {
+        capabilities.push(FamilyCapability::AuthoredGalleryClip);
+    }
     let descriptor = FamilyPluginDescriptor {
         family_id: unsafe { text(raw.family_id, 256) }?,
         plugin_id: unsafe { text(raw.plugin_id, 256) }?,

@@ -32,7 +32,8 @@ const CAPABILITIES: u64 = abi::CAP_CPU_SURFACE
     | abi::CAP_ASYNC_TEXT
     | abi::CAP_RENDER_EXTENT
     | abi::CAP_NATIVE_EMBEDDED_TEXT
-    | abi::CAP_NATIVE_NAME_RESOURCES;
+    | abi::CAP_NATIVE_NAME_RESOURCES
+    | abi::CAP_AUTHORED_GALLERY_CLIP;
 static SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
     let source = crate::provider::musica_fields();
     let mut all_choices = Vec::new();

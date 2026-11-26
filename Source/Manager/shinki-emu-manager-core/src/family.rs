@@ -32,6 +32,7 @@ pub enum FamilyCapability {
     ConfiguredFontPriority,
     NativeEmbeddedText,
     NativeNameResources,
+    AuthoredGalleryClip,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

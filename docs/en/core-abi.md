@@ -29,6 +29,7 @@ sequenceDiagram
 | `CAP_CONFIGURED_FONT_PRIORITY` | `128` | Prefers configured font over script/restored font hints |
 | `CAP_NATIVE_EMBEDDED_TEXT` | `256` | Native SC operands support offline embedded Unicode text (Musica) |
 | `CAP_NATIVE_NAME_RESOURCES` | `512` | Reads name constants from native SC with read-only EXE fallback |
+| `CAP_AUTHORED_GALLERY_CLIP` | `1024` | Draws authored gallery layers with logical clip rectangles |
 
 ## Protocol and entry point
 
@@ -110,7 +111,7 @@ Without the required table, such as on older hosts, headless, Android's current 
 
 ## Converted-game compatibility
 
-The existing `Descriptor.capabilities` mask has four optional semantic bits; ABI
+The `Descriptor.capabilities` mask carries optional semantic bits; ABI
 version 3, its C layout and fingerprint are unchanged:
 
 - `CAP_NATIVE_SCRIPT_IDENTITY` (64): validate an explicit converted-script hash,
@@ -122,6 +123,8 @@ version 3, its C layout and fingerprint are unchanged:
   Unicode scalar escapes, allowing offline-embedded translations without runtime tables.
 - `CAP_NATIVE_NAME_RESOURCES` (512): native SC name constants, original live/history
   display rules and read-only EXE fallback. Yorino requires 256|512=768; its EXE is unchanged.
+- `CAP_AUTHORED_GALLERY_CLIP` (1024): supports logical `clip` rectangles on
+  authored gallery layers. The Perseus gallery conversion requires this bit.
 
 A Luau recipe can return `required_capabilities = 192` beside `plugin_id` and
 `configuration` in its output profile. The receipt retains this requirement.

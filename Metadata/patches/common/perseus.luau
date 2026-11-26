@@ -270,15 +270,16 @@ function M.apply(ctx, edition, authored_gallery)
     write(ctx, "key.toml", buffer.fromstring(ctx.toml.encode(key)))
     write(ctx, "localized/perseus/subtitles.json", buffer.fromstring(ctx.json.encode({version = 1, tracks = tracks})))
     local config = {titles = frontend.titles}
+    local required_capabilities = 0
     if authored_gallery then
         local gallery = ctx.load("common/perseus_gallery.luau")
-        config.gallery_layout = gallery.install(ctx, authored_gallery)
+        config.gallery_layout, required_capabilities = gallery.install(ctx, authored_gallery)
     end
     local frontend_json = ctx.json.encode(config)
     if authored_gallery then
         ctx.musica_validate_title_frontend("key.toml", frontend_json, "gbk", 1280, 720)
     end
-    return {plugin_id = "shinki.emu.musica", configuration = {
+    return {plugin_id = "shinki.emu.musica", required_capabilities = required_capabilities, configuration = {
         profile_file = "key.toml", script_encoding = "gbk", launch_mode = "title",
         frontend = frontend_json,
         script_directory = "localized/perseus/scripts",

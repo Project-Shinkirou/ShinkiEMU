@@ -252,7 +252,8 @@ function gallery.install(ctx, layout)
     ctx.mkdir("localized/perseus")
     local output = ctx.create(gallery.path)
     output:write(0, buffer.fromstring(ctx.json.encode(layout)))
-    return gallery.path
+    -- CAP_AUTHORED_GALLERY_CLIP: the native CG slot plates use clip.
+    return gallery.path, 1024
 end
 
 return gallery

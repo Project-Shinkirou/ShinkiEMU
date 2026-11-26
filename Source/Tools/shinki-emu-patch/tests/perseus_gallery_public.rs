@@ -203,13 +203,13 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
                 for _, name in ipairs({{'key.toml','bg.paz','bgm.paz','scr.paz','sys.paz'}}) do
                     ctx.copy('source',name,name)
                 end
-                local path = gallery.install(ctx, layout)
+                local path, required = gallery.install(ctx, layout)
                 local frontend = ctx.json.encode({{gallery_layout=path, titles={{{{
                     background='musica:/sys/memories.png',
                     buttons={{{{rect={{10,20,80,40}},action='memories'}}}}
                 }}}}}})
                 ctx.musica_validate_title_frontend('key.toml', frontend, 'gbk', 1280, 720)
-                return {{plugin_id='shinki.emu.musica', configuration={{
+                return {{plugin_id='shinki.emu.musica', required_capabilities=required, configuration={{
                     launch_mode='title', frontend=frontend}}}}
             end}}
         "#, image.len())).unwrap();
@@ -220,6 +220,10 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     };
     let hash = hex::encode(Sha256::digest(&image));
     let result = run(&hash, "valid").unwrap();
+    assert_eq!(result.profile.required_capabilities, shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP);
+    let receipt = shinki_emu_patch::read_output_profile(&result.output, &AtomicBool::new(false))
+        .unwrap().expect("installed patch receipt");
+    assert_eq!(receipt.required_capabilities, result.profile.required_capabilities);
     let config: serde_json::Value = serde_json::from_str(&result.profile.configuration["frontend"]).unwrap();
     let path = config["gallery_layout"].as_str().unwrap();
     let gallery: serde_json::Value = serde_json::from_slice(&fs::read(result.output.join(path)).unwrap()).unwrap();

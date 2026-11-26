@@ -2183,6 +2183,9 @@ msgstr "Native embedded text"
 msgid "原生姓名资源"
 msgstr "Native name resources"
 
+msgid "鉴赏图层裁剪"
+msgstr "Gallery layer clipping"
+
 msgid "此转换结果需要更新所选核心"
 msgstr "This conversion result needs the selected core updated"
 

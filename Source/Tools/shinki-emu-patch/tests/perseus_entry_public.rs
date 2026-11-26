@@ -483,6 +483,7 @@ fn recovered_loader_catalog_and_every_member_produce_independent_native_resource
     assert!(!output.join("localized/perseus/scripts/noTitle.sc").exists());
 
     let config = &result.profile.configuration;
+    assert_eq!(result.profile.required_capabilities, 0);
     assert_eq!(config["launch_mode"], "title");
     let frontend: serde_json::Value = serde_json::from_str(&config["frontend"]).unwrap();
     let titles = frontend["titles"].as_array().unwrap();

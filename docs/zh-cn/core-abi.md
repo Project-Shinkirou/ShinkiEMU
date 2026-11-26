@@ -29,6 +29,7 @@ sequenceDiagram
 | `CAP_CONFIGURED_FONT_PRIORITY` | `128` | 配置字体优先于脚本或恢复状态中的首选字体 |
 | `CAP_NATIVE_EMBEDDED_TEXT` | `256` | 原生 SC 支持离线嵌入 Unicode 译文（Musica 配方） |
 | `CAP_NATIVE_NAME_RESOURCES` | `512` | 从原生 SC 读取姓名常量并只读回退 EXE |
+| `CAP_AUTHORED_GALLERY_CLIP` | `1024` | 按逻辑矩形裁剪鉴赏布局图层 |
 
 ## 协议与入口
 
@@ -110,12 +111,13 @@ Manager 持有 WGPU 设备和队列。核心只拿到当前会话内有效的目
 
 ## 转换结果兼容性
 
-现有 `Descriptor.capabilities` 掩码提供四个可选语义位，ABI 版本 3、C 布局和 fingerprint 均不变：
+`Descriptor.capabilities` 掩码提供可选语义位，ABI 版本 3、C 布局和 fingerprint 均不变：
 
 - `CAP_NATIVE_SCRIPT_IDENTITY`（64）：校验显式声明的转换脚本 hash，隔离该脚本的存档与既读；没有 marker 的游戏保留原命名空间。
 - `CAP_CONFIGURED_FONT_PRIORITY`（128）：配置的字体优先于脚本或恢复状态中的首选字体，包括 ruby 和 UI 文字。
 - `CAP_NATIVE_EMBEDDED_TEXT`（256）：原生 SC 显示操作数支持 Unicode scalar 字面转义，离线嵌入译文，不加载运行时翻译表。Musica 配方要求 256，RFVP 原生 GBK/统一字体配方仍要求 192，复用同一 descriptor/receipt 检查。
 - `CAP_NATIVE_NAME_RESOURCES`（512）：从原生 SC 读取姓名常量，复现实时/历史姓名规则，资源缺失时只读回退 EXE。Yorino 要求 256|512=768，不修改 EXE。
+- `CAP_AUTHORED_GALLERY_CLIP`（1024）：支持鉴赏布局图层的逻辑 `clip` 矩形。生成鉴赏布局的 Perseus 配方要求此能力。
 
 Luau recipe 在输出 profile 的 `plugin_id`、`configuration` 旁声明 `required_capabilities = 192`，receipt 保留此要求。无原生调用的导入保存已识别游戏及回执字符串；显式准备高级配置或启动时，才用选定核心的真实 descriptor 验证类型与能力，校验通过后再打开游戏。自动导入仍拒绝转换完成后被改动的 receipt。缺少能力时明确提示更新；未知要求使 profile 无效，不会被忽略。不以版本字符串或文件名判定功能。旧 profile 省略该字段时要求为零，新 receipt 也省略零值。
 

@@ -105,6 +105,7 @@ fn capability_label(capability: FamilyCapability) -> &'static str {
         FamilyCapability::ConfiguredFontPriority => tr!("优先使用配置字体"),
         FamilyCapability::NativeEmbeddedText => tr!("原生内嵌译文"),
         FamilyCapability::NativeNameResources => tr!("原生姓名资源"),
+        FamilyCapability::AuthoredGalleryClip => tr!("鉴赏图层裁剪"),
     }
 }
 

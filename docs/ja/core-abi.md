@@ -29,6 +29,7 @@ sequenceDiagram
 | `CAP_CONFIGURED_FONT_PRIORITY` | `128` | スクリプトや復元状態より設定フォントを優先 |
 | `CAP_NATIVE_EMBEDDED_TEXT` | `256` | ネイティブ SC でのオフライン埋め込み Unicode テキスト対応（Musica） |
 | `CAP_NATIVE_NAME_RESOURCES` | `512` | ネイティブ SC からの名前定数読み取りと EXE 読み取り専用フォールバック |
+| `CAP_AUTHORED_GALLERY_CLIP` | `1024` | 論理座標の矩形で鑑賞画面のレイヤーを切り抜く |
 
 ## プロトコルとエントリーポイント
 
@@ -116,6 +117,7 @@ Manager が WGPU のデバイスとキューを所有し、コアはセッショ
 - `CAP_CONFIGURED_FONT_PRIORITY`（128）：設定したフォントを、スクリプトや復元状態の優先フォントより先に使用します。ruby と UI テキストも対象です。
 - `CAP_NATIVE_EMBEDDED_TEXT`（256）：ネイティブ SC の表示オペランドが Unicode scalar リテラルを扱い、実行時翻訳表なしで埋め込み訳文を表示します。Musica レシピは 256、RFVP の GBK/統一フォント用レシピは 192 を要求し、同じ descriptor/receipt 検証を使います。
 - `CAP_NATIVE_NAME_RESOURCES`（512）：ネイティブ SC の姓名定数と元の表示・履歴規則を使い、リソースがない場合だけ EXE を読み取り専用で参照します。Yorino は 256|512=768 を要求し、EXE は変更しません。
+- `CAP_AUTHORED_GALLERY_CLIP`（1024）：鑑賞画面のレイヤーに論理座標の `clip` 矩形を指定できます。鑑賞レイアウトを生成する Perseus レシピが要求します。
 
 Luau レシピは profile の `plugin_id`、`configuration` と並べて `required_capabilities = 192` を指定でき、receipt が要件を保持します。インポートは識別済みゲームと設定文字列だけを保存します。高度な設定の明示的な準備や起動時に、選択した実際の descriptor で型・機能を検証し、成功後にゲームを開きます。自動インポートは変換後に変更された receipt を拒否します。機能不足はコア更新として案内し、未知の要件は profile を無効とします。バージョン名やファイル名から機能を推測しません。旧 profile の省略値は 0 で、新しい receipt も 0 を省略します。
 

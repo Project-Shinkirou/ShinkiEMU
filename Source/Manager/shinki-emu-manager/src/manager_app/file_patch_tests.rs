@@ -553,10 +553,11 @@ fn explicit_receipt_import_reads_only_data_and_private_staging_is_never_discover
 
 #[test]
 fn native_profile_import_defers_capability_validation_until_explicit_selected_configuration() {
-    let required = shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY
+    let previous = shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY
         | shinki_emu_abi::CAP_CONFIGURED_FONT_PRIORITY
         | shinki_emu_abi::CAP_NATIVE_EMBEDDED_TEXT
         | shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES;
+    let required = previous | shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP;
     for available in [
         0,
         shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY,
@@ -565,6 +566,8 @@ fn native_profile_import_defers_capability_validation_until_explicit_selected_co
         shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES,
         shinki_emu_abi::CAP_NATIVE_EMBEDDED_TEXT | shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES,
         shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY | shinki_emu_abi::CAP_CONFIGURED_FONT_PRIORITY,
+        shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP,
+        previous,
         required,
     ] {
         let root = tempfile::tempdir().unwrap();
@@ -673,8 +676,7 @@ fn automatic_import_rejects_removed_receipt_requirements_before_library_mutation
 #[test]
 fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
     let root = tempfile::tempdir().unwrap();
-    let required =
-        shinki_emu_abi::CAP_NATIVE_SCRIPT_IDENTITY | shinki_emu_abi::CAP_CONFIGURED_FONT_PRIORITY;
+    let required = shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP;
     let (mut app, _, _) =
         controller_with_capabilities(root.path(), shinki_emu_abi::CAP_CPU_SURFACE | required);
     let output = root.path().join("native-output");
@@ -733,7 +735,7 @@ fn native_profile_receipt_blocks_launch_after_reopening_with_an_older_core() {
 #[test]
 fn malformed_receipt_requirements_block_import_and_retained_receipt_launch() {
     for required in [
-        serde_json::json!(1024),
+        serde_json::json!(2048),
         serde_json::json!(-1),
         serde_json::json!(1.5),
         serde_json::json!("192"),
