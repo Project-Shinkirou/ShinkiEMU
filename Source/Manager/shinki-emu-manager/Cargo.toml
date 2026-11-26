@@ -26,7 +26,6 @@ static-adv32 = ["dep:shinki-emu-adv32", "shinki-emu-manager-core/static-adv32"]
 # Installed and bundled cores, local official packages, the game store and
 # metadata are unaffected.
 no-core-download = []
-ohos-bundled-musica = []
 
 [dependencies]
 shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
@@ -122,7 +121,6 @@ slint = { workspace = true, features = ["renderer-software"] }
 # the Manager registers its bundled CJK faces itself.
 fontique = { version = "=0.11.1", features = ["fontconfig-dlopen"] }
 libc.workspace = true
-shinki-emu-musica = { path = "../../Families/shinki-emu-musica", default-features = false, features = ["ffmpeg-vcpkg"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 roukaku-platform.workspace = true

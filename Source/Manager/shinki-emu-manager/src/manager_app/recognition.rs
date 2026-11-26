@@ -261,9 +261,9 @@ fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
         }
         #[cfg(target_os = "ios")]
         { shinki_emu_manager::platform::bundled_core_ids().contains(&core.plugin_id) }
-        #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+        #[cfg(target_env = "ohos")]
         { core.plugin_id == shinki_emu_manager::platform::ohos::bundled::ID }
-        #[cfg(not(any(target_os = "ios", all(target_env = "ohos", feature = "ohos-bundled-musica"))))]
+        #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
         false
     }
 }
@@ -473,13 +473,15 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
         });
     }
-    #[cfg(all(target_env = "ohos", feature = "ohos-bundled-musica"))]
+    #[cfg(target_env = "ohos")]
     {
         use shinki_emu_manager::platform::ohos::bundled;
         if let Some(directory) = bundled::manifest_dir(bundled::ID)
             && let Ok(package) = core_package::read_package(&directory)
             && package.manifest.plugin_id == bundled::ID
             && package.manifest.library == bundled::LIBRARY
+            && package.manifest.files.iter().any(|file| file.path == bundled::LIBRARY)
+            && package.manifest.identity.is_none()
             && package.manifest.version == shinki_emu_manager::version()
             && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT"))
             && let Some(library) = bundled::library(bundled::ID)

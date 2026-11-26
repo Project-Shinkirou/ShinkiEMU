@@ -32,7 +32,7 @@ QA には例の `0.1.0-qa.1` のような専用の SemVer を使います。Grad
 macOS では `.app` を作ります。iOS の配布物はテスト用です。シミュレーター用 `.app` は ad hoc 署名、実機用 `.ipa` は Apple Development の証明書と対応する開発用プロファイルを使用します。CI とリリースの記録は 8 個の署名済みフレームワークと製品コミットを照合します。
 通常の CI の実機行はビルドとネイティブ依存関係の検証だけを行い、署名シークレットやインストール可能な IPA は扱いません。
 
-`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。HAP の `ohos-bundled-musica` はローカル QA 用で、リリースには使いません。
+`SHINKI_EMU_MANAGER_FEATURES` でパッケージング時に追加する Cargo feature をカンマ区切りで指定できます。OHOS の既定の ARM64 HAP には独立した Musica ライブラリが入り、OpenHarmony SDK のテスト PKI で署名します。x86_64 HAP は引き続きローカル QA 専用です。
 
 Manager やリポジトリ内のコアのパッケージングとリリースには、製品の SemVer を `--version` で指定します。外部コアでは省略します。
 

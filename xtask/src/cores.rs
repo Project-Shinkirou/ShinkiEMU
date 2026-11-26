@@ -77,9 +77,8 @@ impl Core {
     }
 
     pub(crate) fn embedded_in_manager(&self, target: &str, features: &[String]) -> bool {
-        !crate::ohos::bundles_core(&self.id, target, features)
-            && (self.static_manager_targets.iter().any(|triple| triple == target)
-                || self.embedded_candidate(target, features))
+        self.static_manager_targets.iter().any(|triple| triple == target)
+            || self.embedded_candidate(target, features)
     }
 
     /// The native adapters build their own DSO; the entry package drives that

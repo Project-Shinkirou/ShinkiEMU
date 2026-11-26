@@ -100,21 +100,21 @@ cargo xtask package \
 
 #### 随 HAP 分发的 Musica 真机验收
 
-默认 OHOS Manager 静态嵌入 Musica。用私有的 `ohos-bundled-musica` feature 打包时，签名 HAP 会包含独立的 `libshinki_emu_core_musica.so`，启用核心时才加载。Manager 只用系统安装的固定同目录库，或同一个 HAP 内的固定成员，不从解包资源或可写应用数据目录加载代码。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 使用调用者的命名空间，直接从 HAP 加载的成员必须不压缩且按页对齐。传入安装后的绝对路径可跳过按文件名查询环境变量和继承的搜索路径。
+签名 HAP 把 Musica 放在独立的 `libs/<abi>/libshinki_emu_core_musica.so` 中。启用核心时，Manager 通过 ABI v3 从系统安装的同目录库或同一个签名 HAP 的固定路径加载，不从解包资源或可写应用数据目录加载代码。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 要求直接加载的 HAP 成员不压缩、按页对齐。传入安装后的绝对路径，可避免按库名搜索。
+
+打包时校验签名、ELF 架构、核心入口，以及 HAP 中核心库、资源和许可证文件的哈希。`ohos.json` 记录签名 HAP 的哈希，以及 Musica 库的路径、哈希、ABI、版本和源码提交。
 
 用专用的 ARM64、API 12 或更新版本设备，确认 Vulkan、音频输出和开发者调试可用，且设备已信任 SDK 测试 PKI。若设备拒绝测试签名，停止安装，不要修改设备信任设置。将 SDK 的 `hdc` 加入 `PATH` 后，用 PowerShell 打包：
 
 ```powershell
 $version = '0.1.0-qa.1'
-$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
 cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
-Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
 ```
 
 打包成功后连接测试机，从 `hdc list targets` 找到它的设备标识，将 `$device` 设为该标识：
 
 ```powershell
-$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-debug-test-signed.hap"
 hdc -t $device install $hap
 ```
 
@@ -130,7 +130,7 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 
 #### x86_64 模拟器本地验收
 
-在专用 HarmonyOS x86_64 模拟器上测试时，使用本地的 `x86_64-unknown-linux-ohos` Manager 目标。该目标不生成独立核心包，也不进入托管 CI、公开发布或公开核心目录。HAP 和 `ohos.json` 记录都只在内部保存。记录包含源码提交、构建 feature、目标、ABI 和签名后 HAP 的哈希。
+在专用 HarmonyOS x86_64 模拟器上测试时，使用本地的 `x86_64-unknown-linux-ohos` Manager 目标。Musica 的打包和加载方式与 ARM64 一致。该目标不生成独立核心包，也不进入托管 CI、公开发布或公开核心目录，HAP 和 `ohos.json` 只在内部保存。
 
 使用带 x86_64 sysroot 库和 `libc++_shared.so` 的 DevEco OpenHarmony API 26 Native SDK。按上文配置 `OHOS_SDK_NATIVE`、私有签名目录和 `cargo-about`。
 
@@ -140,12 +140,10 @@ Meson 依赖使用 `OHOS` 目标声明，在同为 x86_64 的 Windows 主机上�
 
 ```powershell
 rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
-$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
 cargo xtask package --target x86_64-unknown-linux-ohos --manager --version 0.1.0-qa.1 --out .work/ohos-x64-qa
-Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
 ```
 
-静态嵌入 Musica 时不设置该 feature，生成的 HAP 文件名包含 `ohos-x86_64-local-qa`。安装前须获准新建独立的 API 26 模拟器实例，确认它有单独的可写数据目录，来宾 ABI 为 x86_64，已信任 SDK 测试 PKI，且调试、Vulkan 和音频可用。安装时指定该实例的 `hdc` 标识；签名被拒就停止。镜像名称里的 `x86` 不能证明来宾 ABI，API 26 工具链能识别目标也不能证明 API 17 镜像可用。打包成功或 Manager 界面能打开，都不能代替游戏画面和音频验收。
+生成的 HAP 文件名包含 `ohos-x86_64-local-qa`。安装前须获准新建独立的 API 26 模拟器实例，确认它有单独的可写数据目录，来宾 ABI 为 x86_64，已信任 SDK 测试 PKI，且调试、Vulkan 和音频可用。安装时指定该实例的 `hdc` 标识；签名被拒就停止。镜像名称里的 `x86` 不能证明来宾 ABI，API 26 工具链能识别目标也不能证明 API 17 镜像可用。打包成功或 Manager 界面能打开，都不能代替游戏画面和音频验收。
 
 ## 构建、检查与测试
 

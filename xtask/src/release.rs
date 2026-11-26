@@ -402,10 +402,10 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
     })
 }
 
-fn require_public_manager_variant(target: &str, features: &[String]) -> Result<()> {
-    if features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
-        || crate::ohos::manager_mode(target, features)?
-    {
+fn require_public_manager_variant(features: &[String]) -> Result<()> {
+    if features.iter().any(|feature| {
+        matches!(feature.as_str(), ADV32_CANDIDATE_FEATURE | "static-cmvs")
+    }) {
         bail!("private QA Manager variants cannot be prepared for release");
     }
     Ok(())
@@ -427,7 +427,7 @@ pub fn prepare(
         );
     }
     if component == "manager" {
-        require_public_manager_variant(target, &build::requested_manager_features()?)?;
+        require_public_manager_variant(&build::requested_manager_features()?)?;
     }
     let id = identity(inv, component, version)?;
     let version = id.version.as_str();
@@ -488,6 +488,7 @@ pub fn prepare(
             ""
         };
         let archive = work.join(&filename);
+        let mut ohos = None;
         if component == "manager" && (target.contains("android") || target.ends_with("ohos")) {
             let (metadata, key) = if target.ends_with("ohos") {
                 ("ohos.json", "hap")
@@ -497,6 +498,9 @@ pub fn prepare(
             let package: Value = serde_json::from_slice(&fs::read(package_dir.join(metadata))?)?;
             let name = package[key].as_str().context("mobile package filename")?;
             fs::copy(package_dir.join(name), &archive)?;
+            if key == "hap" {
+                ohos = Some(package);
+            }
         } else {
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
         }
@@ -504,14 +508,26 @@ pub fn prepare(
             manifest.verify_release_archive(&archive)?;
         }
         fs::remove_dir_all(&staged)?;
+        let sha256 = package::sha256(&archive)?;
         let mut record = json!({
             "component": component, "version": version, "target": target, "platform": platform,
             "source_commit": id.commit,
             "release_scope": scope.name(), "publish_blocked": publish_blocked,
-            "archive": {"name": filename, "sha256": package::sha256(&archive)?, "size": fs::metadata(&archive)?.len()},
+            "archive": {"name": filename, "sha256": sha256, "size": fs::metadata(&archive)?.len()},
         });
         if let Some(ios) = ios {
             record["ios"] = serde_json::to_value(ios)?;
+        }
+        if let Some(mut ohos) = ohos {
+            if ohos["source_commit"] != id.commit
+                || ohos["version"] != version
+                || ohos["target"] != target
+                || ohos["sha256"] != sha256
+                || !ohos["bundled_core"].is_object()
+            {
+                bail!("signed HAP and OHOS package receipt disagree");
+            }
+            record["bundled_core"] = ohos["bundled_core"].take();
         }
         fs::write(
             work.join("release.json"),
@@ -775,11 +791,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adv32_candidate_manager_is_rejected_before_release_packaging() {
-        for target in ["x86_64-pc-windows-msvc", "aarch64-linux-android"] {
-            assert!(require_public_manager_variant(target, &[]).is_ok());
+    fn static_core_manager_variants_are_rejected_before_release_packaging() {
+        assert!(require_public_manager_variant(&["store-steam".into()]).is_ok());
+        for feature in ["static-adv32", "static-cmvs"] {
             assert!(
-                require_public_manager_variant(target, &["store-steam".into(), "static-adv32".into()])
+                require_public_manager_variant(&["store-steam".into(), feature.into()])
                     .is_err()
             );
         }

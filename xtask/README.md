@@ -65,7 +65,7 @@ When admitting a new package, test the exact archive on each ABI: install throug
 
 Apple native builds use macOS/Xcode and the matching SDK. iOS Manager packaging requires native Xcode and builds eight independently signed ABI v3 frameworks from the inventory. `ios.json` binds their signed executables and source identities to the Manager commit; CI and release preparation verify it against the archive. Use `cargo xtask apple-image --target <triple>` to prepare a private Apple cross image on a Linux build host for macOS builds.
 
-The default OHOS Manager embeds Musica statically. For local QA, `SHINKI_EMU_MANAGER_FEATURES=ohos-bundled-musica` builds the bundled Musica HAP variant. With direct Cargo builds, use `--features` instead. This variant does not enable downloads or qualify for public release.
+DevEco builds the OHOS Manager HAP locally and signs it with the OpenHarmony SDK test PKI. It always bundles a separate Musica library, reports its provenance in `ohos.json`, and loads it from the signed app on activation. ARM64 is the distribution test HAP; x86_64 is local simulator QA only. See the [OHOS prerequisites](../docs/en/build-and-release.md#openharmony-manager).
 
 Use `SHINKI_EMU_MANAGER_FEATURES=static-adv32` when packaging a local ADV32 Manager candidate. The packager collects ADV32's build-reported resources and licenses only when that feature is enabled. `cargo xtask release --target <triple>` rejects this feature.
 

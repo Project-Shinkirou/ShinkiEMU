@@ -32,7 +32,7 @@ QA 包用独立的 SemVer，例如上面的 `0.1.0-qa.1`。Gradle 首次同步�
 macOS 产出 `.app`。iOS 仍只提供测试包：模拟器 `.app` 用 ad hoc 签名，真机 `.ipa` 用 Apple Development 证书和匹配的开发描述文件。CI 和发布记录逐项核对八个签名框架以及产品提交。
 普通 CI 只构建真机目标并检查原生依赖，不读取签名密钥，也不生成可安装的 IPA。
 
-打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。HAP 的 `ohos-bundled-musica` 变体只用于本地 QA，不公开发布。
+打包时用 `SHINKI_EMU_MANAGER_FEATURES` 追加 Cargo feature，以逗号分隔。OHOS 的 ARM64 HAP 随包提供独立的 Musica 库，使用 OpenHarmony SDK 测试 PKI 签名；x86_64 HAP 仍仅用于本地 QA。
 
 打包或发布 Manager、自研核心时，用 `--version` 指定产品的 SemVer；外部核心省略此参数。
 

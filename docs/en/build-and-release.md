@@ -104,21 +104,21 @@ Use DevEco Studio and its OpenHarmony native SDK 5.0.5 (API 17). Install the `aa
 
 #### Bundled Musica device acceptance
 
-The default OHOS Manager statically embeds Musica. The private `ohos-bundled-musica` feature packages a separate `libshinki_emu_core_musica.so` in the signed HAP and loads it on activation. The Manager resolves the fixed sibling beside its OS-installed library, or in that same HAP; it does not load code from extracted assets or writable app data. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) uses the caller’s namespace and requires directly loaded HAP entries to be uncompressed and page-aligned. Passing the absolute installed path avoids basename lookup through environment or inherited search paths.
+The signed HAP packages Musica as a separate `libs/<abi>/libshinki_emu_core_musica.so`. Manager loads it on activation through ABI v3, from the OS-installed sibling path or the same signed HAP. It never loads code from extracted resources or writable app data. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) requires directly loaded HAP entries to be uncompressed and page-aligned. Passing an absolute installed path avoids basename searches.
+
+Packaging verifies the signature, the ELF architecture and core entry point, and the hashes of the core library, resources and licenses in the signed HAP. `ohos.json` records the signed HAP hash and Musica's library path, hash, ABI, version and source commit.
 
 Use a dedicated ARM64 device on API 12 or later with Vulkan, audio output, developer debugging enabled and existing trust for the SDK test PKI. If installation rejects the test signature, stop there; do not change device trust. With the SDK’s `hdc` on `PATH`, build the HAP in PowerShell:
 
 ```powershell
 $version = '0.1.0-qa.1'
-$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
 cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
-Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
 ```
 
 After packaging succeeds, connect the test device, select its key from `hdc list targets`, and set `$device` to that key:
 
 ```powershell
-$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-debug-test-signed.hap"
 hdc -t $device install $hap
 ```
 
@@ -134,7 +134,7 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 
 #### Private x86_64 simulator QA
 
-Use the local `x86_64-unknown-linux-ohos` Manager row for a dedicated HarmonyOS x86_64 simulator. It has no standalone core packages and is excluded from hosted CI, releases and the public core catalog. Keep the HAP and its `ohos.json` receipt private. The receipt records the source commit, build features, target, ABI and signed HAP hash.
+Use the local `x86_64-unknown-linux-ohos` Manager row for a dedicated HarmonyOS x86_64 simulator. It uses the same bundled Musica path as ARM64. Keep the HAP and `ohos.json` receipt private: this row is excluded from hosted CI, releases and the public core catalog.
 
 Use DevEco's API 26 OpenHarmony native SDK with x86_64 sysroot libraries and `libc++_shared.so`. Set `OHOS_SDK_NATIVE` and the private signing directory as above, and install `cargo-about`.
 
@@ -144,12 +144,10 @@ From a committed checkout and an x64 Visual Studio developer shell:
 
 ```powershell
 rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
-$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
 cargo xtask package --target x86_64-unknown-linux-ohos --manager --version 0.1.0-qa.1 --out .work/ohos-x64-qa
-Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
 ```
 
-Omit the feature for the statically embedded Musica build. The HAP name includes `ohos-x86_64-local-qa`. Before installation, confirm that a newly created, approved API 26 simulator has separate writable data, reports an x86_64 guest ABI, already trusts the SDK test PKI, and has debugging, a usable Vulkan adapter and audio. Use its exact `hdc` identifier; stop on signature rejection. An image labelled `x86` does not establish the guest ABI, and API 26 toolchain support does not validate an API 17 image. Successful packaging or a visible Manager UI is not evidence of gameplay.
+The HAP name includes `ohos-x86_64-local-qa`. Before installation, confirm that a newly created, approved API 26 simulator has separate writable data, reports an x86_64 guest ABI, already trusts the SDK test PKI, and has debugging, a usable Vulkan adapter and audio. Use its exact `hdc` identifier; stop on signature rejection. An image labelled `x86` does not establish the guest ABI, and API 26 toolchain support does not validate an API 17 image. Successful packaging or a visible Manager UI is not evidence of gameplay.
 
 ## Build, check and test
 
