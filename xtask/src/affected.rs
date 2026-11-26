@@ -111,11 +111,14 @@ fn classify(
             .and_then(|tail| tail.split_once('/'))
             && let Ok(core) = inv.core(id)
         {
-            affected.core(id, bundled_targets(inv, id, core.ios_framework));
+            affected.core(
+                id,
+                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some()),
+            );
         } else if let Some(core) = family_core(inv, path) {
             affected.core(
                 &core.id,
-                bundled_targets(inv, &core.id, core.ios_framework)
+                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some())
                     .chain(core.static_manager_targets.iter().map(String::as_str)),
             );
         } else {
@@ -130,15 +133,15 @@ fn classify(
 
 fn bundled_targets<'a>(
     inv: &'a Inventory,
-    id: &'a str,
     ios_framework: bool,
+    ohos_hap: bool,
 ) -> impl Iterator<Item = &'a str> {
     inv.targets
         .iter()
         .map(|target| target.triple.as_str())
         .filter(move |triple| {
             (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
-                || crate::ohos::is_core_input(id, triple)
+                || (ohos_hap && shinki_emu_build::ohos::Target::from_rust_target(triple).is_some())
         })
 }
 
@@ -185,9 +188,10 @@ fn core_table_changes(
                 .filter_map(toml::Value::as_str);
             let ios_framework =
                 core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
+            let ohos_hap = core.get("ohos_hap").is_some();
             affected.core(
                 id,
-                static_targets.chain(bundled_targets(inv, id, ios_framework)),
+                static_targets.chain(bundled_targets(inv, ios_framework, ohos_hap)),
             );
         }
     }
@@ -352,18 +356,47 @@ mod tests {
     }
 
     #[test]
-    fn musica_sources_invalidate_the_local_harmony_hap() {
-        let (inv, _) = inventory();
-        let target = "aarch64-unknown-linux-ohos";
+    fn ohos_companion_changes_invalidate_the_local_hap() {
+        let (inv, current) = inventory();
+        let target = shinki_emu_build::ohos::Target::Arm64.rust_target();
+        let (core, _) = crate::ohos::companion(&inv, target).unwrap();
         for path in [
-            "Source/Cores/shinki.emu.musica/src/lib.rs",
-            "Source/Families/shinki-emu-musica/src/lib.rs",
+            format!("Source/Cores/{}/src/lib.rs", core.id),
+            format!("Source/Families/{}/src/lib.rs", core.adapter_package()),
         ] {
-            let affected = classify(&inv, &[path], None, "").unwrap();
+            let affected = classify(&inv, &[&path], None, "").unwrap();
             assert!(affected.row("manager", target), "{path}");
         }
-        let cmvs = classify(&inv, &["Source/Cores/shinki.emu.cmvs/src/lib.rs"], None, "").unwrap();
-        assert!(!cmvs.row("manager", target));
+        let other = inv.cores.iter().find(|other| other.id != core.id).unwrap();
+        let path = format!("Source/Cores/{}/src/lib.rs", other.id);
+        assert!(
+            !classify(&inv, &[&path], None, "")
+                .unwrap()
+                .row("manager", target)
+        );
+
+        let mut without_companion: toml::Table = toml::from_str(&current).unwrap();
+        let total_removed = without_companion
+            .get_mut("cores")
+            .unwrap()
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .filter_map(|core| core.as_table_mut().unwrap().remove("ohos_hap"))
+            .count();
+        assert_eq!(total_removed, 1);
+        let without_companion = toml::to_string(&without_companion).unwrap();
+        let mut without_inventory = inv.clone();
+        for core in &mut without_inventory.cores {
+            core.ohos_hap = None;
+        }
+        for (inventory, before, after) in [
+            (&without_inventory, current.as_str(), without_companion.as_str()),
+            (&inv, without_companion.as_str(), current.as_str()),
+        ] {
+            let affected = classify(inventory, &["build/cores.toml"], Some(before), after).unwrap();
+            assert!(affected.row("manager", target));
+        }
     }
 
     #[test]

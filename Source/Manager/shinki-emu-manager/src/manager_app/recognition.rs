@@ -253,18 +253,22 @@ mod android_policy_tests {
 }
 
 fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
+    #[cfg(target_env = "ohos")]
+    {
+        is_static(core.plugin_id)
+            || shinki_emu_manager::platform::ohos::bundled::configured_core()
+                .is_some_and(|(id, _)| id == core.plugin_id)
+    }
     #[cfg(target_os = "android")]
     { is_static(core.plugin_id) || core.android_dynamic.is_some() }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     {
         if core.supported || is_static(core.plugin_id) {
             return true;
         }
         #[cfg(target_os = "ios")]
         { shinki_emu_manager::platform::bundled_core_ids().contains(&core.plugin_id) }
-        #[cfg(target_env = "ohos")]
-        { core.plugin_id == shinki_emu_manager::platform::ohos::bundled::ID }
-        #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
+        #[cfg(not(target_os = "ios"))]
         false
     }
 }
@@ -403,6 +407,8 @@ pub(super) fn validate_pending_package(cores: &Path, stem: &str, directory: &Pat
 
 /// Read package identities only. Bare libraries cannot establish an identity.
 pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, InstalledCore>, String> {
+    // OHOS executable packages come only from the installed app bundle.
+    let directories = if cfg!(target_env = "ohos") { &[] } else { directories };
     let mut found = BTreeMap::new();
     let mut duplicate = BTreeSet::new();
     let mut stems = BTreeSet::new();
@@ -449,17 +455,18 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
     #[cfg(target_env = "ohos")]
     {
         use shinki_emu_manager::platform::ohos::bundled;
-        if let Some(directory) = bundled::manifest_dir(bundled::ID)
+        if let Some((id, basename)) = bundled::configured_core()
+            && let Some(directory) = bundled::manifest_dir()
             && let Ok(package) = core_package::read_package(&directory)
-            && package.manifest.plugin_id == bundled::ID
-            && package.manifest.library == bundled::LIBRARY
-            && package.manifest.files.iter().any(|file| file.path == bundled::LIBRARY)
+            && package.manifest.plugin_id == id
+            && package.manifest.library == basename
+            && package.manifest.files.iter().any(|file| file.path == basename)
             && package.manifest.identity.is_none()
             && package.manifest.version == shinki_emu_manager::version()
             && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT"))
-            && let Some(library) = bundled::library(bundled::ID)
+            && let Some(library) = bundled::library(id)
         {
-            found.insert(bundled::ID.to_owned(), InstalledCore {
+            found.insert(id.to_owned(), InstalledCore {
                 library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
             });
         }
@@ -489,9 +496,9 @@ impl ShinkiEmuManagerController {
                 // still mandatory before open; no format/runtime claim is invented.
                 let choices = static_core_catalog::entries().iter()
                     .filter(|entry| {
-                        #[cfg(target_os = "ios")]
+                        #[cfg(any(target_os = "ios", target_env = "ohos"))]
                         let supported = is_supported(entry);
-                        #[cfg(not(target_os = "ios"))]
+                        #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
                         let supported = entry.supported || is_static(entry.plugin_id);
                         supported && entry.family_id == family
                     })

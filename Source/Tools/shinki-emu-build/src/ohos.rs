@@ -1,6 +1,37 @@
 //! Architecture mapping shared by the OHOS build scripts and HAP packager.
 use std::path::{Path, PathBuf};
 
+pub const MANAGER_LIBRARY: &str = "libshinki_emu_manager.so";
+
+/// The single companion DSO in a Manager HAP, on each supported OHOS ABI.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HapCore {
+    pub library: String,
+}
+
+impl HapCore {
+    pub fn validate(&self, id: &str) -> anyhow::Result<()> {
+        let valid_id = !matches!(id, "" | "." | ".." | "manager")
+            && id.len() <= 128
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+        let valid_library = self.library != MANAGER_LIBRARY
+            && self.library
+                .strip_prefix("libshinki_emu_")
+                .and_then(|name| name.strip_suffix(".so"))
+                .is_some_and(|name| {
+                    !name.is_empty()
+                        && name
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+                });
+        anyhow::ensure!(valid_id && valid_library, "invalid OHOS HAP recipe for {id}");
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
     Arm64,

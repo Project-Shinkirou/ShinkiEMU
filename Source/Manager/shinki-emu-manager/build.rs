@@ -232,6 +232,8 @@ fn write_embedded_core_identities() {
     let os = env::var("CARGO_CFG_TARGET_OS").expect("target OS");
     let ios_frameworks = os == "ios";
     let mut frameworks = Vec::new();
+    let ohos_hap = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos");
+    let mut companion = None;
     let legacy_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
     let legacy_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
     for (enabled, feature, core) in [
@@ -253,6 +255,15 @@ fn write_embedded_core_identities() {
     let mut registry = (legacy_cmvs || legacy_adv32).then(|| String::from("&[\n"));
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
+        if ohos_hap && let Some(recipe) = core.get("ohos_hap") {
+            let recipe: shinki_emu_build::ohos::HapCore =
+                recipe.clone().try_into().expect("OHOS HAP companion recipe");
+            recipe.validate(id).expect("valid OHOS HAP companion");
+            assert!(
+                companion.replace((id, recipe.library)).is_none(),
+                "only one companion core may be bundled in the OHOS HAP"
+            );
+        }
         let embedded = core
             .get("static_manager_targets")
             .and_then(toml::Value::as_array)
@@ -306,6 +317,13 @@ fn write_embedded_core_identities() {
             format!("&{frameworks:?}\n"),
         )
         .expect("iOS Framework core IDs");
+    }
+    if ohos_hap {
+        std::fs::write(
+            output.with_file_name("ohos-hap-core.rs"),
+            format!("{companion:?}\n"),
+        )
+        .expect("OHOS HAP companion");
     }
 }
 
