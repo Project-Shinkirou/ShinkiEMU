@@ -68,6 +68,7 @@ jobs:
         with:
           arch: x64
       - uses: ilammy/setup-nasm@v1
+        if: runner.os == 'Windows'
         with:
           version: '3.02'
       - name: Linux desktop prerequisites

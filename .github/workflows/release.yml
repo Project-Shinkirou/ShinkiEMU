@@ -125,6 +125,7 @@ jobs:
         with:
           arch: x64
       - uses: ilammy/setup-nasm@v1
+        if: runner.os != 'Linux'
         with:
           version: '3.02'
       - name: Apple native prerequisites
