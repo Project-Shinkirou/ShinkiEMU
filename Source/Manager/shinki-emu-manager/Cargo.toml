@@ -35,7 +35,6 @@ shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
 shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["gpu-render"] }
 shinki-emu-adv32 = { path = "../../Families/shinki-emu-adv32", optional = true, default-features = false, features = ["video-ffmpeg"] }
 shinki-emu-patch = { path = "../../Tools/shinki-emu-patch" }
-shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
 mlua.workspace = true
 shinki-emu-metadata = { path = "../../Providers/shinki-emu-metadata" }
 shinki-emu-translation = { path = "../../Providers/shinki-emu-translation" }

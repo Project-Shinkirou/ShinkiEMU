@@ -4,6 +4,133 @@ use crate::{
     model::*,
 };
 use shinki_emu_abi as abi;
+use std::{collections::BTreeMap, path::Path};
+
+#[derive(Clone, Debug)]
+pub struct ConfigFileFilter {
+    pub label: String,
+    pub extensions: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfigPathOptions {
+    pub filter: Option<ConfigFileFilter>,
+    pub validates_path: bool,
+}
+
+pub(super) struct ConfigPathRule {
+    pub(super) options: ConfigPathOptions,
+    validate: Option<unsafe extern "C" fn(abi::Bytes, *mut abi::Error) -> abi::Status>,
+}
+
+impl ConfigPathRule {
+    pub(super) fn validate(&self, path: &Path) -> FamilyResult<()> {
+        let validate = self.validate.ok_or_else(|| {
+            FamilyError::invalid("SHINKI_EMU_CORE_CONFIG", "no validator for this path field")
+        })?;
+        let path = path
+            .to_str()
+            .filter(|text| {
+                path.is_absolute()
+                    && text.len() <= abi::MAX_CONFIG_PATH_BYTES
+                    && !text.contains('\0')
+            })
+            .ok_or_else(|| {
+                FamilyError::invalid("SHINKI_EMU_CONFIG_PATH_INVALID", "invalid native path")
+            })?;
+        let mut error = abi::Error::default();
+        let status = unsafe { validate(abi::Bytes::new(path.as_bytes()), &mut error) };
+        super::family_loader::checked("validate_config_path", status, error)
+    }
+}
+
+/// Reads the optional table on the owner. Only owned metadata leaves it.
+pub(super) fn path_rules(
+    api: &abi::CoreApi,
+    schema: &[ConfigField],
+) -> Result<BTreeMap<String, ConfigPathRule>, crate::FamilyLoadError> {
+    use crate::FamilyLoadError::AbiLayout;
+
+    let mut raw = std::ptr::null();
+    let status = unsafe {
+        api.extension.unwrap()(
+            abi::Bytes::new(abi::CONFIG_PATHS_EXTENSION),
+            abi::CONFIG_PATHS_VERSION,
+            &mut raw,
+        )
+    };
+    if status == abi::UNSUPPORTED && raw.is_null() {
+        return Ok(BTreeMap::new());
+    }
+    let table = raw.cast::<abi::ConfigPathsV1>();
+    if status != abi::OK || table.is_null() || !table.is_aligned() {
+        return Err(AbiLayout);
+    }
+    let header = unsafe { *raw.cast::<abi::Header>() };
+    if header.version != abi::CONFIG_PATHS_VERSION || header.size < abi::ConfigPathsV1::HEADER.size
+    {
+        return Err(AbiLayout);
+    }
+    let table = unsafe { &*table };
+    let fields = unsafe { abi::borrowed_array(table.fields, table.count, schema.len()) }
+        .map_err(|_| AbiLayout)?;
+    let mut rules = BTreeMap::new();
+    for field in fields {
+        let id = unsafe { field.field_id.text(128) }.map_err(|_| AbiLayout)?;
+        let declared = schema.iter().find(|item| item.id == id).ok_or(AbiLayout)?;
+        if !declared.flags.file_path && !declared.flags.directory_path {
+            return Err(AbiLayout);
+        }
+        let label = unsafe { field.filter_label.text(abi::MAX_CONFIG_FILE_FILTER_LABEL_BYTES) }
+            .map_err(|_| AbiLayout)?;
+        let filter = if field.extension_count == 0 {
+            if !label.is_empty() {
+                return Err(AbiLayout);
+            }
+            None
+        } else {
+            if !declared.flags.file_path || label.trim().is_empty() || label.chars().any(char::is_control)
+            {
+                return Err(AbiLayout);
+            }
+            let raw = unsafe {
+                abi::borrowed_array(
+                    field.extensions,
+                    field.extension_count,
+                    abi::MAX_CONFIG_FILE_EXTENSIONS,
+                )
+            }
+            .map_err(|_| AbiLayout)?;
+            let mut extensions: Vec<String> = Vec::with_capacity(raw.len());
+            for bytes in raw {
+                let extension = unsafe { bytes.text(abi::MAX_CONFIG_FILE_EXTENSION_BYTES) }
+                    .map_err(|_| AbiLayout)?;
+                if extension.is_empty()
+                    || !extension.bytes().all(|b| b.is_ascii_alphanumeric())
+                    || extensions.iter().any(|entry| entry.eq_ignore_ascii_case(extension))
+                {
+                    return Err(AbiLayout);
+                }
+                extensions.push(extension.to_owned());
+            }
+            Some(ConfigFileFilter {
+                label: label.to_owned(),
+                extensions,
+            })
+        };
+        let rule = ConfigPathRule {
+            options: ConfigPathOptions {
+                filter,
+                validates_path: field.validate.is_some(),
+            },
+            validate: field.validate,
+        };
+        if rules.insert(id.to_owned(), rule).is_some() {
+            return Err(AbiLayout);
+        }
+    }
+    Ok(rules)
+}
 
 pub(super) unsafe fn descriptor(
     raw: abi::Descriptor,

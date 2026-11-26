@@ -315,6 +315,28 @@ impl FamilyProviderRegistry {
             .to_vec())
     }
 
+    pub fn config_path_options(&self, plugin_id: &str) -> BTreeMap<String, crate::ConfigPathOptions> {
+        self.providers
+            .get(plugin_id)
+            .into_iter()
+            .flat_map(LoadedFamilyPlugin::config_path_options)
+            .map(|(id, options)| (id.clone(), options.clone()))
+            .collect()
+    }
+
+    pub fn validate_config_path(
+        &self,
+        plugin_id: &str,
+        field_id: &str,
+        path: &Path,
+    ) -> Result<(), FamilyLoadError> {
+        self.providers
+            .get(plugin_id)
+            .ok_or(FamilyLoadError::Provider)?
+            .validate_config_path(field_id, path)
+            .map_err(FamilyLoadError::ProviderError)
+    }
+
     pub fn descriptors(&self) -> impl Iterator<Item = &FamilyPluginDescriptor> {
         self.descriptors.descriptors()
     }

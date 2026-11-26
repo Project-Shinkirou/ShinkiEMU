@@ -43,6 +43,16 @@
 
 #define ShinkiEmuCONFIG_FLAG_GAME_RELATIVE 8
 
+#define ShinkiEmuCONFIG_PATHS_VERSION 1
+
+#define ShinkiEmuMAX_CONFIG_PATH_BYTES (128 * 1024)
+
+#define ShinkiEmuMAX_CONFIG_FILE_EXTENSIONS 16
+
+#define ShinkiEmuMAX_CONFIG_FILE_EXTENSION_BYTES 16
+
+#define ShinkiEmuMAX_CONFIG_FILE_FILTER_LABEL_BYTES 64
+
 #define ShinkiEmuCAP_CPU_SURFACE 1
 
 #define ShinkiEmuCAP_TEXT_HOOK 4
@@ -1010,6 +1020,39 @@ typedef struct ShinkiEmuSessionMenuApi {
   const struct ShinkiEmuSessionMenuItem *items;
   size_t count;
 } ShinkiEmuSessionMenuApi;
+
+/**
+ * Additional picker behavior for one declared path field. Each field ID
+ * appears at most once. For a file filter, supply a UTF-8 label and
+ * one or more bare ASCII alphanumeric suffixes (without dots).
+ * A zero extension count and empty label mean no filter. Directory
+ * fields can supply a validator but cannot supply a filter.
+ */
+typedef struct ShinkiEmuConfigPathFieldV1 {
+  struct ShinkiEmuBytes field_id;
+  struct ShinkiEmuBytes filter_label;
+  const struct ShinkiEmuBytes *extensions;
+  size_t extension_count;
+  /**
+   * Read-only check before the Host persists a picked path. The input is
+   * an absolute UTF-8 native path, borrowed for this call. Run on the core
+   * owner thread without a session. Implementations must bound reads, have
+   * no side effects and omit private data from errors.
+   */
+  ShinkiEmuStatus (*validate)(struct ShinkiEmuBytes, struct ShinkiEmuError*);
+} ShinkiEmuConfigPathFieldV1;
+
+/**
+ * Optional table returned by `CoreApi.extension` for
+ * `shinki.emu.config_paths` version 1. The table and its metadata are
+ * immutable for the library lifetime. This does not replace open-time
+ * validation, and neither peers nor fields need to opt in.
+ */
+typedef struct ShinkiEmuConfigPathsV1 {
+  struct ShinkiEmuHeader header;
+  const struct ShinkiEmuConfigPathFieldV1 *fields;
+  size_t count;
+} ShinkiEmuConfigPathsV1;
 
 #define ShinkiEmuOK 0
 

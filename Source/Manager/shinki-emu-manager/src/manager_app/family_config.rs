@@ -2,7 +2,37 @@ use super::*;
 use shinki_emu_manager_core::model::{ConfigEntry, ConfigField, ConfigKind, ConfigValue};
 use shinki_emu_manager_ui_slint::tr;
 
-const MUSICA_PLUGIN: &str = "shinki.emu.musica";
+struct ConfigPathTarget {
+    plugin_id: String,
+    game_id: String,
+    field_id: String,
+}
+
+impl ConfigPathTarget {
+    fn matches(&self, game_id: &str, field_id: &str) -> bool {
+        self.game_id == game_id && self.field_id == field_id
+    }
+
+    fn saved_value(&self, library: &Library) -> Result<Option<ConfigValue>, String> {
+        Ok(library
+            .family_overrides(&self.plugin_id, &self.game_id)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|entry| entry.id == self.field_id)
+            .map(|entry| entry.value))
+    }
+}
+
+pub(super) struct PendingConfigPath {
+    target: ConfigPathTarget,
+    previous: Option<ConfigValue>,
+    result: tokio::sync::oneshot::Receiver<Result<String, String>>,
+}
+
+pub(super) struct ConfigPathError {
+    target: ConfigPathTarget,
+    message: String,
+}
 
 impl ShinkiEmuManagerController {
     pub(super) fn ensure_no_session(&self) -> Result<(), String> {
@@ -83,6 +113,7 @@ impl ShinkiEmuManagerController {
         self.ensure_no_session()?;
         let plugin = self.game_plugin(game_id)?;
         self.store_config(&plugin, game_id, field_id, raw)?;
+        self.clear_config_path_feedback(game_id, field_id);
         self.model()
     }
 
@@ -96,6 +127,7 @@ impl ShinkiEmuManagerController {
         self.library
             .remove_family_override(&plugin, game_id, field_id)
             .map_err(|error| error.to_string())?;
+        self.clear_config_path_feedback(game_id, field_id);
         self.model()
     }
 
@@ -153,17 +185,14 @@ impl ShinkiEmuManagerController {
         } else {
             return Err(format!("SHINKI_EMU_FAMILY_CONFIG: {field_id}: not a path"));
         };
-        let mut filters = Vec::new();
-        if !directory && plugin == MUSICA_PLUGIN && field.id == "profile_file" {
-            filters.push(shinki_emu_manager::platform::FileFilter {
-                label: "Musica key.toml",
-                extensions: &["toml"],
-            });
-        }
+        let filter = self
+            .registry
+            .config_path_options(&plugin, field_id)
+            .and_then(|options| options.filter.clone());
         Ok(shinki_emu_manager::ConfigPathPick {
             directory,
             title: field.label.clone(),
-            filters,
+            filter,
         })
     }
 
@@ -181,23 +210,90 @@ impl ShinkiEmuManagerController {
         if !field.flags.directory_path && !field.flags.file_path {
             return Err(format!("SHINKI_EMU_FAMILY_CONFIG: {field_id}: not a path"));
         }
-        self.store_config_path(&plugin, game_id, field, path)?;
+        let game = self.game(game_id)?;
+        let game_directory = self.native_game_directory(&game)?;
+        if self
+            .registry
+            .config_path_options(&plugin, field_id)
+            .is_some_and(|options| options.validates_path)
+        {
+            if self.startup_busy() {
+                return Err("SHINKI_EMU_PREPARE_BUSY".into());
+            }
+            let target = ConfigPathTarget {
+                plugin_id: plugin,
+                game_id: game_id.into(),
+                field_id: field_id.into(),
+            };
+            let previous = target.saved_value(&self.library)?;
+            let result = self.registry.validate_config_path(
+                &target.plugin_id,
+                field_id,
+                path,
+                game_directory,
+                field.flags.game_relative,
+            )?;
+            self.clear_config_path_feedback(game_id, field_id);
+            self.pending_config_path = Some(PendingConfigPath {
+                target,
+                previous,
+                result,
+            });
+        } else {
+            let path = canonical_config_path(path)?;
+            let raw = config_path_value(&path, game_directory, field.flags.game_relative)?;
+            self.store_config(&plugin, game_id, field_id, &raw)?;
+            self.clear_config_path_feedback(game_id, field_id);
+        }
         self.model()
     }
 
-    fn store_config_path(
-        &mut self,
-        plugin: &str,
-        game_id: &str,
-        field: &ConfigField,
-        path: &Path,
-    ) -> Result<(), String> {
-        if plugin == MUSICA_PLUGIN && field.id == "profile_file" {
-            shinki_emu_musica_keys::load_musica_key_file(path).map_err(|e| e.to_string())?;
+    fn clear_config_path_feedback(&mut self, game_id: &str, field_id: &str) {
+        if self
+            .pending_config_path
+            .as_ref()
+            .is_some_and(|pending| pending.target.matches(game_id, field_id))
+        {
+            self.pending_config_path = None;
         }
-        let game = self.game(game_id)?;
-        let raw = config_path_value(path, self.native_game_directory(&game)?, field.flags.game_relative)?;
-        self.store_config(plugin, game_id, &field.id, &raw)
+        if self
+            .config_path_error
+            .as_ref()
+            .is_some_and(|error| error.target.matches(game_id, field_id))
+        {
+            self.config_path_error = None;
+        }
+    }
+
+    pub(super) fn poll_config_path(&mut self) -> bool {
+        use tokio::sync::oneshot::error::TryRecvError;
+
+        let Some(pending) = &mut self.pending_config_path else {
+            return false;
+        };
+        let result = match pending.result.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Empty) => return false,
+            Err(TryRecvError::Closed) => Err("SHINKI_EMU_OWNER_DISCONNECTED".into()),
+        };
+        let PendingConfigPath {
+            target, previous, ..
+        } = self.pending_config_path.take().unwrap();
+        if self.game_plugin(&target.game_id).as_deref() != Ok(target.plugin_id.as_str()) {
+            return true;
+        }
+        let result = (|| {
+            self.ensure_no_session()?;
+            // A preset or other intervening edit takes precedence over this pick.
+            if target.saved_value(&self.library)? == previous {
+                self.store_config(&target.plugin_id, &target.game_id, &target.field_id, &result?)?;
+            }
+            Ok::<_, String>(())
+        })();
+        if let Err(message) = result {
+            self.config_path_error = Some(ConfigPathError { target, message });
+        }
+        true
     }
 
     pub(super) fn game_config_fields(
@@ -211,7 +307,15 @@ impl ShinkiEmuManagerController {
         else {
             return Ok(Vec::new());
         };
-        self.scope_fields(&plugin, game_id)
+        let mut fields = self.scope_fields(&plugin, game_id)?;
+        if let Some(error) = &self.config_path_error
+            && error.target.game_id == game_id
+            && error.target.plugin_id == plugin
+            && let Some(field) = fields.iter_mut().find(|field| field.key == error.target.field_id)
+        {
+            field.error = shinki_emu_manager_ui_slint::describe_error(&error.message).title;
+        }
+        Ok(fields)
     }
 
     pub(super) fn emulator_default_fields(
@@ -313,14 +417,21 @@ fn core_documentation_slug(plugin_id: &str) -> String {
         .collect()
 }
 
-/// Canonical path, made relative to the game directory when the field allows it
-/// and the path lies inside that directory.
-fn config_path_value(path: &Path, game: &Path, game_relative: bool) -> Result<String, String> {
-    let path = fs::canonicalize(path).map_err(|_| "SHINKI_EMU_CONFIG_PATH_INVALID")?;
+pub(super) fn canonical_config_path(path: &Path) -> Result<PathBuf, String> {
+    fs::canonicalize(path).map_err(|_| "SHINKI_EMU_CONFIG_PATH_INVALID".into())
+}
+
+/// Make the already canonical path game-relative when the field allows it and
+/// the path lies inside that directory.
+pub(super) fn config_path_value(
+    path: &Path,
+    game: &Path,
+    game_relative: bool,
+) -> Result<String, String> {
     let game = fs::canonicalize(game).map_err(|_| "SHINKI_EMU_GAME_DIRECTORY_INVALID")?;
     let stored = match path.strip_prefix(&game) {
         Ok(relative) if game_relative && !relative.as_os_str().is_empty() => relative,
-        _ => path.as_path(),
+        _ => path,
     };
     stored
         .to_str()

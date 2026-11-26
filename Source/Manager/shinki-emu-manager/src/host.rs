@@ -457,8 +457,8 @@ pub struct ConfigPathPick {
     /// Pick an existing directory instead of a file.
     pub directory: bool,
     pub title: String,
-    /// File types offered for a file pick; empty accepts any file.
-    pub filters: Vec<crate::platform::FileFilter<'static>>,
+    /// File types offered for a file pick; absent accepts any file.
+    pub filter: Option<shinki_emu_manager_core::ConfigFileFilter>,
 }
 
 pub enum SnackbarOutcome {

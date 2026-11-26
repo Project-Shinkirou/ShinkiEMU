@@ -268,6 +268,8 @@ impl ShinkiEmuManagerController {
             native_action: None,
             native_failures: BTreeMap::new(),
             configuration_errors: BTreeMap::new(),
+            pending_config_path: None,
+            config_path_error: None,
             probe_choices: BTreeMap::new(),
             manual_games: BTreeSet::new(),
             manual_launch: None,

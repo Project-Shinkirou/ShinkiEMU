@@ -11521,7 +11521,6 @@ dependencies = [
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",
- "shinki-emu-musica-keys",
  "shinki-emu-patch",
  "shinki-emu-sdk",
  "shinki-emu-steam",

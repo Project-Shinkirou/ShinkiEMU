@@ -43,6 +43,7 @@ pub(crate) struct MusicaProvider {
 pub(crate) const FAMILY_ID: &str = "musica";
 pub(crate) const PLUGIN_ID: &str = "shinki.emu.musica";
 pub(crate) const SUPPORTED_FORMATS: [&str; 2] = ["musica.paz", "musica.sc"];
+pub(crate) const PROFILE_FILE_FIELD: &str = "profile_file";
 
 /// Family schema field plus the C ABI presentation metadata shown by Manager.
 pub(crate) struct MusicaField {
@@ -125,7 +126,7 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
     };
     let mut fields = vec![
         MusicaField::new(
-            "profile_file",
+            PROFILE_FILE_FIELD,
             "密钥文件（key.toml）",
             "文件",
             ConfigKind::String { max_bytes: 256 },
@@ -375,7 +376,7 @@ impl MusicaProvider {
                 )),
             }
         };
-        let profile = get("profile_file")?;
+        let profile = get(PROFILE_FILE_FIELD)?;
         let entry = get("entry_script")?;
         relative(&entry)?;
         if entry.contains('/')

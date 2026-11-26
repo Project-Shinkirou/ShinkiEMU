@@ -60,6 +60,7 @@ pub use metadata::{
     MetadataSnapshotState,
 };
 pub use play::{PlaySessionEndReason, PlaySessionRecord, PlayStats, RecentGameRecord};
+pub use native_config::{ConfigFileFilter, ConfigPathOptions};
 pub use work_settings::{
     GameSettings, MAX_RENDER_EXTENT, RENDER_PRESET_HEIGHTS, RenderPreference, SurfaceRecord,
 };

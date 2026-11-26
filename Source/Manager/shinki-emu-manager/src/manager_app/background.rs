@@ -70,10 +70,9 @@ fn interactive_offer(scan: Option<&LibraryScan>, requested: &Path) -> bool {
 
 impl ShinkiEmuManagerController {
     pub(super) fn startup_busy(&self) -> bool {
-        self.native_action.is_some() || matches!(
-            self.startup_state,
-            StartupState::Loading | StartupState::Scanning(_)
-        )
+        self.native_action.is_some()
+            || self.pending_config_path.is_some()
+            || matches!(self.startup_state, StartupState::Loading | StartupState::Scanning(_))
     }
 
     pub(super) fn cores_ready(&self) -> bool {

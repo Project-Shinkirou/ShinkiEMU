@@ -1,5 +1,6 @@
 use super::*;
 use std::sync::Arc;
+use shinki_emu_abi as abi;
 
 fn configuration_provider(
     configure: impl FnOnce(&mut crate::test_native::Fixture),
@@ -364,15 +365,98 @@ fn game_relative_paths_are_stored_relative_only_inside_the_game_directory() {
     std::fs::create_dir_all(game.join("data")).unwrap();
     std::fs::write(game.join("data").join("key.toml"), b"").unwrap();
     std::fs::write(root.path().join("outside.toml"), b"").unwrap();
-    let inside = game.join("data").join("key.toml");
+    let inside = canonical_config_path(&game.join("data").join("key.toml")).unwrap();
     assert_eq!(
         config_path_value(&inside, &game, true).unwrap(),
         Path::new("data").join("key.toml").to_str().unwrap()
     );
     let absolute = config_path_value(&inside, &game, false).unwrap();
     assert!(Path::new(&absolute).is_absolute());
-    let outside = config_path_value(&root.path().join("outside.toml"), &game, true).unwrap();
+    let outside = canonical_config_path(&root.path().join("outside.toml")).unwrap();
+    let outside = config_path_value(&outside, &game, true).unwrap();
     assert!(Path::new(&outside).is_absolute());
+}
+
+const PALETTE_EXTENSIONS: &[abi::Bytes] = &[abi::Bytes::from_static(b"pal")];
+static PALETTE_PATHS: [abi::ConfigPathFieldV1; 1] = [abi::ConfigPathFieldV1 {
+    field_id: abi::Bytes::from_static(b"palette_file"),
+    filter_label: abi::Bytes::from_static(b"Palette"),
+    extensions: PALETTE_EXTENSIONS.as_ptr(),
+    extension_count: PALETTE_EXTENSIONS.len(),
+    validate: Some(validate_palette),
+}];
+static PALETTE_OPTIONS: abi::ConfigPathsV1 = abi::ConfigPathsV1 {
+    header: abi::ConfigPathsV1::HEADER,
+    fields: PALETTE_PATHS.as_ptr(),
+    count: PALETTE_PATHS.len(),
+};
+
+unsafe extern "C" fn validate_palette(path: abi::Bytes, error: *mut abi::Error) -> abi::Status {
+    let valid = std::thread::current().name() == Some("shinki-family-owner")
+        && unsafe { path.text(abi::MAX_CONFIG_PATH_BYTES) }
+            .ok()
+            .map(Path::new)
+            .filter(|path| path.is_absolute())
+            .and_then(|path| fs::read_to_string(path).ok())
+            .and_then(|text| text.strip_prefix('#').and_then(|hex| u32::from_str_radix(hex, 16).ok()))
+            .is_some_and(|color| color <= 0xffffff);
+    if valid {
+        abi::OK
+    } else {
+        if let Some(error) = unsafe { error.as_mut() } {
+            error.set("SHINKI_EMU_TEST_PALETTE", "expected a hexadecimal RGB color");
+        }
+        abi::INVALID_ARGUMENT
+    }
+}
+
+#[test]
+fn config_path_picker_waits_for_the_core_before_overwriting_the_saved_path() {
+    let root = tempfile::tempdir().unwrap();
+    let mut controller = configured_controller(root.path(), |fixture| {
+        fixture.path_field = true;
+        fixture.config_paths = Some(&PALETTE_OPTIONS);
+    });
+    let pick = controller.config_path_pick("game", "palette_file").unwrap();
+    assert!(!pick.directory);
+    assert_eq!(pick.filter.unwrap().extensions, ["pal"]);
+
+    let (wake, woken) = crossbeam_channel::unbounded();
+    controller.set_host_wake(Arc::new(move || { let _ = wake.send(()); }));
+    let valid = root.path().join("game").join("valid.pal");
+    fs::write(&valid, "#112233").unwrap();
+    controller.set_config_path("game", "palette_file", &valid).unwrap();
+    assert!(overrides(&controller, "game").is_empty());
+    pump_until(&mut controller, &woken, |c| c.pending_config_path.is_none());
+    let accepted = overrides(&controller, "game");
+    assert_eq!(accepted, [ConfigEntry {
+        id: "palette_file".into(),
+        value: ConfigValue::String("valid.pal".into()),
+    }]);
+
+    let invalid = root.path().join("invalid.pal");
+    fs::write(&invalid, "not a palette").unwrap();
+    controller.set_config_path("game", "palette_file", &invalid).unwrap();
+    pump_until(&mut controller, &woken, |c| c.pending_config_path.is_none());
+    assert_eq!(overrides(&controller, "game"), accepted);
+    let fields = controller.game_config_fields("game").unwrap();
+    assert!(!field(&fields, "palette_file").error.is_empty());
+}
+
+#[test]
+fn config_path_picker_preserves_v3_paths_without_optional_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    let mut controller = configured_controller(root.path(), |fixture| fixture.path_field = true);
+    let pick = controller.config_path_pick("game", "palette_file").unwrap();
+    assert!(!pick.directory && pick.filter.is_none());
+
+    let arbitrary_file = root.path().join("game").join("unfiltered.data");
+    fs::write(&arbitrary_file, "no format to check").unwrap();
+    controller.set_config_path("game", "palette_file", &arbitrary_file).unwrap();
+    assert_eq!(overrides(&controller, "game"), [ConfigEntry {
+        id: "palette_file".into(),
+        value: ConfigValue::String("unfiltered.data".into()),
+    }]);
 }
 
 #[test]

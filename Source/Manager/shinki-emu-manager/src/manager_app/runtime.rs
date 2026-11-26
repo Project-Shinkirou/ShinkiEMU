@@ -145,6 +145,7 @@ impl ShinkiEmuManagerController {
 
     pub(super) fn poll_platform(&mut self) -> Result<Option<ManagerViewModel>, String> {
         let background_changed = self.poll_background();
+        let config_path_changed = self.poll_config_path();
         let patch_changed = self.poll_file_patch()?;
         let owner_changed = self.poll_owner()?;
         let scan_started = self.pump_library_scan();
@@ -154,6 +155,7 @@ impl ShinkiEmuManagerController {
         let self_update_changed = self.poll_self_update();
         let cores_changed = self.poll_core_downloads();
         if background_changed
+            || config_path_changed
             || patch_changed
             || owner_changed
             || metadata_changed

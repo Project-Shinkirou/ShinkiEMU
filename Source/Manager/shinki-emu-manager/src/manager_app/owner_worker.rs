@@ -112,6 +112,31 @@ pub(super) fn run(
                 let _ = results.send(BackgroundEvent::Activated { plugin_id, result });
                 notify(&wake);
             }
+            Ok(Command::ValidateConfigPath {
+                plugin_id,
+                field_id,
+                path,
+                game,
+                game_relative,
+                reply,
+            }) => {
+                if !reply.is_closed() {
+                    let result = if active.is_some() {
+                        Err("SHINKI_EMU_FAMILY_SESSION_ALREADY_ACTIVE".into())
+                    } else {
+                        (|| {
+                            let path = family_config::canonical_config_path(&path)?;
+                            registry
+                                .validate_config_path(&plugin_id, &field_id, &path)
+                                .map_err(|error| error.to_string())?;
+                            family_config::config_path_value(&path, &game, game_relative)
+                        })()
+                    };
+                    if reply.send(result).is_ok() {
+                        notify(&wake);
+                    }
+                }
+            }
             Ok(Command::Open(request)) => {
                 pending.clear();
                 let epoch = request.epoch;

@@ -647,6 +647,10 @@ unsafe extern "C" fn extension(
         unsafe { output.write((&MENU_API as *const abi::SessionMenuApi).cast()) };
         return abi::OK;
     }
+    if name == abi::CONFIG_PATHS_EXTENSION && version == abi::CONFIG_PATHS_VERSION {
+        unsafe { output.write((&raw const config::PATHS).cast()) };
+        return abi::OK;
+    }
     if name != abi::MODULE_OWNER_EXTENSION || version != abi::MODULE_OWNER_VERSION {
         return abi::UNSUPPORTED;
     }

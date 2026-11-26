@@ -20,6 +20,7 @@ pub(super) struct CoreMetadata {
     pub(super) descriptor: FamilyPluginDescriptor,
     pub(super) configuration: Vec<ConfigField>,
     pub(super) menu: Vec<SessionMenuEntry>,
+    pub(super) config_paths: BTreeMap<String, shinki_emu_manager_core::ConfigPathOptions>,
 }
 
 pub(super) type Metadata = BTreeMap<String, CoreMetadata>;
@@ -45,6 +46,14 @@ pub(super) enum Command {
     Registry(RegistryJob),
     Scan(super::probe_worker::ScanRequest),
     Activate(String),
+    ValidateConfigPath {
+        plugin_id: String,
+        field_id: String,
+        path: PathBuf,
+        game: PathBuf,
+        game_relative: bool,
+        reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+    },
     Open(Box<OpenSession>),
     Events {
         epoch: u64,
@@ -290,6 +299,35 @@ impl FamilyOwner {
             .ok_or_else(|| "SHINKI_EMU_FAMILY_PROVIDER_MISSING".into())
     }
 
+    pub(super) fn config_path_options(
+        &self,
+        plugin_id: &str,
+        field_id: &str,
+    ) -> Option<&shinki_emu_manager_core::ConfigPathOptions> {
+        self.metadata.get(plugin_id)?.config_paths.get(field_id)
+    }
+
+    pub(super) fn validate_config_path(
+        &self,
+        plugin_id: &str,
+        field_id: &str,
+        path: &Path,
+        game: &Path,
+        game_relative: bool,
+    ) -> Result<tokio::sync::oneshot::Receiver<Result<String, String>>, String> {
+        self.ensure_idle()?;
+        let (reply, result) = tokio::sync::oneshot::channel();
+        self.send(Command::ValidateConfigPath {
+            plugin_id: plugin_id.into(),
+            field_id: field_id.into(),
+            path: path.into(),
+            game: game.into(),
+            game_relative,
+            reply,
+        })?;
+        Ok(result)
+    }
+
     #[cfg(test)]
     pub(super) fn register_provider(
         &mut self,
@@ -501,6 +539,7 @@ pub(super) fn collect_metadata(
         descriptor: descriptor.clone(),
         configuration: registry.configuration(plugin_id).map_err(|error| error.to_string())?,
         menu: registry.session_menu(plugin_id).to_vec(),
+        config_paths: registry.config_path_options(plugin_id),
     })
 }
 
