@@ -169,7 +169,7 @@ impl PatchCatalogEntry {
             || self.version.len() > 64
             || semver::Version::parse(&self.version).is_err()
             || !is_bounded_text(&self.license, 1, 256)
-            || !unique(&self.emulators, is_known_core_id)
+            || !unique(&self.emulators, is_core_id)
             || !is_safe_metadata_relative_path(&self.recipe.script)
             || !self.recipe.script.ends_with(".luau")
             || self.releases.is_empty()
@@ -252,6 +252,25 @@ mod tests {
             "releases":[{"release_id":"r1","vn_id":"v1","title":{"zh-CN":"盒装版","en":"Boxed edition"},"edition":"boxed","game_version":null,
                 "fingerprints":[{"path":"game.dat","size":8,"sha256":"a".repeat(64)}]}]
         })).unwrap()
+    }
+    #[test]
+    fn parsed_patch_catalog_accepts_new_core_ids_but_rejects_unsafe_or_duplicate_ids() {
+        let mut catalog = PatchCatalog {
+            schema: PATCH_CATALOG_SCHEMA_VERSION.into(),
+            entries: vec![entry()],
+        };
+        catalog.entries[0].emulators.push("Example.core".into());
+        assert_eq!(
+            parse_patch_catalog(&serde_json::to_vec(&catalog).unwrap()).unwrap(),
+            catalog
+        );
+        for id in ["..", "Example.core"] {
+            catalog.entries[0].emulators[0] = id.into();
+            assert!(matches!(
+                parse_patch_catalog(&serde_json::to_vec(&catalog).unwrap()),
+                Err(MetadataError::SchemaMismatch("patch.entry"))
+            ));
+        }
     }
     #[test]
     fn release_identity_and_fingerprints_are_required() {

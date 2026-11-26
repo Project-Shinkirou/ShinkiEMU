@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::MetadataError;
-use crate::fields::{MAX_ENTRIES, is_bounded_text, is_plugin_id, is_sha256_hex};
+use crate::fields::{MAX_ENTRIES, is_bounded_text, is_core_id, is_sha256_hex};
 
 pub const CORE_CATALOG_SCHEMA_VERSION: &str = "shinki.emu.cores.v2";
 pub const LEGACY_CORE_CATALOG_SCHEMA_VERSION: &str = "shinki.emu.cores.v1";
@@ -53,7 +53,7 @@ pub struct CoreCatalogEntry {
 
 impl CoreCatalogEntry {
     pub fn validate(&self) -> Result<(), MetadataError> {
-        if !is_plugin_id(&self.plugin_id) {
+        if !is_core_id(&self.plugin_id) {
             return Err(MetadataError::SchemaMismatch("core.plugin_id"));
         }
         if !is_bounded_text(&self.display_name, 1, 64) {
@@ -304,6 +304,16 @@ mod tests {
                 .latest("reminori", "windows-x86_64", "shinki.emu.native.c.v3")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn parsed_catalog_rejects_unsafe_core_ids() {
+        let mut core = entry("0.2.0");
+        core.plugin_id = "example.".into();
+        assert!(matches!(
+            parse_core_catalog(&serde_json::to_vec(&catalog(vec![core])).unwrap()),
+            Err(MetadataError::SchemaMismatch("core.plugin_id"))
+        ));
     }
 
     #[test]

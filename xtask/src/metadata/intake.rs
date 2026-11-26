@@ -105,6 +105,7 @@ fn compatibility(
     fields: &BTreeMap<String, String>,
     number: u64,
     timestamp: i64,
+    inventory: &Inventory,
 ) -> Result<(String, Vec<u8>)> {
     let entry = CompatibilityEntry {
         vn_id: required(fields, "VNDB vID")?,
@@ -124,6 +125,7 @@ fn compatibility(
         updated_at_unix_ms: timestamp,
     };
     entry.validate()?;
+    inventory.core(&entry.emulator)?;
     Ok((compat_path(&entry), pretty(&entry)?))
 }
 
@@ -163,7 +165,11 @@ fn downloads(fields: &BTreeMap<String, String>) -> Result<Vec<PatchDownload>> {
     Ok(downloads)
 }
 
-fn patch(fields: &BTreeMap<String, String>, number: u64) -> Result<BTreeMap<String, Vec<u8>>> {
+fn patch(
+    fields: &BTreeMap<String, String>,
+    number: u64,
+    inventory: &Inventory,
+) -> Result<BTreeMap<String, Vec<u8>>> {
     let id = required(fields, "Patch id")?;
     ensure!(
         is_safe_metadata_relative_path(&id) && !id.contains('/'),
@@ -227,6 +233,9 @@ fn patch(fields: &BTreeMap<String, String>, number: u64) -> Result<BTreeMap<Stri
         downloads,
     };
     entry.validate().context("invalid patch catalog entry")?;
+    for id in &entry.emulators {
+        inventory.core(id)?;
+    }
     let text = required(fields, "Luau script")?;
     let script = unfence(&text)?;
     ensure!(!script.trim().is_empty(), "missing Luau script text");
@@ -254,13 +263,14 @@ pub(super) fn intake(kind: IntakeKind, event: &Path, out: &Path) -> Result<()> {
     let timestamp = chrono::DateTime::parse_from_rfc3339(updated)?.timestamp_millis();
     ensure!(timestamp >= 0, "negative timestamp");
     let fields = form(body)?;
+    let inventory = publication_inventory()?;
     let (path, files) = match kind {
         IntakeKind::Compatibility => {
-            let (path, bytes) = compatibility(&fields, number, timestamp)?;
+            let (path, bytes) = compatibility(&fields, number, timestamp, &inventory)?;
             (path.clone(), BTreeMap::from([(path, bytes)]))
         }
         IntakeKind::Patch => {
-            let files = patch(&fields, number)?;
+            let files = patch(&fields, number, &inventory)?;
             let path = format!("patches/entries/{}.json", required(&fields, "Patch id")?);
             (path, files)
         }

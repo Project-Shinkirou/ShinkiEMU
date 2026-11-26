@@ -139,6 +139,13 @@ fn release_id_and_fingerprints_are_validated_before_publication() {
 }
 
 #[test]
+fn patch_with_unregistered_core_publishes_nothing() {
+    let mut fields = submission();
+    fields.insert("Cores".into(), "ReMinori, unregistered.example".into());
+    reject(&fields, "unknown core unregistered.example");
+}
+
+#[test]
 fn downloads_require_https_sha256_and_size() {
     for (declaration, expected) in [
         (

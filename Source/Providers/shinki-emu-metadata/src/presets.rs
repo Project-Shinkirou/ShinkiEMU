@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::MetadataError;
 use crate::fields::{
-    MAX_ENTRIES, is_bounded_text, is_known_core_id, is_plugin_id, is_vndb_release_id, is_vndb_vn_id,
+    MAX_ENTRIES, is_bounded_text, is_core_id, is_plugin_id, is_vndb_release_id, is_vndb_vn_id,
 };
 
 pub const PRESET_DATABASE_SCHEMA_VERSION: &str = "shinki.emu.presets.v1";
@@ -45,7 +45,7 @@ impl Preset {
         if !is_vndb_release_id(&self.release_id) {
             return Err(MetadataError::SchemaMismatch("preset.release_id"));
         }
-        if !is_known_core_id(&self.emulator) {
+        if !is_core_id(&self.emulator) {
             return Err(MetadataError::SchemaMismatch("preset.emulator"));
         }
         if !is_bounded_text(&self.summary, 1, MAX_SUMMARY_CHARS) {
@@ -145,11 +145,21 @@ mod tests {
     fn parsed_database_finds_preset_by_release_and_emulator() {
         let database = database(vec![
             preset("r1", "shinki.emu.musica"),
-            preset("r1", "rfvp"),
+            preset("r1", "Example.core"),
         ]);
         let parsed = parse_preset_database(&serde_json::to_vec(&database).unwrap()).unwrap();
-        assert!(parsed.preset("r1", "rfvp").is_some());
-        assert!(parsed.preset("r2", "rfvp").is_none());
+        assert!(parsed.preset("r1", "Example.core").is_some());
+        assert!(parsed.preset("r1", "example.core").is_none());
+        assert!(parsed.preset("r2", "Example.core").is_none());
+    }
+
+    #[test]
+    fn parsed_preset_rejects_unsafe_core_ids() {
+        let database = database(vec![preset("r1", "NUL.core")]);
+        assert!(matches!(
+            parse_preset_database(&serde_json::to_vec(&database).unwrap()),
+            Err(MetadataError::SchemaMismatch("preset.emulator"))
+        ));
     }
 
     #[test]
