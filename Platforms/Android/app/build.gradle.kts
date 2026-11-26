@@ -24,8 +24,6 @@ val generatedRoot = layout.projectDirectory.dir(
         .orElse("../generated").get()
 )
 val androidHostRoot = generatedRoot.dir("android-host")
-val qaReceiptAsset = "android-qa-core-set.json"
-val qaAssets = generatedRoot.dir("debug-assets")
 
 android {
     namespace = "org.shinkirou.shinkiemu"
@@ -103,8 +101,6 @@ android {
         }
     }
 
-    sourceSets.getByName("debug").assets.srcDir(qaAssets)
-
     androidResources {
         // The complete inventoried runtime includes underscore-prefixed modules.
         ignoreAssetsPattern = ""
@@ -134,12 +130,6 @@ val releasePackagingTasks = setOf("packageRelease", "packageReleaseBundle", "sig
 gradle.taskGraph.whenReady {
     val releasePackaging = allTasks.filter { task ->
         task.project == project && task.name in releasePackagingTasks
-    }
-    val qaReceipt = qaAssets.file(qaReceiptAsset).asFile.exists() ||
-        generatedRoot.file("assets/$qaReceiptAsset").asFile.exists() ||
-        listOf("main", "debug", "release").any { file("src/$it/assets/$qaReceiptAsset").exists() }
-    if (qaReceipt && allTasks.any { it.project == project && it.name.contains("Release") }) {
-        throw GradleException("The local Android QA core receipt is available only in the debug variant.")
     }
     if (missingReleaseSigning.isEmpty()) return@whenReady
     if (releasePackaging.isNotEmpty()) {

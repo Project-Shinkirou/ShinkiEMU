@@ -389,16 +389,7 @@ impl ShinkiEmuManagerController {
         let entries = self.metadata_catalog.as_ref().into_iter()
             .flat_map(|catalog| &catalog.cores.entries)
             .filter(|entry| release_matches_target(entry, &platform)
-                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()))
-            .map(core_package::LocalRelease::official);
-        #[cfg(target_os = "android")]
-        let qa = shinki_emu_manager::platform::android::qa_core_receipt();
-        #[cfg(target_os = "android")]
-        let entries = entries.chain(qa.iter().flat_map(|receipt| {
-            receipt.cores.iter()
-                .filter(|core| recognition::allows_installed_release(&core.plugin_id, &core.version, core.identity.as_ref()))
-                .map(|core| core_package::LocalRelease::android_qa(receipt, core))
-        }));
+                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
         let stem = core_package::stage_local_release(source, entries, &pending)?;
         if cfg!(target_os = "android") {
             self.plugin_errors.remove(&stem);

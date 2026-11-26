@@ -608,10 +608,6 @@ fn collect_records(
             bail!("{} was not prepared from product commit {}", path.display(), id.commit);
         }
         verify_asset(&directory, &record, "archive")?;
-        if component == "manager" && t.platform == "android" {
-            let name = asset_name(&record, "archive")?;
-            package::reject_android_qa_apk(&directory.join(name))?;
-        }
         if ios {
             let manifest: crate::apple::ios_frameworks::Manifest = serde_json::from_value(record["ios"].clone())
                 .context("iOS release requires the exact-head Framework manifest")?;
@@ -899,11 +895,7 @@ mod tests {
                     &inv, &target.triple, &id.version, &id.commit, &archive,
                 ))
             } else {
-                if target.platform == "android" {
-                    package::zip_entries(&[], &archive).unwrap();
-                } else {
-                    fs::write(&archive, b"test release asset").unwrap();
-                }
+                fs::write(&archive, b"test release asset").unwrap();
                 None
             };
             fs::write(
@@ -938,7 +930,7 @@ mod tests {
                 .contains("verify LGPL relinking")
         );
         assert!(publish_restriction(&inv, "manager", "aarch64-linux-android").unwrap().is_none());
-        // If either ABI embeds Ren'Py, a staged receipt cannot override its blocker.
+        // If either ABI embeds Ren'Py, a release record cannot override its blocker.
         let renpy = inv.cores.iter().position(|core| core.id == "renpy").unwrap();
         inv.cores[renpy].static_manager_targets.push(ANDROID_SECONDARY.into());
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {

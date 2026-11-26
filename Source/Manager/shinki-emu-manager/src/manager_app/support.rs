@@ -82,7 +82,12 @@ fn apply_core_packages_once<'a>(
 }
 
 #[cfg(any(target_os = "android", test))]
-use crate::android_qa_receipt::android_shared_object_header;
+fn android_shared_object_header(header: &[u8; 64], machine: u16) -> bool {
+    header[..7] == *b"\x7fELF\x02\x01\x01"
+        && u16::from_le_bytes([header[16], header[17]]) == 3 // ET_DYN
+        && u16::from_le_bytes([header[18], header[19]]) == machine
+        && u32::from_le_bytes(header[20..24].try_into().unwrap()) == 1
+}
 
 /// Filter foreign or truncated installed files before calling libdl. Android's
 /// package builder verifies the full ELF, SONAME and dependency closure.
