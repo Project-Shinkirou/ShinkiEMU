@@ -61,6 +61,8 @@ descriptor は中国語ラベル付きで `frontend`（JSON 文字列、既定�
 
 `action.kind` には、子画面へ進む `open`、同じ階層で `screen` を切り替える `previous_page` / `next_page`、`back`、`images` の CG を表示する `view`、元の SC を実行する `script` があります。`thumbnail` はボタンの左上から描画されます。音楽には `resource` と任意の `select_only` を持つ `track`、`play_selected`、`stop`、`previous_track`、`next_track` を使います。`initial_selection` は 0 始まりの曲ボタン番号で、`selection` と `playing` の画像は各曲の矩形を基準に配置されます。方向キーは図形の位置に従い、`wrap_focus` を指定すると行や列を循環します。同じ `track_group` の画面では上下で曲を選び、左右でページを切り替えます。PageUp/PageDown は定義されたページ操作を使います。ポインターは同じ有効なボタン内で押して離すと実行されます。Escape は CG を閉じるか、上の画面へ戻ります。
 
+CG の差分は `view.images` に元の順序で並べます。`viewed_only: true` はネイティブの `cgv.dat` に登録済みの差分だけを表示します。`requires_viewed` では、指定の背景 URI のうち一つを閲覧済みならボタンが解放されます。どちらも明示した場合だけ有効です。未解放のボタンは位置を保ち、指定があれば `locked_thumbnail` を描画し、操作は受け付けません。鑑賞画面で CG を表示しても閲覧履歴は更新されません。`script` では SC の URI と別に `label` を指定できます。ラベルが存在しなければエラーになり、先頭からの実行には切り替わりません。回想を終えると元のページに戻り、スクリプトが `NOADDCGV` を設定している間は CG 閲覧履歴を追加しません。
+
 画像を差し替えるパッチでも元のアーカイブ URI を指定し、既存のテクスチャ差し替えを利用します。レイアウト未指定時は従来の一覧を使います。どちらも PAZ/SC の認識やスクリプトからの直接起動には影響しません。
 
 各 JSON フィールドは ABI の 4096 バイト上限に従います。大きな一覧は元の SC 索引を指定してください。動画の自動走査は 4096 スクリプト、展開ソース合計 64 MiB までで、それ以上は `movie_index` が必要です。検出できた場合は元の所属・順序を優先し、同じ URI の preset ラベルと解放条件は保持します。SC の条件分岐から解放式を復元する機能はなく、条件は preset で記述します。

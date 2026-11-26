@@ -352,6 +352,7 @@ impl MusicaVm {
         uri: String,
         hash: Hash256,
         script: ScScript,
+        label: Option<&str>,
     ) -> Result<(), MusicaRuntimeError> {
         if !matches!(
             self.state.system_ui.page,
@@ -362,7 +363,7 @@ impl MusicaVm {
         ) {
             return Err(MusicaRuntimeError::State);
         }
-        self.replace_script(uri, hash, script, None)?;
+        self.replace_script(uri, hash, script, label)?;
         self.state.effect = None;
         self.state.system_ui.page = MusicaSystemPage::None;
         self.state.system_ui.focus_index = 0;

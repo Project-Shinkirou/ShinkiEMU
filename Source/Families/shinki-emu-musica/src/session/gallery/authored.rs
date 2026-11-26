@@ -1,11 +1,11 @@
 use super::*;
-use crate::runtime::gallery::{GalleryAction, GalleryCursor, GalleryDirection};
+use crate::runtime::gallery::{GalleryAccess, GalleryAction, GalleryCursor, GalleryDirection};
 
 impl MusicaSession {
     pub(in crate::session) fn open_memories(&mut self) -> SessionResult<()> {
         self.vm.set_gallery_page(MusicaSystemPage::Memories, 0).map_err(vm_error)?;
         self.gallery_cursor = self.vm.authored_gallery().map(|layout| {
-            GalleryCursor::new(layout, self.vm.state())
+            GalleryCursor::new(layout, &GalleryAccess { state: self.vm.state(), saves: &self.native })
         });
         Ok(())
     }
@@ -14,7 +14,7 @@ impl MusicaSession {
         let cursor = self.gallery_cursor.as_mut().expect("active gallery cursor");
         let layout = self.vm.authored_gallery().expect("active gallery layout");
         let screen = &layout.screens[cursor.screen];
-        let state = self.vm.state();
+        let access = GalleryAccess { state: self.vm.state(), saves: &self.native };
         let action = match event {
             RuntimeEvent::WindowFocused { focused: false } => {
                 cursor.pressed = None;
@@ -28,24 +28,24 @@ impl MusicaSession {
             RuntimeEvent::PointerMove { x, y } => {
                 self.pointer = Some((*x, *y));
                 if cursor.detail.is_none() {
-                    cursor.focus = screen.hit(*x, *y, state);
+                    cursor.focus = screen.hit(*x, *y, &access);
                 }
                 None
             }
             RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed } => {
-                cursor.pressed = if cursor.detail.is_some() {
-                    None
-                } else {
-                    self.pointer.and_then(|(x, y)| screen.hit(x, y, state))
-                };
+                cursor.pressed = cursor.detail.map(|(button, _)| button).or_else(|| {
+                    self.pointer.and_then(|(x, y)| screen.hit(x, y, &access))
+                });
                 None
             }
             RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released } => {
-                if cursor.detail.is_some() {
-                    self.step_gallery_image(true);
+                if let Some((button, _)) = cursor.detail {
+                    if cursor.pressed.take() == Some(button) {
+                        self.step_gallery_image(true);
+                    }
                     return Ok(true);
                 }
-                cursor.focus = self.pointer.and_then(|(x, y)| screen.hit(x, y, state));
+                cursor.focus = self.pointer.and_then(|(x, y)| screen.hit(x, y, &access));
                 cursor.pressed.take().filter(|&i| Some(i) == cursor.focus)
             }
             RuntimeEvent::Key { code, state: KeyState::Pressed, .. } => match code {
@@ -68,10 +68,10 @@ impl MusicaSession {
                 }
                 KeyCode::Enter | KeyCode::Space => cursor.focus,
                 KeyCode::PageUp | KeyCode::PageDown => {
-                    layout.page_button(cursor.screen, state, *code == KeyCode::PageDown)
+                    layout.page_button(cursor.screen, &access, *code == KeyCode::PageDown)
                 }
                 KeyCode::ArrowLeft | KeyCode::ArrowRight if screen.track_group.is_some() => {
-                    layout.page_button(cursor.screen, state, *code == KeyCode::ArrowRight)
+                    layout.page_button(cursor.screen, &access, *code == KeyCode::ArrowRight)
                 }
                 KeyCode::ArrowUp | KeyCode::ArrowDown if screen.track_group.is_some() => {
                     self.step_gallery_track(*code == KeyCode::ArrowDown, false)?;
@@ -84,7 +84,7 @@ impl MusicaSession {
                         KeyCode::ArrowUp => GalleryDirection::Up,
                         _ => GalleryDirection::Down,
                     };
-                    cursor.focus = screen.navigate(cursor.focus, direction, state);
+                    cursor.focus = screen.navigate(cursor.focus, direction, &access);
                     None
                 }
                 _ => None,
@@ -100,22 +100,28 @@ impl MusicaSession {
     fn activate_authored_gallery(&mut self, index: usize) -> SessionResult<()> {
         let cursor = self.gallery_cursor.as_mut().expect("active gallery cursor");
         let layout = self.vm.authored_gallery().expect("active gallery layout");
-        let state = self.vm.state();
+        let access = GalleryAccess { state: self.vm.state(), saves: &self.native };
         let screen = &layout.screens[cursor.screen];
         let button = &screen.buttons[index];
-        if !button.enabled(state) {
+        if !button.enabled(&access) {
             return Ok(());
         }
         match &button.action {
             GalleryAction::Open { screen } => {
-                cursor.open(layout.screen_index(screen).expect("validated screen"), layout, state);
+                cursor.open(layout.screen_index(screen).expect("validated screen"), layout, &access);
             }
             GalleryAction::NextPage { screen } | GalleryAction::PreviousPage { screen } => {
-                cursor.switch(layout.screen_index(screen).expect("validated screen"), layout, state);
+                cursor.switch(layout.screen_index(screen).expect("validated screen"), layout, &access);
             }
             GalleryAction::Back => self.authored_gallery_back()?,
-            GalleryAction::View { .. } => cursor.detail = Some((index, 0)),
-            GalleryAction::Script { resource } => self.start_menu_script(resource.clone())?,
+            GalleryAction::View { images, viewed_only } => {
+                cursor.detail = images.iter().position(|uri| access.image_available(uri, *viewed_only))
+                    .map(|image| (index, image));
+            }
+            GalleryAction::Script { resource, label } => {
+                let label = label.clone();
+                self.start_menu_script(resource.clone(), label.as_deref())?;
+            }
             GalleryAction::Track { resource, select_only } => {
                 cursor.selected_track = Some((cursor.screen, index));
                 if !select_only {
@@ -143,7 +149,7 @@ impl MusicaSession {
         let layout = self.vm.authored_gallery().expect("active gallery layout");
         if let Some((sheet, track)) = cursor.selected_track {
             let track = &layout.screens[sheet].buttons[track];
-            if track.enabled(self.vm.state())
+            if track.enabled(&GalleryAccess { state: self.vm.state(), saves: &self.native })
                 && let GalleryAction::Track { resource, .. } = &track.action
             {
                 cursor.playing_track = cursor.selected_track;
@@ -157,14 +163,14 @@ impl MusicaSession {
     fn step_gallery_track(&mut self, next: bool, play_if_active: bool) -> SessionResult<()> {
         let cursor = self.gallery_cursor.as_mut().expect("active gallery cursor");
         let layout = self.vm.authored_gallery().expect("active gallery layout");
-        let state = self.vm.state();
+        let access = GalleryAccess { state: self.vm.state(), saves: &self.native };
         let selected = cursor.selected_track.map(|(_, track)| track);
-        if let Some((sheet, track)) = layout.step_track(cursor.screen, selected, state, next) {
+        if let Some((sheet, track)) = layout.step_track(cursor.screen, selected, &access, next) {
             if cursor.screen != sheet {
-                cursor.switch(sheet, layout, state);
+                cursor.switch(sheet, layout, &access);
             }
             cursor.selected_track = Some((sheet, track));
-            if play_if_active && state.audio.get(&0).is_some_and(|stream| stream.playing) {
+            if play_if_active && access.state.audio.get(&0).is_some_and(|stream| stream.playing) {
                 self.play_selected_track()?;
             }
         }
@@ -174,13 +180,17 @@ impl MusicaSession {
     fn step_gallery_image(&mut self, forward: bool) {
         let cursor = self.gallery_cursor.as_mut().expect("active gallery cursor");
         let layout = self.vm.authored_gallery().expect("active gallery layout");
+        let access = GalleryAccess { state: self.vm.state(), saves: &self.native };
         if let Some((button, image)) = cursor.detail
-            && let GalleryAction::View { images } = &layout.screens[cursor.screen].buttons[button].action
+            && let GalleryAction::View { images, viewed_only } =
+                &layout.screens[cursor.screen].buttons[button].action
         {
+            let available = |uri: &String| access.image_available(uri, *viewed_only);
             cursor.detail = if forward {
-                (image + 1 < images.len()).then_some((button, image + 1))
+                images[image + 1..].iter().position(available).map(|i| (button, image + 1 + i))
             } else {
-                Some((button, image.saturating_sub(1)))
+                let previous = images[..image].iter().rposition(available).unwrap_or(image);
+                Some((button, previous))
             };
         }
     }

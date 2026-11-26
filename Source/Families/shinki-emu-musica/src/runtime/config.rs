@@ -142,6 +142,7 @@ mod tests {
             "musica:/scr/test.sc".into(),
             Hash256::from_sha256(source),
             crate::parse_sc(source, &crate::ScOpcodeCatalog::observed_musica()).unwrap(),
+            None,
         )
         .unwrap();
         vm.step(1).unwrap();

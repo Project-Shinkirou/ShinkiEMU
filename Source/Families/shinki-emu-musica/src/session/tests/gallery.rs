@@ -242,3 +242,133 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
     assert_eq!(session.vm.state().instruction_count, 0);
     Box::new(session).close().unwrap();
 }
+
+#[test]
+fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() {
+    use serde_json::json;
+
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    title::game(root.path());
+    let encoding = crate::ScriptEncoding::ShiftJis;
+    let mut saved = crate::native_directory::NativeFiles::open(root.path(), encoding).unwrap();
+    for name in ["shown-a.png", "shown-b.png"] {
+        saved.record_cg(name).unwrap();
+    }
+    drop(saved);
+
+    let sheet = [30, 60, 90, 255];
+    let a = [120, 30, 60, 255];
+    let b = [60, 120, 30, 255];
+    let locked = [70, 70, 70, 255];
+    let unlocked = [230, 120, 30, 255];
+    let assets = [
+        ("sheet.png", title::png(1280, 720, sheet)),
+        ("Shown-A.png", title::png(1280, 720, a)),
+        ("Shown-B.png", title::png(1280, 720, b)),
+        ("Unseen.png", title::png(1280, 720, [13, 130, 200, 255])),
+        ("locked.png", title::png(50, 40, locked)),
+        ("unlocked.png", title::png(50, 40, unlocked)),
+    ];
+    fixture::assets(
+        root.path(),
+        "bg",
+        &assets.iter().map(|(name, data)| (*name, data.as_slice())).collect::<Vec<_>>(),
+    );
+    fixture::assets(
+        root.path(),
+        "scr",
+        &[
+            ("test.sc", b".end\r\n"),
+            ("flash.sc", b".message 1   Ordinary entry\r\n.end\r\n.label Again\r\n.set NOADDCGV = 1\r\n.stage * Unseen.png 0 0\r\n.message 2   Label replay\r\n.end\r\n"),
+        ],
+    );
+    std::fs::write(root.path().join("layout.json"), json!({"screens":[
+        {"id":"root", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
+            {"rect":[10,20,60,38], "action":{"kind":"open","screen":"cg-one"}},
+            {"rect":[80,20,60,38], "action":{"kind":"open","screen":"flash"}}
+        ]},
+        {"id":"cg-one", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
+            {"rect":[20,60,50,40], "thumbnail":"musica:/bg/unlocked.png", "locked_thumbnail":"musica:/bg/locked.png",
+             "action":{"kind":"view","images":["musica:/bg/Unseen.png"],"viewed_only":true}},
+            {"rect":[100,60,50,40], "thumbnail":"musica:/bg/unlocked.png", "locked_thumbnail":"musica:/bg/locked.png",
+             "action":{"kind":"view","images":["musica:/bg/Unseen.png","musica:/bg/Shown-A.png","musica:/bg/Unseen.png","musica:/bg/Shown-B.png"],"viewed_only":true}},
+            {"rect":[250,80,50,40], "action":{"kind":"next_page","screen":"cg-two"}}
+        ]},
+        {"id":"cg-two", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
+            {"rect":[50,40,50,45], "action":{"kind":"view","images":["musica:/bg/Shown-B.png"]}},
+            {"rect":[250,80,50,40], "action":{"kind":"previous_page","screen":"cg-one"}}
+        ]},
+        {"id":"flash", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
+            {"rect":[190,80,70,40], "action":{"kind":"next_page","screen":"flash-two"}}
+        ]},
+        {"id":"flash-two", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
+            {"rect":[190,80,70,40], "thumbnail":"musica:/bg/unlocked.png", "locked_thumbnail":"musica:/bg/locked.png",
+             "requires_viewed":["musica:/bg/Unseen.png","musica:/bg/Shown-A.png"],
+             "action":{"kind":"script","resource":"musica:/scr/flash.sc","label":"Again"}},
+            {"rect":[270,80,70,40],
+             "action":{"kind":"script","resource":"musica:/scr/flash.sc","label":"Absent"}}
+        ]}
+    ]}).to_string()).unwrap();
+    let mut request = title::title_request(root.path());
+    let mut frontend = title::menu_data(false);
+    frontend["gallery_layout"] = json!("layout.json");
+    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
+        ConfigValue::String(frontend.to_string());
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(request).unwrap();
+    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| [
+        RuntimeEvent::PointerMove { x, y },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
+    ];
+    let pixel = |session: &crate::session::MusicaSession, x: usize, y: usize| -> [u8; 4] {
+        let index = (y * 1280 + x) * 4;
+        session.scene.pixels()[index..index + 4].try_into().unwrap()
+    };
+
+    session.advance(0, &tap(1050.0, 183.0)).unwrap();
+    session.advance(0, &tap(20.0, 35.0)).unwrap();
+    assert_eq!(pixel(&session, 25, 65), locked);
+    assert_eq!(pixel(&session, 105, 65), unlocked);
+    session.advance(0, &tap(25.0, 65.0)).unwrap();
+    assert!(session.gallery_cursor.as_ref().unwrap().focus.is_none());
+    assert_eq!(pixel(&session, 25, 65), locked);
+    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::Enter)]).unwrap();
+    assert_eq!(pixel(&session, 0, 0), a);
+    session.advance(0, &tap(20.0, 20.0)).unwrap();
+    assert_eq!(pixel(&session, 0, 0), b);
+    session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
+    assert_eq!(pixel(&session, 0, 0), a);
+    session.advance(0, &[key(KeyCode::Escape), key(KeyCode::PageDown)]).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 2);
+    session.advance(0, &tap(55.0, 55.0)).unwrap();
+    assert_eq!(pixel(&session, 0, 0), b);
+    session.advance(0, &tap(55.0, 55.0)).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 2);
+    assert_eq!(pixel(&session, 0, 0), sheet);
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+
+    session.advance(0, &tap(100.0, 35.0)).unwrap();
+    session.advance(0, &[key(KeyCode::PageDown)]).unwrap();
+    assert_eq!(pixel(&session, 195, 85), unlocked);
+    session.advance(0, &tap(195.0, 85.0)).unwrap();
+    for _ in 0..4 {
+        session.advance(16_666_667, &[]).unwrap();
+    }
+    assert_eq!(session.message.as_ref().unwrap().0, "Label replay");
+    session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, Page::Memories);
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 4);
+    assert_eq!(pixel(&session, 195, 85), unlocked);
+    let error = session.advance(0, &tap(275.0, 85.0)).err().expect("missing replay label");
+    assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_RUNTIME_LABEL");
+    assert_eq!(session.vm.state().system_ui.page, Page::Memories);
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 4);
+    Box::new(session).close().unwrap();
+
+    let saved = crate::native_directory::NativeFiles::open(root.path(), encoding).unwrap();
+    assert!(saved.has_viewed_cg("musica:/bg/Shown-A.png"));
+    assert!(!saved.has_viewed_cg("musica:/bg/Unseen.png"));
+}

@@ -61,6 +61,8 @@ descriptor 声明了中文标签与默认值：`frontend` 是 JSON 字符串（�
 
 按钮的 `action.kind` 可选 `open`（按 `screen` ID 进入子菜单）、`previous_page` 和 `next_page`（同级翻页）、`back`、`view`（显示 `images` 中的 CG 差分）、`script`（运行原版 SC）。`thumbnail` 从按钮矩形的左上角绘制。`track` 提供 `resource` 和可选的 `select_only`；`play_selected`、`stop`、`previous_track`、`next_track` 对应播放控制。`initial_selection` 是从零开始的曲目按钮索引；`selection` 和 `playing` 图相对各自的曲目矩形放置。方向键按几何位置移动，`wrap_focus` 允许同列或同行循环。共享 `track_group` 的页面用上下键跨页选曲，左右键翻页；PageUp/PageDown 也使用配置的翻页按钮。鼠标或触摸须在同一可用按钮内按下并松开才会触发。Escape 关闭 CG、返回上级或退出鉴赏。
 
+`view.images` 按原版顺序排列 CG 差分。设置 `viewed_only: true` 后，只浏览已写入原生 `cgv.dat` 的差分；`requires_viewed` 则在指定的背景 URI 中任一已看过时解锁按钮。这两项均需显式配置。锁定的按钮保留位置，可显示 `locked_thumbnail`，但不响应输入；查看 CG 不会把它标为已看过。`script` 动作可单独指定 `label`，标签不存在时报错，不会从脚本开头运行。回想结束后返回原页；脚本设置 `NOADDCGV` 时不新增 CG 记录。
+
 带资源替换的补丁仍使用原始归档 URI，由原有纹理覆盖机制读取替换图。未提供布局时沿用列表鉴赏。两种方式都不改变 PAZ/SC 识别和原版脚本直启。
 
 每个 JSON 字段遵守 ABI 的 4096 字节配置上限，大目录应引用原版 SC 索引。自动影片扫描最多读取 4096 个脚本、合计 64 MiB 展开源文件；更大目录需指定 `movie_index`。发现成功时，原版列表决定成员与顺序，preset 中同 URI 的标签与解锁条件仍保留。此读取器不把 SC 条件控制流反推成解锁公式，相关规则需由 preset 描述。

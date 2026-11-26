@@ -536,7 +536,11 @@ impl MusicaSession {
         } else if dirty && crate::runtime::gallery::is_gallery(&self.vm.state().system_ui.page) {
             if let Some(cursor) = &self.gallery_cursor {
                 let layout = self.vm.authored_gallery().expect("active gallery layout");
-                self.scene.render_authored_gallery(&layout.screens[cursor.screen], cursor, self.vm.state())?;
+                let access = crate::runtime::gallery::GalleryAccess {
+                    state: self.vm.state(),
+                    saves: &self.native,
+                };
+                self.scene.render_authored_gallery(&layout.screens[cursor.screen], cursor, &access)?;
             } else {
                 self.scene.render_gallery(&self.vm)?;
             }

@@ -5,13 +5,13 @@ impl Scene {
         &mut self,
         screen: &crate::runtime::gallery::GalleryScreen,
         cursor: &crate::runtime::gallery::GalleryCursor,
-        state: &crate::MusicaRuntimeState,
+        access: &crate::runtime::gallery::GalleryAccess<'_>,
     ) -> SessionResult<()> {
         use crate::runtime::gallery::GalleryAction;
 
         let mut commands = vec![SceneCommand::Clear { rgba: [0, 0, 0, 255] }];
         if let Some((button, image)) = cursor.detail
-            && let GalleryAction::View { images } = &screen.buttons[button].action
+            && let GalleryAction::View { images, .. } = &screen.buttons[button].action
         {
             self.layer(&mut commands, &images[image], 0, 0, 1.0)?;
             return self.submit(commands);
@@ -20,15 +20,18 @@ impl Scene {
             self.layer(&mut commands, &layer.resource, layer.at[0], layer.at[1], 1.0)?;
         }
         for button in &screen.buttons {
-            if let Some(thumb) = &button.thumbnail
-                && button.enabled(state)
-            {
+            let art = if button.enabled(access) {
+                &button.thumbnail
+            } else {
+                &button.locked_thumbnail
+            };
+            if let Some(thumb) = art {
                 self.layer(&mut commands, thumb, button.rect[0], button.rect[1], 1.0)?;
             }
         }
         if let Some(button) = cursor.focus.and_then(|i| screen.buttons.get(i))
             && let Some(overlay) = button.hover.as_ref().or(screen.hover.as_ref())
-            && button.enabled(state)
+            && button.enabled(access)
         {
             let [x, y, width, height] = button.rect;
             commands.push(SceneCommand::PushClip {
@@ -39,7 +42,7 @@ impl Scene {
         }
         let selected = cursor.selected_track.filter(|(sheet, _)| *sheet == cursor.screen);
         let playing = cursor.playing_track.filter(|(sheet, _)| {
-            *sheet == cursor.screen && state.audio.get(&0).is_some_and(|stream| stream.playing)
+            *sheet == cursor.screen && access.state.audio.get(&0).is_some_and(|stream| stream.playing)
         });
         for (layer, index) in [
             (screen.selection.as_ref(), selected.map(|(_, index)| index)),

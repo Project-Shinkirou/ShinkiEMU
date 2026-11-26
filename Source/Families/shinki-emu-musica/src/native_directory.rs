@@ -659,6 +659,20 @@ impl NativeFiles {
         Ok(())
     }
 
+    pub(crate) fn has_viewed_cg(&self, uri: &str) -> bool {
+        let Some(name) = uri.strip_prefix("musica:/bg/") else {
+            return false;
+        };
+        let lower;
+        let name = if name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+            lower = name.to_ascii_lowercase();
+            &lower
+        } else {
+            name
+        };
+        self.encoding.encode(name).is_some_and(|bytes| self.cg.contains(bytes.as_ref()))
+    }
+
     /// Adds one shown background image (lowercase file name) to `cgv.dat`.
     pub(crate) fn record_cg(&mut self, name: &str) -> SessionResult<()> {
         let dir = &self.dir;

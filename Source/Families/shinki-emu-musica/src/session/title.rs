@@ -1,7 +1,7 @@
 use super::*;
 use crate::MusicaSystemPage;
 impl MusicaSession {
-    pub(super) fn start_menu_script(&mut self, uri: String) -> SessionResult<()> {
+    pub(super) fn start_menu_script(&mut self, uri: String, label: Option<&str>) -> SessionResult<()> {
         let loaded = crate::script_loader::load_script(&self.archive, &uri, self.primary_encoding)?;
         let generation = self.generation.checked_add(1).ok_or_else(|| {
             error(
@@ -12,7 +12,7 @@ impl MusicaSession {
         self.cancel_text()?;
         self.audio.restore(Vec::new())?;
         self.vm
-            .start_menu_script(uri, loaded.hash, loaded.script)
+            .start_menu_script(uri, loaded.hash, loaded.script, label)
             .map_err(vm_error)?;
         self.sync_read_flags()?;
         self.scene
@@ -40,7 +40,7 @@ impl MusicaSession {
             .ok_or_else(|| error("SHINKI_EMU_MUSICA_TITLE_FOCUS", "invalid title focus"))?
             .action;
         match action {
-            TitleAction::NewGame => self.start_menu_script(self.entry_uri.clone()),
+            TitleAction::NewGame => self.start_menu_script(self.entry_uri.clone(), None),
             TitleAction::Load => {
                 self.vm.open_title_load().map_err(vm_error)?;
                 self.load_from_title = true;

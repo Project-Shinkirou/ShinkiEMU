@@ -42,8 +42,11 @@ pub(crate) struct GalleryButton {
     pub action: GalleryAction,
     #[serde(default)]
     pub requires: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub requires_viewed: Vec<String>,
     pub hover: Option<String>,
     pub thumbnail: Option<String>,
+    pub locked_thumbnail: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,8 +56,15 @@ pub(crate) enum GalleryAction {
     PreviousPage { screen: String },
     NextPage { screen: String },
     Back,
-    View { images: Vec<String> },
-    Script { resource: String },
+    View {
+        images: Vec<String>,
+        #[serde(default)]
+        viewed_only: bool,
+    },
+    Script {
+        resource: String,
+        label: Option<String>,
+    },
     Track { resource: String, #[serde(default)] select_only: bool },
     PlaySelected,
     Stop,
@@ -80,6 +90,17 @@ pub(crate) struct GalleryCursor {
     parents: Vec<(usize, Option<usize>)>,
 }
 
+pub(crate) struct GalleryAccess<'a> {
+    pub state: &'a MusicaRuntimeState,
+    pub saves: &'a crate::native_directory::NativeFiles,
+}
+
+impl GalleryAccess<'_> {
+    pub(crate) fn image_available(&self, uri: &str, viewed_only: bool) -> bool {
+        !viewed_only || self.saves.has_viewed_cg(uri)
+    }
+}
+
 impl GalleryLayout {
     pub(in crate::runtime) fn load(
         root: &std::path::Path,
@@ -91,12 +112,10 @@ impl GalleryLayout {
         let bytes = crate::resources::read_resource(root, path, 1024 * 1024).map_err(core_error)?;
         let layout: Self = serde_json::from_slice(&bytes)
             .map_err(|_| layout_error("invalid authored gallery JSON"))?;
+        // Large authored galleries reference thousands of exact PAZ members.
+        // The member lookup avoids a directory scan for every image.
         layout.validate(width, height, |uri| {
-            let stat = archive.stat(uri).map_err(core_error)?;
-            if stat.kind != crate::ArchiveNodeKind::File {
-                return Err(layout_error("gallery resource must be a file"));
-            }
-            Ok(())
+            archive.entry_descriptor(uri).map(|_| ()).map_err(core_error)
         })?;
         Ok(layout)
     }
@@ -108,11 +127,11 @@ impl GalleryLayout {
     pub(crate) fn page_button(
         &self,
         screen: usize,
-        state: &MusicaRuntimeState,
+        access: &GalleryAccess<'_>,
         next: bool,
     ) -> Option<usize> {
         self.screens[screen].buttons.iter().position(|button| {
-            button.enabled(state)
+            button.enabled(access)
                 && if next {
                     matches!(button.action, GalleryAction::NextPage { .. })
                 } else {
@@ -125,14 +144,14 @@ impl GalleryLayout {
         &self,
         screen: usize,
         selected: Option<usize>,
-        state: &MusicaRuntimeState,
+        access: &GalleryAccess<'_>,
         next: bool,
     ) -> Option<(usize, usize)> {
         let group = self.screens[screen].track_group.as_ref();
         let mut tracks = self.screens.iter().enumerate()
             .filter(|(i, sheet)| *i == screen || (group.is_some() && sheet.track_group.as_ref() == group))
             .flat_map(|(i, sheet)| sheet.buttons.iter().enumerate().filter_map(move |(j, button)| {
-                (matches!(button.action, GalleryAction::Track { .. }) && button.enabled(state))
+                (matches!(button.action, GalleryAction::Track { .. }) && button.enabled(access))
                     .then_some((i, j))
             }));
         let edge = if next { tracks.next() } else { tracks.next_back() }?;
@@ -193,7 +212,14 @@ impl GalleryLayout {
                 {
                     return Err(layout_error("gallery button is outside the logical canvas"));
                 }
-                for uri in button.thumbnail.iter().chain(&button.hover) {
+                for uri in button.thumbnail.iter().chain(&button.locked_thumbnail).chain(&button.hover) {
+                    resource(uri)?;
+                }
+                if button.requires_viewed.len() > 256 {
+                    return Err(layout_error("invalid viewed CG requirement count"));
+                }
+                for uri in &button.requires_viewed {
+                    validate_viewed_uri(uri)?;
                     resource(uri)?;
                 }
                 match &button.action {
@@ -204,15 +230,26 @@ impl GalleryLayout {
                             return Err(layout_error("invalid gallery screen destination"));
                         }
                     }
-                    GalleryAction::View { images } => {
+                    GalleryAction::View { images, viewed_only } => {
                         if images.is_empty() || images.len() > 256 {
                             return Err(layout_error("invalid gallery image count"));
                         }
-                        for uri in images { resource(uri)?; }
+                        for uri in images {
+                            if *viewed_only {
+                                validate_viewed_uri(uri)?;
+                            }
+                            resource(uri)?;
+                        }
                     }
-                    GalleryAction::Script { resource: uri } => {
+                    GalleryAction::Script { resource: uri, label } => {
                         if !uri.starts_with("musica:/scr/") {
                             return Err(layout_error("gallery script must use the script archive"));
+                        }
+                        if label.as_ref().is_some_and(|value| {
+                            value.is_empty() || value.len() > 256
+                                || value.chars().any(|ch| ch == '#' || ch.is_control() || ch.is_whitespace())
+                        }) {
+                            return Err(layout_error("invalid gallery script label"));
                         }
                         resource(uri)?;
                     }
@@ -231,18 +268,26 @@ impl GalleryLayout {
 }
 
 impl GalleryButton {
-    pub(crate) fn enabled(&self, state: &MusicaRuntimeState) -> bool {
-        super::super::title::unlocked(&self.requires, state)
+    pub(crate) fn enabled(&self, access: &GalleryAccess<'_>) -> bool {
+        super::super::title::unlocked(&self.requires, access.state)
+            && (self.requires_viewed.is_empty()
+                || self.requires_viewed.iter().any(|uri| access.saves.has_viewed_cg(uri)))
+            && match &self.action {
+                GalleryAction::View { images, viewed_only: true } => {
+                    images.iter().any(|uri| access.saves.has_viewed_cg(uri))
+                }
+                _ => true,
+            }
     }
 }
 
 impl GalleryScreen {
-    pub(crate) fn hit(&self, x: f32, y: f32, state: &MusicaRuntimeState) -> Option<usize> {
+    pub(crate) fn hit(&self, x: f32, y: f32, access: &GalleryAccess<'_>) -> Option<usize> {
         self.buttons.iter().position(|button| {
             let [left, top, width, height] = button.rect;
             (left as f32..(left + width) as f32).contains(&x)
                 && (top as f32..(top + height) as f32).contains(&y)
-                && button.enabled(state)
+                && button.enabled(access)
         })
     }
 
@@ -250,9 +295,9 @@ impl GalleryScreen {
         &self,
         from: Option<usize>,
         direction: GalleryDirection,
-        state: &MusicaRuntimeState,
+        access: &GalleryAccess<'_>,
     ) -> Option<usize> {
-        let buttons = self.buttons.iter().enumerate().filter(|(_, b)| b.enabled(state));
+        let buttons = self.buttons.iter().enumerate().filter(|(_, b)| b.enabled(access));
         let Some((from, origin)) = from.and_then(|i| self.buttons.get(i).map(|b| (i, b.rect))) else {
             return buttons.map(|(i, _)| i).next();
         };
@@ -275,7 +320,7 @@ impl GalleryScreen {
 }
 
 impl GalleryCursor {
-    pub(crate) fn new(layout: &GalleryLayout, state: &MusicaRuntimeState) -> Self {
+    pub(crate) fn new(layout: &GalleryLayout, access: &GalleryAccess<'_>) -> Self {
         let mut cursor = Self {
             screen: 0,
             focus: None,
@@ -285,31 +330,31 @@ impl GalleryCursor {
             pressed: None,
             parents: Vec::new(),
         };
-        cursor.switch(0, layout, state);
+        cursor.switch(0, layout, access);
         cursor
     }
 
-    pub(crate) fn open(&mut self, index: usize, layout: &GalleryLayout, state: &MusicaRuntimeState) {
+    pub(crate) fn open(&mut self, index: usize, layout: &GalleryLayout, access: &GalleryAccess<'_>) {
         // Re-entering an ancestor unwinds to it instead of growing a cyclic stack.
         if let Some(position) = self.parents.iter().position(|(screen, _)| *screen == index) {
             let (_, focus) = self.parents[position];
             self.parents.truncate(position);
-            self.switch(index, layout, state);
+            self.switch(index, layout, access);
             self.focus = focus;
         } else {
             self.parents.push((self.screen, self.focus));
-            self.switch(index, layout, state);
+            self.switch(index, layout, access);
         }
     }
 
-    pub(crate) fn switch(&mut self, index: usize, layout: &GalleryLayout, state: &MusicaRuntimeState) {
+    pub(crate) fn switch(&mut self, index: usize, layout: &GalleryLayout, access: &GalleryAccess<'_>) {
         self.screen = index;
         self.detail = None;
         self.pressed = None;
         let screen = &layout.screens[index];
-        self.focus = screen.initial_focus.filter(|&i| screen.buttons[i].enabled(state));
+        self.focus = screen.initial_focus.filter(|&i| screen.buttons[i].enabled(access));
         self.selected_track = screen.initial_selection
-            .filter(|&i| screen.buttons[i].enabled(state))
+            .filter(|&i| screen.buttons[i].enabled(access))
             .map(|i| (index, i));
     }
 
@@ -327,6 +372,13 @@ impl GalleryCursor {
         }
         false
     }
+}
+
+fn validate_viewed_uri(uri: &str) -> SessionResult<()> {
+    if !uri.starts_with("musica:/bg/") {
+        return Err(layout_error("viewed CG requirements must use the background archive"));
+    }
+    Ok(())
 }
 
 fn layout_error(message: &str) -> shinki_emu_sdk::runtime::SessionError {

@@ -345,6 +345,9 @@ impl MusicaSession {
     /// lowercase file name, as in the real eden/Perseus files and ReMinori's
     /// stage hook.
     fn record_cg_views(&mut self, stage: &crate::MusicaStageCommand) -> SessionResult<()> {
+        if self.vm.state().variables.get("NOADDCGV").is_some_and(|&v| v != 0) {
+            return Ok(());
+        }
         let names = stage
             .foreground
             .uris_in_order()

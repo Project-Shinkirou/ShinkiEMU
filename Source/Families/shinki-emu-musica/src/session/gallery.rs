@@ -32,7 +32,7 @@ impl MusicaSession {
                     })?
                     .resource
                     .clone();
-                self.start_menu_script(target)
+                self.start_menu_script(target, None)
             }
             MusicaSystemPage::GalleryCg => Ok(()),
             _ => Err(error(
