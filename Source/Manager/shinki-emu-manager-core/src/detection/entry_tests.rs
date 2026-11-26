@@ -205,6 +205,24 @@ fn pac_resource(name: &[u8], payload: &[u8]) -> Vec<u8> {
 }
 
 #[test]
+fn siglus_scene_routing_follows_magic_and_stops_before_pac_fallback() {
+    let root = tempfile::tempdir().unwrap();
+    let scene = root.path().join("Scene.pck");
+    fs::write(root.path().join("Select.ini"), "missing\tAppend\n").unwrap();
+
+    let mut script = [0; 13];
+    script[..4].copy_from_slice(b"Sv20");
+    word(&mut script, 8, 12);
+    fs::write(&scene, script).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "softpal");
+
+    fs::write(&scene, pac_resource(b"SCRIPT.SRC", &script)).unwrap();
+    assert!(detect(root.path()).unwrap().is_empty());
+    fs::rename(scene, root.path().join("script.pac")).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].family_id, "softpal");
+}
+
+#[test]
 fn softpal_follows_initial_archive_dat_profile_without_using_later_profiles() {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir_all(root.path().join("data")).unwrap();

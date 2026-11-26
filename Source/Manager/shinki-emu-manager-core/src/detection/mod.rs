@@ -16,6 +16,7 @@ use std::{
 use thiserror::Error;
 
 mod adv32;
+mod builtin;
 mod declared;
 pub use declared::{DeclaredMatch, DeclaredRules};
 #[cfg(test)]
@@ -27,6 +28,7 @@ mod musica;
 mod musica_tests;
 mod renpy;
 mod roots;
+mod siglus;
 mod softpal;
 #[cfg(test)]
 mod tests;
@@ -159,7 +161,6 @@ fn detect_tree_at<T: DetectionTree>(
         entries: 0,
         files: 0,
         read_bytes: 0,
-        siglus: roots::SiglusRoot::Default,
     };
     scan.checkpoint()?;
     if tree.kind(root)? != EntryKind::Directory {
@@ -169,7 +170,7 @@ fn detect_tree_at<T: DetectionTree>(
         )
         .into());
     }
-    scan.directory(root, Path::new(""), true)?;
+    builtin::recognize(&mut scan, root)?;
     let has_files = scan.files != 0;
     if let Some(declared) = declared {
         declared.inspect(&mut scan, root)?;
@@ -186,7 +187,6 @@ struct Scan<'a, T> {
     entries: u32,
     files: u32,
     read_bytes: u64,
-    siglus: roots::SiglusRoot,
 }
 impl<T: DetectionTree> Scan<'_, T> {
     fn entries(
@@ -217,6 +217,14 @@ impl<T: DetectionTree> Scan<'_, T> {
         })
     }
 
+    fn count_file(&mut self) -> DetectionResult<()> {
+        if self.files == MAX_FILES {
+            return Err(DetectionError::ReadLimit);
+        }
+        self.files += 1;
+        Ok(())
+    }
+
     fn open(&self, path: &Path, read_bytes: u64) -> DetectionResult<Option<Source>> {
         self.checkpoint()?;
         Ok(self.tree.open(path)?.map(|(file, length)| Source {
@@ -243,81 +251,6 @@ impl<T: DetectionTree> Scan<'_, T> {
             });
         }
         Ok(())
-    }
-    fn directory(
-        &mut self,
-        root: &Path,
-        relative: &Path,
-        root_directory: bool,
-    ) -> DetectionResult<()> {
-        self.checkpoint()?;
-        let mut children = Vec::new();
-        let mut files = Vec::new();
-        let mut advdata = None;
-        let mut ambiguous_advdata = false;
-        self.entries(&root.join(relative), |name, kind| {
-            if kind == EntryKind::File {
-                files.push(relative.join(name));
-            } else if kind == EntryKind::Directory {
-                if root_directory && name.eq_ignore_ascii_case("AdvData") {
-                    ambiguous_advdata |= advdata.replace(name).is_some();
-                    return Ok(());
-                }
-                let lower = name.to_string_lossy().to_ascii_lowercase();
-                if (root_directory
-                    && matches!(lower.as_str(), "data" | "startdata" | "game" | "usrdir"))
-                    || (relative
-                        .as_os_str()
-                        .to_string_lossy()
-                        .eq_ignore_ascii_case("data")
-                        && lower == "pack")
-                {
-                    children.push(relative.join(name));
-                }
-            }
-            Ok(())
-        })?;
-        files.sort();
-        children.sort();
-        if root_directory {
-            self.siglus = self.select_root(root, &files)?;
-        }
-        for path in &files {
-            self.checkpoint()?;
-            if self.files == MAX_FILES {
-                return Err(DetectionError::ReadLimit);
-            }
-            self.files += 1;
-            self.inspect(root, &path)?;
-        }
-        if root_directory {
-            let configuration = self.configuration(root)?;
-            self.musica(root, &files, configuration.as_ref())?;
-            self.loose_krkr(root, &files)?;
-            self.softpal_manifest(root)?;
-            self.scan_append(root)?;
-            if let Some(data) = advdata.filter(|_| !ambiguous_advdata) {
-                self.adv32(&root.join(data))?;
-            }
-        }
-        for path in children {
-            self.directory(root, &path, false)?;
-        }
-        Ok(())
-    }
-    fn inspect(&mut self, root: &Path, path: &Path) -> DetectionResult<()> {
-        self.checkpoint()?;
-        let full = root.join(path);
-        let Some(mut source) = self.open(&full, 0)? else {
-            return Ok(());
-        };
-        let mut head = [0; 128];
-        let size = source.length.min(head.len() as u64) as usize;
-        self.read_at(&mut source, 0, &mut head[..size])?;
-        match self.formats(path, &mut source, &head[..size]) {
-            Ok(()) | Err(formats::Rejected::NoMatch) => Ok(()),
-            Err(formats::Rejected::Abort(error)) => Err(error),
-        }
     }
     fn read_at(
         &mut self,

@@ -152,10 +152,7 @@ impl DeclaredRules {
         rules: &[Rule],
     ) -> DetectionResult<()> {
         scan.checkpoint()?;
-        if scan.files == MAX_FILES {
-            return Err(DetectionError::ReadLimit);
-        }
-        scan.files += 1;
+        scan.count_file()?;
         let mut source = None;
         // Reuse one open and one buffer for all clauses for the same file.
         let mut buffer = Vec::new();
