@@ -67,7 +67,7 @@ Select.ini の最初の有効な TAB 区切り append も解決し、範囲外�
 | `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
 | `renpy` | RPA2/3、RPC2、または旧 zlib-RPYC の完全な pickle opcode 列が示す renpy.ast オブジェクト | バイトだけを調べ、pickle の import・構築・実行はしない。汎用 zlib/pickle、RPA1、ソースのみは未識別 |
 
-ルールは pin された adapter と上流の解析実装から確認し、作品名は使用しません。Musica の PAZ 変換・索引解析と SC 解析は純粋な `shinki-emu-musica-format` で識別と再生が共有し、VM、ABI、GPU、音声に依存しません。Manager のスキャン・ライブラリ・コア一覧は Detector、生成された `static_core_catalog`、検証済み `core.json` を使い、ネイティブ provider を登録・query しません。静的関数表は選択した入口の索引だけで、Windows の任意機能 `static-cmvs` も同じ扱いです。
+ルールは固定リビジョンの adapter と上流の解析実装に基づき、作品名では照合しません。Musica の PAZ 変換・索引解析と SC 解析は、識別と再生で共有する `shinki-emu-musica-format` にあり、VM、ABI、GPU、音声に依存しません。Manager のスキャン・ライブラリ・コア一覧は Detector、メタデータだけの `static_core_catalog`、検証済みの `core.json` を使い、ネイティブ provider を登録・query しません。リンク済み query のテーブルを生成するのは、非推奨 feature を有効にしたローカル互換ビルドだけです。
 
 高度な設定、診断、起動を明示的に要求した場合だけ、owner が選択した plugin を非同期に有効化します。診断ではゲームを開きません。起動は選択コアだけを新しく probe し、open 前の再検証も維持します。常駐コアの更新には従来どおり再起動が必要で、別実装への自動フォールバックはありません。未知の plugin や単独ライブラリは自動 query せず、診断対象として表示します。
 

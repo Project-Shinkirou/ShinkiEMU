@@ -158,7 +158,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-単独コアの `supported_targets`、Manager の `static_manager_targets`、対象外の理由は [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。Android の単独コアは確認済みの `android_dynamic` ポリシーがある場合にインストールできます。iOS は同梱コアを使用し、OHOS は Musica を組み込みます。どちらもコアをダウンロードしてインストールすることはありません。`publish_blocked` はビルド対応とは別の配布制限です。
+既定の Manager は別個のコアバイナリを読み込みます。Android の単体 ZIP をインストールするには、検証済みの `android_dynamic` ポリシーが必要です。iOS はアプリ内の署名済み `ios_framework` を、OHOS は署名済み HAP 内の独立した Musica ライブラリを読み込みます。iOS と OHOS ではダウンロードしたコアをインストールできません。対応ターゲットと配布制限 `publish_blocked` は [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。
 
 ### コンパイル時に組み込むストア
 
@@ -166,8 +166,8 @@ Manager は `store-steam`、`store-dlsite`、`store-dmm` を既定で有効に�
 
 ## コアの追加と固定リビジョンの更新
 
-1. 単独ライブラリを作る場合は、既存の近い例に合わせて `Source/Cores/<id>/` にエントリークレートを追加します。リポジトリ内の Rust コアは実装をパス依存で参照し、`cdylib` から ABI の query を公開します。Rust の fork はワークスペース依存を継承し、必要なら単独ビルド用のエクスポート feature を有効にします。ネイティブアダプターはビルドスクリプトからライブラリを渡します。Manager に静的に組み込む場合は、実装をターゲット別の静的 feature で直接参照し、`static_cores.rs` に Rust の query を登録します。
-2. ルートの [`Cargo.toml`](../../Cargo.toml) の `[workspace.dependencies]` に fork の `git` URL と完全な `rev` を指定します。`build/cores.toml` には ID、ライセンス・通知、ターゲットの対応状況、静的組み込み、外部の上流情報とリリース連番を記載します。`adapter_licenses` は fork のルート、`licenses` は ShinkiEMU のルートからの相対パスです。
+1. 既存の近い例に合わせて `Source/Cores/<id>/` にエントリークレートを追加します。リポジトリ内の Rust コアは実装をパス依存で参照し、`cdylib` から ABI の query を公開します。Rust の fork はワークスペース依存を継承し、必要なら単独ビルド用のエクスポート feature を有効にします。ネイティブアダプターはビルドスクリプトからライブラリを渡します。非推奨の `static-cmvs` と `static-adv32` はローカル互換ビルド専用で、正式リリースのパッケージには使えません。
+2. ルートの [`Cargo.toml`](../../Cargo.toml) の `[workspace.dependencies]` に fork の `git` URL と完全な `rev` を指定します。`build/cores.toml` には ID、ライセンス・通知、ターゲットの対応状況、外部コアの上流情報とリリース連番を記載します。`adapter_licenses` は fork のルート、`licenses` は ShinkiEMU のルートからの相対パスです。
 3. `--locked` を付けずに `cargo metadata --format-version 1` を一度実行し、[`Cargo.lock`](../../Cargo.lock) を更新します。差分を確認し、意図した追加やリビジョンの変更だけを取り込みます。依存関係を一括更新せず、マニフェストとロックファイルを一緒にコミットします。通常のビルドでは `--locked` を使います。
 
 外部コアの**公開ソースは `Cargo.lock` に記録された公開 fork のコミット**です。パッケージ公開前に、そのコミットを取得できる状態にしてください。リポジトリ内のコアのソースは ShinkiEMU のリリースコミットです。

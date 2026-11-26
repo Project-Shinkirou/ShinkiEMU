@@ -27,9 +27,9 @@ shinki-emu-headless run --core core-package.zip --game-dir C:/Games/MyGame --fra
 shinki-emu-headless compare --actual artifacts/compare/frame-000180.png --baseline artifacts/run/frame-000180.png --max-channel-delta 4 --changed-pixel-ratio 0.001
 ```
 
-独立ランナーの `--core` には、コア ZIP、展開済みディレクトリ、動的ライブラリのいずれかのパスを指定します。`--no-default-features` で Manager UI を除外できます。`shinki-emu-manager headless ...` で組み込みコアを指定する場合は、GUI と共通の `static_cores::STATIC_CORES` に登録された ID を使います。
+独立ランナーとデスクトップ版の `shinki-emu-manager headless` はどちらも、`--core` にコア ZIP、展開済みディレクトリ、動的ライブラリのいずれかのパスを指定します。独立ランナーは `--no-default-features` で Manager UI を省けます。Manager の UI キャプチャには `headless-ui` を使います。
 
-Manager に CMVS を組み込むには `cargo build -p shinki-emu-manager --features static-cmvs` を使います。GUI owner と `shinki-emu-manager headless --core shinki.emu.cmvs ...` の両方で登録されます。この feature を使わないデスクトップ版 Manager は従来の動的コア検出を維持します。
+非推奨の `static-cmvs` と `static-adv32` はローカル互換ビルドで引き続き使用でき、リンクしたコアの ID を指定できます。パッケージを検証する場合は `--core <core.zip>` を指定します。
 
 ゲーム全体を専用の一時ディレクトリにコピーしてから、そのコピーのパスをコアに渡します。ゲーム内のセーブや設定への書き込みはコピーだけを変更します。元のセーブ先は書き込み先として渡しません。大きなゲームには十分な一時領域が必要です。シンボリックリンクや特殊ファイルは拒否します。これは通常の保存先の分離であり、信頼できないネイティブコード用の OS サンドボックスではありません。ゲーム外のパスを明示した設定は一時パスに変更してください。
 

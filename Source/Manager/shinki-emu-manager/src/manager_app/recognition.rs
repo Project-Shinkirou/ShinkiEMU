@@ -1,5 +1,6 @@
 use super::*;
 use shinki_emu_manager_core::{detection::{DeclaredRules, EngineDetection}, static_core_catalog};
+#[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
 use shinki_emu_metadata::CoreRecognition;
 
 /// A static association, never a runtime descriptor or native probe result.
@@ -285,6 +286,7 @@ pub(super) fn runnable_core(
 }
 
 pub(super) enum CoreSource<'a> {
+    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
     Static(shinki_emu_abi::Query),
     Package(&'a InstalledCore),
 }
@@ -298,12 +300,16 @@ pub(super) fn core_source<'a>(
     if shinki_emu_manager::platform::bundled_core_ids().contains(&plugin_id) {
         return package.filter(|core| core.bundled).map(CoreSource::Package);
     }
-    // Android selects a verified install over the embedded copy.
-    #[cfg(target_os = "android")]
+    // Android selects a verified install over a legacy linked copy.
+    #[cfg(all(target_os = "android", any(feature = "static-cmvs", feature = "static-adv32")))]
     if let Some(package) = package {
         return Some(CoreSource::Package(package));
     }
-    static_query(plugin_id).map(CoreSource::Static).or_else(|| package.map(CoreSource::Package))
+    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
+    if let Some(query) = static_query(plugin_id) {
+        return Some(CoreSource::Static(query));
+    }
+    package.map(CoreSource::Package)
 }
 
 pub(super) fn choices(detections: &[EngineDetection]) -> Vec<Candidate> {
@@ -325,6 +331,7 @@ pub(super) struct InstalledCore {
 }
 
 pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> DeclaredRules {
+    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
     static EMBEDDED: std::sync::LazyLock<BTreeMap<&'static str, CoreRecognition>> = std::sync::LazyLock::new(|| {
         static_core_catalog::entries().iter()
             .filter(|entry| is_static(entry.plugin_id) && entry.embedded_recognition_json != "[]")
@@ -337,6 +344,7 @@ pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> Declare
         let id = core.plugin_id;
         if !is_supported(core) { return None; }
         let declaration = match core_source(installed, id)? {
+            #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
             CoreSource::Static(_) => EMBEDDED.get(id)?,
             CoreSource::Package(package) => &package.manifest.recognition,
         };

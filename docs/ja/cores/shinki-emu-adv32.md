@@ -15,7 +15,7 @@ description: CIRCUS ADV32 コアの開発状況とローカルでの実行方法
 
 スクリプトが起動時認証を要求した場合、Windows では実行ファイルに記録されたボリューム名を、マウント中の光学メディアと照合します。レジストリを使うディスクレス認証には対応しません。起動時の確認を省略する場合は `skip_disc_check` を明示的に有効にしてください（既定は無効）。headless では `[{"id":"skip_disc_check","value":{"Bool":true}}]` を `--configuration` で渡します。
 
-公開版 Manager には ADV32 を同梱しません。Windows x64 では単体コアとして Manager に導入する予定です。版ごとの動作、オリジナルとのセーブ互換性、実際の配布パッケージでのプレイテスト、[ソース・ライセンス・DLL 差し替え手順](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md)の確認が済むまで公開しません。デスクトップ、Android、iOS、OpenHarmony のローカル向け `static-adv32` ビルドは、単体コアの動作確認にはなりません。
+Windows x64 では ADV32 を単体コアとして Manager に導入する予定です。版ごとの動作、オリジナルとのセーブ互換性、実際の配布パッケージでのプレイテスト、[ソース・ライセンス・DLL 差し替え手順](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md)の確認が済むまで公開しません。非推奨の `static-adv32` はデスクトップ、Android、iOS、OpenHarmony のローカル互換ビルドで引き続き使えます。単体コアの検証には配布用パッケージを使ってください。
 
 Windows の検証候補は Dal Segno（MES `0x9f9a`、セーブ接頭辞 `DS`）です。`AdvData/SAVEDATA` の `system.dat` は 19,736 バイト、各スロットは 72,440 バイトです。単体コアの検証を終えた版はまだありません。セーブはバックアップを取り、同じ版でコアとオリジナルの双方から読み込めることを確認してください。
 

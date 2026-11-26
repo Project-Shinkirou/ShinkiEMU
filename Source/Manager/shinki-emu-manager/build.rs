@@ -232,10 +232,26 @@ fn write_embedded_core_identities() {
     let os = env::var("CARGO_CFG_TARGET_OS").expect("target OS");
     let ios_frameworks = os == "ios";
     let mut frameworks = Vec::new();
-    let mut registry = String::from("&[\n");
-    let optional_cmvs = !matches!(os.as_str(), "android" | "ios")
-        && env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
-    let optional_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
+    let legacy_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
+    let legacy_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
+    for (enabled, feature, core) in [
+        (legacy_cmvs, "static-cmvs", "shinki.emu.cmvs"),
+        (legacy_adv32, "static-adv32", "shinki.emu.adv32"),
+    ] {
+        if enabled {
+            println!(
+                concat!(
+                    "cargo:warning=Manager feature {} is deprecated and for local compatibility only. ",
+                    "Use a standalone core on a supported desktop target: cargo xtask package ",
+                    "--core {} --target <desktop-triple> --version <version> --out <directory>. ",
+                    "For headless use: shinki-emu-manager headless --core <core.zip> ..."
+                ),
+                feature,
+                core,
+            );
+        }
+    }
+    let mut registry = (legacy_cmvs || legacy_adv32).then(|| String::from("&[\n"));
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
         let embedded = core
@@ -247,22 +263,20 @@ fn write_embedded_core_identities() {
         if framework {
             frameworks.push(id);
         }
-        let linked = (embedded
-            || (optional_cmvs && id == "shinki.emu.cmvs")
-            || adv32_candidate::linked(core, &target, optional_adv32))
-            && !framework;
-        if linked {
+        if !framework && let Some(registry) = &mut registry {
             use std::fmt::Write;
-            let adapter = core_adapters::adapter_id(id).replace('-', "_");
             let query = match id {
-                "shinki.emu.adv32" => "adv32_query",
-                "shinki.emu.cmvs" => "cmvs_query",
-                "shinki.emu.musica" => "musica_query",
-                "krkr2" => "query",
-                _ => "shinki_emu_query",
+                "shinki.emu.cmvs" if legacy_cmvs && !matches!(os.as_str(), "android" | "ios") => {
+                    Some("shinki_emu_cmvs::cmvs_query")
+                }
+                "shinki.emu.adv32" if adv32_candidate::linked(core, &target, legacy_adv32) => {
+                    Some("shinki_emu_adv32::adv32_query")
+                }
+                _ => None,
             };
-            writeln!(registry, "    ({id:?}, shinki_emu_{adapter}::{query}),")
-                .expect("write query registry");
+            if let Some(query) = query {
+                writeln!(registry, "    ({id:?}, {query}),").expect("write query registry");
+            }
         }
         if (embedded || framework)
             && let Some(attribution) = core.get("attribution")
@@ -282,9 +296,11 @@ fn write_embedded_core_identities() {
         serde_json::to_vec(&identities).expect("identity JSON"),
     )
     .expect("embedded identity output");
-    registry.push_str("]\n");
-    std::fs::write(output.with_file_name("static-core-queries.rs"), registry)
-        .expect("static query registry");
+    if let Some(mut registry) = registry {
+        registry.push_str("]\n");
+        std::fs::write(output.with_file_name("static-core-queries.rs"), registry)
+            .expect("static query registry");
+    }
     if ios_frameworks {
         std::fs::write(
             output.with_file_name("ios-framework-core-ids.rs"),

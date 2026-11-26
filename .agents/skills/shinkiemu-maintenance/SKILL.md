@@ -19,16 +19,16 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 
 | 文件 | 管什么 |
 |---|---|
-| `build/cores.toml` | 核心 ID、引擎族、许可、`supported_targets`/`[[cores.blocked]]`、`static_manager_targets`、`publish_blocked` 和外部核心的 `[cores.attribution]` |
+| `build/cores.toml` | 核心 ID、引擎族、许可、`supported_targets`/`[[cores.blocked]]`、`android_dynamic`、`ios_framework`、`publish_blocked` 和外部核心的 `[cores.attribution]` |
 | `build/targets.toml` | 10 个 triple、runner、`manager_supported`；target 级 `blocked` 覆盖所有组件 |
 | `build/dependencies.toml` | 工具版本和下载输入（SHA256 固定） |
 | `build/vcpkg/` | `ffmpeg/`、`subtitle/` manifest；`apple-triplets/`（arm64/x64-osx、arm64-ios、arm64-ios-simulator、x64-ios）；`mobile-triplets/`（`*-android-ffmpeg`、`arm64-ohos`、`ohos-toolchain.cmake`） |
-| `Source/Manager/shinki-emu-manager/Cargo.toml` | 静态核心依赖，按平台 `cfg` 或精确 target triple 声明 |
-| `Source/Manager/shinki-emu-manager/src/static_cores.rs` | Manager GUI 和 Manager 的 `headless` 子命令共用的 `STATIC_CORES` 表；GUI owner 在 `manager_app/owner_worker.rs` 注册入口 |
+| `Source/Manager/shinki-emu-manager/Cargo.toml` | Manager feature；已弃用的 `static-cmvs` 和 `static-adv32` 仅供本地兼容构建 |
+| `Source/Manager/shinki-emu-manager/src/static_cores.rs` | 兼容构建的 `STATIC_CORES` 入口表；默认构建为空 |
 | 根 `Cargo.toml` + `Cargo.lock` | 核心 fork Git URL/提交和整个工作区的依赖；根 `[patch]` 将 fork 使用的 ShinkiEMU crate 指向树内实现 |
 | `Source/Cores/<id>/` | 单独构建的核心入口；按需开启实现的独立导出 feature |
 
-改清单后用 `cargo xtask matrix` 检查目标。每个 triple 在 `supported_targets` 或 `[[cores.blocked]]` 中恰好出现一次；slug 不能重复，外部 plugin slug 不超过 32 字节。`static_manager_targets` 单独声明嵌入目标。
+改清单后用 `cargo xtask matrix` 检查目标。每个正式目标 triple 在 `supported_targets` 或 `[[cores.blocked]]` 中恰好出现一次；slug 不能重复，外部 plugin slug 不超过 32 字节。
 
 文档改动要三语同步：`docs/{zh-cn,en,ja}/` 同名文件一起改。
 
@@ -74,7 +74,7 @@ cargo xtask metadata validate
 
 **贡献者 PR 门禁与维护者职责。** 外部贡献者在 Windows x64 和 Android ARM64 中为改动组件声明支持的目标上跑通 Cargo release 构建和 `package`。PR CI 再跑 host 工具检查和受影响的 Windows/Linux 行。测试、ABI 探针、headless 和示例运行的结果写在 PR 描述里，截图、日志、hash 和运行产物不进仓库。§11 的发布验收、macOS/iOS/OHOS 构建、Android Manager 双 ABI 打包和组织 fork 写入由维护者负责。
 
-平台优先级与顺序：Windows x64 → Linux x64 → macOS（arm64、x64）→ Android（Manager 静态嵌入）→ iOS（Manager 静态嵌入）→ OHOS（local-only，DevEco 本机打包）。
+平台优先级与顺序：Windows x64 → Linux x64 → macOS（arm64、x64）→ Android（独立 ZIP）→ iOS（签名 Framework）→ OHOS（DevEco 本地打包）。
 
 ## 4. 外部核心版本身份
 
@@ -117,19 +117,14 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
   - Autoconf 在 iOS 上把 host/build 判成相同，会去执行 iOS conftest。用 triplet 修正 host 三元组，不要恢复强制 probe cache。
 - 构建失败时先读真实日志里的第一个错误，修完再跑下一轮。一轮只修一个首错，修复提交后再开新 run。
 
-## 7. 静态嵌入（Android / iOS / OHOS）
+## 7. 移动端核心打包（Android / iOS / OHOS）
 
-静态嵌入需要同时更新三处：
+默认和正式 Manager 按独立二进制加载核心：Android 安装符合 `android_dynamic` 策略的核心 ZIP；iOS 从应用包加载各自签名的 Framework；OHOS 从签名 HAP 加载独立的 Musica 动态库。iOS 和 OHOS 不接受用户安装可执行核心。
 
-1. `build/cores.toml`：`static_manager_targets` 列出 triple。
-2. Manager `Cargo.toml`：全平台用 `cfg` 表，部分 ABI 用精确 triple 表（例如 `[target.aarch64-linux-android.dependencies]`），同一 triple 不重复声明。外部核心用 `workspace = true` 继承 pin，树内核心用 `path`。按需启用静态 feature，不开启独立 ABI 导出。
-3. `src/static_cores.rs` 的 `STATIC_CORES`：加 `#[cfg(...)] ("<plugin_id>", <crate>::<rust-path query>)`。独立的 `shinki-emu-headless` 不用这张表，按路径加载核心包。
+已弃用的 `static-cmvs` 和 `static-adv32` 仅保留本地兼容入口。构建会提示改用独立核心包，`cargo xtask release` 拒绝这两个 feature。
 
-打包会写 `embedded-cores.json` 和每个嵌入核心的许可文件。Android 常见坑：
+Android 发布签名仍须符合以下要求：
 
-- 嵌入的 Java 代码与 SDK 父类同名方法冲突。Krkr 的静态 `getDeviceId(): String` 与 `ContextWrapper.getDeviceId(): int` 冲突，改名为 `getAndroidDeviceId`，独立 JNI 查找保留原名。
-- 多核心 APK 只能有一个 `JNI_OnLoad` 和一个 Activity。
-- 资源和字体按 Manager 当前的资源上限契约打包（beta7 线为 32 MiB 有界流式），不要把旧分支的更小上限合回来。
 - Android 正式安装包必须用发布证书签名，证书 SHA256 为 `c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc`。签名材料从 `SHINKI_EMU_ANDROID_KEYSTORE`（或 `_KEYSTORE_BASE64`）、`_KEYSTORE_PASSWORD`、`_KEY_ALIAS`、`_KEY_PASSWORD` 读取，CI 从 secrets 注入。没有这些时产物是 `*-debug-signed.apk`，只能当 CI 测试包。
 - `release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`。不要重建、改名或替换工作流文件，否则编号可能从 1 重来，已安装的用户无法升级。`package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、`versionName`、`versionCode` 和 `minSdk` 28；公开 APK 的 `versionCode` 必须高于上一版。
 
@@ -198,18 +193,18 @@ headless runner 是 crate `Source/Programs/shinki-emu-headless`。完整契约�
 
 ```sh
 shinki-emu-headless run     <参数>      # 动态核心：--core 写 core ZIP、解开的核心目录或库路径
-shinki-emu-manager  headless <参数>     # Manager 内嵌静态核心：--core 写 plugin_id（来自 static_cores::STATIC_CORES）
+shinki-emu-manager  headless <参数>     # 桌面 Manager：--core 同样写核心包或动态库路径
 shinki-emu-headless compare --actual a.png --baseline b.png [--max-channel-delta N --changed-pixel-ratio R]
 shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en|ja --theme dark|light --output <dir>   # Manager: headless-ui
 ```
 
-构建独立运行器：`cargo build -p shinki-emu-headless`。加 `--no-default-features` 可省去 Manager 界面。独立运行器只通过路径加载核心，Manager 自己传入已编入的静态核心表。
+构建独立运行器：`cargo build -p shinki-emu-headless`。加 `--no-default-features` 可省去 Manager 界面。只有显式开启已弃用 feature 的本地 Manager 兼容构建才接受链接核心 ID。
 
 `run` 的主要参数：
 
 | 参数 | 作用 |
 |---|---|
-| `--core` | 独立运行器传核心 ZIP、解压目录或库路径；Manager 运行内置核心时传 `plugin_id` |
+| `--core` | 核心 ZIP、解压目录或动态库路径 |
 | `--game-dir` | 源游戏目录。核心拿到路径之前，整个目录先复制到唯一的临时目录，存档和相对路径配置都写在副本里。symlink 和特殊文件会被拒绝；大游戏会占磁盘和时间 |
 | `--frames`（默认 60）、`--duration-ms` | 时间线长度，取两者和脚本结束点中的最大值 |
 | `--capture-frame`、`--capture-ms` | 截图时间点，逗号分隔；采样号从 1 开始，毫秒向上取整到下一个采样。最后一个采样总会截图 |
@@ -251,7 +246,7 @@ shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en
 
 **常见用法。**
 
-1. **新核心出帧验收**（发布前由维护者完成，见 `shinkiemu-new-core` §11）：`run --core <打包好的核心目录或 ZIP> --game-dir <合法持有的游戏> --frames 600 --capture-frame 120,600 --output <新目录>`。要求 `run.json` 存在、`acquired_frames > 0`，并打开 PNG 确认是游戏画面而不是全黑或纯色。结果写进发布记录，输出不进仓库。静态嵌入的核心再用 `shinki-emu-manager headless --core <plugin_id>` 跑一次。贡献者可以用自造或合成的游戏目录跑同样的命令，结果写进 PR 描述即可。
+1. **新核心出帧验收**（发布前由维护者完成，见 `shinkiemu-new-core` §11）：`run --core <打包好的核心目录或 ZIP> --game-dir <合法持有的游戏> --frames 600 --capture-frame 120,600 --output <新目录>`。要求 `run.json` 存在、`acquired_frames > 0`，并打开 PNG 确认是游戏画面而不是全黑或纯色。结果写进发布记录，输出不进仓库。贡献者可以用自造或合成的游戏目录跑同样的命令，结果写进 PR 描述即可。
 2. **回归对比**：把第一次运行的输出目录作为 `--baseline`。GPU 合成可能有细微差异，给小容差，例如 `--max-channel-delta 4 --changed-pixel-ratio 0.001`。单张图用 `compare`。
 3. **流程回放**：在关键步骤后放 `checkpoint`，用 `await` + `frame.sha256` 断言到达已知画面。
 4. **Manager UI 截图**：`ui` / `headless-ui` 用真实 `ManagerWindow` 经软件渲染出图，不创建窗口，不启动数据库、库扫描、账号、商店或网络服务。默认数据是自写的合成文本，不含封面、游戏可执行文件或商业截图；`--demo-data demo.json` 只提供显示字符串，不会被扫描。语言用 `zh-CN`、`en`、`ja`，主题用 `dark`、`light`，宽高为物理像素（360..8192）。设置页分类为 `library-roots`、`appearance`、`network`、`translation`、`input`、`about`。不同主题用不同输出目录。
@@ -267,7 +262,7 @@ shinki-emu-headless ui --page library|cores|patches|settings --language zh-CN|en
 
 - [ ] `cargo xtask matrix` 通过；文档三语同步。
 - [ ] 外部核心 `release --dry-run` 打印的 tag 符合预期；序号由发布 owner 确认。
-- [ ] `Cargo.lock` 只有预期 pin 和依赖变更，未提交本地 patch；静态嵌入三处一致。
+- [ ] `Cargo.lock` 只有预期 pin 和依赖变更，未提交本地 patch，正式 Manager 未启用已弃用的静态核心 feature。
 - [ ] 每个支持目标在同一 exact head 上 CI 成功，并且只有一个 watcher。
 - [ ] 公共 fork 的锁定提交可获取，许可证随包，签名边界写进发布说明。
 - [ ] 公开 tag/资产没有改写；源码和 fork 历史用真实 merge，catalog PR 走既有 bot 自动 squash。

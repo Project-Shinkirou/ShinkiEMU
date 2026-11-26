@@ -19,8 +19,8 @@ default = ["store-steam", "store-dlsite", "store-dmm"]
 store-steam = ["dep:shinki-emu-steam"]
 store-dlsite = ["dep:shinki-emu-dlsite"]
 store-dmm = ["dep:shinki-emu-dmm"]
+# Deprecated local compatibility builds. Release packaging rejects both.
 static-cmvs = ["dep:shinki-emu-cmvs"]
-# Local ADV32 QA only; not included in release builds.
 static-adv32 = ["dep:shinki-emu-adv32", "shinki-emu-manager-core/static-adv32"]
 # Hides online core install/update and refuses core package downloads.
 # Installed and bundled cores, local official packages, the game store and

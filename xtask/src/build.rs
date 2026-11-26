@@ -533,6 +533,19 @@ mod version_tests {
     }
 
     #[test]
+    fn default_manager_builds_have_no_embedded_core_inputs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root).unwrap();
+        // The build collector must not ask for an adapter build report for any
+        // default Manager, including the local OHOS simulator variant.
+        let metadata = serde_json::json!({"packages": []});
+        for target in inv.targets.iter().filter(|target| target.manager_supported || target.is_local_qa()) {
+            assert!(embedded_core_packages(&inv, &target.triple, &[], &metadata)
+                .unwrap_or_else(|error| panic!("{}: {error}", target.triple)).is_empty());
+        }
+    }
+
+    #[test]
     fn adv32_build_reports_are_selected_only_with_the_candidate_feature() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inv = Inventory::load(root).unwrap();

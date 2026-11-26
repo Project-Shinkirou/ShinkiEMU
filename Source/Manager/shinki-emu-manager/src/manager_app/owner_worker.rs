@@ -313,6 +313,7 @@ fn activate(
     let catalog = recognition::supported_core(plugin_id)?;
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
     let provider = match recognition::core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")? {
+        #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
         recognition::CoreSource::Static(query) => unsafe {
             shinki_emu_manager_core::LoadedFamilyPlugin::from_query(query)
         },

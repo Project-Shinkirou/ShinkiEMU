@@ -15,7 +15,7 @@ The core uses the executable's requested typeface when it is installed. Set `fon
 
 When a script requests startup authorization, the Windows core checks mounted optical media for the volume name in the original executable. Diskless registry authorization is unsupported. To run installed files without the startup check, explicitly set `skip_disc_check` (off by default). For headless runs, place `[{"id":"skip_disc_check","value":{"Bool":true}}]` in the file passed to `--configuration`.
 
-Public Manager builds do not embed ADV32. The proposed Windows x64 release installs the standalone core into Manager. Publication stays blocked pending edition-specific VM and native save validation, an exact-package playtest, and [source, licensing and DLL replacement review](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md). Local Manager builds can opt in with `--features static-adv32` on desktop, Android, iOS and OpenHarmony. Those targets are integration candidates; an embedded build is not an acceptance result for a standalone package.
+The proposed Windows x64 release installs ADV32 as a standalone core. Publication stays blocked pending edition-specific VM and native save validation, an exact-package playtest, and [source, licensing and DLL replacement review](../../licenses/shinki-emu-adv32/WINDOWS-FFMPEG.md). The deprecated `static-adv32` feature remains available for local compatibility builds on desktop, Android, iOS and OpenHarmony. Those builds do not validate the standalone package.
 
 ## Save formats
 

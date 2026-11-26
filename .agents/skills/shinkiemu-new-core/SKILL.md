@@ -227,15 +227,9 @@ reason = "<具体原因>"
 - 识别不了的游戏，用户可以从已安装且允许的官方核心里手动选；启动后出现第一个有效帧，这个选择才会保存。probe 或 open 失败时显式报错，不自动换别的核心。
 - 发布影响：Windows 上已在目录里的核心，规则随新核心包更新，不用重新发布 Manager；新的官方 plugin ID 和 Android 静态核心的规则变化都要重新发布 Manager。`core.json` 拒绝未知字段，旧版 Manager 会拒绝带这个字段的包，这是破坏性变化。本地安装的官方核心 ZIP 必须与已发布官方 release 的大小、SHA256 和 manifest 身份一致。
 
-## 7. Android / iOS / OHOS 静态嵌入
+## 7. Android / iOS / OHOS 动态加载
 
-采用静态嵌入的目标需要让以下三处一致：
-
-1. `build/cores.toml`：用 `static_manager_targets` 列出 triple。
-2. `Source/Manager/shinki-emu-manager/Cargo.toml`：覆盖整个平台时用 `cfg(target_os = "android")`、`cfg(target_os = "ios")` 或 `cfg(target_env = "ohos")`；只覆盖个别 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`。一个核心在同一 triple 上只声明一次。用 `path` 依赖实现、设置 `default-features = false` 并开启实际需要的静态 feature。
-3. `Source/Manager/shinki-emu-manager/src/static_cores.rs` 的 `STATIC_CORES`：例如 `("shinki.emu.musica", shinki_emu_musica::musica_query)`。Manager GUI 和 Manager 的 `headless` 子命令共用这张表；独立的 `shinki-emu-headless` 按路径加载核心包。
-
-打包会把 `embedded-cores.json` 和嵌入核心的许可写进 Manager 包。是否把核心嵌入官方 Manager 由维护者决定：它改变 Manager 的依赖图，正式 Android APK 要两个 ABI 的 release 构建，并随 Manager 发布。
+在 `Source/Cores/<id>` 提供独立入口，默认 Manager 不链接核心实现。Android 独立 ZIP 通过经过验证的 `android_dynamic` 策略接入；iOS 随应用分发单独签名的 Framework；OHOS 从签名 HAP 加载独立动态库。见 `shinkiemu-maintenance` §7。核心内部继续按需使用原生静态库。
 
 ## 8. 测试
 
@@ -300,7 +294,7 @@ cargo test --locked -p shinki-emu-<family>
 - [ ] `cores.toml` 有 `family_id`，覆盖每个 target，`supported_targets` 只列真实构建过的目标；许可与 `build.rs` 一致。
 - [ ] 新 crate 的 `Cargo.lock` 变化只包含它引入的条目，没有用 `cargo update`。
 - [ ] `frame` 的每个返回值（含 Pending）带真实 session/output epoch，测试里过了 `validate_cpu`。
-- [ ] 静态嵌入在 `cores.toml`、Manager `Cargo.toml`、`STATIC_CORES` 三处一致。
+- [ ] 核心以独立二进制打包，未新增 Manager 静态入口。
 - [ ] 行为测试用合成 fixture，`cargo test --locked -p shinki-emu-<family>` 通过。
 - [ ] 三语文档和 README 表已更新；`cargo xtask metadata validate` 通过。
 - [ ] §11 的 PR 门禁已跑通，可选检查的结果写在 PR 描述里。

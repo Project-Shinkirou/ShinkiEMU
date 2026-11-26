@@ -89,13 +89,11 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 
 **C/C++ 上游：复制头文件 + 原生共享库。**
 - 把 `Source/FamilyApi/shinki-emu-abi/include/shinki_emu.h` 复制进 fork（impacto、renpy 放 `vendor/shinki-emu-abi/include/`，kirikiroid2-web 放 `shinki/native/include/`），用 C++ 实现 `CoreApi`。
-- fork 里一个小 Cargo 包（`shinki/Cargo.toml` + `build.rs`）通过 `shinki_emu_build::configure_cmake` 驱动 CMake，写 `artifact_kind = "native-shared"` 和绝对 `native_library`；Android 静态嵌入用 `native-static` 和 `link_android_static_core`。
+- fork 里一个小 Cargo 包（`shinki/Cargo.toml` + `build.rs`）通过 `shinki_emu_build::configure_cmake` 驱动 CMake，写 `artifact_kind = "native-shared"` 和绝对 `native_library`。共享库内部可链接原生静态库。
 - 升 ABI 时重新复制头文件。目前三个 fork 的头文件相同，但都比产品头文件旧，没有 `CAP_ASYNC_TEXT`/`AsyncTextServiceV1`。这些新增是向后兼容的，旧头文件仍能工作，只是看不到新能力。要用异步文本时先同步头文件。
 
-**动态与静态 query。**
-- 桌面按未修饰名 `shinki_emu_query` 加载。移动端 Manager 链接 `rlib` 并调用 Rust 路径；两个核心都导出未修饰 `shinki_emu_query` 会在同一个二进制里冲突。
-- 未修饰导出由独立入口或独立 feature 门控（RFVP 用 `dynamic-plugin-export`），Manager 的静态依赖不启用它。
-- 给 `STATIC_CORES` 提供 Rust 路径入口：函数本身、`pub const QUERY: Query = shinki_emu_query;`，或具名函数（`artemis_query`、`siglus_rs::query`）。
+**动态 query。**
+- Manager 从独立二进制加载未修饰名 `shinki_emu_query`。独立入口或专用 feature（如 RFVP 的 `dynamic-plugin-export`）负责导出；不在 Manager 中新增静态入口。
 - `query` 先把输出置空，版本不是 `ABI_VERSION` 时返回 `UNSUPPORTED`，不创建任何原生状态。
 
 ## 3. 把上游主循环改成会话
@@ -123,12 +121,10 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - fork 的 overlay port 放在 `vcpkg/ports/<port>/`。修 port 时改 patch 或 portfile，不关闭配置校验、不伪造 probe 结果（见 `shinkiemu-maintenance` §6）。
 - 原生运行库、资源和许可通过 Cargo 构建脚本交给打包工具；系统开发包和 SDK 由构建机安装。
 
-## 6. 注册与嵌入
+## 6. 注册与打包
 
-- 需要独立库时，在 `Source/Cores/<id>` 添加 Cargo 入口，用 `workspace = true` 引用 fork adapter。Rust 入口输出 `cdylib`，驱动 CMake 的入口由原生 adapter 产出共享库。只做静态嵌入的核心直接接入 Manager。`build/cores.toml` 里加 `[[cores]]`，每个目标列入 `supported_targets` 或 `[[cores.blocked]]`，许可用 fork 相对的 `adapter_licenses` 或产品相对的 `licenses`。字段规则见 `shinkiemu-new-core` §6。
-- 静态嵌入在 `static_manager_targets`、Manager `Cargo.toml` 的目标依赖和 `static_cores.rs` 的 `STATIC_CORES` 三处对齐。Manager 继承同一个 workspace pin，按需开启静态 feature。只支持某个 ABI 时用精确 triple 表，例如 `[target.aarch64-linux-android.dependencies]`，不要和覆盖它的 `cfg` 表重复声明。
-- 静态核心与 Manager 共享依赖图：kira（根 `[patch.crates-io]` 指向 `Project-Shinkirou/kira`）、mlua/mlua-sys、cpal、wgpu 必须统一。两个版本的 `links =` crate 会让解析失败。改 fork 对齐，不要再加 patch。Artemis 在所有平台都用 Luau，Android 嵌入时共用 Manager 的运行时。
-- Android 嵌入 C++ 核心时：Java 方法名不能和 SDK 父类冲突（Krkr 把 `getDeviceId` 改成 `getAndroidDeviceId`），整个 APK 只有一个 `JNI_OnLoad` 和一个 Activity，资源上限遵守 Manager 当前契约。
+- 在 `Source/Cores/<id>` 添加 Cargo 入口，用 `workspace = true` 引用 fork adapter。Rust 入口输出 `cdylib`，CMake 入口由原生 adapter 产出共享库。`build/cores.toml` 里加 `[[cores]]`，每个正式目标列入 `supported_targets` 或 `[[cores.blocked]]`，许可用 fork 相对的 `adapter_licenses` 或产品相对的 `licenses`。
+- Android 独立核心按经验证的 `android_dynamic` 策略接入。iOS 用独立签名的 `ios_framework`。平台打包要求见 `shinkiemu-maintenance` §7。
 
 ## 7. 许可证与公开源码
 
@@ -138,7 +134,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - 每个外部核心的公开源码是 `Cargo.lock` 记录的公开 fork 提交；发布前确认读者可获取，并保留适用的对应源码、重链接和声明义务。
 - 第三方特殊条款（FMOD、Spine、MS PGothic 等）原文保留并单独说明，不改标成 MIT。
 - 许可或声明义务未满足时设 `publish_blocked = "<原因>"`，这样的核心不会发布。
-- GPL/AGPL 核心默认作为独立核心分发。静态嵌入会把它和 MIT/Apache 的 Manager 链接到同一二进制，公开发布前需由维护者针对该核心单独评审许可与对应源码义务，将结论写进发布说明。ReMinori（AGPL）的 iOS 静态集成遵循同一规则。
+- GPL/AGPL 核心以独立二进制发布。审核分发和对应源码义务；iOS 独立 Framework 随应用分发时同样需要审核。
 - 商业游戏数据、正文、key、私有配置和存档不能提交。测试用合成 fixture。
 
 ## 8. pin 升级
@@ -168,10 +164,9 @@ ABI 探针要在独立原生进程里加载打包后的库，不要用 Python ct
 
 - [ ] adapter 从个人 fork 开发，由维护者更新组织 fork。保留上游历史，设好 `upstream` remote，记录 base commit 与真实 `adapter_branch`。
 - [ ] 根 `Cargo.toml` 和 `Cargo.lock` 固定组织 fork 的完整 SHA，`Source/Cores/<id>` 继承依赖。`[cores.attribution]` 记录 GitHub 上游身份与序号；`release --dry-run` 列出的版本、标签与目标符合预期。
-- [ ] GPL/AGPL 核心如要静态嵌入，维护者已完成单独的许可和对应源码评审。
-- [ ] Manager 静态依赖继承同一个 workspace pin，只开启所需的静态 feature；`STATIC_CORES` 已更新。
+- [ ] GPL/AGPL 核心已通过分发和对应源码审查；Manager 不链接新的静态核心入口。
 - [ ] adapter 保留上游 VM、渲染、音频和存档，只加 ABI 胶水和最小钩子。
-- [ ] 未修饰 `shinki_emu_query` 只在动态构建导出；静态构建有 Rust 路径 query。
+- [ ] 独立核心导出未修饰的 `shinki_emu_query`。
 - [ ] C/C++：复制的 `shinki_emu.h` 覆盖所用的 ABI 能力。
 - [ ] panic/异常被拦住；`open` 可取消；`close` join worker；借出的租约不阻塞推进。
 - [ ] 存档/key/配置路径与上游一致，差异在修改声明里说明。
