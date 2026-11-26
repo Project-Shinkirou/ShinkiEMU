@@ -9,7 +9,7 @@ license.workspace = true
 doctest = false
 
 [features]
-static-adv32 = []
+test-fixtures = []
 
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
@@ -31,7 +31,6 @@ uuid = { workspace = true, features = ["v4"] }
 
 [build-dependencies]
 semver.workspace = true
-serde_json.workspace = true
 toml = "1.1.8"
 
 [dev-dependencies]

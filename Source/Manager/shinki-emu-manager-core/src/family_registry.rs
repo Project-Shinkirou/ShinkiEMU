@@ -171,17 +171,6 @@ impl FamilyProviderRegistry {
         Ok(())
     }
 
-    /// Static factory returns the same process-lifetime C table as a DLL.
-    /// # Safety
-    /// The query must satisfy `LoadedFamilyPlugin::from_query`, including
-    /// process-lifetime code/storage and the native ABI ownership contract.
-    pub unsafe fn register_static(
-        &mut self,
-        query: shinki_emu_abi::Query,
-    ) -> Result<(), FamilyLoadError> {
-        self.register_provider(unsafe { LoadedFamilyPlugin::from_query(query) }?)
-    }
-
     pub fn load_dynamic(&mut self, path: impl AsRef<Path>) -> Result<(), FamilyLoadError> {
         self.register_provider(LoadedFamilyPlugin::load(path)?)
     }

@@ -471,7 +471,7 @@ impl ShinkiEmuManagerController {
             .flatten();
         self.clear_probe_state(game_id)?;
         self.manual_games.insert(game_id.to_owned());
-        let choices: Vec<Candidate> = shinki_emu_manager_core::static_core_catalog::entries()
+        let choices: Vec<Candidate> = shinki_emu_manager_core::core_catalog::entries()
             .iter()
             .filter(|entry| self.plugin_available(entry.plugin_id))
             .map(|entry| Candidate { plugin_id: entry.plugin_id.into(), family_id: entry.family_id.into() })

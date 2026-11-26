@@ -119,7 +119,7 @@ impl CoreManifest {
     }
 
     fn product_commit_record(&self, required: bool) -> Result<Option<&CoreFile>, &'static str> {
-        let first_party = shinki_emu_manager_core::static_core_catalog::lookup(&self.plugin_id)
+        let first_party = shinki_emu_manager_core::core_catalog::lookup(&self.plugin_id)
             .is_some_and(|core| core.first_party);
         match self.files.iter().find(|file| file.path == PRODUCT_SOURCE_COMMIT) {
             Some(file) if first_party && self.identity.is_none() && self.version != "0.0.0-local" => {
@@ -413,29 +413,6 @@ fn stage_open_package(
     Ok((stem, manifest))
 }
 
-#[cfg(not(target_os = "android"))]
-fn write_generated(directory: &Path, name: &str, stem: &str, bytes: &[u8]) -> Result<(), String> {
-    fs::write(directory.join(name), bytes).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
-    let manifest = CoreManifest {
-        schema: CORE_PACKAGE_SCHEMA.into(),
-        plugin_id: stem.into(),
-        library: name.into(),
-        version: "0.0.0-local".into(),
-        identity: None,
-        recognition: Default::default(),
-        abi: INDEPENDENT_FAMILY_ABI_FINGERPRINT.into(),
-        files: vec![CoreFile {
-            path: name.into(),
-            sha256: sha256_hex(bytes),
-        }],
-    };
-    let mut encoded = serde_json::to_vec_pretty(&manifest)
-        .map_err(|_| "SHINKI_EMU_CORE_INSTALL_COPY".to_owned())?;
-    encoded.push(b'\n');
-    fs::write(directory.join(CORE_MANIFEST), encoded)
-        .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))
-}
-
 /// Read package identity and verify the small, optional product provenance payload.
 pub(crate) fn read_package(directory: &Path) -> Result<CorePackage, &'static str> {
     let invalid = "SHINKI_EMU_CORE_PACKAGE_MANIFEST";
@@ -576,67 +553,19 @@ fn failure(stem: &str, error: &io::Error) -> (String, String) {
     )
 }
 
-/// Move pre-v2 top-level `cores/shinki_emu_*.dll` files into `cores/<stem>/`.
-#[cfg(not(target_os = "android"))]
-fn migrate_legacy(cores: &Path, failures: &mut Vec<(String, String)>) {
-    let Ok(entries) = fs::read_dir(cores) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !entry.file_type().is_ok_and(|kind| kind.is_file()) || !is_family_library_path(&path) {
-            continue;
-        }
-        let stem = library_stem(&path);
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let directory = cores.join(&stem);
-        if directory.exists() {
-            failures.push(failure(
-                &stem,
-                &io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "legacy core beside v2 directory",
-                ),
-            ));
-            continue;
-        }
-        let migrated = fs::read(&path)
-            .map_err(|error| error.to_string())
-            .and_then(|bytes| {
-                fs::create_dir(&directory).map_err(|error| error.to_string())?;
-                write_generated(&directory, name, &stem, &bytes)
-            })
-            .and_then(|()| fs::remove_file(&path).map_err(|error| error.to_string()));
-        match migrated {
-            Ok(()) => {
-                tracing::info!(event = "shinki.emu.manager.core_migrated", core = %stem);
-            }
-            Err(error) => {
-                let _ = remove_path(&directory);
-                failures.push(failure(&stem, &io::Error::other(error)));
-            }
-        }
-    }
-}
-
 #[cfg(any(not(target_os = "android"), test))]
 pub(crate) fn apply_pending(cores: &Path) -> Vec<(String, String)> {
     apply_pending_checked(cores, |_, directory| read_package(directory).map(|_| ()))
 }
 
-/// Apply staged changes before the owner loads cores: migrate legacy files,
-/// then removals, then installs. An install renames the old directory to
-/// `pending/<stem>.old`, moves the new one into place and deletes the old
-/// copy; a failed move restores the old directory.
+/// Apply staged removals and then installs before the owner loads cores.
+/// An install renames the old directory to `.pending/<stem>.old`, moves the
+/// new one into place and deletes the old copy. A failed move restores it.
 pub(crate) fn apply_pending_checked(
     cores: &Path,
     validate_install: impl Fn(&str, &Path) -> Result<(), &'static str>,
 ) -> Vec<(String, String)> {
     let mut failures = Vec::new();
-    #[cfg(not(target_os = "android"))]
-    migrate_legacy(cores, &mut failures);
     let pending = cores.join(PENDING);
     let entries = match pending_entries(cores) {
         Ok(entries) => entries,

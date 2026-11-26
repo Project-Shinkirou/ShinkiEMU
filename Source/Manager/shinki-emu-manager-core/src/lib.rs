@@ -6,6 +6,7 @@
 //! the former Family service interfaces.
 
 mod appearance;
+pub mod core_catalog;
 pub mod detection;
 pub mod extensions;
 mod family;
@@ -21,7 +22,6 @@ mod native_config;
 mod native_frame;
 mod native_module_owner;
 mod play;
-pub mod static_core_catalog;
 mod work_settings;
 pub use native_cancel::NativeCancellation;
 #[cfg(test)]

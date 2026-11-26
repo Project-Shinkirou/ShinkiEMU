@@ -3,7 +3,7 @@ mod generation;
 #[path = "../../../Families/shinki-emu-lucifen-formats/tests/support/mod.rs"]
 mod lucifen_fixture;
 
-use shinki_emu_manager_core::static_core_catalog;
+use shinki_emu_manager_core::core_catalog;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -29,26 +29,19 @@ fn consume_generated(
     targets: &str,
     target: &str,
     enabled: bool,
-    with_adv32: bool,
 ) {
     let root = tempfile::tempdir().unwrap();
     let data = root.path().join("empty-installation");
     fs::create_dir(&data).unwrap();
     fs::write(
-        root.path().join("static-core-catalog.rs"),
-        generation::generate(
-            &toml::to_string(cores).unwrap(),
-            targets,
-            target,
-            with_adv32,
-        )
-        .unwrap(),
+        root.path().join("core-catalog.rs"),
+        generation::generate(&toml::to_string(cores).unwrap(), targets, target).unwrap(),
     )
     .unwrap();
     // Compile the actual public catalog module against each target's generated
     // data, using the host compiler. This executes Android data consumption on
     // Windows without pretending to cross-link or run an Android application.
-    let module = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/static_core_catalog.rs");
+    let module = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core_catalog.rs");
     let mut consumer = format!(
         "#[path = {:?}] mod catalog;\nfn main() {{\nassert!(!std::path::Path::new(\"cores\").exists());\nassert!(catalog::lookup(\"unknown.external.plugin\").is_none());\nassert_eq!(catalog::entries().len(), {});\n",
         module.to_str().unwrap(),
@@ -58,29 +51,20 @@ fn consume_generated(
         let id = core["id"].as_str().unwrap();
         let family = core["family_id"].as_str().unwrap();
         let name = core["display_name"].as_str().unwrap();
-        let embedded = enabled
-            && (declared(core, "static_manager_targets", target)
-                || (id == "shinki.emu.adv32" && with_adv32));
-        let standalone = enabled && declared(core, "supported_targets", target);
-        let supported = embedded || standalone;
+        let supported = enabled && declared(core, "supported_targets", target);
         consumer.push_str(&format!(
-            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded), ({family:?}, {name:?}, {supported}, {standalone}, {embedded}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported, entry.standalone, entry.embedded);\n"
+            "let entry = catalog::lookup({id:?}).unwrap();\nassert_eq!((entry.family_id, entry.display_name, entry.supported), ({family:?}, {name:?}, {supported}));\nprintln!(\"{{}}\\t{{}}\\t{{}}\\t{{}}\", entry.plugin_id, entry.family_id, entry.display_name, entry.supported);\n"
         ));
         let first_party = core.get("attribution").is_none();
         consumer.push_str(&format!("assert_eq!(entry.first_party, {first_party});\n"));
         let android = ["aarch64-linux-android", "x86_64-linux-android"].contains(&target);
         let policy = core
             .get("android_dynamic")
-            .filter(|_| android && standalone);
+            .filter(|_| android && supported);
         let requires_context = policy.map(|policy| policy["requires_context"].as_bool().unwrap());
         consumer.push_str(&format!(
             "assert_eq!(entry.android_dynamic.map(|policy| policy.requires_context), {requires_context:?});\n"
         ));
-        if id == "rfvp" && core.get("recognition").is_some() {
-            consumer.push_str(&format!(
-                "assert_eq!(entry.embedded_recognition_json.contains(\"Data/Engine.id\"), {embedded});\n"
-            ));
-        }
     }
     consumer.push_str("}\n");
     let source = root.path().join("consumer.rs");
@@ -116,38 +100,13 @@ fn consume_generated(
 
 #[test]
 fn windows_and_both_android_catalogs_are_consumable_without_installed_plugins() {
-    let (mut cores, targets) = inventory();
-    let rule: toml::Value = toml::from_str(
-        r#"recognition = [{ path = "Data/Engine.id", offset = 4, magic = "53484b31" }]"#,
-    )
-    .unwrap();
-    cores["cores"][0]
-        .as_table_mut()
-        .unwrap()
-        .insert("recognition".into(), rule["recognition"].clone());
+    let (cores, targets) = inventory();
     for target in [
         "x86_64-pc-windows-msvc",
         "aarch64-linux-android",
         "x86_64-linux-android",
     ] {
-        consume_generated(&cores, &targets, target, true, false);
-    }
-}
-
-#[test]
-fn adv32_mobile_candidate_embedding_is_opt_in() {
-    let (cores, targets) = inventory();
-    for target in [
-        "aarch64-linux-android",
-        "x86_64-linux-android",
-        "aarch64-apple-ios",
-        "aarch64-apple-ios-sim",
-        "x86_64-apple-ios",
-        "aarch64-unknown-linux-ohos",
-    ] {
-        for with_adv32 in [false, true] {
-            consume_generated(&cores, &targets, target, true, with_adv32);
-        }
+        consume_generated(&cores, &targets, target, true);
     }
 }
 
@@ -168,9 +127,9 @@ fn android_policy_does_not_enable_a_foreign_or_blocked_target() {
         "android_dynamic".into(),
         toml::from_str::<toml::Value>("minimum_release = 3\nrequires_context = true").unwrap(),
     );
-    consume_generated(&cores, &targets, "aarch64-linux-android", true, false);
-    consume_generated(&cores, &targets, "x86_64-linux-android", true, false);
-    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true, false);
+    consume_generated(&cores, &targets, "aarch64-linux-android", true);
+    consume_generated(&cores, &targets, "x86_64-linux-android", true);
+    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
 }
 
 #[test]
@@ -187,20 +146,9 @@ fn target_blocks_and_undeclared_targets_preserve_visible_but_unsupported_entries
     row.as_table_mut()
         .unwrap()
         .insert("blocked".into(), "temporarily unavailable".into());
-    consume_generated(
-        &cores,
-        &toml::to_string(&targets).unwrap(),
-        target,
-        false,
-        true,
-    );
-    consume_generated(
-        &cores,
-        &toml::to_string(&targets).unwrap(),
-        "undeclared-target",
-        false,
-        true,
-    );
+    let targets = toml::to_string(&targets).unwrap();
+    consume_generated(&cores, &targets, target, false);
+    consume_generated(&cores, &targets, "undeclared-target", false);
 }
 
 #[test]
@@ -208,7 +156,7 @@ fn generated_strings_preserve_escaping() {
     let (mut cores, targets) = inventory();
     let core = &mut cores["cores"][0];
     core["display_name"] = "A \"quoted\" engine\\with\na new line 🦊".into();
-    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true, false);
+    consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true);
 }
 
 #[test]
@@ -219,8 +167,7 @@ fn malformed_family_fields_and_duplicate_plugin_ids_are_rejected() {
         let mut changed = cores.clone();
         changed["cores"][0]["family_id"] = family.into();
         assert!(
-            generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false)
-                .is_err(),
+            generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err(),
             "{family}"
         );
     }
@@ -230,17 +177,17 @@ fn malformed_family_fields_and_duplicate_plugin_ids_are_rejected() {
         .unwrap()
         .remove("family_id");
     assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err()
+        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
     );
     let mut changed = cores.clone();
     changed["cores"][0]["display_name"] = " \n".into();
     assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err()
+        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
     );
     let mut changed = cores;
     changed["cores"][1]["id"] = changed["cores"][0]["id"].clone();
     assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target, false).is_err()
+        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
     );
 }
 
@@ -259,17 +206,10 @@ fn recognized_family_has_displayable_candidates_without_any_core_installation() 
     )
     .unwrap();
     assert_eq!(detected.len(), 1);
-    let candidates: Vec<_> = static_core_catalog::entries()
+    let candidates: Vec<_> = core_catalog::entries()
         .iter()
         .filter(|entry| entry.family_id == detected[0].family_id)
-        .map(|entry| {
-            (
-                entry.plugin_id,
-                entry.display_name,
-                entry.supported,
-                entry.embedded,
-            )
-        })
+        .map(|entry| (entry.plugin_id, entry.display_name))
         .collect();
     assert!(
         !candidates.is_empty(),
@@ -278,9 +218,9 @@ fn recognized_family_has_displayable_candidates_without_any_core_installation() 
     assert!(
         candidates
             .iter()
-            .all(|(id, name, _, _)| !id.is_empty() && !name.is_empty())
+            .all(|(id, name)| !id.is_empty() && !name.is_empty())
     );
-    assert!(static_core_catalog::lookup("unknown.external.plugin").is_none());
+    assert!(core_catalog::lookup("unknown.external.plugin").is_none());
     assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     println!("recognized {}: {candidates:?}", detected[0].family_id);
 }
@@ -317,15 +257,6 @@ fn lucifen_recognizes_root_script_archive_without_loading_a_core() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].format, "lucifen.lpk1-sob");
     assert!(found[0].declared.is_none());
-    let core = static_core_catalog::lookup("shinki.emu.lucifen").unwrap();
+    let core = core_catalog::lookup("shinki.emu.lucifen").unwrap();
     assert_eq!(core.family_id, found[0].family_id);
-    assert_eq!(
-        core.standalone,
-        cfg!(all(
-            target_os = "windows",
-            target_arch = "x86_64",
-            target_env = "msvc"
-        ))
-    );
-    assert!(!core.embedded);
 }

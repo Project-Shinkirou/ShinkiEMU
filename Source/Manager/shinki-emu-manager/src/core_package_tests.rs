@@ -338,29 +338,18 @@ fn removal_marker_deletes_the_core_directory() {
 }
 
 #[test]
-fn legacy_top_level_library_is_not_admitted_on_android() {
+fn bare_libraries_are_not_promoted_to_installed_packages() {
     let root = tempfile::tempdir().unwrap();
     let cores = root.path().join("cores");
     fs::create_dir_all(&cores).unwrap();
     let library = library_name("shinki_emu_x");
     let bare = cores.join(&library);
-    fs::write(&bare, b"legacy").unwrap();
+    fs::write(&bare, b"bare library").unwrap();
     let dependency = cores.join(library_name("avcodec-62"));
     fs::write(&dependency, b"dependency").unwrap();
     assert!(apply_pending(&cores).is_empty());
-    if cfg!(target_os = "android") {
-        assert_eq!(fs::read(bare).unwrap(), b"legacy");
-        assert!(!cores.join("shinki_emu_x").exists());
-    } else {
-        assert!(!bare.exists());
-        assert_eq!(
-            fs::read(cores.join("shinki_emu_x").join(&library)).unwrap(),
-            b"legacy"
-        );
-        let manifest = read_manifest(&cores.join("shinki_emu_x")).unwrap();
-        assert_eq!(manifest.library, library);
-        assert_eq!(manifest.files[0].sha256, sha256_hex(b"legacy"));
-    }
+    assert_eq!(fs::read(bare).unwrap(), b"bare library");
+    assert!(!cores.join("shinki_emu_x").exists());
     assert_eq!(fs::read(dependency).unwrap(), b"dependency");
 }
 

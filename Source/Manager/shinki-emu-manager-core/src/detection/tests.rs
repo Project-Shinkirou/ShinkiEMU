@@ -273,7 +273,7 @@ fn reads_shared_game_children_through_a_seekable_read_only_tree() {
     let header = custom.join("engine.id");
     let tree = SelectedFolder(collection.join("4"));
     let mut rules = DeclaredRules::new("fixture".into());
-    let core = crate::static_core_catalog::lookup("rfvp").unwrap();
+    let core = crate::core_catalog::lookup("rfvp").unwrap();
     rules.add(core, "assets/engine.id", 4094, vec![0xde, 0xad]);
     fs::write(&header, vec![0; 4095]).unwrap();
     assert!(
