@@ -92,6 +92,8 @@ checkout fetches full history so the comparison ref is available. An optional
 `gh workflow run ci.yml --ref main -f since=<base-commit> -f components=renpy`.
 Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the PR event's base commit, limited to the Windows and Linux x86_64 targets. A manual PR CI run compares against the repository's default branch.
 
+Changing a core also selects the iOS Manager rows that package it as a Framework. Standalone Android ZIP changes do not select Manager. The Musica companion library is an input to the local HarmonyOS HAP, which remains outside the hosted matrix.
+
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
 For an all-platform Manager release, use one successful hosted release run without a `source_commit` override. Match its `headSha` to local `HEAD`, merge that run's `release-files-manager@*` artifacts under `.work/release/`, prepare the OHOS HAP with DevEco and publish from that checkout. See [the commands](../docs/en/release-runbook.md#package-and-release).
