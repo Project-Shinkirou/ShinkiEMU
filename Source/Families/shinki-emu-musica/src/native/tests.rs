@@ -95,7 +95,10 @@ fn config_path_picker_uses_the_private_profile_parser_without_opening_a_session(
         emit: Some(discard_log),
         flush: None,
     };
-    assert_eq!(unsafe { initialize(&diagnostics, std::ptr::null_mut()) }, abi::OK);
+    assert_eq!(
+        unsafe { initialize(&diagnostics, std::ptr::null_mut()) },
+        abi::OK
+    );
     let mut table = std::ptr::null();
     assert_eq!(
         unsafe {
@@ -108,11 +111,13 @@ fn config_path_picker_uses_the_private_profile_parser_without_opening_a_session(
         abi::OK
     );
     let table = unsafe { &*table.cast::<abi::ConfigPathsV1>() };
-    let fields = unsafe { abi::borrowed_array(table.fields, table.count, abi::MAX_CONFIG_FIELDS) }
-        .unwrap();
+    let fields =
+        unsafe { abi::borrowed_array(table.fields, table.count, abi::MAX_CONFIG_FIELDS) }.unwrap();
     let field = fields
         .iter()
-        .find(|field| unsafe { field.field_id.text(128) } == Ok(crate::provider::PROFILE_FILE_FIELD))
+        .find(
+            |field| unsafe { field.field_id.text(128) } == Ok(crate::provider::PROFILE_FILE_FIELD),
+        )
         .unwrap();
     let validate = field.validate.unwrap();
     let arg = abi::Bytes::new(path.to_str().unwrap().as_bytes());

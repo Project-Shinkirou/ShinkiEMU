@@ -16,7 +16,10 @@ pub(super) static PATHS: abi::ConfigPathsV1 = abi::ConfigPathsV1 {
     count: PATH_FIELDS.len(),
 };
 
-unsafe extern "C" fn validate_profile_path(path: abi::Bytes, error: *mut abi::Error) -> abi::Status {
+unsafe extern "C" fn validate_profile_path(
+    path: abi::Bytes,
+    error: *mut abi::Error,
+) -> abi::Status {
     boundary(error, || {
         initialized()?;
         let path = unsafe { path.text(abi::MAX_CONFIG_PATH_BYTES) }.map_err(invalid)?;

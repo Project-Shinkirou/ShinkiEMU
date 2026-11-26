@@ -81,15 +81,21 @@ pub(super) fn path_rules(
         if !declared.flags.file_path && !declared.flags.directory_path {
             return Err(AbiLayout);
         }
-        let label = unsafe { field.filter_label.text(abi::MAX_CONFIG_FILE_FILTER_LABEL_BYTES) }
-            .map_err(|_| AbiLayout)?;
+        let label = unsafe {
+            field
+                .filter_label
+                .text(abi::MAX_CONFIG_FILE_FILTER_LABEL_BYTES)
+        }
+        .map_err(|_| AbiLayout)?;
         let filter = if field.extension_count == 0 {
             if !label.is_empty() {
                 return Err(AbiLayout);
             }
             None
         } else {
-            if !declared.flags.file_path || label.trim().is_empty() || label.chars().any(char::is_control)
+            if !declared.flags.file_path
+                || label.trim().is_empty()
+                || label.chars().any(char::is_control)
             {
                 return Err(AbiLayout);
             }
@@ -107,7 +113,9 @@ pub(super) fn path_rules(
                     .map_err(|_| AbiLayout)?;
                 if extension.is_empty()
                     || !extension.bytes().all(|b| b.is_ascii_alphanumeric())
-                    || extensions.iter().any(|entry| entry.eq_ignore_ascii_case(extension))
+                    || extensions
+                        .iter()
+                        .any(|entry| entry.eq_ignore_ascii_case(extension))
                 {
                     return Err(AbiLayout);
                 }

@@ -315,7 +315,10 @@ impl FamilyProviderRegistry {
             .to_vec())
     }
 
-    pub fn config_path_options(&self, plugin_id: &str) -> BTreeMap<String, crate::ConfigPathOptions> {
+    pub fn config_path_options(
+        &self,
+        plugin_id: &str,
+    ) -> BTreeMap<String, crate::ConfigPathOptions> {
         self.providers
             .get(plugin_id)
             .into_iter()
