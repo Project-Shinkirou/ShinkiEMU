@@ -1,7 +1,7 @@
 {
   "apiType": "stageMode",
   "buildOption": {
-    // libs/<abi> holds the one target's prebuilt Rust libraries staged by xtask.
+    // xtask stages all native components for one ABI in libs/<abi>.
     "nativeLib": {
       // Preserve the exact prebuilt library bytes checked by the HAP packager.
       "debugSymbol": { "strip": false }

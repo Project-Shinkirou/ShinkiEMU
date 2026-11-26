@@ -16,13 +16,20 @@ fn installed_file(root: &Path, path: &Path) -> Option<PathBuf> {
 }
 
 /// An installed Manager image may be an extracted DSO or a member of a HAP.
-/// Build-time configuration supplies the companion basename, never the manifest.
+/// The compiled roster supplies the native basename, never the manifest.
 pub(super) fn resolve(
     root: &Path,
     manager: &Path,
     archive_libs: &str,
     basename: &str,
 ) -> Option<PathBuf> {
+    if !basename.starts_with("libshinki_emu_")
+        || !basename.ends_with(".so")
+        || basename == MANAGER
+        || !basename.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    {
+        return None;
+    }
     if let Some((hap, member)) = manager.to_str()?.split_once("!/") {
         let hap = Path::new(hap);
         if hap.extension()? != "hap" || member.strip_prefix(archive_libs)? != MANAGER {
@@ -41,6 +48,9 @@ pub(super) fn resolve(
         return None;
     }
     let manager = installed_file(root, manager)?;
+    if manager.file_name()? != MANAGER {
+        return None;
+    }
     let candidate = installed_file(root, &manager.with_file_name(basename))?;
     (candidate.parent() == manager.parent() && candidate.file_name()? == basename)
         .then_some(candidate)
@@ -71,6 +81,12 @@ mod tests {
         }
         let companion = app.join(COMPANION);
         assert_eq!(check(&app.join(MANAGER)), Some(companion.clone()));
+        let second = "libshinki_emu_second.so";
+        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, second), None);
+        fs::write(app.join(second), [])?;
+        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, second), Some(app.join(second)));
+        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, MANAGER), None);
+        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, "libshinki_emu_a/../b.so"), None);
         assert_eq!(check(&writable.join(MANAGER)), None);
         let archive_manager = |folder: &Path, libs: &str| {
             PathBuf::from(format!(
@@ -84,6 +100,10 @@ mod tests {
                 "{}!/{ABI_DIR}{COMPANION}",
                 app.join("entry.hap").display()
             )))
+        );
+        assert_eq!(
+            resolve(&bundle, &archive_manager(&app, ABI_DIR), ABI_DIR, second),
+            Some(PathBuf::from(format!("{}!/{ABI_DIR}{second}", app.join("entry.hap").display())))
         );
         assert_eq!(check(&archive_manager(&app, "libs/x86_64/")), None);
         assert_eq!(check(&archive_manager(&writable, ABI_DIR)), None);

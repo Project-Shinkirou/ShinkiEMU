@@ -503,11 +503,12 @@ pub fn prepare(
                 || ohos["version"] != version
                 || ohos["target"] != target
                 || ohos["sha256"] != sha256
-                || !ohos["bundled_core"].is_object()
             {
                 bail!("signed HAP and OHOS package receipt disagree");
             }
-            record["bundled_core"] = ohos["bundled_core"].take();
+            crate::ohos::verify_receipt_roster(inv, target, version, &id.commit, &ohos)?;
+            record["bundled_cores"] = ohos["bundled_cores"].take();
+            record["native_libraries"] = ohos["native_libraries"].take();
         }
         fs::write(
             work.join("release.json"),
@@ -820,8 +821,8 @@ mod tests {
     fn private_ohos_qa_is_excluded_from_release() {
         let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let qa = shinki_emu_build::ohos::Target::X64.rust_target();
-        let (companion, _) = crate::ohos::companion(&inv, qa).unwrap();
-        for component in ["manager", &companion.id] {
+        let cores = crate::ohos::cores(&inv, qa).map(|(core, _)| core.id.as_str());
+        for component in std::iter::once("manager").chain(cores) {
             assert!(
                 release_targets(&inv, component, Scope::All)
                     .unwrap()

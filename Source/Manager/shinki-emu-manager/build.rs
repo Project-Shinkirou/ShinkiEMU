@@ -232,8 +232,14 @@ fn write_embedded_core_identities() {
     let os = env::var("CARGO_CFG_TARGET_OS").expect("target OS");
     let ios_frameworks = os == "ios";
     let mut frameworks = Vec::new();
-    let ohos_hap = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos");
-    let mut companion = None;
+    let ohos_hap = if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
+        Some(shinki_emu_build::ohos::Target::from_rust_target(&target)
+            .expect("unsupported OHOS Manager target"))
+    } else {
+        None
+    };
+    let mut hap_cores = std::collections::BTreeMap::new();
+    let mut hap_libraries = std::collections::BTreeSet::new();
     let legacy_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
     let legacy_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
     for (enabled, feature, core) in [
@@ -255,16 +261,17 @@ fn write_embedded_core_identities() {
     let mut registry = (legacy_cmvs || legacy_adv32).then(|| String::from("&[\n"));
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
-        if ohos_hap && let Some(recipe) = core.get("ohos_hap") {
-            let recipe: shinki_emu_build::ohos::HapCore = recipe
-                .clone()
-                .try_into()
-                .expect("OHOS HAP companion recipe");
-            recipe.validate(id).expect("valid OHOS HAP companion");
-            assert!(
-                companion.replace((id, recipe.library)).is_none(),
-                "only one companion core may be bundled in the OHOS HAP"
-            );
+        if let Some(target) = ohos_hap && let Some(recipe) = core.get("ohos_hap") {
+            let recipe: shinki_emu_build::ohos::HapCore =
+                recipe.clone().try_into().expect("OHOS HAP recipe");
+            recipe.validate(id).expect("valid OHOS HAP recipe");
+            if let Some(library) = recipe.library_for(target) {
+                assert!(core.get("attribution").is_none(), "{id} is not a first-party OHOS core");
+                assert!(hap_libraries.insert(library.to_ascii_lowercase()),
+                    "duplicate OHOS HAP library {library}");
+                assert!(hap_cores.insert(id, library.to_owned()).is_none(),
+                    "duplicate OHOS HAP core {id}");
+            }
         }
         let embedded = core
             .get("static_manager_targets")
@@ -320,12 +327,13 @@ fn write_embedded_core_identities() {
         )
         .expect("iOS Framework core IDs");
     }
-    if ohos_hap {
+    if ohos_hap.is_some() {
+        let roster: Vec<_> = hap_cores.into_iter().collect();
         std::fs::write(
-            output.with_file_name("ohos-hap-core.rs"),
-            format!("{companion:?}\n"),
+            output.with_file_name("ohos-hap-cores.rs"),
+            format!("&{roster:?}\n"),
         )
-        .expect("OHOS HAP companion");
+        .expect("OHOS HAP core roster");
     }
 }
 
