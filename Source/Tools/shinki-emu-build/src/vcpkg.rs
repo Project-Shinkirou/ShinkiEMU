@@ -577,11 +577,7 @@ mod tests {
                 &[PortOverlay::Vcpkg("ports/libass")][..],
                 vec![&libass, &mobile, &source_overlay],
             ),
-            (
-                "x86_64-linux-android",
-                &[],
-                vec![&mobile, &source_overlay],
-            ),
+            ("x86_64-linux-android", &[], vec![&mobile, &source_overlay]),
             (
                 "x86_64-apple-darwin",
                 &[PortOverlay::Workspace("apple-ports")][..],
@@ -613,7 +609,14 @@ mod tests {
             );
         }
         assert!(
-            core_ports(workspace, root, &source.join("absent"), "aarch64-apple-ios", &[]).is_empty()
+            core_ports(
+                workspace,
+                root,
+                &source.join("absent"),
+                "aarch64-apple-ios",
+                &[]
+            )
+            .is_empty()
         );
         Ok(())
     }
