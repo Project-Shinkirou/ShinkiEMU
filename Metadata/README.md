@@ -21,6 +21,18 @@ Patches modify resources, not executable code. An output EXE must be a byte-iden
 
 Yorino recipe version 3 launches the original `test.sc` entry directly. This edition has no Manager frontend definition, so its earlier `title` receipt cannot build a title menu. Reapply the current recipe to the original and authorized patch in a new directory instead of editing a prior receipt.
 
+The [optional local Yorino Recall recipe](../Tools/Research/musica-yorino-recall.luau) prepares an overlay for a **separate copy** of the supported original Japanese install and its private `key.toml`. It installs a title shortcut: the Memories button on a fixed original title plate opens Recall directly. It does not reproduce the native time/route-dependent title or the complete Memories hub. It leaves the catalogued translation's direct entry unchanged. Use a Manager/core build that supports authored Recall previews. From the repository root:
+
+```powershell
+New-Item -ItemType Directory recall-recipe/common -Force | Out-Null
+Copy-Item Tools/Research/musica-yorino-recall.luau recall-recipe/
+Copy-Item Metadata/patches/common/pe.luau, Metadata/patches/common/binary.luau recall-recipe/common/
+shinki-emu-manager patch apply --script recall-recipe/musica-yorino-recall.luau --source ORIGINAL_GAME_COPY --output recall-overlay
+Copy-Item recall-overlay/recall-layout.json, recall-overlay/shinki-patch-result.json -Destination ORIGINAL_GAME_COPY
+```
+
+Import the resulting game copy in Manager. Use a fresh copy with no existing receipt; do not overwrite a catalogued conversion. The recipe validates the layout and named SC labels against the copy's unmodified archives and does not copy or change the original game files. An unsupported executable fails rather than producing a guessed layout. To remove this overlay, delete only the two generated files from the copy.
+
 The Perseus conversion keeps title launch and supplies `configuration.frontend`. It requires the matching unmodified `perseus.exe` in the original game directory. The recipe reads the executable's CG grouping, Flash routes, music order and gallery geometry as data, then validates the generated layout against the copied archives using the core's gallery loader. It neither runs nor copies the executable. A different executable is rejected. The generated gallery uses resource availability rather than the viewed-CG history.
 
 The gallery extractor recognizes one SHA-256/size and a table of relative offsets for that PE32 build. It checks the instruction forms at those offsets; it does not discover layouts across executable revisions. CG groups and variants, Flash slots, page counts, track order, and hit rectangles come from the file. Title variants, archive plate naming and placement conventions, and the roles of decoded controls remain recipe data.

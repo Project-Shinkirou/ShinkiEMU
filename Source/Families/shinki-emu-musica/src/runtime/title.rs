@@ -291,6 +291,26 @@ pub fn validate_musica_title_frontend(
             "title configuration has no variant for a fresh game",
         ));
     }
+    if let Some(layout) = &frontend.authored_gallery {
+        use super::gallery::GalleryAction;
+        let mut scripts = BTreeMap::<&str, BTreeSet<&str>>::new();
+        for button in layout.screens.iter().flat_map(|screen| &screen.buttons) {
+            if let GalleryAction::Script { resource, label: Some(label) } = &button.action {
+                scripts.entry(resource).or_default().insert(label);
+            }
+        }
+        for (uri, required_labels) in scripts {
+            let loaded = crate::script_loader::load_script(archive, uri, encoding)?;
+            let label_error = || crate::scene::error(
+                MusicaRuntimeError::Label.diagnostic_code(),
+                "invalid authored gallery script label",
+            );
+            let labels = build_labels(&loaded.script).map_err(|_| label_error())?;
+            if required_labels.iter().any(|label| !labels.contains_key(*label)) {
+                return Err(label_error());
+            }
+        }
+    }
     Ok(())
 }
 

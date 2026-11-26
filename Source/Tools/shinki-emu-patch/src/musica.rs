@@ -15,6 +15,7 @@ use std::{
 
 pub(crate) fn validate_title_frontend(
     root: &Path,
+    archive_root: &Path,
     profile: &str,
     frontend: &str,
     encoding: ScriptEncoding,
@@ -24,7 +25,7 @@ pub(crate) fn validate_title_frontend(
 ) -> Result<(), PatchError> {
     check_cancelled(cancelled)?;
     crate::paths::relative(profile, false)?;
-    let archive = shinki_emu_musica::mount_musica(root, Path::new(profile)).map_err(native_error)?;
+    let archive = shinki_emu_musica::mount_musica(archive_root, Path::new(profile)).map_err(native_error)?;
     shinki_emu_musica::validate_musica_title_frontend(
         root, &archive, frontend, encoding, width, height,
     )

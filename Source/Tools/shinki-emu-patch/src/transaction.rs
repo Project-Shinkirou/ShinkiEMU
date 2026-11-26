@@ -167,6 +167,16 @@ impl Transaction {
         Ok(self.source.try_clone()?)
     }
 
+    pub(crate) fn overlay_source_dir(&self) -> Result<Dir, PatchError> {
+        if self.in_place {
+            return Err(PatchError::new(
+                PatchErrorKind::InvalidRequest,
+                "source-validated overlays require a separate output directory; use --output, not --in-place",
+            ));
+        }
+        self.source_dir()
+    }
+
     pub(crate) fn staging_dir(&self) -> Result<Dir, PatchError> {
         self.open_staging()
     }

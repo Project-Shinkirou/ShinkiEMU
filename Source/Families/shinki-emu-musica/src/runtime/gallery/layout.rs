@@ -48,6 +48,7 @@ pub(crate) struct GalleryButton {
     pub hover: Option<String>,
     pub thumbnail: Option<String>,
     pub locked_thumbnail: Option<String>,
+    pub preview: Option<GalleryLayer>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -214,6 +215,12 @@ impl GalleryLayout {
                 }
                 for uri in button.thumbnail.iter().chain(&button.locked_thumbnail).chain(&button.hover) {
                     resource(uri)?;
+                }
+                if let Some(preview) = &button.preview {
+                    resource(&preview.resource)?;
+                    if preview.clip.is_some_and(|rect| !inside_canvas(rect, width, height)) {
+                        return Err(layout_error("gallery preview clip is outside the logical canvas"));
+                    }
                 }
                 if button.requires_viewed.len() > 256 {
                     return Err(layout_error("invalid viewed CG requirement count"));

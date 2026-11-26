@@ -307,6 +307,7 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
         ]},
         {"id":"flash-two", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
             {"rect":[190,80,70,40], "thumbnail":"musica:/bg/unlocked.png", "locked_thumbnail":"musica:/bg/locked.png",
+             "preview":{"resource":"musica:/bg/unlocked.png","at":[400,200]},
              "requires_viewed":["musica:/bg/Unseen.png","musica:/bg/Shown-A.png"],
              "action":{"kind":"script","resource":"musica:/scr/flash.sc","label":"Again"}},
             {"rect":[270,80,70,40],
@@ -316,6 +317,12 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     let mut request = title::title_request(root.path());
     let mut frontend = title::menu_data(false);
     frontend["gallery_layout"] = json!("layout.json");
+    let mounted = crate::mount_musica(root.path(), std::path::Path::new("key.toml")).unwrap();
+    let config = frontend.to_string();
+    let error = crate::validate_musica_title_frontend(root.path(), &mounted, &config, encoding, 1280, 720)
+        .unwrap_err();
+    assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_RUNTIME_LABEL");
+    drop(mounted);
     request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
         ConfigValue::String(frontend.to_string());
     let mut provider = fixture::provider();
@@ -356,6 +363,11 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     session.advance(0, &tap(100.0, 35.0)).unwrap();
     session.advance(0, &[key(KeyCode::PageDown)]).unwrap();
     assert_eq!(pixel(&session, 195, 85), unlocked);
+    assert_eq!(pixel(&session, 405, 205), sheet);
+    session.advance(0, &[RuntimeEvent::PointerMove { x: 195.0, y: 85.0 }]).unwrap();
+    assert_eq!(pixel(&session, 405, 205), unlocked);
+    session.advance(0, &[RuntimeEvent::PointerMove { x: 200.0, y: 125.0 }]).unwrap();
+    assert_eq!(pixel(&session, 405, 205), sheet);
     session.advance(0, &tap(195.0, 85.0)).unwrap();
     for _ in 0..4 {
         session.advance(16_666_667, &[]).unwrap();
