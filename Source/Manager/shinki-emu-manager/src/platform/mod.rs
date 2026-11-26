@@ -11,7 +11,7 @@ pub mod android;
 #[cfg(any(target_os = "android", test))]
 mod android_diagnostics;
 #[cfg(any(target_os = "android", test))]
-pub(crate) mod android_storage;
+mod android_storage;
 #[cfg(target_os = "android")]
 pub mod android_tree;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
