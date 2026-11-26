@@ -12,8 +12,6 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.io.File
-import org.shinkirou.krkr.KrkrHost
-import org.shinkirou.krk2.KrkrHost as Krkr2Host
 
 /**
  * NativeActivity host for the Rust Manager (`android_main` in libshinki_emu_manager).
@@ -37,6 +35,7 @@ class MainActivity : NativeActivity() {
     }
 
     private val gameWindow by lazy { gameWindowPolicy(this) }
+    private val activityAdapters = AndroidActivityAdapters.create()
 
     /** JNI: change only this Activity's game-session presentation. */
     fun setGameWindow(active: Boolean, immersive: Boolean) {
@@ -48,17 +47,13 @@ class MainActivity : NativeActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        // Publish the Activity route; each downloadable core registers its
-        // native helpers when the Manager activates that core.
-        KrkrHost.prepareActivity(this)
-        Krkr2Host.prepareActivity(this)
+        for (adapter in activityAdapters) adapter.attached(this)
     }
 
     override fun onResume() {
         super.onResume()
         gameWindow.resume()
-        KrkrHost.onResume()
-        Krkr2Host.onResume()
+        for (adapter in activityAdapters) adapter.resumed()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -67,19 +62,15 @@ class MainActivity : NativeActivity() {
     }
 
     override fun onPause() {
-        KrkrHost.onPause()
-        Krkr2Host.onPause()
+        for (adapter in activityAdapters) adapter.paused()
         super.onPause()
     }
 
     override fun onDestroy() {
-        KrkrHost.cancelActivation(this)
-        Krkr2Host.cancelActivation(this)
-        // NativeActivity's teardown completes the native app/owner before
-        // the private core helpers release their Java Activity references.
+        for (adapter in activityAdapters) adapter.detaching(this)
+        // NativeActivity joins the native owner before adapters release services.
         super.onDestroy()
-        KrkrHost.destroy(this)
-        Krkr2Host.destroy(this)
+        for (adapter in activityAdapters) adapter.detached(this)
     }
 
     private class PendingPick(val requestId: Long, val kind: Int, val destDir: File?)

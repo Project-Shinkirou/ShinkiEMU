@@ -25,6 +25,8 @@ sha2 = "0.11.1"
 resvg = "0.48.1"
 shinki-emu-build = { path = "../Source/Tools/shinki-emu-build" }
 shinki-emu-metadata = { path = "../Source/Providers/shinki-emu-metadata" }
+shinki-kirikiroid2-web-android-host.workspace = true
+shinki-krkr2-android-host.workspace = true
 mlua.workspace = true
 tar = "0.4.46"
 tempfile = "3.27.0"

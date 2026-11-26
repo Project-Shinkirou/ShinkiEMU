@@ -27,6 +27,9 @@ QA には例の `0.1.0-qa.1` のような専用の SemVer を使います。Grad
 
 通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。APK には KiriKiri の Java ホストが含まれます。Impacto などの対応コアは Manager から個別にインストールします。単独コアに Gradle 署名は不要です。
 
+KiriKiri の Java、AIDL、JAR はネイティブコアと同じ fork のコミットに固定したホスト用 Cargo ライブラリで生成します。Manager の APK を作る際はこれらを一度だけ用意し、ネイティブコアはビルドしません。コアの ZIP は `package --core <id>` で個別に作成します。
+Activity のライフサイクルは同梱のアダプターに通知します。コア固有の JNI はアダプター内に置き、ネイティブコアは有効化時に既存の `AndroidContextV1` からプロセスのコンテキストを受け取ります。
+
 Impacto の切り替えでは、`Cargo.lock` の正確なコミットが組織の fork から取得できることを確認し、連番 4 を先に公開します。`cargo xtask release --component impacto --target <triple>` で Android の両 ABI の ZIP と対応ソースを用意し、公式カタログに両方が載ってから静的組み込みを廃止した Manager を公開します。既存の連番 3 の配布物は変更しません。
 
 リリース APK の作成時に `cargo xtask package` は正式な署名証明書、パッケージ ID `org.shinkirou.shinkiemu`、指定された `versionName` と `versionCode`、`minSdk` 28 を照合します。`release.yml` は `github.run_number` を `SHINKI_EMU_ANDROID_VERSION_CODE` に設定します。公開する APK のコードは前回より大きくしてください。ワークフローの作り直し、改名、別ファイルへの差し替えで連番が 1 に戻ると、インストール済みのアプリが更新できなくなります。既存のワークフローファイルを使い続けてください。
