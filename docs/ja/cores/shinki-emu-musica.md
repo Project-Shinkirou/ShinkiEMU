@@ -57,6 +57,12 @@ descriptor は中国語ラベル付きで `frontend`（JSON 文字列、既定�
 
 タイトルは `requires` が全て一致する最後の要素を使い、未定義のグローバル変数はゼロとします。ボタンは論理 `[x,y,width,height]` と `new_game`、`load`、`config`、`memories`、`exit` を指定します。鑑賞項目は `label`、`resource`、任意の `requires` を持ち、空の分類は表示しません。方向キーで選択、Enter/Space で実行、Escape で戻り、Backspace で鑑賞音楽を停止します。テキストとポインターは同じキャンバス比率の 12 行ページを使います。固定の曲番号や CG ページ数はありません。
 
+元の EXE が管理する鑑賞画面は、`frontend.gallery_layout` にゲーム内の相対 JSON パス（最大 1 MiB）を指定できます。`screens` の先頭が鑑賞メニューです。各画面に `id`、`layers`（リソース URI と任意の論理座標 `at: [x,y]`）、`buttons` を指定します。任意の全画面 `hover` 画像は画面またはボタンごとに指定でき、フォーカスされた当たり判定の矩形内だけ描画されます。`initial_focus` は 0 始まりのボタン番号です。解除条件 `requires` は操作とサムネイルに適用し、他のボタンの位置は変えません。
+
+`action.kind` には、子画面へ進む `open`、同じ階層で `screen` を切り替える `previous_page` / `next_page`、`back`、`images` の CG を表示する `view`、元の SC を実行する `script` があります。`thumbnail` はボタンの左上から描画されます。音楽には `resource` と任意の `select_only` を持つ `track`、`play_selected`、`stop`、`previous_track`、`next_track` を使います。`initial_selection` は 0 始まりの曲ボタン番号で、`selection` と `playing` の画像は各曲の矩形を基準に配置されます。方向キーは図形の位置に従い、`wrap_focus` を指定すると行や列を循環します。同じ `track_group` の画面では上下で曲を選び、左右でページを切り替えます。PageUp/PageDown は定義されたページ操作を使います。ポインターは同じ有効なボタン内で押して離すと実行されます。Escape は CG を閉じるか、上の画面へ戻ります。
+
+画像を差し替えるパッチでも元のアーカイブ URI を指定し、既存のテクスチャ差し替えを利用します。レイアウト未指定時は従来の一覧を使います。どちらも PAZ/SC の認識やスクリプトからの直接起動には影響しません。
+
 各 JSON フィールドは ABI の 4096 バイト上限に従います。大きな一覧は元の SC 索引を指定してください。動画の自動走査は 4096 スクリプト、展開ソース合計 64 MiB までで、それ以上は `movie_index` が必要です。検出できた場合は元の所属・順序を優先し、同じ URI の preset ラベルと解放条件は保持します。SC の条件分岐から解放式を復元する機能はなく、条件は preset で記述します。
 
 **設定移行：**保存済み Manager 設定の `voice_ren`、`voice_sui`、`voice_aya`、`voice_tou`、`voice_mot` を削除し、`voice_characters` に実際の接頭辞を指定します。旧フィールドの別名は残しません。明示的な `launch_mode=title` には `frontend` が必要で、元の SC メニューなら `direct` に切り替えます。eden/Perseus は実際の画像・解放条件・回想/動画入口・人物順をリリース preset に置き、コアの特例にはしません。合成 fixture はタイトル画像名の 2 通りの大文字小文字と、任意アーカイブを欠いた別の 640×360 データを検証し、商用リリースの互換性検証とは区別します。ネイティブ形式の 5 個の音声設定キーは宣言順に対応付け、追加の人物はフロントエンド設定 `voice_<prefix>` を使います。同じ人物集合と順序について、旧対応とのエンコード結果をバイト単位で比較する回帰テストがあります。

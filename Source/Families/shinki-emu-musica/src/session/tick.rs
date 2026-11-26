@@ -227,6 +227,11 @@ impl MusicaSession {
                     self.message = None;
                     self.title_focus = None;
                     self.clear_input();
+                    if self.gallery_cursor.is_some() {
+                        self.vm
+                            .set_gallery_page(crate::MusicaSystemPage::Memories, 0)
+                            .map_err(vm_error)?;
+                    }
                     Ok(true)
                 } else {
                     self.finished = true;

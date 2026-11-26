@@ -68,6 +68,11 @@ impl MusicaVm {
         {
             names.extend(entry.requires.keys().cloned());
         }
+        if let Some(layout) = self.authored_gallery() {
+            for button in layout.screens.iter().flat_map(|screen| &screen.buttons) {
+                names.extend(button.requires.keys().cloned());
+            }
+        }
         names
     }
     pub(crate) fn replace_global_variables(&mut self, globals: BTreeMap<String, i64>) {

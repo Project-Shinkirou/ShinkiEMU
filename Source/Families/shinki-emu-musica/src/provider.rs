@@ -180,7 +180,7 @@ pub(crate) fn musica_fields() -> Vec<MusicaField> {
             "播放",
             ConfigKind::String { max_bytes: 4096 },
             ConfigValue::String(String::new()),
-            "发行版前端 JSON：titles 的图像、解锁全局变量与按钮矩形，以及 replays、movies、cg、bgm 和原版索引 replay_index、movie_index。原版脚本菜单使用直接启动。",
+            "发行版前端 JSON：titles、replays、movies、cg、bgm、原版索引，以及指向游戏内鉴赏布局 JSON 的 gallery_layout。原版脚本菜单使用直接启动。",
         ),
         MusicaField::new(
             "legacy_progress_flags",
@@ -501,6 +501,7 @@ impl MusicaProvider {
         let frontend = get("frontend")?;
         if title_launch {
             vm.set_frontend(crate::runtime::title::FrontendData::load(
+                root,
                 &archive,
                 &frontend,
                 primary_encoding,

@@ -131,3 +131,114 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     assert_eq!(session.vm.state(), &before);
     Box::new(session).close().unwrap();
 }
+
+#[test]
+fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
+    use serde_json::json;
+
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    title::game(root.path());
+    let blue = title::png(1280, 720, [20, 40, 160, 255]);
+    let green = title::png(1280, 720, [40, 160, 20, 255]);
+    let red = title::png(1280, 720, [160, 20, 40, 255]);
+    let note = title::png(11, 11, [240, 200, 30, 255]);
+    let wave = fixture::wave();
+    fixture::assets(
+        root.path(),
+        "bg",
+        &[("gallery.png", &blue), ("sheet.png", &green), ("hover.png", &red), ("note.png", &note)],
+    );
+    fixture::assets(root.path(), "bgm", &[("z.ogg", &wave), ("a.ogg", &wave)]);
+    let layout = json!({"screens": [
+        {"id":"tabs", "layers":[{"resource":"musica:/bg/gallery.png"}],
+         "hover":"musica:/bg/hover.png", "buttons":[
+             {"rect":[20,40,64,32], "action":{"kind":"open","screen":"pictures"}},
+             {"rect":[140,40,64,32], "action":{"kind":"open","screen":"music1"}},
+             {"rect":[260,40,64,32], "action":{"kind":"open","screen":"music2"},
+              "requires":{"bonus":1}},
+             {"rect":[10,200,64,32], "action":{"kind":"back"}}
+         ]},
+        {"id":"pictures", "layers":[{"resource":"musica:/bg/sheet.png"}],
+         "hover":"musica:/bg/hover.png", "buttons":[
+             {"rect":[32,20,70,35], "action":{"kind":"view","images":["musica:/bg/gallery.png","musica:/bg/hover.png"]}},
+             {"rect":[32,72,70,35], "action":{"kind":"back"}}
+         ]},
+        {"id":"music1", "layers":[{"resource":"musica:/bg/sheet.png"}],
+         "track_group":"album", "initial_selection":0,
+         "playing":{"resource":"musica:/bg/note.png","at":[-12,0]}, "buttons":[
+             {"rect":[32,21,80,33], "action":{"kind":"track","resource":"musica:/bgm/z.ogg","select_only":true}},
+             {"rect":[180,520,70,70], "action":{"kind":"next_page","screen":"music2"}},
+             {"rect":[900,520,70,70], "action":{"kind":"back"}}
+         ]},
+        {"id":"music2", "layers":[{"resource":"musica:/bg/gallery.png"}],
+         "track_group":"album", "initial_selection":0, "buttons":[
+             {"rect":[690,98,80,42], "action":{"kind":"track","resource":"musica:/bgm/a.ogg"}},
+             {"rect":[180,520,70,70], "action":{"kind":"previous_page","screen":"music1"}},
+             {"rect":[900,520,70,70], "action":{"kind":"back"}}
+         ]}
+    ]});
+    let path = root.path().join("gallery-layout.json");
+    std::fs::write(&path, layout.to_string()).unwrap();
+    let mut request = title::title_request(root.path());
+    let mut data = title::menu_data(false);
+    data["gallery_layout"] = json!("gallery-layout.json");
+    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
+        ConfigValue::String(data.to_string());
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(request).unwrap();
+    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| [
+        RuntimeEvent::PointerMove { x, y },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
+    ];
+    let pixel = |session: &crate::session::MusicaSession, x: usize, y: usize| -> [u8; 4] {
+        let index = (y * 1280 + x) * 4;
+        session.scene.pixels[index..index + 4].try_into().unwrap()
+    };
+
+    session.advance(0, &tap(1050.0, 183.0)).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, Page::Memories);
+    session.advance(0, &[key(KeyCode::ArrowDown), key(KeyCode::ArrowRight)]).unwrap();
+    assert_eq!(pixel(&session, 145, 50), [160, 20, 40, 255]);
+    assert_eq!(pixel(&session, 139, 50), [20, 40, 160, 255]);
+    session.advance(0, &tap(270.0, 45.0)).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 0);
+    let mut drag = tap(145.0, 50.0).to_vec();
+    drag.insert(2, RuntimeEvent::PointerMove { x: 100.0, y: 50.0 });
+    session.advance(0, &drag).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 0);
+
+    session.advance(0, &tap(145.0, 50.0)).unwrap();
+    session.advance(0, &tap(40.0, 35.0)).unwrap();
+    assert!(session.vm.state().audio.values().all(|stream| !stream.playing));
+    session.advance(0, &[key(KeyCode::Enter)]).unwrap();
+    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/z.ogg");
+    assert_eq!(pixel(&session, 20, 21), [240, 200, 30, 255]);
+    session.advance(0, &[key(KeyCode::ArrowDown)]).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 3);
+    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/z.ogg");
+    session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 2);
+    session.advance(0, &tap(181.0, 550.0)).unwrap();
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 3);
+    session.advance(0, &tap(700.0, 100.0)).unwrap();
+    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/a.ogg");
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+    assert!(!session.vm.state().audio[&0].playing);
+    assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 0);
+    assert_eq!(pixel(&session, 145, 50), [160, 20, 40, 255]);
+
+    session.advance(0, &tap(30.0, 50.0)).unwrap();
+    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowDown)]).unwrap();
+    assert_eq!(pixel(&session, 40, 73), [160, 20, 40, 255]);
+    session.advance(0, &tap(33.0, 25.0)).unwrap();
+    assert_eq!(pixel(&session, 0, 0), [20, 40, 160, 255]);
+    session.advance(0, &[key(KeyCode::ArrowRight)]).unwrap();
+    assert_eq!(pixel(&session, 0, 0), [160, 20, 40, 255]);
+    session.advance(0, &[key(KeyCode::Escape)]).unwrap();
+    assert_eq!(pixel(&session, 0, 0), [40, 160, 20, 255]);
+    assert_eq!(session.vm.state().instruction_count, 0);
+    Box::new(session).close().unwrap();
+}
