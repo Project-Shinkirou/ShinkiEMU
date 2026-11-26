@@ -403,7 +403,7 @@ license = "MIT OR Apache-2.0"
 resources = []
 adapter_licenses = ["LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES.txt", "MODIFICATIONS.md"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-publish_blocked = "Local CMVS samples do not match upstream-registered releases; real-game headless frame acceptance is blocked."
+publish_blocked = "Amatsutsumi v1.03 has Windows first-frame evidence; final desktop packages, load checks and corresponding source delivery are pending."
 [cores.attribution]
 adapter_branch = "shinki"
 release_sequence = 1

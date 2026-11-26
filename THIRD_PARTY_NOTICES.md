@@ -226,7 +226,7 @@ FVP 使用完整 RFVP fork 中的原生 `crates/na_wmv_player` 及原 Movie 路�
 ## cmvs-rs external CMVS/CVNS adapter
 
 - Upstream: <https://github.com/Shizuku-in/cmvs-rs>, base `b9fed68ba05f80444338331bb3999f14c8f4f976` (`main`).
-- Fork: <https://github.com/Project-Shinkirou/cmvs-rs>, branch `shinki`, pin `b8de741dca3737d03351a5a45531616dff7ea39a`, release sequence 1.
+- Fork: <https://github.com/Project-Shinkirou/cmvs-rs>, branch `shinki`, pin `ac721405102574f3298ab5e64c8b20928dcc81d5`, release sequence 1. The fork backports akitaSummer’s upstream Amatsutsumi v1.03 registration and publishes complete opaque frames through ABI v3.
 - Copyright (c) 2026 gkouen. License: MIT OR Apache-2.0. The upstream `THIRD_PARTY_NOTICES.txt` separately retains the MIT notice for X'moe's CMVS format implementations and lists native/audio/font/video dependencies under their original terms.
 - Adapter: `crates/shinki-emu-cmvs-rs`, using upstream VM, CPU/font/movie rendering, native audio and save/config behavior. The existing `shinki.emu.cmvs` implementation is unchanged and remains a separate core.
 - `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES.txt` and `MODIFICATIONS.md` are declared in both the adapter build manifest and `build/cores.toml`. The public source at the exact locked fork commit is listed in `licenses/pinned-sources.txt`. User-provided fonts and commercial game data are not included.

@@ -1745,7 +1745,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 [[package]]
 name = "cmvs-audio"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "cmvs-core",
  "lewton",
@@ -1755,7 +1755,7 @@ dependencies = [
 [[package]]
 name = "cmvs-core"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -1763,7 +1763,7 @@ dependencies = [
 [[package]]
 name = "cmvs-desktop"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "cmvs-audio",
  "cmvs-core",
@@ -1782,7 +1782,7 @@ dependencies = [
 [[package]]
 name = "cmvs-font"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "ab_glyph",
  "cmvs-core",
@@ -1793,7 +1793,7 @@ dependencies = [
 [[package]]
 name = "cmvs-input"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "cmvs-core",
 ]
@@ -1801,7 +1801,7 @@ dependencies = [
 [[package]]
 name = "cmvs-native"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "android-activity 0.6.1",
  "jni 0.22.4",
@@ -11209,7 +11209,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-cmvs-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=722f9f69873b2ceab54a02e0049ae6807405b0f3#722f9f69873b2ceab54a02e0049ae6807405b0f3"
+source = "git+https://github.com/Project-Shinkirou/cmvs-rs?rev=ac721405102574f3298ab5e64c8b20928dcc81d5#ac721405102574f3298ab5e64c8b20928dcc81d5"
 dependencies = [
  "cmvs-audio",
  "cmvs-core",
