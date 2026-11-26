@@ -2993,7 +2993,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "eluna_rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -6282,7 +6282,7 @@ dependencies = [
 [[package]]
 name = "kira"
 version = "0.9.6"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "cpal 0.15.3",
  "glam 0.29.3",
@@ -7119,7 +7119,7 @@ dependencies = [
 [[package]]
 name = "na_mpeg2_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -11821,7 +11821,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-siglus_rs"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "pollster 0.3.0",
  "shinki-emu-abi",
@@ -11909,7 +11909,7 @@ dependencies = [
 [[package]]
 name = "shion-xfile"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "flate2",
 ]
@@ -11929,7 +11929,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 [[package]]
 name = "siglus_assets"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -11937,13 +11937,13 @@ dependencies = [
  "hex",
  "image 0.24.9",
  "lewton",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e)",
 ]
 
 [[package]]
 name = "siglus_key_recovery"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "siglus_assets",
 ]
@@ -11951,7 +11951,7 @@ dependencies = [
 [[package]]
 name = "siglus_omv_decoder"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "anyhow",
  "lewton",
@@ -11962,7 +11962,7 @@ dependencies = [
 [[package]]
 name = "siglus_scene_vm"
 version = "1.0.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "ab_glyph",
  "android_logger 0.14.1",
@@ -11979,10 +11979,11 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "image 0.24.9",
+ "jni 0.22.4",
  "js-sys",
  "kira 0.9.6",
  "log 0.4.34",
- "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de)",
+ "na_mpeg2_decoder 0.1.0 (git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e)",
  "ndk-context",
  "pollster 0.3.0",
  "raw-window-handle 0.6.2",
@@ -13267,7 +13268,7 @@ dependencies = [
 [[package]]
 name = "theora-rs"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 
 [[package]]
 name = "thiserror"
@@ -16555,7 +16556,7 @@ dependencies = [
 [[package]]
 name = "wmv-decoder"
 version = "0.2.1"
-source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=638752c382b9e2d11faa680e6971c9d0f869b2de#638752c382b9e2d11faa680e6971c9d0f869b2de"
+source = "git+https://github.com/Project-Shinkirou/siglus_rs?rev=575075a678a17d4e21ac81c24adbef124ab2027e#575075a678a17d4e21ac81c24adbef124ab2027e"
 dependencies = [
  "byteorder",
  "log 0.4.34",
