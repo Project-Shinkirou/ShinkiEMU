@@ -25,6 +25,8 @@ The Perseus conversion keeps title launch and supplies `configuration.frontend`.
 
 The gallery extractor recognizes one SHA-256/size and a table of relative offsets for that PE32 build. It checks the instruction forms at those offsets; it does not discover layouts across executable revisions. CG groups and variants, Flash slots, page counts, track order, and hit rectangles come from the file. Title variants, archive plate naming and placement conventions, and the roles of decoded controls remain recipe data.
 
+The shared Musica CG reader preserves the order of the null-terminated PE32 pointer tables and splits groups at `*`. The same format is confirmed in Yorino, Eden English and ef first; Eden and ef first select between multiple tables and use different page sizes. Table selection, filtering, and composition are not inferred from filenames. Only Perseus currently uses the shared decoder in its catalog recipe.
+
 The generated gallery requires `CAP_AUTHORED_GALLERY_CLIP` (1024). Manager checks the actual selected core descriptor before preparing settings or launching. Older receipts without this layout retain their existing requirements.
 
 Eden and ef name extraction uses each executable pair's display-name pointer, matching actual SC operands. Its second pointer is a Japanese reference name, not the offline SC identity. The same offline table also recognizes the pinned patch's GBK target bytes, because these Chinese archives already contain localized names. Both identities are resolved during conversion; output scripts use native scalar literals without a runtime table.
