@@ -70,6 +70,7 @@ pub(crate) struct MusicaSession {
     native: crate::native_directory::NativeFiles,
     entry_uri: String,
     title_focus: Option<u32>,
+    gallery_cursor: Option<crate::runtime::gallery::GalleryCursor>,
     load_from_title: bool,
     last_quick_save_pc_line: Option<u32>,
 }
@@ -104,6 +105,7 @@ impl MusicaSession {
             native,
             entry_uri,
             title_focus: None,
+            gallery_cursor: None,
             load_from_title: false,
             info,
             #[cfg(test)]
@@ -532,7 +534,12 @@ impl MusicaSession {
             self.scene
                 .render_title(self.vm.title().map_err(vm_error)?, self.title_focus)?;
         } else if dirty && crate::runtime::gallery::is_gallery(&self.vm.state().system_ui.page) {
-            self.scene.render_gallery(&self.vm)?;
+            if let Some(cursor) = &self.gallery_cursor {
+                let layout = self.vm.authored_gallery().expect("active gallery layout");
+                self.scene.render_authored_gallery(&layout.screens[cursor.screen], cursor, self.vm.state())?;
+            } else {
+                self.scene.render_gallery(&self.vm)?;
+            }
         } else if dirty && self.is_save_page() {
             self.scene.render_save_page(
                 self.vm.state().system_ui.page.clone(),

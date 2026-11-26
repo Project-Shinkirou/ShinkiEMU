@@ -13,6 +13,9 @@ pub(crate) struct FrontendData {
     pub bgm: Vec<GalleryEntry>,
     pub replay_index: Option<String>,
     pub movie_index: Option<String>,
+    pub gallery_layout: Option<String>,
+    #[serde(skip)]
+    pub authored_gallery: Option<super::gallery::GalleryLayout>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,7 +50,7 @@ pub(crate) struct GalleryEntry {
     #[serde(default)]
     pub requires: BTreeMap<String, i64>,
 }
-fn unlocked(requires: &BTreeMap<String, i64>, state: &MusicaRuntimeState) -> bool {
+pub(super) fn unlocked(requires: &BTreeMap<String, i64>, state: &MusicaRuntimeState) -> bool {
     requires
         .iter()
         .all(|(key, value)| state.global_variables.get(key).copied().unwrap_or(0) == *value)
@@ -72,6 +75,7 @@ fn use_discovered(entries: &mut Vec<GalleryEntry>, mut discovered: Vec<GalleryEn
 }
 impl FrontendData {
     pub(crate) fn load(
+        root: &std::path::Path,
         archive: &crate::MusicaMountedVfs,
         json: &str,
         encoding: crate::ScriptEncoding,
@@ -85,6 +89,11 @@ impl FrontendData {
             serde_json::from_str(json)
                 .map_err(|_| error("SHINKI_EMU_MUSICA_FRONTEND", "invalid frontend JSON"))?
         };
+        if let Some(path) = &data.gallery_layout {
+            data.authored_gallery = Some(super::gallery::GalleryLayout::load(
+                root, path, archive, width, height,
+            )?);
+        }
         // An explicitly identified original index contains native .chain entries.
         // Do not classify arbitrary story scripts as recollections by their names.
         for (index, entries) in [
@@ -130,7 +139,7 @@ impl FrontendData {
             .collect::<Vec<_>>();
         use_discovered(&mut data.bgm, tracks);
         // Standalone movie wrappers have executable semantics; filenames do not.
-        if data.movie_index.is_none() {
+        if data.movie_index.is_none() && data.authored_gallery.is_none() {
             let mut discovered = Vec::new();
             let mut scanned_bytes = 0usize;
             for (index, entry) in archive
@@ -318,6 +327,10 @@ impl MusicaVm {
             .find(|title| unlocked(&title.requires, &self.state))
             .ok_or(MusicaRuntimeError::State)
     }
+    pub(crate) fn authored_gallery(&self) -> Option<&super::gallery::GalleryLayout> {
+        self.frontend.authored_gallery.as_ref()
+    }
+
     pub(crate) fn gallery_entries(
         &self,
         page: &MusicaSystemPage,
@@ -343,6 +356,7 @@ impl MusicaVm {
         if !matches!(
             self.state.system_ui.page,
             MusicaSystemPage::Title
+                | MusicaSystemPage::Memories
                 | MusicaSystemPage::GalleryReplay
                 | MusicaSystemPage::GalleryMovie
         ) {
@@ -498,6 +512,7 @@ mod tests {
         crate::test_fixture::asset(root.path(), "mov", "authored.avi", b"directory-fixture");
         let archive = crate::mount_musica(root.path(), std::path::Path::new("key.toml")).unwrap();
         let data = FrontendData::load(
+            root.path(),
             &archive,
             r#"{"replay_index":"musica:/scr/index.sc"}"#,
             crate::ScriptEncoding::ShiftJis,
@@ -510,6 +525,6 @@ mod tests {
         assert_eq!(data.movies.len(), 1);
         assert_eq!(data.movies[0].resource, "musica:/scr/standalone.sc");
         assert_eq!(data.movies[0].label, "authored.avi");
-        assert!(FrontendData::load(&archive, r#"{"titles":[{"background":"musica:/mov/authored.avi","buttons":[{"rect":[600,0,100,40],"action":"exit"}]}]}"#, crate::ScriptEncoding::ShiftJis, 640, 360).is_err());
+        assert!(FrontendData::load(root.path(), &archive, r#"{"titles":[{"background":"musica:/mov/authored.avi","buttons":[{"rect":[600,0,100,40],"action":"exit"}]}]}"#, crate::ScriptEncoding::ShiftJis, 640, 360).is_err());
     }
 }

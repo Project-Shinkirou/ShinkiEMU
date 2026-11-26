@@ -52,10 +52,7 @@ impl MusicaSession {
                 self.clear_input();
                 Ok(())
             }
-            TitleAction::Memories => self
-                .vm
-                .set_gallery_page(MusicaSystemPage::Memories, 0)
-                .map_err(vm_error),
+            TitleAction::Memories => self.open_memories(),
             TitleAction::Exit => {
                 self.finished = true;
                 Ok(())

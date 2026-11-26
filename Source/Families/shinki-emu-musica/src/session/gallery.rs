@@ -1,5 +1,7 @@
 use super::*;
 use crate::{MusicaSystemPage, runtime::gallery};
+mod authored;
+
 impl MusicaSession {
     fn activate_gallery(&mut self) -> SessionResult<()> {
         let focus = self.vm.state().system_ui.focus_index;
@@ -43,6 +45,9 @@ impl MusicaSession {
         let page = self.vm.state().system_ui.page.clone();
         if !gallery::is_gallery(&page) {
             return Ok(false);
+        }
+        if self.gallery_cursor.is_some() {
+            return self.authored_gallery_event(event);
         }
         match event {
             RuntimeEvent::Key {

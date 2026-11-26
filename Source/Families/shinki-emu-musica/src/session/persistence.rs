@@ -237,6 +237,7 @@ impl MusicaSession {
         self.voice_duration = None;
         self.load_from_title = false;
         self.title_focus = None;
+        self.gallery_cursor = None;
         self.gameplay_frame = None;
         self.save_cards.clear();
         self.vm = vm;

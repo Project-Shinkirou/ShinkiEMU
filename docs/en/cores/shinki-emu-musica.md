@@ -57,6 +57,26 @@ The descriptor declares `frontend` (JSON string, default empty), `voice_characte
 
 Titles are ordered: the last variant whose `requires` map matches wins; absent globals are zero. Buttons use logical `[x,y,width,height]` rectangles and actions `new_game`, `load`, `config`, `memories`, `exit`. Gallery entries use `label`, `resource` and optional `requires`. Empty categories are omitted. Arrow keys select; Enter/Space activates; Escape returns; Backspace stops gallery music. Gallery text and pointer rows share canvas-relative pagination (12 entries per page). Music and CG resources are listed only through the documented sources; there is no hardcoded track-number table or CG page count.
 
+An executable-owned gallery can instead set `frontend.gallery_layout` to a game-relative JSON file (up to 1 MiB). Its `screens` array starts with the Memories root. Each screen provides an `id`, `layers` (resource URIs and optional logical `at: [x,y]` offsets), and `buttons`. Optional full-canvas `hover` art can be set per screen or per button and is clipped to the focused button's hit rectangle. `initial_focus` is an optional zero-based button index. Button `requires` gates activation and thumbnails without moving other buttons. For example:
+
+```json
+{
+  "screens": [{
+    "id": "memories",
+    "layers": [{"resource": "musica:/sys/memories.png"}],
+    "hover": "musica:/sys/memories-over.png",
+    "buttons": [
+      {"rect": [100, 80, 220, 44], "action": {"kind": "script", "resource": "musica:/scr/credits.sc"}},
+      {"rect": [400, 560, 96, 48], "action": {"kind": "back"}}
+    ]
+  }]
+}
+```
+
+Use `open` with a `screen` ID for a child menu, `previous_page` and `next_page` for sheets at the same level, `view` with an `images` array for CG variants, and `script` for an original SC entry. A button's optional `thumbnail` is drawn at its rectangle's top left. For music, `track` takes a `resource` and optional `select_only`, while `play_selected`, `stop`, `previous_track` and `next_track` implement the transport controls. `initial_selection` is a zero-based track-button index. Optional `selection` and `playing` art use offsets from their respective track rectangles. Ordinary arrows follow the screen geometry; `wrap_focus` enables wrapping along aligned rows and columns. On sheets that share a `track_group`, Up/Down select across the declared sheets without playing, and Left/Right change page. PageUp/PageDown use the authored page controls. Press and release inside the same enabled button to activate it. Escape closes a CG view, returns to the parent sheet, or leaves Memories.
+
+Use the original archive URI for art replaced by a resource patch; the normal texture override still applies. The original arrays and SC indexes are available for the list UI when no authored layout is supplied. Neither mode affects PAZ/SC recognition or script-owned direct entry.
+
 Each JSON field is bounded by the ABI's 4096-byte configuration limit. Large catalogs should use original SC indexes. Automatic movie scanning is bounded to 4096 scripts and 64 MiB of expanded source; supply `movie_index` for larger directories. Where discovery succeeds, native membership/order wins while preset labels and unlock conditions for matching resource URIs are retained. The reader does not reconstruct conditional SC control flow into unlock formulas; describe those rules in the preset.
 
 **Migration:** remove retired Manager fields `voice_ren`, `voice_sui`, `voice_aya`, `voice_tou`, `voice_mot` from stored configuration and express them in `voice_characters` with the release's actual prefixes. There are no aliases. Existing explicit `launch_mode=title` requires `frontend`; select `direct` for a native script-owned menu, or supply the release menu description. Existing eden/Perseus installations need their actual menu art, clear rules, replay/movie lists and character order in a release preset, not core exceptions. Synthetic fixtures cover both title-image casing layouts and a different 640×360 release with missing optional archives; these do not establish commercial-release compatibility. The settings codec's five native voice keys remain format parameters: declared characters map in configured order, additional characters use `voice_<prefix>` in frontend-only settings. Regression tests compare encoded native settings byte-for-byte with the former mapping.

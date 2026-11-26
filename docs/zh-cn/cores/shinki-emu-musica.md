@@ -57,6 +57,12 @@ descriptor 声明了中文标签与默认值：`frontend` 是 JSON 字符串（�
 
 标题按顺序匹配，采用最后一个 `requires` 全部相等的变体；不存在的全局变量按零处理。按钮矩形为逻辑 `[x,y,width,height]`，动作支持 `new_game`、`load`、`config`、`memories`、`exit`。鉴赏条目包含 `label`、`resource` 和可选 `requires`；空类别不显示。方向键选择，Enter/Space 执行，Escape 返回，Backspace 停止鉴赏音乐。文字与鼠标行共用画布比例布局，每页 12 项。不再内置曲目编号和 CG 页数。
 
+由原版 EXE 管理的鉴赏界面可把 `frontend.gallery_layout` 指向游戏目录下的 JSON 文件（最多 1 MiB）。`screens` 的第一项是鉴赏首页。每页写 `id`、`layers`（资源 URI 和可选的逻辑坐标 `at: [x,y]`）、`buttons`。全画布 `hover` 图可设在页面或单个按钮上，绘制时裁到当前按钮的点击矩形。`initial_focus` 是可选的初始焦点，从零开始计数。`requires` 控制按钮和缩略图的解锁，不会挪动其他按钮。
+
+按钮的 `action.kind` 可选 `open`（按 `screen` ID 进入子菜单）、`previous_page` 和 `next_page`（同级翻页）、`back`、`view`（显示 `images` 中的 CG 差分）、`script`（运行原版 SC）。`thumbnail` 从按钮矩形的左上角绘制。`track` 提供 `resource` 和可选的 `select_only`；`play_selected`、`stop`、`previous_track`、`next_track` 对应播放控制。`initial_selection` 是从零开始的曲目按钮索引；`selection` 和 `playing` 图相对各自的曲目矩形放置。方向键按几何位置移动，`wrap_focus` 允许同列或同行循环。共享 `track_group` 的页面用上下键跨页选曲，左右键翻页；PageUp/PageDown 也使用配置的翻页按钮。鼠标或触摸须在同一可用按钮内按下并松开才会触发。Escape 关闭 CG、返回上级或退出鉴赏。
+
+带资源替换的补丁仍使用原始归档 URI，由原有纹理覆盖机制读取替换图。未提供布局时沿用列表鉴赏。两种方式都不改变 PAZ/SC 识别和原版脚本直启。
+
 每个 JSON 字段遵守 ABI 的 4096 字节配置上限，大目录应引用原版 SC 索引。自动影片扫描最多读取 4096 个脚本、合计 64 MiB 展开源文件；更大目录需指定 `movie_index`。发现成功时，原版列表决定成员与顺序，preset 中同 URI 的标签与解锁条件仍保留。此读取器不把 SC 条件控制流反推成解锁公式，相关规则需由 preset 描述。
 
 **配置迁移：**从 Manager 已保存配置删除 `voice_ren`、`voice_sui`、`voice_aya`、`voice_tou`、`voice_mot`，改用 `voice_characters` 中实际前缀；没有旧字段别名。已显式保存的 `launch_mode=title` 需要补 `frontend`，原版脚本菜单则切为 `direct`。eden/Perseus 需用发行版 preset 提供实际菜单图、通关条件、回想/影片入口和角色顺序，不在核心保留特例。合成 fixture 覆盖两种标题图大小写布局，以及缺可选归档的另一套 640×360 数据；这不代表商业发行版已验收。原生格式仍有五个语音设置键，按声明角色顺序映射，多出的角色写前端设置 `voice_<prefix>`；回归测试对同一角色集合与顺序逐字节比较迁移前后的原生设置编码。

@@ -1,4 +1,7 @@
 use super::*;
+mod layout;
+pub(crate) use layout::{GalleryAction, GalleryCursor, GalleryDirection, GalleryLayout, GalleryScreen};
+
 pub(crate) fn is_gallery(page: &MusicaSystemPage) -> bool {
     matches!(
         page,
@@ -88,6 +91,16 @@ impl MusicaVm {
             .ok_or(MusicaRuntimeError::State)?
             .resource
             .clone();
+        self.play_gallery_track(uri)
+    }
+
+    pub(crate) fn play_gallery_track(
+        &mut self,
+        uri: String,
+    ) -> Result<Vec<MusicaAudioCommand>, MusicaRuntimeError> {
+        if !is_gallery(&self.state.system_ui.page) {
+            return Err(MusicaRuntimeError::State);
+        }
         let mut commands = Vec::new();
         if self.state.audio.get(&0).is_some_and(|a| a.playing) {
             commands.push(MusicaAudioCommand::Stop {
