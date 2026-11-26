@@ -147,7 +147,6 @@ shinki-emu-krkr2 = { workspace = true, features = ["static"] }
 # be enabled too or the unified codespan API rejects naga 26's String buffer.
 naga-26 = { package = "naga", version = "26.0.0", default-features = false, features = ["termcolor"] }
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-impacto = { workspace = true, features = ["static"] }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.

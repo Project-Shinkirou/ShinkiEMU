@@ -25,7 +25,9 @@ cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.
 
 QA 包用独立的 SemVer，例如上面的 `0.1.0-qa.1`。Gradle 首次同步成功后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 离线打包。打包器会把 `--version` 传入本次构建，不需要先生成构建回执。
 
-常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。本地只测一个 ABI 时，加 `--qa-single-abi`。APK 内置 Impacto 和 KiriKiri 的 Java 宿主；其他获准的核心单独打包，由 Manager 安装。独立核心包不需要 Gradle 签名。
+常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。本地只测一个 ABI 时，加 `--qa-single-abi`。APK 随附 KiriKiri 的 Java 宿主。Impacto 等获准的核心单独打包，由 Manager 安装。独立核心包不需要 Gradle 签名。
+
+切换 Impacto 时，先确认组织 fork 上可获取 `Cargo.lock` 固定的提交，再发布序号 4。用 `cargo xtask release --component impacto --target <triple>` 分别准备两个 Android ABI 的产物及对应源码包。确认官方目录已收录两份 ZIP 后，再发布取消静态 Impacto 的 Manager。保留旧的序号 3 发行资产。
 
 制作正式 APK 时，`cargo xtask package` 核对正式签名证书、包名 `org.shinkirou.shinkiemu`、指定的 `versionName` 和 `versionCode`，以及 `minSdk` 28。`release.yml` 用 `github.run_number` 设置 `SHINKI_EMU_ANDROID_VERSION_CODE`，每次公开的 APK 的 `versionCode` 都必须高于上一版。保留现有工作流文件，不要重建、改名或用另一个文件替代，否则编号可能从 1 重新开始，已安装的用户无法升级。
 
