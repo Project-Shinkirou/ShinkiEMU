@@ -217,6 +217,8 @@ impl ShinkiEmuManagerController {
             .into_iter()
             .map(|root| root.path)
             .collect();
+        let mut inventory_notice = None;
+        let cores = self.cores_model(&mut inventory_notice)?;
         Ok(ManagerViewModel {
             app: AppViewModel {
                 version: shinki_emu_manager::version().into(),
@@ -243,9 +245,9 @@ impl ShinkiEmuManagerController {
             selection,
             game_settings,
             patch,
-            cores: self.cores_model()?,
+            cores,
             notices: NoticesViewModel {
-                items: self.notice_views(),
+                items: self.notice_views().into_iter().chain(inventory_notice).collect(),
                 snackbar: self.snackbar.view(),
             },
             settings: SettingsViewModel {
@@ -546,8 +548,22 @@ impl ShinkiEmuManagerController {
         })
     }
 
-    fn cores_model(&mut self) -> Result<CoresViewModel, String> {
-        let mut cores = self.cores_view()?;
+    fn cores_model(&mut self, inventory_notice: &mut Option<NoticeViewModel>) -> Result<CoresViewModel, String> {
+        let mut cores = match self.cores_view() {
+            Ok(cores) => cores,
+            Err(error) => {
+                let text = describe_error(&error);
+                *inventory_notice = Some(NoticeViewModel {
+                    id: format!("core-inventory:{}", &sha256_id(&error)[..12]),
+                    severity: "error".into(),
+                    title: text.title,
+                    detail: error,
+                    code: text.code,
+                    core: String::new(),
+                });
+                CoresViewModel::default()
+            }
+        };
         cores.default_configuration_state = self.defaults_plugin.as_deref().map(|id| self.configuration_state(Some(id))).unwrap_or("unprepared").into();
         cores.default_configuration_error = self.defaults_plugin.as_deref()
             .and_then(|plugin| self.native_failures.get(plugin)).cloned().unwrap_or_default();

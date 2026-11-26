@@ -356,6 +356,13 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     assert!(app.startup_status().contains("SHINKI_EMU_CORES_DIRECTORY_CREATE"));
     assert!(!app.can_refresh_library());
     assert!(app.refresh_library().is_err());
+    let inventory_error = app.cores_view().err().expect("core inventory is unreadable");
+    let model = app.model().unwrap();
+    assert!(model.cores.items.is_empty());
+    let notice = model.notices.items.iter()
+        .find(|notice| notice.id.starts_with("core-inventory:"))
+        .expect("inventory failure is visible without losing the library model");
+    assert_eq!(notice.detail, inventory_error);
     // A valid selection remains persisted for the next successful startup.
     fs::remove_file(root.path().join("cores")).unwrap();
     fs::create_dir(root.path().join("cores")).unwrap();
@@ -363,6 +370,7 @@ fn inventory_failure_requires_restart_and_shutdown_still_joins_owner() {
     let model = app.add_game_directory(&game).unwrap();
     assert_eq!(model.settings.roots, [game.to_str().unwrap()]);
     assert!(model.library.games.is_empty());
+    assert!(!model.notices.items.iter().any(|notice| notice.id.starts_with("core-inventory:")));
     app.registry.shutdown().unwrap();
     app.registry.shutdown().unwrap();
 }
