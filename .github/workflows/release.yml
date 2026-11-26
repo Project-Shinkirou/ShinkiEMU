@@ -208,7 +208,7 @@ jobs:
       - name: Install the second ABI for the universal Android Manager
         if: matrix.target == 'aarch64-linux-android' && matrix.component == 'manager'
         run: rustup target add x86_64-linux-android
-      - run: cargo install cargo-about --version 0.9.3 --locked
+      - run: cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
       - name: Prepare release files
         if: matrix.component != 'manager' || matrix.target != 'aarch64-apple-ios'
         env:

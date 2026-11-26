@@ -22,7 +22,7 @@ Cargo 根据 [Cargo.toml](../../Cargo.toml) 和 [Cargo.lock](../../Cargo.lock) �
 打包、运行 `ci` 或准备发布前，先安装固定版本的许可证工具：
 
 ```sh
-cargo install cargo-about --locked --version 0.9.3
+cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
 ```
 
 ### Windows x64

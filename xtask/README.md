@@ -3,7 +3,7 @@
 Run from the repository root. Use Cargo directly for build, check and test. `cargo xtask` handles selection, packaging, releases and metadata through the locked workspace. Install `cargo-about` before running commands that package binaries:
 
 ```sh
-cargo install cargo-about --locked --version 0.9.3
+cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
 ```
 
 ```text

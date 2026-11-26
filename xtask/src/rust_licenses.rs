@@ -24,7 +24,7 @@ pub(crate) fn entries(inv: &Inventory, artifact: &BuildArtifact, scratch: &Path)
         command.args(["--features", feature]);
     }
     command.arg(inv.root.join("about.hbs"));
-    dependencies::run(&mut command).context("generate Rust notices with cargo-about (cargo install cargo-about --version 0.9.3 --locked)")?;
+    dependencies::run(&mut command).context("generate Rust notices with cargo-about (cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about)")?;
 
     let links = locked_source_links(&fs::read_to_string(inv.root.join("Cargo.lock"))?)?;
     let sources = scratch.join("pinned-sources.txt");

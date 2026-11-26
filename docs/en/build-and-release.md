@@ -22,7 +22,7 @@ Native build scripts bootstrap the pinned vcpkg checkout under `.work/vcpkg`, in
 Install the pinned host license tool before packaging, running `ci`, or preparing a release:
 
 ```sh
-cargo install cargo-about --locked --version 0.9.3
+cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
 ```
 
 ### Windows x64
