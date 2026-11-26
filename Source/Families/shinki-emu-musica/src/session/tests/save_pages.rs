@@ -58,10 +58,10 @@ fn native_gpu_save_pages_navigate_save_and_restore_gameplay() {
         .open_session(request(root.path(), Sink::default()))
         .unwrap();
     session.advance(16_666_667, &[]).unwrap();
-    let first = session.scene.pixels.clone();
+    let first = session.scene.pixels().clone();
     session.advance(0, &[key(KeyCode::F6)]).unwrap();
     assert_eq!(session.vm.state().system_ui.focus_index, 20);
-    assert!(first != session.scene.pixels);
+    assert!(session.scene.pixels() != &first);
     let tick = session.vm.state().fixed_tick;
     session
         .advance(1_000_000_000, &[key(KeyCode::ArrowRight)])
@@ -90,7 +90,7 @@ fn native_gpu_save_pages_navigate_save_and_restore_gameplay() {
             .any(|pixel| pixel[..3] != [0, 0, 0])
     );
     session.advance(0, &[key(KeyCode::Escape)]).unwrap();
-    assert!(session.scene.pixels == first);
+    assert!(session.scene.pixels() == &first);
     session.advance(16_666_667, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.message.as_ref().unwrap().0, "Second");
     session.advance(0, &[key(KeyCode::F8)]).unwrap();
@@ -101,7 +101,7 @@ fn native_gpu_save_pages_navigate_save_and_restore_gameplay() {
         .unwrap();
     assert_eq!(session.vm.state().system_ui.page, MusicaSystemPage::None);
     assert_eq!(session.message.as_ref().unwrap().0, "First");
-    assert!(session.scene.pixels == first);
+    assert!(session.scene.pixels() == &first);
     Box::new(session).close().unwrap();
     let (_, mut reopened) = provider
         .open_session(request(root.path(), Sink::default()))
@@ -109,7 +109,7 @@ fn native_gpu_save_pages_navigate_save_and_restore_gameplay() {
     reopened.advance(16_666_667, &[]).unwrap();
     reopened.advance(0, &[key(KeyCode::F8)]).unwrap();
     reopened.advance(0, &click(470.0, 100.0)).unwrap();
-    assert!(reopened.scene.pixels == first);
+    assert!(reopened.scene.pixels() == &first);
     Box::new(reopened).close().unwrap();
 }
 

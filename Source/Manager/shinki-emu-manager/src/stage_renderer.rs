@@ -12,7 +12,7 @@ use shinki_emu_manager::{
 };
 use shinki_emu_manager_core::{
     FilterSettings,
-    model::{FrameIdentity, FrameLease},
+    model::FrameIdentity,
 };
 use roukaku_media_core::Viewport2D;
 use wgpu::{Extent3d, TextureUsages};
@@ -24,6 +24,8 @@ const DEFAULT_STAGE_HEIGHT: u32 = 600;
 mod filter;
 #[path = "stage_frame.rs"]
 mod frame;
+#[path = "stage_gpu.rs"]
+mod gpu;
 #[path = "stage_pixels.rs"]
 mod pixels;
 #[cfg(target_env = "ohos")]
@@ -31,6 +33,7 @@ mod pixels;
 mod software;
 use filter::{ActiveFilter, PendingFilter};
 pub(crate) use frame::FrameMailbox;
+use frame::{GpuFrame, StageFrame};
 
 pub(crate) struct ManagerStageRenderer {
     mailbox: FrameMailbox,
@@ -39,6 +42,8 @@ pub(crate) struct ManagerStageRenderer {
     input_texture: Option<wgpu::Texture>,
     output_texture: Option<wgpu::Texture>,
     presented_input: Option<wgpu::Texture>,
+    presented_gpu: Option<GpuFrame>,
+    retired_gpu: Option<GpuFrame>,
     pixel_presentation: pixels::PixelPresentation,
     input_width: u32,
     input_height: u32,
@@ -73,6 +78,8 @@ impl ManagerStageRenderer {
             input_texture: None,
             output_texture: None,
             presented_input: None,
+            presented_gpu: None,
+            retired_gpu: None,
             pixel_presentation: pixels::PixelPresentation::default(),
             input_width: DEFAULT_STAGE_WIDTH,
             input_height: DEFAULT_STAGE_HEIGHT,
@@ -104,8 +111,9 @@ impl ManagerStageRenderer {
         Ok(FilterApplyState::Deferred)
     }
 
-    fn render_frame(&mut self, context: WgpuFrameContext<'_>, frame: &FrameLease) -> Result<(), String> {
-        let size = (frame.info.width, frame.info.height);
+    fn render_frame(&mut self, context: WgpuFrameContext<'_>, frame: &StageFrame) -> Result<(), String> {
+        let info = frame.info();
+        let size = (info.width, info.height);
         validate_dimensions(context.device, size.0, size.1)?;
         if let Some(pending) = self.pending_filter.take() {
             let candidate = match pending {
@@ -130,7 +138,7 @@ impl ManagerStageRenderer {
             }
             return Ok(());
         }
-        if Some(frame.identity) == self.uploaded_identity || self.failed_filter_size == Some(size) {
+        if Some(frame.identity()) == self.uploaded_identity || self.failed_filter_size == Some(size) {
             return Ok(());
         }
         match self.draw_frame(&context, frame, None) {
@@ -147,10 +155,11 @@ impl ManagerStageRenderer {
     fn draw_frame(
         &mut self,
         context: &WgpuFrameContext<'_>,
-        frame: &FrameLease,
+        frame: &StageFrame,
         candidate: Option<&mut ActiveFilter>,
     ) -> Result<(), DrawError> {
-        let info = frame.info;
+        let info = frame.info();
+        let identity = frame.identity();
         let active = candidate.or(self.active_filter.as_mut());
         let active = if let Some(active) = active {
             active.resize(context.device, info.width, info.height).map_err(DrawError::Filter)?;
@@ -158,18 +167,23 @@ impl ManagerStageRenderer {
         } else {
             None
         };
+        let gpu = match frame {
+            StageFrame::Gpu(gpu) => Some(gpu),
+            StageFrame::Cpu(_) => None,
+        };
         let format = pixels::input_format(info.format);
-        let replacement = if self.input_texture.as_ref().is_none_or(|texture| {
+        let replacement = if gpu.is_none() && self.input_texture.as_ref().is_none_or(|texture| {
             texture.width() != info.width || texture.height() != info.height || texture.format() != format
         }) {
             Some(create_input_texture(context.device, info.width, info.height, format).map_err(DrawError::Host)?)
         } else {
             None
         };
-        let input = replacement.as_ref().or(self.input_texture.as_ref()).unwrap();
-        let upload = replacement.is_some() || Some(frame.identity) != self.uploaded_identity;
-        let convert = upload && pixels::requires_conversion(info);
-        let baseline = if upload {
+        let input = gpu.map(|gpu| &gpu.texture)
+            .or(replacement.as_ref()).or(self.input_texture.as_ref()).unwrap();
+        let fresh = replacement.is_some() || Some(identity) != self.uploaded_identity;
+        let convert = fresh && pixels::requires_conversion(info);
+        let baseline = if fresh {
             input
         } else {
             self.presented_input.as_ref().ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_BASELINE".into()))?
@@ -197,8 +211,8 @@ impl ManagerStageRenderer {
         } else {
             (baseline.clone(), baseline.clone(), None)
         };
-        if upload {
-            let data = frame.pixels().ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_PIXELS".into()))?;
+        if let (true, StageFrame::Cpu(cpu)) = (fresh, frame) {
+            let data = cpu.pixels().ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_PIXELS".into()))?;
             let data = info.required_bytes().and_then(|length| data.get(..length))
                 .ok_or_else(|| DrawError::Host("SHINKI_EMU_HOST_FRAME_SIZE".into()))?;
             context.queue.write_texture(
@@ -218,7 +232,7 @@ impl ManagerStageRenderer {
         }
         if let Some(command) = command {
             context.queue.submit([command]);
-        } else if upload && self.vulkan_stage_sampling {
+        } else if fresh && self.vulkan_stage_sampling {
             // Submit the deferred write_texture and the sampling barrier
             // together; there was no conversion/filter encoder to reuse.
             let mut encoder =
@@ -228,12 +242,18 @@ impl ManagerStageRenderer {
             prepare_stage_sampling(&mut encoder, &output);
             context.queue.submit([encoder.finish()]);
         }
-        self.mailbox.presented(frame.identity, info).map_err(DrawError::Host)?;
+        self.mailbox.presented(identity, info).map_err(DrawError::Host)?;
         if let Some(input) = replacement {
             self.input_texture = Some(input);
         }
+        if fresh {
+            // Slint installs the returned replacement after render() returns.
+            // Keep the previous target leased through that UI render pass.
+            self.retired_gpu = self.presented_gpu.take();
+            self.presented_gpu = gpu.cloned();
+        }
         self.presented_input = Some(baseline);
-        self.uploaded_identity = Some(frame.identity);
+        self.uploaded_identity = Some(identity);
         if self.output_texture.as_ref() != Some(&output)
             || (self.logical_width, self.logical_height) != (info.logical_width, info.logical_height)
             || (self.input_width, self.input_height) != (info.width, info.height)
@@ -313,6 +333,7 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
         // texture reads are already tracked by wgpu.
         self.vulkan_stage_sampling =
             cfg!(target_os = "android") && adapter.backend == wgpu::Backend::Vulkan;
+        self.mailbox.setup_gpu(&context)?;
         self.device = Some(context.device.clone());
         Ok(())
     }
@@ -345,8 +366,15 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
     }
 
     fn render(&mut self, context: WgpuFrameContext<'_>) -> Result<(), String> {
-        let Some(frame) = self.mailbox.snapshot()? else {
+        self.retired_gpu = None;
+        let Some(frame) = self.mailbox.stage_snapshot()? else {
             if self.uploaded_identity.is_some() {
+                if let (Some(gpu), Some(output)) = (&self.presented_gpu, &mut self.output_texture)
+                    && gpu.texture == *output
+                {
+                    *output = create_input_texture(context.device, output.width(), output.height(), output.format())?;
+                    self.texture_dirty = true;
+                }
                 if let Some(output) = &self.output_texture {
                     let view = output.create_view(&Default::default());
                     let mut encoder = context.device.create_command_encoder(&Default::default());
@@ -371,6 +399,7 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
                 }
                 self.input_texture = None;
                 self.presented_input = None;
+                self.retired_gpu = self.presented_gpu.take();
                 self.pixel_presentation = pixels::PixelPresentation::default();
                 self.uploaded_identity = None;
                 self.failed_filter_size = None;
@@ -386,6 +415,9 @@ impl ShinkiUnderlayRenderer for ManagerStageRenderer {
     }
 
     fn teardown(&mut self) -> Result<(), String> {
+        self.mailbox.teardown_gpu();
+        self.presented_gpu = None;
+        self.retired_gpu = None;
         self.input_texture = None;
         self.output_texture = None;
         self.presented_input = None;

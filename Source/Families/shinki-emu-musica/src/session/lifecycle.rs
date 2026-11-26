@@ -39,7 +39,7 @@ impl MusicaSession {
                 "failed session must be closed",
             ));
         }
-        let pixels = &self.scene.pixels;
+        let pixels = self.scene.pixels();
         if self.force_frame
             || self.published_frame.current().is_none_or(|frame| {
                 frame.info != self.info || frame.pixels().as_ptr() != pixels.as_ptr()

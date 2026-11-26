@@ -1,6 +1,8 @@
 use crate::{Error, game::Game, vm::Vm};
 use roukaku_media_core::{Extent2D, OwnedPixelBuffer};
 use shinki_emu_abi as abi;
+#[cfg(not(target_env = "ohos"))]
+use shinki_emu_sdk::gpu_scene::GpuSceneHost;
 #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
 use shinki_emu_sdk::runtime::WindowCommand;
 use shinki_emu_sdk::{
@@ -177,6 +179,8 @@ struct SessionOptions {
     #[cfg(not(target_env = "ohos"))]
     hardware_compositing: bool,
     #[cfg(not(target_env = "ohos"))]
+    gpu_host: Option<GpuSceneHost>,
+    #[cfg(not(target_env = "ohos"))]
     null_audio: bool,
     skip_disc_check: bool,
     font_file: Option<PathBuf>,
@@ -334,14 +338,14 @@ unsafe fn handle<'a>(session: abi::Session) -> Result<&'a Handle> {
 }
 
 unsafe extern "C" fn open(
-    request: *const abi::OpenRequest,
+    raw_request: *const abi::OpenRequest,
     output: *mut abi::OpenResult,
     error: *mut abi::Error,
 ) -> abi::Status {
     boundary(error, || {
         let output = unsafe { output.as_mut() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         output.session = ptr::null_mut();
-        let request = unsafe { request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
+        let request = unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         if !request.header.accepts::<abi::OpenRequest>()
             || !request.host.header.accepts::<abi::HostServices>()
             || request.session_epoch == 0
@@ -361,6 +365,12 @@ unsafe extern "C" fn open(
             entry.id == HARDWARE_COMPOSITING && matches!(entry.value, ConfigValue::Bool(true))
         });
         #[cfg(not(target_env = "ohos"))]
+        let gpu_host = if hardware_compositing {
+            unsafe { GpuSceneHost::from_request(raw_request) }.map_err(invalid)?
+        } else {
+            None
+        };
+        #[cfg(not(target_env = "ohos"))]
         let null_audio = config.iter().any(|entry| {
             entry.id == HEADLESS_AUDIO_DEVICE
                 && matches!(&entry.value, ConfigValue::Enum(device) if device == NULL_AUDIO_DEVICE)
@@ -377,6 +387,8 @@ unsafe extern "C" fn open(
         let options = SessionOptions {
             #[cfg(not(target_env = "ohos"))]
             hardware_compositing,
+            #[cfg(not(target_env = "ohos"))]
+            gpu_host,
             #[cfg(not(target_env = "ohos"))]
             null_audio,
             skip_disc_check,
@@ -476,7 +488,7 @@ fn serve(
     vm.set_presentation(canvas);
     #[cfg(not(target_env = "ohos"))]
     if options.hardware_compositing {
-        vm.enable_hardware_compositor(canvas).map_err(runtime)?;
+        vm.enable_hardware_compositor(canvas, options.gpu_host).map_err(runtime)?;
     }
     let surface = abi::SurfaceInfo {
         kind: abi::SURFACE_CPU,

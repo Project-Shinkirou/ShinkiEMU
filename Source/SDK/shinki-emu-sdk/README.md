@@ -38,6 +38,10 @@ SDK 提供移植核心共同使用的模块，当前替代 Musica 内部的文�
 
 `gpu-render` 导出 RoukakuEngine 的 `WgpuOffscreenRenderer` 和 `native_wgpu_instance`，供 ADV32、CMVS 和 Musica 创建离屏渲染器。合成、滤镜和 CPU 回读由 RoukakuEngine 实现。
 
+同一设备呈现走 `gpu_scene`。核心在原生 `open` 时用 `GpuSceneHost::from_request` 读取可选服务，把复制得到的服务表传给 owner worker；旧 Host 或创建目标返回 `UNSUPPORTED` 时，继续使用 CPU 帧路径。目标创建成功后，`GpuSceneClient::submit` 按顺序提交已经映射到 raster 的命令，logical 尺寸只作元数据。普通提交不回读像素，存档检查点才显式调用 `capture`。提交失败后应关闭会话，不能跳过该帧的资源变更继续运行。
+
+Host 在回调内用 `gpu_scene::decode` 解码到可复用的命令向量，再交给同一个场景渲染器校验并渲染。命令、文字标签和字形位置不借出回调；纹理及字形像素用 C retain/release 按需延长寿命，不复制正文。Host 在提交后清空命令，并在卸载核心库前同步销毁目标及其持有的像素租约。RGBA8 回读由 Host 直接写入 SDK 的最终分配，只有写满全部字节才能返回成功。
+
 SDK 不创建 EngineSession、VN session、PlatformHost 或 package，不拥有游戏存档与归档语义。
 
 ```sh

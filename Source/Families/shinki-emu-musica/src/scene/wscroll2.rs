@@ -220,12 +220,12 @@ mod tests {
                 [0, 0, 0, 255]
             };
             assert_eq!(
-                &scene.pixels[x as usize * 4..x as usize * 4 + 4],
+                &scene.pixels()[x as usize * 4..x as usize * 4 + 4],
                 &expected,
                 "x={x}"
             );
         }
-        let expected = scene.pixels.clone();
+        let expected = scene.pixels().clone();
         let mut restored = make_vm();
         restored
             .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 3)
@@ -239,9 +239,9 @@ mod tests {
         )
         .unwrap();
         restored_scene.render(restored.state(), None, None).unwrap();
-        assert_eq!(restored_scene.pixels, expected);
+        assert_eq!(restored_scene.pixels(), &expected);
         vm.step(3).unwrap();
         scene.render(vm.state(), None, None).unwrap();
-        assert_ne!(scene.pixels, expected);
+        assert_ne!(scene.pixels(), &expected);
     }
 }

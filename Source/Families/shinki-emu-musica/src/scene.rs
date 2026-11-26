@@ -5,10 +5,10 @@ use crate::{
 use roukaku_byte_source::OwnedByteBuffer;
 use roukaku_media_core::{BlendMode, Extent2D, MaskRevealMode, RectI, SceneCommand, TextureFrame};
 use roukaku_platform::SceneFrame;
+use shinki_emu_abi as abi;
+use shinki_emu_sdk::gpu_scene::SceneOutput;
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
-use shinki_emu_sdk::{
-    SceneTextureResidency, StageCanvas, TextureAsset, TextureCache, WgpuOffscreenRenderer,
-};
+use shinki_emu_sdk::{SceneTextureResidency, StageCanvas, TextureAsset, TextureCache};
 use std::{num::NonZeroUsize, sync::Arc};
 
 const MAX_ASSET_BYTES: u64 = 64 * 1024 * 1024;
@@ -55,9 +55,9 @@ pub(crate) fn error(code: &str, message: &str) -> SessionError {
 }
 
 pub(crate) struct Scene {
-    gpu_instance: wgpu::Instance,
     archive: Arc<MusicaMountedVfs>,
-    renderer: WgpuOffscreenRenderer,
+    output: SceneOutput,
+    cpu_pixels: Option<Arc<[u8]>>,
     sequence: u64,
     text: MusicaTextRenderer,
     configured_font: Option<Arc<roukaku_text::PackagedFont>>,
@@ -79,11 +79,10 @@ pub(crate) struct Scene {
     canvas: StageCanvas,
     #[cfg(feature = "ffmpeg-vcpkg")]
     movies: movie::MovieScene,
-    pub pixels: Arc<[u8]>,
 }
 
 impl Scene {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new(
         gpu_instance: &wgpu::Instance,
         archive: Arc<MusicaMountedVfs>,
@@ -92,7 +91,7 @@ impl Scene {
         encoding: crate::ScriptEncoding,
     ) -> SessionResult<Self> {
         Self::new_scaled(
-            gpu_instance,
+            SceneOutput::offscreen(gpu_instance.clone())?,
             archive,
             width,
             height,
@@ -105,7 +104,7 @@ impl Scene {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_scaled(
-        gpu_instance: &wgpu::Instance,
+        output: SceneOutput,
         archive: Arc<MusicaMountedVfs>,
         logical_width: u32,
         logical_height: u32,
@@ -120,8 +119,6 @@ impl Scene {
             Extent2D::new(raster_width, raster_height),
         )
         .map_err(|_| error("SHINKI_EMU_MUSICA_CANVAS", "stage extents are invalid"))?;
-        let logical_extent = canvas.logical();
-        let raster_extent = canvas.raster();
         let pixel_bytes = usize::try_from(raster_width)
             .ok()
             .and_then(|width| {
@@ -142,34 +139,7 @@ impl Scene {
                 "raster frame exceeds the GPU readback budget",
             ));
         }
-        let renderer = pollster::block_on(WgpuOffscreenRenderer::new(gpu_instance))
-            .map_err(|cause| {
-                error(
-                    "SHINKI_EMU_MUSICA_RENDERER",
-                    &format!(
-                        "hardware GPU renderer could not be created ({:?} during {})",
-                        cause.code, cause.operation
-                    ),
-                )
-            })?
-            .with_default_compositing(roukaku_media_core::SceneCompositing2D::EncodedSrgb);
-        renderer
-            .validate_output_extent(raster_width, raster_height)
-            .map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_FRAME_DIMENSIONS",
-                    "requested raster exceeds the selected GPU capability",
-                )
-            })?;
-        tracing::info!(
-            event = "shinki.emu.musica.gpu.created",
-            backend = renderer.identity().backend.as_str(),
-            device_type = renderer.identity().device_type.as_str(),
-            logical_width = logical_extent.width,
-            logical_height = logical_extent.height,
-            raster_width = raster_extent.width,
-            raster_height = raster_extent.height
-        );
+        output.validate_raster(abi::Extent { width: raster_width, height: raster_height })?;
         let mut text = MusicaTextRenderer::new(encoding).map_err(|cause| {
             error(
                 "SHINKI_EMU_MUSICA_FONT",
@@ -183,9 +153,9 @@ impl Scene {
             )
         })?;
         Ok(Self {
-            gpu_instance: gpu_instance.clone(),
             archive,
-            renderer,
+            output,
+            cpu_pixels: None,
             text,
             configured_font: None,
             #[cfg(feature = "ffmpeg-vcpkg")]
@@ -217,13 +187,55 @@ impl Scene {
                 NonZeroUsize::new(crate::MUSICA_STAGE_RESOURCE_LIMIT).unwrap(),
             ),
             frame_ani_patches: std::collections::BTreeMap::new(),
-            pixels: vec![0; pixel_bytes].into(),
         })
     }
 
-    pub(crate) fn configured_font(&self) -> Option<Arc<roukaku_text::PackagedFont>> {
-        self.configured_font.clone()
+    pub(crate) fn rebuild(&self, encoding: crate::ScriptEncoding) -> SessionResult<Self> {
+        let mut scene = Self::new_scaled(
+            self.output.rebuild()?,
+            self.archive.clone(),
+            self.width,
+            self.height,
+            self.raster_width,
+            self.raster_height,
+            self.texture_overrides.clone(),
+            encoding,
+        )?;
+        scene.set_text_shadow(self.text_shadow());
+        scene.set_configured_font(self.configured_font.clone())?;
+        #[cfg(feature = "ffmpeg-vcpkg")]
+        scene.set_subtitle_catalog(self.subtitle_catalog());
+        Ok(scene)
     }
+
+    pub(crate) fn is_hosted(&self) -> bool {
+        self.output.is_hosted()
+    }
+
+    pub(crate) fn cpu_pixels(&self) -> Option<&Arc<[u8]>> {
+        self.cpu_pixels.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pixels(&self) -> &Arc<[u8]> {
+        self.cpu_pixels().expect("rendered CPU frame")
+    }
+
+    #[cfg(test)]
+    fn cpu_renderer(&self) -> &shinki_emu_sdk::WgpuOffscreenRenderer {
+        self.output.offscreen_renderer().expect("expected local renderer")
+    }
+
+    pub(crate) fn capture(&self) -> SessionResult<Arc<[u8]>> {
+        if self.output.is_hosted() {
+            self.output.capture()
+        } else {
+            self.cpu_pixels.clone().ok_or_else(|| {
+                error("SHINKI_EMU_MUSICA_CAPTURE", "no rendered frame to capture")
+            })
+        }
+    }
+
     pub(crate) fn set_configured_font(
         &mut self,
         font: Option<Arc<roukaku_text::PackagedFont>>,
@@ -243,12 +255,6 @@ impl Scene {
         }
         self.configured_font = font;
         Ok(())
-    }
-    pub(crate) fn texture_overrides(&self) -> MusicaTextureOverrides {
-        self.texture_overrides.clone()
-    }
-    pub(crate) fn gpu_instance(&self) -> &wgpu::Instance {
-        &self.gpu_instance
     }
     pub fn set_text_encoding(&mut self, encoding: crate::ScriptEncoding) {
         self.text.set_encoding(encoding);
@@ -571,32 +577,18 @@ impl Scene {
         mapped.extend(commands);
         mapped.push(SceneCommand::PopTransform);
         mapped.push(SceneCommand::PopClip);
-        self.pixels = self
-            .renderer
-            .render(&SceneFrame {
-                sequence,
-                width: self.raster_width,
-                height: self.raster_height,
-                clear_rgba: [0, 0, 0, 255],
-                commands: mapped,
-                semantics: None,
-            })
-            .map_err(|cause| {
-                tracing::error!(
-                    event = "shinki.emu.musica.gpu.failed",
-                    operation = %cause.operation,
-                    code = ?cause.code,
-                    "GPU scene composition failed"
-                );
-                error(
-                    "SHINKI_EMU_MUSICA_RENDER",
-                    &format!(
-                        "GPU scene composition failed ({:?} during {})",
-                        cause.code, cause.operation
-                    ),
-                )
-            })?
-            .rgba8;
+        let frame = SceneFrame {
+            sequence,
+            width: self.raster_width,
+            height: self.raster_height,
+            clear_rgba: [0, 0, 0, 255],
+            commands: mapped,
+            semantics: None,
+        };
+        self.cpu_pixels = self.output.submit(
+            &frame,
+            abi::Extent { width: self.width, height: self.height },
+        )?;
         self.sequence = sequence;
         Ok(())
     }

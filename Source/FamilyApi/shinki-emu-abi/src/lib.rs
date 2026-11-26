@@ -12,6 +12,7 @@ mod config;
 mod core;
 #[cfg(feature = "diagnostic-bridge")]
 pub mod diagnostic_bridge;
+mod gpu_scene;
 mod lease;
 mod module_owner;
 mod services;
@@ -20,6 +21,7 @@ mod surface;
 pub use android_context::*;
 pub use config::*;
 pub use core::*;
+pub use gpu_scene::*;
 pub use lease::*;
 pub use module_owner::*;
 pub use services::*;

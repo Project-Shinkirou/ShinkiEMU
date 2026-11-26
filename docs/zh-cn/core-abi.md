@@ -96,6 +96,18 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 
 共享 Rust 诊断桥对每条原始事件只转发一次。宿主回调向同一个静态链接 tracing subscriber 发出的嵌套事件，不会再次经 ABI 回传。线程局部保护覆盖字段格式化和回调，在返回或异常展开时复位；其他线程和后续事件不受影响。所有使用 `shinki-emu-abi/diagnostic-bridge` 的核心共用这项行为，无需改变日志级别或 worker 栈预算。
 
+## 可选 GPU 场景服务
+
+`OpenRequestGpuV1` 保留完整的 `OpenRequestTextV1` 前缀，末尾新增 `GpuSceneServiceV1` 指针。核心先检查请求大小，再检查服务表的版本、大小和回调。宿主未提供服务，或 `create` 返回 `UNSUPPORTED`，就在开局时选用原有 CPU 帧。核心仍须支持旧宿主和 headless。ABI v3 和核心入口不变。
+
+Manager 持有 WGPU 设备和队列。核心只拿到当前会话内有效的目标 ID，通过 C 布局提交有序绘制命令。SDK 在调用期间借出命令；宿主可通过 retain/release 保留不可变的贴图和字形。Manager 在自己的纹理上绘制，直接采样，或把纹理交给滤镜。普通出帧不跨 ABI 传设备、Rust 对象或帧缓冲像素。帧代次由宿主分配；换目标不重置代次，关闭后的提交会被拒绝。
+
+`shinki_emu_sdk::gpu_scene::SceneOutput` 在开局时选定出帧路径，持有绘制目标，重建目标时不重新协商。整套绘制命令都能用 v1 表达的核心以 `SceneRequirements::Sprites` 打开，再调用 `submit(&frame, logical)`。只有离屏分支返回的像素才走原有 CPU 帧租约；宿主 GPU 分支只在确实需要像素时调用 `capture()`。Musica 用这套接口出帧，并显式捕获存档缩略图。
+
+`GpuSceneServiceV2` 在原样保留的 v1 表尾部加上 `present_raster`，用表大小声明支持，前缀的版本仍为 1。已经在 CPU 上画好的特效可以走这个回调，不会改用基础 CPU 帧租约；两个提交回调共用同一目标序号和宿主帧代次。宿主保留不可变的特效画面，只在显示时上传。启用硬件合成的 ADV32 请求 `SpritesWithNativeRaster`。普通场景一直留在宿主 GPU 上；碎屏特效只在进入时按需捕获一次画面，原有的 CPU 存档绘制不变。
+
+旧宿主、headless、Android 当前的 Skia/Vulkan 舞台和 OpenHarmony 软件舞台缺少所需服务时，整个会话沿用离屏渲染与 CPU 帧租约。树内 CMVS 固定选择 SDK 离屏路径：除了协议未覆盖的相机、网格、投影网格和交叉淡入淡出，父子层遮罩还要求先合成中间画面，精确地按字节应用 alpha 查找表，再按原绘制顺序插入结果。接入宿主 GPU 前，合成器必须能在同一设备完成这些步骤，并把中间纹理直接用作后续绘制资源。Lucifen 继续用 `native::lease_cpu` 发布可变 CPU 画布的不可变快照，不产生可交给宿主的场景命令。
+
 ## 转换结果兼容性
 
 现有 `Descriptor.capabilities` 掩码提供四个可选语义位，ABI 版本 3、C 布局和 fingerprint 均不变：

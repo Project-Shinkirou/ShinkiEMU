@@ -7,7 +7,7 @@ license.workspace = true
 
 [features]
 runtime = ["dep:serde", "dep:shinki-emu-abi"]
-gpu-render = ["dep:roukaku-platform", "dep:roukaku-platform-common"]
+gpu-render = ["runtime", "dep:pollster", "dep:roukaku-byte-source", "dep:roukaku-platform", "dep:roukaku-platform-common", "dep:wgpu"]
 video-ffmpeg = ["dep:roukaku-media", "roukaku-media/ffmpeg-vcpkg", "dep:tempfile", "dep:ffmpeg-next"]
 subtitle = ["dep:roukaku-subtitle"]
 audio = ["dep:kira", "dep:symphonia"]
@@ -21,6 +21,7 @@ image = ["dep:image", "dep:lru"]
 [dependencies]
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi", optional = true }
 cpal = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
 roukaku-platform = { workspace = true, optional = true }
 roukaku-platform-common = { workspace = true, optional = true }
 tracing.workspace = true
@@ -40,6 +41,7 @@ lru = { workspace = true, optional = true }
 roukaku-core = { workspace = true, optional = true }
 roukaku-media-core = { workspace = true }
 roukaku-text = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-context = { version = "0.1.1", optional = true }

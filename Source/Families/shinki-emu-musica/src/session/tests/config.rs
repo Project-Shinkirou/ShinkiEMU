@@ -42,7 +42,7 @@ fn native_gpu_config_applies_cancels_persists_tests_audio_and_preserves_gameplay
     session.advance(0, &click(91.0, 320.0)).unwrap();
     let pixel = ((310 * 1280 + 82) * 4) as usize;
     assert_eq!(
-        &session.scene.pixels[pixel..pixel + 4],
+        &session.scene.pixels()[pixel..pixel + 4],
         &[200, 100, 50, 255]
     );
     session
@@ -132,14 +132,14 @@ fn native_gpu_disabled_animation_keeps_scroll_waits_bounded_and_finishes_at_targ
         config.animation = false;
         session.vm.set_config(config).unwrap();
         session.advance(16_666_667, &[]).unwrap();
-        let first = session.scene.pixels.clone();
+        let first = session.scene.pixels().clone();
         session.advance(16_666_667, &[]).unwrap();
         assert_eq!(
             session.advance(40_000_000, &[]).unwrap().status,
             RuntimeStatus::Waiting
         );
         assert!(
-            session.scene.pixels == first,
+            session.scene.pixels() == &first,
             "disabled scroll changed its intermediate frame"
         );
         assert_eq!(
@@ -147,7 +147,7 @@ fn native_gpu_disabled_animation_keeps_scroll_waits_bounded_and_finishes_at_targ
             RuntimeStatus::Finished
         );
         assert!(
-            session.scene.pixels != first,
+            session.scene.pixels() != &first,
             "completed scroll did not present its target frame"
         );
         Box::new(session).close().unwrap();

@@ -62,7 +62,7 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     session.advance(0, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().system_ui.page, Page::GalleryCg);
     let pixel = ((97 * 1280 + 65) * 4) as usize;
-    assert_eq!(&session.scene.pixels[pixel..pixel + 4], &[220, 30, 40, 255]);
+    assert_eq!(&session.scene.pixels()[pixel..pixel + 4], &[220, 30, 40, 255]);
     session
         .advance(500_000_000, &[key(KeyCode::ArrowDown)])
         .unwrap();

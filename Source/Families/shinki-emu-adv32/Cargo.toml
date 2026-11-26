@@ -34,7 +34,6 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32
 
 [target.'cfg(not(target_env = "ohos"))'.dependencies]
 shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["device-audio", "gpu-render"] }
-pollster.workspace = true
 roukaku-byte-source.workspace = true
 roukaku-platform.workspace = true
 tracing.workspace = true

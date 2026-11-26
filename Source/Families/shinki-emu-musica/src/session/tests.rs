@@ -61,6 +61,7 @@ fn render_extent_sets_raster_and_zero_uses_logical_canvas() {
                     height: requested.1,
                 },
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(
@@ -638,7 +639,7 @@ fn native_gpu_screen_shake_advances_during_wait_and_resumes_in_memory_state() {
         .scene
         .render(session.vm.state(), None, None)
         .unwrap();
-    assert_eq!(&session.scene.pixels[..], negative.as_slice());
+    assert_eq!(&session.scene.pixels()[..], negative.as_slice());
     session.advance(30_000_000, &[]).unwrap();
     frame.read(session.acquire_frame(None).unwrap()).unwrap();
     assert_eq!(frame.0, positive);
@@ -704,7 +705,7 @@ fn assert_scroll_restores_background_position(command: &str, middle_pixel: usize
         .scene
         .render(session.vm.state(), None, None)
         .unwrap();
-    assert_eq!(&session.scene.pixels[..], middle.as_slice());
+    assert_eq!(&session.scene.pixels()[..], middle.as_slice());
     assert_eq!(
         session.advance(40_000_000, &[]).unwrap().status,
         RuntimeStatus::Finished
@@ -844,12 +845,12 @@ fn native_gpu_transition_completion_publishes_the_final_frame_without_a_vm_tick(
     }
     session.advance(5_000_000, &[]).unwrap();
     assert!(session.vm.state().transition_active.is_some());
-    let middle = session.scene.pixels.clone();
+    let middle = session.scene.pixels().clone();
     let tick = session.vm.state().fixed_tick;
     session.advance(5_000_000, &[]).unwrap();
     assert_eq!(session.vm.state().fixed_tick, tick);
     assert!(session.vm.state().transition_active.is_none());
-    assert_ne!(session.scene.pixels, middle);
-    assert_eq!(&session.scene.pixels[..4], &[255, 255, 255, 255]);
+    assert_ne!(session.scene.pixels(), &middle);
+    assert_eq!(&session.scene.pixels()[..4], &[255, 255, 255, 255]);
     Box::new(session).close().unwrap();
 }

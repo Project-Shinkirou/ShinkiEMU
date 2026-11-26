@@ -32,6 +32,7 @@ shinki-emu-manager-core = { path = "../shinki-emu-manager-core" }
 shinki-emu-headless = { path = "../../Programs/shinki-emu-headless" }
 shinki-emu-manager-ui-slint = { path = "../shinki-emu-manager-ui-slint" }
 shinki-emu-abi = { path = "../../FamilyApi/shinki-emu-abi" }
+shinki-emu-sdk = { path = "../../SDK/shinki-emu-sdk", default-features = false, features = ["gpu-render"] }
 shinki-emu-adv32 = { path = "../../Families/shinki-emu-adv32", optional = true, default-features = false, features = ["video-ffmpeg"] }
 shinki-emu-patch = { path = "../../Tools/shinki-emu-patch" }
 shinki-emu-musica-keys = { path = "../../Families/shinki-emu-musica-keys" }
@@ -45,6 +46,8 @@ shinki-emu-dmm = { path = "../../Providers/shinki-emu-dmm", optional = true }
 open = "5.3"
 roukaku-observability = { workspace = true }
 roukaku-media-core = { workspace = true }
+roukaku-platform.workspace = true
+roukaku-platform-common.workspace = true
 clap.workspace = true
 serde.workspace = true
 crossbeam-channel.workspace = true
@@ -123,7 +126,6 @@ fontique = { version = "=0.11.1", features = ["fontconfig-dlopen"] }
 libc.workspace = true
 
 [target.'cfg(target_os = "ios")'.dependencies]
-roukaku-platform.workspace = true
 # Positions the sign-in WKWebView inside the Manager view.
 objc2.workspace = true
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2", "CFCGTypes"] }

@@ -897,25 +897,51 @@ impl Vm {
         let compositor = self.gpu.as_mut().expect("GPU compositor is enabled");
         match canvas {
             Canvas::Raster(raster) => {
-                compositor.discard_pending();
-                Ok(Some(raster.into_image().into_raw().into()))
+                let pixels = raster.into_image().into_raw().into();
+                compositor.present_raster(&pixels)?;
+                if compositor.is_hosted() {
+                    self.last_frame = Some(pixels);
+                    Ok(None)
+                } else {
+                    Ok(Some(pixels))
+                }
             }
-            Canvas::Scene(scene) if defer => {
-                compositor.submit(scene)?;
-                Ok(ready)
+            Canvas::Scene(scene) => {
+                let pixels = compositor.render(scene, defer)?;
+                if compositor.is_hosted() {
+                    self.last_frame = None;
+                }
+                Ok(pixels.or(ready))
             }
-            Canvas::Scene(scene) => compositor.render_now(scene).map(Some),
         }
     }
 
     #[cfg(not(target_env = "ohos"))]
-    pub(crate) fn enable_hardware_compositor(&mut self, canvas: StageCanvas) -> Result<()> {
+    pub(crate) fn enable_hardware_compositor(
+        &mut self,
+        canvas: StageCanvas,
+        host: Option<shinki_emu_sdk::gpu_scene::GpuSceneHost>,
+    ) -> Result<()> {
         self.gpu = Some(crate::render::GpuCompositor::new(
             self.text_encoding,
             self.text_painter.font(),
             canvas,
+            host,
         )?);
         Ok(())
+    }
+
+    fn screen_break_backdrop(&self) -> Result<Option<OwnedPixelBuffer>> {
+        if let Some(frame) = &self.last_frame {
+            return Ok(Some(frame.clone()));
+        }
+        #[cfg(not(target_env = "ohos"))]
+        if let Some(compositor) = &self.gpu {
+            // Screen-break tiles sample one frozen image. Only entry into this
+            // effect needs a readback, never its animation ticks.
+            return compositor.capture_scene();
+        }
+        Ok(None)
     }
 
     fn advance_name_entry(&mut self, events: &[RuntimeEvent]) -> Result<()> {
@@ -3241,10 +3267,10 @@ impl Vm {
                     let mask = self.graphics.load(&self.game, resource)?;
                     let (frame, mapping) = if let Some(frame) = captured {
                         (frame, None)
-                    } else if let Some(frame) = &self.last_frame {
-                        // The screen-break mask addresses logical pixels of the
-                        // last displayed frame, even when its stride is physical.
-                        (frame.clone(), self.presentation)
+                    } else if let Some(frame) = self.screen_break_backdrop()? {
+                        // The mask addresses logical pixels of the previous
+                        // raster even when its stride is physical.
+                        (frame, self.presentation)
                     } else {
                         (self.compose()?.into_raw().into(), None)
                     };
