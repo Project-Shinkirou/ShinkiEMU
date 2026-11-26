@@ -15,9 +15,19 @@ use std::{
 pub enum WindowCommand {
     QueryState,
     Title(String),
-    Fullscreen { mode: u32, width: u32, height: u32 },
-    Size { width: u32, height: u32 },
-    Position { x: i32, y: i32 },
+    Fullscreen {
+        mode: u32,
+        width: u32,
+        height: u32,
+    },
+    Size {
+        width: u32,
+        height: u32,
+    },
+    Position {
+        x: i32,
+        y: i32,
+    },
     Visibility(bool),
     Minimized(bool),
     #[cfg(not(target_os = "android"))]
@@ -286,7 +296,9 @@ unsafe fn execute(
             FamilyWindowIcon::validate_rgba8(raw.width, raw.height, bytes.len())
                 .map_err(|_| invalid())?;
             #[cfg(target_os = "android")]
-            { WindowCommand::Icon }
+            {
+                WindowCommand::Icon
+            }
             #[cfg(not(target_os = "android"))]
             {
                 WindowCommand::Icon(FamilyWindowIcon {

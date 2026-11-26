@@ -244,10 +244,7 @@ fn probe_and_open_share_format_and_resource_limits() {
         .unwrap();
     assert_eq!(probe_game(&bad), Err(abi::NO_MATCH));
     assert_eq!(Opened::open(&bad).err(), Some(abi::NO_MATCH));
-    assert_eq!(
-        probe_game(&root.path().join("missing")),
-        Err(abi::NO_MATCH)
-    );
+    assert_eq!(probe_game(&root.path().join("missing")), Err(abi::NO_MATCH));
 }
 
 #[test]

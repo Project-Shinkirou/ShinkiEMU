@@ -21,8 +21,8 @@ mod native_config;
 mod native_frame;
 mod native_module_owner;
 mod play;
-mod work_settings;
 pub mod static_core_catalog;
+mod work_settings;
 pub use native_cancel::NativeCancellation;
 #[cfg(test)]
 extern crate self as shinki_emu_manager_core;

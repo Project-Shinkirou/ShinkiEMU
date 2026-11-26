@@ -9,21 +9,35 @@ impl Scene {
     ) -> SessionResult<()> {
         use crate::runtime::gallery::{GalleryAction, GalleryBlend, GalleryImage};
 
-        let mut commands = vec![SceneCommand::Clear { rgba: [0, 0, 0, 255] }];
+        let mut commands = vec![SceneCommand::Clear {
+            rgba: [0, 0, 0, 255],
+        }];
         if let Some((button, image)) = cursor.detail
             && let GalleryAction::View { images, .. } = &screen.buttons[button].action
         {
             match &images[image] {
                 GalleryImage::Plain(uri) => self.layer(&mut commands, uri, 0, 0, 1.0)?,
                 GalleryImage::Composite(composite) => {
-                    self.layer_with_blend(&mut commands, &composite.base, [0, 0], 1.0, BlendMode::Opaque)?;
+                    self.layer_with_blend(
+                        &mut commands,
+                        &composite.base,
+                        [0, 0],
+                        1.0,
+                        BlendMode::Opaque,
+                    )?;
                     for layer in &composite.layers {
                         let blend = match layer.blend {
                             GalleryBlend::Alpha => BlendMode::Alpha,
                             GalleryBlend::Screen => BlendMode::Screen,
                             GalleryBlend::Add => BlendMode::Add,
                         };
-                        self.layer_with_blend(&mut commands, &layer.resource, layer.at, 1.0, blend)?;
+                        self.layer_with_blend(
+                            &mut commands,
+                            &layer.resource,
+                            layer.at,
+                            1.0,
+                            blend,
+                        )?;
                     }
                 }
             }
@@ -48,7 +62,12 @@ impl Scene {
             if let Some(overlay) = button.hover.as_ref().or(screen.hover.as_ref()) {
                 let [x, y, width, height] = button.rect;
                 commands.push(SceneCommand::PushClip {
-                    rect: RectI { x, y, width: width as u32, height: height as u32 },
+                    rect: RectI {
+                        x,
+                        y,
+                        width: width as u32,
+                        height: height as u32,
+                    },
                 });
                 self.layer(&mut commands, overlay, 0, 0, 1.0)?;
                 commands.push(SceneCommand::PopClip);
@@ -57,9 +76,16 @@ impl Scene {
                 self.gallery_layer(&mut commands, preview, [0, 0])?;
             }
         }
-        let selected = cursor.selected_track.filter(|(sheet, _)| *sheet == cursor.screen);
+        let selected = cursor
+            .selected_track
+            .filter(|(sheet, _)| *sheet == cursor.screen);
         let playing = cursor.playing_track.filter(|(sheet, _)| {
-            *sheet == cursor.screen && access.state.audio.get(&0).is_some_and(|stream| stream.playing)
+            *sheet == cursor.screen
+                && access
+                    .state
+                    .audio
+                    .get(&0)
+                    .is_some_and(|stream| stream.playing)
         });
         for (layer, index) in [
             (screen.selection.as_ref(), selected.map(|(_, index)| index)),
@@ -81,7 +107,12 @@ impl Scene {
     ) -> SessionResult<()> {
         if let Some([x, y, width, height]) = layer.clip {
             commands.push(SceneCommand::PushClip {
-                rect: RectI { x, y, width: width as u32, height: height as u32 },
+                rect: RectI {
+                    x,
+                    y,
+                    width: width as u32,
+                    height: height as u32,
+                },
             });
         }
         self.layer(

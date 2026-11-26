@@ -1,11 +1,9 @@
-use crate::{
-    CoreError, MusicaMountedVfs, MusicaPazDecryptProvider, PazArchiveConfig,
-};
+use crate::{CoreError, MusicaMountedVfs, MusicaPazDecryptProvider, PazArchiveConfig};
+use shinki_emu_musica_format::into_schemes;
 use shinki_emu_musica_keys::{
     KeyFileError, MAX_KEY_BYTES, MAX_TEXTURE_OVERRIDE_BYTES, MusicaKeyFile, key_file_error,
     parse_key_file,
 };
-use shinki_emu_musica_format::into_schemes;
 use std::{
     collections::BTreeMap,
     fs,
@@ -110,7 +108,10 @@ pub fn mount_musica_with_resources(
         archive.validate_texture_variant(&uri, &variant.source)?;
         let path = resolve_texture_file(&root, &variant.path)?;
         if texture_overrides.values().any(|other| *other == path)
-            || archive.texture_variants.values().any(|other| other.path == path)
+            || archive
+                .texture_variants
+                .values()
+                .any(|other| other.path == path)
         {
             return Err(invalid(
                 "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_COLLISION",

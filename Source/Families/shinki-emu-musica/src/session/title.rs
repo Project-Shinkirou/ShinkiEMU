@@ -1,7 +1,11 @@
 use super::*;
 use crate::MusicaSystemPage;
 impl MusicaSession {
-    pub(super) fn start_menu_script(&mut self, uri: String, label: Option<&str>) -> SessionResult<()> {
+    pub(super) fn start_menu_script(
+        &mut self,
+        uri: String,
+        label: Option<&str>,
+    ) -> SessionResult<()> {
         let loaded = crate::script_loader::load_script(&self.archive, &uri, self.primary_encoding)?;
         let generation = self.generation.checked_add(1).ok_or_else(|| {
             error(

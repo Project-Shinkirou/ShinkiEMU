@@ -11,16 +11,15 @@ use crate::{
     ChoiceViewModel, CompatInfo, ConfigField, ConfigFieldViewModel, CoreBatch, CoreInfo,
     CoreViewModel, Cores, EngineAction, EngineActionViewModel, Excluded, ExcludedViewModel,
     FilterStageItem, FilterStageViewModel, Filters, GameCard, GameCardViewModel, GameSettings,
-    GamepadBinding, GamepadBindingViewModel,
-    Library, ManagerViewModel, ManagerWindow, MatchReview, MatchViewModel, Network, Notices,
-    Onboarding, Patch, PatchCheck, PatchCheckViewModel, PatchDownload, PatchDownloadViewModel,
-    PatchGame, PatchGameViewModel, PatchState, PatchStateViewModel, PatchVerify, PlaySession,
-    PlaySessionViewModel, Recipe, RecipeViewModel, Release, ReleaseViewModel, RenderState,
-    RenderViewModel, SelectedGame, Selection, SelfUpdate, SelfUpdateAction,
-    Session, Settings, Store, StoreAction, StoreDepot, StoreDepotViewModel, StoreGame,
-    StoreGameViewModel, StoreLoadState, StoreLoginState, StoreTransfer, StoreTransferState,
-    StoreTransferViewModel, TranslationForm, TranslationFormViewModel, TranslationProvider,
-    TranslationProviderViewModel, covers, list_model::ListModel, notices,
+    GamepadBinding, GamepadBindingViewModel, Library, ManagerViewModel, ManagerWindow, MatchReview,
+    MatchViewModel, Network, Notices, Onboarding, Patch, PatchCheck, PatchCheckViewModel,
+    PatchDownload, PatchDownloadViewModel, PatchGame, PatchGameViewModel, PatchState,
+    PatchStateViewModel, PatchVerify, PlaySession, PlaySessionViewModel, Recipe, RecipeViewModel,
+    Release, ReleaseViewModel, RenderState, RenderViewModel, SelectedGame, Selection, SelfUpdate,
+    SelfUpdateAction, Session, Settings, Store, StoreAction, StoreDepot, StoreDepotViewModel,
+    StoreGame, StoreGameViewModel, StoreLoadState, StoreLoginState, StoreTransfer,
+    StoreTransferState, StoreTransferViewModel, TranslationForm, TranslationFormViewModel,
+    TranslationProvider, TranslationProviderViewModel, covers, list_model::ListModel, notices,
 };
 
 pub struct SlintManagerAdapter {
@@ -76,8 +75,13 @@ impl SlintManagerAdapter {
         const ADAPTER_LINKS: &[(&str, &str, &str)] =
             include!(concat!(env!("OUT_DIR"), "/adapter-links.rs"));
         window.global::<App>().on_locked_adapter(|id| {
-            ADAPTER_LINKS.iter().find(|(core, _, _)| *core == id.as_str())
-                .map(|&(_, repo, commit)| crate::AdapterSource { repo: repo.into(), commit: commit.into() })
+            ADAPTER_LINKS
+                .iter()
+                .find(|(core, _, _)| *core == id.as_str())
+                .map(|&(_, repo, commit)| crate::AdapterSource {
+                    repo: repo.into(),
+                    commit: commit.into(),
+                })
                 .unwrap_or_default()
         });
         let adapter = Self {
@@ -136,7 +140,9 @@ impl SlintManagerAdapter {
         window
             .global::<crate::MaterialWindowAdapter>()
             .set_touch(cfg!(any(target_os = "android", target_os = "ios")));
-        window.global::<Session>().set_android_game_window(cfg!(target_os = "android"));
+        window
+            .global::<Session>()
+            .set_android_game_window(cfg!(target_os = "android"));
         window
             .global::<Library>()
             .set_games(ModelRc::from(self.games.clone()));
@@ -535,7 +541,15 @@ impl SlintManagerAdapter {
         );
         cores.set_default_plugin(view.default_plugin.as_str().into());
         cores.set_default_configuration_state(view.default_configuration_state.as_str().into());
-        cores.set_committed_plugin(if view.default_configuration_state == "unprepared" { String::new() } else { view.default_plugin.clone() }.as_str().into());
+        cores.set_committed_plugin(
+            if view.default_configuration_state == "unprepared" {
+                String::new()
+            } else {
+                view.default_plugin.clone()
+            }
+            .as_str()
+            .into(),
+        );
         cores.set_default_configuration_error(view.default_configuration_error.as_str().into());
         self.default_render_options
             .update(&view.default_render.options);

@@ -1,10 +1,8 @@
 use anyhow::{Context, Result, bail};
-use object::{
-    read::{
-        elf::{Dyn, FileHeader, ProgramHeader},
-        macho::{FatArch, MachHeader, MachOFatFile, MachOFatFile32, MachOFatFile64},
-        pe::ImageNtHeaders,
-    },
+use object::read::{
+    elf::{Dyn, FileHeader, ProgramHeader},
+    macho::{FatArch, MachHeader, MachOFatFile, MachOFatFile32, MachOFatFile64},
+    pe::ImageNtHeaders,
 };
 use shinki_emu_build::ohos::Target as OhosTarget;
 use std::{
@@ -24,8 +22,7 @@ fn pe<'a, P: ImageNtHeaders>(
     if let Some(table) = file.import_table()? {
         let mut it = table.descriptors()?;
         while let Some(d) = it.next()? {
-            dependencies
-                .insert(text(table.name(d.name.get(object::LittleEndian))?)?);
+            dependencies.insert(text(table.name(d.name.get(object::LittleEndian))?)?);
         }
     }
     if let Some(table) = file
@@ -34,8 +31,7 @@ fn pe<'a, P: ImageNtHeaders>(
     {
         let mut it = table.descriptors()?;
         while let Some(d) = it.next()? {
-            dependencies
-                .insert(text(table.name(d.dll_name_rva.get(object::LittleEndian))?)?);
+            dependencies.insert(text(table.name(d.dll_name_rva.get(object::LittleEndian))?)?);
         }
     }
     Ok(())
@@ -53,7 +49,10 @@ fn elf<'a, E: FileHeader>(
             .iter()
             .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
             .context("ELF dynamic segment lacks DT_NULL")?];
-        if !entries.iter().any(|entry| entry.tag(endian) == object::elf::DT_NEEDED) {
+        if !entries
+            .iter()
+            .any(|entry| entry.tag(endian) == object::elf::DT_NEEDED)
+        {
             continue;
         }
         let address: u64 = entries
@@ -378,14 +377,24 @@ pub(crate) fn runtime_source(path: &Path, directory: &Path, target: &str) -> Res
 pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(PathBuf, String)>> {
     let windows = target.contains("windows");
     let key = |name: &str| {
-        if windows { name.to_ascii_lowercase() } else { name.to_owned() }
+        if windows {
+            name.to_ascii_lowercase()
+        } else {
+            name.to_owned()
+        }
     };
     let mut found = BTreeMap::<String, (PathBuf, String)>::new();
     let mut visited = BTreeSet::new();
     let mut pending = vec![library.to_owned()];
-    let root_name = key(&library.file_name().context("library filename")?.to_string_lossy());
+    let root_name = key(&library
+        .file_name()
+        .context("library filename")?
+        .to_string_lossy());
     while let Some(path) = pending.pop() {
-        let name = key(&path.file_name().context("binary filename")?.to_string_lossy());
+        let name = key(&path
+            .file_name()
+            .context("binary filename")?
+            .to_string_lossy());
         if !visited.insert(name) {
             continue;
         }
@@ -408,7 +417,11 @@ pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(
                     let mut entry = None;
                     for item in fs::read_dir(dir)? {
                         let item = item?;
-                        if item.file_name().to_str().is_some_and(|name| name.eq_ignore_ascii_case(leaf)) {
+                        if item
+                            .file_name()
+                            .to_str()
+                            .is_some_and(|name| name.eq_ignore_ascii_case(leaf))
+                        {
                             entry = Some(item.path());
                             break;
                         }
@@ -429,9 +442,12 @@ pub fn closure(library: &Path, search: &[PathBuf], target: &str) -> Result<Vec<(
                     None => resolved = Some(candidate),
                 }
             }
-            let resolved = resolved.with_context(|| format!(
-                "{}: missing redistributable dependency {dep}", path.display()
-            ))?;
+            let resolved = resolved.with_context(|| {
+                format!(
+                    "{}: missing redistributable dependency {dep}",
+                    path.display()
+                )
+            })?;
             pending.push(resolved.clone());
             found.insert(dependency_key, (resolved, leaf.to_owned()));
         }

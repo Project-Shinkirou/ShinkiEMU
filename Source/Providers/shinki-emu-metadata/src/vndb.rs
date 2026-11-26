@@ -110,16 +110,13 @@ impl VndbProvider {
             .map_err(|error| map_vndb_error(error.into()))?;
         *next_request = Instant::now() + self.config.minimum_request_delay;
         drop(next_request);
-        let response: Response<KanaWork> = response
-            .json()
-            .await
-            .map_err(|error| {
-                if error.is_decode() {
-                    MetadataError::SchemaMismatch("vndb-kana")
-                } else {
-                    map_vndb_error(error.into())
-                }
-            })?;
+        let response: Response<KanaWork> = response.json().await.map_err(|error| {
+            if error.is_decode() {
+                MetadataError::SchemaMismatch("vndb-kana")
+            } else {
+                map_vndb_error(error.into())
+            }
+        })?;
         Ok(response.into_iter().map(convert_record).collect())
     }
 
@@ -187,7 +184,9 @@ impl MetadataProvider for VndbProvider {
         if !is_vndb_id(remote_id) {
             return Err(MetadataError::InvalidRemoteId(remote_id.to_owned()));
         }
-        let mut records = self.query_works(json!(["id", "=", remote_id]), None).await?;
+        let mut records = self
+            .query_works(json!(["id", "=", remote_id]), None)
+            .await?;
         if records.len() != 1 {
             return Err(MetadataError::NotFound(remote_id.to_owned()));
         }
@@ -482,8 +481,18 @@ mod tests {
         assert_eq!(record.localized_title("ja"), Some("原題"));
         assert_eq!(record.localized_title("en"), Some("English Title"));
         assert!(record.localized_titles[2].main && record.localized_titles[2].official);
-        assert!(record.alternate_titles.iter().any(|title| title == "Gendai"));
-        assert!(record.alternate_titles.iter().any(|title| title == "Search alias"));
+        assert!(
+            record
+                .alternate_titles
+                .iter()
+                .any(|title| title == "Gendai")
+        );
+        assert!(
+            record
+                .alternate_titles
+                .iter()
+                .any(|title| title == "Search alias")
+        );
     }
 
     #[test]
@@ -708,12 +717,31 @@ mod tests {
             .split(',')
             .collect::<Vec<_>>();
         fields.sort_unstable();
-        assert_eq!(fields, [
-            "aliases", "alttitle", "description", "developers.name", "developers.original",
-            "image.dims", "image.sexual", "image.thumbnail", "image.thumbnail_dims", "image.url",
-            "image.violence", "platforms", "released", "tags.name", "title", "titles.lang",
-            "titles.latin", "titles.main", "titles.official", "titles.title",
-        ]);
+        assert_eq!(
+            fields,
+            [
+                "aliases",
+                "alttitle",
+                "description",
+                "developers.name",
+                "developers.original",
+                "image.dims",
+                "image.sexual",
+                "image.thumbnail",
+                "image.thumbnail_dims",
+                "image.url",
+                "image.violence",
+                "platforms",
+                "released",
+                "tags.name",
+                "title",
+                "titles.lang",
+                "titles.latin",
+                "titles.main",
+                "titles.official",
+                "titles.title",
+            ]
+        );
         assert_eq!(receipt[0].1["filters"], json!(["search", "=", "Game"]));
         assert_eq!(receipt[0].1["results"], 7);
         assert!(receipt[0].1.get("sort").is_none());

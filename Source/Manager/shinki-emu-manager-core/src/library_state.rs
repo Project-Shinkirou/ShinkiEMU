@@ -63,11 +63,16 @@ fn android_tree_root(path: &str) -> bool {
     if !cfg!(any(target_os = "android", test)) {
         return false;
     }
-    let Some((authority, tree)) = path.strip_prefix("content://").and_then(|uri| uri.split_once("/tree/")) else {
+    let Some((authority, tree)) = path
+        .strip_prefix("content://")
+        .and_then(|uri| uri.split_once("/tree/"))
+    else {
         return false;
     };
     !authority.is_empty()
-        && authority.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        && authority
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
         && !tree.is_empty()
         && !tree.contains(['/', '?', '#'])
         && !matches!(tree, "." | "..")
@@ -308,7 +313,11 @@ mod tests {
             let mut library = Library::open(&database).unwrap();
             assert!(library.add_library_root(root).unwrap());
             assert!(!library.add_library_root(root).unwrap());
-            assert!(library.add_library_root("content://cloud.docs/tree/token/document/child").is_err());
+            assert!(
+                library
+                    .add_library_root("content://cloud.docs/tree/token/document/child")
+                    .is_err()
+            );
         }
         let mut library = Library::open(&database).unwrap();
         assert_eq!(library.library_roots().unwrap()[0].path, root);

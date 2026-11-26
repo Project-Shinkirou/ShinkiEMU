@@ -69,20 +69,17 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             (tr!("没有可用的模拟器"), tr!("请在“核心”页安装兼容核心。"))
         }
         "SHINKI_EMU_FAMILY_INITIALIZING" => (tr!("正在加载核心"), tr!("请稍候再试。")),
-        "SHINKI_EMU_PREPARE_BUSY" => (
-            tr!("正在扫描游戏目录"),
-            tr!("扫描结束后再试。"),
-        ),
+        "SHINKI_EMU_PREPARE_BUSY" => (tr!("正在扫描游戏目录"), tr!("扫描结束后再试。")),
         "SHINKI_EMU_PREPARE_NOT_CANCELLABLE" => (tr!("当前没有可取消的扫描"), ""),
-        "SHINKI_EMU_PREPARE_RESTART_REQUIRED" => (
-            tr!("无法打开游戏库"),
-            tr!("请重启 ShinkiEMU 后再试。"),
-        ),
+        "SHINKI_EMU_PREPARE_RESTART_REQUIRED" => {
+            (tr!("无法打开游戏库"), tr!("请重启 ShinkiEMU 后再试。"))
+        }
         "SHINKI_EMU_SCAN_CANCELLED" => (tr!("已取消扫描"), tr!("资料库保持不变。")),
         "SHINKI_EMU_GAME_DIRECTORY_INVALID" => {
             (tr!("找不到文件夹"), tr!("请选择包含游戏的文件夹。"))
         }
-        "SHINKI_EMU_GAME_DIRECTORY_IO" | "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION"
+        "SHINKI_EMU_GAME_DIRECTORY_IO"
+        | "SHINKI_EMU_GAME_DIRECTORY_ENUMERATION"
         | "SHINKI_EMU_ANDROID_PICK_PERMISSION" => (
             tr!("无法读取文件夹"),
             tr!("请检查文件夹权限，或选择其他文件夹。"),
@@ -96,27 +93,22 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("系统文件选择器不可用"),
             tr!("请在系统设置中启用“文件”应用后再试。"),
         ),
-        "SHINKI_EMU_ANDROID_PICK_REQUEST" => (
-            tr!("无法打开文件选择器"),
-            tr!("请重新打开文件选择器。"),
-        ),
-        "SHINKI_EMU_ANDROID_PICK_RESULT" => (
-            tr!("未能打开所选文件夹"),
-            tr!("请重新选择文件夹。"),
-        ),
+        "SHINKI_EMU_ANDROID_PICK_REQUEST" => {
+            (tr!("无法打开文件选择器"), tr!("请重新打开文件选择器。"))
+        }
+        "SHINKI_EMU_ANDROID_PICK_RESULT" => (tr!("未能打开所选文件夹"), tr!("请重新选择文件夹。")),
         "SHINKI_EMU_ANDROID_PICK_COPY" => (
             tr!("无法复制所选内容"),
             tr!("请检查源文件是否可读、设备空间是否充足。"),
         ),
-        "SHINKI_EMU_ANDROID_PICK_TYPE" => (
-            tr!("不支持所选文件类型"),
-            tr!("请选择受支持的文件。"),
-        ),
+        "SHINKI_EMU_ANDROID_PICK_TYPE" => (tr!("不支持所选文件类型"), tr!("请选择受支持的文件。")),
         "SHINKI_EMU_ANDROID_STORAGE_SETTINGS" => (
             tr!("无法打开系统权限设置"),
             tr!("可在系统设置中为 ShinkiEMU 开启所有文件访问权限。"),
         ),
-        "SHINKI_EMU_ANDROID_SHARE_DIAGNOSTICS" => (tr!("无法分享诊断日志"), tr!("重新打开应用后再试。")),
+        "SHINKI_EMU_ANDROID_SHARE_DIAGNOSTICS" => {
+            (tr!("无法分享诊断日志"), tr!("重新打开应用后再试。"))
+        }
         "SHINKI_EMU_UNDO_UNAVAILABLE" => (
             tr!("没有可撤销的移除"),
             tr!("作品可以在 设置→库目录 中恢复。"),
@@ -328,10 +320,7 @@ fn exact_text(code: &str) -> Option<(&'static str, &'static str)> {
             tr!("作品资料服务拒绝了请求"),
             tr!("请更新 ShinkiEMU 后重试。"),
         ),
-        "SHINKI_EMU_METADATA_RATE_LIMITED" => (
-            tr!("作品资料请求过于频繁"),
-            tr!("请稍候再试。"),
-        ),
+        "SHINKI_EMU_METADATA_RATE_LIMITED" => (tr!("作品资料请求过于频繁"), tr!("请稍候再试。")),
         "SHINKI_EMU_PRESET_INVALID" => (
             tr!("推荐配置无法套用"),
             tr!("其中有当前模拟器不支持的设置项或取值，已恢复原来的设置。"),

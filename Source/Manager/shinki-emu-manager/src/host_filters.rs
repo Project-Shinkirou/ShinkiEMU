@@ -49,9 +49,11 @@ fn wire<C: ManagerController, R: ShinkiUnderlayRenderer>(
     let wiring = wiring.clone();
     let renderer = renderer.clone();
     move |field, change| {
-        let action = |c: &mut C| change(c, &mut |settings| {
-            renderer.borrow_mut().configure_filter(settings)
-        });
+        let action = |c: &mut C| {
+            change(c, &mut |settings| {
+                renderer.borrow_mut().configure_filter(settings)
+            })
+        };
         match field {
             Some(key) => wiring.run_field(FieldScope::Filter, key, action),
             None => wiring.run(action),
@@ -79,19 +81,27 @@ pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
     });
     let select = run.clone();
     filters.on_select_stage(move |index| {
-        select(None, &|c, apply| c.edit_filter_chain(FilterChainEdit::Select(index), apply));
+        select(None, &|c, apply| {
+            c.edit_filter_chain(FilterChainEdit::Select(index), apply)
+        });
     });
     let add = run.clone();
     filters.on_add_stage(move |id| {
-        add(None, &|c, apply| c.edit_filter_chain(FilterChainEdit::Add(id.as_str()), apply));
+        add(None, &|c, apply| {
+            c.edit_filter_chain(FilterChainEdit::Add(id.as_str()), apply)
+        });
     });
     let remove = run.clone();
     filters.on_remove_stage(move |index| {
-        remove(None, &|c, apply| c.edit_filter_chain(FilterChainEdit::Remove(index), apply));
+        remove(None, &|c, apply| {
+            c.edit_filter_chain(FilterChainEdit::Remove(index), apply)
+        });
     });
     let reorder = run.clone();
     filters.on_move_stage(move |from, to| {
-        reorder(None, &|c, apply| c.edit_filter_chain(FilterChainEdit::Move { from, to }, apply));
+        reorder(None, &|c, apply| {
+            c.edit_filter_chain(FilterChainEdit::Move { from, to }, apply)
+        });
     });
     let set_parameter = run.clone();
     filters.on_field_changed(move |key, value| {

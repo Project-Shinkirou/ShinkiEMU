@@ -292,7 +292,10 @@ mod tests {
         let scaled = scale2x_reference(&art, (3, 3));
         let actual = dispatch(&device, &queue, &art, (3, 3), &mut [(&mut scale, (6, 6))]);
         assert_eq!(actual, scaled, "Scale2x must match every RGBA8 byte");
-        assert_eq!([actual[14], actual[15], actual[20], actual[21]], [r, c, c, g]);
+        assert_eq!(
+            [actual[14], actual[15], actual[20], actual[21]],
+            [r, c, c, g]
+        );
         eprintln!("Scale2x 3x3 -> 6x6: exact, including border and edge pixels");
 
         // Two stages sampling directly from one another in the same encoder.
@@ -320,7 +323,15 @@ mod tests {
             })
             .collect();
         for size in [
-            (11, 8), (11, 8), (4, 3), (3, 9), (9, 2), (7, 9), (13, 5), (7, 5), (1, 1),
+            (11, 8),
+            (11, 8),
+            (4, 3),
+            (3, 9),
+            (9, 2),
+            (7, 9),
+            (13, 5),
+            (7, 5),
+            (1, 1),
         ] {
             let actual = dispatch(&device, &queue, &image, (7, 5), &mut [(&mut lanczos, size)]);
             assert_close(
@@ -330,7 +341,13 @@ mod tests {
             );
         }
         let solid = [[37, 193, 71, 123]];
-        let actual = dispatch(&device, &queue, &solid, (1, 1), &mut [(&mut lanczos, (4, 3))]);
+        let actual = dispatch(
+            &device,
+            &queue,
+            &solid,
+            (1, 1),
+            &mut [(&mut lanczos, (4, 3))],
+        );
         assert_eq!(
             actual,
             solid.repeat(12),
@@ -381,7 +398,9 @@ mod tests {
                 usage |= wgpu::TextureUsages::COPY_SRC;
             }
             let output = texture(*size, usage);
-            filter.encode(device, &mut encoder, &current, &output).unwrap();
+            filter
+                .encode(device, &mut encoder, &current, &output)
+                .unwrap();
             current = output;
         }
 
@@ -409,7 +428,9 @@ mod tests {
         let submission = queue.submit([encoder.finish()]);
         let (send, receive) = std::sync::mpsc::channel();
         let slice = readback.slice(..);
-        slice.map_async(wgpu::MapMode::Read, move |result| send.send(result).unwrap());
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            send.send(result).unwrap()
+        });
         device
             .poll(wgpu::PollType::Wait {
                 submission_index: Some(submission),
@@ -428,8 +449,8 @@ mod tests {
 
     fn scale2x_reference(input: &[Pixel], (width, height): Size) -> Vec<Pixel> {
         let pixel = |x: i32, y: i32| {
-            input[(y.clamp(0, height as i32 - 1) * width as i32
-                + x.clamp(0, width as i32 - 1)) as usize]
+            input[(y.clamp(0, height as i32 - 1) * width as i32 + x.clamp(0, width as i32 - 1))
+                as usize]
         };
         let mut output = Vec::new();
         for y in 0..2 * height as i32 {
@@ -438,14 +459,16 @@ mod tests {
                 let (dx, dy) = (2 * (x % 2) - 1, 2 * (y % 2) - 1);
                 let x_neighbor = pixel(i + dx, j);
                 let y_neighbor = pixel(i, j + dy);
-                output.push(if x_neighbor == y_neighbor
-                    && x_neighbor != pixel(i - dx, j)
-                    && y_neighbor != pixel(i, j - dy)
-                {
-                    x_neighbor
-                } else {
-                    pixel(i, j)
-                });
+                output.push(
+                    if x_neighbor == y_neighbor
+                        && x_neighbor != pixel(i - dx, j)
+                        && y_neighbor != pixel(i, j - dy)
+                    {
+                        x_neighbor
+                    } else {
+                        pixel(i, j)
+                    },
+                );
             }
         }
         output
@@ -466,14 +489,17 @@ mod tests {
             let center_base = center.floor() as i32;
             let sinc = |x: f64| {
                 let angle = std::f64::consts::PI * x;
-                if angle == 0.0 { 1.0 } else { angle.sin() / angle }
+                if angle == 0.0 {
+                    1.0
+                } else {
+                    angle.sin() / angle
+                }
             };
             let mut taps: Vec<_> = (center_base - radius..=center_base + radius)
                 .filter_map(|p| {
                     let x = (f64::from(p) - center) / normalize;
-                    (x.abs() < 3.0).then(|| {
-                        (p.clamp(0, src as i32 - 1) as u32, sinc(x) * sinc(x / 3.0))
-                    })
+                    (x.abs() < 3.0)
+                        .then(|| (p.clamp(0, src as i32 - 1) as u32, sinc(x) * sinc(x / 3.0)))
                 })
                 .collect();
             let sum: f64 = taps.iter().map(|tap| tap.1).sum();
@@ -522,7 +548,10 @@ mod tests {
         for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
             for ch in 0..4 {
                 let error = actual[ch].abs_diff(expected[ch]);
-                assert!(error <= 1, "{label}: pixel {index}, got {actual:?}, want {expected:?}");
+                assert!(
+                    error <= 1,
+                    "{label}: pixel {index}, got {actual:?}, want {expected:?}"
+                );
                 max_error = max_error.max(error);
             }
         }

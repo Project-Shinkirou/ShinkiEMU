@@ -73,7 +73,9 @@ fn solid_inline_colors_share_one_coverage_upload() {
     red.style = 0;
     let mut blue = style(0x0000ff);
     blue.style = 0;
-    let commands = renderer.frame(&[run("red", &red), run("blue", &blue)]).unwrap();
+    let commands = renderer
+        .frame(&[run("red", &red), run("blue", &blue)])
+        .unwrap();
     let mut uploads = commands.iter().filter_map(|command| match command {
         SceneCommand::UploadGlyph { resource_id, glyph } => {
             assert_eq!(glyph.format, GlyphBitmapFormat::Alpha8);

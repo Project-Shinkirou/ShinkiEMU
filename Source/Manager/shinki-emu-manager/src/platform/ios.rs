@@ -122,12 +122,19 @@ fn bundle_subdir(plugin_id: &str, parent: &str, leaf: &str) -> Option<PathBuf> {
         return None;
     }
     let directory = parent.join(leaf);
-    std::fs::symlink_metadata(&directory).ok()?.is_dir().then_some(directory)
+    std::fs::symlink_metadata(&directory)
+        .ok()?
+        .is_dir()
+        .then_some(directory)
 }
 
 pub(super) fn bundled_core_library(plugin_id: &str) -> Option<PathBuf> {
-    let executable = bundle_subdir(plugin_id, "Frameworks", &format!("{plugin_id}.framework"))?.join(plugin_id);
-    std::fs::symlink_metadata(&executable).ok()?.is_file().then_some(executable)
+    let executable =
+        bundle_subdir(plugin_id, "Frameworks", &format!("{plugin_id}.framework"))?.join(plugin_id);
+    std::fs::symlink_metadata(&executable)
+        .ok()?
+        .is_file()
+        .then_some(executable)
 }
 
 pub(super) fn bundled_core_manifest_dir(plugin_id: &str) -> Option<PathBuf> {

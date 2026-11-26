@@ -419,16 +419,29 @@ fn texture_variants_apply_explicit_source_rounding_and_alpha() {
         .unwrap()
         .unwrap();
     assert_eq!(marker.configuration, result.profile.configuration);
-    assert_eq!(marker.required_capabilities, result.profile.required_capabilities);
-    let key = shinki_emu_musica_keys::load_musica_key_file(&result.output.join("key.toml")).unwrap();
-    let receipt: serde_json::Value = serde_json::from_slice(
-        &fs::read(result.output.join("shinki-patch-result.json")).unwrap(),
-    )
-    .unwrap();
+    assert_eq!(
+        marker.required_capabilities,
+        result.profile.required_capabilities
+    );
+    let key =
+        shinki_emu_musica_keys::load_musica_key_file(&result.output.join("key.toml")).unwrap();
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&fs::read(result.output.join("shinki-patch-result.json")).unwrap())
+            .unwrap();
     let outputs = receipt["outputs"].as_array().unwrap();
     for (name, expected) in [
-        ("patch", [76, 76, 76, 0, 150, 150, 150, 32, 28, 28, 28, 127, 255, 255, 255, 255]),
-        ("native", [255, 0, 0, 0, 159, 159, 159, 32, 0, 0, 0, 127, 31, 31, 31, 255]),
+        (
+            "patch",
+            [
+                76, 76, 76, 0, 150, 150, 150, 32, 28, 28, 28, 127, 255, 255, 255, 255,
+            ],
+        ),
+        (
+            "native",
+            [
+                255, 0, 0, 0, 159, 159, 159, 32, 0, 0, 0, 127, 31, 31, 31, 255,
+            ],
+        ),
     ] {
         let path = format!("variants/{name}.png");
         let bytes = fs::read(result.output.join(&path)).unwrap();
@@ -437,7 +450,10 @@ fn texture_variants_apply_explicit_source_rounding_and_alpha() {
             .into_rgba8();
         assert_eq!(image.as_raw(), &expected);
         let manifest_entry = outputs.iter().find(|entry| entry["path"] == path).unwrap();
-        assert_eq!(manifest_entry["sha256"], hex::encode(Sha256::digest(&bytes)));
+        assert_eq!(
+            manifest_entry["sha256"],
+            hex::encode(Sha256::digest(&bytes))
+        );
         let variant = &key.texture_variants[&format!("musica:/bg/[{name}]public_0.png")];
         assert_eq!(variant.source, "musica:/bg/public_0.png");
         assert_eq!(variant.path, path);

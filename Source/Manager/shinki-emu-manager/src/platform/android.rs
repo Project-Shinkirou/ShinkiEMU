@@ -126,7 +126,10 @@ fn initialize_process(app: &AndroidApp, vm: &JavaVM) -> Result<AndroidProcess, S
             result.inspect_err(|_| clear_jni_exception(env))
         })
         .map_err(|error| format!("SHINKI_EMU_ANDROID_CORE_CONTEXT: {error}"))?;
-    Ok(AndroidProcess { vm: vm.clone(), application })
+    Ok(AndroidProcess {
+        vm: vm.clone(),
+        application,
+    })
 }
 
 fn configure_temporary_directory() -> Result<(), String> {
@@ -177,7 +180,10 @@ pub(crate) fn core_application_context() -> Result<(*mut c_void, *mut c_void), S
         .ok_or("SHINKI_EMU_ANDROID_CORE_CONTEXT: process not initialized")?
         .as_ref()
         .map_err(Clone::clone)?;
-    Ok((process.vm.get_raw().cast(), process.application.as_raw().cast()))
+    Ok((
+        process.vm.get_raw().cast(),
+        process.application.as_raw().cast(),
+    ))
 }
 
 /// The activity handle stored by [`initialize`], valid for this lifecycle.
@@ -267,22 +273,36 @@ pub(super) fn pick_folder(_title: &str, done: PickDone) {
 }
 
 pub(super) fn pick_library_folder(done: PickDone) {
-    if !PENDING_PICKS.with(|picks| picks.borrow().values().any(|pick| pick.kind == PICK_LIBRARY_TREE)) {
+    if !PENDING_PICKS.with(|picks| {
+        picks
+            .borrow()
+            .values()
+            .any(|pick| pick.kind == PICK_LIBRARY_TREE)
+    }) {
         start_pick(PICK_LIBRARY_TREE, None, done);
     }
 }
 
 pub(crate) fn storage_access() -> Result<(bool, bool), String> {
     call_activity("storageAccess", |env, activity| {
-        env.call_method(activity, jni_str!("storageAccess"), jni_sig!("()I"), &[])?.i()
-    }).map(|status| (status != 0, status == 2))
+        env.call_method(activity, jni_str!("storageAccess"), jni_sig!("()I"), &[])?
+            .i()
+    })
+    .map(|status| (status != 0, status == 2))
 }
 
 pub(crate) fn open_storage_access(on_error: Rc<dyn Fn(String)>) -> Result<(), String> {
     STORAGE_SETTINGS_ERROR.with(|handler| handler.replace(Some(on_error)));
     call_activity("openStorageAccess", |env, activity| {
-        env.call_method(activity, jni_str!("openStorageAccess"), jni_sig!("()V"), &[]).map(drop)
-    }).map_err(|error| format!("SHINKI_EMU_ANDROID_STORAGE_SETTINGS: {error}"))
+        env.call_method(
+            activity,
+            jni_str!("openStorageAccess"),
+            jni_sig!("()V"),
+            &[],
+        )
+        .map(drop)
+    })
+    .map_err(|error| format!("SHINKI_EMU_ANDROID_STORAGE_SETTINGS: {error}"))
 }
 
 #[unsafe(no_mangle)]
@@ -417,9 +437,14 @@ fn start_pick(kind: i32, extensions: Option<Vec<String>>, done: PickDone) {
         path.to_owned()
     };
     PENDING_PICKS.with(|pending| {
-        pending
-            .borrow_mut()
-            .insert(id, PendingPick { done, extensions, kind })
+        pending.borrow_mut().insert(
+            id,
+            PendingPick {
+                done,
+                extensions,
+                kind,
+            },
+        )
     });
     let started = call_activity("pickDocument", |env, activity| {
         let destination = env.new_string(&destination)?;
@@ -656,7 +681,11 @@ pub(crate) fn share_diagnostic_log(data_dir: &Path, title: &str) -> Result<bool,
             &provider,
             jni_str!("share"),
             jni_sig!("(Landroid/app/Activity;[BLjava/lang/String;)V"),
-            &[JValue::Object(activity), JValue::Object(&bytes), JValue::Object(&title)],
+            &[
+                JValue::Object(activity),
+                JValue::Object(&bytes),
+                JValue::Object(&title),
+            ],
         )
         .map(drop)
     })

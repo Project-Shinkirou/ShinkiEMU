@@ -1,5 +1,5 @@
-use super::*;
 use super::raster::PresentationGrid;
+use super::*;
 use crate::CmvsNativeTextGlyph;
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat};
 
@@ -96,7 +96,12 @@ pub(super) fn paint_upload(
         paint_buffer(
             glyph,
             style,
-            Placement { grid, origin, pixel_size, padding },
+            Placement {
+                grid,
+                origin,
+                pixel_size,
+                padding,
+            },
         )?
     };
     let (stride, format) = if mask_only {
@@ -133,26 +138,24 @@ pub(super) fn paint_upload(
         for row in 0..cropped_height {
             let source = ((top + row) * width + left) as usize * stride;
             let destination = (row * cropped_width) as usize * stride;
-            pixels.copy_within(source..source + cropped_width as usize * stride, destination);
+            pixels.copy_within(
+                source..source + cropped_width as usize * stride,
+                destination,
+            );
         }
         pixels.truncate(cropped_width as usize * cropped_height as usize * stride);
     }
-    GlyphBitmap::from_vec(
-        cropped_width,
-        cropped_height,
-        format,
-        pixels,
-    )
-    .map(|bitmap| {
-        (
-            bitmap,
-            [
-                origin[0] + left as i32 - padding as i32,
-                origin[1] + top as i32 - padding as i32,
-            ],
-        )
-    })
-    .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
+    GlyphBitmap::from_vec(cropped_width, cropped_height, format, pixels)
+        .map(|bitmap| {
+            (
+                bitmap,
+                [
+                    origin[0] + left as i32 - padding as i32,
+                    origin[1] + top as i32 - padding as i32,
+                ],
+            )
+        })
+        .map_err(|_| error("SHINKI_EMU_CMVS_GLYPH_FORMAT"))
 }
 
 #[derive(Clone, Copy)]
@@ -247,7 +250,14 @@ fn paint_pixels(
         style.outline_color as u8,
     ];
     if radius != 0 {
-        outline(glyph, radius, padding, width, pixels, placement.grid.scale());
+        outline(
+            glyph,
+            radius,
+            padding,
+            width,
+            pixels,
+            placement.grid.scale(),
+        );
         for pixel in pixels
             .as_chunks_mut::<4>()
             .0
@@ -340,8 +350,8 @@ impl ColorRamp {
         };
         let mut rgba = [255; 4];
         for (i, channel) in rgba[..3].iter_mut().enumerate() {
-            *channel = (((self.start[i] << 10) + self.step[i] * distance) >> 20)
-                .clamp(0, 255) as u8;
+            *channel =
+                (((self.start[i] << 10) + self.step[i] * distance) >> 20).clamp(0, 255) as u8;
         }
         rgba
     }

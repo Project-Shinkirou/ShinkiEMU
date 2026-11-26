@@ -1,8 +1,14 @@
 use super::*;
 use std::{ptr, sync::Mutex};
 
-const LOGICAL: Extent = Extent { width: 640, height: 480 };
-const RASTER: Extent = Extent { width: 2, height: 1 };
+const LOGICAL: Extent = Extent {
+    width: 640,
+    height: 480,
+};
+const RASTER: Extent = Extent {
+    width: 2,
+    height: 1,
+};
 const CHECKPOINT: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
 
 fn wire_frame(commands: &[GpuSceneCommandV1]) -> GpuSceneFrameV1 {
@@ -62,7 +68,10 @@ fn malformed_wire_clears_partial_commands_and_keeps_capacity() {
     };
     let invalid_glyph = GpuSceneCommandV1 {
         op: GPU_UPLOAD_GLYPH,
-        image: GpuImageV1 { format: GPU_IMAGE_R8, ..image },
+        image: GpuImageV1 {
+            format: GPU_IMAGE_R8,
+            ..image
+        },
         ..valid
     };
     let invalid_transform = GpuSceneCommandV1 {
@@ -73,7 +82,10 @@ fn malformed_wire_clears_partial_commands_and_keeps_capacity() {
     let mut decoded = Vec::with_capacity(8);
     let capacity = decoded.capacity();
     for invalid in [invalid_glyph, invalid_transform] {
-        assert_eq!(unsafe { decode(&wire_frame(&[valid, invalid]), &mut decoded) }, Err(INVALID_ARGUMENT));
+        assert_eq!(
+            unsafe { decode(&wire_frame(&[valid, invalid]), &mut decoded) },
+            Err(INVALID_ARGUMENT)
+        );
         assert!(decoded.is_empty());
         assert_eq!(decoded.capacity(), capacity);
     }
@@ -88,7 +100,12 @@ struct HostProbe {
     destroyed: bool,
 }
 
-unsafe extern "C" fn create(context: *mut c_void, epoch: u64, out: *mut u64, _: *mut Error) -> Status {
+unsafe extern "C" fn create(
+    context: *mut c_void,
+    epoch: u64,
+    out: *mut u64,
+    _: *mut Error,
+) -> Status {
     let probe = unsafe { &*context.cast::<Mutex<HostProbe>>() };
     probe.lock().unwrap().epoch = Some(epoch);
     unsafe { out.write(17) };
@@ -110,7 +127,12 @@ unsafe extern "C" fn submit(
     if let Err(status) = unsafe { decode(frame, &mut probe.commands) } {
         return status;
     }
-    probe.submitted = Some((frame.sequence, frame.logical, frame.raster, frame.clear_rgba));
+    probe.submitted = Some((
+        frame.sequence,
+        frame.logical,
+        frame.raster,
+        frame.clear_rgba,
+    ));
     OK
 }
 
@@ -154,36 +176,56 @@ fn open_prefix() -> OpenRequest {
         },
         host: HostServices {
             header: Header::of::<HostServices>(),
-            text: TextService { context: ptr::null_mut(), request: None, acknowledge: None, invalidate: None },
-            window: WindowService { context: ptr::null_mut(), request: None, invalidate: None },
-            cancellation: CancellationService { context: ptr::null_mut(), is_cancelled: None },
+            text: TextService {
+                context: ptr::null_mut(),
+                request: None,
+                acknowledge: None,
+                invalidate: None,
+            },
+            window: WindowService {
+                context: ptr::null_mut(),
+                request: None,
+                invalidate: None,
+            },
+            cancellation: CancellationService {
+                context: ptr::null_mut(),
+                is_cancelled: None,
+            },
         },
         module_owner: ptr::null_mut(),
         render_extent: RASTER,
     }
 }
 
-unsafe extern "C" fn unsupported(
-    _: *mut c_void,
-    _: u64,
-    _: *mut u64,
-    _: *mut Error,
-) -> Status {
+unsafe extern "C" fn unsupported(_: *mut c_void, _: u64, _: *mut u64, _: *mut Error) -> Status {
     UNSUPPORTED
 }
 
 fn supplied_host(request: &OpenRequestGpuV1) -> GpuSceneHost {
     let base = ptr::from_ref(request).cast::<OpenRequest>();
-    unsafe { GpuSceneHost::from_request(base) }.unwrap().unwrap()
+    unsafe { GpuSceneHost::from_request(base) }
+        .unwrap()
+        .unwrap()
 }
 
 #[test]
 fn client_preserves_scene_order_and_captures_only_on_request() {
     let mut base = open_prefix();
-    assert!(unsafe { GpuSceneHost::from_request(&base) }.unwrap().is_none());
+    assert!(
+        unsafe { GpuSceneHost::from_request(&base) }
+            .unwrap()
+            .is_none()
+    );
     base.header = Header::of::<OpenRequestTextV1>();
-    let mut text = OpenRequestTextV1 { base, text_async: ptr::null() };
-    assert!(unsafe { GpuSceneHost::from_request(ptr::from_ref(&text).cast()) }.unwrap().is_none());
+    let mut text = OpenRequestTextV1 {
+        base,
+        text_async: ptr::null(),
+    };
+    assert!(
+        unsafe { GpuSceneHost::from_request(ptr::from_ref(&text).cast()) }
+            .unwrap()
+            .is_none()
+    );
 
     let probe = Mutex::new(HostProbe::default());
     let service = GpuSceneServiceV1 {
@@ -196,80 +238,128 @@ fn client_preserves_scene_order_and_captures_only_on_request() {
         destroy: Some(destroy),
     };
     text.base.header = Header::of::<OpenRequestGpuV1>();
-    let unsupported_service = GpuSceneServiceV1 { create: Some(unsupported), ..service };
-    let request = OpenRequestGpuV1 { text, gpu_scene: &unsupported_service };
+    let unsupported_service = GpuSceneServiceV1 {
+        create: Some(unsupported),
+        ..service
+    };
+    let request = OpenRequestGpuV1 {
+        text,
+        gpu_scene: &unsupported_service,
+    };
     assert!(supplied_host(&request).create().unwrap().is_none());
 
-    let request = OpenRequestGpuV1 { text, gpu_scene: &service };
+    let request = OpenRequestGpuV1 {
+        text,
+        gpu_scene: &service,
+    };
     let host = supplied_host(&request);
     std::thread::scope(|scope| {
         let probe = &probe;
-        scope.spawn(move || {
-            let mut client = host.create().unwrap().unwrap();
-            let glyphs: Arc<[_]> = [GlyphInstance {
-                resource_id: "glyph".into(),
-                x: -1,
-                y: 5,
-                rotation_quadrants: 3,
-            }].into();
-            let destination = RectI::new(-2, 1, 6, 4);
-            let texture = TextureFrame::from_vec(1, 1, vec![6, 7, 8, 9]).unwrap();
-            let frame = SceneFrame {
-                sequence: 21,
-                width: RASTER.width,
-                height: RASTER.height,
-                clear_rgba: [10, 20, 30, 40],
-                semantics: None,
-                commands: vec![
-                    SceneCommand::Clear { rgba: [0, 0, 0, 255] },
-                    SceneCommand::rect("rect", 1, 2, 3, 4, [1, 2, 3, 4]),
-                    SceneCommand::UploadTexture { resource_id: "stage".into(), frame: texture.clone() },
-                    SceneCommand::UpdateTextureRegion {
-                        resource_id: "stage".into(), x: 0, y: 0, width: 1, height: 1,
-                        rgba8: vec![33, 44, 55, 66].into(),
-                    },
-                    SceneCommand::UploadGlyph {
-                        resource_id: "glyph".into(),
-                        glyph: GlyphBitmap::from_vec(1, 1, GlyphBitmapFormat::Alpha8, vec![80]).unwrap(),
-                    },
-                    SceneCommand::PushClip { rect: destination },
-                    SceneCommand::PushTransform { transform: Transform2D::translation(-2.5, 14.0) },
-                    SceneCommand::Sprite {
-                        id: "sprite".into(), texture_id: "stage".into(), source: Some(RectI::new(0, 0, 1, 1)),
-                        destination, opacity: 0.25, blend: BlendMode::Multiply,
-                    },
-                    SceneCommand::GlyphRun {
-                        id: "first".into(), glyphs: glyphs.clone(), rgba: [0, 1, 2, 3], opacity: 0.75,
-                        blend: BlendMode::Add,
-                    },
-                    SceneCommand::LinearGlyphRun {
-                        id: "second".into(), glyphs, rgba: [10, 11, 12, 13], opacity: 0.5,
-                    },
-                    SceneCommand::Texture {
-                        id: "texture".into(), frame: texture.clone(), destination, opacity: 0.75,
-                        blend: BlendMode::ScreenRgb,
-                    },
-                    SceneCommand::MaskReveal {
-                        id: "mask".into(), frame: texture.clone(), mask: texture, destination,
-                        mode: MaskRevealMode::Gradient, phase: 256.0, opacity: 1.0,
-                    },
-                    SceneCommand::PopTransform,
-                    SceneCommand::PopClip,
-                    SceneCommand::ReleaseResource { resource_id: "stage".into() },
-                ],
-            };
-            assert!(client.capture(RASTER).is_err());
-            client.submit(&frame, LOGICAL).unwrap();
-            {
-                let probe = probe.lock().unwrap();
-                assert_eq!(probe.epoch, Some(23));
-                assert_eq!(probe.submitted, Some((21, LOGICAL, RASTER, frame.clear_rgba)));
-                assert_eq!(probe.commands, frame.commands);
-                assert_eq!(probe.captures, 0);
-            }
-            assert_eq!(client.capture(RASTER).unwrap().as_ref(), &CHECKPOINT);
-            drop(client);
-        }).join().unwrap();
+        scope
+            .spawn(move || {
+                let mut client = host.create().unwrap().unwrap();
+                let glyphs: Arc<[_]> = [GlyphInstance {
+                    resource_id: "glyph".into(),
+                    x: -1,
+                    y: 5,
+                    rotation_quadrants: 3,
+                }]
+                .into();
+                let destination = RectI::new(-2, 1, 6, 4);
+                let texture = TextureFrame::from_vec(1, 1, vec![6, 7, 8, 9]).unwrap();
+                let frame = SceneFrame {
+                    sequence: 21,
+                    width: RASTER.width,
+                    height: RASTER.height,
+                    clear_rgba: [10, 20, 30, 40],
+                    semantics: None,
+                    commands: vec![
+                        SceneCommand::Clear {
+                            rgba: [0, 0, 0, 255],
+                        },
+                        SceneCommand::rect("rect", 1, 2, 3, 4, [1, 2, 3, 4]),
+                        SceneCommand::UploadTexture {
+                            resource_id: "stage".into(),
+                            frame: texture.clone(),
+                        },
+                        SceneCommand::UpdateTextureRegion {
+                            resource_id: "stage".into(),
+                            x: 0,
+                            y: 0,
+                            width: 1,
+                            height: 1,
+                            rgba8: vec![33, 44, 55, 66].into(),
+                        },
+                        SceneCommand::UploadGlyph {
+                            resource_id: "glyph".into(),
+                            glyph: GlyphBitmap::from_vec(1, 1, GlyphBitmapFormat::Alpha8, vec![80])
+                                .unwrap(),
+                        },
+                        SceneCommand::PushClip { rect: destination },
+                        SceneCommand::PushTransform {
+                            transform: Transform2D::translation(-2.5, 14.0),
+                        },
+                        SceneCommand::Sprite {
+                            id: "sprite".into(),
+                            texture_id: "stage".into(),
+                            source: Some(RectI::new(0, 0, 1, 1)),
+                            destination,
+                            opacity: 0.25,
+                            blend: BlendMode::Multiply,
+                        },
+                        SceneCommand::GlyphRun {
+                            id: "first".into(),
+                            glyphs: glyphs.clone(),
+                            rgba: [0, 1, 2, 3],
+                            opacity: 0.75,
+                            blend: BlendMode::Add,
+                        },
+                        SceneCommand::LinearGlyphRun {
+                            id: "second".into(),
+                            glyphs,
+                            rgba: [10, 11, 12, 13],
+                            opacity: 0.5,
+                        },
+                        SceneCommand::Texture {
+                            id: "texture".into(),
+                            frame: texture.clone(),
+                            destination,
+                            opacity: 0.75,
+                            blend: BlendMode::ScreenRgb,
+                        },
+                        SceneCommand::MaskReveal {
+                            id: "mask".into(),
+                            frame: texture.clone(),
+                            mask: texture,
+                            destination,
+                            mode: MaskRevealMode::Gradient,
+                            phase: 256.0,
+                            opacity: 1.0,
+                        },
+                        SceneCommand::PopTransform,
+                        SceneCommand::PopClip,
+                        SceneCommand::ReleaseResource {
+                            resource_id: "stage".into(),
+                        },
+                    ],
+                };
+                assert!(client.capture(RASTER).is_err());
+                client.submit(&frame, LOGICAL).unwrap();
+                {
+                    let probe = probe.lock().unwrap();
+                    assert_eq!(probe.epoch, Some(23));
+                    assert_eq!(
+                        probe.submitted,
+                        Some((21, LOGICAL, RASTER, frame.clear_rgba))
+                    );
+                    assert_eq!(probe.commands, frame.commands);
+                    assert_eq!(probe.captures, 0);
+                }
+                assert_eq!(client.capture(RASTER).unwrap().as_ref(), &CHECKPOINT);
+                drop(client);
+            })
+            .join()
+            .unwrap();
     });
     let probe = probe.into_inner().unwrap();
     assert_eq!(probe.captures, 1);

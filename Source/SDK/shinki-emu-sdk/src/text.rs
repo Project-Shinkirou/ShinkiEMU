@@ -1,8 +1,8 @@
 use roukaku_core::{DiagnosticSeverity, Hash256};
 use roukaku_media_core::{GlyphBitmap, GlyphBitmapFormat, MediaError, SceneCommand};
 use roukaku_text::{
-    CosmicTextLayoutProvider, GlyphResource, LogicalTextLayout, TextLayoutRequest, TextLayoutResult,
-    TextRenderFrameCommands, TextRenderLayoutUpdate, TextRenderResourceOwner,
+    CosmicTextLayoutProvider, GlyphResource, LogicalTextLayout, TextLayoutRequest,
+    TextLayoutResult, TextRenderFrameCommands, TextRenderLayoutUpdate, TextRenderResourceOwner,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -463,7 +463,11 @@ fn dilate_outline(
     // time with a monotonic queue. Mirror each span to both output rows.
     const WINDOW: usize = MAX_RASTER_OUTLINE_RADIUS as usize * 2 + 1;
     let mut queue = [(0usize, 0u8); WINDOW];
-    for (y, row) in source.pixels.chunks_exact(source_width * channels).enumerate() {
+    for (y, row) in source
+        .pixels
+        .chunks_exact(source_width * channels)
+        .enumerate()
+    {
         for (dy, &span) in spans[..=radius].iter().enumerate() {
             let mut head = 0;
             let mut tail = 0;
@@ -494,7 +498,11 @@ fn dilate_outline(
         }
     }
     // Leave already covered glyph interior to the foreground pass.
-    for (y, row) in source.pixels.chunks_exact(source_width * channels).enumerate() {
+    for (y, row) in source
+        .pixels
+        .chunks_exact(source_width * channels)
+        .enumerate()
+    {
         let start = (y + radius) * width + radius;
         for (dst, src) in pixels[start..start + source_width]
             .iter_mut()
@@ -503,7 +511,12 @@ fn dilate_outline(
             *dst -= src[channels - 1];
         }
     }
-    GlyphBitmap::from_vec(width as u32, height as u32, GlyphBitmapFormat::Alpha8, pixels)
+    GlyphBitmap::from_vec(
+        width as u32,
+        height as u32,
+        GlyphBitmapFormat::Alpha8,
+        pixels,
+    )
 }
 
 fn raster_outline(

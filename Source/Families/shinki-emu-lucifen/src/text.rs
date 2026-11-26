@@ -42,8 +42,8 @@ impl NativeTextRaster {
     }
 
     pub(crate) fn glyphs(&self) -> impl Iterator<Item = (&str, [i64; 2])> {
-        let mut tracking = (self.tracking_carry != [0, 0])
-            .then(|| GlyphTracking::new(self.tracking_carry));
+        let mut tracking =
+            (self.tracking_carry != [0, 0]).then(|| GlyphTracking::new(self.tracking_carry));
         self.layout
             .shaped_runs
             .iter()

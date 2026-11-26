@@ -1116,7 +1116,12 @@ impl CmvsSession {
             .map_err(core)?;
         let data = self
             .archive
-            .load_native_audio(&uri, &name, audio::MAX_CLIP_FRAMES, self.cancellation.flag())
+            .load_native_audio(
+                &uri,
+                &name,
+                audio::MAX_CLIP_FRAMES,
+                self.cancellation.flag(),
+            )
             .map_err(core)?;
         Ok(audio::DecodedClip::from_kira(data.data.map_err(core)?)
             .with_source(name)

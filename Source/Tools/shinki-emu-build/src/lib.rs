@@ -156,7 +156,9 @@ fn work_root() -> PathBuf {
 }
 
 fn out_dir() -> Result<PathBuf> {
-    Ok(PathBuf::from(env::var_os("OUT_DIR").context("OUT_DIR is required")?))
+    Ok(PathBuf::from(
+        env::var_os("OUT_DIR").context("OUT_DIR is required")?,
+    ))
 }
 
 fn pins() -> Result<inputs::Pins> {
@@ -171,16 +173,27 @@ fn watch_env(key: &str) -> Option<std::ffi::OsString> {
 }
 
 fn lock_file(path: &Path) -> Result<fs::File> {
-    let file = fs::File::options().read(true).write(true).create(true).truncate(false).open(path)
+    let file = fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
         .with_context(|| format!("opening lock {}", path.display()))?;
-    file.lock().with_context(|| format!("locking {}", path.display()))?;
+    file.lock()
+        .with_context(|| format!("locking {}", path.display()))?;
     Ok(file)
 }
 
 fn capture(command: &mut Command) -> Result<String> {
-    let output = command.output().with_context(|| format!("starting {command:?}"))?;
+    let output = command
+        .output()
+        .with_context(|| format!("starting {command:?}"))?;
     if !output.status.success() {
-        bail!("{command:?} failed: {}", String::from_utf8_lossy(&output.stderr));
+        bail!(
+            "{command:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(String::from_utf8(output.stdout)?)
 }
@@ -205,19 +218,15 @@ fn sha256(path: &Path) -> Result<String> {
 }
 
 pub fn android_ndk() -> Result<PathBuf> {
-    [
-        "ANDROID_NDK_HOME",
-        "ANDROID_NDK_ROOT",
-        "CARGO_NDK_HOME",
-    ]
-    .into_iter()
-    .find_map(watch_env)
-    .map(PathBuf::from)
-    .or_else(|| {
-        let sysroot = PathBuf::from(watch_env("CARGO_NDK_SYSROOT_PATH")?);
-        Some(sysroot.ancestors().nth(5)?.to_owned())
-    })
-    .context("select an Android NDK with cargo ndk or ANDROID_NDK_HOME")
+    ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "CARGO_NDK_HOME"]
+        .into_iter()
+        .find_map(watch_env)
+        .map(PathBuf::from)
+        .or_else(|| {
+            let sysroot = PathBuf::from(watch_env("CARGO_NDK_SYSROOT_PATH")?);
+            Some(sysroot.ancestors().nth(5)?.to_owned())
+        })
+        .context("select an Android NDK with cargo ndk or ANDROID_NDK_HOME")
 }
 
 /// Restrict this build-script process's pkg-config probes to the installation.
@@ -232,7 +241,12 @@ pub fn configure_pkg_config(target: &str, paths: &[PathBuf], program: &Path) -> 
         env::set_var(format!("PKG_CONFIG_LIBDIR_{target}"), paths);
         env::set_var("PKG_CONFIG_ALLOW_CROSS", "1");
         for name in ["PKG_CONFIG_SYSROOT_DIR", "PKG_CONFIG_SYSTEM_LIBRARY_PATH"] {
-            for key in [name.to_owned(), format!("{name}_{target}"), format!("{name}_{target_key}"), format!("TARGET_{name}")] {
+            for key in [
+                name.to_owned(),
+                format!("{name}_{target}"),
+                format!("{name}_{target_key}"),
+                format!("TARGET_{name}"),
+            ] {
                 env::remove_var(key);
             }
         }
@@ -366,11 +380,19 @@ pub fn link_android_static_core(native: &Path, installations: &[PathBuf]) -> Res
 
 fn link_static_installations(installations: &[PathBuf]) -> Result<()> {
     let target = env::var("TARGET")?;
-    let dirs = installations.iter().flat_map(|installation| [
-        installation.join("lib/pkgconfig"), installation.join("share/pkgconfig"),
-    ]).filter(|path| path.is_dir()).collect::<Vec<_>>();
+    let dirs = installations
+        .iter()
+        .flat_map(|installation| {
+            [
+                installation.join("lib/pkgconfig"),
+                installation.join("share/pkgconfig"),
+            ]
+        })
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
     if !dirs.is_empty() {
-        let installed = installations.iter()
+        let installed = installations
+            .iter()
             .filter_map(|prefix| prefix.parent())
             .find(|root| root.file_name().is_some_and(|name| name == "installed"));
         let program = vcpkg::pkg_config_program(&target, installed)?;
@@ -475,7 +497,11 @@ pub fn configure_cmake(
         .arg("-DFETCHCONTENT_FULLY_DISCONNECTED=ON")
         .arg("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON")
         .arg("-DVCPKG_MANIFEST_INSTALL=OFF");
-    let definition = |name: &str| definitions.iter().find_map(|(key, value)| (key == name).then_some(value));
+    let definition = |name: &str| {
+        definitions
+            .iter()
+            .find_map(|(key, value)| (key == name).then_some(value))
+    };
     if target != host
         && let (Some(installed), Some(triplet)) = (
             definition("VCPKG_INSTALLED_DIR"),
@@ -487,7 +513,10 @@ pub fn configure_cmake(
         configure
             .arg(format!("-DPKG_CONFIG_EXECUTABLE={}", program.display()))
             .env("PKG_CONFIG_PATH", "")
-            .env("PKG_CONFIG_LIBDIR", env::join_paths([prefix.join("lib/pkgconfig"), prefix.join("share/pkgconfig")])?)
+            .env(
+                "PKG_CONFIG_LIBDIR",
+                env::join_paths([prefix.join("lib/pkgconfig"), prefix.join("share/pkgconfig")])?,
+            )
             .env_remove("PKG_CONFIG_SYSROOT_DIR");
     }
     if let Some(generator) = env::var_os("CMAKE_GENERATOR") {
@@ -509,7 +538,9 @@ pub fn configure_cmake(
             .args(["-G", "Ninja"])
             .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
     }
-    if !definitions.iter().any(|(key, _)| key == "CMAKE_TOOLCHAIN_FILE")
+    if !definitions
+        .iter()
+        .any(|(key, _)| key == "CMAKE_TOOLCHAIN_FILE")
         && let Some(toolchain) = env::var_os("CMAKE_TOOLCHAIN_FILE")
     {
         configure.arg(format!(

@@ -670,7 +670,9 @@ impl NativeFiles {
         } else {
             name
         };
-        self.encoding.encode(name).is_some_and(|bytes| self.cg.contains(bytes.as_ref()))
+        self.encoding
+            .encode(name)
+            .is_some_and(|bytes| self.cg.contains(bytes.as_ref()))
     }
 
     /// Adds one shown background image (lowercase file name) to `cgv.dat`.

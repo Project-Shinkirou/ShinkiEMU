@@ -365,10 +365,12 @@ impl TextPainter {
             .iter()
             .map(|resource| (resource.resource_id.as_str(), &resource.bitmap))
             .collect();
-        let (left, right) = text.clip_width.map_or((0, i64::from(logical_width)), |width| {
-            let left = i64::from(text.x);
-            (left, left + i64::from(width))
-        });
+        let (left, right) = text
+            .clip_width
+            .map_or((0, i64::from(logical_width)), |width| {
+                let left = i64::from(text.x);
+                (left, left + i64::from(width))
+            });
         let (origin, clip_x, clip_y) = if let Some(mapping) = mapping {
             let viewport = mapping.viewport();
             (
@@ -555,7 +557,8 @@ mod tests {
         let clipped = finish(clipped);
         assert_eq!(clipped.dimensions(), (192, 120));
         let lit = |x: std::ops::Range<u32>| {
-            x.into_iter().any(|x| (23..85).any(|y| full.get_pixel(x, y)[0] != 0))
+            x.into_iter()
+                .any(|x| (23..85).any(|y| full.get_pixel(x, y)[0] != 0))
         };
         // The ASCII glyph is centered in its half cell, and the CJK glyph
         // reaches beyond the right edge of the visible region.

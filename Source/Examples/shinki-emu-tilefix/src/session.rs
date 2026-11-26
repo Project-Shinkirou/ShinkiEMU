@@ -153,12 +153,16 @@ impl Session {
 
     pub(super) fn enqueue(&self, command: Command) -> Result<(), Failure> {
         self.check_cancelled()?;
-        self.commands.try_send(command).map_err(|error| match error {
-            TrySendError::Full(_) => {
-                Failure::new(abi::CAPACITY, "TILEFIX_QUEUE_FULL", "Tilefix input queue is full")
-            }
-            TrySendError::Disconnected(_) => worker_failure(),
-        })
+        self.commands
+            .try_send(command)
+            .map_err(|error| match error {
+                TrySendError::Full(_) => Failure::new(
+                    abi::CAPACITY,
+                    "TILEFIX_QUEUE_FULL",
+                    "Tilefix input queue is full",
+                ),
+                TrySendError::Disconnected(_) => worker_failure(),
+            })
     }
 
     pub(super) fn state(&self) -> abi::SessionState {
@@ -208,7 +212,9 @@ fn run(shared: &Shared, commands: Receiver<Command>, tile: Tile) {
     let mut dirty = true;
     while !shared.services.is_cancelled() {
         if dirty {
-            generation = generation.checked_add(1).expect("tilefix generation overflow");
+            generation = generation
+                .checked_add(1)
+                .expect("tilefix generation overflow");
             let next = Published {
                 generation,
                 timestamp_ns: u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX),
@@ -247,7 +253,11 @@ pub(super) fn check_cancelled(services: &ServiceContext) -> Result<(), Failure> 
 }
 
 fn cancelled() -> Failure {
-    Failure::new(abi::CANCELLED, "TILEFIX_CANCELLED", "Tilefix session cancelled")
+    Failure::new(
+        abi::CANCELLED,
+        "TILEFIX_CANCELLED",
+        "Tilefix session cancelled",
+    )
 }
 
 fn worker_failure() -> Failure {

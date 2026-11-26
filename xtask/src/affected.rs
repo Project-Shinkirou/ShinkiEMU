@@ -145,7 +145,9 @@ fn bundled_targets<'a>(
 /// Locate an in-tree adapter; families without their own adapter are shared inputs.
 fn family_core<'a>(inv: &'a Inventory, path: &str) -> Option<&'a crate::cores::Core> {
     let (dir, _) = path.strip_prefix("Source/Families/")?.split_once('/')?;
-    inv.cores.iter().find(|core| core.attribution.is_none() && core.adapter_package() == dir)
+    inv.cores
+        .iter()
+        .find(|core| core.attribution.is_none() && core.adapter_package() == dir)
 }
 
 /// A per-core table that differs affects that core and the Manager packages
@@ -181,7 +183,8 @@ fn core_table_changes(
                 .into_iter()
                 .flatten()
                 .filter_map(toml::Value::as_str);
-            let ios_framework = core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
+            let ios_framework =
+                core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
             affected.core(
                 id,
                 static_targets.chain(bundled_targets(inv, id, ios_framework)),
@@ -239,7 +242,11 @@ mod tests {
     fn changed(inv: &Inventory, paths: &[&str]) -> BTreeSet<(String, String)> {
         rows(inv, &classify(inv, paths, None, "").unwrap())
     }
-    const IOS_MANAGERS: &[&str] = &["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"];
+    const IOS_MANAGERS: &[&str] = &[
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "x86_64-apple-ios",
+    ];
 
     fn core_rows(
         inv: &Inventory,
@@ -327,7 +334,11 @@ mod tests {
     fn entry_changes_rebuild_manager_only_when_the_package_uses_the_entry() {
         let (inv, _) = inventory();
         for (path, core, manager_targets) in [
-            ("Source/Cores/siglus_rs/src/lib.rs", "siglus_rs", IOS_MANAGERS),
+            (
+                "Source/Cores/siglus_rs/src/lib.rs",
+                "siglus_rs",
+                IOS_MANAGERS,
+            ),
             (
                 "Source/Cores/shinki.emu.adv32/src/lib.rs",
                 "shinki.emu.adv32",

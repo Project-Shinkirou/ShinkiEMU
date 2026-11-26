@@ -47,7 +47,9 @@ impl CoreRecognitionRule {
     }
 
     pub fn magic_bytes(&self) -> Vec<u8> {
-        self.magic.as_ref().map_or_else(Vec::new, |magic| hex::decode(magic).expect("validated recognition magic"))
+        self.magic.as_ref().map_or_else(Vec::new, |magic| {
+            hex::decode(magic).expect("validated recognition magic")
+        })
     }
 }
 
@@ -62,17 +64,26 @@ impl TryFrom<Vec<CoreRecognitionRule>> for CoreRecognition {
             if rule.path.len() > MAX_PATH_BYTES
                 || rule.path.split('/').count() > MAX_COMPONENTS
                 || rule.path.split('/').any(|part| {
-                    part.is_empty() || part.starts_with('.') || part.ends_with(['.', ' '])
-                        || !part.bytes().all(|b| b.is_ascii_alphanumeric() || b"._- ".contains(&b))
+                    part.is_empty()
+                        || part.starts_with('.')
+                        || part.ends_with(['.', ' '])
+                        || !part
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"._- ".contains(&b))
                 })
             {
                 return Err("invalid core recognition path");
             }
             rule.path.make_ascii_lowercase();
             if let Some(magic) = &mut rule.magic {
-                if magic.is_empty() || magic.len() % 2 != 0 || magic.len() > MAX_MAGIC_BYTES * 2
+                if magic.is_empty()
+                    || magic.len() % 2 != 0
+                    || magic.len() > MAX_MAGIC_BYTES * 2
                     || !magic.bytes().all(|b| b.is_ascii_hexdigit())
-                    || rule.offset.checked_add((magic.len() / 2) as u64).is_none_or(|end| end > MAX_MAGIC_END)
+                    || rule
+                        .offset
+                        .checked_add((magic.len() / 2) as u64)
+                        .is_none_or(|end| end > MAX_MAGIC_END)
                 {
                     return Err("invalid core recognition magic or offset");
                 }
@@ -81,7 +92,9 @@ impl TryFrom<Vec<CoreRecognitionRule>> for CoreRecognition {
                 return Err("core recognition offset requires magic");
             }
         }
-        rules.sort_unstable_by(|a, b| (&a.path, a.offset, &a.magic).cmp(&(&b.path, b.offset, &b.magic)));
+        rules.sort_unstable_by(|a, b| {
+            (&a.path, a.offset, &a.magic).cmp(&(&b.path, b.offset, &b.magic))
+        });
         rules.dedup();
         Ok(Self(rules))
     }
@@ -95,21 +108,32 @@ mod tests {
     #[test]
     fn confines_paths_and_magic_before_matching() {
         for value in [
-            json!([{"path":"../outside"}]), json!([{"path":"a//b"}]),
-            json!([{"path":"a\\b"}]), json!([{"path":"C:/b"}]), json!([{"path":".shinki/b"}]),
-            json!([{"path":"a/b/c/d/e"}]), json!([{"path": "x".repeat(257)}]),
-            json!([{"path":"a", "magic":""}]), json!([{"path":"a", "magic":"zz"}]),
+            json!([{"path":"../outside"}]),
+            json!([{"path":"a//b"}]),
+            json!([{"path":"a\\b"}]),
+            json!([{"path":"C:/b"}]),
+            json!([{"path":".shinki/b"}]),
+            json!([{"path":"a/b/c/d/e"}]),
+            json!([{"path": "x".repeat(257)}]),
+            json!([{"path":"a", "magic":""}]),
+            json!([{"path":"a", "magic":"zz"}]),
             json!([{"path":"a", "magic":"abcd", "offset":4095}]),
             json!([{"path":"a", "magic":"00", "offset":u64::MAX}]),
-            json!([{"path":"a", "magic":"00".repeat(33)}]), json!([{"path":"a", "offset":2}]),
-            json!([{"path":"a", "script":"x"}]), json!(vec![json!({"path":"a"}); 5]),
+            json!([{"path":"a", "magic":"00".repeat(33)}]),
+            json!([{"path":"a", "offset":2}]),
+            json!([{"path":"a", "script":"x"}]),
+            json!(vec![json!({"path":"a"}); 5]),
         ] {
-            assert!(serde_json::from_value::<CoreRecognition>(value.clone()).is_err(), "{value}");
+            assert!(
+                serde_json::from_value::<CoreRecognition>(value.clone()).is_err(),
+                "{value}"
+            );
         }
         let normalized: CoreRecognition = serde_json::from_value(json!([
             {"path":"Data/Boot.bin", "offset":4094, "magic":"DeAD"},
             {"path":"data/boot.bin", "offset":4094, "magic":"dead"}
-        ])).unwrap();
+        ]))
+        .unwrap();
         assert_eq!(normalized.rules().len(), 1);
         assert_eq!(normalized.rules()[0].path(), "data/boot.bin");
         assert_eq!(normalized.rules()[0].magic_bytes(), [0xde, 0xad]);

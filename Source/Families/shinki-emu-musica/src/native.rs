@@ -231,7 +231,8 @@ unsafe extern "C" fn open(
     }
     boundary(error, || {
         initialized()?;
-        let request = unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
+        let request =
+            unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         if output.is_null()
             || !request.header.accepts::<abi::OpenRequest>()
             || !request.host.header.accepts::<abi::HostServices>()

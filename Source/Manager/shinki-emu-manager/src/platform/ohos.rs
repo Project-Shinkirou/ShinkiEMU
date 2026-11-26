@@ -565,14 +565,20 @@ pub mod bundled {
         if name.is_null() {
             return None;
         }
-        Some(std::ffi::OsString::from_vec(unsafe { CStr::from_ptr(name) }.to_bytes().to_vec()).into())
+        Some(
+            std::ffi::OsString::from_vec(unsafe { CStr::from_ptr(name) }.to_bytes().to_vec())
+                .into(),
+        )
     }
 
     fn installed_file(path: &Path) -> Option<PathBuf> {
         // The sandbox's bundle mount is OS-installed code, not filesDir. Verify
         // the resolved path too: an admitted symlink must not escape that mount.
         let relative = path.strip_prefix(BUNDLE_CODE).ok()?;
-        if !relative.components().all(|part| matches!(part, Component::Normal(_))) {
+        if !relative
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)))
+        {
             return None;
         }
         let resolved = path.canonicalize().ok()?;
@@ -594,7 +600,10 @@ pub mod bundled {
                 return None;
             }
             let hap = installed_file(hap)?;
-            return Some(PathBuf::from(format!("{}!/{ARCHIVE_LIBS}{LIBRARY}", hap.to_str()?)));
+            return Some(PathBuf::from(format!(
+                "{}!/{ARCHIVE_LIBS}{LIBRARY}",
+                hap.to_str()?
+            )));
         }
         if manager.file_name()? != MANAGER {
             return None;
@@ -619,7 +628,10 @@ pub mod bundled {
                 return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN".into());
             }
             let error = unsafe { CStr::from_ptr(error) };
-            return Err(format!("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {}", error.to_string_lossy()));
+            return Err(format!(
+                "SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {}",
+                error.to_string_lossy()
+            ));
         }
         // As in LoadedFamilyPlugin::load, the image is resident through process
         // exit, including when ABI initialization or descriptor checks fail.
@@ -628,8 +640,8 @@ pub mod bundled {
             return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN".into());
         }
         let query = unsafe { std::mem::transmute::<*mut c_void, shinki_emu_abi::Query>(symbol) };
-        let provider = unsafe { LoadedFamilyPlugin::from_query(query) }
-            .map_err(|error| error.to_string())?;
+        let provider =
+            unsafe { LoadedFamilyPlugin::from_query(query) }.map_err(|error| error.to_string())?;
         if provider.manager_descriptor().plugin_id != ID {
             return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
         }
@@ -654,4 +666,3 @@ pub(super) fn open_path(path: &Path) -> Result<(), String> {
 pub(super) fn open_url(url: &str) -> Result<(), String> {
     notify("openUrl", url)
 }
-

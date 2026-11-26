@@ -1637,7 +1637,9 @@ impl Vm {
                         hovered
                             .filter(|&index| self.menu_selectable(&buttons[index]))
                             .or_else(|| {
-                                buttons.iter().position(|button| self.menu_selectable(button))
+                                buttons
+                                    .iter()
+                                    .position(|button| self.menu_selectable(button))
                             })
                     })
                 } else {

@@ -27,10 +27,19 @@ use std::{
 const FORMAT: abi::Bytes = abi::Bytes::from_static(b"adv32.mes");
 const FORMATS: &[abi::Bytes] = &[FORMAT];
 const RENDER: abi::RenderExtentSupport = abi::RenderExtentSupport {
-    min: abi::Extent { width: 320, height: 180 },
+    min: abi::Extent {
+        width: 320,
+        height: 180,
+    },
     // At most 64 MiB per tightly packed RGBA8 frame, including letterboxing.
-    max: abi::Extent { width: 4096, height: 4096 },
-    default: abi::Extent { width: 0, height: 0 },
+    max: abi::Extent {
+        width: 4096,
+        height: 4096,
+    },
+    default: abi::Extent {
+        width: 0,
+        height: 0,
+    },
     flags: abi::RENDER_PRESERVE_ASPECT,
     reserved: 0,
 };
@@ -345,7 +354,8 @@ unsafe extern "C" fn open(
     boundary(error, || {
         let output = unsafe { output.as_mut() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         output.session = ptr::null_mut();
-        let request = unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
+        let request =
+            unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         if !request.header.accepts::<abi::OpenRequest>()
             || !request.host.header.accepts::<abi::HostServices>()
             || request.session_epoch == 0
@@ -488,7 +498,8 @@ fn serve(
     vm.set_presentation(canvas);
     #[cfg(not(target_env = "ohos"))]
     if options.hardware_compositing {
-        vm.enable_hardware_compositor(canvas, options.gpu_host).map_err(runtime)?;
+        vm.enable_hardware_compositor(canvas, options.gpu_host)
+            .map_err(runtime)?;
     }
     let surface = abi::SurfaceInfo {
         kind: abi::SURFACE_CPU,

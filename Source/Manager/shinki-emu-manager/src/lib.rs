@@ -20,8 +20,8 @@ pub use host::StageImageUpdate;
 pub use host::{
     CloseDecision, ConfigPathPick, FilterApply, FilterApplyState, FilterChainEdit, FilterEvent,
     HostError, HostExit, HostWake, KeyCaptureState, ManagerController, ShinkiUnderlayRenderer,
-    SnackbarOutcome,
-    StageTextureUpdate, WgpuFrameContext, close_requested, run_manager, run_manager_with_initial_state,
+    SnackbarOutcome, StageTextureUpdate, WgpuFrameContext, close_requested, run_manager,
+    run_manager_with_initial_state,
 };
 
 // Android (NativeActivity) and OHOS (NAPI) load the Manager as a cdylib; the

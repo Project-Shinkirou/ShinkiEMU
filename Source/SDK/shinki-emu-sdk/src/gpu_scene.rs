@@ -13,7 +13,8 @@ use std::{ffi::c_void, num::NonZeroU64, ptr::NonNull, sync::Arc};
 mod output;
 pub use output::{SceneOutput, SceneRequirements};
 
-type PresentRaster = unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status;
+type PresentRaster =
+    unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status;
 
 /// Copy of the optional service table and the open request's session epoch.
 #[derive(Clone, Copy)]
@@ -37,7 +38,9 @@ impl GpuSceneHost {
     /// session close has finished. In particular, callbacks support the core
     /// worker, and a successful capture initializes every destination byte.
     /// Keep all copies and created targets within that lifetime.
-    pub unsafe fn from_request(request: *const abi::OpenRequest) -> Result<Option<Self>, abi::Status> {
+    pub unsafe fn from_request(
+        request: *const abi::OpenRequest,
+    ) -> Result<Option<Self>, abi::Status> {
         let Some(service) = (unsafe { abi::OpenRequest::gpu_scene(request)? }) else {
             return Ok(None);
         };
@@ -83,7 +86,11 @@ impl GpuSceneHost {
                     last_raster: None,
                 }))
             }
-            _ => Err(host_error(&error, "SHINKI_EMU_GPU_CREATE", "GPU target creation failed")),
+            _ => Err(host_error(
+                &error,
+                "SHINKI_EMU_GPU_CREATE",
+                "GPU target creation failed",
+            )),
         }
     }
 }
@@ -103,7 +110,10 @@ impl GpuSceneClient {
     /// The host must consume the wire spans before returning, and may retain
     /// any pixel data it needs through the image callbacks.
     pub fn submit(&mut self, frame: &SceneFrame, logical: abi::Extent) -> Result<(), SessionError> {
-        let raster = Extent { width: frame.width, height: frame.height };
+        let raster = Extent {
+            width: frame.width,
+            height: frame.height,
+        };
         validate_extents(logical, raster).map_err(encode_error)?;
         let encoded = encode(&frame.commands, &mut self.commands, &mut self.glyphs);
         let result = encoded.map_err(encode_error).and_then(|()| {
@@ -118,13 +128,22 @@ impl GpuSceneClient {
             };
             let mut error = Error::default();
             let status = unsafe {
-                (self.service.submit.unwrap())(self.service.context, self.target.get(), &wire, &mut error)
+                (self.service.submit.unwrap())(
+                    self.service.context,
+                    self.target.get(),
+                    &wire,
+                    &mut error,
+                )
             };
             if status == OK {
                 self.last_raster = Some(raster);
                 Ok(())
             } else {
-                Err(host_error(&error, "SHINKI_EMU_GPU_SUBMIT", "GPU scene submission failed"))
+                Err(host_error(
+                    &error,
+                    "SHINKI_EMU_GPU_SUBMIT",
+                    "GPU scene submission failed",
+                ))
             }
         });
         self.commands.clear();
@@ -140,7 +159,9 @@ impl GpuSceneClient {
         pixels: &OwnedPixelBuffer,
     ) -> Result<(), SessionError> {
         validate_extents(logical, raster).map_err(encode_error)?;
-        let present = self.present_raster.ok_or_else(|| encode_error(UNSUPPORTED))?;
+        let present = self
+            .present_raster
+            .ok_or_else(|| encode_error(UNSUPPORTED))?;
         let frame = GpuRasterFrameV2 {
             header: Header::of::<GpuRasterFrameV2>(),
             sequence,
@@ -149,9 +170,14 @@ impl GpuSceneClient {
                 .map_err(encode_error)?,
         };
         let mut error = Error::default();
-        let status = unsafe { present(self.service.context, self.target.get(), &frame, &mut error) };
+        let status =
+            unsafe { present(self.service.context, self.target.get(), &frame, &mut error) };
         if status != OK {
-            return Err(host_error(&error, "SHINKI_EMU_RASTER_PRESENT", "CPU-native effect presentation failed"));
+            return Err(host_error(
+                &error,
+                "SHINKI_EMU_RASTER_PRESENT",
+                "CPU-native effect presentation failed",
+            ));
         }
         Ok(())
     }
@@ -161,20 +187,33 @@ impl GpuSceneClient {
         let len = pixel_len(raster, 4, GPU_MAX_IMAGE_BYTES)
             .filter(|_| self.last_raster == Some(raster))
             .ok_or_else(|| {
-                SessionError::new("SHINKI_EMU_GPU_CAPTURE", "capture extent does not match the submitted raster")
+                SessionError::new(
+                    "SHINKI_EMU_GPU_CAPTURE",
+                    "capture extent does not match the submitted raster",
+                )
             })?;
         let mut pixels = Arc::<[u8]>::new_uninit_slice(len);
         let output = Arc::get_mut(&mut pixels).unwrap().as_mut_ptr().cast::<u8>();
         let mut error = Error::default();
         let status = unsafe {
-            (self.service.capture.unwrap())(self.service.context, self.target.get(), output, len, &mut error)
+            (self.service.capture.unwrap())(
+                self.service.context,
+                self.target.get(),
+                output,
+                len,
+                &mut error,
+            )
         };
         if status == OK {
             // SAFETY: a successful capture must write the entire destination
             // synchronously. The host writes straight into the final owner.
             Ok(unsafe { pixels.assume_init() })
         } else {
-            Err(host_error(&error, "SHINKI_EMU_GPU_CAPTURE", "GPU scene capture failed"))
+            Err(host_error(
+                &error,
+                "SHINKI_EMU_GPU_CAPTURE",
+                "GPU scene capture failed",
+            ))
         }
     }
 }
@@ -215,7 +254,10 @@ fn pixel_len(extent: Extent, channels: usize, limit: usize) -> Option<usize> {
 }
 
 fn validate_extents(logical: Extent, raster: Extent) -> Result<(), Status> {
-    if logical.width == 0 || logical.height == 0 || pixel_len(raster, 4, GPU_MAX_IMAGE_BYTES).is_none() {
+    if logical.width == 0
+        || logical.height == 0
+        || pixel_len(raster, 4, GPU_MAX_IMAGE_BYTES).is_none()
+    {
         return Err(INVALID_ARGUMENT);
     }
     Ok(())
@@ -236,7 +278,10 @@ fn encode(
             }
             _ => 0,
         };
-        total.checked_add(len).filter(|&n| n <= GPU_MAX_GLYPHS).ok_or(INVALID_ARGUMENT)
+        total
+            .checked_add(len)
+            .filter(|&n| n <= GPU_MAX_GLYPHS)
+            .ok_or(INVALID_ARGUMENT)
     })?;
     commands.reserve_exact(source.len());
     // The destination starts empty. Reserve the complete count so pointers
@@ -249,7 +294,12 @@ fn encode(
 }
 
 fn encode_rect(rect: RectI) -> GpuRectV1 {
-    GpuRectV1 { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    GpuRectV1 {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
 }
 
 fn unsigned_rect(x: u32, y: u32, width: u32, height: u32) -> Result<GpuRectV1, Status> {
@@ -334,7 +384,10 @@ fn encode_glyphs(
     Ok(glyphs.as_ptr().wrapping_add(start))
 }
 
-fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Result<GpuSceneCommandV1, Status> {
+fn encode_command(
+    command: &SceneCommand,
+    glyphs: &mut Vec<GpuGlyphV1>,
+) -> Result<GpuSceneCommandV1, Status> {
     use SceneCommand::*;
     let mut wire = GpuSceneCommandV1::default();
     wire.op = match command {
@@ -342,7 +395,14 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
             wire.color = *rgba;
             GPU_CLEAR
         }
-        Rect { id, x, y, width, height, rgba } => {
+        Rect {
+            id,
+            x,
+            y,
+            width,
+            height,
+            rgba,
+        } => {
             wire.id = label_bytes(id)?;
             wire.rect = unsigned_rect(*x, *y, *width, *height)?;
             wire.color = *rgba;
@@ -353,7 +413,14 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
             wire.image = encode_texture(frame)?;
             GPU_UPLOAD_TEXTURE
         }
-        UpdateTextureRegion { resource_id, x, y, width, height, rgba8 } => {
+        UpdateTextureRegion {
+            resource_id,
+            x,
+            y,
+            width,
+            height,
+            rgba8,
+        } => {
             wire.resource = label_bytes(resource_id)?;
             wire.rect = unsigned_rect(*x, *y, *width, *height)?;
             wire.image = encode_image(*width, *height, GPU_IMAGE_RGBA8, rgba8)?;
@@ -372,7 +439,14 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
             wire.resource = label_bytes(resource_id)?;
             GPU_RELEASE_RESOURCE
         }
-        Sprite { id, texture_id, source, destination, opacity, blend } => {
+        Sprite {
+            id,
+            texture_id,
+            source,
+            destination,
+            opacity,
+            blend,
+        } => {
             wire.id = label_bytes(id)?;
             wire.resource = label_bytes(texture_id)?;
             if let Some(source) = source {
@@ -384,8 +458,19 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
             wire.mode = encode_blend(*blend);
             GPU_SPRITE
         }
-        GlyphRun { id, glyphs: run, rgba, opacity, .. }
-        | LinearGlyphRun { id, glyphs: run, rgba, opacity } => {
+        GlyphRun {
+            id,
+            glyphs: run,
+            rgba,
+            opacity,
+            ..
+        }
+        | LinearGlyphRun {
+            id,
+            glyphs: run,
+            rgba,
+            opacity,
+        } => {
             wire.id = label_bytes(id)?;
             wire.color = *rgba;
             wire.opacity = unit_opacity(*opacity)?;
@@ -404,13 +489,28 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
         }
         PopClip => GPU_POP_CLIP,
         PushTransform { transform } => {
-            let Transform2D { m11, m12, m21, m22, tx, ty } = *transform;
+            let Transform2D {
+                m11,
+                m12,
+                m21,
+                m22,
+                tx,
+                ty,
+            } = *transform;
             wire.transform = [m11, m12, m21, m22, tx, ty];
             finite_transform(wire.transform)?;
             GPU_PUSH_TRANSFORM
         }
         PopTransform => GPU_POP_TRANSFORM,
-        MaskReveal { id, frame, mask, destination, mode, phase, opacity } => {
+        MaskReveal {
+            id,
+            frame,
+            mask,
+            destination,
+            mode,
+            phase,
+            opacity,
+        } => {
             wire.id = label_bytes(id)?;
             wire.rect = encode_rect(*destination);
             wire.opacity = unit_opacity(*opacity)?;
@@ -423,7 +523,13 @@ fn encode_command(command: &SceneCommand, glyphs: &mut Vec<GpuGlyphV1>) -> Resul
             wire.mask = encode_texture(mask)?;
             GPU_MASK_REVEAL
         }
-        Texture { id, frame, destination, opacity, blend } => {
+        Texture {
+            id,
+            frame,
+            destination,
+            opacity,
+            blend,
+        } => {
             wire.id = label_bytes(id)?;
             wire.rect = encode_rect(*destination);
             wire.opacity = unit_opacity(*opacity)?;
@@ -456,7 +562,8 @@ pub unsafe fn decode(
         return Err(INVALID_ARGUMENT);
     }
     validate_extents(frame.logical, frame.raster)?;
-    let source = unsafe { abi::borrowed_array(frame.commands, frame.command_count, GPU_MAX_COMMANDS)? };
+    let source =
+        unsafe { abi::borrowed_array(frame.commands, frame.command_count, GPU_MAX_COMMANDS)? };
     commands.reserve_exact(source.len());
     let mut glyph_budget = GPU_MAX_GLYPHS;
     for command in source {
@@ -489,7 +596,10 @@ fn coordinate(value: i32) -> Result<u32, Status> {
 }
 
 fn unit_opacity(value: f32) -> Result<f32, Status> {
-    (0.0..=1.0).contains(&value).then_some(value).ok_or(INVALID_ARGUMENT)
+    (0.0..=1.0)
+        .contains(&value)
+        .then_some(value)
+        .ok_or(INVALID_ARGUMENT)
 }
 
 fn mask_phase(mode: MaskRevealMode, value: f32) -> Result<f32, Status> {
@@ -497,7 +607,10 @@ fn mask_phase(mode: MaskRevealMode, value: f32) -> Result<f32, Status> {
         MaskRevealMode::Gradient => 512.0,
         MaskRevealMode::Threshold => 256.0,
     };
-    (0.0..=end).contains(&value).then_some(value).ok_or(INVALID_ARGUMENT)
+    (0.0..=end)
+        .contains(&value)
+        .then_some(value)
+        .ok_or(INVALID_ARGUMENT)
 }
 
 fn finite_transform(values: [f32; 6]) -> Result<(), Status> {
@@ -541,10 +654,17 @@ impl Drop for ImageLease {
     }
 }
 
-unsafe fn decode_image(image: &GpuImageV1, expected_format: u32) -> Result<OwnedPixelBuffer, Status> {
-    if image.format != expected_format || image.owner.is_null()
-        || pixel_len(image.extent, image_channels(expected_format)?, GPU_MAX_IMAGE_BYTES)
-            != Some(image.pixels.len)
+unsafe fn decode_image(
+    image: &GpuImageV1,
+    expected_format: u32,
+) -> Result<OwnedPixelBuffer, Status> {
+    if image.format != expected_format
+        || image.owner.is_null()
+        || pixel_len(
+            image.extent,
+            image_channels(expected_format)?,
+            GPU_MAX_IMAGE_BYTES,
+        ) != Some(image.pixels.len)
     {
         return Err(INVALID_ARGUMENT);
     }
@@ -552,8 +672,16 @@ unsafe fn decode_image(image: &GpuImageV1, expected_format: u32) -> Result<Owned
     let release = image.release.ok_or(INVALID_ARGUMENT)?;
     let retain = image.retain.ok_or(INVALID_ARGUMENT)?;
     let token = NonNull::new(unsafe { retain(image.owner) }).ok_or(INVALID_ARGUMENT)?;
-    let lease = ImageLease { pixels, len: image.pixels.len, token, release };
-    Ok(OwnedPixelBuffer::from_owned(OwnedByteBuffer::from_owner(lease, ImageLease::bytes)))
+    let lease = ImageLease {
+        pixels,
+        len: image.pixels.len,
+        token,
+        release,
+    };
+    Ok(OwnedPixelBuffer::from_owned(OwnedByteBuffer::from_owner(
+        lease,
+        ImageLease::bytes,
+    )))
 }
 
 /// Validate and retain an ordered CPU-native raster without copying pixels.
@@ -570,7 +698,11 @@ pub unsafe fn decode_raster(frame: &GpuRasterFrameV2) -> Result<OwnedPixelBuffer
 
 unsafe fn decode_texture(image: &GpuImageV1) -> Result<TextureFrame, Status> {
     let rgba8 = unsafe { decode_image(image, GPU_IMAGE_RGBA8)? };
-    Ok(TextureFrame { width: image.extent.width, height: image.extent.height, rgba8 })
+    Ok(TextureFrame {
+        width: image.extent.width,
+        height: image.extent.height,
+        rgba8,
+    })
 }
 
 fn decode_blend(mode: u32) -> Result<BlendMode, Status> {
@@ -590,7 +722,8 @@ unsafe fn decode_label(bytes: Bytes) -> Result<String, Status> {
 }
 
 unsafe fn decode_glyph(glyph: &GpuGlyphV1) -> Result<GlyphInstance, Status> {
-    let rotation_quadrants = u8::try_from(glyph.rotation_quadrants).map_err(|_| INVALID_ARGUMENT)?;
+    let rotation_quadrants =
+        u8::try_from(glyph.rotation_quadrants).map_err(|_| INVALID_ARGUMENT)?;
     Ok(GlyphInstance {
         resource_id: unsafe { decode_label(glyph.resource)? },
         x: glyph.x,
@@ -603,7 +736,8 @@ unsafe fn decode_glyphs(
     command: &GpuSceneCommandV1,
     glyph_budget: &mut usize,
 ) -> Result<Arc<[GlyphInstance]>, Status> {
-    let source = unsafe { abi::borrowed_array(command.glyphs, command.glyph_count, *glyph_budget)? };
+    let source =
+        unsafe { abi::borrowed_array(command.glyphs, command.glyph_count, *glyph_budget)? };
     *glyph_budget -= source.len();
     let mut glyphs = Arc::<[GlyphInstance]>::new_uninit_slice(source.len());
     let destination = Arc::get_mut(&mut glyphs).unwrap();
@@ -645,7 +779,9 @@ unsafe fn decode_command(
             frame: unsafe { decode_texture(&wire.image)? },
         },
         GPU_UPDATE_TEXTURE => {
-            if wire.rect.width != wire.image.extent.width || wire.rect.height != wire.image.extent.height {
+            if wire.rect.width != wire.image.extent.width
+                || wire.rect.height != wire.image.extent.height
+            {
                 return Err(INVALID_ARGUMENT);
             }
             UpdateTextureRegion {
@@ -665,11 +801,18 @@ unsafe fn decode_command(
             };
             let resource_id = unsafe { decode_label(wire.resource)? };
             let pixels = unsafe { decode_image(&wire.image, wire.image.format)? };
-            let glyph = GlyphBitmap::from_pixels(wire.image.extent.width, wire.image.extent.height, format, pixels)
-                .map_err(|_| INVALID_ARGUMENT)?;
+            let glyph = GlyphBitmap::from_pixels(
+                wire.image.extent.width,
+                wire.image.extent.height,
+                format,
+                pixels,
+            )
+            .map_err(|_| INVALID_ARGUMENT)?;
             UploadGlyph { resource_id, glyph }
         }
-        GPU_RELEASE_RESOURCE => ReleaseResource { resource_id: unsafe { decode_label(wire.resource)? } },
+        GPU_RELEASE_RESOURCE => ReleaseResource {
+            resource_id: unsafe { decode_label(wire.resource)? },
+        },
         GPU_SPRITE => Sprite {
             id: unsafe { decode_label(wire.id)? },
             texture_id: unsafe { decode_label(wire.resource)? },
@@ -691,12 +834,23 @@ unsafe fn decode_command(
             opacity: unit_opacity(wire.opacity)?,
             glyphs: unsafe { decode_glyphs(wire, glyph_budget)? },
         },
-        GPU_PUSH_CLIP => PushClip { rect: decode_rect(wire.rect) },
+        GPU_PUSH_CLIP => PushClip {
+            rect: decode_rect(wire.rect),
+        },
         GPU_POP_CLIP => PopClip,
         GPU_PUSH_TRANSFORM => {
             finite_transform(wire.transform)?;
             let [m11, m12, m21, m22, tx, ty] = wire.transform;
-            PushTransform { transform: Transform2D { m11, m12, m21, m22, tx, ty } }
+            PushTransform {
+                transform: Transform2D {
+                    m11,
+                    m12,
+                    m21,
+                    m22,
+                    tx,
+                    ty,
+                },
+            }
         }
         GPU_POP_TRANSFORM => PopTransform,
         GPU_MASK_REVEAL => {

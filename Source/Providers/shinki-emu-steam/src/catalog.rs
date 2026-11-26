@@ -394,7 +394,10 @@ mod tests {
     #[test]
     fn parse_app_accepts_protocol_version_prefix() {
         let kv = parse_app(PREFIXED_APPINFO).expect("prefixed appinfo fixture");
-        assert_eq!(text(kv.get("common").and_then(|v| v.get("name"))), "fixture");
+        assert_eq!(
+            text(kv.get("common").and_then(|v| v.get("name"))),
+            "fixture"
+        );
     }
 
     #[test]

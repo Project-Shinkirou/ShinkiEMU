@@ -25,7 +25,13 @@ fn ps2a() -> Vec<u8> {
     bytes
 }
 fn cpz(version: u8) -> Vec<u8> {
-    let size = if version == b'3' { 20 } else if version == b'7' { 72 } else { 64 };
+    let size = if version == b'3' {
+        20
+    } else if version == b'7' {
+        72
+    } else {
+        64
+    };
     let mut bytes = vec![0; size + 256];
     bytes[..4].copy_from_slice(&[b'C', b'P', b'Z', version]);
     if version == b'3' {
@@ -34,9 +40,19 @@ fn cpz(version: u8) -> Vec<u8> {
     } else {
         let old = version == b'5';
         word(&mut bytes, 4, 1 ^ if old { 0xfe3a53d9 } else { 0xfe3a53da });
-        word(&mut bytes, 8, 32 ^ if old { 0x37f298e7 } else { 0x37f298e8 });
-        word(&mut bytes, 12, 32 ^ if old { 0x7a6f3a2c } else { 0x7a6f3a2d });
-        if version == b'7' { word(&mut bytes, 64, 24 ^ 0x65ef99f3); }
+        word(
+            &mut bytes,
+            8,
+            32 ^ if old { 0x37f298e7 } else { 0x37f298e8 },
+        );
+        word(
+            &mut bytes,
+            12,
+            32 ^ if old { 0x7a6f3a2c } else { 0x7a6f3a2d },
+        );
+        if version == b'7' {
+            word(&mut bytes, 64, 24 ^ 0x65ef99f3);
+        }
     }
     bytes
 }
@@ -56,7 +72,11 @@ fn pfs(version: u8, name: &[u8]) -> Vec<u8> {
 fn bgi(modern: bool, name: &[u8]) -> Vec<u8> {
     let (record, name_size) = if modern { (128, 96) } else { (32, 16) };
     let mut bytes = vec![0; 16 + record + 1];
-    bytes[..12].copy_from_slice(if modern { b"BURIKO ARC20" } else { b"PackFile    " });
+    bytes[..12].copy_from_slice(if modern {
+        b"BURIKO ARC20"
+    } else {
+        b"PackFile    "
+    });
     word(&mut bytes, 12, 1);
     bytes[16..16 + name.len()].copy_from_slice(name);
     word(&mut bytes, 16 + name_size + 4, 1);
@@ -96,7 +116,16 @@ fn rpyc() -> Vec<u8> {
 fn siglus(signed: bool) -> Vec<u8> {
     let mut bytes = vec![0; 128];
     word(&mut bytes, 0, 92);
-    for (offset, value) in [(52, 92), (56, 1), (60, 100), (64, 1), (68, 104), (72, 1), (76, 112), (80, 1)] {
+    for (offset, value) in [
+        (52, 92),
+        (56, 1),
+        (60, 100),
+        (64, 1),
+        (68, 104),
+        (72, 1),
+        (76, 112),
+        (80, 1),
+    ] {
         word(&mut bytes, offset, value);
     }
     word(&mut bytes, 108, 16);
@@ -106,7 +135,9 @@ fn siglus(signed: bool) -> Vec<u8> {
             word(&mut bytes, offset, value + 8);
         }
         [b"pack_scn".as_slice(), &bytes].concat()
-    } else { bytes }
+    } else {
+        bytes
+    }
 }
 fn softpal() -> Vec<u8> {
     let mut bytes = vec![0; 13];
@@ -221,10 +252,14 @@ fn reads_shared_game_children_through_a_seekable_read_only_tree() {
             assert!(kind == EntryKind::Directory);
             let child = SelectedFolder(collection.join(name));
             let from_provider = detect_game_tree(&child, &cancellation)?;
-            assert_eq!(from_provider, detect_game_directory(&child.0, &cancellation)?);
+            assert_eq!(
+                from_provider,
+                detect_game_directory(&child.0, &cancellation)?
+            );
             found.extend(from_provider.into_iter().map(|engine| engine.family_id));
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         found.sort();
         found
     };
@@ -241,12 +276,21 @@ fn reads_shared_game_children_through_a_seekable_read_only_tree() {
     let core = crate::static_core_catalog::lookup("rfvp").unwrap();
     rules.add(core, "assets/engine.id", 4094, vec![0xde, 0xad]);
     fs::write(&header, vec![0; 4095]).unwrap();
-    assert!(rules.inspect_game_tree(&tree, &cancellation).unwrap().0.is_empty());
+    assert!(
+        rules
+            .inspect_game_tree(&tree, &cancellation)
+            .unwrap()
+            .0
+            .is_empty()
+    );
     let mut bytes = vec![0; 4096];
     bytes[4094..].copy_from_slice(&[0xde, 0xad]);
     fs::write(&header, &bytes).unwrap();
     let (matches, _) = rules.inspect_game_tree(&tree, &cancellation).unwrap();
-    assert_eq!(matches, rules.detect_game_directory(&tree.0, &cancellation).unwrap());
+    assert_eq!(
+        matches,
+        rules.detect_game_directory(&tree.0, &cancellation).unwrap()
+    );
     assert_eq!(matches[0].declared.as_ref().unwrap().plugin_ids, ["rfvp"]);
     assert_eq!(fs::read(header).unwrap(), bytes);
 }
@@ -257,9 +301,20 @@ fn recognizes_cpz_versions_and_older_pfs_layouts_once_per_family() {
         fs::write(root.path().join(format!("{version}.bin")), cpz(version)).unwrap();
     }
     for version in [b'2', b'6', b'8'] {
-        fs::write(root.path().join(format!("p{version}.bin")), pfs(version, b"system.ini\0")).unwrap();
+        fs::write(
+            root.path().join(format!("p{version}.bin")),
+            pfs(version, b"system.ini\0"),
+        )
+        .unwrap();
     }
-    assert_eq!(detect(root.path()).unwrap().iter().map(|m| m.family_id.as_str()).collect::<Vec<_>>(), ["artemis", "cmvs"]);
+    assert_eq!(
+        detect(root.path())
+            .unwrap()
+            .iter()
+            .map(|m| m.family_id.as_str())
+            .collect::<Vec<_>>(),
+        ["artemis", "cmvs"]
+    );
 }
 
 #[test]
@@ -281,11 +336,31 @@ fn bgi_archive_identifies_the_child_game_not_the_library_root() {
 #[test]
 fn shared_extensions_names_and_profiles_never_establish_a_family() {
     let root = tempfile::tempdir().unwrap();
-    for name in ["system.arc", "data.xp3", "startup.tjs", "Scene.pck", "Gameexe.dat", "game.hcb", "script.cpz", "scr.paz", "data.pac", "script.rpyc", "script.rpy", "eden.exe", "SiglusEngine.exe", "koikake.exe", "steam_appid.txt"] {
+    for name in [
+        "system.arc",
+        "data.xp3",
+        "startup.tjs",
+        "Scene.pck",
+        "Gameexe.dat",
+        "game.hcb",
+        "script.cpz",
+        "scr.paz",
+        "data.pac",
+        "script.rpyc",
+        "script.rpy",
+        "eden.exe",
+        "SiglusEngine.exe",
+        "koikake.exe",
+        "steam_appid.txt",
+    ] {
         fs::write(root.path().join(name), b"unrelated bytes").unwrap();
     }
     // A copied private configuration is intent, not proof of its archive data.
-    fs::write(root.path().join("key.toml"), b"schema = \"shinki.emu.musica.keys.v2\"\n").unwrap();
+    fs::write(
+        root.path().join("key.toml"),
+        b"schema = \"shinki.emu.musica.keys.v2\"\n",
+    )
+    .unwrap();
     assert!(detect(root.path()).unwrap().is_empty());
     fs::write(root.path().join("system.arc"), bgi(false, b"ordinary\0")).unwrap();
     fs::write(root.path().join("engine.pfs"), pfs(b'8', b"ordinary\0")).unwrap();
@@ -300,7 +375,12 @@ fn all_truncated_formats_are_rejected_without_hiding_other_families() {
             let result = detect(root.path()).unwrap();
             assert!(result.is_empty(), "{family}, truncated to {length}");
             fs::write(root.path().join("valid.xp3"), xp3()).unwrap();
-            assert!(detect(root.path()).unwrap().iter().any(|m| m.family_id == "krkr"));
+            assert!(
+                detect(root.path())
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.family_id == "krkr")
+            );
         }
     }
 }
@@ -319,7 +399,13 @@ fn multi_family_layout_survives_directory_and_executable_renames() {
     fs::rename(&original, &renamed).unwrap();
     fs::rename(renamed.join("launch.exe"), renamed.join("anything.exe")).unwrap();
     assert_eq!(detect(&renamed).unwrap(), expected);
-    assert_eq!(expected.iter().map(|m| m.family_id.as_str()).collect::<Vec<_>>(), ["cmvs", "fvp", "renpy"]);
+    assert_eq!(
+        expected
+            .iter()
+            .map(|m| m.family_id.as_str())
+            .collect::<Vec<_>>(),
+        ["cmvs", "fvp", "renpy"]
+    );
 }
 #[test]
 fn hcb_descriptor_allows_trailing_metadata_like_the_native_parser() {
@@ -333,19 +419,40 @@ fn hcb_descriptor_allows_trailing_metadata_like_the_native_parser() {
 fn cancellation_stops_before_any_io_and_after_an_established_match() {
     let token = NativeCancellation::new(1);
     token.cancel();
-    assert!(matches!(detect_game_directory(Path::new("does-not-exist"), &token), Err(DetectionError::Cancelled)));
+    assert!(matches!(
+        detect_game_directory(Path::new("does-not-exist"), &token),
+        Err(DetectionError::Cancelled)
+    ));
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("file");
     fs::write(&path, [0; 8]).unwrap();
-    let mut source = Source { file: File::open(path).unwrap(), length: 8, read_bytes: 0 };
+    let mut source = Source {
+        file: File::open(path).unwrap(),
+        length: 8,
+        read_bytes: 0,
+    };
     let token = NativeCancellation::new(2);
-    let mut scan = Scan { tree: &LocalTree, cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
+    let mut scan = Scan {
+        tree: &LocalTree,
+        cancellation: &token,
+        matches: Vec::new(),
+        entries: 0,
+        files: 0,
+        read_bytes: 0,
+        siglus: roots::SiglusRoot::Default,
+    };
     scan.matched("cmvs", "cmvs.ps2a").unwrap();
     token.cancel();
-    assert!(matches!(scan.read_at(&mut source, 4, &mut [0; 4]), Err(DetectionError::Cancelled)));
+    assert!(matches!(
+        scan.read_at(&mut source, 4, &mut [0; 4]),
+        Err(DetectionError::Cancelled)
+    ));
     assert_eq!(source.file.stream_position().unwrap(), 0);
     assert_eq!(scan.read_bytes, 0);
-    assert!(matches!(scan.matched("fvp", "fvp.hcb"), Err(DetectionError::Cancelled)));
+    assert!(matches!(
+        scan.matched("fvp", "fvp.hcb"),
+        Err(DetectionError::Cancelled)
+    ));
     assert_eq!(scan.matches.len(), 1);
 }
 #[test]
@@ -355,11 +462,24 @@ fn read_limits_are_errors_and_do_not_allocate_declared_indexes() {
     let mut bytes = pfs(b'8', b"system.ini\0");
     word(&mut bytes, 3, MAX_FILE_READ_BYTES as u32);
     fs::write(&path, bytes).unwrap();
-    fs::OpenOptions::new().write(true).open(&path).unwrap().set_len(MAX_FILE_READ_BYTES + 7).unwrap();
-    assert!(matches!(detect(root.path()), Err(DetectionError::ReadLimit)));
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(MAX_FILE_READ_BYTES + 7)
+        .unwrap();
+    assert!(matches!(
+        detect(root.path()),
+        Err(DetectionError::ReadLimit)
+    ));
     fs::remove_file(path).unwrap();
-    for i in 0..=MAX_FILES { fs::write(root.path().join(format!("{i}.bin")), []).unwrap(); }
-    assert!(matches!(detect(root.path()), Err(DetectionError::ReadLimit)));
+    for i in 0..=MAX_FILES {
+        fs::write(root.path().join(format!("{i}.bin")), []).unwrap();
+    }
+    assert!(matches!(
+        detect(root.path()),
+        Err(DetectionError::ReadLimit)
+    ));
 }
 #[test]
 fn actual_short_read_is_an_io_error_not_a_format_miss() {
@@ -367,14 +487,30 @@ fn actual_short_read_is_an_io_error_not_a_format_miss() {
     let path = root.path().join("resource");
     fs::write(&path, []).unwrap();
     let token = NativeCancellation::new(1);
-    let mut scan = Scan { tree: &LocalTree, cancellation: &token, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
-    let mut source = Source { file: File::open(path).unwrap(), length: 4, read_bytes: 0 };
-    assert!(matches!(scan.read_at(&mut source, 0, &mut [0; 4]), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
+    let mut scan = Scan {
+        tree: &LocalTree,
+        cancellation: &token,
+        matches: Vec::new(),
+        entries: 0,
+        files: 0,
+        read_bytes: 0,
+        siglus: roots::SiglusRoot::Default,
+    };
+    let mut source = Source {
+        file: File::open(path).unwrap(),
+        length: 4,
+        read_bytes: 0,
+    };
+    assert!(
+        matches!(scan.read_at(&mut source, 0, &mut [0; 4]), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof)
+    );
 }
 #[test]
 fn inaccessible_root_is_not_unknown() {
     let root = tempfile::tempdir().unwrap();
-    assert!(matches!(detect(&root.path().join("missing")), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::NotFound));
+    assert!(
+        matches!(detect(&root.path().join("missing")), Err(DetectionError::Io(error)) if error.kind() == io::ErrorKind::NotFound)
+    );
 }
 #[cfg(windows)]
 #[test]
@@ -383,7 +519,11 @@ fn unreadable_resource_is_not_silently_skipped() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("locked.arc");
     fs::write(&path, bgi(true, b"a\0")).unwrap();
-    let _locked = fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap();
+    let _locked = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(path)
+        .unwrap();
     assert!(matches!(detect(root.path()), Err(DetectionError::Io(_))));
 }
 #[test]

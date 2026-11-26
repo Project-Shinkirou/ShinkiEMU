@@ -253,7 +253,8 @@ pub(super) fn execute(
 mod android_tests {
     use super::*;
     use crate::{
-        HostWake, modal_service::ModalBridge,
+        HostWake,
+        modal_service::ModalBridge,
         window_service::{WindowBridge, WindowOutcome},
     };
     use shinki_emu_abi as abi;
@@ -265,7 +266,11 @@ mod android_tests {
             software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
         },
     };
-    use std::{rc::Rc, sync::{Arc, mpsc}, time::Duration};
+    use std::{
+        rc::Rc,
+        sync::{Arc, mpsc},
+        time::Duration,
+    };
 
     struct SoftwarePlatform(Rc<MinimalSoftwareWindow>);
 
@@ -288,16 +293,24 @@ mod android_tests {
         let sink = bridge.sink();
         let mut result: abi::WindowResult = unsafe { std::mem::zeroed() };
         let status = unsafe {
-            sink.request.unwrap()(sink.context, request, &mut result, &mut abi::Error::default())
+            sink.request.unwrap()(
+                sink.context,
+                request,
+                &mut result,
+                &mut abi::Error::default(),
+            )
         };
-        (status, WindowOutcome {
-            valid_fields: result.valid_fields,
-            width: result.width,
-            height: result.height,
-            fullscreen: result.fullscreen,
-            minimized: result.minimized,
-            ..WindowOutcome::default()
-        })
+        (
+            status,
+            WindowOutcome {
+                valid_fields: result.valid_fields,
+                width: result.width,
+                height: result.height,
+                fullscreen: result.fullscreen,
+                minimized: result.minimized,
+                ..WindowOutcome::default()
+            },
+        )
     }
 
     #[test]
@@ -311,7 +324,9 @@ mod android_tests {
         software.set_size(actual);
 
         let (sender, wakes) = mpsc::channel();
-        let wake: HostWake = Arc::new(move || { let _ = sender.send(()); });
+        let wake: HostWake = Arc::new(move || {
+            let _ = sender.send(());
+        });
         let bridge = WindowBridge::new(1, ModalBridge::new(1, wake.clone()).unwrap(), wake);
         let dispatch = |kind, expected_error: Option<&str>| {
             let worker_bridge = bridge.clone();
@@ -342,7 +357,10 @@ mod android_tests {
             assert_eq!(status, abi::OK);
             assert_eq!(window.window().size(), actual);
             assert_eq!((after.width, after.height), (actual.width, actual.height));
-            assert_eq!(after.valid_fields, abi::WINDOW_RESULT_SIZE | abi::WINDOW_RESULT_MODE | abi::WINDOW_RESULT_MINIMIZED);
+            assert_eq!(
+                after.valid_fields,
+                abi::WINDOW_RESULT_SIZE | abi::WINDOW_RESULT_MODE | abi::WINDOW_RESULT_MINIMIZED
+            );
             assert_eq!(after.fullscreen, before.fullscreen);
             assert_eq!(after.minimized, before.minimized);
         }

@@ -21,17 +21,17 @@ use sha2::{Digest, Sha256};
 
 use crate::archive::{CacheIdentity, PlaintextCache, PlaintextCacheError};
 
-use crate::{MUSICA_DECRYPT_DESCRIPTOR_SCHEMA, MUSICA_DECRYPT_PROVIDER_ID, MUSICA_READER_ID};
 use crate::{ArchiveEntryDescriptor, PazRoleScheme};
-use shinki_emu_musica_format::paz::{self as format, password_for_entry, xor_byte};
+use crate::{MUSICA_DECRYPT_DESCRIPTOR_SCHEMA, MUSICA_DECRYPT_PROVIDER_ID, MUSICA_READER_ID};
 #[cfg(test)]
 use blowfish::Blowfish;
 #[cfg(any(test, feature = "ffmpeg-vcpkg"))]
 use encoding_rs::SHIFT_JIS;
 #[cfg(any(test, feature = "ffmpeg-vcpkg"))]
-use rc4::{Rc4, StreamCipher, KeyInit};
-#[cfg(any(test, feature = "ffmpeg-vcpkg"))]
 use flate2::read::ZlibDecoder;
+#[cfg(any(test, feature = "ffmpeg-vcpkg"))]
+use rc4::{KeyInit, Rc4, StreamCipher};
+use shinki_emu_musica_format::paz::{self as format, password_for_entry, xor_byte};
 #[cfg(test)]
 const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
@@ -39,7 +39,6 @@ type PazError = crate::CoreError;
 
 #[cfg(any(feature = "ffmpeg-vcpkg", test))]
 mod movie_stream;
-
 
 #[derive(Debug, Clone)]
 pub struct PazArchiveConfig {
@@ -49,7 +48,6 @@ pub struct PazArchiveConfig {
     pub version: u8,
     pub index_size_xor: u32,
 }
-
 
 /// The only production decrypt provider for Musica PAZ archives.
 /// Key material remains process-local and is never serializable.
@@ -172,7 +170,8 @@ impl MusicaPazDecryptProvider {
         };
         let output = match descriptor {
             MusicaDecryptDescriptor::Index { role, .. } => {
-                format::blowfish_decrypt(self.scheme(&role)?.index_key.as_slice(), request.bytes).map_err(format_error)?
+                format::blowfish_decrypt(self.scheme(&role)?.index_key.as_slice(), request.bytes)
+                    .map_err(format_error)?
             }
             MusicaDecryptDescriptor::Entry { version, entry, .. } => {
                 self.decrypt_entry_chunk(version, &entry, absolute_offset, request.bytes)?
@@ -197,8 +196,14 @@ impl MusicaPazDecryptProvider {
         absolute_offset: u64,
         encrypted: &[u8],
     ) -> Result<Vec<u8>, PazError> {
-        format::decrypt_entry_chunk(self.scheme(&entry.archive_role)?, version, entry, absolute_offset, encrypted)
-            .map_err(format_error)
+        format::decrypt_entry_chunk(
+            self.scheme(&entry.archive_role)?,
+            version,
+            entry,
+            absolute_offset,
+            encrypted,
+        )
+        .map_err(format_error)
     }
 }
 
@@ -819,7 +824,6 @@ fn normalize_entry_name(name: &str) -> Result<String, PazError> {
     Ok(normalized)
 }
 
-
 fn read_exact_range(
     path: &Path,
     offset: u64,
@@ -1076,7 +1080,6 @@ fn entry_method(entry: &ArchiveEntryDescriptor) -> &'static str {
     }
 }
 
-
 fn decrypt_bytes(
     provider: &MusicaPazDecryptProvider,
     descriptor: MusicaDecryptDescriptor,
@@ -1184,7 +1187,6 @@ fn cache_error(error_value: PlaintextCacheError) -> PazError {
         }
     }
 }
-
 
 #[cfg(test)]
 #[path = "paz/tests.rs"]

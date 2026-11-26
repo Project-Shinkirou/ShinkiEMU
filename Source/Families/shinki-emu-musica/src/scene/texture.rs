@@ -100,10 +100,8 @@ impl Scene {
         uri: &str,
     ) -> SessionResult<NativeTexture> {
         let cache_key = native_cache_key(uri);
-        if let (Some(frame), Some(geometry)) = (
-            textures.get(&cache_key),
-            sources.get(uri).copied(),
-        ) {
+        if let (Some(frame), Some(geometry)) = (textures.get(&cache_key), sources.get(uri).copied())
+        {
             return Ok(NativeTexture { frame, geometry });
         }
         if let Some((directory, name)) = mono_source(uri) {
@@ -138,7 +136,10 @@ impl Scene {
                         )
                     })?;
                     sources.put(uri.to_owned(), native.geometry);
-                    return Ok(NativeTexture { frame, geometry: native.geometry });
+                    return Ok(NativeTexture {
+                        frame,
+                        geometry: native.geometry,
+                    });
                 }
                 Err(cause) => return Err(core_error(cause)),
             }
@@ -172,14 +173,12 @@ impl Scene {
                 )
             }
             _ => (
-                textures
-                    .decode(cache_key.clone(), &bytes)
-                    .map_err(|_| {
-                        error(
-                            "SHINKI_EMU_MUSICA_IMAGE_DECODE",
-                            "image could not be decoded within its bounds",
-                        )
-                    })?,
+                textures.decode(cache_key.clone(), &bytes).map_err(|_| {
+                    error(
+                        "SHINKI_EMU_MUSICA_IMAGE_DECODE",
+                        "image could not be decoded within its bounds",
+                    )
+                })?,
                 if extension.is_some_and(|value| value.eq_ignore_ascii_case("png")) {
                     TextureSourceKind::Png
                 } else {
@@ -189,14 +188,12 @@ impl Scene {
             ),
         };
         if !matches!(kind, TextureSourceKind::Other) {
-            textures
-                .insert(cache_key, frame.clone())
-                .map_err(|_| {
-                    error(
-                        "SHINKI_EMU_MUSICA_IMAGE_BOUND",
-                        "decoded image exceeds the texture cache budget",
-                    )
-                })?;
+            textures.insert(cache_key, frame.clone()).map_err(|_| {
+                error(
+                    "SHINKI_EMU_MUSICA_IMAGE_BOUND",
+                    "decoded image exceeds the texture cache budget",
+                )
+            })?;
         }
         let geometry = TextureSourceGeometry {
             logical_extent: Extent2D::new(frame.width, frame.height),

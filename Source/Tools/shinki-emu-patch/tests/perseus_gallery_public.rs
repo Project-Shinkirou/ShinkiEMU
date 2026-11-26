@@ -3,7 +3,12 @@ mod native;
 
 use sha2::{Digest, Sha256};
 use shinki_emu_patch::{PatchErrorKind, PatchMode, PatchRequest, apply};
-use std::{collections::BTreeSet, fs, path::Path, sync::{Arc, atomic::AtomicBool}};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::Path,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 const ROOT: u32 = 0x400000;
 const CG: usize = 0x200;
@@ -21,7 +26,6 @@ fn put32(bytes: &mut [u8], offset: usize, value: u32) {
 fn va(offset: usize) -> u32 {
     ROOT + 0x1000 + (offset - 0x200) as u32
 }
-
 
 fn op(image: &mut [u8], at: usize, tag: &[u8], value: u32) {
     image[at..at + tag.len()].copy_from_slice(tag);
@@ -43,8 +47,13 @@ fn flash_call(image: &mut [u8], start: usize, col: u8, row: u8) -> usize {
 }
 
 fn geometry(image: &mut [u8]) {
-    let root = [[20, 40, 100, 80], [20, 90, 100, 130], [20, 140, 100, 180],
-        [20, 190, 100, 230], [20, 240, 100, 280]];
+    let root = [
+        [20, 40, 100, 80],
+        [20, 90, 100, 130],
+        [20, 140, 100, 180],
+        [20, 190, 100, 230],
+        [20, 240, 100, 280],
+    ];
     for (i, rect) in root.into_iter().enumerate() {
         for (j, edge) in rect.into_iter().enumerate() {
             let at = 0x800 + i * 32 + j * 8;
@@ -54,9 +63,17 @@ fn geometry(image: &mut [u8]) {
             }
         }
     }
-    for (i, value) in [64, 240, 416, 592, 96, 208, 320, 432, 544].into_iter().enumerate() {
+    for (i, value) in [64, 240, 416, 592, 96, 208, 320, 432, 544]
+        .into_iter()
+        .enumerate()
+    {
         let disp = if i < 4 { 104 + i * 4 } else { 84 + (i - 4) * 4 };
-        op(image, 0x8a0 + i * 10, &[0xc7, 0x85, disp as u8, 0xff, 0xff, 0xff], value);
+        op(
+            image,
+            0x8a0 + i * 10,
+            &[0xc7, 0x85, disp as u8, 0xff, 0xff, 0xff],
+            value,
+        );
     }
     op(image, 0x900, &[0xbe], 4);
     image[0x910..0x913].copy_from_slice(&[0x83, 0xf8, 20]);
@@ -65,33 +82,47 @@ fn geometry(image: &mut [u8]) {
     op(image, 0x940, &[0x68], 555);
     op(image, 0x950, &[0xc7, 0x45, 0xa4], 371);
     op(image, 0x957, &[0xc7, 0x45, 0xa8], 640);
-    for (i, value) in [384,640,496,704,520,640,632,704,656,640,728,704].into_iter().enumerate() {
+    for (i, value) in [384, 640, 496, 704, 520, 640, 632, 704, 656, 640, 728, 704]
+        .into_iter()
+        .enumerate()
+    {
         put32(image, 0x960 + i * 4, value);
     }
     let mut at = 0xa00;
-    for col in 0..3 { at = flash_call(image, at, col, 1); }
+    for col in 0..3 {
+        at = flash_call(image, at, col, 1);
+    }
     let remaining = 0xa80 - (at + 4);
     image[at..at + 4].copy_from_slice(&[0x6a, 3, 0xeb, remaining as u8]);
     let mut at = 0xa43;
-    for (col, row) in [(0,1),(1,1),(2,1),(3,1),(0,2)] {
+    for (col, row) in [(0, 1), (1, 1), (2, 1), (3, 1), (0, 2)] {
         at = flash_call(image, at, col, row);
     }
     assert_eq!(at, 0xa7e);
     assert_eq!(flash_call(image, at, 0, 4), 0xa88);
     op(image, 0xa90, &[0xb8], 4);
-    op(image, 0xaa0, &[0x8b,0x14,0x85], va(0xab8));
-    op(image, 0xaa8, &[0x8b,0x0c,0xb5], va(0xad0));
+    op(image, 0xaa0, &[0x8b, 0x14, 0x85], va(0xab8));
+    op(image, 0xaa8, &[0x8b, 0x0c, 0xb5], va(0xad0));
     image[0xaaf..0xab2].copy_from_slice(&[0x8d, 0x34, 0x86]);
-    for (i, value) in [96, 208, 320, 432, 544].into_iter().enumerate() { put32(image, 0xab8 + i * 4, value); }
-    for (i, value) in [64, 240, 416, 592].into_iter().enumerate() { put32(image, 0xad0 + i * 4, value); }
-    image[0xae0..0xae6].copy_from_slice(&[0x83,0xe9,128,0x83,0xc2,72]);
-    op(image,0xaf0,&[0xc7,0x85,0x7c,0xff,0xff,0xff],371);
-    op(image,0xb00,&[0xc7,0x45,0x80],640);
+    for (i, value) in [96, 208, 320, 432, 544].into_iter().enumerate() {
+        put32(image, 0xab8 + i * 4, value);
+    }
+    for (i, value) in [64, 240, 416, 592].into_iter().enumerate() {
+        put32(image, 0xad0 + i * 4, value);
+    }
+    image[0xae0..0xae6].copy_from_slice(&[0x83, 0xe9, 128, 0x83, 0xc2, 72]);
+    op(image, 0xaf0, &[0xc7, 0x85, 0x7c, 0xff, 0xff, 0xff], 371);
+    op(image, 0xb00, &[0xc7, 0x45, 0x80], 640);
     for (i, value) in [
-        160,96,480,608,576,560,640,624,656,560,720,624,736,560,800,624,
-        816,560,880,624,552,656,664,688,696,656,808,688,824,656,904,688
-    ].into_iter().enumerate() { put32(image, 0xb20 + i * 4, value); }
-    image[0xba0..0xba5].copy_from_slice(&[0xc1,0xff,5,0x6a,3]);
+        160, 96, 480, 608, 576, 560, 640, 624, 656, 560, 720, 624, 736, 560, 800, 624, 816, 560,
+        880, 624, 552, 656, 664, 688, 696, 656, 808, 688, 824, 656, 904, 688,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        put32(image, 0xb20 + i * 4, value);
+    }
+    image[0xba0..0xba5].copy_from_slice(&[0xc1, 0xff, 5, 0x6a, 3]);
 }
 fn add_string(image: &mut [u8], cursor: &mut usize, name: &str) -> u32 {
     let offset = *cursor;
@@ -119,7 +150,11 @@ fn original(groups: &[Vec<String>]) -> Vec<u8> {
     let mut row = CG_ROWS;
     for group in groups {
         for (i, name) in group.iter().enumerate() {
-            let name = if i == 0 { format!("*{name}") } else { name.clone() };
+            let name = if i == 0 {
+                format!("*{name}")
+            } else {
+                name.clone()
+            };
             let addr = add_string(&mut image, &mut cursor, &name);
             put32(&mut image, row, addr);
             row += 4;
@@ -147,7 +182,13 @@ fn original(groups: &[Vec<String>]) -> Vec<u8> {
 
 fn write_paz(root: &Path, role: &str, entries: impl IntoIterator<Item = String>) {
     let names: BTreeSet<_> = entries.into_iter().collect();
-    let bytes = native::archive_entries(role, &names.iter().map(|n| (n.as_str(), b".end\r\n".as_slice())).collect::<Vec<_>>());
+    let bytes = native::archive_entries(
+        role,
+        &names
+            .iter()
+            .map(|n| (n.as_str(), b".end\r\n".as_slice()))
+            .collect::<Vec<_>>(),
+    );
     fs::write(root.join(format!("{role}.paz")), bytes).unwrap();
 }
 
@@ -159,13 +200,22 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     fs::create_dir(&source).unwrap();
     fs::create_dir(&common).unwrap();
     for (name, code) in [
-        ("binary", include_str!("../../../../Metadata/patches/common/binary.luau")),
-        ("pe", include_str!("../../../../Metadata/patches/common/pe.luau")),
+        (
+            "binary",
+            include_str!("../../../../Metadata/patches/common/binary.luau"),
+        ),
+        (
+            "pe",
+            include_str!("../../../../Metadata/patches/common/pe.luau"),
+        ),
         (
             "musica_gallery_table",
             include_str!("../../../../Metadata/patches/common/musica_gallery_table.luau"),
         ),
-        ("perseus_gallery", include_str!("../../../../Metadata/patches/common/perseus_gallery.luau")),
+        (
+            "perseus_gallery",
+            include_str!("../../../../Metadata/patches/common/perseus_gallery.luau"),
+        ),
     ] {
         fs::write(common.join(format!("{name}.luau")), code).unwrap();
     }
@@ -175,9 +225,28 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     let image = original(&groups);
     fs::write(source.join("original.exe"), &image).unwrap();
 
-    let profile = format!("schema='shinki.emu.musica.keys.v2'\npaz_version=0\nindex_size_xor=0\nrc4_skip_crc=true\n{}", ["bg", "bgm", "scr", "sys"].map(native::key_role).concat());
+    let profile = format!(
+        "schema='shinki.emu.musica.keys.v2'\npaz_version=0\nindex_size_xor=0\nrc4_skip_crc=true\n{}",
+        ["bg", "bgm", "scr", "sys"].map(native::key_role).concat()
+    );
     fs::write(source.join("key.toml"), profile).unwrap();
-    let mut sys = vec!["memories.png", "memoriesOver.png", "cgmode0.png", "cgmode0box.png", "cgmode0menu.png", "cgpage001.png", "cgpage002.png", "musicPage1.png", "musicPage2.png", "musicPage3.png", "musicPageOver.png", "musicNote.png"].into_iter().map(str::to_owned).collect::<Vec<_>>();
+    let mut sys = vec![
+        "memories.png",
+        "memoriesOver.png",
+        "cgmode0.png",
+        "cgmode0box.png",
+        "cgmode0menu.png",
+        "cgpage001.png",
+        "cgpage002.png",
+        "musicPage1.png",
+        "musicPage2.png",
+        "musicPage3.png",
+        "musicPageOver.png",
+        "musicNote.png",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
     sys.extend(groups.iter().map(|g| format!("cgthumb\\{}", g[0])));
     for i in 0..4 {
         for suffix in [".png", "Over.png", "menu.png"] {
@@ -187,11 +256,19 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     write_paz(&source, "sys", sys);
     let mut scr = vec!["movie.sc".to_owned(), "test.sc".to_owned()];
     for (page, name) in ["alpha", "beta", "gamma", "delta"].into_iter().enumerate() {
-        let slots: &[u8] = if page == 0 { &[4, 5, 6, 7, 8, 16] } else { &[4, 5, 6, 12] };
+        let slots: &[u8] = if page == 0 {
+            &[4, 5, 6, 7, 8, 16]
+        } else {
+            &[4, 5, 6, 12]
+        };
         scr.extend(slots.iter().map(|i| format!("fb_{name}_{i:02}.sc")));
     }
     write_paz(&source, "scr", scr);
-    fs::write(source.join("bgm.paz"), native::archive("bgm", "Score.ogg", b"public music")).unwrap();
+    fs::write(
+        source.join("bgm.paz"),
+        native::archive("bgm", "Score.ogg", b"public music"),
+    )
+    .unwrap();
     write_paz(&source, "bg", groups.iter().flatten().cloned());
 
     let recipe = root.path().join("patch.luau");
@@ -230,51 +307,108 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
                     launch_mode='title', frontend=frontend}}}}
             end}}
         "#, image.len())).unwrap();
-        apply(PatchRequest {
-            script: recipe.clone(), source: source.clone(), patch: source.clone(),
-            mode: PatchMode::NewDirectory { output: root.path().join(output) },
-        }, Arc::new(AtomicBool::new(false)), |_| {})
+        apply(
+            PatchRequest {
+                script: recipe.clone(),
+                source: source.clone(),
+                patch: source.clone(),
+                mode: PatchMode::NewDirectory {
+                    output: root.path().join(output),
+                },
+            },
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
     };
     let hash = hex::encode(Sha256::digest(&image));
     let result = run(&hash, "valid").unwrap();
-    assert_eq!(result.profile.required_capabilities, shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP);
+    assert_eq!(
+        result.profile.required_capabilities,
+        shinki_emu_abi::CAP_AUTHORED_GALLERY_CLIP
+    );
     let receipt = shinki_emu_patch::read_output_profile(&result.output, &AtomicBool::new(false))
-        .unwrap().expect("installed patch receipt");
-    assert_eq!(receipt.required_capabilities, result.profile.required_capabilities);
-    let config: serde_json::Value = serde_json::from_str(&result.profile.configuration["frontend"]).unwrap();
+        .unwrap()
+        .expect("installed patch receipt");
+    assert_eq!(
+        receipt.required_capabilities,
+        result.profile.required_capabilities
+    );
+    let config: serde_json::Value =
+        serde_json::from_str(&result.profile.configuration["frontend"]).unwrap();
     let path = config["gallery_layout"].as_str().unwrap();
-    let gallery: serde_json::Value = serde_json::from_slice(&fs::read(result.output.join(path)).unwrap()).unwrap();
+    let gallery: serde_json::Value =
+        serde_json::from_slice(&fs::read(result.output.join(path)).unwrap()).unwrap();
     let screens = gallery["screens"].as_array().unwrap();
     let cg_two = &screens[2];
-    assert_eq!(screens[0]["buttons"][0]["rect"], serde_json::json!([20, 40, 80, 40]));
+    assert_eq!(
+        screens[0]["buttons"][0]["rect"],
+        serde_json::json!([20, 40, 80, 40])
+    );
     assert_eq!(cg_two["id"], "cg2");
-    assert_eq!(cg_two["buttons"][0]["action"]["images"], serde_json::json!([
-        "musica:/bg/Picture20.png", "musica:/bg/Second.png", "musica:/bg/Third.png"
-    ]));
+    assert_eq!(
+        cg_two["buttons"][0]["action"]["images"],
+        serde_json::json!([
+            "musica:/bg/Picture20.png",
+            "musica:/bg/Second.png",
+            "musica:/bg/Third.png"
+        ])
+    );
     assert!(cg_two["buttons"][0]["action"]["viewed_only"].is_null());
-    assert_eq!(cg_two["layers"][1]["clip"], serde_json::json!([64, 96, 136, 80]));
+    assert_eq!(
+        cg_two["layers"][1]["clip"],
+        serde_json::json!([64, 96, 136, 80])
+    );
     assert_eq!(cg_two["buttons"][2]["action"]["screen"], "cg1");
-    assert_eq!(screens[3]["buttons"][5]["action"]["resource"], "musica:/scr/fb_alpha_16.sc");
-    assert_eq!(screens[9]["buttons"][14]["action"]["resource"], "musica:/bgm/Score.ogg");
-    assert_eq!(screens[9]["buttons"][15]["action"]["kind"], "previous_track");
+    assert_eq!(
+        screens[3]["buttons"][5]["action"]["resource"],
+        "musica:/scr/fb_alpha_16.sc"
+    );
+    assert_eq!(
+        screens[9]["buttons"][14]["action"]["resource"],
+        "musica:/bgm/Score.ogg"
+    );
+    assert_eq!(
+        screens[9]["buttons"][15]["action"]["kind"],
+        "previous_track"
+    );
     assert!(!result.output.join("original.exe").exists());
 
-    write_paz(&source, "bg", groups.iter().flatten().filter(|name| name.as_str() != "Second.png").cloned());
-    assert_eq!(run(&hash, "missing").err().unwrap().kind(), PatchErrorKind::Integrity);
+    write_paz(
+        &source,
+        "bg",
+        groups
+            .iter()
+            .flatten()
+            .filter(|name| name.as_str() != "Second.png")
+            .cloned(),
+    );
+    assert_eq!(
+        run(&hash, "missing").err().unwrap().kind(),
+        PatchErrorKind::Integrity
+    );
     assert!(!root.path().join("missing").exists());
-    assert_eq!(run(&"0".repeat(64), "wrong").err().unwrap().kind(), PatchErrorKind::UnsupportedInput);
+    assert_eq!(
+        run(&"0".repeat(64), "wrong").err().unwrap().kind(),
+        PatchErrorKind::UnsupportedInput
+    );
     assert!(!root.path().join("wrong").exists());
     let mut unknown = image.clone();
     unknown[0x800] = 0x90;
     fs::write(source.join("original.exe"), &unknown).unwrap();
     let unknown_hash = hex::encode(Sha256::digest(unknown));
-    assert_eq!(run(&unknown_hash, "unknown").err().unwrap().kind(), PatchErrorKind::UnsupportedInput);
+    assert_eq!(
+        run(&unknown_hash, "unknown").err().unwrap().kind(),
+        PatchErrorKind::UnsupportedInput
+    );
     assert!(!root.path().join("unknown").exists());
     let mut unbacked = image.clone();
     put32(&mut unbacked, CG, ROOT + 0x2000);
     fs::write(source.join("original.exe"), &unbacked).unwrap();
     let unbacked_hash = hex::encode(Sha256::digest(unbacked));
-    assert_eq!(run(&unbacked_hash, "out-of-range").err().unwrap().kind(), PatchErrorKind::Bounds);
+    assert_eq!(
+        run(&unbacked_hash, "out-of-range").err().unwrap().kind(),
+        PatchErrorKind::Bounds
+    );
     assert!(!root.path().join("out-of-range").exists());
     let mut truncated = image.clone();
     put32(&mut truncated, CG_ROWS + 4, 0);

@@ -133,21 +133,32 @@ pub(crate) fn package(
     out: &Path,
 ) -> Result<PathBuf> {
     let triple = target.rust_target();
-    let commit = result.source_commit.as_deref().context("OHOS Manager source commit")?;
-    if result.component != "manager" || result.target != triple
+    let commit = result
+        .source_commit
+        .as_deref()
+        .context("OHOS Manager source commit")?;
+    if result.component != "manager"
+        || result.target != triple
         || result.product_version.as_deref() != Some(version)
     {
         bail!("expected OHOS Manager artifact for {triple}/{version}");
     }
-    if result.embedded_core_builds.iter().any(|build| build.plugin_id == MUSICA) {
+    if result
+        .embedded_core_builds
+        .iter()
+        .any(|build| build.plugin_id == MUSICA)
+    {
         bail!("OHOS Manager must not embed Musica");
     }
     verify_native(target, &fs::read(&result.library)?, MANAGER)?;
     let musica = crate::build::execute_ohos_hap(inv, triple, MUSICA, version)?;
-    if musica.target != triple || musica.product_version.as_deref() != Some(version)
+    if musica.target != triple
+        || musica.product_version.as_deref() != Some(version)
         || musica.source_commit.as_deref() != Some(commit)
     {
-        bail!("OHOS Musica must be built for the same target, version and source commit as Manager");
+        bail!(
+            "OHOS Musica must be built for the same target, version and source commit as Manager"
+        );
     }
     let tools = tools()?;
     let signing = signing_material(&tools)?;
@@ -179,7 +190,10 @@ pub(crate) fn package(
                 .arg(&hap),
         )?;
         let core = verify_hap(&tools, target, &hap, &declaration)?;
-        let library = core.files.iter().find(|file| file.path == CORE_LIBRARY)
+        let library = core
+            .files
+            .iter()
+            .find(|file| file.path == CORE_LIBRARY)
             .context("verified HAP Musica library record")?;
         let record = serde_json::json!({
             "hap": name,
@@ -226,15 +240,21 @@ fn stage_inputs(
     }
     let mut native = BTreeMap::from([(MANAGER.to_owned(), result.library.clone())]);
     let manager_search = package::search_dirs(inv, result)?;
-    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())? {
+    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())?
+    {
         native.insert(name, library);
     }
-    if native.insert(CORE_LIBRARY.to_owned(), musica.library.clone()).is_some() {
+    if native
+        .insert(CORE_LIBRARY.to_owned(), musica.library.clone())
+        .is_some()
+    {
         bail!("bundled Musica is already in the Manager's native closure");
     }
-    for (library, name) in
-        binary::closure(&musica.library, &package::search_dirs(inv, musica)?, target.rust_target())?
-    {
+    for (library, name) in binary::closure(
+        &musica.library,
+        &package::search_dirs(inv, musica)?,
+        target.rust_target(),
+    )? {
         if let Some(existing) = native.get(&name) {
             if existing != &library && sha256(existing)? != sha256(&library)? {
                 bail!("conflicting OHOS HAP dependency {name}");
@@ -245,7 +265,10 @@ fn stage_inputs(
     }
     let libs = libs.join(target.abi());
     fs::create_dir_all(&libs)?;
-    let native: Vec<_> = native.into_iter().map(|(name, path)| (path, name)).collect();
+    let native: Vec<_> = native
+        .into_iter()
+        .map(|(name, path)| (path, name))
+        .collect();
     copy_entries(&native, &libs)?;
 
     let temp = crate::temporary::directory()?;
@@ -282,10 +305,16 @@ fn stage_core_manifest(
     entries: &mut Vec<(PathBuf, String)>,
 ) -> Result<Vec<u8>> {
     let core = inv.core(MUSICA)?;
-    let build = musica.core_build.as_ref().context("bundled Musica build manifest")?;
+    let build = musica
+        .core_build
+        .as_ref()
+        .context("bundled Musica build manifest")?;
     build.validate()?;
     if build.target != musica.target || build.artifact_kind != "rust-cdylib" {
-        bail!("expected a Musica cdylib build manifest for {}", musica.target);
+        bail!(
+            "expected a Musica cdylib build manifest for {}",
+            musica.target
+        );
     }
     let scratch = scratch.join("musica");
     fs::create_dir(&scratch)?;
@@ -301,17 +330,32 @@ fn stage_core_manifest(
         bail!("bundled Musica must have license inputs");
     }
     for (source, relative) in data {
-        if Path::new(&relative).extension().is_some_and(|extension| extension == "so") {
+        if Path::new(&relative)
+            .extension()
+            .is_some_and(|extension| extension == "so")
+        {
             bail!("native code may not be staged in the HAP's rawfile data");
         }
-        files.push(package::FileRecord { path: relative.clone(), sha256: sha256(&source)? });
+        files.push(package::FileRecord {
+            path: relative.clone(),
+            sha256: sha256(&source)?,
+        });
         entries.push((source, format!("cores/{MUSICA}/{relative}")));
     }
-    let version = musica.product_version.as_deref().context("bundled Musica product version")?;
+    let version = musica
+        .product_version
+        .as_deref()
+        .context("bundled Musica product version")?;
     shinki_emu_metadata::validate_core_version(version, None)?;
-    let commit = musica.source_commit.as_deref().context("bundled Musica product source commit")?;
+    let commit = musica
+        .source_commit
+        .as_deref()
+        .context("bundled Musica product source commit")?;
     let product_source = package::write_product_source_commit(&scratch, commit)?;
-    entries.push((scratch.join(&product_source.path), format!("cores/{MUSICA}/{}", product_source.path)));
+    entries.push((
+        scratch.join(&product_source.path),
+        format!("cores/{MUSICA}/{}", product_source.path),
+    ));
     files.push(product_source);
     files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     let declaration = serde_json::to_vec_pretty(&package::CorePackage {
@@ -592,7 +636,8 @@ fn verify_archive(
     let native_prefix = format!("{abi}/");
     let mut archive = zip::ZipArchive::new(hap)?;
     for name in archive.file_names() {
-        if name?.strip_prefix("libs/")
+        if name?
+            .strip_prefix("libs/")
             .is_some_and(|path| !path.is_empty() && !path.starts_with(&native_prefix))
         {
             bail!("signed HAP contains native libraries outside libs/{abi}/");
@@ -601,7 +646,9 @@ fn verify_archive(
     let member = format!("libs/{abi}/{CORE_LIBRARY}");
     let prefix = format!("resources/rawfile/bundled/cores/{MUSICA}");
     let mut signed_declaration = Vec::new();
-    archive.by_name(&format!("{prefix}/core.json"))?.read_to_end(&mut signed_declaration)?;
+    archive
+        .by_name(&format!("{prefix}/core.json"))?
+        .read_to_end(&mut signed_declaration)?;
     if signed_declaration != declaration {
         bail!("signed HAP bundled Musica declaration differs from the staged declaration");
     }
@@ -611,9 +658,14 @@ fn verify_archive(
         if file.path == CORE_LIBRARY {
             let mut entry = archive.by_name(&member)?;
             if entry.compression() != zip::CompressionMethod::Stored
-                || entry.data_start().is_none_or(|offset| offset % target.page_size() != 0)
+                || entry
+                    .data_start()
+                    .is_none_or(|offset| offset % target.page_size() != 0)
             {
-                bail!("{member} must be stored uncompressed on a {}-byte page boundary", target.page_size());
+                bail!(
+                    "{member} must be stored uncompressed on a {}-byte page boundary",
+                    target.page_size()
+                );
             }
             let mut bytes = Vec::new();
             entry.read_to_end(&mut bytes)?;
@@ -645,19 +697,34 @@ fn verify_archive(
     ] {
         archive.by_name(required)?;
     }
-    verify_native(target, &core.context("signed HAP declaration lacks Musica library")?, CORE_LIBRARY)?;
+    verify_native(
+        target,
+        &core.context("signed HAP declaration lacks Musica library")?,
+        CORE_LIBRARY,
+    )?;
     let mut manager = Vec::new();
-    archive.by_name(&format!("libs/{abi}/{MANAGER}"))?.read_to_end(&mut manager)?;
+    archive
+        .by_name(&format!("libs/{abi}/{MANAGER}"))?
+        .read_to_end(&mut manager)?;
     verify_native(target, &manager, MANAGER)?;
     Ok(manifest)
 }
 
 fn verify_native(target: Target, bytes: &[u8], name: &str) -> Result<()> {
-    let expected = || format!("{name} is not a loadable {} ELF64 shared library", target.abi());
+    let expected = || {
+        format!(
+            "{name} is not a loadable {} ELF64 shared library",
+            target.abi()
+        )
+    };
     let object::File::Elf64(file) = object::File::parse(bytes).with_context(expected)? else {
         bail!("{}", expected());
     };
-    let segment_types = || file.elf_program_headers().iter().map(|header| header.p_type(file.endian()));
+    let segment_types = || {
+        file.elf_program_headers()
+            .iter()
+            .map(|header| header.p_type(file.endian()))
+    };
     if file.architecture() != target.architecture()
         || !file.is_little_endian()
         || file.kind() != object::ObjectKind::Dynamic
@@ -668,16 +735,22 @@ fn verify_native(target: Target, bytes: &[u8], name: &str) -> Result<()> {
         bail!("{}", expected());
     }
     let query = file.dynamic_symbols().any(|symbol| {
-        symbol.is_global() && symbol.is_definition() && symbol.kind() == object::SymbolKind::Text
+        symbol.is_global()
+            && symbol.is_definition()
+            && symbol.kind() == object::SymbolKind::Text
             && symbol.name_bytes() == Ok(b"shinki_emu_query".as_slice())
     });
     if name == CORE_LIBRARY {
         if !query {
             bail!("{name} does not export shinki_emu_query");
         }
-    } else if query || file.symbols().any(|symbol| {
-        symbol.name().is_ok_and(|name| name.contains("musica_query"))
-    }) {
+    } else if query
+        || file.symbols().any(|symbol| {
+            symbol
+                .name()
+                .is_ok_and(|name| name.contains("musica_query"))
+        })
+    {
         bail!("{name} must not contain a statically linked Musica query");
     }
     Ok(())
@@ -704,9 +777,11 @@ mod tests {
             let abi = target.abi();
             let create_archive = |alignment, compression, mixed, include_core| -> Result<_> {
                 let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-                let stored = SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Stored);
-                let bundled = stored.with_alignment(alignment).compression_method(compression);
+                let stored =
+                    SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+                let bundled = stored
+                    .with_alignment(alignment)
+                    .compression_method(compression);
                 archive.start_file(format!("libs/{abi}/{MANAGER}"), stored)?;
                 if include_core {
                     archive.start_file(format!("libs/{abi}/{CORE_LIBRARY}"), bundled)?;
@@ -734,17 +809,30 @@ mod tests {
             let page = u16::try_from(target.page_size())?;
             let stored = zip::CompressionMethod::Stored;
             let hap = create_archive(page, stored, false, true)?;
-            let error = |target, hap| verify_archive(target, hap, &declaration).unwrap_err().to_string();
+            let error = |target, hap| {
+                verify_archive(target, hap, &declaration)
+                    .unwrap_err()
+                    .to_string()
+            };
             assert!(error(target, hap.clone()).contains("not a loadable"));
             assert!(error(other, hap).contains("outside libs/"));
-            assert!(error(target, create_archive(page, stored, true, true)?).contains("outside libs/"));
+            assert!(
+                error(target, create_archive(page, stored, true, true)?).contains("outside libs/")
+            );
             for hap in [
                 create_archive(1, stored, false, true)?,
                 create_archive(page, zip::CompressionMethod::Deflated, false, true)?,
             ] {
                 assert!(error(target, hap).contains("stored uncompressed"));
             }
-            assert!(verify_archive(target, create_archive(page, stored, false, false)?, &declaration).is_err());
+            assert!(
+                verify_archive(
+                    target,
+                    create_archive(page, stored, false, false)?,
+                    &declaration
+                )
+                .is_err()
+            );
         }
         Ok(())
     }

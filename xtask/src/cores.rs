@@ -11,7 +11,10 @@ use std::{
 mod core_adapters;
 
 #[path = "../../build/android_dynamic.rs"]
-#[allow(dead_code, reason = "xtask validates the policy; only Manager uses the projection")]
+#[allow(
+    dead_code,
+    reason = "xtask validates the policy; only Manager uses the projection"
+)]
 mod android_dynamic;
 
 pub(crate) const ADV32_CANDIDATE_FEATURE: &str = "static-adv32";
@@ -72,12 +75,18 @@ impl Core {
     }
 
     pub(crate) fn embedded_candidate(&self, target: &str, features: &[String]) -> bool {
-        self.static_manager_candidate_targets.iter().any(|triple| triple == target)
-            && features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
+        self.static_manager_candidate_targets
+            .iter()
+            .any(|triple| triple == target)
+            && features
+                .iter()
+                .any(|feature| feature == ADV32_CANDIDATE_FEATURE)
     }
 
     pub(crate) fn embedded_in_manager(&self, target: &str, features: &[String]) -> bool {
-        self.static_manager_targets.iter().any(|triple| triple == target)
+        self.static_manager_targets
+            .iter()
+            .any(|triple| triple == target)
             || self.embedded_candidate(target, features)
     }
 
@@ -95,15 +104,21 @@ impl Core {
             return Ok(None);
         }
         let lock = toml::from_str(&std::fs::read_to_string(root.join("Cargo.lock"))?)?;
-        Ok(core_adapters::locked_adapter(&lock, &self.id).map(|adapter| LockedAdapter {
-            repo: adapter.repo.to_owned(),
-            commit: adapter.commit.to_owned(),
-        }))
+        Ok(
+            core_adapters::locked_adapter(&lock, &self.id).map(|adapter| LockedAdapter {
+                repo: adapter.repo.to_owned(),
+                commit: adapter.commit.to_owned(),
+            }),
+        )
     }
 
     pub fn identity(&self, root: &Path) -> Result<Option<shinki_emu_metadata::CoreIdentity>> {
-        let Some(attribution) = &self.attribution else { return Ok(None) };
-        let Some(adapter) = self.adapter_source(root)? else { return Ok(None) };
+        let Some(attribution) = &self.attribution else {
+            return Ok(None);
+        };
+        let Some(adapter) = self.adapter_source(root)? else {
+            return Ok(None);
+        };
         Ok(Some(shinki_emu_metadata::CoreIdentity {
             upstream: attribution.upstream_identity.clone(),
             adapter: shinki_emu_metadata::AdapterIdentity {
@@ -119,10 +134,18 @@ impl Core {
         let package = self.adapter_package();
         let metadata: serde_json::Value = serde_json::from_slice(&crate::dependencies::capture(
             std::process::Command::new("cargo").current_dir(root).args([
-                "metadata", "--locked", "--format-version", "1", "--filter-platform", target,
+                "metadata",
+                "--locked",
+                "--format-version",
+                "1",
+                "--filter-platform",
+                target,
             ]),
         )?)?;
-        metadata["packages"].as_array().context("Cargo metadata packages")?.iter()
+        metadata["packages"]
+            .as_array()
+            .context("Cargo metadata packages")?
+            .iter()
             .find(|value| value["name"] == package)
             .and_then(|value| value["manifest_path"].as_str())
             .map(PathBuf::from)
@@ -134,19 +157,31 @@ impl Core {
             return Ok(root.to_owned());
         }
         let manifest = self.adapter_manifest(root, target)?;
-        let output = crate::dependencies::capture(std::process::Command::new("git")
-            .current_dir(manifest.parent().context("adapter manifest directory")?)
-            .args(["rev-parse", "--show-toplevel"]))?;
+        let output = crate::dependencies::capture(
+            std::process::Command::new("git")
+                .current_dir(manifest.parent().context("adapter manifest directory")?)
+                .args(["rev-parse", "--show-toplevel"]),
+        )?;
         Ok(PathBuf::from(String::from_utf8(output)?.trim()))
     }
 
-    pub fn license_files<'a>(&'a self, root: &Path, target: &str) -> Result<Vec<(PathBuf, &'a str, bool)>> {
-        let mut files: Vec<_> = self.licenses.iter()
-            .map(|path| (root.join(path), path.as_str(), false)).collect();
+    pub fn license_files<'a>(
+        &'a self,
+        root: &Path,
+        target: &str,
+    ) -> Result<Vec<(PathBuf, &'a str, bool)>> {
+        let mut files: Vec<_> = self
+            .licenses
+            .iter()
+            .map(|path| (root.join(path), path.as_str(), false))
+            .collect();
         if !self.adapter_licenses.is_empty() {
             let directory = self.source_directory(root, target)?;
-            files.extend(self.adapter_licenses.iter()
-                .map(|path| (directory.join(path), path.as_str(), true)));
+            files.extend(
+                self.adapter_licenses
+                    .iter()
+                    .map(|path| (directory.join(path), path.as_str(), true)),
+            );
         }
         Ok(files)
     }
@@ -229,8 +264,13 @@ pub fn slug(id: &str) -> String {
 }
 impl Inventory {
     pub fn load(root: &Path) -> Result<Self> {
-        let c: toml::Value = toml::from_str(&std::fs::read_to_string(root.join("build/cores.toml"))?)?;
-        for core in c.get("cores").and_then(toml::Value::as_array).context("core inventory")? {
+        let c: toml::Value =
+            toml::from_str(&std::fs::read_to_string(root.join("build/cores.toml"))?)?;
+        for core in c
+            .get("cores")
+            .and_then(toml::Value::as_array)
+            .context("core inventory")?
+        {
             android_dynamic::parse(core).map_err(anyhow::Error::msg)?;
         }
         let c: CoreFile = c.try_into()?;
@@ -262,7 +302,10 @@ impl Inventory {
             }
             if t.is_local_qa() {
                 if t.runner != "local-only" || t.manager_supported || t.manager_local_build {
-                    bail!("{}: private QA target cannot be scheduled or published", t.triple);
+                    bail!(
+                        "{}: private QA target cannot be scheduled or published",
+                        t.triple
+                    );
                 }
             } else {
                 standalone_triples.insert(&t.triple);
@@ -284,7 +327,10 @@ impl Inventory {
             crate::package::portable(&c.id)?;
             if c.family_id.is_empty()
                 || c.family_id.len() > 64
-                || !c.family_id.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || !c
+                    .family_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
                 || !c.family_id.as_bytes()[0].is_ascii_lowercase()
                 || c.display_name.trim().is_empty()
             {
@@ -307,12 +353,20 @@ impl Inventory {
                 }
             }
             if seen != standalone_triples {
-                bail!("core {} must describe exactly the non-QA standalone targets", c.id);
+                bail!(
+                    "core {} must describe exactly the non-QA standalone targets",
+                    c.id
+                );
             }
             if c.ios_framework
-                && (!c.id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+                && (!c
+                    .id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
                     || !c.publish_blocked.is_empty()
-                    || c.supported_targets.iter().any(|target| crate::apple::ios_frameworks::target_supported(target)))
+                    || c.supported_targets
+                        .iter()
+                        .any(|target| crate::apple::ios_frameworks::target_supported(target)))
             {
                 bail!("invalid iOS Framework recipe for {}", c.id);
             }
@@ -332,7 +386,10 @@ impl Inventory {
                     || c.static_manager_targets.contains(triple)
                     || !candidates.insert(triple)
                 {
-                    bail!("invalid private Manager candidate target {triple} for {}", c.id);
+                    bail!(
+                        "invalid private Manager candidate target {triple} for {}",
+                        c.id
+                    );
                 }
             }
         }
@@ -457,7 +514,10 @@ mod tests {
         changed.validate().unwrap();
         let source = std::fs::read_to_string(root.join("build/cores.toml")).unwrap();
         let mut parsed: toml::Value = toml::from_str(&source).unwrap();
-        parsed["cores"][0].as_table_mut().unwrap().remove("family_id");
+        parsed["cores"][0]
+            .as_table_mut()
+            .unwrap()
+            .remove("family_id");
         let core: Result<Core, _> = parsed["cores"][0].clone().try_into();
         assert!(core.is_err());
     }
@@ -470,15 +530,27 @@ mod tests {
         let temp = crate::temporary::directory().unwrap();
         let lock = temp.path().join("Cargo.lock");
         let commit = "f".repeat(40);
-        std::fs::write(&lock, format!(r#"
+        std::fs::write(
+            &lock,
+            format!(
+                r#"
             [[package]]
             name = "shinki-emu-rfvp"
             source = "git+https://github.com/Project-Shinkirou/rfvp?rev=requested#{commit}"
-        "#)).unwrap();
+        "#
+            ),
+        )
+        .unwrap();
         let identity = core.identity(temp.path()).unwrap().unwrap();
         assert_eq!(identity.adapter.commit, commit);
-        assert_eq!(identity.adapter.repo, "https://github.com/Project-Shinkirou/rfvp");
-        assert_eq!(identity.adapter.branch, core.attribution.as_ref().unwrap().adapter_branch);
+        assert_eq!(
+            identity.adapter.repo,
+            "https://github.com/Project-Shinkirou/rfvp"
+        );
+        assert_eq!(
+            identity.adapter.branch,
+            core.attribution.as_ref().unwrap().adapter_branch
+        );
 
         std::fs::write(lock, "[[package]]\nname = \"shinki-emu-rfvp\"\n").unwrap();
         assert!(core.identity(temp.path()).unwrap().is_none());
@@ -571,11 +643,19 @@ mod tests {
         }
         for ci in [false, true] {
             assert!(
-                inventory.job_matrix(ci, None).unwrap().include
-                    .iter().all(|row| row.target != triple)
+                inventory
+                    .job_matrix(ci, None)
+                    .unwrap()
+                    .include
+                    .iter()
+                    .all(|row| row.target != triple)
             );
         }
-        let row = inventory.targets.iter_mut().find(|row| row.triple == triple).unwrap();
+        let row = inventory
+            .targets
+            .iter_mut()
+            .find(|row| row.triple == triple)
+            .unwrap();
         row.manager_supported = true;
         assert!(inventory.validate().is_err());
     }

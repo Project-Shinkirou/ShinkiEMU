@@ -488,21 +488,28 @@ fn recovered_loader_catalog_and_every_member_produce_independent_native_resource
     let frontend: serde_json::Value = serde_json::from_str(&config["frontend"]).unwrap();
     let titles = frontend["titles"].as_array().unwrap();
     let action_at = |flags: &[&str], x, y| {
-        let title = titles.iter().rev().find(|title| {
-            title["requires"].as_object().is_none_or(|requirements| {
-                requirements.iter().all(|(name, expected)| {
-                    let actual = i64::from(flags.contains(&name.as_str()));
-                    expected.as_i64() == Some(actual)
+        let title = titles
+            .iter()
+            .rev()
+            .find(|title| {
+                title["requires"].as_object().is_none_or(|requirements| {
+                    requirements.iter().all(|(name, expected)| {
+                        let actual = i64::from(flags.contains(&name.as_str()));
+                        expected.as_i64() == Some(actual)
+                    })
                 })
             })
-        }).unwrap();
-        title["buttons"].as_array().unwrap().iter().find_map(|button| {
-            let rect = button["rect"].as_array().unwrap();
-            let [left, top, width, height] =
-                std::array::from_fn(|i| rect[i].as_i64().unwrap());
-            ((left..left + width).contains(&x) && (top..top + height).contains(&y))
-                .then(|| button["action"].as_str().unwrap())
-        })
+            .unwrap();
+        title["buttons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|button| {
+                let rect = button["rect"].as_array().unwrap();
+                let [left, top, width, height] = std::array::from_fn(|i| rect[i].as_i64().unwrap());
+                ((left..left + width).contains(&x) && (top..top + height).contains(&y))
+                    .then(|| button["action"].as_str().unwrap())
+            })
     };
     let routes = ["AYAME_CLEAR", "REN_CLEAR", "SUI_CLEAR"];
     assert_eq!(action_at(&[], 1056, 32), Some("new_game"));

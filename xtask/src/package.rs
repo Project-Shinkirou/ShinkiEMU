@@ -266,11 +266,13 @@ pub fn zip_entries(entries: &[(PathBuf, String)], out: &Path) -> Result<()> {
                 .last_modified_time(zip::DateTime::default())
                 .large_file(fs::metadata(&source)?.len() >= u64::from(u32::MAX))
                 .unix_permissions(permissions)
-                .compression_method(if name.starts_with("downloads/") || name.ends_with(".ipa") {
-                    zip::CompressionMethod::Stored
-                } else {
-                    zip::CompressionMethod::Deflated
-                });
+                .compression_method(
+                    if name.starts_with("downloads/") || name.ends_with(".ipa") {
+                        zip::CompressionMethod::Stored
+                    } else {
+                        zip::CompressionMethod::Deflated
+                    },
+                );
             zip.start_file(name, opt)?;
             io::copy(&mut fs::File::open(source)?, &mut zip)?;
         }
@@ -304,7 +306,10 @@ pub struct CorePackage {
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<shinki_emu_metadata::CoreIdentity>,
-    #[serde(default, skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "shinki_emu_metadata::CoreRecognition::is_empty"
+    )]
     pub recognition: shinki_emu_metadata::CoreRecognition,
     pub abi: String,
     pub files: Vec<FileRecord>,
@@ -316,7 +321,10 @@ pub(crate) fn write_product_source_commit(dir: &Path, commit: &str) -> Result<Fi
     use std::io::Write;
 
     ensure!(
-        commit.len() == 40 && commit.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+        commit.len() == 40
+            && commit
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
         "invalid product source commit"
     );
     fs::File::create_new(dir.join(PRODUCT_SOURCE_COMMIT))?.write_all(commit.as_bytes())?;
@@ -408,7 +416,11 @@ pub fn stage_core(
     for asset in m.resources.iter().chain(&m.licenses) {
         entries.extend(asset_entries(asset)?);
     }
-    if android && entries.iter().any(|(_, path)| android_host::is_runtime_asset(path)) {
+    if android
+        && entries
+            .iter()
+            .any(|(_, path)| android_host::is_runtime_asset(path))
+    {
         bail!("Android core packages cannot contain APK-only host compile inputs");
     }
     let is_runtime = |path: &Path| {
@@ -549,12 +561,18 @@ pub fn stage_core(
             })
             .collect::<Result<Vec<_>>>()?;
         ensure!(
-            !files.iter().any(|file| file.path.split('/').next()
+            !files.iter().any(|file| file
+                .path
+                .split('/')
+                .next()
                 .is_some_and(|name| name.eq_ignore_ascii_case(PRODUCT_SOURCE_COMMIT))),
             "core inputs collide with {PRODUCT_SOURCE_COMMIT}"
         );
         if let Some(commit) = result.source_commit.as_deref() {
-            ensure!(identity.is_none() && version != "0.0.0-local", "invalid product core release");
+            ensure!(
+                identity.is_none() && version != "0.0.0-local",
+                "invalid product core release"
+            );
             files.push(write_product_source_commit(&dir, commit)?);
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -699,7 +717,9 @@ pub(crate) fn licenses(
     result: &BuildArtifact,
     scratch: &Path,
 ) -> Result<Vec<(PathBuf, String)>> {
-    let mut entries = result.native_inputs.iter()
+    let mut entries = result
+        .native_inputs
+        .iter()
         .flat_map(|input| input.licenses.iter())
         .map(|asset| (asset.source.clone(), asset.dest.clone()))
         .collect::<Vec<_>>();
@@ -722,8 +742,13 @@ pub(crate) fn licenses(
             .next()
             .and_then(|package| package["manifest_path"].as_str())
             .context("Slint manifest missing from Cargo metadata")?;
-        ensure!(slint.next().is_none(), "ambiguous Slint package in Cargo metadata");
-        let slint_root = Path::new(manifest).parent().context("Slint crate directory")?;
+        ensure!(
+            slint.next().is_none(),
+            "ambiguous Slint package in Cargo metadata"
+        );
+        let slint_root = Path::new(manifest)
+            .parent()
+            .context("Slint crate directory")?;
         entries.extend([
             (
                 slint_root.join("LICENSES").join(SLINT_LICENSE),
@@ -812,9 +837,10 @@ pub fn package(
     if component == "manager" && target.contains("android") {
         return package_android(inv, target, version, out);
     }
-    let ios_signing = (component == "manager" && crate::apple::ios_frameworks::target_supported(target))
-        .then(|| crate::apple::ios_frameworks::Signing::for_target(target))
-        .transpose()?;
+    let ios_signing = (component == "manager"
+        && crate::apple::ios_frameworks::target_supported(target))
+    .then(|| crate::apple::ios_frameworks::Signing::for_target(target))
+    .transpose()?;
     let result = build::package_artifact(inv, target, component, version)?;
     reject_overlap(&result.library, out)?;
     if component == "manager" {
@@ -837,11 +863,19 @@ pub fn package(
                 ),
             ];
             if ios_signing.is_none() {
-                entries.extend(binary::closure(&result.library, &search_dirs(inv, &result)?, target)?);
+                entries.extend(binary::closure(
+                    &result.library,
+                    &search_dirs(inv, &result)?,
+                    target,
+                )?);
             }
-            entries.extend(result.native_inputs.iter()
-                .flat_map(|input| input.package_files.iter())
-                .map(|asset| (asset.source.clone(), asset.dest.clone())));
+            entries.extend(
+                result
+                    .native_inputs
+                    .iter()
+                    .flat_map(|input| input.package_files.iter())
+                    .map(|asset| (asset.source.clone(), asset.dest.clone())),
+            );
             entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
             entries.extend(static_core_entries(inv, &result)?);
@@ -853,7 +887,10 @@ pub fn package(
             } else {
                 "Run shinki-emu-manager. Install separately released cores from Project-Shinkirou/ShinkiEMU."
             };
-            fs::write(stage.join("README.md"), format!("# ShinkiEMU {version}\n\n{instructions}\n"))?;
+            fs::write(
+                stage.join("README.md"),
+                format!("# ShinkiEMU {version}\n\n{instructions}\n"),
+            )?;
             if let Some(signing) = &ios_signing {
                 crate::apple::ios_frameworks::stage(inv, &result, stage, signing, version)?;
             }
@@ -901,7 +938,9 @@ pub fn package(
                         &app,
                         payload.join(app.file_name().context("iOS app filename")?),
                     )?;
-                    let ipa = stage.join(crate::apple::ios_frameworks::device_filename(target, version));
+                    let ipa = stage.join(crate::apple::ios_frameworks::device_filename(
+                        target, version,
+                    ));
                     zip_entries(&tree(payload_stage.path())?, &ipa)?;
                 }
             }
@@ -1080,7 +1119,9 @@ fn android_inputs(
         result.library.clone(),
         format!("jniLibs/{abi}/libshinki_emu_manager.so"),
     ));
-    for (source, name) in binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)? {
+    for (source, name) in
+        binary::closure(&result.library, &search_dirs(inv, result)?, &result.target)?
+    {
         entries.push((source, format!("jniLibs/{abi}/{name}")));
     }
     entries.extend(android_asset_entries(inv, result, shared_scratch)?);
@@ -1151,11 +1192,13 @@ fn stage_android_inputs(mut entries: Vec<(PathBuf, String)>, stage: &Path) -> Re
 
 fn android_keytool() -> Result<std::process::Command> {
     let java = PathBuf::from(std::env::var_os("JAVA_HOME").context("set JAVA_HOME to JDK 27")?);
-    Ok(std::process::Command::new(java.join("bin").join(if cfg!(windows) {
-        "keytool.exe"
-    } else {
-        "keytool"
-    })))
+    Ok(std::process::Command::new(java.join("bin").join(
+        if cfg!(windows) {
+            "keytool.exe"
+        } else {
+            "keytool"
+        },
+    )))
 }
 
 fn prepare_android_debug_key() -> Result<PathBuf> {
@@ -1259,7 +1302,9 @@ fn verify_android_certificate(signing: &str, expected: &str) -> Result<()> {
 }
 
 fn signed_android_version_code(value: &str) -> Result<u32> {
-    let code: u32 = value.parse().context("invalid SHINKI_EMU_ANDROID_VERSION_CODE")?;
+    let code: u32 = value
+        .parse()
+        .context("invalid SHINKI_EMU_ANDROID_VERSION_CODE")?;
     ensure!(
         (LAST_PUBLIC_ANDROID_VERSION_CODE + 1..=i32::MAX as u32).contains(&code),
         "signed Android versionCode must exceed {LAST_PUBLIC_ANDROID_VERSION_CODE} and fit a positive Android int",
@@ -1267,12 +1312,7 @@ fn signed_android_version_code(value: &str) -> Result<u32> {
     Ok(code)
 }
 
-fn package_android(
-    inv: &Inventory,
-    target: &str,
-    version: &str,
-    out: &Path,
-) -> Result<PathBuf> {
+fn package_android(inv: &Inventory, target: &str, version: &str, out: &Path) -> Result<PathBuf> {
     use base64::Engine as _;
     let key = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE").filter(|s| !s.is_empty());
     let encoded = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE_BASE64").filter(|s| !s.is_empty());
@@ -1300,7 +1340,10 @@ fn package_android(
                 .context("set SHINKI_EMU_ANDROID_VERSION_CODE for a signed release APK")?,
         )?
     } else {
-        std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE").as_deref().unwrap_or("1").parse()?
+        std::env::var("SHINKI_EMU_ANDROID_VERSION_CODE")
+            .as_deref()
+            .unwrap_or("1")
+            .parse()?
     };
     let private_key = if let Some(encoded) = encoded {
         let key = crate::temporary::file()?;
@@ -1341,7 +1384,11 @@ fn package_android(
         entries.extend(android_host::inputs(inv, &ANDROID_TARGETS, scratch.path())?);
         stage_android_inputs(entries, stage)?;
         crate::icon::Icon::new()?.android(stage)?;
-        let debug_key = if signed { None } else { Some(prepare_android_debug_key()?) };
+        let debug_key = if signed {
+            None
+        } else {
+            Some(prepare_android_debug_key()?)
+        };
         let certificate = match debug_key {
             Some(key) => android_debug_certificate(&key)?,
             None => ANDROID_PRODUCTION_CERT.into(),
@@ -1410,7 +1457,12 @@ fn package_android(
     Ok(out.to_owned())
 }
 
-fn verify_android_apk(apk: &Path, certificate: &str, version: &str, version_code: u32) -> Result<()> {
+fn verify_android_apk(
+    apk: &Path,
+    certificate: &str,
+    version: &str,
+    version_code: u32,
+) -> Result<()> {
     let sdk = std::env::var_os("ANDROID_HOME")
         .or_else(|| std::env::var_os("ANDROID_SDK_ROOT"))
         .map(PathBuf::from)
@@ -1437,7 +1489,9 @@ fn verify_android_apk(apk: &Path, certificate: &str, version: &str, version_code
     verify_android_certificate(signing, certificate)?;
     let aapt2 = tools.join(if cfg!(windows) { "aapt2.exe" } else { "aapt2" });
     let badging = dependencies::capture(
-        std::process::Command::new(aapt2).args(["dump", "badging"]).arg(apk),
+        std::process::Command::new(aapt2)
+            .args(["dump", "badging"])
+            .arg(apk),
     )?;
     let badging = std::str::from_utf8(&badging)?;
     verify_android_badging(badging, version, version_code)?;
@@ -1449,15 +1503,25 @@ fn verify_android_apk(apk: &Path, certificate: &str, version: &str, version_code
 }
 
 fn verify_android_badging(badging: &str, version: &str, version_code: u32) -> Result<()> {
-    let package = badging.lines().find(|line| line.starts_with("package: "))
+    let package = badging
+        .lines()
+        .find(|line| line.starts_with("package: "))
         .context("Android APK package metadata missing")?;
     let version_field = format!("versionName='{version}'");
     let code_field = format!("versionCode='{version_code}'");
-    if !package.split_ascii_whitespace().any(|field| field == "name='org.shinkirou.shinkiemu'")
-        || !package.split_ascii_whitespace().any(|field| field == version_field)
-        || !package.split_ascii_whitespace().any(|field| field == code_field)
+    if !package
+        .split_ascii_whitespace()
+        .any(|field| field == "name='org.shinkirou.shinkiemu'")
+        || !package
+            .split_ascii_whitespace()
+            .any(|field| field == version_field)
+        || !package
+            .split_ascii_whitespace()
+            .any(|field| field == code_field)
     {
-        bail!("Android APK must use org.shinkirou.shinkiemu, versionName {version} and versionCode {version_code}");
+        bail!(
+            "Android APK must use org.shinkirou.shinkiemu, versionName {version} and versionCode {version_code}"
+        );
     }
     let mut minimums = badging.lines().filter_map(|line| {
         line.strip_prefix("minSdkVersion:")
@@ -1523,7 +1587,10 @@ mod android_tests {
                 target: target.into(),
                 artifact_kind: "rust-cdylib".into(),
                 native_library: None,
-                resources: vec![BuildAsset { source: resource, dest: "Resources/resource.dat".into() }],
+                resources: vec![BuildAsset {
+                    source: resource,
+                    dest: "Resources/resource.dat".into(),
+                }],
                 licenses: licenses
                     .map(|(source, name)| BuildAsset {
                         source: repo.join(source),
@@ -1537,7 +1604,9 @@ mod android_tests {
         };
         // A stale report cannot add ADV32 files to a default Manager package.
         assert!(static_core_entries(&inv, &artifact).unwrap().is_empty());
-        artifact.features.push(crate::cores::ADV32_CANDIDATE_FEATURE.to_owned());
+        artifact
+            .features
+            .push(crate::cores::ADV32_CANDIDATE_FEATURE.to_owned());
         let stage = scratch.path().join("candidate");
         fs::create_dir(&stage).unwrap();
         copy_entries(&static_core_entries(&inv, &artifact).unwrap(), &stage).unwrap();
@@ -1545,9 +1614,13 @@ mod android_tests {
             fs::read(stage.join("cores/shinki.emu.adv32/Resources/resource.dat")).unwrap(),
             b"candidate resource",
         );
-        let embedded_dir = stage.join("licenses/embedded/shinki.emu.adv32/licenses/shinki.emu.adv32");
+        let embedded_dir =
+            stage.join("licenses/embedded/shinki.emu.adv32/licenses/shinki.emu.adv32");
         for (source, name) in licenses {
-            assert_eq!(fs::read(embedded_dir.join(name)).unwrap(), fs::read(repo.join(source)).unwrap());
+            assert_eq!(
+                fs::read(embedded_dir.join(name)).unwrap(),
+                fs::read(repo.join(source)).unwrap()
+            );
         }
         artifact.embedded_core_builds.clear();
         assert!(static_core_entries(&inv, &artifact).is_err());
@@ -1558,18 +1631,21 @@ mod android_tests {
         let root = crate::temporary::directory().unwrap();
         let inv = Inventory {
             root: root.path().into(),
-            cores: vec![serde_json::from_value(serde_json::json!({
-                "id": "renpy",
-                "family_id": "renpy",
-                "display_name": "Ren'Py",
-                "family_name": "Ren'Py",
-                "license": "MIT",
-                "resources": [],
-                "supported_targets": [],
-                "static_manager_targets": ANDROID_TARGETS.map(|(target, _)| target),
-                "blocked": [],
-                "publish_blocked": "",
-            })).unwrap()],
+            cores: vec![
+                serde_json::from_value(serde_json::json!({
+                    "id": "renpy",
+                    "family_id": "renpy",
+                    "display_name": "Ren'Py",
+                    "family_name": "Ren'Py",
+                    "license": "MIT",
+                    "resources": [],
+                    "supported_targets": [],
+                    "static_manager_targets": ANDROID_TARGETS.map(|(target, _)| target),
+                    "blocked": [],
+                    "publish_blocked": "",
+                }))
+                .unwrap(),
+            ],
             targets: vec![],
         };
         let common = "cores/renpy/Resources/lib/python3.12/os.py";
@@ -1598,7 +1674,10 @@ mod android_tests {
                     artifact_kind: "native-static".into(),
                     native_library: Some(write("librenpy.a", abi)),
                     resources: vec![
-                        BuildAsset { source: write("sysconfig.py", abi), dest: sysconfig.clone() },
+                        BuildAsset {
+                            source: write("sysconfig.py", abi),
+                            dest: sysconfig.clone(),
+                        },
                         BuildAsset {
                             source: write("os.py", "common stdlib"),
                             dest: "Resources/lib/python3.12/os.py".into(),
@@ -1610,7 +1689,10 @@ mod android_tests {
                     }],
                 }],
                 native_inputs: vec![NativeInputs {
-                    licenses: vec![BuildAsset { source: write("native-notice", abi), dest: notice.clone() }],
+                    licenses: vec![BuildAsset {
+                        source: write("native-notice", abi),
+                        dest: notice.clone(),
+                    }],
                     ..Default::default()
                 }],
                 source_commit: None,
@@ -1628,9 +1710,16 @@ mod android_tests {
         stage_android_inputs(entries, &stage).unwrap();
         expected.sort_unstable();
         let manifest = fs::read_to_string(stage.join(ANDROID_BUNDLE_MANIFEST)).unwrap();
-        assert!(manifest.lines().eq(expected.iter().map(|(name, _)| name.as_str())));
+        assert!(
+            manifest
+                .lines()
+                .eq(expected.iter().map(|(name, _)| name.as_str()))
+        );
         for (name, bytes) in expected {
-            assert_eq!(fs::read_to_string(stage.join("assets").join(name)).unwrap(), bytes);
+            assert_eq!(
+                fs::read_to_string(stage.join("assets").join(name)).unwrap(),
+                bytes
+            );
         }
     }
 
@@ -1645,8 +1734,8 @@ mod android_tests {
         fs::write(&x86, &data).unwrap();
         let name = "assets/cores/renpy/Resources/lib/python3.12/os.py";
         let stage = root.path().join("stage");
-        let error = stage_android_inputs(vec![(arm, name.into()), (x86, name.into())], &stage)
-            .unwrap_err();
+        let error =
+            stage_android_inputs(vec![(arm, name.into()), (x86, name.into())], &stage).unwrap_err();
         assert!(error.to_string().contains(name));
         assert!(!stage.exists());
     }
@@ -1657,7 +1746,10 @@ mod android_tests {
             assert!(signed_android_version_code(code).is_err(), "{code}");
         }
         assert_eq!(signed_android_version_code("87").unwrap(), 87);
-        assert_eq!(signed_android_version_code("2147483647").unwrap(), 2147483647);
+        assert_eq!(
+            signed_android_version_code("2147483647").unwrap(),
+            2147483647
+        );
     }
 
     #[test]
@@ -1686,7 +1778,10 @@ mod android_tests {
             format!("Number of signers: 2\n{modern}"),
             format!("{count}\n{legacy}\nSigner #2 certificate SHA-256 digest: {debug_cert}"),
         ] {
-            assert!(verify_android_certificate(&signing, &debug_cert).is_err(), "{signing}");
+            assert!(
+                verify_android_certificate(&signing, &debug_cert).is_err(),
+                "{signing}"
+            );
         }
         assert!(
             verify_android_certificate(&format!("{count}\n{production}"), ANDROID_PRODUCTION_CERT)

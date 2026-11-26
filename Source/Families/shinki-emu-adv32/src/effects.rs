@@ -322,7 +322,11 @@ impl ScreenBreak {
         let source = self.frame.as_slice();
         let (width, height) = (frame.width() as i32, frame.height() as i32);
         let mapping = self.presentation.map(|canvas| {
-            (RasterAxis::x(canvas), RasterAxis::y(canvas), canvas.raster().width)
+            (
+                RasterAxis::x(canvas),
+                RasterAxis::y(canvas),
+                canvas.raster().width,
+            )
         });
         for fragment in &self.fragments {
             let (x, y) = (fragment.position.0 as i32, fragment.position.1 as i32);

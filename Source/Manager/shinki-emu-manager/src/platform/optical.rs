@@ -25,7 +25,9 @@ impl OpticalVolume {
     }
 
     fn check(&self, current: Option<&Self>) -> Result<(), String> {
-        if current.is_some_and(|current| current.root == self.root && current.identity == self.identity) {
+        if current
+            .is_some_and(|current| current.root == self.root && current.identity == self.identity)
+        {
             Ok(())
         } else {
             Err(OPTICAL_MEDIA_UNAVAILABLE.into())
@@ -35,8 +37,8 @@ impl OpticalVolume {
 
 /// List mounted optical data volumes without reading their contents.
 pub fn optical_volumes() -> Result<Vec<OpticalVolume>, String> {
-    let mut volumes = native::volumes()
-        .map_err(|error| format!("SHINKI_EMU_OPTICAL_VOLUMES: {error}"))?;
+    let mut volumes =
+        native::volumes().map_err(|error| format!("SHINKI_EMU_OPTICAL_VOLUMES: {error}"))?;
     volumes.sort_unstable_by(|a, b| a.root.cmp(&b.root));
     volumes.dedup_by(|a, b| a.root == b.root);
     Ok(volumes)
@@ -47,7 +49,9 @@ mod native {
     use super::*;
     use std::io;
     use std::os::windows::ffi::OsStrExt;
-    use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW};
+    use windows::Win32::Storage::FileSystem::{
+        GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
+    };
     use windows::Win32::System::Diagnostics::Debug::{
         GetThreadErrorMode, SEM_FAILCRITICALERRORS, SetThreadErrorMode, THREAD_ERROR_MODE,
     };
@@ -77,9 +81,14 @@ mod native {
     }
 
     pub(super) fn at(root: &Path) -> io::Result<Option<OpticalVolume>> {
-        let Some(letter) = drive_letter(root) else { return Ok(None); };
+        let Some(letter) = drive_letter(root) else {
+            return Ok(None);
+        };
         let _guard = NoMediaDialog::new()?;
-        Ok(volume(dunce::simplified(root).to_owned(), drive_path(letter)))
+        Ok(volume(
+            dunce::simplified(root).to_owned(),
+            drive_path(letter),
+        ))
     }
 
     fn drive_letter(root: &Path) -> Option<u8> {
@@ -109,8 +118,14 @@ mod native {
                 return None;
             }
             GetVolumeInformationW(
-                drive, Some(&mut label), Some(&mut serial), None, Some(&mut flags), Some(&mut fs),
-            ).ok()?;
+                drive,
+                Some(&mut label),
+                Some(&mut serial),
+                None,
+                Some(&mut flags),
+                Some(&mut fs),
+            )
+            .ok()?;
         }
         let fs = wide_field(&fs);
         let label = wide_field(&label);
@@ -131,7 +146,10 @@ mod native {
     }
 
     fn wide_field(buffer: &[u16]) -> String {
-        let end = buffer.iter().position(|&unit| unit == 0).unwrap_or(buffer.len());
+        let end = buffer
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(buffer.len());
         String::from_utf16_lossy(&buffer[..end])
     }
 
@@ -183,11 +201,15 @@ mod native {
             match mount.volume() {
                 Ok(Some(volume)) => volumes.push(volume),
                 Ok(None) => (),
-                Err(error) if error.kind() == io::ErrorKind::Unsupported => identity_error = Some(error),
+                Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                    identity_error = Some(error)
+                }
                 Err(error) => return Err(error),
             }
         }
-        if volumes.is_empty() && let Some(error) = identity_error {
+        if volumes.is_empty()
+            && let Some(error) = identity_error
+        {
             return Err(error);
         }
         Ok(volumes)
@@ -224,14 +246,22 @@ mod native {
                 return None;
             }
             let root = fields.next()?;
-            if !fields.next()?.split(|&b| b == b',').any(|option| option == b"ro") {
+            if !fields
+                .next()?
+                .split(|&b| b == b',')
+                .any(|option| option == b"ro")
+            {
                 return None;
             }
             fields.find(|field| *field == b"-")?;
             if !matches!(fields.next()?, b"iso9660" | b"udf") || !root.starts_with(b"/") {
                 return None;
             }
-            Some(Mount { id, device, root: PathBuf::from(OsString::from_vec(unescape(root))) })
+            Some(Mount {
+                id,
+                device,
+                root: PathBuf::from(OsString::from_vec(unescape(root))),
+            })
         })
     }
 
@@ -263,20 +293,34 @@ mod native {
         fn volume(self) -> io::Result<Option<OpticalVolume>> {
             let mut device = Path::new("/sys/dev/block").join(self.device);
             if device.join("partition").is_file() {
-                let Ok(partition) = fs::canonicalize(&device) else { return Ok(None); };
-                let Some(parent) = partition.parent() else { return Ok(None); };
+                let Ok(partition) = fs::canonicalize(&device) else {
+                    return Ok(None);
+                };
+                let Some(parent) = partition.parent() else {
+                    return Ok(None);
+                };
                 device = parent.to_owned();
             }
-            let optical = fs::read_to_string(device.join("device/type")).is_ok_and(|kind| kind.trim() == "5");
+            let optical =
+                fs::read_to_string(device.join("device/type")).is_ok_and(|kind| kind.trim() == "5");
             // Desktop helpers mount ISO/UDF images as kernel loop devices.
-            let loop_source = if optical { None } else { fs::read(device.join("loop/backing_file")).ok() };
+            let loop_source = if optical {
+                None
+            } else {
+                fs::read(device.join("loop/backing_file")).ok()
+            };
             if !optical && loop_source.is_none() {
                 return Ok(None);
             }
             let sequence = match fs::read_to_string(device.join("diskseq")) {
                 Ok(value) if value.trim().parse::<u64>().is_ok() => value,
                 _ if !device.exists() => return Ok(None),
-                _ => return Err(io::Error::new(io::ErrorKind::Unsupported, "Optical media identity requires Linux disk sequence metadata (Linux 5.15 or newer)")),
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "Optical media identity requires Linux disk sequence metadata (Linux 5.15 or newer)",
+                    ));
+                }
             };
             let path = CString::new(self.root.as_os_str().as_bytes())?;
             // SAFETY: path is a live NUL-terminated mount root; access tests
@@ -287,22 +331,34 @@ mod native {
             let mut info = std::mem::MaybeUninit::<libc::statx>::uninit();
             // SAFETY: path and statx output storage are valid.
             let info = unsafe {
-                if libc::statx(libc::AT_FDCWD, path.as_ptr(), libc::AT_STATX_DONT_SYNC, libc::STATX_MNT_ID, info.as_mut_ptr()) != 0 {
+                if libc::statx(
+                    libc::AT_FDCWD,
+                    path.as_ptr(),
+                    libc::AT_STATX_DONT_SYNC,
+                    libc::STATX_MNT_ID,
+                    info.as_mut_ptr(),
+                ) != 0
+                {
                     return Ok(None);
                 }
                 info.assume_init()
             };
             if info.stx_mask & libc::STATX_MNT_ID == 0 {
-                return Err(io::Error::new(io::ErrorKind::Unsupported, "Cannot verify the active optical mount"));
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "Cannot verify the active optical mount",
+                ));
             }
             // Ignore optical filesystems obscured by another mount.
             if info.stx_mnt_id != self.id {
                 return Ok(None);
             }
-            let image = loop_source.map(|source| {
-                use sha2::{Digest, Sha256};
-                hex::encode(Sha256::digest(source))
-            }).unwrap_or_default();
+            let image = loop_source
+                .map(|source| {
+                    use sha2::{Digest, Sha256};
+                    hex::encode(Sha256::digest(source))
+                })
+                .unwrap_or_default();
             let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
             Ok(Some(OpticalVolume {
                 root: self.root,
@@ -328,10 +384,21 @@ mod native {
 46 22 0:22 / /media/Share ro - cifs //host/share ro\n\
 47 22 0:23 / /media/Audio ro - fuse.gvfsd-fuse gvfsd-fuse ro\n";
             let mounts: Vec<_> = mounts(table).collect();
-            assert_eq!(mounts, [
-                Mount { id: 42, device: "11:0", root: "/media/Game Disc".into() },
-                Mount { id: 43, device: "7:0", root: r"/mnt/ISO\1".into() },
-            ]);
+            assert_eq!(
+                mounts,
+                [
+                    Mount {
+                        id: 42,
+                        device: "11:0",
+                        root: "/media/Game Disc".into()
+                    },
+                    Mount {
+                        id: 43,
+                        device: "7:0",
+                        root: r"/mnt/ISO\1".into()
+                    },
+                ]
+            );
         }
     }
 }
@@ -370,7 +437,9 @@ mod native {
         unsafe { mounts.set_len((count as usize).min(mounts.capacity())) };
         let mut volumes = Vec::new();
         for mount in &mounts {
-            if optical_device(mount).is_some() && let Some(volume) = at(mount_root(mount))? {
+            if optical_device(mount).is_some()
+                && let Some(volume) = at(mount_root(mount))?
+            {
                 volumes.push(volume);
             }
         }
@@ -390,7 +459,9 @@ mod native {
         if root != mount_root(&mount) {
             return Ok(None);
         }
-        let Some(name) = optical_device(&mount) else { return Ok(None); };
+        let Some(name) = optical_device(&mount) else {
+            return Ok(None);
+        };
         // SAFETY: these calls look up an IOKit registry entry by BSD name.
         // IOServiceGetMatchingService consumes the matching CF dictionary.
         let id = unsafe {
@@ -417,15 +488,25 @@ mod native {
         let mut size = boot.len();
         // SAFETY: the boot UUID fits in the output buffer and sysctl validates size.
         let result = unsafe {
-            libc::sysctlbyname(c"kern.bootsessionuuid".as_ptr(), boot.as_mut_ptr().cast(), &mut size, std::ptr::null_mut(), 0)
+            libc::sysctlbyname(
+                c"kern.bootsessionuuid".as_ptr(),
+                boot.as_mut_ptr().cast(),
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            )
         };
         if result != 0 {
             return Err(io::Error::last_os_error());
         }
-        let boot = CStr::from_bytes_until_nul(&boot).map_err(io::Error::other)?.to_string_lossy();
+        let boot = CStr::from_bytes_until_nul(&boot)
+            .map_err(io::Error::other)?
+            .to_string_lossy();
         Ok(Some(OpticalVolume {
             root: root.to_owned(),
-            label: root.file_name().map(|name| name.to_string_lossy().into_owned()),
+            label: root
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned()),
             identity: format!("mac:{boot}:{id}"),
         }))
     }
@@ -450,7 +531,8 @@ mod native {
     fn field(buffer: &[c_char]) -> &[u8] {
         // SAFETY: c_char and u8 have the same size and alignment; mount fields
         // are byte strings. Search for NUL bounded by the actual field length.
-        let bytes = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), buffer.len()) };
+        let bytes =
+            unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), buffer.len()) };
         bytes.split(|&byte| byte == 0).next().unwrap_or_default()
     }
 }
@@ -461,8 +543,15 @@ mod tests {
 
     #[test]
     fn selected_media_does_not_follow_a_reused_mount_path() {
-        let selected = OpticalVolume { root: "disc".into(), label: Some("DEMO".into()), identity: "first".into() };
-        let replacement = OpticalVolume { identity: "second".into(), ..selected.clone() };
+        let selected = OpticalVolume {
+            root: "disc".into(),
+            label: Some("DEMO".into()),
+            identity: "first".into(),
+        };
+        let replacement = OpticalVolume {
+            identity: "second".into(),
+            ..selected.clone()
+        };
         assert!(selected.check(None).is_err());
         assert!(selected.check(Some(&replacement)).is_err());
         assert!(selected.check(Some(&selected)).is_ok());

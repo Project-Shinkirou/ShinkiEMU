@@ -151,12 +151,23 @@ mod tests {
         let sources = [Some(RectI::new(0, 0, 1, 1)), Some(RectI::new(1, 0, 1, 1))];
         let mut residency = SceneTextureResidency::default();
         let mut first = commands();
-        residency.prepare_with_sources(&mut first, &sources).unwrap();
-        let [SceneCommand::UploadTexture { resource_id, .. }, SceneCommand::Sprite {
-            source: left, texture_id: left_id, ..
-        }, SceneCommand::Sprite {
-            source: right, texture_id: right_id, ..
-        }] = first.as_slice() else {
+        residency
+            .prepare_with_sources(&mut first, &sources)
+            .unwrap();
+        let [
+            SceneCommand::UploadTexture { resource_id, .. },
+            SceneCommand::Sprite {
+                source: left,
+                texture_id: left_id,
+                ..
+            },
+            SceneCommand::Sprite {
+                source: right,
+                texture_id: right_id,
+                ..
+            },
+        ] = first.as_slice()
+        else {
             panic!("expected one upload and two draws");
         };
         assert_eq!((*left, *right), (sources[0], sources[1]));
@@ -164,6 +175,9 @@ mod tests {
 
         let mut next = commands();
         residency.prepare_with_sources(&mut next, &sources).unwrap();
-        assert!(matches!(next.as_slice(), [SceneCommand::Sprite { .. }, SceneCommand::Sprite { .. }]));
+        assert!(matches!(
+            next.as_slice(),
+            [SceneCommand::Sprite { .. }, SceneCommand::Sprite { .. }]
+        ));
     }
 }

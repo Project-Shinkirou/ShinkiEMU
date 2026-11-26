@@ -1,5 +1,7 @@
 //! Same-device GPU presentation. No backend or Rust object crosses the ABI.
-use crate::{Bytes, Error, Extent, Header, OpenRequest, OpenRequestTextV1, Status, INVALID_ARGUMENT};
+use crate::{
+    Bytes, Error, Extent, Header, INVALID_ARGUMENT, OpenRequest, OpenRequestTextV1, Status,
+};
 use std::ffi::c_void;
 
 pub const GPU_SCENE_VERSION: u32 = 1;
@@ -60,8 +62,14 @@ pub struct GpuImageV1 {
 }
 impl Default for GpuImageV1 {
     fn default() -> Self {
-        Self { extent: Extent::default(), format: 0, pixels: Bytes::EMPTY,
-            owner: std::ptr::null(), retain: None, release: None }
+        Self {
+            extent: Extent::default(),
+            format: 0,
+            pixels: Bytes::EMPTY,
+            owner: std::ptr::null(),
+            retain: None,
+            release: None,
+        }
     }
 }
 
@@ -97,11 +105,22 @@ pub struct GpuSceneCommandV1 {
 }
 impl Default for GpuSceneCommandV1 {
     fn default() -> Self {
-        Self { op: 0, mode: 0, id: Bytes::EMPTY, resource: Bytes::EMPTY,
-            rect: GpuRectV1::default(), source: GpuRectV1::default(),
-            image: GpuImageV1::default(), mask: GpuImageV1::default(),
-            glyphs: std::ptr::null(), glyph_count: 0, color: [0; 4], opacity: 0.0,
-            phase: 0.0, transform: [0.0; 6] }
+        Self {
+            op: 0,
+            mode: 0,
+            id: Bytes::EMPTY,
+            resource: Bytes::EMPTY,
+            rect: GpuRectV1::default(),
+            source: GpuRectV1::default(),
+            image: GpuImageV1::default(),
+            mask: GpuImageV1::default(),
+            glyphs: std::ptr::null(),
+            glyph_count: 0,
+            color: [0; 4],
+            opacity: 0.0,
+            phase: 0.0,
+            transform: [0.0; 6],
+        }
     }
 }
 
@@ -138,8 +157,11 @@ pub struct GpuSceneServiceV1 {
     pub size: u32,
     pub context: *mut c_void,
     pub create: Option<unsafe extern "C" fn(*mut c_void, u64, *mut u64, *mut Error) -> Status>,
-    pub submit: Option<unsafe extern "C" fn(*mut c_void, u64, *const GpuSceneFrameV1, *mut Error) -> Status>,
-    pub capture: Option<unsafe extern "C" fn(*mut c_void, u64, *mut u8, usize, *mut Error) -> Status>,
+    pub submit: Option<
+        unsafe extern "C" fn(*mut c_void, u64, *const GpuSceneFrameV1, *mut Error) -> Status,
+    >,
+    pub capture:
+        Option<unsafe extern "C" fn(*mut c_void, u64, *mut u8, usize, *mut Error) -> Status>,
     pub destroy: Option<unsafe extern "C" fn(*mut c_void, u64)>,
 }
 
@@ -164,14 +186,20 @@ pub struct GpuRasterFrameV2 {
 #[derive(Clone, Copy)]
 pub struct GpuSceneServiceV2 {
     pub base: GpuSceneServiceV1,
-    pub present_raster: Option<unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status>,
+    pub present_raster: Option<
+        unsafe extern "C" fn(*mut c_void, u64, *const GpuRasterFrameV2, *mut Error) -> Status,
+    >,
 }
 
 impl GpuSceneServiceV1 {
     pub fn validate(&self) -> Result<(), Status> {
-        if self.version != GPU_SCENE_VERSION || (self.size as usize) < std::mem::size_of::<Self>()
-            || self.context.is_null() || self.create.is_none() || self.submit.is_none()
-            || self.capture.is_none() || self.destroy.is_none()
+        if self.version != GPU_SCENE_VERSION
+            || (self.size as usize) < std::mem::size_of::<Self>()
+            || self.context.is_null()
+            || self.create.is_none()
+            || self.submit.is_none()
+            || self.capture.is_none()
+            || self.destroy.is_none()
         {
             return Err(INVALID_ARGUMENT);
         }
@@ -209,7 +237,9 @@ impl OpenRequest {
             return Err(INVALID_ARGUMENT);
         }
         let header = unsafe { &*service.cast::<[u32; 2]>() };
-        if header[0] != GPU_SCENE_VERSION || (header[1] as usize) < std::mem::size_of::<GpuSceneServiceV1>() {
+        if header[0] != GPU_SCENE_VERSION
+            || (header[1] as usize) < std::mem::size_of::<GpuSceneServiceV1>()
+        {
             return Err(INVALID_ARGUMENT);
         }
         let service = unsafe { *service };

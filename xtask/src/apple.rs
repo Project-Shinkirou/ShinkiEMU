@@ -201,7 +201,9 @@ fn has_executable_rpath(path: &Path) -> Result<bool> {
         bail!("expected a Mach-O bundle executable: {}", path.display());
     };
     let endian = macho.endian();
-    let mut commands = macho.macho_header().load_commands(endian, macho.data(), 0)?;
+    let mut commands = macho
+        .macho_header()
+        .load_commands(endian, macho.data(), 0)?;
     while let Some(command) = commands.next()? {
         if command.cmd() == object::macho::LC_RPATH {
             let rpath: &object::macho::RpathCommand<_> = command.data()?;

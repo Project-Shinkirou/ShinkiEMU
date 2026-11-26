@@ -84,7 +84,10 @@ pub(super) struct PresentationGrid {
 }
 
 impl PresentationGrid {
-    pub(super) const NATIVE: Self = Self { density: 1.0f32.to_bits(), phase: [0; 2] };
+    pub(super) const NATIVE: Self = Self {
+        density: 1.0f32.to_bits(),
+        phase: [0; 2],
+    };
 
     pub(super) fn scale(self) -> f32 {
         f32::from_bits(self.density)
@@ -94,7 +97,12 @@ impl PresentationGrid {
         self == Self::NATIVE
     }
 
-    fn at(run: &NativeRasterRun<'_>, camera: Transform2D, shake: [f32; 2], anchor: [i32; 2]) -> Self {
+    fn at(
+        run: &NativeRasterRun<'_>,
+        camera: Transform2D,
+        shake: [f32; 2],
+        anchor: [i32; 2],
+    ) -> Self {
         if run.style.raster.custom_bitmap_identity.is_some() {
             return Self::NATIVE;
         }
@@ -109,7 +117,10 @@ impl PresentationGrid {
             let physical = logical * camera.m11 + [camera.tx, camera.ty][axis];
             ((physical.rem_euclid(1.0) * 4.0).round() as u8) & 3
         });
-        Self { density: scale.to_bits(), phase }
+        Self {
+            density: scale.to_bits(),
+            phase,
+        }
     }
 }
 
@@ -409,15 +420,31 @@ impl NativeRasterRenderer {
                         let style = run.style.into();
                         let (bitmap, upload_offset) = if grid.is_native() {
                             paint::paint_upload(
-                                &cell.bitmap, style, run.pixel_size, grid, [0; 2], mask_only,
+                                &cell.bitmap,
+                                style,
+                                run.pixel_size,
+                                grid,
+                                [0; 2],
+                                mask_only,
                             )?
                         } else {
-                            let ink = cell.ink.expect("only a scalable cell has a presentation grid");
+                            let ink = cell
+                                .ink
+                                .expect("only a scalable cell has a presentation grid");
                             let (source, origin) = outline::presentation(
-                                &state.assets, &state.fonts[&key.font], key, &ink, grid,
+                                &state.assets,
+                                &state.fonts[&key.font],
+                                key,
+                                &ink,
+                                grid,
                             )?;
                             paint::paint_upload(
-                                &source, style, run.pixel_size, grid, origin, mask_only,
+                                &source,
+                                style,
+                                run.pixel_size,
+                                grid,
+                                origin,
+                                mask_only,
                             )?
                         };
                         let sequence = self.next_resource;
@@ -490,7 +517,12 @@ impl NativeRasterRenderer {
                     }]
                     .into(),
                     rgba: if mask_only {
-                        [(colors[0] >> 16) as u8, (colors[0] >> 8) as u8, colors[0] as u8, 255]
+                        [
+                            (colors[0] >> 16) as u8,
+                            (colors[0] >> 8) as u8,
+                            colors[0] as u8,
+                            255,
+                        ]
                     } else {
                         [255; 4]
                     },

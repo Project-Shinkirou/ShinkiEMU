@@ -414,7 +414,9 @@ impl DeviceCapacity {
         while full() && failed.get().is_none() && !stop.load(Ordering::Acquire) {
             let remaining = self.timeout.saturating_sub(start.elapsed());
             if remaining.is_zero() {
-                return Err("SHINKI_EMU_AUDIO_STALLED: native device queue made no progress".into());
+                return Err(
+                    "SHINKI_EMU_AUDIO_STALLED: native device queue made no progress".into(),
+                );
             }
             if let Some(sequence) = self.wake.wait_timeout(self.observed_wake, remaining) {
                 self.observed_wake = sequence;
@@ -589,7 +591,12 @@ mod tests {
         timeout: Duration,
     ) -> (Pipeline, NativeAudioConsumer) {
         let (producer, consumer, telemetry) = NativeAudioQueue::create(1, 8, wake.clone()).unwrap();
-        let clock = Arc::new(PlaybackClock::new(AudioTelemetry::Device(telemetry), 48_000, 2, 0));
+        let clock = Arc::new(PlaybackClock::new(
+            AudioTelemetry::Device(telemetry),
+            48_000,
+            2,
+            0,
+        ));
         let pipeline = Pipeline {
             blocks: BlockWriter {
                 producer: Producer::Device(producer),
@@ -612,7 +619,9 @@ mod tests {
 
     #[test]
     fn stream_notices_keep_playing_and_terminal_error_retains_first_cause() {
-        use cpal::ErrorKind::{BackendError, DeviceChanged, DeviceNotAvailable, RealtimeDenied, Xrun};
+        use cpal::ErrorKind::{
+            BackendError, DeviceChanged, DeviceNotAvailable, RealtimeDenied, Xrun,
+        };
 
         let stop = AtomicBool::new(false);
         let wake = AudioWakeRegistration::default();

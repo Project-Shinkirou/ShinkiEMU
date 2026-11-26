@@ -3,21 +3,51 @@
 use super::*;
 use shinki_emu_lucifen_formats::{FORMAT_ID, SCRIPT_ARCHIVE, has_script_index};
 
-pub(super) enum Rejected { NoMatch, Abort(DetectionError) }
+pub(super) enum Rejected {
+    NoMatch,
+    Abort(DetectionError),
+}
 impl From<DetectionError> for Rejected {
-    fn from(error: DetectionError) -> Self { Self::Abort(error) }
+    fn from(error: DetectionError) -> Self {
+        Self::Abort(error)
+    }
 }
 type ScanResult<T> = Result<T, Rejected>;
 
-fn u32le(bytes: &[u8], offset: usize) -> u64 { u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as u64 }
-fn u64le(bytes: &[u8], offset: usize) -> u64 { u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap()) }
-fn require(condition: bool) -> ScanResult<()> { if condition { Ok(()) } else { Err(Rejected::NoMatch) } }
-fn range(offset: u64, size: u64, length: u64) -> ScanResult<()> { require(offset.checked_add(size).is_some_and(|end| end <= length)) }
-fn nul_name(bytes: &[u8]) -> bool { bytes.iter().position(|b| *b == 0).is_some_and(|end| end > 0 && bytes[..end].iter().all(|b| *b >= 32)) }
-fn extension(path: &Path, value: &str) -> bool { path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(value)) }
+fn u32le(bytes: &[u8], offset: usize) -> u64 {
+    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as u64
+}
+fn u64le(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+}
+fn require(condition: bool) -> ScanResult<()> {
+    if condition {
+        Ok(())
+    } else {
+        Err(Rejected::NoMatch)
+    }
+}
+fn range(offset: u64, size: u64, length: u64) -> ScanResult<()> {
+    require(offset.checked_add(size).is_some_and(|end| end <= length))
+}
+fn nul_name(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .position(|b| *b == 0)
+        .is_some_and(|end| end > 0 && bytes[..end].iter().all(|b| *b >= 32))
+}
+fn extension(path: &Path, value: &str) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(value))
+}
 
 impl<T: DetectionTree> Scan<'_, T> {
-    pub(super) fn formats(&mut self, path: &Path, source: &mut Source, head: &[u8]) -> ScanResult<()> {
+    pub(super) fn formats(
+        &mut self,
+        path: &Path,
+        source: &mut Source,
+        head: &[u8],
+    ) -> ScanResult<()> {
         self.checkpoint()?;
         if head.starts_with(b"CPZ") {
             return self.cpz(source, head);
@@ -28,7 +58,11 @@ impl<T: DetectionTree> Scan<'_, T> {
             let decoded = u32le(head, 16) * 4 + u32le(head, 20) + u32le(head, 24) + u32le(head, 28);
             require(decoded > 0 && u32le(head, 32) < u32le(head, 20))?;
             let packed = u32le(head, 36);
-            range(48, if packed == 0 { decoded } else { packed }, source.length)?;
+            range(
+                48,
+                if packed == 0 { decoded } else { packed },
+                source.length,
+            )?;
             self.matched("cmvs", "cmvs.ps2a")?;
             return Ok(());
         }
@@ -59,13 +93,19 @@ impl<T: DetectionTree> Scan<'_, T> {
             let size = u64le(&index, 1);
             let prefix = if index[0] & 7 == 1 { 17 } else { 9 };
             range(offset, prefix, source.length)?;
-            if prefix == 17 { self.read_at(source, offset + 9, &mut index[9..])?; }
+            if prefix == 17 {
+                self.read_at(source, offset + 9, &mut index[9..])?;
+            }
             range(offset + prefix, size, source.length)?;
             self.matched("krkr", "xp3")?;
             return Ok(());
         }
-        if head.starts_with(b"MPK\0") { return self.mpk(source, head); }
-        if head.starts_with(b"RPA-") { return self.rpa(source, head); }
+        if head.starts_with(b"MPK\0") {
+            return self.mpk(source, head);
+        }
+        if head.starts_with(b"RPA-") {
+            return self.rpa(source, head);
+        }
         if head.starts_with(b"RENPY RPC2") {
             let mut cursor = 10;
             let mut slots = 0;
@@ -75,7 +115,9 @@ impl<T: DetectionTree> Scan<'_, T> {
                 range(cursor, 12, source.length)?;
                 self.read_at(source, cursor, &mut entry)?;
                 let slot = u32le(&entry, 0);
-                if slot == 0 { break; }
+                if slot == 0 {
+                    break;
+                }
                 require(slot <= 2 && slots < 2)?;
                 require(u32le(&entry, 4) >= cursor + 12 && u32le(&entry, 8) > 0)?;
                 range(u32le(&entry, 4), u32le(&entry, 8), source.length)?;
@@ -88,29 +130,48 @@ impl<T: DetectionTree> Scan<'_, T> {
         }
         if head.starts_with(b"LPK1") {
             require(path.parent() == Some(Path::new("")))?;
-            require(path.file_name().is_some_and(|name| name.eq_ignore_ascii_case(SCRIPT_ARCHIVE)))?;
+            require(
+                path.file_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(SCRIPT_ARCHIVE)),
+            )?;
             require(has_script_index(head, source.length))?;
             self.matched("lucifen", FORMAT_ID)?;
             return Ok(());
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if head.starts_with(b"pack_scn") || name.eq_ignore_ascii_case("scene.pck") || name.eq_ignore_ascii_case("scene.chs") {
-            if !self.siglus.allows(path) { return Err(Rejected::NoMatch); }
+        if head.starts_with(b"pack_scn")
+            || name.eq_ignore_ascii_case("scene.pck")
+            || name.eq_ignore_ascii_case("scene.chs")
+        {
+            if !self.siglus.allows(path) {
+                return Err(Rejected::NoMatch);
+            }
             return self.siglus(source, head);
         }
-        if extension(path, "hcb") || extension(path, "bch") { return self.hcb(source, head); }
-        if extension(path, "rpyc") && head.len() >= 2 && head[0] & 15 == 8
-            && head[0] >> 4 <= 7 && u16::from_be_bytes([head[0], head[1]]) % 31 == 0 {
+        if extension(path, "hcb") || extension(path, "bch") {
+            return self.hcb(source, head);
+        }
+        if extension(path, "rpyc")
+            && head.len() >= 2
+            && head[0] & 15 == 8
+            && head[0] >> 4 <= 7
+            && u16::from_be_bytes([head[0], head[1]]) % 31 == 0
+        {
             return self.legacy_rpyc(source);
         }
-        if source.length >= 0x804 { return self.softpal_pac(source); }
+        if source.length >= 0x804 {
+            return self.softpal_pac(source);
+        }
         Ok(())
     }
     fn cpz(&mut self, source: &mut Source, head: &[u8]) -> ScanResult<()> {
         require(head.len() >= 4)?;
         let (minimum, format) = match head[3] {
             b'1' | b'2' => return Ok(()),
-            b'3' => (20, "cmvs.cpz3"), b'5' => (64, "cmvs.cpz5"), b'6' => (64, "cmvs.cpz6"), b'7' => (72, "cmvs.cpz7"),
+            b'3' => (20, "cmvs.cpz3"),
+            b'5' => (64, "cmvs.cpz5"),
+            b'6' => (64, "cmvs.cpz6"),
+            b'7' => (72, "cmvs.cpz7"),
             _ => return Ok(()),
         };
         require(head.len() >= minimum)?;
@@ -124,9 +185,15 @@ impl<T: DetectionTree> Scan<'_, T> {
             let count = u32le(head, 4) ^ if old { 0xfe3a53d9 } else { 0xfe3a53da };
             let dirs = u32le(head, 8) ^ if old { 0x37f298e7 } else { 0x37f298e8 };
             let files = u32le(head, 12) ^ if old { 0x7a6f3a2c } else { 0x7a6f3a2d };
-            let key = if head[3] == b'7' { u32le(head, 64) ^ 0x65ef99f3 } else { 0 };
+            let key = if head[3] == b'7' {
+                u32le(head, 64) ^ 0x65ef99f3
+            } else {
+                0
+            };
             require(count > 0 && count * 17 <= dirs && files > 0)?;
-            if head[3] == b'7' { require(key >= 24)?; }
+            if head[3] == b'7' {
+                require(key >= 24)?;
+            }
             range(minimum as u64, dirs + files + key, source.length)?;
         }
         // The encrypted index and checksums remain selected-core validation work.
@@ -179,7 +246,11 @@ impl<T: DetectionTree> Scan<'_, T> {
             require(nul_name(&entry[..name_size]))?;
             let name = &entry[..entry[..name_size].iter().position(|b| *b == 0).unwrap()];
             bootstrap |= name.eq_ignore_ascii_case(b"ipl._bp");
-            range(base + u32le(entry, name_size), u32le(entry, name_size + 4), source.length)?;
+            range(
+                base + u32le(entry, name_size),
+                u32le(entry, name_size + 4),
+                source.length,
+            )?;
         }
         // A bootstrap entry disambiguates generic PackFile archives.
         if bootstrap || modern {
@@ -209,9 +280,15 @@ impl<T: DetectionTree> Scan<'_, T> {
         require(head.starts_with(b"RPA-2.0 ") || head.starts_with(b"RPA-3.0 "))?;
         let minimum = if head[4] == b'3' { 34 } else { 25 };
         require(head.len() >= minimum)?;
-        let number = |value: &[u8]| std::str::from_utf8(value).ok().and_then(|s| u64::from_str_radix(s, 16).ok());
+        let number = |value: &[u8]| {
+            std::str::from_utf8(value)
+                .ok()
+                .and_then(|s| u64::from_str_radix(s, 16).ok())
+        };
         let offset = number(&head[8..24]).ok_or(Rejected::NoMatch)?;
-        if minimum == 34 { require(head[24] == b' ' && number(&head[25..33]).is_some())?; }
+        if minimum == 34 {
+            require(head[24] == b' ' && number(&head[25..33]).is_some())?;
+        }
         require(offset >= minimum as u64)?;
         let mut zlib = [0; 2];
         range(offset, 2, source.length)?;
@@ -228,13 +305,21 @@ impl<T: DetectionTree> Scan<'_, T> {
         require(size >= 92 && size <= 4096 && size % 4 == 0)?;
         range(prefix as u64, size, source.length)?;
         let count = u32le(header, 56);
-        require(count > 0 && count == u32le(header, 64) && count == u32le(header, 72) && count == u32le(header, 80))?;
+        require(
+            count > 0
+                && count == u32le(header, 64)
+                && count == u32le(header, 72)
+                && count == u32le(header, 80),
+        )?;
         // Validate all fixed-width table ranges; UTF-16 names and payload remain encrypted.
         for (field, width) in [(4, 8), (12, 8), (28, 8), (36, 8), (52, 8), (68, 8)] {
             self.checkpoint()?;
             let offset = u32le(header, field);
             let entries = u32le(header, field + 4);
-            if entries > 0 { require(offset >= size + prefix as u64)?; range(offset, entries * width, source.length)?; }
+            if entries > 0 {
+                require(offset >= size + prefix as u64)?;
+                range(offset, entries * width, source.length)?;
+            }
         }
         let data = u32le(header, 76);
         require(data >= prefix as u64 + size && data < source.length)?;
@@ -251,7 +336,13 @@ impl<T: DetectionTree> Scan<'_, T> {
         require(head.len() >= 4)?;
         let descriptor = u32le(head, 0);
         require(descriptor >= 5 && descriptor < source.length)?;
-        let bytes = self.bytes(source, descriptor, (source.length - descriptor).try_into().map_err(|_| Rejected::NoMatch)?)?;
+        let bytes = self.bytes(
+            source,
+            descriptor,
+            (source.length - descriptor)
+                .try_into()
+                .map_err(|_| Rejected::NoMatch)?,
+        )?;
         require(bytes.len() >= 15)?;
         require(u32le(&bytes, 0) >= 4 && u32le(&bytes, 0) < descriptor && bytes[8] <= 15)?;
         let title = bytes[10] as usize;
@@ -267,7 +358,12 @@ impl<T: DetectionTree> Scan<'_, T> {
             let len = bytes[cursor + 1] as usize;
             cursor += 2;
             require(len > 1 && cursor + len <= bytes.len())?;
-            require(bytes[cursor + len - 1] == 0 && bytes[cursor..cursor + len - 1].iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_'))?;
+            require(
+                bytes[cursor + len - 1] == 0
+                    && bytes[cursor..cursor + len - 1]
+                        .iter()
+                        .all(|b| b.is_ascii_alphanumeric() || *b == b'_'),
+            )?;
             cursor += len;
         }
         // The native parser stops after custom_syscall_count; converters may

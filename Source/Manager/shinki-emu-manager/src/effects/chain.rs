@@ -111,17 +111,29 @@ impl ChainPlan {
                     Some(i) != source && target.size == output && target.format == layout.format
                 })
                 .unwrap_or_else(|| {
-                    slots.push(TargetSpec { size: output, format: layout.format, present });
+                    slots.push(TargetSpec {
+                        size: output,
+                        format: layout.format,
+                        present,
+                    });
                     slots.len() - 1
                 });
             if present {
                 slots[slot].present = true;
             }
-            steps.push(Step { input: size, output, slot });
+            steps.push(Step {
+                input: size,
+                output,
+                slot,
+            });
             size = output;
             source = Some(slot);
         }
-        Ok(Self { input, steps, slots })
+        Ok(Self {
+            input,
+            steps,
+            slots,
+        })
     }
 
     pub(super) fn output(&self) -> Size {
@@ -130,7 +142,11 @@ impl ChainPlan {
 }
 
 pub(super) fn extent((width, height): Size) -> wgpu::Extent3d {
-    wgpu::Extent3d { width, height, depth_or_array_layers: 1 }
+    wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    }
 }
 
 pub(super) struct PreparedStage {
@@ -160,7 +176,11 @@ impl PreparedStage {
         matches!(self.backend, PreparedBackend::Format4(_))
     }
 
-    pub(super) fn build(self, device: &wgpu::Device, dxc_path: &Path) -> Result<Stage, FilterError> {
+    pub(super) fn build(
+        self,
+        device: &wgpu::Device,
+        dxc_path: &Path,
+    ) -> Result<Stage, FilterError> {
         let backend = match self.backend {
             PreparedBackend::Format4(effect) => {
                 Backend::Format4(effect.build(device, dxc_path, self.layout.format)?)
@@ -168,7 +188,10 @@ impl PreparedStage {
             PreparedBackend::Classic(kind) => Backend::Classic(ClassicFilter::new(device, kind)),
             PreparedBackend::Anime4k(kind) => Backend::Anime4k(Anime4kFilter::new(device, kind)?),
         };
-        Ok(Stage { layout: self.layout, backend })
+        Ok(Stage {
+            layout: self.layout,
+            backend,
+        })
     }
 }
 
@@ -200,13 +223,18 @@ impl Backend {
     }
 }
 
-pub(super) fn prepared_stages(settings: &FilterSettings) -> Result<Vec<PreparedStage>, FilterError> {
+pub(super) fn prepared_stages(
+    settings: &FilterSettings,
+) -> Result<Vec<PreparedStage>, FilterError> {
     let mut stages = Vec::with_capacity(settings.stages.len());
     let empty = BTreeMap::new();
     let format4 = |source: &str, strength, params, mode: Option<OutputMode>, format| {
         let effect = PreparedFormat4::new(source, strength, params)?;
         Ok::<_, FilterError>(PreparedStage {
-            layout: StageLayout { output: mode.unwrap_or(effect.output_mode()), format },
+            layout: StageLayout {
+                output: mode.unwrap_or(effect.output_mode()),
+                format,
+            },
             backend: PreparedBackend::Format4(effect),
         })
     };
@@ -229,9 +257,19 @@ pub(super) fn prepared_stages(settings: &FilterSettings) -> Result<Vec<PreparedS
                     None,
                     wgpu::TextureFormat::Rgba16Float,
                 )?);
-                stages.push(builtin(UPSCALE_SOURCE, FILTER_DEFAULT_STRENGTH, None, RGBA8)?);
+                stages.push(builtin(
+                    UPSCALE_SOURCE,
+                    FILTER_DEFAULT_STRENGTH,
+                    None,
+                    RGBA8,
+                )?);
             }
-            FilterStage::Format4 { source, strength, parameters, disabled: false } => {
+            FilterStage::Format4 {
+                source,
+                strength,
+                parameters,
+                disabled: false,
+            } => {
                 stages.push(format4(source, *strength, parameters, None, RGBA8)?);
             }
             FilterStage::Format4 { disabled: true, .. } => {}
@@ -250,7 +288,10 @@ pub(super) fn prepared_stages(settings: &FilterSettings) -> Result<Vec<PreparedS
                 backend: PreparedBackend::Classic(ClassicKind::Scale2x),
             }),
             FilterStage::Anime4kOriginalRestore => stages.push(PreparedStage {
-                layout: StageLayout { output: OutputMode::SameExtent, format: RGBA8 },
+                layout: StageLayout {
+                    output: OutputMode::SameExtent,
+                    format: RGBA8,
+                },
                 backend: PreparedBackend::Anime4k(Anime4kKind::RestoreSmall),
             }),
             FilterStage::Anime4kOriginalX2 => stages.push(PreparedStage {
@@ -272,17 +313,23 @@ mod tests {
 
     #[test]
     fn filter_plan_reuses_nonaliasing_targets_and_checks_intermediate_sizes() {
-        let same = StageLayout { output: OutputMode::SameExtent, format: RGBA8 };
+        let same = StageLayout {
+            output: OutputMode::SameExtent,
+            format: RGBA8,
+        };
         let double = StageLayout {
             output: OutputMode::Resize(Resize::Exact { x: 2, y: 2 }),
             format: RGBA8,
         };
-        let plan = ChainPlan::new((721, 1280), 4096, [same, double, same, same].into_iter())
-            .unwrap();
+        let plan =
+            ChainPlan::new((721, 1280), 4096, [same, double, same, same].into_iter()).unwrap();
         assert_eq!(plan.output(), (1442, 2560));
         assert_eq!(plan.steps[1].input, (721, 1280));
         assert_eq!(plan.steps[2].input, (1442, 2560));
-        assert_eq!(plan.steps.iter().map(|s| s.slot).collect::<Vec<_>>(), [0, 1, 2, 1]);
+        assert_eq!(
+            plan.steps.iter().map(|s| s.slot).collect::<Vec<_>>(),
+            [0, 1, 2, 1]
+        );
         assert!(plan.slots[1].present);
         assert!(ChainPlan::new((721, 1280), 2048, [same, double].into_iter()).is_err());
         assert!(ChainPlan::new((u32::MAX, 1), u32::MAX, [double].into_iter()).is_err());
@@ -300,11 +347,29 @@ mod tests {
             (vec![FilterStage::Scale { scale: 1.5 }], (1082, 1920)),
             (vec![external(SCALE_SOURCE)], (721, 1280)),
             (vec![external(UPSCALE_SOURCE)], (1442, 2560)),
-            (vec![FilterStage::LegacyAnime4k, FilterStage::Scale { scale: 1.5 }], (2163, 3840)),
-            (vec![FilterStage::Scale { scale: 1.5 }, FilterStage::LegacyAnime4k], (2164, 3840)),
+            (
+                vec![
+                    FilterStage::LegacyAnime4k,
+                    FilterStage::Scale { scale: 1.5 },
+                ],
+                (2163, 3840),
+            ),
+            (
+                vec![
+                    FilterStage::Scale { scale: 1.5 },
+                    FilterStage::LegacyAnime4k,
+                ],
+                (2164, 3840),
+            ),
         ] {
             let settings = FilterSettings { stages };
-            assert_eq!(PreparedFilter::new(&settings).unwrap().output_dimensions(721, 1280).unwrap(), expected);
+            assert_eq!(
+                PreparedFilter::new(&settings)
+                    .unwrap()
+                    .output_dimensions(721, 1280)
+                    .unwrap(),
+                expected
+            );
         }
     }
 
@@ -321,9 +386,12 @@ mod tests {
         assert!(PreparedFilter::new(&settings("not an effect".into(), BTreeMap::new())).is_err());
         let invalid_format = UPSCALE_SOURCE.replace("R16G16B16A16_FLOAT", "R32_FLOAT");
         assert!(PreparedFilter::new(&settings(invalid_format, BTreeMap::new())).is_err());
-        assert!(PreparedFilter::new(&settings(
-            SCALE_SOURCE.into(),
-            BTreeMap::from([("unknown".into(), 1.0)]),
-        )).is_err());
+        assert!(
+            PreparedFilter::new(&settings(
+                SCALE_SOURCE.into(),
+                BTreeMap::from([("unknown".into(), 1.0)]),
+            ))
+            .is_err()
+        );
     }
 }

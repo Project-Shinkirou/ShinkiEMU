@@ -8,8 +8,8 @@
 //! (comma-separated id prefixes such as `patch/failed`) limits the states drawn.
 
 use std::{
-    path::{Path, PathBuf},
     cell::{Cell, RefCell},
+    path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -17,18 +17,18 @@ use std::{
 use i_slint_core::input::TouchPhase;
 use shinki_emu_manager_ui_slint::{
     App, ChoiceViewModel, ConfigFieldViewModel, GameCardViewModel, GameSettingsViewModel, Library,
-    ManagerViewModel, NoticeViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel, RecipeViewModel,
-    RenderViewModel, SelectedGameViewModel, Session, SlintManagerAdapter, Store,
-    StoreDepotViewModel, StoreGameViewModel, StoreLoadState, StoreLoginState, i18n, report_error, tr,
+    ManagerViewModel, NoticeViewModel, Onboarding, Patch, PatchGameViewModel, PatchStateViewModel,
+    RecipeViewModel, RenderViewModel, SelectedGameViewModel, Session, SlintManagerAdapter, Store,
+    StoreDepotViewModel, StoreGameViewModel, StoreLoadState, StoreLoginState, i18n, report_error,
+    tr,
 };
 use slint::{
-    ComponentHandle, Model,
+    ComponentHandle, LogicalPosition, Model, SharedString,
     platform::{
         EventLoopProxy, InternalEvent, Platform, PointerEventButton, WindowAdapter, WindowEvent,
         software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     },
     private_unstable_api::re_exports::{AccessibleStringProperty, ItemRc, Key, WindowInner},
-    LogicalPosition, SharedString,
 };
 
 type Job = Box<dyn FnOnce() + Send>;
@@ -515,7 +515,8 @@ fn states() -> Vec<(&'static str, Setup)> {
         ("library/scan-failed", |a, _| {
             let mut m = base();
             m.library.prepare_state = "failed".into();
-            m.library.prepare_detail = shinki_emu_manager_ui_slint::tr!("请检查文件夹权限，或选择其他文件夹。").into();
+            m.library.prepare_detail =
+                shinki_emu_manager_ui_slint::tr!("请检查文件夹权限，或选择其他文件夹。").into();
             m.library.prepare_label = shinki_emu_manager_ui_slint::tr!("重试").into();
             a.apply(&m);
             page(a, "library");
@@ -892,7 +893,9 @@ fn every_page_renders_stable_frames() {
     let output = std::env::var_os("SHINKI_UI_SCREENSHOT_DIR").map(PathBuf::from);
     // A comma-separated language override draws only the narrow layout.
     let narrow = std::env::var("SHINKI_UI_NARROW_LOCALES").ok();
-    let narrow_languages = narrow.as_deref().map(|value| value.split(',').collect::<Vec<_>>());
+    let narrow_languages = narrow
+        .as_deref()
+        .map(|value| value.split(',').collect::<Vec<_>>());
     let (languages, sizes): (&[&str], &[(u32, u32)]) = if let Some(langs) = &narrow_languages {
         (langs, &[(360, 780)])
     } else if output.is_some() {
@@ -919,16 +922,32 @@ fn every_page_renders_stable_frames() {
                         .expect("write png");
                 }
             };
-            if only.is_empty() || only.iter().any(|p| "library-toolbar/interaction".starts_with(p)) {
+            if only.is_empty()
+                || only
+                    .iter()
+                    .any(|p| "library-toolbar/interaction".starts_with(p))
+            {
                 exercise_library(&adapter, &software, &data, (width, height), save);
             }
-            if only.is_empty() || only.iter().any(|p| "library-import/interaction".starts_with(p)) {
+            if only.is_empty()
+                || only
+                    .iter()
+                    .any(|p| "library-import/interaction".starts_with(p))
+            {
                 exercise_import_dialog(&adapter, &software, &data, (width, height), save);
             }
-            if only.is_empty() || only.iter().any(|p| "settings/storage-access".starts_with(p)) {
+            if only.is_empty()
+                || only
+                    .iter()
+                    .any(|p| "settings/storage-access".starts_with(p))
+            {
                 exercise_storage_access(&adapter, &software, (width, height), save);
             }
-            if only.is_empty() || only.iter().any(|p| "onboarding/storage-access".starts_with(p)) {
+            if only.is_empty()
+                || only
+                    .iter()
+                    .any(|p| "onboarding/storage-access".starts_with(p))
+            {
                 exercise_onboarding_storage(&adapter, &software, (width, height), save);
             }
             if only.is_empty() || only.iter().any(|p| "cores/cards".starts_with(p)) {
@@ -989,7 +1008,10 @@ fn every_page_renders_stable_frames() {
 
 // Use accessible names to locate real controls, then send pointer input through the window.
 // The pinned Slint API gives their bounds without test-only geometry properties in the UI.
-fn labeled_item(software: &MinimalSoftwareWindow, matches: impl Fn(&str) -> bool) -> Option<ItemRc> {
+fn labeled_item(
+    software: &MinimalSoftwareWindow,
+    matches: impl Fn(&str) -> bool,
+) -> Option<ItemRc> {
     matching_label(software, |label, _| matches(label))
 }
 
@@ -999,11 +1021,20 @@ fn matching_label(
 ) -> Option<ItemRc> {
     let window = WindowInner::from_pub(software.window());
     let mut stack = vec![window.window_item_rc()?];
-    stack.extend(window.active_popups().iter().map(|popup| ItemRc::new_root(popup.component.clone())));
+    stack.extend(
+        window
+            .active_popups()
+            .iter()
+            .map(|popup| ItemRc::new_root(popup.component.clone())),
+    );
     while let Some(item) = stack.pop() {
-        stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
+        stack.extend(std::iter::successors(
+            item.first_child(),
+            ItemRc::next_sibling,
+        ));
         if item.is_visible()
-            && item.accessible_string_property(AccessibleStringProperty::Label)
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
                 .is_some_and(|label| matches(label.as_str(), &item))
         {
             return Some(item);
@@ -1021,9 +1052,17 @@ fn click_label(software: &MinimalSoftwareWindow, label: &str) -> LogicalPosition
 
 fn click_at(software: &MinimalSoftwareWindow, position: LogicalPosition) -> LogicalPosition {
     software.dispatch_event(WindowEvent::PointerMoved { position });
-    software.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
-    software.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
-    software.dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(0.0, 0.0) });
+    software.dispatch_event(WindowEvent::PointerPressed {
+        position,
+        button: PointerEventButton::Left,
+    });
+    software.dispatch_event(WindowEvent::PointerReleased {
+        position,
+        button: PointerEventButton::Left,
+    });
+    software.dispatch_event(WindowEvent::PointerMoved {
+        position: LogicalPosition::new(0.0, 0.0),
+    });
     position
 }
 
@@ -1035,7 +1074,9 @@ fn press(software: &MinimalSoftwareWindow, key: impl Into<SharedString>) {
 
 fn ctrl_f(software: &MinimalSoftwareWindow) {
     let control: SharedString = Key::Control.into();
-    software.dispatch_event(WindowEvent::KeyPressed { text: control.clone() });
+    software.dispatch_event(WindowEvent::KeyPressed {
+        text: control.clone(),
+    });
     press(software, "f");
     software.dispatch_event(WindowEvent::KeyReleased { text: control });
 }
@@ -1050,8 +1091,16 @@ fn touch(software: &MinimalSoftwareWindow, position: LogicalPosition, phase: Tou
 
 fn swipe(software: &MinimalSoftwareWindow, x: f32, y: f32, dx: f32, dy: f32) {
     touch(software, LogicalPosition::new(x, y), TouchPhase::Started);
-    touch(software, LogicalPosition::new(x + dx, y + dy), TouchPhase::Moved);
-    touch(software, LogicalPosition::new(x + dx, y + dy), TouchPhase::Ended);
+    touch(
+        software,
+        LogicalPosition::new(x + dx, y + dy),
+        TouchPhase::Moved,
+    );
+    touch(
+        software,
+        LogicalPosition::new(x + dx, y + dy),
+        TouchPhase::Ended,
+    );
 }
 
 fn exercise_library(
@@ -1063,7 +1112,9 @@ fn exercise_library(
 ) {
     let frame = || render(software, width, height);
     let window = a.window();
-    window.global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>().set_touch(width < 600);
+    window
+        .global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>()
+        .set_touch(width < 600);
     let app = window.global::<App>();
     let library = window.global::<Library>();
     let onboarding = window.global::<Onboarding>();
@@ -1076,7 +1127,8 @@ fn exercise_library(
     let clear = tr!("清除搜索和筛选");
     let refresh = tr!("刷新资料库");
     let visible = |label: &str| labeled_item(software, |text| text == label).is_some();
-    let game_visible = |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
+    let game_visible =
+        |title: &str| labeled_item(software, |text| text.starts_with(title)).is_some();
     let check_toolbar = || {
         let mut last = width as f32 * 0.5;
         for label in [search_button, add, download] {
@@ -1099,8 +1151,15 @@ fn exercise_library(
     onboarding.set_step(0);
     frame();
     click_label(software, tr!("下一步"));
-    assert_eq!(onboarding.get_step(), 1, "next works immediately on the first step");
-    assert!(!network.get_allowed(), "advance does not grant network access");
+    assert_eq!(
+        onboarding.get_step(),
+        1,
+        "next works immediately on the first step"
+    );
+    assert!(
+        !network.get_allowed(),
+        "advance does not grant network access"
+    );
     frame();
     click_label(software, tr!("下一步"));
     assert_eq!(onboarding.get_step(), 2);
@@ -1140,10 +1199,17 @@ fn exercise_library(
         }
     });
     click_label(software, add);
-    assert_eq!(app.get_page(), "library", "add opens the picker callback without navigating");
+    assert_eq!(
+        app.get_page(),
+        "library",
+        "add opens the picker callback without navigating"
+    );
     assert_eq!(attempts.get(), 1);
     save("library-toolbar/picker-denied", frame());
-    assert!(visible(tr!("关闭")), "picker failure shows a dismissible notice");
+    assert!(
+        visible(tr!("关闭")),
+        "picker failure shows a dismissible notice"
+    );
     click_label(software, tr!("关闭"));
     click_label(software, add);
     assert_eq!(attempts.get(), 2);
@@ -1166,13 +1232,20 @@ fn exercise_library(
         move |query: Option<SharedString>, filter: Option<SharedString>| {
             let Some(a) = weak.upgrade() else { return };
             let mut m = state.borrow_mut();
-            if let Some(query) = query { m.library.query = query.to_string(); }
-            if let Some(filter) = filter { m.library.compat_filter = filter.to_string(); }
+            if let Some(query) = query {
+                m.library.query = query.to_string();
+            }
+            if let Some(filter) = filter {
+                m.library.compat_filter = filter.to_string();
+            }
             let query = m.library.query.to_ascii_lowercase();
             let filter = m.library.compat_filter.as_str();
-            m.library.games = all_games.iter()
-                .filter(|game| game.title.to_ascii_lowercase().contains(&query)
-                    && (filter == "all" || game.compat == filter))
+            m.library.games = all_games
+                .iter()
+                .filter(|game| {
+                    game.title.to_ascii_lowercase().contains(&query)
+                        && (filter == "all" || game.compat == filter)
+                })
                 .cloned()
                 .collect();
             a.apply(&m);
@@ -1186,7 +1259,12 @@ fn exercise_library(
     library.on_select(move |id| {
         let Some(a) = weak.upgrade() else { return };
         let mut m = selected.borrow_mut();
-        let game = m.library.games.iter().find(|g| g.id == id.as_str()).expect("selected result");
+        let game = m
+            .library
+            .games
+            .iter()
+            .find(|g| g.id == id.as_str())
+            .expect("selected result");
         m.selection.game = SelectedGameViewModel {
             id: game.id.clone(),
             title: game.title.clone(),
@@ -1225,7 +1303,9 @@ fn exercise_library(
     assert_eq!(app.get_page(), "library-search");
     assert!(!visible(add) && !visible(refresh));
     save("library-toolbar/search", frame());
-    for ch in "Harbor".chars() { press(software, ch.to_string()); }
+    for ch in "Harbor".chars() {
+        press(software, ch.to_string());
+    }
     assert_eq!(state.borrow().library.query, "Harbor");
     assert_eq!(library.get_games().row_count(), 2);
     let mut results = frame();
@@ -1235,7 +1315,10 @@ fn exercise_library(
         }
         results = frame();
     }
-    assert!(library.get_games().row_data(0).unwrap().cover.size().width > 0, "live search loads covers");
+    assert!(
+        library.get_games().row_data(0).unwrap().cover.size().width > 0,
+        "live search loads covers"
+    );
     save("library-toolbar/search-live-results", results);
     assert!(game_visible("Harbor Lights") && game_visible("Harbor Letters"));
     assert!(!game_visible("Snowfield Letters"));
@@ -1243,10 +1326,13 @@ fn exercise_library(
     click_label(software, filters);
     frame();
     // The result card also displays "Perfect"; click the checkable filter chip, not its badge.
-    let chip = matching_label(software, |label, item| label == tr!("完美")
-        && item.accessible_string_property(AccessibleStringProperty::Checkable)
-            .is_some_and(|value| value == "true"))
-        .expect("compatibility filter chip is visible");
+    let chip = matching_label(software, |label, item| {
+        label == tr!("完美")
+            && item
+                .accessible_string_property(AccessibleStringProperty::Checkable)
+                .is_some_and(|value| value == "true")
+    })
+    .expect("compatibility filter chip is visible");
     let center = chip.map_to_native_window(chip.geometry().center());
     click_at(software, LogicalPosition::new(center.x, center.y));
     save("library-toolbar/search-with-filters", frame());
@@ -1261,7 +1347,10 @@ fn exercise_library(
     let center = result.map_to_native_window(result.geometry().center());
     assert!(center.y > 56.0 && center.y < height as f32 - 80.0);
     click_at(software, LogicalPosition::new(center.x, center.y));
-    assert!(library.get_detail_open(), "clicking the live result opens its normal detail");
+    assert!(
+        library.get_detail_open(),
+        "clicking the live result opens its normal detail"
+    );
     assert_eq!(state.borrow().library.selected_id, "g01");
     save("library-toolbar/search-result-detail", frame());
     assert!(visible(tr!("开始游戏")));
@@ -1271,7 +1360,10 @@ fn exercise_library(
     assert!(!library.get_detail_open());
     frame();
     press(software, "x");
-    assert!(state.borrow().library.query.contains('x'), "closing details refocuses search");
+    assert!(
+        state.borrow().library.query.contains('x'),
+        "closing details refocuses search"
+    );
     assert_eq!(library.get_games().row_count(), 0);
     save("library-toolbar/search-no-match", frame());
     press(software, Key::Backspace);
@@ -1292,7 +1384,10 @@ fn exercise_library(
     assert_eq!(app.get_page(), "library-search");
     frame();
     press(software, "x");
-    assert!(state.borrow().library.query.contains('x'), "Ctrl+F focuses the search field");
+    assert!(
+        state.borrow().library.query.contains('x'),
+        "Ctrl+F focuses the search field"
+    );
     frame();
     click_label(software, filters);
     frame();
@@ -1300,7 +1395,10 @@ fn exercise_library(
     assert!(state.borrow().library.query.is_empty());
     assert_eq!(state.borrow().library.compat_filter, "all");
     let back = click_label(software, tr!("返回游戏库"));
-    assert!(back.y < 64.0, "the app bar stays above the scrollable controls");
+    assert!(
+        back.y < 64.0,
+        "the app bar stays above the scrollable controls"
+    );
     assert_eq!(app.get_page(), "library");
     frame();
     assert_eq!(library.get_games().row_count(), game_count);
@@ -1327,7 +1425,11 @@ fn exercise_library(
     swipe(software, start.x, start.y, 0.0, 20.0);
     swipe(software, start.x, start.y, 85.0, 12.0);
     swipe(software, start.x, start.y, 95.0, 74.0);
-    assert_eq!(refresh_count.get(), 0, "short, horizontal and diagonal drags do not refresh");
+    assert_eq!(
+        refresh_count.get(),
+        0,
+        "short, horizontal and diagonal drags do not refresh"
+    );
     if library.get_detail_open() {
         press(software, Key::Back);
         frame();
@@ -1336,15 +1438,27 @@ fn exercise_library(
     let position = LogicalPosition::new(start.x, start.y);
     touch(software, position, TouchPhase::Started);
     touch(software, position, TouchPhase::Ended);
-    assert!(library.get_detail_open(), "ordinary tap opens the first card while refresh is available");
+    assert!(
+        library.get_detail_open(),
+        "ordinary tap opens the first card while refresh is available"
+    );
     press(software, back_key);
     frame();
-    software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -140.0 });
+    software.dispatch_event(WindowEvent::PointerScrolled {
+        position,
+        delta_x: 0.0,
+        delta_y: -140.0,
+    });
     frame();
     let offset_card = labeled_item(software, |text| text.starts_with("Harbor Lights"))
         .expect("first card still present after scrolling");
-    let offset = offset_card.map_to_native_window(offset_card.geometry().center()).y;
-    assert!(offset < start.y, "wheel scroll placed the viewport below the top");
+    let offset = offset_card
+        .map_to_native_window(offset_card.geometry().center())
+        .y;
+    assert!(
+        offset < start.y,
+        "wheel scroll placed the viewport below the top"
+    );
     let mid = LogicalPosition::new(start.x, start.y);
     let top = LogicalPosition::new(start.x, start.y + 200.0);
     touch(software, mid, TouchPhase::Started);
@@ -1352,7 +1466,11 @@ fn exercise_library(
     save("library-toolbar/pull-from-mid-list", frame());
     touch(software, top, TouchPhase::Ended);
     frame();
-    assert_eq!(refresh_count.get(), 0, "reaching the top is not a refresh if the swipe began below it");
+    assert_eq!(
+        refresh_count.get(),
+        0,
+        "reaching the top is not a refresh if the swipe began below it"
+    );
     let pos = LogicalPosition::new(start.x, start.y);
     let end = LogicalPosition::new(start.x, start.y + 92.0);
     touch(software, pos, TouchPhase::Started);
@@ -1361,7 +1479,10 @@ fn exercise_library(
     save("library-toolbar/pull-armed", frame());
     touch(software, end, TouchPhase::Ended);
     assert_eq!(refresh_count.get(), 1);
-    assert!(!library.get_detail_open(), "a refresh pull does not open the first card");
+    assert!(
+        !library.get_detail_open(),
+        "a refresh pull does not open the first card"
+    );
     save("library-toolbar/pull-refreshing", frame());
     swipe(software, start.x, start.y + 50.0, 0.0, 95.0);
     assert_eq!(refresh_count.get(), 1, "busy refresh rejects another pull");
@@ -1370,7 +1491,11 @@ fn exercise_library(
     a.apply(&empty_library);
     frame();
     swipe(software, width as f32 * 0.5, 140.0, 0.0, 100.0);
-    assert_eq!(refresh_count.get(), 2, "a configured empty library can be refreshed");
+    assert_eq!(
+        refresh_count.get(),
+        2,
+        "a configured empty library can be refreshed"
+    );
 
     a.apply(&base());
     settings(a, "library-roots");
@@ -1381,7 +1506,9 @@ fn exercise_library(
     frame();
     assert!(visible(tr!("取消扫描")));
     assert!(!visible(refresh));
-    window.global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>().set_touch(false);
+    window
+        .global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>()
+        .set_touch(false);
 }
 
 fn exercise_storage_access(
@@ -1392,7 +1519,9 @@ fn exercise_storage_access(
 ) {
     use shinki_emu_manager_ui_slint::Settings;
 
-    let material = a.window().global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>();
+    let material = a
+        .window()
+        .global::<shinki_emu_manager_ui_slint::MaterialWindowAdapter>();
     material.set_touch(width < 600);
     let app = a.window().global::<Settings>();
     let allow = tr!("允许访问共享存储");
@@ -1403,7 +1532,10 @@ fn exercise_storage_access(
     a.apply(&base());
     settings(a, "library-roots");
     frame();
-    assert!(!visible(allow) && !visible(granted), "desktop has no Android prompt");
+    assert!(
+        !visible(allow) && !visible(granted),
+        "desktop has no Android prompt"
+    );
     app.set_android_storage_access_available(true);
     frame();
     assert!(visible(allow) && !visible(granted));
@@ -1414,11 +1546,17 @@ fn exercise_storage_access(
     click_label(software, allow);
     assert_eq!(opens.get(), 1);
     save("settings/storage-access-not-granted", frame());
-    assert!(visible(allow) && !visible(granted), "opening settings does not grant anything");
+    assert!(
+        visible(allow) && !visible(granted),
+        "opening settings does not grant anything"
+    );
 
     app.set_android_storage_access_granted(true);
     save("settings/storage-access-granted", frame());
-    assert!(!visible(allow) && visible(granted), "only host-reported permission appears as granted");
+    assert!(
+        !visible(allow) && visible(granted),
+        "only host-reported permission appears as granted"
+    );
     app.set_android_storage_access_granted(false);
     app.set_android_storage_access_available(false);
     material.set_touch(false);
@@ -1447,7 +1585,11 @@ fn exercise_import_dialog(
     ready.library.selected_id = ready.library.games[0].id.clone();
     let mut import = ready.clone();
     import.library.prepare_state = "importing".into();
-    import.library.prepare_detail = tr!("正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…", directories = 18, games = 2);
+    import.library.prepare_detail = tr!(
+        "正在导入游戏目录：已检查 {directories} 个目录，识别 {games} 部作品…",
+        directories = 18,
+        games = 2
+    );
     import.library.prepare_progress = Some(0.65);
     import.library.can_refresh = false;
     import.library.can_cancel_prepare = true;
@@ -1462,14 +1604,22 @@ fn exercise_import_dialog(
         }
     });
 
-    for (i, key) in [None, Some(Key::Escape), Some(Key::Back)].into_iter().enumerate() {
+    for (i, key) in [None, Some(Key::Escape), Some(Key::Back)]
+        .into_iter()
+        .enumerate()
+    {
         a.apply(&ready);
         frame();
         click_label(software, add);
         let progress = frame();
         assert!(modal());
-        assert!(matching_label(software, |text, item| text == label
-            && item.accessible_string_property(AccessibleStringProperty::Value).is_some_and(|v| v == "65%")).is_some());
+        assert!(
+            matching_label(software, |text, item| text == label
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Value)
+                    .is_some_and(|v| v == "65%"))
+            .is_some()
+        );
         let add_item = labeled_item(software, |text| text == add).expect("background action");
         let center = add_item.map_to_native_window(add_item.geometry().center());
         click_at(software, LogicalPosition::new(center.x, center.y));
@@ -1483,13 +1633,20 @@ fn exercise_import_dialog(
         }
         press(software, Key::Back);
         press(software, Key::Escape);
-        assert_eq!(cancels.get(), i + 1, "cancel is sent only once before terminal state");
+        assert_eq!(
+            cancels.get(),
+            i + 1,
+            "cancel is sent only once before terminal state"
+        );
         assert!(modal());
         a.apply(&ready);
         frame();
         assert!(!modal());
         assert_eq!(app.get_page(), "library");
-        assert_eq!(library.get_selected_id(), ready.library.selected_id.as_str());
+        assert_eq!(
+            library.get_selected_id(),
+            ready.library.selected_id.as_str()
+        );
         assert_eq!(library.get_games().row_count(), ready.library.games.len());
     }
 
@@ -1546,7 +1703,10 @@ fn exercise_onboarding_storage(
     page(a, "onboarding");
     wizard.set_step(0);
     frame();
-    assert!(!visible(allow) && !visible(granted), "permission entry is Android-only");
+    assert!(
+        !visible(allow) && !visible(granted),
+        "permission entry is Android-only"
+    );
 
     let opened = Rc::new(Cell::new(0));
     let count = opened.clone();
@@ -1555,7 +1715,8 @@ fn exercise_onboarding_storage(
     save("onboarding/storage-available", frame());
     let action = click_label(software, allow);
     assert_eq!(opened.get(), 1);
-    let add = labeled_item(software, |text| text == tr!("添加目录")).expect("folder picker stays available");
+    let add = labeled_item(software, |text| text == tr!("添加目录"))
+        .expect("folder picker stays available");
     assert!(action.y < add.map_to_native_window(add.geometry().center()).y);
     assert!(!visible(granted), "the click did not grant permission");
     click_label(software, tr!("下一步"));
@@ -1578,7 +1739,9 @@ fn exercise_core_cards(
     (width, height): (u32, u32),
     save: impl Fn(&str, Vec<u8>),
 ) {
-    use shinki_emu_manager_ui_slint::{CoreDownloadViewModel, CoreViewModel, Cores, MaterialWindowAdapter};
+    use shinki_emu_manager_ui_slint::{
+        CoreDownloadViewModel, CoreViewModel, Cores, MaterialWindowAdapter,
+    };
 
     let window = a.window();
     let cores = window.global::<Cores>();
@@ -1587,12 +1750,17 @@ fn exercise_core_cards(
     let frame = || render(software, width, height);
     reset(a);
     let core = |id: &str, title: &str, state: &str, version: &str| CoreViewModel {
-        id: id.into(), name: title.into(), state: state.into(), version: version.into(),
-        engine: "KiriKiri Z".into(), source: "bundled".into(),
+        id: id.into(),
+        name: title.into(),
+        state: state.into(),
+        version: version.into(),
+        engine: "KiriKiri Z".into(),
+        source: "bundled".into(),
         ..Default::default()
     };
     let version = "v0.6.1-beta.12@02c366a5 (adapter e83a23bf)";
-    let long_version = "release/extended-runtime-and-scripting-support-2026.11@02c366a5 (adapter e83a23bf)";
+    let long_version =
+        "release/extended-runtime-and-scripting-support-2026.11@02c366a5 (adapter e83a23bf)";
     let update = "feature/android-native-video-and-scripting-runtime@79f5c82e (adapter c77383b8)";
     let mut model = base();
     model.cores.items = vec![
@@ -1606,7 +1774,12 @@ fn exercise_core_cards(
             update_version: update.into(),
             ..core("long", LONG_EN, "loaded", long_version)
         },
-        core("other", LONG_JA, "installed", "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)"),
+        core(
+            "other",
+            LONG_JA,
+            "installed",
+            "feature/02c366a518d278eb@02c366a5 (adapter e83a23bf)",
+        ),
         CoreViewModel {
             source: "online".into(),
             ..core("online", "Aurora VN Runtime", "available", version)
@@ -1628,17 +1801,26 @@ fn exercise_core_cards(
                 }
                 delta_y = if center.y <= 64.0 { 144.0 } else { -144.0 };
             }
-            software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y });
+            software.dispatch_event(WindowEvent::PointerScrolled {
+                position,
+                delta_x: 0.0,
+                delta_y,
+            });
             frame();
         }
         panic!("could not reveal core action {label}");
     };
     reveal(tr!("默认设置"));
-    let current = labeled_item(software, |text| text == long_version).expect("full current version is accessible");
+    let current = labeled_item(software, |text| text == long_version)
+        .expect("full current version is accessible");
     let update_display = format!("→ {update}");
-    let next = labeled_item(software, |text| text == update_display).expect("full update version is accessible");
+    let next = labeled_item(software, |text| text == update_display)
+        .expect("full update version is accessible");
     assert_eq!(current.geometry().size.height, next.geometry().size.height);
-    assert!(current.geometry().size.height < 32.0, "version text is a single line");
+    assert!(
+        current.geometry().size.height < 32.0,
+        "version text is a single line"
+    );
     save("cores/installed-cards", frame());
     click_label(software, tr!("默认设置"));
     assert_eq!(cores.get_default_plugin(), "long");
@@ -1656,7 +1838,9 @@ fn exercise_core_cards(
     click_label(software, update_label);
     assert_eq!(clicked.borrow()[0], "long");
     model.cores.items[2].download = CoreDownloadViewModel {
-        phase: "downloading".into(), received: 2 * 1024, total: 8 * 1024,
+        phase: "downloading".into(),
+        received: 2 * 1024,
+        total: 8 * 1024,
         ..Default::default()
     };
     a.apply(&model);
@@ -1677,7 +1861,11 @@ fn exercise_core_cards(
     reveal(tr!("安装"));
     save("cores/offline-install-disabled", frame());
     click_label(software, tr!("安装"));
-    assert_eq!(clicked.borrow().len(), 2, "offline install remains disabled");
+    assert_eq!(
+        clicked.borrow().len(),
+        2,
+        "offline install remains disabled"
+    );
 
     // `no-core-download`: the same installed and bundled cores stay listed with
     // their defaults, diagnosis and local install; online routes are gone.
@@ -1691,15 +1879,28 @@ fn exercise_core_cards(
     reveal(tr!("默认设置"));
     save("cores/no-core-download", frame());
     let update_all = tr!("全部更新（{}）").replace("{}", "1");
-    for hidden in [tr!("安装"), tr!("更新核心"), update_all.as_str(), update_display.as_str(), "Aurora VN Runtime"] {
-        assert!(labeled_item(software, |text| text == hidden).is_none(), "{hidden} is hidden without online downloads");
+    for hidden in [
+        tr!("安装"),
+        tr!("更新核心"),
+        update_all.as_str(),
+        update_display.as_str(),
+        "Aurora VN Runtime",
+    ] {
+        assert!(
+            labeled_item(software, |text| text == hidden).is_none(),
+            "{hidden} is hidden without online downloads"
+        );
     }
     let local = Rc::new(RefCell::new(0));
     let picks = local.clone();
     cores.on_install_local(move || *picks.borrow_mut() += 1);
     let local_label = tr!("从本地安装…");
     reveal(local_label);
-    assert!(labeled_item(software, |text| text == tr!("此版本不在线下载核心，已安装和随附的核心照常可用。")).is_some());
+    assert!(
+        labeled_item(software, |text| text
+            == tr!("此版本不在线下载核心，已安装和随附的核心照常可用。"))
+        .is_some()
+    );
     click_label(software, local_label);
     assert_eq!(*local.borrow(), 1, "local official packages stay reachable");
     assert_eq!(clicked.borrow().len(), 2, "no online install was requested");
@@ -1729,14 +1930,20 @@ fn exercise_about_credits(
     app.on_share_diagnostic_log(move || count.set(count.get() + 1));
     let weak = a.window().as_weak();
     app.on_load_about_licenses(move || {
-        weak.upgrade().unwrap().global::<App>().set_about_license_files(slint::ModelRc::new(
-            slint::VecModel::from(vec!["THIRD_PARTY_NOTICES.md".into()]),
-        ));
+        weak.upgrade()
+            .unwrap()
+            .global::<App>()
+            .set_about_license_files(slint::ModelRc::new(slint::VecModel::from(vec![
+                "THIRD_PARTY_NOTICES.md".into(),
+            ])));
     });
     let weak = a.window().as_weak();
     app.on_read_about_license(move |index| {
         assert_eq!(index, 0);
-        weak.upgrade().unwrap().global::<App>().set_about_license_text(NOTICE.into());
+        weak.upgrade()
+            .unwrap()
+            .global::<App>()
+            .set_about_license_text(NOTICE.into());
     });
     let acknowledgment = tr!("致谢");
     let licenses = tr!("第三方许可");
@@ -1757,7 +1964,10 @@ fn exercise_about_credits(
     click_label(software, acknowledgment);
     save("settings/about-credits-start", frame());
     assert_eq!(app.get_settings_category(), "about-credits");
-    assert!(opened_urls.borrow().is_empty(), "About and Acknowledgments are in-app pages");
+    assert!(
+        opened_urls.borrow().is_empty(),
+        "About and Acknowledgments are in-app pages"
+    );
     click_label(software, "Project Shinkirou");
     click_label(software, licenses);
     assert_eq!(app.get_settings_category(), "about-licenses");
@@ -1780,12 +1990,17 @@ fn exercise_about_credits(
                 let rect = item.geometry();
                 let center = item.map_to_native_window(rect.center());
                 if center.y - rect.size.height / 2.0 >= 64.0
-                    && center.y + rect.size.height / 2.0 < bottom {
+                    && center.y + rect.size.height / 2.0 < bottom
+                {
                     return;
                 }
             }
             let position = LogicalPosition::new(if width < 600 { 180.0 } else { 540.0 }, 470.0);
-            software.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: -200.0 });
+            software.dispatch_event(WindowEvent::PointerScrolled {
+                position,
+                delta_x: 0.0,
+                delta_y: -200.0,
+            });
             frame();
         }
         panic!("credits action is not reachable: {label}");
@@ -1810,8 +2025,15 @@ fn exercise_about_credits(
     reveal("ethornell-rs: Project Shinkirou");
     click_label(software, "ethornell-rs: Project Shinkirou");
     let lock = include_str!("../../../../Cargo.lock");
-    let adapter = lock.split("[[package]]").find(|package| package.contains("name = \"shinki-emu-ethornell-rs\"")).unwrap();
-    let source = adapter.lines().find_map(|line| line.strip_prefix("source = \"git+")).unwrap().trim_end_matches('"');
+    let adapter = lock
+        .split("[[package]]")
+        .find(|package| package.contains("name = \"shinki-emu-ethornell-rs\""))
+        .unwrap();
+    let source = adapter
+        .lines()
+        .find_map(|line| line.strip_prefix("source = \"git+"))
+        .unwrap()
+        .trim_end_matches('"');
     let (url, commit) = source.rsplit_once('#').unwrap();
     let repo = url.split('?').next().unwrap();
     let locked_license = format!("{repo}/blob/{commit}/LICENSE-MPL-2.0");
@@ -1843,9 +2065,17 @@ fn exercise_about_credits(
 
     app.set_android_about(true);
     save("settings/about-credits-android-about", frame());
-    assert!(labeled_item(software, |label| label == data_folder || label == log_folder).is_none());
+    assert!(
+        labeled_item(software, |label| label == data_folder
+            || label == log_folder)
+        .is_none()
+    );
     click_label(software, share);
-    assert_eq!(shared.get(), 1, "Share row invokes the platform callback once");
+    assert_eq!(
+        shared.get(),
+        1,
+        "Share row invokes the platform callback once"
+    );
     assert_eq!(*picked_path.borrow(), "third-party-notices");
     click_label(software, licenses);
     frame();

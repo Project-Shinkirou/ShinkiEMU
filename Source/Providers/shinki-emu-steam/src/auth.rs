@@ -278,8 +278,21 @@ fn registry_steam_path() -> Option<PathBuf> {
 
     #[link(name = "advapi32")]
     unsafe extern "system" {
-        fn RegOpenKeyExA(hkey: isize, subkey: *const u8, options: u32, access: u32, result: *mut isize) -> i32;
-        fn RegQueryValueExA(key: isize, value: *const u8, reserved: *mut u32, kind: *mut u32, data: *mut u8, size: *mut u32) -> i32;
+        fn RegOpenKeyExA(
+            hkey: isize,
+            subkey: *const u8,
+            options: u32,
+            access: u32,
+            result: *mut isize,
+        ) -> i32;
+        fn RegQueryValueExA(
+            key: isize,
+            value: *const u8,
+            reserved: *mut u32,
+            kind: *mut u32,
+            data: *mut u8,
+            size: *mut u32,
+        ) -> i32;
         fn RegCloseKey(key: isize) -> i32;
     }
     const HKEY_CURRENT_USER: isize = 0x80000001u32 as isize;
@@ -290,8 +303,15 @@ fn registry_steam_path() -> Option<PathBuf> {
     let subkey = CString::new(r"Software\Valve\Steam").ok()?;
     let value = CString::new("SteamPath").ok()?;
     let mut key = 0;
-    if unsafe { RegOpenKeyExA(HKEY_CURRENT_USER, subkey.as_ptr().cast(), 0, KEY_READ, &mut key) }
-        != ERROR_SUCCESS
+    if unsafe {
+        RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            subkey.as_ptr().cast(),
+            0,
+            KEY_READ,
+            &mut key,
+        )
+    } != ERROR_SUCCESS
     {
         return None;
     }
@@ -299,14 +319,26 @@ fn registry_steam_path() -> Option<PathBuf> {
     let mut size = data.len() as u32;
     let mut kind = 0;
     let result = unsafe {
-        RegQueryValueExA(key, value.as_ptr().cast(), ptr::null_mut(), &mut kind, data.as_mut_ptr(), &mut size)
+        RegQueryValueExA(
+            key,
+            value.as_ptr().cast(),
+            ptr::null_mut(),
+            &mut kind,
+            data.as_mut_ptr(),
+            &mut size,
+        )
     };
     unsafe { RegCloseKey(key) };
     if result != ERROR_SUCCESS || !matches!(kind, REG_SZ | REG_EXPAND_SZ) || size == 0 {
         return None;
     }
-    let end = data[..size as usize].iter().position(|byte| *byte == 0).unwrap_or(size as usize);
-    String::from_utf8(data[..end].to_vec()).ok().map(PathBuf::from)
+    let end = data[..size as usize]
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(size as usize);
+    String::from_utf8(data[..end].to_vec())
+        .ok()
+        .map(PathBuf::from)
 }
 
 #[cfg(windows)]
@@ -363,7 +395,10 @@ mod tests {
         let steam = program_files.join("Steam");
         std::fs::create_dir_all(steam.join("config")).unwrap();
         std::fs::write(steam.join("config").join("loginusers.vdf"), b"fixture").unwrap();
-        assert_eq!(steam_dir_from_candidates(None, Some(program_files)), Some(steam));
+        assert_eq!(
+            steam_dir_from_candidates(None, Some(program_files)),
+            Some(steam)
+        );
     }
 
     #[test]

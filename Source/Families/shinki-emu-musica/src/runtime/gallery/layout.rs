@@ -54,9 +54,15 @@ pub(crate) struct GalleryButton {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum GalleryAction {
-    Open { screen: String },
-    PreviousPage { screen: String },
-    NextPage { screen: String },
+    Open {
+        screen: String,
+    },
+    PreviousPage {
+        screen: String,
+    },
+    NextPage {
+        screen: String,
+    },
     Back,
     View {
         images: Vec<GalleryImage>,
@@ -67,7 +73,11 @@ pub(crate) enum GalleryAction {
         resource: String,
         label: Option<String>,
     },
-    Track { resource: String, #[serde(default)] select_only: bool },
+    Track {
+        resource: String,
+        #[serde(default)]
+        select_only: bool,
+    },
     PlaySelected,
     Stop,
     PreviousTrack,
@@ -156,7 +166,10 @@ impl GalleryLayout {
         // Large authored galleries reference thousands of exact PAZ members.
         // The member lookup avoids a directory scan for every image.
         layout.validate(width, height, |uri| {
-            archive.entry_descriptor(uri).map(|_| ()).map_err(core_error)
+            archive
+                .entry_descriptor(uri)
+                .map(|_| ())
+                .map_err(core_error)
         })?;
         Ok(layout)
     }
@@ -189,13 +202,29 @@ impl GalleryLayout {
         next: bool,
     ) -> Option<(usize, usize)> {
         let group = self.screens[screen].track_group.as_ref();
-        let mut tracks = self.screens.iter().enumerate()
-            .filter(|(i, sheet)| *i == screen || (group.is_some() && sheet.track_group.as_ref() == group))
-            .flat_map(|(i, sheet)| sheet.buttons.iter().enumerate().filter_map(move |(j, button)| {
-                (matches!(button.action, GalleryAction::Track { .. }) && button.enabled(access))
-                    .then_some((i, j))
-            }));
-        let edge = if next { tracks.next() } else { tracks.next_back() }?;
+        let mut tracks = self
+            .screens
+            .iter()
+            .enumerate()
+            .filter(|(i, sheet)| {
+                *i == screen || (group.is_some() && sheet.track_group.as_ref() == group)
+            })
+            .flat_map(|(i, sheet)| {
+                sheet
+                    .buttons
+                    .iter()
+                    .enumerate()
+                    .filter_map(move |(j, button)| {
+                        (matches!(button.action, GalleryAction::Track { .. })
+                            && button.enabled(access))
+                        .then_some((i, j))
+                    })
+            });
+        let edge = if next {
+            tracks.next()
+        } else {
+            tracks.next_back()
+        }?;
         let after_cursor = |&(i, j): &(usize, usize)| {
             if next {
                 i > screen || (i == screen && selected.is_none_or(|at| j > at))
@@ -206,7 +235,14 @@ impl GalleryLayout {
         if after_cursor(&edge) {
             return Some(edge);
         }
-        Some(if next { tracks.find(after_cursor) } else { tracks.rfind(after_cursor) }.unwrap_or(edge))
+        Some(
+            if next {
+                tracks.find(after_cursor)
+            } else {
+                tracks.rfind(after_cursor)
+            }
+            .unwrap_or(edge),
+        )
     }
 
     fn validate(
@@ -219,46 +255,78 @@ impl GalleryLayout {
             || self.screens.len() > 256
             || self.screens.iter().map(|s| s.buttons.len()).sum::<usize>() > 4096
         {
-            return Err(layout_error("invalid authored gallery screen or button count"));
+            return Err(layout_error(
+                "invalid authored gallery screen or button count",
+            ));
         }
         let mut ids = BTreeSet::new();
         for screen in &self.screens {
             if screen.id.is_empty() || !ids.insert(&screen.id) || screen.buttons.is_empty() {
-                return Err(layout_error("gallery screens must have unique IDs and buttons"));
+                return Err(layout_error(
+                    "gallery screens must have unique IDs and buttons",
+                ));
             }
         }
         for screen in &self.screens {
             if screen.layers.is_empty() || screen.layers.len() > 32 {
                 return Err(layout_error("invalid gallery layer count"));
             }
-            for layer in screen.layers.iter().chain(&screen.selection).chain(&screen.playing) {
+            for layer in screen
+                .layers
+                .iter()
+                .chain(&screen.selection)
+                .chain(&screen.playing)
+            {
                 resource(&layer.resource)?;
-                if layer.clip.is_some_and(|rect| !inside_canvas(rect, width, height)) {
-                    return Err(layout_error("gallery layer clip is outside the logical canvas"));
+                if layer
+                    .clip
+                    .is_some_and(|rect| !inside_canvas(rect, width, height))
+                {
+                    return Err(layout_error(
+                        "gallery layer clip is outside the logical canvas",
+                    ));
                 }
             }
             if let Some(uri) = &screen.hover {
                 resource(uri)?;
             }
-            if screen.initial_focus.is_some_and(|i| i >= screen.buttons.len()) {
+            if screen
+                .initial_focus
+                .is_some_and(|i| i >= screen.buttons.len())
+            {
                 return Err(layout_error("initial gallery focus is outside the screen"));
             }
             if screen.initial_selection.is_some_and(|i| {
-                !matches!(screen.buttons.get(i).map(|b| &b.action), Some(GalleryAction::Track { .. }))
+                !matches!(
+                    screen.buttons.get(i).map(|b| &b.action),
+                    Some(GalleryAction::Track { .. })
+                )
             }) {
-                return Err(layout_error("initial gallery selection must be a track button"));
+                return Err(layout_error(
+                    "initial gallery selection must be a track button",
+                ));
             }
             for button in &screen.buttons {
                 if !inside_canvas(button.rect, width, height) {
                     return Err(layout_error("gallery button is outside the logical canvas"));
                 }
-                for uri in button.thumbnail.iter().chain(&button.locked_thumbnail).chain(&button.hover) {
+                for uri in button
+                    .thumbnail
+                    .iter()
+                    .chain(&button.locked_thumbnail)
+                    .chain(&button.hover)
+                {
                     resource(uri)?;
                 }
                 if let Some(preview) = &button.preview {
                     resource(&preview.resource)?;
-                    if preview.clip.is_some_and(|rect| !inside_canvas(rect, width, height)) {
-                        return Err(layout_error("gallery preview clip is outside the logical canvas"));
+                    if preview
+                        .clip
+                        .is_some_and(|rect| !inside_canvas(rect, width, height))
+                    {
+                        return Err(layout_error(
+                            "gallery preview clip is outside the logical canvas",
+                        ));
                     }
                 }
                 if button.requires_viewed.len() > 256 {
@@ -276,7 +344,10 @@ impl GalleryLayout {
                             return Err(layout_error("invalid gallery screen destination"));
                         }
                     }
-                    GalleryAction::View { images, viewed_only } => {
+                    GalleryAction::View {
+                        images,
+                        viewed_only,
+                    } => {
                         if images.is_empty() || images.len() > 256 {
                             return Err(layout_error("invalid gallery image count"));
                         }
@@ -288,7 +359,9 @@ impl GalleryLayout {
                             resource(base)?;
                             if let GalleryImage::Composite(composite) = image {
                                 if composite.layers.is_empty() || composite.layers.len() > 32 {
-                                    return Err(layout_error("invalid composite CG foreground count"));
+                                    return Err(layout_error(
+                                        "invalid composite CG foreground count",
+                                    ));
                                 }
                                 for layer in &composite.layers {
                                     resource(&layer.resource)?;
@@ -296,13 +369,19 @@ impl GalleryLayout {
                             }
                         }
                     }
-                    GalleryAction::Script { resource: uri, label } => {
+                    GalleryAction::Script {
+                        resource: uri,
+                        label,
+                    } => {
                         if !uri.starts_with("musica:/scr/") {
                             return Err(layout_error("gallery script must use the script archive"));
                         }
                         if label.as_ref().is_some_and(|value| {
-                            value.is_empty() || value.len() > 256
-                                || value.chars().any(|ch| ch == '#' || ch.is_control() || ch.is_whitespace())
+                            value.is_empty()
+                                || value.len() > 256
+                                || value
+                                    .chars()
+                                    .any(|ch| ch == '#' || ch.is_control() || ch.is_whitespace())
                         }) {
                             return Err(layout_error("invalid gallery script label"));
                         }
@@ -326,11 +405,17 @@ impl GalleryButton {
     pub(crate) fn enabled(&self, access: &GalleryAccess<'_>) -> bool {
         super::super::title::unlocked(&self.requires, access.state)
             && (self.requires_viewed.is_empty()
-                || self.requires_viewed.iter().any(|uri| access.saves.has_viewed_cg(uri)))
+                || self
+                    .requires_viewed
+                    .iter()
+                    .any(|uri| access.saves.has_viewed_cg(uri)))
             && match &self.action {
-                GalleryAction::View { images, viewed_only: true } => {
-                    images.iter().any(|image| access.image_available(image, true))
-                }
+                GalleryAction::View {
+                    images,
+                    viewed_only: true,
+                } => images
+                    .iter()
+                    .any(|image| access.image_available(image, true)),
                 _ => true,
             }
     }
@@ -352,25 +437,39 @@ impl GalleryScreen {
         direction: GalleryDirection,
         access: &GalleryAccess<'_>,
     ) -> Option<usize> {
-        let buttons = self.buttons.iter().enumerate().filter(|(_, b)| b.enabled(access));
-        let Some((from, origin)) = from.and_then(|i| self.buttons.get(i).map(|b| (i, b.rect))) else {
+        let buttons = self
+            .buttons
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.enabled(access));
+        let Some((from, origin)) = from.and_then(|i| self.buttons.get(i).map(|b| (i, b.rect)))
+        else {
             return buttons.map(|(i, _)| i).next();
         };
         let [x, y, w, h] = origin.map(i64::from);
-        buttons.filter_map(|(i, button)| {
-            let [a, b, c, d] = button.rect.map(i64::from);
-            let dx = 2 * (a - x) + c - w;
-            let dy = 2 * (b - y) + d - h;
-            let (forward, cross, aligned) = match direction {
-                GalleryDirection::Left => (-dx, dy, y < b + d && b < y + h),
-                GalleryDirection::Right => (dx, dy, y < b + d && b < y + h),
-                GalleryDirection::Up => (-dy, dx, x < a + c && a < x + w),
-                GalleryDirection::Down => (dy, dx, x < a + c && a < x + w),
-            };
-            let wraps = forward < 0 && aligned && self.wrap_focus;
-            (forward > 0 || wraps)
-                .then_some((!aligned, wraps, forward + cross.abs(), cross.abs(), i))
-        }).min().map(|(_, _, _, _, i)| i).or(Some(from))
+        buttons
+            .filter_map(|(i, button)| {
+                let [a, b, c, d] = button.rect.map(i64::from);
+                let dx = 2 * (a - x) + c - w;
+                let dy = 2 * (b - y) + d - h;
+                let (forward, cross, aligned) = match direction {
+                    GalleryDirection::Left => (-dx, dy, y < b + d && b < y + h),
+                    GalleryDirection::Right => (dx, dy, y < b + d && b < y + h),
+                    GalleryDirection::Up => (-dy, dx, x < a + c && a < x + w),
+                    GalleryDirection::Down => (dy, dx, x < a + c && a < x + w),
+                };
+                let wraps = forward < 0 && aligned && self.wrap_focus;
+                (forward > 0 || wraps).then_some((
+                    !aligned,
+                    wraps,
+                    forward + cross.abs(),
+                    cross.abs(),
+                    i,
+                ))
+            })
+            .min()
+            .map(|(_, _, _, _, i)| i)
+            .or(Some(from))
     }
 }
 
@@ -389,7 +488,12 @@ impl GalleryCursor {
         cursor
     }
 
-    pub(crate) fn open(&mut self, index: usize, layout: &GalleryLayout, access: &GalleryAccess<'_>) {
+    pub(crate) fn open(
+        &mut self,
+        index: usize,
+        layout: &GalleryLayout,
+        access: &GalleryAccess<'_>,
+    ) {
         // Re-entering an ancestor unwinds to it instead of growing a cyclic stack.
         if let Some(position) = self.parents.iter().position(|(screen, _)| *screen == index) {
             let (_, focus) = self.parents[position];
@@ -402,13 +506,21 @@ impl GalleryCursor {
         }
     }
 
-    pub(crate) fn switch(&mut self, index: usize, layout: &GalleryLayout, access: &GalleryAccess<'_>) {
+    pub(crate) fn switch(
+        &mut self,
+        index: usize,
+        layout: &GalleryLayout,
+        access: &GalleryAccess<'_>,
+    ) {
         self.screen = index;
         self.detail = None;
         self.pressed = None;
         let screen = &layout.screens[index];
-        self.focus = screen.initial_focus.filter(|&i| screen.buttons[i].enabled(access));
-        self.selected_track = screen.initial_selection
+        self.focus = screen
+            .initial_focus
+            .filter(|&i| screen.buttons[i].enabled(access));
+        self.selected_track = screen
+            .initial_selection
             .filter(|&i| screen.buttons[i].enabled(access))
             .map(|i| (index, i));
     }
@@ -430,14 +542,19 @@ impl GalleryCursor {
 }
 
 fn inside_canvas([x, y, w, h]: [i32; 4], width: u32, height: u32) -> bool {
-    x >= 0 && y >= 0 && w > 0 && h > 0
+    x >= 0
+        && y >= 0
+        && w > 0
+        && h > 0
         && i64::from(x) + i64::from(w) <= i64::from(width)
         && i64::from(y) + i64::from(h) <= i64::from(height)
 }
 
 fn validate_viewed_uri(uri: &str) -> SessionResult<()> {
     if !uri.starts_with("musica:/bg/") {
-        return Err(layout_error("viewed CG requirements must use the background archive"));
+        return Err(layout_error(
+            "viewed CG requirements must use the background archive",
+        ));
     }
     Ok(())
 }

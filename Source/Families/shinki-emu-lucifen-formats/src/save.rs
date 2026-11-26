@@ -116,7 +116,9 @@ mod tests {
         native[22_505..22_508].copy_from_slice(&[44, 55, 66]);
         native[22_508..22_510].copy_from_slice(&[0x91, 0xe6]); // 第 in CP932
         native[22_552..22_555].copy_from_slice(b"end");
-        native.extend([6, 0, 0, 0, 9, 0, 0, 0, 0xae, 0x07, b'A', b'B', b'C', 0xee, 0xf3]);
+        native.extend([
+            6, 0, 0, 0, 9, 0, 0, 0, 0xae, 0x07, b'A', b'B', b'C', 0xee, 0xf3,
+        ]);
 
         let preview = SaveSlotPreview::decode(&native).unwrap();
         assert_eq!(&preview.thumbnail_bgr[..3], &[11, 22, 33]);

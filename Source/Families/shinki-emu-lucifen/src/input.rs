@@ -89,7 +89,9 @@ impl Input {
                                 PrimaryGesture::Press(press) => {
                                     PrimaryGesture::Click(press, self.pointer)
                                 }
-                                PrimaryGesture::PolledPress => PrimaryGesture::Release(self.pointer),
+                                PrimaryGesture::PolledPress => {
+                                    PrimaryGesture::Release(self.pointer)
+                                }
                                 _ => PrimaryGesture::Idle,
                             };
                         }

@@ -32,8 +32,7 @@ fn index_layout(code: u32, size: u64) -> Option<(u8, usize)> {
     } else {
         length
     };
-    ((10..=MAX_INDEX).contains(&length) && length + 8 <= size)
-        .then_some((flags, length as usize))
+    ((10..=MAX_INDEX).contains(&length) && length + 8 <= size).then_some((flags, length as usize))
 }
 
 /// Recognize the bootstrap archive's LPK1 header and in-file index span.

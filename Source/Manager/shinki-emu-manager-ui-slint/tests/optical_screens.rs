@@ -67,7 +67,10 @@ fn labeled_item(software: &MinimalSoftwareWindow, label: &str) -> Option<ItemRc>
     let window = WindowInner::from_pub(software.window());
     let mut stack = vec![window.window_item_rc()?];
     while let Some(item) = stack.pop() {
-        stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
+        stack.extend(std::iter::successors(
+            item.first_child(),
+            ItemRc::next_sibling,
+        ));
         if item.is_visible()
             && item
                 .accessible_string_property(AccessibleStringProperty::Label)
@@ -112,7 +115,11 @@ fn press(software: &MinimalSoftwareWindow, key: impl Into<SharedString>) {
 fn games() -> Vec<GameCardViewModel> {
     [
         ("g1", "星降る坂道の約束", "Studio Hoshizora"),
-        ("g2", "Lanterns Over the Quiet Harbor: Extended Memorial Edition", "Tidewater Works"),
+        (
+            "g2",
+            "Lanterns Over the Quiet Harbor: Extended Memorial Edition",
+            "Tidewater Works",
+        ),
         ("g3", "白い栞", "Shiori Soft"),
         ("g4", "夏の終わりの手紙", "Kaze Lab"),
     ]
@@ -216,8 +223,14 @@ fn optical_action_and_choice_dialog() {
             library.set_optical_listing(false);
             library.set_optical_choices(ModelRc::default());
             let mobile = render(&software, width, height);
-            assert!(labeled_item(&software, action).is_none(), "{at}: action shown on mobile");
-            assert!(labeled_item(&software, add_folder).is_some(), "{at}: 添加文件夹 missing");
+            assert!(
+                labeled_item(&software, action).is_none(),
+                "{at}: action shown on mobile"
+            );
+            assert!(
+                labeled_item(&software, add_folder).is_some(),
+                "{at}: 添加文件夹 missing"
+            );
             save("toolbar-mobile", language, size, mobile.clone());
 
             // Desktop: the action sits in the same row, right of 添加文件夹.
@@ -226,48 +239,79 @@ fn optical_action_and_choice_dialog() {
             assert!(desktop != mobile, "{at}: action did not change the toolbar");
             let disc = center(&software, action);
             let folder = center(&software, add_folder);
-            assert!((disc.y - folder.y).abs() < 1.0, "{at}: action left the toolbar row");
+            assert!(
+                (disc.y - folder.y).abs() < 1.0,
+                "{at}: action left the toolbar row"
+            );
             assert!(disc.x > folder.x, "{at}: action not after 添加文件夹");
             save("toolbar-desktop", language, size, desktop);
             let before = (opened.get(), added.get());
             click(&software, action);
-            assert_eq!(opened.get(), before.0 + 1, "{at}: click did not reach open-optical");
+            assert_eq!(
+                opened.get(),
+                before.0 + 1,
+                "{at}: click did not reach open-optical"
+            );
             assert_eq!(added.get(), before.1, "{at}: click also hit 添加文件夹");
 
             // While the host lists discs a second click waits.
             library.set_optical_listing(true);
             save("listing", language, size, render(&software, width, height));
             click(&software, action);
-            assert_eq!(opened.get(), before.0 + 1, "{at}: listing accepted a second click");
+            assert_eq!(
+                opened.get(),
+                before.0 + 1,
+                "{at}: listing accepted a second click"
+            );
             library.set_optical_listing(false);
 
             // Several discs: rows show the name with the path, or the path alone.
             library.set_optical_choices(choices());
             let dialog = render(&software, width, height);
-            assert!(labeled_item(&software, tr!("选择光盘")).is_some(), "{at}: no dialog title");
+            assert!(
+                labeled_item(&software, tr!("选择光盘")).is_some(),
+                "{at}: no dialog title"
+            );
             for (root, label) in DISCS {
                 let row = if label.is_empty() { root } else { label };
-                assert!(labeled_item(&software, row).is_some(), "{at}: row {row} missing");
+                assert!(
+                    labeled_item(&software, row).is_some(),
+                    "{at}: row {row} missing"
+                );
             }
             save("choices", language, size, dialog);
             imported.borrow_mut().clear();
             click(&software, DISCS[1].0);
-            assert_eq!(*imported.borrow(), [1], "{at}: picked row reported a different index");
+            assert_eq!(
+                *imported.borrow(),
+                [1],
+                "{at}: picked row reported a different index"
+            );
             let closes = closed.get();
             click(&software, tr!("取消"));
             assert_eq!(closed.get(), closes + 1, "{at}: 取消 did not close");
             render(&software, width, height);
-            assert!(labeled_item(&software, DISCS[0].1).is_none(), "{at}: dialog stayed open");
+            assert!(
+                labeled_item(&software, DISCS[0].1).is_none(),
+                "{at}: dialog stayed open"
+            );
             library.set_optical_choices(choices());
             render(&software, width, height);
             press(&software, Key::Escape);
             assert_eq!(closed.get(), closes + 2, "{at}: Escape did not close");
             render(&software, width, height);
-            assert!(imported.borrow().len() == 1, "{at}: closing imported a disc");
+            assert!(
+                imported.borrow().len() == 1,
+                "{at}: closing imported a disc"
+            );
 
             // No disc and replaced disc use the host notice path.
             for (id, code, title) in [
-                ("no-media", "SHINKI_EMU_OPTICAL_NO_MEDIA", tr!("没有找到光盘")),
+                (
+                    "no-media",
+                    "SHINKI_EMU_OPTICAL_NO_MEDIA",
+                    tr!("没有找到光盘"),
+                ),
                 (
                     "replaced",
                     "SHINKI_EMU_OPTICAL_MEDIA_UNAVAILABLE: Reinsert the original disc or open the currently mounted disc from the library.",
@@ -276,7 +320,10 @@ fn optical_action_and_choice_dialog() {
             ] {
                 report_error(window, code);
                 let frame = render(&software, width, height);
-                assert!(labeled_item(&software, title).is_some(), "{at}: {id} notice missing");
+                assert!(
+                    labeled_item(&software, title).is_some(),
+                    "{at}: {id} notice missing"
+                );
                 save(id, language, size, frame);
                 let notice = code.split(':').next().unwrap_or(code);
                 window

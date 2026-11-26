@@ -126,7 +126,9 @@ impl CmvsScene {
     }
 
     pub(crate) fn native_restore_candidate(&self) -> Result<Self, CoreError> {
-        let output = self.output.rebuild()
+        let output = self
+            .output
+            .rebuild()
             .map_err(|cause| CoreError::invalid("SHINKI_EMU_CMVS_GPU_CREATE", cause.to_string()))?;
         let mut candidate = Self::with_output(output)?;
         candidate.text = self.text.native_restore_context()?;
@@ -228,9 +230,9 @@ impl CmvsScene {
     ) -> Result<TextureFrame, CoreError> {
         let mapping =
             self.draw_mapping(width, height, native_viewport::NativeViewport::from_vm(vm)?)?;
-        let mut groups = self
-            .text
-            .prepare_draw_groups(vm, width, mapping.flat_camera, &mut self.textures)?;
+        let mut groups =
+            self.text
+                .prepare_draw_groups(vm, width, mapping.flat_camera, &mut self.textures)?;
         groups.admit(&mut 8192);
         groups.append(&mut commands);
         if let Some(movie) = movie {
@@ -433,9 +435,12 @@ impl CmvsScene {
             stage_height,
             native_viewport::NativeViewport::from_vm(vm)?,
         )?;
-        let mut draw_groups = self
-            .text
-            .prepare_draw_groups(vm, stage_width, mapping.flat_camera, &mut self.textures)?;
+        let mut draw_groups = self.text.prepare_draw_groups(
+            vm,
+            stage_width,
+            mapping.flat_camera,
+            &mut self.textures,
+        )?;
         draw_groups.admit(&mut remaining_records);
         let mut channels = self.prepare_channel_draw_groups(vm, archive)?;
         channels.admit(&mut remaining_records);
@@ -778,7 +783,8 @@ impl CmvsScene {
         });
         mapped.push(SceneCommand::PopClip);
         let raster = canvas.raster();
-        let output = self.output
+        let output = self
+            .output
             .submit(
                 &SceneFrame {
                     sequence,
@@ -788,7 +794,10 @@ impl CmvsScene {
                     commands: mapped,
                     semantics: None,
                 },
-                shinki_emu_abi::Extent { width: logical.width, height: logical.height },
+                shinki_emu_abi::Extent {
+                    width: logical.width,
+                    height: logical.height,
+                },
             )
             .map_err(|cause| CoreError::invalid("SHINKI_EMU_CMVS_GPU_RENDER", cause.to_string()))?
             .expect("CMVS masked intermediate passes require offscreen pixels");

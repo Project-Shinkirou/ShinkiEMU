@@ -15,12 +15,25 @@ pub struct LockedAdapter<'a> {
 pub fn locked_adapter<'a>(lock: &'a toml::Value, id: &str) -> Option<LockedAdapter<'a>> {
     let id = adapter_id(id);
     let mut entries = lock.get("package")?.as_array()?.iter().filter(|package| {
-        package.get("name").and_then(toml::Value::as_str)
-            .and_then(|name| name.strip_prefix("shinki-emu-")) == Some(id)
+        package
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .and_then(|name| name.strip_prefix("shinki-emu-"))
+            == Some(id)
     });
-    let source = entries.next()?.get("source")?.as_str()?.strip_prefix("git+")?;
-    assert!(entries.next().is_none(), "multiple locked adapter packages for {id}");
+    let source = entries
+        .next()?
+        .get("source")?
+        .as_str()?
+        .strip_prefix("git+")?;
+    assert!(
+        entries.next().is_none(),
+        "multiple locked adapter packages for {id}"
+    );
     let (url, commit) = source.rsplit_once('#')?;
     let repo = url.split('?').next()?;
-    Some(LockedAdapter { repo: repo.trim_end_matches(".git"), commit })
+    Some(LockedAdapter {
+        repo: repo.trim_end_matches(".git"),
+        commit,
+    })
 }

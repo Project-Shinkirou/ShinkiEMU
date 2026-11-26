@@ -694,7 +694,10 @@ impl MusicaProvider {
                 )
             })?);
         }
-        Ok(self.gpu_instance.as_ref().expect("GPU instance initialized"))
+        Ok(self
+            .gpu_instance
+            .as_ref()
+            .expect("GPU instance initialized"))
     }
 }
 fn relative(value: &str) -> SessionResult<()> {

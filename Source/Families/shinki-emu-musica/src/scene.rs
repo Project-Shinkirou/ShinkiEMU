@@ -139,7 +139,10 @@ impl Scene {
                 "raster frame exceeds the GPU readback budget",
             ));
         }
-        output.validate_raster(abi::Extent { width: raster_width, height: raster_height })?;
+        output.validate_raster(abi::Extent {
+            width: raster_width,
+            height: raster_height,
+        })?;
         let mut text = MusicaTextRenderer::new(encoding).map_err(|cause| {
             error(
                 "SHINKI_EMU_MUSICA_FONT",
@@ -223,16 +226,18 @@ impl Scene {
 
     #[cfg(test)]
     fn cpu_renderer(&self) -> &shinki_emu_sdk::WgpuOffscreenRenderer {
-        self.output.offscreen_renderer().expect("expected local renderer")
+        self.output
+            .offscreen_renderer()
+            .expect("expected local renderer")
     }
 
     pub(crate) fn capture(&self) -> SessionResult<Arc<[u8]>> {
         if self.output.is_hosted() {
             self.output.capture()
         } else {
-            self.cpu_pixels.clone().ok_or_else(|| {
-                error("SHINKI_EMU_MUSICA_CAPTURE", "no rendered frame to capture")
-            })
+            self.cpu_pixels
+                .clone()
+                .ok_or_else(|| error("SHINKI_EMU_MUSICA_CAPTURE", "no rendered frame to capture"))
         }
     }
 
@@ -587,7 +592,10 @@ impl Scene {
         };
         self.cpu_pixels = self.output.submit(
             &frame,
-            abi::Extent { width: self.width, height: self.height },
+            abi::Extent {
+                width: self.width,
+                height: self.height,
+            },
         )?;
         self.sequence = sequence;
         Ok(())

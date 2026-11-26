@@ -1,17 +1,29 @@
 //! Pure PAZ header/index and transforms shared by playback and recognition.
-use std::{collections::BTreeMap, io::{Cursor, Read}};
-use blowfish::{Blowfish, cipher::{BlockCipherDecrypt, KeyInit}};
+use blowfish::{
+    Blowfish,
+    cipher::{BlockCipherDecrypt, KeyInit},
+};
 use encoding_rs::SHIFT_JIS;
-use rc4::{Rc4, StreamCipher};
 use flate2::read::ZlibDecoder;
+use rc4::{Rc4, StreamCipher};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Read},
+};
 
 #[derive(Debug, thiserror::Error)]
 #[error("{code}: {message}")]
-pub struct FormatError { pub code: &'static str, pub message: String }
+pub struct FormatError {
+    pub code: &'static str,
+    pub message: String,
+}
 type PazError = FormatError;
 fn error(code: &'static str, message: impl Into<String>) -> FormatError {
-    FormatError { code, message: message.into() }
+    FormatError {
+        code,
+        message: message.into(),
+    }
 }
 pub const MAX_INDEX_BYTES: u64 = 256 * 1024 * 1024;
 pub const MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
@@ -39,29 +51,51 @@ pub struct PazRoleScheme {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct IndexLayout { pub offset: u64, pub size: u64, pub xor: u8 }
+pub struct IndexLayout {
+    pub offset: u64,
+    pub size: u64,
+    pub xor: u8,
+}
 /// Inspect only the version-selected fixed header, before index allocation.
-pub fn index_layout(header: &[u8], version: u8, expected_xor: u32, file_length: u64) -> Result<IndexLayout, FormatError> {
+pub fn index_layout(
+    header: &[u8],
+    version: u8,
+    expected_xor: u32,
+    file_length: u64,
+) -> Result<IndexLayout, FormatError> {
     let (offset, raw) = if version == 0 {
         (4, header.get(..4))
     } else {
         (36, header.get(32..36))
     };
-    let raw = raw.ok_or_else(|| error("SHINKI_EMU_MUSICA_INDEX_SHORT", "PAZ header is truncated"))?;
+    let raw =
+        raw.ok_or_else(|| error("SHINKI_EMU_MUSICA_INDEX_SHORT", "PAZ header is truncated"))?;
     let raw = u32::from_le_bytes(raw.try_into().unwrap());
     let xor = if version == 0 { 0 } else { (raw >> 24) as u8 };
     let derived = u32::from_le_bytes([xor; 4]);
     if version != 0 && expected_xor != 0 && expected_xor != derived {
-        return Err(error("SHINKI_EMU_MUSICA_INDEX_XOR", "configured index XOR does not match the archive header"));
+        return Err(error(
+            "SHINKI_EMU_MUSICA_INDEX_XOR",
+            "configured index XOR does not match the archive header",
+        ));
     }
     let size = (raw ^ derived) as u64;
-    if size == 0 || size > MAX_INDEX_BYTES || !size.is_multiple_of(8) || offset + size > file_length {
-        return Err(error("SHINKI_EMU_MUSICA_INDEX_SIZE", "PAZ index size is empty, unaligned, or out of bounds"));
+    if size == 0 || size > MAX_INDEX_BYTES || !size.is_multiple_of(8) || offset + size > file_length
+    {
+        return Err(error(
+            "SHINKI_EMU_MUSICA_INDEX_SIZE",
+            "PAZ index size is empty, unaligned, or out of bounds",
+        ));
     }
     Ok(IndexLayout { offset, size, xor })
 }
 
-pub fn parse_index(decoded: &[u8], role: &str, file_length: u64, cancelled: impl Fn() -> bool) -> Result<Vec<ArchiveEntryDescriptor>, FormatError> {
+pub fn parse_index(
+    decoded: &[u8],
+    role: &str,
+    file_length: u64,
+    cancelled: impl Fn() -> bool,
+) -> Result<Vec<ArchiveEntryDescriptor>, FormatError> {
     let mut cursor = Cursor::new(decoded);
     let count = read_u32(&mut cursor)? as usize;
     if count > 1_000_000 {
@@ -80,11 +114,19 @@ pub fn parse_index(decoded: &[u8], role: &str, file_length: u64, cancelled: impl
         None
     };
     if count > decoded.len() / 25 || cancelled() {
-        return Err(error("SHINKI_EMU_MUSICA_INDEX_SHORT", "PAZ index count exceeds available descriptors or parsing was cancelled"));
+        return Err(error(
+            "SHINKI_EMU_MUSICA_INDEX_SHORT",
+            "PAZ index count exceeds available descriptors or parsing was cancelled",
+        ));
     }
     let mut entries = Vec::with_capacity(count);
     for index in 0..count {
-        if cancelled() { return Err(error("SHINKI_EMU_MUSICA_CANCELLED", "PAZ parsing cancelled")); }
+        if cancelled() {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_CANCELLED",
+                "PAZ parsing cancelled",
+            ));
+        }
         let name = read_c_string(&mut cursor)?;
         let offset = read_u64(&mut cursor)?;
         let unpacked_size = read_u32(&mut cursor)? as u64;
@@ -134,113 +176,119 @@ pub fn parse_index(decoded: &[u8], role: &str, file_length: u64, cancelled: impl
     Ok(entries)
 }
 
-pub fn decrypt_entry_chunk(scheme: &PazRoleScheme, version: u8, entry: &ArchiveEntryDescriptor, absolute_offset: u64, encrypted: &[u8]) -> Result<Vec<u8>, FormatError> {
-        let mut bytes = encrypted.to_vec();
-        if entry.archive_role == "mov" {
-            let video_key = entry.video_key.as_ref().ok_or_else(|| {
-                error(
-                    "SHINKI_EMU_MUSICA_VIDEO_KEY",
-                    "video entry is missing its index key",
-                )
-            })?;
-            if version == 0 {
-                let mut table = [0u8; 256];
-                for (index, value) in video_key.iter().enumerate() {
-                    table[*value as usize] = index as u8;
-                }
-                for byte in &mut bytes {
-                    *byte = table[*byte as usize];
-                }
-                return Ok(bytes);
+pub fn decrypt_entry_chunk(
+    scheme: &PazRoleScheme,
+    version: u8,
+    entry: &ArchiveEntryDescriptor,
+    absolute_offset: u64,
+    encrypted: &[u8],
+) -> Result<Vec<u8>, FormatError> {
+    let mut bytes = encrypted.to_vec();
+    if entry.archive_role == "mov" {
+        let video_key = entry.video_key.as_ref().ok_or_else(|| {
+            error(
+                "SHINKI_EMU_MUSICA_VIDEO_KEY",
+                "video entry is missing its index key",
+            )
+        })?;
+        if version == 0 {
+            let mut table = [0u8; 256];
+            for (index, value) in video_key.iter().enumerate() {
+                table[*value as usize] = index as u8;
             }
-            let material = format!(
-                "{} {:08X} {}",
-                entry.name.to_lowercase(),
-                entry.unpacked_size,
-                password_for_entry(entry, scheme).unwrap_or_default()
-            );
-            let (entry_key, _, malformed) = SHIFT_JIS.encode(&material);
-            if malformed || entry_key.is_empty() {
-                return Err(error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "video RC4 key cannot be encoded as CP932",
-                ));
-            }
-            let key = (0..256)
-                .map(|index| video_key[index] ^ entry_key[index % entry_key.len()])
-                .collect::<Vec<_>>();
-            let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "video RC4 key length is invalid",
-                )
-            })?;
-            let block_len = usize::try_from(entry.aligned_size.min(0x10000)).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_VIDEO_SIZE",
-                    "movie transform size exceeds the platform bound",
-                )
-            })?;
-            if block_len == 0 {
-                return Ok(bytes);
-            }
-            let mut block = vec![0; block_len];
-            cipher.apply_keystream(&mut block);
-            for (index, byte) in bytes.iter_mut().enumerate() {
-                *byte ^= block[(absolute_offset as usize + index) % block.len()];
+            for byte in &mut bytes {
+                *byte = table[*byte as usize];
             }
             return Ok(bytes);
         }
-        bytes = blowfish_decrypt(&scheme.data_key, &bytes)?;
-        if version > 0 && password_for_entry(entry, scheme).is_some() {
-            let password = password_for_entry(entry, scheme).unwrap_or_default();
-            let material = format!(
-                "{} {:08X} {}",
-                entry.name.to_lowercase(),
-                entry.unpacked_size,
-                password
-            );
-            let (key, _, malformed) = SHIFT_JIS.encode(&material);
-            if malformed || key.is_empty() {
-                return Err(error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "entry RC4 key cannot be encoded as CP932",
-                ));
-            }
-            let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
-                error(
-                    "SHINKI_EMU_MUSICA_RC4_KEY",
-                    "entry RC4 key length is invalid",
-                )
-            })?;
-            let version_skip = if version >= 2 && scheme.rc4_skip_crc {
-                ((crc32fast::hash(&key) >> 12) & 0xff) as u64
-            } else {
-                0
-            };
-            let skip = version_skip.checked_add(absolute_offset).ok_or_else(|| {
-                error("SHINKI_EMU_MUSICA_RC4_SKIP", "entry RC4 offset overflowed")
-            })?;
-            if skip > 0 {
-                let mut remaining = skip;
-                let mut discarded = [0; 4096];
-                while remaining > 0 {
-                    let length =
-                        usize::try_from(remaining.min(discarded.len() as u64)).map_err(|_| {
-                            error(
-                                "SHINKI_EMU_MUSICA_RC4_SKIP",
-                                "entry RC4 offset exceeds the platform bound",
-                            )
-                        })?;
-                    cipher.apply_keystream(&mut discarded[..length]);
-                    discarded[..length].fill(0);
-                    remaining -= length as u64;
-                }
-            }
-            cipher.apply_keystream(&mut bytes);
+        let material = format!(
+            "{} {:08X} {}",
+            entry.name.to_lowercase(),
+            entry.unpacked_size,
+            password_for_entry(entry, scheme).unwrap_or_default()
+        );
+        let (entry_key, _, malformed) = SHIFT_JIS.encode(&material);
+        if malformed || entry_key.is_empty() {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_RC4_KEY",
+                "video RC4 key cannot be encoded as CP932",
+            ));
         }
-        Ok(bytes)
+        let key = (0..256)
+            .map(|index| video_key[index] ^ entry_key[index % entry_key.len()])
+            .collect::<Vec<_>>();
+        let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_RC4_KEY",
+                "video RC4 key length is invalid",
+            )
+        })?;
+        let block_len = usize::try_from(entry.aligned_size.min(0x10000)).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_VIDEO_SIZE",
+                "movie transform size exceeds the platform bound",
+            )
+        })?;
+        if block_len == 0 {
+            return Ok(bytes);
+        }
+        let mut block = vec![0; block_len];
+        cipher.apply_keystream(&mut block);
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte ^= block[(absolute_offset as usize + index) % block.len()];
+        }
+        return Ok(bytes);
     }
+    bytes = blowfish_decrypt(&scheme.data_key, &bytes)?;
+    if version > 0 && password_for_entry(entry, scheme).is_some() {
+        let password = password_for_entry(entry, scheme).unwrap_or_default();
+        let material = format!(
+            "{} {:08X} {}",
+            entry.name.to_lowercase(),
+            entry.unpacked_size,
+            password
+        );
+        let (key, _, malformed) = SHIFT_JIS.encode(&material);
+        if malformed || key.is_empty() {
+            return Err(error(
+                "SHINKI_EMU_MUSICA_RC4_KEY",
+                "entry RC4 key cannot be encoded as CP932",
+            ));
+        }
+        let mut cipher = Rc4::new_from_slice(&key).map_err(|_| {
+            error(
+                "SHINKI_EMU_MUSICA_RC4_KEY",
+                "entry RC4 key length is invalid",
+            )
+        })?;
+        let version_skip = if version >= 2 && scheme.rc4_skip_crc {
+            ((crc32fast::hash(&key) >> 12) & 0xff) as u64
+        } else {
+            0
+        };
+        let skip = version_skip
+            .checked_add(absolute_offset)
+            .ok_or_else(|| error("SHINKI_EMU_MUSICA_RC4_SKIP", "entry RC4 offset overflowed"))?;
+        if skip > 0 {
+            let mut remaining = skip;
+            let mut discarded = [0; 4096];
+            while remaining > 0 {
+                let length =
+                    usize::try_from(remaining.min(discarded.len() as u64)).map_err(|_| {
+                        error(
+                            "SHINKI_EMU_MUSICA_RC4_SKIP",
+                            "entry RC4 offset exceeds the platform bound",
+                        )
+                    })?;
+                cipher.apply_keystream(&mut discarded[..length]);
+                discarded[..length].fill(0);
+                remaining -= length as u64;
+            }
+        }
+        cipher.apply_keystream(&mut bytes);
+    }
+    Ok(bytes)
+}
 
 pub fn password_for_entry<'a>(
     entry: &ArchiveEntryDescriptor,
@@ -351,18 +399,31 @@ fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64, PazError> {
 }
 
 /// Finish a fully decrypted entry with bounded zlib output and native padding rules.
-pub fn finish_entry(entry: &ArchiveEntryDescriptor, mut decoded: Vec<u8>) -> Result<Vec<u8>, FormatError> {
+pub fn finish_entry(
+    entry: &ArchiveEntryDescriptor,
+    mut decoded: Vec<u8>,
+) -> Result<Vec<u8>, FormatError> {
     decoded.truncate(entry.stored_size as usize);
     let expected = entry.unpacked_size as usize;
     if entry.packed {
         let mut output = Vec::new();
-        ZlibDecoder::new(decoded.as_slice()).take(entry.unpacked_size + 17).read_to_end(&mut output)
+        ZlibDecoder::new(decoded.as_slice())
+            .take(entry.unpacked_size + 17)
+            .read_to_end(&mut output)
             .map_err(|_| error("SHINKI_EMU_MUSICA_ZLIB", "entry zlib stream is invalid"))?;
         decoded = output;
     }
-    if decoded.len() > expected && decoded.len() - expected <= 16 && decoded[expected..].iter().all(|b| *b == 0) {
+    if decoded.len() > expected
+        && decoded.len() - expected <= 16
+        && decoded[expected..].iter().all(|b| *b == 0)
+    {
         decoded.truncate(expected);
     }
-    if decoded.len() != expected { return Err(error("SHINKI_EMU_MUSICA_ENTRY_SIZE", "decoded entry size does not match its index descriptor")); }
+    if decoded.len() != expected {
+        return Err(error(
+            "SHINKI_EMU_MUSICA_ENTRY_SIZE",
+            "decoded entry size does not match its index descriptor",
+        ));
+    }
     Ok(decoded)
 }

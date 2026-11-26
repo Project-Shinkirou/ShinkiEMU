@@ -1,7 +1,11 @@
 use crate::cores::Inventory;
 use anyhow::{Context, Result, bail};
 use shinki_emu_build::ohos::Target as OhosTarget;
-use std::{env, fs, path::{Path, PathBuf}, process::Command};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn run(cmd: &mut Command) -> Result<()> {
     let status = cmd
@@ -36,8 +40,12 @@ pub fn client() -> Result<reqwest::blocking::Client> {
 }
 pub fn ndk_root(inv: &Inventory) -> Result<PathBuf> {
     #[derive(serde::Deserialize)]
-    struct AndroidPin { android_ndk_version: String }
-    let pin: AndroidPin = toml::from_str(&fs::read_to_string(inv.root.join("build/dependencies.toml"))?)?;
+    struct AndroidPin {
+        android_ndk_version: String,
+    }
+    let pin: AndroidPin = toml::from_str(&fs::read_to_string(
+        inv.root.join("build/dependencies.toml"),
+    )?)?;
     let root = env::var_os("ANDROID_NDK_HOME")
         .or_else(|| env::var_os("ANDROID_NDK_ROOT"))
         .or_else(|| env::var_os("CARGO_NDK_HOME"))
@@ -83,11 +91,20 @@ pub(crate) fn ohos_sdk_native() -> Result<PathBuf> {
     }
     Ok(sdk)
 }
-pub(crate) fn apply_ohos_environment(inv: &Inventory, target: OhosTarget, cmd: &mut Command) -> Result<()> {
+pub(crate) fn apply_ohos_environment(
+    inv: &Inventory,
+    target: OhosTarget,
+    cmd: &mut Command,
+) -> Result<()> {
     configure_ohos_command(&inv.root, &ohos_sdk_native()?, target, cmd)
 }
 
-fn configure_ohos_command(root: &Path, sdk: &Path, target: OhosTarget, cmd: &mut Command) -> Result<()> {
+fn configure_ohos_command(
+    root: &Path,
+    sdk: &Path,
+    target: OhosTarget,
+    cmd: &mut Command,
+) -> Result<()> {
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     let tools = sdk.join("llvm/bin");
     let target_key = target.rust_target().replace('-', "_");
@@ -95,15 +112,18 @@ fn configure_ohos_command(root: &Path, sdk: &Path, target: OhosTarget, cmd: &mut
     let llvm_target = target.llvm_target();
     let sysroot_libs = sysroot.join("usr/lib").join(llvm_target);
     if !sysroot_libs.is_dir() {
-        bail!("OHOS native SDK missing target sysroot libraries: {}", sysroot_libs.display());
+        bail!(
+            "OHOS native SDK missing target sysroot libraries: {}",
+            sysroot_libs.display()
+        );
     }
-    let clang_args = format!(
-        "--target={llvm_target} --sysroot=\"{}\"",
-        sysroot.display()
-    );
+    let clang_args = format!("--target={llvm_target} --sysroot=\"{}\"", sysroot.display());
     // The cc crate splits *FLAGS on whitespace without honoring quotes, and
     // the DevEco path contains a space: pass the flags as a response file.
-    let response = root.join(".work/ohos").join(target.rust_target()).join("clang-target.rsp");
+    let response = root
+        .join(".work/ohos")
+        .join(target.rust_target())
+        .join("clang-target.rsp");
     fs::create_dir_all(response.parent().context("response file parent")?)?;
     fs::write(
         &response,
@@ -219,7 +239,11 @@ mod tests {
             fs::write(&properties, format!("Pkg.Revision = {revision}\n")).unwrap();
             assert!(validate_ndk_revision(temp.path(), "30.0.16248370").is_err());
         }
-        fs::write(&properties, "Pkg.Desc = Android NDK\nPkg.Revision = 30.0.16248370\n").unwrap();
+        fs::write(
+            &properties,
+            "Pkg.Desc = Android NDK\nPkg.Revision = 30.0.16248370\n",
+        )
+        .unwrap();
         validate_ndk_revision(temp.path(), "30.0.16248370").unwrap();
     }
 }

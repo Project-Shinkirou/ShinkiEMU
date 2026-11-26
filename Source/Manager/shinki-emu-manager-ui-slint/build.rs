@@ -40,15 +40,21 @@ fn write_adapter_links(manifest: &Path) {
     for path in [&inventory, &lock, &root.join("build/core_adapters.rs")] {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    let inventory: toml::Value = toml::from_str(&fs::read_to_string(inventory).expect("core inventory"))
-        .expect("valid core inventory");
+    let inventory: toml::Value =
+        toml::from_str(&fs::read_to_string(inventory).expect("core inventory"))
+            .expect("valid core inventory");
     let lock: toml::Value = toml::from_str(&fs::read_to_string(lock).expect("workspace lockfile"))
         .expect("valid workspace lockfile");
     let mut sources = String::from("&[\n");
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
         if let Some(adapter) = core_adapters::locked_adapter(&lock, id) {
-            writeln!(sources, "    ({id:?}, {:?}, {:?}),", adapter.repo, adapter.commit).unwrap();
+            writeln!(
+                sources,
+                "    ({id:?}, {:?}, {:?}),",
+                adapter.repo, adapter.commit
+            )
+            .unwrap();
         }
     }
     sources.push_str("]\n");

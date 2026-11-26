@@ -324,9 +324,17 @@ fn staged_disk_set_hashes_and_deterministic_archive_match() {
         &[f._dir.path().to_owned()],
     )
     .unwrap();
-    let m: Beta8Manifest = serde_json::from_slice(&fs::read(dir.join("core.json")).unwrap()).unwrap();
-    let commit = m.files.iter().find(|record| record.path == "source-commit.txt").unwrap();
-    assert_eq!(fs::read(dir.join(&commit.path)).unwrap(), r.source_commit.unwrap().as_bytes());
+    let m: Beta8Manifest =
+        serde_json::from_slice(&fs::read(dir.join("core.json")).unwrap()).unwrap();
+    let commit = m
+        .files
+        .iter()
+        .find(|record| record.path == "source-commit.txt")
+        .unwrap();
+    assert_eq!(
+        fs::read(dir.join(&commit.path)).unwrap(),
+        r.source_commit.unwrap().as_bytes()
+    );
     let actual = tree(&dir).unwrap();
     assert_eq!(actual.len(), m.files.len() + 1);
     for record in &m.files {
@@ -546,7 +554,10 @@ fn native_packages_include_dynamically_loaded_modules() {
     fs::copy(&fixture.dependency, resources.join(extension)).unwrap();
     let mut result = result(temp.path());
     result.library = library.clone();
-    result.native_inputs.push(NativeInputs { runtime: vec![shared_dep.clone()], ..Default::default() });
+    result.native_inputs.push(NativeInputs {
+        runtime: vec![shared_dep.clone()],
+        ..Default::default()
+    });
     let manifest = result.core_build.as_mut().unwrap();
     manifest.artifact_kind = "native-shared".into();
     manifest.native_library = Some(library);
@@ -567,9 +578,12 @@ fn native_packages_include_dynamically_loaded_modules() {
     )
     .unwrap();
     let manifest = verify_core(&core).unwrap();
-    assert!(manifest.files.iter().any(|file| {
-        Path::new(&file.path).as_os_str() == shared_dep.file_name().unwrap()
-    }));
+    assert!(
+        manifest
+            .files
+            .iter()
+            .any(|file| { Path::new(&file.path).as_os_str() == shared_dep.file_name().unwrap() })
+    );
     assert!(manifest.files.iter().any(|file| file.path == optional));
     assert!(
         manifest
@@ -617,7 +631,12 @@ fn output_nested_in_resource_inputs_is_rejected_without_modifying_sources() {
 fn external_core_archive_preserves_identity_and_recognition() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let inventory = Inventory::load(root).unwrap();
-    let identity = inventory.core("rfvp").unwrap().identity(root).unwrap().unwrap();
+    let identity = inventory
+        .core("rfvp")
+        .unwrap()
+        .identity(root)
+        .unwrap()
+        .unwrap();
     let temp = crate::temporary::directory().unwrap();
     let fixture = fixture();
     let mut receipt = result(temp.path());
@@ -629,10 +648,13 @@ fn external_core_archive_preserves_identity_and_recognition() {
         .join(format!("core-rfvp-{}", identity.version()))
         .join("x86_64-pc-windows-msvc/package");
     let mut recipe: toml::Value = toml::from_str(include_str!("../../build/cores.toml")).unwrap();
-    let declaration: toml::Value = toml::from_str(
-        r#"recognition = [{ path = "Data/Test.id", offset = 2, magic = "beef" }]"#,
-    ).unwrap();
-    recipe["cores"][0].as_table_mut().unwrap().insert("recognition".into(), declaration["recognition"].clone());
+    let declaration: toml::Value =
+        toml::from_str(r#"recognition = [{ path = "Data/Test.id", offset = 2, magic = "beef" }]"#)
+            .unwrap();
+    recipe["cores"][0]
+        .as_table_mut()
+        .unwrap()
+        .insert("recognition".into(), declaration["recognition"].clone());
     let recipe: crate::cores::Core = recipe["cores"][0].clone().try_into().unwrap();
     let staged = stage_core(
         &receipt,
@@ -667,9 +689,15 @@ fn external_core_archive_preserves_identity_and_recognition() {
     extract_zip(&archive, &extracted).unwrap();
     let extracted_manifest = verify_core(&extracted).unwrap();
     assert_eq!(extracted_manifest.identity.as_ref(), Some(&identity));
-    assert_eq!(extracted_manifest.recognition.rules()[0].path(), "data/test.id");
+    assert_eq!(
+        extracted_manifest.recognition.rules()[0].path(),
+        "data/test.id"
+    );
     assert_eq!(extracted_manifest.recognition.rules()[0].offset(), 2);
-    assert_eq!(extracted_manifest.recognition.rules()[0].magic_bytes(), [0xbe, 0xef]);
+    assert_eq!(
+        extracted_manifest.recognition.rules()[0].magic_bytes(),
+        [0xbe, 0xef]
+    );
     assert_eq!(
         sha256(&extracted.join(&extracted_manifest.library)).unwrap(),
         packaged_library_hash
@@ -743,10 +771,13 @@ fn android_package_resolves_transitive_redistributable_dsos() {
     fs::write(&runtime, sectionless_elf("libChild.so", "$ORIGIN")).unwrap();
     assert!(closure().is_err());
     fs::write(&child, sectionless_elf("libOpenSLES.so", "$ORIGIN")).unwrap();
-    assert_eq!(closure().unwrap(), [
-        (child, "libChild.so".to_owned()),
-        (runtime, "libNative.so".to_owned()),
-    ]);
+    assert_eq!(
+        closure().unwrap(),
+        [
+            (child, "libChild.so".to_owned()),
+            (runtime, "libNative.so".to_owned()),
+        ]
+    );
 }
 
 #[test]

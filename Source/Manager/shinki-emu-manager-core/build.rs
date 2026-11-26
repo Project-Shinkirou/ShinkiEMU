@@ -19,7 +19,8 @@ fn main() {
         &fs::read_to_string(targets).expect("target inventory"),
         &env::var("TARGET").expect("build target"),
         env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some(),
-    ).expect("valid static core catalog");
+    )
+    .expect("valid static core catalog");
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
     fs::write(out.join("static-core-catalog.rs"), generated).expect("static catalog output");
 }

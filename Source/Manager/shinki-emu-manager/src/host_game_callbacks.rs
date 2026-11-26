@@ -19,35 +19,37 @@ fn install_input(
         flush,
         on_error: on_flush_error,
     });
-    window.global::<Session>().on_input(move |control, pressed, value| {
-        if let Err(error) = enqueue(control.as_str(), pressed, value) {
-            if let Some(window) = weak.upgrade() {
-                report_input_error(&window, &error);
+    window
+        .global::<Session>()
+        .on_input(move |control, pressed, value| {
+            if let Err(error) = enqueue(control.as_str(), pressed, value) {
+                if let Some(window) = weak.upgrade() {
+                    report_input_error(&window, &error);
+                }
+                return;
             }
-            return;
-        }
-        if dispatch.scheduled.replace(true) {
-            return;
-        }
+            if dispatch.scheduled.replace(true) {
+                return;
+            }
 
-        // A single Slint pointer event sends X, Y, and possibly a button edge.
-        // Drain after that input turn, independently of presentation timers.
-        let pending = dispatch.clone();
-        let window = weak.clone();
-        if let Err(error) = slint::spawn_local(async move {
-            pending.scheduled.set(false);
-            if let Some(window) = window.upgrade()
-                && let Err(error) = (pending.flush)()
-            {
-                (pending.on_error)(&window, error);
+            // A single Slint pointer event sends X, Y, and possibly a button edge.
+            // Drain after that input turn, independently of presentation timers.
+            let pending = dispatch.clone();
+            let window = weak.clone();
+            if let Err(error) = slint::spawn_local(async move {
+                pending.scheduled.set(false);
+                if let Some(window) = window.upgrade()
+                    && let Err(error) = (pending.flush)()
+                {
+                    (pending.on_error)(&window, error);
+                }
+            }) {
+                dispatch.scheduled.set(false);
+                if let Some(window) = weak.upgrade() {
+                    (dispatch.on_error)(&window, format!("SHINKI_EMU_INPUT_WAKE_FAILED: {error}"));
+                }
             }
-        }) {
-            dispatch.scheduled.set(false);
-            if let Some(window) = weak.upgrade() {
-                (dispatch.on_error)(&window, format!("SHINKI_EMU_INPUT_WAKE_FAILED: {error}"));
-            }
-        }
-    });
+        });
 }
 
 pub(super) fn install<C: ManagerController, R: ShinkiUnderlayRenderer>(
@@ -209,7 +211,9 @@ mod tests {
         }
 
         fn new_event_loop_proxy(&self) -> Option<Box<dyn EventLoopProxy>> {
-            self.jobs.as_ref().map(|jobs| Box::new(Proxy(jobs.clone())) as Box<dyn EventLoopProxy>)
+            self.jobs
+                .as_ref()
+                .map(|jobs| Box::new(Proxy(jobs.clone())) as Box<dyn EventLoopProxy>)
         }
     }
 
@@ -230,7 +234,9 @@ mod tests {
         install_input(
             &window,
             move |control, pressed, value| {
-                submit.borrow_mut().push((control.to_owned(), pressed, value));
+                submit
+                    .borrow_mut()
+                    .push((control.to_owned(), pressed, value));
                 Ok(())
             },
             move || {
@@ -255,7 +261,10 @@ mod tests {
             for job in scheduled {
                 job();
             }
-            assert!(jobs.lock().unwrap().is_empty(), "flush must not self-reschedule");
+            assert!(
+                jobs.lock().unwrap().is_empty(),
+                "flush must not self-reschedule"
+            );
             assert_eq!(
                 delivered.borrow().last().unwrap().as_slice(),
                 [
@@ -329,18 +338,31 @@ mod tests {
         model.session.phase = "running".into();
         apply_session_progress(window, &weak, Some(model.clone()), true);
         let mut stage = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(1, 1);
-        stage.make_mut_slice()[0] = slint::Rgb8Pixel { r: 242, g: 39, b: 51 };
+        stage.make_mut_slice()[0] = slint::Rgb8Pixel {
+            r: 242,
+            g: 39,
+            b: 51,
+        };
         apply_stage_image(
             window,
             slint::Image::from_rgb8(stage),
             (1, 1),
             (1, 1),
-            Viewport2D { x: 0, y: 0, width: 1, height: 1 },
+            Viewport2D {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+            },
         );
         let running = capture("running");
         assert_eq!(
             running[(HEIGHT / 2) * WIDTH + WIDTH / 2],
-            slint::Rgb8Pixel { r: 242, g: 39, b: 51 },
+            slint::Rgb8Pixel {
+                r: 242,
+                g: 39,
+                b: 51
+            },
         );
 
         // The background poll consumes the terminal model before any runtime
@@ -360,7 +382,10 @@ mod tests {
         assert!(!window.global::<Session>().get_active());
         assert_eq!(window.global::<Session>().get_frame().size().width, 0);
         assert_eq!(window.global::<App>().get_page().as_str(), "library-search");
-        assert_eq!(window.global::<Notices>().get_snackbar_text().as_str(), "Game ended");
+        assert_eq!(
+            window.global::<Notices>().get_snackbar_text().as_str(),
+            "Game ended"
+        );
 
         // A nonterminal update never tears down a running or fatal session.
         adapter.set_session_active(true);
@@ -383,7 +408,11 @@ mod tests {
 
         const WIDTH: usize = 800;
         const HEIGHT: usize = 360;
-        const GAME: slint::Rgb8Pixel = slint::Rgb8Pixel { r: 242, g: 39, b: 51 };
+        const GAME: slint::Rgb8Pixel = slint::Rgb8Pixel {
+            r: 242,
+            g: 39,
+            b: 51,
+        };
         const BLACK: slint::Rgb8Pixel = slint::Rgb8Pixel { r: 0, g: 0, b: 0 };
         let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
         slint::platform::set_platform(Box::new(TestPlatform {
@@ -408,7 +437,12 @@ mod tests {
             slint::Image::from_rgb8(stage),
             (16, 9),
             (16, 9),
-            Viewport2D { x: 0, y: 0, width: 16, height: 9 },
+            Viewport2D {
+                x: 0,
+                y: 0,
+                width: 16,
+                height: 9,
+            },
         );
         let mut pixels = vec![slint::Rgb8Pixel::default(); WIDTH * HEIGHT];
         software.request_redraw();

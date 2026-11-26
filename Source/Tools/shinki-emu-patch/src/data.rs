@@ -180,8 +180,9 @@ pub(crate) fn install(lua: &Lua, ctx: &Table, cancelled: Arc<AtomicBool>) -> mlu
         lua.create_function(move |lua, (width, height, bytes): (Value, Value, Buffer)| {
             let width = dimension(width)?;
             let height = dimension(height)?;
-            let png =
-                buffer::input(lua, bytes, |bytes| encode_png(width, height, bytes, &cancelled))?;
+            let png = buffer::input(lua, bytes, |bytes| {
+                encode_png(width, height, bytes, &cancelled)
+            })?;
             buffer::output(lua, &png)
         })?,
     )?;

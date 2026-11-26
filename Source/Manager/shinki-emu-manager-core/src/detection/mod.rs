@@ -18,18 +18,18 @@ use thiserror::Error;
 mod adv32;
 mod declared;
 pub use declared::{DeclaredMatch, DeclaredRules};
-mod formats;
-mod musica;
-mod roots;
-mod softpal;
-mod krkr;
-mod renpy;
-#[cfg(test)]
-mod tests;
 #[cfg(test)]
 mod entry_tests;
+mod formats;
+mod krkr;
+mod musica;
 #[cfg(test)]
 mod musica_tests;
+mod renpy;
+mod roots;
+mod softpal;
+#[cfg(test)]
+mod tests;
 
 // Change when the recognition/traversal rules change, independently of core pins.
 // Future cache consumers must also invalidate on directory-content changes.
@@ -84,9 +84,13 @@ struct LocalTree;
 
 impl LocalTree {
     fn kind_of(ty: fs::FileType) -> EntryKind {
-        if ty.is_file() { EntryKind::File }
-        else if ty.is_dir() { EntryKind::Directory }
-        else { EntryKind::Other }
+        if ty.is_file() {
+            EntryKind::File
+        } else if ty.is_dir() {
+            EntryKind::Directory
+        } else {
+            EntryKind::Other
+        }
     }
 }
 
@@ -98,7 +102,9 @@ impl DetectionTree for LocalTree {
         visit: &mut dyn FnMut(OsString, EntryKind) -> DetectionResult<()>,
     ) -> DetectionResult<()> {
         for (index, entry) in fs::read_dir(path)?.enumerate() {
-            if index == limit { return Err(DetectionError::ReadLimit); }
+            if index == limit {
+                return Err(DetectionError::ReadLimit);
+            }
             let entry = entry?;
             visit(entry.file_name(), Self::kind_of(entry.file_type()?))?;
         }
@@ -111,7 +117,9 @@ impl DetectionTree for LocalTree {
 
     fn open(&self, path: &Path) -> io::Result<Option<(File, u64)>> {
         let metadata = fs::symlink_metadata(path)?;
-        if !metadata.is_file() { return Ok(None); }
+        if !metadata.is_file() {
+            return Ok(None);
+        }
         File::open(path).map(|file| Some((file, metadata.len())))
     }
 }
@@ -123,7 +131,10 @@ impl DetectionTree for LocalTree {
 /// family, with at most one format per family. Runtime compatibility is separate.
 /// Cancellation is cooperative between filesystem calls; blocked OS I/O cannot
 /// be interrupted. Internal fixed limits bound enumeration, reads and allocation.
-pub fn detect_game_directory(root: &Path, cancellation: &NativeCancellation) -> DetectionResult<Vec<EngineDetection>> {
+pub fn detect_game_directory(
+    root: &Path,
+    cancellation: &NativeCancellation,
+) -> DetectionResult<Vec<EngineDetection>> {
     detect_tree_at(&LocalTree, root, cancellation, None).map(|(matches, _)| matches)
 }
 
@@ -141,10 +152,22 @@ fn detect_tree_at<T: DetectionTree>(
     cancellation: &NativeCancellation,
     declared: Option<&DeclaredRules>,
 ) -> DetectionResult<(Vec<EngineDetection>, bool)> {
-    let mut scan = Scan { tree, cancellation, matches: Vec::new(), entries: 0, files: 0, read_bytes: 0, siglus: roots::SiglusRoot::Default };
+    let mut scan = Scan {
+        tree,
+        cancellation,
+        matches: Vec::new(),
+        entries: 0,
+        files: 0,
+        read_bytes: 0,
+        siglus: roots::SiglusRoot::Default,
+    };
     scan.checkpoint()?;
     if tree.kind(root)? != EntryKind::Directory {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "game root must be a directory, not a link").into());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "game root must be a directory, not a link",
+        )
+        .into());
     }
     scan.directory(root, Path::new(""), true)?;
     let has_files = scan.files != 0;
@@ -176,11 +199,19 @@ impl<T: DetectionTree> Scan<'_, T> {
         let cancellation = self.cancellation;
         let entries = &mut self.entries;
         self.tree.entries(path, limit, &mut |name, kind| {
-            if cancellation.is_cancelled() { return Err(DetectionError::Cancelled); }
-            if *entries == MAX_ENTRIES { return Err(DetectionError::ReadLimit); }
+            if cancellation.is_cancelled() {
+                return Err(DetectionError::Cancelled);
+            }
+            if *entries == MAX_ENTRIES {
+                return Err(DetectionError::ReadLimit);
+            }
             *entries += 1;
             if Path::new(&name).file_name() != Some(OsStr::new(&name)) {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid directory entry name").into());
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid directory entry name",
+                )
+                .into());
             }
             visit(name, kind)
         })
@@ -188,35 +219,59 @@ impl<T: DetectionTree> Scan<'_, T> {
 
     fn open(&self, path: &Path, read_bytes: u64) -> DetectionResult<Option<Source>> {
         self.checkpoint()?;
-        Ok(self.tree.open(path)?.map(|(file, length)| Source { file, length, read_bytes }))
+        Ok(self.tree.open(path)?.map(|(file, length)| Source {
+            file,
+            length,
+            read_bytes,
+        }))
     }
 
     fn checkpoint(&self) -> DetectionResult<()> {
-        if self.cancellation.is_cancelled() { Err(DetectionError::Cancelled) } else { Ok(()) }
+        if self.cancellation.is_cancelled() {
+            Err(DetectionError::Cancelled)
+        } else {
+            Ok(())
+        }
     }
     fn matched(&mut self, family: &str, format: &str) -> DetectionResult<()> {
         self.checkpoint()?;
         if !self.matches.iter().any(|m| m.family_id == family) {
-            self.matches.push(EngineDetection { family_id: family.into(), format: format.into(), declared: None });
+            self.matches.push(EngineDetection {
+                family_id: family.into(),
+                format: format.into(),
+                declared: None,
+            });
         }
         Ok(())
     }
-    fn directory(&mut self, root: &Path, relative: &Path, root_directory: bool) -> DetectionResult<()> {
+    fn directory(
+        &mut self,
+        root: &Path,
+        relative: &Path,
+        root_directory: bool,
+    ) -> DetectionResult<()> {
         self.checkpoint()?;
         let mut children = Vec::new();
         let mut files = Vec::new();
         let mut advdata = None;
         let mut ambiguous_advdata = false;
         self.entries(&root.join(relative), |name, kind| {
-            if kind == EntryKind::File { files.push(relative.join(name)); }
-            else if kind == EntryKind::Directory {
+            if kind == EntryKind::File {
+                files.push(relative.join(name));
+            } else if kind == EntryKind::Directory {
                 if root_directory && name.eq_ignore_ascii_case("AdvData") {
                     ambiguous_advdata |= advdata.replace(name).is_some();
                     return Ok(());
                 }
                 let lower = name.to_string_lossy().to_ascii_lowercase();
-                if (root_directory && matches!(lower.as_str(), "data" | "startdata" | "game" | "usrdir"))
-                    || (relative.as_os_str().to_string_lossy().eq_ignore_ascii_case("data") && lower == "pack") {
+                if (root_directory
+                    && matches!(lower.as_str(), "data" | "startdata" | "game" | "usrdir"))
+                    || (relative
+                        .as_os_str()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case("data")
+                        && lower == "pack")
+                {
                     children.push(relative.join(name));
                 }
             }
@@ -224,10 +279,14 @@ impl<T: DetectionTree> Scan<'_, T> {
         })?;
         files.sort();
         children.sort();
-        if root_directory { self.siglus = self.select_root(root, &files)?; }
+        if root_directory {
+            self.siglus = self.select_root(root, &files)?;
+        }
         for path in &files {
             self.checkpoint()?;
-            if self.files == MAX_FILES { return Err(DetectionError::ReadLimit); }
+            if self.files == MAX_FILES {
+                return Err(DetectionError::ReadLimit);
+            }
             self.files += 1;
             self.inspect(root, &path)?;
         }
@@ -241,13 +300,17 @@ impl<T: DetectionTree> Scan<'_, T> {
                 self.adv32(&root.join(data))?;
             }
         }
-        for path in children { self.directory(root, &path, false)?; }
+        for path in children {
+            self.directory(root, &path, false)?;
+        }
         Ok(())
     }
     fn inspect(&mut self, root: &Path, path: &Path) -> DetectionResult<()> {
         self.checkpoint()?;
         let full = root.join(path);
-        let Some(mut source) = self.open(&full, 0)? else { return Ok(()); };
+        let Some(mut source) = self.open(&full, 0)? else {
+            return Ok(());
+        };
         let mut head = [0; 128];
         let size = source.length.min(head.len() as u64) as usize;
         self.read_at(&mut source, 0, &mut head[..size])?;
@@ -256,12 +319,22 @@ impl<T: DetectionTree> Scan<'_, T> {
             Err(formats::Rejected::Abort(error)) => Err(error),
         }
     }
-    fn read_at(&mut self, source: &mut Source, offset: u64, output: &mut [u8]) -> DetectionResult<()> {
+    fn read_at(
+        &mut self,
+        source: &mut Source,
+        offset: u64,
+        output: &mut [u8],
+    ) -> DetectionResult<()> {
         self.checkpoint()?;
-        if offset.checked_add(output.len() as u64).is_none_or(|end| end > source.length) {
+        if offset
+            .checked_add(output.len() as u64)
+            .is_none_or(|end| end > source.length)
+        {
             return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
         }
-        if output.len() as u64 > MAX_READ_BYTES - self.read_bytes || output.len() as u64 > MAX_FILE_READ_BYTES - source.read_bytes {
+        if output.len() as u64 > MAX_READ_BYTES - self.read_bytes
+            || output.len() as u64 > MAX_FILE_READ_BYTES - source.read_bytes
+        {
             return Err(DetectionError::ReadLimit);
         }
         source.file.seek(SeekFrom::Start(offset))?;
@@ -280,13 +353,23 @@ impl<T: DetectionTree> Scan<'_, T> {
         }
         self.checkpoint()
     }
-    fn bytes(&mut self, source: &mut Source, offset: u64, length: usize) -> DetectionResult<Vec<u8>> {
+    fn bytes(
+        &mut self,
+        source: &mut Source,
+        offset: u64,
+        length: usize,
+    ) -> DetectionResult<Vec<u8>> {
         self.checkpoint()?;
         // Check declared lengths and budgets before allocation.
-        if offset.checked_add(length as u64).is_none_or(|end| end > source.length) {
+        if offset
+            .checked_add(length as u64)
+            .is_none_or(|end| end > source.length)
+        {
             return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
         }
-        if length as u64 > MAX_READ_BYTES - self.read_bytes || length as u64 > MAX_FILE_READ_BYTES - source.read_bytes {
+        if length as u64 > MAX_READ_BYTES - self.read_bytes
+            || length as u64 > MAX_FILE_READ_BYTES - source.read_bytes
+        {
             return Err(DetectionError::ReadLimit);
         }
         let mut bytes = vec![0; length];
@@ -294,4 +377,8 @@ impl<T: DetectionTree> Scan<'_, T> {
         Ok(bytes)
     }
 }
-struct Source { file: File, length: u64, read_bytes: u64 }
+struct Source {
+    file: File,
+    length: u64,
+    read_bytes: u64,
+}

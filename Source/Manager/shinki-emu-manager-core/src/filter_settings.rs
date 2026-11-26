@@ -10,10 +10,16 @@ pub const FILTER_DEFAULT_STRENGTH: f32 = 0.35;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FilterStage {
-    Scale { scale: f32 },
-    Sharpen { strength: f32 },
+    Scale {
+        scale: f32,
+    },
+    Sharpen {
+        strength: f32,
+    },
     LegacyAnime4k,
-    Lanczos3 { scale: f32 },
+    Lanczos3 {
+        scale: f32,
+    },
     Scale2x,
     Anime4kOriginalRestore,
     Anime4kOriginalX2,
@@ -41,7 +47,12 @@ impl FilterSettings {
                     !(1.0..=4.0).contains(scale)
                 }
                 FilterStage::Sharpen { strength } => !(0.0..=1.0).contains(strength),
-                FilterStage::Format4 { source, strength, parameters, .. } => {
+                FilterStage::Format4 {
+                    source,
+                    strength,
+                    parameters,
+                    ..
+                } => {
                     source.is_empty()
                         || source.len() > FILTER_SOURCE_BYTE_LIMIT
                         || !(0.0..=1.0).contains(strength)
@@ -58,9 +69,9 @@ impl FilterSettings {
 
 fn valid_parameters(parameters: &BTreeMap<String, f32>) -> bool {
     parameters.len() <= 64
-        && parameters.iter().all(|(key, value)| {
-            !key.is_empty() && key.len() <= 128 && value.is_finite()
-        })
+        && parameters
+            .iter()
+            .all(|(key, value)| !key.is_empty() && key.len() <= 128 && value.is_finite())
 }
 
 impl<'de> Deserialize<'de> for FilterSettings {
@@ -104,15 +115,27 @@ impl<'de> Deserialize<'de> for FilterSettings {
         }
 
         Ok(match Stored::deserialize(deserializer)? {
-            Stored::Ordered(ordered) => Self { stages: ordered.stages },
-            Stored::Legacy(Legacy { configuration, source }) => {
-                let LegacyConfiguration { preset, scale, strength, parameters } = configuration;
+            Stored::Ordered(ordered) => Self {
+                stages: ordered.stages,
+            },
+            Stored::Legacy(Legacy {
+                configuration,
+                source,
+            }) => {
+                let LegacyConfiguration {
+                    preset,
+                    scale,
+                    strength,
+                    parameters,
+                } = configuration;
                 if !(1.0..=4.0).contains(&scale)
                     || !(0.0..=1.0).contains(&strength)
                     || (matches!(preset, LegacyPreset::Anime4kRestoreUpscale) && scale != 2.0)
                     || !valid_parameters(&parameters)
                 {
-                    return Err(serde::de::Error::custom("SHINKI_EMU_FILTER_SETTINGS_INVALID"));
+                    return Err(serde::de::Error::custom(
+                        "SHINKI_EMU_FILTER_SETTINGS_INVALID",
+                    ));
                 }
                 let stage = match (source, preset) {
                     (Some(source), preset) => Some(FilterStage::Format4 {
@@ -141,15 +164,41 @@ mod tests {
     #[test]
     fn legacy_json_migrates_without_activating_an_inactive_source() {
         for (preset, source, expected) in [
-            ("scale", serde_json::Value::Null, vec![FilterStage::Scale { scale: 1.5 }]),
-            ("sharpen", serde_json::Value::Null, vec![FilterStage::Sharpen { strength: 0.7 }]),
-            ("anime4k_restore_upscale", serde_json::Value::Null, vec![FilterStage::LegacyAnime4k]),
-            ("anime4k_restore_upscale", "external".into(), vec![FilterStage::Format4 {
-                source: "external".into(), strength: 0.7, parameters: BTreeMap::new(), disabled: false,
-            }]),
-            ("none", "external".into(), vec![FilterStage::Format4 {
-                source: "external".into(), strength: 0.7, parameters: BTreeMap::new(), disabled: true,
-            }]),
+            (
+                "scale",
+                serde_json::Value::Null,
+                vec![FilterStage::Scale { scale: 1.5 }],
+            ),
+            (
+                "sharpen",
+                serde_json::Value::Null,
+                vec![FilterStage::Sharpen { strength: 0.7 }],
+            ),
+            (
+                "anime4k_restore_upscale",
+                serde_json::Value::Null,
+                vec![FilterStage::LegacyAnime4k],
+            ),
+            (
+                "anime4k_restore_upscale",
+                "external".into(),
+                vec![FilterStage::Format4 {
+                    source: "external".into(),
+                    strength: 0.7,
+                    parameters: BTreeMap::new(),
+                    disabled: false,
+                }],
+            ),
+            (
+                "none",
+                "external".into(),
+                vec![FilterStage::Format4 {
+                    source: "external".into(),
+                    strength: 0.7,
+                    parameters: BTreeMap::new(),
+                    disabled: true,
+                }],
+            ),
         ] {
             let old = serde_json::json!({
                 "configuration": {
@@ -165,7 +214,10 @@ mod tests {
             assert_eq!(settings.stages, expected);
             let new = serde_json::to_value(&settings).unwrap();
             assert!(new.get("configuration").is_none());
-            assert_eq!(serde_json::from_value::<FilterSettings>(new).unwrap(), settings);
+            assert_eq!(
+                serde_json::from_value::<FilterSettings>(new).unwrap(),
+                settings
+            );
         }
     }
 }

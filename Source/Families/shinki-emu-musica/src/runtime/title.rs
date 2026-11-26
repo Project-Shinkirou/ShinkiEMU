@@ -285,7 +285,11 @@ pub fn validate_musica_title_frontend(
     height: u32,
 ) -> shinki_emu_sdk::runtime::SessionResult<()> {
     let frontend = FrontendData::load(root, archive, json, encoding, width, height)?;
-    if !frontend.titles.iter().any(|title| title.requires.values().all(|&value| value == 0)) {
+    if !frontend
+        .titles
+        .iter()
+        .any(|title| title.requires.values().all(|&value| value == 0))
+    {
         return Err(crate::scene::error(
             "SHINKI_EMU_MUSICA_FRONTEND",
             "title configuration has no variant for a fresh game",
@@ -295,18 +299,27 @@ pub fn validate_musica_title_frontend(
         use super::gallery::GalleryAction;
         let mut scripts = BTreeMap::<&str, BTreeSet<&str>>::new();
         for button in layout.screens.iter().flat_map(|screen| &screen.buttons) {
-            if let GalleryAction::Script { resource, label: Some(label) } = &button.action {
+            if let GalleryAction::Script {
+                resource,
+                label: Some(label),
+            } = &button.action
+            {
                 scripts.entry(resource).or_default().insert(label);
             }
         }
         for (uri, required_labels) in scripts {
             let loaded = crate::script_loader::load_script(archive, uri, encoding)?;
-            let label_error = || crate::scene::error(
-                MusicaRuntimeError::Label.diagnostic_code(),
-                "invalid authored gallery script label",
-            );
+            let label_error = || {
+                crate::scene::error(
+                    MusicaRuntimeError::Label.diagnostic_code(),
+                    "invalid authored gallery script label",
+                )
+            };
             let labels = build_labels(&loaded.script).map_err(|_| label_error())?;
-            if required_labels.iter().any(|label| !labels.contains_key(*label)) {
+            if required_labels
+                .iter()
+                .any(|label| !labels.contains_key(*label))
+            {
                 return Err(label_error());
             }
         }

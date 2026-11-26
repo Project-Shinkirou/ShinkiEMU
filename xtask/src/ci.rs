@@ -1,5 +1,5 @@
-use crate::{build, cores::Inventory, package};
 use crate::apple::ios_frameworks;
+use crate::{build, cores::Inventory, package};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::{fs, io::Write, path::Path};
@@ -55,7 +55,9 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             if component == "manager" && ios_frameworks::device(target) {
                 report.ios = Some(ios_frameworks::build_device_closure(inv, &version)?);
                 report.status = "built";
-                report.reason = Some("Unsigned device build and native closure only; no installable IPA".into());
+                report.reason = Some(
+                    "Unsigned device build and native closure only; no installable IPA".into(),
+                );
                 return Ok(());
             }
             let out = inv.root.join(".work/ci").join(target).join(component);
@@ -63,7 +65,11 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             let ios = ios_frameworks::target_supported(target) && component == "manager";
             if ios {
                 report.ios = Some(crate::apple::ios_frameworks::read_manifest(
-                    inv, &staged, target, &version, &build::source_commit(inv)?,
+                    inv,
+                    &staged,
+                    target,
+                    &version,
+                    &build::source_commit(inv)?,
                 )?);
             }
             report.status = "built";
@@ -73,7 +79,8 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
                 } else {
                     ("ohos.json", "hap")
                 };
-                let record: serde_json::Value = serde_json::from_slice(&fs::read(staged.join(file))?)?;
+                let record: serde_json::Value =
+                    serde_json::from_slice(&fs::read(staged.join(file))?)?;
                 let name = record[key].as_str().context("mobile package filename")?;
                 package::portable(name)?;
                 report.artifact = Some(staged.join(name));
@@ -81,7 +88,12 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
                 report.artifact = Some(archive_package(&staged, &out)?);
             }
             if let Some(manifest) = &report.ios {
-                manifest.verify_release_archive(report.artifact.as_deref().context("missing iOS package artifact")?)?;
+                manifest.verify_release_archive(
+                    report
+                        .artifact
+                        .as_deref()
+                        .context("missing iOS package artifact")?,
+                )?;
             }
             Ok(())
         })()

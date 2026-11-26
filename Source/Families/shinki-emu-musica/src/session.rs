@@ -540,7 +540,11 @@ impl MusicaSession {
                     state: self.vm.state(),
                     saves: &self.native,
                 };
-                self.scene.render_authored_gallery(&layout.screens[cursor.screen], cursor, &access)?;
+                self.scene.render_authored_gallery(
+                    &layout.screens[cursor.screen],
+                    cursor,
+                    &access,
+                )?;
             } else {
                 self.scene.render_gallery(&self.vm)?;
             }

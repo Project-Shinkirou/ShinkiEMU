@@ -21,7 +21,10 @@ pub(crate) struct Scene {
 
 impl Canvas {
     pub(crate) fn new(width: u32, height: u32) -> Self {
-        Self::from_image(RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255])), None)
+        Self::from_image(
+            RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255])),
+            None,
+        )
     }
 
     pub(crate) fn from_image(image: RgbaImage, presentation: Option<StageCanvas>) -> Self {
@@ -288,7 +291,10 @@ mod hardware {
         thread::{self, JoinHandle},
     };
 
-    #[allow(clippy::large_enum_variant, reason = "Keep hosted presentation inline on the VM worker")]
+    #[allow(
+        clippy::large_enum_variant,
+        reason = "Keep hosted presentation inline on the VM worker"
+    )]
     enum Compositor {
         Hosted(GpuRenderer),
         Compatibility(OffscreenWorker),
@@ -329,7 +335,11 @@ mod hardware {
             }
         }
 
-        pub(crate) fn render(&mut self, scene: Scene, defer: bool) -> Result<Option<OwnedPixelBuffer>> {
+        pub(crate) fn render(
+            &mut self,
+            scene: Scene,
+            defer: bool,
+        ) -> Result<Option<OwnedPixelBuffer>> {
             match &mut self.0 {
                 // Keep hosted submits and native effects in VM order, with no
                 // in-flight readback or async result that can overwrite an effect.
@@ -354,7 +364,9 @@ mod hardware {
 
         pub(crate) fn capture_scene(&self) -> Result<Option<OwnedPixelBuffer>> {
             match &self.0 {
-                Compositor::Hosted(renderer) if renderer.sequence != 0 => renderer.output.capture()
+                Compositor::Hosted(renderer) if renderer.sequence != 0 => renderer
+                    .output
+                    .capture()
                     .map(|pixels| Some(pixels.into()))
                     .map_err(render_error),
                 _ => Ok(None),
@@ -397,9 +409,9 @@ mod hardware {
                         return;
                     }
                     while let Ok(scene) = queue.recv() {
-                        let frame = renderer.render(scene).map(|pixels| {
-                            pixels.expect("offscreen worker renders CPU frames")
-                        });
+                        let frame = renderer
+                            .render(scene)
+                            .map(|pixels| pixels.expect("offscreen worker renders CPU frames"));
                         let failed = frame.is_err();
                         if completed.send(frame).is_err() || failed {
                             break;
@@ -596,43 +608,56 @@ mod hardware {
                 .prepare_with_sources(&mut commands, &sources)
                 .map_err(render_error)?;
             let sequence = self.next_sequence()?;
-            let pixels = self.output.submit(
-                &SceneFrame {
-                    sequence,
-                    width: raster.width,
-                    height: raster.height,
-                    clear_rgba: [0, 0, 0, 255],
-                    commands,
-                    semantics: None,
-                },
-                extent(mapping.logical()),
-            ).map_err(render_error)?;
+            let pixels = self
+                .output
+                .submit(
+                    &SceneFrame {
+                        sequence,
+                        width: raster.width,
+                        height: raster.height,
+                        clear_rgba: [0, 0, 0, 255],
+                        commands,
+                        semantics: None,
+                    },
+                    extent(mapping.logical()),
+                )
+                .map_err(render_error)?;
             let expected = raster.width as usize * raster.height as usize * 4;
-            if pixels.as_ref().is_some_and(|pixels| pixels.len() != expected) {
+            if pixels
+                .as_ref()
+                .is_some_and(|pixels| pixels.len() != expected)
+            {
                 return Err(Error::Invalid("ADV32 GPU readback size"));
             }
             Ok(pixels.map(Into::into))
         }
 
         fn next_sequence(&mut self) -> Result<u64> {
-            self.sequence = self.sequence.checked_add(1)
+            self.sequence = self
+                .sequence
+                .checked_add(1)
                 .ok_or(Error::Invalid("ADV32 render sequence"))?;
             Ok(self.sequence)
         }
 
         fn present_raster(&mut self, pixels: &OwnedPixelBuffer) -> Result<()> {
             let sequence = self.next_sequence()?;
-            self.output.present_native_raster(
-                sequence,
-                extent(self.mapping.logical()),
-                extent(self.mapping.raster()),
-                pixels,
-            ).map_err(render_error)
+            self.output
+                .present_native_raster(
+                    sequence,
+                    extent(self.mapping.logical()),
+                    extent(self.mapping.raster()),
+                    pixels,
+                )
+                .map_err(render_error)
         }
     }
 
     fn extent(size: roukaku_media_core::Extent2D) -> Extent {
-        Extent { width: size.width, height: size.height }
+        Extent {
+            width: size.width,
+            height: size.height,
+        }
     }
 
     fn render_error(error: impl std::fmt::Debug) -> Error {
@@ -654,7 +679,9 @@ mod tests {
             unreachable!()
         };
         assert!(renderer.render(previous, true).unwrap().is_none());
-        renderer.present_raster(&vec![0; 128 * 64 * 4].into()).unwrap();
+        renderer
+            .present_raster(&vec![0; 128 * 64 * 4].into())
+            .unwrap();
         let sprite = Crx::from_image(
             0,
             0,

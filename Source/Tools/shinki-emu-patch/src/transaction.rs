@@ -397,10 +397,11 @@ pub(crate) fn same_file(left: &File, right: &File) -> io::Result<bool> {
     let left_id = file_identity(left)?;
     let right_id = file_identity(right)?;
     #[cfg(windows)]
-    if matches!((&left_id, &right_id),
+    if matches!(
+        (&left_id, &right_id),
         (FileIdentity::Extended(..), FileIdentity::Legacy(..))
-        | (FileIdentity::Legacy(..), FileIdentity::Extended(..)))
-    {
+            | (FileIdentity::Legacy(..), FileIdentity::Extended(..))
+    ) {
         // Compare both opened objects in the same native ID domain. Never
         // truncate an extended ID or treat different query support as inequality.
         return Ok(legacy_file_identity(left)? == legacy_file_identity(right)?);
@@ -431,7 +432,10 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
             std::mem::size_of::<FILE_ID_INFO>() as u32,
         )
     } {
-        Ok(()) => Ok(FileIdentity::Extended(info.VolumeSerialNumber, info.FileId.Identifier)),
+        Ok(()) => Ok(FileIdentity::Extended(
+            info.VolumeSerialNumber,
+            info.FileId.Identifier,
+        )),
         Err(error) => {
             let error = win_error(error);
             // Sandbox mapped folders expose stable legacy IDs but reject FileIdInfo.
@@ -831,32 +835,64 @@ mod tests {
             script: root.path().join("unused.luau"),
             source: source.clone(),
             patch: source.clone(),
-            mode: PatchMode::NewDirectory { output: output.clone() },
+            mode: PatchMode::NewDirectory {
+                output: output.clone(),
+            },
         };
         let transaction = Transaction::new(&request).unwrap();
         let input = crate::paths::AuthorizedRoot::open(&source).unwrap();
         let mut bytes = Vec::new();
-        input.open_read("original.bin").unwrap().read_to_end(&mut bytes).unwrap();
+        input
+            .open_read("original.bin")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
         let staging = transaction.open_staging().unwrap();
         let alias = transaction.staging_path().join("alias");
-        assert!(std::process::Command::new("cmd.exe")
-            .args(["/D", "/C", "mklink", "/J"]).arg(&alias).arg(&source)
-            .status().unwrap().success());
+        assert!(
+            std::process::Command::new("cmd.exe")
+                .args(["/D", "/C", "mklink", "/J"])
+                .arg(&alias)
+                .arg(&source)
+                .status()
+                .unwrap()
+                .success()
+        );
         let writable = crate::paths::AuthorizedRoot::from_dir(staging);
         assert!(writable.create("alias/escape.bin").is_err());
         std::fs::remove_dir(&alias).unwrap();
-        writable.create("copied.bin").unwrap().write_all(&bytes).unwrap();
+        writable
+            .create("copied.bin")
+            .unwrap()
+            .write_all(&bytes)
+            .unwrap();
         drop(writable);
         transaction.publish(&AtomicBool::new(false)).unwrap();
         assert_eq!(std::fs::read(output.join("copied.bin")).unwrap(), bytes);
-        request.mode = PatchMode::NewDirectory { output: source.join("overlap") };
-        assert_eq!(Transaction::new(&request).err().unwrap().kind(), PatchErrorKind::InvalidRequest);
+        request.mode = PatchMode::NewDirectory {
+            output: source.join("overlap"),
+        };
+        assert_eq!(
+            Transaction::new(&request).err().unwrap().kind(),
+            PatchErrorKind::InvalidRequest
+        );
         let alias = root.path().join("input-alias");
-        assert!(std::process::Command::new("cmd.exe")
-            .args(["/D", "/C", "mklink", "/J"]).arg(&alias).arg(&source)
-            .status().unwrap().success());
-        request.mode = PatchMode::NewDirectory { output: alias.join("overlap") };
-        assert_eq!(Transaction::new(&request).err().unwrap().kind(), PatchErrorKind::InvalidRequest);
+        assert!(
+            std::process::Command::new("cmd.exe")
+                .args(["/D", "/C", "mklink", "/J"])
+                .arg(&alias)
+                .arg(&source)
+                .status()
+                .unwrap()
+                .success()
+        );
+        request.mode = PatchMode::NewDirectory {
+            output: alias.join("overlap"),
+        };
+        assert_eq!(
+            Transaction::new(&request).err().unwrap().kind(),
+            PatchErrorKind::InvalidRequest
+        );
         std::fs::remove_dir(alias).unwrap();
         assert!(!source.join("escape.bin").exists());
         assert!(!source.join("overlap").exists());

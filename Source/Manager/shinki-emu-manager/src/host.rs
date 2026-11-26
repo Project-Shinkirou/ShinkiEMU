@@ -282,7 +282,10 @@ pub trait ManagerController: 'static {
     fn open_patch_output(&mut self) -> Result<ManagerViewModel, String>;
     fn filter_settings(&self) -> FilterSettings;
     /// Roll back a persisted request if its first GPU dispatch rejects it.
-    fn finish_filter_activation(&mut self, accepted: bool) -> Result<Option<ManagerViewModel>, String>;
+    fn finish_filter_activation(
+        &mut self,
+        accepted: bool,
+    ) -> Result<Option<ManagerViewModel>, String>;
     /// Filter changes are prepared on the renderer before persisting. The
     /// renderer keeps the previous active chain until the new one dispatches.
     fn set_filter_preset(
@@ -499,7 +502,6 @@ pub enum FilterEvent {
     Rejected(String),
     RenderFailed(String),
 }
-
 
 /// Zero-based indices in the user-visible chain, before backend expansion.
 pub enum FilterChainEdit<'a> {
@@ -945,7 +947,11 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                             let event = renderer.take_filter_event();
                             drop(renderer);
                             if let Some(event) = event {
-                                filters::finish_activation(&event_controller, &event_adapter, event);
+                                filters::finish_activation(
+                                    &event_controller,
+                                    &event_adapter,
+                                    event,
+                                );
                             }
                             Ok(())
                         }

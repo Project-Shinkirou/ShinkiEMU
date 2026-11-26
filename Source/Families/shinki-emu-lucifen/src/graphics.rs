@@ -2445,7 +2445,8 @@ impl Graphics {
         let [shadow_x, shadow_y] = [i64::from(font.effect.1), i64::from(font.effect.2)];
         let layers = [
             (font.effect.0 != 0).then_some(([shadow_x, shadow_y], font.shadow, None)),
-            font.bold.then_some(([1, 0], font.foreground, font.gradient)),
+            font.bold
+                .then_some(([1, 0], font.foreground, font.gradient)),
             Some(([0, 0], font.foreground, font.gradient)),
         ];
         let surface = self
@@ -2463,13 +2464,7 @@ impl Graphics {
                 .get(id)
                 .ok_or_else(|| invalid("missing shaped Lucifen glyph"))?;
             for ([dx, dy], color, gradient) in layers.into_iter().flatten() {
-                surface.paint_glyph(
-                    bitmap,
-                    [x + dx, y + dy],
-                    color,
-                    gradient,
-                    font.italic,
-                );
+                surface.paint_glyph(bitmap, [x + dx, y + dy], color, gradient, font.italic);
             }
         }
         self.surface_changed(target);
@@ -3403,7 +3398,9 @@ impl Surface {
             }
             let offset = ((y + row) as usize * self.width as usize + (x + left) as usize) * 4;
             let count = (right - left) as usize;
-            let target = self.pixels[offset..offset + count * 4].as_chunks_mut::<4>().0;
+            let target = self.pixels[offset..offset + count * 4]
+                .as_chunks_mut::<4>()
+                .0;
             let start = row as usize * bitmap.width as usize + left as usize;
             let source = bitmap.pixels.as_slice();
             match bitmap.format {
@@ -3754,13 +3751,19 @@ mod tests {
         );
         graphics.present_display().unwrap();
         assert_eq!(graphics.presented().unwrap().pixels(), &menu_color);
-        let thumbnail = graphics.save_thumbnail_source(gameplay, false).unwrap().unwrap();
+        let thumbnail = graphics
+            .save_thumbnail_source(gameplay, false)
+            .unwrap()
+            .unwrap();
         assert_eq!(thumbnail.pixels(), &scene_color);
 
         assert!(graphics.select_display(menu));
         graphics.present_display().unwrap();
         for redraw in [false, true] {
-            let thumbnail = graphics.save_thumbnail_source(gameplay, redraw).unwrap().unwrap();
+            let thumbnail = graphics
+                .save_thumbnail_source(gameplay, redraw)
+                .unwrap()
+                .unwrap();
             assert_eq!(thumbnail.pixels(), &scene_color);
         }
     }

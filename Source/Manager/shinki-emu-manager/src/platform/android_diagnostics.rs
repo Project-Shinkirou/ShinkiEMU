@@ -163,19 +163,21 @@ fn utc_timestamp(timestamp: &str) -> bool {
         return false;
     };
     let date = if let Some((date, fraction)) = utc.split_once('.') {
-        if !(1..=9).contains(&fraction.len()) || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+        if !(1..=9).contains(&fraction.len()) || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+        {
             return false;
         }
         date
     } else {
         utc
     };
-    date.len() == 19 && date.bytes().enumerate().all(|(index, byte)| match index {
-        4 | 7 => byte == b'-',
-        10 => byte == b'T',
-        13 | 16 => byte == b':',
-        _ => byte.is_ascii_digit(),
-    })
+    date.len() == 19
+        && date.bytes().enumerate().all(|(index, byte)| match index {
+            4 | 7 => byte == b'-',
+            10 => byte == b'T',
+            13 | 16 => byte == b':',
+            _ => byte.is_ascii_digit(),
+        })
 }
 
 #[cfg(test)]
@@ -189,7 +191,11 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let diagnostics = data.path().join("diagnostics");
         fs::create_dir(&diagnostics).unwrap();
-        fs::write(diagnostics.join("roukaku-critical.jsonl"), b"private-critical").unwrap();
+        fs::write(
+            diagnostics.join("roukaku-critical.jsonl"),
+            b"private-critical",
+        )
+        .unwrap();
         fs::write(diagnostics.join("roukaku.jsonl.1"), b"private-archive").unwrap();
         assert!(summary(data.path()).unwrap().is_none());
         fs::write(diagnostics.join("roukaku.jsonl"), b"").unwrap();
@@ -210,14 +216,20 @@ mod tests {
         fs::write(
             diagnostics.join("roukaku.jsonl"),
             format!("{stable}\n{{broken}}\n{native}\n{untrusted_code}\n{stable}"),
-        ).unwrap();
+        )
+        .unwrap();
         let export = summary(data.path()).unwrap().unwrap();
-        let records = serde_json::Deserializer::from_slice(&export).into_iter::<Value>()
-            .collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(records, [
-            json!({ "timestamp": "2026-10-10T10:10:10.1Z", "level": "WARN", "event": "shinki.emu.manager.launch.failed", "diagnostic_code": "SHINKI_EMU_HOST_RENDERER" }),
-            json!({ "timestamp": "2026-10-10T10:10:10.1Z", "level": "WARN", "event": "shinki.emu.manager.launch.failed" }),
-        ]);
+        let records = serde_json::Deserializer::from_slice(&export)
+            .into_iter::<Value>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            records,
+            [
+                json!({ "timestamp": "2026-10-10T10:10:10.1Z", "level": "WARN", "event": "shinki.emu.manager.launch.failed", "diagnostic_code": "SHINKI_EMU_HOST_RENDERER" }),
+                json!({ "timestamp": "2026-10-10T10:10:10.1Z", "level": "WARN", "event": "shinki.emu.manager.launch.failed" }),
+            ]
+        );
     }
 
     #[test]

@@ -182,8 +182,8 @@ impl MusicaSession {
                 Ok(false)
             }
             Some(MusicaVmEvent::Chain { target }) => {
-                let (file, label) =
-                    shinki_emu_musica_format::chain_target_parts(&target).ok_or_else(|| {
+                let (file, label) = shinki_emu_musica_format::chain_target_parts(&target)
+                    .ok_or_else(|| {
                         error(
                             "SHINKI_EMU_MUSICA_RUNTIME_CHAIN",
                             "invalid chained script location",
@@ -345,7 +345,13 @@ impl MusicaSession {
     /// lowercase file name, as in the real eden/Perseus files and ReMinori's
     /// stage hook.
     fn record_cg_views(&mut self, stage: &crate::MusicaStageCommand) -> SessionResult<()> {
-        if self.vm.state().variables.get("NOADDCGV").is_some_and(|&v| v != 0) {
+        if self
+            .vm
+            .state()
+            .variables
+            .get("NOADDCGV")
+            .is_some_and(|&v| v != 0)
+        {
             return Ok(());
         }
         let names = stage

@@ -4,9 +4,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod session;
-mod tile;
 #[cfg(test)]
 mod tests;
+mod tile;
 
 use session::{Command, Session};
 use shinki_emu_abi as abi;
@@ -45,7 +45,10 @@ static API: abi::CoreApi = abi::CoreApi {
 ///
 /// # Safety
 /// A non-null `output` must be writable for one table pointer.
-pub unsafe extern "C" fn tilefix_query(version: u32, output: *mut *const abi::CoreApi) -> abi::Status {
+pub unsafe extern "C" fn tilefix_query(
+    version: u32,
+    output: *mut *const abi::CoreApi,
+) -> abi::Status {
     if output.is_null() {
         return abi::INVALID_ARGUMENT;
     }
@@ -99,7 +102,8 @@ unsafe extern "C" fn initialize(
 ) -> abi::Status {
     boundary(error, || {
         let sink = unsafe { diagnostics.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
-        if !sink.header.accepts::<abi::Diagnostics>() || sink.emit.is_none() || sink.flush.is_none() {
+        if !sink.header.accepts::<abi::Diagnostics>() || sink.emit.is_none() || sink.flush.is_none()
+        {
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
         // Tilefix emits no logs; errors are returned directly to the caller.
@@ -258,7 +262,11 @@ unsafe extern "C" fn input(
     })
 }
 
-unsafe extern "C" fn control(handle: abi::Session, code: u32, error: *mut abi::Error) -> abi::Status {
+unsafe extern "C" fn control(
+    handle: abi::Session,
+    code: u32,
+    error: *mut abi::Error,
+) -> abi::Status {
     boundary(error, || {
         let session = unsafe { session_ref(handle) }?;
         match code {

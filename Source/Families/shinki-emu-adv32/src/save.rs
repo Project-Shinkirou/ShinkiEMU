@@ -693,7 +693,9 @@ impl Saves {
                 staged.persist(path).map_err(|error| error.error)?;
             }
             Cow::Owned(path) => {
-                staged.persist_noclobber(&path).map_err(|error| error.error)?;
+                staged
+                    .persist_noclobber(&path)
+                    .map_err(|error| error.error)?;
                 self.slots.insert(slot, path);
             }
         }

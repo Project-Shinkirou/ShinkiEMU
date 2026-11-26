@@ -196,7 +196,9 @@ fn install_settings<C: ManagerController>(
                 settings.set_android_storage_access_available(available);
                 settings.set_android_storage_access_granted(granted);
             }
-            Err(error) => tracing::warn!(event = "shinki.emu.android.storage_access_unavailable", error = %error),
+            Err(error) => {
+                tracing::warn!(event = "shinki.emu.android.storage_access_unavailable", error = %error)
+            }
         }
         let w = wiring.clone();
         settings.on_open_android_storage_access(move || {

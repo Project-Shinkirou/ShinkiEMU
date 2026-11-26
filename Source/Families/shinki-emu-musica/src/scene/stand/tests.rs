@@ -26,7 +26,12 @@ fn png(entries: &[(&str, &str, u8)]) -> Vec<u8> {
 fn texture_variant_stand_uses_native_placement_chunks() {
     let root = tempfile::tempdir().unwrap();
     crate::test_fixture::game(root.path(), b".end\r\n");
-    let original = png(&[("ol", "5", 0), ("ot", "2", 0), ("or", "7", 0), ("ob", "9", 0)]);
+    let original = png(&[
+        ("ol", "5", 0),
+        ("ot", "2", 0),
+        ("or", "7", 0),
+        ("ob", "9", 0),
+    ]);
     crate::test_fixture::assets(root.path(), "st", &[("stand.png", &original)]);
     std::fs::write(root.path().join("variant.png"), png(&[])).unwrap();
     let variant_uri = "musica:/st/[mono]stand.png";

@@ -143,14 +143,26 @@ fn reject_invalid_diagnostics(diagnostics: abi::Diagnostics) {
         abi::INVALID_ARGUMENT
     );
     for invalid in [
-        abi::Diagnostics { emit: None, ..diagnostics },
-        abi::Diagnostics { flush: None, ..diagnostics },
         abi::Diagnostics {
-            header: abi::Header { size: 0, ..diagnostics.header },
+            emit: None,
             ..diagnostics
         },
         abi::Diagnostics {
-            header: abi::Header { version: 0, ..diagnostics.header },
+            flush: None,
+            ..diagnostics
+        },
+        abi::Diagnostics {
+            header: abi::Header {
+                size: 0,
+                ..diagnostics.header
+            },
+            ..diagnostics
+        },
+        abi::Diagnostics {
+            header: abi::Header {
+                version: 0,
+                ..diagnostics.header
+            },
             ..diagnostics
         },
     ] {
@@ -183,14 +195,22 @@ fn static_initialize_preserves_the_installed_host_subscriber() {
     let mut error = abi::Error::default();
     assert_eq!(unsafe { initialize(&diagnostics, &mut error) }, abi::OK);
     let mut descriptor = std::mem::MaybeUninit::uninit();
-    assert_eq!(unsafe { describe(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
+    assert_eq!(
+        unsafe { describe(descriptor.as_mut_ptr(), &mut error) },
+        abi::OK
+    );
     tracing::info!(event = "cmvs.static.initialized");
     assert!(tracing::dispatcher::get_default(|dispatch| {
-        dispatch.downcast_ref::<tracing::subscriber::NoSubscriber>().is_some()
+        dispatch
+            .downcast_ref::<tracing::subscriber::NoSubscriber>()
+            .is_some()
     }));
     assert_eq!(CALLBACKS.load(Ordering::Relaxed), 0);
     reject_invalid_diagnostics(diagnostics);
-    assert_eq!(unsafe { describe(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
+    assert_eq!(
+        unsafe { describe(descriptor.as_mut_ptr(), &mut error) },
+        abi::OK
+    );
 }
 
 #[cfg(feature = "dynamic-plugin-export")]
@@ -209,13 +229,22 @@ fn dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement() {
     };
     reject_invalid_diagnostics(diagnostics);
     let mut api = std::ptr::null();
-    assert_eq!(unsafe { shinki_emu_query(abi::ABI_VERSION, &mut api) }, abi::OK);
+    assert_eq!(
+        unsafe { shinki_emu_query(abi::ABI_VERSION, &mut api) },
+        abi::OK
+    );
     let api = unsafe { &*api };
     let mut error = abi::Error::default();
-    assert_eq!(unsafe { api.initialize.unwrap()(&diagnostics, &mut error) }, abi::OK);
+    assert_eq!(
+        unsafe { api.initialize.unwrap()(&diagnostics, &mut error) },
+        abi::OK
+    );
     tracing::error!(event = "cmvs.dynamic.diagnostic_roundtrip");
     assert!(RECORDS.load(Ordering::Relaxed) > 0);
-    assert_eq!(unsafe { api.initialize.unwrap()(&diagnostics, &mut error) }, abi::OK);
+    assert_eq!(
+        unsafe { api.initialize.unwrap()(&diagnostics, &mut error) },
+        abi::OK
+    );
     let conflicting = abi::Diagnostics {
         context: std::ptr::dangling_mut::<u8>().cast(),
         ..diagnostics
@@ -226,5 +255,8 @@ fn dynamic_initialize_installs_module_bridge_and_rejects_sink_replacement() {
     );
     reject_invalid_diagnostics(diagnostics);
     let mut descriptor = std::mem::MaybeUninit::uninit();
-    assert_eq!(unsafe { api.describe.unwrap()(descriptor.as_mut_ptr(), &mut error) }, abi::OK);
+    assert_eq!(
+        unsafe { api.describe.unwrap()(descriptor.as_mut_ptr(), &mut error) },
+        abi::OK
+    );
 }

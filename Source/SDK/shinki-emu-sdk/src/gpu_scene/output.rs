@@ -57,7 +57,9 @@ impl SceneOutput {
         }) else {
             return Ok(None);
         };
-        Ok(host.create()?.map(|target| Self { inner: Output::Hosted { host, target } }))
+        Ok(host.create()?.map(|target| Self {
+            inner: Output::Hosted { host, target },
+        }))
     }
 
     /// Start with the offscreen renderer. Use this for command graphs that the
@@ -69,7 +71,9 @@ impl SceneOutput {
         tracing::info!(event = "shinki.emu.sdk.gpu.offscreen", backend = %renderer.identity().backend,
             device_type = %renderer.identity().device_type, vendor_id = renderer.identity().vendor_id,
             device_id = renderer.identity().device_id);
-        Ok(Self { inner: Output::Offscreen { renderer, instance } })
+        Ok(Self {
+            inner: Output::Offscreen { renderer, instance },
+        })
     }
 
     /// Start a fresh resource namespace on the selected transport. Failure does
@@ -79,9 +83,17 @@ impl SceneOutput {
             Output::Offscreen { instance, .. } => Self::offscreen(instance.clone()),
             Output::Hosted { host, .. } => {
                 let target = host.create()?.ok_or_else(|| {
-                    SessionError::new("SHINKI_EMU_GPU_REBUILD", "host declined a replacement scene target")
+                    SessionError::new(
+                        "SHINKI_EMU_GPU_REBUILD",
+                        "host declined a replacement scene target",
+                    )
                 })?;
-                Ok(Self { inner: Output::Hosted { host: *host, target } })
+                Ok(Self {
+                    inner: Output::Hosted {
+                        host: *host,
+                        target,
+                    },
+                })
             }
         }
     }
@@ -92,7 +104,9 @@ impl SceneOutput {
 
     pub fn validate_raster(&self, raster: Extent) -> Result<(), SessionError> {
         match &self.inner {
-            Output::Hosted { .. } => super::validate_extents(raster, raster).map_err(super::encode_error),
+            Output::Hosted { .. } => {
+                super::validate_extents(raster, raster).map_err(super::encode_error)
+            }
             Output::Offscreen { renderer, .. } => renderer
                 .validate_output_extent(raster.width, raster.height)
                 .map_err(|cause| render_error("SHINKI_EMU_GPU_EXTENT", cause)),
@@ -102,13 +116,18 @@ impl SceneOutput {
     /// Returns pixels only for the offscreen compatibility path. A hosted
     /// render publishes directly; the caller should leave the base CPU lease
     /// pending, without synthesizing a generation or pixel data.
-    pub fn submit(&mut self, frame: &SceneFrame, logical: Extent) -> Result<Option<Arc<[u8]>>, SessionError> {
+    pub fn submit(
+        &mut self,
+        frame: &SceneFrame,
+        logical: Extent,
+    ) -> Result<Option<Arc<[u8]>>, SessionError> {
         match &mut self.inner {
             Output::Hosted { target, .. } => {
                 target.submit(frame, logical)?;
                 Ok(None)
             }
-            Output::Offscreen { renderer, .. } => renderer.render(frame)
+            Output::Offscreen { renderer, .. } => renderer
+                .render(frame)
                 .map(|rendered| Some(rendered.rgba8))
                 .map_err(|cause| render_error("SHINKI_EMU_GPU_RENDER", cause)),
         }
@@ -125,7 +144,10 @@ impl SceneOutput {
         pixels: &OwnedPixelBuffer,
     ) -> Result<(), SessionError> {
         let Output::Hosted { target, .. } = &self.inner else {
-            return Err(SessionError::new("SHINKI_EMU_RASTER_PRESENT", "native raster presentation requires a hosted target"));
+            return Err(SessionError::new(
+                "SHINKI_EMU_RASTER_PRESENT",
+                "native raster presentation requires a hosted target",
+            ));
         };
         target.present_raster(sequence, logical, raster, pixels)
     }
@@ -138,7 +160,10 @@ impl SceneOutput {
         {
             return target.capture(raster);
         }
-        Err(SessionError::new("SHINKI_EMU_GPU_CAPTURE", "no submitted hosted scene to capture"))
+        Err(SessionError::new(
+            "SHINKI_EMU_GPU_CAPTURE",
+            "no submitted hosted scene to capture",
+        ))
     }
 
     /// Diagnostics for the compatibility path.
@@ -151,5 +176,8 @@ impl SceneOutput {
 }
 
 fn render_error(code: &str, cause: PlatformError) -> SessionError {
-    SessionError::new(code, format!("{:?} during {}: {}", cause.code, cause.operation, cause))
+    SessionError::new(
+        code,
+        format!("{:?} during {}: {}", cause.code, cause.operation, cause),
+    )
 }

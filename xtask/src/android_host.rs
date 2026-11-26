@@ -17,14 +17,26 @@ pub(super) fn inputs(
     use shinki_kirikiroid2_web_android_host as kiri_web;
     use shinki_krkr2_android_host as krkr2;
     let hosts: [(&str, StageHost, &str); 2] = [
-        (kiri_web::PLUGIN_ID, kiri_web::stage, kiri_web::ACTIVITY_ADAPTER_CLASS),
-        (krkr2::PLUGIN_ID, krkr2::stage, krkr2::ACTIVITY_ADAPTER_CLASS),
+        (
+            kiri_web::PLUGIN_ID,
+            kiri_web::stage,
+            kiri_web::ACTIVITY_ADAPTER_CLASS,
+        ),
+        (
+            krkr2::PLUGIN_ID,
+            krkr2::stage,
+            krkr2::ACTIVITY_ADAPTER_CLASS,
+        ),
     ];
     let mut inputs = Vec::new();
     let mut classes = Vec::with_capacity(hosts.len());
     for (id, stage, class) in hosts {
         let core = inv.core(id)?;
-        if !targets.iter().any(|(triple, _)| core.supported_targets.iter().any(|supported| supported == triple)) {
+        if !targets.iter().any(|(triple, _)| {
+            core.supported_targets
+                .iter()
+                .any(|supported| supported == triple)
+        }) {
             continue;
         }
         if core.android_dynamic.is_none() {
@@ -42,14 +54,23 @@ pub(super) fn inputs(
         if notices.is_empty() {
             bail!("{id} Android host lacks Java licenses");
         }
-        inputs.extend(notices.into_iter().map(|(path, name)| {
-            (path, format!("assets/licenses/{id}/android-java/{name}"))
-        }));
-        inputs.extend(files.into_iter().map(|(path, name)| (path, format!("android-host/{id}/{name}"))));
+        inputs.extend(
+            notices
+                .into_iter()
+                .map(|(path, name)| (path, format!("assets/licenses/{id}/android-java/{name}"))),
+        );
+        inputs.extend(
+            files
+                .into_iter()
+                .map(|(path, name)| (path, format!("android-host/{id}/{name}"))),
+        );
     }
     let registry = scratch.join("AndroidActivityAdapters.java");
     fs::write(&registry, activity_registry(&classes))?;
-    inputs.push((registry, "android-host/_registry/java/org/shinkirou/shinkiemu/AndroidActivityAdapters.java".into()));
+    inputs.push((
+        registry,
+        "android-host/_registry/java/org/shinkirou/shinkiemu/AndroidActivityAdapters.java".into(),
+    ));
     Ok(inputs)
 }
 
@@ -120,8 +141,15 @@ mod tests {
         fs::write(root.join("java/Service.aidl"), "interface Service {}").unwrap();
         fs::create_dir(root.join("libs")).unwrap();
         fs::write(root.join("libs/shared.jar"), b"fixture JAR").unwrap();
-        let staged: Vec<_> = files(root).unwrap().into_iter().map(|(_, target)| target).collect();
-        assert_eq!(staged, ["java/Host.java", "java/Service.aidl", "libs/shared.jar"]);
+        let staged: Vec<_> = files(root)
+            .unwrap()
+            .into_iter()
+            .map(|(_, target)| target)
+            .collect();
+        assert_eq!(
+            staged,
+            ["java/Host.java", "java/Service.aidl", "libs/shared.jar"]
+        );
         fs::write(root.join("libs/native.so"), b"unexpected").unwrap();
         assert!(files(root).is_err());
     }

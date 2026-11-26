@@ -27,7 +27,10 @@ fn recall_overlay_validates_existing_archives_without_mutating_source() {
         "scr",
         &[
             ("test.sc", b".end\r\n"),
-            ("recall.sc", b".label Again\r\n.message 1   Public recollection\r\n.end\r\n"),
+            (
+                "recall.sc",
+                b".label Again\r\n.message 1   Public recollection\r\n.end\r\n",
+            ),
         ],
     );
     for (name, data) in [("sys.paz", &sys), ("bg.paz", &bg), ("scr.paz", &scripts)] {
@@ -60,20 +63,31 @@ fn recall_overlay_validates_existing_archives_without_mutating_source() {
             end}}
         "#)).unwrap();
         apply(
-            PatchRequest { script: recipe.clone(), source: source.clone(), patch: source.clone(), mode },
+            PatchRequest {
+                script: recipe.clone(),
+                source: source.clone(),
+                patch: source.clone(),
+                mode,
+            },
             Arc::new(AtomicBool::new(false)),
             |_| {},
         )
     };
 
     let output = root.path().join("recall-overlay");
-    let rejected = run("Again", "gallery.png", PatchMode::InPlace).err().unwrap();
+    let rejected = run("Again", "gallery.png", PatchMode::InPlace)
+        .err()
+        .unwrap();
     assert_eq!(rejected.kind(), PatchErrorKind::InvalidRequest);
     assert!(!source.join(".shinki").exists());
     assert!(!source.join("recall-layout.json").exists());
 
-    let new_directory = || PatchMode::NewDirectory { output: output.clone() };
-    let rejected = run("Missing", "gallery.png", new_directory()).err().unwrap();
+    let new_directory = || PatchMode::NewDirectory {
+        output: output.clone(),
+    };
+    let rejected = run("Missing", "gallery.png", new_directory())
+        .err()
+        .unwrap();
     assert_eq!(rejected.kind(), PatchErrorKind::Integrity);
     assert!(!output.exists());
 

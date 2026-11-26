@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 
 /// Decode validated private configuration once. No resource access or logging.
 pub fn into_schemes(key_file: &MusicaKeyFile) -> BTreeMap<String, PazRoleScheme> {
-    key_file.archive_keys.iter().map(|(role, key)| {
-        (role.clone(), decode_scheme(key, key_file.rc4_skip_crc))
-    }).collect()
+    key_file
+        .archive_keys
+        .iter()
+        .map(|(role, key)| (role.clone(), decode_scheme(key, key_file.rc4_skip_crc)))
+        .collect()
 }
 
 pub fn decode_scheme(key: &MusicaArchiveKey, rc4_skip_crc: bool) -> PazRoleScheme {
@@ -23,11 +25,20 @@ pub fn decode_scheme(key: &MusicaArchiveKey, rc4_skip_crc: bool) -> PazRoleSchem
     }
 }
 fn decode_hex(hex: &str) -> Vec<u8> {
-    hex.as_bytes().as_chunks::<2>().0.iter().map(|pair| decode_hex_byte(pair)).collect()
+    hex.as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| decode_hex_byte(pair))
+        .collect()
 }
 fn decode_hex_byte(pair: &[u8]) -> u8 {
     let nibble = |byte: u8| {
-        if byte.is_ascii_digit() { byte - b'0' } else { byte.to_ascii_lowercase() - b'a' + 10 }
+        if byte.is_ascii_digit() {
+            byte - b'0'
+        } else {
+            byte.to_ascii_lowercase() - b'a' + 10
+        }
     };
     nibble(pair[0]) << 4 | nibble(pair[1])
 }

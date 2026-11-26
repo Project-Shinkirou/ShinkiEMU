@@ -87,9 +87,19 @@ fn game_frame() -> slint::Image {
         let t = (x + y) as f32 / (w + h) as f32;
         let grid = x % 30 == 0 || y % 30 == 0;
         *pixel = if grid {
-            Rgba8Pixel { r: 200, g: 200, b: 210, a: 255 }
+            Rgba8Pixel {
+                r: 200,
+                g: 200,
+                b: 210,
+                a: 255,
+            }
         } else {
-            Rgba8Pixel { r: (40.0 + 150.0 * t) as u8, g: 70, b: (170.0 - 100.0 * t) as u8, a: 255 }
+            Rgba8Pixel {
+                r: (40.0 + 150.0 * t) as u8,
+                g: 70,
+                b: (170.0 - 100.0 * t) as u8,
+                a: 255,
+            }
         };
     }
     slint::Image::from_rgba8(buffer)
@@ -135,7 +145,10 @@ fn assert_inputs(actual: Vec<Input>, expected: Vec<Vec<Input>>, what: &str) {
             .iter()
             .zip(&expected)
             .all(|(a, e)| a.0 == e.0 && a.1 == e.1 && (a.2 - e.2).abs() < 0.05);
-    assert!(same, "{what}: game received {actual:?}, expected {expected:?}");
+    assert!(
+        same,
+        "{what}: game received {actual:?}, expected {expected:?}"
+    );
 }
 
 struct Fixture {
@@ -172,11 +185,12 @@ impl Fixture {
     }
 
     fn touch(&self, id: i32, (x, y): (f32, f32), phase: TouchPhase) {
-        self.software.dispatch_event(WindowEvent::internal(InternalEvent::Touch {
-            id,
-            position: (x, y).into(),
-            phase,
-        }));
+        self.software
+            .dispatch_event(WindowEvent::internal(InternalEvent::Touch {
+                id,
+                position: (x, y).into(),
+                phase,
+            }));
         self.draw();
     }
 
@@ -186,22 +200,33 @@ impl Fixture {
     }
 
     fn mouse_move(&self, (x, y): (f32, f32)) {
-        self.software.dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(x, y) });
+        self.software.dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(x, y),
+        });
         self.draw();
     }
 
     fn click(&self, (x, y): (f32, f32)) {
         let position = LogicalPosition::new(x, y);
-        self.software.dispatch_event(WindowEvent::PointerMoved { position });
-        self.software.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
-        self.software.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
+        self.software
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        self.software.dispatch_event(WindowEvent::PointerPressed {
+            position,
+            button: PointerEventButton::Left,
+        });
+        self.software.dispatch_event(WindowEvent::PointerReleased {
+            position,
+            button: PointerEventButton::Left,
+        });
         self.draw();
     }
 
     fn back(&self) {
         let text: SharedString = Key::Back.into();
-        self.software.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-        self.software.dispatch_event(WindowEvent::KeyReleased { text });
+        self.software
+            .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        self.software
+            .dispatch_event(WindowEvent::KeyReleased { text });
         self.draw();
     }
 
@@ -224,7 +249,10 @@ impl Fixture {
         let window = WindowInner::from_pub(self.software.window());
         let mut stack = vec![window.window_item_rc()?];
         while let Some(item) = stack.pop() {
-            stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
+            stack.extend(std::iter::successors(
+                item.first_child(),
+                ItemRc::next_sibling,
+            ));
             if item.is_visible()
                 && item.accessible_role() == AccessibleRole::Button
                 && item
@@ -239,7 +267,10 @@ impl Fixture {
 
     fn button_enabled(&self) -> bool {
         let button = self.button().expect("menu button on screen");
-        button.accessible_string_property(AccessibleStringProperty::Enabled).as_deref() == Some("true")
+        button
+            .accessible_string_property(AccessibleStringProperty::Enabled)
+            .as_deref()
+            == Some("true")
     }
 
     /// Idles past the 3 s timer and, with motion on, the fade that follows it.
@@ -247,7 +278,11 @@ impl Fixture {
     fn hide_button(&self) {
         self.idle(Duration::from_secs(4));
         self.idle(Duration::from_secs(1));
-        assert!(self.button().is_none(), "{}: button still shown after idling", self.language.get());
+        assert!(
+            self.button().is_none(),
+            "{}: button still shown after idling",
+            self.language.get()
+        );
         self.inputs();
     }
 }
@@ -266,8 +301,19 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
     let adapter = SlintManagerAdapter::new().expect("manager window");
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let output = std::env::var_os("SHINKI_UI_SCREENSHOT_DIR").map(PathBuf::from);
-    let languages: &[&'static str] = if output.is_some() { &["zh-CN", "en", "ja"] } else { &["ja"] };
-    let f = Fixture { adapter, software, skipped, inputs: inputs.clone(), output, language: Cell::new("") };
+    let languages: &[&'static str] = if output.is_some() {
+        &["zh-CN", "en", "ja"]
+    } else {
+        &["ja"]
+    };
+    let f = Fixture {
+        adapter,
+        software,
+        skipped,
+        inputs: inputs.clone(),
+        output,
+        language: Cell::new(""),
+    };
     let window = f.adapter.window();
     window.global::<MaterialWindowAdapter>().set_touch(true);
     f.adapter.apply(&model(true));
@@ -284,7 +330,9 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
     session.set_content_width(game_width);
     session.set_content_height(game_height);
     session.on_input(move |name, pressed, value| {
-        inputs.borrow_mut().push(Input(name.to_string(), pressed, value));
+        inputs
+            .borrow_mut()
+            .push(Input(name.to_string(), pressed, value));
     });
     f.adapter.set_session_active(true);
     window.show().expect("show");
@@ -299,55 +347,108 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
 
         // A touch reaches the game unchanged; the button appears when it lifts.
         f.touch(0, (400.0, 200.0), TouchPhase::Started);
-        assert!(f.button().is_none(), "{language}: button shown while the revealing finger is down");
+        assert!(
+            f.button().is_none(),
+            "{language}: button shown while the revealing finger is down"
+        );
         assert_inputs(f.inputs(), vec![down(400.0, 200.0)], "first touch down");
         f.touch(0, (400.0, 200.0), TouchPhase::Ended);
         assert_inputs(f.inputs(), vec![up(400.0, 200.0)], "first touch up");
-        assert!(!f.menu_open(), "{language}: revealing touch opened the menu");
+        assert!(
+            !f.menu_open(),
+            "{language}: revealing touch opened the menu"
+        );
         let button = f.button().expect("menu button after the touch lifted");
         let rect = button.geometry();
         let centre = button.map_to_native_window(rect.center());
-        assert_eq!((rect.width(), rect.height()), (48.0, 48.0), "{language}: touch button size");
-        assert!((centre.x - BUTTON.0).abs() < 0.5 && (centre.y - BUTTON.1).abs() < 0.5, "{language}: button at {centre:?}");
+        assert_eq!(
+            (rect.width(), rect.height()),
+            (48.0, 48.0),
+            "{language}: touch button size"
+        );
+        assert!(
+            (centre.x - BUTTON.0).abs() < 0.5 && (centre.y - BUTTON.1).abs() < 0.5,
+            "{language}: button at {centre:?}"
+        );
         assert!(f.button_enabled(), "{language}: shown button not enabled");
         f.save("revealed");
 
         // Drags are delivered as down, moves and up; the shown button gives way while the finger is down.
         f.touch(0, (300.0, 200.0), TouchPhase::Started);
-        assert!(f.button().is_none(), "{language}: button stayed shown under a game touch");
+        assert!(
+            f.button().is_none(),
+            "{language}: button stayed shown under a game touch"
+        );
         f.touch(0, (340.0, 220.0), TouchPhase::Moved);
         f.touch(0, (380.0, 240.0), TouchPhase::Moved);
         f.touch(0, (380.0, 240.0), TouchPhase::Ended);
         assert_inputs(
             f.inputs(),
-            vec![down(300.0, 200.0), pointer(340.0, 220.0), pointer(380.0, 240.0), up(380.0, 240.0)],
+            vec![
+                down(300.0, 200.0),
+                pointer(340.0, 220.0),
+                pointer(380.0, 240.0),
+                up(380.0, 240.0),
+            ],
             "drag",
         );
-        assert!(f.button().is_some(), "{language}: button not back after the drag lifted");
+        assert!(
+            f.button().is_some(),
+            "{language}: button not back after the drag lifted"
+        );
 
         // The former right-edge strip: taps and leftward swipes go straight to the game.
         f.tap((770.0, 300.0));
-        assert_inputs(f.inputs(), vec![down(770.0, 300.0), up(770.0, 300.0)], "right-edge tap");
+        assert_inputs(
+            f.inputs(),
+            vec![down(770.0, 300.0), up(770.0, 300.0)],
+            "right-edge tap",
+        );
         f.touch(0, (770.0, 180.0), TouchPhase::Started);
-        assert_inputs(f.inputs(), vec![down(770.0, 180.0)], "right-edge press is not withheld");
+        assert_inputs(
+            f.inputs(),
+            vec![down(770.0, 180.0)],
+            "right-edge press is not withheld",
+        );
         f.touch(0, (740.0, 180.0), TouchPhase::Moved);
         f.touch(0, (700.0, 180.0), TouchPhase::Moved);
         f.touch(0, (700.0, 180.0), TouchPhase::Ended);
-        assert_inputs(f.inputs(), vec![pointer(740.0, 180.0), pointer(700.0, 180.0), up(700.0, 180.0)], "right-edge swipe");
-        assert!(!f.menu_open(), "{language}: right-edge swipe opened the menu");
+        assert_inputs(
+            f.inputs(),
+            vec![
+                pointer(740.0, 180.0),
+                pointer(700.0, 180.0),
+                up(700.0, 180.0),
+            ],
+            "right-edge swipe",
+        );
+        assert!(
+            !f.menu_open(),
+            "{language}: right-edge swipe opened the menu"
+        );
 
         // A touch that lands where the hidden button sits stays with the game.
         f.hide_button();
         f.touch(0, BUTTON, TouchPhase::Started);
-        assert!(f.button().is_none(), "{language}: button shown under the revealing finger");
+        assert!(
+            f.button().is_none(),
+            "{language}: button shown under the revealing finger"
+        );
         f.touch(0, (BUTTON.0 + 2.0, BUTTON.1 + 2.0), TouchPhase::Moved);
         f.touch(0, (BUTTON.0 + 2.0, BUTTON.1 + 2.0), TouchPhase::Ended);
         assert_inputs(
             f.inputs(),
-            vec![down(BUTTON.0, BUTTON.1), pointer(BUTTON.0 + 2.0, BUTTON.1 + 2.0), up(BUTTON.0 + 2.0, BUTTON.1 + 2.0)],
+            vec![
+                down(BUTTON.0, BUTTON.1),
+                pointer(BUTTON.0 + 2.0, BUTTON.1 + 2.0),
+                up(BUTTON.0 + 2.0, BUTTON.1 + 2.0),
+            ],
             "touch on the hidden button",
         );
-        assert!(!f.menu_open(), "{language}: the revealing finger opened the menu");
+        assert!(
+            !f.menu_open(),
+            "{language}: the revealing finger opened the menu"
+        );
 
         // Two fingers: when one lifts, Slint re-presses the other where it
         // rests. Resting on the button, that press still belongs to the game,
@@ -357,24 +458,49 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
             f.hide_button();
             f.touch(0, first, TouchPhase::Started);
             f.touch(1, second, TouchPhase::Started);
-            let (lifted, (lifted_at, resting)) = if first == BUTTON { (1, (second, first)) } else { (0, (first, second)) };
+            let (lifted, (lifted_at, resting)) = if first == BUTTON {
+                (1, (second, first))
+            } else {
+                (0, (first, second))
+            };
             f.touch(lifted, lifted_at, TouchPhase::Ended);
-            assert!(f.button().is_none(), "{language}: button shown while a finger rests on it");
+            assert!(
+                f.button().is_none(),
+                "{language}: button shown while a finger rests on it"
+            );
             f.touch(1 - lifted, resting, TouchPhase::Ended);
             assert_inputs(
                 f.inputs(),
-                vec![down(first.0, first.1), up(first.0, first.1), down(BUTTON.0, BUTTON.1), up(BUTTON.0, BUTTON.1)],
+                vec![
+                    down(first.0, first.1),
+                    up(first.0, first.1),
+                    down(BUTTON.0, BUTTON.1),
+                    up(BUTTON.0, BUTTON.1),
+                ],
                 "two-finger gesture ending on the button",
             );
-            assert!(!f.menu_open(), "{language}: a finger of a game gesture opened the menu");
-            assert!(f.button().is_some(), "{language}: button not shown after the gesture lifted");
+            assert!(
+                !f.menu_open(),
+                "{language}: a finger of a game gesture opened the menu"
+            );
+            assert!(
+                f.button().is_some(),
+                "{language}: button not shown after the gesture lifted"
+            );
         }
 
         // A cancelled single touch is released to the game.
         f.touch(0, (400.0, 200.0), TouchPhase::Started);
         f.touch(0, (400.0, 200.0), TouchPhase::Cancelled);
-        assert_inputs(f.inputs(), vec![down(400.0, 200.0), up(400.0, 200.0)], "cancelled touch");
-        assert!(f.button_enabled(), "{language}: button not usable after a cancelled touch");
+        assert_inputs(
+            f.inputs(),
+            vec![down(400.0, 200.0), up(400.0, 200.0)],
+            "cancelled touch",
+        );
+        assert!(
+            f.button_enabled(),
+            "{language}: button not usable after a cancelled touch"
+        );
 
         // A cancelled two-finger touch ends without a matching up. The button
         // stays hidden instead of showing without reacting; the next tap on
@@ -383,24 +509,54 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
         f.touch(1, (600.0, 200.0), TouchPhase::Started);
         f.touch(0, (400.0, 200.0), TouchPhase::Cancelled);
         f.touch(1, (600.0, 200.0), TouchPhase::Cancelled);
-        assert_inputs(f.inputs(), vec![down(400.0, 200.0), up(400.0, 200.0)], "cancelled two-finger touch");
-        assert!(f.button().is_none(), "{language}: button shown after a two-finger cancel");
+        assert_inputs(
+            f.inputs(),
+            vec![down(400.0, 200.0), up(400.0, 200.0)],
+            "cancelled two-finger touch",
+        );
+        assert!(
+            f.button().is_none(),
+            "{language}: button shown after a two-finger cancel"
+        );
         f.tap((300.0, 150.0));
-        assert_inputs(f.inputs(), vec![down(300.0, 150.0), up(300.0, 150.0)], "tap after a two-finger cancel");
-        assert!(f.button_enabled(), "{language}: tap after a two-finger cancel did not reveal the button");
+        assert_inputs(
+            f.inputs(),
+            vec![down(300.0, 150.0), up(300.0, 150.0)],
+            "tap after a two-finger cancel",
+        );
+        assert!(
+            f.button_enabled(),
+            "{language}: tap after a two-finger cancel did not reveal the button"
+        );
         f.tap(BUTTON);
-        assert!(f.menu_open(), "{language}: first tap on the button after a two-finger cancel did not open the menu");
-        assert_inputs(f.inputs(), vec![], "tap on the button after a two-finger cancel");
+        assert!(
+            f.menu_open(),
+            "{language}: first tap on the button after a two-finger cancel did not open the menu"
+        );
+        assert_inputs(
+            f.inputs(),
+            vec![],
+            "tap on the button after a two-finger cancel",
+        );
         f.back();
 
         // Only a fresh tap on the visible button opens the menu, without game input.
         f.tap((400.0, 200.0));
         f.inputs();
-        assert!(f.button_enabled(), "{language}: button not shown after a tap");
+        assert!(
+            f.button_enabled(),
+            "{language}: button not shown after a tap"
+        );
         f.tap(BUTTON);
-        assert!(f.menu_open(), "{language}: tap on the visible button did not open the menu");
+        assert!(
+            f.menu_open(),
+            "{language}: tap on the visible button did not open the menu"
+        );
         assert_inputs(f.inputs(), vec![], "tap on the visible button");
-        assert!(f.button().is_none(), "{language}: button shown over the open menu");
+        assert!(
+            f.button().is_none(),
+            "{language}: button shown over the open menu"
+        );
         f.save("menu-open");
 
         // System Back closes and opens the menu as before.
@@ -415,8 +571,13 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
         // Screen readers activate the visible button directly.
         f.tap((400.0, 200.0));
         f.inputs();
-        f.button().expect("menu button").accessible_action(&AccessibilityAction::Default);
-        assert!(f.menu_open(), "{language}: accessible action did not open the menu");
+        f.button()
+            .expect("menu button")
+            .accessible_action(&AccessibilityAction::Default);
+        assert!(
+            f.menu_open(),
+            "{language}: accessible action did not open the menu"
+        );
         assert_inputs(f.inputs(), vec![], "accessible action");
         f.back();
 
@@ -426,10 +587,17 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
         f.idle(Duration::from_millis(2500));
         assert!(f.button().is_some(), "{language}: button hid before 3 s");
         f.idle(Duration::from_millis(1000));
-        assert!(f.button().is_none(), "{language}: button still shown after 3 s idle");
+        assert!(
+            f.button().is_none(),
+            "{language}: button still shown after 3 s idle"
+        );
         f.save("idle-hidden");
         f.tap(BUTTON);
-        assert_inputs(f.inputs(), vec![down(BUTTON.0, BUTTON.1), up(BUTTON.0, BUTTON.1)], "tap where the button was");
+        assert_inputs(
+            f.inputs(),
+            vec![down(BUTTON.0, BUTTON.1), up(BUTTON.0, BUTTON.1)],
+            "tap where the button was",
+        );
         assert!(!f.menu_open(), "{language}: hidden button opened the menu");
 
         // With motion on, the button fades out and takes no input while fading.
@@ -438,30 +606,53 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
         f.tap((400.0, 200.0));
         f.inputs();
         f.idle(Duration::from_millis(3100));
-        assert!(f.button().is_some(), "{language}: fade did not start from the shown button");
+        assert!(
+            f.button().is_some(),
+            "{language}: fade did not start from the shown button"
+        );
         f.idle(Duration::from_millis(100));
-        assert!(f.button().is_some(), "{language}: button vanished without fading");
+        assert!(
+            f.button().is_some(),
+            "{language}: button vanished without fading"
+        );
         f.tap(BUTTON);
-        assert_inputs(f.inputs(), vec![down(BUTTON.0, BUTTON.1), up(BUTTON.0, BUTTON.1)], "tap on the fading button");
+        assert_inputs(
+            f.inputs(),
+            vec![down(BUTTON.0, BUTTON.1), up(BUTTON.0, BUTTON.1)],
+            "tap on the fading button",
+        );
         assert!(!f.menu_open(), "{language}: fading button opened the menu");
         f.idle(Duration::from_millis(3100));
         assert!(f.button().is_some(), "{language}: fade did not start");
         f.idle(Duration::from_millis(300));
-        assert!(f.button().is_none(), "{language}: button still shown after the fade");
+        assert!(
+            f.button().is_none(),
+            "{language}: button still shown after the fade"
+        );
         f.adapter.apply(&model(true));
 
         // Mouse: movement reveals the button without game input, hover keeps it, a click opens the menu.
         f.mouse_move((400.0, 200.0));
-        assert!(f.button().is_some(), "{language}: mouse movement did not reveal the button");
+        assert!(
+            f.button().is_some(),
+            "{language}: mouse movement did not reveal the button"
+        );
         f.mouse_move(BUTTON);
         f.idle(Duration::from_secs(4));
         assert!(f.button().is_some(), "{language}: hovered button hid");
         f.click(BUTTON);
-        assert!(f.menu_open(), "{language}: mouse click on the button did not open the menu");
+        assert!(
+            f.menu_open(),
+            "{language}: mouse click on the button did not open the menu"
+        );
         assert_inputs(f.inputs(), vec![], "mouse reveal and click on the button");
         f.back();
         f.click((400.0, 200.0));
-        assert_inputs(f.inputs(), vec![down(400.0, 200.0), up(400.0, 200.0)], "mouse click on the game");
+        assert_inputs(
+            f.inputs(),
+            vec![down(400.0, 200.0), up(400.0, 200.0)],
+            "mouse click on the game",
+        );
         f.mouse_move((0.0, 0.0));
         f.inputs();
 
@@ -470,14 +661,20 @@ fn touch_reveals_game_menu_button_without_taking_game_input() {
         f.hide_button();
         session.set_phase("opening".into());
         f.tap((400.0, 200.0));
-        assert!(f.button().is_none(), "{language}: button shown on the opening screen");
+        assert!(
+            f.button().is_none(),
+            "{language}: button shown on the opening screen"
+        );
         assert_inputs(f.inputs(), vec![], "touch while opening");
         session.set_phase("running".into());
         let dialogs = window.global::<Dialogs>();
         dialogs.set_modal_active(true);
         f.tap((400.0, 200.0));
         assert_inputs(f.inputs(), vec![], "touch under a modal dialog");
-        assert!(!f.menu_open(), "{language}: touch under a modal dialog opened the menu");
+        assert!(
+            !f.menu_open(),
+            "{language}: touch under a modal dialog opened the menu"
+        );
         dialogs.set_modal_active(false);
     }
     f.adapter.set_session_active(false);

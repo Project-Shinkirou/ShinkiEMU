@@ -67,8 +67,10 @@ fn resolve_sources(
 
 impl CmvsProfile {
     pub fn validate(&self) -> Result<(), CoreError> {
-        if !matches!(self.schema.as_str(), CMVS_PROFILE_SCHEMA | PREVIOUS_PROFILE_SCHEMA)
-            || self.archives.is_empty()
+        if !matches!(
+            self.schema.as_str(),
+            CMVS_PROFILE_SCHEMA | PREVIOUS_PROFILE_SCHEMA
+        ) || self.archives.is_empty()
             || self.archives.len() > 256
             || self.loose_files.len() > 256
             || self
@@ -162,7 +164,6 @@ mod tests {
             .validate()
             .unwrap();
     }
-
 
     #[test]
     fn duplicate_archive_roles_and_old_unordered_profiles_are_rejected() {

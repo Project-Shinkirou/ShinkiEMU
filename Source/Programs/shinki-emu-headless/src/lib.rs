@@ -273,10 +273,13 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
     .map_err(|error| Error::Run(error.to_string()))?;
     if let Some(device) = &arguments.audio_device {
         if !plugin.configuration().iter().any(|field| {
-            field.id == "headless_audio_device" && matches!(&field.kind,
+            field.id == "headless_audio_device"
+                && matches!(&field.kind,
                 ConfigKind::Enum { choices } if choices.contains(device))
         }) {
-            return Err(Error::Run("core does not support the requested headless audio device".into()));
+            return Err(Error::Run(
+                "core does not support the requested headless audio device".into(),
+            ));
         }
     }
     let game_path = game

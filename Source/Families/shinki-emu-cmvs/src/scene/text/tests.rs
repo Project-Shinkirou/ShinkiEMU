@@ -81,7 +81,11 @@ fn presentation_density_preserves_gradient_queue_clip_and_gaiji_at_fractional_sc
     assert!(vm.native_custom_glyphs.set_descriptor(0x82a0, 16, 9));
     renderer.append(&mut vm, 3, "WあWW", 64).unwrap();
     let surface = vm.native_text.get_mut(&3).unwrap();
-    for (glyph, position) in surface.glyphs.iter_mut().zip([[9, 11], [3, 11], [29, 11], [47, 12]]) {
+    for (glyph, position) in surface
+        .glyphs
+        .iter_mut()
+        .zip([[9, 11], [3, 11], [29, 11], [47, 12]])
+    {
         glyph.position = position;
     }
     surface.glyphs[1].colors = [0x00ff00, 0];
@@ -93,7 +97,9 @@ fn presentation_density_preserves_gradient_queue_clip_and_gaiji_at_fractional_sc
     let measured = renderer.measure(&mut vm, 3, "WあWW", true, 64).unwrap();
     let mut textures = TextureCache::new(NonZeroUsize::new(4).unwrap(), 1024 * 1024, 256).unwrap();
     let mut frame = |vm: &mut CmvsPs2aVmState, camera| {
-        let groups = renderer.prepare_draw_groups(vm, 64, camera, &mut textures).unwrap();
+        let groups = renderer
+            .prepare_draw_groups(vm, 64, camera, &mut textures)
+            .unwrap();
         let mut commands = Vec::new();
         groups.append(&mut commands);
         commands
@@ -122,19 +128,24 @@ fn presentation_density_preserves_gradient_queue_clip_and_gaiji_at_fractional_sc
                 rgba: [0, 0, 0, 255],
             },
             SceneCommand::SetCamera { transform: camera },
-            SceneCommand::PushClip { rect: RectI::new(0, 0, 64, 20) },
+            SceneCommand::PushClip {
+                rect: RectI::new(0, 0, 64, 20),
+            },
         ];
         scene.extend_from_slice(commands);
         scene.push(SceneCommand::PopClip);
         cpu.capture_frame(&scene).unwrap().bytes
     };
     let runs = |commands: &[SceneCommand]| {
-        commands.iter().filter_map(|cmd| match cmd {
-            SceneCommand::LinearGlyphRun { id, glyphs, .. } => {
-                Some((id.clone(), glyphs[0].resource_id.clone()))
-            }
-            _ => None,
-        }).collect::<Vec<_>>()
+        commands
+            .iter()
+            .filter_map(|cmd| match cmd {
+                SceneCommand::LinearGlyphRun { id, glyphs, .. } => {
+                    Some((id.clone(), glyphs[0].resource_id.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     };
     let base = frame(&mut vm, Transform2D::IDENTITY);
     let base_runs = runs(&base);
@@ -150,15 +161,29 @@ fn presentation_density_preserves_gradient_queue_clip_and_gaiji_at_fractional_sc
     let dense = frame(&mut vm, camera);
     let dense_runs = runs(&dense);
     assert_eq!(
-        dense_runs.iter().map(|run| run.0.as_str()).collect::<Vec<_>>(),
-        ["cmvs.text.3.0", "cmvs.text.3.1", "cmvs.text.3.2", "cmvs.text.3.3"]
+        dense_runs
+            .iter()
+            .map(|run| run.0.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "cmvs.text.3.0",
+            "cmvs.text.3.1",
+            "cmvs.text.3.2",
+            "cmvs.text.3.3"
+        ]
     );
     assert_eq!(&dense_runs[1].1, gaiji);
     assert_eq!(dense_runs[0].1, dense_runs[2].1);
     assert_ne!(dense_runs[0].1, dense_runs[3].1);
-    assert_eq!(dense.iter().filter(|cmd| matches!(cmd, SceneCommand::UploadGlyph {
+    assert_eq!(
+        dense
+            .iter()
+            .filter(|cmd| matches!(cmd, SceneCommand::UploadGlyph {
         glyph, ..
-    } if glyph.format == GlyphBitmapFormat::Rgba8)).count(), 2);
+    } if glyph.format == GlyphBitmapFormat::Rgba8))
+            .count(),
+        2
+    );
     let pixels = draw(&dense);
     let pixel = |x: usize, y: usize| (y * 96 + x) * 4;
     let green = pixel(5, 17);
@@ -167,18 +192,32 @@ fn presentation_density_preserves_gradient_queue_clip_and_gaiji_at_fractional_sc
         let i = pixel(x, y);
         pixels[i] > 0 && pixels[i + 1] == 188 && pixels[i + 2] > 0
     })));
-    assert!(pixels[pixel(0, 30)..].chunks_exact(4).all(|p| p == [0, 0, 0, 255]));
+    assert!(
+        pixels[pixel(0, 30)..]
+            .chunks_exact(4)
+            .all(|p| p == [0, 0, 0, 255])
+    );
     assert!((16..30).any(|y| (44..67).any(|x| {
         let i = pixel(x, y);
         let inked = |p: &[u8]| p[0] != 0 || p[2] != 0;
         inked(&pixels[i..i + 3]) != inked(&upscaled[i..i + 3])
     })));
     assert!(!frame(&mut vm, camera).iter().any(|cmd| matches!(
-        cmd, SceneCommand::UploadGlyph { .. } | SceneCommand::ReleaseResource { .. }
+        cmd,
+        SceneCommand::UploadGlyph { .. } | SceneCommand::ReleaseResource { .. }
     )));
     assert_eq!(vm.native_text[&3], native);
-    assert_eq!(renderer.measure(&mut vm, 3, "WあWW", true, 64).unwrap(), measured);
-    assert_eq!(vm.native_custom_glyphs.bitmap_by_identity(custom_id).unwrap().descriptor, 9);
+    assert_eq!(
+        renderer.measure(&mut vm, 3, "WあWW", true, 64).unwrap(),
+        measured
+    );
+    assert_eq!(
+        vm.native_custom_glyphs
+            .bitmap_by_identity(custom_id)
+            .unwrap()
+            .descriptor,
+        9
+    );
 }
 
 #[test]

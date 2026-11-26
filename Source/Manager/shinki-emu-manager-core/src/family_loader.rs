@@ -450,9 +450,17 @@ impl LoadedFamilyPlugin {
                         |(width, height)| abi::Extent { width, height },
                     ),
                 },
-                text_async: request.text_async.as_ref().map_or(std::ptr::null(), |service| service),
+                text_async: request
+                    .text_async
+                    .as_ref()
+                    .map_or(std::ptr::null(), |service| service),
             },
-            gpu_scene: request.gpu_scene.as_ref().map_or(std::ptr::null(), |service| std::ptr::from_ref(service).cast()),
+            gpu_scene: request
+                .gpu_scene
+                .as_ref()
+                .map_or(std::ptr::null(), |service| {
+                    std::ptr::from_ref(service).cast()
+                }),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();
@@ -791,12 +799,25 @@ mod android_context_tests {
         // Its extension handler never dereferences either Android handle.
         let load = |required| unsafe {
             LoadedFamilyPlugin::from_query_with(query, |api| {
-                initialize_android_context(api, std::ptr::null_mut(), std::ptr::null_mut(), required)
+                initialize_android_context(
+                    api,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    required,
+                )
             })
         };
-        let Err(error) = load(true) else { panic!("required context was not enforced") };
-        assert_eq!(error.diagnostic_code(), "SHINKI_EMU_FAMILY_ANDROID_CONTEXT_REQUIRED");
-        assert!(calls.lock().is_empty(), "failed negotiation must precede core initialization");
+        let Err(error) = load(true) else {
+            panic!("required context was not enforced")
+        };
+        assert_eq!(
+            error.diagnostic_code(),
+            "SHINKI_EMU_FAMILY_ANDROID_CONTEXT_REQUIRED"
+        );
+        assert!(
+            calls.lock().is_empty(),
+            "failed negotiation must precede core initialization"
+        );
 
         let core = load(false).unwrap();
         assert_eq!(core.manager_descriptor().plugin_id, "fixture");

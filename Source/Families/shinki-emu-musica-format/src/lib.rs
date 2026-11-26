@@ -4,9 +4,9 @@
 
 pub mod paz;
 mod script;
-pub use paz::{ArchiveEntryDescriptor, PazRoleScheme, MAX_ENTRY_BYTES, MAX_INDEX_BYTES};
+pub use paz::{ArchiveEntryDescriptor, MAX_ENTRY_BYTES, MAX_INDEX_BYTES, PazRoleScheme};
 pub use script::*;
 mod schemes;
-pub use schemes::{into_schemes, decode_scheme};
+pub use schemes::{decode_scheme, into_schemes};
 
 pub const MUSICA_SCRIPT_IR_SCHEMA: &str = "shinki.emu.musica.script_ir.v3";

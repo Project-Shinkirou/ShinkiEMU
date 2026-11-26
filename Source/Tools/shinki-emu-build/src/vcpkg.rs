@@ -3,8 +3,7 @@ use crate::{NativeInputs, inputs::Pins, pins, run, watch_env, work_root};
 use anyhow::{Context, Result, bail, ensure};
 use sha2::{Digest, Sha256};
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -64,7 +63,13 @@ pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
         ports.push(overlay);
     }
     let shared_libass = id == "impacto" && target.ends_with("-linux-android");
-    let installation = install(&pins()?, source, target_triplet(&target)?, ports, shared_libass)?;
+    let installation = install(
+        &pins()?,
+        source,
+        target_triplet(&target)?,
+        ports,
+        shared_libass,
+    )?;
     installation.report(&format!("native-vcpkg/{id}"), &target)?;
     Ok(installation)
 }
@@ -78,11 +83,29 @@ pub fn install_shared(name: &str) -> Result<Installation> {
         ("ffmpeg" | "subtitle", _) => target_triplet(&target)?,
         _ => bail!("unknown shared manifest {name}"),
     };
-    install(&lock, &crate::workspace().join("build/vcpkg").join(name), triplet, Vec::new(), false)
+    install(
+        &lock,
+        &crate::workspace().join("build/vcpkg").join(name),
+        triplet,
+        Vec::new(),
+        false,
+    )
 }
 
-fn install(lock: &Pins, manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>, shared_libass: bool) -> Result<Installation> {
-    ensure!(!triplet.is_empty() && triplet.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'), "invalid vcpkg triplet {triplet:?}");
+fn install(
+    lock: &Pins,
+    manifest: &Path,
+    triplet: &str,
+    mut ports: Vec<PathBuf>,
+    shared_libass: bool,
+) -> Result<Installation> {
+    ensure!(
+        !triplet.is_empty()
+            && triplet
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-'),
+        "invalid vcpkg triplet {triplet:?}"
+    );
     let workspace = crate::workspace();
     let work = work_root();
     let root = watch_env("SHINKI_EMU_VCPKG_ROOT")
@@ -90,21 +113,32 @@ fn install(lock: &Pins, manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>,
     let root = std::path::absolute(root)?;
     let parent = root.parent().context("vcpkg root must have a parent")?;
     fs::create_dir_all(parent)?;
-    let mut lock_name = root.file_name().context("vcpkg root must have a name")?.to_os_string();
+    let mut lock_name = root
+        .file_name()
+        .context("vcpkg root must have a name")?
+        .to_os_string();
     lock_name.push(".lock");
     // vcpkg itself also takes a lock, but bootstrap and the vcpkg buildtrees
     // shared across different --x-install-root values need the same lock.
     let _lock = crate::lock_file(&parent.join(lock_name))?;
     bootstrap(&root, &work, &lock.vcpkg_url, &lock.vcpkg_commit)?;
     let manifest = dunce::canonicalize(manifest)?;
-    println!("cargo:rerun-if-changed={}", manifest.join("vcpkg.json").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest.join("vcpkg.json").display()
+    );
     let config = manifest.join("vcpkg-configuration.json");
     if config.is_file() {
         println!("cargo:rerun-if-changed={}", config.display());
         let config: serde_json::Value = serde_json::from_slice(&fs::read(config)?)?;
         for key in ["overlay-ports", "overlay-triplets"] {
             for path in config[key].as_array().into_iter().flatten() {
-                println!("cargo:rerun-if-changed={}", manifest.join(path.as_str().context("vcpkg overlay path")?).display());
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    manifest
+                        .join(path.as_str().context("vcpkg overlay path")?)
+                        .display()
+                );
             }
         }
     }
@@ -120,12 +154,20 @@ fn install(lock: &Pins, manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>,
     ];
     if triplet.ends_with("-cross") {
         triplets.push(workspace.join("build/cross/triplets"));
-        println!("cargo:rerun-if-changed={}", workspace.join("build/cross/toolchain.cmake").display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            workspace.join("build/cross/toolchain.cmake").display()
+        );
     }
     for path in ports.iter().chain(&triplets) {
         println!("cargo:rerun-if-changed={}", path.display());
     }
-    for name in ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "OHOS_SDK_NATIVE", "VCPKG_BINARY_SOURCES"] {
+    for name in [
+        "ANDROID_NDK_HOME",
+        "ANDROID_NDK_ROOT",
+        "OHOS_SDK_NATIVE",
+        "VCPKG_BINARY_SOURCES",
+    ] {
         watch_env(name);
     }
     let install_root = install_root(&work, &manifest, triplet, &lock.vcpkg_commit);
@@ -138,9 +180,17 @@ fn install(lock: &Pins, manifest: &Path, triplet: &str, mut ports: Vec<PathBuf>,
         command.env("ANDROID_NDK_HOME", crate::android_ndk()?);
     }
     run(&mut command)?;
-    println!("cargo:rerun-if-changed={}", installed.join("vcpkg/status").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        installed.join("vcpkg/status").display()
+    );
     fs::copy(root.join(".vcpkg-root"), install_root.join(".vcpkg-root"))?;
-    Ok(Installation { root, triplet: triplet.into(), install_root, prefix: installed.join(triplet) })
+    Ok(Installation {
+        root,
+        triplet: triplet.into(),
+        install_root,
+        prefix: installed.join(triplet),
+    })
 }
 
 fn install_root(work: &Path, manifest: &Path, triplet: &str, commit: &str) -> PathBuf {
@@ -148,17 +198,33 @@ fn install_root(work: &Path, manifest: &Path, triplet: &str, commit: &str) -> Pa
     hash.update(manifest.as_os_str().as_encoded_bytes());
     hash.update([0]);
     hash.update(commit.as_bytes());
-    work.join("vcpkg-installs").join(format!("{triplet}-{}", hex::encode(&hash.finalize()[..8])))
+    work.join("vcpkg-installs")
+        .join(format!("{triplet}-{}", hex::encode(&hash.finalize()[..8])))
 }
 
 fn binary(root: &Path) -> PathBuf {
     root.join(if cfg!(windows) { "vcpkg.exe" } else { "vcpkg" })
 }
 
-fn install_command(root: &Path, manifest: &Path, triplet: &str, installed: &Path, ports: &[PathBuf], triplets: &[PathBuf]) -> Command {
+fn install_command(
+    root: &Path,
+    manifest: &Path,
+    triplet: &str,
+    installed: &Path,
+    ports: &[PathBuf],
+    triplets: &[PathBuf],
+) -> Command {
     let mut command = Command::new(binary(root));
-    command.current_dir(manifest)
-        .args(["install", "--x-wait-for-lock", "--triplet", triplet, "--clean-buildtrees-after-build", "--clean-packages-after-build"])
+    command
+        .current_dir(manifest)
+        .args([
+            "install",
+            "--x-wait-for-lock",
+            "--triplet",
+            triplet,
+            "--clean-buildtrees-after-build",
+            "--clean-packages-after-build",
+        ])
         .arg(format!("--x-manifest-root={}", manifest.display()))
         .arg(format!("--x-install-root={}", installed.display()))
         .env("VCPKG_ROOT", root)
@@ -166,10 +232,16 @@ fn install_command(root: &Path, manifest: &Path, triplet: &str, installed: &Path
         .env_remove("MACOSX_DEPLOYMENT_TARGET")
         .env_remove("IPHONEOS_DEPLOYMENT_TARGET");
     for (flag, paths) in [("--overlay-ports", ports), ("--overlay-triplets", triplets)] {
-        command.args(paths.iter().map(|path| format!("{flag}={}", path.display())));
+        command.args(
+            paths
+                .iter()
+                .map(|path| format!("{flag}={}", path.display())),
+        );
     }
     if cfg!(windows) {
-        command.arg("--x-abi-tools-use-exact-versions").env_remove("VCPKG_FORCE_SYSTEM_BINARIES");
+        command
+            .arg("--x-abi-tools-use-exact-versions")
+            .env_remove("VCPKG_FORCE_SYSTEM_BINARIES");
     }
     command
 }
@@ -183,7 +255,10 @@ fn bootstrap(root: &Path, work: &Path, url: &str, commit: &str) -> Result<()> {
         clone.args(["clone", "--no-checkout", url]).arg(&checkout);
         crate::configure_native_environment(work, &mut clone)?;
         run(&mut clone)?;
-        run(Command::new("git").arg("-C").arg(&checkout).args(["checkout", "--detach", commit]))?;
+        run(Command::new("git")
+            .arg("-C")
+            .arg(&checkout)
+            .args(["checkout", "--detach", commit]))?;
         fs::rename(checkout, root)?;
     }
     let git = || {
@@ -192,7 +267,11 @@ fn bootstrap(root: &Path, work: &Path, url: &str, commit: &str) -> Result<()> {
         command
     };
     let actual = crate::capture(git().args(["rev-parse", "HEAD"]))?;
-    ensure!(actual.trim() == commit, "{} is not pinned vcpkg {commit}; choose a new SHINKI_EMU_VCPKG_ROOT", root.display());
+    ensure!(
+        actual.trim() == commit,
+        "{} is not pinned vcpkg {commit}; choose a new SHINKI_EMU_VCPKG_ROOT",
+        root.display()
+    );
     let shallow = crate::capture(git().args(["rev-parse", "--is-shallow-repository"]))?;
     if shallow.trim() == "true" {
         run(git().args(["fetch", "--unshallow", url]))?;
@@ -216,7 +295,10 @@ fn bootstrap(root: &Path, work: &Path, url: &str, commit: &str) -> Result<()> {
 
 impl Installation {
     pub fn pkg_config_dirs(&self) -> [PathBuf; 2] {
-        [self.prefix.join("lib/pkgconfig"), self.prefix.join("share/pkgconfig")]
+        [
+            self.prefix.join("lib/pkgconfig"),
+            self.prefix.join("share/pkgconfig"),
+        ]
     }
 
     pub fn report(&self, category: &str, target: &str) -> Result<NativeInputs> {
@@ -246,18 +328,34 @@ impl Installation {
             for entry in fs::read_dir(&lib)? {
                 let entry = entry?;
                 if entry.file_name().to_string_lossy().contains(".so") {
-                    inputs.runtime.push(stage_runtime_entry(&lib, &entry.path(), &runtime.join(entry.file_name()))?);
+                    inputs.runtime.push(stage_runtime_entry(
+                        &lib,
+                        &entry.path(),
+                        &runtime.join(entry.file_name()),
+                    )?);
                 }
             }
-            let fmod = self.prefix.join("share/cocos2dx/linux-specific/fmod/prebuilt/64-bit/libfmod.so");
+            let fmod = self
+                .prefix
+                .join("share/cocos2dx/linux-specific/fmod/prebuilt/64-bit/libfmod.so");
             if fmod.is_file() {
-                ensure!(crate::sha256(&fmod)? == "d4454884763c746c70c4ea2a9b0ca35555fef2bf174072be21924cb9a80d84a9", "unexpected Cocos FMOD runtime");
-                inputs.runtime.push(stage_elf(&fmod, &runtime.join("libfmod.so.6"))?);
+                ensure!(
+                    crate::sha256(&fmod)?
+                        == "d4454884763c746c70c4ea2a9b0ca35555fef2bf174072be21924cb9a80d84a9",
+                    "unexpected Cocos FMOD runtime"
+                );
+                inputs
+                    .runtime
+                    .push(stage_elf(&fmod, &runtime.join("libfmod.so.6"))?);
             }
         } else {
-            let (dir, extension) = if target.contains("windows") { ("bin", "dll") }
-                else if target.contains("apple") { ("lib", "dylib") }
-                else { ("lib", "so") };
+            let (dir, extension) = if target.contains("windows") {
+                ("bin", "dll")
+            } else if target.contains("apple") {
+                ("lib", "dylib")
+            } else {
+                ("lib", "so")
+            };
             if let Ok(entries) = fs::read_dir(self.prefix.join(dir)) {
                 for entry in entries {
                     let entry = entry?;
@@ -267,7 +365,8 @@ impl Installation {
                 }
             }
         }
-        inputs.ndk_openmp = category.starts_with("native-vcpkg/") && target.ends_with("-linux-android");
+        inputs.ndk_openmp =
+            category.starts_with("native-vcpkg/") && target.ends_with("-linux-android");
         inputs.runtime.sort();
         inputs.licenses.sort_by(|a, b| a.dest.cmp(&b.dest));
         inputs.write()?;
@@ -282,29 +381,51 @@ impl Installation {
         println!("cargo::metadata=root={}", self.prefix.display());
         println!("cargo::metadata=vcpkg_root={}", self.install_root.display());
         println!("cargo::metadata=triplet={}", self.triplet);
-        println!("cargo::metadata=pkg_config_dirs={}", env::join_paths(self.pkg_config_dirs())?.to_string_lossy());
-        println!("cargo::metadata=runtime_dsos={}", env::join_paths(&inputs.runtime)?.to_string_lossy());
-        println!("cargo::metadata=pkg_config={}", self.pkg_config_program(&env::var("TARGET")?)?.display());
+        println!(
+            "cargo::metadata=pkg_config_dirs={}",
+            env::join_paths(self.pkg_config_dirs())?.to_string_lossy()
+        );
+        println!(
+            "cargo::metadata=runtime_dsos={}",
+            env::join_paths(&inputs.runtime)?.to_string_lossy()
+        );
+        println!(
+            "cargo::metadata=pkg_config={}",
+            self.pkg_config_program(&env::var("TARGET")?)?.display()
+        );
         Ok(())
     }
 }
 
 fn stage_runtime_entry(root: &Path, src: &Path, out: &Path) -> Result<PathBuf> {
     let src = dunce::canonicalize(src)?;
-    ensure!(src.starts_with(root) && src.is_file(), "runtime library outside {}", root.display());
+    ensure!(
+        src.starts_with(root) && src.is_file(),
+        "runtime library outside {}",
+        root.display()
+    );
     stage_elf(&src, out)
 }
 
 fn stage_elf(src: &Path, out: &Path) -> Result<PathBuf> {
     // An interrupted previous build must not redirect this write via a link.
     if let Ok(metadata) = fs::symlink_metadata(out) {
-        ensure!(metadata.is_file() && !metadata.file_type().is_symlink(), "invalid runtime output {}", out.display());
+        ensure!(
+            metadata.is_file() && !metadata.file_type().is_symlink(),
+            "invalid runtime output {}",
+            out.display()
+        );
         fs::remove_file(out)?;
     }
-    let mut output = fs::OpenOptions::new().write(true).create_new(true).open(out)?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out)?;
     std::io::copy(&mut fs::File::open(src)?, &mut output)?;
     drop(output);
-    run(Command::new("patchelf").args(["--set-rpath", "$ORIGIN"]).arg(out))?;
+    run(Command::new("patchelf")
+        .args(["--set-rpath", "$ORIGIN"])
+        .arg(out))?;
     Ok(out.to_owned())
 }
 
@@ -321,9 +442,19 @@ pub(crate) fn pkg_config_program(target: &str, installed: Option<&Path>) -> Resu
         }
         // A transferred Ren'Py runtime has pkg-config files but no vcpkg
         // installation of its own. It cannot depend on another core running first.
-        let host = install(&pins()?, &crate::workspace().join("build/vcpkg/pkgconf"), "x64-windows", Vec::new(), false)?;
+        let host = install(
+            &pins()?,
+            &crate::workspace().join("build/vcpkg/pkgconf"),
+            "x64-windows",
+            Vec::new(),
+            false,
+        )?;
         let program = host.prefix.join("tools/pkgconf/pkgconf.exe");
-        ensure!(program.is_file(), "pkgconf manifest did not install {}", program.display());
+        ensure!(
+            program.is_file(),
+            "pkgconf manifest did not install {}",
+            program.display()
+        );
         return Ok(program);
     }
     Ok(PathBuf::from("pkg-config"))
@@ -345,8 +476,8 @@ mod tests {
         let arm64_root = install_root(work, manifest, arm64, "pin");
         let x64_root = install_root(work, manifest, x64, "pin");
         assert_ne!(arm64_root, x64_root);
-        let overlays = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../build/vcpkg/mobile-triplets");
+        let overlays =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../build/vcpkg/mobile-triplets");
         for (triplet, root) in [(arm64, arm64_root), (x64, x64_root)] {
             assert!(overlays.join(format!("{triplet}.cmake")).is_file());
             let command = install_command(
@@ -370,13 +501,35 @@ mod tests {
         let first = install_root(work, manifest, "x64-linux-dynamic", "pin");
         let second = install_root(work, manifest, "arm64-ios", "pin");
         assert_ne!(first, second);
-        assert_ne!(first, install_root(work, Path::new("other manifest"), "x64-linux-dynamic", "pin"));
-        let cmd = install_command(Path::new("vcpkg"), manifest, "x64-linux-dynamic", &first,
-            &[PathBuf::from("overlay ports")], &[PathBuf::from("overlay triplets")]);
+        assert_ne!(
+            first,
+            install_root(
+                work,
+                Path::new("other manifest"),
+                "x64-linux-dynamic",
+                "pin"
+            )
+        );
+        let cmd = install_command(
+            Path::new("vcpkg"),
+            manifest,
+            "x64-linux-dynamic",
+            &first,
+            &[PathBuf::from("overlay ports")],
+            &[PathBuf::from("overlay triplets")],
+        );
         let expected = format!("--x-install-root={}", first.display());
         let args: Vec<_> = cmd.get_args().collect();
-        assert!(args.windows(2).any(|a| a == ["--triplet", "x64-linux-dynamic"]));
-        for arg in ["--x-manifest-root=manifest with spaces", "--overlay-ports=overlay ports", "--overlay-triplets=overlay triplets", &expected] {
+        assert!(
+            args.windows(2)
+                .any(|a| a == ["--triplet", "x64-linux-dynamic"])
+        );
+        for arg in [
+            "--x-manifest-root=manifest with spaces",
+            "--overlay-ports=overlay ports",
+            "--overlay-triplets=overlay triplets",
+            &expected,
+        ] {
             assert!(args.contains(&OsStr::new(arg)));
         }
         assert_eq!(cmd.get_current_dir(), Some(manifest));
@@ -389,7 +542,10 @@ mod tests {
         if let Some(file) = env::var_os(LOCK_PATH) {
             let contender = File::options().read(true).write(true).open(file)?;
             if env::var_os(EXPECT_LOCKED).as_deref() == Some(OsStr::new("yes")) {
-                assert!(matches!(contender.try_lock(), Err(std::fs::TryLockError::WouldBlock)));
+                assert!(matches!(
+                    contender.try_lock(),
+                    Err(std::fs::TryLockError::WouldBlock)
+                ));
             } else {
                 contender.try_lock()?;
             }
@@ -400,11 +556,18 @@ mod tests {
         let lock = crate::lock_file(&path)?;
         let probe = |locked| -> Result<()> {
             let output = Command::new(env::current_exe()?)
-                .args(["--exact", "vcpkg::tests::lock_is_exclusive_across_processes"])
+                .args([
+                    "--exact",
+                    "vcpkg::tests::lock_is_exclusive_across_processes",
+                ])
                 .env(LOCK_PATH, &path)
                 .env(EXPECT_LOCKED, locked)
                 .output()?;
-            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
             Ok(())
         };
         probe("yes")?;

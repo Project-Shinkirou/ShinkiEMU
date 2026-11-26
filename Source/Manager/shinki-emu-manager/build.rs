@@ -246,8 +246,7 @@ fn write_embedded_core_identities() {
                     "--core {} --target <desktop-triple> --version <version> --out <directory>. ",
                     "For headless use: shinki-emu-manager headless --core <core.zip> ..."
                 ),
-                feature,
-                core,
+                feature, core,
             );
         }
     }

@@ -25,13 +25,18 @@ pub(crate) fn validate_title_frontend(
 ) -> Result<(), PatchError> {
     check_cancelled(cancelled)?;
     crate::paths::relative(profile, false)?;
-    let archive = shinki_emu_musica::mount_musica(archive_root, Path::new(profile)).map_err(native_error)?;
+    let archive =
+        shinki_emu_musica::mount_musica(archive_root, Path::new(profile)).map_err(native_error)?;
     shinki_emu_musica::validate_musica_title_frontend(
         root, &archive, frontend, encoding, width, height,
     )
-    .map_err(|error| PatchError::with_source(
-        PatchErrorKind::Integrity, "invalid generated Musica title frontend", error,
-    ))?;
+    .map_err(|error| {
+        PatchError::with_source(
+            PatchErrorKind::Integrity,
+            "invalid generated Musica title frontend",
+            error,
+        )
+    })?;
     check_cancelled(cancelled)
 }
 
@@ -58,14 +63,21 @@ pub(crate) fn gallery_source_resources(
     check_cancelled(cancelled)?;
     crate::paths::relative(profile, false)?;
     if probes.is_empty() || probes.len() > 4096 {
-        return Err(PatchError::new(PatchErrorKind::Bounds, "invalid Musica gallery resource probe count"));
+        return Err(PatchError::new(
+            PatchErrorKind::Bounds,
+            "invalid Musica gallery resource probe count",
+        ));
     }
-    let archive = shinki_emu_musica::mount_musica(source, Path::new(profile)).map_err(native_error)?;
+    let archive =
+        shinki_emu_musica::mount_musica(source, Path::new(profile)).map_err(native_error)?;
     let mut matches = Vec::with_capacity(probes.len());
     for probe in probes {
         check_cancelled(cancelled)?;
         if probe.candidates.is_empty() || probe.candidates.len() > 4 {
-            return Err(PatchError::new(PatchErrorKind::Bounds, "invalid Musica gallery resource alternative count"));
+            return Err(PatchError::new(
+                PatchErrorKind::Bounds,
+                "invalid Musica gallery resource alternative count",
+            ));
         }
         let mut found = None;
         for uri in probe.candidates {
@@ -78,14 +90,20 @@ pub(crate) fn gallery_source_resources(
                 Err(error) => return Err(native_error(error)),
             }
         }
-        let resource = found.ok_or_else(|| PatchError::new(
-            PatchErrorKind::Integrity, "no original Musica gallery resource matches the declared alternatives",
-        ))?;
+        let resource = found.ok_or_else(|| {
+            PatchError::new(
+                PatchErrorKind::Integrity,
+                "no original Musica gallery resource matches the declared alternatives",
+            )
+        })?;
         let size = if probe.png_size {
             let header = archive.read_range(&resource, 0, 24).map_err(native_error)?;
             let bytes = &header.bytes;
             if bytes.len() != 24 || &bytes[..16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" {
-                return Err(PatchError::new(PatchErrorKind::Integrity, "invalid Musica gallery PNG header"));
+                return Err(PatchError::new(
+                    PatchErrorKind::Integrity,
+                    "invalid Musica gallery PNG header",
+                ));
             }
             Some([
                 u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
@@ -221,7 +239,11 @@ pub(crate) fn generate_texture_variants(
         .take(MAX_KEY_BYTES + 1)
         .read_to_end(&mut profile_bytes)?;
     let mut profile = parse_key_file(&profile_bytes).map_err(|error| {
-        PatchError::with_source(PatchErrorKind::Integrity, "invalid staged Musica profile", error)
+        PatchError::with_source(
+            PatchErrorKind::Integrity,
+            "invalid staged Musica profile",
+            error,
+        )
     })?;
     if specs.is_empty() || !profile.texture_variants.is_empty() {
         return Err(PatchError::new(
@@ -244,7 +266,11 @@ pub(crate) fn generate_texture_variants(
         );
     }
     profile.validate().map_err(|error| {
-        PatchError::with_source(PatchErrorKind::Integrity, "invalid texture variant declarations", error)
+        PatchError::with_source(
+            PatchErrorKind::Integrity,
+            "invalid texture variant declarations",
+            error,
+        )
     })?;
     for (uri, spec) in &specs {
         check_cancelled(cancelled)?;
@@ -279,7 +305,9 @@ pub(crate) fn generate_texture_variants(
             }
             MonoConversion::NativeMono => {
                 // This mode always reads PAZ, even if the base URI has an override.
-                let source = archive.entry_descriptor(&spec.source).map_err(native_error)?;
+                let source = archive
+                    .entry_descriptor(&spec.source)
+                    .map_err(native_error)?;
                 let size = usize::try_from(source.unpacked_size).unwrap_or(usize::MAX);
                 buffer::bounded(size)?;
                 let png = archive
@@ -313,7 +341,11 @@ fn mono_pixels(
     for chunk in rgba.chunks_mut(64 * 1024) {
         check_cancelled(cancelled)?;
         for pixel in chunk.chunks_exact_mut(4) {
-            let (r, g, b) = (u16::from(pixel[0]), u16::from(pixel[1]), u16::from(pixel[2]));
+            let (r, g, b) = (
+                u16::from(pixel[0]),
+                u16::from(pixel[1]),
+                u16::from(pixel[2]),
+            );
             let gray = match conversion {
                 MonoConversion::CnbgMono => (30 * r + 59 * g + 11 * b) / 100,
                 MonoConversion::NativeMono if pixel[3] != 0 => (5 * r + 2 * g + b) >> 3,

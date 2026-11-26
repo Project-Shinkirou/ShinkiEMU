@@ -93,9 +93,7 @@ impl MetadataRecord {
                 continue;
             };
             let rank = (specificity, entry.main, entry.official);
-            if !entry.title.trim().is_empty()
-                && best.is_none_or(|(previous, _)| rank > previous)
-            {
+            if !entry.title.trim().is_empty() && best.is_none_or(|(previous, _)| rank > previous) {
                 best = Some((rank, entry.title.as_str()));
             }
         }

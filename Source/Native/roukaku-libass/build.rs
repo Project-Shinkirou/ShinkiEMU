@@ -7,7 +7,9 @@ fn main() -> anyhow::Result<()> {
     let inputs = installation.report("subtitle", &target)?;
     if target == "x86_64-pc-windows-msvc" {
         anyhow::ensure!(
-            !env::var("CARGO_CFG_TARGET_FEATURE")?.split(',').any(|feature| feature == "crt-static"),
+            !env::var("CARGO_CFG_TARGET_FEATURE")?
+                .split(',')
+                .any(|feature| feature == "crt-static"),
             "libass requires the MD CRT"
         );
         vcpkg::Config::new()
@@ -25,7 +27,13 @@ fn main() -> anyhow::Result<()> {
             .exactly_version("0.17.5")
             .probe("libass")?;
     }
-    println!("cargo::metadata=include_dirs={}", installation.prefix.join("include").display());
-    println!("cargo::metadata=lib_dirs={}", installation.prefix.join("lib").display());
+    println!(
+        "cargo::metadata=include_dirs={}",
+        installation.prefix.join("include").display()
+    );
+    println!(
+        "cargo::metadata=lib_dirs={}",
+        installation.prefix.join("lib").display()
+    );
     installation.publish(&inputs)
 }

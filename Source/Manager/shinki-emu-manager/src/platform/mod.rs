@@ -10,15 +10,23 @@ use std::path::{Path, PathBuf};
 pub mod android;
 #[cfg(any(target_os = "android", test))]
 mod android_diagnostics;
-#[cfg(target_os = "android")]
-pub mod android_tree;
 #[cfg(any(target_os = "android", test))]
 pub(crate) mod android_storage;
+#[cfg(target_os = "android")]
+pub mod android_tree;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 mod desktop;
-#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+#[cfg(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", not(target_env = "ohos"))
+))]
 mod optical;
-#[cfg(any(windows, target_os = "macos", all(target_os = "linux", not(target_env = "ohos"))))]
+#[cfg(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", not(target_env = "ohos"))
+))]
 pub use optical::{OPTICAL_MEDIA_UNAVAILABLE, OpticalVolume, optical_volumes};
 
 /// A native picker of mounted optical data volumes is available on these desktops.

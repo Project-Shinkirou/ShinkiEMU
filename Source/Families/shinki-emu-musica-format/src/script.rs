@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+mod display;
 mod encoding;
 mod parser;
-mod display;
-pub use display::{musica_display_hash, musica_display_cstr_hash};
+pub use display::{musica_display_cstr_hash, musica_display_hash};
 pub use encoding::ScriptEncoding;
 #[cfg(test)]
 use parser::tokenize_operands;

@@ -161,7 +161,9 @@ impl Anime4kFilter {
         }
         if input == output
             || !input.usage().contains(wgpu::TextureUsages::TEXTURE_BINDING)
-            || !output.usage().contains(wgpu::TextureUsages::STORAGE_BINDING)
+            || !output
+                .usage()
+                .contains(wgpu::TextureUsages::STORAGE_BINDING)
         {
             return Err(FilterError::TextureUsage);
         }
@@ -204,7 +206,11 @@ impl Anime4kFilter {
 
     fn bind(&mut self, device: &wgpu::Device, input: &wgpu::Texture, output: &wgpu::Texture) {
         let size = input.size();
-        if !self.scratch.as_ref().is_some_and(|scratch| scratch.size == size) {
+        if !self
+            .scratch
+            .as_ref()
+            .is_some_and(|scratch| scratch.size == size)
+        {
             self.scratch = Some(Scratch::new(
                 device,
                 size,
@@ -263,7 +269,8 @@ impl Scratch {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: wgpu::TextureFormat::Rgba16Float,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING,
                     view_formats: &[],
                 })
                 .create_view(&wgpu::TextureViewDescriptor::default())
@@ -386,9 +393,10 @@ mod tests {
                 let height: u32 = fields.next().unwrap().parse().unwrap();
                 let input_bytes = hex::decode(fields.next().unwrap()).unwrap();
                 let oracle = hex::decode(fields.nth(index).unwrap()).unwrap();
-                if !surfaces.as_ref().is_some_and(|(input, _)| {
-                    (input.width(), input.height()) == (width, height)
-                }) {
+                if !surfaces
+                    .as_ref()
+                    .is_some_and(|(input, _)| (input.width(), input.height()) == (width, height))
+                {
                     let input = surface(
                         &device,
                         width,
@@ -437,7 +445,10 @@ mod tests {
                 let delta = a.abs_diff(b);
                 eprintln!("{kind:?} {label}: {width}x{height} x{scale}, max byte delta {delta}");
                 // Covers FP16 rounding, shader contraction and RGBA8 conversion.
-                assert!(delta <= 1, "{kind:?} {label} byte {byte}: WGSL {a}, GLSL {b}");
+                assert!(
+                    delta <= 1,
+                    "{kind:?} {label} byte {byte}: WGSL {a}, GLSL {b}"
+                );
                 if scale == 1 {
                     assert!(
                         actual

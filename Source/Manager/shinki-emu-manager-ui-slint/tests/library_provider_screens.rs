@@ -125,26 +125,186 @@ fn provider_problem() -> String {
 }
 
 /// (id, title, engine, version, cover index, problem, provider access, play time, compat)
-type Row = (&'static str, &'static str, &'static str, &'static str, Option<usize>, String, &'static str, &'static str, &'static str);
+type Row = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<usize>,
+    String,
+    &'static str,
+    &'static str,
+    &'static str,
+);
 
 fn rows() -> Vec<Row> {
     let saf = provider_problem;
     vec![
-        ("g01", "Harbor Lights", "SiglusEngine · siglus-rs", "", Some(0), String::new(), "", "12.5 h", "perfect"),
-        ("g02", "Snowfield Letters", "KiriKiri Z · krkr2", "Steam", None, saf(), "provider", "45 h", "completable"),
-        ("g03", "Clockwork Garden", "SiglusEngine", "", Some(1), tr!("已识别引擎，缺少兼容核心").into(), "", "", "unknown"),
-        ("g04", LONG_JA, "Artemis · artemis-rs", "初回限定版", Some(2), saf(), "provider", "1 h", "flawed"),
-        ("g05", "Ten", "", "", None, tr!("未识别到可用的模拟器").into(), "", "", "unknown"),
-        ("g06", "Moonlit Station", "FVP · rfvp", "", Some(3), saf(), "unmappable", "65 h", "perfect"),
-        ("g07", "Paper Wings", "CatSystem2 · cs2", "", None, String::new(), "", "42 h", "boot_only"),
-        ("g08", LONG_EN, "Ren'Py · renpy", "Definitive Edition", Some(4), saf(), "unmappable", "", "completable"),
-        ("g09", "Stardust", "KiriKiri Z · krkr2", "HD", None, tr!("缺少所选核心，请安装后重启应用").into(), "", "5 h", "unplayable"),
-        ("g10", "Quiet Library", "SiglusEngine · siglus-rs", "", Some(0), String::new(), "", "120 h", "perfect"),
-        ("g11", "Glass Ocean", "Musica · musica", "", None, saf(), "provider", "95 h", "unknown"),
-        ("g12", "Autumn Bells", "FVP · rfvp", "Director's Cut", Some(1), String::new(), "", "38 h", "perfect"),
-        ("g13", "Lantern Festival", "KiriKiri Z · krkr2", "", Some(2), tr!("游戏目录当前不可用").into(), "", "52 h", "completable"),
-        ("g14", "Summer Rain", "Artemis · artemis-rs", "Remastered", Some(3), String::new(), "", "80 h", "flawed"),
-        ("g15", "Night Ferry", "", "", None, saf(), "unmappable", "", "unknown"),
+        (
+            "g01",
+            "Harbor Lights",
+            "SiglusEngine · siglus-rs",
+            "",
+            Some(0),
+            String::new(),
+            "",
+            "12.5 h",
+            "perfect",
+        ),
+        (
+            "g02",
+            "Snowfield Letters",
+            "KiriKiri Z · krkr2",
+            "Steam",
+            None,
+            saf(),
+            "provider",
+            "45 h",
+            "completable",
+        ),
+        (
+            "g03",
+            "Clockwork Garden",
+            "SiglusEngine",
+            "",
+            Some(1),
+            tr!("已识别引擎，缺少兼容核心").into(),
+            "",
+            "",
+            "unknown",
+        ),
+        (
+            "g04",
+            LONG_JA,
+            "Artemis · artemis-rs",
+            "初回限定版",
+            Some(2),
+            saf(),
+            "provider",
+            "1 h",
+            "flawed",
+        ),
+        (
+            "g05",
+            "Ten",
+            "",
+            "",
+            None,
+            tr!("未识别到可用的模拟器").into(),
+            "",
+            "",
+            "unknown",
+        ),
+        (
+            "g06",
+            "Moonlit Station",
+            "FVP · rfvp",
+            "",
+            Some(3),
+            saf(),
+            "unmappable",
+            "65 h",
+            "perfect",
+        ),
+        (
+            "g07",
+            "Paper Wings",
+            "CatSystem2 · cs2",
+            "",
+            None,
+            String::new(),
+            "",
+            "42 h",
+            "boot_only",
+        ),
+        (
+            "g08",
+            LONG_EN,
+            "Ren'Py · renpy",
+            "Definitive Edition",
+            Some(4),
+            saf(),
+            "unmappable",
+            "",
+            "completable",
+        ),
+        (
+            "g09",
+            "Stardust",
+            "KiriKiri Z · krkr2",
+            "HD",
+            None,
+            tr!("缺少所选核心，请安装后重启应用").into(),
+            "",
+            "5 h",
+            "unplayable",
+        ),
+        (
+            "g10",
+            "Quiet Library",
+            "SiglusEngine · siglus-rs",
+            "",
+            Some(0),
+            String::new(),
+            "",
+            "120 h",
+            "perfect",
+        ),
+        (
+            "g11",
+            "Glass Ocean",
+            "Musica · musica",
+            "",
+            None,
+            saf(),
+            "provider",
+            "95 h",
+            "unknown",
+        ),
+        (
+            "g12",
+            "Autumn Bells",
+            "FVP · rfvp",
+            "Director's Cut",
+            Some(1),
+            String::new(),
+            "",
+            "38 h",
+            "perfect",
+        ),
+        (
+            "g13",
+            "Lantern Festival",
+            "KiriKiri Z · krkr2",
+            "",
+            Some(2),
+            tr!("游戏目录当前不可用").into(),
+            "",
+            "52 h",
+            "completable",
+        ),
+        (
+            "g14",
+            "Summer Rain",
+            "Artemis · artemis-rs",
+            "Remastered",
+            Some(3),
+            String::new(),
+            "",
+            "80 h",
+            "flawed",
+        ),
+        (
+            "g15",
+            "Night Ferry",
+            "",
+            "",
+            None,
+            saf(),
+            "unmappable",
+            "",
+            "unknown",
+        ),
     ]
 }
 
@@ -156,28 +316,39 @@ fn library(covers: &[String], theme: &str) -> ManagerViewModel {
     m.library.prepare_state = "ready".into();
     m.library.can_refresh = true;
     m.library.prepare_label = tr!("刷新资料库").into();
-    m.settings.roots = vec!["content://com.android.externalstorage.documents/tree/primary%3AGames".into()];
+    m.settings.roots =
+        vec!["content://com.android.externalstorage.documents/tree/primary%3AGames".into()];
     m.library.games = rows()
         .into_iter()
-        .map(|(id, title, engine, version, cover, problem, access, play_time, compat)| GameCardViewModel {
-            id: id.into(),
-            title: title.into(),
-            subtitle: engine.into(),
-            version: version.into(),
-            cover_uri: cover.map(|i| covers[i].clone()).unwrap_or_default(),
-            ready: problem.is_empty(),
-            problem,
-            provider_access: access.into(),
-            play_time: play_time.into(),
-            last_played: String::new(),
-            compat: compat.into(),
-        })
+        .map(
+            |(id, title, engine, version, cover, problem, access, play_time, compat)| {
+                GameCardViewModel {
+                    id: id.into(),
+                    title: title.into(),
+                    subtitle: engine.into(),
+                    version: version.into(),
+                    cover_uri: cover.map(|i| covers[i].clone()).unwrap_or_default(),
+                    ready: problem.is_empty(),
+                    problem,
+                    provider_access: access.into(),
+                    play_time: play_time.into(),
+                    last_played: String::new(),
+                    compat: compat.into(),
+                }
+            },
+        )
         .collect();
     m
 }
 
 fn select(m: &mut ManagerViewModel, id: &str) {
-    let game = m.library.games.iter().find(|game| game.id == id).expect("fixture game").clone();
+    let game = m
+        .library
+        .games
+        .iter()
+        .find(|game| game.id == id)
+        .expect("fixture game")
+        .clone();
     m.library.selected_id = id.into();
     m.selection.game = SelectedGameViewModel {
         id: game.id,
@@ -196,7 +367,10 @@ fn labeled(software: &MinimalSoftwareWindow, label: &str) -> Vec<ItemRc> {
     let mut stack = vec![window.window_item_rc().expect("window item")];
     let mut found = Vec::new();
     while let Some(item) = stack.pop() {
-        stack.extend(std::iter::successors(item.first_child(), ItemRc::next_sibling));
+        stack.extend(std::iter::successors(
+            item.first_child(),
+            ItemRc::next_sibling,
+        ));
         if item.is_visible()
             && item
                 .accessible_string_property(AccessibleStringProperty::Label)
@@ -212,14 +386,21 @@ fn labeled(software: &MinimalSoftwareWindow, label: &str) -> Vec<ItemRc> {
 /// while a missing-core card keeps its text. `labeled` sees only unclipped items.
 fn assert_cards(software: &MinimalSoftwareWindow, context: &str) {
     let cause = labeled(software, &provider_problem());
-    assert!(!cause.is_empty(), "{context}: provider-only cards in view carry a status icon");
     assert!(
-        cause.iter().all(|item| item.accessible_role() == AccessibleRole::Image),
+        !cause.is_empty(),
+        "{context}: provider-only cards in view carry a status icon"
+    );
+    assert!(
+        cause
+            .iter()
+            .all(|item| item.accessible_role() == AccessibleRole::Image),
         "{context}: provider cause must not be repeated as card text"
     );
     let missing = tr!("已识别引擎，缺少兼容核心");
     assert!(
-        labeled(software, missing).iter().any(|item| item.accessible_role() == AccessibleRole::Text),
+        labeled(software, missing)
+            .iter()
+            .any(|item| item.accessible_role() == AccessibleRole::Text),
         "{context}: {missing} keeps its card text"
     );
 }
@@ -227,16 +408,25 @@ fn assert_cards(software: &MinimalSoftwareWindow, context: &str) {
 #[test]
 fn provider_only_games_use_card_icon_and_detail_cause() {
     let software = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    slint::platform::set_platform(Box::new(SoftwarePlatform { window: software.clone(), start: Instant::now() }))
-        .expect("software platform");
+    slint::platform::set_platform(Box::new(SoftwarePlatform {
+        window: software.clone(),
+        start: Instant::now(),
+    }))
+    .expect("software platform");
     let adapter = SlintManagerAdapter::new().expect("manager window");
     let window = adapter.window();
     let covers_dir = tempfile::tempdir().expect("cover dir");
-    let covers: Vec<String> = [[60, 90, 160], [170, 70, 90], [40, 140, 120], [190, 140, 60], [110, 80, 170]]
-        .iter()
-        .enumerate()
-        .map(|(i, &color)| write_cover(covers_dir.path(), &format!("cover{i}"), color))
-        .collect();
+    let covers: Vec<String> = [
+        [60, 90, 160],
+        [170, 70, 90],
+        [40, 140, 120],
+        [190, 140, 60],
+        [110, 80, 170],
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, &color)| write_cover(covers_dir.path(), &format!("cover{i}"), color))
+    .collect();
     let output = std::env::var_os("SHINKI_UI_SCREENSHOT_DIR").map(PathBuf::from);
     let combinations: &[(&str, &str, (u32, u32))] = if output.is_some() {
         &[
@@ -258,11 +448,15 @@ fn provider_only_games_use_card_icon_and_detail_cause() {
         let unmappable = tr!("共享存储权限不适用于这个文件提供程序。");
         let install = tr!("安装核心");
         let context = format!("{theme} {language} {width}x{height}");
-        window.global::<MaterialWindowAdapter>().set_touch(width < 600);
+        window
+            .global::<MaterialWindowAdapter>()
+            .set_touch(width < 600);
         let shown = |label: &str| !labeled(&software, label).is_empty();
         // Cards name the cause only on their icon; the detail panel writes it out.
         let cause_text = || {
-            labeled(&software, &provider_problem()).iter().any(|item| item.accessible_role() == AccessibleRole::Text)
+            labeled(&software, &provider_problem())
+                .iter()
+                .any(|item| item.accessible_role() == AccessibleRole::Text)
         };
         let no_grant_claim = || !shown(allow) && !shown(granted);
         let save = |state: &str, rgba: Vec<u8>| {
@@ -300,28 +494,46 @@ fn provider_only_games_use_card_icon_and_detail_cause() {
         // External-storage provider: whether all-files access would map it is unknown here.
         let rgba = show(Some("g04"), "grid");
         assert!(cause_text(), "{context}: detail states the cause");
-        assert!(no_grant_claim() && !shown(unmappable), "{context}: undetermined mapping shows the cause only");
+        assert!(
+            no_grant_claim() && !shown(unmappable),
+            "{context}: undetermined mapping shows the cause only"
+        );
         save("detail-provider", rgba);
         settings.set_android_storage_access_granted(true);
         render(&software, width, height);
-        assert!(no_grant_claim() && !shown(unmappable), "{context}: a granted permission is not claimed to help");
+        assert!(
+            no_grant_claim() && !shown(unmappable),
+            "{context}: a granted permission is not claimed to help"
+        );
         settings.set_android_storage_access_granted(false);
 
         let rgba = show(Some("g08"), "grid");
         assert!(cause_text(), "{context}: unmappable cause");
-        assert!(shown(unmappable) && no_grant_claim(), "{context}: definite note, no grant");
+        assert!(
+            shown(unmappable) && no_grant_claim(),
+            "{context}: definite note, no grant"
+        );
         save("detail-unmappable", rgba);
 
         let rgba = show(Some("g03"), "grid");
-        assert!(shown(install), "{context}: missing core keeps its install action");
-        assert!(!cause_text() && !shown(unmappable) && no_grant_claim(), "{context}: missing core is not a provider state");
+        assert!(
+            shown(install),
+            "{context}: missing core keeps its install action"
+        );
+        assert!(
+            !cause_text() && !shown(unmappable) && no_grant_claim(),
+            "{context}: missing core is not a provider state"
+        );
         save("detail-missing-core", rgba);
 
         // Before Android 11 (or off Android) there is no all-files permission to mention.
         settings.set_android_storage_access_available(false);
         show(Some("g08"), "grid");
         assert!(cause_text(), "{context}: cause without permission support");
-        assert!(!shown(unmappable) && no_grant_claim(), "{context}: no permission note");
+        assert!(
+            !shown(unmappable) && no_grant_claim(),
+            "{context}: no permission note"
+        );
     }
     settings.set_android_storage_access_available(false);
     window.global::<MaterialWindowAdapter>().set_touch(false);

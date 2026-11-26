@@ -4,7 +4,10 @@ mod fixture;
 use sha2::{Digest, Sha256};
 use shinki_emu_lucifen_formats::Archive;
 use shinki_emu_patch::{PatchErrorKind, PatchMode, PatchRequest, apply};
-use std::{fs, sync::{Arc, atomic::AtomicBool}};
+use std::{
+    fs,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 #[test]
 fn repacks_verified_archive_members_without_touching_the_source() {
@@ -38,7 +41,9 @@ fn repacks_verified_archive_members_without_touching_the_source() {
                 script: script.clone(),
                 source: source.clone(),
                 patch: patch.clone(),
-                mode: PatchMode::NewDirectory { output: output.clone() },
+                mode: PatchMode::NewDirectory {
+                    output: output.clone(),
+                },
             },
             Arc::new(AtomicBool::new(false)),
             |_| {},
@@ -60,5 +65,8 @@ fn repacks_verified_archive_members_without_touching_the_source() {
     let archive = Archive::open("SCRIPT.LPK", bytes.len() as u64, None, read).unwrap();
     let entry = archive.entry("gameinit.sob").unwrap().unwrap();
     assert_eq!(archive.read_member(entry, 64, read).unwrap(), replacement);
-    assert_eq!(fs::read(source.join("SCRIPT.LPK")).unwrap(), fixture::SCRIPT_LPK);
+    assert_eq!(
+        fs::read(source.join("SCRIPT.LPK")).unwrap(),
+        fixture::SCRIPT_LPK
+    );
 }

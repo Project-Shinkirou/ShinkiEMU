@@ -55,8 +55,7 @@ fn release_targets<'a>(
 ) -> Result<Vec<&'a Target>> {
     let mut targets = Vec::new();
     for target in &inv.targets {
-        if scope.release_row(target, component)
-            && inv.blocked(component, &target.triple)?.is_none()
+        if scope.release_row(target, component) && inv.blocked(component, &target.triple)?.is_none()
         {
             targets.push(target);
         }
@@ -70,19 +69,27 @@ fn release_targets<'a>(
     Ok(targets)
 }
 
-fn publish_restriction<'a>(inv: &'a Inventory, component: &str, target: &str) -> Result<Option<&'a str>> {
+fn publish_restriction<'a>(
+    inv: &'a Inventory,
+    component: &str,
+    target: &str,
+) -> Result<Option<&'a str>> {
     let core = if component == "manager" {
         // The Android release row packages both ABIs into one APK.
         inv.cores.iter().find(|core| {
-            core.id == "renpy" && target.ends_with("-linux-android")
-                && core.static_manager_targets.iter().any(|triple| {
-                    triple == target || triple == ANDROID_SECONDARY
-                })
+            core.id == "renpy"
+                && target.ends_with("-linux-android")
+                && core
+                    .static_manager_targets
+                    .iter()
+                    .any(|triple| triple == target || triple == ANDROID_SECONDARY)
         })
     } else {
         Some(inv.core(component)?)
     };
-    Ok(core.map(|core| core.publish_blocked.as_str()).filter(|reason| !reason.is_empty()))
+    Ok(core
+        .map(|core| core.publish_blocked.as_str())
+        .filter(|reason| !reason.is_empty()))
 }
 
 struct GitHub {
@@ -334,7 +341,10 @@ struct Identity {
 
 pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Result<String> {
     if component != "manager" && inv.core(component)?.attribution.is_some() {
-        let identity = inv.core(component)?.identity(&inv.root)?.context("release requires a locked adapter Git revision")?;
+        let identity = inv
+            .core(component)?
+            .identity(&inv.root)?
+            .context("release requires a locked adapter Git revision")?;
         let version = identity.version();
         if !supplied.is_empty() && supplied != version {
             bail!(
@@ -343,8 +353,9 @@ pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Resu
         }
         return Ok(version);
     }
-    semver::Version::parse(supplied)
-        .context("Manager and self-owned cores require the same explicit product --version (SemVer)")?;
+    semver::Version::parse(supplied).context(
+        "Manager and self-owned cores require the same explicit product --version (SemVer)",
+    )?;
     Ok(supplied.to_owned())
 }
 
@@ -403,9 +414,10 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
 }
 
 fn require_public_manager_variant(features: &[String]) -> Result<()> {
-    if features.iter().any(|feature| {
-        matches!(feature.as_str(), ADV32_CANDIDATE_FEATURE | "static-cmvs")
-    }) {
+    if features
+        .iter()
+        .any(|feature| matches!(feature.as_str(), ADV32_CANDIDATE_FEATURE | "static-cmvs"))
+    {
         bail!("private QA Manager variants cannot be prepared for release");
     }
     Ok(())
@@ -436,7 +448,9 @@ pub fn prepare(
         return Ok(());
     }
     let restriction = publish_restriction(inv, component, target)?;
-    if component != "manager" && let Some(reason) = restriction {
+    if component != "manager"
+        && let Some(reason) = restriction
+    {
         println!("{component}: publish_blocked: {reason}; artifact=null");
         return Ok(());
     }
@@ -473,9 +487,18 @@ pub fn prepare(
     package::atomic_directory(&root, |work| {
         let staged = work.join("package");
         let package_dir = package::package(inv, target, component, version, &staged)?;
-        let ios = (component == "manager" && crate::apple::ios_frameworks::target_supported(target))
-            .then(|| crate::apple::ios_frameworks::read_manifest(inv, &package_dir, target, version, &id.commit))
-            .transpose()?;
+        let ios = (component == "manager"
+            && crate::apple::ios_frameworks::target_supported(target))
+        .then(|| {
+            crate::apple::ios_frameworks::read_manifest(
+                inv,
+                &package_dir,
+                target,
+                version,
+                &id.commit,
+            )
+        })
+        .transpose()?;
         let publish_blocked = if component == "manager" && target.contains("android") {
             let android: Value =
                 serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
@@ -554,7 +577,9 @@ fn verify_asset(directory: &Path, record: &Value, key: &str) -> Result<()> {
         .as_str()
         .context("release asset SHA256")?;
     let path = directory.join(name);
-    if package::sha256(&path)? != expected || record[key]["size"].as_u64() != Some(fs::metadata(&path)?.len()) {
+    if package::sha256(&path)? != expected
+        || record[key]["size"].as_u64() != Some(fs::metadata(&path)?.len())
+    {
         bail!("{name}: release asset hash differs from prepared record");
     }
     Ok(())
@@ -582,7 +607,8 @@ fn collect_records(
             blocked.push(format!("- {}: {reason} (artifact=null)", t.triple));
             continue;
         }
-        let ios = component == "manager" && crate::apple::ios_frameworks::target_supported(&t.triple);
+        let ios =
+            component == "manager" && crate::apple::ios_frameworks::target_supported(&t.triple);
         let directory = id.root.join(&t.triple);
         let path = directory.join("release.json");
         if !path.is_file() {
@@ -600,21 +626,31 @@ fn collect_records(
             continue;
         }
         let record: Value = serde_json::from_slice(&fs::read(&path)?)?;
-        if record["component"] != component || record["version"] != id.version
-            || record["target"] != t.triple || record["release_scope"] != scope.name() {
+        if record["component"] != component
+            || record["version"] != id.version
+            || record["target"] != t.triple
+            || record["release_scope"] != scope.name()
+        {
             bail!("{} is not a package for this release", path.display());
         }
         if record["source_commit"] != id.commit {
-            bail!("{} was not prepared from product commit {}", path.display(), id.commit);
+            bail!(
+                "{} was not prepared from product commit {}",
+                path.display(),
+                id.commit
+            );
         }
         verify_asset(&directory, &record, "archive")?;
         if ios {
-            let manifest: crate::apple::ios_frameworks::Manifest = serde_json::from_value(record["ios"].clone())
-                .context("iOS release requires the exact-head Framework manifest")?;
+            let manifest: crate::apple::ios_frameworks::Manifest =
+                serde_json::from_value(record["ios"].clone())
+                    .context("iOS release requires the exact-head Framework manifest")?;
             manifest.validate(inv, &t.triple, &id.version, &id.commit)?;
             manifest.verify_release_archive(&directory.join(asset_name(&record, "archive")?))?;
         }
-        let restriction = record["publish_blocked"].as_str().filter(|reason| !reason.is_empty())
+        let restriction = record["publish_blocked"]
+            .as_str()
+            .filter(|reason| !reason.is_empty())
             .or(publish_restriction(inv, component, &t.triple)?);
         if let Some(reason) = restriction {
             if require_all {
@@ -677,9 +713,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
         blocked.join("\n")
     );
     let mut notes = if local_manager {
-        format!(
-            "{notes}\nThe experimental OHOS HAP is signed with the OpenHarmony SDK test PKI.\n"
-        )
+        format!("{notes}\nThe experimental OHOS HAP is signed with the OpenHarmony SDK test PKI.\n")
     } else {
         notes
     };
@@ -795,8 +829,7 @@ mod tests {
         assert!(require_public_manager_variant(&["store-steam".into()]).is_ok());
         for feature in ["static-adv32", "static-cmvs"] {
             assert!(
-                require_public_manager_variant(&["store-steam".into(), feature.into()])
-                    .is_err()
+                require_public_manager_variant(&["store-steam".into(), feature.into()]).is_err()
             );
         }
     }
@@ -870,8 +903,10 @@ mod tests {
         let qa = shinki_emu_build::ohos::Target::X64.rust_target();
         for component in ["manager", "shinki.emu.musica"] {
             assert!(
-                release_targets(&inv, component, Scope::All).unwrap()
-                    .iter().all(|target| target.triple != qa)
+                release_targets(&inv, component, Scope::All)
+                    .unwrap()
+                    .iter()
+                    .all(|target| target.triple != qa)
             );
             let error = prepare(&inv, qa, component, "1.0.0", Scope::All).unwrap_err();
             assert!(error.to_string().contains("not a release row"), "{error}");
@@ -880,7 +915,8 @@ mod tests {
 
     #[test]
     fn all_platform_manager_requires_same_commit_and_publishable_packages() {
-        let mut inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let mut inv =
+            Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let out = tempfile::tempdir().unwrap();
         let mut id = identity(&inv, "manager", "1.0.0").unwrap();
         id.root = out.path().to_owned();
@@ -891,9 +927,15 @@ mod tests {
             fs::create_dir(&dir).unwrap();
             let archive = dir.join("asset");
             let ios = if target.platform == "ios" {
-                Some(crate::apple::ios_frameworks::tests::release_archive_fixture(
-                    &inv, &target.triple, &id.version, &id.commit, &archive,
-                ))
+                Some(
+                    crate::apple::ios_frameworks::tests::release_archive_fixture(
+                        &inv,
+                        &target.triple,
+                        &id.version,
+                        &id.commit,
+                        &archive,
+                    ),
+                )
             } else {
                 fs::write(&archive, b"test release asset").unwrap();
                 None
@@ -929,14 +971,27 @@ mod tests {
                 .unwrap()
                 .contains("verify LGPL relinking")
         );
-        assert!(publish_restriction(&inv, "manager", "aarch64-linux-android").unwrap().is_none());
+        assert!(
+            publish_restriction(&inv, "manager", "aarch64-linux-android")
+                .unwrap()
+                .is_none()
+        );
         // If either ABI embeds Ren'Py, a release record cannot override its blocker.
-        let renpy = inv.cores.iter().position(|core| core.id == "renpy").unwrap();
-        inv.cores[renpy].static_manager_targets.push(ANDROID_SECONDARY.into());
+        let renpy = inv
+            .cores
+            .iter()
+            .position(|core| core.id == "renpy")
+            .unwrap();
+        inv.cores[renpy]
+            .static_manager_targets
+            .push(ANDROID_SECONDARY.into());
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("accepted an Android APK without verified Ren'Py source and relinking");
         };
-        assert!(error.to_string().contains("verify LGPL relinking"), "{error}");
+        assert!(
+            error.to_string().contains("verify LGPL relinking"),
+            "{error}"
+        );
         inv.cores[renpy].static_manager_targets.pop();
         let prepared = collect_records(&inv, &id, "manager", Scope::All).unwrap();
         assert_eq!(prepared.records.len(), target_count);
@@ -948,7 +1003,12 @@ mod tests {
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("all-platform publication accepted a record from another commit");
         };
-        assert!(error.to_string().contains("was not prepared from product commit"), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("was not prepared from product commit"),
+            "{error}"
+        );
 
         record["source_commit"] = json!(id.commit);
         record["publish_blocked"] = json!("debug-signed CI test APK");
@@ -956,6 +1016,9 @@ mod tests {
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("all-platform publication accepted a debug Android record");
         };
-        assert!(error.to_string().contains("debug-signed CI test APK"), "{error}");
+        assert!(
+            error.to_string().contains("debug-signed CI test APK"),
+            "{error}"
+        );
     }
 }

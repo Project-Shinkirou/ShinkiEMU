@@ -1,8 +1,11 @@
-use crate::{cores::{ArtifactSource, Inventory}, dependencies};
+use crate::{
+    cores::{ArtifactSource, Inventory},
+    dependencies,
+};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
-use shinki_emu_build::{CoreBuildManifest, NativeInputs};
 use shinki_emu_build::ohos::Target as OhosTarget;
+use shinki_emu_build::{CoreBuildManifest, NativeInputs};
 use std::{
     collections::BTreeMap,
     fs,
@@ -52,7 +55,10 @@ fn target_directory(inv: &Inventory, target: &str, component: &str) -> Result<Pa
         return Ok(standard);
     }
     let repository = dunce::canonicalize(&inv.root)?;
-    let identity = hex::encode(Sha256::digest(format!("{}:{target}:{component}", repository.display())));
+    let identity = hex::encode(Sha256::digest(format!(
+        "{}:{target}:{component}",
+        repository.display()
+    )));
     let short_root = if let Some(root) = explicit {
         dunce::simplified(&std::path::absolute(root)?).to_owned()
     } else {
@@ -85,14 +91,9 @@ fn embedded_core_packages<'a>(
             continue;
         }
         let adapter = core.adapter_package();
-        let mut matches = packages
-            .iter()
-            .filter(|package| package["name"] == adapter);
+        let mut matches = packages.iter().filter(|package| package["name"] == adapter);
         let package = matches.next().with_context(|| {
-            format!(
-                "static core package {} absent from Cargo metadata",
-                adapter
-            )
+            format!("static core package {} absent from Cargo metadata", adapter)
         })?;
         if matches.next().is_some() {
             bail!("ambiguous static core package {adapter}");
@@ -109,13 +110,17 @@ fn embedded_core_packages<'a>(
 
 pub(crate) fn source_commit(inv: &Inventory) -> Result<String> {
     let stdout = dependencies::capture(
-        Command::new("git").current_dir(&inv.root).args(["rev-parse", "HEAD"]),
+        Command::new("git")
+            .current_dir(&inv.root)
+            .args(["rev-parse", "HEAD"]),
     )?;
     Ok(std::str::from_utf8(&stdout)?.trim().to_owned())
 }
 
 fn manager_manifest() -> Result<toml::Value> {
-    Ok(toml::from_str(include_str!("../../Source/Manager/shinki-emu-manager/Cargo.toml"))?)
+    Ok(toml::from_str(include_str!(
+        "../../Source/Manager/shinki-emu-manager/Cargo.toml"
+    ))?)
 }
 
 pub(crate) fn default_product_version() -> Result<String> {
@@ -128,10 +133,13 @@ pub(crate) fn default_product_version() -> Result<String> {
     let explicit = read_env("SHINKI_EMU_PRODUCT_VERSION")?;
     let ci = read_env("SHINKI_EMU_CI_VERSION")?;
     Ok(select_product_version(
-        manifest["package"]["version"].as_str().context("Manager package version")?,
+        manifest["package"]["version"]
+            .as_str()
+            .context("Manager package version")?,
         explicit.as_deref(),
         ci.as_deref(),
-    )?.to_owned())
+    )?
+    .to_owned())
 }
 
 pub(crate) fn package_artifact(
@@ -160,7 +168,13 @@ pub(crate) fn execute_ios_framework(
     component: &str,
     version: &str,
 ) -> Result<BuildArtifact> {
-    execute_configured(inv, target, component, Some(BundledInput::IosFramework), version)
+    execute_configured(
+        inv,
+        target,
+        component,
+        Some(BundledInput::IosFramework),
+        version,
+    )
 }
 
 pub(crate) fn execute_ohos_hap(
@@ -254,7 +268,8 @@ fn execute_configured(
         Some(inv.core(component)?)
     };
     let product_owned = core.is_none_or(|core| core.attribution.is_none());
-    let package = core.map(|core| core.entry_package())
+    let package = core
+        .map(|core| core.entry_package())
         .unwrap_or_else(|| "shinki-emu-manager".to_owned());
     let features = if component == "manager" {
         requested_manager_features()?
@@ -276,7 +291,11 @@ fn execute_configured(
     // First-party cores expose the source commit in their runtime identity.
     let product_source = product_owned.then(|| source_commit(inv)).transpose()?;
     let mut cmd = cargo_command(inv, target)?;
-    let action = if ios_framework_input { "rustc" } else { "build" };
+    let action = if ios_framework_input {
+        "rustc"
+    } else {
+        "build"
+    };
     cmd.args([action, "--locked", "--release", "-p", &package])
         .args(["--target", target, "--target-dir"])
         .arg(&target_dir)
@@ -299,17 +318,27 @@ fn execute_configured(
     }
     if ios_framework_input {
         let install_name = crate::apple::ios_frameworks::install_name(component);
-        cmd.args(["--crate-type", "cdylib", "--", "-C", &format!("link-arg=-Wl,-install_name,{install_name}")]);
+        cmd.args([
+            "--crate-type",
+            "cdylib",
+            "--",
+            "-C",
+            &format!("link-arg=-Wl,-install_name,{install_name}"),
+        ]);
     }
 
     let metadata = cargo_metadata(inv, target)?;
     let packages = metadata["packages"].as_array().context("Cargo packages")?;
     let package_id = |name: &str| {
-        packages.iter().find(|entry| entry["name"] == name)
+        packages
+            .iter()
+            .find(|entry| entry["name"] == name)
             .and_then(|entry| entry["id"].as_str())
             .with_context(|| format!("package {name} absent from Cargo metadata for {target}"))
     };
-    let adapter_package_id = core.map(|core| package_id(&core.adapter_package())).transpose()?;
+    let adapter_package_id = core
+        .map(|core| package_id(&core.adapter_package()))
+        .transpose()?;
     let package_id = package_id(&package)?;
     let embedded_packages = if component == "manager" {
         embedded_core_packages(inv, target, &features, &metadata)?
@@ -351,7 +380,8 @@ fn execute_configured(
         {
             let path = Path::new(dir).join(NativeInputs::FILE);
             if path.is_file() {
-                match fs::read(&path).map_err(anyhow::Error::from)
+                match fs::read(&path)
+                    .map_err(anyhow::Error::from)
                     .and_then(|bytes| Ok(serde_json::from_slice::<NativeInputs>(&bytes)?))
                 {
                     Ok(inputs) => native_inputs.push(inputs),
@@ -390,9 +420,10 @@ fn execute_configured(
                 if let Some(s) = value["executable"].as_str() {
                     libraries.push(PathBuf::from(s));
                 }
-            } else if ios_framework_input || value["target"]["crate_types"]
-                .as_array()
-                .is_some_and(|a| a.iter().any(|v| v == "cdylib"))
+            } else if ios_framework_input
+                || value["target"]["crate_types"]
+                    .as_array()
+                    .is_some_and(|a| a.iter().any(|v| v == "cdylib"))
             {
                 for f in value["filenames"]
                     .as_array()
@@ -418,7 +449,9 @@ fn execute_configured(
         bail!("Cargo {action} failed for {component}/{target}: {status}");
     }
     let (core_build, embedded_core_builds) = if core.is_some() {
-        let own = manifests.into_iter().find(|manifest| manifest.plugin_id == component);
+        let own = manifests
+            .into_iter()
+            .find(|manifest| manifest.plugin_id == component);
         (own, Vec::new())
     } else {
         (None, manifests)
@@ -426,8 +459,12 @@ fn execute_configured(
     let library = if !ios_framework_input
         && core.is_some_and(|core| core.artifact_source() == ArtifactSource::NativeLibrary)
     {
-        core_build.as_ref().and_then(|manifest| manifest.native_library.clone())
-            .with_context(|| format!("{package} did not report its native library in core-build.json"))?
+        core_build
+            .as_ref()
+            .and_then(|manifest| manifest.native_library.clone())
+            .with_context(|| {
+                format!("{package} did not report its native library in core-build.json")
+            })?
     } else {
         libraries.sort();
         libraries.dedup();
@@ -455,7 +492,11 @@ pub(crate) fn requested_manager_features() -> Result<Vec<String>> {
     let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
     let requested = requested
         .as_deref()
-        .map(|value| value.to_str().context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES"))
+        .map(|value| {
+            value
+                .to_str()
+                .context("non-UTF-8 SHINKI_EMU_MANAGER_FEATURES")
+        })
         .transpose()?;
     manager_features(requested, &manager_manifest()?)
 }
@@ -490,11 +531,17 @@ mod version_tests {
 
     #[test]
     fn manager_features_are_declared_additive_and_normalized() {
-        let package: toml::Value = toml::from_str("[features]\ndefault = ['store-steam']\nstore-steam = []\nno-core-download = []").unwrap();
+        let package: toml::Value = toml::from_str(
+            "[features]\ndefault = ['store-steam']\nstore-steam = []\nno-core-download = []",
+        )
+        .unwrap();
         assert!(manager_features(None, &package).unwrap().is_empty());
         assert_eq!(
-            manager_features(Some(" no-core-download,store-steam,no-core-download,"), &package)
-                .unwrap(),
+            manager_features(
+                Some(" no-core-download,store-steam,no-core-download,"),
+                &package
+            )
+            .unwrap(),
             ["no-core-download", "store-steam"]
         );
         assert!(manager_features(Some("default"), &package).is_err());
@@ -518,7 +565,8 @@ mod version_tests {
                 .unwrap()
                 .is_empty()
         );
-        let selected = embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).unwrap();
+        let selected =
+            embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).unwrap();
         assert_eq!(selected.get("reader-package"), Some(&"shinki.emu.musica"));
         assert!(!selected.contains_key("patch-package"));
         metadata["packages"]
@@ -539,9 +587,16 @@ mod version_tests {
         // The build collector must not ask for an adapter build report for any
         // default Manager, including the local OHOS simulator variant.
         let metadata = serde_json::json!({"packages": []});
-        for target in inv.targets.iter().filter(|target| target.manager_supported || target.is_local_qa()) {
-            assert!(embedded_core_packages(&inv, &target.triple, &[], &metadata)
-                .unwrap_or_else(|error| panic!("{}: {error}", target.triple)).is_empty());
+        for target in inv
+            .targets
+            .iter()
+            .filter(|target| target.manager_supported || target.is_local_qa())
+        {
+            assert!(
+                embedded_core_packages(&inv, &target.triple, &[], &metadata)
+                    .unwrap_or_else(|error| panic!("{}: {error}", target.triple))
+                    .is_empty()
+            );
         }
     }
 
@@ -549,7 +604,8 @@ mod version_tests {
     fn adv32_build_reports_are_selected_only_with_the_candidate_feature() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inv = Inventory::load(root).unwrap();
-        inv.cores.retain(|core| matches!(core.id.as_str(), "shinki.emu.adv32" | "shinki.emu.musica"));
+        inv.cores
+            .retain(|core| matches!(core.id.as_str(), "shinki.emu.adv32" | "shinki.emu.musica"));
         let target = "x86_64-pc-windows-msvc";
         let metadata = serde_json::json!({
             "packages": [
@@ -557,7 +613,11 @@ mod version_tests {
                 {"name": "shinki-emu-musica", "id": "musica-package"}
             ]
         });
-        assert!(embedded_core_packages(&inv, target, &[], &metadata).unwrap().is_empty());
+        assert!(
+            embedded_core_packages(&inv, target, &[], &metadata)
+                .unwrap()
+                .is_empty()
+        );
         let features = [crate::cores::ADV32_CANDIDATE_FEATURE.to_owned()];
         let selected = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
         assert_eq!(selected.get("adv32-package"), Some(&"shinki.emu.adv32"));
@@ -576,8 +636,14 @@ mod version_tests {
             assert!(crate::ohos::is_core_input(&musica.id, triple));
             assert!(!crate::ohos::is_core_input("shinki.emu.adv32", triple));
         }
-        assert!(!crate::ohos::is_core_input(&musica.id, "x86_64-unknown-linux-gnu"));
-        assert!(!crate::ohos::is_core_input(&musica.id, "armv7-unknown-linux-ohos"));
+        assert!(!crate::ohos::is_core_input(
+            &musica.id,
+            "x86_64-unknown-linux-gnu"
+        ));
+        assert!(!crate::ohos::is_core_input(
+            &musica.id,
+            "armv7-unknown-linux-ohos"
+        ));
     }
 
     #[test]

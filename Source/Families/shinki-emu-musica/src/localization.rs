@@ -86,7 +86,6 @@ fn invalid() -> CoreError {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

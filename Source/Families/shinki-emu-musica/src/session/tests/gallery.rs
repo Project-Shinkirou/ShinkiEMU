@@ -62,7 +62,10 @@ fn native_gpu_gallery_pages_music_and_script_return_share_session_lifecycle() {
     session.advance(0, &[key(KeyCode::Enter)]).unwrap();
     assert_eq!(session.vm.state().system_ui.page, Page::GalleryCg);
     let pixel = ((97 * 1280 + 65) * 4) as usize;
-    assert_eq!(&session.scene.pixels()[pixel..pixel + 4], &[220, 30, 40, 255]);
+    assert_eq!(
+        &session.scene.pixels()[pixel..pixel + 4],
+        &[220, 30, 40, 255]
+    );
     session
         .advance(500_000_000, &[key(KeyCode::ArrowDown)])
         .unwrap();
@@ -147,7 +150,12 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
     fixture::assets(
         root.path(),
         "bg",
-        &[("gallery.png", &blue), ("sheet.png", &green), ("hover.png", &red), ("note.png", &note)],
+        &[
+            ("gallery.png", &blue),
+            ("sheet.png", &green),
+            ("hover.png", &red),
+            ("note.png", &note),
+        ],
     );
     fixture::assets(root.path(), "bgm", &[("z.ogg", &wave), ("a.ogg", &wave)]);
     let layout = json!({"screens": [
@@ -184,16 +192,30 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
     let mut request = title::title_request(root.path());
     let mut data = title::menu_data(false);
     data["gallery_layout"] = json!("gallery-layout.json");
-    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
-        ConfigValue::String(data.to_string());
+    request
+        .configuration
+        .iter_mut()
+        .find(|entry| entry.id == "frontend")
+        .unwrap()
+        .value = ConfigValue::String(data.to_string());
     let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(request).unwrap();
-    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
-    let tap = |x, y| [
-        RuntimeEvent::PointerMove { x, y },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
-    ];
+    session
+        .vm
+        .replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| {
+        [
+            RuntimeEvent::PointerMove { x, y },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Pressed,
+            },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Released,
+            },
+        ]
+    };
     let pixel = |session: &crate::session::MusicaSession, x: usize, y: usize| -> [u8; 4] {
         let index = (y * 1280 + x) * 4;
         session.scene.pixels()[index..index + 4].try_into().unwrap()
@@ -201,7 +223,9 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
 
     session.advance(0, &tap(1050.0, 183.0)).unwrap();
     assert_eq!(session.vm.state().system_ui.page, Page::Memories);
-    session.advance(0, &[key(KeyCode::ArrowDown), key(KeyCode::ArrowRight)]).unwrap();
+    session
+        .advance(0, &[key(KeyCode::ArrowDown), key(KeyCode::ArrowRight)])
+        .unwrap();
     assert_eq!(pixel(&session, 145, 50), [160, 20, 40, 255]);
     assert_eq!(pixel(&session, 139, 50), [20, 40, 160, 255]);
     session.advance(0, &tap(270.0, 45.0)).unwrap();
@@ -213,26 +237,44 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
 
     session.advance(0, &tap(145.0, 50.0)).unwrap();
     session.advance(0, &tap(40.0, 35.0)).unwrap();
-    assert!(session.vm.state().audio.values().all(|stream| !stream.playing));
+    assert!(
+        session
+            .vm
+            .state()
+            .audio
+            .values()
+            .all(|stream| !stream.playing)
+    );
     session.advance(0, &[key(KeyCode::Enter)]).unwrap();
-    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/z.ogg");
+    assert_eq!(
+        session.vm.state().audio[&0].resource_uri,
+        "musica:/bgm/z.ogg"
+    );
     assert_eq!(pixel(&session, 20, 21), [240, 200, 30, 255]);
     session.advance(0, &[key(KeyCode::ArrowDown)]).unwrap();
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 3);
-    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/z.ogg");
+    assert_eq!(
+        session.vm.state().audio[&0].resource_uri,
+        "musica:/bgm/z.ogg"
+    );
     session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 2);
     session.advance(0, &tap(181.0, 550.0)).unwrap();
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 3);
     session.advance(0, &tap(700.0, 100.0)).unwrap();
-    assert_eq!(session.vm.state().audio[&0].resource_uri, "musica:/bgm/a.ogg");
+    assert_eq!(
+        session.vm.state().audio[&0].resource_uri,
+        "musica:/bgm/a.ogg"
+    );
     session.advance(0, &[key(KeyCode::Escape)]).unwrap();
     assert!(!session.vm.state().audio[&0].playing);
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 0);
     assert_eq!(pixel(&session, 145, 50), [160, 20, 40, 255]);
 
     session.advance(0, &tap(30.0, 50.0)).unwrap();
-    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowDown)]).unwrap();
+    session
+        .advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowDown)])
+        .unwrap();
     assert_eq!(pixel(&session, 40, 73), [160, 20, 40, 255]);
     assert_eq!(pixel(&session, 414, 414), [160, 20, 40, 255]);
     assert_eq!(pixel(&session, 399, 414), [40, 160, 20, 255]);
@@ -276,7 +318,10 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     fixture::assets(
         root.path(),
         "bg",
-        &assets.iter().map(|(name, data)| (*name, data.as_slice())).collect::<Vec<_>>(),
+        &assets
+            .iter()
+            .map(|(name, data)| (*name, data.as_slice()))
+            .collect::<Vec<_>>(),
     );
     fixture::assets(
         root.path(),
@@ -319,20 +364,35 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     frontend["gallery_layout"] = json!("layout.json");
     let mounted = crate::mount_musica(root.path(), std::path::Path::new("key.toml")).unwrap();
     let config = frontend.to_string();
-    let error = crate::validate_musica_title_frontend(root.path(), &mounted, &config, encoding, 1280, 720)
-        .unwrap_err();
+    let error =
+        crate::validate_musica_title_frontend(root.path(), &mounted, &config, encoding, 1280, 720)
+            .unwrap_err();
     assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_RUNTIME_LABEL");
     drop(mounted);
-    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
-        ConfigValue::String(frontend.to_string());
+    request
+        .configuration
+        .iter_mut()
+        .find(|entry| entry.id == "frontend")
+        .unwrap()
+        .value = ConfigValue::String(frontend.to_string());
     let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(request).unwrap();
-    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
-    let tap = |x, y| [
-        RuntimeEvent::PointerMove { x, y },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
-    ];
+    session
+        .vm
+        .replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| {
+        [
+            RuntimeEvent::PointerMove { x, y },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Pressed,
+            },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Released,
+            },
+        ]
+    };
     let pixel = |session: &crate::session::MusicaSession, x: usize, y: usize| -> [u8; 4] {
         let index = (y * 1280 + x) * 4;
         session.scene.pixels()[index..index + 4].try_into().unwrap()
@@ -345,13 +405,17 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     session.advance(0, &tap(25.0, 65.0)).unwrap();
     assert!(session.gallery_cursor.as_ref().unwrap().focus.is_none());
     assert_eq!(pixel(&session, 25, 65), locked);
-    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::Enter)]).unwrap();
+    session
+        .advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::Enter)])
+        .unwrap();
     assert_eq!(pixel(&session, 0, 0), a);
     session.advance(0, &tap(20.0, 20.0)).unwrap();
     assert_eq!(pixel(&session, 0, 0), b);
     session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
     assert_eq!(pixel(&session, 0, 0), a);
-    session.advance(0, &[key(KeyCode::Escape), key(KeyCode::PageDown)]).unwrap();
+    session
+        .advance(0, &[key(KeyCode::Escape), key(KeyCode::PageDown)])
+        .unwrap();
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 2);
     session.advance(0, &tap(55.0, 55.0)).unwrap();
     assert_eq!(pixel(&session, 0, 0), b);
@@ -364,9 +428,13 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     session.advance(0, &[key(KeyCode::PageDown)]).unwrap();
     assert_eq!(pixel(&session, 195, 85), unlocked);
     assert_eq!(pixel(&session, 405, 205), sheet);
-    session.advance(0, &[RuntimeEvent::PointerMove { x: 195.0, y: 85.0 }]).unwrap();
+    session
+        .advance(0, &[RuntimeEvent::PointerMove { x: 195.0, y: 85.0 }])
+        .unwrap();
     assert_eq!(pixel(&session, 405, 205), unlocked);
-    session.advance(0, &[RuntimeEvent::PointerMove { x: 200.0, y: 125.0 }]).unwrap();
+    session
+        .advance(0, &[RuntimeEvent::PointerMove { x: 200.0, y: 125.0 }])
+        .unwrap();
     assert_eq!(pixel(&session, 405, 205), sheet);
     session.advance(0, &tap(195.0, 85.0)).unwrap();
     for _ in 0..4 {
@@ -377,7 +445,10 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     assert_eq!(session.vm.state().system_ui.page, Page::Memories);
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 4);
     assert_eq!(pixel(&session, 195, 85), unlocked);
-    let error = session.advance(0, &tap(275.0, 85.0)).err().expect("missing replay label");
+    let error = session
+        .advance(0, &tap(275.0, 85.0))
+        .err()
+        .expect("missing replay label");
     assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_RUNTIME_LABEL");
     assert_eq!(session.vm.state().system_ui.page, Page::Memories);
     assert_eq!(session.gallery_cursor.as_ref().unwrap().screen, 4);
@@ -398,14 +469,22 @@ fn authored_gallery_cg_composite_draws_ordered_native_blends() {
     let base = [80, 96, 112, 63];
     let plain = [12, 24, 36, 255];
     let foreground = [100, 120, 140, 128];
-    fixture::assets(root.path(), "bg", &[
-        ("base.png", &title::png(1280, 720, base)),
-        ("plain.png", &title::png(1280, 720, plain)),
-    ]);
-    fixture::assets(root.path(), "st", &[
-        ("fg.png", &title::png(6, 6, foreground)),
-        ("clear.png", &title::png(6, 6, [255, 255, 255, 0])),
-    ]);
+    fixture::assets(
+        root.path(),
+        "bg",
+        &[
+            ("base.png", &title::png(1280, 720, base)),
+            ("plain.png", &title::png(1280, 720, plain)),
+        ],
+    );
+    fixture::assets(
+        root.path(),
+        "st",
+        &[
+            ("fg.png", &title::png(6, 6, foreground)),
+            ("clear.png", &title::png(6, 6, [255, 255, 255, 0])),
+        ],
+    );
     let composite = json!({"base":"musica:/bg/base.png", "layers":[
         {"resource":"musica:/st/fg.png","at":[20,40],"blend":"alpha"},
         {"resource":"musica:/st/fg.png","at":[24,40],"blend":"screen"},
@@ -434,11 +513,17 @@ fn authored_gallery_cg_composite_draws_ordered_native_blends() {
     let mut bad = composite.clone();
     bad["layers"][0]["blend"] = json!("multiply");
     image(&mut layout, bad);
-    assert_eq!(verify(&layout).unwrap_err().code.as_str(), "SHINKI_EMU_MUSICA_GALLERY_LAYOUT");
+    assert_eq!(
+        verify(&layout).unwrap_err().code.as_str(),
+        "SHINKI_EMU_MUSICA_GALLERY_LAYOUT"
+    );
     let mut bad = composite.clone();
     bad["layers"][0]["resource"] = json!("musica:/st/missing.png");
     image(&mut layout, bad);
-    assert_eq!(verify(&layout).unwrap_err().code.as_str(), "SHINKI_EMU_VFS_NOT_FOUND");
+    assert_eq!(
+        verify(&layout).unwrap_err().code.as_str(),
+        "SHINKI_EMU_VFS_NOT_FOUND"
+    );
     image(&mut layout, composite);
     verify(&layout).unwrap();
     drop(archive);
@@ -448,16 +533,30 @@ fn authored_gallery_cg_composite_draws_ordered_native_blends() {
     saved.record_cg("plain.png").unwrap();
     drop(saved);
     let mut request = title::title_request(root.path());
-    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
-        ConfigValue::String(frontend);
+    request
+        .configuration
+        .iter_mut()
+        .find(|entry| entry.id == "frontend")
+        .unwrap()
+        .value = ConfigValue::String(frontend);
     let mut provider = fixture::provider();
     let (_, mut session) = provider.open_session(request).unwrap();
-    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
-    let tap = |x, y| [
-        RuntimeEvent::PointerMove { x, y },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
-        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
-    ];
+    session
+        .vm
+        .replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| {
+        [
+            RuntimeEvent::PointerMove { x, y },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Pressed,
+            },
+            RuntimeEvent::PointerButton {
+                button: PointerButton::Primary,
+                state: KeyState::Released,
+            },
+        ]
+    };
     session.advance(0, &tap(1050.0, 183.0)).unwrap();
     assert_eq!(session.vm.state().system_ui.page, Page::Memories);
     session.advance(0, &tap(100.0, 80.0)).unwrap();
@@ -485,7 +584,9 @@ fn authored_gallery_cg_composite_draws_ordered_native_blends() {
     }
     session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
     assert_eq!(session.scene.pixels()[..3], plain[..3]);
-    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowRight)]).unwrap();
+    session
+        .advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowRight)])
+        .unwrap();
     assert!(session.gallery_cursor.as_ref().unwrap().detail.is_none());
     assert_eq!(session.scene.pixels()[..3], plain[..3]);
 }

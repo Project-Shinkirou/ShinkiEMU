@@ -154,7 +154,9 @@ fn translucent_outline_uses_one_coverage_mask_before_the_clipped_fill() {
     let mut draw = |scene: &mut TextScene, region: &TextSceneLayout, raster: &Arc<_>| {
         let frame = scene
             .draws
-            .frame(std::slice::from_ref(region), 1.0, |_, _| Ok(Arc::clone(raster)))
+            .frame(std::slice::from_ref(region), 1.0, |_, _| {
+                Ok(Arc::clone(raster))
+            })
             .unwrap();
         let mut commands = frame.lifecycle;
         let lifecycle = commands.len();
