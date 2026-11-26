@@ -134,7 +134,7 @@ mod tests {
         let frame = TextureFrame {
             width: 2,
             height: 1,
-            rgba8: [255, 0, 0, 255, 0, 255, 0, 255].as_slice().into(),
+            rgba8: vec![255, 0, 0, 255, 0, 255, 0, 255].into(),
         };
         let commands = || {
             ["left", "right"]

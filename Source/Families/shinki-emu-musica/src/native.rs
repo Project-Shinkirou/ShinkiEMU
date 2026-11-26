@@ -1,6 +1,7 @@
 //! C ownership boundary. The native worker owns the existing Musica session;
 //! polling and input submission never execute the VM on the platform thread.
 use shinki_emu_abi as abi;
+use shinki_emu_sdk::gpu_scene::GpuSceneHost;
 use shinki_emu_sdk::runtime::{KeyCode, KeyModifiers, KeyState, RuntimeEvent};
 use std::{
     ffi::c_void,
@@ -177,18 +178,22 @@ unsafe extern "C" fn probe(
     })
 }
 struct Published {
-    info: abi::SurfaceInfo,
     pixels: Arc<[u8]>,
     generation: u64,
     timestamp_ns: u64,
+}
+struct CpuFrames {
+    latest: Mutex<Published>,
+    leases: Arc<AtomicUsize>,
 }
 struct Shared {
     services: Arc<text::ServiceContext>,
     audio_stop: Arc<AtomicBool>,
     canvas: shinki_emu_sdk::StageCanvas,
-    frame: Mutex<Published>,
+    surface: abi::SurfaceInfo,
+    // Hosted scenes publish directly to Manager, so they have no CPU mailbox.
+    cpu: Option<CpuFrames>,
     state: Mutex<abi::SessionState>,
-    leases: Arc<AtomicUsize>,
 }
 impl Shared {
     fn cancel(&self) {
@@ -217,7 +222,7 @@ unsafe fn handle<'a>(session: abi::Session) -> Result<&'a Handle, Failure> {
     unsafe { session.cast::<Handle>().as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))
 }
 unsafe extern "C" fn open(
-    request: *const abi::OpenRequest,
+    raw_request: *const abi::OpenRequest,
     output: *mut abi::OpenResult,
     error: *mut abi::Error,
 ) -> abi::Status {
@@ -226,7 +231,7 @@ unsafe extern "C" fn open(
     }
     boundary(error, || {
         initialized()?;
-        let request = unsafe { request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
+        let request = unsafe { raw_request.as_ref() }.ok_or_else(|| invalid(abi::INVALID_ARGUMENT))?;
         if output.is_null()
             || !request.header.accepts::<abi::OpenRequest>()
             || !request.host.header.accepts::<abi::HostServices>()
@@ -273,6 +278,7 @@ unsafe extern "C" fn open(
             render_extent: config::render_extent(request)?,
             window: request.window,
             replacement: text_async.map(|service| text::TextBridge(services.clone(), service)),
+            gpu_host: unsafe { GpuSceneHost::from_request(raw_request) }.map_err(invalid)?,
         };
         let graphics_owner = unsafe { owner::borrow(request.module_owner) }?;
         let (commands, receiver) = sync_channel(64);
@@ -336,12 +342,7 @@ unsafe extern "C" fn open(
         if owned.shared.services.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
-        let surface = owned
-            .shared
-            .frame
-            .lock()
-            .map_err(|_| invalid(abi::PANICKED))?
-            .info;
+        let surface = owned.shared.surface;
         unsafe {
             output.write(abi::OpenResult {
                 session: Box::into_raw(owned).cast(),
@@ -515,38 +516,35 @@ unsafe extern "C" fn frame(
             return Err(invalid(abi::INVALID_ARGUMENT));
         }
         let handle = unsafe { handle(session) }?;
-        let published = handle
-            .shared
-            .frame
-            .lock()
-            .map_err(|_| invalid(abi::PANICKED))?;
-        let identity = abi::FrameIdentity {
-            session_epoch: handle.shared.services.session,
-            output_epoch: 1,
-            generation: published.generation,
-        };
         let mut result = abi::FrameSurface {
-            state: abi::FRAME_UNCHANGED,
+            state: abi::FRAME_PENDING,
             reserved: 0,
-            identity,
-            timestamp_ns: published.timestamp_ns,
-            info: published.info,
+            identity: abi::FrameIdentity {
+                session_epoch: handle.shared.services.session,
+                output_epoch: 1,
+                generation: 0,
+            },
+            timestamp_ns: 0,
+            info: handle.shared.surface,
             cpu: abi::CpuLease {
                 pixels: abi::Bytes::EMPTY,
                 owner: std::ptr::null_mut(),
                 release: None,
             },
         };
-        if after != identity {
-            if let Some(lease) = shinki_emu_sdk::native::lease_cpu(
-                &published.pixels,
-                &handle.shared.leases,
-                |pixels| pixels.as_ref(),
-            ) {
+        if let Some(cpu) = &handle.shared.cpu {
+            let published = cpu.latest.lock().map_err(|_| invalid(abi::PANICKED))?;
+            result.identity.generation = published.generation;
+            result.timestamp_ns = published.timestamp_ns;
+            if after == result.identity {
+                result.state = abi::FRAME_UNCHANGED;
+            } else if let Some(lease) =
+                shinki_emu_sdk::native::lease_cpu(&published.pixels, &cpu.leases, |pixels| {
+                    pixels.as_ref()
+                })
+            {
                 result.state = abi::FRAME_READY;
                 result.cpu = lease;
-            } else {
-                result.state = abi::FRAME_PENDING;
             }
         }
         unsafe { output.write(result) };

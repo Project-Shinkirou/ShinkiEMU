@@ -127,7 +127,13 @@ impl MusicaSession {
         let save =
             EdenSave::from_checkpoint(&checkpoint, edition, encoding, prefix, comment.into())
                 .map_err(crate::scene::core_error)?;
-        let pixels = self.gameplay_frame.as_ref().unwrap_or(&self.scene.pixels);
+        let captured;
+        let pixels = if let Some(pixels) = &self.gameplay_frame {
+            pixels
+        } else {
+            captured = self.scene.capture()?;
+            &captured
+        };
         let thumbnail = crate::storage::SaveCard::capture_thumbnail(
             edition,
             self.info.logical_width,
@@ -181,20 +187,7 @@ impl MusicaSession {
         vm.set_launch_mode(self.vm.state().launch_mode);
         // `system.dat` is title-wide; the slot carries only script variables.
         vm.replace_global_variables(self.vm.state().global_variables.clone());
-        let mut scene = Scene::new_scaled(
-            self.scene.gpu_instance(),
-            self.archive.clone(),
-            self.info.logical_width,
-            self.info.logical_height,
-            self.info.width,
-            self.info.height,
-            self.scene.texture_overrides(),
-            encoding,
-        )?;
-        scene.set_text_shadow(self.scene.text_shadow());
-        scene.set_configured_font(self.scene.configured_font())?;
-        #[cfg(feature = "ffmpeg-vcpkg")]
-        scene.set_subtitle_catalog(self.scene.subtitle_catalog());
+        let mut scene = self.scene.rebuild(encoding)?;
         let message = match &event {
             MusicaVmEvent::Message { text, speaker, .. } => Some((text.clone(), speaker.clone())),
             _ => {
@@ -204,7 +197,9 @@ impl MusicaSession {
                 ));
             }
         };
-        scene.render(vm.state(), message.as_ref(), None)?;
+        if !scene.is_hosted() {
+            scene.render(vm.state(), message.as_ref(), None)?;
+        }
         self.cancel_text()?;
         self.generation = self.generation.checked_add(1).ok_or_else(|| {
             error(
@@ -254,6 +249,12 @@ impl MusicaSession {
         self.finished = false;
         self.reset_host_clock = true;
         self.sync_read_flags()?;
+        // Hosted presentation is visible as soon as submit succeeds. Leave
+        // the previous image selected until the restore has finished.
+        if self.scene.is_hosted() {
+            self.scene
+                .render(self.vm.state(), self.message.as_ref(), None)?;
+        }
         tracing::info!(event = "shinki.emu.musica.load.completed", slot);
         Ok(())
     }

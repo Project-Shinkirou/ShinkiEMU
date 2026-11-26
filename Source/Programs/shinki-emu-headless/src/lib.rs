@@ -343,6 +343,7 @@ fn run(arguments: Arguments, query: Option<abi::Query>) -> Result<RunReport> {
         },
         host,
         text_async: None,
+        gpu_scene: None,
         cancellation,
         render_extent: None,
     })?;

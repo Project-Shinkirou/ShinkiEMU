@@ -1,6 +1,10 @@
 # Musica core
 
-Musica 通过 C ABI v3 的 `shinki_emu_query` 提供原生核心；静态集成使用同一 `musica_query` 函数表。VM 在核心 owner 线程推进，输入进入队列，状态与帧查询只读快照。核心自己打开 PAZ、执行 SC VM、混音并维护存档。[shinki-emu-sdk](../../SDK/shinki-emu-sdk/README.md) 复用 `roukaku-text` 提供真实字体 shaping/排版/字形资源管理，并管理有界纹理缓存。场景和文字直接由 RoukakuEngine 的 `WgpuOffscreenRenderer` 在硬件 GPU 上合成，再回读最终帧交给 C ABI；不创建 Engine World、package、registry、PlatformHost 或 Headless server。GPU 初始化失败明确报错，不退回 CPU 渲染。
+Musica 通过 C ABI v3 的 `shinki_emu_query` 提供原生核心；静态集成使用同一 `musica_query` 函数表。VM 在核心 owner 线程推进，输入进入队列，状态与帧查询只读快照。核心自己打开 PAZ、执行 SC VM、混音并维护存档。[shinki-emu-sdk](../../SDK/shinki-emu-sdk/README.md) 复用 `roukaku-text` 提供真实字体 shaping、排版及字形资源管理，并管理有界纹理缓存。
+
+原生 `open` 协商到 `GpuSceneServiceV1` 时，Musica 提交场景命令，Manager 在同一个 WGPU device 上合成并采样纹理。正常呈现不回读像素，C ABI 的 CPU 帧查询保持 `FRAME_PENDING`。保存缩略图时按需回读；打开游戏内的存档或读档界面前，先捕获当时的游戏画面，供存档使用。读档重建场景时，新目标使用同一呈现路径，并重建纹理和字形资源。
+
+旧 Host、目标创建返回 `UNSUPPORTED` 及 headless 继续使用 RoukakuEngine 的 `WgpuOffscreenRenderer` 在硬件 GPU 上合成，回读后交给 CPU 帧接口。硬件 GPU 初始化失败会报错。不创建 Engine World、package、registry、PlatformHost 或 Headless server。
 
 动态插件通过共享诊断桥将核心 tracing/log 接入 Manager；静态核心使用宿主订阅器。日志不另建文件 sink，正文和未审查 Debug 内容不会跨 ABI 透传。
 
@@ -117,6 +121,6 @@ VM 的可序列化状态集中在 runtime/model.rs，演出命令在 runtime/eff
 
 原版历史 `CT5` 保存面板切换参数，支持已经核对的 0 和 10；其他值明确拒绝。逻辑画布与 GPU 光栅尺寸分别配置，eden 原版导入要求 1024×640；核心槽保存逻辑画布身份，不同画布加载在修改活动状态前拒绝。
 
-最终合成 RGB 的 Family 帧声明 Ignored alpha，保留原字节与存档/VM 几何，发布时不重复 Opaque alpha 扫描。Host 的 GPU 归一化仍有成本；构建或元数据更新不替代演出、保存与几何验收。
+两条呈现路径都保留逻辑尺寸与光栅尺寸、sRGB 编码及自顶向下的行顺序，最终画面按 Ignored alpha 使用。CPU 帧发布不重复做 Opaque alpha 扫描。
 
 SDK 的 `runtime` 只提供进程内 Rust 值；`native` 复用 C ABI 配置校验、排队输入转换、窗口服务失效与独立 CPU 租约。不再提供旧 Family 模块、公共 advance 或跨协议兼容层。`build.rs` 为实际库生成 `core-build.json` 与许可证清单。

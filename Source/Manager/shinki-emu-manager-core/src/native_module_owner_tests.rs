@@ -22,6 +22,7 @@ fn request() -> NativeOpenRequest {
         },
         host: no_host_services(&cancellation),
         text_async: None,
+        gpu_scene: None,
         cancellation,
         render_extent: None,
     }

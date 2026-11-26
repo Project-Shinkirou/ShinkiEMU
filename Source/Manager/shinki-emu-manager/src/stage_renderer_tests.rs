@@ -217,6 +217,221 @@ fn vulkan_stage_handoff_reuses_texture_across_generations() {
 }
 
 #[test]
+#[ignore = "requires a physical WGPU adapter"]
+fn gpu_scene_presents_replacement_target_without_cpu_frame_upload() {
+    use shinki_emu_abi as abi;
+    use shinki_emu_manager_core::FilterStage;
+
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::PRIMARY;
+    let instance = wgpu::Instance::new(descriptor);
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+        .expect("native WGPU adapter");
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&Default::default())).expect("WGPU device");
+    let context = || WgpuFrameContext { device: &device, queue: &queue };
+    let mailbox = FrameMailbox::new();
+    let mut renderer = ManagerStageRenderer::new(mailbox.clone());
+    mailbox.activate(7).unwrap();
+    renderer.setup(context()).unwrap();
+    renderer.configure_filter_inner(&FilterSettings { stages: vec![FilterStage::Scale2x] }).unwrap();
+    let svc = mailbox.gpu_service().expect("physical WGPU adapter").base;
+    let mut error = abi::Error::default();
+    let mut make_target = || {
+        let mut id = 0;
+        assert_eq!(unsafe { svc.create.unwrap()(svc.context, 7, &mut id, &mut error) }, abi::OK);
+        id
+    };
+    let old = make_target();
+    let fresh = make_target();
+    let submit = |id, sequence, rgba| {
+        let command = abi::GpuSceneCommandV1 {
+            op: abi::GPU_CLEAR,
+            color: rgba,
+            ..Default::default()
+        };
+        let frame = abi::GpuSceneFrameV1 {
+            header: abi::Header::of::<abi::GpuSceneFrameV1>(),
+            sequence,
+            logical: abi::Extent { width: 2, height: 2 },
+            raster: abi::Extent { width: 2, height: 2 },
+            clear_rgba: rgba,
+            commands: &command,
+            command_count: 1,
+        };
+        let mut error = abi::Error::default();
+        let status = unsafe { svc.submit.unwrap()(svc.context, id, &frame, &mut error) };
+        (status, error)
+    };
+    let assert_submit = |id, sequence, rgba| {
+        let (status, error) = submit(id, sequence, rgba);
+        assert_eq!(status, abi::OK, "{}", String::from_utf8_lossy(&error.message[..error.message_len as usize]));
+    };
+    assert_submit(old, 1, [37, 73, 101, 255]);
+    assert!(mailbox.identity().unwrap().is_none(), "an in-flight open must not display a provisional frame");
+    mailbox.commit_gpu_open(7).unwrap();
+    renderer.render(context()).unwrap();
+    let first = renderer.take_stage_texture_update().unwrap().unwrap();
+    assert_eq!((first.logical_width, first.raster_width), (2, 4));
+    assert_eq!(read_pixels(context(), &first.texture), vec![[37, 73, 101, 255]; 16]);
+    let mut thumbnail = [0u8; 16];
+    assert_eq!(unsafe { svc.capture.unwrap()(svc.context, old, thumbnail.as_mut_ptr(), thumbnail.len(), &mut error) }, abi::OK);
+    assert_eq!(thumbnail.as_slice(), [37, 73, 101, 255].repeat(4));
+    assert_submit(fresh, 1, [193, 149, 83, 17]);
+    assert_eq!(unsafe { svc.capture.unwrap()(svc.context, fresh, thumbnail.as_mut_ptr(), thumbnail.len(), &mut error) }, abi::OK);
+    let reference: [u8; 4] = thumbnail[..4].try_into().unwrap();
+    assert_eq!(reference[3], 255);
+    assert!(reference[..3].iter().zip([193, 149, 83]).all(|(&a, b)| a.abs_diff(b) <= 1));
+    unsafe { svc.destroy.unwrap()(svc.context, old) };
+    assert_eq!(submit(old, 2, [0; 4]).0, abi::STALE_CONTEXT);
+    renderer.render(context()).unwrap();
+    assert_eq!(mailbox.displayed_identity().unwrap().unwrap().generation, 2);
+    for pixel in read_pixels(context(), &first.texture) {
+        // The filter's floating-point path can round by one channel value.
+        assert_eq!(pixel[3], 255);
+        assert!(pixel[..3].iter().zip(reference).all(|(&a, b)| a.abs_diff(b) <= 1));
+    }
+    assert!(renderer.input_texture.is_none(), "GPU publication must not allocate an upload texture");
+    renderer.configure_filter_inner(&FilterSettings::default()).unwrap();
+    renderer.render(context()).unwrap();
+    let raw = renderer.take_stage_texture_update().unwrap().unwrap();
+    let Some(StageFrame::Gpu(gpu)) = mailbox.stage_snapshot().unwrap() else {
+        panic!("expected a leased GPU target");
+    };
+    assert_eq!(raw.texture, gpu.texture, "bypass must sample the scene texture itself");
+    assert_eq!(read_pixels(context(), &raw.texture), vec![reference; 4]);
+    assert!(mailbox.snapshot().unwrap().is_none(), "no CPU lease is published");
+    mailbox.clear(7).unwrap();
+    assert_eq!(submit(fresh, 2, [0; 4]).0, abi::STALE_CONTEXT);
+    unsafe { svc.destroy.unwrap()(svc.context, fresh) };
+}
+
+#[test]
+#[ignore = "requires a physical WGPU adapter"]
+fn gpu_scene_presents_cpu_native_effects_in_order_and_old_hosts_keep_offscreen_pixels() {
+    use roukaku_media_core::{OwnedPixelBuffer, SceneCommand};
+    use roukaku_platform::SceneFrame;
+    use shinki_emu_abi as abi;
+    use shinki_emu_sdk::gpu_scene::{GpuSceneHost, SceneOutput, SceneRequirements};
+    use std::ptr;
+
+    fn offered(table: *const abi::GpuSceneServiceV1) -> GpuSceneHost {
+        let cancellation = shinki_emu_manager_core::NativeCancellation::new(7);
+        let request = abi::OpenRequestGpuV1 {
+            text: abi::OpenRequestTextV1 {
+                base: abi::OpenRequest {
+                    header: abi::Header::of::<abi::OpenRequestGpuV1>(),
+                    session_epoch: 7,
+                    game_path: abi::Bytes::EMPTY,
+                    configuration: ptr::null(),
+                    configuration_count: 0,
+                    window: abi::WindowState {
+                        drawable_width: 2,
+                        drawable_height: 2,
+                        scale_factor: 1.0,
+                        focused: 1,
+                        suspended: 0,
+                    },
+                    host: shinki_emu_manager_core::no_host_services(&cancellation),
+                    module_owner: ptr::null_mut(),
+                    render_extent: abi::Extent { width: 2, height: 2 },
+                },
+                text_async: ptr::null(),
+            },
+            gpu_scene: table,
+        };
+        unsafe { GpuSceneHost::from_request(ptr::from_ref(&request).cast()) }.unwrap().unwrap()
+    }
+
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::PRIMARY;
+    let instance = wgpu::Instance::new(descriptor);
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+    eprintln!("Hosted scene adapter: {} ({:?})", adapter.get_info().name, adapter.get_info().backend);
+    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let context = || WgpuFrameContext { device: &device, queue: &queue };
+    let mailbox = FrameMailbox::new();
+    mailbox.activate(7).unwrap();
+    let mut renderer = ManagerStageRenderer::new(mailbox.clone());
+    renderer.setup(context()).unwrap();
+    let table = mailbox.gpu_service().expect("physical WGPU adapter");
+    let requirements = SceneRequirements::SpritesWithNativeRaster;
+    let mut output = SceneOutput::open(
+        Some(offered(ptr::from_ref(&table).cast())),
+        requirements,
+        || panic!("hosted composition must not create a local device"),
+    ).unwrap();
+
+    let extent = abi::Extent { width: 2, height: 2 };
+    let frame = |sequence, rgba| SceneFrame {
+        sequence,
+        width: 2,
+        height: 2,
+        clear_rgba: [0, 0, 0, 255],
+        commands: vec![SceneCommand::rect("overlay", 0, 0, 2, 2, rgba)],
+        semantics: None,
+    };
+    let visible = |renderer: &mut ManagerStageRenderer, generation, pixels: &[[u8; 4]]| {
+        renderer.render(context()).unwrap();
+        let result = renderer.take_stage_texture_update().unwrap().unwrap();
+        assert_eq!(mailbox.displayed_identity().unwrap().unwrap().generation, generation);
+        assert_eq!(read_pixels(context(), &result.texture), pixels);
+        result.texture
+    };
+
+    let before = [25, 75, 125, 255];
+    assert!(output.submit(&frame(1, before), extent).unwrap().is_none());
+    assert!(mailbox.scene_identity().unwrap().is_none());
+    mailbox.commit_gpu_open(7).unwrap();
+    visible(&mut renderer, 1, &[before; 4]);
+    assert!(renderer.input_texture.is_none(), "ordinary frames bypass the CPU uploader");
+    assert_eq!(output.capture().unwrap().as_ref(), before.repeat(4));
+
+    let native = [[91, 51, 31, 255], [101, 19, 97, 255], before, [2, 3, 4, 255]];
+    let effect: OwnedPixelBuffer = native.into_iter().flatten().collect::<Vec<_>>().into();
+    let effect_ptr = effect.as_slice().as_ptr();
+    output.present_native_raster(2, extent, extent, &effect).unwrap();
+    assert!(output.submit(&frame(2, before), extent).is_err(), "a stale scene cannot overwrite the effect");
+    drop(effect);
+    let effect_lease = mailbox.snapshot().unwrap().unwrap();
+    assert_eq!(effect_lease.pixels().unwrap().as_ptr(), effect_ptr);
+    assert_eq!(mailbox.scene_identity().unwrap(), Some(effect_lease.identity));
+    visible(&mut renderer, 2, &native);
+
+    let after = [191, 143, 83, 255];
+    assert!(output.submit(&frame(3, after), extent).unwrap().is_none());
+    let texture = visible(&mut renderer, 3, &[after; 4]);
+    let Some(StageFrame::Gpu(gpu)) = mailbox.stage_snapshot().unwrap() else {
+        panic!("returning from the effect must present a leased scene texture");
+    };
+    assert_eq!(texture, gpu.texture);
+    assert!(mailbox.snapshot().unwrap().is_none());
+    assert_eq!(output.capture().unwrap().as_ref(), after.repeat(4));
+
+    let mut next = output.rebuild().unwrap();
+    drop(output);
+    assert!(next.submit(&frame(1, before), extent).unwrap().is_none());
+    visible(&mut renderer, 4, &[before; 4]);
+    drop(next);
+    mailbox.clear(7).unwrap();
+
+    let v1 = abi::GpuSceneServiceV1 {
+        size: std::mem::size_of::<abi::GpuSceneServiceV1>() as u32,
+        ..table.base
+    };
+    // Leave the epoch inactive. Trying to create a target would report
+    // STALE_CONTEXT, so successful fallback proves negotiation happens first.
+    let mut fallback = SceneOutput::open(Some(offered(&v1)), requirements, || {
+        shinki_emu_sdk::native_wgpu_instance().map_err(|cause| {
+            shinki_emu_sdk::runtime::SessionError::new("SHINKI_EMU_GPU_TEST", cause.to_string())
+        })
+    }).unwrap();
+    let fallback_pixels = fallback.submit(&frame(1, after), extent).unwrap().unwrap();
+    assert_eq!(&*fallback_pixels, after.repeat(4));
+    eprintln!("Scene→native raster→scene→replacement advanced generations 1–4; v1 fallback returned 16 RGBA bytes");
+}
+
+#[test]
 #[ignore = "requires a native compute adapter and a format-4 DXC installation"]
 fn gpu_filter_chain_preserves_pixels_geometry_and_rollback() {
     use shinki_emu_manager::effects::FilterEngine;

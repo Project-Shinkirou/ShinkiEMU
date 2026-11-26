@@ -178,13 +178,13 @@ fn native_stand_gpu_uses_metadata_crop_and_restore_without_changing_cached_pixel
     )
     .unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let pixel = |x: usize, y: usize| &scene.pixels[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
+    let pixel = |x: usize, y: usize| &scene.pixels()[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
     assert_eq!(pixel(11, 26), &[0, 0, 0, 255]);
     assert_eq!(pixel(10, 27), &[0, 0, 0, 255]);
     assert_eq!(pixel(11, 27), &[255, 255, 255, 255]);
     assert_eq!(pixel(18, 31), &[255, 255, 255, 255]);
     assert_eq!(pixel(19, 31), &[0, 0, 0, 255]);
-    let cropped = scene.pixels.clone();
+    let cropped = scene.pixels().clone();
     let mut restored_vm = make_vm();
     restored_vm
         .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
@@ -198,19 +198,19 @@ fn native_stand_gpu_uses_metadata_crop_and_restore_without_changing_cached_pixel
     )
     .unwrap();
     restored.render(restored_vm.state(), None, None).unwrap();
-    assert_eq!(restored.pixels, cropped);
+    assert_eq!(restored.pixels(), &cropped);
     let mut state = vm.state().clone();
     state.stage.as_mut().unwrap().stands[0].resource_parameter = 6;
     scene.render(&state, None, None).unwrap();
     assert_eq!(
-        &scene.pixels[(24 * 32 + 11) * 4..(24 * 32 + 12) * 4],
+        &scene.pixels()[(24 * 32 + 11) * 4..(24 * 32 + 12) * 4],
         &[255; 4]
     );
-    let valid = scene.pixels.clone();
+    let valid = scene.pixels().clone();
     state.stage.as_mut().unwrap().stands[0].resource_parameter = 14;
     assert_eq!(
         scene.render(&state, None, None).unwrap_err().code(),
         "SHINKI_EMU_MUSICA_STAND_GEOMETRY"
     );
-    assert_eq!(scene.pixels, valid);
+    assert_eq!(scene.pixels(), &valid);
 }

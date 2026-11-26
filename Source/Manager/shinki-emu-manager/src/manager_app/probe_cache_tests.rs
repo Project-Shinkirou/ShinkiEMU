@@ -216,6 +216,7 @@ fn cached_recognition_is_freshly_rejected_before_open_without_probing_alternativ
         game_path: request.game_path, configuration: Vec::new(), session_epoch: epoch,
         initial_window: WindowState { width: 1, height: 1, scale_factor: 1.0, focused: true, visible: true, suspended: false },
         host: shinki_emu_manager_core::no_host_services(&cancel), cancellation: cancel, text_async: None, render_extent: None,
+        gpu_scene: None,
     }).err().unwrap();
     assert!(error.to_string().contains("SHINKI_EMU_FAMILY_FRESH_PROBE_NO_MATCH"));
     assert_eq!(selected_calls.lock().iter().filter(|call| call.name == "probe").count(), 1);

@@ -31,11 +31,11 @@ fn native_stage_gpu_restore_preserves_position_and_rejects_invalid_sequences() {
     )
     .unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let pixel = |x: usize, y: usize| &scene.pixels[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
+    let pixel = |x: usize, y: usize| &scene.pixels()[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
     assert_eq!(pixel(0, 0), &[0, 0, 0, 255]);
     assert_ne!(pixel(0, 2), &[0, 0, 0, 255]);
     assert_eq!(pixel(12, 2), &[0, 0, 0, 255]);
-    let expected = scene.pixels.clone();
+    let expected = scene.pixels().clone();
     let mut restored_vm = make_vm();
     restored_vm
         .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
@@ -51,7 +51,7 @@ fn native_stage_gpu_restore_preserves_position_and_rejects_invalid_sequences() {
     restored_scene
         .render(restored_vm.state(), None, None)
         .unwrap();
-    assert_eq!(restored_scene.pixels, expected);
+    assert_eq!(restored_scene.pixels(), &expected);
     let mut unsupported = restored_vm.state().clone();
     unsupported.stage.as_mut().unwrap().foreground.main = Some("musica:/bg/Light_ov.png".into());
     assert_eq!(
@@ -61,7 +61,7 @@ fn native_stage_gpu_restore_preserves_position_and_rejects_invalid_sequences() {
             .code(),
         "SHINKI_EMU_MUSICA_STAGE_BLEND"
     );
-    assert_eq!(restored_scene.pixels, expected);
+    assert_eq!(restored_scene.pixels(), &expected);
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn dual_stage_screen_prefix_orders_layers_and_restores_without_partial_frames() 
     let mut scene = make_scene();
     scene.render(vm.state(), None, None).unwrap();
     let pixel = |scene: &Scene, x: usize, y: usize| {
-        <[u8; 4]>::try_from(&scene.pixels[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
+        <[u8; 4]>::try_from(&scene.pixels()[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
     };
     assert_eq!(pixel(&scene, 0, 0), [83, 100, 220, 255]);
     assert_eq!(pixel(&scene, 5, 10), [83, 100, 220, 255]);
@@ -122,18 +122,18 @@ fn dual_stage_screen_prefix_orders_layers_and_restores_without_partial_frames() 
         .unwrap();
     let mut restored = make_scene();
     restored.render(restored_vm.state(), None, None).unwrap();
-    assert_eq!(restored.pixels, scene.pixels);
+    assert_eq!(restored.pixels(), scene.pixels());
     let mut state = vm.state().clone();
     state.stage.as_mut().unwrap().foreground.main = None;
     scene.render(&state, None, None).unwrap();
     assert_eq!(pixel(&scene, 5, 10), [112, 128, 192, 255]);
-    let valid = scene.pixels.clone();
+    let valid = scene.pixels().clone();
     state.stage.as_mut().unwrap().foreground.prefix = Some("musica:/bg/Light_ov.png".into());
     assert_eq!(
         scene.render(&state, None, None).unwrap_err().code(),
         "SHINKI_EMU_MUSICA_STAGE_BLEND"
     );
-    assert_eq!(scene.pixels, valid);
+    assert_eq!(scene.pixels(), &valid);
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn panel_modes_draw_at_native_positions_and_clear_after_restore() {
     for tick in 1..=3 {
         vm.step(tick).unwrap();
         scene.render(vm.state(), None, None).unwrap();
-        let expected = scene.pixels.clone();
+        let expected = scene.pixels().clone();
         let top = &expected[..4];
         let bottom = &expected[79 * 16 * 4..79 * 16 * 4 + 4];
         match tick {
@@ -203,7 +203,7 @@ fn panel_modes_draw_at_native_positions_and_clear_after_restore() {
             .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 1)
             .unwrap();
         scene.render(restored.state(), None, None).unwrap();
-        assert_eq!(scene.pixels, expected);
+        assert_eq!(scene.pixels(), &expected);
     }
 }
 
@@ -235,11 +235,11 @@ fn screen_shake_gpu_preserves_composed_clipping_and_restores_mid_interval() {
     .unwrap();
     vm.step(1).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let original = scene.pixels.clone();
+    let original = scene.pixels().clone();
     vm.step(2).unwrap();
     vm.advance_screen_shake_clock(30_000_000).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let shifted = scene.pixels.clone();
+    let shifted = scene.pixels().clone();
     for y in 0..16 {
         for x in 0..16 {
             let index = (y * 16 + x) * 4;
@@ -259,12 +259,12 @@ fn screen_shake_gpu_preserves_composed_clipping_and_restores_mid_interval() {
     vm.advance_screen_shake_clock(1_000_000).unwrap();
     restored.advance_screen_shake_clock(1_000_000).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let expected = scene.pixels.clone();
+    let expected = scene.pixels().clone();
     scene.render(restored.state(), None, None).unwrap();
-    assert_eq!(scene.pixels, expected);
+    assert_eq!(scene.pixels(), &expected);
     vm.step(3).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    assert_eq!(scene.pixels, original);
+    assert_eq!(scene.pixels(), &original);
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn crossfade_transition_and_sqz_animated_foreground_render_native_layers() {
     )
     .unwrap();
     let pixel = |scene: &Scene, x: usize, y: usize| {
-        <[u8; 4]>::try_from(&scene.pixels[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
+        <[u8; 4]>::try_from(&scene.pixels()[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
     };
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [0, 0, 0, 255]);
@@ -452,7 +452,7 @@ fn masked_transition_reveals_new_stage_through_the_rule_image() {
     )
     .unwrap();
     let pixel = |scene: &Scene, x: usize, y: usize| {
-        <[u8; 4]>::try_from(&scene.pixels[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
+        <[u8; 4]>::try_from(&scene.pixels()[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
     };
     machine.step(2).unwrap();
     let duration_ns = machine
@@ -562,7 +562,7 @@ fn ani_patch_selection_draws_matching_eye_and_mouth_rows() {
     )
     .unwrap();
     let pixel = |scene: &Scene, x: usize, y: usize| {
-        <[u8; 4]>::try_from(&scene.pixels[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
+        <[u8; 4]>::try_from(&scene.pixels()[(y * 16 + x) * 4..(y * 16 + x + 1) * 4]).unwrap()
     };
     scene.render(machine.state(), None, None).unwrap();
     assert_eq!(pixel(&scene, 8, 8), [255, 0, 0, 255]);
@@ -620,11 +620,11 @@ fn scrollxf_gpu_crops_translates_and_accepts_empty_extent() {
     .unwrap();
     vm.step(1).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let original = scene.pixels.clone();
+    let original = scene.pixels().clone();
     vm.step(2).unwrap();
     vm.advance_scroll_xf_clock(50_000_000).unwrap();
     scene.render(vm.state(), None, None).unwrap();
-    let cropped = scene.pixels.clone();
+    let cropped = scene.pixels().clone();
     for y in 0..16 {
         for x in 0..16 {
             let index = (y * 16 + x) * 4;
@@ -641,12 +641,12 @@ fn scrollxf_gpu_crops_translates_and_accepts_empty_extent() {
         .install_test_state(&MusicaVm::checked_test_state(vm.state()).unwrap(), 3)
         .unwrap();
     scene.render(restored.state(), None, None).unwrap();
-    assert_eq!(scene.pixels, cropped);
+    assert_eq!(scene.pixels(), &cropped);
     vm.step(3).unwrap();
     scene.render(vm.state(), None, None).unwrap();
     assert!(
         scene
-            .pixels
+            .pixels()
             .as_chunks::<4>()
             .0
             .iter()
@@ -704,7 +704,7 @@ fn native_gpu_scaled_ani_offset_scroll_clip_and_shake_preserve_logical_geometry(
         let mut vm = make_vm();
         vm.step(1).unwrap();
         let mut scene = Scene::new_scaled(
-            crate::test_fixture::gpu_instance(),
+            SceneOutput::offscreen(crate::test_fixture::gpu_instance().clone()).unwrap(),
             archive.clone(),
             16,
             16,
@@ -714,9 +714,9 @@ fn native_gpu_scaled_ani_offset_scroll_clip_and_shake_preserve_logical_geometry(
             crate::ScriptEncoding::ShiftJis,
         )
         .unwrap();
-        assert_ne!(scene.renderer.identity().device_type, "cpu");
+        assert_ne!(scene.cpu_renderer().identity().device_type, "cpu");
         scene.render(vm.state(), None, None).unwrap();
-        let baseline = scene.pixels.clone();
+        let baseline = scene.pixels().clone();
 
         // The ANI origin is [2, 1], so the first red quadrant begins at that
         // logical point while the preceding logical border remains clear.
@@ -746,7 +746,7 @@ fn native_gpu_scaled_ani_offset_scroll_clip_and_shake_preserve_logical_geometry(
         let mut cropped_state = vm.state().clone();
         cropped_state.screen_shake = None;
         scene.render(&cropped_state, None, None).unwrap();
-        let cropped = scene.pixels.clone();
+        let cropped = scene.pixels().clone();
         // The half-way scroll moves the source by one logical pixel and clips
         // to a 14x14 visible extent. This checks source crop and clip through
         // the actual Musica Scene::render path.
@@ -774,7 +774,7 @@ fn native_gpu_scaled_ani_offset_scroll_clip_and_shake_preserve_logical_geometry(
         vm.step(3).unwrap();
         vm.advance_screen_shake_clock(30_000_000).unwrap();
         scene.render(vm.state(), None, None).unwrap();
-        let transformed = scene.pixels.clone();
+        let transformed = scene.pixels().clone();
         // Vertical shake is -2 logical pixels on its first update. The
         // compositor's outer clip must keep the shifted frame inside the
         // logical viewport while preserving the inner scroll clip.
@@ -856,7 +856,7 @@ fn moving_shared_asset_reuses_gpu_pixels_and_reappears_after_release() {
         scene.submit(commands).unwrap();
         for column in 0..16 {
             assert_eq!(
-                &scene.pixels[(column * 4) as usize..(column * 4 + 4) as usize],
+                &scene.pixels()[(column * 4) as usize..(column * 4 + 4) as usize],
                 if column < x {
                     &[0, 0, 0, 255]
                 } else {
@@ -867,13 +867,13 @@ fn moving_shared_asset_reuses_gpu_pixels_and_reappears_after_release() {
         if x > 0 {
             // Counters include vertex uploads. Re-uploading this 1 MiB asset
             // cannot fit below its decoded size, even after atlas packing.
-            assert!(scene.renderer.performance_counters().upload_bytes < 512 * 512 * 4);
+            assert!(scene.cpu_renderer().performance_counters().upload_bytes < 512 * 512 * 4);
         }
     }
     scene.submit(Vec::new()).unwrap();
     assert!(
         scene
-            .pixels
+            .pixels()
             .as_chunks::<4>()
             .0
             .iter()
@@ -886,7 +886,7 @@ fn moving_shared_asset_reuses_gpu_pixels_and_reappears_after_release() {
     scene.submit(commands).unwrap();
     assert!(
         scene
-            .pixels
+            .pixels()
             .as_chunks::<4>()
             .0
             .iter()

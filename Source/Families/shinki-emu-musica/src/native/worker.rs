@@ -12,6 +12,7 @@ pub(super) struct Launch {
     pub render_extent: abi::Extent,
     pub window: abi::WindowState,
     pub replacement: Option<text::TextBridge>,
+    pub gpu_host: Option<GpuSceneHost>,
 }
 pub(super) fn run(
     graphics_owner: owner::GraphicsOwner,
@@ -26,6 +27,7 @@ pub(super) fn run(
         render_extent,
         window,
         replacement,
+        gpu_host,
     } = launch;
     let request = OpenRequest {
         game_path: path,
@@ -44,7 +46,7 @@ pub(super) fn run(
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;
-        owner.open_native_session(request, render_extent, replacement)?
+        owner.open_native_session(request, render_extent, replacement, gpu_host)?
     };
     serve(session, window.suspended != 0, services, commands, ready)
 }
@@ -97,11 +99,14 @@ pub(super) fn serve(
     let shared = Arc::new(Shared {
         services: services.clone(),
         audio_stop: session.native_audio_cancellation(),
-        frame: Mutex::new(Published {
-            info,
-            pixels,
-            generation: 1,
-            timestamp_ns: 0,
+        surface: info,
+        cpu: pixels.map(|pixels| CpuFrames {
+            latest: Mutex::new(Published {
+                pixels: pixels.clone(),
+                generation: 1,
+                timestamp_ns: 0,
+            }),
+            leases: Arc::new(AtomicUsize::new(0)),
         }),
         state: Mutex::new(abi::SessionState {
             state: abi::SESSION_RUNNING,
@@ -111,7 +116,6 @@ pub(super) fn serve(
             error: abi::Error::default(),
         }),
         canvas,
-        leases: Arc::new(AtomicUsize::new(0)),
     });
     if ready.send(Ok(shared.clone())).is_err() {
         shared.cancel();
@@ -290,16 +294,19 @@ fn pump(
                 state.flags = 0;
                 state.error = abi::Error::default();
                 drop(state);
-                let (_, pixels) = session.native_frame();
-                let mut frame = shared.frame.lock().map_err(|_| invalid(abi::PANICKED))?;
-                if !Arc::ptr_eq(&pixels, &frame.pixels) {
-                    frame.generation = frame
-                        .generation
-                        .checked_add(1)
-                        .ok_or_else(|| invalid(abi::INVALID_STATE))?;
-                    frame.pixels = pixels;
-                    frame.timestamp_ns =
-                        started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                if let Some(cpu) = &shared.cpu {
+                    let (_, pixels) = session.native_frame();
+                    let pixels = pixels.ok_or_else(|| invalid(abi::INVALID_STATE))?;
+                    let mut frame = cpu.latest.lock().map_err(|_| invalid(abi::PANICKED))?;
+                    if !Arc::ptr_eq(pixels, &frame.pixels) {
+                        frame.generation = frame
+                            .generation
+                            .checked_add(1)
+                            .ok_or_else(|| invalid(abi::INVALID_STATE))?;
+                        frame.pixels = pixels.clone();
+                        frame.timestamp_ns =
+                            started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+                    }
                 }
                 if finished {
                     shared.services.invalidate();

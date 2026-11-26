@@ -95,6 +95,18 @@ Ordinary ABI calls are serialized on the host's owner thread. The core's native 
 
 The shared Rust diagnostic bridge forwards each original event once. If a host callback emits tracing events into the same statically linked subscriber, those nested events are not forwarded back through the ABI. A thread-local guard covers formatting and the callback, resets on return or unwind, and leaves other threads and subsequent events independent. This applies to every core using `shinki-emu-abi/diagnostic-bridge`, without changing log levels or worker stack budgets.
 
+## Optional GPU scene service
+
+`OpenRequestGpuV1` retains the complete `OpenRequestTextV1` prefix and appends a pointer to `GpuSceneServiceV1`. A new core first checks the request size, then the table version, size and callbacks. An absent service, or `UNSUPPORTED` from `create`, selects CPU leases before the session starts. The core must still support CPU output for older hosts and headless use. ABI version 3 and the core entry point are unchanged.
+
+Manager owns the WGPU device and queue. The core gets an opaque session-scoped target ID and submits ordered C-layout draw commands. The SDK borrows commands for the call and provides retain/release callbacks for immutable texture and glyph assets. Manager draws into its own texture and samples it directly or feeds it to the selected filter. No device, Rust object or framebuffer pixels cross the ABI during ordinary presentation. The host stamps frame generations and rejects submissions from closed sessions; replacing a target does not reset the session's generation.
+
+`shinki_emu_sdk::gpu_scene::SceneOutput` selects the transport at open, owns the target, and rebuilds it without renegotiating. A core whose entire command stream fits v1 opens with `SceneRequirements::Sprites`, calls `submit(&frame, logical)`, and publishes base CPU leases only for the pixels returned by the offscreen branch. Call `capture()` on the hosted branch only for events that actually need its pixels. Musica uses this path and captures for save thumbnails.
+
+`GpuSceneServiceV2` adds a size-advertised `present_raster` callback after the unchanged v1 prefix; the prefix's version stays 1. This callback publishes an effect already composed by the core's CPU canvas. Both callbacks share the target's sequence and host output generation, and the base frame API stays pending. The host retains the immutable effect raster and uploads it only when it displays that raster. ADV32 requests `SpritesWithNativeRaster` when hardware compositing is enabled. Its ordinary scene frames stay on the host GPU, and screen break captures its frozen input once on entry if needed. Existing CPU save composition is unchanged.
+
+Without the required table, such as on older hosts, headless, Android's current Skia/Vulkan stage or OpenHarmony's software stage, the SDK keeps the original offscreen/CPU lease flow for the whole session. In-tree CMVS deliberately uses the SDK offscreen path: besides camera, mesh/projective and crossfade commands absent from the wire, a masked family needs an intermediate pass, a byte-precise alpha LUT and a GPU-produced texture source at the original insertion point. Any hosted CMVS implementation must reproduce these on the same device before it can opt in. Lucifen already publishes immutable snapshots of its mutable CPU canvas through `native::lease_cpu`; it has no scene-command producer to feed the hosted path.
+
 ## Converted-game compatibility
 
 The existing `Descriptor.capabilities` mask has four optional semantic bits; ABI

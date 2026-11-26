@@ -3,8 +3,8 @@ impl MusicaSession {
     pub(crate) fn native_audio_cancellation(&self) -> Arc<std::sync::atomic::AtomicBool> {
         self.audio.cancellation_flag()
     }
-    pub(crate) fn native_frame(&self) -> (FrameInfo, Arc<[u8]>) {
-        (self.info, self.scene.pixels.clone())
+    pub(crate) fn native_frame(&self) -> (FrameInfo, Option<&Arc<[u8]>>) {
+        (self.info, self.scene.cpu_pixels())
     }
     pub(crate) fn native_failed_hook(&self) -> bool {
         self.hook_failed
