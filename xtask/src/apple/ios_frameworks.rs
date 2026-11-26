@@ -463,10 +463,9 @@ impl Manifest {
             if let Some(leaf) = path
                 .strip_prefix(&prefix)
                 .and_then(|path| path.split('/').next())
+                && !leaf.is_empty()
             {
-                if !leaf.is_empty() {
-                    actual.insert(leaf.to_owned());
-                }
+                actual.insert(leaf.to_owned());
             }
         }
         let expected: BTreeSet<_> = self
