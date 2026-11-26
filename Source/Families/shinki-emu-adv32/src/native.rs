@@ -418,7 +418,7 @@ unsafe extern "C" fn open(
         if services.is_cancelled() {
             return Err(invalid(abi::CANCELLED));
         }
-        let paused = request.window.suspended != 0;
+        let suspended = request.window.suspended != 0;
         let (queue, commands) = sync_channel(64);
         let (ready, startup) = sync_channel(1);
         let thread = thread::Builder::new()
@@ -426,7 +426,7 @@ unsafe extern "C" fn open(
             .spawn(move || {
                 let worker_services = Arc::clone(&services);
                 let mut result = catch_unwind(AssertUnwindSafe(|| {
-                    serve(&path, paused, options, worker_services, commands, &ready)
+                    serve(&path, suspended, options, worker_services, commands, &ready)
                 }))
                 .unwrap_or_else(|_| Err(invalid(abi::PANICKED)));
                 if let Err(cause) = &result {
@@ -470,7 +470,7 @@ unsafe extern "C" fn open(
 
 fn serve(
     path: &Path,
-    mut paused: bool,
+    mut suspended: bool,
     options: SessionOptions,
     services: Arc<ServiceContext>,
     commands: Receiver<Command>,
@@ -523,7 +523,7 @@ fn serve(
             timestamp_ns: 0,
         }),
         state: Mutex::new(abi::SessionState {
-            state: if paused {
+            state: if suspended {
                 abi::SESSION_PAUSED
             } else {
                 abi::SESSION_RUNNING
@@ -542,19 +542,30 @@ fn serve(
     let mut previous = started;
     let mut events = Vec::new();
     let mut window_sequence = 0;
+    let mut explicit_pause = false;
+    let mut paused = suspended;
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<()> {
         while !shared.services.is_cancelled() {
             match commands.recv_timeout(Duration::from_millis(8)) {
-                Ok(Command::Input(input)) => events = input,
-                Ok(Command::Pause(value)) => {
-                    paused = value;
-                    vm.set_paused(value);
+                Ok(Command::Input(input)) => {
+                    for event in &input {
+                        if let RuntimeEvent::WindowSuspended { suspended: value } = event {
+                            suspended = *value;
+                        }
+                    }
+                    events = input;
                 }
+                Ok(Command::Pause(value)) => explicit_pause = value,
                 Err(RecvTimeoutError::Disconnected) => break,
                 Err(RecvTimeoutError::Timeout) => {}
             }
             if shared.services.is_cancelled() {
                 break;
+            }
+            let next_paused = explicit_pause || suspended;
+            if next_paused != paused {
+                vm.set_paused(next_paused).map_err(runtime)?;
+                paused = next_paused;
             }
             let now = Instant::now();
             if !paused
