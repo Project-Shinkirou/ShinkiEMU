@@ -556,7 +556,9 @@ fn local_official_import_still_uses_its_catalog_hash() {
     let mut zip = files;
     zip.push((CORE_MANIFEST.into(), &encoded));
     write_zip(&archive, &zip);
-    let import = |entry| stage_local_release(&archive, std::iter::once(LocalRelease::official(entry)), &pending);
+    let import = |entry: &shinki_emu_metadata::CoreCatalogEntry| {
+        stage_local_release(&archive, std::iter::once(LocalRelease::official(entry)), &pending)
+    };
     entry.size = fs::metadata(&archive).unwrap().len();
     assert_eq!(import(&entry).unwrap_err(), "SHINKI_EMU_CORE_NOT_AVAILABLE");
     entry.sha256 = sha256_hex(&fs::read(&archive).unwrap());
