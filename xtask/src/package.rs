@@ -1088,9 +1088,6 @@ fn android_inputs(
         entries.push((source, format!("jniLibs/{abi}/{name}")));
     }
     entries.extend(android_asset_entries(inv, result, shared_scratch)?);
-    if shared_scratch.is_some() {
-        entries.extend(android_host::inputs(inv, result)?);
-    }
     Ok(())
 }
 
@@ -1539,6 +1536,8 @@ fn package_android(
                 android_inputs(inv, &built, abi, None, &mut entries)?;
             }
         }
+        // The Java host sources are shared by both Android ABIs.
+        entries.extend(android_host::inputs(inv, targets, scratch.path())?);
         let musica = if bundle_musica {
             let core = build::package_artifact(inv, target, ANDROID_QA_MUSICA_ID, version)?;
             reject_overlap(&core.library, out)?;

@@ -95,10 +95,10 @@ android {
         jniLibs.directories.add(generatedRoot.dir("jniLibs").asFile.absolutePath)
         assets.directories.add(generatedRoot.dir("assets").asFile.absolutePath)
         res.directories.add(generatedRoot.dir("res").asFile.absolutePath)
-        for (id in listOf("kirikiroid2-web", "krkr2")) {
-            val sources = androidHostRoot.dir("$id/java")
-            java.srcDir(sources)
-            aidl.srcDir(sources)
+        for (adapter in androidHostRoot.asFile.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
+            val sources = adapter.resolve("java")
+            java.directories.add(sources.absolutePath)
+            aidl.directories.add(sources.absolutePath)
         }
     }
 
@@ -115,7 +115,6 @@ android {
     packaging {
         jniLibs {
             // NativeActivity and dladdr need ordinary extracted filesystem paths.
-            // RFVP is statically linked into the Manager library.
             useLegacyPackaging = true
             if (qaBundleMusica) {
                 // The companion manifest authenticates the staged native library bytes.
@@ -178,39 +177,39 @@ val rustlsPlatformVerifierVersion = providers.of(RustlsVersion::class.java) {
     parameters.lockFile.set(rootProject.layout.projectDirectory.file("../../Cargo.lock"))
 }
 
-abstract class KiriExpansionJar : ValueSource<List<File>, KiriExpansionJar.Params> {
+abstract class AndroidHostJars : ValueSource<List<File>, AndroidHostJars.Params> {
     interface Params : ValueSourceParameters {
         val hostRoot: DirectoryProperty
     }
 
     override fun obtain(): List<File> {
-        val root = parameters.hostRoot.get()
-        val jars = paths.map { root.file(it).asFile }.filter { it.isFile }
-        if (jars.size == 2 && Files.mismatch(jars[0].toPath(), jars[1].toPath()) != -1L) {
-            throw GradleException("Kiri expansion JARs differ: ${jars[0]} and ${jars[1]}")
+        val jars = parameters.hostRoot.get().asFile.listFiles().orEmpty()
+            .filter { it.isDirectory }
+            .sortedBy { it.name }
+            .flatMap { adapter ->
+                adapter.resolve("libs").listFiles().orEmpty()
+                    .filter { it.isFile && it.extension == "jar" }
+                    .sortedBy { it.name }
+            }
+        return jars.groupBy { it.name }.values.map { copies ->
+            val first = copies.first()
+            for (copy in copies.drop(1)) {
+                if (Files.mismatch(first.toPath(), copy.toPath()) != -1L) {
+                    throw GradleException("Android host JARs with the same name differ: $first and $copy")
+                }
+            }
+            first
         }
-        return jars.take(1)
-    }
-
-    companion object {
-        val paths = listOf(
-            "kirikiroid2-web/libs/com.android.vending.expansion.zipfile.jar",
-            "krkr2/libs/com.android.vending.expansion.zipfile.jar",
-        )
     }
 }
 
-val kiriExpansionJar = providers.of(KiriExpansionJar::class.java) {
+val androidHostJars = providers.of(AndroidHostJars::class.java) {
     parameters.hostRoot.set(androidHostRoot)
 }
 
 dependencies {
-    implementation(fileTree(androidHostRoot) {
-        include("*/libs/*.jar")
-        exclude(KiriExpansionJar.paths)
-    })
-    // The adapters each ship this JAR; D8 must see its classes once.
-    implementation(files(kiriExpansionJar))
+    // Shared JARs must contribute their classes to D8 only once.
+    implementation(files(androidHostJars))
     // The Kotlin verifier component must match Cargo's resolved Android shim.
     // Minify stays off; enabling it also requires keeping its JNI-referenced classes.
     implementation(rustlsPlatformVerifierVersion.map {

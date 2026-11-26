@@ -59,6 +59,8 @@ Android’s standalone build rows and install admission are separate. An Android
 
 Impacto is packaged as an Android core ZIP for each ABI with its `Resources/` tree, native libraries and notices; no Impacto files or query are linked into the universal Manager APK. The APK still carries the Java/AIDL, JAR and JNI host inputs for KiriKiri under `android-host/<core>`. Manager loads admitted implementations only when explicitly activated and passes the process-local Android context only to cores whose policy requires it.
 
+The two KiriKiri host-side Cargo libraries generate these Java, AIDL and JAR inputs once per APK, independently of the Android ABI. `package --manager` does not invoke either KiriKiri native build; `package --core` builds the selected native core separately.
+
 When admitting a new package, test the exact archive on each ABI: install through Manager, restart, verify lazy activation, launch to a real frame with native audio, pause/resume, and verify existing saves. Do not use a translated ARM64 package or historical API-26 results for x86_64 acceptance. Ren’Py standalone packaging retains its CPython/SDL/FFmpeg runtime and resources; its source/relinking [publication block](../docs/licenses/renpy/README.md) still applies.
 
 ### Other native inputs
