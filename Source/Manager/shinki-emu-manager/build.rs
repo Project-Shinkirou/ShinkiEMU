@@ -233,8 +233,6 @@ fn write_embedded_core_identities() {
         && env::var_os("CARGO_FEATURE_IOS_FRAMEWORK_CORES").is_some();
     let mut frameworks = Vec::new();
     let mut registry = String::from("&[\n");
-    let ohos_bundled = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos")
-        && env::var_os("CARGO_FEATURE_OHOS_BUNDLED_MUSICA").is_some();
     let optional_cmvs = env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android")
         && env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
     let optional_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
@@ -252,8 +250,7 @@ fn write_embedded_core_identities() {
         let linked = (embedded
             || (optional_cmvs && id == "shinki.emu.cmvs")
             || adv32_candidate::linked(core, &target, optional_adv32))
-            && !framework
-            && !(ohos_bundled && id == "shinki.emu.musica");
+            && !framework;
         if linked {
             use std::fmt::Write;
             let adapter = core_adapters::adapter_id(id).replace('-', "_");

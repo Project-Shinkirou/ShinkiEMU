@@ -405,7 +405,6 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
 fn require_public_manager_variant(target: &str, features: &[String]) -> Result<()> {
     if features.iter().any(|feature| feature == ADV32_CANDIDATE_FEATURE)
         || crate::apple::ios_frameworks::enabled(target, features)
-        || crate::ohos::manager_mode(target, features)?
     {
         bail!("private QA Manager variants cannot be prepared for release");
     }
@@ -486,6 +485,7 @@ pub fn prepare(
             ""
         };
         let archive = work.join(&filename);
+        let mut ohos = None;
         if component == "manager" && (target.contains("android") || target.ends_with("ohos")) {
             let (metadata, key) = if target.ends_with("ohos") {
                 ("ohos.json", "hap")
@@ -495,16 +495,29 @@ pub fn prepare(
             let package: Value = serde_json::from_slice(&fs::read(package_dir.join(metadata))?)?;
             let name = package[key].as_str().context("mobile package filename")?;
             fs::copy(package_dir.join(name), &archive)?;
+            if key == "hap" {
+                ohos = Some(package);
+            }
         } else {
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
         }
         fs::remove_dir_all(&staged)?;
-        let record = json!({
+        let sha256 = package::sha256(&archive)?;
+        let mut record = json!({
             "component": component, "version": version, "target": target, "platform": platform,
             "source_commit": id.commit,
             "release_scope": scope.name(), "publish_blocked": publish_blocked,
-            "archive": {"name": filename, "sha256": package::sha256(&archive)?, "size": fs::metadata(&archive)?.len()},
+            "archive": {"name": filename, "sha256": sha256, "size": fs::metadata(&archive)?.len()},
         });
+        if let Some(mut ohos) = ohos {
+            if ohos["source_commit"] != id.commit || ohos["version"] != version
+                || ohos["target"] != target || ohos["sha256"] != sha256
+                || !ohos["bundled_core"].is_object()
+            {
+                bail!("signed HAP and OHOS package receipt disagree");
+            }
+            record["bundled_core"] = ohos["bundled_core"].take();
+        }
         fs::write(
             work.join("release.json"),
             serde_json::to_vec_pretty(&record)?,

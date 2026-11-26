@@ -39,7 +39,7 @@ and `sdkVersion` from older badging output; both must indicate API 28.
 
 macOS packaging produces a `.app`; iOS produces a simulator test `.app` or device test `.ipa`. Default Apple signing is ad hoc; device installation requires valid provisioning.
 
-`SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The private `ios-framework-cores` iOS and `ohos-bundled-musica` HAP variants are for local QA, not release assets.
+`SHINKI_EMU_MANAGER_FEATURES` adds comma-separated Cargo features during packaging. The `ios-framework-cores` iOS variant is for local QA. The default OHOS ARM64 HAP includes a separate Musica library and uses the OpenHarmony SDK test PKI; the x86_64 HAP stays local QA only.
 
 Pass an explicit product `--version` (SemVer) to package or release the Manager and in-tree cores. Omit it for external cores.
 

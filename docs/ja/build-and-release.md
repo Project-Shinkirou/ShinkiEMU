@@ -94,21 +94,21 @@ DevEco Studio と付属の OpenHarmony Native SDK 5.0.5（API 17）を使いま�
 
 #### 同梱 Musica の実機テスト
 
-既定の OHOS Manager は Musica を静的に組み込みます。非公開テスト用の `ohos-bundled-musica` を有効にすると、署名済み HAP に独立した `libshinki_emu_core_musica.so` を同梱し、利用開始時にロードします。Manager は OS がインストールした自身のライブラリと同じディレクトリ、または同じ HAP 内の固定パスを使います。展開したリソースや書き込み可能なアプリデータからはコードを読み込みません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)は呼び出し元の名前空間で動作し、HAP から直接読む項目には非圧縮とページ境界への整列が必要です。インストール済みの絶対パスを渡すため、ファイル名だけで環境変数や継承したパスを検索しません。
+署名済み HAP は Musica を `libs/<abi>/libshinki_emu_core_musica.so` に同梱します。Manager は有効化時に、OS がインストールした自身のライブラリと同じディレクトリ、または同じ HAP 内の固定パスから ABI v3 でロードします。展開済みのリソースや書き込み可能なアプリデータからはコードを読み込みません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)が HAP から直接読む項目は、非圧縮でページ境界に整列している必要があります。絶対パスを使い、ファイル名だけでの検索を避けます。
+
+パッケージング時に署名、ELF のアーキテクチャとコアのエントリーポイント、HAP 内のライブラリ、リソース、ライセンスのハッシュを検証します。`ohos.json` には署名済み HAP のハッシュと Musica のパス、ハッシュ、ABI、バージョン、ソースコミットを記録します。
 
 API 12 以降の専用 ARM64 端末を用意し、Vulkan、音声出力、開発者デバッグ、SDK テスト PKI への既存の信頼設定を確認します。テスト署名が拒否されたらそこで止め、端末の信頼設定は変更しません。SDK の `hdc` を `PATH` に追加し、PowerShell で HAP を作ります。
 
 ```powershell
 $version = '0.1.0-qa.1'
-$env:SHINKI_EMU_MANAGER_FEATURES = 'ohos-bundled-musica'
 cargo xtask package --target aarch64-unknown-linux-ohos --manager --version $version --out .work/ohos-musica-qa
-Remove-Item Env:SHINKI_EMU_MANAGER_FEATURES
 ```
 
 パッケージングが成功したらテスト端末を接続し、`hdc list targets` に表示される対象端末のキーを `$device` に設定します。
 
 ```powershell
-$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-bundled-musica-debug-test-signed.hap"
+$hap = ".work/ohos-musica-qa/ShinkiEMU-${version}-ohos-arm64-v8a-debug-test-signed.hap"
 hdc -t $device install $hap
 ```
 
@@ -121,6 +121,17 @@ hdc -t $device shell aa start -D -a EntryAbility -b org.shinkirou.shinkiemu
 1. 起動時に DevEco のネイティブデバッガーを接続します。実行を再開する前と、コア一覧を開いて正規に入手した Musica ゲームをスキャンした後に、LLDB の `image list -f` を実行します。どちらにも `libshinki_emu_core_musica.so` が表示されず、`filesDir/ShinkiEMU/diagnostics` の今回のログに `shinki.emu.ohos.core_open` がないことを確認します。
 2. 必要ならコア設定を開かずに Musica を選びます。元の PAZ/SC と有効な非公開 `key.toml` を使って再生します。`shinki.emu.ohos.core_open` が一度出た後、インストール先から `shinki.emu.musica` を ABI 3 で開いた `shinki.emu.ohos.core_abi_ready` が出ることを確認します。この時点で `image list -f` にライブラリが表示されます。
 3. 起動画面を進め、ゲーム画面が表示されて音楽や音声が聞こえることを確認し、`shinki.emu.ohos.audio_started` と照合します。同じ Manager プロセスでゲームを閉じて再度開き、ライブラリを再ロードせず再生が始まることを確認します。端末、OS ビルド、結果を記録し、鍵とゲームデータは共有しません。
+
+#### x86_64 シミュレーターでのローカル QA
+
+x86_64 の sysroot と `libc++_shared.so` を含む DevEco の OpenHarmony Native SDK API 26 を使います。`OHOS_SDK_NATIVE` とテスト署名用ディレクトリを上記のとおり設定し、`cargo-about` を用意します。
+
+```powershell
+rustup target add --toolchain 1.99.1 x86_64-unknown-linux-ohos
+cargo xtask package --target x86_64-unknown-linux-ohos --manager --version 0.1.0-qa.1 --out .work/ohos-x64-qa
+```
+
+HAP の名前には `ohos-x86_64-local-qa` が付きます。このターゲットの HAP と `ohos.json` はローカル QA 用です。ホスト CI、リリース、公開コアカタログの対象にはなりません。
 
 ## ビルド、チェック、テスト
 

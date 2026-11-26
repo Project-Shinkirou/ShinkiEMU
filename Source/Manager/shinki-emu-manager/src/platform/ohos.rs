@@ -535,7 +535,6 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
     Some(FILES.get()?.join("bundled"))
 }
 
-#[cfg(feature = "ohos-bundled-musica")]
 pub mod bundled {
     use super::{CStr, CString, Path, PathBuf, c_void};
     use shinki_emu_manager_core::LoadedFamilyPlugin;
