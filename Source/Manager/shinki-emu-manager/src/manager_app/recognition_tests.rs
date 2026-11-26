@@ -143,7 +143,13 @@ fn installed_declaration_recognizes_data_only_and_updates_after_package_lifecycl
     app.set_host_wake(std::sync::Arc::new(|| {}));
     settle(&mut app);
     assert!(!app.candidates.contains_key(&id), "the persisted filesystem hint must miss too");
-    assert!(app.probe_choices[&id].is_empty());
+    let stored = app.library
+        .app_state::<Vec<shinki_emu_manager_core::detection::EngineDetection>>(&format!("recognition:{id}"))
+        .unwrap().unwrap();
+    assert!(stored.is_empty(), "the updated declaration did not recognize this game");
+    assert!(app.manual_games.contains(&id), "unrecognized games fall back to manual core selection");
+    assert!(app.probe_choices[&id].iter().any(|choice| choice.plugin_id == "rfvp"),
+        "the installed core is still an eligible manual choice");
     stage_official_rule(&mut app, "rfvp", "shinki_emu_fixture", "0.4.0",
         json!([{"path":"data/engine.id", "offset":2, "magic":"5859"}]));
     drop(app);
@@ -152,6 +158,7 @@ fn installed_declaration_recognizes_data_only_and_updates_after_package_lifecycl
     app.set_host_wake(std::sync::Arc::new(|| {}));
     settle(&mut app);
     assert_eq!(app.candidates[&id].plugin_id, "rfvp", "the unchanged game must see the newly installed rule");
+    assert!(!app.manual_games.contains(&id));
     assert!(app.registry.descriptors().next().is_none());
     let model = app.model().unwrap();
     let card = model.cores.items.iter().find(|card| card.id == "rfvp").unwrap();
