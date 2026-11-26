@@ -181,7 +181,7 @@ shinki-emu-art3m1s-core = { git = "https://github.com/Project-Shinkirou/art3m1s-
 shinki-emu-sena-rs = { git = "https://github.com/Project-Shinkirou/sena-rs", rev = "22ac45acc6a436516333a85a4ac3b8470e1cc574", default-features = false }
 shinki-emu-kirikiroid2-web = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "1207c1f0b468dc9259b6a42593f0c53fce458fc3", default-features = false }
 shinki-kirikiroid2-web-android-host = { git = "https://github.com/Project-Shinkirou/kirikiroid2-web", rev = "1207c1f0b468dc9259b6a42593f0c53fce458fc3" }
-shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "d73702332964a24e2f557b17d405ce1568c90a6a", default-features = false }
+shinki-emu-ethornell-rs = { git = "https://github.com/Project-Shinkirou/ethornell-rs", rev = "ee0898860ada086abaca1cac82a05430bb601ab7", default-features = false }
 shinki-emu-ReMinori = { git = "https://github.com/Project-Shinkirou/ReMinori", rev = "0eec31a7d1412ea9061ee1cff2d64ab6133bda00", default-features = false }
 shinki-emu-impacto = { git = "https://github.com/Project-Shinkirou/impacto", rev = "9d79ed18d0ff37b9d790681f4ecc2aacc223a3c3", default-features = false }
 shinki-emu-renpy = { git = "https://github.com/Project-Shinkirou/renpy", rev = "0072512dc0181fa737784f309fbf228b605617dd", default-features = false }
