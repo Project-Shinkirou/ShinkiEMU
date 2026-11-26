@@ -1,7 +1,9 @@
 use super::*;
 mod layout;
-pub(crate) use layout::{GalleryAccess, GalleryAction, GalleryCursor, GalleryDirection, GalleryLayout, GalleryScreen};
-pub(crate) use layout::GalleryLayer;
+pub(crate) use layout::{
+    GalleryAccess, GalleryAction, GalleryBlend, GalleryCursor, GalleryDirection, GalleryImage,
+    GalleryLayer, GalleryLayout, GalleryScreen,
+};
 
 pub(crate) fn is_gallery(page: &MusicaSystemPage) -> bool {
     matches!(

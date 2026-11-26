@@ -79,7 +79,10 @@ Use `open` with a `screen` ID for a child menu, `previous_page` and `next_page` 
 
 List CG variants in their original order in `view.images`. Set `viewed_only: true` to browse only variants already in the native `cgv.dat` history. A button may also set `requires_viewed` to unlock after **any** listed background URI has been seen. These options are opt-in. Locked buttons stay in place, use `locked_thumbnail` if supplied, and accept no input. Viewing a CG does not mark it seen. A `script` action can set `label` separately from the SC URI; a missing label fails without running the default entry. On completion, an authored replay returns to the same sheet. SC's `NOADDCGV` flag suppresses new viewed-CG records while a replay runs.
 
+A CG variant may be a plain resource URI or `{"base":"musica:/bg/base.png","layers":[{"resource":"musica:/st/overlay.png","at":[0,0],"blend":"screen"}]}`. Composite bases overwrite their destination without applying source alpha; foreground layers draw in list order at their logical coordinates. The supported foreground blends are `alpha`, `screen`, and `add`. The loader validates every resource and rejects unknown blend names. Viewed-only composites check the base URI. Older cores accept plain URI lists but reject composite objects.
+
 A gallery layer may use a logical `clip: [x,y,width,height]` to draw just its portion of an original plate, such as a decorated thumbnail slot.
+An optional button `preview` uses the same layer format and appears at its own logical `at` position only while that button has focus. This is distinct from the permanent `thumbnail` and the button-clipped `hover` art.
 
 Use the original archive URI for art replaced by a resource patch; the normal texture override still applies. The original arrays and SC indexes are available for the list UI when no authored layout is supplied. Neither mode affects PAZ/SC recognition or script-owned direct entry.
 

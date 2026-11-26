@@ -307,6 +307,7 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
         ]},
         {"id":"flash-two", "layers":[{"resource":"musica:/bg/sheet.png"}], "buttons":[
             {"rect":[190,80,70,40], "thumbnail":"musica:/bg/unlocked.png", "locked_thumbnail":"musica:/bg/locked.png",
+             "preview":{"resource":"musica:/bg/unlocked.png","at":[400,200]},
              "requires_viewed":["musica:/bg/Unseen.png","musica:/bg/Shown-A.png"],
              "action":{"kind":"script","resource":"musica:/scr/flash.sc","label":"Again"}},
             {"rect":[270,80,70,40],
@@ -316,6 +317,12 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     let mut request = title::title_request(root.path());
     let mut frontend = title::menu_data(false);
     frontend["gallery_layout"] = json!("layout.json");
+    let mounted = crate::mount_musica(root.path(), std::path::Path::new("key.toml")).unwrap();
+    let config = frontend.to_string();
+    let error = crate::validate_musica_title_frontend(root.path(), &mounted, &config, encoding, 1280, 720)
+        .unwrap_err();
+    assert_eq!(error.code.as_str(), "SHINKI_EMU_MUSICA_RUNTIME_LABEL");
+    drop(mounted);
     request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
         ConfigValue::String(frontend.to_string());
     let mut provider = fixture::provider();
@@ -356,6 +363,11 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     session.advance(0, &tap(100.0, 35.0)).unwrap();
     session.advance(0, &[key(KeyCode::PageDown)]).unwrap();
     assert_eq!(pixel(&session, 195, 85), unlocked);
+    assert_eq!(pixel(&session, 405, 205), sheet);
+    session.advance(0, &[RuntimeEvent::PointerMove { x: 195.0, y: 85.0 }]).unwrap();
+    assert_eq!(pixel(&session, 405, 205), unlocked);
+    session.advance(0, &[RuntimeEvent::PointerMove { x: 200.0, y: 125.0 }]).unwrap();
+    assert_eq!(pixel(&session, 405, 205), sheet);
     session.advance(0, &tap(195.0, 85.0)).unwrap();
     for _ in 0..4 {
         session.advance(16_666_667, &[]).unwrap();
@@ -374,4 +386,106 @@ fn authored_gallery_cg_groups_keep_slots_and_labelled_replay_returns_to_sheet() 
     let saved = crate::native_directory::NativeFiles::open(root.path(), encoding).unwrap();
     assert!(saved.has_viewed_cg("musica:/bg/Shown-A.png"));
     assert!(!saved.has_viewed_cg("musica:/bg/Unseen.png"));
+}
+
+#[test]
+fn authored_gallery_cg_composite_draws_ordered_native_blends() {
+    use serde_json::json;
+
+    let _lock = PROVIDER_SESSION.lock();
+    let root = tempfile::tempdir().unwrap();
+    title::game(root.path());
+    let base = [80, 96, 112, 63];
+    let plain = [12, 24, 36, 255];
+    let foreground = [100, 120, 140, 128];
+    fixture::assets(root.path(), "bg", &[
+        ("base.png", &title::png(1280, 720, base)),
+        ("plain.png", &title::png(1280, 720, plain)),
+    ]);
+    fixture::assets(root.path(), "st", &[
+        ("fg.png", &title::png(6, 6, foreground)),
+        ("clear.png", &title::png(6, 6, [255, 255, 255, 0])),
+    ]);
+    let composite = json!({"base":"musica:/bg/base.png", "layers":[
+        {"resource":"musica:/st/fg.png","at":[20,40],"blend":"alpha"},
+        {"resource":"musica:/st/fg.png","at":[24,40],"blend":"screen"},
+        {"resource":"musica:/st/fg.png","at":[28,40],"blend":"add"},
+        {"resource":"musica:/st/clear.png","at":[10,40],"blend":"add"}
+    ]});
+    let mut layout = json!({"screens":[{
+        "id":"cg", "layers":[{"resource":"musica:/bg/plain.png"}], "buttons":[{
+            "rect":[90,70,50,40],
+            "action":{"kind":"view","images":["musica:/bg/plain.png",composite],"viewed_only":true}
+        }]
+    }]});
+    let mut frontend = title::menu_data(false);
+    frontend["gallery_layout"] = json!("layout.json");
+    let frontend = frontend.to_string();
+    let profile = std::path::Path::new("key.toml");
+    let encoding = crate::ScriptEncoding::ShiftJis;
+    let archive = crate::mount_musica(root.path(), profile).unwrap();
+    let verify = |layout: &serde_json::Value| {
+        std::fs::write(root.path().join("layout.json"), layout.to_string()).unwrap();
+        crate::validate_musica_title_frontend(root.path(), &archive, &frontend, encoding, 1280, 720)
+    };
+    let image = |layout: &mut serde_json::Value, value| {
+        layout["screens"][0]["buttons"][0]["action"]["images"][1] = value;
+    };
+    let mut bad = composite.clone();
+    bad["layers"][0]["blend"] = json!("multiply");
+    image(&mut layout, bad);
+    assert_eq!(verify(&layout).unwrap_err().code.as_str(), "SHINKI_EMU_MUSICA_GALLERY_LAYOUT");
+    let mut bad = composite.clone();
+    bad["layers"][0]["resource"] = json!("musica:/st/missing.png");
+    image(&mut layout, bad);
+    assert_eq!(verify(&layout).unwrap_err().code.as_str(), "SHINKI_EMU_VFS_NOT_FOUND");
+    image(&mut layout, composite);
+    verify(&layout).unwrap();
+    drop(archive);
+
+    let mut saved = crate::native_directory::NativeFiles::open(root.path(), encoding).unwrap();
+    saved.record_cg("base.png").unwrap();
+    saved.record_cg("plain.png").unwrap();
+    drop(saved);
+    let mut request = title::title_request(root.path());
+    request.configuration.iter_mut().find(|entry| entry.id == "frontend").unwrap().value =
+        ConfigValue::String(frontend);
+    let mut provider = fixture::provider();
+    let (_, mut session) = provider.open_session(request).unwrap();
+    session.vm.replace_global_variables([("TOHKA_CLEAR".into(), 1)].into());
+    let tap = |x, y| [
+        RuntimeEvent::PointerMove { x, y },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Pressed },
+        RuntimeEvent::PointerButton { button: PointerButton::Primary, state: KeyState::Released },
+    ];
+    session.advance(0, &tap(1050.0, 183.0)).unwrap();
+    assert_eq!(session.vm.state().system_ui.page, Page::Memories);
+    session.advance(0, &tap(100.0, 80.0)).unwrap();
+    assert_eq!(session.scene.pixels()[..3], plain[..3]);
+    session.advance(0, &[key(KeyCode::ArrowRight)]).unwrap();
+
+    let alpha = f32::from(foreground[3]) / 255.0;
+    let samples = [
+        (0, 0, [80, 96, 112]),
+        (12, 43, [80, 96, 112]),
+        (20, 39, [80, 96, 112]),
+        (22, 43, [90, 108, 126]),
+        (25, 43, [123, 143, 162]),
+        (27, 43, [114, 134, 151]),
+        (29, 43, [164, 194, 222]),
+        (32, 43, [130, 156, 182]),
+    ];
+    for (x, y, expected) in samples {
+        let index = (y * 1280 + x) * 4;
+        let actual = &session.scene.pixels()[index..index + 3];
+        assert!(
+            actual.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 2),
+            "pixel ({x}, {y}): actual {actual:?}, expected {expected:?}, foreground alpha {alpha}"
+        );
+    }
+    session.advance(0, &[key(KeyCode::ArrowLeft)]).unwrap();
+    assert_eq!(session.scene.pixels()[..3], plain[..3]);
+    session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowRight)]).unwrap();
+    assert!(session.gallery_cursor.as_ref().unwrap().detail.is_none());
+    assert_eq!(session.scene.pixels()[..3], plain[..3]);
 }

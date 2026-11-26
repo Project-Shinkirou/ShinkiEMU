@@ -348,12 +348,35 @@ pub(crate) fn execute(
             let gallery_staging = staging_path.clone();
             let gallery_files = files.clone();
             ctx.set("musica_validate_title_frontend", scope.create_function(
-                move |lua, (profile, frontend, encoding, width, height): (String, String, Value, u32, u32)| {
+                move |lua, (profile, frontend, encoding, width, height, archives): (String, String, Value, u32, u32, Option<String>)| {
                     gallery_files.close_outputs().map_err(mlua::Error::external)?;
+                    let source = match archives.as_deref() {
+                        None => None,
+                        Some("source") => {
+                            let directory = transaction.overlay_source_dir().map_err(mlua::Error::external)?;
+                            Some(crate::transaction::final_dir_path(&directory).map_err(mlua::Error::external)?)
+                        }
+                        Some(_) => return Err(mlua::Error::external(PatchError::new(
+                            PatchErrorKind::InvalidRequest,
+                            "unknown Musica title validation archive root",
+                        ))),
+                    };
                     crate::musica::validate_title_frontend(
-                        &gallery_staging, &profile, &frontend, lua.from_value(encoding)?,
+                        &gallery_staging, source.as_deref().unwrap_or(&gallery_staging),
+                        &profile, &frontend, lua.from_value(encoding)?,
                         width, height, &gallery_files.cancelled,
                     ).map_err(mlua::Error::external)
+                },
+            )?)?;
+            let gallery_files = files.clone();
+            ctx.set("musica_gallery_source_resources", scope.create_function(
+                move |lua, (profile, probes): (String, Value)| {
+                    let directory = transaction.overlay_source_dir().map_err(mlua::Error::external)?;
+                    let source = crate::transaction::final_dir_path(&directory).map_err(mlua::Error::external)?;
+                    let matches = crate::musica::gallery_source_resources(
+                        &source, &profile, lua.from_value(probes)?, &gallery_files.cancelled,
+                    ).map_err(mlua::Error::external)?;
+                    lua.to_value(&matches)
                 },
             )?)?;
             ctx.set(
