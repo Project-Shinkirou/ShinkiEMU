@@ -4197,15 +4197,15 @@ impl Host {
         };
         let signature = self.slot_signature()?;
         let want_thumbnail = !self.thumbnail_condition(1)?;
-        let screen = if self.thumbnail_condition(0)? {
-            self.thumbnail_surface
-                .and_then(|image| self.graphics.surface(image).ok())
-        } else {
-            self.graphics.presented()
-        };
         let mut thumbnail = Vec::with_capacity(THUMBNAIL_WIDTH * THUMBNAIL_HEIGHT * 3);
         if want_thumbnail {
-            let Some(screen) = screen else {
+            let Some(target) = self.thumbnail_surface else {
+                return Ok(1);
+            };
+            let Some(screen) = self
+                .graphics
+                .save_thumbnail_source(target, self.thumbnail_condition(0)?)?
+            else {
                 return Ok(1);
             };
             for y in 0..THUMBNAIL_HEIGHT {

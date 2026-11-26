@@ -1039,6 +1039,7 @@ fn core_info(value: &CoreViewModel) -> CoreInfo {
     };
     CoreInfo {
         id: value.id.as_str().into(),
+        stem: value.stem.as_str().into(),
         name: value.name.as_str().into(),
         engine: value.engine.as_str().into(),
         version: value.version.as_str().into(),

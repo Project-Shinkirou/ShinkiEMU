@@ -273,6 +273,11 @@ impl FamilyOwner {
         &self.installed
     }
 
+    #[cfg(test)]
+    pub(super) fn scan_installed_for_test(&mut self, directories: &[PathBuf]) {
+        self.installed = recognition::installed(directories).unwrap();
+    }
+
     pub(super) fn activate(&self, plugin_id: &str) -> Result<(), String> {
         self.ensure_idle()?;
         self.send(Command::Activate(plugin_id.into()))

@@ -15,6 +15,7 @@ use std::{
 };
 use thiserror::Error;
 
+mod adv32;
 mod declared;
 pub use declared::{DeclaredMatch, DeclaredRules};
 mod formats;
@@ -32,7 +33,7 @@ mod musica_tests;
 
 // Change when the recognition/traversal rules change, independently of core pins.
 // Future cache consumers must also invalidate on directory-content changes.
-pub const CACHE_VERSION: u32 = 3;
+pub const CACHE_VERSION: u32 = 4;
 const MAX_ENTRIES: u32 = 4096;
 const MAX_FILES: u32 = 1024;
 const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
@@ -204,9 +205,15 @@ impl<T: DetectionTree> Scan<'_, T> {
         self.checkpoint()?;
         let mut children = Vec::new();
         let mut files = Vec::new();
+        let mut advdata = None;
+        let mut ambiguous_advdata = false;
         self.entries(&root.join(relative), |name, kind| {
             if kind == EntryKind::File { files.push(relative.join(name)); }
             else if kind == EntryKind::Directory {
+                if root_directory && name.eq_ignore_ascii_case("AdvData") {
+                    ambiguous_advdata |= advdata.replace(name).is_some();
+                    return Ok(());
+                }
                 let lower = name.to_string_lossy().to_ascii_lowercase();
                 if (root_directory && matches!(lower.as_str(), "data" | "startdata" | "game" | "usrdir"))
                     || (relative.as_os_str().to_string_lossy().eq_ignore_ascii_case("data") && lower == "pack") {
@@ -230,6 +237,9 @@ impl<T: DetectionTree> Scan<'_, T> {
             self.loose_krkr(root, &files)?;
             self.softpal_manifest(root)?;
             self.scan_append(root)?;
+            if let Some(data) = advdata.filter(|_| !ambiguous_advdata) {
+                self.adv32(&root.join(data))?;
+            }
         }
         for path in children { self.directory(root, &path, false)?; }
         Ok(())

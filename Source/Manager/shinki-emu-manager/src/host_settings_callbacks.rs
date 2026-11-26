@@ -305,7 +305,7 @@ fn install_cores<C: ManagerController>(
     let w = wiring.clone();
     cores.on_dismiss_batch(move || w.run(|c| c.dismiss_core_batch()));
     let w = wiring.clone();
-    cores.on_uninstall(move |core_id| w.run(|c| c.uninstall_core(core_id.as_str())));
+    cores.on_uninstall(move |stem| w.run(|c| c.uninstall_core(stem.as_str())));
     let w = wiring.clone();
     cores.on_diagnose(move |plugin_id| w.run(|c| c.diagnose_core(plugin_id.as_str())));
     let restart_app = restart.clone();

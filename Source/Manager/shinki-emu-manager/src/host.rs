@@ -352,8 +352,8 @@ pub trait ManagerController: 'static {
     fn cancel_core_batch(&mut self) -> Result<ManagerViewModel, String>;
     /// Hide the summary of a finished 全部更新 run.
     fn dismiss_core_batch(&mut self) -> Result<ManagerViewModel, String>;
-    /// `core_id` is a `Cores.items` id (plugin id, or directory stem for failed cores).
-    fn uninstall_core(&mut self, core_id: &str) -> Result<ManagerViewModel, String>;
+    /// Cancel or schedule removal of the exact directory from the core card.
+    fn uninstall_core(&mut self, stem: &str) -> Result<ManagerViewModel, String>;
     fn log_text(&self, core: &str) -> Result<(String, usize), String>;
     fn engine_action(&mut self, control: u32) -> Result<(), String>;
     /// Every configuration setter below persists immediately and fails with

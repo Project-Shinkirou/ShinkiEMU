@@ -60,9 +60,10 @@ The registered families from `build/cores.toml` use these checks:
 | `musica` | Valid keys.v2, decrypted PAZ0/1/2 index and SC structure; archive aliases, configured loose scripts, contiguous volumes | Correct keys and bounded complete resources are required; outside-root private profiles cannot be inferred from a directory-only request |
 | `softpal` | Sv20 header/entry point, directly or in a validated PAC index; initial archive.dat profile paths, including manifests inside data.pac/csv.pac | Profile zero only, matching native bootstrap; no later-profile substitution or executable/appid whitelist; outside-root paths and non-PAC wrappers remain unidentified |
 | `krkr` | XP3 index structure, or a literal Scripts.execStorage bootstrap whose actual target contains KiriKiri builtin calls outside comments/strings | Dynamic/computed loose TJS, ambiguous scripts, embedded-EXE XP3 and custom archives remain unidentified |
-| `ethornell` | BURIKO ARC20 index, or PackFile index containing `ipl._bp`; resource ranges | Does not decompress bootstrap scripts or establish VM compatibility |
+| `ethornell` | In the candidate root: BURIKO ARC20 index, or PackFile index containing `ipl._bp`; resource ranges | Does not decompress bootstrap scripts or establish VM compatibility |
 | `cmvs` | CPZ3/5/6/7 fixed headers and index ranges, or PS2A script segments | CPZ1/2 remain unknown; encrypted indexes/checksums/profile compatibility remain launch checks |
 | `lucifen` | Root `SCRIPT.LPK` (case-insensitive), LPK1 signature and in-file index range | The selected core validates the encrypted index, `gameinit.sob`, and startup resources at launch |
+| `adv32` | Root `AdvData/MES/start.mes` (case-insensitive), with a supported MES dialect marker and a valid entry-offset table | The selected core validates bytecode instructions and entrypoint boundaries at launch |
 | `mages` | MPK v2 complete bounded index and resource ranges | MPK alone identifies the family, not Impacto's selected runtime profile |
 | `renpy` | RPA2/3 header/index, RPC2 slots, or bounded legacy zlib-RPYC with a complete pickle opcode stream declaring a serialized renpy.ast object | Pickle is inspected as bytes, never imported/constructed/executed. Generic zlib/pickle, RPA1 and source-only layouts remain unidentified |
 

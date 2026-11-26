@@ -60,9 +60,10 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 | `musica` | keys.v2、解密 PAZ0/1/2 索引和 SC；支持归档别名、配置的散装脚本、连续分卷 | 需要正确密钥和预算内完整资源；目录输入无法推断保存在目录外的私有 profile |
 | `softpal` | 直接 Sv20 或 PAC 有界索引中的 Sv20/入口；解析 archive.dat 初始 profile 路径，包括 data.pac/csv.pac 内的清单 | 遵循 native bootstrap 的 profile 0，不替换后续 profile，不用 EXE/appid 白名单；越界路径和非 PAC 封装保持未知 |
 | `krkr` | XP3 索引，或 Scripts.execStorage 字面启动引用及实际目标中的 KiriKiri builtin 调用，排除注释/字符串 | 动态计算 loose TJS、歧义源码、EXE 内 XP3 和自定义归档保持未知 |
-| `ethornell` | BURIKO ARC20 索引，或含 `ipl._bp` 的 PackFile 索引，以及资源范围 | 不解压引导脚本，不保证 VM 兼容 |
+| `ethornell` | 候选目录直属文件中的 BURIKO ARC20 索引，或含 `ipl._bp` 的 PackFile 索引，以及资源范围 | 不解压引导脚本，不保证 VM 兼容 |
 | `cmvs` | CPZ3/5/6/7 固定头和索引范围，或 PS2A 段范围 | CPZ1/2 保持未知；加密索引、校验和、profile 兼容性留给启动检查 |
 | `lucifen` | 根目录的 `SCRIPT.LPK`（不区分大小写）、LPK1 文件头和索引范围 | 加密索引、`gameinit.sob` 和启动资源由选定核心在启动时校验 |
+| `adv32` | 根目录的 `AdvData/MES/start.mes`（不区分大小写）、受支持的 MES 版本标记和有效的入口偏移表 | 指令和入口是否落在指令边界上，由选定核心在启动时校验 |
 | `mages` | MPK v2 有界完整索引和资源范围 | MPK 证明家族，不代表 Impacto 选定运行 profile 可用 |
 | `renpy` | RPA2/3、RPC2，或旧 zlib-RPYC 中完整 pickle opcode 流声明的序列化 renpy.ast 对象 | 只检查字节，不导入、构造或执行 pickle；通用 zlib/pickle、RPA1、纯源码保持未知 |
 

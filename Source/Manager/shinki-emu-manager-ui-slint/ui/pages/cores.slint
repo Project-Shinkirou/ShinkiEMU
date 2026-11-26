@@ -141,7 +141,9 @@ component CoreRow {
 
         if root.core.engine != "" || root.core.source != "" : MaterialText {
             text: root.core.engine + (root.core.engine != "" && root.core.source != "" ? " · " : "")
-                + CoreText.source-label(root.core.source);
+                + CoreText.source-label(root.core.source)
+                + (root.core.source == "user" && root.core.stem != "" && root.core.stem != root.core.name
+                    ? " · " + root.core.stem : "");
             style: MaterialTypography.body-small;
             color: MaterialPalette.on-surface-variant;
             wrap: word-wrap;
@@ -259,7 +261,7 @@ component CoreRow {
                     accessible-expanded: root.editing;
                     clicked => { root.edit-defaults(); }
                 }
-                if root.core.state == "installed" || root.failed : TextButton {
+                if root.core.id != "" && (root.core.state == "installed" || root.failed) : TextButton {
                     text: @tr("诊断");
                     icon: Icons.error;
                     enabled: root.core.state != "loading";
@@ -267,12 +269,12 @@ component CoreRow {
                 }
                 if root.core.state == "loaded" || root.failed : TextButton {
                     text: @tr("查看日志");
-                    clicked => { Cores.view-logs(root.core.id); }
+                    clicked => { Cores.view-logs(root.core.stem != "" ? root.core.stem : root.core.id); }
                 }
-                if root.core.removable && (root.core.state == "loaded" || root.core.state == "installed" || root.failed) : TextButton {
-                    text: @tr("卸载");
+                if root.core.removable : TextButton {
+                    text: root.core.state == "pending-install" ? @tr("取消") : @tr("卸载");
                     icon: Icons.delete;
-                    clicked => { Cores.uninstall(root.core.id); }
+                    clicked => { Cores.uninstall(root.core.stem); }
                 }
             }
         }
