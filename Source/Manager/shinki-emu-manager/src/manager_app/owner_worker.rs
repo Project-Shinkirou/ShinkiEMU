@@ -372,7 +372,9 @@ fn activate(
                 if !core.bundled {
                     return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
                 }
-                Ok(crate::platform::ohos::bundled::load(plugin_id)?)
+                Ok::<_, shinki_emu_manager_core::FamilyLoadError>(
+                    crate::platform::ohos::bundled::load(plugin_id)?,
+                )
             }
         }
     }.map_err(|error| error.to_string())?;

@@ -325,14 +325,11 @@ fn execute_configured(
     let adapter_package_id = core
         .map(|core| package_id(&core.adapter_package()))
         .transpose()?;
-    let ohos_companion_packages = if component == "manager" {
+    // The Manager can use the companion's format readers for patching without
+    // embedding the dynamic entry package.
+    let ohos_companion_entry = if component == "manager" {
         crate::ohos::companion(inv, target)
-            .map(|(core, _)| -> Result<_> {
-                Ok([
-                    package_id(&core.entry_package())?,
-                    package_id(&core.adapter_package())?,
-                ])
-            })
+            .map(|(core, _)| package_id(&core.entry_package()))
             .transpose()?
     } else {
         None
@@ -368,8 +365,7 @@ fn execute_configured(
                 continue;
             }
         };
-        if ohos_companion_packages
-            .is_some_and(|ids| ids.iter().any(|id| value["package_id"] == *id))
+        if ohos_companion_entry.is_some_and(|id| value["package_id"] == id)
             && (value["reason"] == "compiler-artifact"
                 || value["reason"] == "build-script-executed")
         {
