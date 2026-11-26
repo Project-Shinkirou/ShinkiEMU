@@ -226,6 +226,23 @@ fn recognizes_cpz_versions_and_older_pfs_layouts_once_per_family() {
     }
     assert_eq!(detect(root.path()).unwrap().iter().map(|m| m.family_id.as_str()).collect::<Vec<_>>(), ["artemis", "cmvs"]);
 }
+
+#[test]
+fn bgi_archive_identifies_the_child_game_not_the_library_root() {
+    for (layout, modern) in [("game", false), ("DATA", true)] {
+        let library = tempfile::tempdir().unwrap();
+        let game = library.path().join(layout);
+        fs::create_dir(&game).unwrap();
+        fs::write(library.path().join("System.arc"), b"unrelated bytes").unwrap();
+        fs::write(game.join("System.arc"), bgi(modern, b"ipl._bp\0")).unwrap();
+
+        assert!(detect(library.path()).unwrap().is_empty(), "{layout}");
+        let matches = detect(&game).unwrap();
+        assert_eq!(matches.len(), 1, "{layout}");
+        assert_eq!(matches[0].family_id, "ethornell", "{layout}");
+    }
+}
+
 #[test]
 fn shared_extensions_names_and_profiles_never_establish_a_family() {
     let root = tempfile::tempdir().unwrap();
