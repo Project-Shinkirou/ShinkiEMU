@@ -68,9 +68,18 @@ impl CoreManifest {
         expected_plugin_id: Option<&str>,
         framework_executable: Option<&str>,
     ) -> Result<String, String> {
-        let is_library = |name: &str| {
-            framework_executable == Some(name) || is_family_library_path(Path::new(name))
-        };
+        self.validate_library_format(expected_plugin_id, framework_executable, |name| {
+            is_family_library_path(Path::new(name))
+        })
+    }
+
+    fn validate_library_format(
+        &self,
+        expected_plugin_id: Option<&str>,
+        framework_executable: Option<&str>,
+        is_family_library: impl Fn(&str) -> bool,
+    ) -> Result<String, String> {
+        let is_library = |name: &str| framework_executable == Some(name) || is_family_library(name);
         let invalid = || "SHINKI_EMU_CORE_PACKAGE_MANIFEST".to_owned();
         if self.schema != CORE_PACKAGE_SCHEMA
             || self.abi != INDEPENDENT_FAMILY_ABI_FINGERPRINT
@@ -235,11 +244,44 @@ fn partial_dir(pending: &Path) -> Result<tempfile::TempDir, String> {
         .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))
 }
 
+pub(crate) struct LocalRelease<'a> {
+    size: u64,
+    sha256: &'a str,
+    expected: ExpectedRelease<'a>,
+    #[cfg(any(target_os = "android", test))]
+    qa: Option<&'a crate::android_qa_receipt::Receipt>,
+}
+
+impl<'a> LocalRelease<'a> {
+    pub(crate) fn official(release: &'a shinki_emu_metadata::CoreCatalogEntry) -> Self {
+        Self {
+            size: release.size,
+            sha256: &release.sha256,
+            expected: (&release.plugin_id, &release.version, release.identity.as_ref()),
+            #[cfg(any(target_os = "android", test))]
+            qa: None,
+        }
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    pub(crate) fn android_qa(
+        receipt: &'a crate::android_qa_receipt::Receipt,
+        release: &'a crate::android_qa_receipt::Core,
+    ) -> Self {
+        Self {
+            size: release.size,
+            sha256: &release.sha256,
+            expected: (&release.plugin_id, &release.version, release.identity.as_ref()),
+            qa: Some(receipt),
+        }
+    }
+}
+
 /// Snapshot local input while hashing so the bytes staged are the bytes matched
-/// against the already verified release catalog, even if the source is edited.
+/// against the verified catalog or APK receipt, even if the source is edited.
 pub(crate) fn stage_local_release<'a>(
     archive: &Path,
-    entries: impl Iterator<Item = &'a shinki_emu_metadata::CoreCatalogEntry>,
+    entries: impl Iterator<Item = LocalRelease<'a>>,
     pending: &Path,
 ) -> Result<String, String> {
     use std::io::{Seek, SeekFrom};
@@ -269,9 +311,11 @@ pub(crate) fn stage_local_release<'a>(
     snapshot.seek(SeekFrom::Start(0)).map_err(&read_error)?;
     let (stem, _) = stage_open_package(
         snapshot,
-        Some((&release.plugin_id, &release.version, release.identity.as_ref())),
+        Some(release.expected),
         pending,
         REQUIRE_PRODUCT_COMMIT,
+        #[cfg(any(target_os = "android", test))]
+        release.qa,
     )?;
     Ok(stem)
 }
@@ -288,7 +332,14 @@ pub(crate) fn stage_package(
     pending: &Path,
 ) -> Result<(String, CoreManifest), String> {
     let file = fs::File::open(archive).map_err(io_error("SHINKI_EMU_CORE_PACKAGE_READ"))?;
-    stage_open_package(file, expected, pending, REQUIRE_PRODUCT_COMMIT)
+    stage_open_package(
+        file,
+        expected,
+        pending,
+        REQUIRE_PRODUCT_COMMIT,
+        #[cfg(any(target_os = "android", test))]
+        None,
+    )
 }
 
 fn stage_open_package(
@@ -296,7 +347,11 @@ fn stage_open_package(
     expected: Option<ExpectedRelease<'_>>,
     pending: &Path,
     require_product_commit: bool,
+    #[cfg(any(target_os = "android", test))]
+    qa: Option<&crate::android_qa_receipt::Receipt>,
 ) -> Result<(String, CoreManifest), String> {
+    #[cfg(any(target_os = "android", test))]
+    let require_product_commit = require_product_commit || qa.is_some();
     let mut zip = zip::ZipArchive::new(io::BufReader::new(file))
         .map_err(|_| "SHINKI_EMU_CORE_PACKAGE_FORMAT".to_owned())?;
     if zip.len() > MAX_PACKAGE_ENTRIES {
@@ -352,7 +407,19 @@ fn stage_open_package(
     }
     let manifest: CoreManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|_| "SHINKI_EMU_CORE_PACKAGE_MANIFEST".to_owned())?;
-    let stem = manifest.validate(expected.map(|(plugin, _, _)| plugin))?;
+    let expected_plugin = expected.map(|(plugin, _, _)| plugin);
+    #[cfg(all(not(target_os = "android"), test))]
+    let stem = if qa.is_some() {
+        manifest.validate_library_format(expected_plugin, None, |name| {
+            let name = name.to_ascii_lowercase();
+            name.ends_with(".so")
+                && (name.starts_with("libshinki_emu_") || name.starts_with("shinki_emu_"))
+        })?
+    } else {
+        manifest.validate(expected_plugin)?
+    };
+    #[cfg(any(target_os = "android", not(test)))]
+    let stem = manifest.validate(expected_plugin)?;
     if expected.is_some_and(|(_, version, identity)| manifest.version != version || manifest.identity.as_ref() != identity) {
         return Err("SHINKI_EMU_CORE_PACKAGE_MANIFEST".into());
     }
@@ -378,6 +445,10 @@ fn stage_open_package(
             fs::File::create(&destination).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
         if file.path == PRODUCT_SOURCE_COMMIT {
             let commit = read_product_commit(&mut source, file)?;
+            #[cfg(any(target_os = "android", test))]
+            if qa.is_some_and(|receipt| commit.as_slice() != receipt.source_commit.as_bytes()) {
+                return Err(INVALID_PRODUCT_COMMIT.into());
+            }
             output.write_all(&commit).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
             output.sync_all().map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
             continue;
@@ -404,6 +475,18 @@ fn stage_open_package(
                 "SHINKI_EMU_CORE_PACKAGE_HASH_MISMATCH: {}",
                 file.path
             ));
+        }
+    }
+    #[cfg(any(target_os = "android", test))]
+    if let Some(receipt) = qa {
+        use crate::android_qa_receipt::{android_shared_object_header, machine};
+        let mut header = [0; 64];
+        let library = partial.path().join(&manifest.library);
+        if !manifest.library.ends_with(".so")
+            || fs::File::open(library).and_then(|mut file| file.read_exact(&mut header)).is_err()
+            || !machine(&receipt.abi).is_some_and(|machine| android_shared_object_header(&header, machine))
+        {
+            return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
         }
     }
     fs::write(partial.path().join(CORE_MANIFEST), &manifest_bytes)

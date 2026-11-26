@@ -608,6 +608,10 @@ fn collect_records(
             bail!("{} was not prepared from product commit {}", path.display(), id.commit);
         }
         verify_asset(&directory, &record, "archive")?;
+        if component == "manager" && t.platform == "android" {
+            let name = asset_name(&record, "archive")?;
+            package::reject_android_qa_apk(&directory.join(name))?;
+        }
         if ios {
             let manifest: crate::apple::ios_frameworks::Manifest = serde_json::from_value(record["ios"].clone())
                 .context("iOS release requires the exact-head Framework manifest")?;
@@ -890,7 +894,11 @@ mod tests {
             let dir = id.root.join(&target.triple);
             fs::create_dir(&dir).unwrap();
             let archive = dir.join("asset");
-            fs::write(&archive, b"test release asset").unwrap();
+            if target.platform == "android" {
+                package::zip_entries(&[], &archive).unwrap();
+            } else {
+                fs::write(&archive, b"test release asset").unwrap();
+            }
             fs::write(
                 dir.join("release.json"),
                 serde_json::to_vec(&json!({

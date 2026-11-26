@@ -1,3 +1,6 @@
+#[cfg(any(target_os = "android", test))]
+#[path = "../../../../build/android_qa_receipt.rs"]
+mod android_qa_receipt;
 mod core_package;
 mod core_download;
 mod manager_app;

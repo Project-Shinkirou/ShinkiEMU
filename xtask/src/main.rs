@@ -68,10 +68,14 @@ fn run() -> Result<()> {
             version,
             out,
             qa_single_abi,
-            qa_bundle_musica,
+            qa_cores,
+            qa_prepare_cores,
+            qa_from,
         } => {
-            let path = if qa_single_abi {
-                package::package_android_qa(&inv, &target, &version, &out, qa_bundle_musica)?
+            let path = if qa_prepare_cores {
+                package::prepare_android_qa_cores(&inv, &target, &version, &out, &qa_cores)?
+            } else if qa_single_abi {
+                package::package_android_qa(&inv, &target, &version, &out, &qa_cores, &qa_from)?
             } else {
                 package::package(&inv, &target, selection.component(), &version, &out)?
             };

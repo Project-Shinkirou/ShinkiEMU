@@ -19,13 +19,17 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-qa
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --out .work/android-test
 cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-qa.1 --out .work/linux-manager
 
-# ARM64 テスト端末向けのローカル単一 ABI APK
+# ARM64 テスト端末向けのローカル単一 ABI APK と独立コア ZIP
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --out .work/android-arm64-test
 ```
 
-QA には例の `0.1.0-qa.1` のような専用の SemVer を使います。Gradle の初回同期後、オフラインにするには `SHINKI_EMU_GRADLE_OFFLINE=1` を設定します。パッケージャーが `--version` をビルドへ渡すため、事前ビルドの記録は不要です。
+QA には、対象の自社コアが要求する Android 最低バージョン以上の専用 SemVer（例：`0.1.0-qa.1`）を使います。Gradle の初回同期後は `SHINKI_EMU_GRADLE_OFFLINE=1` でオフラインのパッケージングができます。
 
-通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。単一 ABI のデバッグ APK が必要なら `--qa-single-abi` を付けます。APK には KiriKiri の Java ホストが含まれます。Impacto などの対応コアは Manager から個別にインストールします。単独コアに Gradle 署名は不要です。
+通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。APK には KiriKiri の Java ホストが含まれます。動的コアは独立した ZIP で配布し、Gradle 署名は不要です。
+
+`--qa-single-abi` には、変更のないチェックアウト、新しい出力先、リリース署名の設定がない環境が必要です。指定 ABI で配布可能な `android_dynamic` コアをすべて含めます。Ren’Py などの配布制限は出力に記録し、ZIP は作成しません。`--qa-core <id>` を繰り返すと対象を絞れます。`--qa-prepare-cores` で ZIP だけを作り、同じコミット・製品バージョン・ABI から `--qa-from <dir>`（複数指定可）で Manager APK を組み立てられます。
+
+テスト用の端末またはプロファイルに `*-qa-debug-signed.apk` をインストールし、Manager のコア画面で ZIP を取り込んで再起動します。APK 署名で保護される照合データには、ZIP のサイズと SHA-256、コア ID、バージョン、ソース情報を記録します。この情報はローカル取り込み専用です。公式カタログとダウンロードには影響しません。
 
 Impacto の切り替えでは、`Cargo.lock` の正確なコミットが組織の fork から取得できることを確認し、連番 4 を先に公開します。`cargo xtask release --component impacto --target <triple>` で Android の両 ABI の ZIP と対応ソースを用意し、公式カタログに両方が載ってから静的組み込みを廃止した Manager を公開します。既存の連番 3 の配布物は変更しません。
 
