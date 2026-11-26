@@ -12,11 +12,7 @@ struct Archive {
 }
 
 impl<T: DetectionTree> Scan<'_, T> {
-    pub(super) fn musica(
-        &mut self,
-        root: &Path,
-        files: &[PathBuf],
-    ) -> DetectionResult<()> {
+    pub(super) fn musica(&mut self, root: &Path, files: &[PathBuf]) -> DetectionResult<()> {
         let configuration = self.configuration(root)?;
         self.checkpoint()?;
         let configured = |name: &str| {
