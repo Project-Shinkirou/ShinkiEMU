@@ -169,6 +169,24 @@ fn convert_game_copy(id: &str) {
                     | shinki_emu_abi::CAP_NATIVE_NAME_RESOURCES
             );
         }
+        if id == "musica-perseus-cn" {
+            let configuration = &result.profile.configuration;
+            assert_eq!(configuration["launch_mode"], "title");
+            let frontend: serde_json::Value =
+                serde_json::from_str(&configuration["frontend"]).unwrap();
+            let titles = frontend["titles"].as_array().unwrap();
+            let archive = shinki_emu_musica::mount_musica(
+                &result.output,
+                Path::new(&configuration["profile_file"]),
+            )
+            .unwrap();
+            for title in titles {
+                for art in ["background", "hover"] {
+                    let stat = archive.stat(title[art].as_str().unwrap()).unwrap();
+                    assert_eq!(stat.kind, shinki_emu_musica::ArchiveNodeKind::File);
+                }
+            }
+        }
         assert!(!result.output.join("save").exists());
         assert!(!result.output.join("savedata").exists());
         println!(

@@ -481,6 +481,39 @@ fn recovered_loader_catalog_and_every_member_produce_independent_native_resource
     assert!(!output.join("public.exe").exists());
     assert!(!output.join("public.mys").exists());
     assert!(!output.join("localized/perseus/scripts/noTitle.sc").exists());
+
+    let config = &result.profile.configuration;
+    assert_eq!(config["launch_mode"], "title");
+    let frontend: serde_json::Value = serde_json::from_str(&config["frontend"]).unwrap();
+    let titles = frontend["titles"].as_array().unwrap();
+    let action_at = |flags: &[&str], x, y| {
+        let title = titles.iter().rev().find(|title| {
+            title["requires"].as_object().is_none_or(|requirements| {
+                requirements.iter().all(|(name, expected)| {
+                    let actual = i64::from(flags.contains(&name.as_str()));
+                    expected.as_i64() == Some(actual)
+                })
+            })
+        }).unwrap();
+        title["buttons"].as_array().unwrap().iter().find_map(|button| {
+            let rect = button["rect"].as_array().unwrap();
+            let [left, top, width, height] =
+                std::array::from_fn(|i| rect[i].as_i64().unwrap());
+            ((left..left + width).contains(&x) && (top..top + height).contains(&y))
+                .then(|| button["action"].as_str().unwrap())
+        })
+    };
+    let routes = ["AYAME_CLEAR", "REN_CLEAR", "SUI_CLEAR"];
+    assert_eq!(action_at(&[], 1056, 32), Some("new_game"));
+    assert_eq!(action_at(&routes, 1150, 90), None);
+    assert_eq!(
+        action_at(&[routes[0], routes[1], routes[2], "D06"], 1150, 90),
+        Some("load"),
+    );
+    assert_eq!(action_at(&routes, 1150, 191), None);
+    let cleared = [routes[0], routes[1], routes[2], "D06", "TOHKA_CLEAR"];
+    assert_eq!(action_at(&cleared, 1150, 191), Some("memories"));
+    assert_eq!(action_at(&cleared, 1150, 208), None);
 }
 
 #[test]

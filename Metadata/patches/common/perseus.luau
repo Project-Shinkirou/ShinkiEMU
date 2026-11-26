@@ -2,6 +2,29 @@
 local M = {}
 local LIMIT = 16 * 1024 * 1024
 
+-- Native title geometry and variant precedence of the pinned release.
+-- D06 enables Load on the intermediate title.
+local function title(stem, requires, load, memories)
+    local buttons = {{rect = {1056, 32, 224, 32}, action = "new_game"}}
+    if load then table.insert(buttons, {rect = {1056, 80, 224, 32}, action = "load"}) end
+    table.insert(buttons, {rect = {1056, 128, 224, 32}, action = "config"})
+    if memories then table.insert(buttons, {rect = {1056, 176, 224, 32}, action = "memories"}) end
+    table.insert(buttons, {rect = {1056, 224, 224, 32}, action = "exit"})
+    return {
+        background = "musica:/sys/" .. stem .. ".png",
+        hover = "musica:/sys/" .. stem .. "Over.png",
+        requires = requires,
+        buttons = buttons,
+    }
+end
+
+local frontend = {titles = {
+    title("topMenu0", nil, true, false),
+    title("topMenu1NoLoad", {AYAME_CLEAR = 1, SUI_CLEAR = 1, REN_CLEAR = 1}, false, false),
+    title("topMenu1", {AYAME_CLEAR = 1, SUI_CLEAR = 1, REN_CLEAR = 1, D06 = 1}, true, false),
+    title("topMenu2", {TOHKA_CLEAR = 1}, true, true),
+}}
+
 local function fail(ctx, code, message)
     ctx.fail(code, message)
     error(message)
@@ -248,6 +271,7 @@ function M.apply(ctx, edition)
     write(ctx, "localized/perseus/subtitles.json", buffer.fromstring(ctx.json.encode({version = 1, tracks = tracks})))
     return {plugin_id = "shinki.emu.musica", configuration = {
         profile_file = "key.toml", script_encoding = "gbk", launch_mode = "title",
+        frontend = ctx.json.encode(frontend),
         script_directory = "localized/perseus/scripts",
         subtitle_map = "localized/perseus/subtitles.json",
     }}
