@@ -81,7 +81,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: rustup target add $env:TARGET
-      - run: cargo install cargo-about --version 0.9.3 --locked
+      - run: cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
       - name: Build and package
         env:
           TARGET: ${{ matrix.target }}

@@ -22,7 +22,7 @@ ShinkiEMU がゲームディレクトリ内に書き込むファイルは `<game
 パッケージング、`ci` の実行、リリースの準備に先立ち、ホストにライセンス収集ツールを導入します。
 
 ```sh
-cargo install cargo-about --locked --version 0.9.3
+cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
 ```
 
 ### Windows x64

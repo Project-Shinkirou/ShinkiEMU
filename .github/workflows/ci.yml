@@ -173,7 +173,7 @@ jobs:
             | jq -er '.packages[] | select(.name == "shinki-emu-kirikiroid2-web").manifest_path')
           rustc --edition=2024 --test "$(dirname "$manifest")/android_link_plan.rs" -o "$RUNNER_TEMP/kiri-link-plan-tests"
           "$RUNNER_TEMP/kiri-link-plan-tests" --test-threads=1
-      - run: cargo install cargo-about --version 0.9.3 --locked
+      - run: cargo install cargo-about --version 0.9.3 --locked --features cli --bin cargo-about
       - name: Build and package
         env:
           TARGET: ${{ matrix.target }}
