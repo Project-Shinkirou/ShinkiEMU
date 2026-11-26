@@ -17,8 +17,12 @@ fn recall_overlay_validates_existing_archives_without_mutating_source() {
         ["bg", "scr", "sys"].map(native::key_role).concat(),
     );
     fs::write(source.join("key.toml"), &key).unwrap();
-    let sys = native::archive("sys", "gallery.png", b"public picture");
-    let bg = native::archive("bg", "plain.png", b"public picture");
+    let png = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x02\
+                \x00\x00\x00\x01\x08\x02\x00\x00\x00\x7b\x40\xe8\xdd\x00\x00\x00\x0f\x49\x44\x41\
+                \x54\x78\x9c\x63\xf8\xcf\xc0\xc0\xf0\x9f\x01\x00\x07\xff\x01\xff\x01\x7f\x89\xa7\
+                \x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
+    let sys = native::archive("sys", "gallery.png", png);
+    let bg = native::archive("bg", "gallery.png", png);
     let scripts = native::archive_entries(
         "scr",
         &[
@@ -30,10 +34,17 @@ fn recall_overlay_validates_existing_archives_without_mutating_source() {
         fs::write(source.join(name), data).unwrap();
     }
     let recipe = root.path().join("recall.luau");
-    let run = |label: &str, mode| {
+    let run = |label: &str, member: &str, mode| {
         fs::write(&recipe, format!(r#"
             return {{id='recall-test', title='Recall fixture', version=1, apply=function(ctx)
                 local image='musica:/sys/gallery.png'
+                local found=ctx.musica_gallery_source_resources('key.toml', {{
+                    {{candidates={{'musica:/bg/{member}', 'musica:/sys/gallery.png'}}, png_size=true}},
+                    {{candidates={{'musica:/bg/missing.png', 'musica:/sys/{member}'}}}}
+                }})
+                assert(found[1].resource == 'musica:/bg/gallery.png')
+                assert(found[1].size[1] == 2 and found[1].size[2] == 1)
+                assert(found[2].resource == image)
                 local output=ctx.create('recall-layout.json')
                 output:write(0, buffer.fromstring(ctx.json.encode({{screens={{{{
                     id='recall', layers={{{{resource=image}}}}, buttons={{{{
@@ -56,17 +67,21 @@ fn recall_overlay_validates_existing_archives_without_mutating_source() {
     };
 
     let output = root.path().join("recall-overlay");
-    let rejected = run("Again", PatchMode::InPlace).err().unwrap();
+    let rejected = run("Again", "gallery.png", PatchMode::InPlace).err().unwrap();
     assert_eq!(rejected.kind(), PatchErrorKind::InvalidRequest);
     assert!(!source.join(".shinki").exists());
     assert!(!source.join("recall-layout.json").exists());
 
     let new_directory = || PatchMode::NewDirectory { output: output.clone() };
-    let rejected = run("Missing", new_directory()).err().unwrap();
+    let rejected = run("Missing", "gallery.png", new_directory()).err().unwrap();
     assert_eq!(rejected.kind(), PatchErrorKind::Integrity);
     assert!(!output.exists());
 
-    let installed = run("Again", new_directory()).unwrap();
+    let rejected = run("Again", "missing.png", new_directory()).err().unwrap();
+    assert_eq!(rejected.kind(), PatchErrorKind::Integrity);
+    assert!(!output.exists());
+
+    let installed = run("Again", "gallery.png", new_directory()).unwrap();
     assert_eq!(installed.profile.configuration["launch_mode"], "title");
     assert!(output.join("recall-layout.json").is_file());
     assert!(output.join("shinki-patch-result.json").is_file());

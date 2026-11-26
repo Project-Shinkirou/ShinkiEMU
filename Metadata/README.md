@@ -21,17 +21,19 @@ Patches modify resources, not executable code. An output EXE must be a byte-iden
 
 Yorino recipe version 3 launches the original `test.sc` entry directly. This edition has no Manager frontend definition, so its earlier `title` receipt cannot build a title menu. Reapply the current recipe to the original and authorized patch in a new directory instead of editing a prior receipt.
 
-The [optional local Yorino Recall recipe](../Tools/Research/musica-yorino-recall.luau) prepares an overlay for a **separate copy** of the supported original Japanese install and its private `key.toml`. It installs a title shortcut: the Memories button on a fixed original title plate opens Recall directly. It does not reproduce the native time/route-dependent title or the complete Memories hub. It leaves the catalogued translation's direct entry unchanged. Use a Manager/core build that supports authored Recall previews. From the repository root:
+The optional local Yorino [Recall](../Tools/Research/musica-yorino-recall.luau) and [CG](../Tools/Research/musica-yorino-cg.luau) recipes prepare separate overlays for the recognized original Japanese install and its private `key.toml`. Each is a fixed-title Memories shortcut to the selected gallery, not the complete native title or Memories hub. They leave the catalogued translation's direct entry unchanged. Use a Manager/core build that supports authored previews and, for CG, composite variants. From the repository root:
 
 ```powershell
-New-Item -ItemType Directory recall-recipe/common -Force | Out-Null
-Copy-Item Tools/Research/musica-yorino-recall.luau recall-recipe/
-Copy-Item Metadata/patches/common/pe.luau, Metadata/patches/common/binary.luau recall-recipe/common/
-shinki-emu-manager patch apply --script recall-recipe/musica-yorino-recall.luau --source ORIGINAL_GAME_COPY --output recall-overlay
-Copy-Item recall-overlay/recall-layout.json, recall-overlay/shinki-patch-result.json -Destination ORIGINAL_GAME_COPY
+New-Item -ItemType Directory gallery-recipe/common -Force | Out-Null
+Copy-Item Tools/Research/musica-yorino-recall.luau, Tools/Research/musica-yorino-cg.luau, Tools/Research/musica-yorino-gallery-common.luau gallery-recipe/
+Copy-Item Metadata/patches/common/pe.luau, Metadata/patches/common/binary.luau, Metadata/patches/common/musica_gallery_table.luau gallery-recipe/common/
+# Choose "recall" or "cg"; use a separate game copy for each overlay.
+$gallery = "cg"
+shinki-emu-manager patch apply --script "gallery-recipe/musica-yorino-$gallery.luau" --source ORIGINAL_GAME_COPY --output gallery-overlay
+Copy-Item "gallery-overlay/$gallery-layout.json", gallery-overlay/shinki-patch-result.json -Destination ORIGINAL_GAME_COPY
 ```
 
-Import the resulting game copy in Manager. Use a fresh copy with no existing receipt; do not overwrite a catalogued conversion. The recipe validates the layout and named SC labels against the copy's unmodified archives and does not copy or change the original game files. An unsupported executable fails rather than producing a guessed layout. To remove this overlay, delete only the two generated files from the copy.
+Import the resulting game copy in Manager. Use a fresh copy with no existing receipt; do not overwrite a catalogued conversion. The recipes validate against the unchanged archives and reject `--in-place` and unsupported executables. Recall checks named SC labels. CG reads the ordered variants, 21-slot layout and navigation coordinates from the recognized PE, checks thumbnail and variant membership in the original archives, and reads size-dependent art geometry from PNG headers. The CG viewer opens the stock image at its origin, without reconstructing the original drag-panning or page-slide animation. To remove an overlay, delete only its two generated files from the copy.
 
 The Perseus conversion keeps title launch and supplies `configuration.frontend`. It requires the matching unmodified `perseus.exe` in the original game directory. The recipe reads the executable's CG grouping, Flash routes, music order and gallery geometry as data, then validates the generated layout against the copied archives using the core's gallery loader. It neither runs nor copies the executable. A different executable is rejected. The generated gallery uses resource availability rather than the viewed-CG history.
 

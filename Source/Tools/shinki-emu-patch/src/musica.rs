@@ -1,5 +1,5 @@
-//! Offline native-reader bridge. All native reads use the transaction's staging tree,
-//! never an ambient game path supplied by a recipe. Writes retain capability checks.
+//! Offline native-reader bridge. The transaction authorizes the staging tree
+//! and, for separate overlays, the unchanged source archives.
 use crate::{
     PatchError, PatchErrorKind, PatchProgress, buffer, error::check_cancelled,
     paths::AuthorizedRoot,
@@ -33,6 +33,71 @@ pub(crate) fn validate_title_frontend(
         PatchErrorKind::Integrity, "invalid generated Musica title frontend", error,
     ))?;
     check_cancelled(cancelled)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GalleryResourceProbe {
+    candidates: Vec<String>,
+    #[serde(default)]
+    png_size: bool,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct GalleryResourceMatch {
+    resource: String,
+    size: Option<[u32; 2]>,
+}
+
+pub(crate) fn gallery_source_resources(
+    source: &Path,
+    profile: &str,
+    probes: Vec<GalleryResourceProbe>,
+    cancelled: &AtomicBool,
+) -> Result<Vec<GalleryResourceMatch>, PatchError> {
+    check_cancelled(cancelled)?;
+    crate::paths::relative(profile, false)?;
+    if probes.is_empty() || probes.len() > 4096 {
+        return Err(PatchError::new(PatchErrorKind::Bounds, "invalid Musica gallery resource probe count"));
+    }
+    let archive = shinki_emu_musica::mount_musica(source, Path::new(profile)).map_err(native_error)?;
+    let mut matches = Vec::with_capacity(probes.len());
+    for probe in probes {
+        check_cancelled(cancelled)?;
+        if probe.candidates.is_empty() || probe.candidates.len() > 4 {
+            return Err(PatchError::new(PatchErrorKind::Bounds, "invalid Musica gallery resource alternative count"));
+        }
+        let mut found = None;
+        for uri in probe.candidates {
+            match archive.entry_descriptor(&uri) {
+                Ok(_) => {
+                    found = Some(uri);
+                    break;
+                }
+                Err(error) if error.code() == "SHINKI_EMU_VFS_NOT_FOUND" => {}
+                Err(error) => return Err(native_error(error)),
+            }
+        }
+        let resource = found.ok_or_else(|| PatchError::new(
+            PatchErrorKind::Integrity, "no original Musica gallery resource matches the declared alternatives",
+        ))?;
+        let size = if probe.png_size {
+            let header = archive.read_range(&resource, 0, 24).map_err(native_error)?;
+            let bytes = &header.bytes;
+            if bytes.len() != 24 || &bytes[..16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" {
+                return Err(PatchError::new(PatchErrorKind::Integrity, "invalid Musica gallery PNG header"));
+            }
+            Some([
+                u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+                u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+            ])
+        } else {
+            None
+        };
+        matches.push(GalleryResourceMatch { resource, size });
+    }
+    check_cancelled(cancelled)?;
+    Ok(matches)
 }
 
 pub(crate) struct MusicaEmbedConfig<'a, Progress> {

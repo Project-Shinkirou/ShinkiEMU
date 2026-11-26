@@ -1,19 +1,8 @@
 -- Opt-in local recipe for the original Japanese release. The catalogued
 -- translation keeps its existing direct-start recipe and receipt.
-local function require_input(ctx, condition, message)
-    if not condition then ctx.fail("UNSUPPORTED_INPUT", message) end
-end
-
-local function recall(ctx)
-    local path = "yorino.exe"
-    require_input(ctx, ctx.exists("source", path), "Recall requires the original Japanese executable")
-    local original = ctx.open("source", path)
-    require_input(ctx, original:size() == 2278400 and original:sha256() ==
-        "0664a773545cccfa04f6f0e840fbf6302913a721bc2fc956cf206111b9c93553",
-        "unsupported original Recall executable")
-    local pe = ctx.load("common/pe.luau")
-    local file = pe.parse(ctx, original)
-    require_input(ctx, file.machine == 0x14c, "Recall requires a PE32 executable")
+local function recall(ctx, gallery)
+    local pe, file = gallery.open(ctx)
+    local require_input = gallery.require_input
     local function bytes(rva, size)
         return file.reader:bytes(pe.offset(file, rva, size), size)
     end
@@ -85,19 +74,7 @@ end
 return {
     id = "musica-yorino-recall-local", version = 1, title = "Yorino 原版 Recall（本地可选）",
     apply = function(ctx)
-        local layout = recall(ctx)
-        local path = "recall-layout.json"
-        ctx.create(path):write(0, buffer.fromstring(ctx.json.encode(layout)))
-        -- The deterministic E lane is an explicit one-screen title entry to
-        -- Recall, not a reconstruction of the native time/route title menu.
-        local frontend = ctx.json.encode({gallery_layout=path, titles={{
-            background="musica:/sys/topmenu/TopMenuE.png",
-            hover="musica:/sys/topmenu/TopMenuE3.png",
-            buttons={{rect={696,236,164,484},action="memories"}},
-        }}})
-        ctx.musica_validate_title_frontend("key.toml", frontend, "shift_jis", 1280, 720, "source")
-        return {plugin_id="shinki.emu.musica", configuration={
-            profile_file="key.toml", script_encoding="shift_jis", launch_mode="title", frontend=frontend,
-        }}
+        local gallery = ctx.load("musica-yorino-gallery-common.luau")
+        return gallery.install(ctx, "recall-layout.json", recall(ctx, gallery))
     end,
 }

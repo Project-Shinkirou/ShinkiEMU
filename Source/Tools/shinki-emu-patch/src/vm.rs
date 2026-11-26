@@ -368,6 +368,17 @@ pub(crate) fn execute(
                     ).map_err(mlua::Error::external)
                 },
             )?)?;
+            let gallery_files = files.clone();
+            ctx.set("musica_gallery_source_resources", scope.create_function(
+                move |lua, (profile, probes): (String, Value)| {
+                    let directory = transaction.overlay_source_dir().map_err(mlua::Error::external)?;
+                    let source = crate::transaction::final_dir_path(&directory).map_err(mlua::Error::external)?;
+                    let matches = crate::musica::gallery_source_resources(
+                        &source, &profile, lua.from_value(probes)?, &gallery_files.cancelled,
+                    ).map_err(mlua::Error::external)?;
+                    lua.to_value(&matches)
+                },
+            )?)?;
             ctx.set(
                 "musica_embed",
                 scope.create_function(
