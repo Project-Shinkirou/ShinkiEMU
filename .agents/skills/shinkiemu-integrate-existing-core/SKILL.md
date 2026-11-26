@@ -56,7 +56,7 @@ description: Use when porting an existing third-party engine implementation (a R
 | impacto | C++ | `shinki/` Cargo 包装 + `src/shinki/core.cpp`（worker `Run`、`GetFrame`）；`vendor/shinki-emu-abi/include/shinki_emu.h` | Android 两个 ABI 都由独立核心包导出 `shinki_emu_query`，不静态链接到 Manager |
 | kirikiroid2-web | C++ | `shinki/`（`build.rs`、`native/NativeSession.cpp`、`NativeOwner.cpp`）；`shinki/native/include/shinki_emu.h` | `shinki_emu_kirikiroid2_web::query`（Android，feature `static`） |
 | krkr2 | C++ | `shinki/Cargo.toml`（`native-static`），从 kirikiroid2-web 移植嵌入接缝 | `shinki_emu_krkr2::query`（Android、iOS；没有桌面动态包） |
-| cmvs-rs | Rust | `crates/shinki-emu-cmvs-rs`，`dynamic-plugin-export` 门控导出；与树内 `shinki.emu.cmvs` 并存 | 无（只有桌面动态包；`publish_blocked` 写明了原因） |
+| cmvs-rs | Rust | `crates/shinki-emu-cmvs-rs`，`dynamic-plugin-export` 门控导出；与树内 `shinki.emu.cmvs` 并存 | 无（只有桌面动态包） |
 | renpy | C++ + Python | `shinki/core.cpp` + `shinki_renpy_bridge.py`，打包官方 Ren'Py SDK | `shinki_emu_renpy::query`（Android，feature `static`） |
 
 从根 `Cargo.toml` 继承组织 fork 的 Git 依赖。独立构建走 `Source/Cores/<id>/` 的入口，静态 Manager 直接使用同一个实现依赖。
@@ -133,7 +133,7 @@ upstream_identity = { repo = "https://github.com/<原作者>/<repo>", ref_kind =
 - fork 的许可路径写入 `adapter_licenses`，产品侧文件写入 `licenses`，并在 `THIRD_PARTY_NOTICES.md`、`ORIGINS.md` 里登记。原生依赖的许可由 build script 提供。
 - 每个外部核心的公开源码是 `Cargo.lock` 记录的公开 fork 提交；发布前确认读者可获取，并保留适用的对应源码、重链接和声明义务。
 - 第三方特殊条款（FMOD、Spine、MS PGothic 等）原文保留并单独说明，不改标成 MIT。
-- 许可或声明义务未满足时设 `publish_blocked = "<原因>"`，这样的核心不会发布。
+- 许可或声明义务未满足时照常本地构建，但维护者不上传或发布相关二进制。
 - GPL/AGPL 核心以独立二进制发布。审核分发和对应源码义务；iOS 独立 Framework 随应用分发时同样需要审核。
 - 商业游戏数据、正文、key、私有配置和存档不能提交。测试用合成 fixture。
 

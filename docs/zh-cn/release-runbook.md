@@ -48,13 +48,13 @@ cargo xtask release --component rfvp --dry-run
 cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 ```
 
-`--dry-run` 不构建产品，只列出版本、标签、构建目标和各目标已知的 `publish_blocked` 原因。`--target` 构建并将产物与 `release.json` 放在 `.work/release/<tag>/<target>/`。`--publish` 使用 `GH_TOKEN` 或 `GITHUB_TOKEN` 发布准备好的产物，发布核心时还会创建目录更新 PR。发布时核对产物哈希，目录记录公开文件的 SHA-256 和大小。只发 Windows/Android 时，规划、准备和公开都传同样的 `--scope windows-android`，默认范围为 `all`。
+`--dry-run` 不构建产品，只列出版本、标签、构建目标。`--target` 构建并将产物与 `release.json` 放在 `.work/release/<tag>/<target>/`。`--publish` 使用 `GH_TOKEN` 或 `GITHUB_TOKEN` 发布准备好的产物，发布核心时还会创建目录更新 PR。发布时核对产物哈希，目录记录公开文件的 SHA-256 和大小。只发 Windows/Android 时，规划、准备和公开都传同样的 `--scope windows-android`，默认范围为 `all`。
 
 每份发布记录都要标明本次发布的产品提交。记录来自其他提交，或未记录提交时，需要重新打包。
 
-公开分发前，检查 `licenses/pinned-sources.txt` 中的确切提交链接，并按实际分发的二进制文件核对对应源码和重链接材料。独立 Ren’Py 核心和内嵌 Ren’Py 的 Android Manager APK 只有满足 [Ren’Py 源码与重链接要求](../licenses/renpy/README.md)后才能发布。仍可在本地打包；发布计划不代表可以公开分发。
+实玩和 QA 结果供维护者发版时参考，不阻断编译。上传前按实际二进制核对许可证、对应源码和重链接材料，包括 [Ren’Py 的分发要求](../licenses/renpy/README.md)。构建成功不等于具备公开分发条件。
 
-[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。设置 `prepare_only=true` 并只选择自研核心，可单独准备核心包，不构建 Manager，也不发布。同时选择 Manager 和自研核心时，共用 `version`。只准备 Windows/Android 产物时，设置 `release_scope=windows-android`。
+[发布工作流](../../.github/workflows/release.yml)只接受手动触发，推送标签不发版。默认 `prepare_only=true`，只准备所选组件；发布须显式设为 `false`，或对已准备的产物执行 `cargo xtask release --publish`。只有同时选择 Manager 和自研核心时才共用 `version`。
 
 仅准备产物时，可以用 `source_commit` 指定确切的 40 位产品提交。此参数只在 `prepare_only=true` 时有效。指定后，触发工作流的 SHA 与产品 SHA 分开记录。
 

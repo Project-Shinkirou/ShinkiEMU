@@ -19,7 +19,7 @@ description: Use when maintaining ShinkiEMU itself rather than writing a core - 
 
 | 文件 | 管什么 |
 |---|---|
-| `build/cores.toml` | 核心 ID、引擎族、许可、`supported_targets`/`[[cores.blocked]]`、`android_dynamic`、`ios_framework`、`publish_blocked` 和外部核心的 `[cores.attribution]` |
+| `build/cores.toml` | 核心 ID、引擎族、许可、`supported_targets`/`[[cores.blocked]]`、`android_dynamic`、`ios_framework` 和外部核心的 `[cores.attribution]` |
 | `build/targets.toml` | 10 个 triple、runner、`manager_supported`；target 级 `blocked` 覆盖所有组件 |
 | `build/dependencies.toml` | 工具版本和下载输入（SHA256 固定） |
 | `build/vcpkg/` | `ffmpeg/`、`subtitle/` manifest；`apple-triplets/`（arm64/x64-osx、arm64-ios、arm64-ios-simulator、x64-ios）；`mobile-triplets/`（`*-android-ffmpeg`、`arm64-ohos`、`ohos-toolchain.cmake`） |
@@ -133,7 +133,7 @@ Android 发布签名仍须符合以下要求：
 - 每个外部核心的公开源码就是 `Cargo.lock` 记录的公开 fork 提交。发布前确认该提交可获取。
 - 保留上游 `LICENSE`、notice 和 `MODIFICATIONS.md`。`build/cores.toml` 用 `adapter_licenses` 指定 fork 内许可，用 `licenses` 指定产品树内的许可。原生依赖保留原声明；Rust 依赖许可由 `cargo-about` 0.9.3 收集。
 - FMOD、Spine、MS PGothic 等条款单独记录，不改标为 MIT。按所选许可履行对应源码和重链接义务。
-`publish_blocked` 非空的核心可以编译，但二进制不会上传。
+CI 默认只上传构建报告。确认分发权利后可手动指定 `upload_packages=true` 上传二进制；公开发版须另外明确触发。
 
 ## 9. CI 与 watcher
 

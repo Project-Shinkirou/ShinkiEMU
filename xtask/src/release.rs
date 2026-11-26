@@ -1,6 +1,6 @@
 use crate::{
     build,
-    cores::{ADV32_CANDIDATE_FEATURE, Inventory, Target, slug},
+    cores::{Inventory, Target, slug},
     dependencies, package,
 };
 use anyhow::{Context, Result, bail};
@@ -67,29 +67,6 @@ fn release_targets<'a>(
         );
     }
     Ok(targets)
-}
-
-fn publish_restriction<'a>(
-    inv: &'a Inventory,
-    component: &str,
-    target: &str,
-) -> Result<Option<&'a str>> {
-    let core = if component == "manager" {
-        // The Android release row packages both ABIs into one APK.
-        inv.cores.iter().find(|core| {
-            core.id == "renpy"
-                && target.ends_with("-linux-android")
-                && core
-                    .static_manager_targets
-                    .iter()
-                    .any(|triple| triple == target || triple == ANDROID_SECONDARY)
-        })
-    } else {
-        Some(inv.core(component)?)
-    };
-    Ok(core
-        .map(|core| core.publish_blocked.as_str())
-        .filter(|reason| !reason.is_empty()))
 }
 
 struct GitHub {
@@ -353,21 +330,14 @@ pub fn resolve_version(inv: &Inventory, component: &str, supplied: &str) -> Resu
         }
         return Ok(version);
     }
-    semver::Version::parse(supplied).context(
-        "Manager and self-owned cores require the same explicit product --version (SemVer)",
-    )?;
+    semver::Version::parse(supplied)
+        .context("Manager and self-owned cores require an explicit product --version (SemVer)")?;
     Ok(supplied.to_owned())
 }
 
 pub fn dry_run(inv: &Inventory, component: &str, version: &str, scope: Scope) -> Result<()> {
     let targets = release_targets(inv, component, scope)?;
     let id = identity(inv, component, version)?;
-    let mut publish_blocked = std::collections::BTreeMap::new();
-    for target in &targets {
-        if let Some(reason) = publish_restriction(inv, component, &target.triple)? {
-            publish_blocked.insert(target.triple.as_str(), reason);
-        }
-    }
     println!(
         "{}",
         serde_json::to_string(&json!({
@@ -375,7 +345,6 @@ pub fn dry_run(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
             "source_commit":id.commit, "core_source":id.core_source, "identity":id.identity,
             "release_scope":scope.name(), "local_manager":scope.local_manager(inv, component),
             "targets":targets.iter().map(|target| target.triple.as_str()).collect::<Vec<_>>(),
-            "publish_blocked": publish_blocked,
         }))?
     );
     Ok(())
@@ -416,9 +385,9 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
 fn require_public_manager_variant(features: &[String]) -> Result<()> {
     if features
         .iter()
-        .any(|feature| matches!(feature.as_str(), ADV32_CANDIDATE_FEATURE | "static-cmvs"))
+        .any(|feature| feature.starts_with("static-"))
     {
-        bail!("private QA Manager variants cannot be prepared for release");
+        bail!("static Manager variants are not dynamic release packages");
     }
     Ok(())
 }
@@ -445,13 +414,6 @@ pub fn prepare(
     let version = id.version.as_str();
     if let Some(reason) = inv.blocked(component, target)? {
         println!("{component}/{target}: blocked: {reason}; artifact=null");
-        return Ok(());
-    }
-    let restriction = publish_restriction(inv, component, target)?;
-    if component != "manager"
-        && let Some(reason) = restriction
-    {
-        println!("{component}: publish_blocked: {reason}; artifact=null");
         return Ok(());
     }
     let root = id.root.join(target);
@@ -499,19 +461,9 @@ pub fn prepare(
             )
         })
         .transpose()?;
-        let publish_blocked = if component == "manager" && target.contains("android") {
-            let android: Value =
-                serde_json::from_slice(&fs::read(package_dir.join("android.json"))?)?;
-            if android["signing"] != "release" {
-                "This bundle contains a debug-signed CI test APK; it is not a Release installer."
-            } else {
-                restriction.unwrap_or_default()
-            }
-        } else {
-            ""
-        };
         let archive = work.join(&filename);
         let mut ohos = None;
+        let mut android_signing = None;
         if component == "manager" && (target.contains("android") || target.ends_with("ohos")) {
             let (metadata, key) = if target.ends_with("ohos") {
                 ("ohos.json", "hap")
@@ -523,6 +475,8 @@ pub fn prepare(
             fs::copy(package_dir.join(name), &archive)?;
             if key == "hap" {
                 ohos = Some(package);
+            } else {
+                android_signing = package["signing"].as_str().map(str::to_owned);
             }
         } else {
             package::zip_entries(&package::tree(&package_dir)?, &archive)?;
@@ -535,9 +489,12 @@ pub fn prepare(
         let mut record = json!({
             "component": component, "version": version, "target": target, "platform": platform,
             "source_commit": id.commit,
-            "release_scope": scope.name(), "publish_blocked": publish_blocked,
+            "release_scope": scope.name(),
             "archive": {"name": filename, "sha256": sha256, "size": fs::metadata(&archive)?.len()},
         });
+        if let Some(signing) = android_signing {
+            record["android_signing"] = json!(signing);
+        }
         if let Some(ios) = ios {
             record["ios"] = serde_json::to_value(ios)?;
         }
@@ -648,19 +605,14 @@ fn collect_records(
             manifest.validate(inv, &t.triple, &id.version, &id.commit)?;
             manifest.verify_release_archive(&directory.join(asset_name(&record, "archive")?))?;
         }
-        let restriction = record["publish_blocked"]
-            .as_str()
-            .filter(|reason| !reason.is_empty())
-            .or(publish_restriction(inv, component, &t.triple)?);
-        if let Some(reason) = restriction {
-            if require_all {
-                bail!("{component}/{} cannot be published: {reason}", t.triple);
-            }
-            blocked.push(format!(
-                "- {}: publish_blocked: {reason} (artifact=null)",
+        if component == "manager"
+            && t.platform == "android"
+            && record["android_signing"] != "release"
+        {
+            bail!(
+                "{component}/{} requires a release-signed Android APK",
                 t.triple
-            ));
-            continue;
+            );
         }
         records.push((directory, record));
     }
@@ -680,19 +632,7 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
         shinki_emu_metadata::CoreIdentity::display_version,
     );
     let local_manager = scope.local_manager(inv, component);
-    if component != "manager" {
-        let core = inv.core(component)?;
-        if !core.publish_blocked.is_empty() {
-            bail!("{component} is publish_blocked: {}", core.publish_blocked);
-        }
-    }
     let tag = id.tag.as_str();
-    if env::var("GITHUB_EVENT_NAME").ok().as_deref() == Some("push")
-        && env::var("GITHUB_REF_TYPE").ok().as_deref() == Some("tag")
-        && env::var("GITHUB_REF_NAME").ok().as_deref() != Some(tag)
-    {
-        bail!("tag does not match component/version");
-    }
     let PreparedRelease { records, blocked } = collect_records(inv, &id, component, scope)?;
     let artifacts = records
         .iter()
@@ -852,7 +792,7 @@ mod tests {
             |at: &str| json!({"tag_name":"manager-v1.0.0","draft":true,"target_commitish":at});
         // No release or tag yet: create a draft that GitHub tags at the commit on publish.
         assert!(release_target(&[], None, &commit).unwrap().is_none());
-        // A tag pushed for this commit, or a dispatch rerun of an interrupted publish.
+        // An existing tag is valid only when it names this exact commit.
         assert!(
             release_target(&[], Some(&commit), &commit)
                 .unwrap()
@@ -915,8 +855,7 @@ mod tests {
 
     #[test]
     fn all_platform_manager_requires_same_commit_and_publishable_packages() {
-        let mut inv =
-            Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
+        let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let out = tempfile::tempdir().unwrap();
         let mut id = identity(&inv, "manager", "1.0.0").unwrap();
         id.root = out.path().to_owned();
@@ -948,7 +887,7 @@ mod tests {
                     "target": target.triple,
                     "release_scope": "all",
                     "source_commit": id.commit,
-                    "publish_blocked": "",
+                    "android_signing": (target.platform == "android").then_some("release"),
                     "ios": ios,
                     "archive": {
                         "name": "asset",
@@ -965,34 +904,6 @@ mod tests {
         let qa_dir = id.root.join(qa);
         fs::create_dir(&qa_dir).unwrap();
         fs::write(qa_dir.join("release.json"), b"untrusted local QA record").unwrap();
-        assert!(
-            publish_restriction(&inv, "renpy", "aarch64-linux-android")
-                .unwrap()
-                .unwrap()
-                .contains("verify LGPL relinking")
-        );
-        assert!(
-            publish_restriction(&inv, "manager", "aarch64-linux-android")
-                .unwrap()
-                .is_none()
-        );
-        // If either ABI embeds Ren'Py, a release record cannot override its blocker.
-        let renpy = inv
-            .cores
-            .iter()
-            .position(|core| core.id == "renpy")
-            .unwrap();
-        inv.cores[renpy]
-            .static_manager_targets
-            .push(ANDROID_SECONDARY.into());
-        let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
-            panic!("accepted an Android APK without verified Ren'Py source and relinking");
-        };
-        assert!(
-            error.to_string().contains("verify LGPL relinking"),
-            "{error}"
-        );
-        inv.cores[renpy].static_manager_targets.pop();
         let prepared = collect_records(&inv, &id, "manager", Scope::All).unwrap();
         assert_eq!(prepared.records.len(), target_count);
         assert!(prepared.blocked.iter().all(|row| !row.contains(qa)));
@@ -1011,13 +922,15 @@ mod tests {
         );
 
         record["source_commit"] = json!(id.commit);
-        record["publish_blocked"] = json!("debug-signed CI test APK");
+        record["android_signing"] = json!("debug");
         fs::write(&android, serde_json::to_vec(&record).unwrap()).unwrap();
         let Err(error) = collect_records(&inv, &id, "manager", Scope::All) else {
             panic!("all-platform publication accepted a debug Android record");
         };
         assert!(
-            error.to_string().contains("debug-signed CI test APK"),
+            error
+                .to_string()
+                .contains("requires a release-signed Android APK"),
             "{error}"
         );
     }

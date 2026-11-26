@@ -40,13 +40,6 @@ pub fn run(inv: &Inventory, target: &str, component: &str, path: &Path) -> Resul
             } else {
                 Some(inv.core(component)?)
             };
-            // Restricted binaries are not uploaded, even as Actions artifacts.
-            if let Some(core) = core.filter(|core| !core.publish_blocked.is_empty()) {
-                build::build_restricted_core(inv, target, component)?;
-                report.status = "publish_blocked";
-                report.reason = Some(core.publish_blocked.clone());
-                return Ok(());
-            }
             let version = if core.is_none_or(|core| core.attribution.is_none()) {
                 build::default_product_version()?
             } else {

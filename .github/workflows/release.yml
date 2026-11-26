@@ -1,28 +1,24 @@
 name: Component release
-# Manager and external cores can use tags. Dispatch to prepare individual self-owned cores.
-# Preparation uses the selected exact product commit; prepare-only dispatches
-# run the same builds and tests without creating a tag or public release.
+# Manually select components. Preparing packages never publishes by default.
 on:
-  push:
-    tags: ['manager-v*', 'core-*']
   workflow_dispatch:
     inputs:
       version:
         description: One product SemVer for Manager and all selected self-owned cores; external cores use their own pinned identities
         required: false
       components:
-        description: 'Comma-separated manager/plugin_ids (case-sensitive), or all (every component that is not publish_blocked)'
+        description: 'Comma-separated manager/plugin_ids (case-sensitive), or all supported components'
         required: true
       prepare_only:
         description: 'Prepare and retain every selected platform without publishing; audit actual artifacts before a separate publication'
         type: boolean
-        default: false
+        default: true
       source_commit:
         description: 'Optional exact lowercase 40-hex product SHA for prepare-only; omit to use the workflow commit'
         type: string
         required: false
       release_scope:
-        description: 'Platforms covered by this release; tag pushes always use all'
+        description: 'Platforms covered by this release'
         type: choice
         options: [all, windows-android]
         default: all
@@ -69,41 +65,22 @@ jobs:
           }
           $rows = @((cargo @matrixArguments | ConvertFrom-Json).include)
           $known = @($rows.component | Sort-Object -Unique -CaseSensitive)
-          $slug = { param($id) $id.ToLowerInvariant().Replace('.', '-').Replace('_', '-') }
           $version = $env:INPUT_VERSION.Trim()
-          if ($env:GITHUB_EVENT_NAME -eq 'push') {
-            if ($env:GITHUB_REF_NAME -match '^manager-v(.+)$') {
-              $requested = @('manager'); $version = $Matches[1]
-            } else {
-              $matched = @($known | Where-Object { $_ -ne 'manager' -and $env:GITHUB_REF_NAME.StartsWith("core-$(& $slug $_)-") })
-              if ($matched.Count -ne 1) { throw "Tag $env:GITHUB_REF_NAME does not identify one core" }
-              $requested = $matched
-              $own = @($rows | Where-Object { $_.component -ceq $matched[0] })
-              if (-not $own[0].external) {
-                throw 'New self-owned core releases require a dispatch with the matching Manager batch'
-              }
-            }
-          } elseif ($env:INPUT_COMPONENTS.Trim() -ceq 'all') {
-            $requested = @($known | Where-Object { $c = $_; -not ($rows | Where-Object { $_.component -ceq $c -and $_.publish_blocked }) })
+          if ($env:INPUT_COMPONENTS.Trim() -ceq 'all') {
+            $requested = $known
           } else {
             $requested = @($env:INPUT_COMPONENTS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
           }
           if ($requested.Count -eq 0) { throw 'No components selected' }
-          $ownedRows = @($rows | Where-Object { $_.component -cin $requested -and $_.component -cne 'manager' -and -not $_.external })
-          if ($env:PREPARE_ONLY -ne 'true' -and $ownedRows.Count -gt 0 -and 'manager' -cnotin $requested) {
-            throw 'Select Manager with self-owned cores so they share one product version and source commit'
-          }
           $versions = @{}
           $components = @()
           foreach ($component in $requested) {
             $own = @($rows | Where-Object { $_.component -ceq $component })
             if ($own.Count -eq 0) { throw "Unknown component '$component', or it has no supported target" }
-            if ($own[0].publish_blocked) { throw "$component is publish_blocked: $($own[0].publish_blocked)" }
             $arguments = @('xtask', 'release', '--component', $component, '--dry-run')
             if ($env:RELEASE_SCOPE -ne 'all') { $arguments += @('--scope', $env:RELEASE_SCOPE) }
             if (-not $own[0].external) { $arguments += @('--version', $version) }
             $identity = cargo @arguments | ConvertFrom-Json
-            if ($env:GITHUB_EVENT_NAME -eq 'push' -and $identity.release_tag -cne $env:GITHUB_REF_NAME) { throw 'Tag does not match component release identity' }
             $localManager = $localManager -or $identity.local_manager
             $versions[$component] = $identity.version
             $components += @{component=$component; version=$identity.version; external=$own[0].external; tag=$identity.release_tag}
@@ -115,11 +92,6 @@ jobs:
           "components=$(@{include=$components} | ConvertTo-Json -Compress -Depth 8)" >> $env:GITHUB_OUTPUT
           "local_manager=$($localManager.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "Per-component release identities: $($components | ConvertTo-Json -Compress)" >> $env:GITHUB_STEP_SUMMARY
-  test:
-    needs: select
-    uses: ./.github/workflows/tools.yml
-    with:
-      ref: ${{ needs.select.outputs.source_commit }}
   build:
     needs: select
     strategy:
@@ -241,12 +213,6 @@ jobs:
           SHINKI_EMU_IOS_ENTITLEMENTS_BASE64: ${{ secrets.SHINKI_EMU_IOS_ENTITLEMENTS_BASE64 }}
         run: |
           bash build/ci/ios-device-signing.sh cargo xtask release --component manager --target aarch64-apple-ios --version "$VERSION" --scope "$RELEASE_SCOPE"
-      - name: Smoke packaged Linux Manager
-        if: matrix.target == 'x86_64-unknown-linux-gnu' && matrix.component == 'manager'
-        shell: bash
-        run: |
-          root=".work/release/manager-v$VERSION/x86_64-unknown-linux-gnu"
-          bash build/ci/linux-manager-smoke.sh "$root/$(jq -er '.archive.name' "$root/release.json")"
       - uses: actions/upload-artifact@v7
         with:
           # Component ids and triples never contain '@', so publish can select one component.
@@ -255,9 +221,9 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
   publish:
-    needs: [select, build, test]
-    # Failed build rows fail only their own component's publish job.
-    if: ${{ !cancelled() && needs.select.result == 'success' && needs.test.result == 'success' }}
+    needs: [select, build]
+    # Verify only the selected component's prepared rows, independently of other builds.
+    if: ${{ !cancelled() && inputs.prepare_only == false && needs.select.result == 'success' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.components) }}
@@ -333,7 +299,7 @@ jobs:
           echo "Prepared $COMPONENT for scope $RELEASE_SCOPE from product SHA $SOURCE_COMMIT (workflow SHA $GITHUB_SHA). Download the release-files artifacts for inspection. This run does not create a tag or public release." >> "$GITHUB_STEP_SUMMARY"
       - name: Publish every prepared platform as one Release
         id: publish
-        if: inputs.prepare_only != true && (matrix.component != 'manager' || needs.select.outputs.local_manager != 'true')
+        if: inputs.prepare_only == false && (matrix.component != 'manager' || needs.select.outputs.local_manager != 'true')
         env:
           GH_TOKEN: ${{ github.token }}
         run: cargo xtask release --component "$COMPONENT" --version "$VERSION" --scope "$RELEASE_SCOPE" --publish

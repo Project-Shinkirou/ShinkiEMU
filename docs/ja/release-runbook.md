@@ -52,7 +52,7 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 各リリース記録には公開対象の製品コミットが必要です。別のコミットで準備した場合や記録にコミットがない場合は、パッケージを作り直してください。
 
-[リリースワークフロー](../../.github/workflows/release.yml)がホストランナーの成果物を用意します。`prepare_only=true` でリポジトリ内のコアだけを指定すると、Manager のビルドや公開をせずにコアのパッケージを準備できます。Manager とコアを同時に指定した場合は `version` を共有します。Windows/Android のみなら `release_scope=windows-android` を指定します。
+[リリースワークフロー](../../.github/workflows/release.yml)は手動でのみ実行され、タグでは起動しません。既定の `prepare_only=true` では選んだコンポーネントの配布物を準備するだけです。公開は `prepare_only=false` または `cargo xtask release --publish` で明示的に行います。公開前に実際の配布物のライセンス、対応ソース、再リンク資料を確認してください。プレイ検証はビルドを妨げません。
 
 準備のみの場合は `source_commit` に対象製品の正確な 40 桁のコミットを指定できます。この入力を使うには `prepare_only=true` が必要です。指定時はワークフローを起動した SHA と製品の SHA を区別してください。
 

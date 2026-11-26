@@ -17,8 +17,6 @@ mod core_adapters;
 )]
 mod android_dynamic;
 
-pub(crate) const ADV32_CANDIDATE_FEATURE: &str = "static-adv32";
-
 #[derive(Clone, Debug, Deserialize)]
 pub struct Core {
     pub id: String,
@@ -43,7 +41,6 @@ pub struct Core {
     #[serde(default)]
     pub ios_framework: bool,
     pub blocked: Vec<Blocked>,
-    pub publish_blocked: String,
     pub attribution: Option<Attribution>,
 }
 
@@ -78,9 +75,9 @@ impl Core {
         self.static_manager_candidate_targets
             .iter()
             .any(|triple| triple == target)
-            && features
-                .iter()
-                .any(|feature| feature == ADV32_CANDIDATE_FEATURE)
+            && features.iter().any(|feature| {
+                feature.strip_prefix("static-") == Some(core_adapters::adapter_id(&self.id))
+            })
     }
 
     pub(crate) fn embedded_in_manager(&self, target: &str, features: &[String]) -> bool {
@@ -254,9 +251,6 @@ pub struct MatrixRow {
     /// Declared reason this combination is not built; never part of a job matrix.
     #[serde(skip)]
     pub blocked: Option<String>,
-    /// Distribution restriction of the core; the release workflow refuses these components.
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub publish_blocked: String,
 }
 
 pub fn slug(id: &str) -> String {
@@ -363,7 +357,6 @@ impl Inventory {
                     .id
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
-                    || !c.publish_blocked.is_empty()
                     || c.supported_targets
                         .iter()
                         .any(|target| crate::apple::ios_frameworks::target_supported(target)))
@@ -380,9 +373,7 @@ impl Inventory {
             }
             let mut candidates = BTreeSet::new();
             for triple in &c.static_manager_candidate_targets {
-                if c.id != "shinki.emu.adv32"
-                    || c.publish_blocked.is_empty()
-                    || !self.target(triple)?.manager_supported
+                if !self.target(triple)?.manager_supported
                     || c.static_manager_targets.contains(triple)
                     || !candidates.insert(triple)
                 {
@@ -457,11 +448,6 @@ impl Inventory {
                     variant: t.variant.clone(),
                     external: component != "manager" && self.core(component)?.attribution.is_some(),
                     blocked: self.blocked(component, &t.triple)?.map(str::to_owned),
-                    publish_blocked: if component == "manager" {
-                        String::new()
-                    } else {
-                        self.core(component)?.publish_blocked.clone()
-                    },
                 });
             }
         }

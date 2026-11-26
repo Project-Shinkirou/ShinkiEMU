@@ -1604,9 +1604,7 @@ mod android_tests {
         };
         // A stale report cannot add ADV32 files to a default Manager package.
         assert!(static_core_entries(&inv, &artifact).unwrap().is_empty());
-        artifact
-            .features
-            .push(crate::cores::ADV32_CANDIDATE_FEATURE.to_owned());
+        artifact.features.push("static-adv32".to_owned());
         let stage = scratch.path().join("candidate");
         fs::create_dir(&stage).unwrap();
         copy_entries(&static_core_entries(&inv, &artifact).unwrap(), &stage).unwrap();
@@ -1642,7 +1640,6 @@ mod android_tests {
                     "supported_targets": [],
                     "static_manager_targets": ANDROID_TARGETS.map(|(target, _)| target),
                     "blocked": [],
-                    "publish_blocked": "",
                 }))
                 .unwrap(),
             ],

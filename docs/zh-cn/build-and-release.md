@@ -168,7 +168,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-默认构建的 Manager 加载独立核心。Android 只接受有经过验证的 `android_dynamic` 策略的独立 ZIP；iOS 从应用中加载已签名的 `ios_framework` 核心，OHOS 从已签名的 HAP 中加载独立的 Musica 动态库。iOS 和 OHOS 不下载安装核心。各目标的支持范围和分发限制 `publish_blocked` 见 [`build/cores.toml`](../../build/cores.toml)。能构建不等于游戏已验证可玩。
+默认构建的 Manager 加载独立核心。Android 只接受有经过验证的 `android_dynamic` 策略的独立 ZIP；iOS 从应用中加载已签名的 `ios_framework` 核心，OHOS 从已签名的 HAP 中加载独立的 Musica 动态库。iOS 和 OHOS 不下载安装核心。各目标的支持范围见 [`build/cores.toml`](../../build/cores.toml)。能构建不等于游戏已验证可玩。
 
 ### 编译进程序的商店插件
 

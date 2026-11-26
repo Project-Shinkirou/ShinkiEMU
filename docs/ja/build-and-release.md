@@ -158,7 +158,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-既定の Manager は別個のコアバイナリを読み込みます。Android の単体 ZIP をインストールするには、検証済みの `android_dynamic` ポリシーが必要です。iOS はアプリ内の署名済み `ios_framework` を、OHOS は署名済み HAP 内の独立した Musica ライブラリを読み込みます。iOS と OHOS ではダウンロードしたコアをインストールできません。対応ターゲットと配布制限 `publish_blocked` は [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。
+既定の Manager は別個のコアバイナリを読み込みます。Android の単体 ZIP をインストールするには、検証済みの `android_dynamic` ポリシーが必要です。iOS はアプリ内の署名済み `ios_framework` を、OHOS は署名済み HAP 内の独立した Musica ライブラリを読み込みます。iOS と OHOS ではダウンロードしたコアをインストールできません。対応ターゲットは [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。
 
 ### コンパイル時に組み込むストア
 

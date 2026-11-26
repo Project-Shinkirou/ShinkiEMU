@@ -52,13 +52,13 @@ cargo xtask release --component rfvp --dry-run
 cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 ```
 
-`--dry-run` prints the version, tag, build targets and known per-target `publish_blocked` reasons without building a product. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
+`--dry-run` prints the version, tag, build targets without building a product. `--target` builds and prepares the asset and `release.json` under `.work/release/<tag>/<target>/`. `--publish` uses `GH_TOKEN` or `GITHUB_TOKEN` to publish staged assets and opens a catalog PR for a core. Publication checks the staged asset hash; the catalog carries the public asset's SHA-256 and size. Use the same `--scope windows-android` during planning, preparation and publication for a Windows/Android-only release; the default scope is `all`.
 
 Each release record must name the product commit being published. Prepare the package again if the record is from a different commit or does not record a commit.
 
-Before distribution, check `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core remains publication-blocked until its [source and relinking requirements](../licenses/renpy/README.md) are fulfilled. The same restriction applies to any Manager APK that embeds Ren’Py. Local packaging remains available.
+Before manually distributing binaries, verify the applicable notices, corresponding source and relinking material, including the [Ren’Py requirements](../licenses/renpy/README.md). Gameplay and QA results inform the maintainer’s decision and never prevent compilation.
 
-[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Set `prepare_only=true` and select an in-tree core by itself to prepare its packages without building Manager or publishing. When dispatching Manager and in-tree cores together, they share the `version` input. Use `release_scope=windows-android` to limit preparation to Windows and Android.
+[The release workflow](../../.github/workflows/release.yml) runs only on manual dispatch; tags do not trigger it. By default (`prepare_only=true`) it prepares only selected components, without publishing. Explicitly set `prepare_only=false` or use `cargo xtask release --publish` to publish. Manager and in-tree cores share `version` only when selected together. Use `release_scope=windows-android` to narrow the scope.
 
 For a prepare-only workflow, `source_commit` may specify the exact 40-character product commit. It is valid only with `prepare_only=true`. The workflow dispatch SHA is not the product SHA when this override is used.
 

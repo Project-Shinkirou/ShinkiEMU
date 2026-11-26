@@ -205,14 +205,13 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-linux-android"]
-publish_blocked = ""
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
 reason = "<具体原因>"
 # build/targets.toml 里其余每个 triple 各一条 [[cores.blocked]]
 ```
 
-清单要求每个 triple 恰好出现在 supported 或 blocked 中一次，blocked 原因非空；`family_id` 必填且格式合法。`publish_blocked` 在许可或声明义务未满足时填写具体原因，这样的核心不会发布。新核心不要改 `build/targets.toml`。
+清单要求每个 triple 恰好出现在 supported 或 blocked 中一次，blocked 原因非空；`family_id` 必填且格式合法。发布前由维护者检查实际二进制的许可与声明。新核心不要改 `build/targets.toml`。
 
 `supported_targets` 只写真实构建成功过的目标：你本地跑过的 Windows x64 和 Android ARM64，PR CI 会构建的 Linux x64，或维护者 dispatch 的 `ci.yml` 跑过的其他目标。没构建过的目标写 `[[cores.blocked]]`，原因写到能定位的程度（缺哪个依赖准备路径、哪个文件哪段代码、还没有哪次构建），不要写"暂不支持"。平台按 Windows x64 → Android ARM64 → Linux x64 → macOS → iOS → OHOS 的顺序推进。
 

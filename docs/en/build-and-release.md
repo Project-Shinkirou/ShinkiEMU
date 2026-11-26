@@ -172,7 +172,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-The default Manager loads separate core binaries. Android admits standalone ZIPs under a verified `android_dynamic` policy. iOS loads signed `ios_framework` cores from the app; OHOS loads the separate Musica library from the signed HAP. Neither iOS nor OHOS installs downloaded cores. See [`build/cores.toml`](../../build/cores.toml) for target support and `publish_blocked` for distribution restrictions. A build row is not a gameplay compatibility result.
+The default Manager loads separate core binaries. Android admits standalone ZIPs under a verified `android_dynamic` policy. iOS loads signed `ios_framework` cores from the app; OHOS loads the separate Musica library from the signed HAP. Neither iOS nor OHOS installs downloaded cores. See [`build/cores.toml`](../../build/cores.toml) for target support. A build row is not a gameplay compatibility result.
 
 ### Compile-in stores
 

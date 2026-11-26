@@ -204,11 +204,10 @@ fn target_blocks_and_undeclared_targets_preserve_visible_but_unsupported_entries
 }
 
 #[test]
-fn generated_strings_and_publication_restrictions_keep_their_meaning() {
+fn generated_strings_preserve_escaping() {
     let (mut cores, targets) = inventory();
     let core = &mut cores["cores"][0];
     core["display_name"] = "A \"quoted\" engine\\with\na new line 🦊".into();
-    core["publish_blocked"] = "distribution is restricted".into();
     consume_generated(&cores, &targets, "x86_64-pc-windows-msvc", true, false);
 }
 

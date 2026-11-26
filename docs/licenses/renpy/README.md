@@ -1,6 +1,6 @@
 # Ren’Py source and relinking
 
-Keep the `publish_blocked` field for `renpy` in `build/cores.toml` until the six standalone targets below have matching source, notices, and a tested replacement or relink path. The default Android and Windows Managers do not embed Ren’Py.
+Compilation and local packaging do not establish redistribution readiness. Before manually distributing any Ren’Py target, verify its matching source, notices, and tested replacement or relink path. The default Android and Windows Managers do not embed Ren’Py.
 
 ## What to distribute alongside each core ZIP
 

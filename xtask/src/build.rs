@@ -151,17 +151,6 @@ pub(crate) fn package_artifact(
     execute_configured(inv, target, component, None, version)
 }
 
-pub(crate) fn build_restricted_core(inv: &Inventory, target: &str, component: &str) -> Result<()> {
-    let package = inv.core(component)?.entry_package();
-    let target_dir = target_directory(inv, target, component)?;
-    dependencies::run(
-        cargo_command(inv, target)?
-            .args(["build", "--locked", "--release", "--lib", "-p", &package])
-            .args(["--target", target, "--target-dir"])
-            .arg(target_dir),
-    )
-}
-
 pub(crate) fn execute_ios_framework(
     inv: &Inventory,
     target: &str,
@@ -618,7 +607,7 @@ mod version_tests {
                 .unwrap()
                 .is_empty()
         );
-        let features = [crate::cores::ADV32_CANDIDATE_FEATURE.to_owned()];
+        let features = ["static-adv32".to_owned()];
         let selected = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
         assert_eq!(selected.get("adv32-package"), Some(&"shinki.emu.adv32"));
     }
