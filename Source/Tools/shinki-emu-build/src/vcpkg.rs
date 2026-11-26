@@ -49,29 +49,60 @@ fn target_triplet(target: &str) -> Result<&'static str> {
     triplet(target)
 }
 
+/// An adapter-requested port overlay, resolved against the build inputs.
+pub enum PortOverlay<'a> {
+    /// A directory relative to the product's `build/vcpkg` directory.
+    Workspace(&'a str),
+    /// A path relative to the product-pinned vcpkg checkout.
+    Vcpkg(&'a str),
+}
+
 pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
+    install_core_with_overlays(source, id, &[])
+}
+
+/// Install core dependencies with adapter-selected overlays in precedence order,
+/// ahead of the default platform and source overlays.
+pub fn install_core_with_overlays(
+    source: &Path,
+    id: &str,
+    overlays: &[PortOverlay<'_>],
+) -> Result<Installation> {
     let target = env::var("TARGET")?;
-    let config = crate::workspace().join("build/vcpkg");
-    let mut ports = Vec::new();
-    if target.ends_with("-linux-android") {
-        ports.push(config.join("mobile-ports"));
-    } else if id == "kirikiroid2-web" && target.ends_with("-apple-darwin") {
-        ports.push(config.join("apple-ports"));
-    }
-    let overlay = source.join("vcpkg/ports");
-    if overlay.is_dir() {
-        ports.push(overlay);
-    }
-    let shared_libass = id == "impacto" && target.ends_with("-linux-android");
     let installation = install(
         &pins()?,
         source,
         target_triplet(&target)?,
-        ports,
-        shared_libass,
+        |workspace, root| core_ports(workspace, root, source, &target, overlays),
     )?;
     installation.report(&format!("native-vcpkg/{id}"), &target)?;
     Ok(installation)
+}
+
+fn core_ports(
+    workspace: &Path,
+    root: &Path,
+    source: &Path,
+    target: &str,
+    overlays: &[PortOverlay<'_>],
+) -> Vec<PathBuf> {
+    let source_overlay = source.join("vcpkg/ports");
+    let has_source_overlay = source_overlay.is_dir();
+    let config = || workspace.join("build/vcpkg");
+    let android = target.ends_with("-linux-android");
+    let mut ports =
+        Vec::with_capacity(overlays.len() + usize::from(android) + usize::from(has_source_overlay));
+    ports.extend(overlays.iter().map(|overlay| match overlay {
+        PortOverlay::Workspace(path) => config().join(path),
+        PortOverlay::Vcpkg(path) => root.join(path),
+    }));
+    if android {
+        ports.push(config().join("mobile-ports"));
+    }
+    if has_source_overlay {
+        ports.push(source_overlay);
+    }
+    ports
 }
 
 pub fn install_shared(name: &str) -> Result<Installation> {
@@ -87,8 +118,7 @@ pub fn install_shared(name: &str) -> Result<Installation> {
         &lock,
         &crate::workspace().join("build/vcpkg").join(name),
         triplet,
-        Vec::new(),
-        false,
+        |_, _| Vec::new(),
     )
 }
 
@@ -96,8 +126,7 @@ fn install(
     lock: &Pins,
     manifest: &Path,
     triplet: &str,
-    mut ports: Vec<PathBuf>,
-    shared_libass: bool,
+    resolve_ports: impl FnOnce(&Path, &Path) -> Vec<PathBuf>,
 ) -> Result<Installation> {
     ensure!(
         !triplet.is_empty()
@@ -142,11 +171,7 @@ fn install(
             }
         }
     }
-    if shared_libass {
-        // Impacto's older baseline must resolve the same libass ABI as the
-        // product subtitle manifest on Android.
-        ports.insert(0, root.join("ports/libass"));
-    }
+    let ports = resolve_ports(workspace, &root);
     let mut triplets = vec![
         workspace.join("build/vcpkg/apple-triplets"),
         workspace.join("build/vcpkg/mobile-triplets"),
@@ -446,8 +471,7 @@ pub(crate) fn pkg_config_program(target: &str, installed: Option<&Path>) -> Resu
             &pins()?,
             &crate::workspace().join("build/vcpkg/pkgconf"),
             "x64-windows",
-            Vec::new(),
-            false,
+            |_, _| Vec::new(),
         )?;
         let program = host.prefix.join("tools/pkgconf/pkgconf.exe");
         ensure!(
@@ -533,6 +557,65 @@ mod tests {
             assert!(args.contains(&OsStr::new(arg)));
         }
         assert_eq!(cmd.get_current_dir(), Some(manifest));
+    }
+
+    #[test]
+    fn core_overlay_arguments_preserve_precedence() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let source = temp.path();
+        let workspace = Path::new("product workspace");
+        let root = Path::new("vcpkg checkout");
+        let source_overlay = source.join("vcpkg/ports");
+        fs::create_dir_all(&source_overlay)?;
+        let config = workspace.join("build/vcpkg");
+        let mobile = config.join("mobile-ports");
+        let apple = config.join("apple-ports");
+        let libass = root.join("ports/libass");
+        for (target, overlays, expected) in [
+            (
+                "aarch64-linux-android",
+                &[PortOverlay::Vcpkg("ports/libass")][..],
+                vec![&libass, &mobile, &source_overlay],
+            ),
+            (
+                "x86_64-linux-android",
+                &[],
+                vec![&mobile, &source_overlay],
+            ),
+            (
+                "x86_64-apple-darwin",
+                &[PortOverlay::Workspace("apple-ports")][..],
+                vec![&apple, &source_overlay],
+            ),
+            ("aarch64-apple-darwin", &[], vec![&source_overlay]),
+            ("aarch64-apple-ios", &[], vec![&source_overlay]),
+        ] {
+            let ports = core_ports(workspace, root, source, target, overlays);
+            let command = install_command(
+                root,
+                source,
+                triplet(target)?,
+                Path::new("installed"),
+                &ports,
+                &[],
+            );
+            let actual: Vec<_> = command
+                .get_args()
+                .filter_map(|arg| arg.to_str()?.strip_prefix("--overlay-ports="))
+                .collect();
+            assert_eq!(
+                actual,
+                expected
+                    .iter()
+                    .map(|path| path.to_str().unwrap())
+                    .collect::<Vec<_>>(),
+                "{target}"
+            );
+        }
+        assert!(
+            core_ports(workspace, root, &source.join("absent"), "aarch64-apple-ios", &[]).is_empty()
+        );
+        Ok(())
     }
 
     #[test]
