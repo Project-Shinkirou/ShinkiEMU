@@ -1,3 +1,4 @@
+use crate::NativeAudioProgress;
 use crate::runtime::{SessionError, SessionResult};
 use std::{
     sync::{
@@ -19,17 +20,6 @@ use roukaku_platform_common::{
 /// The VM/Kira/movie source clock written to every native output.
 const SOURCE_RATE: u32 = 48_000;
 const SOURCE_CHANNELS: u16 = 2;
-
-/// Output timeline in 48 kHz source frames.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NativeAudioProgress {
-    /// Frames of every `write` that returned `Ok(Some(_))`, plus `flush` padding.
-    pub accepted_frames: u64,
-    /// Frames the device has made audible: consumed device frames minus the
-    /// reported output latency and the resampler delay, mapped to 48 kHz.
-    /// Underrun silence never advances it. Monotonic and `<= accepted_frames`.
-    pub played_frames: u64,
-}
 
 /// Cloneable, thread-safe view of one output's timeline. It stays readable
 /// while the writer thread is blocked or idle, and after the output closes.

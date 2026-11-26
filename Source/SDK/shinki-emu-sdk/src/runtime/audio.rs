@@ -5,6 +5,17 @@ pub use ohos::OhosAudioOutput;
 
 use super::{SessionError, SessionResult};
 
+/// Timeline in source PCM frames. Underrun silence does not advance it.
+#[cfg(any(feature = "device-audio", target_env = "ohos"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+pub struct NativeAudioProgress {
+    /// Source frames queued by the writer (including any explicit flush padding).
+    pub accepted_frames: u64,
+    /// Source frames presented by the device; monotonic and `<= accepted_frames`.
+    pub played_frames: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PcmFormat {
     F32,

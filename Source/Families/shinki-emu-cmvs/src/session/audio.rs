@@ -8,8 +8,12 @@
 //! blocks on the device queue so the device callback never calls back into
 //! the Family.
 use crate::family::error;
+#[cfg(any(not(target_env = "ohos"), test))]
 use roukaku_platform::AudioWakeRegistration;
+#[cfg(not(target_env = "ohos"))]
 use shinki_emu_sdk::NativeAudioOutput;
+#[cfg(target_env = "ohos")]
+use shinki_emu_sdk::runtime::{AudioSink, OhosAudioOutput, PcmFormat, PcmFormatSpec};
 use shinki_emu_sdk::runtime::{SessionError, SessionResult};
 use std::sync::{
     Arc, Mutex,
@@ -253,13 +257,32 @@ type AudioFailure = Arc<Mutex<Option<SessionError>>>;
 pub(crate) struct Cancellation {
     requested: Arc<AtomicBool>,
     commands: std::sync::mpsc::Sender<Command>,
-    queue_wake: AudioWakeRegistration,
+    wake_output: WakeOutput,
+}
+
+#[derive(Clone)]
+enum WakeOutput {
+    #[cfg(any(not(target_env = "ohos"), test))]
+    Queue(AudioWakeRegistration),
+    #[cfg(target_env = "ohos")]
+    Ohos(std::sync::Weak<OhosAudioOutput>),
 }
 
 impl Cancellation {
     pub(crate) fn cancel(&self) {
         if !self.requested.swap(true, Ordering::AcqRel) {
-            self.queue_wake.notify();
+            match &self.wake_output {
+                #[cfg(any(not(target_env = "ohos"), test))]
+                WakeOutput::Queue(wake) => {
+                    wake.notify();
+                }
+                #[cfg(target_env = "ohos")]
+                WakeOutput::Ohos(output) => {
+                    if let Some(output) = output.upgrade() {
+                        let _ = output.cancel();
+                    }
+                }
+            }
             let _ = self.commands.send(Command::Shutdown);
         }
     }
@@ -279,14 +302,18 @@ pub(super) struct AudioBridge {
     failure: AudioFailure,
     playback: streams::progress::PlaybackClock,
     pending_drains: streams::progress::PendingDrains,
-    /// Output frames written per channel sound slot; the movie player reads
-    /// slot 2 as its audio clock (`SndSlot_positionMs`).
-    channel_frames_written: Arc<[AtomicU64; CHANNEL_SOUNDS]>,
+    movie_playback: Arc<Mutex<MoviePlayback>>,
     /// Nonzero request generation means a channel play is queued or playing.
     channel_generations: Arc<[AtomicU64; CHANNEL_SOUNDS]>,
     next_generation: u64,
     native: super::native_save_audio::NativeAudioCapture,
     native_source_missing: bool,
+}
+
+#[derive(Default)]
+struct MoviePlayback {
+    generation: u64,
+    timeline: streams::progress::PlaybackTimeline,
 }
 
 pub(super) struct NativeChannelPlayback {
@@ -346,6 +373,7 @@ trait Output {
     fn flush(&mut self, stop: &AtomicBool) -> SessionResult<Option<()>>;
 }
 
+#[cfg(not(target_env = "ohos"))]
 impl Output for NativeAudioOutput {
     fn check(&self) -> SessionResult<()> {
         NativeAudioOutput::check(self)
@@ -358,7 +386,29 @@ impl Output for NativeAudioOutput {
     }
 }
 
+#[cfg(target_env = "ohos")]
+impl Output for Arc<OhosAudioOutput> {
+    fn check(&self) -> SessionResult<()> {
+        OhosAudioOutput::check(self)
+    }
+
+    fn write(&mut self, samples: Vec<f32>, stop: &AtomicBool) -> SessionResult<Option<Vec<f32>>> {
+        if stop.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        AudioSink::write(&**self, samples)
+    }
+
+    fn flush(&mut self, stop: &AtomicBool) -> SessionResult<Option<()>> {
+        if stop.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        self.drain()
+    }
+}
+
 impl AudioBridge {
+    #[cfg(not(target_env = "ohos"))]
     pub(super) fn new() -> SessionResult<Self> {
         Self::start(|wake| {
             let output = NativeAudioOutput::open_bounded_with_wake(DEVICE_STALL_TIMEOUT, wake)?;
@@ -367,37 +417,62 @@ impl AudioBridge {
         })
     }
 
+    #[cfg(target_env = "ohos")]
+    pub(super) fn new() -> SessionResult<Self> {
+        let output = Arc::new(OhosAudioOutput::tracked(DEVICE_STALL_TIMEOUT));
+        let weak = Arc::downgrade(&output);
+        Self::start_with_wake(
+            move || {
+                output.configure(PcmFormatSpec {
+                    sample_rate: OUTPUT_RATE,
+                    channels: 2,
+                    format: PcmFormat::F32,
+                })?;
+                let clock: streams::progress::PlaybackClock = output.clone();
+                Ok((output, clock))
+            },
+            WakeOutput::Ohos(weak),
+        )
+    }
+
+    #[cfg(any(not(target_env = "ohos"), test))]
     fn start<W: Output + 'static>(
         open: impl FnOnce(AudioWakeRegistration) -> SessionResult<(W, streams::progress::PlaybackClock)>
         + Send
         + 'static,
     ) -> SessionResult<Self> {
+        let wake = AudioWakeRegistration::default();
+        let writer_wake = wake.clone();
+        Self::start_with_wake(move || open(writer_wake), WakeOutput::Queue(wake))
+    }
+
+    fn start_with_wake<W: Output + 'static>(
+        open: impl FnOnce() -> SessionResult<(W, streams::progress::PlaybackClock)> + Send + 'static,
+        wake_output: WakeOutput,
+    ) -> SessionResult<Self> {
         let pending_drains: streams::progress::PendingDrains =
             Arc::new(Mutex::new([None; CHANNEL_SOUNDS]));
         let worker_drains = Arc::clone(&pending_drains);
         let (tx, rx) = std::sync::mpsc::channel::<Command>();
-        let queue_wake = AudioWakeRegistration::default();
-        let worker_wake = queue_wake.clone();
         let worker_cancelled = Arc::new(AtomicBool::new(false));
         let cancellation = Cancellation {
             requested: Arc::clone(&worker_cancelled),
             commands: tx,
-            queue_wake,
+            wake_output,
         };
         let failure: AudioFailure = Arc::new(Mutex::new(None));
-        let channel_frames_written: Arc<[AtomicU64; CHANNEL_SOUNDS]> =
-            Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
+        let movie_playback = Arc::new(Mutex::new(MoviePlayback::default()));
         let channel_generations: Arc<[AtomicU64; CHANNEL_SOUNDS]> =
             Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
         let worker_failure = Arc::clone(&failure);
-        let worker_counters = Arc::clone(&channel_frames_written);
+        let worker_movie = Arc::clone(&movie_playback);
         let worker_generations = Arc::clone(&channel_generations);
         let (ready, startup) = std::sync::mpsc::sync_channel(1);
         let worker = std::thread::Builder::new()
             .name("cmvs-audio-worker".into())
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let (mut output, clock) = match open(worker_wake) {
+                    let (mut output, clock) = match open() {
                         Ok(opened) => opened,
                         Err(cause) => {
                             let _ = ready.send(Err(cause));
@@ -420,7 +495,7 @@ impl AudioBridge {
                         state,
                         &worker_cancelled,
                         &worker_failure,
-                        &worker_counters,
+                        &worker_movie,
                         &worker_generations,
                         clock.as_ref(),
                         &worker_drains,
@@ -462,7 +537,7 @@ impl AudioBridge {
             playback,
             pending_drains,
             failure,
-            channel_frames_written,
+            movie_playback,
             channel_generations,
             next_generation: 0,
             native: super::native_save_audio::NativeAudioCapture::default(),
@@ -483,14 +558,20 @@ impl AudioBridge {
         self.submit(Command::Suspend(paused))
     }
 
-    /// Output-frame position of one channel sound slot. The position wraps
-    /// like the native looping clock; callers derive elapsed time from the
-    /// difference between observations.
-    pub(super) fn channel_position_frames(&self, channel: u8) -> u64 {
-        self.channel_frames_written
-            .get(usize::from(channel))
-            .map(|counter| counter.load(Ordering::Acquire))
-            .unwrap_or(0)
+    pub(super) fn play_movie(&mut self, clip: DecodedClip, native_gain: u32) -> SessionResult<u64> {
+        self.play_channel(super::movie::MOVIE_AUDIO_CHANNEL, clip, true, native_gain)?;
+        Ok(self.next_generation)
+    }
+
+    /// Only counts this movie's contributions once the output presents them.
+    pub(super) fn movie_position_frames(&self, generation: u64) -> u64 {
+        let played = self.playback.progress().played_frames;
+        let mut movie = self.movie_playback.lock().expect("movie playback timeline");
+        if movie.generation == generation {
+            movie.timeline.consumed(played)
+        } else {
+            0
+        }
     }
 
     /// Bit i is set while slot i has an accepted play queued or playing.
@@ -818,7 +899,7 @@ fn run_worker(
     mut state: Worker,
     cancelled: &AtomicBool,
     failure: &AudioFailure,
-    counters: &[AtomicU64; CHANNEL_SOUNDS],
+    movie_playback: &Mutex<MoviePlayback>,
     generations: &[AtomicU64; CHANNEL_SOUNDS],
     playback: &dyn streams::progress::PlaybackSource,
     pending_drains: &streams::progress::PendingDrains,
@@ -1033,13 +1114,9 @@ fn run_worker(
         for stream in state.bgm.iter_mut().flatten() {
             mix_stream(stream, &mut mix);
         }
-        for (slot, stream) in state.channels.iter_mut().enumerate() {
-            if let Some(stream) = stream.as_mut() {
-                if !stream.playing && stream.native_fade.is_none() {
-                    continue;
-                }
+        for stream in state.channels.iter_mut().flatten() {
+            if stream.playing || stream.native_fade.is_some() {
                 mix_stream(stream, &mut mix);
-                counters[slot].fetch_add(chunk_frames as u64, Ordering::Release);
             }
         }
         state.mix_static_duplicates(&mut mix);
@@ -1049,6 +1126,18 @@ fn run_worker(
                 unflushed = true;
                 let bus_start_frame = accepted_bus_frames;
                 accepted_bus_frames = accepted_bus_frames.wrapping_add(chunk_frames as u64);
+                if let Some(stream) = &state.channels[usize::from(super::movie::MOVIE_AUDIO_CHANNEL)]
+                    && stream.pending_output_frames != 0
+                {
+                    let mut movie = movie_playback.lock().expect("movie playback timeline");
+                    if movie.generation != stream.generation {
+                        *movie = MoviePlayback {
+                            generation: stream.generation,
+                            ..MoviePlayback::default()
+                        };
+                    }
+                    movie.timeline.accept(bus_start_frame, stream.pending_output_frames);
+                }
                 for stream in state
                     .bgm
                     .iter_mut()
@@ -1790,7 +1879,7 @@ pub(super) mod tests {
                 .iter()
                 .all(|sample| *sample == 1.0 / 4.0)
         );
-        assert_eq!(bridge.channel_position_frames(5), (CHUNK_FRAMES * 4) as u64);
+        assert_eq!(control.accepted_frames(), (CHUNK_FRAMES * 4) as u64);
         assert_eq!(bridge.playing_channels().unwrap(), 1 << 5);
         control.finish(&mut bridge);
     }
@@ -2077,18 +2166,15 @@ pub(super) mod tests {
     #[test]
     fn queued_voice_slot_eight_is_active_and_stop_does_not_clear_replay() {
         let (mut bridge, control) = OutputControl::new();
-        bridge
-            .play_channel(2, tone_clip(100, 48_000), true, 256)
-            .unwrap();
+        let movie = bridge.play_movie(tone_clip(100, 48_000), 256).unwrap();
         control.wait_for_write();
         assert_eq!(bridge.playing_channels().unwrap(), 1 << 2);
-        let movie_clock = bridge.channel_position_frames(2);
+        assert_eq!(bridge.movie_position_frames(movie), 0);
         bridge
             .play_channel(8, tone_clip(100, 48_000), true, 256)
             .unwrap();
         assert_eq!(bridge.playing_channels().unwrap(), (1 << 2) | (1 << 8));
-        assert_eq!(bridge.channel_position_frames(8), 0);
-        assert_eq!(bridge.channel_position_frames(2), movie_clock);
+        assert_eq!(bridge.movie_position_frames(movie), 0);
         bridge.stop_channel(8).unwrap();
         assert_eq!(bridge.playing_channels().unwrap(), 1 << 2);
         bridge
@@ -2096,13 +2182,18 @@ pub(super) mod tests {
             .unwrap();
         control.accept_and_wait();
         assert_eq!(bridge.playing_channels().unwrap(), (1 << 2) | (1 << 8));
-        assert_eq!(bridge.channel_position_frames(8), CHUNK_FRAMES as u64);
-        assert_eq!(
-            bridge.channel_position_frames(2),
-            movie_clock + CHUNK_FRAMES as u64
-        );
+        assert_eq!(bridge.movie_position_frames(movie), 0);
+        control.consume_to(1);
+        assert_eq!(bridge.movie_position_frames(movie), 1);
+        let replay = bridge.play_movie(tone_clip(100, 48_000), 256).unwrap();
+        assert_eq!(bridge.movie_position_frames(replay), 0);
         control.accept_and_wait();
         assert_eq!(bridge.playing_channels().unwrap(), (1 << 2) | (1 << 8));
+        control.consume_all();
+        assert_eq!(bridge.movie_position_frames(replay), 0);
+        control.accept_and_wait();
+        control.consume_all();
+        assert_eq!(bridge.movie_position_frames(replay), CHUNK_FRAMES as u64);
         control.finish(&mut bridge);
     }
 

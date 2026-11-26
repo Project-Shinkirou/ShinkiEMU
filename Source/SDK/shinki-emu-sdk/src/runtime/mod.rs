@@ -1,6 +1,6 @@
 //! Device-free values used inside native runtime owner threads.
 //! These Rust types never cross the C ABI or provide a module loading protocol.
-mod audio;
+pub(crate) mod audio;
 #[cfg(target_env = "ohos")]
 pub use audio::OhosAudioOutput;
 pub use audio::{AudioSink, AudioSinkBox, PcmFormat, PcmFormatSpec};
