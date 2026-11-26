@@ -151,8 +151,8 @@ fn signed_framework_sidecar_matches_the_selected_executable_and_product_hash() {
     let commit_path = root.path().join("source-commit.txt");
     fs::write(&commit_path, commit).unwrap();
     let mut sidecar: CoreManifest = serde_json::from_slice(&manifest(id, &[
-        (id, b"digest"),
-        ("source-commit.txt", commit.as_bytes()),
+        (id.into(), b"digest"),
+        ("source-commit.txt".into(), commit.as_bytes()),
     ])).unwrap();
     sidecar.library = id.into();
     let write = |sidecar: &CoreManifest| {
@@ -266,7 +266,7 @@ fn malformed_recognition_is_rejected_before_pending_or_installed_discovery() {
     let mut invalid: serde_json::Value = serde_json::from_slice(&manifest("rfvp", &files)).unwrap();
     invalid["recognition"] = serde_json::json!([{"path":"game.bin", "magic":"0405", "offset":4095}]);
     let encoded = serde_json::to_vec(&invalid).unwrap();
-    files.push((CORE_MANIFEST, &encoded));
+    files.push((CORE_MANIFEST.into(), &encoded));
     write_zip(&archive, &files);
     assert_eq!(
         stage_package(&archive, Some(("rfvp", "0.2.0", None)), &cores.join(PENDING)).unwrap_err(),

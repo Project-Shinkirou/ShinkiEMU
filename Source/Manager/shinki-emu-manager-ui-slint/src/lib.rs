@@ -439,10 +439,12 @@ pub struct CoreBatchViewModel {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CoreViewModel {
     pub id: String,
+    /// Directory stem for disk actions and package logs; empty if there is no directory.
+    pub stem: String,
     pub name: String,
     pub engine: String,
     pub version: String,
-    /// `loaded | failed | pending-install | pending-update | pending-removal | available`
+    /// `loaded | installed | loading | failed | pending-install | pending-update | pending-removal | available`
     pub state: String,
     /// `bundled | user | online`
     pub source: String,

@@ -61,6 +61,8 @@ Settings removed by a core update are removed from saved configuration automatic
 
 Allow networking in Settings before synchronizing metadata or downloading cores. In the core management page, refresh the catalog and install or update the desired core for your platform. The catalog supplies the version, ABI, download URL and hash. Complete the session and restart Manager when an update requires replacing a loaded library. Keep the whole core directory, including `core.json`, dependencies, `Resources/` when present and licenses; a DLL copied alone is not an installation.
 
+When Manager starts in a new process, it applies staged installations and removals before showing the core list. **Installed, not loaded** means the package is on disk but Manager has not loaded its native code. If a package is malformed or two directories declare the same core, use the directory name on the card to choose which copy to remove or inspect. Built-in cores cannot be uninstalled.
+
 On current Android builds, Impacto ships with Manager, and supported standalone cores are installed separately. Android accepts packages only when the bundled or synced official catalog verifies the archive and the target’s `android_dynamic` policy admits that release. **Install from file** verifies an official ZIP too. `no-core-download` disables online core downloads, not verified local installs. iOS and OpenHarmony use their bundled cores.
 
 ## Store downloads
