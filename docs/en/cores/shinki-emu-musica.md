@@ -19,6 +19,8 @@ A core owner runs the SC VM, hardware offscreen composition and native audio. Th
 
 Unknown commands, unsupported effects and device failures remain explicit. Audio currently decodes whole bounded resources rather than arbitrary-length streaming.
 
+Ordinary stage foregrounds use alpha blending. `_sc.png` uses screen blending and `_ad.png` adds source RGB weighted by its alpha to the destination. These rules do not enable composite CG entries in the gallery viewer.
+
 ## Frontend data and archive discovery
 
 Data comes from original resources first, then release-bound Metadata configuration, then Luau resource correction for nonstandard files. No game-name dispatch or built-in clear flags, replay scripts, movie filenames or character roster is used.

@@ -84,6 +84,7 @@ fn dual_stage_screen_prefix_orders_layers_and_restores_without_partial_frames() 
         &[
             ("BG.png", &png(16, 16, [25, 100, 220, 255])),
             ("Light_SC.PNG", &png(16, 16, [128, 0, 0, 128])),
+            ("Light_AD.PNG", &png(16, 16, [128, 0, 0, 128])),
         ],
     );
     let archive =
@@ -127,6 +128,9 @@ fn dual_stage_screen_prefix_orders_layers_and_restores_without_partial_frames() 
     state.stage.as_mut().unwrap().foreground.main = None;
     scene.render(&state, None, None).unwrap();
     assert_eq!(pixel(&scene, 5, 10), [112, 128, 192, 255]);
+    state.stage.as_mut().unwrap().foreground.prefix = Some("musica:/bg/Light_AD.PNG".into());
+    scene.render(&state, None, None).unwrap();
+    assert_eq!(pixel(&scene, 0, 0), [89, 100, 220, 255]);
     let valid = scene.pixels().clone();
     state.stage.as_mut().unwrap().foreground.prefix = Some("musica:/bg/Light_ov.png".into());
     assert_eq!(

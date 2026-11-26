@@ -282,6 +282,9 @@ fn foreground_blend(uri: &str) -> SessionResult<BlendMode> {
     let suffix = uri.get(uri.len().saturating_sub(7)..).unwrap_or("");
     if suffix.eq_ignore_ascii_case("_sc.png") {
         Ok(BlendMode::Screen)
+    } else if suffix.eq_ignore_ascii_case("_ad.png") {
+        // Native mode 4 uses SrcAlpha/One, not ordinary alpha-over.
+        Ok(BlendMode::Add)
     } else if suffix.eq_ignore_ascii_case("_ov.png") {
         Err(error(
             "SHINKI_EMU_MUSICA_STAGE_BLEND",
