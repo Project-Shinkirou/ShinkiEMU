@@ -125,6 +125,13 @@ fn original(groups: &[Vec<String>]) -> Vec<u8> {
             row += 4;
         }
     }
+    for (i, name) in ["*Alternate.png", "Base.png(Overlay.png)", "*Last.png"]
+        .into_iter()
+        .enumerate()
+    {
+        let addr = add_string(&mut image, &mut cursor, name);
+        put32(&mut image, 0xf00 + 4 * i, addr);
+    }
     for (i, name) in ["alpha", "beta", "gamma", "delta"].into_iter().enumerate() {
         let addr = add_string(&mut image, &mut cursor, name);
         put32(&mut image, FLASH + 4 * i, addr);
@@ -154,6 +161,10 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     for (name, code) in [
         ("binary", include_str!("../../../../Metadata/patches/common/binary.luau")),
         ("pe", include_str!("../../../../Metadata/patches/common/pe.luau")),
+        (
+            "musica_gallery_table",
+            include_str!("../../../../Metadata/patches/common/musica_gallery_table.luau"),
+        ),
         ("perseus_gallery", include_str!("../../../../Metadata/patches/common/perseus_gallery.luau")),
     ] {
         fs::write(common.join(format!("{name}.luau")), code).unwrap();
@@ -200,6 +211,12 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
                     flash_row_table_rva=0x18a0, flash_col_table_rva=0x18a8, flash_size_rva=0x18e0,
                     flash_menu_x_rva=0x18f0, flash_menu_y_rva=0x1900,
                     music_controls_rva=0x1920, music_row_shift_rva=0x19a0, music_pages_rva=0x19a3}})
+                local pe = ctx.load('common/pe.luau')
+                local native = ctx.load('common/musica_gallery_table.luau')
+                local file = pe.parse(ctx, ctx.open('source','original.exe'))
+                local alternate = native.groups(ctx, pe, file, 0x1d00, 3, 2)
+                assert(alternate[1][1] == 'Alternate.png' and alternate[1][2] == 'Base.png(Overlay.png)')
+                assert(alternate[2][1] == 'Last.png')
                 for _, name in ipairs({{'key.toml','bg.paz','bgm.paz','scr.paz','sys.paz'}}) do
                     ctx.copy('source',name,name)
                 end
@@ -259,4 +276,13 @@ fn gallery_recipe_extracts_native_order_and_core_rejects_missing_assets() {
     let unbacked_hash = hex::encode(Sha256::digest(unbacked));
     assert_eq!(run(&unbacked_hash, "out-of-range").err().unwrap().kind(), PatchErrorKind::Bounds);
     assert!(!root.path().join("out-of-range").exists());
+    let mut truncated = image.clone();
+    put32(&mut truncated, CG_ROWS + 4, 0);
+    fs::write(source.join("original.exe"), &truncated).unwrap();
+    let truncated_hash = hex::encode(Sha256::digest(truncated));
+    assert_eq!(
+        run(&truncated_hash, "truncated").err().unwrap().kind(),
+        PatchErrorKind::UnsupportedInput
+    );
+    assert!(!root.path().join("truncated").exists());
 }

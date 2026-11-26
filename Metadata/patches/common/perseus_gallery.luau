@@ -148,18 +148,14 @@ function gallery.read(ctx, spec)
     local rows = music_rects[1][4] / row_step
     need(ctx, rows > 0 and rows <= 64 and rows % 1 == 0, "invalid native music row count")
 
-    local groups = {}
-    local index = ptr(file.base + spec.cg_pointer_rva)
-    for i = 0, spec.cg_rows - 1 do
-        local name = string_at(ptr(index + 4 * i))
-        if string.sub(name, 1, 1) == "*" then
-            name = string.sub(name, 2)
-            table.insert(groups, {})
+    local cg = ctx.load("common/musica_gallery_table.luau")
+    local table_rva = ptr(file.base + spec.cg_pointer_rva) - file.base
+    local groups = cg.groups(ctx, pe, file, table_rva, spec.cg_rows, spec.cg_groups)
+    for _, group in groups do
+        for _, name in group do
+            need(ctx, not string.find(name, "(", 1, true), "unexpected composite in Perseus CG table")
         end
-        need(ctx, #groups > 0 and string.match(name, "^[%w_%-]+%.png$"), "invalid native CG entry")
-        table.insert(groups[#groups], name)
     end
-    need(ctx, ptr(index + 4 * spec.cg_rows) == 0 and #groups == spec.cg_groups, "native CG catalog bounds disagree")
 
     local screens = {{
         id = "memories", layers = {layer("memories.png")}, hover = uri("sys", "memoriesOver.png"),

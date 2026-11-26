@@ -27,7 +27,7 @@ const MANAGER_DIRS: &[&str] = &["Source/Manager/", "Source/Providers/"];
 pub struct Affected {
     all: bool,
     manager: bool,
-    /// Manager targets that statically embed a changed core.
+    /// Manager targets whose package includes a changed core.
     manager_targets: BTreeSet<String>,
     cores: BTreeSet<String>,
 }
@@ -41,10 +41,10 @@ impl Affected {
                 self.cores.contains(component)
             }
     }
-    fn core<'a>(&mut self, id: &str, static_targets: impl IntoIterator<Item = &'a str>) {
+    fn core<'a>(&mut self, id: &str, manager_targets: impl IntoIterator<Item = &'a str>) {
         self.cores.insert(id.to_owned());
         self.manager_targets
-            .extend(static_targets.into_iter().map(str::to_owned));
+            .extend(manager_targets.into_iter().map(str::to_owned));
     }
 }
 
@@ -105,21 +105,19 @@ fn classify(
         } else if MANAGER_DIRS.iter().any(|dir| path.starts_with(dir)) {
             affected.manager = true;
         } else if path == "build/cores.toml" {
-            core_table_changes(&mut affected, old_cores, new_cores)?;
-        } else if let Some((id, _)) = path.strip_prefix("Source/Cores/").and_then(|tail| tail.split_once('/'))
+            core_table_changes(inv, &mut affected, old_cores, new_cores)?;
+        } else if let Some((id, _)) = path
+            .strip_prefix("Source/Cores/")
+            .and_then(|tail| tail.split_once('/'))
             && let Ok(core) = inv.core(id)
         {
-            // The iOS Framework and OHOS companion builds use the entry package.
-            affected.core(id, inv.targets.iter().filter(|target| {
-                core.ios_framework && target.platform == "ios"
-                    || id == "shinki.emu.musica" && target.platform == "ohos"
-                        && core.static_manager_targets.contains(&target.triple)
-            }).map(|target| target.triple.as_str()));
+            affected.core(id, bundled_targets(inv, id, core.ios_framework));
         } else if let Some(core) = family_core(inv, path) {
-            affected.core(&core.id, inv.targets.iter().filter(|target| {
-                core.ios_framework && target.platform == "ios"
-                    || core.static_manager_targets.contains(&target.triple)
-            }).map(|target| target.triple.as_str()));
+            affected.core(
+                &core.id,
+                bundled_targets(inv, &core.id, core.ios_framework)
+                    .chain(core.static_manager_targets.iter().map(String::as_str)),
+            );
         } else {
             affected.all = true;
         }
@@ -130,15 +128,34 @@ fn classify(
     Ok(affected)
 }
 
+fn bundled_targets<'a>(
+    inv: &'a Inventory,
+    id: &'a str,
+    ios_framework: bool,
+) -> impl Iterator<Item = &'a str> {
+    inv.targets
+        .iter()
+        .map(|target| target.triple.as_str())
+        .filter(move |triple| {
+            (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
+                || crate::ohos::is_core_input(id, triple)
+        })
+}
+
 /// Locate an in-tree adapter; families without their own adapter are shared inputs.
 fn family_core<'a>(inv: &'a Inventory, path: &str) -> Option<&'a crate::cores::Core> {
     let (dir, _) = path.strip_prefix("Source/Families/")?.split_once('/')?;
     inv.cores.iter().find(|core| core.attribution.is_none() && core.adapter_package() == dir)
 }
 
-/// A per-core table that differs affects that core and the Manager targets that embed
-/// it (before or after the change); any other inventory change affects every row.
-fn core_table_changes(affected: &mut Affected, old: Option<&str>, new: &str) -> Result<()> {
+/// A per-core table that differs affects that core and the Manager packages
+/// that include it (before or after the change); other changes affect every row.
+fn core_table_changes(
+    inv: &Inventory,
+    affected: &mut Affected,
+    old: Option<&str>,
+    new: &str,
+) -> Result<()> {
     let Some(Ok(mut old)) = old.map(toml::from_str::<toml::Table>) else {
         affected.all = true;
         return Ok(());
@@ -158,12 +175,17 @@ fn core_table_changes(affected: &mut Affected, old: Option<&str>, new: &str) -> 
             continue;
         }
         for core in [before, after].into_iter().flatten() {
-            let static_targets = core.get("static_manager_targets")
-                .and_then(toml::Value::as_array).into_iter().flatten()
+            let static_targets = core
+                .get("static_manager_targets")
+                .and_then(toml::Value::as_array)
+                .into_iter()
+                .flatten()
                 .filter_map(toml::Value::as_str);
-            let frameworks = (core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true))
-                .then_some(crate::apple::ios_frameworks::TARGETS).into_iter().flatten();
-            affected.core(id, static_targets.chain(frameworks));
+            let ios_framework = core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
+            affected.core(
+                id,
+                static_targets.chain(bundled_targets(inv, id, ios_framework)),
+            );
         }
     }
     Ok(())
@@ -217,13 +239,18 @@ mod tests {
     fn changed(inv: &Inventory, paths: &[&str]) -> BTreeSet<(String, String)> {
         rows(inv, &classify(inv, paths, None, "").unwrap())
     }
-    /// Rows of `core`, plus the Manager rows on its static integration targets.
-    fn core_rows(inv: &Inventory, core: &str) -> BTreeSet<(String, String)> {
-        let embedded = &inv.core(core).unwrap().static_manager_targets;
+    const IOS_MANAGERS: &[&str] = &["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"];
+
+    fn core_rows(
+        inv: &Inventory,
+        core: &str,
+        manager_targets: &[&str],
+    ) -> BTreeSet<(String, String)> {
         every_row(inv)
             .into_iter()
             .filter(|(component, target)| {
-                component == core || component == "manager" && embedded.contains(target)
+                component == core
+                    || component == "manager" && manager_targets.contains(&target.as_str())
             })
             .collect()
     }
@@ -288,32 +315,44 @@ mod tests {
     }
 
     #[test]
-    fn family_sources_affect_their_core_and_its_static_manager_rows() {
+    fn family_sources_affect_their_cores_and_bundled_manager_rows() {
         let (inv, _) = inventory();
         let musica = changed(&inv, &["Source/Families/shinki-emu-musica/src/lib.rs"]);
-        assert_eq!(musica, core_rows(&inv, "shinki.emu.musica"));
-        assert!(musica.iter().any(|(component, _)| component == "manager"));
-        assert!(!musica.contains(&("manager".into(), "x86_64-pc-windows-msvc".into())));
+        assert_eq!(musica, core_rows(&inv, "shinki.emu.musica", IOS_MANAGERS));
         let cmvs = changed(&inv, &["Source/Families/shinki-emu-cmvs/Cargo.toml"]);
-        assert_eq!(cmvs, core_rows(&inv, "shinki.emu.cmvs"));
-        assert!(cmvs.contains(&("manager".into(), "aarch64-linux-android".into())));
-        assert!(!cmvs.contains(&("manager".into(), "x86_64-pc-windows-msvc".into())));
+        assert_eq!(cmvs, core_rows(&inv, "shinki.emu.cmvs", IOS_MANAGERS));
     }
 
     #[test]
-    fn standalone_entry_changes_do_not_rebuild_embedded_manager() {
+    fn entry_changes_rebuild_manager_only_when_the_package_uses_the_entry() {
         let (inv, _) = inventory();
-        let id = "siglus_rs";
-        let standalone: BTreeSet<_> = every_row(&inv).into_iter()
-            .filter(|(component, _)| component == id).collect();
-        assert!(!standalone.is_empty());
-        assert_eq!(changed(&inv, &["Source/Cores/siglus_rs/src/lib.rs"]), standalone);
-        let sidecar = changed(&inv, &["Source/Cores/shinki.emu.musica/src/lib.rs"]);
-        let expected: BTreeSet<_> = every_row(&inv).into_iter().filter(|(component, target)| {
-            component == "shinki.emu.musica"
-                || component == "manager" && inv.target(target).unwrap().platform == "ios"
-        }).collect();
-        assert_eq!(sidecar, expected);
+        for (path, core, manager_targets) in [
+            ("Source/Cores/siglus_rs/src/lib.rs", "siglus_rs", IOS_MANAGERS),
+            (
+                "Source/Cores/shinki.emu.adv32/src/lib.rs",
+                "shinki.emu.adv32",
+                &[][..],
+            ),
+        ] {
+            let expected = core_rows(&inv, core, manager_targets);
+            assert!(expected.iter().any(|(component, _)| component == core));
+            assert_eq!(changed(&inv, &[path]), expected);
+        }
+    }
+
+    #[test]
+    fn musica_sources_invalidate_the_local_harmony_hap() {
+        let (inv, _) = inventory();
+        let target = "aarch64-unknown-linux-ohos";
+        for path in [
+            "Source/Cores/shinki.emu.musica/src/lib.rs",
+            "Source/Families/shinki-emu-musica/src/lib.rs",
+        ] {
+            let affected = classify(&inv, &[path], None, "").unwrap();
+            assert!(affected.row("manager", target), "{path}");
+        }
+        let cmvs = classify(&inv, &["Source/Cores/shinki.emu.cmvs/src/lib.rs"], None, "").unwrap();
+        assert!(!cmvs.row("manager", target));
     }
 
     #[test]
@@ -336,7 +375,7 @@ mod tests {
                 .find(|core| core["id"].as_str() == Some("rfvp"));
             rfvp.unwrap()["display_name"] = "RFVP (previous)".into();
         });
-        assert_eq!(rfvp, core_rows(&inv, "rfvp"));
+        assert_eq!(rfvp, core_rows(&inv, "rfvp", IOS_MANAGERS));
         assert!(!rfvp.iter().any(|(component, _)| component == "siglus_rs"));
 
         assert!(edit(&|_| {}).is_empty(), "formatting-only edits");
