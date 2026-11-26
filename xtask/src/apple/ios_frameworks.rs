@@ -481,16 +481,16 @@ fn stage_framework(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn manifest_for(inv: &Inventory, target: &str) -> Manifest {
+    fn manifest_for(inv: &Inventory, target: &str, version: &str, commit: &str) -> Manifest {
         Manifest {
-            schema: SCHEMA.into(), source_commit: "a".repeat(40), version: "0.1.0".into(),
+            schema: SCHEMA.into(), source_commit: commit.into(), version: version.into(),
             target: target.into(), distribution: distribution(target).into(),
             frameworks: CORE_IDS.into_iter().map(|id| {
                 let identity = inv.core(id).unwrap().identity(&inv.root).unwrap();
-                let version = core_version(identity.as_ref(), "0.1.0");
+                let version = core_version(identity.as_ref(), version);
                 let sha256 = package::sha256_reader(id.as_bytes()).unwrap();
                 (id.into(), Framework { version, identity, sha256 })
             }).collect(),
@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn release_manifest_rejects_missing_framework_and_wrong_head() {
         let inv = inventory();
-        let mut manifest = manifest_for(&inv, TARGETS[0]);
+        let mut manifest = manifest_for(&inv, TARGETS[0], "0.1.0", &"a".repeat(40));
         manifest.validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40)).unwrap();
         manifest.distribution = "unsigned-device-build".into();
         assert!(manifest.validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40)).is_err());
@@ -514,24 +514,19 @@ mod tests {
         assert!(manifest.validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40)).is_err());
     }
 
-    #[test]
-    fn archived_framework_inventory_and_content_are_verified() {
-        let manifest = manifest_for(&inventory(), TARGETS[2]);
-        let temp = crate::temporary::directory().unwrap();
-        let root = temp.path();
-        let stage = root.join("stage");
-        let app = stage.join("ShinkiEMU-simulator-test.app");
-        let put = |path: &Path, contents: &[u8]| {
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, contents).unwrap();
-        };
-        let json = serde_json::to_vec(&manifest).unwrap();
-        put(&stage.join(MANIFEST), &json);
-        // This test exercises byte-for-byte archive verification. Native
-        // codesign verification happens before the app is archived.
-        put(&app.join(MANIFEST), &json);
+    fn put(path: &Path, contents: &[u8]) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+
+    // Test archive verification only; actual code signing runs before archival.
+    fn stage_app_fixture(app: &Path, manifest: &Manifest) {
+        put(&app.join(MANIFEST), &serde_json::to_vec(manifest).unwrap());
         put(&app.join("shinki-emu-manager"), b"manager");
         put(&app.join("_CodeSignature/CodeResources"), b"app seal");
+        if device(&manifest.target) {
+            put(&app.join("embedded.mobileprovision"), b"device provision");
+        }
         for id in CORE_IDS {
             let dir = app.join("Frameworks").join(format!("{id}.framework"));
             put(&dir.join("Info.plist"), b"plist");
@@ -539,6 +534,38 @@ mod tests {
             put(&dir.join(id), id.as_bytes());
             put(&app.join("cores").join(id).join("core.json"), b"core manifest");
         }
+    }
+
+    pub(crate) fn release_archive_fixture(
+        inv: &Inventory, target: &str, version: &str, commit: &str, out: &Path,
+    ) -> Manifest {
+        let manifest = manifest_for(inv, target, version, commit);
+        let temp = crate::temporary::directory().unwrap();
+        let stage = temp.path().join("stage");
+        put(&stage.join(MANIFEST), &serde_json::to_vec(&manifest).unwrap());
+        if device(target) {
+            let ipa_root = temp.path().join("ipa");
+            stage_app_fixture(&ipa_root.join("Payload/ShinkiEMU.app"), &manifest);
+            package::zip_entries(
+                &package::tree(&ipa_root).unwrap(),
+                &stage.join(device_filename(target, version)),
+            ).unwrap();
+        } else {
+            stage_app_fixture(&stage.join("ShinkiEMU-simulator-test.app"), &manifest);
+        }
+        package::zip_entries(&package::tree(&stage).unwrap(), out).unwrap();
+        manifest
+    }
+
+    #[test]
+    fn archived_framework_inventory_and_content_are_verified() {
+        let manifest = manifest_for(&inventory(), TARGETS[2], "0.1.0", &"a".repeat(40));
+        let temp = crate::temporary::directory().unwrap();
+        let root = temp.path();
+        let stage = root.join("stage");
+        let app = stage.join("ShinkiEMU-simulator-test.app");
+        put(&stage.join(MANIFEST), &serde_json::to_vec(&manifest).unwrap());
+        stage_app_fixture(&app, &manifest);
         let archive = |name| {
             let out = root.join(name);
             package::zip_entries(&package::tree(&stage).unwrap(), &out).unwrap();

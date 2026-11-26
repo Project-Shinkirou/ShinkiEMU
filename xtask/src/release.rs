@@ -894,11 +894,18 @@ mod tests {
             let dir = id.root.join(&target.triple);
             fs::create_dir(&dir).unwrap();
             let archive = dir.join("asset");
-            if target.platform == "android" {
-                package::zip_entries(&[], &archive).unwrap();
+            let ios = if target.platform == "ios" {
+                Some(crate::apple::ios_frameworks::tests::release_archive_fixture(
+                    &inv, &target.triple, &id.version, &id.commit, &archive,
+                ))
             } else {
-                fs::write(&archive, b"test release asset").unwrap();
-            }
+                if target.platform == "android" {
+                    package::zip_entries(&[], &archive).unwrap();
+                } else {
+                    fs::write(&archive, b"test release asset").unwrap();
+                }
+                None
+            };
             fs::write(
                 dir.join("release.json"),
                 serde_json::to_vec(&json!({
@@ -908,6 +915,7 @@ mod tests {
                     "release_scope": "all",
                     "source_commit": id.commit,
                     "publish_blocked": "",
+                    "ios": ios,
                     "archive": {
                         "name": "asset",
                         "sha256": package::sha256(&archive).unwrap(),
