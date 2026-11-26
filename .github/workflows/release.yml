@@ -274,7 +274,7 @@ jobs:
               if [[ "$target" == aarch64-apple-ios ]]; then channel=development-device-test; fi
               jq -e --arg version "$VERSION" --arg target "$target" --arg commit "$SOURCE_COMMIT" --arg channel "$channel" '
                 .ios | .distribution == $channel and .source_commit == $commit
-                and .version == $version and .target == $target and (.frameworks | type == "object" and length == 8)
+                and .version == $version and .target == $target and (.frameworks | type == "object")
               ' ".work/release/$RELEASE_TAG/$target/release.json" >/dev/null
             fi
           done < <(jq -r --arg c "$COMPONENT" '.include[] | select(.component == $c) | .target' <<<"$MATRIX")

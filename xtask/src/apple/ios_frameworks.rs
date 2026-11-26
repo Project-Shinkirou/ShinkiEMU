@@ -23,16 +23,6 @@ pub(crate) const TARGETS: [&str; 3] = [
     "x86_64-apple-ios",
 ];
 const APP_ID: &str = "org.shinkirou.shinkiemu";
-const CORE_IDS: [&str; 8] = [
-    "ReMinori",
-    "ethornell-rs",
-    "krkr2",
-    "rfvp",
-    "sena-rs",
-    "shinki.emu.cmvs",
-    "shinki.emu.musica",
-    "siglus_rs",
-];
 pub(crate) const MANIFEST: &str = "ios.json";
 const SCHEMA: &str = "shinki.emu.ios_package.v1";
 
@@ -45,15 +35,13 @@ pub(crate) fn device(target: &str) -> bool {
 }
 
 pub(crate) fn validate_inventory(inv: &Inventory) -> Result<()> {
-    let ids = inv
-        .cores
+    let has_manager = inv
+        .targets
         .iter()
-        .filter(|core| core.ios_framework)
-        .map(|core| core.id.as_str())
-        .collect::<BTreeSet<_>>();
+        .any(|target| target.manager_supported && target_supported(&target.triple));
     ensure!(
-        ids.into_iter().eq(CORE_IDS),
-        "iOS Manager requires exactly the eight Framework cores"
+        !has_manager || inv.cores.iter().any(|core| core.ios_framework),
+        "iOS Manager requires at least one declared Framework"
     );
     Ok(())
 }
@@ -391,8 +379,10 @@ impl Manifest {
                 && self.target == target,
             "iOS package does not match the exact-head test row {version}/{target}/{commit}"
         );
+        let mut expected = inv.cores.iter().filter(|core| core.ios_framework);
         ensure!(
-            self.frameworks.keys().map(String::as_str).eq(CORE_IDS),
+            self.frameworks.len() == expected.clone().count()
+                && expected.all(|core| self.frameworks.contains_key(&core.id)),
             "missing or unexpected iOS Frameworks in manifest"
         );
         for (id, entry) in &self.frameworks {
@@ -651,13 +641,11 @@ fn stage_framework(
     ) {
         resources.extend(package::asset_entries(asset)?);
     }
-    // The pinned KrKr2 Apple adapter looks up this tree relative to its image.
-    let resource_root = if id == "krkr2" {
-        framework.join("cores/krkr2")
-    } else {
-        framework.clone()
-    };
-    package::copy_entries(&resources, &resource_root)?;
+    let subdir = core
+        .ios_resource_subdir
+        .as_ref()
+        .map(|dir| framework.join(dir));
+    package::copy_entries(&resources, subdir.as_deref().unwrap_or(&framework))?;
 
     let temp = tempfile::tempdir_in(stage)?;
     let mut notices = package::licenses(inv, &build, temp.path())?;
@@ -749,10 +737,13 @@ pub(crate) mod tests {
             version: version.into(),
             target: target.into(),
             distribution: distribution(target).into(),
-            frameworks: CORE_IDS
-                .into_iter()
-                .map(|id| {
-                    let identity = inv.core(id).unwrap().identity(&inv.root).unwrap();
+            frameworks: inv
+                .cores
+                .iter()
+                .filter(|core| core.ios_framework)
+                .map(|core| {
+                    let id = core.id.as_str();
+                    let identity = core.identity(&inv.root).unwrap();
                     let version = core_version(identity.as_ref(), version);
                     let sha256 = package::sha256_reader(id.as_bytes()).unwrap();
                     (
@@ -774,7 +765,7 @@ pub(crate) mod tests {
 
     #[test]
     fn release_manifest_rejects_missing_framework_and_wrong_head() {
-        let inv = inventory();
+        let mut inv = inventory();
         let mut manifest = manifest_for(&inv, TARGETS[0], "0.1.0", &"a".repeat(40));
         manifest
             .validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40))
@@ -791,12 +782,16 @@ pub(crate) mod tests {
                 .validate(&inv, TARGETS[0], "0.1.0", &"b".repeat(40))
                 .is_err()
         );
-        manifest.frameworks.remove("krkr2");
+        let (missing, _) = manifest.frameworks.pop_first().unwrap();
         assert!(
             manifest
                 .validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40))
                 .is_err()
         );
+        inv.cores.retain(|core| core.id != missing);
+        manifest
+            .validate(&inv, TARGETS[0], "0.1.0", &"a".repeat(40))
+            .unwrap();
     }
 
     fn put(path: &Path, contents: &[u8]) {
@@ -812,7 +807,7 @@ pub(crate) mod tests {
         if device(&manifest.target) {
             put(&app.join("embedded.mobileprovision"), b"device provision");
         }
-        for id in CORE_IDS {
+        for id in manifest.frameworks.keys() {
             let dir = app.join("Frameworks").join(format!("{id}.framework"));
             put(&dir.join("Info.plist"), b"plist");
             put(&dir.join("_CodeSignature/CodeResources"), b"framework seal");

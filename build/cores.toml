@@ -423,6 +423,7 @@ resources = []
 adapter_licenses = ["LICENSE", "MODIFICATIONS.md"]
 supported_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 ios_framework = true
+ios_resource_subdir = "cores/krkr2"
 android_dynamic = { minimum_release = 2, requires_context = true }
 [cores.attribution]
 adapter_branch = "shinki"

@@ -40,6 +40,7 @@ pub struct Core {
     static_manager_candidate_targets: Vec<String>,
     #[serde(default)]
     pub ios_framework: bool,
+    pub ios_resource_subdir: Option<String>,
     pub blocked: Vec<Blocked>,
     pub attribution: Option<Attribution>,
 }
@@ -347,6 +348,12 @@ impl Inventory {
                         .any(|target| crate::apple::ios_frameworks::target_supported(target)))
             {
                 bail!("invalid iOS Framework recipe for {}", c.id);
+            }
+            if let Some(dir) = &c.ios_resource_subdir {
+                if !c.ios_framework {
+                    bail!("{} declares iOS resources without a Framework", c.id);
+                }
+                crate::package::portable(dir)?;
             }
             for t in &c.static_manager_targets {
                 let target = self.target(t)?;

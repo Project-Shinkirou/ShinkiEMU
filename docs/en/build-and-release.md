@@ -87,6 +87,8 @@ cross build --locked --release --target aarch64-apple-darwin -p shinki-emu-manag
 
 Native macOS packaging includes RFVP, Siglus, Musica, CMVS, Sena, Ethornell, ReMinori and KrKr2 as independently signed ABI v3 frameworks. Choose `aarch64-apple-ios` for devices or `aarch64-apple-ios-sim` / `x86_64-apple-ios` for simulators. The Manager loads these cores only from its app bundle; core downloads and static fallback are disabled.
 
+The Framework roster comes from `ios_framework` in `build/cores.toml`. An adapter that needs its resources below the Framework root can declare a portable `ios_resource_subdir`.
+
 Install `cargo-about` as above. For a device build, set `SHINKI_EMU_IOS_SIGN_IDENTITY` to an Apple Development signing identity with its private key in Keychain. Set `SHINKI_EMU_IOS_PROVISIONING_PROFILE` to the development profile for `org.shinkirou.shinkiemu` and the test device, and `SHINKI_EMU_IOS_ENTITLEMENTS` to the matching entitlements file. The simulator uses ad hoc signing and needs none of these inputs.
 
 ```sh
