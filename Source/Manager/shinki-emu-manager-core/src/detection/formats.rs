@@ -36,6 +36,9 @@ impl<T: DetectionTree> Scan<'_, T> {
             return self.pfs(source, head);
         }
         if head.starts_with(b"PackFile") || head.starts_with(b"BURIKO ARC20") {
+            // A BGI archive in a look-ahead directory belongs to that
+            // candidate, not to the parent being scanned.
+            require(path.parent() == Some(Path::new("")))?;
             return self.bgi(source, head);
         }
         if head.starts_with(b"Sv20") {
