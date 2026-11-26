@@ -1031,32 +1031,25 @@ pub(crate) fn static_core_entries(
         let manifest = result
             .embedded_core_builds
             .iter()
-            .find(|build| build.plugin_id == core.id);
-        if manifest.is_none()
-            && (core.artifact_source() == crate::cores::ArtifactSource::NativeLibrary
-                || core.embedded_candidate(target, features))
-        {
-            bail!("embedded core {} has no recorded build manifest", core.id);
-        }
-        if let Some(manifest) = manifest {
-            manifest.validate()?;
-            for asset in &manifest.resources {
-                for (source, destination) in asset_entries(asset)? {
-                    if result.target.ends_with("-linux-android")
-                        && android_host::is_runtime_asset(&destination)
-                    {
-                        continue;
-                    }
-                    entries.push((source, format!("cores/{}/{destination}", core.id)));
+            .find(|build| build.plugin_id == core.id)
+            .with_context(|| format!("embedded core {} has no recorded build manifest", core.id))?;
+        manifest.validate()?;
+        for asset in &manifest.resources {
+            for (source, destination) in asset_entries(asset)? {
+                if result.target.ends_with("-linux-android")
+                    && android_host::is_runtime_asset(&destination)
+                {
+                    continue;
                 }
+                entries.push((source, format!("cores/{}/{destination}", core.id)));
             }
-            for asset in &manifest.licenses {
-                for (source, destination) in asset_entries(asset)? {
-                    entries.push((
-                        source,
-                        format!("licenses/embedded/{}/{destination}", core.id),
-                    ));
-                }
+        }
+        for asset in &manifest.licenses {
+            for (source, destination) in asset_entries(asset)? {
+                entries.push((
+                    source,
+                    format!("licenses/embedded/{}/{destination}", core.id),
+                ));
             }
         }
     }

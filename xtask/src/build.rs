@@ -1,7 +1,4 @@
-use crate::{
-    cores::{ArtifactSource, Inventory},
-    dependencies,
-};
+use crate::{cores::Inventory, dependencies};
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::ohos::Target as OhosTarget;
@@ -445,25 +442,13 @@ fn execute_configured(
     } else {
         (None, manifests)
     };
-    let library = if !ios_framework_input
-        && core.is_some_and(|core| core.artifact_source() == ArtifactSource::NativeLibrary)
-    {
-        core_build
-            .as_ref()
-            .and_then(|manifest| manifest.native_library.clone())
-            .with_context(|| {
-                format!("{package} did not report its native library in core-build.json")
-            })?
-    } else {
-        libraries.sort();
-        libraries.dedup();
-        if libraries.len() != 1 {
-            bail!(
-                "Cargo did not report exactly one dynamic library/executable for {package}: {libraries:?}"
-            );
-        }
-        libraries.remove(0)
-    };
+    let library = select_library(
+        &package,
+        target,
+        ios_framework_input,
+        core_build.as_ref(),
+        libraries,
+    )?;
     Ok(BuildArtifact {
         component: component.into(),
         target: target.into(),
@@ -475,6 +460,46 @@ fn execute_configured(
         source_commit: product_source,
         features,
     })
+}
+
+fn select_library(
+    package: &str,
+    target: &str,
+    ios_framework: bool,
+    manifest: Option<&CoreBuildManifest>,
+    mut cargo_libraries: Vec<PathBuf>,
+) -> Result<PathBuf> {
+    if let Some(manifest) = manifest {
+        if manifest.target != target {
+            bail!(
+                "{package} reported an artifact for {} rather than {target}",
+                manifest.target
+            );
+        }
+        manifest.validate()?;
+        if !ios_framework {
+            match manifest.artifact_kind.as_str() {
+                "native-shared" => {
+                    return manifest
+                        .native_library
+                        .clone()
+                        .context("missing native shared library");
+                }
+                "native-static" => {
+                    bail!("{package} reported a static library for a standalone core")
+                }
+                _ => {}
+            }
+        }
+    }
+    cargo_libraries.sort();
+    cargo_libraries.dedup();
+    if cargo_libraries.len() != 1 {
+        bail!(
+            "Cargo did not report exactly one dynamic library/executable for {package}: {cargo_libraries:?}"
+        );
+    }
+    Ok(cargo_libraries.remove(0))
 }
 
 pub(crate) fn requested_manager_features() -> Result<Vec<String>> {
@@ -517,6 +542,40 @@ fn manager_features(requested: Option<&str>, package: &toml::Value) -> Result<Ve
 #[cfg(test)]
 mod version_tests {
     use super::*;
+
+    #[test]
+    fn artifact_selection_honors_native_report_without_a_core_id_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let native = dir.path().join("native.so");
+        let wrapper = dir.path().join("wrapper.so");
+        fs::write(&native, b"native").unwrap();
+        let mut manifest = CoreBuildManifest {
+            plugin_id: "independent-core".into(),
+            target: "x86_64-unknown-linux-gnu".into(),
+            artifact_kind: "native-shared".into(),
+            native_library: Some(native.clone()),
+            resources: vec![],
+            licenses: vec![],
+        };
+        let target = manifest.target.clone();
+        let select = |manifest: &CoreBuildManifest, framework| {
+            select_library(
+                "wrapper",
+                &target,
+                framework,
+                Some(manifest),
+                vec![wrapper.clone()],
+            )
+        };
+        assert_eq!(select(&manifest, false).unwrap(), native);
+        assert_eq!(select(&manifest, true).unwrap(), wrapper);
+        manifest.artifact_kind = "rust-cdylib".into();
+        assert!(select(&manifest, false).is_err());
+        manifest.native_library = None;
+        assert_eq!(select(&manifest, false).unwrap(), wrapper);
+        manifest.target = "aarch64-unknown-linux-gnu".into();
+        assert!(select(&manifest, false).is_err());
+    }
 
     #[test]
     fn manager_features_are_declared_additive_and_normalized() {

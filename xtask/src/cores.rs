@@ -52,12 +52,6 @@ pub struct Attribution {
     pub release_sequence: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArtifactSource {
-    Cdylib,
-    NativeLibrary,
-}
-
 impl Core {
     pub fn entry_package(&self) -> String {
         format!("shinki-emu-core-{}", self.id.replace('.', "-"))
@@ -85,15 +79,6 @@ impl Core {
             .iter()
             .any(|triple| triple == target)
             || self.embedded_candidate(target, features)
-    }
-
-    /// The native adapters build their own DSO; the entry package drives that
-    /// build, but its rlib is not a distributable artifact.
-    pub fn artifact_source(&self) -> ArtifactSource {
-        match self.id.as_str() {
-            "kirikiroid2-web" | "krkr2" | "impacto" | "renpy" => ArtifactSource::NativeLibrary,
-            _ => ArtifactSource::Cdylib,
-        }
     }
 
     pub fn adapter_source(&self, root: &Path) -> Result<Option<LockedAdapter>> {
