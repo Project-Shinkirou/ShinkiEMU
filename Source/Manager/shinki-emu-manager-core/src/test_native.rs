@@ -26,6 +26,8 @@ pub struct Fixture {
     pub render: abi::RenderExtentSupport,
     pub marker: Option<&'static str>,
     pub config: bool,
+    pub path_field: bool,
+    pub config_paths: Option<&'static abi::ConfigPathsV1>,
     pub calls: Arc<Mutex<Vec<Call>>>,
     pub entered: Option<std::sync::mpsc::Sender<()>>,
     pub gate: Option<std::sync::mpsc::Receiver<()>>,
@@ -60,6 +62,8 @@ impl Fixture {
             render: abi::RenderExtentSupport::default(),
             marker: None,
             config: false,
+            path_field: false,
+            config_paths: None,
             calls: Arc::new(Mutex::new(Vec::new())),
             entered: None,
             gate: None,
@@ -104,6 +108,7 @@ pub fn try_install(
 /// Install an available native entry without querying or initializing it.
 pub fn prepare_query(slot: usize, mut value: Fixture) -> abi::Query {
     value.formats = vec![abi::Bytes::new(value.format.as_bytes())].into_boxed_slice();
+    let mut fields = Vec::new();
     if value.config {
         value.choices =
             vec![abi::Bytes::new(b"direct"), abi::Bytes::new(b"title")].into_boxed_slice();
@@ -112,7 +117,7 @@ pub fn prepare_query(slot: usize, mut value: Fixture) -> abi::Query {
             abi::Bytes::new("标题菜单启动".as_bytes()),
         ]
         .into_boxed_slice();
-        value.fields = vec![abi::ConfigField {
+        fields.push(abi::ConfigField {
             id: abi::Bytes::new(b"launch_mode"),
             label: abi::Bytes::new(b"Launch mode"),
             group: abi::Bytes::new(b"Startup"),
@@ -135,9 +140,35 @@ pub fn prepare_query(slot: usize, mut value: Fixture) -> abi::Query {
             choice_labels: value.choice_labels.as_ptr(),
             step: 0.0,
             unit: abi::Bytes::EMPTY,
-        }]
-        .into_boxed_slice();
+        });
     }
+    if value.path_field {
+        fields.push(abi::ConfigField {
+            id: abi::Bytes::new(b"palette_file"),
+            label: abi::Bytes::new(b"Palette"),
+            group: abi::Bytes::new(b"Files"),
+            default_value: abi::ConfigValue {
+                kind: abi::VALUE_STRING,
+                reserved: 0,
+                integer: 0,
+                number: 0.0,
+                text: abi::Bytes::EMPTY,
+            },
+            integer_min: 0,
+            integer_max: 0,
+            number_min: 0.0,
+            number_max: 0.0,
+            max_bytes: 1024,
+            flags: abi::CONFIG_FLAG_FILE_PATH | abi::CONFIG_FLAG_GAME_RELATIVE,
+            choices: std::ptr::null(),
+            choice_count: 0,
+            description: abi::Bytes::EMPTY,
+            choice_labels: std::ptr::null(),
+            step: 0.0,
+            unit: abi::Bytes::EMPTY,
+        });
+    }
+    value.fields = fields.into_boxed_slice();
     FIXTURES.with(|slots| slots.borrow_mut()[slot] = Some(Box::new(value)));
     match slot {
         0 => query::<0>,
@@ -608,6 +639,13 @@ unsafe extern "C" fn extension<const N: usize>(
         unsafe {
             *out = (&TEST_MENU_API as *const abi::SessionMenuApi).cast();
         }
+        return abi::OK;
+    }
+    if name == abi::CONFIG_PATHS_EXTENSION
+        && version == abi::CONFIG_PATHS_VERSION
+        && let Some(paths) = fixture::<N, _>(|value| value.config_paths)
+    {
+        unsafe { *out = (paths as *const abi::ConfigPathsV1).cast() };
         return abi::OK;
     }
     if version != abi::MODULE_OWNER_VERSION

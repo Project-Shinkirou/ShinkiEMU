@@ -114,6 +114,8 @@ struct ShinkiEmuManagerController {
     native_action: Option<recognition::NativeAction>,
     native_failures: BTreeMap<String, String>,
     configuration_errors: BTreeMap<String, recognition::GameConfigurationError>,
+    pending_config_path: Option<family_config::PendingConfigPath>,
+    config_path_error: Option<family_config::ConfigPathError>,
     probe_choices: BTreeMap<String, Vec<Candidate>>,
     /// Games without rule detections; their choices are the eligible official cores.
     manual_games: BTreeSet<String>,

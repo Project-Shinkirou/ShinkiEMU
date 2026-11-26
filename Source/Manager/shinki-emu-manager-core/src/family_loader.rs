@@ -2,9 +2,11 @@
 use crate::{
     family::{FamilyPluginDescriptor, SessionMenuEntry},
     model::*,
+    native_config::{self, ConfigPathRule},
 };
 use shinki_emu_abi as abi;
 use std::{
+    collections::BTreeMap,
     mem::{ManuallyDrop, MaybeUninit},
     path::{Path, PathBuf},
     rc::Rc,
@@ -165,6 +167,7 @@ pub struct LoadedFamilyPlugin {
     inner: Rc<NativeModule>,
     descriptor: FamilyPluginDescriptor,
     configuration: Vec<ConfigField>,
+    path_rules: BTreeMap<String, ConfigPathRule>,
     location: PathBuf,
     menu: Vec<SessionMenuEntry>,
 }
@@ -269,6 +272,7 @@ impl LoadedFamilyPlugin {
         let (descriptor, configuration) =
             unsafe { super::native_config::descriptor(descriptor.assume_init()) }
                 .map_err(FamilyLoadError::DescriptorError)?;
+        let path_rules = native_config::path_rules(&api, &configuration)?;
         let resources = crate::native_module_owner::ModuleResources::discover(&api)
             .map_err(FamilyLoadError::ProviderError)?;
         let mut extension = std::ptr::null();
@@ -333,6 +337,7 @@ impl LoadedFamilyPlugin {
             }),
             descriptor,
             configuration,
+            path_rules,
             location: PathBuf::new(),
             menu,
         })
@@ -346,6 +351,21 @@ impl LoadedFamilyPlugin {
     pub fn configuration(&self) -> &[ConfigField] {
         &self.configuration
     }
+    pub(super) fn config_path_options(
+        &self,
+    ) -> impl Iterator<Item = (&String, &crate::ConfigPathOptions)> {
+        self.path_rules.iter().map(|(id, rule)| (id, &rule.options))
+    }
+
+    pub(super) fn validate_config_path(&self, field_id: &str, path: &Path) -> FamilyResult<()> {
+        self.path_rules
+            .get(field_id)
+            .ok_or_else(|| {
+                FamilyError::invalid("SHINKI_EMU_CORE_CONFIG", "no rules for this path field")
+            })?
+            .validate(path)
+    }
+
     pub fn session_menu(&self) -> &[SessionMenuEntry] {
         &self.menu
     }

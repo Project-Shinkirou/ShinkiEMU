@@ -33,6 +33,7 @@ fn android_game_window_cancels_only_the_deferred_launch() {
         descriptor: controller.registry.descriptor(&plugin_id).unwrap().clone(),
         configuration: Vec::new(),
         menu: Vec::new(),
+        config_paths: BTreeMap::new(),
     };
 
     controller.native_action = Some(NativeAction::Diagnose(plugin_id.clone()));

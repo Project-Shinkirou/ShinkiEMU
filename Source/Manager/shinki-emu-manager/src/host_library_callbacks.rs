@@ -327,8 +327,18 @@ fn install_game_settings<C: ManagerController>(
         });
         if request.directory {
             platform::pick_folder(&request.title, done);
+        } else if let Some(filter) = request.filter {
+            let extensions: Vec<_> = filter.extensions.iter().map(String::as_str).collect();
+            platform::pick_file(
+                &request.title,
+                &[platform::FileFilter {
+                    label: &filter.label,
+                    extensions: &extensions,
+                }],
+                done,
+            );
         } else {
-            platform::pick_file(&request.title, &request.filters, done);
+            platform::pick_file(&request.title, &[], done);
         }
     });
     let w = wiring.clone();

@@ -1,6 +1,35 @@
 use super::*;
 use shinki_emu_sdk::runtime;
 use std::sync::LazyLock;
+
+const PROFILE_EXTENSIONS: &[abi::Bytes] = &[abi::Bytes::from_static(b"toml")];
+static PATH_FIELDS: [abi::ConfigPathFieldV1; 1] = [abi::ConfigPathFieldV1 {
+    field_id: abi::Bytes::from_static(crate::provider::PROFILE_FILE_FIELD.as_bytes()),
+    filter_label: abi::Bytes::from_static(b"Musica key.toml"),
+    extensions: PROFILE_EXTENSIONS.as_ptr(),
+    extension_count: PROFILE_EXTENSIONS.len(),
+    validate: Some(validate_profile_path),
+}];
+pub(super) static PATHS: abi::ConfigPathsV1 = abi::ConfigPathsV1 {
+    header: abi::ConfigPathsV1::HEADER,
+    fields: PATH_FIELDS.as_ptr(),
+    count: PATH_FIELDS.len(),
+};
+
+unsafe extern "C" fn validate_profile_path(path: abi::Bytes, error: *mut abi::Error) -> abi::Status {
+    boundary(error, || {
+        initialized()?;
+        let path = unsafe { path.text(abi::MAX_CONFIG_PATH_BYTES) }.map_err(invalid)?;
+        let path = std::path::Path::new(path);
+        if !path.is_absolute() {
+            return Err(invalid(abi::INVALID_ARGUMENT));
+        }
+        shinki_emu_musica_keys::load_musica_key_file(path)
+            .map(drop)
+            .map_err(|error| Failure::new(abi::INVALID_ARGUMENT, error.code, error.message))
+    })
+}
+
 struct Schema {
     descriptor: abi::Descriptor,
     _source: Vec<crate::provider::MusicaField>,

@@ -81,6 +81,57 @@ fn query_has_one_native_table_and_rejects_other_versions() {
     );
     assert!(table.is_null());
 }
+
+#[test]
+fn config_path_picker_uses_the_private_profile_parser_without_opening_a_session() {
+    unsafe extern "C" fn discard_log(_: *mut c_void, _: *const abi::LogRecord) {}
+
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b"fixture SC payload");
+    let path = root.path().join(shinki_emu_musica_keys::MUSICA_KEY_FILE);
+    let diagnostics = abi::Diagnostics {
+        header: abi::Header::of::<abi::Diagnostics>(),
+        context: std::ptr::null_mut(),
+        emit: Some(discard_log),
+        flush: None,
+    };
+    assert_eq!(unsafe { initialize(&diagnostics, std::ptr::null_mut()) }, abi::OK);
+    let mut table = std::ptr::null();
+    assert_eq!(
+        unsafe {
+            extension(
+                abi::Bytes::new(abi::CONFIG_PATHS_EXTENSION),
+                abi::CONFIG_PATHS_VERSION,
+                &mut table,
+            )
+        },
+        abi::OK
+    );
+    let table = unsafe { &*table.cast::<abi::ConfigPathsV1>() };
+    let fields = unsafe { abi::borrowed_array(table.fields, table.count, abi::MAX_CONFIG_FIELDS) }
+        .unwrap();
+    let field = fields
+        .iter()
+        .find(|field| unsafe { field.field_id.text(128) } == Ok(crate::provider::PROFILE_FILE_FIELD))
+        .unwrap();
+    let validate = field.validate.unwrap();
+    let arg = abi::Bytes::new(path.to_str().unwrap().as_bytes());
+    let mut error = abi::Error::default();
+    assert_eq!(unsafe { validate(arg, &mut error) }, abi::OK);
+    assert!(crate::mount_musica(root.path(), &path).is_ok());
+
+    let malformed = b"index_key_hex = \"private-profile-sentinel";
+    std::fs::write(&path, malformed).unwrap();
+    assert_eq!(unsafe { validate(arg, &mut error) }, abi::INVALID_ARGUMENT);
+    assert_eq!(
+        &error.code[..error.code_len as usize],
+        b"SHINKI_EMU_PROFILE_FORMAT"
+    );
+    let message = std::str::from_utf8(&error.message[..error.message_len as usize]).unwrap();
+    assert!(!message.contains("private-profile-sentinel"));
+    assert_eq!(std::fs::read(path).unwrap(), malformed);
+}
+
 #[test]
 fn descriptor_declares_v3_presentation_and_render_extent() {
     let descriptor = config::descriptor();

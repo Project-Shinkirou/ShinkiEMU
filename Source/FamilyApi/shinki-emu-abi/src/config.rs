@@ -1,4 +1,4 @@
-use crate::{Bytes, INVALID_ARGUMENT, Status, borrowed_array};
+use crate::{Bytes, Error, Header, INVALID_ARGUMENT, Status, borrowed_array};
 
 pub const MAX_CONFIG_FIELDS: usize = 128;
 pub const MAX_CONFIG_TEXT: usize = 4096;
@@ -61,6 +61,56 @@ pub struct ConfigField {
     pub step: f64,
     pub unit: Bytes,
 }
+
+pub const CONFIG_PATHS_EXTENSION: &[u8] = b"shinki.emu.config_paths";
+pub const CONFIG_PATHS_VERSION: u32 = 1;
+pub const MAX_CONFIG_PATH_BYTES: usize = 128 * 1024;
+pub const MAX_CONFIG_FILE_EXTENSIONS: usize = 16;
+pub const MAX_CONFIG_FILE_EXTENSION_BYTES: usize = 16;
+pub const MAX_CONFIG_FILE_FILTER_LABEL_BYTES: usize = 64;
+
+/// Additional picker behavior for one declared path field. Each field ID
+/// appears at most once. For a file filter, supply a UTF-8 label and
+/// one or more bare ASCII alphanumeric suffixes (without dots).
+/// A zero extension count and empty label mean no filter. Directory
+/// fields can supply a validator but cannot supply a filter.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ConfigPathFieldV1 {
+    pub field_id: Bytes,
+    pub filter_label: Bytes,
+    pub extensions: *const Bytes,
+    pub extension_count: usize,
+    /// Read-only check before the Host persists a picked path. The input is
+    /// an absolute UTF-8 native path, borrowed for this call. Run on the core
+    /// owner thread without a session. Implementations must bound reads, have
+    /// no side effects and omit private data from errors.
+    pub validate: Option<unsafe extern "C" fn(Bytes, *mut Error) -> Status>,
+}
+
+/// Optional table returned by `CoreApi.extension` for
+/// `shinki.emu.config_paths` version 1. The table and its metadata are
+/// immutable for the library lifetime. This does not replace open-time
+/// validation, and neither peers nor fields need to opt in.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ConfigPathsV1 {
+    pub header: Header,
+    pub fields: *const ConfigPathFieldV1,
+    pub count: usize,
+}
+
+impl ConfigPathsV1 {
+    pub const HEADER: Header = Header {
+        size: std::mem::size_of::<Self>() as u32,
+        version: CONFIG_PATHS_VERSION,
+    };
+}
+
+// SAFETY: these tables point to immutable library-lifetime metadata.
+unsafe impl Sync for ConfigPathFieldV1 {}
+unsafe impl Sync for ConfigPathsV1 {}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConfigError {
     pub index: usize,

@@ -91,6 +91,8 @@ cbindgen --config Source/FamilyApi/shinki-emu-abi/cbindgen.toml --crate shinki-e
 9. **close** 无论返回何种结果都消耗句柄；返回前等待 worker 和回调结束。宿主先阻止新 cancel，再等已有 cancel 返回，最后 close。
 10. **extension** 协商具名、带版本的 C 表。不支持时返回 `UNSUPPORTED` 和空输出。可选 `shinki.module_owner` 为真实跨会话资源提供 owner，由模块 owner 线程创建，在所有会话结束后销毁。
 
+可选的 `shinki.emu.config_paths` v1 扩展为已有路径字段提供文件类型筛选和只读校验。宿主在激活核心时复制有长度上限的元数据，并在 owner 线程上将文件选择器返回的绝对路径交给核心校验。校验失败时保留原有设置。未提供扩展的核心仍使用不筛选文件类型的选择器，并在打开会话时校验。ABI v3 描述符和配置字段的布局不变。
+
 显式激活 Android 动态核心时，宿主可以协商 `shinki.emu.android_context` v1（`AndroidContextV1`，表头沿用 ABI v3）。在 `initialize` 前，宿主传入 Java VM 和进程生命周期内有效的 Application JNI 全局引用。不能传入 Activity 或线程局部的 `JNIEnv*`。同一组参数可重复绑定。发现、安装和内置静态注册均不调用此扩展。
 
 普通 ABI 调用在宿主 owner 线程串行执行。核心自己的原生 owner 负责 VM 推进、渲染/音频调度及资源生命周期。Manager 只提供输入、控制和宿主服务，没有 advance 回调。取消和 epoch 校验会拒绝旧会话或旧输出代次的迟到结果。

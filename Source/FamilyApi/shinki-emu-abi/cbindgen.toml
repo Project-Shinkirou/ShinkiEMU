@@ -7,5 +7,5 @@ style = "both"
 sys_includes = ["stdint.h", "stddef.h"]
 
 [export]
-include = ["CoreApi", "Query", "CpuLease", "FrameSurface", "OpenRequest", "OpenRequestTextV1", "OpenRequestGpuV1", "AsyncTextServiceV1", "GpuSceneServiceV1", "GpuSceneServiceV2", "OpenResult", "SessionState", "Descriptor", "RenderExtentSupport", "ProbeResult", "InputEvent", "ConfigField", "ConfigEntry", "Diagnostics", "HostServices", "AndroidContextV1", "ModuleOwnerApi", "SessionMenuApi", "SessionMenuItem"]
+include = ["CoreApi", "Query", "CpuLease", "FrameSurface", "OpenRequest", "OpenRequestTextV1", "OpenRequestGpuV1", "AsyncTextServiceV1", "GpuSceneServiceV1", "GpuSceneServiceV2", "OpenResult", "SessionState", "Descriptor", "RenderExtentSupport", "ProbeResult", "InputEvent", "ConfigField", "ConfigEntry", "Diagnostics", "HostServices", "AndroidContextV1", "ModuleOwnerApi", "SessionMenuApi", "SessionMenuItem", "ConfigPathsV1"]
 prefix = "ShinkiEmu"
