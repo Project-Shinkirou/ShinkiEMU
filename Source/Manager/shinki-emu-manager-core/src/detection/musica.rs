@@ -1,9 +1,10 @@
-use super::roots::Configuration;
 use super::*;
 use shinki_emu_musica_format::{
     ScLineKind, ScOpcodeCatalog, ScriptEncoding, decode_scheme, parse_sc_with_encoding, paz,
 };
 use shinki_emu_musica_keys::{MAX_KEY_BYTES, parse_key_file};
+
+type Configuration = std::collections::BTreeMap<String, serde_json::Value>;
 
 struct Archive {
     parts: Vec<Source>,
@@ -15,11 +16,12 @@ impl<T: DetectionTree> Scan<'_, T> {
         &mut self,
         root: &Path,
         files: &[PathBuf],
-        configuration: Option<&Configuration>,
     ) -> DetectionResult<()> {
+        let configuration = self.configuration(root)?;
         self.checkpoint()?;
         let configured = |name: &str| {
             configuration
+                .as_ref()
                 .and_then(|c| c.get(name))
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
@@ -164,6 +166,33 @@ impl<T: DetectionTree> Scan<'_, T> {
         }
         Ok(())
     }
+
+    fn configuration(&mut self, root: &Path) -> DetectionResult<Option<Configuration>> {
+        #[derive(Deserialize)]
+        struct Receipt {
+            schema: String,
+            profile: Profile,
+        }
+        #[derive(Deserialize)]
+        struct Profile {
+            #[serde(default)]
+            configuration: Configuration,
+        }
+        // Same precedence as shinki-emu-patch::read_output_profile.
+        for name in ["shinki-patch-result.json", ".shinki/patch-result.json"] {
+            let Some(path) = self.relative_path(root, name)? else {
+                continue;
+            };
+            let bytes = self.resource_bytes(root, &path)?;
+            self.checkpoint()?;
+            return Ok(serde_json::from_slice::<Receipt>(&bytes)
+                .ok()
+                .filter(|r| r.schema == "shinki.emu.file_patch.v1")
+                .map(|r| r.profile.configuration));
+        }
+        Ok(None)
+    }
+
     fn musica_script(&self, bytes: &[u8], catalog: &ScOpcodeCatalog) -> DetectionResult<bool> {
         self.checkpoint()?;
         let encoding = ScriptEncoding::detect(bytes, ScriptEncoding::ShiftJis);

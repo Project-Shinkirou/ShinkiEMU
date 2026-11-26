@@ -64,7 +64,11 @@ impl<T: DetectionTree> Scan<'_, T> {
         self.matched("softpal", "softpal.sv20")?;
         Ok(())
     }
-    pub(super) fn softpal_manifest(&mut self, root: &Path) -> DetectionResult<()> {
+    pub(super) fn softpal_manifest(
+        &mut self,
+        root: &Path,
+        mut inspect: impl FnMut(&mut Self, &Path) -> DetectionResult<()>,
+    ) -> DetectionResult<()> {
         if self.matches.iter().any(|m| m.family_id == "softpal") {
             return Ok(());
         }
@@ -118,11 +122,7 @@ impl<T: DetectionTree> Scan<'_, T> {
                 let base = base.replace('\\', "/");
                 for candidate in [format!("{base}/Script.src"), format!("{base}.pac")] {
                     if let Some(path) = self.relative_path(root, &candidate)? {
-                        if self.files == MAX_FILES {
-                            return Err(DetectionError::ReadLimit);
-                        }
-                        self.files += 1;
-                        self.inspect(root, &path)?;
+                        inspect(self, &path)?;
                         if self.matches.iter().any(|m| m.family_id == "softpal") {
                             return Ok(());
                         }

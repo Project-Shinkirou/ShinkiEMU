@@ -3,18 +3,46 @@ use super::*;
 const MAX_SCRIPT_BYTES: u64 = 1024 * 1024;
 const ENTRY_FLAG: u32 = 1 << 31;
 
+#[derive(Default)]
+pub(super) enum DataDirectory {
+    #[default]
+    Missing,
+    Unique(OsString),
+    Ambiguous,
+}
+
+impl DataDirectory {
+    pub(super) fn observe(&mut self, name: OsString) {
+        if name.eq_ignore_ascii_case("AdvData") {
+            *self = if matches!(self, Self::Missing) {
+                Self::Unique(name)
+            } else {
+                Self::Ambiguous
+            };
+        }
+    }
+
+    pub(super) fn inspect<T: DetectionTree>(
+        self,
+        scan: &mut Scan<'_, T>,
+        root: &Path,
+    ) -> DetectionResult<()> {
+        if let Self::Unique(name) = self {
+            scan.adv32(&root.join(name))?;
+        }
+        Ok(())
+    }
+}
+
 impl<T: DetectionTree> Scan<'_, T> {
-    pub(super) fn adv32(&mut self, data: &Path) -> DetectionResult<()> {
+    fn adv32(&mut self, data: &Path) -> DetectionResult<()> {
         let Some(path) = self.relative_path(data, "MES/start.mes")? else {
             return Ok(());
         };
         let Some(mut source) = self.open(&data.join(path), 0)? else {
             return Ok(());
         };
-        if self.files == MAX_FILES {
-            return Err(DetectionError::ReadLimit);
-        }
-        self.files += 1;
+        self.count_file()?;
         if !(14..=MAX_SCRIPT_BYTES).contains(&source.length) {
             return Ok(());
         }

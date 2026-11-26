@@ -294,6 +294,66 @@ fn reads_shared_game_children_through_a_seekable_read_only_tree() {
     assert_eq!(matches[0].declared.as_ref().unwrap().plugin_ids, ["rfvp"]);
     assert_eq!(fs::read(header).unwrap(), bytes);
 }
+
+#[test]
+fn selected_append_under_default_lookahead_opens_the_scene_once() {
+    struct CountedScene<'a> {
+        root: &'a Path,
+        opens: std::cell::Cell<usize>,
+    }
+    impl DetectionTree for CountedScene<'_> {
+        fn entries(
+            &self,
+            path: &Path,
+            limit: usize,
+            visit: &mut dyn FnMut(OsString, EntryKind) -> DetectionResult<()>,
+        ) -> DetectionResult<()> {
+            LocalTree.entries(&self.root.join(path), limit, visit)
+        }
+
+        fn kind(&self, path: &Path) -> io::Result<EntryKind> {
+            LocalTree.kind(&self.root.join(path))
+        }
+
+        fn open(&self, path: &Path) -> io::Result<Option<(File, u64)>> {
+            if path == Path::new("DaTa/PaCk/Scene.pck") {
+                self.opens.set(self.opens.get() + 1);
+            }
+            LocalTree.open(&self.root.join(path))
+        }
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("DaTa/PaCk")).unwrap();
+    fs::create_dir(root.path().join("DaTa/unrelated")).unwrap();
+    fs::write(root.path().join("DaTa/PaCk/Scene.pck"), siglus(false)).unwrap();
+    fs::write(root.path().join("DaTa/unrelated/game.hcb"), hcb()).unwrap();
+    fs::write(root.path().join("Select.ini"), "data\\pack\tAppend\n").unwrap();
+    let tree = CountedScene {
+        root: root.path(),
+        opens: std::cell::Cell::new(0),
+    };
+    let matches = detect_game_tree(&tree, &NativeCancellation::new(1)).unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].family_id, "siglus");
+    assert_eq!(tree.opens.get(), 1);
+}
+
+#[test]
+fn root_files_win_over_a_custom_append_that_wins_over_default_lookahead() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("Assets")).unwrap();
+    fs::create_dir(root.path().join("Data")).unwrap();
+    fs::write(root.path().join("Select.ini"), "Assets\tAppend\n").unwrap();
+    fs::write(root.path().join("Assets/engine.bin"), cpz(b'5')).unwrap();
+    fs::write(root.path().join("Data/engine.bin"), cpz(b'6')).unwrap();
+
+    // An append is inspected by the same file rules, including non-Siglus formats.
+    assert_eq!(detect(root.path()).unwrap()[0].format, "cmvs.cpz5");
+    fs::write(root.path().join("engine.bin"), ps2a()).unwrap();
+    assert_eq!(detect(root.path()).unwrap()[0].format, "cmvs.ps2a");
+}
+
 #[test]
 fn recognizes_cpz_versions_and_older_pfs_layouts_once_per_family() {
     let root = tempfile::tempdir().unwrap();
@@ -439,7 +499,6 @@ fn cancellation_stops_before_any_io_and_after_an_established_match() {
         entries: 0,
         files: 0,
         read_bytes: 0,
-        siglus: roots::SiglusRoot::Default,
     };
     scan.matched("cmvs", "cmvs.ps2a").unwrap();
     token.cancel();
@@ -494,7 +553,6 @@ fn actual_short_read_is_an_io_error_not_a_format_miss() {
         entries: 0,
         files: 0,
         read_bytes: 0,
-        siglus: roots::SiglusRoot::Default,
     };
     let mut source = Source {
         file: File::open(path).unwrap(),

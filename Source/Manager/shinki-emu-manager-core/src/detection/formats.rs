@@ -1,5 +1,6 @@
 //! Format facts and source pins are documented in docs/*/core-abi.md.
 //! File extensions only route magic-less/ambiguous inputs; never establish a match.
+use super::siglus::SelectedRoot;
 use super::*;
 use shinki_emu_lucifen_formats::{FORMAT_ID, SCRIPT_ARCHIVE, has_script_index};
 
@@ -12,22 +13,22 @@ impl From<DetectionError> for Rejected {
         Self::Abort(error)
     }
 }
-type ScanResult<T> = Result<T, Rejected>;
+pub(super) type ScanResult<T> = Result<T, Rejected>;
 
-fn u32le(bytes: &[u8], offset: usize) -> u64 {
+pub(super) fn u32le(bytes: &[u8], offset: usize) -> u64 {
     u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as u64
 }
 fn u64le(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
 }
-fn require(condition: bool) -> ScanResult<()> {
+pub(super) fn require(condition: bool) -> ScanResult<()> {
     if condition {
         Ok(())
     } else {
         Err(Rejected::NoMatch)
     }
 }
-fn range(offset: u64, size: u64, length: u64) -> ScanResult<()> {
+pub(super) fn range(offset: u64, size: u64, length: u64) -> ScanResult<()> {
     require(offset.checked_add(size).is_some_and(|end| end <= length))
 }
 fn nul_name(bytes: &[u8]) -> bool {
@@ -47,6 +48,7 @@ impl<T: DetectionTree> Scan<'_, T> {
         path: &Path,
         source: &mut Source,
         head: &[u8],
+        siglus: &SelectedRoot,
     ) -> ScanResult<()> {
         self.checkpoint()?;
         if head.starts_with(b"CPZ") {
@@ -138,15 +140,8 @@ impl<T: DetectionTree> Scan<'_, T> {
             self.matched("lucifen", FORMAT_ID)?;
             return Ok(());
         }
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if head.starts_with(b"pack_scn")
-            || name.eq_ignore_ascii_case("scene.pck")
-            || name.eq_ignore_ascii_case("scene.chs")
-        {
-            if !self.siglus.allows(path) {
-                return Err(Rejected::NoMatch);
-            }
-            return self.siglus(source, head);
+        if let Some(result) = siglus.recognize(self, path, source, head) {
+            return result;
         }
         if extension(path, "hcb") || extension(path, "bch") {
             return self.hcb(source, head);
@@ -295,41 +290,6 @@ impl<T: DetectionTree> Scan<'_, T> {
         self.read_at(source, offset, &mut zlib)?;
         require(zlib[0] & 15 == 8 && zlib[0] >> 4 <= 7 && (u16::from_be_bytes(zlib) % 31 == 0))?;
         self.matched("renpy", "rpa")?;
-        Ok(())
-    }
-    fn siglus(&mut self, source: &mut Source, head: &[u8]) -> ScanResult<()> {
-        let prefix = if head.starts_with(b"pack_scn") { 8 } else { 0 };
-        require(head.len() >= prefix + 92)?;
-        let header = &head[prefix..];
-        let size = u32le(header, 0);
-        require(size >= 92 && size <= 4096 && size % 4 == 0)?;
-        range(prefix as u64, size, source.length)?;
-        let count = u32le(header, 56);
-        require(
-            count > 0
-                && count == u32le(header, 64)
-                && count == u32le(header, 72)
-                && count == u32le(header, 80),
-        )?;
-        // Validate all fixed-width table ranges; UTF-16 names and payload remain encrypted.
-        for (field, width) in [(4, 8), (12, 8), (28, 8), (36, 8), (52, 8), (68, 8)] {
-            self.checkpoint()?;
-            let offset = u32le(header, field);
-            let entries = u32le(header, field + 4);
-            if entries > 0 {
-                require(offset >= size + prefix as u64)?;
-                range(offset, entries * width, source.length)?;
-            }
-        }
-        let data = u32le(header, 76);
-        require(data >= prefix as u64 + size && data < source.length)?;
-        let indexes = self.bytes(source, u32le(header, 68), (count * 8) as usize)?;
-        for entry in indexes.chunks_exact(8) {
-            self.checkpoint()?;
-            require(u32le(entry, 4) > 0)?;
-            range(data + u32le(entry, 0), u32le(entry, 4), source.length)?;
-        }
-        self.matched("siglus", "siglus.scene_pck")?;
         Ok(())
     }
     fn hcb(&mut self, source: &mut Source, head: &[u8]) -> ScanResult<()> {
