@@ -1,24 +1,5 @@
 pub(crate) const MAX_ENTRIES: usize = 100_000;
 
-pub const KNOWN_CORE_IDS: &[&str] = &[
-    "rfvp",
-    "siglus_rs",
-    "art3m1s-core",
-    "shinki.emu.musica",
-    "sena-rs",
-    "kirikiroid2-web",
-    "krkr2",
-    "ethornell-rs",
-    "shinki.emu.cmvs",
-    "ReMinori",
-    "impacto",
-    "renpy",
-];
-
-pub fn is_known_core_id(value: &str) -> bool {
-    KNOWN_CORE_IDS.contains(&value)
-}
-
 pub(crate) fn is_vndb_vn_id(value: &str) -> bool {
     prefixed_digits(value, 'v')
 }
@@ -40,6 +21,22 @@ pub(crate) fn is_plugin_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+pub(crate) fn is_core_id(value: &str) -> bool {
+    if !is_plugin_id(value) || value.contains("..") || value.ends_with('.') {
+        return false;
+    }
+    // Compatibility reports use the ID as a directory name, including on Windows.
+    let stem = value.split_once('.').map_or(value, |(stem, _)| stem);
+    !["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|name| stem.eq_ignore_ascii_case(name))
+        && !matches!(
+            stem.as_bytes(),
+            [prefix @ .., b'0'..=b'9']
+                if prefix.eq_ignore_ascii_case(b"COM") || prefix.eq_ignore_ascii_case(b"LPT")
+        )
 }
 
 pub(crate) fn is_platform(value: &str) -> bool {

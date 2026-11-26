@@ -1,3 +1,4 @@
+use crate::cores::Inventory;
 use anyhow::{Context, Result, anyhow, ensure};
 use clap::{Subcommand, ValueEnum};
 use serde::{Serialize, de::DeserializeOwned};
@@ -202,6 +203,13 @@ fn compat_path(e: &CompatibilityEntry) -> String {
         e.vn_id, e.release_id, e.emulator, e.platform, e.architecture, e.variant
     )
 }
+fn publication_inventory() -> Result<Inventory> {
+    // The inventory belongs to xtask's checkout, not an input supplied via --root.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask repository root");
+    Inventory::load(root).context("loading the metadata publication core inventory")
+}
 fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String, Vec<u8>>> {
     let metadata_root = fs::symlink_metadata(root)?;
     ensure!(
@@ -225,6 +233,7 @@ fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String
             );
         }
     }
+    let inventory = publication_inventory()?;
     let mut compatibility = CompatibilityDatabase {
         schema: COMPATIBILITY_SCHEMA_VERSION.into(),
         generated_at_unix_ms: timestamp,
@@ -232,6 +241,7 @@ fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String
     };
     for (path, e) in entries::<CompatibilityEntry>(root, "compatibility/entries")? {
         e.validate()?;
+        inventory.core(&e.emulator)?;
         ensure!(
             path == compat_path(&e),
             "compatibility path/content mismatch: {path}"
@@ -261,6 +271,7 @@ fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String
     };
     for (path, p) in entries::<Preset>(root, "engines/presets")? {
         p.validate()?;
+        inventory.core(&p.emulator)?;
         ensure!(
             path == format!("engines/presets/{}/{}.json", p.release_id, p.emulator),
             "preset path/content mismatch: {path}"
@@ -288,6 +299,7 @@ fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String
     };
     for (path, c) in entries::<CoreCatalogEntry>(root, "engines/cores")? {
         c.validate()?;
+        inventory.core(&c.plugin_id)?;
         ensure!(
             path == format!(
                 "engines/cores/{}/{}/{}.json",
@@ -314,6 +326,9 @@ fn collect(root: &Path, timestamp: i64, schemas: bool) -> Result<BTreeMap<String
     };
     for (path, p) in entries::<PatchCatalogEntry>(root, "patches/entries")? {
         p.validate()?;
+        for id in &p.emulators {
+            inventory.core(id)?;
+        }
         ensure!(
             path == format!("patches/entries/{}.json", p.id),
             "patch path/content mismatch: {path}"
@@ -488,9 +503,9 @@ mod tests {
         .unwrap();
         fs::write(path.join("legacy/patches/catalog.json"), b"[]").unwrap();
     }
-    fn event(path: &Path, platform: &str) {
+    fn event(path: &Path, platform: &str, core: &str) {
         let body = format!(
-            "### VNDB vID\r\n\r\nv1\r\n### VNDB rID\r\nr2\r\n### Core\r\nReMinori\r\n### Status\r\nflawed\r\n### Platform\r\n{platform}\r\n### Architecture\r\nx86_64\r\n### Variant\r\ndesktop\r\n### Core version\r\n0.1.0\r\n### Manager version\r\n0.1.0\r\n### Notes / reproduction\r\n_No response_\r\n"
+            "### VNDB vID\r\n\r\nv1\r\n### VNDB rID\r\nr2\r\n### Core\r\n{core}\r\n### Status\r\nflawed\r\n### Platform\r\n{platform}\r\n### Architecture\r\nx86_64\r\n### Variant\r\ndesktop\r\n### Core version\r\n0.1.0\r\n### Manager version\r\n0.1.0\r\n### Notes / reproduction\r\n_No response_\r\n"
         );
         fs::write(
             path,
@@ -508,7 +523,7 @@ mod tests {
         root(&r);
         let ev = t.path().join("event.json");
         for platform in ["windows", "linux"] {
-            event(&ev, platform);
+            event(&ev, platform, "ReMinori");
             let out = t.path().join(platform);
             intake(IntakeKind::Compatibility, &ev, &out).unwrap();
             let p = format!("compatibility/entries/v1/r2/ReMinori/{platform}-x86_64-desktop.json");
@@ -660,21 +675,66 @@ mod tests {
             assert_eq!(digest(&bytes), f.sha256);
             assert_eq!(bytes.len() as u64, f.size);
         }
+
+        let data = publication_inventory().unwrap().root.join("Metadata");
+        let mut core: Value =
+            decode(&data.join("engines/cores/ReMinori/windows-x86_64/0.1.0-beta.3.json")).unwrap();
+        let mut patch: Value = decode(&data.join("patches/entries/fvp-sakura-cn.json")).unwrap();
+        core["plugin_id"] = "unregistered.example".into();
+        patch["emulators"] = json!(["rfvp", "unregistered.example"]);
+        let rejected = t.path().join("rejected");
+        for (path, value) in [
+            (
+                "compatibility/entries/v1/r2/unregistered.example/windows-x86_64-desktop.json",
+                json!({
+                    "vn_id":"v1","release_id":"r2","emulator":"unregistered.example",
+                    "status":"flawed","platform":"windows","architecture":"x86_64",
+                    "variant":"desktop","updated_at_unix_ms":0
+                }),
+            ),
+            (
+                "engines/presets/r2/unregistered.example.json",
+                json!({
+                    "vn_id":"v1","release_id":"r2","emulator":"unregistered.example",
+                    "summary":"A preset","configuration":{}
+                }),
+            ),
+            (
+                "engines/cores/unregistered.example/windows-x86_64/0.1.0-beta.3.json",
+                core,
+            ),
+            ("patches/entries/fvp-sakura-cn.json", patch),
+        ] {
+            let path = r.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, pretty(&value).unwrap()).unwrap();
+            let err = run(MetadataCommand::Build {
+                out: rejected.clone(),
+                root: r.clone(),
+            })
+            .unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("unknown core unregistered.example"),
+                "{}: {err:#}",
+                path.display()
+            );
+            assert!(!rejected.exists());
+            fs::remove_file(path).unwrap();
+        }
     }
     #[test]
-    fn illegal_core_id_in_intake_publishes_nothing() {
+    fn invalid_or_unregistered_core_in_intake_publishes_nothing() {
         let t = crate::temporary::directory().unwrap();
         let ev = t.path().join("event.json");
-        event(&ev, "windows");
-        let mut v: Value = decode(&ev).unwrap();
-        v["issue"]["body"] = v["issue"]["body"]
-            .as_str()
-            .unwrap()
-            .replace("ReMinori", "../shell")
-            .into();
-        fs::write(&ev, pretty(&v).unwrap()).unwrap();
         let out = t.path().join("out");
-        assert!(intake(IntakeKind::Compatibility, &ev, &out).is_err());
-        assert!(!out.exists());
+        for core in ["../shell", "reminori", "unregistered.example"] {
+            event(&ev, "windows", core);
+            assert!(
+                intake(IntakeKind::Compatibility, &ev, &out).is_err(),
+                "{core}"
+            );
+            assert!(!out.exists());
+        }
     }
 }

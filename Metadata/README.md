@@ -9,6 +9,8 @@ This directory is the sole source for the public metadata snapshot. Data is CC0-
 
 `cargo xtask metadata schema` exports schemas from the Rust DTOs. `cargo xtask metadata validate` checks schemas, paths, references and limits. `cargo xtask metadata build --out <new-dir>` generates a deterministic snapshot with `patches-v2.json`, release-binding sidecars (`patches/<script-stem>.patch.json`) and a SHA256 index tied to the source commit. Generated snapshots are not source data.
 
+Official intake, validation and snapshot builds require exact core IDs from [`build/cores.toml`](../build/cores.toml). The metadata parsers accept any syntactically valid, path-safe core ID and preserve its case.
+
 Every catalog patch is an offline embedding recipe with nonempty concrete `releases` and a `downloads` declaration array. Each release uses the existing VNDB `release_id`/`vn_id`, localized title, actual edition label, optional actual game version and a nonempty `{path,size,sha256}` source fingerprint group. Manager identifies exactly one matching release before creating writable transaction state in either output mode. Local `.luau` scripts or ZIP packages use the same executor, are labelled unreviewed, and may run without a release manifest; those scripts validate their own inputs. Optional local release bindings use `<script-stem>.patch.json`.
 
 The [Lucifen LPK repacking recipe](../Tools/Research/lucifen-oretsuba-cn.luau) is a local script outside the exported snapshot. Select it as a local patch with a matching original installation and authorized translation files; the repository supplies only the recipe.

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::fields::{
-    MAX_ENTRIES, is_bounded_multiline, is_bounded_text, is_known_core_id, is_platform,
+    MAX_ENTRIES, is_bounded_multiline, is_bounded_text, is_core_id, is_platform,
     is_vndb_release_id, is_vndb_vn_id,
 };
 
@@ -79,7 +79,7 @@ impl CompatibilityEntry {
         if !is_vndb_release_id(&self.release_id) {
             return Err(CompatibilityError::SchemaMismatch("release_id"));
         }
-        if !is_known_core_id(&self.emulator) {
+        if !is_core_id(&self.emulator) {
             return Err(CompatibilityError::SchemaMismatch("emulator"));
         }
         if !is_platform(&self.platform) {
@@ -309,6 +309,53 @@ mod tests {
     }
 
     #[test]
+    fn parsed_core_ids_are_bounded_path_components_and_case_sensitive() {
+        let mut database = sample_database();
+        database.entries[0].emulator = "Example.core_v2-alpha".into();
+        database.entries[1].emulator = "a".repeat(128);
+        let parsed = parse_compatibility_database(&serde_json::to_vec(&database).unwrap()).unwrap();
+        assert_eq!(parsed, database);
+        assert!(
+            parsed
+                .entry(
+                    "r123",
+                    "example.core_v2-alpha",
+                    "windows",
+                    "x86_64",
+                    "desktop"
+                )
+                .is_none()
+        );
+
+        let oversized = "a".repeat(129);
+        for id in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "a\\b",
+            "a:b",
+            "a..b",
+            "a.",
+            "a%2fb",
+            "é",
+            "Nul",
+            "COM1.core",
+            "lpt9",
+            &oversized,
+        ] {
+            database.entries[0].emulator = id.into();
+            assert!(
+                matches!(
+                    parse_compatibility_database(&serde_json::to_vec(&database).unwrap()),
+                    Err(CompatibilityError::SchemaMismatch("emulator"))
+                ),
+                "{id:?}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_rejects_schema_mismatch_unknown_fields_and_malformed_json() {
         let mut database = sample_database();
         database.schema = "shinki.emu.compatibility.v2".into();
@@ -366,7 +413,6 @@ mod tests {
             (|e: &mut CompatibilityEntry| e.updated_at_unix_ms = -1) as fn(&mut CompatibilityEntry),
             |e| e.architecture = "arm".into(),
             |e| e.variant = "device".into(),
-            |e| e.emulator = "reminori".into(),
         ] {
             let mut db = sample_database();
             mutate(&mut db.entries[0]);
