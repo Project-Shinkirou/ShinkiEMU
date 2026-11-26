@@ -212,26 +212,24 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "docs/licenses/shinki-emu-adv32/GARbro.txt", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
-# Enabled only for a Manager built with the local static-adv32 feature.
-static_manager_candidate_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android", "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios", "aarch64-unknown-linux-ohos"]
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No standalone Android package."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No standalone Android package."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "No standalone package; available for local static Manager builds only."
+reason = "No standalone OpenHarmony package."
 
 [[cores]]
 id = "shinki.emu.lucifen"
@@ -253,22 +251,22 @@ target = "aarch64-apple-darwin"
 reason = "Standalone packaging and native playback have only been targeted for Windows x64."
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "No Android package or static Manager adapter."
+reason = "No standalone Android package."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "No Android package or static Manager adapter."
+reason = "No standalone Android package."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "No iOS package or static Manager adapter."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "No iOS package or static Manager adapter."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "No iOS package or static Manager adapter."
+reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "No OpenHarmony package or static Manager adapter."
+reason = "No OpenHarmony package."
 
 [[cores]]
 id = "shinki.emu.cmvs"
@@ -306,10 +304,10 @@ supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarc
 ios_framework = true
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "ReMinori embedded adapter build script supports no Android target yet"
+reason = "ReMinori's adapter build script does not support Android."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "ReMinori embedded adapter build script supports no Android target yet"
+reason = "ReMinori's adapter build script does not support Android."
 [cores.attribution]
 adapter_branch = "shinki-save-policy"
 release_sequence = 1
@@ -397,22 +395,22 @@ release_sequence = 1
 upstream_identity = { repo = "https://github.com/Shizuku-in/cmvs-rs", ref_kind = "branch", ref_name = "main", commit = "b9fed68ba05f80444338331bb3999f14c8f4f976" }
 [[cores.blocked]]
 target = "aarch64-linux-android"
-reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+reason = "The cmvs-desktop and cmvs-audio native backends lack Android Activity and audio lifecycle support."
 [[cores.blocked]]
 target = "x86_64-linux-android"
-reason = "The adapter uses cmvs-desktop and cmvs-audio native output; Android Activity/audio lifecycle and static Manager embedding are not connected."
+reason = "The cmvs-desktop and cmvs-audio native backends lack Android Activity and audio lifecycle support."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
-reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+reason = "cmvs-native has no iOS font host, and native audio and session lifecycle support are missing."
 [[cores.blocked]]
 target = "aarch64-apple-ios-sim"
-reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+reason = "cmvs-native has no iOS font host, and native audio and session lifecycle support are missing."
 [[cores.blocked]]
 target = "x86_64-apple-ios"
-reason = "cmvs-native has no iOS font host and the adapter's native audio/session lifecycle is not integrated into the iOS Manager static inventory."
+reason = "cmvs-native has no iOS font host, and native audio and session lifecycle support are missing."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "cmvs-audio selects CPAL native output without an OHAudio backend; no OHOS host lifecycle/static Manager integration is implemented."
+reason = "cmvs-audio has no OHAudio backend, and the adapter lacks OHOS lifecycle support."
 
 [[cores]]
 id = "krkr2"
@@ -432,16 +430,16 @@ release_sequence = 2
 upstream_identity = { repo = "https://github.com/2468785842/krkr2", ref_kind = "branch", ref_name = "main", commit = "dca7264572a63e753c1b07ca7053513d1751ce70" }
 [[cores.blocked]]
 target = "x86_64-pc-windows-msvc"
-reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+reason = "KrKr2 is built only as an Android core ZIP or a signed iOS Framework."
 [[cores.blocked]]
 target = "x86_64-unknown-linux-gnu"
-reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+reason = "KrKr2 is built only as an Android core ZIP or a signed iOS Framework."
 [[cores.blocked]]
 target = "x86_64-apple-darwin"
-reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+reason = "KrKr2 is built only as an Android core ZIP or a signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-apple-darwin"
-reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+reason = "KrKr2 is built only as an Android core ZIP or a signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
@@ -453,4 +451,4 @@ target = "x86_64-apple-ios"
 reason = "Bundled as a signed iOS Manager framework; standalone core packages are not supported."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "This adapter embeds the native KrKr2 engine in the Android and iOS Managers only."
+reason = "KrKr2 is built only as an Android core ZIP or a signed iOS Framework."

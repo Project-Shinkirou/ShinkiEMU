@@ -118,8 +118,7 @@ fn classify(
         } else if let Some(core) = family_core(inv, path) {
             affected.core(
                 &core.id,
-                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some())
-                    .chain(core.static_manager_targets.iter().map(String::as_str)),
+                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some()),
             );
         } else {
             affected.all = true;
@@ -180,19 +179,10 @@ fn core_table_changes(
             continue;
         }
         for core in [before, after].into_iter().flatten() {
-            let static_targets = core
-                .get("static_manager_targets")
-                .and_then(toml::Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(toml::Value::as_str);
             let ios_framework =
                 core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
             let ohos_hap = core.get("ohos_hap").is_some();
-            affected.core(
-                id,
-                static_targets.chain(bundled_targets(inv, ios_framework, ohos_hap)),
-            );
+            affected.core(id, bundled_targets(inv, ios_framework, ohos_hap));
         }
     }
     Ok(())

@@ -878,7 +878,6 @@ pub fn package(
             );
             entries.extend(licenses(inv, &result, temp.path())?);
             entries.extend(metadata_entries(inv, temp.path())?);
-            entries.extend(static_core_entries(inv, &result)?);
             copy_entries(&entries, stage)?;
             drop(temp);
             fs::create_dir_all(stage.join("cores"))?;
@@ -967,7 +966,7 @@ fn stage_built_core(
         .core_build
         .as_mut()
         .context("missing core-build.json")?;
-    for (source, path, _) in c.license_files(&inv.root, &result.target)? {
+    for (source, path) in c.license_files(&inv.root, &result.target)? {
         m.licenses.push(BuildAsset {
             source,
             dest: path.find("licenses/").map_or_else(
@@ -1006,54 +1005,6 @@ fn stage_built_core(
         out,
         &search_dirs(inv, &result)?,
     )
-}
-/// Resolve license inputs from the actual Cargo checkouts used for embedding.
-pub(crate) fn static_core_entries(
-    inv: &Inventory,
-    result: &BuildArtifact,
-) -> Result<Vec<(PathBuf, String)>> {
-    let target = &result.target;
-    let features = &result.features;
-    let mut entries = Vec::new();
-    for core in &inv.cores {
-        if !core.embedded_in_manager(target, features) {
-            continue;
-        }
-        for (source, path, from_adapter) in core.license_files(&inv.root, &result.target)? {
-            let dest = if from_adapter {
-                format!("licenses/{}/{path}", core.id)
-            } else {
-                path.to_owned()
-            };
-            let asset = BuildAsset { source, dest };
-            entries.extend(asset_entries(&asset)?);
-        }
-        let manifest = result
-            .embedded_core_builds
-            .iter()
-            .find(|build| build.plugin_id == core.id)
-            .with_context(|| format!("embedded core {} has no recorded build manifest", core.id))?;
-        manifest.validate()?;
-        for asset in &manifest.resources {
-            for (source, destination) in asset_entries(asset)? {
-                if result.target.ends_with("-linux-android")
-                    && android_host::is_runtime_asset(&destination)
-                {
-                    continue;
-                }
-                entries.push((source, format!("cores/{}/{destination}", core.id)));
-            }
-        }
-        for asset in &manifest.licenses {
-            for (source, destination) in asset_entries(asset)? {
-                entries.push((
-                    source,
-                    format!("licenses/embedded/{}/{destination}", core.id),
-                ));
-            }
-        }
-    }
-    Ok(entries)
 }
 
 const ANDROID_TARGETS: [(&str, &str); 2] = [
@@ -1094,7 +1045,6 @@ fn android_asset_entries(
             .map(|asset| (asset.source.clone(), asset.dest.clone()))
             .collect()
     };
-    assets.extend(static_core_entries(inv, result)?);
     for (_, name) in &mut assets {
         name.insert_str(0, "assets/");
     }
@@ -1529,7 +1479,7 @@ fn verify_android_badging(badging: &str, version: &str, version_code: u32) -> Re
 #[cfg(test)]
 mod android_tests {
     use super::*;
-    use shinki_emu_build::{CoreBuildManifest, NativeInputs};
+    use shinki_emu_build::NativeInputs;
 
     #[test]
     fn android_badging_accepts_both_build_tools_minimum_sdk_fields() {
@@ -1556,90 +1506,15 @@ mod android_tests {
     }
 
     #[test]
-    fn adv32_candidate_package_stages_its_reported_resources_and_licenses() {
-        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let mut inv = Inventory::load(repo).unwrap();
-        inv.cores.retain(|core| core.id == "shinki.emu.adv32");
-        let scratch = crate::temporary::directory().unwrap();
-        let resource = scratch.path().join("resource.dat");
-        fs::write(&resource, b"candidate resource").unwrap();
-        let target = "x86_64-pc-windows-msvc";
-        let licenses = [
-            ("docs/licenses/shinki-emu-adv32/GARbro.txt", "GARbro.txt"),
-            ("Assets/Fonts/OFL-NotoSansJP.txt", "OFL-NotoSansJP.txt"),
-            ("Assets/Fonts/OFL-NotoSansSC.txt", "OFL-NotoSansSC.txt"),
-        ];
-        let mut artifact = BuildArtifact {
-            component: "manager".into(),
-            target: target.into(),
-            product_version: None,
-            library: scratch.path().join("shinki-emu-manager.exe"),
-            core_build: None,
-            embedded_core_builds: vec![CoreBuildManifest {
-                plugin_id: "shinki.emu.adv32".into(),
-                target: target.into(),
-                artifact_kind: "rust-cdylib".into(),
-                native_library: None,
-                resources: vec![BuildAsset {
-                    source: resource,
-                    dest: "Resources/resource.dat".into(),
-                }],
-                licenses: licenses
-                    .map(|(source, name)| BuildAsset {
-                        source: repo.join(source),
-                        dest: format!("licenses/shinki.emu.adv32/{name}"),
-                    })
-                    .into(),
-            }],
-            native_inputs: vec![],
-            source_commit: None,
-            features: vec![],
-        };
-        // A stale report cannot add ADV32 files to a default Manager package.
-        assert!(static_core_entries(&inv, &artifact).unwrap().is_empty());
-        artifact.features.push("static-adv32".to_owned());
-        let stage = scratch.path().join("candidate");
-        fs::create_dir(&stage).unwrap();
-        copy_entries(&static_core_entries(&inv, &artifact).unwrap(), &stage).unwrap();
-        assert_eq!(
-            fs::read(stage.join("cores/shinki.emu.adv32/Resources/resource.dat")).unwrap(),
-            b"candidate resource",
-        );
-        let embedded_dir =
-            stage.join("licenses/embedded/shinki.emu.adv32/licenses/shinki.emu.adv32");
-        for (source, name) in licenses {
-            assert_eq!(
-                fs::read(embedded_dir.join(name)).unwrap(),
-                fs::read(repo.join(source)).unwrap()
-            );
-        }
-        artifact.embedded_core_builds.clear();
-        assert!(static_core_entries(&inv, &artifact).is_err());
-    }
-
-    #[test]
-    fn android_stages_both_abi_asset_sets_and_lists_equal_resources_once() {
+    fn android_stages_native_notices_from_both_abis_and_deduplicates_shared_notices() {
         let root = crate::temporary::directory().unwrap();
         let inv = Inventory {
             root: root.path().into(),
-            cores: vec![
-                serde_json::from_value(serde_json::json!({
-                    "id": "renpy",
-                    "family_id": "renpy",
-                    "display_name": "Ren'Py",
-                    "family_name": "Ren'Py",
-                    "license": "MIT",
-                    "resources": [],
-                    "supported_targets": [],
-                    "static_manager_targets": ANDROID_TARGETS.map(|(target, _)| target),
-                    "blocked": [],
-                }))
-                .unwrap(),
-            ],
+            cores: vec![],
             targets: vec![],
         };
-        let common = "cores/renpy/Resources/lib/python3.12/os.py";
-        let mut expected = vec![(common.to_owned(), "common stdlib")];
+        let common = "licenses/native/NOTICE";
+        let mut expected = vec![(common.to_owned(), "common notice")];
         let mut entries = Vec::new();
         for (target, abi) in ANDROID_TARGETS {
             let inputs = root.path().join(abi);
@@ -1649,51 +1524,31 @@ mod android_tests {
                 fs::write(&source, text).unwrap();
                 source
             };
-            let sysconfig = format!("Resources/lib/{target}/python3.12/_sysconfigdata__linux_.py");
             let notice = format!("licenses/native/{abi}/NOTICE");
-            let core_notice = format!("licenses/renpy/{abi}/NOTICE");
             let artifact = BuildArtifact {
                 component: "manager".into(),
                 target: target.into(),
                 product_version: None,
                 library: inputs.join("libshinki_emu_manager.so"),
                 core_build: None,
-                embedded_core_builds: vec![CoreBuildManifest {
-                    plugin_id: "renpy".into(),
-                    target: target.into(),
-                    artifact_kind: "native-static".into(),
-                    native_library: Some(write("librenpy.a", abi)),
-                    resources: vec![
+                native_inputs: vec![NativeInputs {
+                    licenses: vec![
                         BuildAsset {
-                            source: write("sysconfig.py", abi),
-                            dest: sysconfig.clone(),
+                            source: write("native-notice", abi),
+                            dest: notice.clone(),
                         },
                         BuildAsset {
-                            source: write("os.py", "common stdlib"),
-                            dest: "Resources/lib/python3.12/os.py".into(),
+                            source: write("common-notice", "common notice"),
+                            dest: common.into(),
                         },
                     ],
-                    licenses: vec![BuildAsset {
-                        source: write("core-notice", abi),
-                        dest: core_notice.clone(),
-                    }],
-                }],
-                native_inputs: vec![NativeInputs {
-                    licenses: vec![BuildAsset {
-                        source: write("native-notice", abi),
-                        dest: notice.clone(),
-                    }],
                     ..Default::default()
                 }],
                 source_commit: None,
                 features: vec![],
             };
             entries.extend(android_asset_entries(&inv, &artifact, None).unwrap());
-            expected.extend([
-                (format!("cores/renpy/{sysconfig}"), abi),
-                (format!("licenses/embedded/renpy/{core_notice}"), abi),
-                (notice, abi),
-            ]);
+            expected.push((notice, abi));
         }
 
         let stage = root.path().join("stage");
@@ -1722,7 +1577,7 @@ mod android_tests {
         fs::write(&arm, &data).unwrap();
         data[8192] = b'b';
         fs::write(&x86, &data).unwrap();
-        let name = "assets/cores/renpy/Resources/lib/python3.12/os.py";
+        let name = "assets/licenses/native/NOTICE";
         let stage = root.path().join("stage");
         let error =
             stage_android_inputs(vec![(arm, name.into()), (x86, name.into())], &stage).unwrap_err();

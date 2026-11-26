@@ -167,14 +167,6 @@ pub(crate) fn package(
     {
         bail!("expected OHOS Manager artifact for {triple}/{version}");
     }
-    if result
-        .embedded_core_builds
-        .iter()
-        .any(|build| build.plugin_id == core.id)
-        || core.embedded_in_manager(triple, &result.features)
-    {
-        bail!("OHOS Manager must not embed its companion core {}", core.id);
-    }
     let manager = fs::read(&result.library)?;
     verify_native(target, &manager, MANAGER, NativeRole::Manager)?;
     let manager_sha256 = hex::encode(Sha256::digest(manager));
@@ -313,7 +305,6 @@ fn stage_inputs(
     );
     entries.extend(package::metadata_entries(inv, temp.path())?);
     entries.extend(package::licenses(inv, result, temp.path())?);
-    entries.extend(package::static_core_entries(inv, result)?);
     let declaration = stage_core_manifest(inv, bundled_core, temp.path(), &mut entries)?;
     fs::create_dir_all(&bundled)?;
     copy_entries(&entries, &bundled)?;

@@ -654,7 +654,7 @@ fn stage_framework(
         seen.insert(fs::canonicalize(&asset.source)?);
         notices.extend(package::asset_entries(asset)?);
     }
-    for (source, path, _) in core.license_files(&inv.root, target)? {
+    for (source, path) in core.license_files(&inv.root, target)? {
         if seen.insert(fs::canonicalize(&source)?) {
             notices.extend(package::asset_entries(&BuildAsset {
                 source,

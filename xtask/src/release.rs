@@ -1,5 +1,4 @@
 use crate::{
-    build,
     cores::{Inventory, Target, slug},
     dependencies, package,
 };
@@ -382,16 +381,6 @@ fn identity(inv: &Inventory, component: &str, version: &str) -> Result<Identity>
     })
 }
 
-fn require_public_manager_variant(features: &[String]) -> Result<()> {
-    if features
-        .iter()
-        .any(|feature| feature.starts_with("static-"))
-    {
-        bail!("static Manager variants are not dynamic release packages");
-    }
-    Ok(())
-}
-
 /// Package one target and record the asset for publication.
 pub fn prepare(
     inv: &Inventory,
@@ -406,9 +395,6 @@ pub fn prepare(
             "{component}/{target} is not a release row in scope {}",
             scope.name()
         );
-    }
-    if component == "manager" {
-        require_public_manager_variant(&build::requested_manager_features()?)?;
     }
     let id = identity(inv, component, version)?;
     let version = id.version.as_str();
@@ -742,16 +728,6 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn static_core_manager_variants_are_rejected_before_release_packaging() {
-        assert!(require_public_manager_variant(&["store-steam".into()]).is_ok());
-        for feature in ["static-adv32", "static-cmvs"] {
-            assert!(
-                require_public_manager_variant(&["store-steam".into(), feature.into()]).is_err()
-            );
-        }
-    }
 
     #[test]
     fn catalog_urls_use_final_tags_and_escape_asset_path_segments() {
