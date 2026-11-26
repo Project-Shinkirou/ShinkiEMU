@@ -614,8 +614,8 @@ impl ManagerController for ShinkiEmuManagerController {
         ShinkiEmuManagerController::dismiss_core_batch(self)
     }
 
-    fn uninstall_core(&mut self, core_id: &str) -> Result<ManagerViewModel, String> {
-        ShinkiEmuManagerController::uninstall_core(self, core_id)
+    fn uninstall_core(&mut self, stem: &str) -> Result<ManagerViewModel, String> {
+        ShinkiEmuManagerController::uninstall_core(self, stem)
     }
 
     fn log_text(&self, core: &str) -> Result<(String, usize), String> {

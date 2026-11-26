@@ -153,7 +153,9 @@ fn installed_declaration_recognizes_data_only_and_updates_after_package_lifecycl
     settle(&mut app);
     assert_eq!(app.candidates[&id].plugin_id, "rfvp", "the unchanged game must see the newly installed rule");
     assert!(app.registry.descriptors().next().is_none());
-    app.uninstall_core("rfvp").unwrap();
+    let model = app.model().unwrap();
+    let card = model.cores.items.iter().find(|card| card.id == "rfvp").unwrap();
+    app.uninstall_core(&card.stem).unwrap();
     drop(app);
 
     let app = open(&data);

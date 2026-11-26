@@ -30,10 +30,10 @@ fn damaged_core_keeps_manager_available_and_error_visible() {
     assert!(app.plugin_errors.is_empty(), "ordinary preparation must not attempt native loading");
     assert_eq!(app.registry.descriptors().count(), 0);
     let model = app.model().unwrap();
-    let item = model.cores.items.iter().find(|item| item.id == "shinki_emu_broken").unwrap();
+    let item = model.cores.items.iter().find(|item| item.stem == "shinki_emu_broken").unwrap();
     assert_eq!(item.state, "failed");
     assert!(item.message.contains("MANIFEST"));
-    assert!(!model.cores.items.iter().any(|item| item.id == "avcodec-62"));
+    assert!(!model.cores.items.iter().any(|item| item.stem == "avcodec-62"));
 }
 
 fn add_game(controller: &mut ShinkiEmuManagerController, id: &str) {
