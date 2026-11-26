@@ -657,34 +657,13 @@ pub fn publish(inv: &Inventory, component: &str, version: &str, scope: Scope) ->
     } else {
         notes
     };
-    if component == "manager" {
-        let android = inv
-            .cores
+    if component == "manager"
+        && records
             .iter()
-            .filter(|core| {
-                core.static_manager_targets
-                    .iter()
-                    .any(|target| target == "aarch64-linux-android")
-            })
-            .map(|core| core.id.as_str())
-            .collect::<Vec<_>>();
-        let cores = android.join(", ");
-        notes.push_str(&format!(
-            "\nAndroid Manager embeds {} cores: {cores}.\nAndroid Manager 内置 {} 个核心：{cores}。\nAndroid Manager は{}コアを組み込みます：{cores}。\n",
-            android.len(),
-            android.len(),
-            android.len(),
-        ));
+            .any(|(_, record)| record["platform"] == "android-universal")
+    {
         notes.push_str(
-            "\nAndroid requires Android 9 (API 28) or later; Android 8.0/8.1 are no longer supported.\n\nAndroid 最低要求 Android 9（API 28），不再支持 Android 8.0/8.1。\n\nAndroid 9（API 28）以降が必要です。Android 8.0/8.1 はサポート対象外です。\n",
-        );
-        if !android.contains(&"kirikiroid2-web") {
-            notes.push_str(
-                "\nKiriKiri is not included in this Android Manager; static embedding remains in development for a later Manager release. A standalone Android core ZIP does not establish Manager support.\n\n本版 Android Manager 不包含 KiriKiri；其静态接入仍在开发，将随后续 Manager 版本交付。独立 Android 核心 ZIP 不代表 Manager 可用。\n\n本版 Android Manager に KiriKiri は含まれません。静的組み込みは後続の Manager リリースに向けて開発中です。単独の Android コア ZIP は Manager での利用を保証しません。\n",
-            );
-        }
-        notes.push_str(
-            "\nNew Musica patches require Musica core 0.1.0-beta.5 or later. Manager prompts you to update the core when its native capabilities are missing. Older Managers continue using the legacy v1 patch catalog.\n\n新 Musica 补丁需要 Musica 核心 beta.5 或更高版本；缺少所需原生能力时，Manager 会提示更新核心。旧 Manager 继续使用 v1 补丁目录。\n\n新しい Musica パッチには Musica コア 0.1.0-beta.5 以降が必要です。必要なネイティブ機能が不足する場合、Manager はコアの更新を案内します。旧 Manager は引き続き v1 パッチカタログを使用します。\n",
+            "\nAndroid requires Android 9 (API 28) or later. Install separately released cores from the official catalog.\n\nAndroid 需要 Android 9（API 28）或更新版本，核心从官方目录单独安装。\n\nAndroid 9（API 28）以降が必要です。コアは公式カタログから別途インストールしてください。\n",
         );
     }
     if id.identity.is_some() {
