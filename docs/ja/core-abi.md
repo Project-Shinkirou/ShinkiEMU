@@ -63,6 +63,7 @@ Select.ini の最初の有効な TAB 区切り append も解決し、範囲外�
 | `ethornell` | 候補ディレクトリ直下の BURIKO ARC20 索引、または `ipl._bp` を含む PackFile 索引とリソース範囲 | ブートスクリプトの展開や VM 互換性は検証しない |
 | `cmvs` | CPZ3/5/6/7 の固定ヘッダーと索引範囲、または PS2A セグメント | CPZ1/2 は未識別。暗号化索引、checksum、profile は起動時に検証 |
 | `lucifen` | ルートの `SCRIPT.LPK`（大文字・小文字を区別しない）、LPK1 ヘッダーと索引範囲 | 暗号化索引、`gameinit.sob`、起動リソースは選択したコアが起動時に検証 |
+| `adv32` | ルートの `AdvData/MES/start.mes`（大文字・小文字を区別しない）、対応する MES 形式のマーカー、有効なエントリオフセット表 | 命令とエントリ位置の境界は選択したコアが起動時に検証 |
 | `mages` | MPK v2 の有界な完全索引とリソース範囲 | family 識別は Impacto の実行 profile 対応を保証しない |
 | `renpy` | RPA2/3、RPC2、または旧 zlib-RPYC の完全な pickle opcode 列が示す renpy.ast オブジェクト | バイトだけを調べ、pickle の import・構築・実行はしない。汎用 zlib/pickle、RPA1、ソースのみは未識別 |
 
