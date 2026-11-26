@@ -132,7 +132,6 @@ objc2-core-foundation = { version = "0.3.2", default-features = false, features 
 objc2-foundation = { workspace = true, features = ["NSDictionary", "NSString", "NSURL"] }
 objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIApplication", "block2"] }
 [target.'cfg(target_os = "android")'.dependencies]
-shinki-emu-impacto = { workspace = true, features = ["static"] }
 # Slint gates winit/femtovg out of its Android graph; the Manager renders
 # through the android-activity backend with the wgpu-30 Skia renderer, and the
 # NativeActivity glue is the single activity backend linked into the process.

@@ -56,6 +56,8 @@ rustup target add aarch64-linux-android x86_64-linux-android
 sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "build-tools;37.0.0" "ndk;30.0.16248370"
 ```
 
+Impacto は ABI ごとに `cargo xtask package --core impacto --target <triple> --out <新規ディレクトリ>` でビルドします。ターゲットは `aarch64-linux-android` と `x86_64-linux-android` です。Cargo は共有ライブラリを生成し、xtask が対応する実行時ライブラリ、ライセンス、コアの隣に置く `Resources/` をまとめます。Gradle は不要です。
+
 Android 向けの単独 Ren’Py コアをビルドするには、対象 ABI に対応するランタイムが必要です。環境を整えた Ubuntu 24.04 x86_64 ホストでは、Cargo が `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/` に対象ランタイムを用意します。Python 3 と Jinja2、LLVM/Clang/LLD 18、ccache、[CI](../../.github/workflows/ci.yml) に記載の開発パッケージが必要です。Linux 以外では、対象 ABI 用に Linux で用意したランタイムディレクトリ全体（`include/`、`lib/`、`Resources/`、ライセンス表記を含む）を移し、`RENPY_STATIC_ROOT` に指定します。別の ABI をビルドするときは対応するディレクトリに切り替えます。Ren’Py のレシピは固定版の Linux NDK r29 を、ShinkiEMU の Cargo ビルドは上記の NDK r30 を使います。レシピの入力は [Ren’Py](cores/renpy.md) を参照してください。
 
 ### Apple

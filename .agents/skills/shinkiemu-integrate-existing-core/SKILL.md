@@ -53,7 +53,7 @@ description: Use when porting an existing third-party engine implementation (a R
 | sena-rs | Rust | `crates/shinki-emu-sena-rs`；另有 `pub const QUERY`；ready 握手在 `session.rs` | `shinki_emu_sena_rs::shinki_emu_query`（iOS） |
 | ethornell-rs | Rust | `crates/shinki-emu-ethornell-rs`；另有 `pub const QUERY` | `shinki_emu_ethornell_rs::shinki_emu_query`（iOS） |
 | ReMinori | Rust, AGPL | `crates/shinki`（`build.rs`、`MODIFICATIONS.md`） | `shinki_emu_ReMinori::shinki_emu_query`（iOS） |
-| impacto | C++ | `shinki/` Cargo 包装 + `src/shinki/core.cpp`（worker `Run`、`GetFrame`）；`vendor/shinki-emu-abi/include/shinki_emu.h` | `shinki_emu_impacto::shinki_emu_query`（Android，feature `static`） |
+| impacto | C++ | `shinki/` Cargo 包装 + `src/shinki/core.cpp`（worker `Run`、`GetFrame`）；`vendor/shinki-emu-abi/include/shinki_emu.h` | Android 两个 ABI 都由独立核心包导出 `shinki_emu_query`，不静态链接到 Manager |
 | kirikiroid2-web | C++ | `shinki/`（`build.rs`、`native/NativeSession.cpp`、`NativeOwner.cpp`）；`shinki/native/include/shinki_emu.h` | `shinki_emu_kirikiroid2_web::query`（Android，feature `static`） |
 | krkr2 | C++ | `shinki/Cargo.toml`（`native-static`），从 kirikiroid2-web 移植嵌入接缝 | `shinki_emu_krkr2::query`（Android、iOS；没有桌面动态包） |
 | cmvs-rs | Rust | `crates/shinki-emu-cmvs-rs`，`dynamic-plugin-export` 门控导出；与树内 `shinki.emu.cmvs` 并存 | 无（只有桌面动态包；`publish_blocked` 写明了原因） |

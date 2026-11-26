@@ -60,6 +60,8 @@ sdkmanager --sdk_root="$ANDROID_HOME" --channel=0 "platforms;android-37.2" "buil
 
 For Android `xtask package`, Cargo uses the NDK's CMake toolchain with the same ABI and API 28 as cargo-ndk. This also covers dependencies such as shaderc that invoke CMake from a Cargo build script.
 
+Build Impacto separately for each Android ABI: `cargo xtask package --core impacto --target <triple> --out <new-directory>`, using `aarch64-linux-android` or `x86_64-linux-android`. Cargo builds the native shared core and xtask stages its matching runtime libraries, licenses and adjacent `Resources/` directory. Neither build needs Gradle.
+
 Building the standalone Android Ren’Py core requires its matching runtime tree. On a provisioned Ubuntu 24.04 x86_64 build host, Cargo prepares it under `.work/native-downloads/renpy-android/<Rust target>/<recipe key>/`. The recipe needs Python 3 with Jinja2, LLVM/Clang/LLD 18, ccache and the host development packages listed in [CI](../../.github/workflows/ci.yml). On a non-Linux build host, set `RENPY_STATIC_ROOT` to the complete runtime tree prepared on Linux for the matching ABI, including `include/`, `lib/`, `Resources/` and notices. Switch trees when building the other ABI. The Ren’Py recipe uses its own pinned Linux NDK r29; the ShinkiEMU Cargo build uses the NDK r30 above. See [Ren’Py](cores/renpy.md) for the recipe inputs.
 
 ### Apple

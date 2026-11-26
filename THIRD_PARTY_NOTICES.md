@@ -129,9 +129,9 @@ FriBidi 以 `fribidi-0.dll` 动态链接，随使用字幕的 FVP 与 Musica 核
 ## impacto
 
 - 上游：<https://github.com/CommitteeOfZero/impacto>，revision `914fae7cbb9583f8aa231569a03aab27d8c042f8`；整体 ISC，各原组件沿用其独立许可。
-- 适配 fork：<https://github.com/Project-Shinkirou/impacto/tree/shinki>，固定 `1afb3df50f6d52ffb729f4c074f3b38be38322b5`。通用原生基线 `f12b4b799f1024eaca9a4e48e0371c2f3835576e` 独立修复 DDS 并行读取与电影音频释放；其上的 Shinki 适配提交保留原 SC3、OpenGL、OpenAL、FFmpeg、游戏 UI 和原生资源读取。
+- 适配 fork：<https://github.com/Project-Shinkirou/impacto/tree/shinki-android-ports>，确切提交见 `Cargo.lock`。通用原生基线 `f12b4b799f1024eaca9a4e48e0371c2f3835576e` 独立修复 DDS 并行读取与电影音频释放；其上的 Shinki 适配保留原 SC3、OpenGL、OpenAL、FFmpeg、游戏 UI 和原生资源读取。
 - 薄嵌入层在 `src/shinki`，固定 C ABI v3 头在 `vendor/shinki-emu-abi/include/shinki_emu.h`，来源为 ShinkiEMU 的 `Source/FamilyApi/shinki-emu-abi`，原样保留并附 MIT OR Apache-2.0 许可。DDS 文件继续保留 OpenImageIO 的 BSD-3-Clause 归属，Steam 字库仅在运行时读取游戏自己的两个原生 DDS。
-- 本地核心目录附 `LICENSE`、`THIRDPARTY.md`、`README.md` 和实际 vcpkg 依赖的完整 copyright；FFmpeg 7.1.2、OpenAL Soft、FriBidi 等动态库保留原分发义务，公开二进制发布仍需核验对应源码及许可闭包。
+- 核心包附 `LICENSE`、`THIRDPARTY.md`、`README.md`、Noto CJK 字库许可和实际 vcpkg 依赖的 copyright。Android 的许可和原生库随各 ABI 的核心 ZIP 分发，不再随 Manager APK 分发。FFmpeg、OpenAL Soft、FriBidi 等组件保留原分发义务；公开二进制发布前须核验对应源码及许可闭包。
 - 本轮保持开源依赖，不复制、加载或分发 Bink DLL。CHAOS;CHILD 验收已按用户要求跳过，既有系统数据错误页诊断不能算可玩通过；商业素材、私有映射与试验存档不进入源码或包。
 
 ## Ren'Py

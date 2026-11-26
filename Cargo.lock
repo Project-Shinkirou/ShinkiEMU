@@ -11408,7 +11408,7 @@ dependencies = [
 [[package]]
 name = "shinki-emu-impacto"
 version = "0.1.0"
-source = "git+https://github.com/Project-Shinkirou/impacto?rev=e441ad1e6ca5ba084b149f561ae5ae60f2f55c42#e441ad1e6ca5ba084b149f561ae5ae60f2f55c42"
+source = "git+https://github.com/Project-Shinkirou/impacto?rev=9d79ed18d0ff37b9d790681f4ecc2aacc223a3c3#9d79ed18d0ff37b9d790681f4ecc2aacc223a3c3"
 dependencies = [
  "shinki-emu-abi",
  "shinki-emu-build",
@@ -11520,7 +11520,6 @@ dependencies = [
  "shinki-emu-dlsite",
  "shinki-emu-dmm",
  "shinki-emu-headless",
- "shinki-emu-impacto",
  "shinki-emu-manager-core",
  "shinki-emu-manager-ui-slint",
  "shinki-emu-metadata",

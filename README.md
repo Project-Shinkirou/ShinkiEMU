@@ -31,7 +31,7 @@ ShinkiEMU is a cross-platform library manager for visual novels. Manager organiz
 
 ## Highlights
 
-- **Native Engine Cores** — Each core preserves the engine's own VM, rendering, audio, menus and saves. Desktop installs cores independently. The current Android source combines bundled Impacto with separately installed, verified cores; iOS and OpenHarmony use bundled cores.
+- **Native Engine Cores** — Each core preserves the engine's own VM, rendering, audio, menus and saves. Desktop installs cores independently. Android installs Impacto and other supported cores from verified packages; iOS and OpenHarmony use bundled cores.
 - **Unified Library & Metadata** — Organize local game folders with automatic core detection, Bangumi & VNDB metadata lookup, and a trilingual UI (Simplified Chinese, English, Japanese) with light and dark themes.
 - **Built-in Store Downloads** — Sign in directly to **Steam** or **DLsite** inside the Manager to download PC titles you own, with incremental updates and file verification for Steam. Credentials stay strictly in your OS secret store. *(DMM GAMES/FANZA currently supports sign-in only.)*
 - **Sandboxed Luau Patches** — Apply reviewed localization or compatibility patches from the [Patch Library](https://project-shinkirou.github.io/en/shinkiemu/patches/) or load local `.luau`/ZIP scripts. By default, patches write to a new directory leaving your original game untouched; in-place mode keeps automatic hash-verified backups for one-click restore.

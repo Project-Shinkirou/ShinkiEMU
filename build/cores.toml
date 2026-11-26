@@ -344,20 +344,14 @@ display_name = "impacto"
 family_name = "MAGES."
 license = "ISC"
 resources = []
-static_manager_targets = ["aarch64-linux-android", "x86_64-linux-android"]
 adapter_licenses = ["LICENSE", "THIRDPARTY.md", "README.md", "licenses/NotoSansCJK-OFL.txt"]
-supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
+android_dynamic = { minimum_release = 4, requires_context = false }
 publish_blocked = ""
 [cores.attribution]
 adapter_branch = "shinki-android-ports"
 release_sequence = 4
 upstream_identity = { repo = "https://github.com/CommitteeOfZero/impacto", ref_kind = "tag", ref_name = "0.10.8.930", commit = "3706ddd89d4ad4aed0e32e127355c4251f22e574" }
-[[cores.blocked]]
-target = "aarch64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
-[[cores.blocked]]
-target = "x86_64-linux-android"
-reason = "Statically embedded in the Android Manager; standalone dynamic-core installation is not supported."
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Impacto's static CMake adapter has no verified iOS native dependency and package path."
