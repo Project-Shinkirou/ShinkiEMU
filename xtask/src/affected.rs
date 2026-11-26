@@ -391,7 +391,11 @@ mod tests {
             core.ohos_hap = None;
         }
         for (inventory, before, after) in [
-            (&without_inventory, current.as_str(), without_companion.as_str()),
+            (
+                &without_inventory,
+                current.as_str(),
+                without_companion.as_str(),
+            ),
             (&inv, without_companion.as_str(), current.as_str()),
         ] {
             let affected = classify(inventory, &["build/cores.toml"], Some(before), after).unwrap();

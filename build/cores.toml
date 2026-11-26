@@ -101,6 +101,7 @@ licenses = ["LICENSE-MIT", "LICENSE-APACHE", "Assets/Fonts/OFL-NotoSansJP.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "aarch64-linux-android", "x86_64-linux-android"]
 android_dynamic = { minimum_release = "0.1.0-beta.6", requires_context = true }
 ios_framework = true
+ohos_hap = { library = "libshinki_emu_core_musica.so" }
 [[cores.blocked]]
 target = "aarch64-apple-ios"
 reason = "Bundled in the iOS Manager; standalone core packages are not supported."

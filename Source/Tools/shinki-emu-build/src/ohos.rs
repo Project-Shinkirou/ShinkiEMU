@@ -18,7 +18,8 @@ impl HapCore {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
         let valid_library = self.library != MANAGER_LIBRARY
-            && self.library
+            && self
+                .library
                 .strip_prefix("libshinki_emu_")
                 .and_then(|name| name.strip_suffix(".so"))
                 .is_some_and(|name| {
@@ -27,7 +28,10 @@ impl HapCore {
                             .bytes()
                             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
                 });
-        anyhow::ensure!(valid_id && valid_library, "invalid OHOS HAP recipe for {id}");
+        anyhow::ensure!(
+            valid_id && valid_library,
+            "invalid OHOS HAP recipe for {id}"
+        );
         Ok(())
     }
 }

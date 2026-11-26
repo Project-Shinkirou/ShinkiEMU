@@ -5,7 +5,10 @@ const MANAGER: &str = "libshinki_emu_manager.so";
 fn installed_file(root: &Path, path: &Path) -> Option<PathBuf> {
     // Check the resolved path too: a symlink must not escape the bundle mount.
     let relative = path.strip_prefix(root).ok()?;
-    if !relative.components().all(|part| matches!(part, Component::Normal(_))) {
+    if !relative
+        .components()
+        .all(|part| matches!(part, Component::Normal(_)))
+    {
         return None;
     }
     let resolved = path.canonicalize().ok()?;
@@ -29,14 +32,18 @@ pub(super) fn resolve(
         if hap.extension()? != "hap" {
             return None;
         }
-        return Some(PathBuf::from(format!("{}!/{archive_libs}{basename}", hap.to_str()?)));
+        return Some(PathBuf::from(format!(
+            "{}!/{archive_libs}{basename}",
+            hap.to_str()?
+        )));
     }
     if manager.file_name()? != MANAGER {
         return None;
     }
     let manager = installed_file(root, manager)?;
     let candidate = installed_file(root, &manager.with_file_name(basename))?;
-    (candidate.parent() == manager.parent() && candidate.file_name()? == basename).then_some(candidate)
+    (candidate.parent() == manager.parent() && candidate.file_name()? == basename)
+        .then_some(candidate)
 }
 
 #[cfg(test)]
@@ -66,15 +73,24 @@ mod tests {
         assert_eq!(check(&app.join(MANAGER)), Some(companion.clone()));
         assert_eq!(check(&writable.join(MANAGER)), None);
         let archive_manager = |folder: &Path, libs: &str| {
-            PathBuf::from(format!("{}!/{libs}{MANAGER}", folder.join("entry.hap").display()))
+            PathBuf::from(format!(
+                "{}!/{libs}{MANAGER}",
+                folder.join("entry.hap").display()
+            ))
         };
         assert_eq!(
             check(&archive_manager(&app, ABI_DIR)),
-            Some(PathBuf::from(format!("{}!/{ABI_DIR}{COMPANION}", app.join("entry.hap").display())))
+            Some(PathBuf::from(format!(
+                "{}!/{ABI_DIR}{COMPANION}",
+                app.join("entry.hap").display()
+            )))
         );
         assert_eq!(check(&archive_manager(&app, "libs/x86_64/")), None);
         assert_eq!(check(&archive_manager(&writable, ABI_DIR)), None);
-        assert_eq!(check(&archive_manager(&bundle.join("../filesDir"), ABI_DIR)), None);
+        assert_eq!(
+            check(&archive_manager(&bundle.join("../filesDir"), ABI_DIR)),
+            None
+        );
         fs::remove_file(&companion)?;
         assert_eq!(check(&app.join(MANAGER)), None);
         #[cfg(unix)]

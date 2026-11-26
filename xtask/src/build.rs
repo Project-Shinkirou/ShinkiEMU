@@ -368,8 +368,10 @@ fn execute_configured(
                 continue;
             }
         };
-        if ohos_companion_packages.is_some_and(|ids| ids.iter().any(|id| value["package_id"] == *id))
-            && (value["reason"] == "compiler-artifact" || value["reason"] == "build-script-executed")
+        if ohos_companion_packages
+            .is_some_and(|ids| ids.iter().any(|id| value["package_id"] == *id))
+            && (value["reason"] == "compiler-artifact"
+                || value["reason"] == "build-script-executed")
         {
             parse_error = Some(anyhow::anyhow!(
                 "OHOS Manager must build without its companion core: {}",
@@ -696,7 +698,11 @@ mod version_tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inventory = Inventory::load(root).unwrap();
         let triple = OhosTarget::Arm64.rust_target();
-        let configured = crate::ohos::companion(&inventory, triple).unwrap().0.id.clone();
+        let configured = crate::ohos::companion(&inventory, triple)
+            .unwrap()
+            .0
+            .id
+            .clone();
         for target in [OhosTarget::Arm64, OhosTarget::X64] {
             let triple = target.rust_target();
             let (core, _) = crate::ohos::companion(&inventory, triple).unwrap();

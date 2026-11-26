@@ -41,6 +41,7 @@ pub struct Core {
     #[serde(default)]
     pub ios_framework: bool,
     pub ios_resource_subdir: Option<String>,
+    pub(crate) ohos_hap: Option<HapCore>,
     pub blocked: Vec<Blocked>,
     pub attribution: Option<Attribution>,
 }
@@ -317,7 +318,9 @@ impl Inventory {
                     self.require_buildable("manager", triple)?;
                     if c.supported_targets.iter().any(|t| t == triple)
                         || c.static_manager_targets.iter().any(|t| t == triple)
-                        || c.static_manager_candidate_targets.iter().any(|t| t == triple)
+                        || c.static_manager_candidate_targets
+                            .iter()
+                            .any(|t| t == triple)
                     {
                         bail!("{} is a separate HAP library on {triple}", c.id);
                     }

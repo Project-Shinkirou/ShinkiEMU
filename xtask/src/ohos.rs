@@ -268,7 +268,8 @@ fn stage_inputs(
     let core_artifact = bundled_core.artifact;
     let mut native = BTreeMap::from([(MANAGER.to_owned(), result.library.clone())]);
     let manager_search = package::search_dirs(inv, result)?;
-    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())? {
+    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())?
+    {
         if &name == core_library {
             bail!("companion {name} is already in the Manager's native closure");
         }
@@ -343,7 +344,10 @@ fn stage_core_manifest(
     build.validate()?;
     if build.plugin_id != *id
         || build.target != artifact.target
-        || !matches!(build.artifact_kind.as_str(), "rust-cdylib" | "native-shared")
+        || !matches!(
+            build.artifact_kind.as_str(),
+            "rust-cdylib" | "native-shared"
+        )
         || build
             .native_library
             .as_ref()
@@ -850,7 +854,8 @@ mod tests {
         // The string table also serves as shstrtab; section names are unused.
         bytes[62..64].copy_from_slice(&1_u16.to_le_bytes());
         bytes[HEADERS..][..4].copy_from_slice(&object::elf::PT_LOAD.0.to_le_bytes());
-        bytes[HEADERS + PROGRAM_LEN..][..4].copy_from_slice(&object::elf::PT_DYNAMIC.0.to_le_bytes());
+        bytes[HEADERS + PROGRAM_LEN..][..4]
+            .copy_from_slice(&object::elf::PT_DYNAMIC.0.to_le_bytes());
         let names = b"\0shinki_emu_query\0";
         bytes[STRINGS..][..names.len()].copy_from_slice(names);
         let strtab = &mut bytes[SECTIONS + SECTION_LEN..][..SECTION_LEN];
@@ -898,38 +903,44 @@ mod tests {
             let expected = declaration(&core)?;
             let page = u16::try_from(target.page_size())?;
             let stored = zip::CompressionMethod::Stored;
-            let create_archive =
-                |alignment, compression, mixed, core: Option<&[u8]>, source: &[u8], signed: &[u8]|
-                 -> Result<_> {
-                    let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-                    let files = SimpleFileOptions::default().compression_method(stored);
-                    archive.start_file(format!("libs/{abi}/{MANAGER}"), files.with_alignment(page))?;
-                    archive.write_all(&manager)?;
-                    if let Some(core) = core {
-                        archive.start_file(
-                            format!("libs/{abi}/{LIBRARY}"),
-                            files.with_alignment(alignment).compression_method(compression),
-                        )?;
-                        archive.write_all(core)?;
-                    }
-                    if mixed {
-                        archive.start_file(format!("libs/{}/libc++_shared.so", other.abi()), files)?;
-                    }
-                    for path in [
-                        "module.json",
-                        "resources/rawfile/bundled/bundled.manifest",
-                        "resources/rawfile/bundled/metadata/index.json",
-                    ] {
-                        archive.start_file(path, files)?;
-                    }
-                    archive.start_file(format!("{prefix}/core.json"), files)?;
-                    archive.write_all(signed)?;
-                    archive.start_file(format!("{prefix}/source-commit.txt"), files)?;
-                    archive.write_all(source)?;
-                    let mut hap = archive.finish()?;
-                    hap.set_position(0);
-                    Ok(hap)
-                };
+            let create_archive = |alignment,
+                                  compression,
+                                  mixed,
+                                  core: Option<&[u8]>,
+                                  source: &[u8],
+                                  signed: &[u8]|
+             -> Result<_> {
+                let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+                let files = SimpleFileOptions::default().compression_method(stored);
+                archive.start_file(format!("libs/{abi}/{MANAGER}"), files.with_alignment(page))?;
+                archive.write_all(&manager)?;
+                if let Some(core) = core {
+                    archive.start_file(
+                        format!("libs/{abi}/{LIBRARY}"),
+                        files
+                            .with_alignment(alignment)
+                            .compression_method(compression),
+                    )?;
+                    archive.write_all(core)?;
+                }
+                if mixed {
+                    archive.start_file(format!("libs/{}/libc++_shared.so", other.abi()), files)?;
+                }
+                for path in [
+                    "module.json",
+                    "resources/rawfile/bundled/bundled.manifest",
+                    "resources/rawfile/bundled/metadata/index.json",
+                ] {
+                    archive.start_file(path, files)?;
+                }
+                archive.start_file(format!("{prefix}/core.json"), files)?;
+                archive.write_all(signed)?;
+                archive.start_file(format!("{prefix}/source-commit.txt"), files)?;
+                archive.write_all(source)?;
+                let mut hap = archive.finish()?;
+                hap.set_position(0);
+                Ok(hap)
+            };
             let good = create_archive(page, stored, false, Some(&core), commit, &expected)?;
             let manifest = verify_archive(target, good.clone(), &expected, &manager_sha256)?;
             assert_eq!(
@@ -937,7 +948,9 @@ mod tests {
                 (ID, "1.0.0")
             );
             let error = |target, hap, staged: &[u8], manager: &str| {
-                verify_archive(target, hap, staged, manager).unwrap_err().to_string()
+                verify_archive(target, hap, staged, manager)
+                    .unwrap_err()
+                    .to_string()
             };
             assert!(
                 error(other, good.clone(), &expected, &manager_sha256).contains("outside libs/")
@@ -945,8 +958,16 @@ mod tests {
             assert!(error(target, good, &expected, &digest(&core)).contains("staged library"));
             let mixed = create_archive(page, stored, true, Some(&core), commit, &expected)?;
             assert!(error(target, mixed, &expected, &manager_sha256).contains("outside libs/"));
-            for (alignment, compression) in [(1, stored), (page, zip::CompressionMethod::Deflated)] {
-                let hap = create_archive(alignment, compression, false, Some(&core), commit, &expected)?;
+            for (alignment, compression) in [(1, stored), (page, zip::CompressionMethod::Deflated)]
+            {
+                let hap = create_archive(
+                    alignment,
+                    compression,
+                    false,
+                    Some(&core),
+                    commit,
+                    &expected,
+                )?;
                 assert!(
                     error(target, hap, &expected, &manager_sha256).contains("stored uncompressed")
                 );
@@ -963,8 +984,11 @@ mod tests {
             assert!(verify_native(target, &core, MANAGER, NativeRole::Manager).is_err());
             let missing = create_archive(page, stored, false, None, commit, &expected)?;
             assert!(verify_archive(target, missing, &expected, &manager_sha256).is_err());
-            let changed_dso = create_archive(page, stored, false, Some(&manager), commit, &expected)?;
-            assert!(error(target, changed_dso, &expected, &manager_sha256).contains("staged library"));
+            let changed_dso =
+                create_archive(page, stored, false, Some(&manager), commit, &expected)?;
+            assert!(
+                error(target, changed_dso, &expected, &manager_sha256).contains("staged library")
+            );
             let changed_commit =
                 create_archive(page, stored, false, Some(&core), &[b'a'; 40], &expected)?;
             assert!(
@@ -975,9 +999,7 @@ mod tests {
             changed_manifest["version"] = "1.0.1".into();
             let signed = serde_json::to_vec(&changed_manifest)?;
             let hap = create_archive(page, stored, false, Some(&core), commit, &signed)?;
-            assert!(
-                error(target, hap, &expected, &manager_sha256).contains("declaration differs")
-            );
+            assert!(error(target, hap, &expected, &manager_sha256).contains("declaration differs"));
         }
         Ok(())
     }

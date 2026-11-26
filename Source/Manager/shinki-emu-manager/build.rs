@@ -256,8 +256,10 @@ fn write_embedded_core_identities() {
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
         if ohos_hap && let Some(recipe) = core.get("ohos_hap") {
-            let recipe: shinki_emu_build::ohos::HapCore =
-                recipe.clone().try_into().expect("OHOS HAP companion recipe");
+            let recipe: shinki_emu_build::ohos::HapCore = recipe
+                .clone()
+                .try_into()
+                .expect("OHOS HAP companion recipe");
             recipe.validate(id).expect("valid OHOS HAP companion");
             assert!(
                 companion.replace((id, recipe.library)).is_none(),
