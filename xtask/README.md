@@ -86,7 +86,7 @@ Manual `ci.yml` dispatch accepts `since`, using the existing
 checkout fetches full history so the comparison ref is available. An optional
 `components` comma-separated list narrows that affected matrix. For example:
 `gh workflow run ci.yml --ref main -f since=<base-commit> -f components=renpy`.
-Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the base branch, limited to the Windows and Linux x86_64 targets.
+Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: the same tools job, plus only the components affected since the PR event's base commit, limited to the Windows and Linux x86_64 targets. A manual PR CI run compares against the repository's default branch.
 
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 
