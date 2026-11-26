@@ -195,7 +195,7 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
     ];
     let pixel = |session: &crate::session::MusicaSession, x: usize, y: usize| -> [u8; 4] {
         let index = (y * 1280 + x) * 4;
-        session.scene.pixels[index..index + 4].try_into().unwrap()
+        session.scene.pixels()[index..index + 4].try_into().unwrap()
     };
 
     session.advance(0, &tap(1050.0, 183.0)).unwrap();
