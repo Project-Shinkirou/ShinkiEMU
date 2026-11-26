@@ -131,11 +131,11 @@ fn classify(
     Ok(affected)
 }
 
-fn bundled_targets<'a>(
-    inv: &'a Inventory,
+fn bundled_targets(
+    inv: &Inventory,
     ios_framework: bool,
     ohos_hap: bool,
-) -> impl Iterator<Item = &'a str> {
+) -> impl Iterator<Item = &str> {
     inv.targets
         .iter()
         .map(|target| target.triple.as_str())
