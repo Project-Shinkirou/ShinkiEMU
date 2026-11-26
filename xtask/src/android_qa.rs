@@ -1,6 +1,6 @@
 use super::{ANDROID_BUNDLE_MANIFEST, BuildArtifact, CorePackage, PRODUCT_SOURCE_COMMIT};
 use crate::{build, cores::{Inventory, slug}, dependencies, package, release};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use sha2::{Digest, Sha256};
 use shinki_emu_metadata::{CoreIdentity, MAX_CORE_PACKAGE_BYTES};
 use std::{
