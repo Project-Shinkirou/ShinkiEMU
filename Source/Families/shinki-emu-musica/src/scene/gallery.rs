@@ -17,7 +17,7 @@ impl Scene {
             return self.submit(commands);
         }
         for layer in &screen.layers {
-            self.layer(&mut commands, &layer.resource, layer.at[0], layer.at[1], 1.0)?;
+            self.gallery_layer(&mut commands, layer, [0, 0])?;
         }
         for button in &screen.buttons {
             let art = if button.enabled(access) {
@@ -50,10 +50,34 @@ impl Scene {
         ] {
             if let (Some(layer), Some(index)) = (layer, index) {
                 let [x, y, ..] = screen.buttons[index].rect;
-                self.layer(&mut commands, &layer.resource, x.saturating_add(layer.at[0]), y.saturating_add(layer.at[1]), 1.0)?;
+                self.gallery_layer(&mut commands, layer, [x, y])?;
             }
         }
         self.submit(commands)
+    }
+
+    fn gallery_layer(
+        &mut self,
+        commands: &mut Vec<SceneCommand>,
+        layer: &crate::runtime::gallery::GalleryLayer,
+        [x, y]: [i32; 2],
+    ) -> SessionResult<()> {
+        if let Some([x, y, width, height]) = layer.clip {
+            commands.push(SceneCommand::PushClip {
+                rect: RectI { x, y, width: width as u32, height: height as u32 },
+            });
+        }
+        self.layer(
+            commands,
+            &layer.resource,
+            x.saturating_add(layer.at[0]),
+            y.saturating_add(layer.at[1]),
+            1.0,
+        )?;
+        if layer.clip.is_some() {
+            commands.push(SceneCommand::PopClip);
+        }
+        Ok(())
     }
 
     pub fn render_gallery(&mut self, vm: &MusicaVm) -> SessionResult<()> {

@@ -10,6 +10,22 @@ local edition = {
     sys_xor_byte = 135,
     blocks = 2384,
     roles = {musica_script = 69, bmp_xor = 22, bmp = 8, font = 2, ass = 5},
+    -- Addresses are relative to the fingerprinted original, not the patch loader.
+    gallery = {
+        executable = "perseus.exe", size = 1875456,
+        sha256 = "f5d0dd7feaff814093325e48059b3b6398dd554bdedbab16ea48b086ea77523a",
+        cg_pointer_rva = 0x11b35c, cg_rows = 2029, cg_groups = 173,
+        flash_routes_rva = 0x11e974, music_rva = 0x119280, movie_entry_rva = 0xfe5e4,
+        root_buttons = {0x77781, 0x77966, 0x77b51, 0x77d38, 0x77f21},
+        cg_grid_rva = 0x71be5, cg_columns_rva = 0x72169, cg_slots_rva = 0x72431,
+        cg_size_rva = 0x72205, cg_page_x_rva = 0x7250f, cg_menu_rva = 0x72543,
+        page_controls_rva = 0x11b308,
+        flash_first_rva = 0x74782, flash_other_rva = 0x7475a, flash_finish_rva = 0x747c7,
+        flash_constructor_rva = 0x73f40, flash_pages_rva = 0x74320,
+        flash_row_table_rva = 0x73f5e, flash_col_table_rva = 0x73f69, flash_size_rva = 0x73f7e,
+        flash_menu_x_rva = 0x747d5, flash_menu_y_rva = 0x747df,
+        music_controls_rva = 0x119200, music_row_shift_rva = 0x7afd7, music_pages_rva = 0x78a59,
+    },
     members = {
         {path = "A04H.sc", role = "musica_script", size = 16569, sha256 = "5d1699cb1bb7b7cff236d4fac9440c2b5c691315b3d38b0413bb82c9d94e0f98"},
         {path = "D12.sc", role = "musica_script", size = 15798, sha256 = "866a2c31fa58c8ea1ff736cf09519f3248ed3999559ef7fbff292d2a13955770"},
@@ -160,6 +176,7 @@ edition.originals = {
 return {
     id = "musica-perseus-cn", version = 2, title = "夏空的英仙座原生资源转换",
     apply = function(ctx)
-        return ctx.load("common/perseus.luau").apply(ctx, edition)
+        local gallery = ctx.load("common/perseus_gallery.luau").read(ctx, edition.gallery)
+        return ctx.load("common/perseus.luau").apply(ctx, edition, gallery)
     end,
 }

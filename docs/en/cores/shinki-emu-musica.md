@@ -77,6 +77,8 @@ Use `open` with a `screen` ID for a child menu, `previous_page` and `next_page` 
 
 List CG variants in their original order in `view.images`. Set `viewed_only: true` to browse only variants already in the native `cgv.dat` history. A button may also set `requires_viewed` to unlock after **any** listed background URI has been seen. These options are opt-in. Locked buttons stay in place, use `locked_thumbnail` if supplied, and accept no input. Viewing a CG does not mark it seen. A `script` action can set `label` separately from the SC URI; a missing label fails without running the default entry. On completion, an authored replay returns to the same sheet. SC's `NOADDCGV` flag suppresses new viewed-CG records while a replay runs.
 
+A gallery layer may use a logical `clip: [x,y,width,height]` to draw just its portion of an original plate, such as a decorated thumbnail slot.
+
 Use the original archive URI for art replaced by a resource patch; the normal texture override still applies. The original arrays and SC indexes are available for the list UI when no authored layout is supplied. Neither mode affects PAZ/SC recognition or script-owned direct entry.
 
 Each JSON field is bounded by the ABI's 4096-byte configuration limit. Large catalogs should use original SC indexes. Automatic movie scanning is bounded to 4096 scripts and 64 MiB of expanded source; supply `movie_index` for larger directories. Where discovery succeeds, native membership/order wins while preset labels and unlock conditions for matching resource URIs are retained. The reader does not reconstruct conditional SC control flow into unlock formulas; describe those rules in the preset.

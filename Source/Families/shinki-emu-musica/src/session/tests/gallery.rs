@@ -159,7 +159,8 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
               "requires":{"bonus":1}},
              {"rect":[10,200,64,32], "action":{"kind":"back"}}
          ]},
-        {"id":"pictures", "layers":[{"resource":"musica:/bg/sheet.png"}],
+        {"id":"pictures", "layers":[{"resource":"musica:/bg/sheet.png"},
+            {"resource":"musica:/bg/hover.png", "clip":[400,400,30,30]}],
          "hover":"musica:/bg/hover.png", "buttons":[
              {"rect":[32,20,70,35], "action":{"kind":"view","images":["musica:/bg/gallery.png","musica:/bg/hover.png"]}},
              {"rect":[32,72,70,35], "action":{"kind":"back"}}
@@ -233,6 +234,8 @@ fn authored_gallery_hit_focus_paging_and_activation_share_geometry() {
     session.advance(0, &tap(30.0, 50.0)).unwrap();
     session.advance(0, &[key(KeyCode::ArrowRight), key(KeyCode::ArrowDown)]).unwrap();
     assert_eq!(pixel(&session, 40, 73), [160, 20, 40, 255]);
+    assert_eq!(pixel(&session, 414, 414), [160, 20, 40, 255]);
+    assert_eq!(pixel(&session, 399, 414), [40, 160, 20, 255]);
     session.advance(0, &tap(33.0, 25.0)).unwrap();
     assert_eq!(pixel(&session, 0, 0), [20, 40, 160, 255]);
     session.advance(0, &[key(KeyCode::ArrowRight)]).unwrap();

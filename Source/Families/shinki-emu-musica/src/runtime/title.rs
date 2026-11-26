@@ -274,6 +274,26 @@ impl FrontendData {
         Ok(data)
     }
 }
+
+/// Validates title-launch configuration and its referenced resources offline.
+pub fn validate_musica_title_frontend(
+    root: &std::path::Path,
+    archive: &crate::MusicaMountedVfs,
+    json: &str,
+    encoding: crate::ScriptEncoding,
+    width: u32,
+    height: u32,
+) -> shinki_emu_sdk::runtime::SessionResult<()> {
+    let frontend = FrontendData::load(root, archive, json, encoding, width, height)?;
+    if !frontend.titles.iter().any(|title| title.requires.values().all(|&value| value == 0)) {
+        return Err(crate::scene::error(
+            "SHINKI_EMU_MUSICA_FRONTEND",
+            "title configuration has no variant for a fresh game",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn focus_at(title: &TitleVariant, x: f32, y: f32) -> Option<u32> {
     title
         .buttons

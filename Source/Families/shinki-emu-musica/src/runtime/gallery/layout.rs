@@ -33,6 +33,7 @@ pub(crate) struct GalleryLayer {
     pub resource: String,
     #[serde(default)]
     pub at: [i32; 2],
+    pub clip: Option<[i32; 4]>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -192,6 +193,9 @@ impl GalleryLayout {
             }
             for layer in screen.layers.iter().chain(&screen.selection).chain(&screen.playing) {
                 resource(&layer.resource)?;
+                if layer.clip.is_some_and(|rect| !inside_canvas(rect, width, height)) {
+                    return Err(layout_error("gallery layer clip is outside the logical canvas"));
+                }
             }
             if let Some(uri) = &screen.hover {
                 resource(uri)?;
@@ -205,11 +209,7 @@ impl GalleryLayout {
                 return Err(layout_error("initial gallery selection must be a track button"));
             }
             for button in &screen.buttons {
-                let [x, y, w, h] = button.rect;
-                if x < 0 || y < 0 || w <= 0 || h <= 0
-                    || i64::from(x) + i64::from(w) > i64::from(width)
-                    || i64::from(y) + i64::from(h) > i64::from(height)
-                {
+                if !inside_canvas(button.rect, width, height) {
                     return Err(layout_error("gallery button is outside the logical canvas"));
                 }
                 for uri in button.thumbnail.iter().chain(&button.locked_thumbnail).chain(&button.hover) {
@@ -372,6 +372,12 @@ impl GalleryCursor {
         }
         false
     }
+}
+
+fn inside_canvas([x, y, w, h]: [i32; 4], width: u32, height: u32) -> bool {
+    x >= 0 && y >= 0 && w > 0 && h > 0
+        && i64::from(x) + i64::from(w) <= i64::from(width)
+        && i64::from(y) + i64::from(h) <= i64::from(height)
 }
 
 fn validate_viewed_uri(uri: &str) -> SessionResult<()> {

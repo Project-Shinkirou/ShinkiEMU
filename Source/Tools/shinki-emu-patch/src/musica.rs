@@ -13,6 +13,27 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
+pub(crate) fn validate_title_frontend(
+    root: &Path,
+    profile: &str,
+    frontend: &str,
+    encoding: ScriptEncoding,
+    width: u32,
+    height: u32,
+    cancelled: &AtomicBool,
+) -> Result<(), PatchError> {
+    check_cancelled(cancelled)?;
+    crate::paths::relative(profile, false)?;
+    let archive = shinki_emu_musica::mount_musica(root, Path::new(profile)).map_err(native_error)?;
+    shinki_emu_musica::validate_musica_title_frontend(
+        root, &archive, frontend, encoding, width, height,
+    )
+    .map_err(|error| PatchError::with_source(
+        PatchErrorKind::Integrity, "invalid generated Musica title frontend", error,
+    ))?;
+    check_cancelled(cancelled)
+}
+
 pub(crate) struct MusicaEmbedConfig<'a, Progress> {
     pub root: &'a Path,
     pub output: &'a AuthorizedRoot,

@@ -21,7 +21,9 @@ Patches modify resources, not executable code. An output EXE must be a byte-iden
 
 Yorino recipe version 3 launches the original `test.sc` entry directly. This edition has no Manager frontend definition, so its earlier `title` receipt cannot build a title menu. Reapply the current recipe to the original and authorized patch in a new directory instead of editing a prior receipt.
 
-The fingerprint-bound Perseus conversion supplies title assets, hit regions and clear conditions in `configuration.frontend`. Its title launch uses that data; the legacy list gallery remains available without a separately authored layout.
+The Perseus conversion keeps title launch and supplies `configuration.frontend`. It requires the matching unmodified `perseus.exe` in the original game directory. The recipe reads the executable's CG grouping, Flash routes, music order and gallery geometry as data, then validates the generated layout against the copied archives using the core's gallery loader. It neither runs nor copies the executable. A different executable is rejected. The generated gallery uses resource availability rather than the viewed-CG history.
+
+The gallery extractor recognizes one SHA-256/size and a table of relative offsets for that PE32 build. It checks the instruction forms at those offsets; it does not discover layouts across executable revisions. CG groups and variants, Flash slots, page counts, track order, and hit rectangles come from the file. Title variants, archive plate naming and placement conventions, and the roles of decoded controls remain recipe data.
 
 Eden and ef name extraction uses each executable pair's display-name pointer, matching actual SC operands. Its second pointer is a Japanese reference name, not the offline SC identity. The same offline table also recognizes the pinned patch's GBK target bytes, because these Chinese archives already contain localized names. Both identities are resolved during conversion; output scripts use native scalar literals without a runtime table.
 

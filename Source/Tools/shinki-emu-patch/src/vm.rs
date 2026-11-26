@@ -345,6 +345,17 @@ pub(crate) fn execute(
             let staging_path =
                 crate::transaction::final_dir_path(&staging).map_err(mlua::Error::external)?;
             let variant_staging = staging_path.clone();
+            let gallery_staging = staging_path.clone();
+            let gallery_files = files.clone();
+            ctx.set("musica_validate_title_frontend", scope.create_function(
+                move |lua, (profile, frontend, encoding, width, height): (String, String, Value, u32, u32)| {
+                    gallery_files.close_outputs().map_err(mlua::Error::external)?;
+                    crate::musica::validate_title_frontend(
+                        &gallery_staging, &profile, &frontend, lua.from_value(encoding)?,
+                        width, height, &gallery_files.cancelled,
+                    ).map_err(mlua::Error::external)
+                },
+            )?)?;
             ctx.set(
                 "musica_embed",
                 scope.create_function(

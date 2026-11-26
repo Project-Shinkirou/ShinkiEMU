@@ -157,7 +157,7 @@ local function original_png(ctx, source, span, key, xor_byte)
     return bytes
 end
 
-function M.apply(ctx, edition)
+function M.apply(ctx, edition, authored_gallery)
     local molebox = ctx.load("common/molebox.luau")
     local copy = ctx.load("common/copy.luau")
     local root = if ctx.exists("patch", edition.loader) then "patch" else "source"
@@ -269,9 +269,18 @@ function M.apply(ctx, edition)
     copy.files(ctx, "source", edition.files)
     write(ctx, "key.toml", buffer.fromstring(ctx.toml.encode(key)))
     write(ctx, "localized/perseus/subtitles.json", buffer.fromstring(ctx.json.encode({version = 1, tracks = tracks})))
+    local config = {titles = frontend.titles}
+    if authored_gallery then
+        local gallery = ctx.load("common/perseus_gallery.luau")
+        config.gallery_layout = gallery.install(ctx, authored_gallery)
+    end
+    local frontend_json = ctx.json.encode(config)
+    if authored_gallery then
+        ctx.musica_validate_title_frontend("key.toml", frontend_json, "gbk", 1280, 720)
+    end
     return {plugin_id = "shinki.emu.musica", configuration = {
         profile_file = "key.toml", script_encoding = "gbk", launch_mode = "title",
-        frontend = ctx.json.encode(frontend),
+        frontend = frontend_json,
         script_directory = "localized/perseus/scripts",
         subtitle_map = "localized/perseus/subtitles.json",
     }}

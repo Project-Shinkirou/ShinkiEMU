@@ -34,6 +34,7 @@ fn copy_inputs(source: &Path, destination: &Path) {
         "ef_first_cn_AA.dll",
         "夏空的英仙座.exe",
         "perseus_chs.mys",
+        "perseus.exe",
         "yorino.exe",
         "name.acr",
     ];
@@ -175,6 +176,9 @@ fn convert_game_copy(id: &str) {
             let frontend: serde_json::Value =
                 serde_json::from_str(&configuration["frontend"]).unwrap();
             let titles = frontend["titles"].as_array().unwrap();
+            let layout = frontend["gallery_layout"].as_str().unwrap();
+            assert!(result.output.join(layout).is_file());
+            assert!(!result.output.join("perseus.exe").exists());
             let archive = shinki_emu_musica::mount_musica(
                 &result.output,
                 Path::new(&configuration["profile_file"]),

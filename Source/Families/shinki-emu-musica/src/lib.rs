@@ -33,6 +33,7 @@ pub use archive::*;
 pub use image_container::*;
 pub use paz::*;
 pub use profile::*;
+pub use runtime::title::validate_musica_title_frontend;
 pub use runtime::*;
 pub use shinki_emu_musica_format::{
     ArchiveEntryDescriptor, MAX_ENTRY_BYTES, MAX_INDEX_BYTES, MUSICA_SCRIPT_IR_SCHEMA,
