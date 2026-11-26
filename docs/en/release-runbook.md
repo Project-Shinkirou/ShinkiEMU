@@ -58,7 +58,7 @@ Each release record must name the product commit being published. Prepare the pa
 
 Before distribution, check `licenses/pinned-sources.txt` and the corresponding-source and relinking material for the binaries actually shipped. The standalone Ren’Py core remains publication-blocked until its [source and relinking requirements](../licenses/renpy/README.md) are fulfilled. The same restriction applies to any Manager APK that embeds Ren’Py. Local packaging remains available.
 
-[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Dispatch it with `components` and a shared product `version` for Manager and any selected in-tree cores. Select `release_scope=windows-android` for a Windows/Android-only release, or `prepare_only=true` to stage without publishing.
+[The release workflow](../../.github/workflows/release.yml) prepares hosted assets. Set `prepare_only=true` and select an in-tree core by itself to prepare its packages without building Manager or publishing. When dispatching Manager and in-tree cores together, they share the `version` input. Use `release_scope=windows-android` to limit preparation to Windows and Android.
 
 For a prepare-only workflow, `source_commit` may specify the exact 40-character product commit. It is valid only with `prepare_only=true`. The workflow dispatch SHA is not the product SHA when this override is used.
 

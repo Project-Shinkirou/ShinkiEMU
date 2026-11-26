@@ -1,5 +1,5 @@
 name: Component release
-# Manager and external cores can use tags. Dispatch Manager with any self-owned core.
+# Manager and external cores can use tags. Dispatch to prepare individual self-owned cores.
 # Preparation uses the selected exact product commit; prepare-only dispatches
 # run the same builds and tests without creating a tag or public release.
 on:
@@ -90,7 +90,7 @@ jobs:
           }
           if ($requested.Count -eq 0) { throw 'No components selected' }
           $ownedRows = @($rows | Where-Object { $_.component -cin $requested -and $_.component -cne 'manager' -and -not $_.external })
-          if ($ownedRows.Count -gt 0 -and 'manager' -cnotin $requested) {
+          if ($env:PREPARE_ONLY -ne 'true' -and $ownedRows.Count -gt 0 -and 'manager' -cnotin $requested) {
             throw 'Select Manager with self-owned cores so they share one product version and source commit'
           }
           $versions = @{}

@@ -54,7 +54,7 @@ cargo xtask release --component rfvp --target x86_64-pc-windows-msvc
 
 公开分发前，检查 `licenses/pinned-sources.txt` 中的确切提交链接，并按实际分发的二进制文件核对对应源码和重链接材料。独立 Ren’Py 核心和内嵌 Ren’Py 的 Android Manager APK 只有满足 [Ren’Py 源码与重链接要求](../licenses/renpy/README.md)后才能发布。仍可在本地打包；发布计划不代表可以公开分发。
 
-[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。手动触发时传入 `components`，Manager 和选中的自研核心使用同一个产品 `version`。只发 Windows/Android 时设置 `release_scope=windows-android`，只准备产物而不发布时设置 `prepare_only=true`。
+[发布工作流](../../.github/workflows/release.yml) 准备托管平台产物。设置 `prepare_only=true` 并只选择自研核心，可单独准备核心包，不构建 Manager，也不发布。同时选择 Manager 和自研核心时，共用 `version`。只准备 Windows/Android 产物时，设置 `release_scope=windows-android`。
 
 仅准备产物时，可以用 `source_commit` 指定确切的 40 位产品提交。此参数只在 `prepare_only=true` 时有效。指定后，触发工作流的 SHA 与产品 SHA 分开记录。
 
