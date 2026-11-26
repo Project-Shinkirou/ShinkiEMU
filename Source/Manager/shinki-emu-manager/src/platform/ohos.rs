@@ -3,7 +3,6 @@
 //! `Platforms/OHOS/native`. Slint runs as a custom platform on its own thread:
 //! the software renderer draws straight into mapped OHNativeWindow buffers,
 //! and the stage frame reaches Slint as a CPU image (see `stage_software.rs`).
-//! Musica uses the SDK OHAudio backend in whichever image owns the session.
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -537,23 +536,21 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
 
 pub mod bundled {
     use super::{CStr, CString, Path, PathBuf, c_void};
+    use crate::platform::ohos_bundle_path;
     use shinki_emu_manager_core::LoadedFamilyPlugin;
-    use std::{
-        os::unix::ffi::{OsStrExt, OsStringExt},
-        path::Component,
-    };
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
-    pub const ID: &str = "shinki.emu.musica";
-    pub const LIBRARY: &str = "libshinki_emu_core_musica.so";
-    const MANAGER: &str = "libshinki_emu_manager.so";
+    const CORE: Option<(&str, &str)> = include!(concat!(env!("OUT_DIR"), "/ohos-hap-core.rs"));
     const BUNDLE_CODE: &str = "/data/storage/el1/bundle";
     const ARCHIVE_LIBS: &str = concat!("libs/", env!("SHINKI_EMU_OHOS_ABI"), "/");
 
-    pub fn manifest_dir(plugin_id: &str) -> Option<PathBuf> {
-        if plugin_id != ID {
-            return None;
-        }
-        Some(super::bundled_resource_dir()?.join("cores").join(ID))
+    pub fn configured_core() -> Option<(&'static str, &'static str)> {
+        CORE
+    }
+
+    pub fn manifest_dir() -> Option<PathBuf> {
+        let (id, _) = CORE?;
+        Some(super::bundled_resource_dir()?.join("cores").join(id))
     }
 
     fn image_path(address: *const c_void) -> Option<PathBuf> {
@@ -571,47 +568,12 @@ pub mod bundled {
         )
     }
 
-    fn installed_file(path: &Path) -> Option<PathBuf> {
-        // The sandbox's bundle mount is OS-installed code, not filesDir. Verify
-        // the resolved path too: an admitted symlink must not escape that mount.
-        let relative = path.strip_prefix(BUNDLE_CODE).ok()?;
-        if !relative
-            .components()
-            .all(|part| matches!(part, Component::Normal(_)))
-        {
-            return None;
-        }
-        let resolved = path.canonicalize().ok()?;
-        (resolved.starts_with(BUNDLE_CODE) && resolved.is_file()).then_some(resolved)
-    }
-
-    /// Resolve only the fixed HAP sibling. Discovery calls this without dlopen.
+    /// Resolve only the configured companion beside the installed Manager.
+    /// Discovery calls this without dlopen.
     pub fn library(plugin_id: &str) -> Option<PathBuf> {
-        if plugin_id != ID {
-            return None;
-        }
+        let (_, basename) = CORE.filter(|(id, _)| *id == plugin_id)?;
         let manager = image_path(library as *const c_void)?;
-        let name = manager.to_str()?;
-        if let Some((hap, member)) = name.split_once("!/") {
-            let hap = Path::new(hap);
-            if hap.extension().is_none_or(|extension| extension != "hap")
-                || member.strip_prefix(ARCHIVE_LIBS) != Some(MANAGER)
-            {
-                return None;
-            }
-            let hap = installed_file(hap)?;
-            return Some(PathBuf::from(format!(
-                "{}!/{ARCHIVE_LIBS}{LIBRARY}",
-                hap.to_str()?
-            )));
-        }
-        if manager.file_name()? != MANAGER {
-            return None;
-        }
-        let manager = installed_file(&manager)?;
-        let candidate = installed_file(&manager.with_file_name(LIBRARY))?;
-        (candidate.parent() == manager.parent() && candidate.file_name()? == LIBRARY)
-            .then_some(candidate)
+        ohos_bundle_path::resolve(Path::new(BUNDLE_CODE), &manager, ARCHIVE_LIBS, basename)
     }
 
     pub fn load(plugin_id: &str) -> Result<LoadedFamilyPlugin, String> {
@@ -642,7 +604,7 @@ pub mod bundled {
         let query = unsafe { std::mem::transmute::<*mut c_void, shinki_emu_abi::Query>(symbol) };
         let provider =
             unsafe { LoadedFamilyPlugin::from_query(query) }.map_err(|error| error.to_string())?;
-        if provider.manager_descriptor().plugin_id != ID {
+        if provider.manager_descriptor().plugin_id != plugin_id {
             return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
         }
         tracing::info!(

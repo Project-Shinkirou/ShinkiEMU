@@ -88,8 +88,7 @@ runner = "local-only"
 platform = "ohos"
 architecture = "aarch64"
 variant = "device"
-# Build the test-PKI HAP locally with DevEco, including the signed Musica
-# library. GitHub runners do not carry DevEco.
+# Build and test-sign the HAP locally with DevEco; GitHub runners lack the SDK.
 manager_supported = true
 manager_blocked = ""
 manager_local_build = true
@@ -101,4 +100,4 @@ platform = "ohos"
 architecture = "x86_64"
 variant = "simulator"
 manager_supported = false
-manager_blocked = "Simulator HAP with bundled Musica is local QA only; use an explicit xtask package command."
+manager_blocked = "Simulator HAP is local QA only; use an explicit xtask package command."

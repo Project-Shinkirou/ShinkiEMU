@@ -108,9 +108,9 @@ Use DevEco Studio and its OpenHarmony native SDK 5.0.5 (API 17). Install the `aa
 
 #### Bundled Musica device acceptance
 
-The signed HAP packages Musica as a separate `libs/<abi>/libshinki_emu_core_musica.so`. Manager loads it on activation through ABI v3, from the OS-installed sibling path or the same signed HAP. It never loads code from extracted resources or writable app data. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) requires directly loaded HAP entries to be uncompressed and page-aligned. Passing an absolute installed path avoids basename searches.
+The `ohos_hap` recipe in [`build/cores.toml`](../../build/cores.toml) selects the companion core and its native basename for both OHOS ABIs. The current recipe packages Musica as a separate `libs/<abi>/libshinki_emu_core_musica.so`. Manager loads it on activation through ABI v3, from the OS-installed sibling path or the same signed HAP. It never loads code from extracted resources or writable app data. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) requires directly loaded HAP entries to be uncompressed and page-aligned. Passing an absolute installed path avoids basename searches.
 
-Packaging verifies the signature, the ELF architecture and core entry point, and the hashes of the core library, resources and licenses in the signed HAP. `ohos.json` records the signed HAP hash and Musica's library path, hash, ABI, version and source commit.
+Packaging verifies the signature, the architecture and distinct ELF entry points of the two libraries, and the exact Manager, core, resource and license hashes in the signed HAP. The single `bundled_core` entry in `ohos.json` records the companion's library path, hash, ABI, version and source commit alongside the signed HAP hash.
 
 Use a dedicated ARM64 device on API 12 or later with Vulkan, audio output, developer debugging enabled and existing trust for the SDK test PKI. If installation rejects the test signature, stop there; do not change device trust. With the SDK’s `hdc` on `PATH`, build the HAP in PowerShell:
 

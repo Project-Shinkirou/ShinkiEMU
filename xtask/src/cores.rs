@@ -1,7 +1,7 @@
 use crate::affected::Affected;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use shinki_emu_build::ohos::Target as OhosTarget;
+use shinki_emu_build::ohos::{HapCore, Target as OhosTarget};
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -300,11 +300,29 @@ impl Inventory {
                 );
             }
         }
+        let mut has_ohos_companion = false;
         for c in &self.cores {
             if c.id == "manager" || !ids.insert(&c.id) || !slugs.insert(slug(&c.id)) {
                 bail!("duplicate core id or release slug: {}", c.id);
             }
             crate::package::portable(&c.id)?;
+            if let Some(recipe) = &c.ohos_hap {
+                recipe.validate(&c.id)?;
+                if has_ohos_companion || c.attribution.is_some() {
+                    bail!("the OHOS HAP requires one first-party companion core");
+                }
+                has_ohos_companion = true;
+                for target in [OhosTarget::Arm64, OhosTarget::X64] {
+                    let triple = target.rust_target();
+                    self.require_buildable("manager", triple)?;
+                    if c.supported_targets.iter().any(|t| t == triple)
+                        || c.static_manager_targets.iter().any(|t| t == triple)
+                        || c.static_manager_candidate_targets.iter().any(|t| t == triple)
+                    {
+                        bail!("{} is a separate HAP library on {triple}", c.id);
+                    }
+                }
+            }
             if c.family_id.is_empty()
                 || c.family_id.len() > 64
                 || !c

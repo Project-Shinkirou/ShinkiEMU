@@ -242,7 +242,7 @@ fn execute_configured(
             bail!("no bundled iOS Framework recipe for {component}/{target}");
         }
     } else if ohos_hap_input {
-        if !crate::ohos::is_core_input(component, target) {
+        if !crate::ohos::companion(inv, target).is_some_and(|(core, _)| core.id == component) {
             bail!("no bundled OHOS HAP recipe for {component}/{target}");
         }
     } else {
@@ -325,6 +325,18 @@ fn execute_configured(
     let adapter_package_id = core
         .map(|core| package_id(&core.adapter_package()))
         .transpose()?;
+    let ohos_companion_packages = if component == "manager" {
+        crate::ohos::companion(inv, target)
+            .map(|(core, _)| -> Result<_> {
+                Ok([
+                    package_id(&core.entry_package())?,
+                    package_id(&core.adapter_package())?,
+                ])
+            })
+            .transpose()?
+    } else {
+        None
+    };
     let package_id = package_id(&package)?;
     let embedded_packages = if component == "manager" {
         embedded_core_packages(inv, target, &features, &metadata)?
@@ -356,6 +368,14 @@ fn execute_configured(
                 continue;
             }
         };
+        if ohos_companion_packages.is_some_and(|ids| ids.iter().any(|id| value["package_id"] == *id))
+            && (value["reason"] == "compiler-artifact" || value["reason"] == "build-script-executed")
+        {
+            parse_error = Some(anyhow::anyhow!(
+                "OHOS Manager must build without its companion core: {}",
+                value["package_id"]
+            ));
+        }
         if value["reason"] == "compiler-message"
             && let Some(s) = value["message"]["rendered"].as_str()
         {
@@ -672,26 +692,37 @@ mod version_tests {
     }
 
     #[test]
-    fn ohos_musica_build_is_available_only_inside_the_hap() {
+    fn ohos_companion_build_is_available_only_inside_the_hap() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let inventory = Inventory::load(root).unwrap();
-        let musica = inventory.core("shinki.emu.musica").unwrap();
+        let mut inventory = Inventory::load(root).unwrap();
+        let triple = OhosTarget::Arm64.rust_target();
+        let configured = crate::ohos::companion(&inventory, triple).unwrap().0.id.clone();
         for target in [OhosTarget::Arm64, OhosTarget::X64] {
             let triple = target.rust_target();
+            let (core, _) = crate::ohos::companion(&inventory, triple).unwrap();
+            assert_eq!(core.id, configured);
             assert!(inventory.require_buildable("manager", triple).is_ok());
-            assert!(inventory.require_buildable(&musica.id, triple).is_err());
-            assert!(!musica.embedded_in_manager(triple, &[]));
-            assert!(crate::ohos::is_core_input(&musica.id, triple));
-            assert!(!crate::ohos::is_core_input("shinki.emu.adv32", triple));
+            assert!(inventory.require_buildable(&core.id, triple).is_err());
+            assert!(!core.embedded_in_manager(triple, &[]));
         }
-        assert!(!crate::ohos::is_core_input(
-            &musica.id,
-            "x86_64-unknown-linux-gnu"
-        ));
-        assert!(!crate::ohos::is_core_input(
-            &musica.id,
-            "armv7-unknown-linux-ohos"
-        ));
+        for triple in ["x86_64-unknown-linux-gnu", "armv7-unknown-linux-ohos"] {
+            assert!(crate::ohos::companion(&inventory, triple).is_none());
+        }
+
+        let recipe = inventory
+            .cores
+            .iter_mut()
+            .find_map(|core| core.ohos_hap.take())
+            .unwrap();
+        assert!(crate::ohos::companion(&inventory, triple).is_none());
+        let replacement = inventory
+            .cores
+            .iter_mut()
+            .find(|core| core.id != configured && core.attribution.is_none())
+            .unwrap();
+        replacement.ohos_hap = Some(recipe);
+        let id = replacement.id.clone();
+        assert_eq!(crate::ohos::companion(&inventory, triple).unwrap().0.id, id);
     }
 
     #[test]

@@ -3,9 +3,8 @@
   "buildOption": {
     // libs/<abi> holds the one target's prebuilt Rust libraries staged by xtask.
     "nativeLib": {
-      // Musica is already release-built. core.json and the signed HAP
-      // receipt verify the exact library bytes staged before hvigor.
-      "debugSymbol": { "strip": true, "exclude": ["**/libshinki_emu_core_musica.so"] }
+      // Preserve the exact prebuilt library bytes checked by the HAP packager.
+      "debugSymbol": { "strip": false }
     }
   },
   "targets": [{ "name": "default" }]

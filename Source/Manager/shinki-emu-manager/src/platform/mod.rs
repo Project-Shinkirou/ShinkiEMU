@@ -38,6 +38,8 @@ pub const OPTICAL_VOLUMES_SUPPORTED: bool = cfg!(any(
 
 #[cfg(target_env = "ohos")]
 pub mod ohos;
+#[cfg(any(target_env = "ohos", test))]
+mod ohos_bundle_path;
 #[cfg(target_os = "android")]
 use android as imp;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]

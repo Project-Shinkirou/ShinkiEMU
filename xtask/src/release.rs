@@ -820,7 +820,8 @@ mod tests {
     fn private_ohos_qa_is_excluded_from_release() {
         let inv = Inventory::load(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap();
         let qa = shinki_emu_build::ohos::Target::X64.rust_target();
-        for component in ["manager", "shinki.emu.musica"] {
+        let (companion, _) = crate::ohos::companion(&inv, qa).unwrap();
+        for component in ["manager", &companion.id] {
             assert!(
                 release_targets(&inv, component, Scope::All)
                     .unwrap()
