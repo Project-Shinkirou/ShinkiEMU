@@ -390,6 +390,32 @@ pub(super) fn validate_pending_package(cores: &Path, stem: &str, directory: &Pat
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+const QA_MUSICA_ID: &str = "shinki.emu.musica";
+
+#[cfg(target_os = "android")]
+fn qa_musica_companion() -> Option<InstalledCore> {
+    const LIBRARY: &str = "libshinki_emu_musica.so";
+
+    let (directory, native_dir) = shinki_emu_manager::platform::android::qa_musica_paths()?;
+    let core_package::CorePackage { manifest, source_commit } =
+        core_package::read_package(&directory).ok()?;
+    if manifest.plugin_id != QA_MUSICA_ID
+        || manifest.library != LIBRARY
+        || !manifest.files.iter().any(|file| file.path == LIBRARY)
+        || manifest.identity.is_some()
+        || manifest.version != shinki_emu_manager::version()
+        || source_commit.as_deref() != Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT"))
+        || !allows_installed_release(QA_MUSICA_ID, &manifest.version, None)
+    {
+        return None;
+    }
+    let library = native_dir.join(LIBRARY);
+    android_core_library(&library).then_some(InstalledCore {
+        manifest, library, source_commit, bundled: true,
+    })
+}
+
 /// Read package identities only. Bare libraries cannot establish an identity.
 pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, InstalledCore>, String> {
     let mut found = BTreeMap::new();
@@ -415,6 +441,15 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             };
             if found.insert(id.clone(), core).is_some() { duplicate.insert(id); }
         }
+    }
+    // QA is a fallback: keep static providers, admitted installs and the existing
+    // duplicate handling ahead of the companion.
+    #[cfg(target_os = "android")]
+    if !is_static(QA_MUSICA_ID)
+        && !found.contains_key(QA_MUSICA_ID)
+        && let Some(core) = qa_musica_companion()
+    {
+        found.insert(QA_MUSICA_ID.to_owned(), core);
     }
     for id in duplicate { found.remove(&id); }
     #[cfg(target_os = "ios")]

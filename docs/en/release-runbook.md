@@ -21,11 +21,16 @@ cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-
 
 # Local one-ABI APK for an ARM64 test device
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --out .work/android-arm64-test
+
+# Local ARM64 gameplay QA APK with the dynamic Musica companion
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.musica.1 --qa-single-abi --qa-bundle-musica --out .work/android-arm64-musica-test
 ```
 
 For a nightly or development test, choose a distinct SemVer such as the `0.1.0-qa.1` shown above. For offline Gradle after the first successful sync, set `SHINKI_EMU_GRADLE_OFFLINE=1`. The packager passes `--version` to the build; there is no separate prerequisite build receipt.
 
 The normal Android Manager package builds both ABIs into one universal APK. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK. The APK embeds Impacto and stages the KiriKiri Java hosts; other admitted cores ship as separate packages installed through Manager. The core packages do not need Gradle signing.
+
+`--qa-bundle-musica` requires `--qa-single-abi --manager`, a new output directory, and no Android release signing inputs. It builds Manager and the dynamic Musica core from the same checkout with the same explicit product version. Use a fresh QA version for a new checkout. Install the `*-qa-musica-debug-signed.apk` and add your own game files in Manager; the APK contains no game data and needs no separate Musica ZIP. The packager verifies the signed APK's native library and bundled core files and writes `android-qa-musica.json` with their build provenance, the APK hash, and the debug certificate fingerprint. Normal APKs, release catalogs, and separate core-package admission are unchanged.
 
 For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
 

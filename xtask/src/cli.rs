@@ -61,6 +61,9 @@ pub enum Command {
         /// Requires a new output directory and no release signing configuration.
         #[arg(long, requires = "manager", conflicts_with = "core")]
         qa_single_abi: bool,
+        /// Bundle the matching dynamic Musica companion in a local debug QA APK.
+        #[arg(long, requires_all = ["qa_single_abi", "manager"])]
+        qa_bundle_musica: bool,
     },
     /// Prepare one target's release files, or publish every prepared target.
     Release {

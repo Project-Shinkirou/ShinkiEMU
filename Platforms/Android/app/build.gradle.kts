@@ -24,6 +24,7 @@ val generatedRoot = layout.projectDirectory.dir(
         .orElse("../generated").get()
 )
 val androidHostRoot = generatedRoot.dir("android-host")
+val qaBundleMusica = providers.environmentVariable("SHINKI_EMU_ANDROID_QA_BUNDLE_MUSICA").orNull == "1"
 
 android {
     namespace = "org.shinkirou.shinkiemu"
@@ -116,6 +117,10 @@ android {
             // NativeActivity and dladdr need ordinary extracted filesystem paths.
             // RFVP is statically linked into the Manager library.
             useLegacyPackaging = true
+            if (qaBundleMusica) {
+                // The companion manifest authenticates the staged native library bytes.
+                keepDebugSymbols += "**/*.so"
+            }
         }
     }
 }
@@ -129,10 +134,13 @@ base {
 // to schedule any release APK/AAB packaging task instead, so no such file is ever produced.
 val releasePackagingTasks = setOf("packageRelease", "packageReleaseBundle", "signReleaseBundle")
 gradle.taskGraph.whenReady {
-    if (missingReleaseSigning.isEmpty()) return@whenReady
     val releasePackaging = allTasks.filter { task ->
         task.project == project && task.name in releasePackagingTasks
     }
+    if (qaBundleMusica && releasePackaging.isNotEmpty()) {
+        throw GradleException("The bundled Musica QA core is available only in the debug variant.")
+    }
+    if (missingReleaseSigning.isEmpty()) return@whenReady
     if (releasePackaging.isNotEmpty()) {
         throw GradleException(
             "ShinkiEMU release packaging (${releasePackaging.joinToString { it.path }}) needs the " +

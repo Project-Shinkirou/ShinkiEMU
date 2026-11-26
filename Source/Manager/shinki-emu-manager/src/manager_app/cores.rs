@@ -210,7 +210,10 @@ impl ShinkiEmuManagerController {
             let catalog = shinki_emu_manager_core::static_core_catalog::lookup(&id);
             let native = self.registry.descriptor(&id);
             let stem = installed
-                .filter(|core| !cfg!(any(target_os = "ios", target_env = "ohos")) || !core.bundled)
+                .filter(|core| {
+                    !core.bundled
+                        || !cfg!(any(target_os = "android", target_os = "ios", target_env = "ohos"))
+                })
                 .map(|core| shinki_emu_manager_core::library_stem(&core.library))
                 .unwrap_or_default();
             #[cfg(target_os = "android")]

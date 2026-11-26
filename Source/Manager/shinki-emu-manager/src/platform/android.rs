@@ -382,6 +382,46 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
     Some(default_data_dir().ok()?.join("bundled"))
 }
 
+/// Return the extracted manifest directory and APK native library directory for
+/// the debug-only Musica companion. The manifest must also exist in the APK.
+pub(crate) fn qa_musica_paths() -> Option<(PathBuf, PathBuf)> {
+    let asset = c"qa-cores/musica/core.json";
+    let mut directory = bundled_resource_dir()?.join(asset.to_str().ok()?);
+    if !directory.is_file() {
+        return None;
+    }
+    directory.pop();
+    context().ok()?.app.asset_manager().open(asset)?;
+
+    let native_dir = call_activity("getApplicationInfo", |env, activity| {
+        let info = env
+            .call_method(
+                activity,
+                jni_str!("getApplicationInfo"),
+                jni_sig!("()Landroid/content/pm/ApplicationInfo;"),
+                &[],
+            )?
+            .l()?;
+        let flags = env.get_field(&info, jni_str!("flags"), jni_sig!("I"))?.i()?;
+        let debuggable = env
+            .get_static_field(
+                jni_str!("android/content/pm/ApplicationInfo"),
+                jni_str!("FLAG_DEBUGGABLE"),
+                jni_sig!("I"),
+            )?
+            .i()?;
+        if flags & debuggable == 0 {
+            return Ok(None);
+        }
+        let path = env
+            .get_field(&info, jni_str!("nativeLibraryDir"), jni_sig!("Ljava/lang/String;"))?
+            .l()?;
+        Ok(nullable_string(env, path)?.map(PathBuf::from).filter(|path| path.is_absolute()))
+    })
+    .ok()??;
+    Some((directory, native_dir))
+}
+
 /// Relaunch the activity in a fresh process (`MainActivity.restartApp`).
 pub(super) fn restart() -> Result<(), String> {
     call_activity("restartApp", |env, activity| {
