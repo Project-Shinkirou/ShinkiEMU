@@ -15,8 +15,9 @@ DLLs. Games and translation data are not distributed with the core.
 Use a private writable game copy when testing. Save and load from the game's
 own menu, not a Manager save-state command. The save directory comes from
 `LL_APP.SYS`; for save mode 2 the core writes to `.shinki/lucifen/saves` beneath
-the imported root. Keep the same imported root when starting a new session to
-load a slot. To verify native playback and shutdown, use the default audio
+the imported root. Slot previews use the scene selected by the game, without
+the save menu overlay. Keep the same imported root when starting a new
+session to load a slot. To verify native playback and shutdown, use the default audio
 device, leave the game through its own Quit control, and confirm that audio
 stops and Manager can reopen the game.
 

@@ -2919,6 +2919,23 @@ impl Graphics {
     pub fn presented(&self) -> Option<&Arc<Surface>> {
         self.presented.as_ref()
     }
+
+    pub(crate) fn save_thumbnail_source(
+        &self,
+        target: i32,
+        redraw: bool,
+    ) -> io::Result<Option<Arc<Surface>>> {
+        if !self.surfaces.contains_key(&target) {
+            return Ok(None);
+        }
+        if !redraw
+            && let Some((id, frame)) = &self.presented_scene
+            && *id == target
+        {
+            return Ok(Some(frame.clone()));
+        }
+        self.render_scene(target, 0, 0, false).map(Some)
+    }
 }
 
 fn swap_scene_entries<T>(entries: &mut BTreeMap<i32, T>, first: i32, second: i32) {
@@ -3719,6 +3736,33 @@ mod tests {
             &graphics.surface(back).unwrap().pixels()[..4],
             &[0, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn save_thumbnail_uses_registered_scene_instead_of_the_display_overlay() {
+        let mut graphics = Graphics::open(1, 1).unwrap();
+        let gameplay = graphics.display();
+        let menu = graphics.create(1, 1).unwrap();
+        let scene_color = [5, 90, 170, 255];
+        let menu_color = [160, 40, 60, 255];
+        assert!(graphics.fill(gameplay, None, scene_color));
+        assert!(graphics.fill(menu, None, menu_color));
+        let menu_layer = graphics.texture_from_surface(menu, None, [0, 0]).unwrap();
+        assert_eq!(
+            graphics.attach_layer(gameplay, menu_layer, 0, 0, true, false),
+            0
+        );
+        graphics.present_display().unwrap();
+        assert_eq!(graphics.presented().unwrap().pixels(), &menu_color);
+        let thumbnail = graphics.save_thumbnail_source(gameplay, false).unwrap().unwrap();
+        assert_eq!(thumbnail.pixels(), &scene_color);
+
+        assert!(graphics.select_display(menu));
+        graphics.present_display().unwrap();
+        for redraw in [false, true] {
+            let thumbnail = graphics.save_thumbnail_source(gameplay, redraw).unwrap().unwrap();
+            assert_eq!(thumbnail.pixels(), &scene_color);
+        }
     }
 
     #[test]
