@@ -106,6 +106,43 @@ impl Scene {
         ) {
             return Ok(NativeTexture { frame, geometry });
         }
+        if let Some((directory, name)) = mono_source(uri) {
+            match archive.entry_descriptor(uri) {
+                Ok(_) => {}
+                Err(cause) if cause.code() == "SHINKI_EMU_VFS_NOT_FOUND" => {
+                    let source = format!("{directory}/{name}");
+                    let native = Self::native_texture(archive, textures, sources, &source)?;
+                    if !native.geometry.is_png {
+                        return Err(error(
+                            "SHINKI_EMU_MUSICA_TEXTURE_VARIANT_SOURCE",
+                            "native monochrome requires an archive PNG source",
+                        ));
+                    }
+                    let mut rgba = native.frame.rgba8.to_vec();
+                    // The native image operator preserves RGB in fully transparent pixels.
+                    for pixel in rgba.as_chunks_mut::<4>().0 {
+                        if pixel[3] != 0 {
+                            let [r, g, b, _] = pixel.map(u16::from);
+                            pixel[..3].fill(((5 * r + 2 * g + b) >> 3) as u8);
+                        }
+                    }
+                    let frame = TextureFrame {
+                        width: native.frame.width,
+                        height: native.frame.height,
+                        rgba8: rgba.into(),
+                    };
+                    textures.insert(cache_key, frame.clone()).map_err(|_| {
+                        error(
+                            "SHINKI_EMU_MUSICA_IMAGE_BOUND",
+                            "decoded image exceeds the texture cache budget",
+                        )
+                    })?;
+                    sources.put(uri.to_owned(), native.geometry);
+                    return Ok(NativeTexture { frame, geometry: native.geometry });
+                }
+                Err(cause) => return Err(core_error(cause)),
+            }
+        }
         let bytes = read_asset(archive, uri, MAX_ASSET_BYTES)?;
         let extension = uri.rsplit_once('.').map(|(_, value)| value);
         let (frame, kind, origin) = match extension {
@@ -364,6 +401,16 @@ impl Scene {
         self.transition_masks.put(rule.to_owned(), frame.clone());
         Ok(frame)
     }
+}
+
+/// `[mono]` is a case-sensitive image operator, not part of the archive member
+/// name. Other prefixes (including composed operators) keep ordinary lookup.
+fn mono_source(uri: &str) -> Option<(&str, &str)> {
+    let (directory, name) = uri.rsplit_once('/')?;
+    directory.strip_prefix("musica:/")?;
+    let source = name.strip_prefix("[mono]")?;
+    (!source.starts_with('[') && matches!(source_kind(source), TextureSourceKind::Png))
+        .then_some((directory, source))
 }
 
 fn source_kind(uri: &str) -> TextureSourceKind {

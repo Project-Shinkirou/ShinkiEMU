@@ -64,7 +64,7 @@ Yorino 的带括号姓名由核心根据实际 SC speaker 生成。补丁只写�
 
 同一 key.toml 可以可选地声明 `texture_overrides`。它是 `musica:/` 原资源 URI 到游戏目录内安全相对 PNG 路径的显式映射，例如 `musica:/bg/BG.png` 到 `hd/BG.png`。启动先验证原资源、帧数和映射路径，首次使用先解码原资源；逻辑尺寸与 ANI 原点始终来自原资源，替换图只提供物理像素。静态 PNG 与单帧 ANI 支持 PNG 替换；多帧 ANI、SQZ、缺失文件、非法路径、尺寸超限和解码失败都明确报错，不回退原图。原生和替换纹理共用 SDK `TextureCache`，通过不同 cache identity 区分。高清素材放在 ignored 私有目录，不进入仓库、日志或存档。
 
-`texture_variants` 是另一个可选映射。键是脚本请求的精确 PNG URI；`source` 指向已有的 PAZ PNG，提供逻辑尺寸和立绘定位；`path` 指向游戏目录内的生成 PNG，提供实际像素。变体不能占用原生资源或普通替换的 URI，也不能共用输出路径。未声明的名字仍按原生路径查找，缺失照常报错。省略此映射的旧 `keys.v2` 和已有转换输出仍可读取。
+`texture_variants` 是另一个可选映射。键是脚本请求的精确 PNG URI；`source` 指向已有的 PAZ PNG，提供逻辑尺寸和立绘定位；`path` 指向游戏目录内的生成 PNG，提供实际像素。变体不能占用原生资源或普通替换的 URI，也不能共用输出路径。没有显式变体或同名归档成员时，单独的 `[mono]` 前缀按原版规则从未加前缀的 PAZ PNG 派生灰度图，不使用普通替换图的像素。大小写不同、其他前缀和缺失原图仍按资源错误处理。省略 `texture_variants` 的旧 `keys.v2` 和已有转换输出仍可读取。
 
 离线补丁可在写完归档、`key.toml` 和普通替换图后调用 `ctx.musica_texture_variants(profile_path, resource_paths, variants)`。`variants` 按精确 URI 声明 `source`、`path` 和 `conversion`；`cnbg_mono` 从同一 `source` 的已生成替换 PNG 取像素，`native_mono` 直接读 PAZ PNG。前者对所有像素计算 `(30R + 59G + 11B) / 100`，后者仅处理非全透明像素并用 `(5R + 2G + B) / 8`。两者均向下取整且保留 alpha。生成图只写入当前事务的新路径，完成后才更新该事务内的 profile；源安装不会被这个入口直接改写。
 

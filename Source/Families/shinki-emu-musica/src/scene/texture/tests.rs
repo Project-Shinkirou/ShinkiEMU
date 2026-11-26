@@ -156,7 +156,7 @@ fn texture_override_profile_rejects_unsupported_archive_sources() {
 }
 
 #[test]
-fn texture_variant_selects_exact_uri_and_preserves_native_geometry() {
+fn texture_mono_prefers_explicit_variants_and_preserves_native_geometry() {
     let root = tempfile::tempdir().unwrap();
     crate::test_fixture::game(root.path(), b".end\r\n");
     let native = png(8, 9, [10, 20, 30, 255]);
@@ -206,7 +206,14 @@ fn texture_variant_selects_exact_uri_and_preserves_native_geometry() {
         assert_eq!((texture.frame.width, texture.frame.height), extent);
         assert_eq!(&texture.frame.rgba8[..4], &color);
     }
-    for uri in ["musica:/bg/[mono]other.png", "musica:/bg/[MONO]base.png"] {
+    let derived = resolve("musica:/bg/[mono]other.png").unwrap();
+    assert_eq!(derived.logical_extent, Extent2D::new(8, 9));
+    assert_eq!(&derived.frame.rgba8[..4], &[15, 15, 15, 255]);
+    for uri in [
+        "musica:/bg/[mono]missing.png",
+        "musica:/bg/[MONO]base.png",
+        "musica:/bg/[other]base.png",
+    ] {
         assert_eq!(
             resolve(uri).err().unwrap().code(),
             "SHINKI_EMU_VFS_NOT_FOUND",
@@ -216,6 +223,50 @@ fn texture_variant_selects_exact_uri_and_preserves_native_geometry() {
         resolve("musica:/bg/[invalid]base.png").err().unwrap().code(),
         "SHINKI_EMU_MUSICA_TEXTURE_OVERRIDE_DECODE",
     );
+}
+
+#[test]
+fn texture_mono_uses_native_rgba_and_preserves_archive_and_patch_pixels() {
+    let root = tempfile::tempdir().unwrap();
+    crate::test_fixture::game(root.path(), b".end\r\n");
+    let mut png_bytes = Cursor::new(Vec::new());
+    image::RgbaImage::from_raw(2, 1, vec![200, 61, 9, 73, 29, 80, 232, 0])
+        .unwrap()
+        .write_to(&mut png_bytes, image::ImageFormat::Png)
+        .unwrap();
+    let native = png_bytes.into_inner();
+    let literal = png(2, 1, [120, 40, 10, 255]);
+    crate::test_fixture::assets(
+        root.path(),
+        "bg",
+        &[("room.png", &native), ("[mono]literal.png", &literal)],
+    );
+    std::fs::write(root.path().join("color.png"), png(4, 2, [8, 241, 31, 255])).unwrap();
+    std::fs::write(root.path().join("literal.png"), png(4, 2, [111, 56, 12, 255])).unwrap();
+    let path = root.path().join(MUSICA_KEY_FILE);
+    let mut key = shinki_emu_musica_keys::load_musica_key_file(&path).unwrap();
+    key.texture_overrides = [
+        ("musica:/bg/room.png".into(), "color.png".into()),
+        ("musica:/bg/[mono]literal.png".into(), "literal.png".into()),
+    ].into();
+    std::fs::write(&path, toml::to_string(&key).unwrap()).unwrap();
+    let (archive, overrides) = mount_musica_with_texture_overrides(root.path(), &path).unwrap();
+    let mut textures = TextureCache::new(NonZeroUsize::new(8).unwrap(), 64 * 1024, 32).unwrap();
+    let mut sources = lru::LruCache::new(NonZeroUsize::new(8).unwrap());
+    let mut resolve =
+        |uri| Scene::resolve_texture_asset(&archive, &mut textures, &mut sources, &overrides, uri)
+            .unwrap();
+    let mono = resolve("musica:/bg/[mono]room.png");
+    assert_eq!(mono.logical_extent, Extent2D::new(2, 1));
+    assert_eq!(&mono.frame.rgba8[..], &[141, 141, 141, 73, 29, 80, 232, 0]);
+    assert_eq!(&resolve("musica:/bg/room.png").frame.rgba8[..4], &[8, 241, 31, 255]);
+    let literal = resolve("musica:/bg/[mono]literal.png");
+    assert_eq!(literal.logical_extent, Extent2D::new(2, 1));
+    assert_eq!(&literal.frame.rgba8[..4], &[111, 56, 12, 255]);
+    let literal = Scene::resolve_texture_asset(
+        &archive, &mut textures, &mut sources, &Default::default(), "musica:/bg/[mono]literal.png"
+    ).unwrap();
+    assert_eq!(&literal.frame.rgba8[..4], &[120, 40, 10, 255]);
 }
 
 #[test]
