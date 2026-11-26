@@ -42,7 +42,7 @@ fn android_first_party_admission_requires_a_valid_hashed_product_commit() {
     let pending = cores.join(PENDING);
     let archive = root.path().join("core.zip");
     let stage = || stage_open_package(
-        fs::File::open(&archive).unwrap(), Some((PLUGIN, "0.2.0", None)), &pending, true,
+        fs::File::open(&archive).unwrap(), Some((PLUGIN, "0.2.0", None)), &pending, true, None,
     );
 
     valid_package(&archive, PLUGIN);
@@ -68,13 +68,13 @@ fn android_first_party_admission_requires_a_valid_hashed_product_commit() {
     files.push(("source-commit.txt".into(), COMMIT));
     files.push((CORE_MANIFEST.into(), &unstamped));
     write_zip(&archive, &files);
-    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false).is_err());
+    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false, None).is_err());
     files.pop();
 
     let forged = manifest("rfvp", &files);
     files.push((CORE_MANIFEST.into(), &forged));
     write_zip(&archive, &files);
-    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false).is_err());
+    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false, None).is_err());
     files.pop();
 
     let stamped = manifest(PLUGIN, &files);
@@ -457,4 +457,111 @@ fn published_first_party_v1_desktop_shape_remains_installable() {
     let installed = read_package(&root.path().join(stem)).unwrap();
     assert_eq!(installed.manifest, old);
     assert!(installed.source_commit.is_none());
+}
+
+#[test]
+fn android_qa_receipt_only_admits_matching_local_zip() {
+    use crate::android_qa_receipt::{self, Receipt};
+
+    const PLUGIN: &str = "shinki.emu.musica";
+    const VERSION: &str = "0.1.0-qa.9";
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+    const OTHER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const LIBRARY: &str = "libshinki_emu_musica.so";
+    let root = tempfile::tempdir().unwrap();
+    let archive = root.path().join("core.zip");
+    let pending = root.path().join(PENDING);
+    let write = |abi: u16, commit: &str| {
+        let mut elf = [0_u8; 64];
+        elf[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
+        elf[16..18].copy_from_slice(&3_u16.to_le_bytes());
+        elf[18..20].copy_from_slice(&abi.to_le_bytes());
+        elf[20..24].copy_from_slice(&1_u32.to_le_bytes());
+        let mut files = vec![
+            (LIBRARY.into(), elf.as_slice()),
+            (PRODUCT_SOURCE_COMMIT.into(), commit.as_bytes()),
+            ("licenses/NOTICE".into(), b"test fixture".as_slice()),
+        ];
+        let mut declaration: CoreManifest = serde_json::from_slice(&manifest(PLUGIN, &files)).unwrap();
+        declaration.library = LIBRARY.into();
+        declaration.version = VERSION.into();
+        let bytes = serde_json::to_vec(&declaration).unwrap();
+        files.push((CORE_MANIFEST.into(), &bytes));
+        write_zip(&archive, &files);
+    };
+
+    let receipt = |source_commit: &str, abi: &str, digest: Option<String>| {
+        let receipt = Receipt {
+            schema: android_qa_receipt::SCHEMA.into(),
+            abi: abi.into(),
+            product_version: VERSION.into(),
+            source_commit: source_commit.into(),
+            cores: vec![android_qa_receipt::Core {
+                plugin_id: PLUGIN.into(), version: VERSION.into(), identity: None,
+                size: fs::metadata(&archive).unwrap().len(),
+                sha256: digest.unwrap_or_else(|| sha256_hex(&fs::read(&archive).unwrap())),
+            }],
+            omitted: Default::default(),
+        };
+        serde_json::to_vec(&receipt).unwrap()
+    };
+    let read = |bytes| Receipt::read_debug_asset(true, || Some(bytes), "arm64-v8a", VERSION, COMMIT);
+    let install = |receipt: &Receipt| {
+        stage_local_release(
+            &archive,
+            receipt.cores.iter().map(|entry| LocalRelease::android_qa(receipt, entry)),
+            &pending,
+        )
+    };
+
+    write(183, COMMIT);
+    assert!(Receipt::read_debug_asset(false, || panic!("opened {} in a non-debug app", android_qa_receipt::ASSET),
+        "arm64-v8a", VERSION, COMMIT).is_none());
+    assert!(read(receipt(OTHER, "arm64-v8a", None)).is_none());
+    assert!(read(receipt(COMMIT, "x86_64", None)).is_none());
+    assert!(stage_local_release(&archive, std::iter::empty(), &pending).is_err());
+    let wrong_hash = read(receipt(COMMIT, "arm64-v8a", Some("f".repeat(64)))).unwrap();
+    assert_eq!(install(&wrong_hash).unwrap_err(), "SHINKI_EMU_CORE_NOT_AVAILABLE");
+
+    write(62, COMMIT);
+    assert_eq!(
+        install(&read(receipt(COMMIT, "arm64-v8a", None)).unwrap()).unwrap_err(),
+        "SHINKI_EMU_CORE_UNSUPPORTED_TARGET"
+    );
+    write(183, OTHER);
+    assert_eq!(install(&read(receipt(COMMIT, "arm64-v8a", None)).unwrap()).unwrap_err(), INVALID_PRODUCT_COMMIT);
+    assert!(pending_is_empty(root.path()));
+
+    write(183, COMMIT);
+    let stem = install(&read(receipt(COMMIT, "arm64-v8a", None)).unwrap()).unwrap();
+    let dir = pending.join(stem);
+    assert_eq!(fs::read(dir.join(PRODUCT_SOURCE_COMMIT)).unwrap(), COMMIT.as_bytes());
+    assert_eq!(fs::read(dir.join(LIBRARY)).unwrap()[18], 183);
+}
+
+#[cfg(not(target_os = "android"))]
+#[test]
+fn local_official_import_still_uses_its_catalog_hash() {
+    let mut entry: shinki_emu_metadata::CoreCatalogEntry = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../Metadata/engines/cores/shinki.emu.musica/windows-x86_64/0.1.0-beta.4.json",
+    ))).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let archive = root.path().join("official.zip");
+    let pending = root.path().join(PENDING);
+    let files = valid_files();
+    let mut declaration: CoreManifest = serde_json::from_slice(&manifest(&entry.plugin_id, &files)).unwrap();
+    declaration.version = entry.version.clone();
+    let encoded = serde_json::to_vec(&declaration).unwrap();
+    let mut zip = files;
+    zip.push((CORE_MANIFEST.into(), &encoded));
+    write_zip(&archive, &zip);
+    let import = |entry: &shinki_emu_metadata::CoreCatalogEntry| {
+        stage_local_release(&archive, std::iter::once(LocalRelease::official(entry)), &pending)
+    };
+    entry.size = fs::metadata(&archive).unwrap().len();
+    assert_eq!(import(&entry).unwrap_err(), "SHINKI_EMU_CORE_NOT_AVAILABLE");
+    entry.sha256 = sha256_hex(&fs::read(&archive).unwrap());
+    let stem = import(&entry).unwrap();
+    assert_eq!(read_manifest(&pending.join(stem)).unwrap(), declaration);
 }

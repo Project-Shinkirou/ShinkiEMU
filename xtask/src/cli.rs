@@ -57,13 +57,22 @@ pub enum Command {
         version: String,
         #[arg(long)]
         out: PathBuf,
-        /// Build and package one Android Manager ABI with the local debug key.
-        /// Requires a new output directory and no release signing configuration.
+        /// Build a debug-signed Android Manager APK for one ABI.
+        /// Requires a new output directory and no release signing inputs.
         #[arg(long, requires = "manager", conflicts_with = "core")]
         qa_single_abi: bool,
-        /// Bundle the matching dynamic Musica companion in a local debug QA APK.
-        #[arg(long, requires_all = ["qa_single_abi", "manager"])]
-        qa_bundle_musica: bool,
+        /// Include all eligible dynamic core ZIPs in the QA delivery.
+        #[arg(long, requires = "qa_single_abi", conflicts_with = "qa_cores")]
+        qa_all_cores: bool,
+        /// Include these dynamic core ZIPs in the QA delivery (repeatable).
+        #[arg(long = "qa-core", requires = "qa_single_abi")]
+        qa_cores: Vec<String>,
+        /// Build the selected Android QA ZIPs and their input receipt without building Manager.
+        #[arg(long, requires = "qa_single_abi", conflicts_with = "qa_from")]
+        qa_prepare_cores: bool,
+        /// Assemble an Android QA APK with ZIPs from this prepared core directory (repeatable).
+        #[arg(long, requires = "qa_single_abi")]
+        qa_from: Vec<PathBuf>,
     },
     /// Prepare one target's release files, or publish every prepared target.
     Release {

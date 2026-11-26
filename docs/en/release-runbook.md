@@ -19,23 +19,26 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-qa
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --out .work/android-test
 cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-qa.1 --out .work/linux-manager
 
-# Local one-ABI APK for an ARM64 test device
+# Local ARM64 debug APK plus all eligible standalone core ZIPs
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --out .work/android-arm64-test
 
-# Local ARM64 gameplay QA APK with the dynamic Musica companion
-cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.musica.1 --qa-single-abi --qa-bundle-musica --out .work/android-arm64-musica-test
+# Build a bounded set separately, then build the APK without rebuilding those ZIPs
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --qa-core shinki.emu.musica --qa-prepare-cores --out .work/android-qa-input
+cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --qa-core shinki.emu.musica --qa-from .work/android-qa-input --out .work/android-qa-assembled
 ```
 
-For a nightly or development test, choose a distinct SemVer such as the `0.1.0-qa.1` shown above. For offline Gradle after the first successful sync, set `SHINKI_EMU_GRADLE_OFFLINE=1`. The packager passes `--version` to the build; there is no separate prerequisite build receipt.
+Choose a distinct QA SemVer, such as `0.1.0-qa.1`, at or above the selected first-party cores' Android floor. After the first Gradle sync, set `SHINKI_EMU_GRADLE_OFFLINE=1` to package offline.
 
-The normal Android Manager package builds both ABIs into one universal APK. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. Use `--qa-single-abi` for a local one-ABI debug APK. The APK stages the KiriKiri Java hosts; Impacto and other admitted cores ship as separate packages installed through Manager. The core packages do not need Gradle signing.
+The normal Android Manager package builds both ABIs into one universal APK. Set `GRADLE_USER_HOME` for the debug key. Without release signing inputs, the APK is debug-signed for testing. The APK stages the KiriKiri Java hosts; dynamic cores ship as separate ZIPs and do not need Gradle signing.
 
 The Java/AIDL/JAR inputs come from host-side Cargo libraries at the same KiriKiri fork pins as the native cores. Manager APK packaging generates them once without building either native core. Build the core ZIPs separately with `package --core <id>`.
 The APK dispatches Activity lifecycle callbacks through the packaged adapters. Core-specific JNI stays in the adapters, and the native core still receives the existing process-scoped `AndroidContextV1` on activation.
 
 For the Impacto cutover, first publish sequence 4 from the exact organization fork SHA in `Cargo.lock`. Prepare both Android ABIs with `cargo xtask release --component impacto --target <triple>` and retain the corresponding-source assets. Confirm both ZIPs are available in the official catalog before publishing the Manager that removes static Impacto. Do not change the historical sequence 3 assets.
 
-`--qa-bundle-musica` requires `--qa-single-abi --manager`, a new output directory, and no Android release signing inputs. It builds Manager and the dynamic Musica core from the same checkout with the same explicit product version. Use a fresh QA version for a new checkout. Install the `*-qa-musica-debug-signed.apk` and add your own game files in Manager; the APK contains no game data and needs no separate Musica ZIP. The packager verifies the signed APK's native library and bundled core files and writes `android-qa-musica.json` with their build provenance, the APK hash, and the debug certificate fingerprint. Normal APKs, release catalogs, and separate core-package admission are unchanged.
+`--qa-single-abi` alone builds only Manager. Add `--qa-all-cores` for all supported, unrestricted `android_dynamic` rows or repeat `--qa-core` to choose a subset. Restricted rows such as Ren’Py are reported and omitted. Core QA inputs require a clean checkout. Use `--qa-prepare-cores` to build ZIPs separately; assemble them with repeatable `--qa-from <dir>` using the same commit, product version, ABI and subset. External versions come from the locked fork identity.
+
+Install the `*-qa-debug-signed.apk` on a separate QA device or profile. In Manager, import the desired ZIP under Cores and restart to apply the install. The APK signature covers a local receipt with each ZIP's size, SHA-256, plugin ID, version and provenance. The receipt authorizes local import only; the official catalog and download flow do not use it. `android-qa.json` records the APK and receipt digests and debug certificate. No game files are included.
 
 For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
 

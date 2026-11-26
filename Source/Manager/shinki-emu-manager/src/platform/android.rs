@@ -382,18 +382,12 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
     Some(default_data_dir().ok()?.join("bundled"))
 }
 
-/// Return the extracted manifest directory and APK native library directory for
-/// the debug-only Musica companion. The manifest must also exist in the APK.
-pub(crate) fn qa_musica_paths() -> Option<(PathBuf, PathBuf)> {
-    let asset = c"qa-cores/musica/core.json";
-    let mut directory = bundled_resource_dir()?.join(asset.to_str().ok()?);
-    if !directory.is_file() {
-        return None;
-    }
-    directory.pop();
-    context().ok()?.app.asset_manager().open(asset)?;
+/// Read the receipt from the installed APK, never from extracted resources.
+/// The flag is the package manager's ApplicationInfo, not a Rust build profile.
+pub(crate) fn qa_core_receipt() -> Option<crate::android_qa_receipt::Receipt> {
+    use crate::android_qa_receipt::{ASSET, MAX_BYTES, Receipt};
 
-    let native_dir = call_activity("getApplicationInfo", |env, activity| {
+    let debuggable = call_activity("getApplicationInfo", |env, activity| {
         let info = env
             .call_method(
                 activity,
@@ -410,16 +404,19 @@ pub(crate) fn qa_musica_paths() -> Option<(PathBuf, PathBuf)> {
                 jni_sig!("I"),
             )?
             .i()?;
-        if flags & debuggable == 0 {
-            return Ok(None);
-        }
-        let path = env
-            .get_field(&info, jni_str!("nativeLibraryDir"), jni_sig!("Ljava/lang/String;"))?
-            .l()?;
-        Ok(nullable_string(env, path)?.map(PathBuf::from).filter(|path| path.is_absolute()))
-    })
-    .ok()??;
-    Some((directory, native_dir))
+        Ok(flags & debuggable != 0)
+    }).ok()?;
+    Receipt::read_debug_asset(
+        debuggable,
+        || read_asset(ASSET, MAX_BYTES).ok(),
+        match std::env::consts::ARCH {
+            "aarch64" => "arm64-v8a",
+            "x86_64" => "x86_64",
+            _ => return None,
+        },
+        crate::version(),
+        env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT"),
+    )
 }
 
 /// Relaunch the activity in a fresh process (`MainActivity.restartApp`).

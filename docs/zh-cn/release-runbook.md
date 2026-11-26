@@ -19,13 +19,17 @@ cargo xtask package --target x86_64-pc-windows-msvc --manager --version 0.1.0-qa
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --out .work/android-test
 cargo xtask package --target x86_64-unknown-linux-gnu --manager --version 0.1.0-qa.1 --out .work/linux-manager
 
-# ARM64 测试设备的本地单 ABI APK
+# ARM64 测试设备的本地单 ABI APK 和独立核心 ZIP
 cargo xtask package --target aarch64-linux-android --manager --version 0.1.0-qa.1 --qa-single-abi --out .work/android-arm64-test
 ```
 
-QA 包用独立的 SemVer，例如上面的 `0.1.0-qa.1`。Gradle 首次同步成功后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 离线打包。打包器会把 `--version` 传入本次构建，不需要先生成构建回执。
+QA 包使用独立的 SemVer，例如 `0.1.0-qa.1`，且不能低于所选自研核心的 Android 版本门槛。Gradle 首次同步成功后，可设置 `SHINKI_EMU_GRADLE_OFFLINE=1` 离线打包。
 
-常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。本地只测一个 ABI 时，加 `--qa-single-abi`。APK 随附 KiriKiri 的 Java 宿主。Impacto 等获准的核心单独打包，由 Manager 安装。独立核心包不需要 Gradle 签名。
+常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。APK 随附 KiriKiri 的 Java 宿主。动态核心作为独立 ZIP 交付，不需要 Gradle 签名。
+
+单独使用 `--qa-single-abi` 只构建 Manager。加 `--qa-all-cores` 构建该 ABI 下所有可发布的 `android_dynamic` 核心，或多次传入 `--qa-core <id>` 选择核心。Ren’Py 等受限核心只记录原因，不生成 ZIP。构建 QA 核心需要干净的检出目录。用 `--qa-prepare-cores` 单独打 ZIP，再用可重复的 `--qa-from <dir>` 组装 APK；源码提交、产品版本、ABI 和选定核心须一致。
+
+在独立的测试设备或用户空间安装 `*-qa-debug-signed.apk`，在 Manager 的核心页面导入所需 ZIP，再重启应用。APK 签名覆盖本地回执，回执记录 ZIP 的大小、SHA-256、核心 ID、版本和源码身份。回执只用于本地导入，官方目录和下载流程不变。
 
 KiriKiri 的 Java、AIDL 和 JAR 由宿主 Cargo 库生成，与原生核心使用同一 fork 提交。Manager 打 APK 时只生成一次宿主文件，不构建这两个原生核心。用 `package --core <id>` 单独生成核心 ZIP。
 APK 通过随包适配器转发生命周期事件。核心专用 JNI 留在适配器内，原生核心在启用时仍通过现有 `AndroidContextV1` 获取进程级上下文。

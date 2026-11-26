@@ -17,6 +17,8 @@ use std::{
 
 #[path = "android_host.rs"]
 mod android_host;
+#[path = "android_qa.rs"]
+mod android_qa;
 
 pub fn portable(name: &str) -> Result<()> {
     if name.is_empty() {
@@ -1029,10 +1031,6 @@ const ANDROID_TARGETS: [(&str, &str); 2] = [
     ("x86_64-linux-android", "x86_64"),
 ];
 const ANDROID_BUNDLE_MANIFEST: &str = "assets/bundled.manifest";
-const ANDROID_QA_MUSICA_ID: &str = "shinki.emu.musica";
-const ANDROID_QA_MUSICA_LIBRARY: &str = "libshinki_emu_musica.so";
-const ANDROID_QA_MUSICA_ASSETS: &str = "assets/qa-cores/musica";
-const ANDROID_QA_MUSICA_GRADLE: &str = "SHINKI_EMU_ANDROID_QA_BUNDLE_MUSICA";
 // The official APK signing certificate (SHA-256).
 const ANDROID_PRODUCTION_CERT: &str =
     "c415bd462d26574758ed455055ff528a3bd6036e39d5ac6887308f8cf69e97fc";
@@ -1091,159 +1089,6 @@ fn android_inputs(
     Ok(())
 }
 
-struct AndroidQaMusica {
-    manifest: CorePackage,
-    manifest_sha256: String,
-}
-
-fn android_qa_musica_inputs(
-    inv: &Inventory,
-    manager: &BuildArtifact,
-    core: BuildArtifact,
-    version: &str,
-    abi: &str,
-    scratch: &Path,
-    entries: &mut Vec<(PathBuf, String)>,
-) -> Result<AndroidQaMusica> {
-    let commit = manager.source_commit.as_deref().context("missing Android Manager source commit")?;
-    ensure!(
-        manager.product_version.as_deref() == Some(version)
-            && core.product_version.as_deref() == Some(version)
-            && core.source_commit.as_deref() == Some(commit),
-        "Android QA Musica must be built with the Manager's exact product version and source commit"
-    );
-    let report = core.core_build.as_ref().context("missing Android QA Musica build report")?;
-    ensure!(
-        core.component == ANDROID_QA_MUSICA_ID
-            && report.plugin_id == ANDROID_QA_MUSICA_ID
-            && core.target == manager.target
-            && report.target == core.target
-            && report.artifact_kind == "rust-cdylib"
-            && core.library.file_name().is_some_and(|name| name == ANDROID_QA_MUSICA_LIBRARY),
-        "Android QA Musica must be the dynamic C ABI library for the Manager's target"
-    );
-    ensure!(
-        report.resources.is_empty() && inv.core(ANDROID_QA_MUSICA_ID)?.resources.is_empty(),
-        "Android QA Musica does not support bundled core resources"
-    );
-    let core_scratch = scratch.join("qa-musica");
-    fs::create_dir(&core_scratch)?;
-    let dir = stage_built_core(inv, core, version, &core_scratch.join("package"), &core_scratch)?;
-    android_qa_musica_entries(&dir, version, commit, abi, entries)
-}
-
-fn android_qa_musica_asset(path: &str) -> bool {
-    path == PRODUCT_SOURCE_COMMIT || path.starts_with("licenses/")
-}
-
-fn android_qa_musica_entries(
-    dir: &Path,
-    version: &str,
-    commit: &str,
-    abi: &str,
-    entries: &mut Vec<(PathBuf, String)>,
-) -> Result<AndroidQaMusica> {
-    let manifest = verify_core(dir)?;
-    ensure!(
-        manifest.plugin_id == ANDROID_QA_MUSICA_ID
-            && manifest.library == ANDROID_QA_MUSICA_LIBRARY
-            && manifest.version == version
-            && manifest.identity.is_none(),
-        "unexpected Android QA Musica core declaration"
-    );
-    ensure!(
-        manifest.files.iter().any(|file| file.path == PRODUCT_SOURCE_COMMIT)
-            && fs::read(dir.join(PRODUCT_SOURCE_COMMIT))?.as_slice() == commit.as_bytes(),
-        "Android QA Musica source stamp must match the Manager's source commit"
-    );
-    for file in &manifest.files {
-        let path = &file.path;
-        let source = dir.join(path);
-        if android_qa_musica_asset(path) {
-            entries.push((source, format!("{ANDROID_QA_MUSICA_ASSETS}/{path}")));
-            continue;
-        }
-        ensure!(
-            path.starts_with("lib") && path.ends_with(".so") && !path.contains('/'),
-            "unsupported Android QA Musica package entry: {path}"
-        );
-        verify_android_qa_library(&source, abi)?;
-        let name = format!("jniLibs/{abi}/{path}");
-        if let Some((existing, _)) = entries.iter().find(|(_, candidate)| candidate == &name) {
-            ensure!(
-                same_android_asset(existing, &source, fs::metadata(existing)?.len())?,
-                "conflicting Android QA Musica native library {name}: {} and {}",
-                existing.display(),
-                source.display(),
-            );
-        } else {
-            entries.push((source, name));
-        }
-    }
-    let declaration = dir.join("core.json");
-    let manifest_sha256 = sha256(&declaration)?;
-    entries.push((declaration, format!("{ANDROID_QA_MUSICA_ASSETS}/core.json")));
-    Ok(AndroidQaMusica { manifest, manifest_sha256 })
-}
-
-fn verify_android_qa_library(path: &Path, abi: &str) -> Result<()> {
-    use object::elf::{ELFCLASS64, ELFDATA2LSB, EM_AARCH64, EM_X86_64, ET_DYN};
-
-    let machine = match abi {
-        "arm64-v8a" => EM_AARCH64,
-        "x86_64" => EM_X86_64,
-        _ => bail!("unsupported Android QA ABI: {abi}"),
-    };
-    // stage_core's closure parsing has already read the ELF. Only the file
-    // header is needed here to check the architecture and shared-object type.
-    let mut header = [0; 20];
-    fs::File::open(path)?.read_exact(&mut header)?;
-    ensure!(
-        header.starts_with(&[0x7f, b'E', b'L', b'F', ELFCLASS64.0, ELFDATA2LSB.0])
-            && u16::from_le_bytes([header[16], header[17]]) == ET_DYN.0
-            && u16::from_le_bytes([header[18], header[19]]) == machine.0,
-        "{} is not an Android {abi} ELF64 shared library",
-        path.display(),
-    );
-    Ok(())
-}
-
-fn verify_android_qa_musica_archive(
-    archive: &mut zip::ZipArchive<impl Read + io::Seek>,
-    abi: &str,
-    musica: &AndroidQaMusica,
-    bundle_manifest_sha256: &str,
-) -> Result<()> {
-    let native = format!("lib/{abi}/");
-    for name in archive.file_names() {
-        let name = name?;
-        ensure!(
-            !name.starts_with("lib/") || name == "lib/" || name.starts_with(&native),
-            "Android QA APK contains a native entry outside {native}: {name}"
-        );
-    }
-    let mut verify = |name: &str, expected: &str| -> Result<()> {
-        let entry = archive.by_name(name)
-            .with_context(|| format!("Android QA APK is missing {name}"))?;
-        ensure!(
-            !entry.is_dir() && !entry.is_symlink() && sha256_reader(entry)? == expected,
-            "Android QA APK content differs from verified staging: {name}"
-        );
-        Ok(())
-    };
-    verify(ANDROID_BUNDLE_MANIFEST, bundle_manifest_sha256)?;
-    verify(&format!("{ANDROID_QA_MUSICA_ASSETS}/core.json"), &musica.manifest_sha256)?;
-    for file in &musica.manifest.files {
-        let name = if android_qa_musica_asset(&file.path) {
-            format!("{ANDROID_QA_MUSICA_ASSETS}/{}", file.path)
-        } else {
-            format!("{native}{}", file.path)
-        };
-        verify(&name, &file.sha256)?;
-    }
-    Ok(())
-}
-
 fn same_android_asset(first: &Path, second: &Path, mut len: u64) -> Result<bool> {
     plain(first)?;
     plain(second)?;
@@ -1278,7 +1123,8 @@ fn stage_android_inputs(mut entries: Vec<(PathBuf, String)>, stage: &Path) -> Re
             continue;
         };
         ensure!(
-            !name.eq_ignore_ascii_case(ANDROID_BUNDLE_MANIFEST),
+            !name.eq_ignore_ascii_case(ANDROID_BUNDLE_MANIFEST)
+                && !name.eq_ignore_ascii_case(android_qa::APK_ASSET),
             "reserved Android asset destination: {name}"
         );
         let len = fs::metadata(source)?.len();
@@ -1429,7 +1275,7 @@ pub(crate) fn package_android_qa(
     target: &str,
     version: &str,
     out: &Path,
-    bundle_musica: bool,
+    selection: Option<(&[String], &[PathBuf])>,
 ) -> Result<PathBuf> {
     let version = crate::release::resolve_version(inv, "manager", version)?;
     package_android(
@@ -1437,13 +1283,35 @@ pub(crate) fn package_android_qa(
         target,
         &version,
         out,
-        AndroidPackageMode::Qa { bundle_musica },
+        match selection {
+            Some((subset, prepared)) => AndroidPackageMode::Qa { subset, prepared },
+            None => AndroidPackageMode::QaManagerOnly,
+        },
     )
 }
 
-enum AndroidPackageMode {
+pub(crate) fn prepare_android_qa_cores(
+    inv: &Inventory,
+    target: &str,
+    version: &str,
+    out: &Path,
+    subset: &[String],
+) -> Result<PathBuf> {
+    let (_, abi) = android_qa_target(target)?;
+    android_qa::prepare(inv, target, abi, version, out, subset)
+}
+
+fn android_qa_target(target: &str) -> Result<&'static (&'static str, &'static str)> {
+    ANDROID_TARGETS
+        .iter()
+        .find(|(triple, _)| *triple == target)
+        .context("--qa-single-abi requires an Android Manager target")
+}
+
+enum AndroidPackageMode<'a> {
     Universal,
-    Qa { bundle_musica: bool },
+    QaManagerOnly,
+    Qa { subset: &'a [String], prepared: &'a [PathBuf] },
 }
 
 fn package_android(
@@ -1451,23 +1319,11 @@ fn package_android(
     target: &str,
     version: &str,
     out: &Path,
-    mode: AndroidPackageMode,
+    mode: AndroidPackageMode<'_>,
 ) -> Result<PathBuf> {
     use base64::Engine as _;
-    let (qa, bundle_musica) = match mode {
-        AndroidPackageMode::Universal => (false, false),
-        AndroidPackageMode::Qa { bundle_musica } => (true, bundle_musica),
-    };
-    let targets = if qa {
-        std::slice::from_ref(
-            ANDROID_TARGETS
-                .iter()
-                .find(|(triple, _)| *triple == target)
-                .context("--qa-single-abi requires an Android Manager target")?,
-        )
-    } else {
-        ANDROID_TARGETS.as_slice()
-    };
+    let qa = !matches!(mode, AndroidPackageMode::Universal);
+    let targets = if qa { std::slice::from_ref(android_qa_target(target)?) } else { &ANDROID_TARGETS };
     let abi = targets[0].1;
 
     let key = std::env::var_os("SHINKI_EMU_ANDROID_KEYSTORE").filter(|s| !s.is_empty());
@@ -1522,10 +1378,22 @@ fn package_android(
     if let Some(key) = &key {
         plain(key)?;
     }
-    let result = build::package_artifact(inv, target, "manager", version)?;
-    reject_overlap(&result.library, out)?;
+    let plan = match mode {
+        AndroidPackageMode::Universal | AndroidPackageMode::QaManagerOnly => None,
+        AndroidPackageMode::Qa { subset, prepared } => {
+            inv.require_buildable("manager", target)?;
+            Some((android_qa::Plan::new(inv, target, abi, version, subset)?, prepared))
+        }
+    };
     atomic_directory(out, |stage| {
+        let receipt = plan.as_ref().map(|(plan, prepared)| plan.stage(inv, stage, out, prepared)).transpose()?;
+        let result = build::package_artifact(inv, target, "manager", version)?;
+        reject_overlap(&result.library, out)?;
+        if let Some((plan, _)) = &plan {
+            plan.check_manager(&result)?;
+        }
         let scratch = crate::temporary::directory()?;
+        let generated = if qa { scratch.path().join("android") } else { stage.to_owned() };
         let mut entries = Vec::new();
         for (target, abi) in targets {
             if *target == result.target {
@@ -1538,24 +1406,11 @@ fn package_android(
         }
         // The Java host sources are shared by both Android ABIs.
         entries.extend(android_host::inputs(inv, targets, scratch.path())?);
-        let musica = if bundle_musica {
-            let core = build::package_artifact(inv, target, ANDROID_QA_MUSICA_ID, version)?;
-            reject_overlap(&core.library, out)?;
-            Some(android_qa_musica_inputs(
-                inv,
-                &result,
-                core,
-                version,
-                abi,
-                scratch.path(),
-                &mut entries,
-            )?)
-        } else {
-            None
-        };
-        stage_android_inputs(entries, stage)?;
-        drop(scratch);
-        crate::icon::Icon::new()?.android(stage)?;
+        stage_android_inputs(entries, &generated)?;
+        if let Some(receipt) = &receipt {
+            android_qa::stage_asset(&generated, receipt)?;
+        }
+        crate::icon::Icon::new()?.android(&generated)?;
         let debug_key = if signed { None } else { Some(prepare_android_debug_key()?) };
         let certificate = match debug_key {
             Some(key) => android_debug_certificate(&key)?,
@@ -1592,14 +1447,9 @@ fn package_android(
             .env("SHINKI_EMU_ANDROID_VERSION_CODE", version_code.to_string())
             .env(
                 "SHINKI_EMU_ANDROID_GENERATED_ROOT",
-                dunce::canonicalize(stage)?,
+                dunce::canonicalize(&generated)?,
             )
             .env("SHINKI_EMU_ANDROID_ABI", abi_filter);
-        if bundle_musica {
-            cmd.env(ANDROID_QA_MUSICA_GRADLE, "1");
-        } else {
-            cmd.env_remove(ANDROID_QA_MUSICA_GRADLE);
-        }
         if std::env::var_os("SHINKI_EMU_GRADLE_OFFLINE").is_some_and(|value| value == "1") {
             cmd.arg("--offline");
         }
@@ -1619,27 +1469,21 @@ fn package_android(
         if apks.next().is_some() {
             bail!("Gradle must produce exactly one signed APK");
         }
-        let variant = match (bundle_musica, qa, signed) {
-            (true, _, _) => "qa-musica-debug",
-            (_, true, _) => "qa-debug",
-            (_, _, true) => "release",
+        let variant = match (qa, signed) {
+            (true, _) => "qa-debug",
+            (_, true) => "release",
             _ => "debug",
         };
         let platform = if qa { abi } else { "universal" };
         let apk_name = format!("ShinkiEMU-{version}-android-{platform}-{variant}-signed.apk");
         let apk = stage.join(&apk_name);
         fs::copy(source, &apk)?;
-        verify_android_apk(&apk, &certificate, version, version_code)?;
-        if let Some(musica) = musica {
-            let mut archive = zip::ZipArchive::new(fs::File::open(&apk)?)?;
-            verify_android_qa_musica_archive(
-                &mut archive,
-                abi,
-                &musica,
-                &sha256(&stage.join(ANDROID_BUNDLE_MANIFEST))?,
-            )?;
+        let verification = receipt.as_deref().map(|bytes| (generated.as_path(), abi, bytes));
+        verify_android_apk(&apk, &certificate, version, version_code, verification)?;
+        if let (Some((plan, _)), Some(receipt)) = (&plan, receipt) {
+            plan.check_checkout(inv, stage)?;
             fs::write(
-                stage.join("android-qa-musica.json"),
+                stage.join("android-qa.json"),
                 serde_json::to_vec_pretty(&serde_json::json!({
                     "signing": "debug-test",
                     "apk": apk_name,
@@ -1649,10 +1493,10 @@ fn package_android(
                     "abi": abi,
                     "version": version,
                     "source_commit": result.source_commit,
-                    "core_manifest_sha256": musica.manifest_sha256,
+                    "receipt_sha256": sha256_reader(receipt.as_slice())?,
                 }))?,
             )?;
-        } else if !qa {
+        } else {
             fs::write(
                 stage.join("android.json"),
                 serde_json::to_vec_pretty(&serde_json::json!({
@@ -1671,6 +1515,7 @@ fn verify_android_apk(
     certificate: &str,
     version: &str,
     version_code: u32,
+    qa: Option<(&Path, &str, &[u8])>,
 ) -> Result<()> {
     let sdk = std::env::var_os("ANDROID_HOME")
         .or_else(|| std::env::var_os("ANDROID_SDK_ROOT"))
@@ -1700,12 +1545,21 @@ fn verify_android_apk(
     let badging = dependencies::capture(
         std::process::Command::new(aapt2).args(["dump", "badging"]).arg(apk),
     )?;
-    verify_android_badging(std::str::from_utf8(&badging)?, version, version_code)?;
+    let badging = std::str::from_utf8(&badging)?;
+    verify_android_badging(badging, version, version_code)?;
+    if qa.is_some() {
+        ensure!(badging.lines().any(|line| line.trim() == "application-debuggable"),
+            "Android QA APK must be debuggable");
+    }
     // The bundled manifest is the runtime extraction list.
     let mut archive = zip::ZipArchive::new(fs::File::open(apk)?)?;
     archive.by_name("assets/metadata/index.json")?;
     archive.by_name(ANDROID_BUNDLE_MANIFEST)?;
-    Ok(())
+    android_qa::verify_apk(&mut archive, qa)
+}
+
+pub(crate) fn reject_android_qa_apk(apk: &Path) -> Result<()> {
+    android_qa::verify_apk(&mut zip::ZipArchive::new(fs::File::open(apk)?)?, None)
 }
 
 fn verify_android_badging(badging: &str, version: &str, version_code: u32) -> Result<()> {
@@ -1930,144 +1784,26 @@ mod android_tests {
     }
 
     #[test]
-    fn android_qa_musica_requires_single_abi_manager() {
-        use crate::cli::Cli;
-        let command = ["xtask", "package", "--target", "aarch64-linux-android", "--out", "qa"];
-        assert!(Cli::try_parse_from(command.into_iter().chain([
-            "--manager",
-            "--qa-single-abi",
-            "--qa-bundle-musica",
-        ])).is_ok());
-        assert!(Cli::try_parse_from(command.into_iter().chain([
-            "--manager",
-            "--qa-bundle-musica",
-        ])).is_err());
-        assert!(Cli::try_parse_from(command.into_iter().chain([
-            "--core",
-            ANDROID_QA_MUSICA_ID,
-            "--qa-single-abi",
-            "--qa-bundle-musica",
-        ])).is_err());
-    }
-
-    #[test]
-    fn android_qa_musica_refuses_release_signing_before_build() {
+    fn android_qa_refuses_release_signing_before_build() {
         const CHILD: &str = "SHINKI_EMU_XTASK_TEST_QA_SIGNING";
         if std::env::var_os(CHILD).is_some() {
             let root = crate::temporary::directory().unwrap();
             let out = root.path().join("out");
             let inv = Inventory { root: root.path().to_owned(), cores: vec![], targets: vec![] };
             let error = package_android_qa(
-                &inv, "aarch64-linux-android", "0.1.0-qa.musica.1", &out, true,
+                &inv, "aarch64-linux-android", "0.1.0-qa.1", &out, None,
             ).unwrap_err();
             assert!(error.to_string().contains("requires the debug key"), "{error:#}");
             assert!(!out.exists());
             return;
         }
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "package::android_tests::android_qa_musica_refuses_release_signing_before_build"])
+            .args(["--exact", "package::android_tests::android_qa_refuses_release_signing_before_build"])
             .env(CHILD, "1")
             .env("SHINKI_EMU_ANDROID_KEYSTORE_BASE64", "release signing input")
             .output()
             .unwrap();
         assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
-    }
-
-    #[test]
-    fn android_qa_musica_keeps_native_and_extracted_assets_in_sync() {
-        let root = crate::temporary::directory().unwrap();
-        let inputs = root.path().join("inputs");
-        fs::create_dir(&inputs).unwrap();
-        let library = inputs.join(ANDROID_QA_MUSICA_LIBRARY);
-        let dependency = "libqa-runtime.so";
-        let runtime = inputs.join(dependency);
-        let mut elf = [0; 64];
-        elf[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
-        elf[16..18].copy_from_slice(&object::elf::ET_DYN.0.to_le_bytes());
-        elf[18..20].copy_from_slice(&object::elf::EM_AARCH64.0.to_le_bytes());
-        elf[20..24].copy_from_slice(&1u32.to_le_bytes());
-        elf[52..54].copy_from_slice(&64u16.to_le_bytes());
-        elf[54..56].copy_from_slice(&56u16.to_le_bytes());
-        elf[58..60].copy_from_slice(&64u16.to_le_bytes());
-        fs::write(&library, elf).unwrap();
-        fs::write(&runtime, elf).unwrap();
-        let notice = inputs.join("NOTICE");
-        fs::write(&notice, b"QA runtime license").unwrap();
-        let commit = "0123456789abcdef0123456789abcdef01234567";
-        let version = "0.1.0-qa.musica.1";
-        let target = "aarch64-linux-android";
-        let report = CoreBuildManifest {
-            plugin_id: ANDROID_QA_MUSICA_ID.into(),
-            target: target.into(),
-            // The generic core packager discovers sibling native modules here.
-            artifact_kind: "native-shared".into(),
-            native_library: Some(library.clone()),
-            resources: vec![],
-            licenses: vec![BuildAsset { source: notice, dest: "licenses/NOTICE".into() }],
-        };
-        let artifact = BuildArtifact {
-            component: ANDROID_QA_MUSICA_ID.into(),
-            target: target.into(),
-            product_version: Some(version.into()),
-            library,
-            core_build: Some(report),
-            embedded_core_builds: vec![],
-            native_inputs: vec![],
-            source_commit: Some(commit.into()),
-            features: vec![],
-        };
-        let core = stage_core(
-            &artifact,
-            version,
-            None,
-            &Default::default(),
-            &root.path().join("core"),
-            &[],
-        ).unwrap();
-        let abi = "arm64-v8a";
-        let shared = format!("jniLibs/{abi}/{dependency}");
-        let mut entries = vec![(runtime.clone(), shared.clone())];
-        let musica = android_qa_musica_entries(&core, version, commit, abi, &mut entries).unwrap();
-        let stage = root.path().join("stage");
-        stage_android_inputs(entries, &stage).unwrap();
-        assert_eq!(fs::read(stage.join(shared)).unwrap().as_slice(), elf.as_slice());
-        let bundle_list = fs::read_to_string(stage.join(ANDROID_BUNDLE_MANIFEST)).unwrap();
-        assert_eq!(
-            bundle_list.lines().collect::<Vec<_>>(),
-            ["qa-cores/musica/core.json", "qa-cores/musica/licenses/NOTICE", "qa-cores/musica/source-commit.txt"]
-        );
-        let mut payload = tree(&stage).unwrap();
-        for (_, name) in &mut payload {
-            if let Some(relative) = name.strip_prefix("jniLibs/") {
-                *name = format!("lib/{relative}");
-            }
-        }
-        let manifest_hash = sha256(&stage.join(ANDROID_BUNDLE_MANIFEST)).unwrap();
-        let check = |filename: &str, entries: &[(PathBuf, String)]| {
-            let archive = root.path().join(filename);
-            zip_entries(entries, &archive).unwrap();
-            verify_android_qa_musica_archive(
-                &mut zip::ZipArchive::new(fs::File::open(archive).unwrap()).unwrap(),
-                abi,
-                &musica,
-                &manifest_hash,
-            )
-        };
-        check("complete.apk", &payload).unwrap();
-        elf[63] = 1;
-        fs::write(&runtime, elf).unwrap();
-        let native = payload.iter().position(|(_, name)| name.ends_with(dependency)).unwrap();
-        let original = std::mem::replace(&mut payload[native].0, runtime.clone());
-        assert!(check("changed-native.apk", &payload).is_err());
-        payload[native].0 = original;
-        payload.retain(|(_, name)| !name.ends_with(PRODUCT_SOURCE_COMMIT));
-        assert!(check("missing-stamp.apk", &payload).is_err());
-        assert!(android_qa_musica_entries(&core, version, commit, "x86_64", &mut vec![]).is_err());
-        assert!(android_qa_musica_entries(&core, "0.1.0-qa.musica.2", commit, abi, &mut vec![]).is_err());
-        assert!(android_qa_musica_entries(&core, version, &"f".repeat(40), abi, &mut vec![]).is_err());
-
-        let mut conflict = vec![(runtime, format!("jniLibs/{abi}/{dependency}"))];
-        assert!(android_qa_musica_entries(&core, version, commit, abi, &mut conflict).is_err());
     }
 
     #[test]

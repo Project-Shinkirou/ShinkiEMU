@@ -24,7 +24,8 @@ val generatedRoot = layout.projectDirectory.dir(
         .orElse("../generated").get()
 )
 val androidHostRoot = generatedRoot.dir("android-host")
-val qaBundleMusica = providers.environmentVariable("SHINKI_EMU_ANDROID_QA_BUNDLE_MUSICA").orNull == "1"
+val qaReceiptAsset = "android-qa-core-set.json"
+val qaAssets = generatedRoot.dir("debug-assets")
 
 android {
     namespace = "org.shinkirou.shinkiemu"
@@ -102,6 +103,8 @@ android {
         }
     }
 
+    sourceSets.getByName("debug").assets.srcDir(qaAssets)
+
     androidResources {
         // The complete inventoried runtime includes underscore-prefixed modules.
         ignoreAssetsPattern = ""
@@ -116,10 +119,6 @@ android {
         jniLibs {
             // NativeActivity and dladdr need ordinary extracted filesystem paths.
             useLegacyPackaging = true
-            if (qaBundleMusica) {
-                // The companion manifest authenticates the staged native library bytes.
-                keepDebugSymbols += "**/*.so"
-            }
         }
     }
 }
@@ -136,8 +135,11 @@ gradle.taskGraph.whenReady {
     val releasePackaging = allTasks.filter { task ->
         task.project == project && task.name in releasePackagingTasks
     }
-    if (qaBundleMusica && releasePackaging.isNotEmpty()) {
-        throw GradleException("The bundled Musica QA core is available only in the debug variant.")
+    val qaReceipt = qaAssets.file(qaReceiptAsset).asFile.exists() ||
+        generatedRoot.file("assets/$qaReceiptAsset").asFile.exists() ||
+        listOf("main", "debug", "release").any { file("src/$it/assets/$qaReceiptAsset").exists() }
+    if (qaReceipt && allTasks.any { it.project == project && it.name.contains("Release") }) {
+        throw GradleException("The local Android QA core receipt is available only in the debug variant.")
     }
     if (missingReleaseSigning.isEmpty()) return@whenReady
     if (releasePackaging.isNotEmpty()) {
