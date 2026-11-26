@@ -7,13 +7,26 @@ impl Scene {
         cursor: &crate::runtime::gallery::GalleryCursor,
         access: &crate::runtime::gallery::GalleryAccess<'_>,
     ) -> SessionResult<()> {
-        use crate::runtime::gallery::GalleryAction;
+        use crate::runtime::gallery::{GalleryAction, GalleryBlend, GalleryImage};
 
         let mut commands = vec![SceneCommand::Clear { rgba: [0, 0, 0, 255] }];
         if let Some((button, image)) = cursor.detail
             && let GalleryAction::View { images, .. } = &screen.buttons[button].action
         {
-            self.layer(&mut commands, &images[image], 0, 0, 1.0)?;
+            match &images[image] {
+                GalleryImage::Plain(uri) => self.layer(&mut commands, uri, 0, 0, 1.0)?,
+                GalleryImage::Composite(composite) => {
+                    self.layer_with_blend(&mut commands, &composite.base, [0, 0], 1.0, BlendMode::Opaque)?;
+                    for layer in &composite.layers {
+                        let blend = match layer.blend {
+                            GalleryBlend::Alpha => BlendMode::Alpha,
+                            GalleryBlend::Screen => BlendMode::Screen,
+                            GalleryBlend::Add => BlendMode::Add,
+                        };
+                        self.layer_with_blend(&mut commands, &layer.resource, layer.at, 1.0, blend)?;
+                    }
+                }
+            }
             return self.submit(commands);
         }
         for layer in &screen.layers {

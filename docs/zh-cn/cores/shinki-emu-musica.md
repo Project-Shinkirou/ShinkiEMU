@@ -63,6 +63,8 @@ descriptor 声明了中文标签与默认值：`frontend` 是 JSON 字符串（�
 
 `view.images` 按原版顺序排列 CG 差分。设置 `viewed_only: true` 后，只浏览已写入原生 `cgv.dat` 的差分；`requires_viewed` 则在指定的背景 URI 中任一已看过时解锁按钮。这两项均需显式配置。锁定的按钮保留位置，可显示 `locked_thumbnail`，但不响应输入；查看 CG 不会把它标为已看过。`script` 动作可单独指定 `label`，标签不存在时报错，不会从脚本开头运行。回想结束后返回原页；脚本设置 `NOADDCGV` 时不新增 CG 记录。
 
+CG 差分既可写成资源 URI，也可写成 `{"base":"musica:/bg/base.png","layers":[{"resource":"musica:/st/overlay.png","at":[0,0],"blend":"screen"}]}`。复合 CG 的底图直接覆盖，不乘自身 alpha；前景按列表顺序绘制到各自的逻辑坐标，支持 `alpha`（普通）、`screen`（滤色）和 `add`（加色）。加载时检查各图资源，拒绝未知混合模式。已阅限制使用底图 URI。旧核心仍能读纯 URI 列表，但会拒绝复合差分。
+
 图层可用逻辑坐标 `clip: [x,y,width,height]` 裁出原始素材的一部分，例如单个缩略图框。
 按钮可声明 `preview`，格式与图层相同。它只在按钮获得焦点时显示，位置取自身的逻辑 `at`，与常驻的 `thumbnail` 和裁到按钮内的 `hover` 图分开。
 

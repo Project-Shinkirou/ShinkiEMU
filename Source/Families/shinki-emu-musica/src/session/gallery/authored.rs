@@ -115,7 +115,7 @@ impl MusicaSession {
             }
             GalleryAction::Back => self.authored_gallery_back()?,
             GalleryAction::View { images, viewed_only } => {
-                cursor.detail = images.iter().position(|uri| access.image_available(uri, *viewed_only))
+                cursor.detail = images.iter().position(|image| access.image_available(image, *viewed_only))
                     .map(|image| (index, image));
             }
             GalleryAction::Script { resource, label } => {
@@ -185,7 +185,9 @@ impl MusicaSession {
             && let GalleryAction::View { images, viewed_only } =
                 &layout.screens[cursor.screen].buttons[button].action
         {
-            let available = |uri: &String| access.image_available(uri, *viewed_only);
+            let available = |image: &crate::runtime::gallery::GalleryImage| {
+                access.image_available(image, *viewed_only)
+            };
             cursor.detail = if forward {
                 images[image + 1..].iter().position(available).map(|i| (button, image + 1 + i))
             } else {

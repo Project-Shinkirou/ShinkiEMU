@@ -59,7 +59,7 @@ pub(crate) enum GalleryAction {
     NextPage { screen: String },
     Back,
     View {
-        images: Vec<String>,
+        images: Vec<GalleryImage>,
         #[serde(default)]
         viewed_only: bool,
     },
@@ -72,6 +72,45 @@ pub(crate) enum GalleryAction {
     Stop,
     PreviousTrack,
     NextTrack,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum GalleryImage {
+    Plain(String),
+    Composite(GalleryComposite),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GalleryComposite {
+    pub base: String,
+    pub layers: Vec<GalleryForeground>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GalleryForeground {
+    pub resource: String,
+    pub at: [i32; 2],
+    pub blend: GalleryBlend,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum GalleryBlend {
+    Alpha,
+    Screen,
+    Add,
+}
+
+impl GalleryImage {
+    fn base_uri(&self) -> &str {
+        match self {
+            Self::Plain(uri) => uri,
+            Self::Composite(composite) => &composite.base,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -98,8 +137,8 @@ pub(crate) struct GalleryAccess<'a> {
 }
 
 impl GalleryAccess<'_> {
-    pub(crate) fn image_available(&self, uri: &str, viewed_only: bool) -> bool {
-        !viewed_only || self.saves.has_viewed_cg(uri)
+    pub(crate) fn image_available(&self, image: &GalleryImage, viewed_only: bool) -> bool {
+        !viewed_only || self.saves.has_viewed_cg(image.base_uri())
     }
 }
 
@@ -241,11 +280,20 @@ impl GalleryLayout {
                         if images.is_empty() || images.len() > 256 {
                             return Err(layout_error("invalid gallery image count"));
                         }
-                        for uri in images {
+                        for image in images {
+                            let base = image.base_uri();
                             if *viewed_only {
-                                validate_viewed_uri(uri)?;
+                                validate_viewed_uri(base)?;
                             }
-                            resource(uri)?;
+                            resource(base)?;
+                            if let GalleryImage::Composite(composite) = image {
+                                if composite.layers.is_empty() || composite.layers.len() > 32 {
+                                    return Err(layout_error("invalid composite CG foreground count"));
+                                }
+                                for layer in &composite.layers {
+                                    resource(&layer.resource)?;
+                                }
+                            }
                         }
                     }
                     GalleryAction::Script { resource: uri, label } => {
@@ -281,7 +329,7 @@ impl GalleryButton {
                 || self.requires_viewed.iter().any(|uri| access.saves.has_viewed_cg(uri)))
             && match &self.action {
                 GalleryAction::View { images, viewed_only: true } => {
-                    images.iter().any(|uri| access.saves.has_viewed_cg(uri))
+                    images.iter().any(|image| access.image_available(image, true))
                 }
                 _ => true,
             }
