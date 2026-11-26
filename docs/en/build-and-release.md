@@ -68,6 +68,10 @@ For native builds, install Xcode, select it with `xcode-select` and accept its l
 
 The iOS Manager's embedded [KrKr2](cores/krkr2.md) also needs `rustup component add llvm-tools-preview`.
 
+On macOS, the Cargo build helper applies the repository's Boost.Locale
+1.88.0#1 CMake backport when building KiriKiri. The overlay does not change
+the Boost version or affect other cores or iOS.
+
 For a Linux-hosted Apple build, install Docker with Buildx, cross 0.2.5 and apple-codesign 0.29.0 (`rcodesign`). Find the matching `macosx`, `iphoneos` or `iphonesimulator` SDK from [Xcode](https://developer.apple.com/download/all/) on macOS via `xcrun --sdk <sdk> --show-sdk-path`. Transfer it privately. Point `SHINKI_APPLE_SDK_DIR` to the extracted SDK directory containing `SDKSettings.json`, `System/` and `usr/`, then build the image for the selected triple. Keep SDKs and SDK images private.
 
 On Linux x86_64, the pinned [Buildx v0.38.1 binary](https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64) has SHA-256 `e25d5cd675092bb5d1d03632fdc46cdf3fede7b514dc5f023a105e00d3ce5ad4`. Verify the download, then install it as the executable `$DOCKER_CONFIG/cli-plugins/docker-buildx` for a private Docker configuration without sudo. Confirm with `docker buildx version`. Leave at least 8 GiB free on `/` to build the image.

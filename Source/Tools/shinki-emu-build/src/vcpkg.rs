@@ -56,6 +56,8 @@ pub fn install_core(source: &Path, id: &str) -> Result<Installation> {
     let mut ports = Vec::new();
     if target.ends_with("-linux-android") {
         ports.push(config.join("mobile-ports"));
+    } else if id == "kirikiroid2-web" && target.ends_with("-apple-darwin") {
+        ports.push(config.join("apple-ports"));
     }
     let overlay = source.join("vcpkg/ports");
     if overlay.is_dir() {
