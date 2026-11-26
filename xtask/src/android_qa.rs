@@ -196,8 +196,8 @@ impl<'a> Plan<'a> {
             if name == "core.json" { continue; }
             let member = members.remove(name.as_str()).with_context(|| format!("unlisted ZIP member {name}"))?;
             let basename = name.rsplit('/').next().unwrap_or(&name);
-            ensure!(!super::android_host::is_runtime_asset(&name) && !crate::binary::system(basename, self.target),
-                "prepared ZIP contains an APK-only host input or system library: {name}");
+            ensure!(!crate::binary::system(basename, self.target),
+                "prepared ZIP contains a device system library: {name}");
             ensure!(name == PRODUCT_SOURCE_COMMIT
                     || !name.split('/').next().is_some_and(|part| part.eq_ignore_ascii_case(PRODUCT_SOURCE_COMMIT)),
                 "prepared ZIP contains an invalid product source stamp path: {name}");
