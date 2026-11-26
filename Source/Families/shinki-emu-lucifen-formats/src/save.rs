@@ -100,3 +100,39 @@ fn sum(bytes: &[u8]) -> u8 {
 fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "invalid Lucifen save slot")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn imports_a_compressed_slot_and_exports_the_native_uncompressed_record() {
+        const SIGNATURE: [u8; 4] = *b"TEST";
+        // Construct the native record independently of the writer. Three
+        // literal bytes are followed by an overlapping 6-byte LZSS copy.
+        let mut native = vec![0; 22_696];
+        native[..4].copy_from_slice(&SIGNATURE);
+        native[8..11].copy_from_slice(&[11, 22, 33]);
+        native[22_505..22_508].copy_from_slice(&[44, 55, 66]);
+        native[22_508..22_510].copy_from_slice(&[0x91, 0xe6]); // 第 in CP932
+        native[22_552..22_555].copy_from_slice(b"end");
+        native.extend([6, 0, 0, 0, 9, 0, 0, 0, 0xae, 0x07, b'A', b'B', b'C', 0xee, 0xf3]);
+
+        let preview = SaveSlotPreview::decode(&native).unwrap();
+        assert_eq!(&preview.thumbnail_bgr[..3], &[11, 22, 33]);
+        assert_eq!(&preview.thumbnail_bgr[22_497..], &[44, 55, 66]);
+        assert_eq!(&preview.chapter[..3], &[0x91, 0xe6, 0]);
+        assert_eq!(&preview.summary[..4], b"end\0");
+
+        let slot = SaveSlot::decode(&native, SIGNATURE).unwrap();
+        assert_eq!(slot.state, b"ABCABCABC");
+        assert!(SaveSlot::decode(&native, *b"OTHR").is_err());
+        native[22_704] ^= 1;
+        assert!(SaveSlot::decode(&native, SIGNATURE).is_err());
+
+        native.truncate(22_696);
+        native.extend([9, 0, 0, 0, 0, 0, 0, 0, 0x52]);
+        native.extend(b"ABCABCABC");
+        assert_eq!(slot.encode().unwrap(), native);
+    }
+}
