@@ -168,7 +168,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-独立核心的 `supported_targets`、Manager 的 `static_manager_targets` 及各目标不支持的原因都在 [`build/cores.toml`](../../build/cores.toml) 中。能构建不等于游戏已验证可玩。Android 独立核心必须有经过验证的 `android_dynamic` 策略才可安装。iOS 使用随应用提供的核心，OHOS 内置 Musica，两者都不下载安装核心。`publish_blocked` 单独限制分发，不改变构建支持范围。
+默认构建的 Manager 加载独立核心。Android 只接受有经过验证的 `android_dynamic` 策略的独立 ZIP；iOS 从应用中加载已签名的 `ios_framework` 核心，OHOS 从已签名的 HAP 中加载独立的 Musica 动态库。iOS 和 OHOS 不下载安装核心。各目标的支持范围和分发限制 `publish_blocked` 见 [`build/cores.toml`](../../build/cores.toml)。能构建不等于游戏已验证可玩。
 
 ### 编译进程序的商店插件
 
@@ -176,8 +176,8 @@ Manager 默认启用 `store-steam`、`store-dlsite` 和 `store-dmm`。只启用 
 
 ## 新增核心或更新固定提交
 
-1. 要构建独立库，参考现有实现在 `Source/Cores/<id>/` 添加入口 crate。自研 Rust 核心通过路径依赖引用实现，由入口 `cdylib` 导出 ABI query；Rust fork 继承工作区依赖，按需开启独立构建用的导出 feature。原生 adapter 由构建脚本提供库。静态嵌入 Manager 时，直接引用实现，按目标开启静态 feature，再在 `static_cores.rs` 注册 Rust query。
-2. 在根目录 [`Cargo.toml`](../../Cargo.toml) 的 `[workspace.dependencies]` 里新增或更新 fork 的 `git` URL 和完整 `rev`。`build/cores.toml` 管理产品元数据，包括 ID、许可和声明、目标支持、静态嵌入及外部核心的上游身份与发布序号。`adapter_licenses` 的路径相对于 fork 根目录，`licenses` 的路径相对于 ShinkiEMU 根目录。
+1. 参考现有实现在 `Source/Cores/<id>/` 添加入口 crate。自研 Rust 核心通过路径依赖引用实现，由入口 `cdylib` 导出 ABI query；Rust fork 继承工作区依赖，按需开启独立构建用的导出 feature。原生 adapter 由构建脚本提供库。已弃用的 `static-cmvs` 和 `static-adv32` 只用于本地兼容构建，正式打包不接受这两个 feature。
+2. 在根目录 [`Cargo.toml`](../../Cargo.toml) 的 `[workspace.dependencies]` 里新增或更新 fork 的 `git` URL 和完整 `rev`。`build/cores.toml` 管理核心 ID、许可和声明、目标支持，以及外部核心的上游身份与发布序号。`adapter_licenses` 的路径相对于 fork 根目录，`licenses` 的路径相对于 ShinkiEMU 根目录。
 3. 不加 `--locked` 运行一次 `cargo metadata --format-version 1`，更新 [`Cargo.lock`](../../Cargo.lock)。检查差异是否与本次新增或调整的提交一致，不批量更新无关依赖。将 manifest 和锁文件一起提交。日常构建使用 `--locked`。
 
 **每个外部核心的公开源码就是 `Cargo.lock` 记录的公开 fork 提交。** 发包前要确认公众可以获取该提交。自研核心的源码在 ShinkiEMU 的发布提交中。

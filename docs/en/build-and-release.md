@@ -172,7 +172,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-Use [`build/cores.toml`](../../build/cores.toml) to distinguish standalone `supported_targets`, `static_manager_targets`, `ios_framework` and explicit blocks. A build row is not a gameplay compatibility result. Android standalone packages only become installable through a verified `android_dynamic` policy. iOS uses bundled cores and OHOS includes Musica; neither installs downloaded cores. `publish_blocked` governs distribution separately from build support.
+The default Manager loads separate core binaries. Android admits standalone ZIPs under a verified `android_dynamic` policy. iOS loads signed `ios_framework` cores from the app; OHOS loads the separate Musica library from the signed HAP. Neither iOS nor OHOS installs downloaded cores. See [`build/cores.toml`](../../build/cores.toml) for target support and `publish_blocked` for distribution restrictions. A build row is not a gameplay compatibility result.
 
 ### Compile-in stores
 
@@ -180,8 +180,8 @@ Manager enables `store-steam`, `store-dlsite` and `store-dmm` by default. For St
 
 ## Add or update a core pin
 
-1. For a standalone library, add an entry crate under `Source/Cores/<id>/`, following the closest existing entry. An in-tree Rust entry uses a path dependency and exposes the ABI query through a `cdylib`; a Rust fork entry inherits the workspace dependency and enables its standalone export feature if needed. Native adapters supply the library through a build script. For static Manager integration, depend directly on the implementation with target-specific static features and register its Rust query in `static_cores.rs`.
-2. Declare or update the fork's `git` URL and full `rev` in root [`Cargo.toml`](../../Cargo.toml) under `[workspace.dependencies]`. `build/cores.toml` holds product metadata: IDs, licenses and notices, target support, static embedding and external upstream attribution/release sequence. `adapter_licenses` paths are relative to the fork root; `licenses` paths are relative to ShinkiEMU.
+1. Add an entry crate under `Source/Cores/<id>/`, following the closest existing entry. An in-tree Rust entry uses a path dependency and exposes the ABI query through a `cdylib`; a Rust fork entry inherits the workspace dependency and enables its standalone export feature if needed. Native adapters supply the library through a build script. The deprecated `static-cmvs` and `static-adv32` Manager features are for local compatibility only; release packaging rejects both.
+2. Declare or update the fork's `git` URL and full `rev` in root [`Cargo.toml`](../../Cargo.toml) under `[workspace.dependencies]`. `build/cores.toml` holds product metadata: IDs, licenses and notices, target support and external upstream attribution/release sequence. `adapter_licenses` paths are relative to the fork root; `licenses` paths are relative to ShinkiEMU.
 3. Run `cargo metadata --format-version 1` without `--locked` once to refresh [`Cargo.lock`](../../Cargo.lock). Review the lockfile diff for the intended additions or pin changes; avoid a blanket dependency update. Commit the manifest and lockfile together. Use `--locked` for normal builds.
 
 For each external core, **the published source is the public fork commit recorded in `Cargo.lock`**. Make that commit publicly reachable before publishing packages. In-tree cores' source is the ShinkiEMU release commit.

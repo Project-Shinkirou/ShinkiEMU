@@ -16,10 +16,10 @@ External cores retain their fork history, upstream attribution and native implem
 
 Cargo build scripts drive native CMake builds and supply the resulting libraries and runtime inputs to packaging. Rust standalone cores build through their entry crates. Ren’Py packages need the matching official runtime and `Resources/` alongside the library.
 
-Artemis 在所有平台统一使用 Luau，Android 静态嵌入时与 Manager 共用运行时。CPAL 保留产品的原生音频修复；mlua 0.12.2 已包含精确数字分类，使用 crates.io 版本，删除旧回补。不得把所有 fork 合并成一个 workspace-wide all-features 构建。
+Artemis 在所有平台都使用 Luau，并以独立核心包接入 Android Manager。CPAL 保留产品的原生音频修复；crates.io 上的 mlua 0.12.2 已包含精确数字分类，取代了旧回补。按组件构建，不对整个工作区启用全部 feature。
 
-Artemis uses Luau on every platform and shares Manager's runtime when statically embedded on Android. CPAL retains the product's native-audio fixes. Registry mlua 0.12.2 includes exact numeric classification and replaces the old vendored backport.
+Artemis uses Luau on every platform and integrates with Android Manager as a standalone core package. CPAL retains the product's native-audio fixes. Registry mlua 0.12.2 includes exact numeric classification and replaces the old vendored backport.
 
-The iOS Manager packages each `ios_framework` core from `build/cores.toml` as an independently signed Framework. Static registration remains for the other Manager targets listed under `static_manager_targets`; `Source/Manager/shinki-emu-manager/src/static_cores.rs` is the compiled registration table. The root patch for Ruffle's `rust-flash-lso` uses `Project-Shinkirou/rust-flash-lso@5573168345ef2d92d01ee0766bab29acf89584c0` (`shinki`), preserving upstream `61b717248aae853a4f5d8a103eba704268d286c8` with only its exact thiserror constraint relaxed to compatible 2.x.
+The iOS Manager packages each `ios_framework` core from `build/cores.toml` as an independently signed Framework. Default Manager builds have no linked core entrypoints; only the deprecated local `static-cmvs` and `static-adv32` features enable them. The root patch for Ruffle's `rust-flash-lso` uses `Project-Shinkirou/rust-flash-lso@5573168345ef2d92d01ee0766bab29acf89584c0` (`shinki`), preserving upstream `61b717248aae853a4f5d8a103eba704268d286c8` with only its exact thiserror constraint relaxed to compatible 2.x.
 
 构建命令见[中文文档](../docs/zh-cn/build-and-release.md) / [English guide](../docs/en/build-and-release.md) / [日本語ガイド](../docs/ja/build-and-release.md)，格式与行为见[核心资料](../docs/zh-cn/index.md)。许可和分发义务见[第三方声明](../THIRD_PARTY_NOTICES.md)，历史来源见 [ORIGINS](../ORIGINS.md)。构建成功不代表附件已获分发许可或游戏已验证可玩。

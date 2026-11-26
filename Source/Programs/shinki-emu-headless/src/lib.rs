@@ -47,7 +47,7 @@ impl Error {
 
 #[derive(Debug, Clone, Args)]
 pub struct Arguments {
-    /// Core ZIP, unpacked core directory, library path, or embedded inventory ID.
+    /// Path to a core ZIP, unpacked core directory or library. Linked IDs require a legacy host inventory.
     #[arg(long)]
     pub core: String,
     /// Source game. Copied into an isolated temporary directory before open.

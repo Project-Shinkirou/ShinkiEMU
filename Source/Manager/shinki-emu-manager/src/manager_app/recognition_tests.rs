@@ -660,6 +660,21 @@ mod native_consumer {
     }
 }
 
+#[cfg(all(windows, not(feature = "static-cmvs")))]
+#[test]
+fn default_manager_requires_an_installed_cmvs_package_for_activation() {
+    let root = tempfile::tempdir().unwrap();
+    let game = root.path().join("game");
+    fs::create_dir(&game).unwrap();
+    fs::write(game.join("resource.bin"), ps2a()).unwrap();
+    let mut app = open(&root.path().join("manager"));
+    let id = import(&mut app, &game);
+    app.set_game_emulator(&id, "shinki.emu.cmvs").unwrap();
+    assert!(!app.model().unwrap().selection.game.launchable);
+    assert_eq!(app.launch(&id).unwrap_err(), "SHINKI_EMU_CORE_MISSING");
+    assert!(app.registry.descriptors().next().is_none());
+}
+
 #[cfg(all(windows, feature = "static-cmvs"))]
 #[test]
 fn optional_static_cmvs_is_available_without_a_dll_and_only_activated_explicitly() {
