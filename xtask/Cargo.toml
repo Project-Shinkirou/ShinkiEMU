@@ -25,6 +25,7 @@ sha2 = "0.11.1"
 resvg = "0.48.1"
 shinki-emu-build = { path = "../Source/Tools/shinki-emu-build" }
 shinki-emu-metadata = { path = "../Source/Providers/shinki-emu-metadata" }
+# Direct dependencies named *-android-host enroll host-only stagers in package-name order.
 shinki-kirikiroid2-web-android-host.workspace = true
 shinki-krkr2-android-host.workspace = true
 mlua.workspace = true
@@ -33,3 +34,6 @@ tempfile = "3.27.0"
 toml = "1.1.8"
 walkdir = "2.5.0"
 zip = { version = "9.1.0", default-features = false, features = ["deflate"] }
+
+[build-dependencies]
+toml = "1.1.8"

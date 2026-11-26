@@ -8,29 +8,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+type StageHost = fn(&Path) -> Result<(), Box<dyn std::error::Error>>;
+const HOSTS: &[(&str, StageHost, &str)] = include!(concat!(env!("OUT_DIR"), "/android_hosts.rs"));
+
 pub(super) fn inputs(
     inv: &Inventory,
     targets: &[(&str, &str)],
     scratch: &Path,
 ) -> Result<Vec<(PathBuf, String)>> {
-    type StageHost = fn(&Path) -> Result<(), Box<dyn std::error::Error>>;
-    use shinki_kirikiroid2_web_android_host as kiri_web;
-    use shinki_krkr2_android_host as krkr2;
-    let hosts: [(&str, StageHost, &str); 2] = [
-        (
-            kiri_web::PLUGIN_ID,
-            kiri_web::stage,
-            kiri_web::ACTIVITY_ADAPTER_CLASS,
-        ),
-        (
-            krkr2::PLUGIN_ID,
-            krkr2::stage,
-            krkr2::ACTIVITY_ADAPTER_CLASS,
-        ),
-    ];
     let mut inputs = Vec::new();
-    let mut classes = Vec::with_capacity(hosts.len());
-    for (id, stage, class) in hosts {
+    let mut classes = Vec::with_capacity(HOSTS.len());
+    for &(id, stage, class) in HOSTS {
         let core = inv.core(id)?;
         if !targets.iter().any(|(triple, _)| {
             core.supported_targets
@@ -131,6 +119,47 @@ fn files(root: &Path) -> Result<Vec<(PathBuf, String)>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires the pinned upstream Java source archives"]
+    fn android_host_stages_pinned_adapters_in_lifecycle_order() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root).unwrap();
+        let scratch = crate::temporary::directory().unwrap();
+        let entries = inputs(&inv, &super::super::ANDROID_TARGETS, scratch.path()).unwrap();
+
+        let input = |target: &str| {
+            let (source, _) = entries
+                .iter()
+                .find(|(_, name)| name == target)
+                .unwrap_or_else(|| panic!("missing host input {target}"));
+            source
+        };
+        for path in [
+            "android-host/kirikiroid2-web/java/org/shinkirou/krkr/AndroidActivityAdapter.java",
+            "android-host/kirikiroid2-web/java/com/enhance/gameservice/IGameTuningService.aidl",
+            "android-host/kirikiroid2-web/libs/com.android.vending.expansion.zipfile.jar",
+            "assets/licenses/kirikiroid2-web/android-java/SDL-LICENSE.txt",
+            "android-host/krkr2/java/org/shinkirou/krk2/AndroidActivityAdapter.java",
+            "android-host/krkr2/java/com/krkr2xx/gameservice/IGameTuningService.aidl",
+            "android-host/krkr2/libs/com.android.vending.expansion.zipfile.jar",
+            "assets/licenses/krkr2/android-java/LICENSE_cocos2d-x.txt",
+        ] {
+            assert!(fs::metadata(input(path)).unwrap().len() > 0, "{path}");
+        }
+
+        let registry = fs::read_to_string(input(
+            "android-host/_registry/java/org/shinkirou/shinkiemu/AndroidActivityAdapters.java",
+        ))
+        .unwrap();
+        let kiri_web = registry
+            .find("new org.shinkirou.krkr.AndroidActivityAdapter()")
+            .unwrap();
+        let krkr2 = registry
+            .find("new org.shinkirou.krk2.AndroidActivityAdapter()")
+            .unwrap();
+        assert!(kiri_web < krkr2);
+    }
 
     #[test]
     fn android_host_rejects_native_files_in_java_input_tree() {
