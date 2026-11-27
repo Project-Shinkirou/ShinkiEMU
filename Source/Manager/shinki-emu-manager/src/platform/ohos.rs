@@ -535,10 +535,10 @@ pub(super) fn bundled_resource_dir() -> Option<PathBuf> {
 }
 
 pub mod bundled {
-    use super::{CStr, CString, Path, PathBuf, c_void};
+    use super::{CStr, Path, PathBuf, c_void};
     use crate::platform::ohos_bundle_path;
     use shinki_emu_manager_core::LoadedFamilyPlugin;
-    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    use std::os::unix::ffi::OsStringExt;
 
     const CORE: Option<(&str, &str)> = include!(concat!(env!("OUT_DIR"), "/ohos-hap-core.rs"));
     const BUNDLE_CODE: &str = "/data/storage/el1/bundle";
@@ -578,32 +578,12 @@ pub mod bundled {
 
     pub fn load(plugin_id: &str) -> Result<LoadedFamilyPlugin, String> {
         let path = library(plugin_id).ok_or("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
-        let name = CString::new(path.as_os_str().as_bytes())
-            .map_err(|_| "SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
         // An absolute installed path skips basename search (env, RPATH and
         // inherited namespaces). The caller's existing namespace still applies.
         tracing::info!(event = "shinki.emu.ohos.core_open", plugin_id, path = %path.display());
-        let module = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
-        if module.is_null() {
-            let error = unsafe { libc::dlerror() };
-            if error.is_null() {
-                return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN".into());
-            }
-            let error = unsafe { CStr::from_ptr(error) };
-            return Err(format!(
-                "SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {}",
-                error.to_string_lossy()
-            ));
-        }
-        // As in LoadedFamilyPlugin::load, the image is resident through process
-        // exit, including when ABI initialization or descriptor checks fail.
-        let symbol = unsafe { libc::dlsym(module, shinki_emu_abi::QUERY_SYMBOL.as_ptr().cast()) };
-        if symbol.is_null() || image_path(symbol).as_deref() != Some(path.as_path()) {
-            return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN".into());
-        }
-        let query = unsafe { std::mem::transmute::<*mut c_void, shinki_emu_abi::Query>(symbol) };
-        let provider =
-            unsafe { LoadedFamilyPlugin::from_query(query) }.map_err(|error| error.to_string())?;
+        let provider = LoadedFamilyPlugin::load_ohos_bundled(&path, |address| {
+            image_path(address).as_deref() == Some(path.as_path())
+        })?;
         if provider.manager_descriptor().plugin_id != plugin_id {
             return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());
         }

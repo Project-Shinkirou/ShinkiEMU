@@ -1,5 +1,5 @@
 use super::*;
-use crate::static_core_catalog::CoreCatalogEntry;
+use crate::core_catalog::CoreCatalogEntry;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -8,7 +8,7 @@ pub struct DeclaredMatch {
     pub plugin_ids: Vec<String>,
 }
 
-/// Effective declarations from installed or statically linked official cores.
+/// Effective declarations from validated core packages.
 /// The Manager validates the package schema and supplies the canonical key.
 #[derive(Default)]
 pub struct DeclaredRules {

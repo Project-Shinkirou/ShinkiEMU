@@ -94,7 +94,7 @@ fn unrecognized_game_offers_installed_official_cores_without_picking_or_probing(
     let Manual { mut app, musica, rfvp } = unrecognized(root.path(), true, None);
     let ids = choice_ids(&app);
     assert!(ids.contains(&MUSICA.to_owned()) && ids.contains(&RFVP.to_owned()));
-    assert!(ids.iter().all(|id| shinki_emu_manager_core::static_core_catalog::lookup(id).is_some() && app.plugin_available(id)));
+    assert!(ids.iter().all(|id| shinki_emu_manager_core::core_catalog::lookup(id).is_some() && app.plugin_available(id)));
     assert!(!app.candidates.contains_key(GAME));
     let model = app.model().unwrap();
     assert_eq!(model.selection.emulator_choices.len(), ids.len());
@@ -106,7 +106,7 @@ fn unrecognized_game_offers_installed_official_cores_without_picking_or_probing(
 
     // Outside the eligible official set: unknown third-party, catalogued but not installed.
     assert_eq!(app.set_game_emulator(GAME, "third.party.core").unwrap_err(), "SHINKI_EMU_EMULATOR_SELECTION_INVALID");
-    let missing = shinki_emu_manager_core::static_core_catalog::entries().iter()
+    let missing = shinki_emu_manager_core::core_catalog::entries().iter()
         .find(|entry| !app.plugin_available(entry.plugin_id)).expect("a catalogued core that is not installed");
     assert_eq!(app.set_game_emulator(GAME, missing.plugin_id).unwrap_err(), "SHINKI_EMU_EMULATOR_SELECTION_INVALID");
 
@@ -129,7 +129,6 @@ fn unrecognized_game_offers_installed_official_cores_without_picking_or_probing(
 fn a_single_eligible_core_is_listed_but_never_auto_picked() {
     let root = tempfile::tempdir().unwrap();
     let Manual { mut app, .. } = unrecognized(root.path(), false, None);
-    #[cfg(not(feature = "static-cmvs"))]
     assert_eq!(choice_ids(&app), [MUSICA]);
     assert!(!app.candidates.contains_key(GAME));
     let model = app.model().unwrap();
@@ -279,9 +278,6 @@ fn without_an_eligible_core_the_unavailable_state_has_no_picker() {
     app.library.set_app_state(&format!("recognition:{GAME}"), &Vec::<shinki_emu_manager_core::detection::EngineDetection>::new()).unwrap();
     app.set_probe_candidates(GAME, Vec::new()).unwrap();
     app.selected_case_id = Some(GAME.into());
-    if !shinki_emu_manager::static_cores::STATIC_CORES.is_empty() {
-        return;
-    }
     assert!(!app.probe_choices.contains_key(GAME));
     let model = app.model().unwrap();
     assert!(model.selection.emulator_choices.is_empty());

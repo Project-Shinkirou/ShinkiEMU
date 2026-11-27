@@ -56,7 +56,7 @@ pub(super) fn core_platform() -> String {
 
 /// Online core install and update in this build. The Cargo feature
 /// `no-core-download` turns it off; iOS and OHOS never download cores.
-/// Which plugins a download may stage stays with `allows_core_packages`.
+/// Plugin-specific admission is checked by `recognition`.
 pub(super) const fn online_core_downloads() -> bool {
     !cfg!(any(feature = "no-core-download", target_os = "ios", target_env = "ohos"))
 }
@@ -65,7 +65,8 @@ fn require_online_core_downloads() -> Result<(), String> {
     if online_core_downloads() { Ok(()) } else { Err("SHINKI_EMU_CORE_DOWNLOAD_DISABLED".into()) }
 }
 
-pub(super) fn embedded_identity(
+#[cfg(target_os = "ios")]
+pub(super) fn bundled_core_identity(
     plugin_id: &str,
 ) -> Option<&'static shinki_emu_metadata::CoreIdentity> {
     static IDENTITIES: std::sync::LazyLock<BTreeMap<String, shinki_emu_metadata::CoreIdentity>> =
@@ -73,26 +74,15 @@ pub(super) fn embedded_identity(
             let identities: BTreeMap<String, shinki_emu_metadata::CoreIdentity> =
                 serde_json::from_str(include_str!(concat!(
                     env!("OUT_DIR"),
-                    "/embedded-core-identities.json"
+                    "/ios-framework-core-identities.json"
                 )))
-                .expect("built core identities");
+                .expect("built iOS Framework core identities");
             for identity in identities.values() {
-                identity.validate().expect("valid embedded core identity");
+                identity.validate().expect("valid iOS Framework core identity");
             }
             identities
         });
     IDENTITIES.get(plugin_id)
-}
-
-pub(super) fn embedded_product_release(plugin_id: &str) -> Option<(&'static str, &'static str)> {
-    if !recognition::is_static(plugin_id)
-        || !shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
-            .is_some_and(|entry| entry.first_party)
-    {
-        return None;
-    }
-    let commit = env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT");
-    (!commit.is_empty()).then_some((shinki_emu_manager::version(), commit))
 }
 
 fn capability_label(capability: FamilyCapability) -> &'static str {
@@ -142,7 +132,7 @@ pub(super) fn latest_eligible_release<'a>(
         .iter()
         .filter(|entry| entry.plugin_id == plugin_id && release_matches_target(entry, platform))
         .filter(|entry| eligible(entry))
-        // Legacy provenance sorts ahead of SemVer. Rank only eligible releases.
+        // Rank only releases that meet the target's provenance and release policy.
         .max_by(|left, right| left.release_cmp(right))
 }
 
@@ -151,13 +141,9 @@ impl ShinkiEmuManagerController {
         core_directory(&self.data_dir)
     }
 
-    fn allows_core_packages(plugin_id: &str) -> bool {
-        recognition::supports_installed_packages(plugin_id)
-    }
-
     /// Highest released version of a core for this platform and ABI.
     pub(super) fn online_core(&self, plugin_id: &str) -> Option<&CoreCatalogEntry> {
-        if !Self::allows_core_packages(plugin_id) { return None; }
+        if !recognition::supports_installed_packages(plugin_id) { return None; }
         latest_eligible_release(
             &self.metadata_catalog.as_ref()?.cores.entries,
             plugin_id,
@@ -176,53 +162,28 @@ impl ShinkiEmuManagerController {
         &'a self,
         plugin_id: &str,
     ) -> (&'a str, Option<&'a shinki_emu_metadata::CoreIdentity>, Option<&'a str>) {
-        if let Some(core) = self.registry.installed().get(plugin_id) {
-            return (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref());
-        }
-        if let Some((version, source_commit)) = embedded_product_release(plugin_id) {
-            return (version, None, Some(source_commit));
-        }
-        ("", embedded_identity(plugin_id), None)
+        self.registry.installed().get(plugin_id).map_or(("", None, None), |core| {
+            (&core.manifest.version, core.manifest.identity.as_ref(), core.source_commit.as_deref())
+        })
     }
 
     /// Loaded, installed-but-unloaded, failed, pending and online-available cores.
     pub(super) fn cores_view(&self) -> Result<CoresViewModel, String> {
         let cores = self.cores_dir()?;
         let pending = core_package::pending_entries(&cores)?;
-        #[cfg(target_os = "android")]
-        let overlays: BTreeMap<_, _> = pending.iter()
-            .filter(|(_, kind)| **kind == PendingKind::Install)
-            .filter_map(|(stem, _)| {
-                let package = core_package::read_package(&cores.join(core_package::PENDING).join(stem)).ok()?.manifest;
-                (recognition::allows_installed_release(&package.plugin_id, &package.version, package.identity.as_ref())
-                    && recognition::is_static(&package.plugin_id)
-                    && !self.registry.installed().contains_key(&package.plugin_id))
-                    .then_some((package.plugin_id, stem))
-            })
-            .collect();
         let mut items = Vec::new();
         let mut listed_plugins = BTreeSet::new();
         let mut listed_stems = BTreeSet::new();
-        let mut ids: BTreeSet<String> = self.registry.installed().keys().cloned().collect();
-        ids.extend(shinki_emu_manager::static_cores::STATIC_CORES.iter().map(|(id, _)| (*id).to_owned()));
-        for id in ids {
-            let installed = self.registry.installed().get(&id);
-            let catalog = shinki_emu_manager_core::static_core_catalog::lookup(&id);
-            let native = self.registry.descriptor(&id);
-            let stem = installed
-                .filter(|core| {
-                    !core.bundled
-                        || !cfg!(any(target_os = "android", target_os = "ios", target_env = "ohos"))
-                })
-                .and_then(|core| core.library.parent()?.file_name()?.to_str())
-                .map(str::to_owned)
-                .unwrap_or_default();
-            #[cfg(target_os = "android")]
-            let stem = overlays.get(&id).map_or(stem, |stem| String::clone(stem));
-            let bundled = installed.map_or_else(
-                || recognition::is_static(&id),
-                |core| core.bundled || (!cfg!(target_os = "android") && recognition::is_static(&id)),
-            );
+        for (id, installed) in self.registry.installed() {
+            let catalog = shinki_emu_manager_core::core_catalog::lookup(id);
+            let native = self.registry.descriptor(id);
+            let bundled = installed.bundled;
+            let stem = if bundled && cfg!(any(target_os = "android", target_os = "ios", target_env = "ohos")) {
+                String::new()
+            } else {
+                installed.library.parent().and_then(|dir| dir.file_name()?.to_str())
+                    .map(str::to_owned).unwrap_or_default()
+            };
             let pending_kind = pending.get(&stem);
             let rejected_stage = cfg!(target_os = "android")
                 && pending_kind == Some(&PendingKind::Install)
@@ -230,13 +191,15 @@ impl ShinkiEmuManagerController {
             let state = match pending_kind.filter(|_| !rejected_stage) {
                 Some(PendingKind::Remove) => "pending-removal",
                 Some(PendingKind::Install) => "pending-update",
-                None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id) => "loading",
-                None if self.native_failures.contains_key(&id) => "failed",
+                None if self.native_action.as_ref().is_some_and(|action| action.plugin_id() == id.as_str()) => "loading",
+                None if self.native_failures.contains_key(id) => "failed",
                 None if native.is_some() => "loaded",
                 None => "installed",
             };
-            let (version, identity, source_commit) = self.core_release(&id);
-            let update_version = self.downloadable_core(&id).filter(|entry| {
+            let version = &installed.manifest.version;
+            let identity = installed.manifest.identity.as_ref();
+            let source_commit = installed.source_commit.as_deref();
+            let update_version = self.downloadable_core(id).filter(|entry| {
                 matches!(state, "installed" | "loaded") && entry.is_update_for(version, identity)
             }).map(|entry| core_card_version(&entry.version, entry.identity.as_ref())).unwrap_or_default();
             listed_plugins.insert(id.clone());
@@ -253,11 +216,11 @@ impl ShinkiEmuManagerController {
                 capabilities: native.map(|descriptor| descriptor.capabilities.iter().copied().map(capability_label).map(str::to_owned).collect()).unwrap_or_default(),
                 state: state.into(),
                 source: if bundled { "bundled" } else { "user" }.into(),
-                message: self.native_failures.get(&id).cloned().unwrap_or_default(),
+                message: self.native_failures.get(id).cloned().unwrap_or_default(),
                 removable: !stem.is_empty() && !bundled && !rejected_stage
                     && matches!(state, "installed" | "loaded" | "failed"),
                 update_version,
-                download: self.download_view(&id),
+                download: self.download_view(id),
                 stem,
             });
         }

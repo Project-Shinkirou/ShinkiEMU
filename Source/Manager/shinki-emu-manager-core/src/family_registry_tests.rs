@@ -7,7 +7,7 @@ use crate::{
 use std::path::Path;
 
 #[test]
-fn static_queries_use_same_multi_probe_policy() {
+fn multiple_provider_matches_require_a_choice() {
     let mut registry = FamilyProviderRegistry::new();
     let mut first = Fixture::new("a", "fvp", "fvp.hcb");
     first.confidence = 8000;
@@ -31,7 +31,7 @@ fn static_queries_use_same_multi_probe_policy() {
 }
 
 #[test]
-fn duplicate_static_id_disables_both_queries() {
+fn duplicate_provider_id_disables_both_providers() {
     let mut registry = FamilyProviderRegistry::new();
     registry
         .register_provider(test_native::install(

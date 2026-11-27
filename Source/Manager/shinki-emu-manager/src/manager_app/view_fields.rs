@@ -7,7 +7,7 @@ impl ShinkiEmuManagerController {
     }
 
     pub(super) fn emulator_label(&self, plugin_id: &str) -> String {
-        let name = shinki_emu_manager_core::static_core_catalog::lookup(plugin_id)
+        let name = shinki_emu_manager_core::core_catalog::lookup(plugin_id)
             .map_or(plugin_id, |entry| entry.display_name);
         let (version, identity, source_commit) = self.core_release(plugin_id);
         let version = identity.map_or_else(

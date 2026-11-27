@@ -337,47 +337,39 @@ fn activate(
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
     let catalog = recognition::supported_core(plugin_id)?;
     if registry.descriptor(plugin_id).is_some() { return Ok(()); }
-    let provider = match recognition::core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")? {
-        #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-        recognition::CoreSource::Static(query) => unsafe {
-            shinki_emu_manager_core::LoadedFamilyPlugin::from_query(query)
-        },
-        recognition::CoreSource::Package(core) => {
-            #[cfg(target_os = "android")]
-            {
-                let policy = catalog.android_dynamic.ok_or("SHINKI_EMU_CORE_UNSUPPORTED_TARGET")?;
-                if !android_core_library(&core.library) {
-                    return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
-                }
-                // Package dependencies use Bionic's DT_RUNPATH ($ORIGIN).
-                // Packaged cores locate their own resources beside the library.
-                let (vm, application) = crate::platform::android::core_application_context()?;
-                // SAFETY: the host holds these handles for the process lifetime.
-                unsafe {
-                    shinki_emu_manager_core::LoadedFamilyPlugin::load_android(
-                        &core.library, vm, application, policy.requires_context,
-                    )
-                }
-            }
-            #[cfg(all(not(target_os = "android"), not(target_env = "ohos")))]
-            {
-                // iOS code signing controls executable mappings. Bind this path
-                // to the exact binary recorded by the app seal before dlopen.
-                #[cfg(target_os = "ios")]
-                crate::core_package::verify_bundled_executable(&core.manifest, &core.library)?;
-                shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
-            }
-            #[cfg(target_env = "ohos")]
-            {
-                if !core.bundled {
-                    return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
-                }
-                Ok::<_, shinki_emu_manager_core::FamilyLoadError>(
-                    crate::platform::ohos::bundled::load(plugin_id)?,
-                )
-            }
+    let core = recognition::installed_core(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
+    #[cfg(target_os = "android")]
+    let provider = {
+        let policy = catalog.android_dynamic.ok_or("SHINKI_EMU_CORE_UNSUPPORTED_TARGET")?;
+        if !android_core_library(&core.library) {
+            return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
         }
-    }.map_err(|error| error.to_string())?;
+        // Package dependencies use Bionic's DT_RUNPATH ($ORIGIN).
+        // Packaged cores locate their own resources beside the library.
+        let (vm, application) = crate::platform::android::core_application_context()?;
+        // SAFETY: the host holds these handles for the process lifetime.
+        unsafe {
+            shinki_emu_manager_core::LoadedFamilyPlugin::load_android(
+                &core.library, vm, application, policy.requires_context,
+            )
+        }.map_err(|error| error.to_string())?
+    };
+    #[cfg(all(not(target_os = "android"), not(target_env = "ohos")))]
+    let provider = {
+        // iOS code signing controls executable mappings. Bind this path
+        // to the exact binary recorded by the app seal before dlopen.
+        #[cfg(target_os = "ios")]
+        crate::core_package::verify_bundled_executable(&core.manifest, &core.library)?;
+        shinki_emu_manager_core::LoadedFamilyPlugin::load(&core.library)
+            .map_err(|error| error.to_string())?
+    };
+    #[cfg(target_env = "ohos")]
+    let provider = {
+        if !core.bundled {
+            return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET".into());
+        }
+        crate::platform::ohos::bundled::load(plugin_id)?
+    };
     let descriptor = provider.manager_descriptor();
     if descriptor.plugin_id != plugin_id || catalog.family_id != descriptor.family_id {
         return Err("SHINKI_EMU_CORE_PACKAGE_PLUGIN_MISMATCH".into());

@@ -1,19 +1,12 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-#[path = "../../../../build/adv32_candidate.rs"]
-mod adv32_candidate;
 #[path = "../../../../build/android_dynamic.rs"]
 mod android_dynamic;
 
 /// Build-time projection of the authoritative inventories. No core manifests or
 /// source checkouts are opened, and publication restrictions do not affect use.
-pub fn generate(
-    cores: &str,
-    targets: &str,
-    target: &str,
-    with_adv32: bool,
-) -> Result<String, String> {
+pub fn generate(cores: &str, targets: &str, target: &str) -> Result<String, String> {
     let cores: toml::Value =
         toml::from_str(cores).map_err(|error| format!("core inventory: {error}"))?;
     let targets: toml::Value =
@@ -57,14 +50,10 @@ pub fn generate(
         {
             return Err(format!("invalid family_id or display_name for {plugin_id}"));
         }
-        let embedded = enabled
-            && (contains_target(core, "static_manager_targets", target)?
-                || adv32_candidate::linked(core, target, with_adv32));
-        let standalone = enabled && contains_target(core, "supported_targets", target)?;
-        let supported = embedded || standalone;
+        let supported = enabled && contains_target(core, "supported_targets", target)?;
         let first_party = core.get("attribution").is_none();
         let policy = android_dynamic::parse(core)?;
-        let android_dynamic = if standalone && android_dynamic::TARGETS.contains(&target) {
+        let android_dynamic = if supported && android_dynamic::TARGETS.contains(&target) {
             policy.map(|(minimum, requires_context)| {
                 let minimum = match minimum {
                     android_dynamic::MinimumRelease::Sequence(sequence) =>
@@ -78,17 +67,8 @@ pub fn generate(
             None
         };
         let android_dynamic = android_dynamic.as_deref().unwrap_or("None");
-        let embedded_recognition_json = if embedded {
-            core.get("recognition")
-                .map(serde_json::to_string)
-                .transpose()
-                .map_err(|error| format!("recognition for {plugin_id}: {error}"))?
-        } else {
-            None
-        };
-        let recognition = embedded_recognition_json.as_deref().unwrap_or("[]");
         writeln!(output,
-            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, standalone: {standalone}, android_dynamic: {android_dynamic}, embedded: {embedded}, embedded_recognition_json: {recognition:?} }},"
+            "    CoreCatalogEntry {{ plugin_id: {plugin_id:?}, family_id: {family_id:?}, display_name: {display_name:?}, first_party: {first_party}, supported: {supported}, android_dynamic: {android_dynamic} }},"
         ).expect("String write");
     }
     if ids.is_empty() {
@@ -113,16 +93,7 @@ fn array<'a>(value: &'a toml::Value, key: &str) -> Result<&'a Vec<toml::Value>, 
 }
 
 fn contains_target(value: &toml::Value, key: &str, target: &str) -> Result<bool, String> {
-    let Some(values) = value.get(key) else {
-        return if key == "static_manager_targets" {
-            Ok(false)
-        } else {
-            Err(format!("missing array field {key}"))
-        };
-    };
-    let values = values
-        .as_array()
-        .ok_or_else(|| format!("invalid target list {key}"))?;
+    let values = array(value, key)?;
     let mut matched = false;
     for value in values {
         let value = value

@@ -176,6 +176,37 @@ impl LoadedFamilyPlugin {
         Self::load_with(path.as_ref(), |_| Ok(()))
     }
 
+    /// Load a signed HAP core from its installed path. Verify the resolved query
+    /// belongs to that exact image before invoking any core code.
+    #[cfg(target_env = "ohos")]
+    pub fn load_ohos_bundled(
+        path: &Path,
+        query_from_bundle: impl FnOnce(*const std::ffi::c_void) -> bool,
+    ) -> Result<Self, String> {
+        use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
+        use std::{ffi::c_void, os::unix::ffi::OsStrExt};
+
+        if !path.is_absolute() || path.as_os_str().as_bytes().contains(&0) {
+            return Err("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN".into());
+        }
+        // Keep the module resident even when the symbol or ABI is rejected.
+        let library = ManuallyDrop::new(
+            unsafe { Library::open(Some(path), RTLD_NOW | RTLD_LOCAL) }
+                .map_err(|error| format!("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {error}"))?,
+        );
+        let invalid = "SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN";
+        let symbol = unsafe { library.get::<*mut c_void>(abi::QUERY_SYMBOL) }.map_err(|_| invalid)?;
+        let address = *symbol;
+        if address.is_null() || !query_from_bundle(address.cast_const()) {
+            return Err(invalid.into());
+        }
+        let query = unsafe { std::mem::transmute::<*mut c_void, abi::Query>(address) };
+        let mut core = unsafe { Self::from_query_with(query, |_| Ok(())) }
+            .map_err(|error| error.to_string())?;
+        core.location = path.to_owned();
+        Ok(core)
+    }
+
     /// Load an installed Android core and supply its private native module
     /// with the host process's Java context before ABI initialization.
     ///
@@ -230,9 +261,12 @@ impl LoadedFamilyPlugin {
         core.location = path.to_owned();
         Ok(core)
     }
+
+    #[cfg(any(test, feature = "test-fixtures"))]
+    #[doc(hidden)]
     /// # Safety
-    /// The query and every function/storage it returns must remain valid until process exit.
-    pub unsafe fn from_query(query: abi::Query) -> Result<Self, FamilyLoadError> {
+    /// The test query and its returned functions and storage must remain valid until process exit.
+    pub unsafe fn from_test_query(query: abi::Query) -> Result<Self, FamilyLoadError> {
         unsafe { Self::from_query_with(query, |_| Ok(())) }
     }
 

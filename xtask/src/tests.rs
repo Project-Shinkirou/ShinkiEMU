@@ -118,7 +118,6 @@ fn result(temp: &Path) -> BuildArtifact {
                 dest: "licenses/fixture/LICENSE".into(),
             }],
         }),
-        embedded_core_builds: vec![],
         native_inputs: vec![],
         source_commit: Some("a".repeat(40)),
         features: vec![],

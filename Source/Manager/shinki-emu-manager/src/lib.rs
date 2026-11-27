@@ -5,7 +5,6 @@ pub mod modal_service;
 pub mod platform;
 pub mod self_update;
 pub mod startup;
-pub mod static_cores;
 pub mod window_service;
 
 extern crate self as shinki_emu_manager;

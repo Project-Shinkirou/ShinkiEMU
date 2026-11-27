@@ -57,7 +57,9 @@ pub mod runtime;
 #[cfg(feature = "device-audio")]
 mod native_audio;
 #[cfg(feature = "device-audio")]
-pub use native_audio::{NativeAudioOutput, NativeAudioProgress, NativeAudioProgressReader};
+pub use native_audio::{NativeAudioOutput, NativeAudioProgressReader};
+#[cfg(any(feature = "device-audio", all(feature = "runtime", target_env = "ohos")))]
+pub use runtime::audio::NativeAudioProgress;
 
 #[cfg(all(target_os = "android", feature = "device-audio"))]
 pub mod android_audio;

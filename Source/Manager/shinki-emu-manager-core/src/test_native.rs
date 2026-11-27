@@ -1,6 +1,7 @@
 //! Native C-table fixture for host lifecycle and policy tests.
 use parking_lot::Mutex;
 use shinki_emu_abi as abi;
+#[cfg(test)]
 use shinki_emu_manager_core::LoadedFamilyPlugin;
 use std::{
     cell::RefCell,
@@ -95,14 +96,16 @@ fn record(calls: &Mutex<Vec<Call>>, name: &'static str, key: String) {
         key,
     });
 }
+#[cfg(test)]
 pub fn install(slot: usize, value: Fixture) -> LoadedFamilyPlugin {
     try_install(slot, value).unwrap()
 }
+#[cfg(test)]
 pub fn try_install(
     slot: usize,
     value: Fixture,
 ) -> Result<LoadedFamilyPlugin, shinki_emu_manager_core::FamilyLoadError> {
-    unsafe { LoadedFamilyPlugin::from_query(prepare_query(slot, value)) }
+    unsafe { LoadedFamilyPlugin::from_test_query(prepare_query(slot, value)) }
 }
 
 /// Install an available native entry without querying or initializing it.

@@ -788,10 +788,14 @@ impl Vm {
         self.wait == Wait::Finished
     }
 
-    pub(crate) fn set_paused(&mut self, paused: bool) {
+    pub(crate) fn set_paused(&mut self, paused: bool) -> Result<()> {
         if let Some(audio) = &self.audio {
             audio.set_paused(paused);
         }
+        if paused {
+            self.flush_pending_saves()?;
+        }
+        Ok(())
     }
 
     pub(crate) fn set_skip_disc_check(&mut self, skip: bool) {
@@ -6601,7 +6605,7 @@ mod tests {
     }
 
     #[test]
-    fn showing_a_registered_picture_and_leaving_a_scene_unlocks_both_galleries() {
+    fn pausing_preserves_gallery_progress_from_the_scene() {
         let root = tempfile::tempdir().unwrap();
         let data = root.path().join("AdvData");
         let scripts = data.join("MES");
@@ -6644,7 +6648,8 @@ mod tests {
         let mut vm = Vm::new(Game::find(root.path()).unwrap().unwrap(), None).unwrap();
         vm.advance_timeline(Duration::ZERO, &[]).unwrap();
         assert_eq!(vm.compose().unwrap().get_pixel(0, 0).0, [35, 55, 85, 255]);
-        vm.flush_pending_saves().unwrap();
+        assert_eq!(&fs::read(&prefs).unwrap()[784..786], &[0, 0]);
+        vm.set_paused(true).unwrap();
         let written = fs::read(prefs).unwrap();
         assert_eq!(&written[784..786], &[1, 1]);
         assert_eq!(written[1984], 1);

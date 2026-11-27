@@ -48,8 +48,8 @@ pub(super) struct MoviePlayer {
     fps_den: u32,
     audio_frames: f64,
     audio_rate: u32,
-    /// Total output frames the audio worker reported for slot 2 so far.
-    clock_frames_written: u64,
+    audio_generation: u64,
+    clock_frames_played: u64,
     /// Incremental Theora decode worker; absent without the FFmpeg
     /// provider (the audio clock and counter still run).
     #[cfg(feature = "video-ffmpeg")]
@@ -118,7 +118,7 @@ impl MoviePlayer {
         let audio_frames = clip_data.frames.len() as f64;
         let audio_rate = clip_data.sample_rate;
         let clip = audio::DecodedClip::from_kira(clip_data);
-        audio.play_channel(MOVIE_AUDIO_CHANNEL, clip, true, native_gain)?;
+        let audio_generation = audio.play_movie(clip, native_gain)?;
         #[cfg(feature = "video-ffmpeg")]
         let video = if video_bytes == 0 {
             None
@@ -155,7 +155,8 @@ impl MoviePlayer {
             fps_den,
             audio_frames,
             audio_rate,
-            clock_frames_written: 0,
+            audio_generation,
+            clock_frames_played: 0,
             #[cfg(feature = "video-ffmpeg")]
             video,
             frames: std::collections::VecDeque::new(),
@@ -167,9 +168,9 @@ impl MoviePlayer {
     /// Advances the audio clock and returns the current presentation index.
     /// The session releases the player when it reaches `index_count`.
     pub(super) fn current_frame(&mut self, audio: &audio::AudioBridge) -> u32 {
-        let written = audio.channel_position_frames(MOVIE_AUDIO_CHANNEL);
-        self.clock_frames_written = self.clock_frames_written.max(written);
-        let position_ms = (self.clock_frames_written as f64) * 1000.0 / 48_000.0;
+        let played = audio.movie_position_frames(self.audio_generation);
+        self.clock_frames_played = self.clock_frames_played.max(played);
+        let position_ms = (self.clock_frames_played as f64) * 1000.0 / 48_000.0;
         let audio_ms = self.audio_frames * 1000.0 / f64::from(self.audio_rate);
         if position_ms >= audio_ms {
             return self.index_count;
@@ -317,7 +318,8 @@ mod tests {
             fps_den: 1,
             audio_frames: 48_000.0 * 10.0,
             audio_rate: 48_000,
-            clock_frames_written: 0,
+            audio_generation: 0,
+            clock_frames_played: 0,
             #[cfg(feature = "video-ffmpeg")]
             video: None,
             frames: std::collections::VecDeque::new(),

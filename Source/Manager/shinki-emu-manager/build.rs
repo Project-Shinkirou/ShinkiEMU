@@ -2,8 +2,6 @@ use std::{env, process::Command};
 
 use sha2::{Digest, Sha256};
 
-#[path = "../../../build/adv32_candidate.rs"]
-mod adv32_candidate;
 #[path = "../../../build/core_adapters.rs"]
 mod core_adapters;
 
@@ -107,7 +105,7 @@ fn main() {
     let target = env::var("TARGET").expect("build target");
     println!("cargo:rustc-env=SHINKI_EMU_BUILD_TARGET={target}");
     println!("cargo:rustc-env=SHINKI_EMU_PRODUCT_VERSION={version}");
-    write_embedded_core_identities();
+    write_bundled_core_metadata();
     println!("cargo:rerun-if-changed=../../../Assets/Branding/shinkiemu-icon.svg");
     write_runtime_icon();
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
@@ -207,52 +205,30 @@ fn link_android_compiler_runtime() {
     println!("cargo:rustc-link-arg-cdylib=-Wl,--no-undefined");
 }
 
-fn write_embedded_core_identities() {
+fn write_bundled_core_metadata() {
+    let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios");
+    let ohos_hap = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos");
+    if !ios_frameworks && !ohos_hap {
+        return;
+    }
     let root =
         std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"))
             .join("../../..");
     let inventory = root.join("build/cores.toml");
-    let lock = root.join("Cargo.lock");
-    for path in [
-        &inventory,
-        &lock,
-        &root.join("build/core_adapters.rs"),
-        &root.join("build/adv32_candidate.rs"),
-    ] {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
+    println!("cargo:rerun-if-changed={}", inventory.display());
     let inventory: toml::Value =
         toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
             .expect("valid core inventory");
-    let lock: toml::Value =
-        toml::from_str(&std::fs::read_to_string(lock).expect("workspace lockfile"))
-            .expect("valid workspace lockfile");
-    let target = env::var("TARGET").expect("build target");
+    let lock = ios_frameworks.then(|| {
+        let lock = root.join("Cargo.lock");
+        println!("cargo:rerun-if-changed={}", lock.display());
+        println!("cargo:rerun-if-changed=../../../build/core_adapters.rs");
+        toml::from_str::<toml::Value>(&std::fs::read_to_string(lock).expect("workspace lockfile"))
+            .expect("valid workspace lockfile")
+    });
     let mut identities = serde_json::Map::new();
-    let os = env::var("CARGO_CFG_TARGET_OS").expect("target OS");
-    let ios_frameworks = os == "ios";
     let mut frameworks = Vec::new();
-    let ohos_hap = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos");
     let mut companion = None;
-    let legacy_cmvs = env::var_os("CARGO_FEATURE_STATIC_CMVS").is_some();
-    let legacy_adv32 = env::var_os("CARGO_FEATURE_STATIC_ADV32").is_some();
-    for (enabled, feature, core) in [
-        (legacy_cmvs, "static-cmvs", "shinki.emu.cmvs"),
-        (legacy_adv32, "static-adv32", "shinki.emu.adv32"),
-    ] {
-        if enabled {
-            println!(
-                concat!(
-                    "cargo:warning=Manager feature {} is deprecated and for local compatibility only. ",
-                    "Use a standalone core on a supported desktop target: cargo xtask package ",
-                    "--core {} --target <desktop-triple> --version <version> --out <directory>. ",
-                    "For headless use: shinki-emu-manager headless --core <core.zip> ..."
-                ),
-                feature, core,
-            );
-        }
-    }
-    let mut registry = (legacy_cmvs || legacy_adv32).then(|| String::from("&[\n"));
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
         if ohos_hap && let Some(recipe) = core.get("ohos_hap") {
@@ -266,33 +242,14 @@ fn write_embedded_core_identities() {
                 "only one companion core may be bundled in the OHOS HAP"
             );
         }
-        let embedded = core
-            .get("static_manager_targets")
-            .and_then(toml::Value::as_array)
-            .is_some_and(|targets| targets.iter().any(|value| value.as_str() == Some(&target)));
         let framework = ios_frameworks
             && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
         if framework {
             frameworks.push(id);
         }
-        if !framework && let Some(registry) = &mut registry {
-            use std::fmt::Write;
-            let query = match id {
-                "shinki.emu.cmvs" if legacy_cmvs && !matches!(os.as_str(), "android" | "ios") => {
-                    Some("shinki_emu_cmvs::cmvs_query")
-                }
-                "shinki.emu.adv32" if adv32_candidate::linked(core, &target, legacy_adv32) => {
-                    Some("shinki_emu_adv32::adv32_query")
-                }
-                _ => None,
-            };
-            if let Some(query) = query {
-                writeln!(registry, "    ({id:?}, {query}),").expect("write query registry");
-            }
-        }
-        if (embedded || framework)
+        if framework
             && let Some(attribution) = core.get("attribution")
-            && let Some(adapter) = core_adapters::locked_adapter(&lock, id)
+            && let Some(adapter) = lock.as_ref().and_then(|lock| core_adapters::locked_adapter(lock, id))
         {
             identities.insert(id.to_owned(), serde_json::json!({
                 "upstream": attribution["upstream_identity"],
@@ -301,28 +258,22 @@ fn write_embedded_core_identities() {
             }));
         }
     }
-    let output = std::path::PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"))
-        .join("embedded-core-identities.json");
-    std::fs::write(
-        &output,
-        serde_json::to_vec(&identities).expect("identity JSON"),
-    )
-    .expect("embedded identity output");
-    if let Some(mut registry) = registry {
-        registry.push_str("]\n");
-        std::fs::write(output.with_file_name("static-core-queries.rs"), registry)
-            .expect("static query registry");
-    }
+    let output = std::path::PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
     if ios_frameworks {
         std::fs::write(
-            output.with_file_name("ios-framework-core-ids.rs"),
+            output.join("ios-framework-core-identities.json"),
+            serde_json::to_vec(&identities).expect("identity JSON"),
+        )
+        .expect("iOS Framework core identities");
+        std::fs::write(
+            output.join("ios-framework-core-ids.rs"),
             format!("&{frameworks:?}\n"),
         )
         .expect("iOS Framework core IDs");
     }
     if ohos_hap {
         std::fs::write(
-            output.with_file_name("ohos-hap-core.rs"),
+            output.join("ohos-hap-core.rs"),
             format!("{companion:?}\n"),
         )
         .expect("OHOS HAP companion");

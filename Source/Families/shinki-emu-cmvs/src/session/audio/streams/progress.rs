@@ -1,5 +1,7 @@
 use super::*;
-use shinki_emu_sdk::{NativeAudioProgress, NativeAudioProgressReader};
+use shinki_emu_sdk::NativeAudioProgress;
+#[cfg(not(target_env = "ohos"))]
+use shinki_emu_sdk::NativeAudioProgressReader;
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy)]
@@ -16,9 +18,17 @@ pub(in crate::session::audio) trait PlaybackSource: Send + Sync {
     fn progress(&self) -> NativeAudioProgress;
 }
 
+#[cfg(not(target_env = "ohos"))]
 impl PlaybackSource for NativeAudioProgressReader {
     fn progress(&self) -> NativeAudioProgress {
         NativeAudioProgressReader::progress(self)
+    }
+}
+
+#[cfg(target_env = "ohos")]
+impl PlaybackSource for shinki_emu_sdk::runtime::OhosAudioOutput {
+    fn progress(&self) -> NativeAudioProgress {
+        shinki_emu_sdk::runtime::OhosAudioOutput::progress(self)
     }
 }
 

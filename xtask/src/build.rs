@@ -4,7 +4,6 @@ use sha2::{Digest, Sha256};
 use shinki_emu_build::ohos::Target as OhosTarget;
 use shinki_emu_build::{CoreBuildManifest, NativeInputs};
 use std::{
-    collections::BTreeMap,
     fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -17,7 +16,6 @@ pub struct BuildArtifact {
     pub product_version: Option<String>,
     pub library: PathBuf,
     pub core_build: Option<CoreBuildManifest>,
-    pub embedded_core_builds: Vec<CoreBuildManifest>,
     pub native_inputs: Vec<NativeInputs>,
     pub source_commit: Option<String>,
     pub features: Vec<String>,
@@ -74,35 +72,6 @@ pub fn cargo_metadata(inv: &Inventory, target: &str) -> Result<serde_json::Value
             target,
         ]),
     )?)?)
-}
-fn embedded_core_packages<'a>(
-    inv: &'a Inventory,
-    target: &str,
-    features: &[String],
-    metadata: &'a serde_json::Value,
-) -> Result<BTreeMap<&'a str, &'a str>> {
-    let packages = metadata["packages"].as_array().context("cargo packages")?;
-    let mut selected = BTreeMap::new();
-    for core in &inv.cores {
-        if !core.embedded_in_manager(target, features) {
-            continue;
-        }
-        let adapter = core.adapter_package();
-        let mut matches = packages.iter().filter(|package| package["name"] == adapter);
-        let package = matches.next().with_context(|| {
-            format!("static core package {} absent from Cargo metadata", adapter)
-        })?;
-        if matches.next().is_some() {
-            bail!("ambiguous static core package {adapter}");
-        }
-        let id = package["id"]
-            .as_str()
-            .context("static core Cargo package id")?;
-        if selected.insert(id, core.id.as_str()).is_some() {
-            bail!("static cores share Cargo package {id}");
-        }
-    }
-    Ok(selected)
 }
 
 pub(crate) fn source_commit(inv: &Inventory) -> Result<String> {
@@ -335,11 +304,6 @@ fn execute_configured(
         None
     };
     let package_id = package_id(&package)?;
-    let embedded_packages = if component == "manager" {
-        embedded_core_packages(inv, target, &features, &metadata)?
-    } else {
-        BTreeMap::new()
-    };
 
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -347,7 +311,7 @@ fn execute_configured(
         .spawn()?;
     let output = child.stdout.take().context("Cargo stdout")?;
     let mut libraries = Vec::new();
-    let mut manifests = Vec::new();
+    let mut core_build = None;
     let mut native_inputs = Vec::new();
     let mut parse_error = None;
     for line in BufReader::new(output).lines() {
@@ -393,14 +357,10 @@ fn execute_configured(
                 }
             }
         }
-        let expected_embedded = value["package_id"]
-            .as_str()
-            .and_then(|id| embedded_packages.get(id))
-            .copied();
-        if value["reason"] == "build-script-executed"
+        if let Some(core) = core
+            && value["reason"] == "build-script-executed"
             && (value["package_id"] == package_id
-                || adapter_package_id.is_some_and(|id| value["package_id"] == id)
-                || expected_embedded.is_some())
+                || adapter_package_id.is_some_and(|id| value["package_id"] == id))
             && let Some(dir) = value["out_dir"].as_str()
         {
             let path = Path::new(dir).join("core-build.json");
@@ -411,7 +371,11 @@ fn execute_configured(
                         serde_json::from_slice::<CoreBuildManifest>(&bytes)
                             .map_err(anyhow::Error::from)
                     }) {
-                    Ok(m) => manifests.push(m),
+                    Ok(manifest) => {
+                        if core_build.is_none() && manifest.plugin_id == core.id {
+                            core_build = Some(manifest);
+                        }
+                    }
                     Err(error) => parse_error = Some(error),
                 }
             }
@@ -452,14 +416,6 @@ fn execute_configured(
     if !status.success() {
         bail!("Cargo {action} failed for {component}/{target}: {status}");
     }
-    let (core_build, embedded_core_builds) = if core.is_some() {
-        let own = manifests
-            .into_iter()
-            .find(|manifest| manifest.plugin_id == component);
-        (own, Vec::new())
-    } else {
-        (None, manifests)
-    };
     let library = select_library(
         &package,
         target,
@@ -472,7 +428,6 @@ fn execute_configured(
         target: target.into(),
         library,
         core_build,
-        embedded_core_builds,
         native_inputs,
         product_version,
         source_commit: product_source,
@@ -520,7 +475,7 @@ fn select_library(
     Ok(cargo_libraries.remove(0))
 }
 
-pub(crate) fn requested_manager_features() -> Result<Vec<String>> {
+fn requested_manager_features() -> Result<Vec<String>> {
     let requested = std::env::var_os("SHINKI_EMU_MANAGER_FEATURES");
     let requested = requested
         .as_deref()
@@ -615,81 +570,6 @@ mod version_tests {
     }
 
     #[test]
-    fn reader_dependencies_are_not_embedded_without_target_registration() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let mut inv = Inventory::load(root).unwrap();
-        inv.cores.retain(|core| core.id == "shinki.emu.musica");
-        inv.cores[0].static_manager_targets = vec!["aarch64-linux-android".into()];
-        let mut metadata = serde_json::json!({
-            "packages": [
-                {"name": "shinki-emu-musica", "id": "reader-package"},
-                {"name": "shinki-emu-patch", "id": "patch-package"}
-            ]
-        });
-        assert!(
-            embedded_core_packages(&inv, "x86_64-unknown-linux-gnu", &[], &metadata)
-                .unwrap()
-                .is_empty()
-        );
-        let selected =
-            embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).unwrap();
-        assert_eq!(selected.get("reader-package"), Some(&"shinki.emu.musica"));
-        assert!(!selected.contains_key("patch-package"));
-        metadata["packages"]
-            .as_array_mut()
-            .unwrap()
-            .push(serde_json::json!({
-                "name": "shinki-emu-musica", "id": "other-version"
-            }));
-        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).is_err());
-        metadata["packages"] = serde_json::json!([]);
-        assert!(embedded_core_packages(&inv, "aarch64-linux-android", &[], &metadata).is_err());
-    }
-
-    #[test]
-    fn default_manager_builds_have_no_embedded_core_inputs() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let inv = Inventory::load(root).unwrap();
-        // The build collector must not ask for an adapter build report for any
-        // default Manager, including the local OHOS simulator variant.
-        let metadata = serde_json::json!({"packages": []});
-        for target in inv
-            .targets
-            .iter()
-            .filter(|target| target.manager_supported || target.is_local_qa())
-        {
-            assert!(
-                embedded_core_packages(&inv, &target.triple, &[], &metadata)
-                    .unwrap_or_else(|error| panic!("{}: {error}", target.triple))
-                    .is_empty()
-            );
-        }
-    }
-
-    #[test]
-    fn adv32_build_reports_are_selected_only_with_the_candidate_feature() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let mut inv = Inventory::load(root).unwrap();
-        inv.cores
-            .retain(|core| matches!(core.id.as_str(), "shinki.emu.adv32" | "shinki.emu.musica"));
-        let target = "x86_64-pc-windows-msvc";
-        let metadata = serde_json::json!({
-            "packages": [
-                {"name": "shinki-emu-adv32", "id": "adv32-package"},
-                {"name": "shinki-emu-musica", "id": "musica-package"}
-            ]
-        });
-        assert!(
-            embedded_core_packages(&inv, target, &[], &metadata)
-                .unwrap()
-                .is_empty()
-        );
-        let features = ["static-adv32".to_owned()];
-        let selected = embedded_core_packages(&inv, target, &features, &metadata).unwrap();
-        assert_eq!(selected.get("adv32-package"), Some(&"shinki.emu.adv32"));
-    }
-
-    #[test]
     fn ohos_companion_build_is_available_only_inside_the_hap() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let mut inventory = Inventory::load(root).unwrap();
@@ -705,7 +585,6 @@ mod version_tests {
             assert_eq!(core.id, configured);
             assert!(inventory.require_buildable("manager", triple).is_ok());
             assert!(inventory.require_buildable(&core.id, triple).is_err());
-            assert!(!core.embedded_in_manager(triple, &[]));
         }
         for triple in ["x86_64-unknown-linux-gnu", "armv7-unknown-linux-ohos"] {
             assert!(crate::ohos::companion(&inventory, triple).is_none());

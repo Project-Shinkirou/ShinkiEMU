@@ -1,9 +1,7 @@
 use super::*;
-use shinki_emu_manager_core::{detection::{DeclaredRules, EngineDetection}, static_core_catalog};
-#[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-use shinki_emu_metadata::CoreRecognition;
+use shinki_emu_manager_core::{core_catalog, detection::{DeclaredRules, EngineDetection}};
 
-/// A static association, never a runtime descriptor or native probe result.
+/// An explicit action for an identified core.
 #[derive(Clone)]
 pub(super) enum NativeAction {
     ConfigureGame { game_id: String, plugin_id: String },
@@ -45,18 +43,9 @@ pub(super) fn directories(data_dir: &Path) -> Result<Vec<PathBuf>, String> {
     { let _ = data_dir; Ok(Vec::new()) }
 }
 
-pub(super) fn is_static(plugin_id: &str) -> bool {
-    static_query(plugin_id).is_some()
-}
-
-fn static_query(plugin_id: &str) -> Option<shinki_emu_abi::Query> {
-    shinki_emu_manager::static_cores::STATIC_CORES.iter()
-        .find_map(|(id, query)| (*id == plugin_id).then_some(*query))
-}
-
 pub(super) fn supports_installed_packages(plugin_id: &str) -> bool {
     #[cfg(target_os = "android")]
-    { static_core_catalog::lookup(plugin_id).is_some_and(|core| core.android_dynamic.is_some()) }
+    { core_catalog::lookup(plugin_id).is_some_and(|core| core.android_dynamic.is_some()) }
     #[cfg(any(target_os = "ios", target_env = "ohos"))]
     { let _ = plugin_id; false }
     #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
@@ -68,53 +57,40 @@ pub(super) fn allows_installed_release(
     version: &str,
     identity: Option<&shinki_emu_metadata::CoreIdentity>,
 ) -> bool {
+    if version == "0.0.0-local" {
+        return false;
+    }
     #[cfg(target_os = "android")]
     {
-        let Some(policy) = static_core_catalog::lookup(plugin_id).and_then(|core| core.android_dynamic) else {
+        let Some(policy) = core_catalog::lookup(plugin_id).and_then(|core| core.android_dynamic) else {
             return false;
         };
-        android_release_eligible(
-            policy.minimum,
-            is_static(plugin_id),
-            cores::embedded_identity(plugin_id),
-            cores::embedded_product_release(plugin_id).map(|(version, _)| version),
-            version,
-            identity,
-        )
+        android_release_eligible(policy.minimum, version, identity)
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (version, identity);
+        let _ = identity;
         supports_installed_packages(plugin_id)
     }
 }
 
 #[cfg(any(target_os = "android", test))]
 fn android_release_eligible(
-    floor: static_core_catalog::AndroidMinimumRelease,
-    linked: bool,
-    embedded: Option<&shinki_emu_metadata::CoreIdentity>,
-    embedded_product_version: Option<&str>,
+    floor: core_catalog::AndroidMinimumRelease,
     version: &str,
     identity: Option<&shinki_emu_metadata::CoreIdentity>,
 ) -> bool {
-    use static_core_catalog::AndroidMinimumRelease;
+    use core_catalog::AndroidMinimumRelease;
     match floor {
-        AndroidMinimumRelease::Sequence(minimum) => identity.is_some_and(|candidate| {
-            candidate.release_sequence >= minimum
-                && (!linked || embedded.is_some_and(|old| candidate.release_sequence > old.release_sequence))
-        }),
+        AndroidMinimumRelease::Sequence(minimum) => {
+            identity.is_some_and(|candidate| candidate.release_sequence >= minimum)
+        }
         AndroidMinimumRelease::Semver(minimum) => {
-            identity.is_none() && version != "0.0.0-local"
+            identity.is_none()
                 && semver::Version::parse(version).is_ok_and(|candidate| {
                     let minimum = semver::Version::parse(minimum)
                         .expect("validated Android release floor");
                     !candidate.cmp_precedence(&minimum).is_lt()
-                        && (!linked || embedded_product_version.is_some_and(|embedded| {
-                            semver::Version::parse(embedded).is_ok_and(|embedded| {
-                                candidate.cmp_precedence(&embedded).is_gt()
-                            })
-                        }))
                 })
         }
     }
@@ -123,9 +99,9 @@ fn android_release_eligible(
 #[cfg(test)]
 mod android_policy_tests {
     use super::*;
-    use static_core_catalog::AndroidMinimumRelease::{Semver, Sequence};
+    use core_catalog::AndroidMinimumRelease::{Semver, Sequence};
 
-    fn legacy_siglus() -> shinki_emu_metadata::CoreCatalogEntry {
+    fn older_siglus_release() -> shinki_emu_metadata::CoreCatalogEntry {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../Metadata/engines/cores/siglus_rs/android-x86_64/",
@@ -134,8 +110,8 @@ mod android_policy_tests {
     }
 
     #[test]
-    fn old_official_android_releases_do_not_shadow_or_become_dynamic_only() {
-        let siglus = legacy_siglus();
+    fn android_adapter_release_must_meet_the_sequence_floor() {
+        let siglus = older_siglus_release();
         let artemis: shinki_emu_metadata::CoreCatalogEntry = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../Metadata/engines/cores/art3m1s-core/android-x86_64/",
@@ -148,31 +124,25 @@ mod android_policy_tests {
             let mut candidate = old.clone();
             candidate.release_sequence = minimum;
             let floor = Sequence(minimum);
-            assert!(!android_release_eligible(floor, false, None, None, &release.version, Some(old)));
-            assert!(!android_release_eligible(floor, false, None, None, "1.0.0", None));
-            assert!(android_release_eligible(floor, false, None, None, &candidate.version(), Some(&candidate)));
-            assert!(android_release_eligible(floor, true, Some(old), None, &candidate.version(), Some(&candidate)));
-            assert!(!android_release_eligible(floor, true, Some(&candidate), None, &candidate.version(), Some(&candidate)));
-            assert!(!android_release_eligible(floor, true, None, None, &candidate.version(), Some(&candidate)));
+            assert!(!android_release_eligible(floor, &release.version, Some(old)));
+            assert!(!android_release_eligible(floor, "1.0.0", None));
+            assert!(android_release_eligible(floor, &candidate.version(), Some(&candidate)));
         }
     }
 
     #[test]
-    fn in_repo_release_needs_no_external_sequence_or_unknown_static_overlay() {
+    fn android_product_release_requires_semver_at_or_above_the_floor() {
         let floor = Semver("1.2.3");
-        assert!(android_release_eligible(floor, false, None, None, "1.2.3", None));
-        assert!(android_release_eligible(floor, false, None, None, "1.3.0", None));
-        assert!(!android_release_eligible(floor, false, None, None, "1.2.3-rc.1", None));
-        assert!(!android_release_eligible(floor, true, None, None, "2.0.0", None));
-        let stamped = Some("1.3.0+authenticated");
-        assert!(!android_release_eligible(floor, true, None, stamped, "1.3.0+different", None));
-        assert!(!android_release_eligible(floor, true, None, stamped, "1.2.4", None));
-        assert!(android_release_eligible(floor, true, None, stamped, "1.3.1", None));
+        assert!(android_release_eligible(floor, "1.2.3", None));
+        assert!(android_release_eligible(floor, "1.3.0", None));
+        assert!(!android_release_eligible(floor, "1.2.3-rc.1", None));
+        let adapter = older_siglus_release().identity.unwrap();
+        assert!(!android_release_eligible(floor, "1.3.0", Some(&adapter)));
     }
 
     #[test]
     fn online_selection_ranks_only_android_releases_that_can_be_installed() {
-        let legacy = legacy_siglus();
+        let legacy = older_siglus_release();
         let platform = &legacy.platform;
         let abi = shinki_emu_manager_core::INDEPENDENT_FAMILY_ABI_FINGERPRINT;
         let product = |version: &str, platform: &str, abi: &str| {
@@ -194,9 +164,7 @@ mod android_policy_tests {
         ];
         let select = |releases| cores::latest_eligible_release(
             releases, &legacy.plugin_id, platform, |entry| {
-                android_release_eligible(
-                    Semver("1.2.3"), false, None, None, &entry.version, entry.identity.as_ref(),
-                )
+                android_release_eligible(Semver("1.2.3"), &entry.version, entry.identity.as_ref())
             },
         );
         assert!(select(&releases[..2]).is_none());
@@ -207,13 +175,13 @@ mod android_policy_tests {
     }
 
     #[test]
-    fn rejecting_a_staged_legacy_release_preserves_the_installed_core() {
+    fn rejecting_a_staged_release_below_the_floor_preserves_the_installed_core() {
         let root = tempfile::tempdir().unwrap();
         let stem = "libshinki_emu_siglus_rs";
         let library = format!("{stem}.{}", env::consts::DLL_EXTENSION);
         let live = root.path().join(stem);
         let stage = root.path().join(core_package::PENDING).join(stem);
-        let old = legacy_siglus().identity.unwrap();
+        let old = older_siglus_release().identity.unwrap();
         let mut new = old.clone();
         new.release_sequence += 2;
         let floor = Sequence(new.release_sequence);
@@ -240,7 +208,7 @@ mod android_policy_tests {
         }
         let policy = |dir: &Path| {
             let manifest = core_package::read_manifest(dir).unwrap();
-            android_release_eligible(floor, false, None, None, &manifest.version, manifest.identity.as_ref())
+            android_release_eligible(floor, &manifest.version, manifest.identity.as_ref())
         };
         let failures = core_package::apply_pending_checked(root.path(), |_, dir| {
             policy(dir).then_some(()).ok_or("legacy release")
@@ -252,18 +220,17 @@ mod android_policy_tests {
     }
 }
 
-fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
+fn is_supported(core: &core_catalog::CoreCatalogEntry) -> bool {
     #[cfg(target_env = "ohos")]
     {
-        is_static(core.plugin_id)
-            || shinki_emu_manager::platform::ohos::bundled::configured_core()
-                .is_some_and(|(id, _)| id == core.plugin_id)
+        shinki_emu_manager::platform::ohos::bundled::configured_core()
+            .is_some_and(|(id, _)| id == core.plugin_id)
     }
     #[cfg(target_os = "android")]
-    { is_static(core.plugin_id) || core.android_dynamic.is_some() }
+    { core.android_dynamic.is_some() }
     #[cfg(not(any(target_os = "android", target_env = "ohos")))]
     {
-        if core.supported || is_static(core.plugin_id) {
+        if core.supported {
             return true;
         }
         #[cfg(target_os = "ios")]
@@ -273,8 +240,8 @@ fn is_supported(core: &static_core_catalog::CoreCatalogEntry) -> bool {
     }
 }
 
-pub(super) fn supported_core(plugin_id: &str) -> Result<&'static static_core_catalog::CoreCatalogEntry, &'static str> {
-    let core = static_core_catalog::lookup(plugin_id).ok_or("SHINKI_EMU_CORE_UNKNOWN_PLUGIN")?;
+pub(super) fn supported_core(plugin_id: &str) -> Result<&'static core_catalog::CoreCatalogEntry, &'static str> {
+    let core = core_catalog::lookup(plugin_id).ok_or("SHINKI_EMU_CORE_UNKNOWN_PLUGIN")?;
     if !is_supported(core) {
         return Err("SHINKI_EMU_CORE_UNSUPPORTED_TARGET");
     }
@@ -283,41 +250,26 @@ pub(super) fn supported_core(plugin_id: &str) -> Result<&'static static_core_cat
 
 pub(super) fn runnable_core(
     installed: &BTreeMap<String, InstalledCore>, plugin_id: &str,
-) -> Result<&'static static_core_catalog::CoreCatalogEntry, &'static str> {
+) -> Result<&'static core_catalog::CoreCatalogEntry, &'static str> {
     let core = supported_core(plugin_id)?;
-    core_source(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
+    installed_core(installed, plugin_id).ok_or("SHINKI_EMU_CORE_MISSING")?;
     Ok(core)
 }
 
-pub(super) enum CoreSource<'a> {
-    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-    Static(shinki_emu_abi::Query),
-    Package(&'a InstalledCore),
-}
-
-pub(super) fn core_source<'a>(
+pub(super) fn installed_core<'a>(
     installed: &'a BTreeMap<String, InstalledCore>,
     plugin_id: &str,
-) -> Option<CoreSource<'a>> {
+) -> Option<&'a InstalledCore> {
     let package = installed.get(plugin_id);
     #[cfg(target_os = "ios")]
     if shinki_emu_manager::platform::bundled_core_ids().contains(&plugin_id) {
-        return package.filter(|core| core.bundled).map(CoreSource::Package);
+        return package.filter(|core| core.bundled);
     }
-    // Android selects a verified install over a legacy linked copy.
-    #[cfg(all(target_os = "android", any(feature = "static-cmvs", feature = "static-adv32")))]
-    if let Some(package) = package {
-        return Some(CoreSource::Package(package));
-    }
-    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-    if let Some(query) = static_query(plugin_id) {
-        return Some(CoreSource::Static(query));
-    }
-    package.map(CoreSource::Package)
+    package
 }
 
 pub(super) fn choices(detections: &[EngineDetection]) -> Vec<Candidate> {
-    static_core_catalog::entries().iter()
+    core_catalog::entries().iter()
         .filter(|entry| is_supported(entry) && detections.iter().any(|item| {
             item.family_id == entry.family_id && item.declared.as_ref()
                 .is_none_or(|declared| declared.plugin_ids.iter().any(|id| id == entry.plugin_id))
@@ -335,30 +287,17 @@ pub(super) struct InstalledCore {
 }
 
 pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> DeclaredRules {
-    #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-    static EMBEDDED: std::sync::LazyLock<BTreeMap<&'static str, CoreRecognition>> = std::sync::LazyLock::new(|| {
-        static_core_catalog::entries().iter()
-            .filter(|entry| is_static(entry.plugin_id) && entry.embedded_recognition_json != "[]")
-            .map(|entry| (
-                entry.plugin_id,
-                serde_json::from_str(entry.embedded_recognition_json).expect("validated embedded core recognition"),
-            )).collect()
-    });
-    let rules: BTreeMap<_, _> = static_core_catalog::entries().iter().filter_map(|core| {
+    let rules: BTreeMap<_, _> = core_catalog::entries().iter().filter_map(|core| {
         let id = core.plugin_id;
         if !is_supported(core) { return None; }
-        let declaration = match core_source(installed, id)? {
-            #[cfg(any(feature = "static-cmvs", feature = "static-adv32"))]
-            CoreSource::Static(_) => EMBEDDED.get(id)?,
-            CoreSource::Package(package) => &package.manifest.recognition,
-        };
+        let declaration = &installed_core(installed, id)?.manifest.recognition;
         (!declaration.is_empty()).then_some((id, (core.family_id, declaration)))
     }).collect();
     if rules.is_empty() { return DeclaredRules::default(); }
     let canonical = serde_json::to_vec(&rules).expect("core recognition is serializable");
     let mut matcher = DeclaredRules::new(core_package::sha256_hex(&canonical));
     for (id, (_, declaration)) in rules {
-        let core = static_core_catalog::lookup(id).expect("core from static catalog");
+        let core = core_catalog::lookup(id).expect("core from catalog");
         for rule in declaration.rules() {
             matcher.add(core, rule.path(), rule.offset(), rule.magic_bytes());
         }
@@ -371,10 +310,8 @@ fn package_library(
     stem: &str,
     manifest: &core_package::CoreManifest,
 ) -> Result<(PathBuf, String), &'static str> {
-    if !allows_installed_release(&manifest.plugin_id, &manifest.version, manifest.identity.as_ref())
-        || manifest.version == "0.0.0-local"
-    {
-        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: install a compatible official Android release");
+    if !allows_installed_release(&manifest.plugin_id, &manifest.version, manifest.identity.as_ref()) {
+        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: install a compatible official release");
     }
     let library = directory.join(&manifest.library);
     let expected_stem = shinki_emu_manager_core::library_stem(&library);
@@ -441,7 +378,7 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         let library = platform::bundled_core_library(id).ok_or_else(invalid)?;
         let directory = platform::bundled_core_manifest_dir(id).ok_or_else(invalid)?;
         let package = core_package::read_bundled_package(&directory, id).ok_or_else(invalid)?;
-        match cores::embedded_identity(id) {
+        match cores::bundled_core_identity(id) {
             Some(identity) if package.manifest.identity.as_ref() == Some(identity) => {}
             None if package.manifest.identity.is_none()
                 && package.manifest.version == shinki_emu_manager::version()
@@ -494,14 +431,8 @@ impl ShinkiEmuManagerController {
             } else if let Some(family) = game.family_id {
                 // Legacy records retain identity and binding. Fresh selected probe is
                 // still mandatory before open; no format/runtime claim is invented.
-                let choices = static_core_catalog::entries().iter()
-                    .filter(|entry| {
-                        #[cfg(any(target_os = "ios", target_env = "ohos"))]
-                        let supported = is_supported(entry);
-                        #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
-                        let supported = entry.supported || is_static(entry.plugin_id);
-                        supported && entry.family_id == family
-                    })
+                let choices = core_catalog::entries().iter()
+                    .filter(|entry| is_supported(entry) && entry.family_id == family)
                     .map(|entry| Candidate { plugin_id: entry.plugin_id.into(), family_id: family.clone() }).collect();
                 self.set_probe_candidates(&game.game_id, choices)?;
             }

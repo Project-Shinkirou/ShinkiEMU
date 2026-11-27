@@ -35,10 +35,6 @@ pub struct Core {
     /// The shared catalog parser validates this policy at inventory load.
     pub(crate) android_dynamic: Option<toml::Table>,
     #[serde(default)]
-    pub static_manager_targets: Vec<String>,
-    #[serde(default)]
-    static_manager_candidate_targets: Vec<String>,
-    #[serde(default)]
     pub ios_framework: bool,
     pub ios_resource_subdir: Option<String>,
     pub(crate) ohos_hap: Option<HapCore>,
@@ -65,22 +61,6 @@ impl Core {
 
     pub fn adapter_package(&self) -> String {
         format!("shinki-emu-{}", core_adapters::adapter_id(&self.id))
-    }
-
-    pub(crate) fn embedded_candidate(&self, target: &str, features: &[String]) -> bool {
-        self.static_manager_candidate_targets
-            .iter()
-            .any(|triple| triple == target)
-            && features.iter().any(|feature| {
-                feature.strip_prefix("static-") == Some(core_adapters::adapter_id(&self.id))
-            })
-    }
-
-    pub(crate) fn embedded_in_manager(&self, target: &str, features: &[String]) -> bool {
-        self.static_manager_targets
-            .iter()
-            .any(|triple| triple == target)
-            || self.embedded_candidate(target, features)
     }
 
     pub fn adapter_source(&self, root: &Path) -> Result<Option<LockedAdapter>> {
@@ -149,22 +129,18 @@ impl Core {
         Ok(PathBuf::from(String::from_utf8(output)?.trim()))
     }
 
-    pub fn license_files<'a>(
-        &'a self,
-        root: &Path,
-        target: &str,
-    ) -> Result<Vec<(PathBuf, &'a str, bool)>> {
+    pub fn license_files(&self, root: &Path, target: &str) -> Result<Vec<(PathBuf, &str)>> {
         let mut files: Vec<_> = self
             .licenses
             .iter()
-            .map(|path| (root.join(path), path.as_str(), false))
+            .map(|path| (root.join(path), path.as_str()))
             .collect();
         if !self.adapter_licenses.is_empty() {
             let directory = self.source_directory(root, target)?;
             files.extend(
                 self.adapter_licenses
                     .iter()
-                    .map(|path| (directory.join(path), path.as_str(), true)),
+                    .map(|path| (directory.join(path), path.as_str())),
             );
         }
         Ok(files)
@@ -316,12 +292,7 @@ impl Inventory {
                 for target in [OhosTarget::Arm64, OhosTarget::X64] {
                     let triple = target.rust_target();
                     self.require_buildable("manager", triple)?;
-                    if c.supported_targets.iter().any(|t| t == triple)
-                        || c.static_manager_targets.iter().any(|t| t == triple)
-                        || c.static_manager_candidate_targets
-                            .iter()
-                            .any(|t| t == triple)
-                    {
+                    if c.supported_targets.iter().any(|t| t == triple) {
                         bail!("{} is a separate HAP library on {triple}", c.id);
                     }
                 }
@@ -375,26 +346,6 @@ impl Inventory {
                     bail!("{} declares iOS resources without a Framework", c.id);
                 }
                 crate::package::portable(dir)?;
-            }
-            for t in &c.static_manager_targets {
-                let target = self.target(t)?;
-                if !(target.manager_supported || target.is_local_qa())
-                    || !matches!(target.platform.as_str(), "android" | "ohos")
-                {
-                    bail!("invalid static Manager integration");
-                }
-            }
-            let mut candidates = BTreeSet::new();
-            for triple in &c.static_manager_candidate_targets {
-                if !self.target(triple)?.manager_supported
-                    || c.static_manager_targets.contains(triple)
-                    || !candidates.insert(triple)
-                {
-                    bail!(
-                        "invalid private Manager candidate target {triple} for {}",
-                        c.id
-                    );
-                }
             }
         }
         Ok(())
