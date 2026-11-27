@@ -314,7 +314,10 @@ mod tests {
             key_event(abi::Bytes::EMPTY, abi::Bytes::from_static(b"\xff")),
             key_event(abi::Bytes::EMPTY, abi::Bytes::new(&too_long)),
         ] {
-            assert!(matches!(translate_keys(&[event]).0, Err(abi::INVALID_ARGUMENT)));
+            assert!(matches!(
+                translate_keys(&[event]).0,
+                Err(abi::INVALID_ARGUMENT)
+            ));
         }
     }
 }

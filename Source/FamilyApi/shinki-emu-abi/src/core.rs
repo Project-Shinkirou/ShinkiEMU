@@ -206,7 +206,9 @@ impl OpenRequestDirectoriesV1 {
     /// # Safety
     /// `request` must point to the original ABI allocation, readable through
     /// the size advertised by the base header for the lifetime of the result.
-    pub unsafe fn from_request<'a>(request: *const OpenRequest) -> Result<Option<&'a Self>, Status> {
+    pub unsafe fn from_request<'a>(
+        request: *const OpenRequest,
+    ) -> Result<Option<&'a Self>, Status> {
         if request.is_null() || !request.is_aligned() {
             return Err(INVALID_ARGUMENT);
         }

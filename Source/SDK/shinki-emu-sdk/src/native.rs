@@ -67,10 +67,15 @@ impl ServiceContext {
 pub unsafe fn host_cache_directory(
     request: *const abi::OpenRequest,
 ) -> Result<Option<Arc<Path>>, abi::Status> {
-    let Some(directories) = (unsafe { abi::OpenRequestDirectoriesV1::from_request(request) })? else {
+    let Some(directories) = (unsafe { abi::OpenRequestDirectoriesV1::from_request(request) })?
+    else {
         return Ok(None);
     };
-    let cache = unsafe { directories.cache_directory.text(abi::MAX_HOST_DIRECTORY_BYTES) }?;
+    let cache = unsafe {
+        directories
+            .cache_directory
+            .text(abi::MAX_HOST_DIRECTORY_BYTES)
+    }?;
     if cache.is_empty() {
         return Ok(None);
     }

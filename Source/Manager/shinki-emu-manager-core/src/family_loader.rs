@@ -531,12 +531,18 @@ impl LoadedFamilyPlugin {
                         std::ptr::from_ref(service).cast()
                     }),
             },
-            cache_directory: self.directories.as_ref().map_or(abi::Bytes::EMPTY, |paths| {
-                abi::Bytes::new(paths.cache.as_bytes())
-            }),
-            data_directory: self.directories.as_ref().map_or(abi::Bytes::EMPTY, |paths| {
-                abi::Bytes::new(paths.data.as_bytes())
-            }),
+            cache_directory: self
+                .directories
+                .as_ref()
+                .map_or(abi::Bytes::EMPTY, |paths| {
+                    abi::Bytes::new(paths.cache.as_bytes())
+                }),
+            data_directory: self
+                .directories
+                .as_ref()
+                .map_or(abi::Bytes::EMPTY, |paths| {
+                    abi::Bytes::new(paths.data.as_bytes())
+                }),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();

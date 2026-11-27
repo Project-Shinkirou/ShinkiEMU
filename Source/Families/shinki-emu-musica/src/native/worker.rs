@@ -49,7 +49,13 @@ pub(super) fn run(
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;
-        owner.open_native_session(request, render_extent, replacement, gpu_host, cache_directory)?
+        owner.open_native_session(
+            request,
+            render_extent,
+            replacement,
+            gpu_host,
+            cache_directory,
+        )?
     };
     serve(session, window.suspended != 0, services, commands, ready)
 }

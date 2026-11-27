@@ -258,8 +258,8 @@ fn owned_file_decodes_and_is_removed_after_native_close() {
     let bytes = source();
     let mut worker = VideoDecoderWorker::open_file(
         move |_| {
-            let mut file = shinki_emu_sdk::video::stage_movie_file(Some(&cache_path), "test-video-")
-                .unwrap();
+            let mut file =
+                shinki_emu_sdk::video::stage_movie_file(Some(&cache_path), "test-video-").unwrap();
             file.write_all(&bytes).unwrap();
             created.send(file.path().to_owned()).unwrap();
             Ok(file)

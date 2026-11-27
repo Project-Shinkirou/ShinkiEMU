@@ -10,15 +10,16 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
     sync::{
-        Arc,
-        OnceLock,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicU32, Ordering},
         mpsc,
     },
     time::Duration,
 };
 
-use shinki_emu_manager_core::model::{FamilyEvent, KeyCode, KeyModifiers, KeyState, MAX_TEXT_BYTES};
+use shinki_emu_manager_core::model::{
+    FamilyEvent, KeyCode, KeyModifiers, KeyState, MAX_TEXT_BYTES,
+};
 use slint::platform::{
     EventLoopProxy, Key, Platform, PointerEventButton, WindowAdapter, WindowEvent,
     software_renderer::{
@@ -251,7 +252,11 @@ impl OhosPlatform {
                         FamilyEvent::Key {
                             code,
                             logical: None,
-                            state: if pressed { KeyState::Pressed } else { KeyState::Released },
+                            state: if pressed {
+                                KeyState::Pressed
+                            } else {
+                                KeyState::Released
+                            },
                             modifiers: KeyModifiers {
                                 shift: false,
                                 control: false,
@@ -348,10 +353,9 @@ fn key_text(code: i32) -> Option<slint::SharedString> {
 fn physical_key(code: i32) -> Option<KeyCode> {
     use KeyCode::*;
     Some(match code {
-        2000..=2009 => {
-            [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9]
-                [(code - 2000) as usize]
-        }
+        2000..=2009 => [
+            Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+        ][(code - 2000) as usize],
         2012 => ArrowUp,
         2013 => ArrowDown,
         2014 => ArrowLeft,
@@ -477,7 +481,10 @@ unsafe extern "C" fn shinki_ohos_submit_text(epoch: *const c_char, text: *const 
     if epoch.is_null() || text.is_null() || !(1..=MAX_TEXT_BYTES).contains(&length) {
         return;
     }
-    let epoch = unsafe { CStr::from_ptr(epoch) }.to_str().ok().and_then(|value| value.parse().ok());
+    let epoch = unsafe { CStr::from_ptr(epoch) }
+        .to_str()
+        .ok()
+        .and_then(|value| value.parse().ok());
     let text = std::str::from_utf8(unsafe { std::slice::from_raw_parts(text, length) });
     if let (Some(epoch), Ok(text)) = (epoch, text)
         && !text.contains('\0')
@@ -513,7 +520,7 @@ pub unsafe fn start(
         (path.len() <= shinki_emu_abi::MAX_HOST_DIRECTORY_BYTES
             && Path::new(path).is_absolute()
             && Path::new(path).is_dir())
-            .then(|| Arc::<str>::from(path))
+        .then(|| Arc::<str>::from(path))
     };
     let (Some(files), Some(cache)) = (parse(files), parse(cache)) else {
         report_startup_error("SHINKI_EMU_OHOS_CONTEXT_PATH: invalid Ability directory");
@@ -523,7 +530,10 @@ pub unsafe fn start(
         report_startup_error(&format!("SHINKI_EMU_OHOS_CACHE: {error}"));
         return;
     }
-    if DIRECTORIES.set(AbilityDirectories { files, cache }).is_err() {
+    if DIRECTORIES
+        .set(AbilityDirectories { files, cache })
+        .is_err()
+    {
         return;
     }
     let (sender, receiver) = mpsc::channel();
@@ -736,7 +746,9 @@ pub mod bundled {
     }
 
     pub fn load(plugin_id: &str) -> Result<LoadedFamilyPlugin, String> {
-        let directories = super::DIRECTORIES.get().ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?;
+        let directories = super::DIRECTORIES
+            .get()
+            .ok_or("SHINKI_EMU_OHOS_CONTEXT_MISSING")?;
         let path = library(plugin_id).ok_or("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
         // An absolute installed path skips basename search (env, RPATH and
         // inherited namespaces). The caller's existing namespace still applies.
