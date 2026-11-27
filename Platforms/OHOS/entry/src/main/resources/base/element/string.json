@@ -2,6 +2,9 @@
   "string": [
     { "name": "app_name", "value": "ShinkiEMU" },
     { "name": "module_desc", "value": "ShinkiEMU Manager" },
-    { "name": "EntryAbility_desc", "value": "ShinkiEMU Manager" }
+    { "name": "EntryAbility_desc", "value": "ShinkiEMU Manager" },
+    { "name": "session_text_input", "value": "Keyboard" },
+    { "name": "session_text_submit", "value": "Insert" },
+    { "name": "session_text_cancel", "value": "Cancel" }
   ]
 }

@@ -102,6 +102,8 @@
 
 #define ShinkiEmuRENDER_PRESERVE_ASPECT 1
 
+#define ShinkiEmuMAX_HOST_DIRECTORY_BYTES 32768
+
 #define ShinkiEmuINPUT_KEY 1
 
 #define ShinkiEmuINPUT_POINTER_MOVE 2
@@ -716,8 +718,10 @@ typedef struct ShinkiEmuFrameIdentity {
  * stage coordinates. Core applies its own frame-to-game/UI mapping once.
  * Physical keys use winit code names (KeyA, Digit1, Equal, Backquote, Enter).
  * Logical keys contain actual UTF-8 characters or named keys (Enter, Escape),
- * never Debug wrappers/control characters. Wheel x/y are fractional line
- * detents, not pixels. pressed/repeat and window booleans are exactly 0 or 1.
+ * never Debug wrappers/control characters. A committed text insertion uses
+ * INPUT_KEY with an empty physical key and UTF-8 logical text (up to 32 KiB),
+ * pressed=1 and repeat=0. Wheel x/y are fractional line detents, not pixels.
+ * pressed/repeat and window booleans are exactly 0 or 1.
  */
 typedef struct ShinkiEmuInputEvent {
   uint32_t kind;
@@ -940,6 +944,18 @@ typedef struct ShinkiEmuOpenRequestGpuV1 {
   struct ShinkiEmuOpenRequestTextV1 text;
   const struct ShinkiEmuGpuSceneServiceV1 *gpu_scene;
 } ShinkiEmuOpenRequestGpuV1;
+
+/**
+ * Optional host-owned directories appended to the ABI v3 request. Each span
+ * is either empty or an absolute UTF-8 path. Cores must copy any path they
+ * retain past `open`. Cache files are disposable; persistent data belongs in
+ * `data_directory`, namespaced by the core.
+ */
+typedef struct ShinkiEmuOpenRequestDirectoriesV1 {
+  struct ShinkiEmuOpenRequestGpuV1 gpu;
+  struct ShinkiEmuBytes cache_directory;
+  struct ShinkiEmuBytes data_directory;
+} ShinkiEmuOpenRequestDirectoriesV1;
 
 /**
  * A completed CPU-native effect frame. Its ordered `sequence` shares the

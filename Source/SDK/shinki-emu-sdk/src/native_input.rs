@@ -27,6 +27,14 @@ pub unsafe fn translate(
         match event.kind {
             abi::INPUT_KEY => {
                 let physical = unsafe { event.physical_key.text(128) }?;
+                if physical.is_empty() {
+                    if state != KeyState::Pressed {
+                        return Err(abi::INVALID_ARGUMENT);
+                    }
+                    let text = unsafe { event.logical_key.text(crate::runtime::MAX_TEXT_BYTES) }?;
+                    events.push(RuntimeEvent::TextInput { text: text.into() });
+                    continue;
+                }
                 let code = key(physical);
                 if code == KeyCode::F9 && state == KeyState::Pressed {
                     services.invalidate();
@@ -215,4 +223,98 @@ fn key(value: &str) -> KeyCode {
         BracketRight,
         Backslash
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roukaku_media_core::Extent2D;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    fn key_event(physical: abi::Bytes, logical: abi::Bytes) -> abi::InputEvent {
+        abi::InputEvent {
+            kind: abi::INPUT_KEY,
+            pressed: 1,
+            repeat: 0,
+            button: 0,
+            physical_key: physical,
+            logical_key: logical,
+            x: 0.0,
+            y: 0.0,
+            displayed: abi::FrameIdentity::default(),
+            window: abi::WindowState {
+                drawable_width: 1,
+                drawable_height: 1,
+                scale_factor: 1.0,
+                focused: 1,
+                suspended: 0,
+            },
+        }
+    }
+
+    fn translate_keys(source: &[abi::InputEvent]) -> (Result<Vec<RuntimeEvent>, abi::Status>, u64) {
+        let services = ServiceContext {
+            session: 1,
+            epoch: AtomicU64::new(1),
+            cancelled: AtomicBool::new(false),
+            waiting: AtomicBool::new(false),
+            text: None,
+            window: None,
+            host_cancel: None,
+        };
+        let extent = Extent2D::new(1, 1);
+        let canvas = StageCanvas::new(extent, extent).unwrap();
+        let events = unsafe { translate(&services, &canvas, source) };
+        (events, services.epoch.load(Ordering::Relaxed))
+    }
+
+    #[test]
+    fn native_input_owns_utf8_commit_and_preserves_physical_keys() {
+        let mut text = "日本語 café 🐟".to_owned();
+        let logical = abi::Bytes::new(text.as_bytes());
+        let (events, epoch) = translate_keys(&[
+            key_event(abi::Bytes::from_static(b"KeyA"), logical),
+            key_event(abi::Bytes::EMPTY, logical),
+            key_event(abi::Bytes::from_static(b"F9"), abi::Bytes::EMPTY),
+        ]);
+        text.clear();
+        assert!(matches!(
+            events.unwrap().as_slice(),
+            [
+                RuntimeEvent::Key {
+                    code: KeyCode::A,
+                    state: KeyState::Pressed,
+                    ..
+                },
+                RuntimeEvent::TextInput { text },
+                RuntimeEvent::Key {
+                    code: KeyCode::F9,
+                    state: KeyState::Pressed,
+                    ..
+                },
+            ] if text == "日本語 café 🐟"
+        ));
+        assert_eq!(epoch, 2);
+    }
+
+    #[test]
+    fn native_input_rejects_malformed_text_commits() {
+        let text = abi::Bytes::from_static(b"test");
+        let commit = key_event(abi::Bytes::EMPTY, text);
+        let too_long = vec![b'x'; crate::runtime::MAX_TEXT_BYTES + 1];
+        for event in [
+            abi::InputEvent {
+                pressed: 0,
+                ..commit
+            },
+            abi::InputEvent {
+                repeat: 1,
+                ..commit
+            },
+            key_event(abi::Bytes::EMPTY, abi::Bytes::from_static(b"\xff")),
+            key_event(abi::Bytes::EMPTY, abi::Bytes::new(&too_long)),
+        ] {
+            assert!(matches!(translate_keys(&[event]).0, Err(abi::INVALID_ARGUMENT)));
+        }
+    }
 }

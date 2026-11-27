@@ -193,6 +193,8 @@ struct SessionOptions {
     null_audio: bool,
     skip_disc_check: bool,
     font_file: Option<PathBuf>,
+    #[cfg(feature = "video-ffmpeg")]
+    cache_directory: Option<Arc<Path>>,
     render_extent: abi::Extent,
 }
 
@@ -403,6 +405,9 @@ unsafe extern "C" fn open(
             null_audio,
             skip_disc_check,
             font_file,
+            #[cfg(feature = "video-ffmpeg")]
+            cache_directory: unsafe { shinki_emu_sdk::native::host_cache_directory(raw_request) }
+                .map_err(invalid)?,
             render_extent: request.render_extent,
         };
         let path = PathBuf::from(unsafe { request.game_path.text(32768) }.map_err(invalid)?);
@@ -480,6 +485,8 @@ fn serve(
         .map_err(runtime)?
         .ok_or_else(|| invalid(abi::NO_MATCH))?;
     let mut vm = Vm::new(game, options.font_file.as_deref()).map_err(runtime)?;
+    #[cfg(feature = "video-ffmpeg")]
+    vm.set_movie_cache_directory(options.cache_directory);
     vm.set_skip_disc_check(options.skip_disc_check);
     #[cfg(not(target_env = "ohos"))]
     vm.set_null_audio(options.null_audio);

@@ -3,6 +3,7 @@ use crate::{audio::MoviePcm, scene::core_error};
 use shinki_emu_sdk::video::*;
 use std::{
     collections::VecDeque,
+    path::Path,
     sync::{Arc, atomic::Ordering},
 };
 
@@ -26,7 +27,11 @@ pub(crate) struct Movie {
     presented: Option<VideoFramePacket>,
 }
 impl Movie {
-    pub fn open(archive: &Arc<MusicaMountedVfs>, state: &MusicaMovieState) -> SessionResult<Self> {
+    pub fn open(
+        archive: &Arc<MusicaMountedVfs>,
+        state: &MusicaMovieState,
+        cache_directory: Option<Arc<Path>>,
+    ) -> SessionResult<Self> {
         let stat = archive.stat(&state.resource_uri).map_err(core_error)?;
         if stat.size == 0 || stat.size > MAX_ENCODED_BYTES {
             return Err(error(
@@ -38,9 +43,7 @@ impl Movie {
         let uri = state.resource_uri.clone();
         let decoder = VideoDecoderWorker::open_file(
             move |stop| {
-                let mut file = tempfile::Builder::new()
-                    .prefix("shinki-musica-movie-")
-                    .tempfile()
+                let mut file = stage_movie_file(cache_directory.as_deref(), "shinki-musica-movie-")
                     .map_err(|cause| {
                         crate::CoreError::invalid("SHINKI_EMU_MUSICA_MOVIE_FILE", cause.to_string())
                     })?;

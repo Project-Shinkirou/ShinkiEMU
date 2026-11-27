@@ -11,7 +11,11 @@ pub(crate) use playback::Movie;
 pub(crate) struct Movie;
 #[cfg(not(feature = "ffmpeg-vcpkg"))]
 impl Movie {
-    pub fn open(_: &std::sync::Arc<MusicaMountedVfs>, _: &MusicaMovieState) -> SessionResult<Self> {
+    pub fn open(
+        _: &std::sync::Arc<MusicaMountedVfs>,
+        _: &MusicaMovieState,
+        _: Option<std::sync::Arc<std::path::Path>>,
+    ) -> SessionResult<Self> {
         Err(error(
             "SHINKI_EMU_MUSICA_MOVIE_UNAVAILABLE",
             "movie playback requires ffmpeg-vcpkg",

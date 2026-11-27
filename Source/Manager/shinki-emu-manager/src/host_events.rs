@@ -235,10 +235,8 @@ pub(super) fn install<C: ManagerController>(
 }
 
 /// Android forwards activity lifecycle changes from `android_main`'s event
-/// listener; OHOS forwards ability, XComponent surface and configuration
-/// changes from the ArkTS shell. Physical keyboard forwarding and binding key
-/// capture are desktop-only: they read winit key codes, which neither mobile
-/// backend exposes, so Slint's capture rows are left to the UI there.
+/// listener; OHOS forwards lifecycle and session input from the ArkTS shell
+/// and XComponent. Binding key capture still uses desktop winit codes.
 #[cfg(any(target_os = "android", target_env = "ohos"))]
 pub(super) fn install<C: ManagerController>(
     adapter: &Rc<SlintManagerAdapter>,
@@ -253,6 +251,35 @@ pub(super) fn install<C: ManagerController>(
     let weak_adapter = Rc::downgrade(adapter);
     let weak_controller = Rc::downgrade(&controller);
     let weak_pointer = Rc::downgrade(&pointer);
+    #[cfg(target_env = "ohos")]
+    {
+        let window = adapter.window().as_weak();
+        let controller = weak_controller.clone();
+        crate::platform::ohos::set_input_handler(move |epoch, event| {
+            let (Some(window), Some(controller)) = (window.upgrade(), controller.upgrade()) else {
+                return false;
+            };
+            if !super::session_input_open(&window) {
+                return false;
+            }
+            let result = {
+                let mut controller = controller.borrow_mut();
+                let Some(active_epoch) = controller.input_session_epoch() else {
+                    return false;
+                };
+                if epoch.is_some_and(|epoch| epoch != active_epoch) {
+                    return false;
+                }
+                controller
+                    .physical_event(event)
+                    .and_then(|()| controller.flush_game_input())
+            };
+            if let Err(error) = result {
+                super::report_input_error(&window, &error);
+            }
+            true
+        });
+    }
     set_lifecycle_handler(Box::new(move |event| {
         let weak_adapter = weak_adapter.clone();
         let weak_controller = weak_controller.clone();

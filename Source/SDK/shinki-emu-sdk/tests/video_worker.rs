@@ -253,10 +253,13 @@ fn packet_exceeding_batch_budget_fails_without_returning_a_partial_success() {
 fn owned_file_decodes_and_is_removed_after_native_close() {
     use std::io::Write;
     let (created, path) = std::sync::mpsc::sync_channel(1);
+    let cache = tempfile::tempdir().unwrap();
+    let cache_path = cache.path().to_owned();
     let bytes = source();
     let mut worker = VideoDecoderWorker::open_file(
         move |_| {
-            let mut file = tempfile::NamedTempFile::new().unwrap();
+            let mut file = shinki_emu_sdk::video::stage_movie_file(Some(&cache_path), "test-video-")
+                .unwrap();
             file.write_all(&bytes).unwrap();
             created.send(file.path().to_owned()).unwrap();
             Ok(file)
@@ -266,6 +269,7 @@ fn owned_file_decodes_and_is_removed_after_native_close() {
     )
     .unwrap();
     let path = path.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(path.parent(), Some(cache.path()));
     let DecodeCompletion::Opened(config) = receive(&mut worker) else {
         panic!("expected opened file");
     };

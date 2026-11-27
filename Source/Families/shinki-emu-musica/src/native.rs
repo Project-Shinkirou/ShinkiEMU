@@ -280,6 +280,8 @@ unsafe extern "C" fn open(
             window: request.window,
             replacement: text_async.map(|service| text::TextBridge(services.clone(), service)),
             gpu_host: unsafe { GpuSceneHost::from_request(raw_request) }.map_err(invalid)?,
+            cache_directory: unsafe { shinki_emu_sdk::native::host_cache_directory(raw_request) }
+                .map_err(invalid)?,
         };
         let graphics_owner = unsafe { owner::borrow(request.module_owner) }?;
         let (commands, receiver) = sync_channel(64);

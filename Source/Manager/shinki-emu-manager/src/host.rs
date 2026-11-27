@@ -168,6 +168,8 @@ pub trait ManagerController: 'static {
         event: shinki_emu_manager_core::model::FamilyEvent,
     ) -> Result<(), String>;
     fn is_game_active(&self) -> bool;
+    #[cfg(target_env = "ohos")]
+    fn input_session_epoch(&self) -> Option<u64>;
     /// Keep the Android launch view alive while its selected core activates.
     #[cfg(target_os = "android")]
     fn has_pending_game_launch(&self) -> bool;
@@ -756,6 +758,12 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
             };
             modals::service(&window, &controller, &modal_ui);
             let input_blocked = !session_input_open(&window);
+            #[cfg(target_env = "ohos")]
+            platform::ohos::set_text_target(if input_blocked {
+                None
+            } else {
+                controller.borrow().input_session_epoch()
+            });
             if input_blocked {
                 let release = controller.borrow_mut().release_inputs();
                 if let Err(error) = release {

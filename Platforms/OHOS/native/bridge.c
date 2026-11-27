@@ -31,13 +31,15 @@ enum {
 };
 
 extern void shinki_ohos_event(int kind, double x, double y, const char *text);
-extern void shinki_ohos_start(const char *files);
+extern void shinki_ohos_start(const char *files, const char *cache);
+extern void shinki_ohos_submit_text(const char *epoch, const char *text, size_t length);
 extern void shinki_ohos_pick_result(uint32_t id, const char *path, const char *error);
 
 static pthread_mutex_t surface_lock = PTHREAD_MUTEX_INITIALIZER;
 static OHNativeWindow *surface;
 static OH_NativeVSync *vsync;
 static bool frame_pending;
+static pthread_mutex_t listener_lock = PTHREAD_MUTEX_INITIALIZER;
 static napi_threadsafe_function event_listener;
 
 static void frame(long long timestamp, void *data) {
@@ -212,13 +214,15 @@ static void call_js(napi_env env, napi_value callback, void *context, void *data
 
 // Queues `kind`/`payload` for the ArkTS listener. Returns 0 when queued.
 int shinki_ohos_notify(const char *kind, const char *payload) {
-    if (!event_listener) return -1;
     Message *message = calloc(1, sizeof(*message));
     if (!message) return -1;
     message->kind = strdup(kind);
     message->payload = strdup(payload);
-    if (!message->kind || !message->payload ||
-        napi_call_threadsafe_function(event_listener, message, napi_tsfn_nonblocking) != napi_ok) {
+    pthread_mutex_lock(&listener_lock);
+    bool queued = message->kind && message->payload && event_listener &&
+        napi_call_threadsafe_function(event_listener, message, napi_tsfn_nonblocking) == napi_ok;
+    pthread_mutex_unlock(&listener_lock);
+    if (!queued) {
         free(message->kind);
         free(message->payload);
         free(message);
@@ -232,23 +236,34 @@ static bool arguments(napi_env env, napi_callback_info info, size_t expected, na
     return napi_get_cb_info(env, info, &count, values, NULL, NULL) == napi_ok && count == expected;
 }
 
-static char *string_value(napi_env env, napi_value value) {
-    size_t length = 0;
-    if (napi_get_value_string_utf8(env, value, NULL, 0, &length) != napi_ok) return NULL;
-    char *text = malloc(length + 1);
-    if (text && napi_get_value_string_utf8(env, value, text, length + 1, &length) != napi_ok) {
+static char *bounded_string(napi_env env, napi_value value, size_t limit, size_t *length) {
+    if (napi_get_value_string_utf8(env, value, NULL, 0, length) != napi_ok || *length > limit) return NULL;
+    char *text = malloc(*length + 1);
+    if (text && napi_get_value_string_utf8(env, value, text, *length + 1, length) != napi_ok) {
         free(text);
         return NULL;
     }
     return text;
 }
 
+static char *string_value(napi_env env, napi_value value) {
+    size_t length = 0;
+    return bounded_string(env, value, SIZE_MAX - 1, &length);
+}
+
 static napi_value start(napi_env env, napi_callback_info info) {
-    napi_value value;
-    if (!arguments(env, info, 1, &value)) return NULL;
-    char *files = string_value(env, value);
-    if (files) shinki_ohos_start(files);
+    napi_value values[2];
+    size_t files_length, cache_length;
+    if (!arguments(env, info, 2, values)) return NULL;
+    char *files = bounded_string(env, values[0], 32768, &files_length);
+    char *cache = bounded_string(env, values[1], 32768, &cache_length);
+    if (files && cache && strlen(files) == files_length && strlen(cache) == cache_length) {
+        shinki_ohos_start(files, cache);
+    } else {
+        napi_throw_error(env, "SHINKI_EMU_OHOS_CONTEXT_PATH", "Invalid Ability directory");
+    }
     free(files);
+    free(cache);
     return NULL;
 }
 
@@ -283,6 +298,22 @@ static napi_value press_key(napi_env env, napi_callback_info info) {
     return NULL;
 }
 
+static napi_value submit_text(napi_env env, napi_callback_info info) {
+    napi_value values[2];
+    size_t epoch_length, length;
+    if (!arguments(env, info, 2, values)) return NULL;
+    char *epoch = bounded_string(env, values[0], 20, &epoch_length);
+    char *text = bounded_string(env, values[1], 32 * 1024, &length);
+    if (epoch && text && strlen(epoch) == epoch_length) {
+        shinki_ohos_submit_text(epoch, text, length);
+    } else {
+        napi_throw_error(env, "SHINKI_EMU_OHOS_TEXT_BOUNDS", "Invalid text submission");
+    }
+    free(epoch);
+    free(text);
+    return NULL;
+}
+
 static napi_value set_event_listener(napi_env env, napi_callback_info info) {
     napi_value callback, name;
     if (!arguments(env, info, 1, &callback)) return NULL;
@@ -292,8 +323,11 @@ static napi_value set_event_listener(napi_env env, napi_callback_info info) {
         OH_LOG_ERROR(LOG_APP, "napi_create_threadsafe_function failed");
         return NULL;
     }
-    if (event_listener) napi_release_threadsafe_function(event_listener, napi_tsfn_release);
+    pthread_mutex_lock(&listener_lock);
+    napi_threadsafe_function previous = event_listener;
     event_listener = created;
+    pthread_mutex_unlock(&listener_lock);
+    if (previous) napi_release_threadsafe_function(previous, napi_tsfn_release);
     return NULL;
 }
 
@@ -336,6 +370,7 @@ static napi_value initialize(napi_env env, napi_value exports) {
         { "foreground", NULL, foreground, NULL, NULL, NULL, napi_default, NULL },
         { "configure", NULL, configure, NULL, NULL, NULL, napi_default, NULL },
         { "pressKey", NULL, press_key, NULL, NULL, NULL, napi_default, NULL },
+        { "submitText", NULL, submit_text, NULL, NULL, NULL, napi_default, NULL },
         { "setEventListener", NULL, set_event_listener, NULL, NULL, NULL, napi_default, NULL },
         { "completePicker", NULL, complete_picker, NULL, NULL, NULL, napi_default, NULL },
     };

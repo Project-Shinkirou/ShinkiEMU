@@ -343,7 +343,7 @@ impl MusicaProvider {
         &mut self,
         request: OpenRequest,
     ) -> SessionResult<(OpenResponse, MusicaSession)> {
-        self.open_native_session(request, shinki_emu_abi::Extent::default(), None, None)
+        self.open_native_session(request, shinki_emu_abi::Extent::default(), None, None, None)
     }
 
     /// `render_extent` is already checked against the declared render support;
@@ -354,6 +354,7 @@ impl MusicaProvider {
         render_extent: shinki_emu_abi::Extent,
         replacement: Option<crate::native::text::TextBridge>,
         gpu_host: Option<GpuSceneHost>,
+        cache_directory: Option<std::sync::Arc<std::path::Path>>,
     ) -> SessionResult<(OpenResponse, MusicaSession)> {
         if let Some(service) = &replacement {
             service.check_cancelled()?;
@@ -677,6 +678,7 @@ impl MusicaProvider {
             progress_in_background,
             primary_encoding,
             native,
+            cache_directory,
         );
         session.sync_read_flags()?;
         tracing::info!(event = "shinki.emu.musica.session.open");

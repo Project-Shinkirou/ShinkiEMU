@@ -592,3 +592,37 @@ fn optional_text_tail_is_size_gated_and_rejects_an_incomplete_service() {
         Err(INVALID_ARGUMENT)
     ));
 }
+
+#[test]
+fn directory_tail_is_size_gated_and_preserves_text_and_gpu_prefixes() {
+    let mut base: OpenRequest = unsafe { std::mem::zeroed() };
+    base.header = Header::of::<OpenRequest>();
+    assert!(unsafe { OpenRequestDirectoriesV1::from_request(&base) }.unwrap().is_none());
+    let mut request = OpenRequestDirectoriesV1 {
+        gpu: OpenRequestGpuV1 {
+            text: OpenRequestTextV1 {
+                base,
+                text_async: std::ptr::null(),
+            },
+            gpu_scene: std::ptr::null(),
+        },
+        cache_directory: Bytes::new(b"/private/cache"),
+        data_directory: Bytes::new(b"/private/files"),
+    };
+    request.gpu.text.base.header = Header::of::<OpenRequestGpuV1>();
+    let raw = std::ptr::from_ref(&request).cast::<OpenRequest>();
+    assert!(unsafe { OpenRequestDirectoriesV1::from_request(raw) }.unwrap().is_none());
+    request.gpu.text.base.header = Header::of::<OpenRequestDirectoriesV1>();
+    let raw = std::ptr::from_ref(&request).cast::<OpenRequest>();
+    assert!(unsafe { OpenRequest::gpu_scene(raw) }.unwrap().is_none());
+    assert!(unsafe { (*raw).async_text() }.unwrap().is_none());
+    let dirs = unsafe { OpenRequestDirectoriesV1::from_request(raw) }.unwrap().unwrap();
+    assert_eq!(
+        unsafe { dirs.cache_directory.text(MAX_HOST_DIRECTORY_BYTES) },
+        Ok("/private/cache")
+    );
+    assert_eq!(
+        unsafe { dirs.data_directory.text(MAX_HOST_DIRECTORY_BYTES) },
+        Ok("/private/files")
+    );
+}

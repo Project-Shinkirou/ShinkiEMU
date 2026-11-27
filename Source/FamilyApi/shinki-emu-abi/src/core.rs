@@ -187,6 +187,41 @@ impl OpenRequest {
         Ok(Some(*service))
     }
 }
+
+pub const MAX_HOST_DIRECTORY_BYTES: usize = 32768;
+
+/// Optional host-owned directories appended to the ABI v3 request. Each span
+/// is either empty or an absolute UTF-8 path. Cores must copy any path they
+/// retain past `open`. Cache files are disposable; persistent data belongs in
+/// `data_directory`, namespaced by the core.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OpenRequestDirectoriesV1 {
+    pub gpu: crate::OpenRequestGpuV1,
+    pub cache_directory: Bytes,
+    pub data_directory: Bytes,
+}
+
+impl OpenRequestDirectoriesV1 {
+    /// # Safety
+    /// `request` must point to the original ABI allocation, readable through
+    /// the size advertised by the base header for the lifetime of the result.
+    pub unsafe fn from_request<'a>(request: *const OpenRequest) -> Result<Option<&'a Self>, Status> {
+        if request.is_null() || !request.is_aligned() {
+            return Err(INVALID_ARGUMENT);
+        }
+        let header = unsafe { (*request).header };
+        if !header.accepts::<OpenRequest>() {
+            return Err(INVALID_ARGUMENT);
+        }
+        Ok(if header.accepts::<Self>() {
+            Some(unsafe { &*request.cast::<Self>() })
+        } else {
+            None
+        })
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct OpenResult {
@@ -204,8 +239,10 @@ pub const INPUT_WINDOW: u32 = 5;
 /// stage coordinates. Core applies its own frame-to-game/UI mapping once.
 /// Physical keys use winit code names (KeyA, Digit1, Equal, Backquote, Enter).
 /// Logical keys contain actual UTF-8 characters or named keys (Enter, Escape),
-/// never Debug wrappers/control characters. Wheel x/y are fractional line
-/// detents, not pixels. pressed/repeat and window booleans are exactly 0 or 1.
+/// never Debug wrappers/control characters. A committed text insertion uses
+/// INPUT_KEY with an empty physical key and UTF-8 logical text (up to 32 KiB),
+/// pressed=1 and repeat=0. Wheel x/y are fractional line detents, not pixels.
+/// pressed/repeat and window booleans are exactly 0 or 1.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct InputEvent {

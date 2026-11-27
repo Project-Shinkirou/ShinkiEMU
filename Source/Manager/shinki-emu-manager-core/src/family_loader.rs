@@ -10,6 +10,7 @@ use std::{
     mem::{ManuallyDrop, MaybeUninit},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -163,6 +164,11 @@ struct NativeModule {
     resources: Option<crate::native_module_owner::ModuleResources>,
     closed: bool,
 }
+
+struct HostDirectories {
+    cache: Arc<str>,
+    data: Arc<str>,
+}
 pub struct LoadedFamilyPlugin {
     inner: Rc<NativeModule>,
     descriptor: FamilyPluginDescriptor,
@@ -170,6 +176,7 @@ pub struct LoadedFamilyPlugin {
     path_rules: BTreeMap<String, ConfigPathRule>,
     location: PathBuf,
     menu: Vec<SessionMenuEntry>,
+    directories: Option<HostDirectories>,
 }
 impl LoadedFamilyPlugin {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, FamilyLoadError> {
@@ -181,6 +188,8 @@ impl LoadedFamilyPlugin {
     #[cfg(target_env = "ohos")]
     pub fn load_ohos_bundled(
         path: &Path,
+        cache: Arc<str>,
+        data: Arc<str>,
         query_from_bundle: impl FnOnce(*const std::ffi::c_void) -> bool,
     ) -> Result<Self, String> {
         use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
@@ -205,6 +214,7 @@ impl LoadedFamilyPlugin {
         let mut core = unsafe { Self::from_query_with(query, |_| Ok(())) }
             .map_err(|error| error.to_string())?;
         core.location = path.to_owned();
+        core.directories = Some(HostDirectories { cache, data });
         Ok(core)
     }
 
@@ -374,6 +384,7 @@ impl LoadedFamilyPlugin {
             configuration,
             path_rules,
             location: PathBuf::new(),
+            directories: None,
             menu,
         })
     }
@@ -481,41 +492,51 @@ impl LoadedFamilyPlugin {
         crate::model::validate_game_path(&request.game_path)?;
         let resolved = resolve_config(&self.configuration, &request.configuration)?;
         let entries = super::native_config::entries(&resolved);
-        let raw = abi::OpenRequestGpuV1 {
-            text: abi::OpenRequestTextV1 {
-                base: abi::OpenRequest {
-                    header: if request.gpu_scene.is_some() {
-                        abi::Header::of::<abi::OpenRequestGpuV1>()
-                    } else {
-                        abi::Header::of::<abi::OpenRequestTextV1>()
+        let raw = abi::OpenRequestDirectoriesV1 {
+            gpu: abi::OpenRequestGpuV1 {
+                text: abi::OpenRequestTextV1 {
+                    base: abi::OpenRequest {
+                        header: if self.directories.is_some() {
+                            abi::Header::of::<abi::OpenRequestDirectoriesV1>()
+                        } else if request.gpu_scene.is_some() {
+                            abi::Header::of::<abi::OpenRequestGpuV1>()
+                        } else {
+                            abi::Header::of::<abi::OpenRequestTextV1>()
+                        },
+                        game_path: abi::Bytes::new(request.game_path.as_bytes()),
+                        session_epoch: request.session_epoch,
+                        configuration: entries.as_ptr(),
+                        configuration_count: entries.len(),
+                        window: native_window(request.initial_window),
+                        host: request.host,
+                        module_owner: self
+                            .inner
+                            .resources
+                            .as_ref()
+                            .map_or(std::ptr::null_mut(), |resources| resources.handle()),
+                        render_extent: request.render_extent.map_or(
+                            abi::Extent::default(),
+                            |(width, height)| abi::Extent { width, height },
+                        ),
                     },
-                    game_path: abi::Bytes::new(request.game_path.as_bytes()),
-                    session_epoch: request.session_epoch,
-                    configuration: entries.as_ptr(),
-                    configuration_count: entries.len(),
-                    window: native_window(request.initial_window),
-                    host: request.host,
-                    module_owner: self
-                        .inner
-                        .resources
+                    text_async: request
+                        .text_async
                         .as_ref()
-                        .map_or(std::ptr::null_mut(), |resources| resources.handle()),
-                    render_extent: request.render_extent.map_or(
-                        abi::Extent::default(),
-                        |(width, height)| abi::Extent { width, height },
-                    ),
+                        .map_or(std::ptr::null(), |service| service),
                 },
-                text_async: request
-                    .text_async
+                gpu_scene: request
+                    .gpu_scene
                     .as_ref()
-                    .map_or(std::ptr::null(), |service| service),
+                    .map_or(std::ptr::null(), |service| {
+                        std::ptr::from_ref(service).cast()
+                    }),
             },
-            gpu_scene: request
-                .gpu_scene
-                .as_ref()
-                .map_or(std::ptr::null(), |service| {
-                    std::ptr::from_ref(service).cast()
-                }),
+            cache_directory: self.directories.as_ref().map_or(abi::Bytes::EMPTY, |paths| {
+                abi::Bytes::new(paths.cache.as_bytes())
+            }),
+            data_directory: self.directories.as_ref().map_or(abi::Bytes::EMPTY, |paths| {
+                abi::Bytes::new(paths.data.as_bytes())
+            }),
         };
         let mut output = MaybeUninit::<abi::OpenResult>::zeroed();
         let mut error = abi::Error::default();

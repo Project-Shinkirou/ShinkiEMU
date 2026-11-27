@@ -1,6 +1,7 @@
 //! C ABI validation and cancellation shared by native core owners.
 use crate::runtime;
 use shinki_emu_abi as abi;
+use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -58,6 +59,56 @@ impl ServiceContext {
         self.invalidate();
     }
 }
+
+/// Read the optional app-owned cache path into core-owned storage.
+///
+/// # Safety
+/// The original request and its cache span must be valid through this call.
+pub unsafe fn host_cache_directory(
+    request: *const abi::OpenRequest,
+) -> Result<Option<Arc<Path>>, abi::Status> {
+    let Some(directories) = (unsafe { abi::OpenRequestDirectoriesV1::from_request(request) })? else {
+        return Ok(None);
+    };
+    let cache = unsafe { directories.cache_directory.text(abi::MAX_HOST_DIRECTORY_BYTES) }?;
+    if cache.is_empty() {
+        return Ok(None);
+    }
+    let path = Path::new(cache);
+    if !path.is_absolute() {
+        return Err(abi::INVALID_ARGUMENT);
+    }
+    Ok(Some(Arc::from(path)))
+}
+
+#[cfg(test)]
+mod host_directory_tests {
+    use super::*;
+
+    #[test]
+    fn host_cache_directory_is_owned_and_absolute() {
+        let directory = tempfile::tempdir().unwrap();
+        let request = |cache_directory| {
+            let mut request: abi::OpenRequestDirectoriesV1 = unsafe { std::mem::zeroed() };
+            request.gpu.text.base.header = abi::Header::of::<abi::OpenRequestDirectoriesV1>();
+            request.cache_directory = cache_directory;
+            request
+        };
+        let path = directory.path().to_str().unwrap().to_owned();
+        let raw = request(abi::Bytes::new(path.as_bytes()));
+        let owned = unsafe { host_cache_directory(std::ptr::from_ref(&raw).cast()) }
+            .unwrap()
+            .unwrap();
+        drop(path);
+        assert_eq!(owned.as_ref(), directory.path());
+        let raw = request(abi::Bytes::new(b"relative"));
+        assert_eq!(
+            unsafe { host_cache_directory(std::ptr::from_ref(&raw).cast()) },
+            Err(abi::INVALID_ARGUMENT)
+        );
+    }
+}
+
 /// Validate and own explicit C configuration entries before handing them to a worker.
 /// # Safety
 /// Descriptor fields and request arrays must be readable for their declared lengths.

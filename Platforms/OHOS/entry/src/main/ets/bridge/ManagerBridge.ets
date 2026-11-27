@@ -55,9 +55,12 @@ export function extractBundled(context: common.UIAbilityContext): void {
 }
 
 /** Installs the Manager event listener; call before `manager.start`. */
-export function listen(context: common.UIAbilityContext): void {
+export function listen(context: common.UIAbilityContext, textTarget: (epoch: string) => void): void {
   manager.setEventListener((kind: string, payload: string) => {
     switch (kind) {
+      case 'textTarget':
+        textTarget(payload);
+        break;
       case 'error':
         hilog.error(DOMAIN, TAG, '%{public}s', payload);
         promptAction.showToast({ message: payload, duration: 5000 });

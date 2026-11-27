@@ -2,6 +2,7 @@ use super::*;
 use crate::session::types::OpenRequest;
 use shinki_emu_sdk::runtime::{RuntimeStatus, WindowState};
 use std::{
+    path::Path,
     sync::mpsc::{Receiver, RecvTimeoutError},
     time::{Duration, Instant},
 };
@@ -13,6 +14,7 @@ pub(super) struct Launch {
     pub window: abi::WindowState,
     pub replacement: Option<text::TextBridge>,
     pub gpu_host: Option<GpuSceneHost>,
+    pub cache_directory: Option<Arc<Path>>,
 }
 pub(super) fn run(
     graphics_owner: owner::GraphicsOwner,
@@ -28,6 +30,7 @@ pub(super) fn run(
         window,
         replacement,
         gpu_host,
+        cache_directory,
     } = launch;
     let request = OpenRequest {
         game_path: path,
@@ -46,7 +49,7 @@ pub(super) fn run(
     };
     let (_, session) = {
         let mut owner = graphics_owner.lock().map_err(|_| invalid(abi::PANICKED))?;
-        owner.open_native_session(request, render_extent, replacement, gpu_host)?
+        owner.open_native_session(request, render_extent, replacement, gpu_host, cache_directory)?
     };
     serve(session, window.suspended != 0, services, commands, ready)
 }

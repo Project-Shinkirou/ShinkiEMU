@@ -4,14 +4,14 @@ use shinki_emu_sdk::{
     CoreError,
     video::{
         DecodeCompletion, DecodedMediaPacket, FfmpegAudioOutputFormat, FfmpegStreamLimits,
-        PcmQueue, VideoDecoderWorker,
+        PcmQueue, VideoDecoderWorker, stage_movie_file,
     },
 };
 use std::{
     collections::VecDeque,
     fs::File,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -64,7 +64,7 @@ pub(crate) struct Movie {
 }
 
 impl Movie {
-    pub(crate) fn open(path: PathBuf) -> Result<Self> {
+    pub(crate) fn open(path: PathBuf, cache_directory: Option<Arc<Path>>) -> Result<Self> {
         let decoder = VideoDecoderWorker::open_file(
             move |stop| {
                 let convert = |error: std::io::Error| {
@@ -78,9 +78,7 @@ impl Movie {
                         "invalid movie length",
                     ));
                 }
-                let mut staged = tempfile::Builder::new()
-                    .prefix("adv32-video-")
-                    .tempfile()
+                let mut staged = stage_movie_file(cache_directory.as_deref(), "adv32-video-")
                     .map_err(convert)?;
                 let mut buffer = vec![0; 1024 * 1024];
                 let mut remaining = length;
