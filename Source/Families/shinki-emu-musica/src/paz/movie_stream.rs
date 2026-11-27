@@ -1,4 +1,5 @@
 use super::*;
+use shinki_emu_musica_format::paz::password_for_entry;
 use std::{
     io,
     io::Write,

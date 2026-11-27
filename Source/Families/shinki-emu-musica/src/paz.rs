@@ -31,7 +31,7 @@ use encoding_rs::SHIFT_JIS;
 use flate2::read::ZlibDecoder;
 #[cfg(any(test, feature = "ffmpeg-vcpkg"))]
 use rc4::{KeyInit, Rc4, StreamCipher};
-use shinki_emu_musica_format::paz::{self as format, password_for_entry, xor_byte};
+use shinki_emu_musica_format::paz::{self as format, xor_byte};
 #[cfg(test)]
 const FIXTURE_ARCHIVE_ROLES: [&str; 8] = ["bg", "bgm", "scr", "st", "sys", "se", "voice", "mov"];
 
