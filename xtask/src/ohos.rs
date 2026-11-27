@@ -14,7 +14,11 @@ use object::{
     read::elf::{Dyn, ProgramHeader},
 };
 use sha2::{Digest, Sha256};
-use shinki_emu_build::ohos::{MANAGER_LIBRARY as MANAGER, Target};
+use shinki_emu_build::{
+    BuildAsset,
+    ohos::{MANAGER_LIBRARY as MANAGER, Target},
+};
+use shinki_emu_metadata::CoreIdentity;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -26,6 +30,12 @@ use std::{
 const BUNDLE_NAME: &str = "org.shinkirou.shinkiemu";
 
 const BUNDLED: &str = "resources/rawfile/bundled/";
+const BUNDLE_RECEIPT: &str = "ohos.json";
+const CORE_SCHEMA: &str = "shinki.emu.core_package.v1";
+
+fn core_version(identity: Option<&CoreIdentity>, product_version: &str) -> String {
+    identity.map_or_else(|| product_version.to_owned(), CoreIdentity::version)
+}
 
 pub(crate) fn cores<'a>(
     inv: &'a Inventory,
@@ -40,16 +50,21 @@ pub(crate) fn cores<'a>(
 struct CoreBuild<'a> {
     core: &'a Core,
     library: &'a str,
+    identity: Option<CoreIdentity>,
     artifact: BuildArtifact,
 }
 
 impl CoreBuild<'_> {
     fn validate(&self, triple: &str, version: &str, commit: &str) -> Result<()> {
         let artifact = &self.artifact;
+        let product = if self.identity.is_some() {
+            (None, None)
+        } else {
+            (Some(version), Some(commit))
+        };
         if artifact.component != self.core.id
             || artifact.target != triple
-            || artifact.product_version.as_deref() != Some(version)
-            || artifact.source_commit.as_deref() != Some(commit)
+            || (artifact.product_version.as_deref(), artifact.source_commit.as_deref()) != product
         {
             bail!(
                 "wrong OHOS core artifact for {}/{triple}/{version}",
@@ -136,6 +151,42 @@ impl StagedHap {
             self.add_native(&name, &source, NativeRole::Dependency)?;
         }
         Ok(())
+    }
+
+    fn receipt(&self, target: Target, version: &str, commit: &str) -> serde_json::Value {
+        let abi = target.abi();
+        let bundled_cores: Vec<_> = self
+            .cores
+            .values()
+            .map(|core| {
+                let mut record = serde_json::json!({
+                    "plugin_id": core.plugin_id,
+                    "version": core.version,
+                    "source_commit": commit,
+                    "abi": core.abi,
+                    "library": format!("libs/{abi}/{}", core.library),
+                    "sha256": self.native[&core.library].sha256,
+                });
+                if let Some(identity) = &core.identity {
+                    record["identity"] = serde_json::json!(identity);
+                }
+                record
+            })
+            .collect();
+        let native_libraries: BTreeMap<_, _> = self
+            .native
+            .iter()
+            .map(|(name, member)| (format!("libs/{abi}/{name}"), &member.sha256))
+            .collect();
+        serde_json::json!({
+            "target": target.rust_target(),
+            "abi": abi,
+            "local_qa": target.local_qa(),
+            "version": version,
+            "source_commit": commit,
+            "bundled_cores": bundled_cores,
+            "native_libraries": native_libraries,
+        })
     }
 }
 
@@ -256,10 +307,12 @@ pub(crate) fn package(
     }
     let mut builds = Vec::with_capacity(roster.len());
     for (core, library) in roster {
+        let identity = core.ohos_identity(&inv.root)?;
         let artifact = crate::build::execute_ohos_hap(inv, triple, &core.id, version)?;
         let build = CoreBuild {
             core,
             library,
+            identity,
             artifact,
         };
         build.validate(triple, version, commit)?;
@@ -269,44 +322,16 @@ pub(crate) fn package(
     let signing = signing_material(&tools)?;
     let project = inv.root.join("Platforms/OHOS");
     atomic_directory(out, |stage| {
-        let contents = stage_inputs(inv, target, result, &builds, &tools, &project)?;
+        let (contents, mut record) = stage_inputs(inv, target, result, &builds, &tools, &project)?;
         let unsigned = build_hap(&tools, target, &project, version)?;
         let name = hap_name(target, version);
         let hap = stage.join(&name);
         sign_hap(&tools, &signing, &unsigned, &hap)?;
         verify_hap(&tools, &signing, target, &hap, version, commit, &contents)?;
-        let bundled_cores = contents
-            .cores
-            .values()
-            .map(|core| {
-                serde_json::json!({
-                    "plugin_id": core.plugin_id,
-                    "version": core.version,
-                    "source_commit": commit,
-                    "abi": core.abi,
-                    "library": format!("libs/{}/{}", target.abi(), core.library),
-                    "sha256": contents.native[&core.library].sha256,
-                })
-            })
-            .collect::<Vec<_>>();
-        let native_libraries: BTreeMap<_, _> = contents
-            .native
-            .iter()
-            .map(|(name, member)| (format!("libs/{}/{name}", target.abi()), &member.sha256))
-            .collect();
-        let record = serde_json::json!({
-            "hap": name,
-            "sha256": sha256(&hap)?,
-            "target": triple,
-            "abi": target.abi(),
-            "local_qa": target.local_qa(),
-            "version": version,
-            "source_commit": commit,
-            "features": result.features,
-            "bundled_cores": bundled_cores,
-            "native_libraries": native_libraries,
-        });
-        fs::write(stage.join("ohos.json"), serde_json::to_vec_pretty(&record)?)?;
+        record["hap"] = name.into();
+        record["sha256"] = sha256(&hap)?.into();
+        record["features"] = serde_json::json!(result.features);
+        fs::write(stage.join(BUNDLE_RECEIPT), serde_json::to_vec_pretty(&record)?)?;
         Ok(())
     })?;
     Ok(out.to_owned())
@@ -319,9 +344,15 @@ pub(crate) fn verify_receipt_roster(
     commit: &str,
     receipt: &serde_json::Value,
 ) -> Result<()> {
-    let abi = Target::from_rust_target(triple)
-        .context("OHOS receipt target")?
-        .abi();
+    let target = Target::from_rust_target(triple).context("OHOS receipt target")?;
+    let abi = target.abi();
+    if receipt["target"] != triple
+        || receipt["version"] != version
+        || receipt["source_commit"] != commit
+        || receipt["local_qa"] != target.local_qa()
+    {
+        bail!("wrong target or product provenance in OHOS receipt");
+    }
     let records = receipt["bundled_cores"]
         .as_array()
         .context("OHOS core receipt roster")?;
@@ -347,7 +378,7 @@ pub(crate) fn verify_receipt_roster(
         }
     }
     let expected: BTreeMap<_, _> = cores(inv, triple)
-        .map(|(core, library)| (core.id.as_str(), library))
+        .map(|(core, library)| (core.id.as_str(), (core, library)))
         .collect();
     if records.len() != expected.len() {
         bail!("wrong core roster size in OHOS receipt");
@@ -357,12 +388,14 @@ pub(crate) fn verify_receipt_roster(
         let id = record["plugin_id"]
             .as_str()
             .context("OHOS receipt plugin ID")?;
-        let basename = expected
+        let (core, basename) = expected
             .get(id)
             .context("unexpected core in OHOS receipt")?;
+        let identity = core.ohos_identity(&inv.root)?;
         let path = format!("{prefix}{basename}");
         if !seen.insert(id)
-            || record["version"] != version
+            || record["version"] != core_version(identity.as_ref(), version)
+            || record["identity"] != serde_json::to_value(&identity)?
             || record["source_commit"] != commit
             || record["abi"] != shinki_emu_build::ABI
             || record["library"] != path
@@ -383,7 +416,7 @@ fn stage_inputs(
     builds: &[CoreBuild<'_>],
     tools: &Tools,
     project: &Path,
-) -> Result<StagedHap> {
+) -> Result<(StagedHap, serde_json::Value)> {
     let libs = project.join("entry/libs");
     let bundled = project.join("entry/src/main/resources/rawfile/bundled");
     for generated in [&libs, &bundled] {
@@ -435,6 +468,19 @@ fn stage_inputs(
             bail!("duplicate OHOS HAP core {}", build.core.id);
         }
     }
+    let version = result
+        .product_version
+        .as_deref()
+        .context("OHOS Manager version")?;
+    let commit = result
+        .source_commit
+        .as_deref()
+        .context("OHOS Manager source commit")?;
+    let receipt = contents.receipt(target, version, commit);
+    verify_receipt_roster(inv, target.rust_target(), version, commit, &receipt)?;
+    let receipt_path = temp.path().join(BUNDLE_RECEIPT);
+    fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt)?)?;
+    entries.push((receipt_path, BUNDLE_RECEIPT.into()));
     fs::create_dir_all(&bundled)?;
     copy_entries(&entries, &bundled)?;
     for (source, name) in entries {
@@ -453,7 +499,7 @@ fn stage_inputs(
     contents
         .raw
         .insert("bundled.manifest".into(), sha256(&manifest)?);
-    Ok(contents)
+    Ok((contents, receipt))
 }
 
 fn stage_core_manifest(
@@ -495,12 +541,7 @@ fn stage_core_manifest(
         sha256: library_sha256.into(),
     }];
     let mut data = package::licenses(inv, artifact, &scratch)?;
-    for asset in build.licenses.iter().chain(&build.resources) {
-        data.extend(package::asset_entries(asset)?);
-    }
-    if build.licenses.is_empty() {
-        bail!("OHOS bundled core {id} must have license inputs");
-    }
+    core_assets(inv, core, build, &mut data)?;
     for (source, relative) in data {
         if Path::new(&relative)
             .extension()
@@ -514,28 +555,33 @@ fn stage_core_manifest(
         });
         entries.push((source, format!("cores/{id}/{relative}")));
     }
-    let version = artifact
-        .product_version
-        .as_deref()
-        .context("OHOS bundled core product version")?;
-    shinki_emu_metadata::validate_core_version(version, None)?;
-    let commit = artifact
-        .source_commit
-        .as_deref()
-        .context("OHOS bundled core product source commit")?;
-    let product_source = package::write_product_source_commit(&scratch, commit)?;
-    entries.push((
-        scratch.join(&product_source.path),
-        format!("cores/{id}/{}", product_source.path),
-    ));
-    files.push(product_source);
+    let version = match &bundle.identity {
+        Some(identity) => identity.version(),
+        None => {
+            let commit = artifact
+                .source_commit
+                .as_deref()
+                .context("OHOS first-party core source commit")?;
+            let product_source = package::write_product_source_commit(&scratch, commit)?;
+            entries.push((
+                scratch.join(&product_source.path),
+                format!("cores/{id}/{}", product_source.path),
+            ));
+            files.push(product_source);
+            artifact
+                .product_version
+                .clone()
+                .context("OHOS first-party core product version")?
+        }
+    };
+    shinki_emu_metadata::validate_core_version(&version, bundle.identity.as_ref())?;
     files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
     let declaration = package::CorePackage {
-        schema: "shinki.emu.core_package.v1".into(),
+        schema: CORE_SCHEMA.into(),
         plugin_id: id.clone(),
         library: library.into(),
-        version: version.into(),
-        identity: None,
+        version,
+        identity: bundle.identity.clone(),
         recognition: core.recognition.clone(),
         abi: shinki_emu_build::ABI.into(),
         files,
@@ -544,6 +590,50 @@ fn stage_core_manifest(
     fs::write(&path, serde_json::to_vec_pretty(&declaration)?)?;
     entries.push((path, format!("cores/{id}/core.json")));
     Ok(declaration)
+}
+
+fn core_assets(
+    inv: &Inventory,
+    core: &Core,
+    build: &shinki_emu_build::CoreBuildManifest,
+    data: &mut Vec<(PathBuf, String)>,
+) -> Result<()> {
+    for asset in build.licenses.iter().chain(&build.resources) {
+        data.extend(package::asset_entries(asset)?);
+    }
+    let licenses = core.license_files(&inv.root, &build.target)?;
+    if build.licenses.is_empty() && licenses.is_empty() {
+        bail!("OHOS bundled core {} must have license inputs", core.id);
+    }
+    let mut seen: BTreeSet<_> = data
+        .iter()
+        .map(|(source, _)| dunce::canonicalize(source))
+        .collect::<io::Result<_>>()?;
+    let mut add_inventory_asset = |asset| -> Result<()> {
+        for (source, dest) in package::asset_entries(&asset)? {
+            if seen.insert(dunce::canonicalize(&source)?) {
+                data.push((source, dest));
+            }
+        }
+        Ok(())
+    };
+    for (source, path) in licenses {
+        add_inventory_asset(BuildAsset {
+            source,
+            dest: format!("licenses/inventory/{path}"),
+        })?;
+    }
+    for path in &core.resources {
+        let filename = Path::new(path)
+            .file_name()
+            .context("OHOS core resource filename")?
+            .to_string_lossy();
+        add_inventory_asset(BuildAsset {
+            source: inv.root.join(path),
+            dest: format!("Resources/{filename}"),
+        })?;
+    }
+    Ok(())
 }
 
 fn build_hap(tools: &Tools, target: Target, project: &Path, version: &str) -> Result<PathBuf> {
@@ -904,17 +994,26 @@ fn verify_archive(
     if module["app"]["bundleName"] != BUNDLE_NAME || module["app"]["versionName"] != version {
         bail!("signed HAP bundle name or version differs from the build");
     }
+    let receipt: serde_json::Value =
+        serde_json::from_reader(archive.by_name(&format!("{BUNDLED}{BUNDLE_RECEIPT}"))?)?;
+    if receipt != contents.receipt(target, version, commit) {
+        bail!("wrong target, product provenance or roster in signed HAP receipt");
+    }
     let mut libraries = BTreeSet::new();
     let commit_sha256 = hex::encode(Sha256::digest(commit));
-    for (id, core) in &contents.cores {
+    for (id, expected) in &contents.cores {
         let prefix = format!("cores/{id}/");
         let path = format!("{prefix}core.json");
+        let core: package::CorePackage =
+            serde_json::from_reader(archive.by_name(&format!("{BUNDLED}{path}"))?)?;
         if !contents.raw.contains_key(&path)
+            || core.schema != CORE_SCHEMA
             || core.plugin_id != *id
-            || core.version != version
-            || core.identity.is_some()
+            || core.library != expected.library
+            || core.version != expected.version
+            || core.identity != expected.identity
             || core.abi != shinki_emu_build::ABI
-            || !libraries.insert(core.library.as_str())
+            || !libraries.insert(expected.library.as_str())
             || contents
                 .native
                 .get(&core.library)
@@ -936,11 +1035,18 @@ fn verify_archive(
                 );
             }
         }
-        if !paths.contains(core.library.as_str())
-            || !paths.contains("source-commit.txt")
-            || contents.raw[&format!("{prefix}source-commit.txt")] != commit_sha256
-        {
-            bail!("signed HAP core {id} must record its library and exact source commit");
+        if !paths.contains(core.library.as_str()) {
+            bail!("signed HAP core {id} must record its library");
+        }
+        let product_source = contents.raw.get(&format!("{prefix}source-commit.txt"));
+        let has_product_record = paths.contains("source-commit.txt");
+        let valid_source = if core.identity.is_none() {
+            has_product_record && product_source == Some(&commit_sha256)
+        } else {
+            !has_product_record && product_source.is_none()
+        };
+        if !valid_source {
+            bail!("wrong product source commit payload for signed HAP core {id}");
         }
     }
     if contents
@@ -1254,6 +1360,7 @@ mod tests {
         directory: &Path,
         roster: &[(&str, &str)],
         deps: &[&str],
+        external: Option<(&str, &CoreIdentity)>,
     ) -> Result<(StagedHap, Members)> {
         let mut contents = StagedHap::default();
         let mut members = Vec::new();
@@ -1274,12 +1381,15 @@ mod tests {
         let mut raw = BTreeMap::from([("metadata/index.json".to_owned(), b"{}".to_vec())]);
         for &(id, name) in roster {
             let license = b"synthetic fixture license";
-            let manifest = package::CorePackage {
-                schema: "shinki.emu.core_package.v1".into(),
+            let identity = external
+                .filter(|(external_id, _)| *external_id == id)
+                .map(|(_, identity)| identity);
+            let mut manifest = package::CorePackage {
+                schema: CORE_SCHEMA.into(),
                 plugin_id: id.into(),
                 library: name.into(),
-                version: VERSION.into(),
-                identity: None,
+                version: core_version(identity, VERSION),
+                identity: identity.cloned(),
                 recognition: Default::default(),
                 abi: shinki_emu_build::ABI.into(),
                 files: vec![
@@ -1288,26 +1398,32 @@ mod tests {
                         sha256: contents.native[name].sha256.clone(),
                     },
                     package::FileRecord {
-                        path: "source-commit.txt".into(),
-                        sha256: digest(COMMIT.as_bytes()),
-                    },
-                    package::FileRecord {
                         path: "licenses/LICENSE".into(),
                         sha256: digest(license),
                     },
                 ],
             };
+            if identity.is_none() {
+                manifest.files.push(package::FileRecord {
+                    path: "source-commit.txt".into(),
+                    sha256: digest(COMMIT.as_bytes()),
+                });
+                raw.insert(
+                    format!("cores/{id}/source-commit.txt"),
+                    COMMIT.as_bytes().to_vec(),
+                );
+            }
             raw.insert(
                 format!("cores/{id}/core.json"),
                 serde_json::to_vec(&manifest)?,
             );
-            raw.insert(
-                format!("cores/{id}/source-commit.txt"),
-                COMMIT.as_bytes().to_vec(),
-            );
             raw.insert(format!("cores/{id}/licenses/LICENSE"), license.to_vec());
             contents.cores.insert(id.into(), manifest);
         }
+        raw.insert(
+            BUNDLE_RECEIPT.into(),
+            serde_json::to_vec(&contents.receipt(target, VERSION, COMMIT))?,
+        );
         let extraction_list = raw
             .keys()
             .map(String::as_str)
@@ -1358,7 +1474,7 @@ mod tests {
             for (name, bytes) in [(MANAGER, &manager), (ONE.1, &alpha), (TWO.1, &beta)] {
                 fs::write(dir.path().join(name), bytes)?;
             }
-            let (single, members) = fixture(target, dir.path(), &[ONE], &[])?;
+            let (single, members) = fixture(target, dir.path(), &[ONE], &[], None)?;
             verify_archive(
                 target,
                 Cursor::new(archive(target, &members, None)?),
@@ -1366,7 +1482,7 @@ mod tests {
                 COMMIT,
                 &single,
             )?;
-            let (mut staged, members) = fixture(target, dir.path(), &[ONE, TWO], &[])?;
+            let (mut staged, members) = fixture(target, dir.path(), &[ONE, TWO], &[], None)?;
             let good = archive(target, &members, None)?;
             let verify = |target, data, expected: &StagedHap| {
                 verify_archive(target, Cursor::new(data), VERSION, COMMIT, expected)
@@ -1481,6 +1597,170 @@ mod tests {
         Ok(())
     }
 
+    fn replace_raw(staged: &mut StagedHap, members: &mut Members, path: &str, data: Vec<u8>) {
+        let member = format!("{BUNDLED}{path}");
+        let bytes = &mut members
+            .iter_mut()
+            .find(|(name, _)| *name == member)
+            .unwrap()
+            .1;
+        staged.raw.insert(path.into(), digest(&data));
+        *bytes = data;
+    }
+
+    #[test]
+    fn ohos_receipt_and_hap_bind_external_adapter_to_product() -> Result<()> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut inv = Inventory::load(root)?;
+        let target = Target::Arm64;
+        let triple = target.rust_target();
+        let external = ("rfvp", "libshinki_emu_rfvp.so");
+        let fork = inv
+            .cores
+            .iter_mut()
+            .find(|core| core.id == external.0)
+            .unwrap();
+        fork.ohos_hap = Some(toml::from_str(&format!("library = {:?}", external.1))?);
+        let locked = fork.ohos_identity(root)?.unwrap();
+        let mut swapped = locked.clone();
+        swapped.adapter = inv.core("siglus_rs")?.ohos_identity(root)?.unwrap().adapter;
+        swapped.validate()?;
+        inv.cores.retain(|core| core.id == external.0 || core.id == "shinki.emu.musica");
+
+        let roster: Vec<_> = cores(&inv, triple)
+            .map(|(core, basename)| (core.id.as_str(), basename))
+            .collect();
+        let directory = crate::temporary::directory()?;
+        fs::write(directory.path().join(MANAGER), elf(target, false))?;
+        for (index, &(_, name)) in roster.iter().enumerate() {
+            let mut bytes = elf(target, true);
+            bytes.extend(index.to_le_bytes());
+            fs::write(directory.path().join(name), bytes)?;
+        }
+        let (mut staged, mut members) = fixture(
+            target,
+            directory.path(),
+            &roster,
+            &[],
+            Some((external.0, &locked)),
+        )?;
+        let verify = |staged: &StagedHap, members: &Members| {
+            verify_archive(
+                target,
+                Cursor::new(archive(target, members, None)?),
+                VERSION,
+                COMMIT,
+                staged,
+            )
+        };
+        verify(&staged, &members)?;
+
+        let good_receipt = staged.receipt(target, VERSION, COMMIT);
+        let mut receipt = good_receipt.clone();
+        verify_receipt_roster(&inv, triple, VERSION, COMMIT, &receipt)?;
+        let records = receipt["bundled_cores"].as_array().unwrap();
+        let first_party = records
+            .iter()
+            .find(|record| record["plugin_id"] == "shinki.emu.musica")
+            .unwrap();
+        assert_eq!(first_party["version"], VERSION);
+        assert_eq!(first_party["source_commit"], COMMIT);
+        assert!(first_party["identity"].is_null());
+        let index = records
+            .iter()
+            .position(|record| record["plugin_id"] == external.0)
+            .unwrap();
+        let external_record = &mut receipt["bundled_cores"][index];
+        assert_eq!(external_record["version"], locked.version());
+        assert_eq!(external_record["source_commit"], COMMIT);
+        assert_eq!(external_record["identity"], serde_json::to_value(&locked)?);
+
+        // Even a valid foreign identity and its matching version cannot reuse this product SHA.
+        external_record["identity"] = serde_json::to_value(&swapped)?;
+        external_record["version"] = swapped.version().into();
+        let error = verify_receipt_roster(&inv, triple, VERSION, COMMIT, &receipt).unwrap_err();
+        assert!(error.to_string().contains("wrong OHOS receipt for core rfvp"));
+        replace_raw(
+            &mut staged,
+            &mut members,
+            BUNDLE_RECEIPT,
+            serde_json::to_vec(&receipt)?,
+        );
+        let error = verify(&staged, &members).unwrap_err();
+        assert!(error.to_string().contains("signed HAP receipt"));
+
+        for (field, wrong) in [
+            ("source_commit", "a".repeat(40)),
+            ("target", Target::X64.rust_target().into()),
+        ] {
+            let mut receipt = good_receipt.clone();
+            receipt[field] = wrong.into();
+            assert!(verify_receipt_roster(&inv, triple, VERSION, COMMIT, &receipt).is_err());
+            replace_raw(
+                &mut staged,
+                &mut members,
+                BUNDLE_RECEIPT,
+                serde_json::to_vec(&receipt)?,
+            );
+            let error = verify(&staged, &members).unwrap_err();
+            assert!(error.to_string().contains("signed HAP receipt"));
+        }
+        replace_raw(
+            &mut staged,
+            &mut members,
+            BUNDLE_RECEIPT,
+            serde_json::to_vec(&good_receipt)?,
+        );
+        let path = format!("cores/{}/core.json", external.0);
+        let member = format!("{BUNDLED}{path}");
+        let bytes = &members.iter().find(|(name, _)| *name == member).unwrap().1;
+        let mut manifest: package::CorePackage = serde_json::from_slice(bytes)?;
+        manifest.version = swapped.version();
+        manifest.identity = Some(swapped);
+        replace_raw(&mut staged, &mut members, &path, serde_json::to_vec(&manifest)?);
+        let error = verify(&staged, &members).unwrap_err();
+        assert!(error.to_string().contains("wrong identity, provenance or ABI"));
+        Ok(())
+    }
+
+    #[test]
+    fn ohos_inventory_payload_keeps_manifest_paths_and_adds_missing_files() -> Result<()> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let inv = Inventory::load(root)?;
+        let mut core = inv.core("shinki.emu.musica")?.clone();
+        core.resources = vec![
+            "Assets/Fonts/OFL-NotoSansJP.txt".into(),
+            "THIRD_PARTY_NOTICES.md".into(),
+        ];
+        let manifest = shinki_emu_build::CoreBuildManifest {
+            plugin_id: core.id.clone(),
+            target: Target::Arm64.rust_target().into(),
+            artifact_kind: "rust-cdylib".into(),
+            native_library: None,
+            resources: vec![BuildAsset {
+                source: root.join(&core.resources[0]),
+                dest: "Resources/font/OFL-NotoSansJP.txt".into(),
+            }],
+            licenses: vec![BuildAsset {
+                source: root.join("LICENSE-MIT"),
+                dest: "licenses/core/LICENSE-MIT".into(),
+            }],
+        };
+        let mut data = Vec::new();
+        core_assets(&inv, &core, &manifest, &mut data)?;
+        let paths: BTreeSet<_> = data.iter().map(|(_, dest)| dest.as_str()).collect();
+        assert_eq!(
+            paths,
+            BTreeSet::from([
+                "Resources/THIRD_PARTY_NOTICES.md",
+                "Resources/font/OFL-NotoSansJP.txt",
+                "licenses/core/LICENSE-MIT",
+                "licenses/inventory/LICENSE-APACHE",
+            ]),
+        );
+        Ok(())
+    }
+
     #[test]
     #[ignore = "requires the OpenHarmony SDK and a local fixture output directory"]
     fn ohos_signed_multicore_hap() -> Result<()> {
@@ -1531,7 +1811,7 @@ mod tests {
                 }
                 dependencies::run(command.arg("-o").arg(directory.join(name)))?;
             }
-            let (mut staged, members) = fixture(target, &directory, &[ONE, TWO], &[DEP])?;
+            let (mut staged, members) = fixture(target, &directory, &[ONE, TWO], &[DEP], None)?;
             for basename in [MANAGER, ONE.1, TWO.1] {
                 let closure = binary::closure(
                     &directory.join(basename),
@@ -1544,7 +1824,7 @@ mod tests {
                     staged.add_native(&name, &path, NativeRole::Dependency)?;
                 }
             }
-            let (no_dep, incomplete) = fixture(target, &directory, &[ONE, TWO], &[])?;
+            let (no_dep, incomplete) = fixture(target, &directory, &[ONE, TWO], &[], None)?;
             let error = verify_archive(
                 target,
                 Cursor::new(archive(target, &incomplete, None)?),
