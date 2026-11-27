@@ -1,11 +1,6 @@
 use crate::{Game, Graphics, NativeCall, Step, Word};
 use roukaku_text::{LayoutLine, LogicalTextLayout};
-use std::{
-    collections::BTreeMap,
-    io,
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, io, path::Path, sync::Arc};
 
 use crate::sound::{AudioControl, Channels, Output};
 use crate::text::{Font, Text};
@@ -2072,12 +2067,8 @@ impl Host {
                         &self.audio_control.stop,
                     )
                 } else {
-                    self.channels.play_music(
-                        source,
-                        mode != 0,
-                        fade_ms,
-                        &self.audio_control.stop,
-                    )
+                    self.channels
+                        .play_music(source, mode != 0, fade_ms, &self.audio_control.stop)
                 }
             }
             651 => {
@@ -3496,7 +3487,11 @@ impl Host {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(-4),
             Err(error) => return Err(error),
         };
-        if self.channels.load(channel, &bytes, &self.audio_control.stop) != 0 {
+        if self
+            .channels
+            .load(channel, &bytes, &self.audio_control.stop)
+            != 0
+        {
             return Ok(-4);
         }
         self.channels.volume(channel, -1, gain);

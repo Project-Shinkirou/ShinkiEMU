@@ -92,7 +92,10 @@ impl Output {
 
     #[cfg(not(target_env = "ohos"))]
     pub(super) fn flush(&mut self, stop: &AtomicBool) -> io::Result<()> {
-        self.device.flush(stop).map(|_| ()).map_err(io::Error::other)
+        self.device
+            .flush(stop)
+            .map(|_| ())
+            .map_err(io::Error::other)
     }
 
     #[cfg(target_env = "ohos")]
