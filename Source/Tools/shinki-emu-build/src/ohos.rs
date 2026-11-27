@@ -41,7 +41,10 @@ impl HapCore {
         anyhow::ensure!(
             valid_id
                 && valid_library
-                && matches!(self.abis.as_slice(), [_] | [Target::Arm64, Target::X64] | [Target::X64, Target::Arm64]),
+                && matches!(
+                    self.abis.as_slice(),
+                    [_] | [Target::Arm64, Target::X64] | [Target::X64, Target::Arm64]
+                ),
             "invalid OHOS HAP recipe for {id}"
         );
         Ok(())
@@ -60,7 +63,9 @@ impl Target {
     pub const ALL: [Self; 2] = [Self::Arm64, Self::X64];
 
     pub fn from_rust_target(target: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|arch| arch.rust_target() == target)
+        Self::ALL
+            .into_iter()
+            .find(|arch| arch.rust_target() == target)
     }
 
     pub const fn rust_target(self) -> &'static str {

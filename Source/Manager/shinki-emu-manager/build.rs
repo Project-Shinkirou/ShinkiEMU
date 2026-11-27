@@ -208,8 +208,10 @@ fn link_android_compiler_runtime() {
 fn write_bundled_core_metadata(target: &str) {
     let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios");
     let ohos_target = if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
-        Some(shinki_emu_build::ohos::Target::from_rust_target(target)
-            .expect("unsupported OHOS Manager target"))
+        Some(
+            shinki_emu_build::ohos::Target::from_rust_target(target)
+                .expect("unsupported OHOS Manager target"),
+        )
     } else {
         None
     };
@@ -244,11 +246,18 @@ fn write_bundled_core_metadata(target: &str) {
                 recipe.clone().try_into().expect("OHOS HAP recipe");
             recipe.validate(id).expect("valid OHOS HAP recipe");
             if let Some(library) = recipe.library_for(target) {
-                assert!(core.get("attribution").is_none(), "{id} is not a first-party OHOS core");
-                assert!(hap_libraries.insert(library.to_ascii_lowercase()),
-                    "duplicate OHOS HAP library {library}");
-                assert!(hap_cores.insert(id, library.to_owned()).is_none(),
-                    "duplicate OHOS HAP core {id}");
+                assert!(
+                    core.get("attribution").is_none(),
+                    "{id} is not a first-party OHOS core"
+                );
+                assert!(
+                    hap_libraries.insert(library.to_ascii_lowercase()),
+                    "duplicate OHOS HAP library {library}"
+                );
+                assert!(
+                    hap_cores.insert(id, library.to_owned()).is_none(),
+                    "duplicate OHOS HAP core {id}"
+                );
             }
         }
         let framework = ios_frameworks
@@ -258,7 +267,9 @@ fn write_bundled_core_metadata(target: &str) {
         }
         if framework
             && let Some(attribution) = core.get("attribution")
-            && let Some(adapter) = lock.as_ref().and_then(|lock| core_adapters::locked_adapter(lock, id))
+            && let Some(adapter) = lock
+                .as_ref()
+                .and_then(|lock| core_adapters::locked_adapter(lock, id))
         {
             identities.insert(id.to_owned(), serde_json::json!({
                 "upstream": attribution["upstream_identity"],
@@ -282,11 +293,8 @@ fn write_bundled_core_metadata(target: &str) {
     }
     if ohos_target.is_some() {
         let roster: Vec<_> = hap_cores.into_iter().collect();
-        std::fs::write(
-            output.join("ohos-hap-cores.rs"),
-            format!("&{roster:?}\n"),
-        )
-        .expect("OHOS HAP core roster");
+        std::fs::write(output.join("ohos-hap-cores.rs"), format!("&{roster:?}\n"))
+            .expect("OHOS HAP core roster");
     }
 }
 

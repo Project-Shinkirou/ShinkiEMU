@@ -1,4 +1,6 @@
-use super::{AudioSink, NativeAudioProgress, PcmFormat, PcmFormatSpec, SessionError, SessionResult};
+use super::{
+    AudioSink, NativeAudioProgress, PcmFormat, PcmFormatSpec, SessionError, SessionResult,
+};
 use std::{sync::OnceLock, time::Duration};
 
 const CANCELLED: i32 = -2;

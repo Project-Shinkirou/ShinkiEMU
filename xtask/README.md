@@ -65,7 +65,7 @@ When admitting a new package, test the exact archive on each ABI: install throug
 
 Apple native builds use macOS/Xcode and the matching SDK. iOS Manager packaging requires native Xcode and builds eight independently signed ABI v3 frameworks from the inventory. `ios.json` binds their signed executables and source identities to the Manager commit; CI and release preparation verify it against the archive. Use `cargo xtask apple-image --target <triple>` to prepare a private Apple cross image on a Linux build host for macOS builds.
 
-DevEco builds the OHOS Manager HAP locally and signs it with the OpenHarmony SDK test PKI. The `ohos_hap` inventory selects dynamic ABI v3 cores for the target ABI; the production roster currently contains Musica. `ohos.json` records every core and native dependency in the signed archive. ARM64 is the distribution test HAP; x86_64 is local simulator QA only. See the [OHOS prerequisites](../docs/en/build-and-release.md#openharmony-manager).
+DevEco builds the OHOS Manager HAP locally and signs it with the OpenHarmony SDK test PKI. The `ohos_hap` inventory selects dynamic ABI v3 cores for the target ABI. `ohos.json` records every core and native dependency in the signed archive. ARM64 is the distribution test HAP; x86_64 is local simulator QA only. See the [OHOS prerequisites](../docs/en/build-and-release.md#openharmony-manager).
 
 To test signing and native assembly without hvigor or a device, prepare the SDK and signing environment above, set `SHINKI_EMU_OHOS_FIXTURE_DIR` outside the repository, and run `cargo test --locked -p xtask ohos_signed_multicore_hap -- --ignored --nocapture`. The test builds and signs two-core ARM64 and x64 fixture HAPs. On a Linux x64 host, extract the x64 fixture's `libs/x86_64` directory. Build `xtask/tests/fixtures/ohos_hap.c` with `-D_GNU_SOURCE -DFIXTURE_HOST -I Source/FamilyApi/shinki-emu-abi/include -ldl`, set `LD_LIBRARY_PATH` to the extracted directory, and pass the absolute path and plugin ID of each core (`test.alpha`, `test.beta`) to the probe. This exercises the ELF libraries and their ABI queries, not the device's install-time trust.
 
@@ -94,7 +94,7 @@ Empty inputs and pushes retain the full matrix. Pull requests run `pr-ci.yml`: t
 
 CI uploads build reports automatically. To also upload binaries, dispatch CI with `upload_packages=true` for the selected components after checking redistribution rights.
 
-Changing a core also selects the iOS Manager rows that package it as a Framework. Standalone Android ZIP changes do not select Manager. The Musica companion library is an input to the local HarmonyOS HAP, which remains outside the hosted matrix.
+Changing a core also selects the iOS Manager rows that package it as a Framework. Standalone Android ZIP changes do not select Manager. Each OHOS companion change also selects the local HAP rows that package that core; these rows remain outside the hosted matrix.
 
 For a Windows/Android-only release, use `release_scope=windows-android` on `release.yml` or `--scope windows-android` on the local release commands. Plan, prepare and publish with the same scope. This scope does not change product support.
 

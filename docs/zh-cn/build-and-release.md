@@ -102,7 +102,7 @@ cargo xtask package \
 
 #### HAP 核心清单与 Musica 真机验收
 
-在 [`build/cores.toml`](../../build/cores.toml) 中用 `ohos_hap` 声明核心库文件名。`abis` 可只选 `arm64-v8a` 或 `x86_64`，省略则两者都打包。目前正式清单只有 Musica，路径为 `libs/<abi>/libshinki_emu_core_musica.so`。Manager 用编译进自身的清单定位 ABI v3 核心，只从系统安装的同目录或同一签名 HAP 加载。解包后的可写资源不能指定可执行路径。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 要求直接加载的 HAP 成员不压缩、按页对齐；共享依赖由应用链接器命名空间按 `DT_NEEDED` 解析，无需 Manager 预加载。
+在 [`build/cores.toml`](../../build/cores.toml) 中用 `ohos_hap` 声明核心库文件名。`abis` 可只选 `arm64-v8a` 或 `x86_64`，省略则两者都打包。Manager 用编译进自身的清单定位 ABI v3 核心，只从系统安装的同目录或同一签名 HAP 加载。解包后的可写资源不能指定可执行路径。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 要求直接加载的 HAP 成员不压缩、按页对齐；共享依赖由应用链接器命名空间按 `DT_NEEDED` 解析，无需 Manager 预加载。
 
 打包时核对签名证书、签名配置、版本、源码提交、ABI、ELF 入口及全部随包库和资源的哈希。同名且内容一致的共享依赖只打包一次，同名但内容不同则拒绝打包。`ohos.json` 和发布记录通过 `bundled_cores` 数组记载各核心的来源，通过 `native_libraries` 列出 Manager、核心和共享依赖的路径及 SHA-256，并记录签名 HAP 的哈希。
 
@@ -168,7 +168,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-默认构建的 Manager 加载独立核心。Android 只接受有经过验证的 `android_dynamic` 策略的独立 ZIP；iOS 从应用中加载已签名的 `ios_framework` 核心，OHOS 从已签名的 HAP 中加载独立的 Musica 动态库。iOS 和 OHOS 不下载安装核心。各目标的支持范围见 [`build/cores.toml`](../../build/cores.toml)。能构建不等于游戏已验证可玩。
+Manager 只加载独立核心。Android 只接受符合 `android_dynamic` 校验策略的独立 ZIP；iOS 从应用中加载已签名的 `ios_framework` 核心，OHOS 从已签名的 HAP 中加载为当前 ABI 打包的核心。iOS 和 OHOS 不下载安装核心。各目标的支持范围见 [`build/cores.toml`](../../build/cores.toml)。能构建不等于游戏已验证可玩。
 
 ### 编译进程序的商店插件
 

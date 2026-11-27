@@ -26,7 +26,9 @@ pub(super) fn resolve(
     if !basename.starts_with("libshinki_emu_")
         || !basename.ends_with(".so")
         || basename == MANAGER
-        || !basename.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        || !basename
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
     {
         return None;
     }
@@ -84,9 +86,20 @@ mod tests {
         let second = "libshinki_emu_second.so";
         assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, second), None);
         fs::write(app.join(second), [])?;
-        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, second), Some(app.join(second)));
+        assert_eq!(
+            resolve(&bundle, &app.join(MANAGER), ABI_DIR, second),
+            Some(app.join(second))
+        );
         assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, MANAGER), None);
-        assert_eq!(resolve(&bundle, &app.join(MANAGER), ABI_DIR, "libshinki_emu_a/../b.so"), None);
+        assert_eq!(
+            resolve(
+                &bundle,
+                &app.join(MANAGER),
+                ABI_DIR,
+                "libshinki_emu_a/../b.so"
+            ),
+            None
+        );
         assert_eq!(check(&writable.join(MANAGER)), None);
         let archive_manager = |folder: &Path, libs: &str| {
             PathBuf::from(format!(
@@ -103,7 +116,10 @@ mod tests {
         );
         assert_eq!(
             resolve(&bundle, &archive_manager(&app, ABI_DIR), ABI_DIR, second),
-            Some(PathBuf::from(format!("{}!/{ABI_DIR}{second}", app.join("entry.hap").display())))
+            Some(PathBuf::from(format!(
+                "{}!/{ABI_DIR}{second}",
+                app.join("entry.hap").display()
+            )))
         );
         assert_eq!(check(&archive_manager(&app, "libs/x86_64/")), None);
         assert_eq!(check(&archive_manager(&writable, ABI_DIR)), None);

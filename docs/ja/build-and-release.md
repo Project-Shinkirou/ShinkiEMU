@@ -98,7 +98,7 @@ DevEco Studio と付属の OpenHarmony Native SDK 5.0.5（API 17）を使いま�
 
 #### HAP のコア一覧と Musica の実機テスト
 
-[`build/cores.toml`](../../build/cores.toml) の `ohos_hap` でコアのライブラリ名を指定します。`abis` で `arm64-v8a` または `x86_64` に限定でき、省略すると両 ABI が対象になります。現在の同梱コアは Musica のみで、パスは `libs/<abi>/libshinki_emu_core_musica.so` です。Manager は自身に組み込まれた一覧から、OS がインストールした自身のライブラリと同じディレクトリ、または同じ署名済み HAP 内にある ABI v3 のコアを読み込みます。書き込み可能な展開済みリソースから実行パスを取得しません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)が HAP から直接読む項目は、非圧縮でページ境界に整列している必要があります。共有依存はアプリのリンカー名前空間で `DT_NEEDED` に従って解決されます。
+[`build/cores.toml`](../../build/cores.toml) の `ohos_hap` でコアのライブラリ名を指定します。`abis` で `arm64-v8a` または `x86_64` に限定でき、省略すると両 ABI が対象になります。Manager は自身に組み込まれた一覧から、OS がインストールした自身のライブラリと同じディレクトリ、または同じ署名済み HAP 内にある ABI v3 のコアを読み込みます。書き込み可能な展開済みリソースから実行パスを取得しません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)が HAP から直接読む項目は、非圧縮でページ境界に整列している必要があります。共有依存はアプリのリンカー名前空間で `DT_NEEDED` に従って解決されます。
 
 パッケージング時に署名証明書とプロファイル、バージョン、ソースコミット、ABI、ELF エントリーポイント、同梱ライブラリとリソースのハッシュを検証します。同じ名前と内容の共有依存は一度だけ収録し、同名で内容が異なる場合は拒否します。`ohos.json` とリリースレコードは、コアごとの情報を `bundled_cores` 配列に、Manager とコアおよび共有依存のパスと SHA-256 を `native_libraries` に記録します。
 
@@ -158,7 +158,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-既定の Manager は別個のコアバイナリを読み込みます。Android の単体 ZIP をインストールするには、検証済みの `android_dynamic` ポリシーが必要です。iOS はアプリ内の署名済み `ios_framework` を、OHOS は署名済み HAP 内の独立した Musica ライブラリを読み込みます。iOS と OHOS ではダウンロードしたコアをインストールできません。対応ターゲットは [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。
+Manager は別個のコアバイナリを読み込みます。Android の単体 ZIP をインストールするには、検証済みの `android_dynamic` ポリシーが必要です。iOS はアプリ内の署名済み `ios_framework` を、OHOS は ABI ごとに選ばれたコアを署名済み HAP から読み込みます。iOS と OHOS ではダウンロードしたコアをインストールできません。対応ターゲットは [`build/cores.toml`](../../build/cores.toml) で確認できます。ビルド対応はゲームの動作確認とは別です。
 
 ### コンパイル時に組み込むストア
 

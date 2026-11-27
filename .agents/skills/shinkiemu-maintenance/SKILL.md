@@ -136,7 +136,7 @@ CI 默认只上传构建报告。确认分发权利后可手动指定 `upload_pa
 
 ## 9. CI 与 watcher
 
-`ci.yml` 在 push（main、`release/**`）、PR 和 `workflow_dispatch` 时运行。dispatch 输入有 `since`（只跑受影响行）、`components`、`targets`。它的 concurrency 是 `ci-${{ github.ref }}` 且 `cancel-in-progress: true`：同一 ref 的新 push 会取消正在跑的 run。
+`pr-ci.yml` 跑 PR 的受影响 Windows/Linux 构建。`ci.yml` 在 push（main、`release/**`）或 `workflow_dispatch` 时运行；dispatch 输入有 `since`（只跑受影响行）、`components` 和 `targets`。同一 ref 的新 push 会取消 `ci.yml` 正在跑的旧 run。
 
 做 exact-head 门禁时：
 
@@ -147,7 +147,7 @@ CI 默认只上传构建报告。确认分发权利后可手动指定 `upload_pa
 4. 失败时读 `gh run view --job <job> -R Project-Shinkirou/ShinkiEMU --log-failed`，找第一个真实错误。
 5. 接手别人的 run 时只查一次状态，需要时再挂唯一 watcher。同一源码已经有 run 时不要重复 dispatch。被新 head 取代的 run 先保存日志和 artifact 元数据，经 owner 同意再取消。
 
-`release.yml` 在推 `manager-v*`/`core-*` tag 时运行，也可 dispatch。输入有 `version`（Manager/自研核心）、`components`、`release_scope` 和 `prepare_only`；仅准备时可用 `source_commit` 选择检出。一次推超过三个新 tag 不会触发工作流。
+`release.yml` 只支持手动 dispatch，默认 `prepare_only=true`，不会发布。用 `components` 选择组件，`version` 指定 Manager/自研核心版本，`release_scope` 指定平台范围。仅准备时可用 `source_commit` 选择精确提交。
 
 ## 10. 发布
 

@@ -24,12 +24,7 @@ fn declared(core: &toml::Value, key: &str, target: &str) -> bool {
         .is_some_and(|values| values.iter().any(|value| value.as_str() == Some(target)))
 }
 
-fn consume_generated(
-    cores: &toml::Value,
-    targets: &str,
-    target: &str,
-    enabled: bool,
-) {
+fn consume_generated(cores: &toml::Value, targets: &str, target: &str, enabled: bool) {
     let root = tempfile::tempdir().unwrap();
     let data = root.path().join("empty-installation");
     fs::create_dir(&data).unwrap();
@@ -58,9 +53,7 @@ fn consume_generated(
         let first_party = core.get("attribution").is_none();
         consumer.push_str(&format!("assert_eq!(entry.first_party, {first_party});\n"));
         let android = ["aarch64-linux-android", "x86_64-linux-android"].contains(&target);
-        let policy = core
-            .get("android_dynamic")
-            .filter(|_| android && supported);
+        let policy = core.get("android_dynamic").filter(|_| android && supported);
         let requires_context = policy.map(|policy| policy["requires_context"].as_bool().unwrap());
         consumer.push_str(&format!(
             "assert_eq!(entry.android_dynamic.map(|policy| policy.requires_context), {requires_context:?});\n"
@@ -176,19 +169,13 @@ fn malformed_family_fields_and_duplicate_plugin_ids_are_rejected() {
         .as_table_mut()
         .unwrap()
         .remove("family_id");
-    assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
-    );
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
     let mut changed = cores.clone();
     changed["cores"][0]["display_name"] = " \n".into();
-    assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
-    );
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
     let mut changed = cores;
     changed["cores"][1]["id"] = changed["cores"][0]["id"].clone();
-    assert!(
-        generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err()
-    );
+    assert!(generation::generate(&toml::to_string(&changed).unwrap(), &targets, target).is_err());
 }
 
 #[test]

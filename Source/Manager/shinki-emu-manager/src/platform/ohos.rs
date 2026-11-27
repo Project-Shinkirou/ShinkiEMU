@@ -549,7 +549,10 @@ pub mod bundled {
     }
 
     fn basename(plugin_id: &str) -> Option<&'static str> {
-        CORES.iter().find(|(id, _)| *id == plugin_id).map(|&(_, name)| name)
+        CORES
+            .iter()
+            .find(|(id, _)| *id == plugin_id)
+            .map(|&(_, name)| name)
     }
 
     pub fn manifest_dir(plugin_id: &str) -> Option<PathBuf> {

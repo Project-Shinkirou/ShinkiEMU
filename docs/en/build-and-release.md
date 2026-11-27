@@ -108,7 +108,7 @@ Use DevEco Studio and its OpenHarmony native SDK 5.0.5 (API 17). Install the `aa
 
 #### HAP core roster and Musica device acceptance
 
-Each `ohos_hap` recipe in [`build/cores.toml`](../../build/cores.toml) specifies a native basename and can restrict it with `abis = ["arm64-v8a"]` or `abis = ["x86_64"]`. Omitting `abis` selects both. The production roster currently includes only Musica, as `libs/<abi>/libshinki_emu_core_musica.so`. Manager resolves each ABI v3 entry from the roster compiled into its own binary, beside the OS-installed Manager library or in the same signed HAP. Extracted resources cannot supply executable paths. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) requires directly loaded HAP entries to be uncompressed and page-aligned. It resolves verified `DT_NEEDED` dependencies in the app linker namespace; Manager does not preload them or load one core for another.
+Each `ohos_hap` recipe in [`build/cores.toml`](../../build/cores.toml) specifies a native basename and can restrict it with `abis = ["arm64-v8a"]` or `abis = ["x86_64"]`. Omitting `abis` selects both. Manager resolves each ABI v3 entry from the roster compiled into its own binary, beside the OS-installed Manager library or in the same signed HAP. Extracted resources cannot supply executable paths. The [OpenHarmony musl loader](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) requires directly loaded HAP entries to be uncompressed and page-aligned. It resolves verified `DT_NEEDED` dependencies in the app linker namespace; Manager does not preload them or load one core for another.
 
 Packaging verifies the selected signing certificate and profile, bundle version, exact source provenance, ABI, ELF entry points and hashes for every staged library and bundled resource. Shared native dependencies with the same basename and bytes are packaged once; conflicting files are rejected. `ohos.json` and the release record carry a `bundled_cores` array with each core's provenance and a `native_libraries` map of archive paths to SHA-256 digests, including Manager and shared dependencies. The HAP hash binds both to the signed archive.
 
@@ -174,7 +174,7 @@ cargo ndk -t arm64-v8a -P 28 build --locked --release -p shinki-emu-manager --li
 cargo ndk -t x86_64 -P 28 build --locked --release -p shinki-emu-core-siglus_rs
 ```
 
-The default Manager loads separate core binaries. Android admits standalone ZIPs under a verified `android_dynamic` policy. iOS loads signed `ios_framework` cores from the app; OHOS loads the separate Musica library from the signed HAP. Neither iOS nor OHOS installs downloaded cores. See [`build/cores.toml`](../../build/cores.toml) for target support. A build row is not a gameplay compatibility result.
+Manager loads separate core binaries. Android admits standalone ZIPs under a verified `android_dynamic` policy. iOS loads signed `ios_framework` cores from the app; OHOS loads the cores selected for its ABI from the signed HAP. Neither iOS nor OHOS installs downloaded cores. See [`build/cores.toml`](../../build/cores.toml) for target support. A build row is not a gameplay compatibility result.
 
 ### Compile-in stores
 

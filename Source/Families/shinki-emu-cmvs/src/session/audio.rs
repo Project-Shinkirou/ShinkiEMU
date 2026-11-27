@@ -1126,7 +1126,8 @@ fn run_worker(
                 unflushed = true;
                 let bus_start_frame = accepted_bus_frames;
                 accepted_bus_frames = accepted_bus_frames.wrapping_add(chunk_frames as u64);
-                if let Some(stream) = &state.channels[usize::from(super::movie::MOVIE_AUDIO_CHANNEL)]
+                if let Some(stream) =
+                    &state.channels[usize::from(super::movie::MOVIE_AUDIO_CHANNEL)]
                     && stream.pending_output_frames != 0
                 {
                     let mut movie = movie_playback.lock().expect("movie playback timeline");
@@ -1136,7 +1137,9 @@ fn run_worker(
                             ..MoviePlayback::default()
                         };
                     }
-                    movie.timeline.accept(bus_start_frame, stream.pending_output_frames);
+                    movie
+                        .timeline
+                        .accept(bus_start_frame, stream.pending_output_frames);
                 }
                 for stream in state
                     .bgm

@@ -289,7 +289,9 @@ impl Inventory {
                     bail!("{}: OHOS HAP cores must use first-party provenance", c.id);
                 }
                 for target in OhosTarget::ALL {
-                    let Some(library) = recipe.library_for(target) else { continue };
+                    let Some(library) = recipe.library_for(target) else {
+                        continue;
+                    };
                     if !ohos_libraries.insert((target.abi(), library.to_ascii_lowercase())) {
                         bail!("duplicate OHOS HAP library {library} on {}", target.abi());
                     }
@@ -622,12 +624,20 @@ mod tests {
         let arm_count = crate::ohos::cores(&inventory, arm).count();
         let x64_count = crate::ohos::cores(&inventory, x64).count();
         let (configured, original) = crate::ohos::cores(&inventory, arm)
-            .find(|(core, _)| core.ohos_hap.as_ref().unwrap().library_for(OhosTarget::X64).is_some())
+            .find(|(core, _)| {
+                core.ohos_hap
+                    .as_ref()
+                    .unwrap()
+                    .library_for(OhosTarget::X64)
+                    .is_some()
+            })
             .map(|(core, library)| (core.id.clone(), library.to_owned()))
             .expect("an OHOS core on both ABIs");
-        let extra = inventory.cores.iter().position(|core| {
-            core.ohos_hap.is_none() && core.attribution.is_none()
-        }).unwrap();
+        let extra = inventory
+            .cores
+            .iter()
+            .position(|core| core.ohos_hap.is_none() && core.attribution.is_none())
+            .unwrap();
         let recipe = |basename: &str, abi: &str| {
             toml::from_str(&format!("library = {basename:?}\nabis = [{abi:?}]")).unwrap()
         };
@@ -635,12 +645,31 @@ mod tests {
         inventory.validate().unwrap();
         assert_eq!(crate::ohos::cores(&inventory, arm).count(), arm_count + 1);
         assert_eq!(crate::ohos::cores(&inventory, x64).count(), x64_count);
-        assert!(inventory.require_buildable(&inventory.cores[extra].id, arm).is_err());
-        inventory.cores[extra].ohos_hap = Some(recipe(&original.to_ascii_uppercase()
-            .replace("LIBSHINKI_EMU_", "libshinki_emu_").replace(".SO", ".so"), "arm64-v8a"));
-        assert!(inventory.validate().unwrap_err().to_string().contains("duplicate OHOS HAP library"));
+        assert!(
+            inventory
+                .require_buildable(&inventory.cores[extra].id, arm)
+                .is_err()
+        );
+        inventory.cores[extra].ohos_hap = Some(recipe(
+            &original
+                .to_ascii_uppercase()
+                .replace("LIBSHINKI_EMU_", "libshinki_emu_")
+                .replace(".SO", ".so"),
+            "arm64-v8a",
+        ));
+        assert!(
+            inventory
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate OHOS HAP library")
+        );
 
-        let first = inventory.cores.iter_mut().find(|core| core.id == configured).unwrap();
+        let first = inventory
+            .cores
+            .iter_mut()
+            .find(|core| core.id == configured)
+            .unwrap();
         first.ohos_hap = Some(recipe(&original, "x86_64"));
         inventory.validate().unwrap();
         assert_eq!(crate::ohos::cores(&inventory, arm).count(), arm_count);

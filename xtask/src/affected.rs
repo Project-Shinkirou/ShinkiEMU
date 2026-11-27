@@ -136,12 +136,17 @@ fn bundled_targets<'a>(
     ohos_hap: Option<&shinki_emu_build::ohos::HapCore>,
 ) -> impl Iterator<Item = &'a str> + use<'a> {
     let ohos_abis = shinki_emu_build::ohos::Target::ALL.map(|target| {
-        ohos_hap.and_then(|recipe| recipe.library_for(target)).map(|_| target.rust_target())
+        ohos_hap
+            .and_then(|recipe| recipe.library_for(target))
+            .map(|_| target.rust_target())
     });
-    inv.targets.iter().map(|target| target.triple.as_str()).filter(move |triple| {
-        (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
-            || ohos_abis.contains(&Some(*triple))
-    })
+    inv.targets
+        .iter()
+        .map(|target| target.triple.as_str())
+        .filter(move |triple| {
+            (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
+                || ohos_abis.contains(&Some(*triple))
+        })
 }
 
 /// Locate an in-tree adapter; families without their own adapter are shared inputs.
@@ -364,11 +369,17 @@ mod tests {
             let affected = classify(&inv, &[&path], None, "").unwrap();
             assert!(affected.row("manager", target), "{path}");
         }
-        let other = inv.cores.iter().find(|other| {
-            other.ohos_hap.as_ref().and_then(|recipe| {
-                recipe.library_for(shinki_emu_build::ohos::Target::Arm64)
-            }).is_none()
-        }).unwrap();
+        let other = inv
+            .cores
+            .iter()
+            .find(|other| {
+                other
+                    .ohos_hap
+                    .as_ref()
+                    .and_then(|recipe| recipe.library_for(shinki_emu_build::ohos::Target::Arm64))
+                    .is_none()
+            })
+            .unwrap();
         let path = format!("Source/Cores/{}/src/lib.rs", other.id);
         assert!(
             !classify(&inv, &[&path], None, "")
@@ -378,12 +389,22 @@ mod tests {
 
         let qa = qa.rust_target();
         let mut arm_only: toml::Table = toml::from_str(&current).unwrap();
-        let recipe = arm_only["cores"].as_array_mut().unwrap().iter_mut()
-            .find(|entry| entry["id"].as_str() == Some(&core.id)).unwrap();
-        recipe["ohos_hap"].as_table_mut().unwrap()
+        let recipe = arm_only["cores"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["id"].as_str() == Some(&core.id))
+            .unwrap();
+        recipe["ohos_hap"]
+            .as_table_mut()
+            .unwrap()
             .insert("abis".into(), toml::Value::Array(vec!["arm64-v8a".into()]));
         let mut arm_only_inventory = inv.clone();
-        arm_only_inventory.cores.iter_mut().find(|entry| entry.id == core.id).unwrap()
+        arm_only_inventory
+            .cores
+            .iter_mut()
+            .find(|entry| entry.id == core.id)
+            .unwrap()
             .ohos_hap = Some(recipe["ohos_hap"].clone().try_into().unwrap());
         let arm_only_text = toml::to_string(&arm_only).unwrap();
         let path = format!("Source/Cores/{}/src/lib.rs", core.id);
@@ -391,7 +412,11 @@ mod tests {
         assert!(affected.row("manager", target));
         assert!(!affected.row("manager", qa));
         for (inventory, before, after) in [
-            (&arm_only_inventory, current.as_str(), arm_only_text.as_str()),
+            (
+                &arm_only_inventory,
+                current.as_str(),
+                arm_only_text.as_str(),
+            ),
             (&inv, arm_only_text.as_str(), current.as_str()),
         ] {
             let affected = classify(inventory, &["build/cores.toml"], Some(before), after).unwrap();

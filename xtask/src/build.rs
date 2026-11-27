@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use shinki_emu_build::ohos::Target as OhosTarget;
 use shinki_emu_build::{CoreBuildManifest, NativeInputs};
 use std::{
+    collections::BTreeMap,
     fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -328,7 +329,9 @@ fn execute_configured(
                 continue;
             }
         };
-        if value["package_id"].as_str().is_some_and(|id| ohos_entries.contains(id))
+        if value["package_id"]
+            .as_str()
+            .is_some_and(|id| ohos_entries.contains(id))
             && (value["reason"] == "compiler-artifact"
                 || value["reason"] == "build-script-executed")
         {

@@ -212,6 +212,7 @@ license = "MIT OR Apache-2.0"
 resources = []
 licenses = ["LICENSE-MIT", "LICENSE-APACHE", "docs/licenses/shinki-emu-adv32/GARbro.txt", "Assets/Fonts/OFL-NotoSansJP.txt", "Assets/Fonts/OFL-NotoSansSC.txt"]
 supported_targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+ohos_hap = { library = "libshinki_emu_core_adv32.so", abis = ["arm64-v8a"] }
 [[cores.blocked]]
 target = "aarch64-linux-android"
 reason = "No standalone Android package."
@@ -229,7 +230,7 @@ target = "x86_64-apple-ios"
 reason = "No signed iOS Framework."
 [[cores.blocked]]
 target = "aarch64-unknown-linux-ohos"
-reason = "No standalone OpenHarmony package."
+reason = "Bundled as a signed OHOS Manager HAP library; standalone core packages are not supported."
 
 [[cores]]
 id = "shinki.emu.lucifen"

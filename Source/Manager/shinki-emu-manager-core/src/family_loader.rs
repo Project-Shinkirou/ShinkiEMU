@@ -195,7 +195,8 @@ impl LoadedFamilyPlugin {
                 .map_err(|error| format!("SHINKI_EMU_OHOS_BUNDLED_CORE_OPEN: {error}"))?,
         );
         let invalid = "SHINKI_EMU_OHOS_BUNDLED_CORE_QUERY_ORIGIN";
-        let symbol = unsafe { library.get::<*mut c_void>(abi::QUERY_SYMBOL) }.map_err(|_| invalid)?;
+        let symbol =
+            unsafe { library.get::<*mut c_void>(abi::QUERY_SYMBOL) }.map_err(|_| invalid)?;
         let address = *symbol;
         if address.is_null() || !query_from_bundle(address.cast_const()) {
             return Err(invalid.into());

@@ -9,7 +9,10 @@ use crate::{
     package::{self, atomic_directory, copy_entries, sha256},
 };
 use anyhow::{Context, Result, bail};
-use object::{Object, ObjectSymbol, read::elf::{Dyn, ProgramHeader}};
+use object::{
+    Object, ObjectSymbol,
+    read::elf::{Dyn, ProgramHeader},
+};
 use sha2::{Digest, Sha256};
 use shinki_emu_build::ohos::{MANAGER_LIBRARY as MANAGER, Target};
 use std::{
@@ -29,9 +32,9 @@ pub(crate) fn cores<'a>(
     triple: &str,
 ) -> impl Iterator<Item = (&'a Core, &'a str)> + use<'a> {
     let target = Target::from_rust_target(triple);
-    inv.cores.iter().filter_map(move |core| {
-        Some((core, core.ohos_hap.as_ref()?.library_for(target?)?))
-    })
+    inv.cores
+        .iter()
+        .filter_map(move |core| Some((core, core.ohos_hap.as_ref()?.library_for(target?)?)))
 }
 
 struct CoreBuild<'a> {
@@ -48,7 +51,10 @@ impl CoreBuild<'_> {
             || artifact.product_version.as_deref() != Some(version)
             || artifact.source_commit.as_deref() != Some(commit)
         {
-            bail!("wrong OHOS core artifact for {}/{triple}/{version}", self.core.id);
+            bail!(
+                "wrong OHOS core artifact for {}/{triple}/{version}",
+                self.core.id
+            );
         }
         Ok(())
     }
@@ -85,28 +91,45 @@ fn native_basename(name: &str) -> Result<()> {
 impl StagedHap {
     fn add_native(&mut self, name: &str, path: &Path, role: NativeRole) -> Result<()> {
         native_basename(name)?;
-        if let Some((existing, member)) = self.native.iter()
+        if let Some((existing, member)) = self
+            .native
+            .iter()
             .find(|(existing, _)| name.eq_ignore_ascii_case(existing))
         {
-            if name != existing || role != NativeRole::Dependency || member.role != role
+            if name != existing
+                || role != NativeRole::Dependency
+                || member.role != role
                 || (member.path != path && member.sha256 != sha256(path)?)
             {
                 bail!("conflicting OHOS HAP native library {name} ({existing})");
             }
         } else {
             let sha256 = sha256(path)?;
-            if role != NativeRole::Dependency && self.native.values()
-                .any(|member| member.role != NativeRole::Dependency && member.sha256 == sha256)
+            if role != NativeRole::Dependency
+                && self
+                    .native
+                    .values()
+                    .any(|member| member.role != NativeRole::Dependency && member.sha256 == sha256)
             {
                 bail!("OHOS HAP component {name} is not a distinct binary");
             }
-            self.native.insert(name.into(), NativeMember { path: path.into(), role, sha256 });
+            self.native.insert(
+                name.into(),
+                NativeMember {
+                    path: path.into(),
+                    role,
+                    sha256,
+                },
+            );
         }
         Ok(())
     }
 
     fn add_closure(
-        &mut self, inv: &Inventory, target: Target, artifact: &BuildArtifact,
+        &mut self,
+        inv: &Inventory,
+        target: Target,
+        artifact: &BuildArtifact,
     ) -> Result<()> {
         let search = package::search_dirs(inv, artifact)?;
         for (source, name) in binary::closure(&artifact.library, &search, target.rust_target())? {
@@ -252,19 +275,25 @@ pub(crate) fn package(
         let hap = stage.join(&name);
         sign_hap(&tools, &signing, &unsigned, &hap)?;
         verify_hap(&tools, &signing, target, &hap, version, commit, &contents)?;
-        let bundled_cores = contents.cores.values().map(|core| {
-            serde_json::json!({
-                "plugin_id": core.plugin_id,
-                "version": core.version,
-                "source_commit": commit,
-                "abi": core.abi,
-                "library": format!("libs/{}/{}", target.abi(), core.library),
-                "sha256": contents.native[&core.library].sha256,
+        let bundled_cores = contents
+            .cores
+            .values()
+            .map(|core| {
+                serde_json::json!({
+                    "plugin_id": core.plugin_id,
+                    "version": core.version,
+                    "source_commit": commit,
+                    "abi": core.abi,
+                    "library": format!("libs/{}/{}", target.abi(), core.library),
+                    "sha256": contents.native[&core.library].sha256,
+                })
             })
-        }).collect::<Vec<_>>();
-        let native_libraries: BTreeMap<_, _> = contents.native.iter().map(|(name, member)| {
-            (format!("libs/{}/{name}", target.abi()), &member.sha256)
-        }).collect();
+            .collect::<Vec<_>>();
+        let native_libraries: BTreeMap<_, _> = contents
+            .native
+            .iter()
+            .map(|(name, member)| (format!("libs/{}/{name}", target.abi()), &member.sha256))
+            .collect();
         let record = serde_json::json!({
             "hap": name,
             "sha256": sha256(&hap)?,
@@ -290,32 +319,53 @@ pub(crate) fn verify_receipt_roster(
     commit: &str,
     receipt: &serde_json::Value,
 ) -> Result<()> {
-    let abi = Target::from_rust_target(triple).context("OHOS receipt target")?.abi();
-    let records = receipt["bundled_cores"].as_array().context("OHOS core receipt roster")?;
-    let libraries = receipt["native_libraries"].as_object().context("OHOS native receipt roster")?;
+    let abi = Target::from_rust_target(triple)
+        .context("OHOS receipt target")?
+        .abi();
+    let records = receipt["bundled_cores"]
+        .as_array()
+        .context("OHOS core receipt roster")?;
+    let libraries = receipt["native_libraries"]
+        .as_object()
+        .context("OHOS native receipt roster")?;
     let prefix = format!("libs/{abi}/");
     if receipt["abi"] != abi || !libraries.contains_key(&format!("{prefix}{MANAGER}")) {
         bail!("missing Manager library or wrong ABI in the OHOS receipt");
     }
     for (path, hash) in libraries {
-        native_basename(path.strip_prefix(&prefix).context("wrong OHOS receipt library path")?)?;
-        if !hash.as_str().is_some_and(|value| value.len() == 64 &&
-            value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
-        {
+        native_basename(
+            path.strip_prefix(&prefix)
+                .context("wrong OHOS receipt library path")?,
+        )?;
+        if !hash.as_str().is_some_and(|value| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        }) {
             bail!("invalid OHOS native library digest in receipt: {path}");
         }
     }
-    let expected: BTreeMap<_, _> = cores(inv, triple).map(|(core, library)| (core.id.as_str(), library)).collect();
+    let expected: BTreeMap<_, _> = cores(inv, triple)
+        .map(|(core, library)| (core.id.as_str(), library))
+        .collect();
     if records.len() != expected.len() {
         bail!("wrong core roster size in OHOS receipt");
     }
     let mut seen = BTreeSet::new();
     for record in records {
-        let id = record["plugin_id"].as_str().context("OHOS receipt plugin ID")?;
-        let basename = expected.get(id).context("unexpected core in OHOS receipt")?;
+        let id = record["plugin_id"]
+            .as_str()
+            .context("OHOS receipt plugin ID")?;
+        let basename = expected
+            .get(id)
+            .context("unexpected core in OHOS receipt")?;
         let path = format!("{prefix}{basename}");
-        if !seen.insert(id) || record["version"] != version || record["source_commit"] != commit
-            || record["abi"] != shinki_emu_build::ABI || record["library"] != path
+        if !seen.insert(id)
+            || record["version"] != version
+            || record["source_commit"] != commit
+            || record["abi"] != shinki_emu_build::ABI
+            || record["library"] != path
             || libraries.get(&path) != Some(&record["sha256"])
         {
             bail!("wrong OHOS receipt for core {id}");
@@ -354,7 +404,9 @@ fn stage_inputs(
     }
     let libs = libs.join(target.abi());
     fs::create_dir_all(&libs)?;
-    let native: Vec<_> = contents.native.iter()
+    let native: Vec<_> = contents
+        .native
+        .iter()
         .map(|(name, member)| (member.path.clone(), name.clone()))
         .collect();
     copy_entries(&native, &libs)?;
@@ -375,7 +427,11 @@ fn stage_inputs(
     for build in builds {
         let digest = &contents.native[build.library].sha256;
         let manifest = stage_core_manifest(inv, build, digest, temp.path(), &mut entries)?;
-        if contents.cores.insert(manifest.plugin_id.clone(), manifest).is_some() {
+        if contents
+            .cores
+            .insert(manifest.plugin_id.clone(), manifest)
+            .is_some()
+        {
             bail!("duplicate OHOS HAP core {}", build.core.id);
         }
     }
@@ -386,10 +442,17 @@ fn stage_inputs(
     }
     // Read by ManagerBridge.ets `extractBundled`.
     let manifest = bundled.join("bundled.manifest");
-    let mut names = contents.raw.keys().map(String::as_str).collect::<Vec<_>>().join("\n");
+    let mut names = contents
+        .raw
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
     names.push('\n');
     fs::write(&manifest, names)?;
-    contents.raw.insert("bundled.manifest".into(), sha256(&manifest)?);
+    contents
+        .raw
+        .insert("bundled.manifest".into(), sha256(&manifest)?);
     Ok(contents)
 }
 
@@ -720,7 +783,13 @@ fn sign_tool(tools: &Tools) -> Command {
 fn sign_hap(tools: &Tools, signing: &Path, unsigned: &Path, hap: &Path) -> Result<()> {
     dependencies::run(
         sign_tool(tools)
-            .args(["sign-app", "-mode", "localSign", "-keyAlias", DEBUG_KEY_ALIAS])
+            .args([
+                "sign-app",
+                "-mode",
+                "localSign",
+                "-keyAlias",
+                DEBUG_KEY_ALIAS,
+            ])
             .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-appCertFile"])
             .arg(signing.join("app-cert.cer"))
             .arg("-profileFile")
@@ -757,8 +826,10 @@ fn verify_hap(
             .arg(&profile),
     )?;
     let certs = |path: &Path| -> Result<BTreeSet<String>> {
-        Ok(pem_certificates(&fs::read_to_string(path)?).into_iter()
-            .map(|pem| pem.split_whitespace().collect()).collect())
+        Ok(pem_certificates(&fs::read_to_string(path)?)
+            .into_iter()
+            .map(|pem| pem.split_whitespace().collect())
+            .collect())
     };
     let verified = certs(&chain)?;
     if verified.is_empty()
@@ -805,7 +876,11 @@ fn verify_archive(
             let Some(library) = name.strip_prefix(&native_prefix) else {
                 bail!("signed HAP contains native libraries outside {native_prefix}");
             };
-            if if entry.is_dir() { !library.is_empty() } else { !contents.native.contains_key(library) } {
+            if if entry.is_dir() {
+                !library.is_empty()
+            } else {
+                !contents.native.contains_key(library)
+            } {
                 bail!("unexpected signed HAP native member {name}");
             }
         }
@@ -835,9 +910,15 @@ fn verify_archive(
         let prefix = format!("cores/{id}/");
         let path = format!("{prefix}core.json");
         if !contents.raw.contains_key(&path)
-            || core.plugin_id != *id || core.version != version || core.identity.is_some()
-            || core.abi != shinki_emu_build::ABI || !libraries.insert(core.library.as_str())
-            || contents.native.get(&core.library).is_none_or(|member| member.role != NativeRole::Core)
+            || core.plugin_id != *id
+            || core.version != version
+            || core.identity.is_some()
+            || core.abi != shinki_emu_build::ABI
+            || !libraries.insert(core.library.as_str())
+            || contents
+                .native
+                .get(&core.library)
+                .is_none_or(|member| member.role != NativeRole::Core)
         {
             bail!("wrong identity, provenance or ABI for signed HAP core {id}");
         }
@@ -849,7 +930,10 @@ fn verify_archive(
                 contents.raw.get(&format!("{prefix}{}", file.path))
             };
             if !paths.insert(file.path.as_str()) || expected != Some(&file.sha256) {
-                bail!("wrong staged hash or duplicate core file: {prefix}{}", file.path);
+                bail!(
+                    "wrong staged hash or duplicate core file: {prefix}{}",
+                    file.path
+                );
             }
         }
         if !paths.contains(core.library.as_str())
@@ -859,14 +943,25 @@ fn verify_archive(
             bail!("signed HAP core {id} must record its library and exact source commit");
         }
     }
-    if contents.native.get(MANAGER).is_none_or(|member| member.role != NativeRole::Manager)
-        || libraries.len() != contents.native.values().filter(|member| member.role == NativeRole::Core).count()
+    if contents
+        .native
+        .get(MANAGER)
+        .is_none_or(|member| member.role != NativeRole::Manager)
+        || libraries.len()
+            != contents
+                .native
+                .values()
+                .filter(|member| member.role == NativeRole::Core)
+                .count()
     {
         bail!("incomplete OHOS HAP component roster");
     }
     let mut needed = BTreeMap::new();
     for (name, member) in &contents.native {
-        needed.insert(name.as_str(), verify_native_member(&mut archive, target, name, member)?);
+        needed.insert(
+            name.as_str(),
+            verify_native_member(&mut archive, target, name, member)?,
+        );
     }
     verify_native_closure(target, contents, &needed)
 }
@@ -943,7 +1038,12 @@ fn verify_native_member(
     verify_native(target, &bytes, library, member.role)
 }
 
-fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> Result<BTreeSet<String>> {
+fn verify_native(
+    target: Target,
+    bytes: &[u8],
+    name: &str,
+    role: NativeRole,
+) -> Result<BTreeSet<String>> {
     let expected = || {
         format!(
             "{name} is not a loadable {} ELF64 shared library",
@@ -968,13 +1068,17 @@ fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> 
         bail!("{}", expected());
     }
     let endian = file.endian();
-    let mut loads = file.elf_program_headers().iter()
+    let mut loads = file
+        .elf_program_headers()
+        .iter()
         .filter(|header| header.p_type(endian) == object::elf::PT_LOAD);
-    if !loads.all(|load| load.p_align(endian) >= target.page_size()
-        && load.p_offset(endian) % target.page_size() == load.p_vaddr(endian) % target.page_size()
-        && load.p_filesz(endian) <= load.p_memsz(endian)
-        && load.data(endian, bytes).is_ok())
-    {
+    if !loads.all(|load| {
+        load.p_align(endian) >= target.page_size()
+            && load.p_offset(endian) % target.page_size()
+                == load.p_vaddr(endian) % target.page_size()
+            && load.p_filesz(endian) <= load.p_memsz(endian)
+            && load.data(endian, bytes).is_ok()
+    }) {
         bail!("{name} has invalid ELF load segment alignment or bounds");
     }
     match role {
@@ -988,46 +1092,71 @@ fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> 
                 bail!("{name} does not export shinki_emu_query");
             }
         }
-        _
-            if file.dynamic_symbols().chain(file.symbols()).any(|symbol| {
-                symbol.is_definition() && symbol.name_bytes() == Ok(b"shinki_emu_query".as_slice())
-            }) =>
+        _ if file.dynamic_symbols().chain(file.symbols()).any(|symbol| {
+            symbol.is_definition() && symbol.name_bytes() == Ok(b"shinki_emu_query".as_slice())
+        }) =>
         {
             bail!("{name} is not a core and must not define a core query");
         }
         _ => {}
     }
-    let mut dynamic = file.elf_program_headers().iter()
+    let mut dynamic = file
+        .elf_program_headers()
+        .iter()
         .filter(|header| header.p_type(endian) == object::elf::PT_DYNAMIC);
-    let entries = dynamic.next().expect("validated PT_DYNAMIC")
-        .dynamic(endian, bytes)?.context("missing ELF dynamic table")?;
+    let entries = dynamic
+        .next()
+        .expect("validated PT_DYNAMIC")
+        .dynamic(endian, bytes)?
+        .context("missing ELF dynamic table")?;
     if dynamic.next().is_some() {
         bail!("{name} has more than one ELF dynamic table");
     }
-    let entries = &entries[..entries.iter()
+    let entries = &entries[..entries
+        .iter()
         .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
         .context("ELF dynamic table lacks DT_NULL")?];
-    if entries.iter().any(|entry| matches!(entry.tag(endian), object::elf::DT_RPATH | object::elf::DT_RUNPATH)) {
+    if entries.iter().any(|entry| {
+        matches!(
+            entry.tag(endian),
+            object::elf::DT_RPATH | object::elf::DT_RUNPATH
+        )
+    }) {
         bail!("{name} must use the app linker namespace, not ELF RPATH/RUNPATH");
     }
     let mut needed = BTreeSet::new();
-    if entries.iter().any(|entry| matches!(entry.tag(endian), object::elf::DT_NEEDED | object::elf::DT_SONAME)) {
-        let field = |tag| entries.iter().find(|entry| entry.tag(endian) == tag)
-            .map(|entry| entry.d_val(endian)).context("missing ELF dynamic string table");
+    if entries.iter().any(|entry| {
+        matches!(
+            entry.tag(endian),
+            object::elf::DT_NEEDED | object::elf::DT_SONAME
+        )
+    }) {
+        let field = |tag| {
+            entries
+                .iter()
+                .find(|entry| entry.tag(endian) == tag)
+                .map(|entry| entry.d_val(endian))
+                .context("missing ELF dynamic string table")
+        };
         let address = field(object::elf::DT_STRTAB)?;
         let size = field(object::elf::DT_STRSZ)?;
         let mut data = None;
-        for load in file.elf_program_headers().iter()
+        for load in file
+            .elf_program_headers()
+            .iter()
             .filter(|header| header.p_type(endian) == object::elf::PT_LOAD)
         {
-            data = load.data_range(endian, bytes, address, size)
+            data = load
+                .data_range(endian, bytes, address, size)
                 .map_err(|_| anyhow::anyhow!("invalid ELF load segment range"))?;
             if data.is_some() {
                 break;
             }
         }
         let strings = object::read::StringTable::new(
-            data.context("ELF dynamic strings are not in a loadable segment")?, 0, size,
+            data.context("ELF dynamic strings are not in a loadable segment")?,
+            0,
+            size,
         );
         for entry in entries {
             match entry.tag(endian) {
@@ -1121,11 +1250,15 @@ mod tests {
     type Members = Vec<(String, Vec<u8>)>;
 
     fn fixture(
-        target: Target, directory: &Path, roster: &[(&str, &str)], deps: &[&str],
+        target: Target,
+        directory: &Path,
+        roster: &[(&str, &str)],
+        deps: &[&str],
     ) -> Result<(StagedHap, Members)> {
         let mut contents = StagedHap::default();
         let mut members = Vec::new();
-        for (basename, role) in [(MANAGER, NativeRole::Manager)].into_iter()
+        for (basename, role) in [(MANAGER, NativeRole::Manager)]
+            .into_iter()
             .chain(roster.iter().map(|&(_, name)| (name, NativeRole::Core)))
             .chain(deps.iter().map(|&name| (name, NativeRole::Dependency)))
         {
@@ -1142,21 +1275,45 @@ mod tests {
         for &(id, name) in roster {
             let license = b"synthetic fixture license";
             let manifest = package::CorePackage {
-                schema: "shinki.emu.core_package.v1".into(), plugin_id: id.into(),
-                library: name.into(), version: VERSION.into(), identity: None,
-                recognition: Default::default(), abi: shinki_emu_build::ABI.into(),
+                schema: "shinki.emu.core_package.v1".into(),
+                plugin_id: id.into(),
+                library: name.into(),
+                version: VERSION.into(),
+                identity: None,
+                recognition: Default::default(),
+                abi: shinki_emu_build::ABI.into(),
                 files: vec![
-                    package::FileRecord { path: name.into(), sha256: contents.native[name].sha256.clone() },
-                    package::FileRecord { path: "source-commit.txt".into(), sha256: digest(COMMIT.as_bytes()) },
-                    package::FileRecord { path: "licenses/LICENSE".into(), sha256: digest(license) },
+                    package::FileRecord {
+                        path: name.into(),
+                        sha256: contents.native[name].sha256.clone(),
+                    },
+                    package::FileRecord {
+                        path: "source-commit.txt".into(),
+                        sha256: digest(COMMIT.as_bytes()),
+                    },
+                    package::FileRecord {
+                        path: "licenses/LICENSE".into(),
+                        sha256: digest(license),
+                    },
                 ],
             };
-            raw.insert(format!("cores/{id}/core.json"), serde_json::to_vec(&manifest)?);
-            raw.insert(format!("cores/{id}/source-commit.txt"), COMMIT.as_bytes().to_vec());
+            raw.insert(
+                format!("cores/{id}/core.json"),
+                serde_json::to_vec(&manifest)?,
+            );
+            raw.insert(
+                format!("cores/{id}/source-commit.txt"),
+                COMMIT.as_bytes().to_vec(),
+            );
             raw.insert(format!("cores/{id}/licenses/LICENSE"), license.to_vec());
             contents.cores.insert(id.into(), manifest);
         }
-        let extraction_list = raw.keys().map(String::as_str).collect::<Vec<_>>().join("\n") + "\n";
+        let extraction_list = raw
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
         raw.insert("bundled.manifest".to_owned(), extraction_list.into_bytes());
         for (name, data) in raw {
             contents.raw.insert(name.clone(), digest(&data));
@@ -1166,17 +1323,25 @@ mod tests {
     }
 
     fn archive(
-        target: Target, members: &Members, options: Option<(&str, SimpleFileOptions)>,
+        target: Target,
+        members: &Members,
+        options: Option<(&str, SimpleFileOptions)>,
     ) -> Result<Vec<u8>> {
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let stored =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         for (path, bytes) in members {
             let default = if path.starts_with("libs/") {
                 stored.with_alignment(target.page_size() as u16)
             } else {
                 stored
             };
-            writer.start_file(path, options.filter(|(name, _)| *name == path).map_or(default, |(_, opts)| opts))?;
+            writer.start_file(
+                path,
+                options
+                    .filter(|(name, _)| *name == path)
+                    .map_or(default, |(_, opts)| opts),
+            )?;
             writer.write_all(bytes)?;
         }
         Ok(writer.finish()?.into_inner())
@@ -1194,19 +1359,34 @@ mod tests {
                 fs::write(dir.path().join(name), bytes)?;
             }
             let (single, members) = fixture(target, dir.path(), &[ONE], &[])?;
-            verify_archive(target, Cursor::new(archive(target, &members, None)?), VERSION, COMMIT, &single)?;
+            verify_archive(
+                target,
+                Cursor::new(archive(target, &members, None)?),
+                VERSION,
+                COMMIT,
+                &single,
+            )?;
             let (mut staged, members) = fixture(target, dir.path(), &[ONE, TWO], &[])?;
             let good = archive(target, &members, None)?;
             let verify = |target, data, expected: &StagedHap| {
                 verify_archive(target, Cursor::new(data), VERSION, COMMIT, expected)
             };
             verify(target, good.clone(), &staged)?;
-            assert!(verify(other, good, &staged).unwrap_err().to_string().contains("outside libs/"));
+            assert!(
+                verify(other, good, &staged)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("outside libs/")
+            );
             let name = format!("libs/{}/{}", target.abi(), TWO.1);
 
             let path = dir.path().join(TWO.1);
             assert!(staged.add_native(ONE.1, &path, NativeRole::Core).is_err());
-            assert!(staged.add_native("libshinki_emu_copy.so", &path, NativeRole::Core).is_err());
+            assert!(
+                staged
+                    .add_native("libshinki_emu_copy.so", &path, NativeRole::Core)
+                    .is_err()
+            );
 
             let bad = |members: &Members, reason: &str| -> Result<()> {
                 let error = verify(target, archive(target, members, None)?, &staged).unwrap_err();
@@ -1218,7 +1398,11 @@ mod tests {
                 format!("{BUNDLED}cores/test.unknown/core.json"),
                 format!("libs/{}/{}", other.abi(), DEP),
             ] {
-                let reason = if extra.contains(other.abi()) { "outside libs/" } else { "unexpected" };
+                let reason = if extra.contains(other.abi()) {
+                    "outside libs/"
+                } else {
+                    "unexpected"
+                };
                 let mut members = members.clone();
                 members.push((extra, beta.clone()));
                 bad(&members, reason)?;
@@ -1230,7 +1414,10 @@ mod tests {
             // Rewrite the same-length alias in both ZIP headers to exercise an
             // exact duplicate; the ZIP writer itself rejects duplicate names.
             let mut exact_duplicate = archive(target, &duplicate, None)?;
-            while let Some(i) = exact_duplicate.windows(alias.len()).position(|bytes| bytes == alias.as_bytes()) {
+            while let Some(i) = exact_duplicate
+                .windows(alias.len())
+                .position(|bytes| bytes == alias.as_bytes())
+            {
                 exact_duplicate[i..i + alias.len()].copy_from_slice(name.as_bytes());
             }
             assert!(verify(target, exact_duplicate, &staged).is_err());
@@ -1244,19 +1431,37 @@ mod tests {
                 (name.clone(), "staged library"),
                 (format!("libs/{}/{MANAGER}", target.abi()), "staged library"),
                 (format!("{BUNDLED}cores/{}/core.json", TWO.0), "core.json"),
-                (format!("{BUNDLED}cores/{}/source-commit.txt", TWO.0), "source-commit.txt"),
-                (format!("{BUNDLED}cores/{}/licenses/LICENSE", TWO.0), "licenses/LICENSE"),
+                (
+                    format!("{BUNDLED}cores/{}/source-commit.txt", TWO.0),
+                    "source-commit.txt",
+                ),
+                (
+                    format!("{BUNDLED}cores/{}/licenses/LICENSE", TWO.0),
+                    "licenses/LICENSE",
+                ),
             ] {
                 let mut changed_members = members.clone();
-                changed_members.iter_mut().find(|(path, _)| *path == changed).unwrap().1[0] ^= 1;
+                changed_members
+                    .iter_mut()
+                    .find(|(path, _)| *path == changed)
+                    .unwrap()
+                    .1[0] ^= 1;
                 bad(&changed_members, reason)?;
             }
             let stored = zip::CompressionMethod::Stored;
             for (alignment, compression) in [
-                (1, stored), (target.page_size() as u16, zip::CompressionMethod::Deflated),
+                (1, stored),
+                (target.page_size() as u16, zip::CompressionMethod::Deflated),
             ] {
-                let opts = SimpleFileOptions::default().with_alignment(alignment).compression_method(compression);
-                let error = verify(target, archive(target, &members, Some((&name, opts)))?, &staged).unwrap_err();
+                let opts = SimpleFileOptions::default()
+                    .with_alignment(alignment)
+                    .compression_method(compression);
+                let error = verify(
+                    target,
+                    archive(target, &members, Some((&name, opts)))?,
+                    &staged,
+                )
+                .unwrap_err();
                 assert!(error.to_string().contains("stored uncompressed"));
             }
             for (bytes, reason) in [
@@ -1279,33 +1484,46 @@ mod tests {
     #[test]
     #[ignore = "requires the OpenHarmony SDK and a local fixture output directory"]
     fn ohos_signed_multicore_hap() -> Result<()> {
-        let output = PathBuf::from(std::env::var_os("SHINKI_EMU_OHOS_FIXTURE_DIR")
-            .context("set SHINKI_EMU_OHOS_FIXTURE_DIR outside the checkout")?);
+        let output = PathBuf::from(
+            std::env::var_os("SHINKI_EMU_OHOS_FIXTURE_DIR")
+                .context("set SHINKI_EMU_OHOS_FIXTURE_DIR outside the checkout")?,
+        );
         fs::create_dir_all(&output)?;
         let scratch = crate::temporary::directory()?;
         let tools = tools()?;
         let signing = signing_material(&tools)?;
         let sdk = dependencies::ohos_sdk_native()?;
-        let clang = sdk.join("llvm/bin").join(if cfg!(windows) { "clang.exe" } else { "clang" });
+        let clang = sdk
+            .join("llvm/bin")
+            .join(if cfg!(windows) { "clang.exe" } else { "clang" });
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let source = root.join("tests/fixtures/ohos_hap.c");
         let includes = root.join("../Source/FamilyApi/shinki-emu-abi/include");
         for target in Target::ALL {
             let directory = scratch.path().join(target.abi());
             fs::create_dir(&directory)?;
-            for (name, define) in [(DEP, "-DFIXTURE_DEPENDENCY"), (MANAGER, "-DFIXTURE_MANAGER"), (ONE.1, ""), (TWO.1, "")] {
+            for (name, define) in [
+                (DEP, "-DFIXTURE_DEPENDENCY"),
+                (MANAGER, "-DFIXTURE_MANAGER"),
+                (ONE.1, ""),
+                (TWO.1, ""),
+            ] {
                 let mut command = Command::new(&clang);
-                command.arg(format!("--target={}", target.llvm_target()))
+                command
+                    .arg(format!("--target={}", target.llvm_target()))
                     .arg(format!("--sysroot={}", sdk.join("sysroot").display()))
                     .args(["-fPIC", "-nostdlib", "-shared", "-O2", "-Wl,--no-undefined"])
                     .arg(format!("-Wl,-z,max-page-size={}", target.page_size()))
                     .arg(format!("-Wl,-soname,{name}"))
-                    .arg("-I").arg(&includes).arg(&source);
+                    .arg("-I")
+                    .arg(&includes)
+                    .arg(&source);
                 if !define.is_empty() {
                     command.arg(define);
                 } else {
                     let id = if name == ONE.1 { ONE.0 } else { TWO.0 };
-                    command.arg(format!("-DFIXTURE_ID=\"{id}\""))
+                    command
+                        .arg(format!("-DFIXTURE_ID=\"{id}\""))
                         .arg(format!("-DFIXTURE_VERSION=\"{VERSION}\""));
                 }
                 if name != DEP {
@@ -1316,7 +1534,9 @@ mod tests {
             let (mut staged, members) = fixture(target, &directory, &[ONE, TWO], &[DEP])?;
             for basename in [MANAGER, ONE.1, TWO.1] {
                 let closure = binary::closure(
-                    &directory.join(basename), std::slice::from_ref(&directory), target.rust_target(),
+                    &directory.join(basename),
+                    std::slice::from_ref(&directory),
+                    target.rust_target(),
                 )?;
                 assert_eq!(closure.len(), 1);
                 for (path, name) in closure {
@@ -1326,20 +1546,36 @@ mod tests {
             }
             let (no_dep, incomplete) = fixture(target, &directory, &[ONE, TWO], &[])?;
             let error = verify_archive(
-                target, Cursor::new(archive(target, &incomplete, None)?), VERSION, COMMIT, &no_dep,
-            ).unwrap_err();
-            assert!(error.to_string().contains("missing HAP dependency"), "{error:#}");
+                target,
+                Cursor::new(archive(target, &incomplete, None)?),
+                VERSION,
+                COMMIT,
+                &no_dep,
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("missing HAP dependency"),
+                "{error:#}"
+            );
             let dep_copy = directory.join("copy.so");
             fs::copy(directory.join(DEP), &dep_copy)?;
             staged.add_native(DEP, &dep_copy, NativeRole::Dependency)?;
             fs::write(&dep_copy, b"different dependency")?;
-            assert!(staged.add_native(DEP, &dep_copy, NativeRole::Dependency).is_err());
+            assert!(
+                staged
+                    .add_native(DEP, &dep_copy, NativeRole::Dependency)
+                    .is_err()
+            );
             let unsigned = directory.join("unsigned.hap");
             fs::write(&unsigned, archive(target, &members, None)?)?;
             let signed = output.join(format!("synthetic-{}.hap", target.abi()));
             sign_hap(&tools, &signing, &unsigned, &signed)?;
             verify_hap(&tools, &signing, target, &signed, VERSION, COMMIT, &staged)?;
-            eprintln!("verified signed {} fixture: {}", target.abi(), sha256(&signed)?);
+            eprintln!(
+                "verified signed {} fixture: {}",
+                target.abi(),
+                sha256(&signed)?
+            );
         }
         Ok(())
     }
