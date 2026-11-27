@@ -750,6 +750,8 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
         let gamepad = gamepad.clone();
         let weak_window = adapter.window().as_weak();
         let pending = async_events_pending.clone();
+        let runtime_timer = runtime_timer.clone();
+        let runtime_schedule = runtime_schedule.clone();
         let pad_session = service_pad_session;
         let pad_pressed = std::cell::RefCell::new(Vec::<String>::new());
         std::rc::Rc::new(move || {
@@ -780,6 +782,12 @@ pub fn run_manager_with_initial_state<C: ManagerController, R: ShinkiUnderlayRen
                     apply_session_progress(&window, &weak_adapter, model, visible);
                     if !visible {
                         release_session_mapping(&controller, &gamepad, &pad_session, &window);
+                    }
+                    // A cold core can finish activation in poll_platform, after
+                    // the initial Play callback found no active runtime.
+                    if !runtime_timer.running() && controller.borrow().runtime_deadline().is_some()
+                    {
+                        fire_host_callback(&runtime_schedule);
                     }
                 }
                 Err(error) => terminate_game(&controller, &weak_adapter, &window, error),
