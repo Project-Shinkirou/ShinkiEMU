@@ -226,7 +226,7 @@ fn write_bundled_core_metadata(target: &str) {
     let inventory: toml::Value =
         toml::from_str(&std::fs::read_to_string(inventory).expect("core inventory"))
             .expect("valid core inventory");
-    let lock = ios_frameworks.then(|| {
+    let lock = (ios_frameworks || ohos_target.is_some()).then(|| {
         let lock = root.join("Cargo.lock");
         println!("cargo:rerun-if-changed={}", lock.display());
         println!("cargo:rerun-if-changed=../../../build/core_adapters.rs");
@@ -239,17 +239,13 @@ fn write_bundled_core_metadata(target: &str) {
     let mut hap_libraries = std::collections::BTreeSet::new();
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
-        if let Some(target) = ohos_target
+        let hap = if let Some(target) = ohos_target
             && let Some(recipe) = core.get("ohos_hap")
         {
             let recipe: shinki_emu_build::ohos::HapCore =
                 recipe.clone().try_into().expect("OHOS HAP recipe");
             recipe.validate(id).expect("valid OHOS HAP recipe");
             if let Some(library) = recipe.library_for(target) {
-                assert!(
-                    core.get("attribution").is_none(),
-                    "{id} is not a first-party OHOS core"
-                );
                 assert!(
                     hap_libraries.insert(library.to_ascii_lowercase()),
                     "duplicate OHOS HAP library {library}"
@@ -258,24 +254,31 @@ fn write_bundled_core_metadata(target: &str) {
                     hap_cores.insert(id, library.to_owned()).is_none(),
                     "duplicate OHOS HAP core {id}"
                 );
+                true
+            } else {
+                false
             }
-        }
+        } else {
+            false
+        };
         let framework = ios_frameworks
             && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
         if framework {
             frameworks.push(id);
         }
-        if framework
-            && let Some(attribution) = core.get("attribution")
-            && let Some(adapter) = lock
-                .as_ref()
-                .and_then(|lock| core_adapters::locked_adapter(lock, id))
-        {
-            identities.insert(id.to_owned(), serde_json::json!({
-                "upstream": attribution["upstream_identity"],
-                "adapter": {"repo": adapter.repo, "branch": attribution["adapter_branch"], "commit": adapter.commit},
-                "release_sequence": attribution["release_sequence"],
-            }));
+        if (framework || hap) && let Some(attribution) = core.get("attribution") {
+            let adapter = lock.as_ref().and_then(|lock| core_adapters::locked_adapter(lock, id));
+            assert!(
+                !hap || adapter.is_some(),
+                "{id}: an external OHOS HAP core requires a Git adapter in Cargo.lock"
+            );
+            if let Some(adapter) = adapter {
+                identities.insert(id.to_owned(), serde_json::json!({
+                    "upstream": attribution["upstream_identity"],
+                    "adapter": {"repo": adapter.repo, "branch": attribution["adapter_branch"], "commit": adapter.commit},
+                    "release_sequence": attribution["release_sequence"],
+                }));
+            }
         }
     }
     let output = std::path::PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
@@ -295,6 +298,11 @@ fn write_bundled_core_metadata(target: &str) {
         let roster: Vec<_> = hap_cores.into_iter().collect();
         std::fs::write(output.join("ohos-hap-cores.rs"), format!("&{roster:?}\n"))
             .expect("OHOS HAP core roster");
+        std::fs::write(
+            output.join("ohos-hap-core-identities.json"),
+            serde_json::to_vec(&identities).expect("identity JSON"),
+        )
+        .expect("OHOS HAP core identities");
     }
 }
 

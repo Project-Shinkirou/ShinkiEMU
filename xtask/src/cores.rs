@@ -94,6 +94,20 @@ impl Core {
         }))
     }
 
+    pub(crate) fn ohos_identity(
+        &self,
+        root: &Path,
+    ) -> Result<Option<shinki_emu_metadata::CoreIdentity>> {
+        let identity = self.identity(root)?;
+        if self.attribution.is_some() && identity.is_none() {
+            bail!("{}: an external OHOS HAP core requires a Git adapter in Cargo.lock", self.id);
+        }
+        if let Some(identity) = &identity {
+            identity.validate()?;
+        }
+        Ok(identity)
+    }
+
     pub fn adapter_manifest(&self, root: &Path, target: &str) -> Result<PathBuf> {
         let package = self.adapter_package();
         let metadata: serde_json::Value = serde_json::from_slice(&crate::dependencies::capture(
@@ -285,9 +299,6 @@ impl Inventory {
             crate::package::portable(&c.id)?;
             if let Some(recipe) = &c.ohos_hap {
                 recipe.validate(&c.id)?;
-                if c.attribution.is_some() {
-                    bail!("{}: OHOS HAP cores must use first-party provenance", c.id);
-                }
                 for target in OhosTarget::ALL {
                     let Some(library) = recipe.library_for(target) else {
                         continue;
@@ -636,7 +647,7 @@ mod tests {
         let extra = inventory
             .cores
             .iter()
-            .position(|core| core.ohos_hap.is_none() && core.attribution.is_none())
+            .position(|core| core.ohos_hap.is_none() && core.attribution.is_some())
             .unwrap();
         let recipe = |basename: &str, abi: &str| {
             toml::from_str(&format!("library = {basename:?}\nabis = [{abi:?}]")).unwrap()

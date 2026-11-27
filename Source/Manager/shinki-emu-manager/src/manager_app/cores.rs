@@ -65,20 +65,19 @@ fn require_online_core_downloads() -> Result<(), String> {
     if online_core_downloads() { Ok(()) } else { Err("SHINKI_EMU_CORE_DOWNLOAD_DISABLED".into()) }
 }
 
-#[cfg(target_os = "ios")]
-pub(super) fn bundled_core_identity(
-    plugin_id: &str,
-) -> Option<&'static shinki_emu_metadata::CoreIdentity> {
-    static IDENTITIES: std::sync::LazyLock<BTreeMap<String, shinki_emu_metadata::CoreIdentity>> =
+#[cfg(any(target_os = "ios", target_env = "ohos"))]
+pub(super) fn bundled_core_identity(plugin_id: &str) -> Option<&'static CoreIdentity> {
+    #[cfg(target_os = "ios")]
+    const DATA: &str = include_str!(concat!(env!("OUT_DIR"), "/ios-framework-core-identities.json"));
+    #[cfg(target_env = "ohos")]
+    const DATA: &str = include_str!(concat!(env!("OUT_DIR"), "/ohos-hap-core-identities.json"));
+
+    static IDENTITIES: std::sync::LazyLock<BTreeMap<String, CoreIdentity>> =
         std::sync::LazyLock::new(|| {
-            let identities: BTreeMap<String, shinki_emu_metadata::CoreIdentity> =
-                serde_json::from_str(include_str!(concat!(
-                    env!("OUT_DIR"),
-                    "/ios-framework-core-identities.json"
-                )))
-                .expect("built iOS Framework core identities");
+            let identities: BTreeMap<String, CoreIdentity> =
+                serde_json::from_str(DATA).expect("built bundled core identities");
             for identity in identities.values() {
-                identity.validate().expect("valid iOS Framework core identity");
+                identity.validate().expect("valid bundled core identity");
             }
             identities
         });

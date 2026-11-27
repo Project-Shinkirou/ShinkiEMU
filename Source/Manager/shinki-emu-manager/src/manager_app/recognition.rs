@@ -265,7 +265,7 @@ pub(super) fn installed_core<'a>(
     if shinki_emu_manager::platform::ohos::bundled::configured_cores()
         .iter().any(|&(id, _)| id == plugin_id)
     {
-        return package.filter(|core| core.bundled).map(CoreSource::Package);
+        return package.filter(|core| core.bundled);
     }
     #[cfg(target_os = "ios")]
     if shinki_emu_manager::platform::bundled_core_ids().contains(&plugin_id) {
@@ -348,6 +348,28 @@ pub(super) fn validate_pending_package(cores: &Path, stem: &str, directory: &Pat
     Ok(())
 }
 
+#[cfg(target_env = "ohos")]
+fn ohos_product_receipt_matches() -> bool {
+    #[derive(serde::Deserialize)]
+    struct Product {
+        version: String,
+        target: String,
+        source_commit: String,
+    }
+
+    let Some(receipt) = shinki_emu_manager::platform::bundled_resource_dir()
+        .and_then(|directory| fs::File::open(directory.join("ohos.json")).ok())
+        .and_then(|file| serde_json::from_reader::<_, Product>(std::io::BufReader::new(file)).ok())
+    else {
+        return false;
+    };
+    const COMMIT: &str = env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT");
+    !COMMIT.is_empty()
+        && receipt.source_commit == COMMIT
+        && receipt.version == shinki_emu_manager::version()
+        && receipt.target == env!("SHINKI_EMU_BUILD_TARGET")
+}
+
 /// Read package identities only. Bare libraries cannot establish an identity.
 pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, InstalledCore>, String> {
     // OHOS executable packages come only from the installed app bundle.
@@ -396,6 +418,11 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         });
     }
     #[cfg(target_env = "ohos")]
+    if !ohos_product_receipt_matches() {
+        tracing::warn!(event = "shinki.emu.ohos.bundle_receipt_mismatch");
+        return Ok(found);
+    }
+    #[cfg(target_env = "ohos")]
     for &(id, basename) in shinki_emu_manager::platform::ohos::bundled::configured_cores() {
         use shinki_emu_manager::platform::ohos::bundled;
         let package = bundled::manifest_dir(id)
@@ -403,9 +430,10 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
             .filter(|package| package.manifest.plugin_id == id
                 && package.manifest.library == basename
                 && package.manifest.files.iter().any(|file| file.path == basename)
-                && package.manifest.identity.is_none()
-                && package.manifest.version == shinki_emu_manager::version()
-                && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT")));
+                && package.manifest.identity.as_ref() == cores::bundled_core_identity(id)
+                && (package.manifest.identity.is_some()
+                    || (package.manifest.version == shinki_emu_manager::version()
+                        && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT")))));
         let (Some(package), Some(library)) = (package, bundled::library(id)) else {
             tracing::warn!(event = "shinki.emu.ohos.bundle_core_unavailable", plugin_id = id);
             continue;

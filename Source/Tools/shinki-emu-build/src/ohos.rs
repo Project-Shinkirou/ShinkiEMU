@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub const MANAGER_LIBRARY: &str = "libshinki_emu_manager.so";
 
-/// A first-party DSO bundled only on the selected OHOS ABIs.
+/// A dynamic core library bundled only on the selected OHOS ABIs.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HapCore {
