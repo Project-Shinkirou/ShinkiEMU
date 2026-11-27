@@ -25,7 +25,7 @@ cargo xtask package --target aarch64-linux-android --core impacto --out .work/im
 
 通常の Android Manager パッケージは両 ABI を 1 個のユニバーサル APK にまとめます。デバッグ鍵用に `GRADLE_USER_HOME` を設定します。リリース署名用の入力がなければデバッグ署名のテスト APK になります。APK には KiriKiri の Java ホストが含まれます。動的コアは独立した ZIP で配布し、Gradle 署名は不要です。
 
-デバッグ版とリリース版のどちらでも、公式カタログからコアをインストールするか、登録内容と一致する ZIP を取り込みます。Manager を再起動してインストールを反映します。
+デバッグ版とリリース版のどちらでも、公式カタログから取得するか、互換性のあるローカルのコア ZIP を取り込めます。ローカルの ZIP はカタログ掲載を必要としません。Manager を再起動してインストールを反映します。
 
 KiriKiri の Java、AIDL、JAR はネイティブコアと同じ fork のコミットに固定したホスト用 Cargo ライブラリで生成します。Manager の APK を作る際はこれらを一度だけ用意し、ネイティブコアはビルドしません。コアの ZIP は `package --core <id>` で個別に作成します。
 Activity のライフサイクルは同梱のアダプターに通知します。コア固有の JNI はアダプター内に置き、ネイティブコアは有効化時に既存の `AndroidContextV1` からプロセスのコンテキストを受け取ります。

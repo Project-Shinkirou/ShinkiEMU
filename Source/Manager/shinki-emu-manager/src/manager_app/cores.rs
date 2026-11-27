@@ -338,7 +338,7 @@ impl ShinkiEmuManagerController {
         })
     }
 
-    /// Stage a local ZIP matched against verified release metadata.
+    /// Stage a user-selected core ZIP independently of the download catalog.
     pub(super) fn install_core(&mut self, source: &Path) -> Result<ManagerViewModel, String> {
         let pending = self.cores_dir()?.join(core_package::PENDING);
         let package = source
@@ -348,12 +348,9 @@ impl ShinkiEmuManagerController {
         if !package {
             return Err("SHINKI_EMU_CORE_PACKAGE_FORMAT".into());
         }
-        let platform = core_platform();
-        let entries = self.metadata_catalog.as_ref().into_iter()
-            .flat_map(|catalog| &catalog.cores.entries)
-            .filter(|entry| release_matches_target(entry, &platform)
-                && recognition::allows_installed_release(&entry.plugin_id, &entry.version, entry.identity.as_ref()));
-        let stem = core_package::stage_local_release(source, entries, &pending)?;
+        let stem = core_package::stage_local_package(source, &pending, |directory, stem, manifest| {
+            recognition::package_library(directory, stem, manifest).map(|_| ()).map_err(str::to_owned)
+        })?;
         if cfg!(target_os = "android") {
             self.plugin_errors.remove(&stem);
         }
@@ -1006,11 +1003,7 @@ mod tests {
         let mut app = open();
         let cores = root.path().join("cores");
         fs::write(&archive, &package).unwrap();
-        assert!(app.install_core(&archive).is_err(), "self-hashes do not authorize a ZIP");
-        assert!(core_package::pending_entries(&cores).unwrap().is_empty());
-        let mut catalog = crate::metadata_cache::tests::sample_catalog(root.path());
-        catalog.cores.entries = vec![package_entry(id, &package)];
-        app.metadata_catalog = Some(catalog);
+        app.metadata_catalog = None;
         assert!(!app.network_allowed);
         let bare = root.path().join(format!("{stem}.{}", env::consts::DLL_EXTENSION));
         fs::write(&bare, b"unidentified library bytes").unwrap();
@@ -1018,7 +1011,7 @@ mod tests {
         let mut altered = package.clone();
         altered[0] ^= 1;
         fs::write(&archive, altered).unwrap();
-        assert!(app.install_core(&archive).is_err(), "same-size archive still needs the official SHA");
+        assert!(app.install_core(&archive).is_err(), "invalid ZIP cannot be staged");
         assert!(core_package::pending_entries(&cores).unwrap().is_empty());
         fs::write(&archive, &package).unwrap();
         app.install_core(&archive).unwrap();
@@ -1037,11 +1030,6 @@ mod tests {
 
         let update = package_with_recognition(id, stem, "0.3.0", Default::default());
         fs::write(&archive, &update).unwrap();
-        let mut entry = package_entry(id, &update);
-        entry.version = "0.3.0".into();
-        let mut catalog = crate::metadata_cache::tests::sample_catalog(root.path());
-        catalog.cores.entries = vec![entry];
-        app.metadata_catalog = Some(catalog);
         app.install_core(&archive).unwrap();
         assert_eq!(item(&app, id).state, "pending-update");
         drop(app);

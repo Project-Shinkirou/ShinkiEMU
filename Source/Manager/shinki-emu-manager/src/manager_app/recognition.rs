@@ -311,13 +311,13 @@ pub(super) fn scan_rules(installed: &BTreeMap<String, InstalledCore>) -> Declare
     matcher
 }
 
-fn package_library(
+pub(super) fn package_library(
     directory: &Path,
     stem: &str,
     manifest: &core_package::CoreManifest,
 ) -> Result<(PathBuf, String), &'static str> {
     if !allows_installed_release(&manifest.plugin_id, &manifest.version, manifest.identity.as_ref()) {
-        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: install a compatible official release");
+        return Err("SHINKI_EMU_CORE_PACKAGE_RELEASE_UNSUPPORTED: install a compatible core release");
     }
     let library = directory.join(&manifest.library);
     let expected_stem = shinki_emu_manager_core::library_stem(&library);

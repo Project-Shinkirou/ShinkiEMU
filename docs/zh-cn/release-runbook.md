@@ -25,7 +25,7 @@ cargo xtask package --target aarch64-linux-android --core impacto --out .work/im
 
 常规 Android Manager 打包会将两个 ABI 放进同一个通用 APK。设置 `GRADLE_USER_HOME` 存放调试密钥。不提供发布签名材料时，生成调试签名的测试 APK。APK 随附 KiriKiri 的 Java 宿主。动态核心作为独立 ZIP 交付，不需要 Gradle 签名。
 
-调试版和正式版使用同一套核心安装规则：从官方目录安装，或导入与目录记录匹配的 ZIP，然后重启 Manager。
+调试版和正式版使用同一套安装规则：从官方目录下载核心，或导入兼容的本地核心 ZIP。本地 ZIP 不必收录到官方目录。安装后重启 Manager。
 
 KiriKiri 的 Java、AIDL 和 JAR 由宿主 Cargo 库生成，与原生核心使用同一 fork 提交。Manager 打 APK 时只生成一次宿主文件，不构建这两个原生核心。用 `package --core <id>` 单独生成核心 ZIP。
 APK 通过随包适配器转发生命周期事件。核心专用 JNI 留在适配器内，原生核心在启用时仍通过现有 `AndroidContextV1` 获取进程级上下文。

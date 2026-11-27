@@ -30,7 +30,7 @@ The APK dispatches Activity lifecycle callbacks through the packaged adapters. C
 
 For the Impacto cutover, first publish sequence 4 from the exact organization fork SHA in `Cargo.lock`. Prepare both Android ABIs with `cargo xtask release --component impacto --target <triple>` and retain the corresponding-source assets. Confirm both ZIPs are available in the official catalog before publishing the Manager that removes static Impacto. Do not change the historical sequence 3 assets.
 
-For both debug and release builds, install cores from the official catalog or import a ZIP that matches its catalog entry. Restart Manager to apply the installation.
+For both debug and release builds, download cores from the official catalog or import a compatible local core ZIP. Local imports do not require a catalog entry. Restart Manager to apply the installation.
 
 For a release APK, `cargo xtask package` checks the official signing certificate, package ID `org.shinkirou.shinkiemu`, the expected `versionName` and `versionCode`, and `minSdk` 28. `release.yml` sets `SHINKI_EMU_ANDROID_VERSION_CODE` from `github.run_number`. Each published APK needs a higher code than the last one. Keep the existing workflow file and run-number sequence: recreating, renaming or replacing the workflow can restart numbering at 1 and prevent installed copies from updating.
 

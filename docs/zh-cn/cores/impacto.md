@@ -15,7 +15,7 @@ impacto 保留 MAGES SC3 VM、原生资源 reader 和游戏专用配置。C++ �
 
 ### Android 核心包
 
-在 Manager 中安装与设备匹配的 Impacto 官方 ZIP：`arm64-v8a` 或 `x86_64`。Manager 根据官方目录校验 ZIP，只接受发布序号 4 及以上的版本。游戏配置、着色器、资源、运行库和许可证都随核心打包。`resources_root` 留空时使用安装后的核心库旁边的 `Resources/` 目录；手动指定的路径优先。
+在 Manager 中从官方目录下载 Impacto，或导入与设备匹配的本地 ZIP（`arm64-v8a` 或 `x86_64`）。Android 接受发布序号 4 及以上的版本。游戏配置、着色器、资源、运行库和许可证都随核心打包。`resources_root` 留空时使用安装后的核心库旁边的 `Resources/` 目录；手动指定的路径优先。
 
 Impacto 在会话线程上用 SDL 离屏事件队列和 EGL pbuffer。Android Activity、输入和应用生命周期仍由 Manager 管理，不需要 SDL Activity 或 Android context 扩展。核心的 Lua 和其他原生依赖符号不对进程中的其他模块公开。
 

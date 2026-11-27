@@ -15,7 +15,7 @@ impacto retains its MAGES SC3 VM, native resource readers and game-specific conf
 
 ### Android core packages
 
-Install the official Impacto ZIP for `arm64-v8a` or `x86_64` from Manager. Android requires release sequence 4 or later and verifies the ZIP against its official catalog. Profiles, shaders, resources, runtime libraries and notices live in the core ZIP. An empty `resources_root` resolves to the `Resources/` directory beside the installed library; an explicit path takes precedence.
+In Manager, download Impacto from the official catalog or install a compatible local ZIP for `arm64-v8a` or `x86_64`. Android accepts release sequence 4 or later. Profiles, shaders, resources, runtime libraries and notices live in the core ZIP. An empty `resources_root` resolves to the `Resources/` directory beside the installed library; an explicit path takes precedence.
 
 The core uses its own SDL offscreen event queue and an EGL pbuffer on the session worker. Manager keeps ownership of the Android activity, input and lifecycle; the core does not require an SDL activity or the Android context extension. The Android library keeps its private Lua and native dependency symbols out of the process-wide symbol namespace.
 

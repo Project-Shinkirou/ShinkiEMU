@@ -140,7 +140,7 @@ unsafe fn initialize_android_context(
         if required {
             return Err(FamilyLoadError::ProviderError(FamilyError::new(
                 "SHINKI_EMU_FAMILY_ANDROID_CONTEXT_REQUIRED",
-                "This Android core must provide AndroidContextV1. Install a compatible official release.",
+                "This Android core must provide AndroidContextV1. Install a compatible core release.",
             )));
         }
         return Ok(());

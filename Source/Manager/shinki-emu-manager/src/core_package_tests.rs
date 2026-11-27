@@ -42,7 +42,7 @@ fn android_first_party_admission_requires_a_valid_hashed_product_commit() {
     let pending = cores.join(PENDING);
     let archive = root.path().join("core.zip");
     let stage = || {
-        stage_open_package(fs::File::open(&archive).unwrap(), Some((PLUGIN, "0.2.0", None)), &pending, true)
+        stage_open_package(fs::File::open(&archive).unwrap(), Some((PLUGIN, "0.2.0", None)), &pending, true, |_, _, _| Ok(()))
     };
 
     valid_package(&archive, PLUGIN);
@@ -68,13 +68,13 @@ fn android_first_party_admission_requires_a_valid_hashed_product_commit() {
     files.push(("source-commit.txt".into(), COMMIT));
     files.push((CORE_MANIFEST.into(), &unstamped));
     write_zip(&archive, &files);
-    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false).is_err());
+    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false, |_, _, _| Ok(())).is_err());
     files.pop();
 
     let forged = manifest("rfvp", &files);
     files.push((CORE_MANIFEST.into(), &forged));
     write_zip(&archive, &files);
-    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false).is_err());
+    assert!(stage_open_package(fs::File::open(&archive).unwrap(), None, &pending, false, |_, _, _| Ok(())).is_err());
     files.pop();
 
     let stamped = manifest(PLUGIN, &files);
@@ -448,30 +448,23 @@ fn published_first_party_v1_desktop_shape_remains_installable() {
     assert!(installed.source_commit.is_none());
 }
 
-#[cfg(not(target_os = "android"))]
 #[test]
-fn local_official_import_still_uses_its_catalog_hash() {
-    let mut entry: shinki_emu_metadata::CoreCatalogEntry = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../Metadata/engines/cores/shinki.emu.musica/windows-x86_64/0.1.0-beta.4.json",
-    ))).unwrap();
+fn local_zip_checks_contents_and_keeps_the_previous_pending_install() {
     let root = tempfile::tempdir().unwrap();
-    let archive = root.path().join("official.zip");
+    let archive = root.path().join("local.zip");
     let pending = root.path().join(PENDING);
-    let files = valid_files();
-    let mut declaration: CoreManifest = serde_json::from_slice(&manifest(&entry.plugin_id, &files)).unwrap();
-    declaration.version = entry.version.clone();
-    let encoded = serde_json::to_vec(&declaration).unwrap();
-    let mut zip = files;
-    zip.push((CORE_MANIFEST.into(), &encoded));
-    write_zip(&archive, &zip);
-    let import = |entry: &shinki_emu_metadata::CoreCatalogEntry| {
-        stage_local_release(&archive, std::iter::once(entry), &pending)
-    };
-    entry.size = fs::metadata(&archive).unwrap().len();
-    assert_eq!(import(&entry).unwrap_err(), "SHINKI_EMU_CORE_NOT_AVAILABLE");
-    assert!(pending_is_empty(root.path()));
-    entry.sha256 = sha256_hex(&fs::read(&archive).unwrap());
-    let stem = import(&entry).unwrap();
-    assert_eq!(read_manifest(&pending.join(stem)).unwrap(), declaration);
+    let stage = || stage_local_package(&archive, &pending, |_, _, _| Ok(()));
+    let mut files = valid_files();
+    let encoded = manifest("shinki.emu.fixture", &files);
+    files.push((CORE_MANIFEST.into(), &encoded));
+    write_zip(&archive, &files);
+    let stem = stage().unwrap();
+    let installed_path = pending.join(stem).join(&files[0].0);
+    let original = files[0].1;
+
+    files[0].1 = b"same path, different payload";
+    write_zip(&archive, &files);
+    let error = stage().unwrap_err();
+    assert!(error.starts_with("SHINKI_EMU_CORE_PACKAGE_HASH_MISMATCH: "), "{error}");
+    assert_eq!(fs::read(installed_path).unwrap(), original);
 }

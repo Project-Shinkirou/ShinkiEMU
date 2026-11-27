@@ -63,7 +63,7 @@ Allow networking in Settings before synchronizing metadata or downloading cores.
 
 When Manager starts in a new process, it applies staged installations and removals before showing the core list. **Installed, not loaded** means the package is on disk but Manager has not loaded its native code. If a package is malformed or two directories declare the same core, use the directory name on the card to choose which copy to remove or inspect. Built-in cores cannot be uninstalled.
 
-On Android, install Impacto for your device's ABI (release sequence 4 or later) before launching a recognized MAGES. game. Android accepts packages only when the bundled or synced official catalog verifies the archive and the target’s `android_dynamic` policy admits that release. **Install from file** verifies an official ZIP too. `no-core-download` disables online core downloads, not verified local installs. iOS and OpenHarmony use their bundled cores.
+On Android, install Impacto for your device’s ABI (release sequence 4 or later) before launching a recognized MAGES. game. **Install from file** accepts a compatible core ZIP without a catalog entry. Manager checks the package manifest and file hashes; downloads also verify the official catalog’s archive hash, size and identity. A local core runs native code, so use ZIPs from sources you trust. `no-core-download` disables only online downloads. iOS and OpenHarmony use their bundled cores.
 
 ## Store downloads
 

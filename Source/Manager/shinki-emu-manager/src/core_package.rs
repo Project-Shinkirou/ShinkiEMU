@@ -235,44 +235,15 @@ fn partial_dir(pending: &Path) -> Result<tempfile::TempDir, String> {
         .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))
 }
 
-/// Snapshot local input while hashing so the bytes staged are the bytes matched
-/// against the verified catalog, even if the source is edited.
-pub(crate) fn stage_local_release<'a>(
+/// Stage an explicitly selected local ZIP without consulting the public catalog.
+/// Check its staged library and runtime policy before publishing it.
+pub(crate) fn stage_local_package(
     archive: &Path,
-    entries: impl Iterator<Item = &'a shinki_emu_metadata::CoreCatalogEntry>,
     pending: &Path,
+    validate: impl FnOnce(&Path, &str, &CoreManifest) -> Result<(), String>,
 ) -> Result<String, String> {
-    use std::io::{Seek, SeekFrom};
-    let read_error = io_error("SHINKI_EMU_CORE_PACKAGE_READ");
-    let input = fs::File::open(archive).map_err(&read_error)?;
-    let size = input.metadata().map_err(&read_error)?.len();
-    if size > shinki_emu_metadata::MAX_CORE_PACKAGE_BYTES {
-        return Err("SHINKI_EMU_CORE_PACKAGE_BOUNDS".into());
-    }
-    let mut releases = entries.filter(|entry| entry.size == size).peekable();
-    if releases.peek().is_none() { return Err("SHINKI_EMU_CORE_NOT_AVAILABLE".into()); }
-    let mut input = input.take(size + 1);
-    let mut snapshot = tempfile::tempfile().map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut copied = 0;
-    loop {
-        let count = input.read(&mut buffer).map_err(&read_error)?;
-        if count == 0 { break; }
-        snapshot.write_all(&buffer[..count]).map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
-        hasher.update(&buffer[..count]);
-        copied += count as u64;
-    }
-    let digest = hex_digest(hasher.finalize().as_slice());
-    let release = releases.find(|entry| copied == size && entry.sha256 == digest)
-        .ok_or("SHINKI_EMU_CORE_NOT_AVAILABLE")?;
-    snapshot.seek(SeekFrom::Start(0)).map_err(&read_error)?;
-    let (stem, _) = stage_open_package(
-        snapshot,
-        Some((&release.plugin_id, &release.version, release.identity.as_ref())),
-        pending,
-        REQUIRE_PRODUCT_COMMIT,
-    )?;
+    let input = fs::File::open(archive).map_err(io_error("SHINKI_EMU_CORE_PACKAGE_READ"))?;
+    let (stem, _) = stage_open_package(input, None, pending, REQUIRE_PRODUCT_COMMIT, validate)?;
     Ok(stem)
 }
 
@@ -288,7 +259,7 @@ pub(crate) fn stage_package(
     pending: &Path,
 ) -> Result<(String, CoreManifest), String> {
     let file = fs::File::open(archive).map_err(io_error("SHINKI_EMU_CORE_PACKAGE_READ"))?;
-    stage_open_package(file, expected, pending, REQUIRE_PRODUCT_COMMIT)
+    stage_open_package(file, expected, pending, REQUIRE_PRODUCT_COMMIT, |_, _, _| Ok(()))
 }
 
 fn stage_open_package(
@@ -296,7 +267,12 @@ fn stage_open_package(
     expected: Option<ExpectedRelease<'_>>,
     pending: &Path,
     require_product_commit: bool,
+    validate: impl FnOnce(&Path, &str, &CoreManifest) -> Result<(), String>,
 ) -> Result<(String, CoreManifest), String> {
+    let bytes = file.metadata().map_err(io_error("SHINKI_EMU_CORE_PACKAGE_READ"))?.len();
+    if bytes > shinki_emu_metadata::MAX_CORE_PACKAGE_BYTES {
+        return Err("SHINKI_EMU_CORE_PACKAGE_BOUNDS".into());
+    }
     let mut zip = zip::ZipArchive::new(io::BufReader::new(file))
         .map_err(|_| "SHINKI_EMU_CORE_PACKAGE_FORMAT".to_owned())?;
     if zip.len() > MAX_PACKAGE_ENTRIES {
@@ -367,6 +343,7 @@ fn stage_open_package(
         return Err("SHINKI_EMU_CORE_PACKAGE_MANIFEST".into());
     }
     let partial = partial_dir(pending)?;
+    let mut buffer = vec![0_u8; 64 * 1024];
     for file in &manifest.files {
         let destination = partial.path().join(portable_path(&file.path)?);
         if let Some(parent) = destination.parent() {
@@ -384,7 +361,7 @@ fn stage_open_package(
             continue;
         }
         let mut hasher = Sha256::new();
-        let mut buffer = vec![0_u8; 64 * 1024];
+        let mut remaining = source.size();
         loop {
             let read = source
                 .read(&mut buffer)
@@ -392,10 +369,15 @@ fn stage_open_package(
             if read == 0 {
                 break;
             }
+            remaining = remaining.checked_sub(read as u64)
+                .ok_or("SHINKI_EMU_CORE_PACKAGE_BOUNDS")?;
             hasher.update(&buffer[..read]);
             output
                 .write_all(&buffer[..read])
                 .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
+        }
+        if remaining != 0 {
+            return Err("SHINKI_EMU_CORE_PACKAGE_FORMAT".into());
         }
         output
             .sync_all()
@@ -407,6 +389,7 @@ fn stage_open_package(
             ));
         }
     }
+    validate(partial.path(), &stem, &manifest)?;
     fs::write(partial.path().join(CORE_MANIFEST), &manifest_bytes)
         .map_err(io_error("SHINKI_EMU_CORE_INSTALL_COPY"))?;
     publish_pending(pending, &stem, &partial.keep())?;
