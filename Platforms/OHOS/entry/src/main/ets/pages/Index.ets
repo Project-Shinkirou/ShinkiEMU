@@ -20,7 +20,6 @@ struct Index {
   private editTarget: string = '';
   private editorFocusPending: boolean = false;
   private context = getContext(this) as common.UIAbilityContext;
-  private started: boolean = false;
 
   aboutToAppear(): void {
     try {
@@ -33,10 +32,17 @@ struct Index {
           this.textTarget = epoch;
         }
       });
+    } catch (error) {
+      this.failure = `SHINKI_EMU_OHOS_BUNDLED: ${(error as BusinessError).message}`;
+      return;
+    }
+    try {
+      // Set up the native event queue before mounting the XComponent.
+      manager.start(this.context.filesDir, this.context.cacheDir);
       reportConfiguration(this.context.config.colorMode);
       this.ready = true;
     } catch (error) {
-      this.failure = `SHINKI_EMU_OHOS_BUNDLED: ${(error as BusinessError).message}`;
+      this.failure = `SHINKI_EMU_OHOS_STARTUP: ${(error as BusinessError).message}`;
     }
   }
 
@@ -90,17 +96,6 @@ struct Index {
           .id(STAGE_FOCUS)
           .focusable(true)
           .defaultFocus(true)
-          .onLoad(() => {
-            if (!this.started) {
-              this.started = true;
-              try {
-                manager.start(this.context.filesDir, this.context.cacheDir);
-              } catch (error) {
-                this.failure = `SHINKI_EMU_OHOS_STARTUP: ${(error as BusinessError).message}`;
-                this.ready = false;
-              }
-            }
-          })
         if (this.textTarget !== '') {
           if (this.editing) {
             Row({ space: 8 }) {
