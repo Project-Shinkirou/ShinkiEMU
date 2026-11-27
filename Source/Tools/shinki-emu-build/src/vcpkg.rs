@@ -619,7 +619,13 @@ mod tests {
             );
         }
         assert_eq!(
-            core_ports(workspace, root, &source.join("absent"), "aarch64-apple-ios", &[]),
+            core_ports(
+                workspace,
+                root,
+                &source.join("absent"),
+                "aarch64-apple-ios",
+                &[]
+            ),
             vec![ios],
         );
         Ok(())
