@@ -211,7 +211,7 @@ fn execute_configured(
             bail!("no bundled iOS Framework recipe for {component}/{target}");
         }
     } else if ohos_hap_input {
-        if !crate::ohos::companion(inv, target).is_some_and(|(core, _)| core.id == component) {
+        if !crate::ohos::cores(inv, target).any(|(core, _)| core.id == component) {
             bail!("no bundled OHOS HAP recipe for {component}/{target}");
         }
     } else {
@@ -294,14 +294,13 @@ fn execute_configured(
     let adapter_package_id = core
         .map(|core| package_id(&core.adapter_package()))
         .transpose()?;
-    // The Manager can use the companion's format readers for patching without
-    // embedding the dynamic entry package.
-    let ohos_companion_entry = if component == "manager" {
-        crate::ohos::companion(inv, target)
+    // The Manager may use a core's format readers, but not its dynamic entry package.
+    let ohos_entries = if component == "manager" {
+        crate::ohos::cores(inv, target)
             .map(|(core, _)| package_id(&core.entry_package()))
-            .transpose()?
+            .collect::<Result<std::collections::BTreeSet<_>>>()?
     } else {
-        None
+        std::collections::BTreeSet::new()
     };
     let package_id = package_id(&package)?;
 
@@ -329,12 +328,12 @@ fn execute_configured(
                 continue;
             }
         };
-        if ohos_companion_entry.is_some_and(|id| value["package_id"] == id)
+        if value["package_id"].as_str().is_some_and(|id| ohos_entries.contains(id))
             && (value["reason"] == "compiler-artifact"
                 || value["reason"] == "build-script-executed")
         {
             parse_error = Some(anyhow::anyhow!(
-                "OHOS Manager must build without its companion core: {}",
+                "OHOS Manager must build without bundled core entry package: {}",
                 value["package_id"]
             ));
         }
@@ -570,40 +569,21 @@ mod version_tests {
     }
 
     #[test]
-    fn ohos_companion_build_is_available_only_inside_the_hap() {
+    fn ohos_companion_builds_are_available_only_inside_the_hap() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let mut inventory = Inventory::load(root).unwrap();
-        let triple = OhosTarget::Arm64.rust_target();
-        let configured = crate::ohos::companion(&inventory, triple)
-            .unwrap()
-            .0
-            .id
-            .clone();
-        for target in [OhosTarget::Arm64, OhosTarget::X64] {
+        let inventory = Inventory::load(root).unwrap();
+        for target in OhosTarget::ALL {
             let triple = target.rust_target();
-            let (core, _) = crate::ohos::companion(&inventory, triple).unwrap();
-            assert_eq!(core.id, configured);
             assert!(inventory.require_buildable("manager", triple).is_ok());
-            assert!(inventory.require_buildable(&core.id, triple).is_err());
+            let mut roster = crate::ohos::cores(&inventory, triple).peekable();
+            assert!(roster.peek().is_some());
+            for (core, _) in roster {
+                assert!(inventory.require_buildable(&core.id, triple).is_err());
+            }
         }
         for triple in ["x86_64-unknown-linux-gnu", "armv7-unknown-linux-ohos"] {
-            assert!(crate::ohos::companion(&inventory, triple).is_none());
+            assert!(crate::ohos::cores(&inventory, triple).next().is_none());
         }
-
-        let recipe = inventory
-            .cores
-            .iter_mut()
-            .find_map(|core| core.ohos_hap.take())
-            .unwrap();
-        assert!(crate::ohos::companion(&inventory, triple).is_none());
-        let replacement = inventory
-            .cores
-            .iter_mut()
-            .find(|core| core.id != configured && core.attribution.is_none())
-            .unwrap();
-        replacement.ohos_hap = Some(recipe);
-        let id = replacement.id.clone();
-        assert_eq!(crate::ohos::companion(&inventory, triple).unwrap().0.id, id);
     }
 
     #[test]

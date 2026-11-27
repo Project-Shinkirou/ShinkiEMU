@@ -96,11 +96,11 @@ Manager の起動やスキャンではコアがロードされないことを確
 
 DevEco Studio と付属の OpenHarmony Native SDK 5.0.5（API 17）を使います。Rust ターゲット `aarch64-unknown-linux-ohos` を導入し、`OHOS_SDK_NATIVE` を `sdk/default/openharmony/native` に設定します。HAP を作るには `SHINKI_EMU_OHOS_SIGNING_DIR` にリポジトリ外のディレクトリを指定します。パッケージャーは SDK のリンカーを設定し、SDK のテスト PKI で署名した HAP を生成します。HAP は実験用で、市販端末へのインストールと実機起動は未確認です。
 
-#### 同梱 Musica の実機テスト
+#### HAP のコア一覧と Musica の実機テスト
 
-署名済み HAP は Musica を `libs/<abi>/libshinki_emu_core_musica.so` に同梱します。Manager は有効化時に、OS がインストールした自身のライブラリと同じディレクトリ、または同じ HAP 内の固定パスから ABI v3 でロードします。展開済みのリソースや書き込み可能なアプリデータからはコードを読み込みません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)が HAP から直接読む項目は、非圧縮でページ境界に整列している必要があります。絶対パスを使い、ファイル名だけでの検索を避けます。
+[`build/cores.toml`](../../build/cores.toml) の `ohos_hap` でコアのライブラリ名を指定します。`abis` で `arm64-v8a` または `x86_64` に限定でき、省略すると両 ABI が対象になります。現在の同梱コアは Musica のみで、パスは `libs/<abi>/libshinki_emu_core_musica.so` です。Manager は自身に組み込まれた一覧から、OS がインストールした自身のライブラリと同じディレクトリ、または同じ署名済み HAP 内にある ABI v3 のコアを読み込みます。書き込み可能な展開済みリソースから実行パスを取得しません。[OpenHarmony の musl ローダー](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c)が HAP から直接読む項目は、非圧縮でページ境界に整列している必要があります。共有依存はアプリのリンカー名前空間で `DT_NEEDED` に従って解決されます。
 
-パッケージング時に署名、ELF のアーキテクチャとコアのエントリーポイント、HAP 内のライブラリ、リソース、ライセンスのハッシュを検証します。`ohos.json` には署名済み HAP のハッシュと Musica のパス、ハッシュ、ABI、バージョン、ソースコミットを記録します。
+パッケージング時に署名証明書とプロファイル、バージョン、ソースコミット、ABI、ELF エントリーポイント、同梱ライブラリとリソースのハッシュを検証します。同じ名前と内容の共有依存は一度だけ収録し、同名で内容が異なる場合は拒否します。`ohos.json` とリリースレコードは、コアごとの情報を `bundled_cores` 配列に、Manager とコアおよび共有依存のパスと SHA-256 を `native_libraries` に記録します。
 
 API 12 以降の専用 ARM64 端末を用意し、Vulkan、音声出力、開発者デバッグ、SDK テスト PKI への既存の信頼設定を確認します。テスト署名が拒否されたらそこで止め、端末の信頼設定は変更しません。SDK の `hdc` を `PATH` に追加し、PowerShell で HAP を作ります。
 

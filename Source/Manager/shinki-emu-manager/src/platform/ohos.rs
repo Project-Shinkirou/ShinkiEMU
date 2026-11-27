@@ -540,17 +540,21 @@ pub mod bundled {
     use shinki_emu_manager_core::LoadedFamilyPlugin;
     use std::os::unix::ffi::OsStringExt;
 
-    const CORE: Option<(&str, &str)> = include!(concat!(env!("OUT_DIR"), "/ohos-hap-core.rs"));
+    const CORES: &[(&str, &str)] = include!(concat!(env!("OUT_DIR"), "/ohos-hap-cores.rs"));
     const BUNDLE_CODE: &str = "/data/storage/el1/bundle";
     const ARCHIVE_LIBS: &str = concat!("libs/", env!("SHINKI_EMU_OHOS_ABI"), "/");
 
-    pub fn configured_core() -> Option<(&'static str, &'static str)> {
-        CORE
+    pub fn configured_cores() -> &'static [(&'static str, &'static str)] {
+        CORES
     }
 
-    pub fn manifest_dir() -> Option<PathBuf> {
-        let (id, _) = CORE?;
-        Some(super::bundled_resource_dir()?.join("cores").join(id))
+    fn basename(plugin_id: &str) -> Option<&'static str> {
+        CORES.iter().find(|(id, _)| *id == plugin_id).map(|&(_, name)| name)
+    }
+
+    pub fn manifest_dir(plugin_id: &str) -> Option<PathBuf> {
+        basename(plugin_id)?;
+        Some(super::bundled_resource_dir()?.join("cores").join(plugin_id))
     }
 
     fn image_path(address: *const c_void) -> Option<PathBuf> {
@@ -568,10 +572,10 @@ pub mod bundled {
         )
     }
 
-    /// Resolve only the configured companion beside the installed Manager.
-    /// Discovery calls this without dlopen.
+    /// Resolve a compiled-in basename beside this installed Manager image.
+    /// Discovery resolves provenance without running any core code.
     pub fn library(plugin_id: &str) -> Option<PathBuf> {
-        let (_, basename) = CORE.filter(|(id, _)| *id == plugin_id)?;
+        let basename = basename(plugin_id)?;
         let manager = image_path(library as *const c_void)?;
         ohos_bundle_path::resolve(Path::new(BUNDLE_CODE), &manager, ARCHIVE_LIBS, basename)
     }
@@ -580,6 +584,8 @@ pub mod bundled {
         let path = library(plugin_id).ok_or("SHINKI_EMU_OHOS_BUNDLED_CORE_ORIGIN")?;
         // An absolute installed path skips basename search (env, RPATH and
         // inherited namespaces). The caller's existing namespace still applies.
+        // OpenHarmony resolves DT_NEEDED in that namespace; package verification
+        // checks the complete closure. There is no app-side dependency preload.
         tracing::info!(event = "shinki.emu.ohos.core_open", plugin_id, path = %path.display());
         let provider = LoadedFamilyPlugin::load_ohos_bundled(&path, |address| {
             image_path(address).as_deref() == Some(path.as_path())

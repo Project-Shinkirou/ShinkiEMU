@@ -100,11 +100,11 @@ cargo xtask package \
 
 使用 DevEco Studio 自带的 OpenHarmony Native SDK 5.0.5（API 17）。安装 Rust 目标 `aarch64-unknown-linux-ohos`，将 `OHOS_SDK_NATIVE` 指向 `sdk/default/openharmony/native`。打包 HAP 时，将 `SHINKI_EMU_OHOS_SIGNING_DIR` 设为仓库外的目录。打包工具会配置 SDK 链接器，生成用 SDK 测试 PKI 签名的 HAP。这个 HAP 用于实验，尚未验证在零售设备上的安装或真机启动。
 
-#### 随 HAP 分发的 Musica 真机验收
+#### HAP 核心清单与 Musica 真机验收
 
-签名 HAP 把 Musica 放在独立的 `libs/<abi>/libshinki_emu_core_musica.so` 中。启用核心时，Manager 通过 ABI v3 从系统安装的同目录库或同一个签名 HAP 的固定路径加载，不从解包资源或可写应用数据目录加载代码。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 要求直接加载的 HAP 成员不压缩、按页对齐。传入安装后的绝对路径，可避免按库名搜索。
+在 [`build/cores.toml`](../../build/cores.toml) 中用 `ohos_hap` 声明核心库文件名。`abis` 可只选 `arm64-v8a` 或 `x86_64`，省略则两者都打包。目前正式清单只有 Musica，路径为 `libs/<abi>/libshinki_emu_core_musica.so`。Manager 用编译进自身的清单定位 ABI v3 核心，只从系统安装的同目录或同一签名 HAP 加载。解包后的可写资源不能指定可执行路径。[OpenHarmony musl 加载器](https://github.com/openharmony/third_party_musl/blob/OpenHarmony-5.0.0-Release/ldso/linux/dynlink.c) 要求直接加载的 HAP 成员不压缩、按页对齐；共享依赖由应用链接器命名空间按 `DT_NEEDED` 解析，无需 Manager 预加载。
 
-打包时校验签名、ELF 架构、核心入口，以及 HAP 中核心库、资源和许可证文件的哈希。`ohos.json` 记录签名 HAP 的哈希，以及 Musica 库的路径、哈希、ABI、版本和源码提交。
+打包时核对签名证书、签名配置、版本、源码提交、ABI、ELF 入口及全部随包库和资源的哈希。同名且内容一致的共享依赖只打包一次，同名但内容不同则拒绝打包。`ohos.json` 和发布记录通过 `bundled_cores` 数组记载各核心的来源，通过 `native_libraries` 列出 Manager、核心和共享依赖的路径及 SHA-256，并记录签名 HAP 的哈希。
 
 用专用的 ARM64、API 12 或更新版本设备，确认 Vulkan、音频输出和开发者调试可用，且设备已信任 SDK 测试 PKI。若设备拒绝测试签名，停止安装，不要修改设备信任设置。将 SDK 的 `hdc` 加入 `PATH` 后，用 PowerShell 打包：
 

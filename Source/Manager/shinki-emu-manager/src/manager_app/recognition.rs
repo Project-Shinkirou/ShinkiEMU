@@ -223,8 +223,8 @@ mod android_policy_tests {
 fn is_supported(core: &core_catalog::CoreCatalogEntry) -> bool {
     #[cfg(target_env = "ohos")]
     {
-        shinki_emu_manager::platform::ohos::bundled::configured_core()
-            .is_some_and(|(id, _)| id == core.plugin_id)
+        shinki_emu_manager::platform::ohos::bundled::configured_cores()
+            .iter().any(|&(id, _)| id == core.plugin_id)
     }
     #[cfg(target_os = "android")]
     { core.android_dynamic.is_some() }
@@ -261,6 +261,12 @@ pub(super) fn installed_core<'a>(
     plugin_id: &str,
 ) -> Option<&'a InstalledCore> {
     let package = installed.get(plugin_id);
+    #[cfg(target_env = "ohos")]
+    if shinki_emu_manager::platform::ohos::bundled::configured_cores()
+        .iter().any(|&(id, _)| id == plugin_id)
+    {
+        return package.filter(|core| core.bundled).map(CoreSource::Package);
+    }
     #[cfg(target_os = "ios")]
     if shinki_emu_manager::platform::bundled_core_ids().contains(&plugin_id) {
         return package.filter(|core| core.bundled);
@@ -390,23 +396,23 @@ pub(super) fn installed(directories: &[PathBuf]) -> Result<BTreeMap<String, Inst
         });
     }
     #[cfg(target_env = "ohos")]
-    {
+    for &(id, basename) in shinki_emu_manager::platform::ohos::bundled::configured_cores() {
         use shinki_emu_manager::platform::ohos::bundled;
-        if let Some((id, basename)) = bundled::configured_core()
-            && let Some(directory) = bundled::manifest_dir()
-            && let Ok(package) = core_package::read_package(&directory)
-            && package.manifest.plugin_id == id
-            && package.manifest.library == basename
-            && package.manifest.files.iter().any(|file| file.path == basename)
-            && package.manifest.identity.is_none()
-            && package.manifest.version == shinki_emu_manager::version()
-            && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT"))
-            && let Some(library) = bundled::library(id)
-        {
-            found.insert(id.to_owned(), InstalledCore {
-                library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
-            });
-        }
+        let package = bundled::manifest_dir(id)
+            .and_then(|directory| core_package::read_package(&directory).ok())
+            .filter(|package| package.manifest.plugin_id == id
+                && package.manifest.library == basename
+                && package.manifest.files.iter().any(|file| file.path == basename)
+                && package.manifest.identity.is_none()
+                && package.manifest.version == shinki_emu_manager::version()
+                && package.source_commit.as_deref() == Some(env!("SHINKI_EMU_COMPILED_SOURCE_COMMIT")));
+        let (Some(package), Some(library)) = (package, bundled::library(id)) else {
+            tracing::warn!(event = "shinki.emu.ohos.bundle_core_unavailable", plugin_id = id);
+            continue;
+        };
+        found.insert(id.to_owned(), InstalledCore {
+            library, manifest: package.manifest, source_commit: package.source_commit, bundled: true,
+        });
     }
     Ok(found)
 }

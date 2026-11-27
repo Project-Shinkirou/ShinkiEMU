@@ -3,21 +3,31 @@ use std::path::{Path, PathBuf};
 
 pub const MANAGER_LIBRARY: &str = "libshinki_emu_manager.so";
 
-/// The single companion DSO in a Manager HAP, on each supported OHOS ABI.
+/// A first-party DSO bundled only on the selected OHOS ABIs.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HapCore {
-    pub library: String,
+    library: String,
+    #[serde(default = "all_abis")]
+    abis: Vec<Target>,
+}
+
+fn all_abis() -> Vec<Target> {
+    Target::ALL.to_vec()
 }
 
 impl HapCore {
+    pub fn library_for(&self, target: Target) -> Option<&str> {
+        self.abis.contains(&target).then_some(&self.library)
+    }
+
     pub fn validate(&self, id: &str) -> anyhow::Result<()> {
         let valid_id = !matches!(id, "" | "." | ".." | "manager")
             && id.len() <= 128
             && id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
-        let valid_library = self.library != MANAGER_LIBRARY
+        let valid_library = !self.library.eq_ignore_ascii_case(MANAGER_LIBRARY)
             && self
                 .library
                 .strip_prefix("libshinki_emu_")
@@ -29,24 +39,28 @@ impl HapCore {
                             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
                 });
         anyhow::ensure!(
-            valid_id && valid_library,
+            valid_id
+                && valid_library
+                && matches!(self.abis.as_slice(), [_] | [Target::Arm64, Target::X64] | [Target::X64, Target::Arm64]),
             "invalid OHOS HAP recipe for {id}"
         );
         Ok(())
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
 pub enum Target {
+    #[serde(rename = "arm64-v8a")]
     Arm64,
+    #[serde(rename = "x86_64")]
     X64,
 }
 
 impl Target {
+    pub const ALL: [Self; 2] = [Self::Arm64, Self::X64];
+
     pub fn from_rust_target(target: &str) -> Option<Self> {
-        [Self::Arm64, Self::X64]
-            .into_iter()
-            .find(|arch| arch.rust_target() == target)
+        Self::ALL.into_iter().find(|arch| arch.rust_target() == target)
     }
 
     pub const fn rust_target(self) -> &'static str {

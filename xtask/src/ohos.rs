@@ -9,11 +9,11 @@ use crate::{
     package::{self, atomic_directory, copy_entries, sha256},
 };
 use anyhow::{Context, Result, bail};
-use object::{Object, ObjectSymbol, read::elf::ProgramHeader};
+use object::{Object, ObjectSymbol, read::elf::{Dyn, ProgramHeader}};
 use sha2::{Digest, Sha256};
-use shinki_emu_build::ohos::{HapCore, MANAGER_LIBRARY as MANAGER, Target};
+use shinki_emu_build::ohos::{MANAGER_LIBRARY as MANAGER, Target};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
@@ -22,31 +22,95 @@ use std::{
 
 const BUNDLE_NAME: &str = "org.shinkirou.shinkiemu";
 
-pub(crate) fn companion<'a>(inv: &'a Inventory, target: &str) -> Option<(&'a Core, &'a HapCore)> {
-    Target::from_rust_target(target)?;
-    inv.cores
-        .iter()
-        .find_map(|core| core.ohos_hap.as_ref().map(|recipe| (core, recipe)))
+const BUNDLED: &str = "resources/rawfile/bundled/";
+
+pub(crate) fn cores<'a>(
+    inv: &'a Inventory,
+    triple: &str,
+) -> impl Iterator<Item = (&'a Core, &'a str)> + use<'a> {
+    let target = Target::from_rust_target(triple);
+    inv.cores.iter().filter_map(move |core| {
+        Some((core, core.ohos_hap.as_ref()?.library_for(target?)?))
+    })
 }
 
-struct CompanionBuild<'a> {
+struct CoreBuild<'a> {
     core: &'a Core,
-    recipe: &'a HapCore,
-    artifact: &'a BuildArtifact,
+    library: &'a str,
+    artifact: BuildArtifact,
 }
 
-impl CompanionBuild<'_> {
+impl CoreBuild<'_> {
     fn validate(&self, triple: &str, version: &str, commit: &str) -> Result<()> {
-        let artifact = self.artifact;
+        let artifact = &self.artifact;
         if artifact.component != self.core.id
             || artifact.target != triple
             || artifact.product_version.as_deref() != Some(version)
             || artifact.source_commit.as_deref() != Some(commit)
         {
-            bail!(
-                "wrong OHOS companion artifact for {}/{triple}/{version}",
-                self.core.id
-            );
+            bail!("wrong OHOS core artifact for {}/{triple}/{version}", self.core.id);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeRole {
+    Manager,
+    Core,
+    Dependency,
+}
+
+#[derive(Debug)]
+struct NativeMember {
+    path: PathBuf,
+    role: NativeRole,
+    sha256: String,
+}
+
+#[derive(Debug, Default)]
+struct StagedHap {
+    native: BTreeMap<String, NativeMember>,
+    raw: BTreeMap<String, String>,
+    cores: BTreeMap<String, package::CorePackage>,
+}
+
+fn native_basename(name: &str) -> Result<()> {
+    if name.contains('/') || !name.starts_with("lib") || !name.ends_with(".so") {
+        bail!("OHOS native library must be a portable .so basename: {name}");
+    }
+    package::portable(name)
+}
+
+impl StagedHap {
+    fn add_native(&mut self, name: &str, path: &Path, role: NativeRole) -> Result<()> {
+        native_basename(name)?;
+        if let Some((existing, member)) = self.native.iter()
+            .find(|(existing, _)| name.eq_ignore_ascii_case(existing))
+        {
+            if name != existing || role != NativeRole::Dependency || member.role != role
+                || (member.path != path && member.sha256 != sha256(path)?)
+            {
+                bail!("conflicting OHOS HAP native library {name} ({existing})");
+            }
+        } else {
+            let sha256 = sha256(path)?;
+            if role != NativeRole::Dependency && self.native.values()
+                .any(|member| member.role != NativeRole::Dependency && member.sha256 == sha256)
+            {
+                bail!("OHOS HAP component {name} is not a distinct binary");
+            }
+            self.native.insert(name.into(), NativeMember { path: path.into(), role, sha256 });
+        }
+        Ok(())
+    }
+
+    fn add_closure(
+        &mut self, inv: &Inventory, target: Target, artifact: &BuildArtifact,
+    ) -> Result<()> {
+        let search = package::search_dirs(inv, artifact)?;
+        for (source, name) in binary::closure(&artifact.library, &search, target.rust_target())? {
+            self.add_native(&name, &source, NativeRole::Dependency)?;
         }
         Ok(())
     }
@@ -156,7 +220,7 @@ pub(crate) fn package(
     out: &Path,
 ) -> Result<PathBuf> {
     let triple = target.rust_target();
-    let (core, recipe) = companion(inv, triple).context("OHOS HAP companion recipe")?;
+    let roster: Vec<_> = cores(inv, triple).collect();
     let commit = result
         .source_commit
         .as_deref()
@@ -167,52 +231,40 @@ pub(crate) fn package(
     {
         bail!("expected OHOS Manager artifact for {triple}/{version}");
     }
-    let manager = fs::read(&result.library)?;
-    verify_native(target, &manager, MANAGER, NativeRole::Manager)?;
-    let manager_sha256 = hex::encode(Sha256::digest(manager));
-    let artifact = crate::build::execute_ohos_hap(inv, triple, &core.id, version)?;
-    let bundled = CompanionBuild {
-        core,
-        recipe,
-        artifact: &artifact,
-    };
-    bundled.validate(triple, version, commit)?;
-    let core_library = &recipe.library;
+    let mut builds = Vec::with_capacity(roster.len());
+    for (core, library) in roster {
+        let artifact = crate::build::execute_ohos_hap(inv, triple, &core.id, version)?;
+        let build = CoreBuild {
+            core,
+            library,
+            artifact,
+        };
+        build.validate(triple, version, commit)?;
+        builds.push(build);
+    }
     let tools = tools()?;
     let signing = signing_material(&tools)?;
     let project = inv.root.join("Platforms/OHOS");
     atomic_directory(out, |stage| {
-        let declaration = stage_inputs(inv, target, result, &bundled, &tools, &project)?;
+        let contents = stage_inputs(inv, target, result, &builds, &tools, &project)?;
         let unsigned = build_hap(&tools, target, &project, version)?;
         let name = hap_name(target, version);
         let hap = stage.join(&name);
-        dependencies::run(
-            sign_tool(&tools)
-                .args([
-                    "sign-app",
-                    "-mode",
-                    "localSign",
-                    "-keyAlias",
-                    DEBUG_KEY_ALIAS,
-                ])
-                .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-appCertFile"])
-                .arg(signing.join("app-cert.cer"))
-                .arg("-profileFile")
-                .arg(signing.join("profile.p7b"))
-                .arg("-inFile")
-                .arg(&unsigned)
-                .args(["-signAlg", "SHA256withECDSA", "-keystoreFile"])
-                .arg(signing.join("debug.p12"))
-                .args(["-keystorePwd", TEST_KEYSTORE_PASSWORD, "-signCode", "1"])
-                .arg("-outFile")
-                .arg(&hap),
-        )?;
-        let core = verify_hap(&tools, target, &hap, &declaration, &manager_sha256)?;
-        let library = core
-            .files
-            .iter()
-            .find(|file| file.path == *core_library)
-            .context("verified HAP companion library record")?;
+        sign_hap(&tools, &signing, &unsigned, &hap)?;
+        verify_hap(&tools, &signing, target, &hap, version, commit, &contents)?;
+        let bundled_cores = contents.cores.values().map(|core| {
+            serde_json::json!({
+                "plugin_id": core.plugin_id,
+                "version": core.version,
+                "source_commit": commit,
+                "abi": core.abi,
+                "library": format!("libs/{}/{}", target.abi(), core.library),
+                "sha256": contents.native[&core.library].sha256,
+            })
+        }).collect::<Vec<_>>();
+        let native_libraries: BTreeMap<_, _> = contents.native.iter().map(|(name, member)| {
+            (format!("libs/{}/{name}", target.abi()), &member.sha256)
+        }).collect();
         let record = serde_json::json!({
             "hap": name,
             "sha256": sha256(&hap)?,
@@ -222,19 +274,54 @@ pub(crate) fn package(
             "version": version,
             "source_commit": commit,
             "features": result.features,
-            "bundled_core": {
-                "plugin_id": core.plugin_id,
-                "version": core.version,
-                "source_commit": commit,
-                "abi": core.abi,
-                "library": format!("libs/{}/{core_library}", target.abi()),
-                "sha256": library.sha256,
-            },
+            "bundled_cores": bundled_cores,
+            "native_libraries": native_libraries,
         });
         fs::write(stage.join("ohos.json"), serde_json::to_vec_pretty(&record)?)?;
         Ok(())
     })?;
     Ok(out.to_owned())
+}
+
+pub(crate) fn verify_receipt_roster(
+    inv: &Inventory,
+    triple: &str,
+    version: &str,
+    commit: &str,
+    receipt: &serde_json::Value,
+) -> Result<()> {
+    let abi = Target::from_rust_target(triple).context("OHOS receipt target")?.abi();
+    let records = receipt["bundled_cores"].as_array().context("OHOS core receipt roster")?;
+    let libraries = receipt["native_libraries"].as_object().context("OHOS native receipt roster")?;
+    let prefix = format!("libs/{abi}/");
+    if receipt["abi"] != abi || !libraries.contains_key(&format!("{prefix}{MANAGER}")) {
+        bail!("missing Manager library or wrong ABI in the OHOS receipt");
+    }
+    for (path, hash) in libraries {
+        native_basename(path.strip_prefix(&prefix).context("wrong OHOS receipt library path")?)?;
+        if !hash.as_str().is_some_and(|value| value.len() == 64 &&
+            value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        {
+            bail!("invalid OHOS native library digest in receipt: {path}");
+        }
+    }
+    let expected: BTreeMap<_, _> = cores(inv, triple).map(|(core, library)| (core.id.as_str(), library)).collect();
+    if records.len() != expected.len() {
+        bail!("wrong core roster size in OHOS receipt");
+    }
+    let mut seen = BTreeSet::new();
+    for record in records {
+        let id = record["plugin_id"].as_str().context("OHOS receipt plugin ID")?;
+        let basename = expected.get(id).context("unexpected core in OHOS receipt")?;
+        let path = format!("{prefix}{basename}");
+        if !seen.insert(id) || record["version"] != version || record["source_commit"] != commit
+            || record["abi"] != shinki_emu_build::ABI || record["library"] != path
+            || libraries.get(&path) != Some(&record["sha256"])
+        {
+            bail!("wrong OHOS receipt for core {id}");
+        }
+    }
+    Ok(())
 }
 
 /// Replace the generated `entry/libs` and `rawfile/bundled` trees (both
@@ -243,10 +330,10 @@ fn stage_inputs(
     inv: &Inventory,
     target: Target,
     result: &BuildArtifact,
-    bundled_core: &CompanionBuild<'_>,
+    builds: &[CoreBuild<'_>],
     tools: &Tools,
     project: &Path,
-) -> Result<Vec<u8>> {
+) -> Result<StagedHap> {
     let libs = project.join("entry/libs");
     let bundled = project.join("entry/src/main/resources/rawfile/bundled");
     for generated in [&libs, &bundled] {
@@ -256,39 +343,19 @@ fn stage_inputs(
             Err(error) => return Err(error.into()),
         }
     }
-    let core_library = &bundled_core.recipe.library;
-    let core_artifact = bundled_core.artifact;
-    let mut native = BTreeMap::from([(MANAGER.to_owned(), result.library.clone())]);
-    let manager_search = package::search_dirs(inv, result)?;
-    for (library, name) in binary::closure(&result.library, &manager_search, target.rust_target())?
-    {
-        if &name == core_library {
-            bail!("companion {name} is already in the Manager's native closure");
-        }
-        native.insert(name, library);
+    let mut contents = StagedHap::default();
+    contents.add_native(MANAGER, &result.library, NativeRole::Manager)?;
+    for build in builds {
+        contents.add_native(build.library, &build.artifact.library, NativeRole::Core)?;
     }
-    native.insert(core_library.clone(), core_artifact.library.clone());
-    for (library, name) in binary::closure(
-        &core_artifact.library,
-        &package::search_dirs(inv, core_artifact)?,
-        target.rust_target(),
-    )? {
-        if name == MANAGER {
-            bail!("OHOS companion must not depend on the Manager library");
-        }
-        if let Some(existing) = native.get(&name) {
-            if existing != &library && sha256(existing)? != sha256(&library)? {
-                bail!("conflicting OHOS HAP dependency {name}");
-            }
-        } else {
-            native.insert(name, library);
-        }
+    contents.add_closure(inv, target, result)?;
+    for build in builds {
+        contents.add_closure(inv, target, &build.artifact)?;
     }
     let libs = libs.join(target.abi());
     fs::create_dir_all(&libs)?;
-    let native: Vec<_> = native
-        .into_iter()
-        .map(|(name, path)| (path, name))
+    let native: Vec<_> = contents.native.iter()
+        .map(|(name, member)| (member.path.clone(), name.clone()))
         .collect();
     copy_entries(&native, &libs)?;
 
@@ -305,33 +372,42 @@ fn stage_inputs(
     );
     entries.extend(package::metadata_entries(inv, temp.path())?);
     entries.extend(package::licenses(inv, result, temp.path())?);
-    let declaration = stage_core_manifest(inv, bundled_core, temp.path(), &mut entries)?;
+    for build in builds {
+        let digest = &contents.native[build.library].sha256;
+        let manifest = stage_core_manifest(inv, build, digest, temp.path(), &mut entries)?;
+        if contents.cores.insert(manifest.plugin_id.clone(), manifest).is_some() {
+            bail!("duplicate OHOS HAP core {}", build.core.id);
+        }
+    }
     fs::create_dir_all(&bundled)?;
     copy_entries(&entries, &bundled)?;
-    let mut names = entries
-        .into_iter()
-        .map(|(_, name)| name)
-        .collect::<Vec<_>>();
-    names.sort();
+    for (source, name) in entries {
+        contents.raw.insert(name, sha256(&source)?);
+    }
     // Read by ManagerBridge.ets `extractBundled`.
-    fs::write(bundled.join("bundled.manifest"), names.join("\n") + "\n")?;
-    Ok(declaration)
+    let manifest = bundled.join("bundled.manifest");
+    let mut names = contents.raw.keys().map(String::as_str).collect::<Vec<_>>().join("\n");
+    names.push('\n');
+    fs::write(&manifest, names)?;
+    contents.raw.insert("bundled.manifest".into(), sha256(&manifest)?);
+    Ok(contents)
 }
 
 fn stage_core_manifest(
     inv: &Inventory,
-    companion: &CompanionBuild<'_>,
+    bundle: &CoreBuild<'_>,
+    library_sha256: &str,
     scratch: &Path,
     entries: &mut Vec<(PathBuf, String)>,
-) -> Result<Vec<u8>> {
-    let core = companion.core;
-    let artifact = companion.artifact;
-    let library = &companion.recipe.library;
+) -> Result<package::CorePackage> {
+    let core = bundle.core;
+    let artifact = &bundle.artifact;
+    let library = bundle.library;
     let id = &core.id;
     let build = artifact
         .core_build
         .as_ref()
-        .context("OHOS companion build manifest")?;
+        .context("OHOS bundled core build manifest")?;
     build.validate()?;
     if build.plugin_id != *id
         || build.target != artifact.target
@@ -345,22 +421,22 @@ fn stage_core_manifest(
             .is_some_and(|path| path != &artifact.library)
     {
         bail!(
-            "wrong OHOS companion build manifest for {id}/{}",
+            "wrong OHOS bundled core build manifest for {id}/{}",
             artifact.target
         );
     }
     let scratch = scratch.join(id);
     fs::create_dir(&scratch)?;
     let mut files = vec![package::FileRecord {
-        path: library.clone(),
-        sha256: sha256(&artifact.library)?,
+        path: library.into(),
+        sha256: library_sha256.into(),
     }];
     let mut data = package::licenses(inv, artifact, &scratch)?;
     for asset in build.licenses.iter().chain(&build.resources) {
         data.extend(package::asset_entries(asset)?);
     }
     if build.licenses.is_empty() {
-        bail!("OHOS companion {id} must have license inputs");
+        bail!("OHOS bundled core {id} must have license inputs");
     }
     for (source, relative) in data {
         if Path::new(&relative)
@@ -378,12 +454,12 @@ fn stage_core_manifest(
     let version = artifact
         .product_version
         .as_deref()
-        .context("OHOS companion product version")?;
+        .context("OHOS bundled core product version")?;
     shinki_emu_metadata::validate_core_version(version, None)?;
     let commit = artifact
         .source_commit
         .as_deref()
-        .context("OHOS companion product source commit")?;
+        .context("OHOS bundled core product source commit")?;
     let product_source = package::write_product_source_commit(&scratch, commit)?;
     entries.push((
         scratch.join(&product_source.path),
@@ -391,18 +467,18 @@ fn stage_core_manifest(
     ));
     files.push(product_source);
     files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
-    let declaration = serde_json::to_vec_pretty(&package::CorePackage {
+    let declaration = package::CorePackage {
         schema: "shinki.emu.core_package.v1".into(),
         plugin_id: id.clone(),
-        library: library.clone(),
+        library: library.into(),
         version: version.into(),
         identity: None,
         recognition: core.recognition.clone(),
         abi: shinki_emu_build::ABI.into(),
         files,
-    })?;
+    };
     let path = scratch.join("core.json");
-    fs::write(&path, &declaration)?;
+    fs::write(&path, serde_json::to_vec_pretty(&declaration)?)?;
     entries.push((path, format!("cores/{id}/core.json")));
     Ok(declaration)
 }
@@ -641,101 +717,212 @@ fn sign_tool(tools: &Tools) -> Command {
     command
 }
 
+fn sign_hap(tools: &Tools, signing: &Path, unsigned: &Path, hap: &Path) -> Result<()> {
+    dependencies::run(
+        sign_tool(tools)
+            .args(["sign-app", "-mode", "localSign", "-keyAlias", DEBUG_KEY_ALIAS])
+            .args(["-keyPwd", TEST_KEYSTORE_PASSWORD, "-appCertFile"])
+            .arg(signing.join("app-cert.cer"))
+            .arg("-profileFile")
+            .arg(signing.join("profile.p7b"))
+            .arg("-inFile")
+            .arg(unsigned)
+            .args(["-signAlg", "SHA256withECDSA", "-keystoreFile"])
+            .arg(signing.join("debug.p12"))
+            .args(["-keystorePwd", TEST_KEYSTORE_PASSWORD, "-signCode", "1"])
+            .arg("-outFile")
+            .arg(hap),
+    )
+}
+
 fn verify_hap(
     tools: &Tools,
+    signing: &Path,
     target: Target,
     hap: &Path,
-    declaration: &[u8],
-    manager_sha256: &str,
-) -> Result<package::CorePackage> {
+    version: &str,
+    commit: &str,
+    contents: &StagedHap,
+) -> Result<()> {
     let evidence = crate::temporary::directory()?;
+    let chain = evidence.path().join("chain.cer");
+    let profile = evidence.path().join("profile.p7b");
     dependencies::run(
         sign_tool(tools)
             .args(["verify-app", "-inFile"])
             .arg(hap)
             .arg("-outCertChain")
-            .arg(evidence.path().join("chain.cer"))
+            .arg(&chain)
             .arg("-outProfile")
-            .arg(evidence.path().join("profile.p7b")),
+            .arg(&profile),
     )?;
-    verify_archive(target, fs::File::open(hap)?, declaration, manager_sha256)
+    let certs = |path: &Path| -> Result<BTreeSet<String>> {
+        Ok(pem_certificates(&fs::read_to_string(path)?).into_iter()
+            .map(|pem| pem.split_whitespace().collect()).collect())
+    };
+    let verified = certs(&chain)?;
+    if verified.is_empty()
+        || verified != certs(&signing.join("app-cert.cer"))?
+        || fs::read(&profile)? != fs::read(signing.join("profile.p7b"))?
+    {
+        bail!("OHOS HAP signer or provision profile differs from the selected signing material");
+    }
+    verify_archive(target, fs::File::open(hap)?, version, commit, contents)
 }
 
 fn verify_archive(
     target: Target,
     hap: impl io::Read + io::Seek,
-    declaration: &[u8],
-    manager_sha256: &str,
-) -> Result<package::CorePackage> {
-    let abi = target.abi();
-    let native_prefix = format!("{abi}/");
+    version: &str,
+    commit: &str,
+    contents: &StagedHap,
+) -> Result<()> {
+    let native_prefix = format!("libs/{}/", target.abi());
     let mut archive = zip::ZipArchive::new(hap)?;
-    for name in archive.file_names() {
-        if name?
-            .strip_prefix("libs/")
-            .is_some_and(|path| !path.is_empty() && !path.starts_with(&native_prefix))
+    if archive.has_duplicate_names() {
+        bail!("duplicate signed HAP members in the ZIP central directory");
+    }
+    let mut seen = BTreeSet::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index_data(index)?;
+        let name = entry.name()?;
+        let path = name.strip_suffix('/').unwrap_or(&name);
+        let folded = path.to_ascii_lowercase();
+        if entry.is_symlink()
+            || entry.enclosed_name().is_none()
+            || name.contains('\\')
+            || path.split('/').any(|part| matches!(part, "" | "." | ".."))
+            || (folded.starts_with("libs/") && !name.starts_with("libs/"))
+            || (folded.starts_with(BUNDLED) && !name.starts_with(BUNDLED))
+            || !seen.insert(folded)
         {
-            bail!("signed HAP contains native libraries outside libs/{abi}/");
+            bail!("unsafe or duplicate signed HAP member {name}");
         }
-    }
-    let manifest: package::CorePackage = serde_json::from_slice(declaration)?;
-    let prefix = format!("resources/rawfile/bundled/cores/{}", manifest.plugin_id);
-    let library = &manifest.library;
-    if library == MANAGER {
-        bail!("OHOS Manager and companion must be separate libraries");
-    }
-    let mut signed_declaration = Vec::new();
-    archive
-        .by_name(&format!("{prefix}/core.json"))?
-        .read_to_end(&mut signed_declaration)?;
-    if signed_declaration != declaration {
-        bail!("signed HAP companion declaration differs from the staged declaration");
-    }
-    let mut checked_library = false;
-    for file in &manifest.files {
-        if file.path == *library {
-            verify_native_member(
-                &mut archive,
-                target,
-                library,
-                &file.sha256,
-                NativeRole::Companion,
-            )?;
-            checked_library = true;
-        } else {
-            let name = format!("{prefix}/{}", file.path);
-            if package::sha256_reader(archive.by_name(&name)?)? != file.sha256 {
-                bail!("signed HAP content differs from companion declaration: {name}");
+        if let Some(path) = name.strip_prefix("libs/") {
+            if entry.is_dir() && path.is_empty() {
+                continue;
+            }
+            let Some(library) = name.strip_prefix(&native_prefix) else {
+                bail!("signed HAP contains native libraries outside {native_prefix}");
+            };
+            if if entry.is_dir() { !library.is_empty() } else { !contents.native.contains_key(library) } {
+                bail!("unexpected signed HAP native member {name}");
+            }
+        }
+        if let Some(path) = name.strip_prefix(BUNDLED) {
+            if entry.is_dir() {
+                if !path.is_empty() && !contents.raw.keys().any(|name| name.starts_with(path)) {
+                    bail!("unexpected signed HAP bundled directory {name}");
+                }
+            } else if !contents.raw.contains_key(path) {
+                bail!("unexpected signed HAP bundled member {name}");
             }
         }
     }
-    if !checked_library {
-        bail!("signed HAP declaration lacks its companion library");
+    for (path, sha256) in &contents.raw {
+        let name = format!("{BUNDLED}{path}");
+        if package::sha256_reader(archive.by_name(&name)?)? != *sha256 {
+            bail!("signed HAP content differs from the staged resource: {name}");
+        }
     }
-    for required in [
-        "resources/rawfile/bundled/bundled.manifest",
-        "resources/rawfile/bundled/metadata/index.json",
-        "module.json",
-    ] {
-        archive.by_name(required)?;
+    let module: serde_json::Value = serde_json::from_reader(archive.by_name("module.json")?)?;
+    if module["app"]["bundleName"] != BUNDLE_NAME || module["app"]["versionName"] != version {
+        bail!("signed HAP bundle name or version differs from the build");
     }
-    verify_native_member(
-        &mut archive,
-        target,
-        MANAGER,
-        manager_sha256,
-        NativeRole::Manager,
-    )?;
-    Ok(manifest)
+    let mut libraries = BTreeSet::new();
+    let commit_sha256 = hex::encode(Sha256::digest(commit));
+    for (id, core) in &contents.cores {
+        let prefix = format!("cores/{id}/");
+        let path = format!("{prefix}core.json");
+        if !contents.raw.contains_key(&path)
+            || core.plugin_id != *id || core.version != version || core.identity.is_some()
+            || core.abi != shinki_emu_build::ABI || !libraries.insert(core.library.as_str())
+            || contents.native.get(&core.library).is_none_or(|member| member.role != NativeRole::Core)
+        {
+            bail!("wrong identity, provenance or ABI for signed HAP core {id}");
+        }
+        let mut paths = BTreeSet::new();
+        for file in &core.files {
+            let expected = if file.path == core.library {
+                Some(&contents.native[&core.library].sha256)
+            } else {
+                contents.raw.get(&format!("{prefix}{}", file.path))
+            };
+            if !paths.insert(file.path.as_str()) || expected != Some(&file.sha256) {
+                bail!("wrong staged hash or duplicate core file: {prefix}{}", file.path);
+            }
+        }
+        if !paths.contains(core.library.as_str())
+            || !paths.contains("source-commit.txt")
+            || contents.raw[&format!("{prefix}source-commit.txt")] != commit_sha256
+        {
+            bail!("signed HAP core {id} must record its library and exact source commit");
+        }
+    }
+    if contents.native.get(MANAGER).is_none_or(|member| member.role != NativeRole::Manager)
+        || libraries.len() != contents.native.values().filter(|member| member.role == NativeRole::Core).count()
+    {
+        bail!("incomplete OHOS HAP component roster");
+    }
+    let mut needed = BTreeMap::new();
+    for (name, member) in &contents.native {
+        needed.insert(name.as_str(), verify_native_member(&mut archive, target, name, member)?);
+    }
+    verify_native_closure(target, contents, &needed)
+}
+
+fn verify_native_closure(
+    target: Target,
+    contents: &StagedHap,
+    needed: &BTreeMap<&str, BTreeSet<String>>,
+) -> Result<()> {
+    fn visit<'a>(
+        name: &'a str,
+        target: Target,
+        contents: &StagedHap,
+        needed: &'a BTreeMap<&str, BTreeSet<String>>,
+        visiting: &mut BTreeSet<&'a str>,
+        done: &mut BTreeSet<&'a str>,
+    ) -> Result<()> {
+        if !done.contains(name) {
+            if !visiting.insert(name) {
+                bail!("cyclic OHOS HAP native dependency at {name}");
+            }
+            for dep in &needed[name] {
+                if binary::system(dep, target.rust_target()) {
+                    continue;
+                }
+                match contents.native.get(dep) {
+                    Some(member) if member.role == NativeRole::Dependency => {}
+                    Some(_) => bail!("{name} must not depend on HAP component {dep}"),
+                    None => bail!("{name} is missing HAP dependency {dep}"),
+                }
+                visit(dep, target, contents, needed, visiting, done)?;
+            }
+            visiting.remove(name);
+            done.insert(name);
+        }
+        Ok(())
+    }
+    let mut done = BTreeSet::new();
+    let mut visiting = BTreeSet::new();
+    for (name, member) in &contents.native {
+        if member.role != NativeRole::Dependency {
+            visit(name, target, contents, needed, &mut visiting, &mut done)?;
+        }
+    }
+    if done.len() != contents.native.len() {
+        bail!("OHOS HAP contains an unused native dependency");
+    }
+    Ok(())
 }
 
 fn verify_native_member(
     archive: &mut zip::ZipArchive<impl io::Read + io::Seek>,
     target: Target,
     library: &str,
-    expected_sha256: &str,
-    role: NativeRole,
-) -> Result<()> {
+    member: &NativeMember,
+) -> Result<BTreeSet<String>> {
     let name = format!("libs/{}/{library}", target.abi());
     let mut entry = archive.by_name(&name)?;
     if entry.compression() != zip::CompressionMethod::Stored
@@ -750,18 +937,13 @@ fn verify_native_member(
     }
     let mut bytes = Vec::new();
     entry.read_to_end(&mut bytes)?;
-    if hex::encode(Sha256::digest(&bytes)) != expected_sha256 {
+    if hex::encode(Sha256::digest(&bytes)) != member.sha256 {
         bail!("signed HAP content differs from the staged library: {name}");
     }
-    verify_native(target, &bytes, library, role)
+    verify_native(target, &bytes, library, member.role)
 }
 
-enum NativeRole {
-    Manager,
-    Companion,
-}
-
-fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> Result<()> {
+fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> Result<BTreeSet<String>> {
     let expected = || {
         format!(
             "{name} is not a loadable {} ELF64 shared library",
@@ -785,8 +967,18 @@ fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> 
     {
         bail!("{}", expected());
     }
+    let endian = file.endian();
+    let mut loads = file.elf_program_headers().iter()
+        .filter(|header| header.p_type(endian) == object::elf::PT_LOAD);
+    if !loads.all(|load| load.p_align(endian) >= target.page_size()
+        && load.p_offset(endian) % target.page_size() == load.p_vaddr(endian) % target.page_size()
+        && load.p_filesz(endian) <= load.p_memsz(endian)
+        && load.data(endian, bytes).is_ok())
+    {
+        bail!("{name} has invalid ELF load segment alignment or bounds");
+    }
     match role {
-        NativeRole::Companion => {
+        NativeRole::Core => {
             if !file.dynamic_symbols().any(|symbol| {
                 symbol.is_global()
                     && symbol.kind() == object::SymbolKind::Text
@@ -796,16 +988,62 @@ fn verify_native(target: Target, bytes: &[u8], name: &str, role: NativeRole) -> 
                 bail!("{name} does not export shinki_emu_query");
             }
         }
-        NativeRole::Manager
+        _
             if file.dynamic_symbols().chain(file.symbols()).any(|symbol| {
                 symbol.is_definition() && symbol.name_bytes() == Ok(b"shinki_emu_query".as_slice())
             }) =>
         {
-            bail!("{name} must not define a core query");
+            bail!("{name} is not a core and must not define a core query");
         }
         _ => {}
     }
-    Ok(())
+    let mut dynamic = file.elf_program_headers().iter()
+        .filter(|header| header.p_type(endian) == object::elf::PT_DYNAMIC);
+    let entries = dynamic.next().expect("validated PT_DYNAMIC")
+        .dynamic(endian, bytes)?.context("missing ELF dynamic table")?;
+    if dynamic.next().is_some() {
+        bail!("{name} has more than one ELF dynamic table");
+    }
+    let entries = &entries[..entries.iter()
+        .position(|entry| entry.tag(endian) == object::elf::DT_NULL)
+        .context("ELF dynamic table lacks DT_NULL")?];
+    if entries.iter().any(|entry| matches!(entry.tag(endian), object::elf::DT_RPATH | object::elf::DT_RUNPATH)) {
+        bail!("{name} must use the app linker namespace, not ELF RPATH/RUNPATH");
+    }
+    let mut needed = BTreeSet::new();
+    if entries.iter().any(|entry| matches!(entry.tag(endian), object::elf::DT_NEEDED | object::elf::DT_SONAME)) {
+        let field = |tag| entries.iter().find(|entry| entry.tag(endian) == tag)
+            .map(|entry| entry.d_val(endian)).context("missing ELF dynamic string table");
+        let address = field(object::elf::DT_STRTAB)?;
+        let size = field(object::elf::DT_STRSZ)?;
+        let mut data = None;
+        for load in file.elf_program_headers().iter()
+            .filter(|header| header.p_type(endian) == object::elf::PT_LOAD)
+        {
+            data = load.data_range(endian, bytes, address, size)
+                .map_err(|_| anyhow::anyhow!("invalid ELF load segment range"))?;
+            if data.is_some() {
+                break;
+            }
+        }
+        let strings = object::read::StringTable::new(
+            data.context("ELF dynamic strings are not in a loadable segment")?, 0, size,
+        );
+        for entry in entries {
+            match entry.tag(endian) {
+                object::elf::DT_NEEDED => {
+                    let dep = std::str::from_utf8(entry.string(endian, strings)?)?;
+                    native_basename(dep)?;
+                    needed.insert(dep.to_owned());
+                }
+                object::elf::DT_SONAME if entry.string(endian, strings)? != name.as_bytes() => {
+                    bail!("{name} has a different ELF SONAME");
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(needed)
 }
 
 #[cfg(test)]
@@ -814,8 +1052,11 @@ mod tests {
     use std::io::{Cursor, Write};
     use zip::write::SimpleFileOptions;
 
-    const ID: &str = "test.companion";
-    const LIBRARY: &str = "libshinki_emu_fixture.so";
+    const ONE: (&str, &str) = ("test.alpha", "libshinki_emu_alpha.so");
+    const TWO: (&str, &str) = ("test.beta", "libshinki_emu_beta.so");
+    const DEP: &str = "libshinki_emu_fixture_dep.so";
+    const VERSION: &str = "1.0.0";
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
     // The verifier inspects ELF headers and the dynamic symbol table. Build
     // only those fields so the fixture runs on hosts without an OHOS SDK.
@@ -824,7 +1065,8 @@ mod tests {
         const PROGRAM_LEN: usize = 56;
         const STRINGS: usize = HEADERS + 2 * PROGRAM_LEN;
         const SYMBOLS: usize = 200;
-        const SECTIONS: usize = 256;
+        const DYNAMIC: u64 = 256;
+        const SECTIONS: usize = 288;
         const SECTION_LEN: usize = 64;
         let mut bytes = vec![0; SECTIONS + 3 * SECTION_LEN];
         bytes[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
@@ -845,8 +1087,12 @@ mod tests {
         // The string table also serves as shstrtab; section names are unused.
         bytes[62..64].copy_from_slice(&1_u16.to_le_bytes());
         bytes[HEADERS..][..4].copy_from_slice(&object::elf::PT_LOAD.0.to_le_bytes());
+        bytes[HEADERS + 48..][..8].copy_from_slice(&target.page_size().to_le_bytes());
         bytes[HEADERS + PROGRAM_LEN..][..4]
             .copy_from_slice(&object::elf::PT_DYNAMIC.0.to_le_bytes());
+        bytes[HEADERS + PROGRAM_LEN + 8..][..8].copy_from_slice(&DYNAMIC.to_le_bytes());
+        bytes[HEADERS + PROGRAM_LEN + 16..][..8].copy_from_slice(&DYNAMIC.to_le_bytes());
+        bytes[HEADERS + PROGRAM_LEN + 32..][..8].copy_from_slice(&16_u64.to_le_bytes());
         let names = b"\0shinki_emu_query\0";
         bytes[STRINGS..][..names.len()].copy_from_slice(names);
         let strtab = &mut bytes[SECTIONS + SECTION_LEN..][..SECTION_LEN];
@@ -868,129 +1114,232 @@ mod tests {
         bytes
     }
 
+    fn digest(bytes: &[u8]) -> String {
+        hex::encode(Sha256::digest(bytes))
+    }
+
+    type Members = Vec<(String, Vec<u8>)>;
+
+    fn fixture(
+        target: Target, directory: &Path, roster: &[(&str, &str)], deps: &[&str],
+    ) -> Result<(StagedHap, Members)> {
+        let mut contents = StagedHap::default();
+        let mut members = Vec::new();
+        for (basename, role) in [(MANAGER, NativeRole::Manager)].into_iter()
+            .chain(roster.iter().map(|&(_, name)| (name, NativeRole::Core)))
+            .chain(deps.iter().map(|&name| (name, NativeRole::Dependency)))
+        {
+            let path = directory.join(basename);
+            contents.add_native(basename, &path, role)?;
+            members.push((format!("libs/{}/{basename}", target.abi()), fs::read(path)?));
+        }
+        let module = serde_json::json!({
+            "app": {"bundleName": BUNDLE_NAME, "versionName": VERSION, "versionCode": 1},
+            "module": {"name": "entry", "type": "entry", "packageName": "entry"},
+        });
+        members.push(("module.json".into(), serde_json::to_vec(&module)?));
+        let mut raw = BTreeMap::from([("metadata/index.json".to_owned(), b"{}".to_vec())]);
+        for &(id, name) in roster {
+            let license = b"synthetic fixture license";
+            let manifest = package::CorePackage {
+                schema: "shinki.emu.core_package.v1".into(), plugin_id: id.into(),
+                library: name.into(), version: VERSION.into(), identity: None,
+                recognition: Default::default(), abi: shinki_emu_build::ABI.into(),
+                files: vec![
+                    package::FileRecord { path: name.into(), sha256: contents.native[name].sha256.clone() },
+                    package::FileRecord { path: "source-commit.txt".into(), sha256: digest(COMMIT.as_bytes()) },
+                    package::FileRecord { path: "licenses/LICENSE".into(), sha256: digest(license) },
+                ],
+            };
+            raw.insert(format!("cores/{id}/core.json"), serde_json::to_vec(&manifest)?);
+            raw.insert(format!("cores/{id}/source-commit.txt"), COMMIT.as_bytes().to_vec());
+            raw.insert(format!("cores/{id}/licenses/LICENSE"), license.to_vec());
+            contents.cores.insert(id.into(), manifest);
+        }
+        let extraction_list = raw.keys().map(String::as_str).collect::<Vec<_>>().join("\n") + "\n";
+        raw.insert("bundled.manifest".to_owned(), extraction_list.into_bytes());
+        for (name, data) in raw {
+            contents.raw.insert(name.clone(), digest(&data));
+            members.push((format!("{BUNDLED}{name}"), data));
+        }
+        Ok((contents, members))
+    }
+
+    fn archive(
+        target: Target, members: &Members, options: Option<(&str, SimpleFileOptions)>,
+    ) -> Result<Vec<u8>> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (path, bytes) in members {
+            let default = if path.starts_with("libs/") {
+                stored.with_alignment(target.page_size() as u16)
+            } else {
+                stored
+            };
+            writer.start_file(path, options.filter(|(name, _)| *name == path).map_or(default, |(_, opts)| opts))?;
+            writer.write_all(bytes)?;
+        }
+        Ok(writer.finish()?.into_inner())
+    }
+
     #[test]
     fn ohos_hap_checks_identity_abi_alignment_roles_and_digests() -> Result<()> {
-        let commit = b"0123456789abcdef0123456789abcdef01234567";
-        let prefix = format!("resources/rawfile/bundled/cores/{ID}");
-        let digest = |bytes: &[u8]| hex::encode(Sha256::digest(bytes));
         for (target, other) in [(Target::Arm64, Target::X64), (Target::X64, Target::Arm64)] {
-            let abi = target.abi();
-            let core = elf(target, true);
+            let dir = crate::temporary::directory()?;
             let manager = elf(target, false);
-            let manager_sha256 = digest(&manager);
-            let declaration = |core: &[u8]| {
-                serde_json::to_vec(&serde_json::json!({
-                    "schema": "shinki.emu.core_package.v1",
-                    "plugin_id": ID,
-                    "library": LIBRARY,
-                    "version": "1.0.0",
-                    "abi": shinki_emu_build::ABI,
-                    "files": [
-                        {"path": LIBRARY, "sha256": digest(core)},
-                        {"path": "source-commit.txt", "sha256": digest(commit)},
-                    ],
-                }))
+            let alpha = elf(target, true);
+            let mut beta = alpha.clone();
+            beta.push(1);
+            for (name, bytes) in [(MANAGER, &manager), (ONE.1, &alpha), (TWO.1, &beta)] {
+                fs::write(dir.path().join(name), bytes)?;
+            }
+            let (single, members) = fixture(target, dir.path(), &[ONE], &[])?;
+            verify_archive(target, Cursor::new(archive(target, &members, None)?), VERSION, COMMIT, &single)?;
+            let (mut staged, members) = fixture(target, dir.path(), &[ONE, TWO], &[])?;
+            let good = archive(target, &members, None)?;
+            let verify = |target, data, expected: &StagedHap| {
+                verify_archive(target, Cursor::new(data), VERSION, COMMIT, expected)
             };
-            let expected = declaration(&core)?;
-            let page = u16::try_from(target.page_size())?;
+            verify(target, good.clone(), &staged)?;
+            assert!(verify(other, good, &staged).unwrap_err().to_string().contains("outside libs/"));
+            let name = format!("libs/{}/{}", target.abi(), TWO.1);
+
+            let path = dir.path().join(TWO.1);
+            assert!(staged.add_native(ONE.1, &path, NativeRole::Core).is_err());
+            assert!(staged.add_native("libshinki_emu_copy.so", &path, NativeRole::Core).is_err());
+
+            let bad = |members: &Members, reason: &str| -> Result<()> {
+                let error = verify(target, archive(target, members, None)?, &staged).unwrap_err();
+                assert!(error.to_string().contains(reason), "{error:#}");
+                Ok(())
+            };
+            for extra in [
+                format!("libs/{}/{}", target.abi(), DEP),
+                format!("{BUNDLED}cores/test.unknown/core.json"),
+                format!("libs/{}/{}", other.abi(), DEP),
+            ] {
+                let reason = if extra.contains(other.abi()) { "outside libs/" } else { "unexpected" };
+                let mut members = members.clone();
+                members.push((extra, beta.clone()));
+                bad(&members, reason)?;
+            }
+            let mut duplicate = members.clone();
+            let alias = name.replace(TWO.1, &TWO.1.to_ascii_uppercase());
+            duplicate.push((alias.clone(), beta.clone()));
+            bad(&duplicate, "duplicate")?;
+            // Rewrite the same-length alias in both ZIP headers to exercise an
+            // exact duplicate; the ZIP writer itself rejects duplicate names.
+            let mut exact_duplicate = archive(target, &duplicate, None)?;
+            while let Some(i) = exact_duplicate.windows(alias.len()).position(|bytes| bytes == alias.as_bytes()) {
+                exact_duplicate[i..i + alias.len()].copy_from_slice(name.as_bytes());
+            }
+            assert!(verify(target, exact_duplicate, &staged).is_err());
+
+            for missing in [&name, &format!("{BUNDLED}cores/{}/core.json", TWO.0)] {
+                let mut missing_members = members.clone();
+                missing_members.retain(|(path, _)| path != missing);
+                assert!(verify(target, archive(target, &missing_members, None)?, &staged).is_err());
+            }
+            for (changed, reason) in [
+                (name.clone(), "staged library"),
+                (format!("libs/{}/{MANAGER}", target.abi()), "staged library"),
+                (format!("{BUNDLED}cores/{}/core.json", TWO.0), "core.json"),
+                (format!("{BUNDLED}cores/{}/source-commit.txt", TWO.0), "source-commit.txt"),
+                (format!("{BUNDLED}cores/{}/licenses/LICENSE", TWO.0), "licenses/LICENSE"),
+            ] {
+                let mut changed_members = members.clone();
+                changed_members.iter_mut().find(|(path, _)| *path == changed).unwrap().1[0] ^= 1;
+                bad(&changed_members, reason)?;
+            }
             let stored = zip::CompressionMethod::Stored;
-            let create_archive = |alignment,
-                                  compression,
-                                  mixed,
-                                  core: Option<&[u8]>,
-                                  source: &[u8],
-                                  signed: &[u8]|
-             -> Result<_> {
-                let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-                let files = SimpleFileOptions::default().compression_method(stored);
-                archive.start_file(format!("libs/{abi}/{MANAGER}"), files.with_alignment(page))?;
-                archive.write_all(&manager)?;
-                if let Some(core) = core {
-                    archive.start_file(
-                        format!("libs/{abi}/{LIBRARY}"),
-                        files
-                            .with_alignment(alignment)
-                            .compression_method(compression),
-                    )?;
-                    archive.write_all(core)?;
-                }
-                if mixed {
-                    archive.start_file(format!("libs/{}/libc++_shared.so", other.abi()), files)?;
-                }
-                for path in [
-                    "module.json",
-                    "resources/rawfile/bundled/bundled.manifest",
-                    "resources/rawfile/bundled/metadata/index.json",
-                ] {
-                    archive.start_file(path, files)?;
-                }
-                archive.start_file(format!("{prefix}/core.json"), files)?;
-                archive.write_all(signed)?;
-                archive.start_file(format!("{prefix}/source-commit.txt"), files)?;
-                archive.write_all(source)?;
-                let mut hap = archive.finish()?;
-                hap.set_position(0);
-                Ok(hap)
-            };
-            let good = create_archive(page, stored, false, Some(&core), commit, &expected)?;
-            let manifest = verify_archive(target, good.clone(), &expected, &manager_sha256)?;
-            assert_eq!(
-                (manifest.plugin_id.as_str(), manifest.version.as_str()),
-                (ID, "1.0.0")
-            );
-            let error = |target, hap, staged: &[u8], manager: &str| {
-                verify_archive(target, hap, staged, manager)
-                    .unwrap_err()
-                    .to_string()
-            };
-            assert!(
-                error(other, good.clone(), &expected, &manager_sha256).contains("outside libs/")
-            );
-            assert!(error(target, good, &expected, &digest(&core)).contains("staged library"));
-            let mixed = create_archive(page, stored, true, Some(&core), commit, &expected)?;
-            assert!(error(target, mixed, &expected, &manager_sha256).contains("outside libs/"));
-            for (alignment, compression) in [(1, stored), (page, zip::CompressionMethod::Deflated)]
-            {
-                let hap = create_archive(
-                    alignment,
-                    compression,
-                    false,
-                    Some(&core),
-                    commit,
-                    &expected,
-                )?;
-                assert!(
-                    error(target, hap, &expected, &manager_sha256).contains("stored uncompressed")
-                );
+            for (alignment, compression) in [
+                (1, stored), (target.page_size() as u16, zip::CompressionMethod::Deflated),
+            ] {
+                let opts = SimpleFileOptions::default().with_alignment(alignment).compression_method(compression);
+                let error = verify(target, archive(target, &members, Some((&name, opts)))?, &staged).unwrap_err();
+                assert!(error.to_string().contains("stored uncompressed"));
             }
             for (bytes, reason) in [
                 (b"not ELF".to_vec(), "not a loadable"),
                 (elf(other, true), "not a loadable"),
                 (manager.clone(), "does not export"),
             ] {
-                let staged = declaration(&bytes)?;
-                let hap = create_archive(page, stored, false, Some(&bytes), commit, &staged)?;
-                assert!(error(target, hap, &staged, &manager_sha256).contains(reason));
+                let error = verify_native(target, &bytes, TWO.1, NativeRole::Core).unwrap_err();
+                assert!(error.to_string().contains(reason), "{error:#}");
             }
-            assert!(verify_native(target, &core, MANAGER, NativeRole::Manager).is_err());
-            let missing = create_archive(page, stored, false, None, commit, &expected)?;
-            assert!(verify_archive(target, missing, &expected, &manager_sha256).is_err());
-            let changed_dso =
-                create_archive(page, stored, false, Some(&manager), commit, &expected)?;
-            assert!(
-                error(target, changed_dso, &expected, &manager_sha256).contains("staged library")
-            );
-            let changed_commit =
-                create_archive(page, stored, false, Some(&core), &[b'a'; 40], &expected)?;
-            assert!(
-                error(target, changed_commit, &expected, &manager_sha256)
-                    .contains("source-commit.txt")
-            );
-            let mut changed_manifest: serde_json::Value = serde_json::from_slice(&expected)?;
-            changed_manifest["version"] = "1.0.1".into();
-            let signed = serde_json::to_vec(&changed_manifest)?;
-            let hap = create_archive(page, stored, false, Some(&core), commit, &signed)?;
-            assert!(error(target, hap, &expected, &manager_sha256).contains("declaration differs"));
+            assert!(verify_native(target, &alpha, MANAGER, NativeRole::Manager).is_err());
+            assert!(verify_native(target, &alpha, DEP, NativeRole::Dependency).is_err());
+            let core = staged.cores.get_mut(TWO.0).unwrap();
+            core.abi = "shinki.emu.native.c.v2".into();
+            assert!(verify(target, archive(target, &members, None)?, &staged).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires the OpenHarmony SDK and a local fixture output directory"]
+    fn ohos_signed_multicore_hap() -> Result<()> {
+        let output = PathBuf::from(std::env::var_os("SHINKI_EMU_OHOS_FIXTURE_DIR")
+            .context("set SHINKI_EMU_OHOS_FIXTURE_DIR outside the checkout")?);
+        fs::create_dir_all(&output)?;
+        let scratch = crate::temporary::directory()?;
+        let tools = tools()?;
+        let signing = signing_material(&tools)?;
+        let sdk = dependencies::ohos_sdk_native()?;
+        let clang = sdk.join("llvm/bin").join(if cfg!(windows) { "clang.exe" } else { "clang" });
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = root.join("tests/fixtures/ohos_hap.c");
+        let includes = root.join("../Source/FamilyApi/shinki-emu-abi/include");
+        for target in Target::ALL {
+            let directory = scratch.path().join(target.abi());
+            fs::create_dir(&directory)?;
+            for (name, define) in [(DEP, "-DFIXTURE_DEPENDENCY"), (MANAGER, "-DFIXTURE_MANAGER"), (ONE.1, ""), (TWO.1, "")] {
+                let mut command = Command::new(&clang);
+                command.arg(format!("--target={}", target.llvm_target()))
+                    .arg(format!("--sysroot={}", sdk.join("sysroot").display()))
+                    .args(["-fPIC", "-nostdlib", "-shared", "-O2", "-Wl,--no-undefined"])
+                    .arg(format!("-Wl,-z,max-page-size={}", target.page_size()))
+                    .arg(format!("-Wl,-soname,{name}"))
+                    .arg("-I").arg(&includes).arg(&source);
+                if !define.is_empty() {
+                    command.arg(define);
+                } else {
+                    let id = if name == ONE.1 { ONE.0 } else { TWO.0 };
+                    command.arg(format!("-DFIXTURE_ID=\"{id}\""))
+                        .arg(format!("-DFIXTURE_VERSION=\"{VERSION}\""));
+                }
+                if name != DEP {
+                    command.arg(directory.join(DEP));
+                }
+                dependencies::run(command.arg("-o").arg(directory.join(name)))?;
+            }
+            let (mut staged, members) = fixture(target, &directory, &[ONE, TWO], &[DEP])?;
+            for basename in [MANAGER, ONE.1, TWO.1] {
+                let closure = binary::closure(
+                    &directory.join(basename), std::slice::from_ref(&directory), target.rust_target(),
+                )?;
+                assert_eq!(closure.len(), 1);
+                for (path, name) in closure {
+                    assert_eq!(name, DEP);
+                    staged.add_native(&name, &path, NativeRole::Dependency)?;
+                }
+            }
+            let (no_dep, incomplete) = fixture(target, &directory, &[ONE, TWO], &[])?;
+            let error = verify_archive(
+                target, Cursor::new(archive(target, &incomplete, None)?), VERSION, COMMIT, &no_dep,
+            ).unwrap_err();
+            assert!(error.to_string().contains("missing HAP dependency"), "{error:#}");
+            let dep_copy = directory.join("copy.so");
+            fs::copy(directory.join(DEP), &dep_copy)?;
+            staged.add_native(DEP, &dep_copy, NativeRole::Dependency)?;
+            fs::write(&dep_copy, b"different dependency")?;
+            assert!(staged.add_native(DEP, &dep_copy, NativeRole::Dependency).is_err());
+            let unsigned = directory.join("unsigned.hap");
+            fs::write(&unsigned, archive(target, &members, None)?)?;
+            let signed = output.join(format!("synthetic-{}.hap", target.abi()));
+            sign_hap(&tools, &signing, &unsigned, &signed)?;
+            verify_hap(&tools, &signing, target, &signed, VERSION, COMMIT, &staged)?;
+            eprintln!("verified signed {} fixture: {}", target.abi(), sha256(&signed)?);
         }
         Ok(())
     }

@@ -105,7 +105,7 @@ fn main() {
     let target = env::var("TARGET").expect("build target");
     println!("cargo:rustc-env=SHINKI_EMU_BUILD_TARGET={target}");
     println!("cargo:rustc-env=SHINKI_EMU_PRODUCT_VERSION={version}");
-    write_bundled_core_metadata();
+    write_bundled_core_metadata(&target);
     println!("cargo:rerun-if-changed=../../../Assets/Branding/shinkiemu-icon.svg");
     write_runtime_icon();
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
@@ -205,10 +205,15 @@ fn link_android_compiler_runtime() {
     println!("cargo:rustc-link-arg-cdylib=-Wl,--no-undefined");
 }
 
-fn write_bundled_core_metadata() {
+fn write_bundled_core_metadata(target: &str) {
     let ios_frameworks = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios");
-    let ohos_hap = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos");
-    if !ios_frameworks && !ohos_hap {
+    let ohos_target = if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("ohos") {
+        Some(shinki_emu_build::ohos::Target::from_rust_target(target)
+            .expect("unsupported OHOS Manager target"))
+    } else {
+        None
+    };
+    if !ios_frameworks && ohos_target.is_none() {
         return;
     }
     let root =
@@ -228,19 +233,23 @@ fn write_bundled_core_metadata() {
     });
     let mut identities = serde_json::Map::new();
     let mut frameworks = Vec::new();
-    let mut companion = None;
+    let mut hap_cores = std::collections::BTreeMap::new();
+    let mut hap_libraries = std::collections::BTreeSet::new();
     for core in inventory["cores"].as_array().expect("cores") {
         let id = core["id"].as_str().expect("core id");
-        if ohos_hap && let Some(recipe) = core.get("ohos_hap") {
-            let recipe: shinki_emu_build::ohos::HapCore = recipe
-                .clone()
-                .try_into()
-                .expect("OHOS HAP companion recipe");
-            recipe.validate(id).expect("valid OHOS HAP companion");
-            assert!(
-                companion.replace((id, recipe.library)).is_none(),
-                "only one companion core may be bundled in the OHOS HAP"
-            );
+        if let Some(target) = ohos_target
+            && let Some(recipe) = core.get("ohos_hap")
+        {
+            let recipe: shinki_emu_build::ohos::HapCore =
+                recipe.clone().try_into().expect("OHOS HAP recipe");
+            recipe.validate(id).expect("valid OHOS HAP recipe");
+            if let Some(library) = recipe.library_for(target) {
+                assert!(core.get("attribution").is_none(), "{id} is not a first-party OHOS core");
+                assert!(hap_libraries.insert(library.to_ascii_lowercase()),
+                    "duplicate OHOS HAP library {library}");
+                assert!(hap_cores.insert(id, library.to_owned()).is_none(),
+                    "duplicate OHOS HAP core {id}");
+            }
         }
         let framework = ios_frameworks
             && core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
@@ -271,12 +280,13 @@ fn write_bundled_core_metadata() {
         )
         .expect("iOS Framework core IDs");
     }
-    if ohos_hap {
+    if ohos_target.is_some() {
+        let roster: Vec<_> = hap_cores.into_iter().collect();
         std::fs::write(
-            output.join("ohos-hap-core.rs"),
-            format!("{companion:?}\n"),
+            output.join("ohos-hap-cores.rs"),
+            format!("&{roster:?}\n"),
         )
-        .expect("OHOS HAP companion");
+        .expect("OHOS HAP core roster");
     }
 }
 

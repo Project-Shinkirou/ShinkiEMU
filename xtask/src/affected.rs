@@ -113,12 +113,12 @@ fn classify(
         {
             affected.core(
                 id,
-                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some()),
+                bundled_targets(inv, core.ios_framework, core.ohos_hap.as_ref()),
             );
         } else if let Some(core) = family_core(inv, path) {
             affected.core(
                 &core.id,
-                bundled_targets(inv, core.ios_framework, core.ohos_hap.is_some()),
+                bundled_targets(inv, core.ios_framework, core.ohos_hap.as_ref()),
             );
         } else {
             affected.all = true;
@@ -130,18 +130,18 @@ fn classify(
     Ok(affected)
 }
 
-fn bundled_targets(
-    inv: &Inventory,
+fn bundled_targets<'a>(
+    inv: &'a Inventory,
     ios_framework: bool,
-    ohos_hap: bool,
-) -> impl Iterator<Item = &str> {
-    inv.targets
-        .iter()
-        .map(|target| target.triple.as_str())
-        .filter(move |triple| {
-            (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
-                || (ohos_hap && shinki_emu_build::ohos::Target::from_rust_target(triple).is_some())
-        })
+    ohos_hap: Option<&shinki_emu_build::ohos::HapCore>,
+) -> impl Iterator<Item = &'a str> + use<'a> {
+    let ohos_abis = shinki_emu_build::ohos::Target::ALL.map(|target| {
+        ohos_hap.and_then(|recipe| recipe.library_for(target)).map(|_| target.rust_target())
+    });
+    inv.targets.iter().map(|target| target.triple.as_str()).filter(move |triple| {
+        (ios_framework && crate::apple::ios_frameworks::target_supported(triple))
+            || ohos_abis.contains(&Some(*triple))
+    })
 }
 
 /// Locate an in-tree adapter; families without their own adapter are shared inputs.
@@ -181,8 +181,12 @@ fn core_table_changes(
         for core in [before, after].into_iter().flatten() {
             let ios_framework =
                 core.get("ios_framework").and_then(toml::Value::as_bool) == Some(true);
-            let ohos_hap = core.get("ohos_hap").is_some();
-            affected.core(id, bundled_targets(inv, ios_framework, ohos_hap));
+            let ohos_hap = core
+                .get("ohos_hap")
+                .cloned()
+                .map(toml::Value::try_into)
+                .transpose()?;
+            affected.core(id, bundled_targets(inv, ios_framework, ohos_hap.as_ref()));
         }
     }
     Ok(())
@@ -346,10 +350,13 @@ mod tests {
     }
 
     #[test]
-    fn ohos_companion_changes_invalidate_the_local_hap() {
+    fn ohos_core_changes_invalidate_the_selected_hap_abis() {
         let (inv, current) = inventory();
         let target = shinki_emu_build::ohos::Target::Arm64.rust_target();
-        let (core, _) = crate::ohos::companion(&inv, target).unwrap();
+        let qa = shinki_emu_build::ohos::Target::X64;
+        let (core, _) = crate::ohos::cores(&inv, target)
+            .find(|(core, _)| core.ohos_hap.as_ref().unwrap().library_for(qa).is_some())
+            .expect("an OHOS core on both ABIs");
         for path in [
             format!("Source/Cores/{}/src/lib.rs", core.id),
             format!("Source/Families/{}/src/lib.rs", core.adapter_package()),
@@ -357,7 +364,11 @@ mod tests {
             let affected = classify(&inv, &[&path], None, "").unwrap();
             assert!(affected.row("manager", target), "{path}");
         }
-        let other = inv.cores.iter().find(|other| other.id != core.id).unwrap();
+        let other = inv.cores.iter().find(|other| {
+            other.ohos_hap.as_ref().and_then(|recipe| {
+                recipe.library_for(shinki_emu_build::ohos::Target::Arm64)
+            }).is_none()
+        }).unwrap();
         let path = format!("Source/Cores/{}/src/lib.rs", other.id);
         assert!(
             !classify(&inv, &[&path], None, "")
@@ -365,31 +376,27 @@ mod tests {
                 .row("manager", target)
         );
 
-        let mut without_companion: toml::Table = toml::from_str(&current).unwrap();
-        let total_removed = without_companion
-            .get_mut("cores")
-            .unwrap()
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .filter_map(|core| core.as_table_mut().unwrap().remove("ohos_hap"))
-            .count();
-        assert_eq!(total_removed, 1);
-        let without_companion = toml::to_string(&without_companion).unwrap();
-        let mut without_inventory = inv.clone();
-        for core in &mut without_inventory.cores {
-            core.ohos_hap = None;
-        }
+        let qa = qa.rust_target();
+        let mut arm_only: toml::Table = toml::from_str(&current).unwrap();
+        let recipe = arm_only["cores"].as_array_mut().unwrap().iter_mut()
+            .find(|entry| entry["id"].as_str() == Some(&core.id)).unwrap();
+        recipe["ohos_hap"].as_table_mut().unwrap()
+            .insert("abis".into(), toml::Value::Array(vec!["arm64-v8a".into()]));
+        let mut arm_only_inventory = inv.clone();
+        arm_only_inventory.cores.iter_mut().find(|entry| entry.id == core.id).unwrap()
+            .ohos_hap = Some(recipe["ohos_hap"].clone().try_into().unwrap());
+        let arm_only_text = toml::to_string(&arm_only).unwrap();
+        let path = format!("Source/Cores/{}/src/lib.rs", core.id);
+        let affected = classify(&arm_only_inventory, &[&path], None, "").unwrap();
+        assert!(affected.row("manager", target));
+        assert!(!affected.row("manager", qa));
         for (inventory, before, after) in [
-            (
-                &without_inventory,
-                current.as_str(),
-                without_companion.as_str(),
-            ),
-            (&inv, without_companion.as_str(), current.as_str()),
+            (&arm_only_inventory, current.as_str(), arm_only_text.as_str()),
+            (&inv, arm_only_text.as_str(), current.as_str()),
         ] {
             let affected = classify(inventory, &["build/cores.toml"], Some(before), after).unwrap();
             assert!(affected.row("manager", target));
+            assert!(affected.row("manager", qa));
         }
     }
 
