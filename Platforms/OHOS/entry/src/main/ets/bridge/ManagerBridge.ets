@@ -43,7 +43,11 @@ export function extractBundled(context: common.UIAbilityContext): void {
       continue;
     }
     const destination = `${target}/${entry}`;
-    fileIo.mkdirSync(destination.substring(0, destination.lastIndexOf('/')), true);
+    const parent = destination.substring(0, destination.lastIndexOf('/'));
+    // OpenHarmony's recursive mkdir still rejects an existing final directory.
+    if (!fileIo.accessSync(parent)) {
+      fileIo.mkdirSync(parent, true);
+    }
     const bytes = resources.getRawFileContentSync(`${BUNDLED}/${entry}`);
     const file = fileIo.openSync(destination, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
     try {
